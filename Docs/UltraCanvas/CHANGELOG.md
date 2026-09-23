@@ -1,4 +1,4 @@
-#### 2026-09-20 *0.9.16*
+#### 2026-09-23 *0.9.27*
 - **New design proposal: UltraCalendar, a stand-alone calendar for ULTRA OS**
   (`Docs/Research/UltraCalendarDesignProposal.md`). A calendar *separate* from
   UltraMail - a headless `UltraCalendar` module beside a thin
@@ -37,12 +37,434 @@
     iMIP card and hands the answer over two new UltraMessage topics; server
     scheduling (RFC 6638) is used where the server has it. Reminders post
     `system.notification` once UltraMessage's adapters exist.
-  - Found on the way: `CredentialVault` exists twice already (UltraMail,
-    UltraSocial) and should be shared before a third copy; three civil-date
-    types live in the tree (`UCDate`, `UltraCanvasCalendarDate.h`,
-    `UltraFIBUDate`); and the ULTRA OS cloud service has no specification
-    beyond a roadmap line - the proposal's section 8 is the client's
-    requirement list for it.
+  - Found on the way: three civil-date types live in the tree (`UCDate`,
+    `UltraCanvasCalendarDate.h`, `UltraFIBUDate`), and the ULTRA OS cloud
+    service has no specification beyond a roadmap line - the proposal's
+    section 8 is the client's requirement list for it. The per-account
+    secret store the calendar needs is `UltraVault::DeviceKeyVault` (0.9.23),
+    which UltraMail, UltraSocial, UltraFiler and EmailCleaner already share.
+#### 2026-09-22 *0.9.26*
+- **A window minimised by the user now reports it.** `IsMinimized()` and the
+  `onWindowMinimize` callback only ever reflected the application's own
+  `Minimize()` call; a click on the title-bar button changed nothing, so an
+  application had no way to notice it had been put away. The Linux backend
+  now watches the ICCCM `WM_STATE` property and raises `WindowMinimize` when
+  it becomes iconic and the new `UCEventType::WindowRestore` when it returns
+  to normal; the base window updates its state on both and calls
+  `onWindowMinimize` / `onWindowRestore`. The first consumer is
+  UltraAuthenticator, which locks its vault on minimise.
+- **Configure no longer fails on machines with Clang installed.** The
+  Linux compiler auto-detection built the C++ driver name with a
+  `REGEX REPLACE` whose replacement used `\1` for an optional group; CMake
+  3.28 rejects that as an "out-of-range escape", so every configure that did
+  not name the compiler explicitly stopped at line 59. The suffix is now
+  matched separately and appended.
+
+#### 2026-09-22 *0.9.25*
+- **Every 3D sample audited for the fault the STL aeroplane had**, by
+  measuring rather than squinting: each file of the E-45 aircraft was loaded
+  through the same path the demo pages and the Filer's thumbnails use, and
+  its silhouette profile matched against the export that draws correctly
+  (the OBJ) over all 24 axis-aligned rotations. Ten of the thirteen agree.
+  Two did not, and are fixed:
+  - **`media/3D/PLY/E-45-Aircraft.ply` held Blender's Z-up coordinates.**
+    PLY declares no up axis and this reader takes the format as Y-up - the
+    convention of the tools that write it most - so the aircraft stood on
+    its nose in every viewer that believed it. The sample is rotated into
+    the Y-up frame, where it agrees with the OBJ export vertex for vertex;
+    `Tests/ModelPLYTest.cpp` pins the new axes and says why.
+  - **`media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx` mis-declared itself.** Its
+    GlobalSettings said UpAxis = Y while its geometry is Z-up (the mesh node
+    connects straight to the scene, with no rotation to make up the
+    difference), so it too came out nose-down while the binary FBX of the
+    same scene was upright. The file now declares the Z-up frame it is
+    actually in; no vertex is touched, and the reader is unchanged.
+- Three samples are left as they are, with what they are:
+  - `X3D` and `VRML` hold the aircraft turned 180 degrees about its up
+    axis - upright, facing the other way. No format says which way a model
+    must face, so this is the files' own choice rather than a fault.
+  - `XFile` comes through **mirrored**: its mesh nodes are drawn with a
+    transform of determinant -1, because the DirectX .x format is
+    left-handed and the reader deliberately leaves that reflection in the
+    root frame (as its header documents) instead of converting to the
+    right-handed frame the rest of the model pipeline uses. The aircraft is
+    left-right symmetric, so the mirror reads as the model lying the wrong
+    way up rather than as an obvious left-right swap. Converting on import
+    (negate one axis, reverse the winding) is the fix, and it belongs to the
+    reader rather than to the sample.
+  - The `.dae`, `.blend` and `.abc` exports carry half a hull each, which is
+    what they were exported as; `Tests/ModelPLYTest.cpp` already says so.
+
+#### 2026-09-22 *0.9.24*
+- **The hostel plan in the DWG demo was a black smudge in the corner of an
+  empty sheet.** Two faults in one tile, both of them general.
+  - **A lineweight is a plot width, and it was being scaled by the block it
+    sat in.** The DXF/DWG reader resolves an entity's lineweight into points
+    and the block's INSERT becomes a group transform, which then multiplied
+    the pen along with the geometry. The hostel's elevations are inserted at
+    1054x, so their 1 pt pens came out 1054 units wide and painted a quarter
+    of the sheet solid black. `Ctx::penScale` now carries the accumulated
+    insert scale and `MakeStroke()` divides the width - and the dash
+    lengths - by it, so a drawing strokes the same whatever scale its blocks
+    are inserted at. `Tests/DWGReaderTest.cpp` checks that every circle in
+    the synthetic drawing, inserted at 1x and at 2x, comes out the same
+    width on the page.
+  - **One forgotten speck decided the framing.** That drawing carries a
+    4 x 0.7 unit hatched scrap a quarter of a million units away from the
+    plans, so fitting the union of everything (what `GetBoundingBox()`
+    returns, and what AutoCAD's zoom-extents does) left the plans a
+    postage stamp in the corner. `VectorStorage::ContentBounds()` is the
+    same box with such specks left out - a run of drawables is ignored only
+    when it holds at most 1% of them AND stands at least a fifth of the
+    drawing's extent clear of the rest, so a frame, a title block or a
+    legend always counts - and `UltraCanvasVectorElement`'s fit and centring
+    use it. Nothing is removed from the document: the speck is still drawn,
+    still exported, and still reachable by panning.
+- **The STL aeroplane stood on its back.** `media/3D/STL/Toy airplane
+  model...stl` was exported with the model turned 180 degrees about X - its
+  wheels at the top of the file's Z range and its wings at the bottom - so
+  the Z-up correction every viewer applies stood it on its canopy. The
+  sample is rotated to the orientation the format assumes (+Z up), which
+  fixes it in the STL page, the media viewer and the Filer's thumbnails
+  alike. The import path is unchanged: `UltraCanvasSTLLoader` still reads
+  the file as written and still declares Z-up, and the page reports the
+  same extents (114.05 x 79.49 x 55.69) as before.
+
+#### 2026-09-22 *0.9.23*
+- **The DWG / DXF demo page was five white squares, and so was everything
+  below them.** Four separate faults, each of which hid the next.
+  - **`UltraCanvasVectorElement` declared no CSS box.** Its
+    `(identifier, x, y, w, h)` constructor called the identifier-only base
+    constructor and then `SetPosition()`/`SetSize()`, which write
+    `finalBounds` and nothing else - so the layout engine arranged the
+    element as a widget that asked for no size, and it collapsed to nothing.
+    A container never renders a child that does not intersect its content
+    area, so the element was not drawn at all: not its document, not even its
+    background. It now passes x/y/w/h to the base constructor like every
+    other widget, which stamps the px size and the absolute origin. Callers
+    that pass 0 (the flex/grid ones - the AI page, the media viewer, the
+    plugin's own element) are unchanged.
+  - **Painting used the parent's frame.** `Render()`, the background, the
+    border, the debug box, the document transform, the hit test and the wheel
+    anchor all added `finalBounds.x/y`, although the container has already
+    translated the context to the element's origin and delivers pointer
+    events in element-local coordinates. Everything is element-local now;
+    `ScreenToDocument()`/`DocumentToScreen()` speak that frame too.
+  - **A fit was clamped to the interactive zoom limit.** `ZoomToFit()` ran
+    its computed scale through `options.MinZoom`, so a 10 000-unit site plan
+    in a 280 px tile was pinned at 0.1 and the tile showed an empty patch of
+    the drawing's middle. The fit is honoured as computed and becomes the
+    lower bound for zooming out (`MinAllowedZoom()`), so a wheel-out still
+    stops at the whole drawing.
+  - **The element swallowed its host's events.** `OnEvent()` handled panning
+    and selection and returned false for everything else without ever calling
+    the base, so the demo's click-to-open-fullscreen and its hover status line
+    never ran. The host callback is consulted first now.
+- **One collapsed transform used to end all drawing in the window.** The
+  bathroom sample (`media/3D/DWG/bagno_3d_1.dwg`) carries a block standing in
+  a vertical plane; projected to plan view its transform scales one axis to
+  zero. Cairo latches a non-invertible matrix as a permanent error on the
+  `cairo_t`, after which every later fill, stroke, text and image is silently
+  dropped - which is why the DXF row, the info panel and the "How it works"
+  panel below the drawings were blank as well.
+  - `VectorRenderer` skips an element whose transform is singular (it has no
+    area to draw), and
+  - `RenderContextCairo::Scale/SetTransform/Transform` refuse a matrix they
+    cannot invert and log it once, so no caller can kill a context this way.
+- `Tests/VectorElementViewTest.cpp` pins all of it: the box survives the
+  parent's layout, a fit below `MinZoom` fits, painting is element-local, a
+  singular transform leaves the context able to draw, and the host's event
+  callback runs.
+#### 2026-09-22 *0.9.23*
+- **New: `UltraVault::DeviceKeyVault` — an application's own vault on
+  UltraVault** (`<UltraVault/UltraVaultDeviceKeyVault.h>`, target `UltraVault`,
+  reference `Docs/Modules/UltraVault/README.md`). One encrypted vault file in a
+  directory the application owns, unlocked without a prompt by a random
+  passphrase kept owner-only in `device.key` beside it (`TryAutoUnlock`) or by
+  an explicit master password (`Unlock` -> `UnlockStatus`, which tells a wrong
+  password from a build without crypto; `PersistDeviceKey` makes the next run
+  silent); per-account `Store` / `Retrieve` / `Has` / `Remove`, an OAuth2
+  token set beside the password slot (`StoreOAuthTokens` …, `MethodFor` ->
+  `SignInMethod`), and migration of the 0.1 XOR-sidecar format (`vault.key` +
+  `creds.dat`) on the first unlock. A `DeviceKeyVaultProfile` — vault file
+  name and key prefix in the `<vendor>.<app>.` convention — tells one
+  application's vault from another's. This is UltraMail's `CredentialVault`
+  0.6.0 moved into the framework: UltraSocial carried a copy of it that had
+  never left the 0.1 format, so the two had drifted apart; both apps are now
+  one-line profiles of the one class (UltraMail 0.10.2, UltraSocial 0.1.1). The
+  legacy reader keeps a private Base64 decoder because UltraVault stays off the
+  UltraCanvas library on purpose (the link-time split that keeps UltraCrypt
+  UI-free). Covered in `Tests/UltraVaultTests.cpp`: locked-until-unlocked,
+  first-run key + vault creation and reopen, profile-prefixed keys, no
+  plaintext on disk, wrong / empty passphrase, token sets, the
+  "vault without a device key must prompt" case, and the migration.
+- **UltraCloud keeps no secret files of its own any more.** `FileSecretStore`
+  — obfuscated per-account files, XOR against a `cloud.key` beside them — was
+  a third copy of the weak format UltraMail and UltraSocial had left behind,
+  and it is gone: `VaultSecretStore` (in whichever UltraVault the application
+  opened, under `cloud.<accountId>.*`) is the store, `MemorySecretStore` the
+  process-lifetime one for tests and demos, and `MigrateLegacyFileSecrets`
+  carries an old directory into a store once, deleting each file as its
+  secret lands and the key file when none is left. UltraVault is a hard
+  dependency of the module now (`ULTRACLOUD_USE_ULTRAVAULT` stays defined for
+  consumers that test it). The UltraCloud suite covers all three
+  (`Tests/UltraCloud/test_secrets.cpp`). UltraMail 0.10.2 and UltraFiler
+  1.44.1 are the consumers that moved.
+- **`scripts/check_changelog.py --base` now catches a stale number before the
+  merge.** It compared the branch's entry only with the versions in the
+  branch's own copy of the file, plus one rule against the base: not the same
+  number as the base's line 1. A branch that picked the next number, was
+  overtaken by releases on `main` and had not merged `main` since therefore
+  passed - its file simply did not contain the newer entries - which is how
+  this branch's own entry sat at 0.9.16 while `main` was on 0.9.20. The
+  pull-request rule is now "strictly above the base's line 1", so both the
+  shared and the stale shape are refused while the number is still cheap to
+  change. `AGENTS.md` says to fetch `main` first, since the comparison is only
+  as current as the local `origin/main`.
+
+#### 2026-09-22 *0.9.22*
+- **A container no longer scrolls unless it is asked to.**
+  `ContainerStyle::autoShowScrollbars` now defaults to **off**. It defaulted to
+  on, and most containers in this tree are not viewports: they are form rows,
+  button bars, toolbar strips, cards and panes, laid out to fit. For those a
+  scrollbar was never the answer to anything — it appeared because the content
+  came out a pixel or two larger than the box, and then made it worse, because
+  the bar narrows the viewport by its own track size and so fabricates an
+  overflow on the other axis too. The pair was then drawn across the very row
+  it was meant to be laying out.
+  - **The default had already been written off three times in place** — the
+    window's own style (`enableWindowScrolling`), the eBook reader's nested
+    blocks, and the form grid each turn it off with a comment explaining this
+    exact cascade — and a dozen more call sites turn it off by hand before it
+    can happen to them (the toolbar, the album, the filer, the split pane, the
+    audio bars, Texter's rows, UltraCleaner's cards, UltraNetMonitor's bars).
+    UltraFiler's FTP login in 0.9.20 was the same defect once more.
+  - **A real scroll view opts in**, with `CreateScrollableContainer` (unchanged:
+    it sets the flag itself) or `autoShowScrollbars = true`. Three places in the
+    tree are deliberate scroll views and now say so: the eBook reader's chapter
+    pane and UltraMail's message body and its HTML host. The demo's scrolling
+    text block already said so.
+  - The opt-outs left at the call sites are no-ops now rather than load-bearing.
+    They are not removed here: each is one line stating an intent, and a sweep
+    that touches a dozen files to delete lines that do nothing is its own
+    change, not a rider on this one.
+
+#### 2026-09-22 *0.9.21*
+- **NetworkMonitor names.** `NetworkMonitorNames.h`: the name-source
+  plug-in point the proposal asked for (§2.3), and the sources behind it.
+  `INameSource` is what a source implements; `NetworkMonitor_RegisterNameSource`
+  starts it and feeds its observations to one *name table*
+  (`NetworkMonitor_LookupName` / `ListNames` / `ObserveName`), where every
+  address carries the name it was seen under and the `NameSource` it came
+  from - `DnsProxy`, `EtwDnsClient`, `PacketCapture` and `Sni` are
+  *observed* (a source saw the query), `ReverseDns` and `Inferred` are
+  *weak*, and an observed name always beats a weak one, however old.
+  `NetworkMonitor_ListConnections` fills each connection's `remoteName`
+  and `nameSource` from the table when `NetworkMonitorOptions::resolveNames`
+  is set (the default) and hands the peers nobody has named to the sources,
+  so reverse DNS knows what to look up. Names outlive their DNS TTL - at
+  least an hour - since a connection outlives the answer that started it.
+  - **The local DNS proxy** (`NetworkMonitor_CreateDnsProxySource`): listens
+    on 127.0.0.1, forwards every query to the upstream resolver unchanged
+    over UDP or TCP and reads the answers on the way back, following CNAME
+    chains so the address maps to the name the application asked for.
+    Cross-platform, one thread, one `select()` loop; refuses an upstream
+    that is itself. The wire format is `NetworkMonitorDns.h`: pure
+    functions over bytes, every read bounds-checked, compression pointers
+    that do not go backwards refused, tested from fixture bytes.
+  - **Reverse DNS** (`NetworkMonitor_CreateReverseDnsSource`): `getnameinfo`
+    on its own thread with a negative cache, never for loopback, link-local,
+    multicast or (unless asked) private addresses; labelled weak.
+  - **The Windows DNS client's ETW events** (`NetworkMonitor_CreateSystemDnsSource`,
+    `OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp`): a real-time
+    session on `Microsoft-Windows-DNS-Client`, event 3008, the one source
+    that reports the asking PID; needs an elevated token and says so.
+    Null on Linux and macOS. Compiled on CI, not yet exercised at run time.
+  - **The store records names.** Schema version 2 (a version-1 file
+    migrates in place): flows and daily totals carry `remote_name`, a flow
+    keeps the best name it was seen with, the text filter and the CSV
+    include it, and a `dns_observations` table holds every observation a
+    source reported (`NetworkMonitor_RecordDnsObservation` /
+    `QueryDnsObservations`), one row per address, dropped by retention
+    with the flows. `NetworkMonitor_AddNameListener` is how an app's
+    recorder hears them.
+  - `NetworkMonitorCapabilities::dnsWithProcess` is now true while a source
+    that reports the process is running; `ProcessTrafficSummary` lists the
+    distinct `remoteNames` it saw; `NetworkMonitor_NameSourceName` and
+    `NetworkMonitor_NameIsObserved` name and grade a source.
+  - Tests: the wire format, the table's precedence and lifetime rules, the
+    listener, the reverse DNS filters, the proxy end to end over UDP and
+    TCP against a fake resolver on loopback, and the store's names, the
+    observations, the CSV, the roll-up and the version-1 migration.
+  - The platform-glob exclusion in `UltraCanvas/CMakeLists.txt` now covers
+    every `*NetworkMonitor*.cpp`, so the new Windows source is compiled
+    once, into `NetworkMonitor`, and not into the core DLL.
+#### 2026-09-22 *0.9.20*
+- **A form caption is not something you scroll.** Every row of UltraCloud's
+  add-account dialog - the FTP / SFTP login UltraFiler's "+ Drive" opens -
+  was drawn with a scrollbar pair straight across its caption and its field.
+  The dialog built a flex container per row and let the column shrink them:
+  at 420 px it was a couple of pixels shorter than the rows it held, so each
+  32 px row was squeezed to 30, the 32 px control inside it no longer fitted,
+  and the row (a plain container, auto scrollbars on) raised a vertical
+  scrollbar - which narrowed the viewport by its own width and raised a
+  horizontal one as well.
+  - **The form is a `UltraCanvasFormLayout` grid now**, like every other
+    dialog in the tree: captions share one `auto` column that is as wide as
+    the widest of them (no more `kLabelWidth = 130`, so a longer translation
+    widens the column instead of being cut off), controls share the `1fr`
+    column and start at the same x, and the grid is `flex-shrink: 0`, so a
+    short dialog can no longer squeeze a row below the control in it. The
+    dialog is tall enough for the provider that needs every row, and a spacer
+    holds the buttons at the bottom for the ones that do not.
+  - **`CreateFormCellRow` no longer carries scrollbars either**, and the new
+    `DisableScrollbars(container)` says it in one line for any container that
+    only arranges what is in it. The container default is right for a pane
+    that holds content, not for one that holds a layout.
+  - The cloud file picker's "Account" and "Folder" rows went the same way, so
+    the two captions line up without either carrying a width of its own.
+  - `Tests/CSSLayoutFormGridTest.cpp` now pins the rule the dialog broke: a
+    dialog shorter than its form leaves every row at its own height, where a
+    flex row per field is squeezed below the control inside it.
+
+#### 2026-09-21 *0.9.19*
+- **`package-linux.sh` and `package-win.sh` looked in one place for
+  executables.** Most targets land in the build root; a target that sets
+  `RUNTIME_OUTPUT_DIRECTORY` to `bin/` was silently absent from the package,
+  reported only as `skip <app> (not built)` among the apps that genuinely were
+  not built. Both scripts now look in both places, and a packaged app is no
+  longer decided by which output directory its CMakeLists happened to pick.
+
+#### 2026-09-20 *0.9.18*
+- **Tables can be built and reshaped, not just filled in.** A document could
+  hold a table, and the caret could edit its cells, but the table's own
+  structure was fixed: there was no way to make one, add a row, or merge two
+  cells. `UCRichDocumentEditor` gains `InsertTable`, `InsertTableRow`,
+  `InsertTableColumn`, `DeleteTableRow`, `DeleteTableColumn`,
+  `MergeTableCells` and `SplitTableCell`, and `UltraCanvasRichTextEdit` the
+  caret-relative wrappers a menu calls (`InsertRowBelow`, `DeleteCurrentColumn`,
+  `MergeWithCellRight`, `SplitCurrentCell` and the rest). Each is one undo step.
+  - **The grid stays rectangular across every operation.** A span reaching
+    across an insertion point grows instead of being cut in two - its text
+    lives in one cell and cannot be in two places - and a span reaching into a
+    deleted row or column shrinks. Where a span *started* in the deleted row,
+    the cell moves down into the next one rather than being deleted with it, so
+    what somebody typed in it survives.
+  - **Merging keeps the text of every cell it absorbs**, appended to the
+    surviving cell: a merge is a layout decision, and dropping the contents
+    would be a silent deletion. A merge whose rectangle would cut an existing
+    span in half is refused rather than approximated, because the model cannot
+    store half a cell.
+  - Deleting the last row or the last column deletes the table: one with no
+    cells has nothing to type into and no way back.
+- **One grid walk, shared.** Cells are stored sparsely - a merged cell is one
+  `RichTableCell` carrying a span, and the slots it covers hold nothing - so a
+  cell's index within its row is not its column. `BuildTableGrid()` resolves
+  which cell occupies each slot, and the element's layout now uses it instead
+  of its own copy of the walk. Two implementations of "which column is this
+  cell in" would drift, and a disagreement between layout and editing is a
+  caret landing in the wrong cell.
+- **An edit that did not move the caret was not drawn.** Block layouts are
+  cached and the rebuild pass only rebuilds the ones that have been
+  invalidated - which, until now, only moving the caret did. Centring the
+  paragraph the caret was already in changed the document and left the old
+  layout on screen until something else moved the caret; the same was true of
+  any format applied to the caret's own block, and of an undo that restored
+  text without moving anything. The editing core now reports which blocks its
+  last change replaced (`GetLastChangedBlocks`) and the element invalidates
+  exactly those. Pinned by a test that centres a paragraph without touching the
+  caret and reads back where the text actually landed.
+#### 2026-09-20 *0.9.17*
+- **UltraDatabase speaks PostgreSQL.** `core/UltraDatabase/
+  UltraDatabasePostgresDriver.cpp` plus `...PostgresSql.cpp`, registered the
+  same way the SQLite driver is. Optional and soft-failing: without libpq the
+  same source compiles to a stub and a `postgresql` connection reports that
+  the driver is missing, which is a true answer rather than a link error.
+- **Two new driver hooks, because a transaction is not portable.**
+  `BeginTransactionSql()` is `BEGIN IMMEDIATE` on SQLite and `BEGIN` on
+  PostgreSQL; `RowLockSuffix()` is empty on SQLite and ` FOR UPDATE` on
+  PostgreSQL. The second one exists because SQLite serialises writers and
+  PostgreSQL at READ COMMITTED does not, so a read-then-write counter that is
+  safe on one is a duplicate-key generator on the other - which is what two
+  concurrent clients proved, handing out 40 distinct numbers in 80 draws.
+- **`datetime('now')` was SQLite-only and sat in the migration bookkeeping**,
+  where every driver has to run it. It is `CURRENT_TIMESTAMP` now.
+- **The `?` -> `$n` rewriter is its own translation unit**, compiled whether
+  or not libpq was found. It is pure string handling, and gating it on the
+  driver would mean a machine without libpq ships it untested - while the
+  mistakes it guards against (a `?` inside a literal, a comment or a
+  dollar-quoted body) corrupt a statement that then still runs.
+- **The suite runs, rather than being built.** CI installs libsqlite3-dev and
+  libpq-dev explicitly instead of trusting the runner image, builds
+  `UltraDatabaseTests`, and fails the job if configure reports UltraDatabase
+  without PostgreSQL - a soft-disabled module takes its own tests with it.
+- TLS defaults to `verify-full`, and the connection password must be a
+  `vault:` key: a literal password in a config file is refused rather than
+  used.
+
+#### 2026-09-20 *0.9.16*
+- **Depth for the vector model: booleans, ClipView, contour, blend, mould,
+  bevel** - phase 5 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`
+  (its first slice); the application half is ArtCreator 0.3.0.
+  - *Geometry* (`DataFormats/UltraCanvasVectorGeometry.h`, core): polygon
+    booleans over paths flattened to polygons - `PolygonBoolean` /
+    `PathBoolean` (union, subtract, intersect, exclude, each input with
+    its own fill rule; a union with nothing normalises a self-crossing
+    path) and `SlicePath` - as a planar-map clipper: every edge is split
+    at every crossing, each piece classified by the winding numbers on
+    its two sides, the separating pieces linked into consistently wound
+    rings. `OffsetPolygons` / `OffsetPath` grow or shrink a set with
+    round, mitre or bevel joins through the same clipper. `FlattenToPolygons`,
+    `PolygonsToPath`, `PolygonSetArea`, `WindingNumber`,
+    `PolygonSetContains`.
+  - *Model*: three container kinds, all `VectorGroup`s (`IsGroupType`):
+    `VectorClipView` (its first `Keyholes` children clip the rest and are
+    not drawn), `VectorBlend` (`Steps` shapes interpolated between each
+    pair of children, a `ColourBlendKind` run - fade, rainbow, alt
+    rainbow, constant - the one-to-one, antialiased and tangential flags
+    and Xara's profiles) and `VectorMould` (`Envelope` or `Perspective`:
+    the children warped from `SourceBounds` into a four-sided `Shape`
+    that starts at the source's top-left corner; `Warp`, `ShapeCorners`,
+    `IdentityShape`). Two effects on `VectorElement::Effects`:
+    `ContourEffect` (`Steps` rings `Width` out - or in, when negative -
+    coloured from the fill to `Colour`) and `BevelEffect` (Xara's fifteen
+    `BevelKind` profiles, `Indent`, `LightAngle`, `Tilt`, `Contrast`,
+    `Outer`).
+  - *Renderer*: a ClipView clips to its keyholes' union; a blend draws
+    each child and the resampled, start-matched intermediates with their
+    colours, strokes and opacity run; a mould warps every outline through
+    a Coons patch or a projective map (text and images move to their
+    moulded anchor); contour rings come from the offsetter (outward
+    behind the object, inward over it; cached with the geometry); the
+    bevel lights a distance transform of the silhouette shaped by the
+    profile, inner or outer, as highlight and shadow masks (cached like
+    the effect rasters; `EffectCacheSize` counts all three caches).
+  - *Editing layer*: `CombineShapes` (Xara's Combine Shapes: `Add`,
+    `Intersect` give one shape with the back shape's style; `Subtract`
+    and `Slice` cut each shape with the front one, which is removed).
+    `UngroupElements` dissolves the new containers too.
+  - *XAR*: the plugin gives the five controllers real container nodes and
+    parses their fields as Xara's own source writes them (the previous
+    reader skipped the controller records, so their contents nested under
+    the preceding object): `TAG_CLIPVIEWCONTROLLER` with the keyholes
+    before the `TAG_CLIPVIEW` marker; `TAG_CONTOURCONTROLLER` (steps,
+    width, blend type with the inset flag, four profile doubles) with its
+    `TAG_CONTOUR` node carrying the contour colour; `TAG_BLENDPROFILES` +
+    `TAG_BLEND` (steps, flags) with `TAG_BLENDER` / `TAG_BLENDERADDITIONAL`
+    between the blended objects; `TAG_MOULD_ENVELOPE` / `_PERSPECTIVE`
+    (threshold) with the `TAG_MOULD_PATH` shape and the `TAG_MOULD_BOUNDS`
+    + `TAG_MOULD_GROUP` sources; the 24-byte `TAG_BEVEL` with its
+    `TAG_BEVELINK` node. The converter reads them into the model (the
+    mould shape re-ordered from Xara's bottom-left start) and writes them
+    back the same way, the moulded results as plain warped paths so any
+    reader shows them; Xara regenerates contour steps, blend steps and
+    bevels from the controllers on load. Not verified against a Designer
+    export: the repo's Xara samples carry none of these records.
+  - *Tests*: `VectorEditTest` checks the booleans (areas, ring counts,
+    containment, a holed square), the three joins, insets and the four
+    combine operations; `VectorModelTest` checks each container and
+    effect in pixels; `XARWriterTest` round-trips one of each through the
+    plugin and the converter.
 
 #### 2026-09-20 *0.9.15*
 - **New: UltraMessage Phase 1 — the message channel is built**
@@ -403,6 +825,7 @@
   UltraFIBU's was the one application suite CI never built, so its checks - now
   833 of them, including the encoding fix above - ran nowhere. It is a headless
   suite with no UI dependency, which is why it can simply be switched on.
+
 
 #### 2026-09-19 *0.8.99*
 - **NetworkMonitor on Windows and macOS, and byte counters on Linux** — the

@@ -16,6 +16,7 @@
 
 #include "UltraCanvasBezierPath.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
+#include "DataFormats/UltraCanvasVectorGeometry.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasVectorCanvas.h"
 #include "UltraCanvasGradientEditor.h"
@@ -378,6 +379,99 @@ int main() {
         Check(ge->RemoveStop(1) && ge->GetStops().size() == 2, "a middle stop can be removed");
         Check(!ge->RemoveStop(0) && ge->GetStops().size() == 2, "two stops is the minimum: no stop can be removed");
         Check(selections >= 1, "selection changes notify");
+    }
+
+    // ===== Geometry: booleans, offsetting, combine shapes =====
+    {
+        auto square = [](double x, double y, double s) {
+            PolygonSet set;
+            set.push_back({Point2Dd(x, y), Point2Dd(x + s, y), Point2Dd(x + s, y + s), Point2Dd(x, y + s)});
+            return set;
+        };
+        auto area = [](const PolygonSet& s) { return std::fabs(PolygonSetArea(s)); };
+        const PolygonSet a = square(0, 0, 100), b = square(50, 0, 100);
+        const PolygonSet u = PolygonBoolean(a, VectorStorage::FillRule::NonZero, b, VectorStorage::FillRule::NonZero, PathBooleanOp::Union);
+        const PolygonSet in = PolygonBoolean(a, VectorStorage::FillRule::NonZero, b, VectorStorage::FillRule::NonZero, PathBooleanOp::Intersect);
+        const PolygonSet sub = PolygonBoolean(a, VectorStorage::FillRule::NonZero, b, VectorStorage::FillRule::NonZero, PathBooleanOp::Subtract);
+        const PolygonSet ex = PolygonBoolean(a, VectorStorage::FillRule::NonZero, b, VectorStorage::FillRule::NonZero, PathBooleanOp::Exclude);
+        Check(u.size() == 1 && Near(area(u), 15000, 1e-6), "union of two overlapping squares: one ring, area 15000");
+        Check(in.size() == 1 && Near(area(in), 5000, 1e-6), "intersection: one ring, area 5000");
+        Check(sub.size() == 1 && Near(area(sub), 5000, 1e-6), "subtraction: one ring, area 5000");
+        Check(ex.size() == 2 && Near(area(ex), 10000, 1e-6), "exclusion: two rings, area 10000");
+        Check(PolygonSetContains(u, VectorStorage::FillRule::NonZero, Point2Dd(75, 50)) && !PolygonSetContains(u, VectorStorage::FillRule::NonZero, Point2Dd(-1, 50)),
+              "containment follows the union");
+        // Disjoint squares: the union keeps both.
+        const PolygonSet far = PolygonBoolean(a, VectorStorage::FillRule::NonZero, square(200, 0, 100), VectorStorage::FillRule::NonZero, PathBooleanOp::Union);
+        Check(far.size() == 2 && Near(area(far), 20000, 1e-6), "union of disjoint squares keeps both rings");
+        // A square with a hole, both rings wound the same way, read even-odd:
+        // normalising makes the winding consistent (the hole counts negative).
+        PolygonSet holed = square(0, 0, 100);
+        holed.push_back(square(25, 25, 50).front());
+        const PolygonSet norm = PolygonBoolean(holed, VectorStorage::FillRule::EvenOdd, PolygonSet(), VectorStorage::FillRule::NonZero, PathBooleanOp::Union);
+        Check(norm.size() == 2 && Near(std::fabs(PolygonSetArea(norm)), 7500, 1e-6), "a holed square normalises to outer minus hole");
+        Check(!PolygonSetContains(norm, VectorStorage::FillRule::NonZero, Point2Dd(50, 50)) && PolygonSetContains(norm, VectorStorage::FillRule::NonZero, Point2Dd(10, 10)),
+              "the hole is empty under a non-zero fill after normalising");
+        // Offsetting a square: mitre grows it to 120 square, bevel cuts the
+        // corners, round adds a quarter disc per corner; inset shrinks it.
+        Check(Near(area(OffsetPolygons(a, VectorStorage::FillRule::NonZero, 10, StrokeLineJoin::Miter)), 14400, 1e-3), "mitre offset of a square by 10 is a 120 square");
+        Check(Near(area(OffsetPolygons(a, VectorStorage::FillRule::NonZero, 10, StrokeLineJoin::Bevel)), 14200, 1e-3), "bevel offset cuts the four corners");
+        const double roundArea = area(OffsetPolygons(a, VectorStorage::FillRule::NonZero, 10, StrokeLineJoin::Round));
+        Check(roundArea > 14290 && roundArea < 14320, "round offset adds about a disc's worth at the corners");
+        Check(Near(area(OffsetPolygons(a, VectorStorage::FillRule::NonZero, -10)), 6400, 1e-3), "inset by 10 is an 80 square");
+        Check(OffsetPolygons(a, VectorStorage::FillRule::NonZero, -60).empty(), "inset past the middle leaves nothing");
+        // Over path data: a circle grows to a circle.
+        VectorCircle circle;
+        circle.Center = Point2Dd(0, 0);
+        circle.Radius = 40;
+        auto circleOutline = OutlineOf(circle);
+        Check(circleOutline.has_value(), "a circle has an outline");
+        if (circleOutline) {
+            const double grown = std::fabs(PolygonSetArea(FlattenToPolygons(OffsetPath(*circleOutline, 5))));
+            Check(std::fabs(grown - M_PI * 45 * 45) < M_PI * 45 * 45 * 0.01, "a circle offset by 5 has the area of the larger circle");
+        }
+        auto slices = SlicePath(PolygonsToPath(a), PolygonsToPath(b));
+        Check(Near(std::fabs(PolygonSetArea(FlattenToPolygons(slices.first))), 5000, 1e-6) &&
+              Near(std::fabs(PolygonSetArea(FlattenToPolygons(slices.second))), 5000, 1e-6), "SlicePath splits a square into its inside and outside halves");
+
+        // CombineShapes on a document.
+        auto makeDoc = [](std::shared_ptr<VectorDocument>& doc, std::shared_ptr<VectorLayer>& layer) {
+            doc = std::make_shared<VectorDocument>();
+            doc->Size = Size2Dd(300, 200);
+            layer = doc->AddLayer("L");
+            auto r1 = std::make_shared<VectorRect>();
+            r1->Bounds = Rect2Dd(0, 0, 100, 100);
+            r1->Style.Fill = Color(255, 0, 0, 255);
+            auto r2 = std::make_shared<VectorRect>();
+            r2->Bounds = Rect2Dd(50, 0, 100, 100);
+            r2->Style.Fill = Color(0, 0, 255, 255);
+            layer->AddChild(r1);
+            layer->AddChild(r2);
+            EnsureIds(*doc);
+        };
+        std::shared_ptr<VectorDocument> cdoc;
+        std::shared_ptr<VectorLayer> clayer;
+        makeDoc(cdoc, clayer);
+        auto added = CombineShapes({clayer->Children[1], clayer->Children[0]}, CombineOp::Add);
+        Check(added.size() == 1 && clayer->Children.size() == 1 && clayer->Children[0] == added[0], "Add replaces both rects with one path");
+        if (!added.empty()) {
+            const Rect2Dd bb = added[0]->GetBoundingBox();
+            Check(Near(bb.x, 0) && Near(bb.width, 150, 1e-3) && Near(bb.height, 100, 1e-3), "the union spans both rects");
+            Check(added[0]->Style.Fill.has_value() && std::get<Color>(*added[0]->Style.Fill).r == 255, "the union takes the back shape's style");
+        }
+        makeDoc(cdoc, clayer);
+        auto cut = CombineShapes({clayer->Children[0], clayer->Children[1]}, CombineOp::Subtract);
+        Check(cut.size() == 1 && clayer->Children.size() == 1, "Subtract cuts the front rect out of the back one and removes it");
+        if (!cut.empty()) {
+            const Rect2Dd bb = cut[0]->GetBoundingBox();
+            Check(Near(bb.x, 0) && Near(bb.width, 50, 1e-3), "what is left is the back rect's uncovered half");
+        }
+        makeDoc(cdoc, clayer);
+        auto sliced = CombineShapes({clayer->Children[0], clayer->Children[1]}, CombineOp::Slice);
+        Check(sliced.size() == 2 && clayer->Children.size() == 2, "Slice leaves the back rect's outside and inside pieces");
+        makeDoc(cdoc, clayer);
+        auto common = CombineShapes({clayer->Children[0], clayer->Children[1]}, CombineOp::Intersect);
+        Check(common.size() == 1 && clayer->Children.size() == 1 && Near(common[0]->GetBoundingBox().width, 50, 1e-3),
+              "Intersect keeps the shared strip");
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

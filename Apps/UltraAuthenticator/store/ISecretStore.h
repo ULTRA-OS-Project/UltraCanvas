@@ -48,6 +48,7 @@ enum class StoreResultCode : uint8_t {
     Corrupt,               // malformed container (distinct from tampering)
     IoError,
     BackendUnavailable,    // built without a crypto backend
+    TooManyAttempts,       // unlock refused until the back-off delay elapses
     InternalError
 };
 

@@ -1,11 +1,12 @@
-// Apps/UltraMail/engine/UltraMailCredentialVault.cpp
-// Version: 0.6.0 - device-key auto-unlock (Thunderbird-style, no prompt)
+// core/UltraVault/UltraVaultDeviceKeyVault.cpp
+// An application's own vault on UltraVault, unlocked by a device key — see
+// the header. UI-free and free of UltraNet, like the rest of the module, so
+// the headless consumers and the test binary link it as they are.
+// Version: 0.1.0 - moved here from UltraMail's CredentialVault 0.6.0
 // Author: UltraCanvas Framework / ULTRA OS
-#include "UltraMailCredentialVault.h"
+#include "UltraVault/UltraVaultDeviceKeyVault.h"
 
-#include <UltraVault/UltraVault.h>
-#include <UltraNet/UltraNetMime.h>   // UltraNet_Base64Encode / Decode
-#include <UltraCrypt/UltraCryptCore.h>   // UltraCrypt_RandomBytes
+#include "UltraCrypt/UltraCryptCore.h"   // UltraCrypt_RandomBytes
 
 #include <cstdint>
 #include <cstdlib>
@@ -18,11 +19,10 @@
 
 namespace fs = std::filesystem;
 
-namespace UltraMail {
+namespace UltraVault {
 
 namespace {
 
-constexpr const char* kVaultFile = "ultramail.vault";
 // The device key holds a random passphrase so the vault unlocks without a
 // prompt (see the header). NOT "vault.key" — that name belongs to the 0.1
 // legacy format below and would confuse its migration.
@@ -41,20 +41,43 @@ std::string RandomPassphrase() {
 }
 
 // ---- 0.1-format reader (kept only to migrate away from it) ----------------
-// The old vault XOR-ed each secret against a key stored in the same directory.
+// The old vault XOR-ed each secret against a key stored in the same directory
+// and wrote one "base64(account) TAB base64(xor(secret))" line per account.
 // Nothing here writes that format; it exists to read it once and delete it.
 
 constexpr const char* kLegacyKeyFile   = "vault.key";
 constexpr const char* kLegacyCredsFile = "creds.dat";
 
-std::string FromBytes(const std::vector<uint8_t>& b) {
-    return std::string(b.begin(), b.end());
-}
-
-std::string UnB64(const std::string& s) {
-    std::vector<uint8_t> out;
-    UltraNet_Base64Decode(s, out);
-    return FromBytes(out);
+// RFC 4648 Base64 decoder for those lines. The framework's codec lives in
+// UltraCanvasTextUtils, which is linked into (and exported by) the UltraCanvas
+// library; UltraVault stays off that library on purpose — the same link-time
+// split that keeps UltraCrypt UI-free — so this private copy is deliberate.
+// Lenient like UltraCanvas::Base64Decode: whitespace ignored, padding optional.
+std::string LegacyBase64Decode(const std::string& text) {
+    auto value = [](char c) -> int {
+        if (c >= 'A' && c <= 'Z') return c - 'A';
+        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+        if (c >= '0' && c <= '9') return c - '0' + 52;
+        if (c == '+') return 62;
+        if (c == '/') return 63;
+        return -1;
+    };
+    std::string out;
+    out.reserve(text.size() * 3 / 4);
+    uint32_t acc = 0;
+    int bits = 0;
+    for (char c : text) {
+        if (c == '=') break;
+        const int v = value(c);
+        if (v < 0) continue;   // whitespace or stray byte
+        acc = (acc << 6) | static_cast<uint32_t>(v);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back(static_cast<char>((acc >> bits) & 0xFF));
+        }
+    }
+    return out;
 }
 
 std::string LegacyXor(const std::string& data, const std::vector<uint8_t>& key) {
@@ -81,59 +104,64 @@ std::map<std::string, std::string> ReadLegacyVault(const std::string& dir) {
     while (std::getline(is, line)) {
         const std::size_t tab = line.find('\t');
         if (tab == std::string::npos) continue;
-        creds[UnB64(line.substr(0, tab))] =
-            LegacyXor(UnB64(line.substr(tab + 1)), key);
+        creds[LegacyBase64Decode(line.substr(0, tab))] =
+            LegacyXor(LegacyBase64Decode(line.substr(tab + 1)), key);
     }
     return creds;
 }
 
 // Map an UltraVault result to the reason the caller reports.
-VaultStatus StatusFor(const UltraVault::Result& r) {
+UnlockStatus StatusFor(const Result& r) {
     switch (r.code) {
-        case UltraVault::ResultCode::Success:            return VaultStatus::Ok;
-        case UltraVault::ResultCode::AccessDenied:       return VaultStatus::WrongPassphrase;
-        case UltraVault::ResultCode::BackendUnavailable: return VaultStatus::Unavailable;
-        case UltraVault::ResultCode::IoError:            return VaultStatus::IoError;
-        case UltraVault::ResultCode::Locked:             return VaultStatus::Locked;
-        default:                                         return VaultStatus::IoError;
+        case ResultCode::Success:            return UnlockStatus::Ok;
+        case ResultCode::AccessDenied:       return UnlockStatus::WrongPassphrase;
+        case ResultCode::BackendUnavailable: return UnlockStatus::Unavailable;
+        case ResultCode::IoError:            return UnlockStatus::IoError;
+        case ResultCode::Locked:             return UnlockStatus::Locked;
+        default:                             return UnlockStatus::IoError;
     }
 }
 
+constexpr const char* kAccessSuffix  = ".oauth.access";
+constexpr const char* kRefreshSuffix = ".oauth.refresh";
+constexpr const char* kExpiresSuffix = ".oauth.expires";
+
 } // namespace
 
-std::string CredentialVault::KeyFor(const std::string& account) {
-    // UltraVault's namespaced convention: "<vendor>.<app>.<purpose>".
-    return "mail.ultramail." + account;
+std::string DeviceKeyVault::KeyFor(const std::string& account) const {
+    return profile_.keyPrefix + account;
 }
 
-std::string CredentialVault::VaultPath() const {
-    return (fs::path(dir_) / kVaultFile).string();
+std::string DeviceKeyVault::VaultPath() const {
+    return (fs::path(dir_) / profile_.vaultFileName).string();
 }
 
-bool CredentialVault::Exists() const {
+bool DeviceKeyVault::Exists() const {
     std::error_code ec;
-    return fs::exists(fs::path(dir_) / kVaultFile, ec);
+    return fs::exists(fs::path(dir_) / profile_.vaultFileName, ec);
 }
 
-VaultStatus CredentialVault::Unlock(const std::string& passphrase) {
+UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
     // An empty passphrase derives a key anyone could reproduce, which would
-    // put us back where the 0.1 vault was. Refuse it outright.
-    if (passphrase.empty()) return VaultStatus::WrongPassphrase;
+    // put us back where the 0.1 vault was. Refuse it outright. A vault with
+    // no directory or no file name has nowhere to go.
+    if (passphrase.empty()) return UnlockStatus::WrongPassphrase;
+    if (dir_.empty() || profile_.vaultFileName.empty()) return UnlockStatus::IoError;
 
     std::error_code ec;
     fs::create_directories(dir_, ec);
-    if (ec) return VaultStatus::IoError;
+    if (ec) return UnlockStatus::IoError;
 
     // Initialize() is idempotent per process and will not reconfigure an open
     // vault, so close any previous one before adopting this passphrase.
-    UltraVault::Shutdown();
+    Shutdown();
 
-    UltraVault::Config config;
-    config.backend    = UltraVault::Backend::File;
+    Config config;
+    config.backend    = Backend::File;
     config.filePath   = VaultPath();
     config.passphrase = passphrase;   // wiped in place by Initialize()
 
-    const UltraVault::Result r = UltraVault::Initialize(config);
+    const Result r = Initialize(config);
     if (!r.IsOk()) {
         unlocked_ = false;
         return StatusFor(r);
@@ -141,21 +169,22 @@ VaultStatus CredentialVault::Unlock(const std::string& passphrase) {
     unlocked_ = true;
 
     MigrateLegacy();
-    return VaultStatus::Ok;
+    return UnlockStatus::Ok;
 }
 
-void CredentialVault::Lock() {
+void DeviceKeyVault::Lock() {
     if (!unlocked_) return;
-    UltraVault::Shutdown();   // wipes the decrypted store and derived key
+    Shutdown();   // wipes the decrypted store and derived key
     unlocked_ = false;
 }
 
-std::string CredentialVault::DeviceKeyPath() const {
+std::string DeviceKeyVault::DeviceKeyPath() const {
     return (fs::path(dir_) / kDeviceKeyFile).string();
 }
 
-bool CredentialVault::TryAutoUnlock() {
+bool DeviceKeyVault::TryAutoUnlock() {
     if (unlocked_) return true;
+    if (dir_.empty()) return false;
 
     // A stored device key: unlock silently with it.
     std::error_code ec;
@@ -164,7 +193,7 @@ bool CredentialVault::TryAutoUnlock() {
         std::string pass((std::istreambuf_iterator<char>(in)),
                          std::istreambuf_iterator<char>());
         while (!pass.empty() && (pass.back() == '\n' || pass.back() == '\r')) pass.pop_back();
-        return !pass.empty() && Unlock(pass) == VaultStatus::Ok;
+        return !pass.empty() && Unlock(pass) == UnlockStatus::Ok;
     }
 
     // No device key. If a vault already exists it was made with a master
@@ -175,14 +204,14 @@ bool CredentialVault::TryAutoUnlock() {
     const std::string pass = RandomPassphrase();
     if (pass.empty()) return false;                 // no secure RNG on this build
     if (!PersistDeviceKey(pass)) return false;      // could not write the key file
-    if (Unlock(pass) == VaultStatus::Ok) return true;
+    if (Unlock(pass) == UnlockStatus::Ok) return true;
     // Creating the vault failed: drop the key file so a retry is not blocked.
     fs::remove(DeviceKeyPath(), ec);
     return false;
 }
 
-bool CredentialVault::PersistDeviceKey(const std::string& passphrase) {
-    if (passphrase.empty()) return false;
+bool DeviceKeyVault::PersistDeviceKey(const std::string& passphrase) {
+    if (passphrase.empty() || dir_.empty()) return false;
     std::error_code ec;
     fs::create_directories(dir_, ec);
     { std::ofstream out(DeviceKeyPath(), std::ios::binary | std::ios::trunc);
@@ -197,107 +226,105 @@ bool CredentialVault::PersistDeviceKey(const std::string& passphrase) {
     return true;
 }
 
-int CredentialVault::MigrateLegacy() {
+int DeviceKeyVault::MigrateLegacy() {
+    std::error_code ec;
     auto legacy = ReadLegacyVault(dir_);
-    if (legacy.empty()) return 0;
+    if (legacy.empty()) {
+        // The 0.1 code wrote its key file on the first read, so a folder that
+        // never held a secret still carries one. With no creds.dat there is
+        // nothing it could decrypt; drop it rather than leave a stray key.
+        if (!fs::exists(fs::path(dir_) / kLegacyCredsFile, ec))
+            fs::remove(fs::path(dir_) / kLegacyKeyFile, ec);
+        return 0;
+    }
 
     int carried = 0;
     for (const auto& [account, secret] : legacy) {
         if (account.empty()) continue;
-        if (UltraVault::Put(KeyFor(account),
-                            UltraVault::SecretValue::FromString(secret)).IsOk())
+        if (Put(KeyFor(account), SecretValue::FromString(secret)).IsOk())
             ++carried;
     }
     // Only drop the old files once every secret is safely in the new vault;
     // a partial migration keeps them so nothing is lost.
     if (carried == static_cast<int>(legacy.size())) {
-        std::error_code ec;
         fs::remove(fs::path(dir_) / kLegacyCredsFile, ec);
         fs::remove(fs::path(dir_) / kLegacyKeyFile, ec);
     }
     return carried;
 }
 
-bool CredentialVault::Store(const std::string& account, const std::string& secret) {
+bool DeviceKeyVault::Store(const std::string& account, const std::string& secret) {
     if (account.empty() || !unlocked_) return false;
-    if (!UltraVault::Put(KeyFor(account),
-                         UltraVault::SecretValue::FromString(secret)).IsOk())
+    if (!Put(KeyFor(account), SecretValue::FromString(secret)).IsOk())
         return false;
     RemoveOAuthTokens(account);   // one sign-in method per account
     return true;
 }
 
-namespace {
-constexpr const char* kAccessSuffix  = ".oauth.access";
-constexpr const char* kRefreshSuffix = ".oauth.refresh";
-constexpr const char* kExpiresSuffix = ".oauth.expires";
-} // namespace
-
-bool CredentialVault::StoreOAuthTokens(const std::string& account, const OAuthTokens& tokens) {
+bool DeviceKeyVault::StoreOAuthTokens(const std::string& account, const OAuthTokens& tokens) {
     if (account.empty() || !unlocked_ || tokens.Empty()) return false;
     const std::string base = KeyFor(account);
     auto put = [&](const char* suffix, const std::string& value) {
-        return UltraVault::Put(base + suffix,
-                               UltraVault::SecretValue::FromString(value)).IsOk();
+        return Put(base + suffix, SecretValue::FromString(value)).IsOk();
     };
     if (!put(kAccessSuffix, tokens.accessToken) ||
         !put(kRefreshSuffix, tokens.refreshToken) ||
         !put(kExpiresSuffix, std::to_string(tokens.expiresAt)))
         return false;
-    UltraVault::Delete(base);   // the password slot, if the account had one
+    Delete(base);   // the password slot, if the account had one
     return true;
 }
 
-bool CredentialVault::RetrieveOAuthTokens(const std::string& account, OAuthTokens& out) const {
+bool DeviceKeyVault::RetrieveOAuthTokens(const std::string& account, OAuthTokens& out) const {
     out = OAuthTokens{};
     if (account.empty() || !unlocked_) return false;
     const std::string base = KeyFor(account);
-    UltraVault::SecretValue v;
-    if (!UltraVault::Get(base + kAccessSuffix, v).IsOk()) return false;
+    SecretValue v;
+    if (!Get(base + kAccessSuffix, v).IsOk()) return false;
     out.accessToken = v.AsString();
-    if (UltraVault::Get(base + kRefreshSuffix, v).IsOk()) out.refreshToken = v.AsString();
-    if (UltraVault::Get(base + kExpiresSuffix, v).IsOk())
+    if (Get(base + kRefreshSuffix, v).IsOk()) out.refreshToken = v.AsString();
+    if (Get(base + kExpiresSuffix, v).IsOk())
         out.expiresAt = std::strtoll(v.AsString().c_str(), nullptr, 10);
     return !out.Empty();
 }
 
-bool CredentialVault::HasOAuthTokens(const std::string& account) const {
+bool DeviceKeyVault::HasOAuthTokens(const std::string& account) const {
     OAuthTokens ignore;
     return RetrieveOAuthTokens(account, ignore);
 }
 
-bool CredentialVault::RemoveOAuthTokens(const std::string& account) {
+bool DeviceKeyVault::RemoveOAuthTokens(const std::string& account) {
     if (account.empty() || !unlocked_) return false;
     const std::string base = KeyFor(account);
-    const bool had = UltraVault::Delete(base + kAccessSuffix).IsOk();
-    UltraVault::Delete(base + kRefreshSuffix);
-    UltraVault::Delete(base + kExpiresSuffix);
+    const bool had = Delete(base + kAccessSuffix).IsOk();
+    Delete(base + kRefreshSuffix);
+    Delete(base + kExpiresSuffix);
     return had;
 }
 
-SignInMethod CredentialVault::MethodFor(const std::string& account) const {
+SignInMethod DeviceKeyVault::MethodFor(const std::string& account) const {
     if (HasOAuthTokens(account)) return SignInMethod::OAuth2;
     if (Has(account)) return SignInMethod::Password;
     return SignInMethod::None;
 }
 
-bool CredentialVault::Retrieve(const std::string& account, std::string& out) const {
+bool DeviceKeyVault::Retrieve(const std::string& account, std::string& out) const {
     out.clear();
     if (account.empty() || !unlocked_) return false;
-    UltraVault::SecretValue value;
-    if (!UltraVault::Get(KeyFor(account), value).IsOk()) return false;
+    SecretValue value;
+    if (!Get(KeyFor(account), value).IsOk()) return false;
     out = value.AsString();
     return true;
 }
 
-bool CredentialVault::Has(const std::string& account) const {
+bool DeviceKeyVault::Has(const std::string& account) const {
     std::string ignore;
     return Retrieve(account, ignore);
 }
 
-bool CredentialVault::Remove(const std::string& account) {
+bool DeviceKeyVault::Remove(const std::string& account) {
     if (account.empty() || !unlocked_) return false;
-    return UltraVault::Delete(KeyFor(account)).IsOk();
+    return Delete(KeyFor(account)).IsOk();
 }
 
-} // namespace UltraMail
+} // namespace UltraVault

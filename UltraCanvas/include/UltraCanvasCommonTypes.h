@@ -262,7 +262,11 @@ struct Color {
     uint8_t r, g, b, a;
     
     // Constructors
-    Color(uint8_t red = 0, uint8_t green = 0, uint8_t blue = 0, uint8_t alpha = 255)
+    // constexpr so the Colors:: constants below are constant-initialized at
+    // compile time rather than dynamically at startup — otherwise a static
+    // object whose ctor reads e.g. Colors::White can run before the constant's
+    // dynamic init and see all-zero (0,0,0,0). See the SIOF note on Colors.
+    constexpr Color(uint8_t red = 0, uint8_t green = 0, uint8_t blue = 0, uint8_t alpha = 255)
         : r(red), g(green), b(blue), a(alpha) {}
     
     // Conversion methods
@@ -367,32 +371,42 @@ struct Color {
 };
 
 // ===== PREDEFINED COLORS =====
+// These are `inline constexpr`, not plain `const`, on purpose. Plain namespace-
+// scope `const Color` has internal linkage (a private copy per translation unit)
+// and — because the Color ctor is now constexpr but was not always — was
+// *dynamically* initialized at startup. A static object whose construction reads
+// one of these (e.g. UltraCanvasDialogManager::defaultConfig setting
+// backgroundColor = Colors::White through an inline, COMDAT-folded ctor) could
+// run before the constant's dynamic init and read all-zero (0,0,0,0) — a
+// transparent black. `inline constexpr` makes them constant-initialized (valid
+// before any dynamic init anywhere) with a single shared definition across TUs,
+// which removes the static-initialization-order hazard entirely.
 namespace Colors {
-    const Color Transparent(0, 0, 0, 0);
-    const Color White(255, 255, 255, 255);
-    const Color Black(0, 0, 0, 255);
-    const Color Red(255, 0, 0, 255);
-    const Color Green(0, 255, 0, 255);
-    const Color DarkGreen(0, 0x64, 0, 255);
-    const Color Blue(0, 0, 255, 255);
-    const Color DarkBlue(0, 0, 0x35, 255);
-    const Color LightBlue(128, 128, 255, 255);
-    const Color Yellow(255, 255, 0, 255);
-    const Color Cyan(0, 255, 255, 255);
-    const Color Magenta(255, 0, 255, 255);
-    const Color Gray(128, 128, 128, 255);
-    const Color LightGray(192, 192, 192, 255);
-    const Color DarkGray(64, 64, 64, 255);
-    
+    inline constexpr Color Transparent(0, 0, 0, 0);
+    inline constexpr Color White(255, 255, 255, 255);
+    inline constexpr Color Black(0, 0, 0, 255);
+    inline constexpr Color Red(255, 0, 0, 255);
+    inline constexpr Color Green(0, 255, 0, 255);
+    inline constexpr Color DarkGreen(0, 0x64, 0, 255);
+    inline constexpr Color Blue(0, 0, 255, 255);
+    inline constexpr Color DarkBlue(0, 0, 0x35, 255);
+    inline constexpr Color LightBlue(128, 128, 255, 255);
+    inline constexpr Color Yellow(255, 255, 0, 255);
+    inline constexpr Color Cyan(0, 255, 255, 255);
+    inline constexpr Color Magenta(255, 0, 255, 255);
+    inline constexpr Color Gray(128, 128, 128, 255);
+    inline constexpr Color LightGray(192, 192, 192, 255);
+    inline constexpr Color DarkGray(64, 64, 64, 255);
+
     // UI Colors
-    const Color WindowBackground(240, 240, 240, 255);
-    const Color ButtonFace(225, 225, 225, 255);
-    const Color ButtonHighlight(255, 255, 255, 255);
-    const Color ButtonShadow(160, 160, 160, 255);
-    const Color Selection(0, 120, 215, 255);
-    const Color SelectionHover(229, 243, 255, 255);
-    const Color TextDefault(0, 0, 0, 255);
-    const Color TextDisabled(109, 109, 109, 255);
+    inline constexpr Color WindowBackground(240, 240, 240, 255);
+    inline constexpr Color ButtonFace(225, 225, 225, 255);
+    inline constexpr Color ButtonHighlight(255, 255, 255, 255);
+    inline constexpr Color ButtonShadow(160, 160, 160, 255);
+    inline constexpr Color Selection(0, 120, 215, 255);
+    inline constexpr Color SelectionHover(229, 243, 255, 255);
+    inline constexpr Color TextDefault(0, 0, 0, 255);
+    inline constexpr Color TextDisabled(109, 109, 109, 255);
 
     // Disabled controls. A control that cannot be used must read as LESS ink
     // than one that can, never more: its face is lighter than ButtonFace and
@@ -402,8 +416,8 @@ namespace Colors {
     // switch heavier than the live ones around it - the settings pages that
     // list one switch per file format showed the unsupported formats as the
     // strongest thing on the page.
-    const Color ControlDisabled(238, 238, 238, 255);
-    const Color ControlDisabledBorder(202, 202, 202, 255);
+    inline constexpr Color ControlDisabled(238, 238, 238, 255);
+    inline constexpr Color ControlDisabledBorder(202, 202, 202, 255);
 }
 
 // ===== COLOR UTILITY FUNCTIONS =====

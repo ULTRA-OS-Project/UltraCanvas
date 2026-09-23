@@ -260,7 +260,7 @@ calendar does the same with `.ics`:
 ~/.local/share/UltraCalendar/         (per-platform user-data dir)
   calendar.db                          accounts, calendars, event index, instance cache, sync state, pending changes
   objects/<accountId>/<calendarId>/<uid>.ics    the raw iCalendar object as last seen from (or sent to) the server
-  vault/                               UltraVault file (device-key unlock, as UltraMail 0.6)
+  vault/                               `ultracalendar.vault` + `device.key` (UltraVault::DeviceKeyVault)
 ```
 
 Raw objects survive round trips byte-for-byte where the server allows it,
@@ -328,13 +328,14 @@ that unification is one step later, not a rewrite:
   (which already refreshes OAuth tokens and reads UltraVault), so a Nextcloud
   or ULTRA OS account added in *any* app is offered as "use this account" in
   the calendar's add-account dialog with nothing to type.
-- Otherwise the account has its own secret under UltraVault's namespaced key
-  contract, `calendar.<accountId>.password` / `.oauth`, through a
-  `CredentialVault` with the device-key auto-unlock UltraMail introduced in
-  0.6 (`Apps/UltraMail/engine/UltraMailCredentialVault.h`). That class is not
-  mail-specific; **it should move to a shared place** (§11) rather than be
-  copied a third time (UltraSocial already has its own copy,
-  `Apps/UltraSocial/engine/UltraSocialCredentialVault.h`).
+- Otherwise the account has its own secret in an
+  **`UltraVault::DeviceKeyVault`**
+  (`UltraCanvas/include/UltraVault/UltraVaultDeviceKeyVault.h`, framework
+  0.9.23) with the profile `{"ultracalendar.vault", "calendar.ultracalendar."}`
+  — the one encrypted-file vault with a device-key auto-unlock that
+  UltraMail, UltraSocial, UltraFiler and EmailCleaner already share; it
+  stores a password or an OAuth token set per account and answers
+  `MethodFor(account)`. The calendar adds no vault code of its own.
 - The Google and Microsoft OAuth *app registrations* are the ones UltraMail
   bakes in (`UltraMailOAuthDefaults.h.in`, `cmake/oauth.local.cmake`), with
   the calendar scopes added to the same registration. One consent screen,
@@ -754,7 +755,7 @@ UltraCalendar/
     UltraCalendarAlarms.h            alarm expansion and firing
     UltraCalendarScheduling.h        iTIP: build REQUEST / REPLY / CANCEL; apply an incoming one
     UltraCalendarMigration.h         the copy engine of §7 (pure over the store + a provider)
-    UltraCalendarAccounts.h          AccountStore, CredentialVault (shared with UltraMail, see §11)
+    UltraCalendarAccounts.h          AccountStore; secrets through UltraVault::DeviceKeyVault (§4.5)
   core/                              one .cpp per header
   providers/                         CalDav, Graph, Memory (tests)
   ui/
@@ -817,7 +818,7 @@ sync engine is.
 | OAuth2 + PKCE + loopback, token refresh | ✅ UltraNet; app-registration pattern in UltraMail and UltraCloud | add calendar scopes to the Google / Microsoft registrations |
 | WebDAV multistatus parsing | ✅ `UltraCloud::ParseMultistatus` (props limited to files) | extend, or replace with the proposed `UltraCanvasXML` facade |
 | Named SQLite connections, migrations, bound parameters | ✅ UltraDatabase | none |
-| Secret storage with a device-key unlock | ✅ `UltraMail::CredentialVault` (and a copy in UltraSocial) | **move to a shared home** — a third copy would be the wrong answer |
+| Secret storage with a device-key unlock | ✅ `UltraVault::DeviceKeyVault` (framework 0.9.23; UltraMail and UltraSocial are profiles of it) | use with a calendar profile |
 | Account store shared by apps | ⚠️ UltraCloud has one per app; roadmap item 1 makes it system-wide | link calendar accounts to it (§4.5); do not block on it |
 | Message channel for the mail hand-off | ✅ UltraMessage Phase 1; ❌ notification adapters (Phase 2) | register two topics; in-window reminders until adapters exist |
 | iCalendar parse / serialise, RRULE, time zones | ❌ nothing in the tree | wrap libical (§4.4) |
@@ -841,10 +842,12 @@ sync engine is.
    "one store under the user's config dir shared by all apps". The calendar
    is the third app to want it (after UltraMail and UltraFiler). Should that
    land *before* phase 2 so the calendar never grows its own?
-3. **Move `CredentialVault` and `OAuthApps` out of `Apps/UltraMail/engine/`
-   now** (into `UltraCanvas/{include,core}/UltraVault/` as a convenience
-   layer, or a small `UltraAccounts` module) so UltraCalendar and UltraSocial
-   share one implementation?
+3. **Move `OAuthApps` out of `Apps/UltraMail/engine/`** — the vault already
+   moved (`UltraVault::DeviceKeyVault`), but the OAuth app-registration
+   lookup (baked-in default, environment, `oauth.ini`) is still UltraMail's
+   and UltraCloud has a second, simpler one (`SetOAuthApp`). One
+   implementation, so the Google and Microsoft registrations are configured
+   once for mail, files and calendar?
 4. **Tasks.** `VTODO` on CalDAV is cheap in the engine and Nextcloud, iCloud
    and Fastmail all store tasks beside events. Phase 5, or phase 1 because
    the model is the same?

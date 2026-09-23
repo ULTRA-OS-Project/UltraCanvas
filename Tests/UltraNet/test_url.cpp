@@ -84,6 +84,27 @@ TEST(url_build_query_string_encodes_values) {
                std::string{"msg=hello%20world"});
 }
 
+// Regression: IMAP folder names are put into the URL path as-is by the IMAP
+// plug-in, so they MUST be percent-encoded or libcurl rejects the URL
+// (CURLE_URL_MALFORMAT) for anything but a plain-ASCII Inbox. curl decodes the
+// mailbox path before SELECT, so encoding the whole segment (including '/')
+// round-trips to the exact wire name. See ImapPlugin.cpp EncodeMailboxPath.
+TEST(url_encode_imap_mailbox_names) {
+    // Gmail special folder: '[', ']' and the '/' hierarchy separator.
+    REQUIRE_EQ(UltraNet_UrlEncode("[Gmail]/Spam"),
+               std::string{"%5BGmail%5D%2FSpam"});
+    // A folder name with a space (e.g. "[Gmail]/Sent Mail").
+    REQUIRE_EQ(UltraNet_UrlEncode("Sent Mail"),
+               std::string{"Sent%20Mail"});
+    // A modified-UTF-7 (RFC 3501) name is ASCII on the wire: '&' + base64 + '-'.
+    // '&' must be encoded; '-' is unreserved and stays. The encode/decode must
+    // round-trip so curl reconstructs the exact wire name.
+    const std::string mUtf7 = "&BCEEPwQw-";   // representative shape (ASCII on the wire)
+    REQUIRE_EQ(UltraNet_UrlDecode(UltraNet_UrlEncode(mUtf7)), mUtf7);
+    REQUIRE_EQ(UltraNet_UrlDecode(UltraNet_UrlEncode("[Gmail]/Spam")),
+               std::string{"[Gmail]/Spam"});
+}
+
 TEST(url_build_round_trips_with_parse) {
     UltraNetUrlComponents c;
     UltraNet_ParseUrl("http://example.com:8080/p?q=v", c);

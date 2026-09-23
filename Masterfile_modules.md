@@ -59,12 +59,22 @@ the backing implementation can be replaced without affecting callers.
     `StrokeData` with the line gallery — `StartArrow` / `EndArrow`,
     `WidthProfile`, `Brush` — opacities, blend, an optional Xara-style
     `Transparency` ramp with its mix, clip, mask), `Effects` (optional
-    `ShadowEffect` and `FeatherEffect`), an optional double-precision
-    `Matrix3x3` `Transform`, `GetBoundingBox()` in its parent's space and
-    `Clone()`.
+    `ShadowEffect`, `FeatherEffect`, `ContourEffect` and `BevelEffect`),
+    an optional double-precision `Matrix3x3` `Transform`,
+    `GetBoundingBox()` in its parent's space and `Clone()`. The Xara-class
+    containers `VectorClipView` (keyholes clip the rest), `VectorBlend`
+    (steps between children) and `VectorMould` (children warped into an
+    envelope or perspective shape) are groups too (`IsGroupType`).
   - Geometry helpers shared by the renderer, the editor and the writers:
     `BuildOutlinePath` (any shape's outline as path data), `FlattenPathData`,
     `PathEndpoints`, `ArrowheadOutline`, `VariableWidthOutline`.
+  - `DataFormats/UltraCanvasVectorGeometry.h` — polygon booleans and
+    offsetting over path data, a planar-map clipper in core:
+    `PolygonBoolean` / `PathBoolean` (union, subtract, intersect, exclude,
+    per-input fill rules), `SlicePath`, `OffsetPolygons` / `OffsetPath`
+    (round, mitre, bevel joins), `FlattenToPolygons`, `PolygonsToPath`,
+    `PolygonSetArea`, `WindingNumber`, `PolygonSetContains`. What
+    `CombineShapes`, the contour effect and the XAR writer use.
   - `ParsePathString` / `SerializePathData`, `ParseColorString`,
     `ParseTransformString` / `SerializeTransform`; `LengthUnit`,
     `PointsPerUnit`, `LengthUnitSymbol`.
@@ -102,7 +112,9 @@ the backing implementation can be replaced without affecting callers.
   `ReorderElements` (`ZOrderMove`), `GroupElements` / `UngroupElements` /
   `ReparentElement` (placement preserved), `DeleteElements`,
   `DuplicateElements`, `AlignElements` / `DistributeElements`,
-  `ConvertToPath` / `OutlineOf`.
+  `ConvertToPath` / `OutlineOf`, `CombineShapes` (`CombineOp` Add /
+  Subtract / Intersect / Slice, Xara's Combine Shapes over the outlines);
+  `UngroupElements` dissolves the ClipView / Blend / Mould containers too.
 - **UltraCanvasBezierPath** (`UltraCanvasBezierPath.h`) — the editing model
   of a path: `BezierNode` (anchor, two handles, `BezierNodeType` Corner /
   Smooth / Symmetric), `UltraCanvasBezierSubpath` (`InsertNodeAt` by de
@@ -1136,12 +1148,25 @@ Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
 `ProviderConfig::apiKeyVaultRef` through `UltraVault::Get` when built with
 `ULTRAAI_USE_ULTRAVAULT` (on by default in-tree).
 
+`DeviceKeyVault` (`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target) is
+the per-application vault on top of that: one encrypted vault file in the
+application's directory, unlocked without a prompt by an owner-only
+`device.key` beside it (`TryAutoUnlock`) or by a master password (`Unlock`
+-> `UnlockStatus`, `PersistDeviceKey`), per-account
+`Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
+slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
+the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
+(vault file name + key prefix) tells one application's vault from another's;
+UltraMail (`mail.ultramail.`) and UltraSocial (`social.ultrasocial.`) are
+one-line profiles of it in `Apps/*/engine/*CredentialVault.h` — no
+application carries a vault implementation of its own.
+
 **Implementation status (this branch):** v0.1 — memory backend (CI /
 ephemeral) and encrypted-file backend (Argon2id-derived key, stored cost
 parameters, XChaCha20-Poly1305 with the header as associated data; wrong
 passphrase and file tampering are deliberately indistinguishable). Unit
-tests in `Tests/UltraVaultTests.cpp`; the UltraAI resolution path is
-covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
+tests in `Tests/UltraVaultTests.cpp` (the device-key vault included); the
+UltraAI resolution path is covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
 backends (libsecret / Keychain / Credential Manager) and
 `Import`/`PromptUserForSecret` are planned.
 persisted drive mappings), application launch/supervision, and the
@@ -1270,9 +1295,10 @@ can carry an FTP server as a drive; no share links, and SFTP authenticates
 with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
-Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
-(`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
-HTTP goes through UltraNet. `CloudService` is the app-facing facade;
+Accounts persist on UltraDatabase (`AccountStore`), secrets go to the
+application's UltraVault (`VaultSecretStore`; `MemorySecretStore` for tests,
+and `MigrateLegacyFileSecrets` carries the obfuscated files of earlier builds
+across once), HTTP goes through UltraNet. `CloudService` is the app-facing facade;
 `UltraCloudUI` holds the shared add-account and link-picker dialogs.
 Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
 and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;
@@ -1521,34 +1547,52 @@ process's traffic; NetworkMonitor observes other processes' sockets, which is
 an OS question, and has no dependency on UltraNet. It observes and records;
 it never blocks, filters or modifies traffic, and never terminates TLS.
 
-**Implementation status:** Phase 2 (platforms). Linux — netlink `sock_diag`
+**Implementation status:** Phase 2 (platforms, persistence, names). Linux — netlink `sock_diag`
 with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
 `/proc/<pid>/fd` walk for attribution; Windows — IP Helper
 (`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
 macOS — libproc, per process. All polling. Persistence: the activity store
-over UltraDatabase (flows, daily roll-up, retention, CSV export). Connection
-events (ETW, eBPF), domain names and file-transfer correlation are still to
-come. Where there is no backend the module reports `NotSupported`.
+over UltraDatabase (flows, daily roll-up, retention, CSV export, DNS
+observations). Domain names: the name-source plug-in point with the local
+DNS proxy, reverse DNS (weak, labelled) and, on Windows elevated, the DNS
+client's ETW events with the asking PID. Connection events (ETW, eBPF) and
+file-transfer correlation are still to come. Where there is no backend the
+module reports `NotSupported`.
 
 - Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
   `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,
-  `NetworkMonitorOptions`, `ProcessTrafficSummary`, `NetworkMonitorResult`
+  `NetworkMonitorOptions`, `ProcessTrafficSummary`, `NetworkMonitorResult`,
+  `NameSource`, `DnsObservation`
 - `NetworkMonitor_GetCapabilities`, `NetworkMonitor_IsAvailable`
 - `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
-  `NetworkMonitor_FormatEndpoint`
+  `NetworkMonitor_FormatEndpoint`, `NetworkMonitor_NameSourceName`,
+  `NetworkMonitor_NameIsObserved`
+- Names (`NetworkMonitorNames.h`): `INameSource`,
+  `NetworkMonitor_RegisterNameSource`, `NetworkMonitor_ListNameSources`,
+  `NetworkMonitor_StopNameSources`, `NetworkMonitor_WaitForNames`,
+  `NetworkMonitor_AddNameListener`, `NetworkMonitor_RemoveNameListener`,
+  `NetworkMonitor_ObserveName`, `NetworkMonitor_LookupName`,
+  `NetworkMonitor_ListNames`, `NetworkMonitor_ClearNames`,
+  `NetworkMonitor_CreateDnsProxySource`, `NetworkMonitor_CreateReverseDnsSource`,
+  `NetworkMonitor_CreateSystemDnsSource`, `NetworkMonitor_SystemResolver`;
+  types `DnsProxyOptions`, `ReverseDnsOptions`, `NameSourceStatus`,
+  `NameRecord`
 - The activity store (`NetworkMonitorStore.h`, over UltraDatabase):
   `NetworkMonitor_StoreAvailable`, `NetworkMonitor_Now`,
   `NetworkMonitor_OpenStore`, `NetworkMonitor_CloseStore`,
   `NetworkMonitor_RecordSnapshot`, `NetworkMonitor_QueryFlows`,
-  `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RollUp`,
+  `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RecordDnsObservation`,
+  `NetworkMonitor_QueryDnsObservations`, `NetworkMonitor_RollUp`,
   `NetworkMonitor_ApplyRetention`, `NetworkMonitor_Purge`,
   `NetworkMonitor_StoreStats`, `NetworkMonitor_ExportFlowsCsv`; types
   `NetworkMonitorStoreOptions`, `RecordedFlow`, `DailyProcessTotal`,
-  `ActivityQuery`, `NetworkMonitorStoreStats`
+  `RecordedDnsObservation`, `ActivityQuery`, `NetworkMonitorStoreStats`
 - Internal: `INetworkMonitorBackend`, `CreateNativeNetworkMonitorBackend`
   (`NetworkMonitorBackend.h`); `NetworkMonitorProcfs::{DecodeAddress,
-  StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`)
+  StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`);
+  `NetworkMonitorDns::{Parse, ToObservation, BuildQuery, BuildResponse,
+  NormalizeName}` (`NetworkMonitorDns.h`)
 
 Rules: every blocking call returns `NetworkMonitorResult`; `std::optional`
 for anything a backend may not report, so "0" and "not reported" are never

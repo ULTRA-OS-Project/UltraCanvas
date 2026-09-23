@@ -90,7 +90,10 @@ Apps/UltraSocial/
                                        AdaptedPost, SocialCapabilities, PostResult
     UltraSocialConnector.h/.cpp        ISocialConnector + AuthInput + factory
     UltraSocialComposer.{h,cpp}        adapt-per-network + validation
-    UltraSocialCredentialVault.{h,cpp} per-account secrets out of the config
+    UltraSocialCredentialVault.h       per-account secrets out of the config:
+                                       UltraVault::DeviceKeyVault with
+                                       UltraSocial's profile (ultrasocial.vault,
+                                       device.key, keys social.ultrasocial.<id>)
     UltraSocialStore.{h,cpp}           accounts + outbox + history on UltraDatabase
     UltraSocialPublisher.{h,cpp}       the one publish path (now + scheduled),
                                        outbox flush with retry/backoff

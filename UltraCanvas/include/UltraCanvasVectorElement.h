@@ -1,7 +1,7 @@
 // UltraCanvasVectorElement.h
 // UI Element for Vector Document Display and Interaction
-// Version: 2.1.0
-// Last Modified: 2026-09-17
+// Version: 2.2.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -68,6 +68,13 @@ namespace UltraCanvas {
         // A document set before the layout has sized this element cannot be
         // fitted yet; the fit waits for the first frame that has a real box.
         bool fitPending = false;
+        // The scale the last ZoomToFit() needed. A drawing far larger than the
+        // element - a site plan 10 000 units across in a 280 px tile - needs a
+        // scale below options.MinZoom, and clamping the fit to that limit left
+        // the page showing an empty patch of the drawing. The fit is honoured
+        // instead, and it becomes the lower zoom limit so a zoom-out still
+        // cannot shrink the drawing past its fitted size.
+        float fitZoom = 0.0f;
         bool isPanning = false;
         Point2Di lastMousePos{0, 0};
         std::string selectedElementId;
@@ -141,6 +148,9 @@ namespace UltraCanvas {
         VectorRenderer* GetRenderer() const { return renderer.get(); }
 
     protected:
+        // The smallest zoom the interactive limits allow: options.MinZoom,
+        // or the fit scale when the drawing only fits below it.
+        float MinAllowedZoom() const;
         void UpdateViewTransform();
         void RenderBackground(IRenderContext* ctx);
         void RenderDocument(IRenderContext* ctx);

@@ -109,6 +109,15 @@ struct Konto {
     std::string steuerschluessel;    // default tax key for postings on this account
     std::string eurZeile;            // Anlage EUeR line, for the cash-basis report
     std::string bwaPosition;         // BWA position
+    // ---- What the DATEV chart of accounts says about this account ----
+    // From the Kontenrahmen PDF's own legend. `funktion` is the interesting
+    // one: AV and AM mark the Automatikkonten, so it is the authority behind
+    // `steuerschluessel` rather than a second, competing statement of it.
+    std::string funktion;            // KU/V/M (Zusatz), AV/AM/S/F/R (Haupt), "S/AV"
+    std::string abschlusszweck;      // HB | SB | EUeR - which statement it belongs in
+    std::string programmverbindung;  // U/G/K: hand-over to the tax programs
+    std::string nummerBis;           // set when the row describes a range ("0040-42")
+
     std::string bilanzPosition;      // balance-sheet classification - carried from the
                                      // first import because the Jahresabschluss is in
                                      // scope (proposal §1.1), and retrofitting it means
@@ -119,18 +128,61 @@ struct Konto {
     bool Valid() const { return !nummer.empty() && !bezeichnung.empty(); }
 };
 
+// ===== WHEN THE SUPPLY HAPPENED =====
+//
+// § 14 Abs. 4 Nr. 6 UStG makes the time of supply a mandatory invoice field,
+// and § 31 Abs. 4 UStDV lets the calendar month stand for it. It is a
+// selection rather than a date field alone because the words differ and mean
+// different things: goods are *delivered* on a day, a service is *performed*
+// over one or a period, and the recipient's input-tax deduction hangs on which.
+enum class Leistungszeitpunkt {
+    Lieferdatum,        // goods, one day
+    Leistungsdatum,     // a service, one day
+    Lieferzeitraum,     // goods, over a period
+    Leistungszeitraum,  // a service, over a period
+    // Deliberately available, deliberately flagged. An invoice for something
+    // not yet supplied - an Anzahlungsrechnung - has no time of supply yet, and
+    // that is the case this exists for. On an ordinary invoice it is a missing
+    // mandatory field, and PruefePflichtangaben says so.
+    Keiner
+};
+
+std::string LeistungszeitpunktToText(Leistungszeitpunkt art);
+bool        LeistungszeitpunktFromText(const std::string& text, Leistungszeitpunkt& out);
+std::string LeistungszeitpunktLabel(Leistungszeitpunkt art);   // for the UI
+bool        LeistungszeitpunktIstZeitraum(Leistungszeitpunkt art);
+
 // ===== STEUERSCHLUESSEL (how a transaction is taxed) =====
 
 enum class SteuerArt {
     Inland,              // domestic, 19 % / 7 % / 0 %
-    IgLieferung,         // intra-community supply, zero-rated (§ 4 Nr. 1b UStG)
+    IgLieferung,         // intra-community supply of GOODS, zero-rated (§ 4 Nr. 1b UStG)
     IgErwerb,            // intra-community acquisition, taxed here
+    // A SERVICE to a business in another member state. The place of supply is
+    // the customer's country (§ 3a Abs. 2 UStG), so no German VAT is charged
+    // and the customer accounts for it there - "reverse charge". It is a
+    // different rule from § 13b below, which is about who owes German tax, and
+    // conflating the two produces an invoice that charges 19 % while telling
+    // the customer they owe the tax. That invoice is wrong twice.
+    EuSonstigeLeistung,
     Drittland,           // third country: export, or an import with no deductible VAT
-    ReverseCharge13b,    // § 13b UStG, the recipient owes the tax
+    ReverseCharge13b,    // § 13b UStG, the recipient owes the GERMAN tax
     Oss,                 // taxed in the destination member state, reported to the BZSt
     Kleinunternehmer,    // § 19 UStG, no VAT charged
     NichtSteuerbar       // place of supply abroad, no German tax
 };
+
+// True when a key means "this customer is not charged German VAT", whatever the
+// reason. On an outgoing document such a key must carry a rate of zero: an
+// invoice that charges tax and also states an exemption contradicts itself, and
+// whichever of the two the reader believes, one of them is wrong.
+bool IstNullsatzImAusgang(SteuerArt art);
+
+// True when the invoice has to carry the recipient's USt-IdNr. and the note
+// naming the rule - § 14a UStG. Zero-rating a cross-border B2B supply without
+// the customer's number is not a formality: it is the condition for the
+// exemption, and without it the supply is taxable at home.
+bool BrauchtUstIdNrDesEmpfaengers(SteuerArt art);
 
 std::string SteuerArtToText(SteuerArt art);
 bool        SteuerArtFromText(const std::string& text, SteuerArt& out);

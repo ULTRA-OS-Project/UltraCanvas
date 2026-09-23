@@ -93,6 +93,9 @@ constexpr long kButtonReveal = 96;
 constexpr long kButtonRemove = 86;
 constexpr long kButtonNext   = 116;
 constexpr long kButtonGap    = 8;
+// Header buttons that sit at the right edge of their row.
+constexpr long kButtonLock     = 80;
+constexpr long kButtonSettings = 110;
 
 } // namespace Theme
 } // namespace Authenticator

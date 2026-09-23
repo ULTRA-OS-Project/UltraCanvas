@@ -1027,20 +1027,42 @@ namespace UltraCanvas {
 
 // ===== CLIPVIEW NODE =====
 
+    // The keyholes are the children before the marker (the first child
+    // when there is none); they clip the rest and are not drawn.
     void XARClipViewNode::Render(IRenderContext* ctx, float scale) {
         if (children.empty()) return;
+        size_t marker = children.size();
+        for (size_t i = 0; i < children.size(); ++i)
+            if (children[i] && children[i]->type == XARNodeType::ClipViewMarker) { marker = i; break; }
+        const size_t keyholes = marker < children.size() ? marker : 1;
         ctx->PushState();
-        // First child is the clipping path; remaining are clipped content
-        auto clipChild = children.front();
-        if (auto pathNode = std::dynamic_pointer_cast<XARPathNode>(clipChild)) {
-            pathNode->EmitPath(ctx, scale);
-            ctx->ClipPath();
-            ctx->ClearPath();
-        }
-        for (size_t i = 1; i < children.size(); ++i) {
-            children[i]->Render(ctx, scale);
-        }
+        ctx->ClearPath();
+        bool any = false;
+        for (size_t i = 0; i < keyholes; ++i)
+            if (auto pathNode = std::dynamic_pointer_cast<XARPathNode>(children[i])) { pathNode->EmitPath(ctx, scale); any = true; }
+        if (any) ctx->ClipPath();
+        ctx->ClearPath();
+        for (size_t i = keyholes; i < children.size(); ++i)
+            if (children[i] && children[i]->type != XARNodeType::ClipViewMarker) children[i]->Render(ctx, scale);
         ctx->PopState();
+    }
+
+    // The controllers draw the object they hold; what Xara regenerates
+    // (contour steps, blend steps, the bevel) is left to the model's
+    // renderer, which the converter feeds.
+    void XARContourNode::Render(IRenderContext* ctx, float scale) {
+        for (const auto& c : children) if (c && c->type != XARNodeType::ContourSteps) c->Render(ctx, scale);
+    }
+    void XARBevelNode::Render(IRenderContext* ctx, float scale) {
+        for (const auto& c : children) if (c && c->type != XARNodeType::BevelInk) c->Render(ctx, scale);
+    }
+    void XARBlendNode::Render(IRenderContext* ctx, float scale) {
+        for (const auto& c : children) if (c && c->type != XARNodeType::Blender) c->Render(ctx, scale);
+    }
+    // A mould's visible children are the moulded results Xara stored.
+    void XARMouldNode::Render(IRenderContext* ctx, float scale) {
+        for (const auto& c : children)
+            if (c && c->type != XARNodeType::MouldPath && c->type != XARNodeType::MouldGroup) c->Render(ctx, scale);
     }
 
 // ===== XAR DOCUMENT =====
@@ -1650,29 +1672,32 @@ namespace UltraCanvas {
             case XARTag::TAG_BEVATTR_LIGHTANGLE:
             case XARTag::TAG_BEVATTR_CONTRAST:
             case XARTag::TAG_BEVATTR_TYPE:
-            case XARTag::TAG_BEVELINK:
-                // Bevel sub-attributes; consumed silently
+                // Deprecated bevel sub-attributes; the controller carries them.
                 break;
-            case XARTag::TAG_CONTOUR: ParseContourRecord(record); break;
-            case XARTag::TAG_CONTOURCONTROLLER:
+            case XARTag::TAG_BEVELINK: AttachNode(std::make_shared<XARMarkerNode>(XARNodeType::BevelInk)); break;
+            case XARTag::TAG_CONTOURCONTROLLER: ParseContourRecord(record); break;
+            case XARTag::TAG_CONTOUR: {
+                auto marker = std::make_shared<XARMarkerNode>(XARNodeType::ContourSteps);
+                ApplyCurrentAttributesTo(marker);   // the contour's own fill
+                AttachNode(marker);
                 break;
+            }
             case XARTag::TAG_BLEND: ParseBlendRecord(record); break;
-            case XARTag::TAG_BLENDER:
+            case XARTag::TAG_BLENDPROFILES: ParseBlendProfilesRecord(record); break;
+            case XARTag::TAG_BLENDER: ParseBlenderRecord(record); break;
+            case XARTag::TAG_BLENDERADDITIONAL: ParseBlenderAdditionalRecord(record); break;
             case XARTag::TAG_BLENDER_CURVEPROP:
             case XARTag::TAG_BLENDER_CURVEANGLES:
-            case XARTag::TAG_BLENDPROFILES:
-            case XARTag::TAG_BLENDERADDITIONAL:
             case XARTag::TAG_NODEBLENDPATH_FILLED:
             case XARTag::TAG_BLEND_PATH:
                 break;
             case XARTag::TAG_MOULD_ENVELOPE: ParseMouldRecord(record, false); break;
             case XARTag::TAG_MOULD_PERSPECTIVE: ParseMouldRecord(record, true); break;
-            case XARTag::TAG_MOULD_GROUP:
-            case XARTag::TAG_MOULD_PATH:
-            case XARTag::TAG_MOULD_BOUNDS:
-                break;
-            case XARTag::TAG_CLIPVIEW: ParseClipViewRecord(record); break;
-            case XARTag::TAG_CLIPVIEWCONTROLLER:
+            case XARTag::TAG_MOULD_PATH: ParseMouldPathRecord(record); break;
+            case XARTag::TAG_MOULD_BOUNDS: ParseMouldBoundsRecord(record); break;
+            case XARTag::TAG_MOULD_GROUP: ParseMouldGroupRecord(record); break;
+            case XARTag::TAG_CLIPVIEWCONTROLLER: ParseClipViewRecord(record); break;
+            case XARTag::TAG_CLIPVIEW: AttachNode(std::make_shared<XARMarkerNode>(XARNodeType::ClipViewMarker)); break;
             case XARTag::TAG_CLIPVIEW_PATH:
                 break;
             case XARTag::TAG_FEATHER:
@@ -1863,7 +1888,14 @@ namespace UltraCanvas {
         ApplyCurrentAttributesTo(path);
         path->isFilled = filled;
         path->isStroked = stroked;
+        ParsePathInto(record, relative, *path);
+        pathsBySequence[currentSequenceNumber] = path;
+        RegisterRenderableNode(path);
+    }
 
+    void XARDocument::ParsePathInto(const XARRecord& record, bool relative, XARPathNode& pathRef) {
+        XARPathNode* path = &pathRef;
+        if (record.data.empty()) return;
         const uint8_t* d = record.data.data();
         size_t off = 0;
         size_t total = record.data.size();
@@ -1911,11 +1943,9 @@ namespace UltraCanvas {
             }
         } else {
             // Absolute format: numCoords:UINT32, verbs[numCoords] (4-byte aligned), coords[numCoords]
-            if (off + 4 > total) { RegisterRenderableNode(path); return; }
+            if (off + 4 > total) return;
             int32_t numCoords = ReadInt32(d, off);
-            if (numCoords <= 0 || off + static_cast<size_t>(numCoords) > total) {
-                RegisterRenderableNode(path); return;
-            }
+            if (numCoords <= 0 || off + static_cast<size_t>(numCoords) > total) return;
             std::vector<uint8_t> verbs(numCoords);
             for (int32_t i = 0; i < numCoords; ++i) verbs[i] = ReadByte(d, off);
             // Align to 4-byte boundary
@@ -1959,9 +1989,6 @@ namespace UltraCanvas {
                 }
             }
         }
-
-        pathsBySequence[currentSequenceNumber] = path;
-        RegisterRenderableNode(path);
     }
 
     void XARDocument::ParsePathFlagsRecord(const XARRecord&) {
@@ -2207,25 +2234,126 @@ namespace UltraCanvas {
     }
 
     void XARDocument::ParseBevelRecord(const XARRecord& record) {
-        (void)record;
-        AttachNode(std::make_shared<XARBevelNode>());
+        auto b = std::make_shared<XARBevelNode>();
+        if (record.data.size() >= 24) {
+            const uint8_t* d = record.data.data();
+            size_t off = 0;
+            b->bevelType = ReadInt32(d, off);
+            b->indent = ReadInt32(d, off);
+            b->lightAngle = ReadInt32(d, off);
+            b->outer = ReadInt32(d, off) != 0;
+            b->contrast = ReadInt32(d, off);
+            b->tilt = ReadInt32(d, off);
+        }
+        AttachNode(b);
     }
 
     void XARDocument::ParseContourRecord(const XARRecord& record) {
-        (void)record;
-        AttachNode(std::make_shared<XARContourNode>());
+        auto c = std::make_shared<XARContourNode>();
+        if (record.data.size() >= 9) {
+            const uint8_t* d = record.data.data();
+            size_t off = 0;
+            c->steps = ReadInt32(d, off);
+            c->width = ReadInt32(d, off);
+            const uint8_t type = ReadByte(d, off);
+            c->colourBlend = type & 0x7F;
+            c->insetPath = (type & 0x80) != 0;
+            if (record.data.size() >= 41) {
+                c->objectBias = ReadDouble(d, off);
+                c->objectGain = ReadDouble(d, off);
+                c->attributeBias = ReadDouble(d, off);
+                c->attributeGain = ReadDouble(d, off);
+            }
+        }
+        AttachNode(c);
+    }
+
+    void XARDocument::ParseBlendProfilesRecord(const XARRecord& record) {
+        if (record.data.size() < 48) return;
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        for (double& p : pendingBlendProfiles) p = ReadDouble(d, off);
+        havePendingBlendProfiles = true;
     }
 
     void XARDocument::ParseBlendRecord(const XARRecord& record) {
-        (void)record;
-        AttachNode(std::make_shared<XARBlendNode>());
+        auto b = std::make_shared<XARBlendNode>();
+        if (record.data.size() >= 3) {
+            const uint8_t* d = record.data.data();
+            size_t off = 0;
+            b->numSteps = ReadUInt16(d, off);
+            const uint8_t flags = ReadByte(d, off);
+            b->oneToOne = (flags & 1) != 0;
+            b->antialiased = (flags & 2) != 0;
+            b->tangential = (flags & 4) != 0;
+            b->colourEffect = static_cast<uint8_t>((flags & 0xF0) >> 4);
+        }
+        if (havePendingBlendProfiles) {
+            for (int i = 0; i < 6; ++i) b->profiles[i] = pendingBlendProfiles[i];
+            havePendingBlendProfiles = false;
+        }
+        AttachNode(b);
+    }
+
+    void XARDocument::ParseBlenderRecord(const XARRecord& record) {
+        auto b = std::make_shared<XARBlenderNode>();
+        if (record.data.size() >= 8) {
+            const uint8_t* d = record.data.data();
+            size_t off = 0;
+            b->pathIndexStart = ReadInt32(d, off);
+            b->pathIndexEnd = ReadInt32(d, off);
+        }
+        AttachNode(b);
+    }
+
+    void XARDocument::ParseBlenderAdditionalRecord(const XARRecord& record) {
+        // An attribute in the blender's scope.
+        auto node = std::dynamic_pointer_cast<XARBlenderNode>(CurrentNode());
+        if (!node || record.data.size() < 17) return;
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        node->blendedOnCurve = ReadInt32(d, off);
+        node->blendPathIndex = ReadInt32(d, off);
+        node->objIndexStart = ReadInt32(d, off);
+        node->objIndexEnd = ReadInt32(d, off);
+        node->reversed = (ReadByte(d, off) & 1) != 0;
     }
 
     void XARDocument::ParseMouldRecord(const XARRecord& record, bool perspective) {
-        (void)record;
         auto m = std::make_shared<XARMouldNode>();
         m->isPerspective = perspective;
+        if (record.data.size() >= 4) {
+            const uint8_t* d = record.data.data();
+            size_t off = 0;
+            m->threshold = ReadInt32(d, off);
+        }
         AttachNode(m);
+    }
+
+    void XARDocument::ParseMouldPathRecord(const XARRecord& record) {
+        auto p = std::make_shared<XARMouldPathNode>();
+        ParsePathInto(record, false, *p);
+        AttachNode(p);
+    }
+
+    void XARDocument::ParseMouldBoundsRecord(const XARRecord& record) {
+        if (record.data.size() < 16) return;
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        pendingMouldLo = ReadCoord(d, off);
+        pendingMouldHi = ReadCoord(d, off);
+        havePendingMouldBounds = true;
+    }
+
+    void XARDocument::ParseMouldGroupRecord(const XARRecord&) {
+        auto g = std::make_shared<XARMouldGroupNode>();
+        if (havePendingMouldBounds) {
+            g->boundsLo = pendingMouldLo;
+            g->boundsHi = pendingMouldHi;
+            g->hasBounds = true;
+            havePendingMouldBounds = false;
+        }
+        AttachNode(g);
     }
 
     void XARDocument::ParseClipViewRecord(const XARRecord&) {

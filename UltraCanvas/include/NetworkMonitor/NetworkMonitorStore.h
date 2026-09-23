@@ -12,12 +12,18 @@
 // a session entirely off disk. At-rest encryption (UltraCrypt + UltraVault)
 // is a later increment.
 //
+// Names travel with the flows: a connection recorded with a remoteName
+// keeps it (an observed name replaces a weak one, never the reverse), and
+// every DNS observation a name source reports can be recorded on its own,
+// so "which sites were looked up on Tuesday" is answerable even for the
+// short connections no snapshot caught.
+//
 // Every function returns NetworkMonitorResult; where the build has no
 // UltraDatabase, NetworkMonitor_StoreAvailable() is false and every call
 // reports NotSupported.
 //
-// Version: 0.3.0
-// Last Modified: 2026-09-19
+// Version: 0.4.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -63,6 +69,8 @@ struct RecordedFlow {
     int                    snapshots = 0;      // how many snapshots saw it
     std::optional<uint64_t> bytesSent;         // latest counters, if any
     std::optional<uint64_t> bytesReceived;
+    std::string            remoteName;         // the best name seen for the peer, or empty
+    NameSource             nameSource = NameSource::None;
 
     bool IsLoopback() const;
     std::string LocalEndpoint() const;
@@ -76,6 +84,7 @@ struct DailyProcessTotal {
     std::string processName;      // "(unattributed)" for the rest
     std::string executablePath;
     std::string remoteAddress;    // the listeners' wildcard included
+    std::string remoteName;       // the last name the rolled-up flows carried, or empty
     int         flows = 0;
     int         countedFlows = 0; // flows that carried byte counters
     uint64_t    bytesSent = 0;    // over the counted flows only
@@ -87,16 +96,28 @@ struct ActivityQuery {
     std::optional<int64_t>  until;         // first seen at or before
     std::optional<uint32_t> pid;
     std::string             processName;   // exact match
-    std::string             text;          // substring over addresses, name, executable
+    std::string             text;          // substring over addresses, names, process name, executable
     bool                    includeListening = true;
     bool                    includeLoopback = true;
     int                     limit = 1000;
+};
+
+// One DNS observation as recorded: the name asked for and one address it
+// resolved to (an answer with three addresses is three rows).
+struct RecordedDnsObservation {
+    int64_t     id = 0;
+    int64_t     observedAt = 0;
+    std::string queryName;
+    std::string address;
+    NameSource  source = NameSource::None;
+    std::optional<ProcessIdentity> process;   // the asking process, where the source knew it
 };
 
 struct NetworkMonitorStoreStats {
     int64_t flows = 0;
     int64_t dailyTotals = 0;
     int64_t snapshots = 0;
+    int64_t dnsObservations = 0;
     int64_t oldestFlow = 0;   // 0 when empty
     int64_t newestFlow = 0;
 };
@@ -124,12 +145,25 @@ NetworkMonitorResult NetworkMonitor_QueryDailyTotals(NetworkMonitorStoreHandle s
                                                      const ActivityQuery& query,
                                                      std::vector<DailyProcessTotal>& out);
 
+// Records one observation from a name source, one row per address. The
+// app's name listener (NetworkMonitor_AddNameListener) calls this while
+// recording; a weak source's observations are recorded too, marked as such.
+NetworkMonitorResult NetworkMonitor_RecordDnsObservation(NetworkMonitorStoreHandle store,
+                                                         const DnsObservation& observation);
+// The recorded observations a query selects, newest first. `since` and
+// `until` apply to observedAt; `text` to the name and the address;
+// `pid` and `processName` to the asking process.
+NetworkMonitorResult NetworkMonitor_QueryDnsObservations(NetworkMonitorStoreHandle store,
+                                                         const ActivityQuery& query,
+                                                         std::vector<RecordedDnsObservation>& out);
+
 // Aggregates every flow last seen before `olderThan` into the daily totals
 // and deletes it. `rolledUp`, when given, receives the number of flows.
 NetworkMonitorResult NetworkMonitor_RollUp(NetworkMonitorStoreHandle store, int64_t olderThan,
                                            int64_t* rolledUp = nullptr);
 // The retention policy in one call: roll up flows older than the window,
-// drop daily totals and snapshot records older than twelve windows.
+// drop DNS observations and snapshot records older than the window, and
+// daily totals older than twelve windows.
 NetworkMonitorResult NetworkMonitor_ApplyRetention(NetworkMonitorStoreHandle store, int64_t now = 0);
 // Deletes everything recorded. Irreversible; the caller confirms.
 NetworkMonitorResult NetworkMonitor_Purge(NetworkMonitorStoreHandle store);

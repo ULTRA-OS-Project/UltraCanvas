@@ -1,7 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.10 - Text/circle/arc primitives no longer leak or inherit a cairo current point (stray connecting lines)
-// Last Modified: 2026-07-10
+// Version: 1.0.11 - A non-invertible matrix is refused instead of killing the context
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -428,6 +428,33 @@ namespace UltraCanvas {
     }
 
 // ===== TRANSFORMATION =====
+    // Cairo latches a non-invertible matrix (a zero scale, a NaN) as
+    // CAIRO_STATUS_INVALID_MATRIX on the cairo_t, and that status is
+    // permanent: every later fill, stroke, text and image on this context is
+    // silently dropped, for the rest of the frame and every frame after it.
+    // One degenerate transform in one widget's content would take the whole
+    // window's painting with it, so the matrix is checked before it is
+    // applied and a bad one is refused (the caller's drawing lands
+    // untransformed, which is visible and recoverable, instead of ending all
+    // drawing). A CAD drawing supplies these for real: a block standing in a
+    // vertical plane projects to plan view with one axis scaled to zero.
+    bool RenderContextCairo::UsableMatrix(const cairo_matrix_t& m, const char* where) {
+        const double det = m.xx * m.yy - m.xy * m.yx;
+        if (std::isfinite(det) && std::fabs(det) > 1e-12 &&
+            std::isfinite(m.x0) && std::isfinite(m.y0)) {
+            return true;
+        }
+        static bool reported = false;
+        if (!reported) {
+            reported = true;
+            debugOutput << "RenderContextCairo::" << where
+                        << " refused a non-invertible matrix ["
+                        << m.xx << " " << m.xy << " " << m.x0 << "; "
+                        << m.yx << " " << m.yy << " " << m.y0 << "]" << std::endl;
+        }
+        return false;
+    }
+
     void RenderContextCairo::Translate(double x, double y) {
         if (x != 0 || y != 0) {
             cairo_translate(cairo, x, y);
@@ -439,18 +466,23 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::Scale(double sx, double sy) {
+        cairo_matrix_t matrix;
+        cairo_matrix_init(&matrix, sx, 0, 0, sy, 0, 0);
+        if (!UsableMatrix(matrix, "Scale")) return;
         cairo_scale(cairo, sx, sy);
     }
 
     void RenderContextCairo::SetTransform(double a, double b, double c, double d, double e, double f) {
         cairo_matrix_t matrix;
         cairo_matrix_init(&matrix, a, b, c, d, e, f);
+        if (!UsableMatrix(matrix, "SetTransform")) return;
         cairo_set_matrix(cairo, &matrix);
     }
 
     void RenderContextCairo::Transform(double a, double b, double c, double d, double e, double f) {
         cairo_matrix_t matrix;
         cairo_matrix_init(&matrix, a, b, c, d, e, f);
+        if (!UsableMatrix(matrix, "Transform")) return;
         cairo_transform(cairo, &matrix);
     }
 

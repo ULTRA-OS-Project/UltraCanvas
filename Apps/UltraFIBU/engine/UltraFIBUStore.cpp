@@ -377,6 +377,98 @@ const char* const kSchemaV4 =
     "  von TEXT, bis TEXT);"
     "CREATE INDEX ix_bank_import ON bank_import(mandant_id, zeitpunkt);";
 
+// Schema 5 is the submission log: every return this program produced, the hash
+// of exactly what was written, and the Transferticket that proves it arrived.
+//
+// `kennzahlen_json` holds the figures AS FILED rather than a reference to the
+// journal. Recomputing a return two years later does not prove what was sent -
+// the journal may legitimately have moved on - and "what was sent" is the only
+// question that gets asked when a figure is disputed.
+const char* const kSchemaV5 =
+    "CREATE TABLE meldung("
+    "  id BIGINT PRIMARY KEY,"
+    "  mandant_id BIGINT NOT NULL,"
+    "  art TEXT NOT NULL,"
+    "  jahr INTEGER NOT NULL,"
+    "  zeitraum TEXT NOT NULL,"
+    "  status TEXT NOT NULL,"
+    "  zahllast BIGINT DEFAULT 0,"
+    "  kennzahlen_json TEXT,"
+    "  datei TEXT,"
+    "  xml_hash TEXT,"
+    "  transferticket TEXT,"
+    "  berichtigt INTEGER DEFAULT 0,"
+    "  echtfall INTEGER DEFAULT 0,"
+    "  erzeugt_am BIGINT DEFAULT 0,"
+    "  eingereicht_am BIGINT DEFAULT 0,"
+    "  benutzer TEXT);"
+    "CREATE INDEX ix_meldung ON meldung(mandant_id, art, jahr, zeitraum);";
+
+// The VAT rates of the other member states, as an editable table rather than
+// only the shipped CSV - rates are set by twenty-six parliaments and change on
+// their own timetable, so this has to be maintainable without a new release.
+//
+// **The primary key is (land, art, gueltig_von), and that is the design.** A
+// changed rate is a new row starting on the day it changes; the previous row
+// keeps its span and is closed the day before. Updating a rate in place would
+// silently change what an already-filed return recomputes to - the one thing
+// a set of books must never do.
+const char* const kSchemaV6 =
+    "CREATE TABLE eu_steuersatz("
+    "  id BIGINT PRIMARY KEY,"
+    "  land TEXT NOT NULL,"
+    "  art TEXT NOT NULL,"
+    "  satz_promille INTEGER NOT NULL,"
+    "  gueltig_von TEXT NOT NULL,"
+    "  gueltig_bis TEXT,"
+    "  geprueft INTEGER NOT NULL DEFAULT 0,"
+    "  quelle TEXT,"
+    "  erfasst_am BIGINT DEFAULT 0,"
+    "  benutzer TEXT);"
+    "CREATE UNIQUE INDEX ix_eu_steuersatz ON eu_steuersatz(land, art, gueltig_von);";
+
+// Three facts about a document that were previously derived and should not
+// have been.
+//
+//  - `preise_brutto`: whether the prices on it were entered gross. A receipt
+//    states gross, and a draft reopened next week has to show the number on
+//    the receipt rather than a converted one.
+//  - `steuer_vorgegeben` / `vorgegebene_steuer`: the tax the document itself
+//    states. On an incoming document that is a fact, not a computation - see
+//    the comment on Beleg::vorgegebeneSteuer for the receipt that proved it.
+//  - `leistungsart`: which of the § 14 Abs. 4 Nr. 6 facts the dates state.
+//    "Geliefert am" and "geleistet im Zeitraum" are different statements, and
+//    the column existed for neither.
+const char* const kSchemaV7 =
+    "ALTER TABLE beleg ADD COLUMN preise_brutto INTEGER DEFAULT 0;"
+    "ALTER TABLE beleg ADD COLUMN steuer_vorgegeben INTEGER DEFAULT 0;"
+    "ALTER TABLE beleg ADD COLUMN vorgegebene_steuer BIGINT DEFAULT 0;"
+    "ALTER TABLE beleg ADD COLUMN leistungsart TEXT;";
+
+// Was der DATEV-Kontenrahmen ueber ein Konto sagt und wofuer es bisher keine
+// Spalte gab. Die Quelle ist die Legende des Kontenrahmen-PDF:
+//
+//  - `funktion`: KU/V/M sind Zusatzfunktionen ueber einer Kontenklasse,
+//    AV/AM/S/F/R Hauptfunktionen vor einem Konto; kombiniert auch "S/AV".
+//    **AV und AM sind die Automatikkonten** - die Angabe, aus der sich
+//    ergibt, welches Konto seinen Steuersatz selbst mitbringt.
+//  - `abschlusszweck`: HB nur Handelsbilanz, SB nur Steuerbilanz, EUeR nur
+//    Einnahmen-Ueberschuss-Rechnung. Ein Konto, das nur fuer die Steuerbilanz
+//    gedacht ist, gehoert nicht in die Handelsbilanz - das ist eine Auswertung
+//    und keine Kosmetik.
+//  - `programmverbindung`: U/G/K, die Weitergabe an Umsatzsteuererklaerung,
+//    Gewerbesteuer und Koerperschaftsteuer.
+//  - `nummer_bis`: gesetzt, wenn die Zeile einen Kontenbereich beschreibt.
+//    Das PDF druckt "0040-42" fuer einen Block ohne Einzelbeschriftung;
+//    ihn als ein Konto ohne Namen abzulegen waere falsch.
+//
+// `bilanz_position` gab es schon und bleibt, wo es ist.
+const char* const kSchemaV8 =
+    "ALTER TABLE konto ADD COLUMN funktion TEXT;"
+    "ALTER TABLE konto ADD COLUMN abschlusszweck TEXT;"
+    "ALTER TABLE konto ADD COLUMN programmverbindung TEXT;"
+    "ALTER TABLE konto ADD COLUMN nummer_bis TEXT;";
+
 } // namespace
 
 // ===== BELEGE UND BUCHUNGEN =====
@@ -442,6 +534,13 @@ Beleg BelegFromRow(const UltraDbRow& row) {
     beleg.erfasstAm       = row["erfasst_am"].AsInt64();
     beleg.geaendertAm     = row["geaendert_am"].AsInt64();
     beleg.version         = row["version"].AsInt64();
+    beleg.preiseSindBrutto  = row["preise_brutto"].AsInt() != 0;
+    beleg.steuerVorgegeben  = row["steuer_vorgegeben"].AsInt() != 0;
+    beleg.vorgegebeneSteuer = MoneyFrom(row["vorgegebene_steuer"], beleg.waehrung);
+    // A row written before schema v7 has no value here. Leistungsdatum is the
+    // safe reading: it is what the old single date field meant.
+    if (!LeistungszeitpunktFromText(row["leistungsart"].AsString(), beleg.leistungsart))
+        beleg.leistungsart = Leistungszeitpunkt::Leistungsdatum;
     return beleg;
 }
 
@@ -451,7 +550,7 @@ const char* const kBelegSpalten =
     " partner_name, waehrung, netto, steuer, brutto, bezahlt, status,"
     " buchungstext, notiz, datei_pfad, datei_hash, storno_von, storniert_durch,"
     " festgeschrieben, erfasst_von, erfasst_von_name, erfasst_am, geaendert_am,"
-    " version";
+    " version, preise_brutto, steuer_vorgegeben, vorgegebene_steuer, leistungsart";
 
 BelegPosition PositionFromRow(const UltraDbRow& row) {
     BelegPosition pos;
@@ -534,10 +633,16 @@ const char* const kBuchungSpalten =
 // halfway through leaves nothing behind rather than half an invoice.
 
 bool NextSequenzInTx(UltraDbHandle tx, const std::string& name, int64_t& out,
-                     std::string& fehler) {
+                     std::string& fehler, const std::string& rowLock) {
     UltraDbResultSet rs;
+    // **The row is locked while it is read**, or two clients read the same
+    // value and both write back the same successor. On SQLite the suffix is
+    // empty because BEGIN IMMEDIATE already serialises writers; on PostgreSQL
+    // it is FOR UPDATE. Without it, two people posting at once get the same
+    // id - which was exactly what happened the first time this ran against a
+    // real server with two processes.
     const UltraDbResult read = UltraDb_QueryInTx(
-        tx, "SELECT naechste FROM sequenz WHERE name = ?", { name }, rs);
+        tx, "SELECT naechste FROM sequenz WHERE name = ?" + rowLock, { name }, rs);
     if (!read) { fehler = read.message; return false; }
 
     if (rs.Empty()) {
@@ -555,12 +660,16 @@ bool NextSequenzInTx(UltraDbHandle tx, const std::string& name, int64_t& out,
 }
 
 bool NextBelegnummerInTx(UltraDbHandle tx, int64_t mandantId, const std::string& kreisName,
-                         const Date& datum, std::string& out, std::string& fehler) {
+                         const Date& datum, std::string& out, std::string& fehler,
+                         const std::string& rowLock) {
     UltraDbResultSet rs;
+    // Locked for the same reason as the sequence above: a document number
+    // handed to two people is the failure that makes multi-user bookkeeping
+    // unusable, and a gap-free numbering cannot be repaired afterwards.
     const UltraDbResult read = UltraDb_QueryInTx(
         tx,
         "SELECT id, kreis, praefix, naechste, stellen, jaehrlich_zuruecksetzen,"
-        " letztes_jahr FROM nummernkreis WHERE mandant_id = ? AND kreis = ?",
+        " letztes_jahr FROM nummernkreis WHERE mandant_id = ? AND kreis = ?" + rowLock,
         { mandantId, kreisName }, rs);
     if (!read) { fehler = read.message; return false; }
     if (rs.Empty()) {
@@ -593,9 +702,9 @@ bool NextBelegnummerInTx(UltraDbHandle tx, int64_t mandantId, const std::string&
 
 bool AuditInTx(UltraDbHandle tx, const Akteur& akteur, const std::string& tabelle,
                int64_t rowId, const std::string& aktion, const std::string& details,
-               std::string& fehler) {
+               std::string& fehler, const std::string& rowLock) {
     int64_t id = 0;
-    if (!NextSequenzInTx(tx, "audit", id, fehler)) return false;
+    if (!NextSequenzInTx(tx, "audit", id, fehler, rowLock)) return false;
     const UltraDbResult inserted = UltraDb_ExecInTx(
         tx,
         "INSERT INTO audit(id, zeit, benutzer_id, benutzer, tabelle, row_id, aktion,"
@@ -610,8 +719,9 @@ bool AuditInTx(UltraDbHandle tx, const Akteur& akteur, const std::string& tabell
 // laufende Nummer, reads the chain head, computes the hash over the finished
 // row, and inserts. Everything that decides the hash is settled before it is
 // taken, which is why this is one function and not three.
-bool InsertBuchungInTx(UltraDbHandle tx, Buchung& b, std::string& fehler) {
-    if (!NextSequenzInTx(tx, "buchung", b.id, fehler)) return false;
+bool InsertBuchungInTx(UltraDbHandle tx, Buchung& b, std::string& fehler,
+                       const std::string& rowLock) {
+    if (!NextSequenzInTx(tx, "buchung", b.id, fehler, rowLock)) return false;
 
     UltraDbResultSet head;
     const UltraDbResult read = UltraDb_QueryInTx(
@@ -660,7 +770,32 @@ bool InsertBuchungInTx(UltraDbHandle tx, Buchung& b, std::string& fehler) {
 
 // ===== OPENING =====
 
+// The migrations, in one place.
+//
+// Local and server mode run **this same list**. That is the whole of the
+// "one schema, two storage modes" claim, and keeping one list is what makes
+// it true rather than aspirational: a step added for SQLite and forgotten for
+// PostgreSQL is a database that silently lacks a table.
+static std::vector<UltraDbMigration> MigrationSchritte() {
+    return {
+        { 1, "UltraFIBU Stammdaten", kSchemaV1 },
+        { 2, "UltraFIBU Belege und Buchungen", kSchemaV2 },
+        { 3, "UltraFIBU DATEV-Importprotokoll", kSchemaV3 },
+        { 4, "UltraFIBU Bank: Konten, Umsaetze, Zuordnungen", kSchemaV4 },
+        { 5, "UltraFIBU Steuermeldungen", kSchemaV5 },
+        { 6, "UltraFIBU EU-Steuersaetze", kSchemaV6 },
+        { 7, "UltraFIBU Brutto-Erfassung und Leistungszeitpunkt", kSchemaV7 },
+        { 8, "UltraFIBU Kontenrahmen: Funktion, Abschlusszweck, Programmverbindung", kSchemaV8 }
+    };
+}
+
+std::string Store::RowLock() const {
+    if (connection_.empty()) return std::string();
+    return UltraDb_RowLockSuffix(connection_);
+}
+
 StoreResult Store::Open(const std::string& connectionName, const std::string& databasePath) {
+    datenbankPfad_ = databasePath;
     // Re-registering a name replaces the pooled entry and drops the physical
     // connection - which for ":memory:" would throw the database away. So it
     // only happens when the name is new or now points somewhere else.
@@ -695,13 +830,7 @@ StoreResult Store::Open(const std::string& connectionName, const std::string& da
         return StoreResult::Fail(fehler);
     }
 
-    const std::vector<UltraDbMigration> steps = {
-        { 1, "UltraFIBU Stammdaten", kSchemaV1 },
-        { 2, "UltraFIBU Belege und Buchungen", kSchemaV2 },
-        { 3, "UltraFIBU DATEV-Importprotokoll", kSchemaV3 },
-        { 4, "UltraFIBU Bank: Konten, Umsaetze, Zuordnungen", kSchemaV4 }
-    };
-    const UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
+    const UltraDbResult migrated = UltraDb_Migrate(connection_, MigrationSchritte());
     if (!migrated) {
         connection_.clear();
         return StoreResult::Fail("Das Datenbank-Schema konnte nicht angelegt werden: " +
@@ -715,18 +844,78 @@ StoreResult Store::OpenServer(const std::string& connectionName,
                               const std::string& database,
                               const std::string& user,
                               const std::string& credentialsRef) {
-    (void)connectionName; (void)host; (void)port; (void)database; (void)user;
-    // Deliberately explicit rather than a silent fallback to SQLite: a
-    // multi-user installation that quietly became single-user would be
-    // discovered by two people overwriting each other's work.
-    if (credentialsRef.find("vault:") != 0)
+    if (host.empty() || database.empty() || user.empty())
+        return StoreResult::Fail("Für den Mehrplatz-Betrieb werden Host, Datenbank "
+                                 "und Benutzer gebraucht.");
+    // **A password never comes from a configuration file.** It would end up in
+    // a backup, a log or a screenshot; the key names an UltraVault entry and
+    // the driver resolves it.
+    if (credentialsRef.rfind("vault:", 0) != 0)
         return StoreResult::Fail("Server-Zugangsdaten müssen als UltraVault-Schlüssel "
                                  "angegeben werden (vault:...), nicht als Passwort.");
-    return StoreResult::Fail(
-        "Der Mehrplatz-Betrieb ist vorbereitet, aber der PostgreSQL-Treiber von "
-        "UltraDatabase ist noch nicht gebaut (Stage 2). Bis dahin bitte eine lokale "
-        "Datenbank verwenden - das Schema ist dasselbe, ein Wechsel erfordert keine "
-        "Änderung an den Daten.");
+
+    const std::vector<std::string> treiber = UltraDatabase_GetSupportedDrivers();
+    bool hatPostgres = false;
+    for (const std::string& t : treiber)
+        if (t == "postgresql") hatPostgres = true;
+    if (!hatPostgres) {
+        // Explicit rather than a silent fallback to SQLite: an installation
+        // that quietly became single-user would be discovered by two people
+        // overwriting each other's work.
+        return StoreResult::Fail(
+            "Der PostgreSQL-Treiber ist in diesem Build nicht enthalten (libpq "
+            "fehlte beim Übersetzen). Das Schema ist dasselbe wie lokal, ein "
+            "Wechsel erfordert also keine Änderung an den Daten - aber dieser "
+            "Build kann sich nicht mit einem Server verbinden.");
+    }
+
+    datenbankPfad_ = database;
+
+    UltraDbConnectionConfig cfg;
+    cfg.name        = connectionName;
+    cfg.driver      = "postgresql";
+    cfg.database    = database;
+    cfg.host        = host;
+    cfg.port        = port > 0 ? port : 5432;
+    cfg.user        = user;
+    cfg.credentials = credentialsRef;
+    // Verified TLS by default. A shared accounting database is exactly the
+    // case where a downgrade has to be a deliberate act rather than a default.
+    cfg.tls         = UltraDbTls::VerifyFull;
+
+    UltraDbResult registriert = UltraDb_RegisterConnection(cfg);
+    if (!registriert)
+        return StoreResult::Fail("Die Serververbindung konnte nicht eingerichtet "
+                                 "werden: " + registriert.message);
+
+    connection_ = connectionName;
+    UltraDbResult geoeffnet = UltraDb_OpenConnection(connectionName);
+    if (!geoeffnet) {
+        connection_.clear();
+        return StoreResult::Fail("Der Server ist nicht erreichbar: " +
+                                 geoeffnet.message);
+    }
+
+    // The same migrations as locally. That they run unchanged is the whole
+    // claim of "one schema, two storage modes", and it is checked here rather
+    // than asserted.
+    const std::vector<UltraDbMigration> steps = MigrationSchritte();
+    const UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
+    if (!migrated) {
+        connection_.clear();
+        return StoreResult::Fail("Das Schema konnte auf dem Server nicht angelegt "
+                                 "werden: " + migrated.message);
+    }
+    if (SchemaIsNewerThanCode()) {
+        const int version = SchemaVersion();
+        connection_.clear();
+        return StoreResult::Fail(
+            "Die Datenbank hat Schema-Version " + Number(version) +
+            ", dieses Programm kennt nur " + Number(kSchemaVersion) +
+            ". Ein älteres Programm darf nicht in ein neueres Schema schreiben - "
+            "bitte dieses Programm aktualisieren.");
+    }
+    return StoreResult::Ok();
 }
 
 void Store::Close() {
@@ -776,36 +965,19 @@ StoreResult Store::NextSequenceValue(const std::string& name, int64_t& out) {
     if (tx == UltraDbInvalidHandle)
         return StoreResult::Fail("Transaktion konnte nicht gestartet werden: " + error.message);
 
-    UltraDbResultSet rs;
-    const UltraDbResult read = UltraDb_QueryInTx(
-        tx, "SELECT naechste FROM sequenz WHERE name = ?", { name }, rs);
-    if (!read) {
+    // Deliberately the same code as the posting path uses, rather than a second
+    // copy of it. The copy that used to stand here had no row lock, so two
+    // clients on one PostgreSQL server read the same counter and both wrote
+    // back the same successor - and the duplicate only appeared under real
+    // concurrency, long after the "fix" that had touched the other copy.
+    std::string fehler;
+    if (!NextSequenzInTx(tx, name, out, fehler, RowLock())) {
         UltraDb_Rollback(tx);
-        return StoreResult::Fail("Nummernvergabe fehlgeschlagen: " + read.message);
-    }
-
-    int64_t value = 1;
-    if (rs.Empty()) {
-        const UltraDbResult insert = UltraDb_ExecInTx(
-            tx, "INSERT INTO sequenz(name, naechste) VALUES(?, ?)", { name, int64_t(2) });
-        if (!insert) {
-            UltraDb_Rollback(tx);
-            return StoreResult::Fail("Nummernkreis konnte nicht angelegt werden: " + insert.message);
-        }
-    } else {
-        value = rs.Row(0)["naechste"].AsInt64();
-        const UltraDbResult bump = UltraDb_ExecInTx(
-            tx, "UPDATE sequenz SET naechste = naechste + 1 WHERE name = ?", { name });
-        if (!bump) {
-            UltraDb_Rollback(tx);
-            return StoreResult::Fail("Nummernkreis konnte nicht fortgeschrieben werden: " +
-                                     bump.message);
-        }
+        return StoreResult::Fail("Nummernvergabe fehlgeschlagen: " + fehler);
     }
 
     const UltraDbResult commit = UltraDb_Commit(tx);
     if (!commit) return StoreResult::Fail("Nummernvergabe nicht bestätigt: " + commit.message);
-    out = value;
     return StoreResult::Ok();
 }
 
@@ -820,46 +992,17 @@ StoreResult Store::NextBelegnummer(int64_t mandantId, const std::string& kreisNa
     if (tx == UltraDbInvalidHandle)
         return StoreResult::Fail("Transaktion konnte nicht gestartet werden: " + error.message);
 
-    UltraDbResultSet rs;
-    const UltraDbResult read = UltraDb_QueryInTx(
-        tx,
-        "SELECT id, kreis, praefix, naechste, stellen, jaehrlich_zuruecksetzen, letztes_jahr "
-        "FROM nummernkreis WHERE mandant_id = ? AND kreis = ?",
-        { mandantId, kreisName }, rs);
-    if (!read || rs.Empty()) {
+    // Same shared implementation, same reason as above: a document number
+    // handed to two people cannot be repaired afterwards, so there is exactly
+    // one place that hands one out.
+    std::string fehler;
+    if (!NextBelegnummerInTx(tx, mandantId, kreisName, datum, out, fehler, RowLock())) {
         UltraDb_Rollback(tx);
-        return StoreResult::Fail("Der Nummernkreis \"" + kreisName + "\" ist nicht angelegt.");
-    }
-
-    const UltraDbRow& row = rs.Row(0);
-    Nummernkreis kreis;
-    kreis.id        = row["id"].AsInt64();
-    kreis.mandantId = mandantId;
-    kreis.kreis     = row["kreis"].AsString();
-    kreis.praefix   = row["praefix"].AsString();
-    kreis.naechste  = row["naechste"].AsInt64();
-    kreis.stellen   = row["stellen"].AsInt();
-    kreis.jaehrlichZuruecksetzen = row["jaehrlich_zuruecksetzen"].AsInt() != 0;
-    kreis.letztesJahr = row["letztes_jahr"].AsInt();
-
-    int64_t wert = kreis.naechste;
-    if (kreis.jaehrlichZuruecksetzen && kreis.letztesJahr != datum.year) {
-        wert = 1;                                  // a new year starts at one
-    }
-
-    const UltraDbResult bump = UltraDb_ExecInTx(
-        tx, "UPDATE nummernkreis SET naechste = ?, letztes_jahr = ? WHERE id = ?",
-        { wert + 1, datum.year, kreis.id });
-    if (!bump) {
-        UltraDb_Rollback(tx);
-        return StoreResult::Fail("Nummernkreis konnte nicht fortgeschrieben werden: " +
-                                 bump.message);
+        return StoreResult::Fail(fehler);
     }
 
     const UltraDbResult commit = UltraDb_Commit(tx);
     if (!commit) return StoreResult::Fail("Nummernvergabe nicht bestätigt: " + commit.message);
-
-    out = FormatNummer(kreis, wert, datum);
     return StoreResult::Ok();
 }
 
@@ -1239,7 +1382,7 @@ StoreResult Store::Festschreiben(int64_t geschaeftsjahrId, const Date& bis,
 
     std::string fehler;
     if (!AuditInTx(tx, akteur, "geschaeftsjahr", jahr.id, "festschreiben", bis.ToIso(),
-                   fehler))
+                   fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden", fehler);
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -1265,6 +1408,10 @@ Konto KontoFromRow(const UltraDbRow& row) {
     konto.eurZeile         = row["euer_zeile"].AsString();
     konto.bwaPosition      = row["bwa_position"].AsString();
     konto.bilanzPosition   = row["bilanz_position"].AsString();
+    konto.funktion           = row["funktion"].AsString();
+    konto.abschlusszweck     = row["abschlusszweck"].AsString();
+    konto.programmverbindung = row["programmverbindung"].AsString();
+    konto.nummerBis          = row["nummer_bis"].AsString();
     konto.aktiv            = row["aktiv"].AsInt() != 0;
     konto.notiz            = row["notiz"].AsString();
     return konto;
@@ -1272,7 +1419,8 @@ Konto KontoFromRow(const UltraDbRow& row) {
 
 const char* const kKontoColumns =
     "id, mandant_id, nummer, bezeichnung, typ, skr, steuerschluessel, euer_zeile,"
-    " bwa_position, bilanz_position, aktiv, notiz";
+    " bwa_position, bilanz_position, funktion, abschlusszweck, programmverbindung,"
+    " nummer_bis, aktiv, notiz";
 
 } // namespace
 
@@ -1291,20 +1439,26 @@ StoreResult Store::SaveKonto(Konto& konto, const Akteur& akteur) {
         if (!seq) return seq;
         return Exec(
             "INSERT INTO konto(id, mandant_id, nummer, bezeichnung, typ, skr,"
-            " steuerschluessel, euer_zeile, bwa_position, bilanz_position, aktiv, notiz) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            " steuerschluessel, euer_zeile, bwa_position, bilanz_position,"
+            " funktion, abschlusszweck, programmverbindung, nummer_bis, aktiv, notiz) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             { konto.id, konto.mandantId, konto.nummer, konto.bezeichnung,
               KontoTypToText(konto.typ), konto.skr, konto.steuerschluessel, konto.eurZeile,
-              konto.bwaPosition, konto.bilanzPosition, konto.aktiv ? 1 : 0, konto.notiz },
+              konto.bwaPosition, konto.bilanzPosition, konto.funktion,
+              konto.abschlusszweck, konto.programmverbindung, konto.nummerBis,
+              konto.aktiv ? 1 : 0, konto.notiz },
             "Das Konto konnte nicht angelegt werden");
     }
     return Exec(
         "UPDATE konto SET bezeichnung = ?, typ = ?, skr = ?, steuerschluessel = ?,"
-        " euer_zeile = ?, bwa_position = ?, bilanz_position = ?, aktiv = ?, notiz = ? "
+        " euer_zeile = ?, bwa_position = ?, bilanz_position = ?, funktion = ?,"
+        " abschlusszweck = ?, programmverbindung = ?, nummer_bis = ?,"
+        " aktiv = ?, notiz = ? "
         "WHERE id = ?",
         { konto.bezeichnung, KontoTypToText(konto.typ), konto.skr, konto.steuerschluessel,
-          konto.eurZeile, konto.bwaPosition, konto.bilanzPosition, konto.aktiv ? 1 : 0,
-          konto.notiz, konto.id },
+          konto.eurZeile, konto.bwaPosition, konto.bilanzPosition, konto.funktion,
+          konto.abschlusszweck, konto.programmverbindung, konto.nummerBis,
+          konto.aktiv ? 1 : 0, konto.notiz, konto.id },
         "Das Konto konnte nicht geändert werden");
 }
 
@@ -1923,8 +2077,18 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
     if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
     if (!beleg.datum.Valid())
         return StoreResult::Fail("Der Beleg braucht ein gültiges Belegdatum.");
-    if (beleg.positionen.empty())
-        return StoreResult::Fail("Ein Beleg ohne Positionen kann nicht gespeichert werden.");
+    // **A draft may be empty; a posted document may not.**
+    //
+    // This used to refuse every document with no positions, which made it
+    // impossible to file a received PDF before somebody had read it and typed
+    // the amounts in - and the alternative, inventing a placeholder position,
+    // would put figures in a ledger that nobody entered. The rule that
+    // matters is enforced where it belongs: Buchen() still refuses to post a
+    // document with no positions, so an empty draft can never become a
+    // posting.
+    if (beleg.positionen.empty() && beleg.status != BelegStatus::Entwurf)
+        return StoreResult::Fail("Ein gebuchter Beleg ohne Positionen kann nicht "
+                                 "gespeichert werden.");
     for (const BelegPosition& pos : beleg.positionen) {
         if (!pos.Valid())
             return StoreResult::Fail("Die Position \"" + pos.bezeichnung +
@@ -2023,12 +2187,12 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
     // no number and two writers cannot be given the same one.
     if (beleg.nummer.empty()) {
         if (!NextBelegnummerInTx(tx, beleg.mandantId, kreis, beleg.datum,
-                                 beleg.nummer, fehler))
+                                 beleg.nummer, fehler, RowLock()))
             return abbrechen("Die Belegnummer konnte nicht vergeben werden");
     }
 
     if (!istAenderung) {
-        if (!NextSequenzInTx(tx, "beleg", beleg.id, fehler))
+        if (!NextSequenzInTx(tx, "beleg", beleg.id, fehler, RowLock()))
             return abbrechen("Die Belegnummer konnte nicht vergeben werden");
         beleg.erfasstVon     = akteur.benutzerId;
         beleg.erfasstVonName = akteur.anmeldename;
@@ -2047,8 +2211,10 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
             " partner_id, partner_konto, partner_name, waehrung, netto, steuer,"
             " brutto, bezahlt, status, buchungstext, notiz, datei_pfad, datei_hash,"
             " storno_von, storniert_durch, festgeschrieben, erfasst_von,"
-            " erfasst_von_name, erfasst_am, geaendert_am, version)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " erfasst_von_name, erfasst_am, geaendert_am, version, preise_brutto,"
+            " steuer_vorgegeben, vorgegebene_steuer, leistungsart)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
+            "?,?,?,?)",
             { beleg.id, beleg.mandantId, beleg.geschaeftsjahrId,
               BelegArtToText(beleg.art), beleg.nummer, beleg.externeNummer,
               beleg.datum.ToIso(), DateValue(beleg.leistungVon),
@@ -2059,7 +2225,11 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
               BelegStatusToText(beleg.status), beleg.buchungstext, beleg.notiz,
               beleg.dateiPfad, beleg.dateiHash, beleg.stornoVon, beleg.storniertDurch,
               beleg.festgeschrieben ? 1 : 0, beleg.erfasstVon, beleg.erfasstVonName,
-              beleg.erfasstAm, beleg.geaendertAm, beleg.version });
+              beleg.erfasstAm, beleg.geaendertAm, beleg.version,
+              beleg.preiseSindBrutto ? 1 : 0, beleg.steuerVorgegeben ? 1 : 0,
+              beleg.vorgegebeneSteuer.Valid() ? beleg.vorgegebeneSteuer.Minor()
+                                              : int64_t(0),
+              LeistungszeitpunktToText(beleg.leistungsart) });
         if (!inserted) { fehler = inserted.message; return abbrechen("Der Beleg konnte nicht angelegt werden"); }
     } else {
         // The optimistic-locking WHERE: if somebody else bumped the version
@@ -2071,7 +2241,8 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
             " externe_nummer = ?, datum = ?, leistung_von = ?, leistung_bis = ?,"
             " faellig_am = ?, partner_id = ?, partner_konto = ?, partner_name = ?,"
             " waehrung = ?, netto = ?, steuer = ?, brutto = ?, buchungstext = ?,"
-            " notiz = ?, geaendert_am = ?, version = ?"
+            " notiz = ?, geaendert_am = ?, version = ?, preise_brutto = ?,"
+            " steuer_vorgegeben = ?, vorgegebene_steuer = ?, leistungsart = ?"
             " WHERE id = ? AND version = ?",
             { beleg.geschaeftsjahrId, BelegArtToText(beleg.art), beleg.nummer,
               beleg.externeNummer, beleg.datum.ToIso(), DateValue(beleg.leistungVon),
@@ -2079,6 +2250,10 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
               beleg.partnerId, beleg.partnerKonto, beleg.partnerName, beleg.waehrung,
               beleg.netto.Minor(), beleg.steuer.Minor(), beleg.brutto.Minor(),
               beleg.buchungstext, beleg.notiz, beleg.geaendertAm, beleg.version,
+              beleg.preiseSindBrutto ? 1 : 0, beleg.steuerVorgegeben ? 1 : 0,
+              beleg.vorgegebeneSteuer.Valid() ? beleg.vorgegebeneSteuer.Minor()
+                                              : int64_t(0),
+              LeistungszeitpunktToText(beleg.leistungsart),
               beleg.id, vorher.version });
         if (!updated) { fehler = updated.message; return abbrechen("Der Beleg konnte nicht geändert werden"); }
 
@@ -2091,7 +2266,7 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
     for (BelegPosition& pos : beleg.positionen) {
         pos.belegId  = beleg.id;
         pos.position = nummer++;
-        if (!NextSequenzInTx(tx, "beleg_position", pos.id, fehler))
+        if (!NextSequenzInTx(tx, "beleg_position", pos.id, fehler, RowLock()))
             return abbrechen("Die Position konnte nicht angelegt werden");
         const UltraDbResult inserted = UltraDb_ExecInTx(
             tx,
@@ -2108,7 +2283,7 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
     }
 
     if (!AuditInTx(tx, akteur, "beleg", beleg.id, istAenderung ? "aendern" : "anlegen",
-                   beleg.nummer + " " + beleg.brutto.ToString(), fehler))
+                   beleg.nummer + " " + beleg.brutto.ToString(), fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -2247,7 +2422,7 @@ StoreResult Store::DeleteBeleg(int64_t id, const Akteur& akteur) {
     }
 
     std::string fehler;
-    if (!AuditInTx(tx, akteur, "beleg", id, "loeschen", beleg.nummer, fehler)) {
+    if (!AuditInTx(tx, akteur, "beleg", id, "loeschen", beleg.nummer, fehler, RowLock())) {
         UltraDb_Rollback(tx);
         return StoreResult::Fail("Der Protokolleintrag konnte nicht geschrieben werden: " +
                                  fehler);
@@ -2400,6 +2575,30 @@ StoreResult Store::Buchen(Beleg& beleg, const Akteur& akteur) {
                                  " kann nicht mehr gebucht werden.");
     }
 
+    // **Does the document's tax treatment agree with itself?** Checked here
+    // rather than only when printing, because posting is the irreversible step:
+    // afterwards the entry can only be reversed, never corrected, and a posting
+    // whose invoice charged 19 % while declaring the customer liable has gone
+    // into the journal, the UStVA and the customer's books before anyone looks.
+    {
+        Partner partner;
+        PartnerByKonto(aktuell.mandantId, aktuell.partnerKonto, partner);
+        const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+            aktuell, partner, SteuerschluesselListe(aktuell.mandantId));
+        if (HatBlockierendenBefund(befunde)) {
+            std::string text = "Die Umsatzsteuer des Belegs ist nicht stimmig:";
+            for (const SteuerBefund& b : befunde) {
+                if (!b.blockierend) continue;
+                text += "\n  - ";
+                if (!b.position.empty()) text += "Position \"" + b.position + "\": ";
+                text += b.text;
+            }
+            WriteAudit(akteur, "beleg", aktuell.id, "abgelehnt",
+                       "Steuerlich nicht stimmig: " + aktuell.nummer);
+            return StoreResult::Fail(text);
+        }
+    }
+
     const std::vector<Buchungsgruppe> gruppen = GruppiereBeleg(aktuell);
     if (gruppen.empty())
         return StoreResult::Fail("Der Beleg ergibt keine Buchung.");
@@ -2485,7 +2684,7 @@ StoreResult Store::Buchen(Beleg& beleg, const Akteur& akteur) {
             fehler = "Konto und Gegenkonto müssen verschieden und gesetzt sein";
             return abbrechen("Die Buchung konnte nicht gebildet werden");
         }
-        if (!InsertBuchungInTx(tx, b, fehler))
+        if (!InsertBuchungInTx(tx, b, fehler, RowLock()))
             return abbrechen("Die Buchung konnte nicht geschrieben werden");
         geschrieben.push_back(b);
     }
@@ -2501,7 +2700,7 @@ StoreResult Store::Buchen(Beleg& beleg, const Akteur& akteur) {
     if (!AuditInTx(tx, akteur, "beleg", aktuell.id, "buchen",
                    aktuell.nummer + " " + aktuell.brutto.ToString() + ", " +
                    Number(static_cast<int64_t>(geschrieben.size())) + " Buchung(en)",
-                   fehler))
+                   fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -2630,9 +2829,9 @@ StoreResult Store::StorniereBeleg(int64_t belegId, const Date& stornoDatum,
     }
 
     if (!NextBelegnummerInTx(tx, storno.mandantId, kreis, stornoDatum, storno.nummer,
-                             fehler))
+                             fehler, RowLock()))
         return abbrechen("Die Belegnummer für die Stornierung konnte nicht vergeben werden");
-    if (!NextSequenzInTx(tx, "beleg", storno.id, fehler))
+    if (!NextSequenzInTx(tx, "beleg", storno.id, fehler, RowLock()))
         return abbrechen("Der Stornobeleg konnte nicht angelegt werden");
 
     const UltraDbResult insertedKopf = UltraDb_ExecInTx(
@@ -2660,7 +2859,7 @@ StoreResult Store::StorniereBeleg(int64_t belegId, const Date& stornoDatum,
     for (BelegPosition& pos : storno.positionen) {
         pos.belegId  = storno.id;
         pos.position = posNr++;
-        if (!NextSequenzInTx(tx, "beleg_position", pos.id, fehler))
+        if (!NextSequenzInTx(tx, "beleg_position", pos.id, fehler, RowLock()))
             return abbrechen("Die Stornoposition konnte nicht angelegt werden");
         const UltraDbResult inserted = UltraDb_ExecInTx(
             tx,
@@ -2703,7 +2902,7 @@ StoreResult Store::StorniereBeleg(int64_t belegId, const Date& stornoDatum,
         gegen.prevHash.clear();
         gegen.hash.clear();
 
-        if (!InsertBuchungInTx(tx, gegen, fehler))
+        if (!InsertBuchungInTx(tx, gegen, fehler, RowLock()))
             return abbrechen("Die Stornobuchung konnte nicht geschrieben werden");
 
         // The back-reference on the sealed row. This column is deliberately
@@ -2726,7 +2925,7 @@ StoreResult Store::StorniereBeleg(int64_t belegId, const Date& stornoDatum,
 
     if (!AuditInTx(tx, akteur, "beleg", original.id, "stornieren",
                    original.nummer + " storniert durch " + storno.nummer +
-                   (grund.empty() ? "" : " (" + grund + ")"), fehler))
+                   (grund.empty() ? "" : " (" + grund + ")"), fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -2833,11 +3032,11 @@ StoreResult Store::ZahlungErfassen(int64_t belegId, const Date& datum, const Mon
     b.erfasstVonName   = akteur.anmeldename;
     b.erfasstAm        = jetzt;
 
-    if (!InsertBuchungInTx(tx, b, fehler))
+    if (!InsertBuchungInTx(tx, b, fehler, RowLock()))
         return abbrechen("Die Zahlung konnte nicht gebucht werden");
 
     int64_t zahlungId = 0;
-    if (!NextSequenzInTx(tx, "zahlung", zahlungId, fehler))
+    if (!NextSequenzInTx(tx, "zahlung", zahlungId, fehler, RowLock()))
         return abbrechen("Die Zahlung konnte nicht gespeichert werden");
     const UltraDbResult inserted = UltraDb_ExecInTx(
         tx,
@@ -2856,7 +3055,7 @@ StoreResult Store::ZahlungErfassen(int64_t belegId, const Date& datum, const Mon
     if (!updated) { fehler = updated.message; return abbrechen("Der Zahlungsstand konnte nicht fortgeschrieben werden"); }
 
     if (!AuditInTx(tx, akteur, "zahlung", zahlungId, "buchen",
-                   beleg.nummer + " " + betrag.ToString() + " auf " + geldkonto, fehler))
+                   beleg.nummer + " " + betrag.ToString() + " auf " + geldkonto, fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -2952,13 +3151,13 @@ StoreResult Store::BuchungErfassen(Buchung& buchung, const Akteur& akteur) {
                                  error.message);
 
     std::string fehler;
-    if (!InsertBuchungInTx(tx, buchung, fehler)) {
+    if (!InsertBuchungInTx(tx, buchung, fehler, RowLock())) {
         UltraDb_Rollback(tx);
         return StoreResult::Fail("Die Buchung konnte nicht geschrieben werden: " + fehler);
     }
     if (!AuditInTx(tx, akteur, "buchung", buchung.id, "buchen",
                    buchung.konto + " an " + buchung.gegenkonto + " " +
-                   buchung.umsatz.ToString(), fehler)) {
+                   buchung.umsatz.ToString(), fehler, RowLock())) {
         UltraDb_Rollback(tx);
         return StoreResult::Fail("Der Protokolleintrag konnte nicht geschrieben werden: " +
                                  fehler);
@@ -3024,7 +3223,7 @@ StoreResult Store::StorniereBuchung(int64_t buchungId, const Date& stornoDatum,
         return StoreResult::Fail(text + (fehler.empty() ? "" : ": " + fehler));
     };
 
-    if (!InsertBuchungInTx(tx, gegen, fehler))
+    if (!InsertBuchungInTx(tx, gegen, fehler, RowLock()))
         return abbrechen("Die Stornobuchung konnte nicht geschrieben werden");
 
     const UltraDbResult markiert = UltraDb_ExecInTx(
@@ -3033,7 +3232,7 @@ StoreResult Store::StorniereBuchung(int64_t buchungId, const Date& stornoDatum,
     if (!markiert) { fehler = markiert.message; return abbrechen("Die Ursprungsbuchung konnte nicht markiert werden"); }
 
     if (!AuditInTx(tx, akteur, "buchung", original.id, "stornieren",
-                   "storniert durch Buchung " + Number(gegen.id), fehler))
+                   "storniert durch Buchung " + Number(gegen.id), fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -3328,7 +3527,7 @@ StoreResult Store::ImportiereBankauszug(int64_t bankkontoId,
     };
 
     int64_t importId = 0;
-    if (!NextSequenzInTx(tx, "bank_import", importId, fehler))
+    if (!NextSequenzInTx(tx, "bank_import", importId, fehler, RowLock()))
         return abbrechen("Die Importnummer konnte nicht vergeben werden");
 
     const int64_t jetzt = NowSeconds();
@@ -3353,7 +3552,7 @@ StoreResult Store::ImportiereBankauszug(int64_t bankkontoId,
             }
 
             int64_t id = 0;
-            if (!NextSequenzInTx(tx, "bankumsatz", id, fehler))
+            if (!NextSequenzInTx(tx, "bankumsatz", id, fehler, RowLock()))
                 return abbrechen("Eine Umsatznummer konnte nicht vergeben werden");
 
             const UltraDbResult r = UltraDb_ExecInTx(
@@ -3396,7 +3595,7 @@ StoreResult Store::ImportiereBankauszug(int64_t bankkontoId,
 
     if (!AuditInTx(tx, akteur, "bank_import", importId, "insert",
                    dateiname + ", " + Number(outNeu) + " neu, " +
-                   Number(outBekannt) + " bereits vorhanden", fehler))
+                   Number(outBekannt) + " bereits vorhanden", fehler, RowLock()))
         return abbrechen("Der Import konnte nicht protokolliert werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -3632,6 +3831,587 @@ std::vector<Store::BankZuordnung> Store::Zuordnungen(int64_t bankumsatzId) const
     return liste;
 }
 
+// ===== BELEGE AUS DATEIEN =====
+
+std::string Store::BelegArchivPfad() const {
+    return BelegArchivPfadFuer(datenbankPfad_);
+}
+
+bool Store::BelegMitDateiHash(int64_t mandantId, const std::string& hash,
+                              Beleg& out) const {
+    if (hash.empty()) return false;
+    UltraDbRow row;
+    if (!QueryOne(std::string("SELECT ") + kBelegSpalten +
+                  " FROM beleg WHERE mandant_id = ? AND datei_hash = ?"
+                  " ORDER BY id LIMIT 1", { mandantId, hash }, row))
+        return false;
+    out = BelegFromRow(row);
+    return true;
+}
+
+Store::BelegImportBericht Store::ImportiereBelegDateien(
+        int64_t mandantId, const std::vector<std::string>& pfade, BelegArt art,
+        const Date& datum, const std::string& kreis, const Akteur& akteur) {
+    BelegImportBericht bericht;
+    if (!akteur.Darf(Recht::BelegErfassen)) {
+        bericht.fehler = "Diese Rolle darf keine Belege erfassen.";
+        return bericht;
+    }
+    if (connection_.empty()) {
+        bericht.fehler = "Es ist keine Datenbank geöffnet.";
+        return bericht;
+    }
+    if (pfade.empty()) {
+        bericht.fehler = "Es wurde keine Datei angegeben.";
+        return bericht;
+    }
+    if (!datum.Valid()) {
+        bericht.fehler = "Ohne Belegdatum lässt sich der Beleg keinem "
+                         "Geschäftsjahr zuordnen.";
+        return bericht;
+    }
+
+    BelegArchiv archiv(BelegArchivPfad());
+    for (const std::string& pfad : pfade) {
+        ++bericht.gelesen;
+        BelegImportEintrag eintrag;
+
+        // Copy the file in first. A document row pointing at an archive entry
+        // that was never written would be worse than no row at all.
+        const ArchivEintrag abgelegt = archiv.Ablegen(pfad, datum.year);
+        eintrag.dateiname = abgelegt.dateiname;
+        eintrag.hash      = abgelegt.hash;
+        eintrag.pfad      = abgelegt.pfad;
+        eintrag.warnungen = abgelegt.warnungen;
+        if (!abgelegt.ok) {
+            eintrag.fehler = abgelegt.fehler;
+            ++bericht.abgelehnt;
+            bericht.eintraege.push_back(std::move(eintrag));
+            continue;
+        }
+
+        // **The same receipt twice is one receipt.** Dragging a folder in
+        // again is how an import button is actually used, and creating a
+        // second draft for a file already booked is how duplicate expenses
+        // get into a ledger.
+        Beleg vorhanden;
+        if (BelegMitDateiHash(mandantId, abgelegt.hash, vorhanden)) {
+            eintrag.ok               = true;
+            eintrag.schonVorhanden   = true;
+            eintrag.vorhandenerBeleg = vorhanden.id;
+            eintrag.belegnummer      = vorhanden.nummer;
+            ++bericht.bekannt;
+            bericht.eintraege.push_back(std::move(eintrag));
+            continue;
+        }
+
+        Beleg beleg;
+        beleg.mandantId = mandantId;
+        beleg.art       = art;
+        beleg.datum     = datum;
+        beleg.waehrung  = "EUR";
+        // The file name is usually the only thing known about the document at
+        // this point, and it often carries the supplier and the number. It is
+        // put where a list will show it rather than discarded.
+        beleg.buchungstext = abgelegt.dateiname;
+        beleg.dateiPfad    = abgelegt.pfad;
+        beleg.dateiHash    = abgelegt.hash;
+
+        const StoreResult gespeichert = SaveBeleg(beleg, kreis, akteur);
+        if (!gespeichert) {
+            eintrag.fehler = gespeichert.fehler;
+            ++bericht.abgelehnt;
+            bericht.eintraege.push_back(std::move(eintrag));
+            continue;
+        }
+        eintrag.ok          = true;
+        eintrag.belegId     = beleg.id;
+        eintrag.belegnummer = beleg.nummer;
+        ++bericht.angelegt;
+        WriteAudit(akteur, "beleg", beleg.id, "datei-import",
+                   abgelegt.dateiname + " sha256:" + abgelegt.hash);
+        bericht.eintraege.push_back(std::move(eintrag));
+    }
+
+    for (const BelegImportEintrag& e : bericht.eintraege)
+        for (const std::string& w : e.warnungen) bericht.warnungen.push_back(w);
+
+    if (bericht.angelegt > 0)
+        bericht.warnungen.push_back(
+            Number(bericht.angelegt) + " Beleg(e) sind als Entwurf angelegt. "
+            "Betrag, Konto und Steuerschlüssel stehen noch nicht darin - aus "
+            "dem Beleg wird nichts ausgelesen, und erfundene Zahlen in einem "
+            "Hauptbuch wären schlimmer als gar keine.");
+
+    bericht.ok = bericht.angelegt > 0 || bericht.bekannt > 0;
+    if (!bericht.ok && bericht.fehler.empty())
+        bericht.fehler = "Keine der Dateien konnte übernommen werden.";
+    return bericht;
+}
+
+// ===== STEUERMELDUNGEN =====
+
+namespace {
+
+std::string MeldungStatusToText(Store::MeldungStatus status) {
+    switch (status) {
+        case Store::MeldungStatus::Entwurf:     return "entwurf";
+        case Store::MeldungStatus::Erzeugt:     return "erzeugt";
+        case Store::MeldungStatus::Eingereicht: return "eingereicht";
+        case Store::MeldungStatus::Bestaetigt:  return "bestaetigt";
+    }
+    return "entwurf";
+}
+
+Store::MeldungStatus MeldungStatusFromText(const std::string& text) {
+    if (text == "erzeugt")     return Store::MeldungStatus::Erzeugt;
+    if (text == "eingereicht") return Store::MeldungStatus::Eingereicht;
+    if (text == "bestaetigt")  return Store::MeldungStatus::Bestaetigt;
+    return Store::MeldungStatus::Entwurf;
+}
+
+Store::Meldung MeldungAusZeile(const UltraDbRow& row) {
+    Store::Meldung m;
+    m.id             = row["id"].AsInt64();
+    m.mandantId      = row["mandant_id"].AsInt64();
+    m.art            = row["art"].AsString();
+    m.jahr           = row["jahr"].AsInt();
+    m.zeitraum       = row["zeitraum"].AsString();
+    m.status         = MeldungStatusFromText(row["status"].AsString());
+    m.zahllast       = MoneyFrom(row["zahllast"], "EUR");
+    m.kennzahlenJson = row["kennzahlen_json"].AsString();
+    m.datei          = row["datei"].AsString();
+    m.xmlHash        = row["xml_hash"].AsString();
+    m.transferticket = row["transferticket"].AsString();
+    m.berichtigt     = row["berichtigt"].AsInt() != 0;
+    m.echtfall       = row["echtfall"].AsInt() != 0;
+    m.erzeugtAm      = row["erzeugt_am"].AsInt64();
+    m.eingereichtAm  = row["eingereicht_am"].AsInt64();
+    m.benutzer       = row["benutzer"].AsString();
+    return m;
+}
+
+const char* const kMeldungSpalten =
+    "id, mandant_id, art, jahr, zeitraum, status, zahllast, kennzahlen_json,"
+    " datei, xml_hash, transferticket, berichtigt, echtfall, erzeugt_am,"
+    " eingereicht_am, benutzer";
+
+} // namespace
+
+UstvaBerechnung Store::BerechneUstvaFuer(int64_t mandantId, int jahr,
+                                         const std::string& zeitraum,
+                                         const UstvaMapping& mapping) const {
+    UstvaBerechnung leer;
+    Date von, bis;
+    if (!UstvaZeitraumGrenzen(jahr, zeitraum, von, bis)) {
+        leer.fehler = "\"" + zeitraum + "\" ist kein Voranmeldungszeitraum "
+                      "(01-12 für einen Monat, 41-44 für ein Quartal).";
+        return leer;
+    }
+    return BerechneUstva(mandantId, jahr, zeitraum, von, bis,
+                         Journal(mandantId, von, bis),
+                         SteuerschluesselListe(mandantId), mapping);
+}
+
+StoreResult Store::MeldungEintragen(Meldung& meldung, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::SteuerMelden))
+        return StoreResult::Fail("Diese Rolle darf keine Steuermeldungen abgeben.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+    if (meldung.art.empty() || meldung.zeitraum.empty() || meldung.jahr == 0)
+        return StoreResult::Fail("Der Meldung fehlen Art, Jahr oder Zeitraum.");
+
+    // **A filed return is never replaced.** What was sent has to stay provable,
+    // and the mechanism for changing it is a berichtigte Meldung - the same
+    // rule as Storno on a posting.
+    Meldung vorhanden;
+    if (MeldungFuerZeitraum(meldung.mandantId, meldung.art, meldung.jahr,
+                            meldung.zeitraum, vorhanden) &&
+        vorhanden.id != meldung.id) {
+        if (!vorhanden.transferticket.empty() && !meldung.berichtigt) {
+            return StoreResult::Fail(
+                "Für " + meldung.art + " " + Number(meldung.jahr) + "/" +
+                meldung.zeitraum + " wurde bereits eine Meldung eingereicht "
+                "(Transferticket " + vorhanden.transferticket + "). Eine Änderung "
+                "ist eine berichtigte Meldung, keine zweite Erstmeldung.");
+        }
+    }
+
+    const int64_t jetzt = NowSeconds();
+    if (meldung.id == 0) {
+        const StoreResult id = NextSequenceValue("meldung", meldung.id);
+        if (!id) return id;
+        meldung.erzeugtAm = jetzt;
+        meldung.benutzer  = akteur.anmeldename;
+        const StoreResult r = Exec(
+            "INSERT INTO meldung(id, mandant_id, art, jahr, zeitraum, status,"
+            " zahllast, kennzahlen_json, datei, xml_hash, transferticket,"
+            " berichtigt, echtfall, erzeugt_am, eingereicht_am, benutzer)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            { meldung.id, meldung.mandantId, meldung.art, meldung.jahr,
+              meldung.zeitraum, MeldungStatusToText(meldung.status),
+              meldung.zahllast.Minor(), meldung.kennzahlenJson, meldung.datei,
+              meldung.xmlHash, meldung.transferticket, meldung.berichtigt ? 1 : 0,
+              meldung.echtfall ? 1 : 0, meldung.erzeugtAm, meldung.eingereichtAm,
+              meldung.benutzer },
+            "Meldung eintragen");
+        if (!r) return r;
+        WriteAudit(akteur, "meldung", meldung.id, "insert",
+                   meldung.art + " " + Number(meldung.jahr) + "/" + meldung.zeitraum +
+                   ", " + meldung.zahllast.ToString());
+        return StoreResult::Ok();
+    }
+
+    Meldung alt;
+    if (MeldungById(meldung.id, alt) && !alt.transferticket.empty()) {
+        return StoreResult::Fail(
+            "Diese Meldung wurde bereits eingereicht (Transferticket " +
+            alt.transferticket + ") und kann nicht mehr geändert werden.");
+    }
+    const StoreResult r = Exec(
+        "UPDATE meldung SET status = ?, zahllast = ?, kennzahlen_json = ?,"
+        " datei = ?, xml_hash = ?, berichtigt = ?, echtfall = ? WHERE id = ?",
+        { MeldungStatusToText(meldung.status), meldung.zahllast.Minor(),
+          meldung.kennzahlenJson, meldung.datei, meldung.xmlHash,
+          meldung.berichtigt ? 1 : 0, meldung.echtfall ? 1 : 0, meldung.id },
+        "Meldung speichern");
+    if (!r) return r;
+    WriteAudit(akteur, "meldung", meldung.id, "update", meldung.art);
+    return StoreResult::Ok();
+}
+
+StoreResult Store::MeldungQuittung(int64_t meldungId, const std::string& transferticket,
+                                   const Date& eingereichtAm, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::SteuerMelden))
+        return StoreResult::Fail("Diese Rolle darf keine Steuermeldungen abgeben.");
+    if (transferticket.empty())
+        return StoreResult::Fail("Ohne Transferticket ist nicht belegt, dass die "
+                                 "Meldung angekommen ist.");
+    Meldung m;
+    if (!MeldungById(meldungId, m))
+        return StoreResult::Fail("Diese Meldung gibt es nicht.");
+    if (!m.transferticket.empty())
+        return StoreResult::Fail(
+            "Für diese Meldung ist bereits das Transferticket " + m.transferticket +
+            " eingetragen.");
+
+    const StoreResult r = Exec(
+        "UPDATE meldung SET transferticket = ?, status = ?, eingereicht_am = ?"
+        " WHERE id = ?",
+        { transferticket, MeldungStatusToText(MeldungStatus::Eingereicht),
+          eingereichtAm.Valid() ? eingereichtAm.ToEpochDay() * 86400 : NowSeconds(),
+          meldungId },
+        "Transferticket eintragen");
+    if (!r) return r;
+    WriteAudit(akteur, "meldung", meldungId, "eingereicht", transferticket);
+    return StoreResult::Ok();
+}
+
+std::vector<Store::Meldung> Store::Meldungen(int64_t mandantId,
+                                             const std::string& art) const {
+    std::vector<Meldung> liste;
+    std::string sql = std::string("SELECT ") + kMeldungSpalten +
+                      " FROM meldung WHERE mandant_id = ?";
+    UltraDbParams params{ mandantId };
+    if (!art.empty()) { sql += " AND art = ?"; params.push_back(art); }
+    sql += " ORDER BY jahr DESC, zeitraum DESC, id DESC";
+    UltraDbResultSet rs;
+    if (!Query(sql, params, rs)) return liste;
+    for (const UltraDbRow& row : rs) liste.push_back(MeldungAusZeile(row));
+    return liste;
+}
+
+bool Store::MeldungById(int64_t id, Meldung& out) const {
+    UltraDbRow row;
+    if (!QueryOne(std::string("SELECT ") + kMeldungSpalten +
+                  " FROM meldung WHERE id = ?", { id }, row))
+        return false;
+    out = MeldungAusZeile(row);
+    return true;
+}
+
+bool Store::MeldungFuerZeitraum(int64_t mandantId, const std::string& art, int jahr,
+                                const std::string& zeitraum, Meldung& out) const {
+    UltraDbRow row;
+    if (!QueryOne(std::string("SELECT ") + kMeldungSpalten +
+                  " FROM meldung WHERE mandant_id = ? AND art = ? AND jahr = ?"
+                  " AND zeitraum = ? ORDER BY id DESC LIMIT 1",
+                  { mandantId, art, jahr, zeitraum }, row))
+        return false;
+    out = MeldungAusZeile(row);
+    return true;
+}
+
+// ===== EU-STEUERSAETZE =====
+//
+// The rates the OSS return checks an invoice against, as a table a user can
+// maintain. Twenty-six member states set them, they change on notice measured
+// in weeks, and waiting for a release to enter one is not workable.
+//
+// The rule that shapes everything here: **a rate is added, never edited.** A
+// change is a new row from the day it takes effect, and the row it supersedes
+// keeps its own span, closed the day before. Any other arrangement means a
+// return filed last quarter stops reproducing the figures that were filed -
+// which is not a bug anyone would notice until a member state asked.
+
+namespace {
+
+EuSteuersatz EuSatzAusZeile(const UltraDbRow& row) {
+    EuSteuersatz satz;
+    satz.id           = row["id"].AsInt64();
+    satz.land         = row["land"].AsString();
+    satz.art          = row["art"].AsString();
+    satz.satzPromille = row["satz_promille"].AsInt();
+    Date::TryParseIso(row["gueltig_von"].AsString(), satz.gueltigVon);
+    Date::TryParseIso(row["gueltig_bis"].AsString(), satz.gueltigBis);
+    satz.geprueft     = row["geprueft"].AsInt() != 0;
+    satz.quelle       = row["quelle"].AsString();
+    return satz;
+}
+
+const char* const kEuSatzSpalten =
+    "id, land, art, satz_promille, gueltig_von, gueltig_bis, geprueft, quelle";
+
+// Uppercased ISO country code, for a field a user types by hand.
+std::string LandNormal(const std::string& land) {
+    std::string out;
+    for (const char c : land)
+        if (!std::isspace(static_cast<unsigned char>(c)))
+            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    return out;
+}
+
+} // namespace
+
+std::vector<EuSteuersatz> Store::EuSteuersaetzeAlle() const {
+    std::vector<EuSteuersatz> liste;
+    UltraDbResultSet rs;
+    if (!Query(std::string("SELECT ") + kEuSatzSpalten +
+               " FROM eu_steuersatz ORDER BY land, art, gueltig_von", {}, rs))
+        return liste;
+    for (size_t i = 0; i < rs.Size(); ++i) liste.push_back(EuSatzAusZeile(rs.Row(i)));
+    return liste;
+}
+
+EuSteuersaetze Store::EuSteuersaetzeGeladen() const {
+    EuSteuersaetze saetze;
+    saetze.Setze(EuSteuersaetzeAlle());
+    return saetze;
+}
+
+namespace {
+
+// Does a return that has already been filed cover a day on or after `ab`?
+//
+// This is the question that decides whether a rate may be entered or removed.
+// A rate starting in the future changes nothing that was filed; one starting
+// before the end of a filed period changes what that period recomputes to, and
+// the filed figures are then no longer reproducible from the books.
+//
+// Deliberately generous about which returns count: only eingereicht and
+// bestaetigt, because a draft is not yet a claim about anything.
+bool FilingBetroffen(const std::vector<Store::Meldung>& meldungen, const Date& ab,
+                     std::string& outBeschreibung) {
+    for (const Store::Meldung& m : meldungen) {
+        Date von, bis;
+        bool bekannt = false;
+        if (m.art == "oss" || m.art == "ioss") {
+            bekannt = OssZeitraumGrenzen(m.art == "oss" ? OssVerfahren::Oss : OssVerfahren::Ioss,
+                                         m.jahr, m.zeitraum, von, bis);
+        } else {
+            bekannt = UstvaZeitraumGrenzen(m.jahr, m.zeitraum, von, bis);
+        }
+        // A period whose bounds cannot be worked out is treated as affected.
+        // Guessing "probably fine" about a filed return is the wrong way round.
+        if (!bekannt || !ab.Valid() || !(bis < ab)) {
+            outBeschreibung = m.art + " " + Number(m.jahr) + "/" + m.zeitraum;
+            if (!m.transferticket.empty())
+                outBeschreibung += " (Transferticket " + m.transferticket + ")";
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+// Every return that has actually been filed, across all Mandanten. The rate
+// table is not per-Mandant - a member state's VAT rate is the same for every
+// set of books in the database - so the question "would this change something
+// already filed" has to be asked of all of them.
+std::vector<Store::Meldung> Store::EingereichteMeldungen() const {
+    std::vector<Meldung> liste;
+    UltraDbResultSet rs;
+    if (!Query(std::string("SELECT ") + kMeldungSpalten +
+               " FROM meldung WHERE status IN ('eingereicht','bestaetigt')", {}, rs))
+        return liste;
+    for (const UltraDbRow& row : rs) liste.push_back(MeldungAusZeile(row));
+    return liste;
+}
+
+StoreResult Store::EuSteuersatzSetzen(EuSteuersatz& satz, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Steuersätze ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+
+    satz.land = LandNormal(satz.land);
+    if (satz.land.size() != 2)
+        return StoreResult::Fail("Das Land ist ein ISO-Kürzel aus zwei Buchstaben, "
+                                 "zum Beispiel AT für Österreich.");
+    if (satz.art.empty()) satz.art = "standard";
+    if (satz.art != "standard" && satz.art != "ermaessigt")
+        return StoreResult::Fail("Die Art ist \"standard\" oder \"ermaessigt\".");
+    if (satz.satzPromille < 0 || satz.satzPromille > 1000)
+        return StoreResult::Fail("Der Steuersatz liegt zwischen 0 und 100 Prozent.");
+    // **The start date is the point of the whole table**, so it is required
+    // rather than defaulted to today: a rate entered a fortnight after it took
+    // effect would otherwise silently apply from the wrong day.
+    if (!satz.gueltigVon.Valid())
+        return StoreResult::Fail("Ein Steuersatz braucht ein Datum, ab dem er gilt.");
+
+    // Same country, same kind, same day: that is an edit of an existing rate
+    // rather than a new one, and an edit is what this table exists to prevent.
+    UltraDbRow doppelt;
+    if (QueryOne(std::string("SELECT ") + kEuSatzSpalten +
+                 " FROM eu_steuersatz WHERE land = ? AND art = ? AND gueltig_von = ?",
+                 { satz.land, satz.art, satz.gueltigVon.ToIso() }, doppelt)) {
+        return StoreResult::Fail(
+            "Für " + satz.land + " (" + satz.art + ") gibt es bereits einen Satz ab " +
+            FormatDateGerman(satz.gueltigVon) + ". Ein geänderter Satz bekommt das Datum, "
+            "ab dem er gilt; ein falsch erfasster wird gelöscht und neu angelegt.");
+    }
+
+    // A filed return must keep recomputing to what was filed.
+    std::string betroffen;
+    if (FilingBetroffen(EingereichteMeldungen(), satz.gueltigVon, betroffen)) {
+        return StoreResult::Fail(
+            "Ab " + FormatDateGerman(satz.gueltigVon) + " ist bereits eine Meldung "
+            "eingereicht (" + betroffen + "). Ein Satz, der diesen Zeitraum verändert, "
+            "würde eine abgegebene Meldung nachträglich anders rechnen lassen. "
+            "Zu korrigieren ist das über eine berichtigte Meldung.");
+    }
+
+    const StoreResult id = NextSequenceValue("eu_steuersatz", satz.id);
+    if (!id) return id;
+
+    const StoreResult r = Exec(
+        "INSERT INTO eu_steuersatz(id, land, art, satz_promille, gueltig_von,"
+        " gueltig_bis, geprueft, quelle, erfasst_am, benutzer)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?)",
+        { satz.id, satz.land, satz.art, satz.satzPromille, satz.gueltigVon.ToIso(),
+          satz.gueltigBis.Valid() ? satz.gueltigBis.ToIso() : std::string(),
+          satz.geprueft ? 1 : 0, satz.quelle, NowSeconds(), akteur.anmeldename },
+        "Der Steuersatz konnte nicht gespeichert werden");
+    if (!r) return r;
+
+    // Close the row this one supersedes: the last one for the same country and
+    // kind that started earlier and is still open. It keeps its own rate and
+    // its own span - it just stops the day before the new one starts.
+    UltraDbRow vorher;
+    if (QueryOne(std::string("SELECT ") + kEuSatzSpalten +
+                 " FROM eu_steuersatz WHERE land = ? AND art = ? AND gueltig_von < ?"
+                 " AND (gueltig_bis IS NULL OR gueltig_bis = '')"
+                 " ORDER BY gueltig_von DESC LIMIT 1",
+                 { satz.land, satz.art, satz.gueltigVon.ToIso() }, vorher)) {
+        const Date bis = satz.gueltigVon.AddDays(-1);
+        const StoreResult zu = Exec(
+            "UPDATE eu_steuersatz SET gueltig_bis = ? WHERE id = ?",
+            { bis.ToIso(), vorher["id"].AsInt64() },
+            "Der bisherige Satz konnte nicht abgeschlossen werden");
+        if (!zu) return zu;
+    }
+
+    return WriteAudit(akteur, "eu_steuersatz", satz.id, "anlegen",
+                      satz.land + " " + satz.art + " " +
+                      Number(satz.satzPromille) + "‰ ab " +
+                      FormatDateGerman(satz.gueltigVon));
+}
+
+StoreResult Store::EuSteuersatzLoeschen(int64_t id, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Steuersätze ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+
+    UltraDbRow row;
+    if (!QueryOne(std::string("SELECT ") + kEuSatzSpalten +
+                  " FROM eu_steuersatz WHERE id = ?", { id }, row))
+        return StoreResult::Fail("Diesen Steuersatz gibt es nicht.");
+    const EuSteuersatz satz = EuSatzAusZeile(row);
+
+    std::string betroffen;
+    if (FilingBetroffen(EingereichteMeldungen(), satz.gueltigVon, betroffen)) {
+        return StoreResult::Fail(
+            "Der Satz gilt ab " + FormatDateGerman(satz.gueltigVon) +
+            ", und für diesen Zeitraum ist bereits eine Meldung eingereicht (" +
+            betroffen + "). Er gehört zur abgegebenen Meldung und wird nicht gelöscht.");
+    }
+
+    const StoreResult r = Exec("DELETE FROM eu_steuersatz WHERE id = ?", { id },
+                               "Der Steuersatz konnte nicht gelöscht werden");
+    if (!r) return r;
+
+    // The row this one had closed becomes open again - otherwise deleting a
+    // mistyped rate would leave its predecessor ending on a day that no longer
+    // means anything, and the country would have no rate at all from then on.
+    const Date bisVorher = satz.gueltigVon.AddDays(-1);
+    const StoreResult auf = Exec(
+        "UPDATE eu_steuersatz SET gueltig_bis = '' WHERE land = ? AND art = ?"
+        " AND gueltig_bis = ?",
+        { satz.land, satz.art, bisVorher.ToIso() },
+        "Der vorherige Satz konnte nicht wieder geöffnet werden");
+    if (!auf) return auf;
+
+    return WriteAudit(akteur, "eu_steuersatz", id, "loeschen",
+                      satz.land + " " + satz.art + " ab " +
+                      FormatDateGerman(satz.gueltigVon));
+}
+
+StoreResult Store::EuSteuersaetzeAusDatei(const std::string& dateipfad, const Akteur& akteur,
+                                          int& outNeu, int& outBekannt) {
+    outNeu = 0;
+    outBekannt = 0;
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Steuersätze ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+
+    EuSteuersaetze datei;
+    std::string fehler;
+    if (!datei.Laden(dateipfad, fehler)) return StoreResult::Fail(fehler);
+
+    for (const EuSteuersatz& ausDatei : datei.Alle()) {
+        UltraDbRow vorhanden;
+        if (QueryOne(std::string("SELECT ") + kEuSatzSpalten +
+                     " FROM eu_steuersatz WHERE land = ? AND art = ? AND gueltig_von = ?",
+                     { ausDatei.land, ausDatei.art, ausDatei.gueltigVon.ToIso() },
+                     vorhanden)) {
+            // **Leave it exactly as it is.** Someone may have verified this rate
+            // by hand since the file shipped; re-seeding must not undo that.
+            ++outBekannt;
+            continue;
+        }
+        int64_t id = 0;
+        const StoreResult seq = NextSequenceValue("eu_steuersatz", id);
+        if (!seq) return seq;
+        const StoreResult r = Exec(
+            "INSERT INTO eu_steuersatz(id, land, art, satz_promille, gueltig_von,"
+            " gueltig_bis, geprueft, quelle, erfasst_am, benutzer)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            { id, ausDatei.land, ausDatei.art, ausDatei.satzPromille,
+              ausDatei.gueltigVon.ToIso(),
+              ausDatei.gueltigBis.Valid() ? ausDatei.gueltigBis.ToIso() : std::string(),
+              ausDatei.geprueft ? 1 : 0, ausDatei.quelle, NowSeconds(), akteur.anmeldename },
+            "Der Steuersatz konnte nicht übernommen werden");
+        if (!r) return r;
+        ++outNeu;
+    }
+
+    if (outNeu > 0) {
+        const StoreResult a = WriteAudit(akteur, "eu_steuersatz", 0, "importieren",
+                                         Number(outNeu) + " Sätze aus " + dateipfad);
+        if (!a) return a;
+    }
+    return StoreResult::Ok();
+}
+
 // ===== DATEV-IMPORT =====
 
 bool Store::DatevDateiSchonImportiert(int64_t mandantId, const std::string& dateiHash,
@@ -3762,12 +4542,12 @@ StoreResult Store::ImportiereDatevStapel(const DatevImportBericht& bericht,
     // they take their place in the hash chain and a later PruefeHashKette
     // covers them too.
     for (Buchung& b : fertig) {
-        if (!InsertBuchungInTx(tx, b, fehler))
+        if (!InsertBuchungInTx(tx, b, fehler, RowLock()))
             return abbrechen("Eine importierte Buchung konnte nicht geschrieben werden");
     }
 
     int64_t importId = 0;
-    if (!NextSequenzInTx(tx, "datev_import", importId, fehler))
+    if (!NextSequenzInTx(tx, "datev_import", importId, fehler, RowLock()))
         return abbrechen("Der Importeintrag konnte nicht angelegt werden");
     const UltraDbResult protokoll = UltraDb_ExecInTx(
         tx,
@@ -3781,7 +4561,7 @@ StoreResult Store::ImportiereDatevStapel(const DatevImportBericht& bericht,
     if (!AuditInTx(tx, akteur, "datev_import", importId, "importieren",
                    dateiname + ", " + Number(static_cast<int64_t>(fertig.size())) +
                    " Buchung(en), " + FormatDateGerman(bericht.von) + " - " +
-                   FormatDateGerman(bericht.bis), fehler))
+                   FormatDateGerman(bericht.bis), fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);

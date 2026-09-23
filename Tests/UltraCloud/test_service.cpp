@@ -112,7 +112,7 @@ TEST(service_upload_and_share_through_default_account) {
 
     AccountStore accounts;
     REQUIRE(accounts.Open("uctest-service", ":memory:"));
-    FileSecretStore secrets(TempDir("service-secrets"));
+    MemorySecretStore secrets;
     CloudService service(accounts, secrets);
 
     Account a; a.providerId = "nextcloud"; a.serverUrl = "https://cloud.example.com"; a.username = "erika";
@@ -151,7 +151,7 @@ TEST(service_upload_and_share_through_default_account) {
 TEST(service_reports_missing_provider_and_account) {
     AccountStore accounts;
     REQUIRE(accounts.Open("uctest-service2", ":memory:"));
-    FileSecretStore secrets(TempDir("service2-secrets"));
+    MemorySecretStore secrets;
     CloudService service(accounts, secrets);
     Account a; a.providerId = "no-such-provider"; a.username = "x";
     REQUIRE(service.AddAccount(a, {}, false).code == ResultCode::Unsupported);
@@ -164,7 +164,7 @@ TEST(memory_provider_round_trip) {
     MemoryProvider::Clear();
     AccountStore accounts;
     REQUIRE(accounts.Open("uctest-memory", ":memory:"));
-    FileSecretStore secrets(TempDir("memory-secrets"));
+    MemorySecretStore secrets;
     CloudService service(accounts, secrets);
 
     Account a; a.providerId = "memory"; a.username = "demo"; a.displayName = "Demo";
@@ -208,7 +208,7 @@ TEST(service_forwards_the_three_change_verbs) {
 
     AccountStore accounts;
     REQUIRE(accounts.Open("uctest-service-changes", ":memory:"));
-    FileSecretStore secrets(TempDir("service-change-secrets"));
+    MemorySecretStore secrets;
     CloudService service(accounts, secrets);
 
     Account a; a.providerId = "recorder"; a.username = "erika";
@@ -258,7 +258,7 @@ TEST(providers_without_the_change_verbs_answer_unsupported_through_the_service) 
     // than appearing to have done something.
     AccountStore accounts;
     REQUIRE(accounts.Open("uctest-service-unsupported", ":memory:"));
-    FileSecretStore secrets(TempDir("service-unsupported-secrets"));
+    MemorySecretStore secrets;
     CloudService service(accounts, secrets);
     RegisterBuiltInProviders();
 

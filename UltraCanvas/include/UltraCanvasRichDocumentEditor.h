@@ -297,6 +297,40 @@ public:
                           const std::string& altText = "");
     void DeleteBlock(int blockIndex);
 
+    // ===== TABLES =====
+    // Cells are stored sparsely (see RichTableGrid), so a cell's index within
+    // its row is not its column. Positions address cells by model index, which
+    // is what a caret carries; these take GRID columns wherever the argument
+    // names one, because a grid column is what the user is pointing at.
+    RichTableGrid TableGrid(int blockIndex) const;
+    // Where the caret's cell starts in the grid. False when the caret is not
+    // inside a table cell.
+    bool CaretGridPosition(int& outRow, int& outColumn) const;
+
+    // Inserts a rows x columns table at the caret and leaves the caret in its
+    // first cell. Returns the block index, or -1 for a degenerate size.
+    int InsertTable(int rows, int columns, bool headerRow = false);
+
+    // Each of these keeps the grid rectangular: a span reaching across the
+    // insertion point grows instead of being cut in two, and a span reaching
+    // into a deleted row or column shrinks (or, where the span started there,
+    // moves to the row below) instead of leaving a hole.
+    bool InsertTableRow(int blockIndex, int row, bool below);
+    bool InsertTableColumn(int blockIndex, int gridColumn, bool right);
+    // Deleting the last row or the last column deletes the table itself: a
+    // table with no cells has nothing to type into and no way back.
+    bool DeleteTableRow(int blockIndex, int row);
+    bool DeleteTableColumn(int blockIndex, int gridColumn);
+
+    // Grows the cell at (row, cellIndex) by `extraColumns` to the right and
+    // `extraRows` downwards, absorbing the cells it covers. Their text is
+    // appended to the surviving cell rather than dropped. Refuses a rectangle
+    // that would cut an existing span in half, since that cannot be stored.
+    bool MergeTableCells(int blockIndex, int row, int cellIndex,
+                         int extraColumns, int extraRows);
+    // Back to 1x1, with fresh empty cells filling the slots it gives up.
+    bool SplitTableCell(int blockIndex, int row, int cellIndex);
+
     // ===== CLIPBOARD SUPPORT =====
     // Blocks covered by `range`, trimmed to the selected text — the payload of
     // a rich copy. Media referenced by an image block is NOT copied; callers
@@ -328,6 +362,17 @@ public:
     // replace rather than one word per press. Returns how many were replaced.
     int ReplaceAll(const std::string& needle, const std::string& replacement,
                    const RichFindOptions& options);
+
+    // ===== WHAT THE LAST MUTATION TOUCHED =====
+    // The blocks the most recent change replaced, as an inclusive range in the
+    // document as it stands now; both -1 before anything has been changed. A
+    // view that caches a layout per block needs this, because an edit that
+    // leaves the caret where it was is otherwise indistinguishable from no
+    // edit at all - and would go on showing the old text.
+    void GetLastChangedBlocks(int& outFirst, int& outLast) const {
+        outFirst = lastChangedFirst;
+        outLast = lastChangedLast;
+    }
 
     // ===== UNDO / REDO =====
     bool CanUndo() const { return !undoStack.empty(); }
@@ -433,6 +478,11 @@ private:
     std::shared_ptr<UCRichDocument> doc;
     RichDocPosition caret;
     RichDocPosition anchor;
+
+    // Set by every mutation, including undo and redo; read by the view.
+    int lastChangedFirst = -1;
+    int lastChangedLast = -1;
+    void NoteChangedBlocks(int first, int count);
 
     std::vector<UndoStep> undoStack;
     std::vector<UndoStep> redoStack;

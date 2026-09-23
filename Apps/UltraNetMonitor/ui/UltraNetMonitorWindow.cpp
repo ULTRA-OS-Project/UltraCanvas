@@ -1,5 +1,5 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.cpp
-// Version: 0.3.0
+// Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorWindow.h"
 
@@ -11,10 +11,12 @@
 #include <chrono>
 #include <variant>
 
-// The app's own version, from the first line of Docs/UltraNetMonitor/CHANGELOG.md
-// through cmake/UltraCanvasVersion.cmake. Independent of the framework's.
+// ULTRANETMONITOR_VERSION comes from the build alone: CMake reads the first line
+// of Docs/UltraNetMonitor/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it
+// as a compile definition. No fallback here, so a build that lost it
+// fails instead of reporting a wrong number.
 #ifndef ULTRANETMONITOR_VERSION
-#define ULTRANETMONITOR_VERSION "0.0-dev"
+#error "ULTRANETMONITOR_VERSION is not defined: build through CMake, which reads it from Docs/UltraNetMonitor/CHANGELOG.md"
 #endif
 
 using namespace UltraCanvas;
@@ -37,6 +39,7 @@ constexpr unsigned kUiTimerMs          = 200;
 // Tab order, as added below.
 constexpr int kLiveTab    = 0;
 constexpr int kHistoryTab = 1;
+constexpr int kNamesTab   = 2;
 
 // The history range dropdown's entries, in seconds.
 const int64_t kRanges[] = { 3600, 24 * 3600, 7 * 24 * 3600, 30 * 24 * 3600 };
@@ -107,6 +110,9 @@ int PidOfSourceRow(const IListModel& model, int sourceRow, int pidColumn) {
 
 UltraNetMonitorWindow::~UltraNetMonitorWindow() {
     StopWorker();
+    // The sources first: their threads are the other writers of the store.
+    NetworkMonitor_StopNameSources();
+    if (nameListener_ != 0) NetworkMonitor_RemoveNameListener(nameListener_);
     if (uiTimer_ != 0) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(uiTimer_);
     }
@@ -118,8 +124,9 @@ UltraNetMonitorWindow::~UltraNetMonitorWindow() {
     }
 }
 
-bool UltraNetMonitorWindow::Initialize() {
+bool UltraNetMonitorWindow::Initialize(std::vector<std::string> nameNotes) {
     capabilities_ = NetworkMonitor_GetCapabilities();
+    nameNotes_ = std::move(nameNotes);
 
     WindowConfig config;
     config.title  = std::string("UltraNetMonitor ") + ULTRANETMONITOR_VERSION;
@@ -150,8 +157,22 @@ bool UltraNetMonitorWindow::Initialize() {
     tabs_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
     tabs_->AddTab("Live", BuildLivePage());
     tabs_->AddTab("History", BuildHistoryPage());
+    tabs_->AddTab("Names", BuildNamesPage());
     tabs_->SetActiveTab(kLiveTab);
+    tabs_->onTabChange = [this](int, int newTab) {
+        if (newTab == kNamesTab) RefreshNames();
+    };
     FillWith(page_, tabs_);
+
+    // Every observation a source reports goes to the store while recording.
+    // Runs on the source's thread; the store's mutex is the same one the
+    // worker records under.
+    nameListener_ = NetworkMonitor_AddNameListener([this](const DnsObservation& observation) {
+        if (!recording_.load()) return;
+        std::lock_guard<std::mutex> lock(storeMutex_);
+        if (store_ == NetworkMonitorInvalidStore) return;
+        if (NetworkMonitor_RecordDnsObservation(store_, observation)) ++recordedObservations_;
+    });
 
     window_->AddChild(page_);
     LayoutForSize(kWindowWidth, kWindowHeight);
@@ -345,6 +366,47 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildFlowList() {
     return flowView_;
 }
 
+std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildNamesPage() {
+    auto names = CreateContainer("nmNamesPage", 0, 0, 0, 0);
+    MakePlainColumn(names);
+    names->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+
+    auto bar = MakeToolbar("nmNamesBar");
+    namesFilter_ = CreateTextInput("nmNamesFilter", 0, 0, 260, 28);
+    namesFilter_->SetPlaceholder("Filter names (name, address, source)");
+    namesFilter_->onTextChanged = [this](const std::string& text) {
+        if (nameProxy_) nameProxy_->SetFilterText(text);
+    };
+    bar->AddChild(namesFilter_);
+
+    namesRefreshButton_ = CreateButton("nmNamesRefresh", 0, 0, 90, 28, "Refresh");
+    namesRefreshButton_->SetOnClick([this]() { RefreshNames(); });
+    bar->AddChild(namesRefreshButton_);
+
+    namesStatus_ = CreateLabel("nmNamesStatus", 0, 0, 0, 24, "");
+    namesStatus_->layoutItem.SetFlexGrow(1);
+    namesStatus_->layoutItem.SetFlexShrink(1);
+    bar->AddChild(namesStatus_);
+
+    names->AddChild(bar);
+    PinToolbar(bar);
+    FillWith(names, BuildNameList());
+    return names;
+}
+
+std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildNameList() {
+    nameModel_ = std::make_shared<NameListModel>();
+    nameProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(nameModel_);
+    nameProxy_->SetColumnSortKind(NameListModel::Observed, ListSortKind::Number);
+    nameProxy_->SetColumnSortKind(NameListModel::Expires, ListSortKind::Number);
+    nameView_ = std::make_shared<UltraCanvasListView>("nmNames", -1, -1, 900, 300);
+    nameView_->SetModel(nameProxy_);
+    nameView_->SetShowHeader(true);
+    nameView_->SetShowItemTooltips(true);
+    WireHeaderSorting(nameView_, nameProxy_);
+    return nameView_;
+}
+
 // ===== DATA FLOW =====
 
 void UltraNetMonitorWindow::StartWorker() {
@@ -406,6 +468,9 @@ void UltraNetMonitorWindow::ApplyPendingSnapshot() {
         processModel_->Replace(std::move(summaries));
         connectionModel_->Replace(std::move(connections));
         ReapplyProcessSelection();
+        // The Names tab follows the sources while it is in front, every
+        // other snapshot - a name table is cheap to list, not free.
+        if (tabs_ && tabs_->GetActiveTab() == kNamesTab && (++snapshotsApplied_ % 2) == 0) RefreshNames();
     }
     // Attribution notes ("N processes could not be inspected") move with
     // each snapshot, so the capabilities are re-read here, not once.
@@ -422,6 +487,7 @@ void UltraNetMonitorWindow::RefreshStatus() {
         subtitle += capabilities_.perConnectionBytes ? " · byte counters"
                                                      : " · no byte counters on this backend";
     }
+    subtitle += " · names: " + NameSourcesSummary();
     if (subtitleLabel_) subtitleLabel_->SetText(subtitle);
 
     std::string status;
@@ -454,10 +520,47 @@ void UltraNetMonitorWindow::RefreshStatus() {
             error = recordError_;
         }
         status += error.empty()
-            ? " · recording (" + std::to_string(recordedSnapshots_.load()) + " snapshots)"
+            ? " · recording (" + std::to_string(recordedSnapshots_.load()) + " snapshots, " +
+              std::to_string(recordedObservations_.load()) + " DNS observations)"
             : " · recording failed: " + error;
     }
     if (statusLabel_) statusLabel_->SetText(status);
+}
+
+// ===== NAMES =====
+
+std::string UltraNetMonitorWindow::NameSourcesSummary() const {
+    std::vector<NameSourceStatus> sources;
+    NetworkMonitor_ListNameSources(sources);
+    if (sources.empty()) return "no sources";
+    std::string text;
+    for (const auto& source : sources) {
+        if (!text.empty()) text += ", ";
+        text += source.name;
+        if (!source.running) text += " (stopped)";
+        else if (!source.lastError.empty()) text += " (failed)";
+    }
+    return text;
+}
+
+void UltraNetMonitorWindow::RefreshNames() {
+    std::vector<NameRecord> records;
+    NetworkMonitor_ListNames(records);
+    const std::size_t count = records.size();
+    std::size_t observed = 0;
+    for (const auto& record : records) if (NetworkMonitor_NameIsObserved(record.source)) ++observed;
+    nameModel_->Replace(std::move(records));
+
+    std::string text = std::to_string(count) + " addresses named, " + std::to_string(observed) +
+                       " from observed queries";
+    std::vector<NameSourceStatus> sources;
+    NetworkMonitor_ListNameSources(sources);
+    for (const auto& source : sources) {
+        text += " · " + source.name + ": " + std::to_string(source.observations) + " observations";
+        if (!source.lastError.empty()) text += " - " + source.lastError;
+    }
+    for (const auto& note : nameNotes_) text += " · " + note;
+    if (namesStatus_) namesStatus_->SetText(text);
 }
 
 void UltraNetMonitorWindow::SetPaused(bool paused) {

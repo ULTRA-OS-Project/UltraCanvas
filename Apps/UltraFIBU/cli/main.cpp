@@ -14,6 +14,7 @@
 // being usable without a window.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "UltraFIBUOss.h"
 #include "UltraFIBUBeleg.h"
 #include "UltraFIBUDatev.h"
 #include "UltraFIBURechnungPdf.h"
@@ -54,6 +55,9 @@ void PrintUsage() {
         "        --steuernummer <nr>   Steuernummer des Finanzamts\n"
         "        --telefon <nr> --email <adr> --web <url>\n"
         "        --iban <iban> --bic <bic> --bank <name>\n"
+        "        --finanzamt-nr <nr>   vierstellige Finanzamtsnummer;\n"
+        "                              ohne sie weiß ELSTER nicht, wohin\n"
+        "                              die Voranmeldung geht\n"
         "        --beraternummer <nr> --mandantennummer <nr>\n"
         "                              von der Kanzlei; ohne sie lehnt\n"
         "                              DATEV den Import ab\n"
@@ -115,6 +119,61 @@ void PrintUsage() {
         "        --nochmal             eine bereits importierte Datei\n"
         "                              erneut zulassen\n"
         "  datev-importe <datei>   Bisherige DATEV-Importe anzeigen\n"
+        "\n"
+        "  konten-import <datei> <EXTF_Kontenbeschriftungen.csv>\n"
+        "                          Kontenrahmen aus einem DATEV-Export\n"
+        "                          einlesen (Format-Kategorie 20); zeigt nur\n"
+        "                          an, bis --uebernehmen angegeben wird.\n"
+        "                          Nummer und Bezeichnung; Steuerschluessel\n"
+        "                          bleiben unveraendert\n"
+        "        --uebernehmen         Konten wirklich schreiben\n"
+        "\n"
+        "  beleg-import <datei> <beleg> [<beleg> ...]\n"
+        "                          Belege einlesen und archivieren (PDF oder\n"
+        "                          abfotografiert: JPEG, PNG, TIFF, HEIC,\n"
+        "                          WebP); je Datei entsteht ein Entwurf\n"
+        "        --datum <datum>       Belegdatum (Pflicht)\n"
+        "        --art <art>           eingangsrechnung (Standard),\n"
+        "                              ausgangsrechnung, ...\n"
+        "        --kreis <name>        Nummernkreis (Standard: eingang)\n"
+        "\n"
+        "Steuer:\n"
+        "  ustva <datei>           Umsatzsteuer-Voranmeldung berechnen\n"
+        "        --jahr <JJJJ>         (Pflicht)\n"
+        "        --zeitraum <ZZ>       01-12 Monat, 41-44 Quartal (Pflicht)\n"
+        "        --details             die Buchungen je Kennzahl zeigen\n"
+        "  ustva-xml <datei>       Voranmeldung als ELSTER-XML schreiben\n"
+        "        --jahr <JJJJ> --zeitraum <ZZ>\n"
+        "        --ziel <verzeichnis>  Zielverzeichnis (Standard: .)\n"
+        "        --echtfall            echte Abgabe statt Testübermittlung\n"
+        "        --berichtigt          berichtigte Anmeldung (Kz 10)\n"
+        "  oss <datei>             One-Stop-Shop-Meldung berechnen\n"
+        "        --jahr <JJJJ> --quartal <Q1..Q4>\n"
+        "        --ioss --monat <MM>   statt dessen IOSS, monatlich\n"
+        "        --datei               BOP-Transportdatei schreiben\n"
+        "        --ziel <verzeichnis>\n"
+        "  lieferschwelle <datei>  Stand der 10.000-EUR-Schwelle (§ 3c UStG)\n"
+        "        --jahr <JJJJ>\n"
+        "  steuerwahl <datei>      Welche Steuerschlüssel zu einem Partner passen\n"
+        "        --partner <konto|name>   (Pflicht)\n"
+        "        --datum <datum>          (Pflicht)\n"
+        "        --art <belegart>         Vorgabe: ausgangsrechnung\n"
+        "  eu-saetze <datei>       Umsatzsteuersätze der Mitgliedstaaten\n"
+        "        --land <XX>           nur ein Land\n"
+        "  eu-satz-neu <datei>     Neuen Steuersatz ab einem Datum erfassen\n"
+        "        --land <XX> --satz <prozent> --ab <JJJJ-MM-TT>   (Pflicht)\n"
+        "        --art <standard|ermaessigt>\n"
+        "        --geprueft --quelle \"...\"   erst dann wird verglichen\n"
+        "  eu-satz-loeschen <datei> --id <nr>\n"
+        "                          Falsch erfassten Satz entfernen\n"
+        "  eu-saetze-uebernehmen <datei>\n"
+        "                          Mitgelieferte Sätze in die Datenbank holen\n"
+        "        --datei <pfad>        statt data/EU-Steuersaetze.csv\n"
+        "  meldungen <datei>       Abgegebene Meldungen anzeigen\n"
+        "  meldung-quittung <datei> <id>\n"
+        "                          Transferticket nach dem Upload eintragen\n"
+        "        --ticket <nr>         (Pflicht)\n"
+        "        --datum <datum>       Tag der Abgabe\n"
         "\n"
         "Bank:\n"
         "  bankkonto-neu <datei>   Bankkonto anlegen\n"
@@ -266,6 +325,7 @@ int Einrichten(int argc, char** argv) {
     mandant.strasse      = Option(argc, argv, "--strasse");
     mandant.plz          = Option(argc, argv, "--plz");
     mandant.steuernummer = Option(argc, argv, "--steuernummer");
+    mandant.finanzamtNummer = Option(argc, argv, "--finanzamt-nr");
     mandant.telefon      = Option(argc, argv, "--telefon");
     mandant.email        = Option(argc, argv, "--email");
     mandant.webseite     = Option(argc, argv, "--web");
@@ -302,6 +362,15 @@ int Einrichten(int argc, char** argv) {
     belege.praefix   = "B-";
     belege.stellen   = 5;
     store.SaveNummernkreis(belege, akteur);
+    // Incoming documents get their own range. A supplier's invoice carries the
+    // supplier's number; this is our internal one, and mixing it with the
+    // outgoing invoice numbers would make both meaningless.
+    Nummernkreis eingang;
+    eingang.mandantId = mandant.id;
+    eingang.kreis     = "eingang";
+    eingang.praefix   = "E-{JJJJ}";
+    eingang.stellen   = 5;
+    store.SaveNummernkreis(eingang, akteur);
 
     std::printf("Buchhaltung angelegt: %s\n", datei.c_str());
     std::printf("  Mandant          %s\n", mandant.name.c_str());
@@ -1134,6 +1203,85 @@ void ZeigeDatevErgebnis(const DatevErgebnis& ergebnis) {
         std::printf("  ACHTUNG: %s\n", warnung.c_str());
 }
 
+int KontenImport(int argc, char** argv) {
+    const std::string datei     = Positional(argc, argv, 0);
+    const std::string datevDatei = Positional(argc, argv, 1);
+    if (datevDatei.empty()) {
+        std::printf("Fehler: Keine DATEV-Datei angegeben.\n"
+                    "Aufruf: ultrafibu konten-import <datei> "
+                    "<EXTF_Kontenbeschriftungen.csv> [--uebernehmen]\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    DatevDefinition definition;
+    if (!LadeDatevDefinition("DATEV-Sachkontenbeschriftungen-v700.csv", definition))
+        return 1;
+
+    const KontenImportBericht bericht =
+        LeseKontenbeschriftungen(datevDatei, definition);
+    if (!bericht.ok) {
+        std::printf("Fehler: %s\n", bericht.fehler.c_str());
+        return 1;
+    }
+    std::printf("%s, Kategorie %d, Berater %s, Mandant %s\n",
+                bericht.kennzeichen.c_str(), bericht.kategorie,
+                bericht.beraternummer.c_str(), bericht.mandantennummer.c_str());
+    if (!bericht.bezeichnung.empty())
+        std::printf("\"%s\"\n", bericht.bezeichnung.c_str());
+
+    // Which chart the numbers belong to decides how a new account is
+    // classified, so it comes from the Geschäftsjahr rather than a guess.
+    std::vector<Geschaeftsjahr> jahre = store.Geschaeftsjahre(mandant.id);
+    const std::string skr = jahre.empty() ? std::string("SKR03") : jahre.back().skr;
+
+    int neu = 0, geaendert = 0;
+    const std::vector<Konto> zuSpeichern = FuegeKontenZusammen(
+        store.Konten(mandant.id), bericht.konten, skr, neu, geaendert);
+    const int unveraendert = bericht.uebernommen - neu - geaendert;
+
+    std::printf("\n%d Zeile(n) gelesen, %d Konto/Konten lesbar, %d übersprungen\n",
+                bericht.gelesen, bericht.uebernommen, bericht.uebersprungen);
+    std::printf("Kontenrahmen %s: %d neu, %d umbenannt, %d unverändert\n",
+                skr.c_str(), neu, geaendert, unveraendert);
+
+    for (const std::string& z : bericht.fehlerZeilen)
+        std::printf("  %s\n", z.c_str());
+    for (const std::string& w : bericht.warnungen)
+        std::printf("  ACHTUNG: %s\n", w.c_str());
+
+    // The format carries no tax key, so an import can never switch a tax
+    // split on - and must not switch one off either. Saying so is the point:
+    // a user who expected the Automatik to arrive with the chart would
+    // otherwise wait for something that is not in the file.
+    std::printf("\nHinweis: Dieses Format enthält nur Nummer und Bezeichnung.\n"
+                "         Steuerschlüssel (Automatikkonten) stehen nicht darin und\n"
+                "         bleiben unverändert - vorhandene werden nicht gelöscht.\n");
+
+    if (!HasOption(argc, argv, "--uebernehmen")) {
+        std::printf("\nEs wurde nichts geschrieben. "
+                    "Zum Übernehmen mit --uebernehmen wiederholen.\n");
+        return 0;
+    }
+    if (zuSpeichern.empty()) {
+        std::printf("\nNichts zu schreiben - der Kontenrahmen ist schon aktuell.\n");
+        return 0;
+    }
+    int geschrieben = 0;
+    const StoreResult ergebnis =
+        store.ImportKonten(mandant.id, zuSpeichern, akteur, geschrieben);
+    if (!ergebnis) {
+        std::printf("Fehler: %s\n", ergebnis.fehler.c_str());
+        return 1;
+    }
+    std::printf("\n%d Konto/Konten geschrieben.\n", geschrieben);
+    return 0;
+}
+
 int DatevExport(int argc, char** argv) {
     const std::string datei = Positional(argc, argv, 0);
     Store store;
@@ -1270,7 +1418,10 @@ int DatevImport(int argc, char** argv) {
 
     const DatevImportBericht bericht = LeseBuchungsstapel(
         datevDatei, mandant, jahre.back(),
-        store.SteuerschluesselListe(mandant.id));
+        store.SteuerschluesselListe(mandant.id),
+        // The chart of accounts, so a row on an Automatikkonto is split by the
+        // account the way DATEV would split it.
+        store.Konten(mandant.id));
 
     std::printf("%s, Version %d, Kategorie %d\n", bericht.kennzeichen.c_str(),
                 bericht.versionsnummer, bericht.kategorie);
@@ -1331,6 +1482,416 @@ int DatevImport(int argc, char** argv) {
         return 1;
     }
     std::printf("\n%d Buchung(en) übernommen.\n", geschrieben);
+    return 0;
+}
+
+int BelegImport(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    // Every positional after the database is a file. An import button and a
+    // drop target both hand over a list, and so does a shell glob.
+    std::vector<std::string> pfade;
+    for (int i = 1; ; ++i) {
+        const std::string p = Positional(argc, argv, i);
+        if (p.empty()) break;
+        pfade.push_back(p);
+    }
+    if (pfade.empty()) {
+        std::printf("Fehler: Aufruf ist "
+                    "ultrafibu beleg-import <datei> <beleg> [<beleg> ...] "
+                    "--datum <datum>\n");
+        return 2;
+    }
+
+    Date datum;
+    const std::string datumText = Option(argc, argv, "--datum");
+    if (datumText.empty() || !TryParseDateGerman(datumText, datum)) {
+        std::printf("Fehler: --datum <datum> ist erforderlich.\n"
+                    "Ohne Belegdatum lässt sich der Beleg keinem Geschäftsjahr "
+                    "zuordnen; aus dem Beleg wird es nicht geraten.\n");
+        return 2;
+    }
+    BelegArt art = BelegArt::Eingangsrechnung;
+    const std::string artText = Option(argc, argv, "--art");
+    if (!artText.empty() && !BelegArtFromText(artText, art)) {
+        std::printf("Fehler: \"%s\" ist keine Belegart.\n", artText.c_str());
+        return 2;
+    }
+
+    const Store::BelegImportBericht b = store.ImportiereBelegDateien(
+        mandant.id, pfade, art, datum, Option(argc, argv, "--kreis", "eingang"),
+        akteur);
+
+    std::printf("Archiv: %s\n\n", store.BelegArchivPfad().c_str());
+    for (const Store::BelegImportEintrag& e : b.eintraege) {
+        if (!e.ok) {
+            std::printf("  ABGELEHNT  %-40s %s\n", e.dateiname.substr(0, 40).c_str(),
+                        e.fehler.c_str());
+        } else if (e.schonVorhanden) {
+            std::printf("  BEKANNT    %-40s liegt schon als %s\n",
+                        e.dateiname.substr(0, 40).c_str(), e.belegnummer.c_str());
+        } else {
+            std::printf("  ANGELEGT   %-40s %s\n", e.dateiname.substr(0, 40).c_str(),
+                        e.belegnummer.c_str());
+        }
+    }
+    std::printf("\n%d Datei(en): %d angelegt, %d bereits vorhanden, %d abgelehnt.\n",
+                b.gelesen, b.angelegt, b.bekannt, b.abgelehnt);
+    for (const std::string& w : b.warnungen) std::printf("  ACHTUNG: %s\n", w.c_str());
+    if (!b.ok) { std::printf("\nFehler: %s\n", b.fehler.c_str()); return 1; }
+    if (b.angelegt > 0)
+        std::printf("\nWeiter mit: ultrafibu belege %s --status entwurf\n",
+                    datei.c_str());
+    return 0;
+}
+
+// ===== STEUER =====
+
+// Load the year's Kennzahl mapping, saying plainly what is missing when it is
+// not there: a return computed against no mapping would be all zeros and look
+// like a quiet month.
+bool LadeUstvaMapping(int jahr, UstvaMapping& mapping) {
+    const std::string pfad = UstvaMappingPfad(jahr);
+    if (pfad.empty()) {
+        std::printf("Fehler: Für %d gibt es keine Kennzahlen-Datei "
+                    "(data/UStVA-Kennzahlen-%d.csv).\n"
+                    "Das Formular ändert sich jährlich; die Datei des Jahres "
+                    "muss vorliegen.\n", jahr, jahr);
+        return false;
+    }
+    std::string fehler;
+    if (!mapping.Laden(pfad, fehler)) {
+        std::printf("Fehler: %s\n", fehler.c_str());
+        return false;
+    }
+    return true;
+}
+
+void ZeigeUstva(const UstvaBerechnung& b, const UstvaMapping& mapping,
+                bool details) {
+    std::printf("Umsatzsteuer-Voranmeldung %d/%s (%s - %s)\n",
+                b.jahr, b.zeitraum.c_str(),
+                FormatDateGerman(b.von).c_str(), FormatDateGerman(b.bis).c_str());
+
+    std::printf("\n%-6s %-52s %16s\n", "Kz", "Bezeichnung", "Betrag");
+    std::vector<const KennzahlBetrag*> zeilen;
+    for (const auto& e : b.kennzahlen)
+        if (!e.second.code.empty()) zeilen.push_back(&e.second);
+    std::sort(zeilen.begin(), zeilen.end(),
+              [](const KennzahlBetrag* x, const KennzahlBetrag* y) {
+                  return std::atoi(x->code.c_str()) < std::atoi(y->code.c_str());
+              });
+    for (const KennzahlBetrag* kb : zeilen) {
+        if (kb->betrag.Minor() == 0 && kb->code != "83") continue;
+        // The form's own wording, so this list can be read down beside the
+        // paper Vordruck line by line.
+        UstvaKennzahl kz;
+        const std::string text =
+            mapping.Finde(kb->code, kz) ? kz.bezeichnung : KennzahlArtToText(kb->art);
+        std::printf("%-6s %-52s %16s\n", kb->code.c_str(),
+                    text.substr(0, 52).c_str(), kb->betrag.ToString().c_str());
+        if (details && !kb->buchungIds.empty()) {
+            std::printf("       aus %d Buchung(en):", kb->buchungen);
+            for (size_t i = 0; i < kb->buchungIds.size() && i < 12; ++i)
+                std::printf(" %lld", static_cast<long long>(kb->buchungIds[i]));
+            if (kb->buchungIds.size() > 12) std::printf(" ...");
+            std::printf("\n");
+        }
+    }
+
+    std::printf("\n  Umsatzsteuer   %16s\n", b.summeSteuer.ToString().c_str());
+    std::printf("  Vorsteuer      %16s\n", b.summeVorsteuer.ToString().c_str());
+    std::printf("  Kz 83          %16s  %s\n", b.zahllast.ToString().c_str(),
+                b.zahllast.Minor() >= 0 ? "(zu zahlen)" : "(Erstattung)");
+
+    for (const std::string& a : b.abweichungen)
+        std::printf("\n  ABWEICHUNG: %s\n", a.c_str());
+    for (const std::string& w : b.warnungen)
+        std::printf("\n  %s\n", w.c_str());
+
+    if (!b.luecken.empty()) {
+        std::printf("\nNicht zugeordnet - die Meldung ist damit unvollständig:\n");
+        for (const UstvaLuecke& l : b.luecken) {
+            std::printf("  %-12s %14s netto, %12s Steuer, %d Buchung(en)\n",
+                        l.steuerschluessel.c_str(), l.netto.ToString().c_str(),
+                        l.steuer.ToString().c_str(), l.buchungen);
+            std::printf("      %s\n", l.grund.c_str());
+        }
+    }
+}
+
+int Ustva(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const int jahr = std::atoi(Option(argc, argv, "--jahr").c_str());
+    const std::string zeitraum = Option(argc, argv, "--zeitraum");
+    if (jahr == 0 || zeitraum.empty()) {
+        std::printf("Fehler: --jahr und --zeitraum sind erforderlich.\n"
+                    "Zeitraum: 01-12 für einen Monat, 41-44 für ein Quartal.\n");
+        return 2;
+    }
+    UstvaMapping mapping;
+    if (!LadeUstvaMapping(jahr, mapping)) return 1;
+
+    const UstvaBerechnung b = store.BerechneUstvaFuer(mandant.id, jahr, zeitraum, mapping);
+    if (!b.ok) { std::printf("Fehler: %s\n", b.fehler.c_str()); return 1; }
+    ZeigeUstva(b, mapping, HasOption(argc, argv, "--details"));
+    return b.Vollstaendig() ? 0 : 1;
+}
+
+int UstvaXml(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    const int jahr = std::atoi(Option(argc, argv, "--jahr").c_str());
+    const std::string zeitraum = Option(argc, argv, "--zeitraum");
+    if (jahr == 0 || zeitraum.empty()) {
+        std::printf("Fehler: --jahr und --zeitraum sind erforderlich.\n");
+        return 2;
+    }
+    UstvaMapping mapping;
+    if (!LadeUstvaMapping(jahr, mapping)) return 1;
+
+    const UstvaBerechnung b = store.BerechneUstvaFuer(mandant.id, jahr, zeitraum, mapping);
+    if (!b.ok) { std::printf("Fehler: %s\n", b.fehler.c_str()); return 1; }
+    ZeigeUstva(b, mapping, false);
+
+    ElsterKopf kopf;
+    kopf.steuernummer    = mandant.steuernummer;
+    kopf.finanzamtNummer = mandant.finanzamtNummer;
+    kopf.name            = mandant.name;
+    kopf.strasse         = mandant.strasse;
+    kopf.plz             = mandant.plz;
+    kopf.ort             = mandant.ort;
+    kopf.produktVersion  = ULTRAFIBU_CLI_VERSION;
+    kopf.echtfall        = HasOption(argc, argv, "--echtfall");
+    kopf.berichtigt      = HasOption(argc, argv, "--berichtigt");
+    TryParseDateGerman(Option(argc, argv, "--erstellt"), kopf.erstellt);
+    if (!kopf.erstellt.Valid()) kopf.erstellt = b.bis;
+
+    const ElsterErgebnis r =
+        SchreibeUstvaXml(b, kopf, Option(argc, argv, "--ziel", "."));
+    if (!r.ok) { std::printf("\nFehler: %s\n", r.fehler.c_str()); return 1; }
+
+    std::printf("\nGeschrieben: %s\n", r.datei.c_str());
+    std::printf("SHA-256:     %s\n", r.xmlHash.c_str());
+    for (const std::string& w : r.warnungen) std::printf("  ACHTUNG: %s\n", w.c_str());
+
+    Store::Meldung meldung;
+    meldung.mandantId  = mandant.id;
+    meldung.art        = "ustva";
+    meldung.jahr       = jahr;
+    meldung.zeitraum   = zeitraum;
+    meldung.status     = Store::MeldungStatus::Erzeugt;
+    meldung.zahllast   = b.zahllast;
+    meldung.datei      = r.datei;
+    meldung.xmlHash    = r.xmlHash;
+    meldung.berichtigt = kopf.berichtigt;
+    meldung.echtfall   = kopf.echtfall;
+    meldung.kennzahlenJson = KennzahlenJson(b);
+    const StoreResult eingetragen = store.MeldungEintragen(meldung, akteur);
+    if (!eingetragen) {
+        std::printf("\nHinweis: %s\n", eingetragen.fehler.c_str());
+        return 1;
+    }
+    std::printf("\nAls Meldung %lld protokolliert. Nach dem Upload in Mein ELSTER:\n"
+                "  ultrafibu meldung-quittung %s %lld --ticket <Transferticket>\n",
+                static_cast<long long>(meldung.id), datei.c_str(),
+                static_cast<long long>(meldung.id));
+    return 0;
+}
+
+int Oss(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const bool ioss = HasOption(argc, argv, "--ioss");
+    const OssVerfahren verfahren = ioss ? OssVerfahren::Ioss : OssVerfahren::Oss;
+    const int jahr = std::atoi(Option(argc, argv, "--jahr").c_str());
+    const std::string zeitraum = ioss ? Option(argc, argv, "--monat")
+                                      : Option(argc, argv, "--quartal");
+    if (jahr == 0 || zeitraum.empty()) {
+        std::printf("Fehler: --jahr und %s sind erforderlich.\n",
+                    ioss ? "--monat <MM>" : "--quartal <Q1..Q4>");
+        return 2;
+    }
+    Date von, bis;
+    if (!OssZeitraumGrenzen(verfahren, jahr, zeitraum, von, bis)) {
+        std::printf("Fehler: \"%s\" ist kein %s.\n", zeitraum.c_str(),
+                    ioss ? "Monat (01-12)" : "Quartal (Q1-Q4)");
+        return 2;
+    }
+
+    // The table first: it is the copy a user can edit, and an edited rate that
+    // the return ignored in favour of the shipped file would be worse than no
+    // editor at all. The CSV is the fallback for a database nobody seeded.
+    EuSteuersaetze saetze = store.EuSteuersaetzeGeladen();
+    if (saetze.Anzahl() == 0) {
+        const std::string pfad = EuSteuersaetzePfad();
+        std::string fehler;
+        if (pfad.empty() || !saetze.Laden(pfad, fehler)) {
+            std::printf("Hinweis: die EU-Steuersätze sind nicht geladen (%s); die "
+                        "berechneten Sätze können nicht geprüft werden.\n",
+                        fehler.empty() ? "Datei nicht gefunden" : fehler.c_str());
+        } else {
+            std::printf("Hinweis: die Sätze stammen aus %s, nicht aus der Datenbank. "
+                        "Mit \"ultrafibu eu-saetze-uebernehmen\" werden sie "
+                        "übernommen und dann im Programm pflegbar.\n", pfad.c_str());
+        }
+    }
+
+    const OssBerechnung b = BerechneOss(verfahren, mandant.id, jahr, zeitraum, von, bis,
+                                        store.Journal(mandant.id, von, bis),
+                                        store.SteuerschluesselListe(mandant.id), saetze);
+    if (!b.ok) { std::printf("Fehler: %s\n", b.fehler.c_str()); return 1; }
+
+    std::printf("%s-Meldung %d/%s (%s - %s)\n\n",
+                ioss ? "IOSS" : "OSS", jahr, zeitraum.c_str(),
+                FormatDateGerman(von).c_str(), FormatDateGerman(bis).c_str());
+    if (b.posten.empty()) {
+        std::printf("Kein OSS-Umsatz im Zeitraum.\n");
+    } else {
+        std::printf("%-6s %8s %18s %18s %s\n", "Land", "Satz", "Bemessung",
+                    "Steuer", "Satz geprüft");
+        for (const OssPosten& p : b.posten) {
+            char satz[16];
+            std::snprintf(satz, sizeof(satz), "%d,%d %%", p.satzPromille / 10,
+                          p.satzPromille % 10);
+            std::printf("%-6s %8s %18s %18s %s\n", p.land.c_str(), satz,
+                        p.bemessung.ToString().c_str(), p.steuer.ToString().c_str(),
+                        p.satzGeprueft ? (p.satzHinweis.empty() ? "ja" : "ABWEICHUNG")
+                                       : "-");
+        }
+        std::printf("%-6s %8s %18s %18s\n", "Summe", "",
+                    b.summeBemessung.ToString().c_str(), b.summeSteuer.ToString().c_str());
+    }
+
+    // The reconciliation that matters: the same turnover must appear in UStVA
+    // Kz 45, and the two come from the same journal by different paths.
+    if (!ioss) {
+        UstvaMapping mapping;
+        const std::string mp = UstvaMappingPfad(jahr);
+        std::string mf;
+        if (!mp.empty() && mapping.Laden(mp, mf)) {
+            const std::string ustvaZeitraum =
+                UstvaZeitraumCode(zeitraum[1] - '0', true);
+            const UstvaBerechnung u =
+                store.BerechneUstvaFuer(mandant.id, jahr, ustvaZeitraum, mapping);
+            if (u.ok) {
+                const OssUstvaAbgleich a = PruefeGegenUstva(b, u);
+                std::printf("\n  %s %s\n", a.stimmt ? "OK:" : "ACHTUNG:",
+                            a.hinweis.c_str());
+            }
+        }
+    }
+
+    for (const std::string& w : b.warnungen) std::printf("\n  ACHTUNG: %s\n", w.c_str());
+    if (!b.luecken.empty()) {
+        std::printf("\nNicht meldbar:\n");
+        for (const OssLuecke& l : b.luecken)
+            std::printf("  %-14s %16s Steuer, %d Buchung(en)\n      %s\n",
+                        l.steuerschluessel.c_str(), l.steuer.ToString().c_str(),
+                        l.buchungen, l.grund.c_str());
+    }
+
+    if (HasOption(argc, argv, "--datei")) {
+        const OssDateiErgebnis r =
+            SchreibeBopDatei(b, mandant.ustIdNr, Option(argc, argv, "--ziel", "."));
+        if (!r.ok) { std::printf("\nFehler: %s\n", r.fehler.c_str()); return 1; }
+        std::printf("\nGeschrieben: %s\nSHA-256:     %s\n",
+                    r.datei.c_str(), r.hash.c_str());
+        for (const std::string& w : r.warnungen)
+            std::printf("  ACHTUNG: %s\n", w.c_str());
+    }
+    return b.Vollstaendig() ? 0 : 1;
+}
+
+int Lieferschwelle(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const int jahr = std::atoi(Option(argc, argv, "--jahr").c_str());
+    if (jahr == 0) { std::printf("Fehler: --jahr <JJJJ> ist erforderlich.\n"); return 2; }
+
+    const SchwellenStand stand = PruefeLieferschwelle(
+        jahr, store.Journal(mandant.id, Date(jahr, 1, 1), Date(jahr, 12, 31)),
+        store.SteuerschluesselListe(mandant.id));
+
+    std::printf("Lieferschwelle § 3c UStG, %d\n\n", jahr);
+    std::printf("  EU-Umsatz (OSS-Schlüssel)  %16s\n", stand.summe.ToString().c_str());
+    std::printf("  Schwelle                   %16s\n", stand.schwelle.ToString().c_str());
+    std::printf("  Status                     %16s\n",
+                stand.ueberschritten ? "ÜBERSCHRITTEN"
+                                     : (stand.nahe ? "nahe" : "darunter"));
+    for (const std::string& h : stand.hinweise) std::printf("\n  %s\n", h.c_str());
+    return 0;
+}
+
+int Meldungen(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const std::vector<Store::Meldung> liste = store.Meldungen(mandant.id);
+    if (liste.empty()) { std::printf("Es wurde noch keine Meldung erzeugt.\n"); return 0; }
+    std::printf("%5s %-7s %-9s %14s %-12s %-24s %s\n",
+                "Id", "Art", "Zeitraum", "Zahllast", "Status", "Transferticket", "Datei");
+    for (const Store::Meldung& m : liste) {
+        const char* status =
+            m.status == Store::MeldungStatus::Eingereicht ? "eingereicht" :
+            m.status == Store::MeldungStatus::Bestaetigt  ? "bestätigt"   :
+            m.status == Store::MeldungStatus::Erzeugt     ? "erzeugt"     : "entwurf";
+        std::printf("%5lld %-7s %4d/%-4s %14s %-12s %-24s %s%s\n",
+                    static_cast<long long>(m.id), m.art.c_str(), m.jahr,
+                    m.zeitraum.c_str(), m.zahllast.ToString().c_str(), status,
+                    m.transferticket.empty() ? "-" : m.transferticket.c_str(),
+                    m.datei.c_str(), m.echtfall ? "" : "  (Test)");
+    }
+    return 0;
+}
+
+int MeldungQuittung(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    const std::string idText = Positional(argc, argv, 1);
+    const std::string ticket = Option(argc, argv, "--ticket");
+    if (idText.empty() || ticket.empty()) {
+        std::printf("Fehler: Aufruf ist ultrafibu meldung-quittung <datei> <id> "
+                    "--ticket <Transferticket>\n"
+                    "Das Transferticket steht in der Quittung von Mein ELSTER "
+                    "und ist der Nachweis, dass die Meldung angekommen ist.\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    Date abgabe;
+    TryParseDateGerman(Option(argc, argv, "--datum"), abgabe);
+
+    const StoreResult r = store.MeldungQuittung(std::atoll(idText.c_str()), ticket,
+                                                abgabe, akteur);
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Transferticket %s eingetragen.\n", ticket.c_str());
     return 0;
 }
 
@@ -1670,6 +2231,237 @@ int DatevImporte(int argc, char** argv) {
     return 0;
 }
 
+int Steuerwahl(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const std::string partnerText = Option(argc, argv, "--partner");
+    if (partnerText.empty()) {
+        std::printf("Fehler: --partner <konto|name> ist erforderlich.\n");
+        return 2;
+    }
+    Partner partner;
+    if (!FindePartner(store, mandant.id, partnerText, partner)) {
+        std::printf("Fehler: Kein Partner gefunden für \"%s\".\n", partnerText.c_str());
+        return 1;
+    }
+
+    BelegArt art = BelegArt::Ausgangsrechnung;
+    const std::string artText = Option(argc, argv, "--art");
+    if (!artText.empty() && !BelegArtFromText(artText, art)) {
+        std::printf("Fehler: \"%s\" ist keine Belegart.\n", artText.c_str());
+        return 2;
+    }
+    // The date is required rather than defaulted to today: tax keys carry a
+    // validity, and "which keys apply" has no answer without a day. The engine
+    // has no clock on purpose, and this command is not the place to give it one.
+    Date datum;
+    const std::string datumText = Option(argc, argv, "--datum");
+    if (datumText.empty() || !TryParseDateGerman(datumText, datum)) {
+        std::printf("Fehler: --datum <TT.MM.JJJJ> ist erforderlich - welche "
+                    "Steuerschlüssel gelten, hängt vom Belegdatum ab.\n");
+        return 2;
+    }
+
+    const std::vector<SteuerschluesselVorschlag> vorschlaege =
+        SteuerschluesselFuerPartner(mandant, partner, art, datum,
+                                    store.SteuerschluesselListe(mandant.id));
+
+    std::printf("%s an/von %s (%s, %s)\n",
+                BelegArtLabel(art).c_str(), partner.name.c_str(),
+                SteuerkategorieToText(partner.steuerkategorie).c_str(),
+                partner.ustIdNr.empty() ? "ohne USt-IdNr."
+                                        : ("USt-IdNr. " + partner.ustIdNr).c_str());
+    std::printf("Stand %s\n\n", FormatDateGerman(datum).c_str());
+
+    bool kopfGesetzt = false;
+    for (const SteuerschluesselVorschlag& v : vorschlaege) {
+        if (v.passend && !kopfGesetzt) {
+            std::printf("Vorgeschlagen:\n");
+            kopfGesetzt = true;
+        }
+        if (!v.passend && kopfGesetzt) {
+            std::printf("\nWeitere (nur mit Grund zu wählen):\n");
+            kopfGesetzt = false;   // print the second header once
+            // fall through into the row below
+        }
+        char satz[16];
+        std::snprintf(satz, sizeof(satz), "%d,%d %%",
+                      v.schluessel.satzPromille / 10, v.schluessel.satzPromille % 10);
+        std::printf("  %-10s %8s %-3s %s\n", v.schluessel.schluessel.c_str(), satz,
+                    v.vorgabe ? "<--" : (v.widerspruch ? " ! " : ""),
+                    v.schluessel.bezeichnung.c_str());
+        if (!v.begruendung.empty())
+            std::printf("             %s\n", v.begruendung.c_str());
+    }
+    std::printf("\n\"<--\" ist die Vorgabe, \"!\" widerspricht diesem Partner und wird "
+                "beim Buchen abgelehnt.\n");
+    return 0;
+}
+
+// ===== EU-STEUERSAETZE =====
+
+// "20" -> 200, "8,1" -> 81, "19.0" -> 190. Integer arithmetic throughout: a
+// tax rate read through a double comes back a fraction off, and that fraction
+// reaches every invoice the rate is used on.
+bool ProzentNachPromille(const std::string& text, int& out) {
+    std::string ganz, bruch;
+    bool nachKomma = false;
+    for (const char c : text) {
+        if (c == ' ' || c == '%') continue;
+        if ((c == ',' || c == '.') && !nachKomma) { nachKomma = true; continue; }
+        if (c < '0' || c > '9') return false;
+        (nachKomma ? bruch : ganz).push_back(c);
+    }
+    if (ganz.empty() && bruch.empty()) return false;
+    if (bruch.size() > 1) return false;   // per-mille holds exactly one decimal
+    const long prozent = ganz.empty() ? 0 : std::atol(ganz.c_str());
+    const long zehntel = bruch.empty() ? 0 : (bruch[0] - '0');
+    const long promille = prozent * 10 + zehntel;
+    if (promille < 0 || promille > 1000) return false;
+    out = static_cast<int>(promille);
+    return true;
+}
+
+void ZeigeSatz(const EuSteuersatz& satz) {
+    char prozent[16];
+    std::snprintf(prozent, sizeof(prozent), "%d,%d %%",
+                  satz.satzPromille / 10, satz.satzPromille % 10);
+    const std::string bis = satz.gueltigBis.Valid()
+                                ? "bis " + FormatDateGerman(satz.gueltigBis)
+                                : std::string("offen");
+    std::printf("%6lld  %-4s %-11s %8s  %-12s %-16s %-10s %s\n",
+                static_cast<long long>(satz.id), satz.land.c_str(), satz.art.c_str(),
+                prozent, FormatDateGerman(satz.gueltigVon).c_str(), bis.c_str(),
+                satz.geprueft ? "geprüft" : "ungeprüft",
+                satz.quelle.c_str());
+}
+
+int EuSaetze(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+
+    const std::vector<EuSteuersatz> alle = store.EuSteuersaetzeAlle();
+    if (alle.empty()) {
+        std::printf("In dieser Datei ist noch kein EU-Steuersatz erfasst.\n"
+                    "Mit \"ultrafibu eu-saetze-uebernehmen <datei>\" die "
+                    "mitgelieferten Sätze übernehmen.\n");
+        return 0;
+    }
+    const std::string land = Option(argc, argv, "--land");
+    std::printf("%6s  %-4s %-11s %8s  %-12s %-16s %-10s %s\n",
+                "Id", "Land", "Art", "Satz", "gilt ab", "gilt bis", "Prüfung", "Quelle");
+    int gezeigt = 0;
+    for (const EuSteuersatz& satz : alle) {
+        if (!land.empty() && satz.land != land) continue;
+        ZeigeSatz(satz);
+        ++gezeigt;
+    }
+    // Which rates actually get used for a comparison, said plainly: an
+    // unverified rate is carried but never compared against, and a list that
+    // does not say so reads like a list of rates in force.
+    int geprueft = 0;
+    for (const EuSteuersatz& satz : alle) if (satz.geprueft) ++geprueft;
+    std::printf("\n%d Satz/Sätze angezeigt, %d von %d insgesamt sind geprüft und "
+                "werden zum Vergleich herangezogen.\n",
+                gezeigt, geprueft, static_cast<int>(alle.size()));
+    return 0;
+}
+
+int EuSatzNeu(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+
+    EuSteuersatz satz;
+    satz.land = Option(argc, argv, "--land");
+    satz.art  = Option(argc, argv, "--art");
+    if (satz.art.empty()) satz.art = "standard";
+    satz.quelle = Option(argc, argv, "--quelle");
+    satz.geprueft = HasOption(argc, argv, "--geprueft");
+
+    const std::string satzText = Option(argc, argv, "--satz");
+    const std::string abText   = Option(argc, argv, "--ab");
+    if (satz.land.empty() || satzText.empty() || abText.empty()) {
+        std::printf("Fehler: --land, --satz und --ab sind erforderlich.\n"
+                    "  ultrafibu eu-satz-neu <datei> --land AT --satz 20 "
+                    "--ab 2026-01-01 [--art ermaessigt] [--geprueft --quelle \"...\"]\n");
+        return 2;
+    }
+    // The rate is typed as a percentage the way it is written on an invoice
+    // ("20", "8,1", "8.1") and kept in per-mille, so a rate with one decimal -
+    // which several member states have - is exact. Parsed digit by digit
+    // rather than through a float: 8.1 is not representable, and a tax rate
+    // that is one ten-thousandth off is a rounding difference in every
+    // invoice that uses it.
+    if (!ProzentNachPromille(satzText, satz.satzPromille)) {
+        std::printf("Fehler: \"%s\" ist kein Steuersatz zwischen 0 und 100 "
+                    "(höchstens eine Nachkommastelle).\n", satzText.c_str());
+        return 2;
+    }
+    if (!Date::TryParseIso(abText, satz.gueltigVon)) {
+        std::printf("Fehler: \"%s\" ist kein Datum (JJJJ-MM-TT).\n", abText.c_str());
+        return 2;
+    }
+    if (!satz.geprueft)
+        std::printf("Hinweis: ohne --geprueft wird der Satz gespeichert, aber NICHT "
+                    "zum Vergleich herangezogen. Ein geratener Satz, der eine richtige "
+                    "Rechnung als falsch meldet, ist schlimmer als kein Satz.\n");
+
+    const StoreResult r = store.EuSteuersatzSetzen(satz, AkteurFor(store));
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+
+    std::printf("Steuersatz angelegt:\n");
+    ZeigeSatz(satz);
+    // What just happened to the predecessor, because it is the part that is
+    // easy to miss and the part that keeps old returns reproducible.
+    for (const EuSteuersatz& andere : store.EuSteuersaetzeAlle()) {
+        if (andere.id == satz.id || andere.land != satz.land || andere.art != satz.art)
+            continue;
+        if (andere.gueltigBis.Valid() && andere.gueltigBis == satz.gueltigVon.AddDays(-1)) {
+            std::printf("Der bisherige Satz gilt weiter bis %s und bleibt erhalten - "
+                        "eine bereits abgegebene Meldung rechnet damit unverändert.\n",
+                        FormatDateGerman(andere.gueltigBis).c_str());
+        }
+    }
+    return 0;
+}
+
+int EuSatzLoeschen(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    const int64_t id = std::atoll(Option(argc, argv, "--id").c_str());
+    if (id == 0) { std::printf("Fehler: --id <nummer> ist erforderlich.\n"); return 2; }
+    const StoreResult r = store.EuSteuersatzLoeschen(id, AkteurFor(store));
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Steuersatz %lld gelöscht.\n", static_cast<long long>(id));
+    return 0;
+}
+
+int EuSaetzeUebernehmen(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+
+    std::string pfad = Option(argc, argv, "--datei");
+    if (pfad.empty()) pfad = EuSteuersaetzePfad();
+    if (pfad.empty()) {
+        std::printf("Fehler: EU-Steuersaetze.csv wurde nicht gefunden "
+                    "(mit --datei <pfad> angeben).\n");
+        return 2;
+    }
+    int neu = 0, bekannt = 0;
+    const StoreResult r = store.EuSteuersaetzeAusDatei(pfad, AkteurFor(store), neu, bekannt);
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("%s: %d neu übernommen, %d waren bereits erfasst und bleiben "
+                "unverändert.\n", pfad.c_str(), neu, bekannt);
+    if (neu > 0)
+        std::printf("Keiner der mitgelieferten Sätze ist geprüft; sie werden erst "
+                    "zum Vergleich herangezogen, wenn sie gegen eine amtliche Quelle "
+                    "geprüft und mit \"eu-satz-neu ... --geprueft\" bestätigt wurden.\n");
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1684,6 +2476,7 @@ int main(int argc, char** argv) {
     if (befehl == "partner")       return PartnerListeZeigen(argc, argv);
     if (befehl == "partner-neu")   return PartnerNeu(argc, argv);
     if (befehl == "ustid")         return UstIdPruefen(argc, argv);
+    if (befehl == "steuerwahl")    return Steuerwahl(argc, argv);
     if (befehl == "termine")       return Termine(argc, argv);
     if (befehl == "perioden")      return Perioden(argc, argv);
     if (befehl == "festschreiben") return Festschreiben(argc, argv);
@@ -1701,6 +2494,18 @@ int main(int argc, char** argv) {
     if (befehl == "datev-pruefen") return DatevPruefen(argc, argv);
     if (befehl == "datev-import")  return DatevImport(argc, argv);
     if (befehl == "datev-importe") return DatevImporte(argc, argv);
+    if (befehl == "konten-import") return KontenImport(argc, argv);
+    if (befehl == "beleg-import")     return BelegImport(argc, argv);
+    if (befehl == "oss")              return Oss(argc, argv);
+    if (befehl == "lieferschwelle")   return Lieferschwelle(argc, argv);
+    if (befehl == "eu-saetze")            return EuSaetze(argc, argv);
+    if (befehl == "eu-satz-neu")          return EuSatzNeu(argc, argv);
+    if (befehl == "eu-satz-loeschen")     return EuSatzLoeschen(argc, argv);
+    if (befehl == "eu-saetze-uebernehmen") return EuSaetzeUebernehmen(argc, argv);
+    if (befehl == "ustva")            return Ustva(argc, argv);
+    if (befehl == "ustva-xml")        return UstvaXml(argc, argv);
+    if (befehl == "meldungen")        return Meldungen(argc, argv);
+    if (befehl == "meldung-quittung") return MeldungQuittung(argc, argv);
     if (befehl == "bankkonto-neu") return BankkontoNeu(argc, argv);
     if (befehl == "bankkonten")    return Bankkonten(argc, argv);
     if (befehl == "bank-import")   return BankImport(argc, argv);

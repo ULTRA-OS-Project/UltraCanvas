@@ -71,7 +71,17 @@ void EmailCleanerApp::WireMailBackend() {
     // One entry per account: where its server is, and the password UltraMail
     // already holds. An account with neither is simply not registered, and the
     // backend then refuses its messages by name rather than failing obscurely.
+    // The vault is UltraMail's, unlocked with the device key UltraMail keeps
+    // beside it; until it is unlocked every Retrieve() says "no password".
     UltraMail::CredentialVault vault(mailDataDir_ + "/vault");
+    if (!vault.TryAutoUnlock()) {
+        backendUnavailable_ = vault.Exists()
+            ? "UltraMail's credential vault is locked with a master password — "
+              "open UltraMail once so it stores its device key, then restart."
+            : "UltraMail has no credential vault yet — set the account up in "
+              "UltraMail first.";
+        return;
+    }
     int usable = 0;
     for (const StoredAccount& account : accounts_) {
         if (account.email.empty()) continue;
@@ -94,6 +104,7 @@ void EmailCleanerApp::WireMailBackend() {
         mailBackend_->SetAccount(access);
         ++usable;
     }
+    vault.Lock();   // the passwords are in the backend now; drop the key
 
     if (usable == 0) {
         backendUnavailable_ = "No account has a server and a saved password — "

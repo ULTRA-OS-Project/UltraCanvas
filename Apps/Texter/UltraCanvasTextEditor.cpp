@@ -39,10 +39,12 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
 
-// Defined by the build from the first line of Docs/Texter/CHANGELOG.md — see
-// cmake/UltraCanvasVersion.cmake. The fallback only applies outside CMake.
+// ULTRATEXTER_VERSION comes from the build alone: CMake reads the first line
+// of Docs/Texter/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it
+// as a compile definition. No fallback here, so a build that lost it
+// fails instead of reporting a wrong number.
 #ifndef ULTRATEXTER_VERSION
-#define ULTRATEXTER_VERSION "0.0-dev"
+#error "ULTRATEXTER_VERSION is not defined: build through CMake, which reads it from Docs/Texter/CHANGELOG.md"
 #endif
 
 namespace UltraCanvas {
@@ -3067,13 +3069,17 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         bool show = (IsMarkdownMode() || isRich) && config.showMarkdownToolbar;
         markdownToolbar->SetVisible(show);
 
-        // Two buttons have no rich-document counterpart yet: a checkbox list
-        // item is not part of UCRichDocument, and tables render but are not
-        // edited in place. Disabling beats a button that quietly does nothing.
-        for (const char* id : {"md-checklist", "md-table"}) {
-            if (auto btn = markdownToolbar->GetWidget(id)) {
-                btn->SetDisabled(isRich);
-            }
+        // One button still has no rich-document counterpart: a checkbox list
+        // item is not part of UCRichDocument. Disabling beats a button that
+        // quietly does nothing.
+        if (auto btn = markdownToolbar->GetWidget("md-checklist")) {
+            btn->SetDisabled(isRich);
+        }
+        // Insert Table works in both modes now, so it is never disabled here;
+        // clearing it matters because a tab switched from Markdown to a word
+        // processing document keeps whatever state it was left in.
+        if (auto btn = markdownToolbar->GetWidget("md-table")) {
+            btn->SetDisabled(false);
         }
         markdownToolbar->layout.display =
                 show ? CSSLayout::DisplayType::Block : CSSLayout::DisplayType::NoDisplay;
@@ -3132,10 +3138,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 else InsertMarkdownSnippet("```\n", "\n```", "code");
                 break;
             case FormatCommand::Table:
-                // Tables render in the rich editor but are not edited in place
-                // yet, so the button is disabled there rather than inserting
-                // something the user could not then fill in.
-                if (!rich) {
+                // The Markdown tab writes a pipe table; a word-processing tab
+                // gets a real one, sized the same 2x2 so the button means the
+                // same thing in both. The caret lands in its first cell.
+                if (rich) rich->InsertTable(2, 2, /*headerRow=*/true);
+                else {
                     InsertMarkdownSnippet(
                         "| ", " | Column 2 |\n|----------|----------|\n|          |          |",
                         "Column 1");

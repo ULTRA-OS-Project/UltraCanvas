@@ -439,17 +439,46 @@ codes the server rejects.
 - **Phishing:** TOTP does not resist real-time relay phishing. Out of scope,
   but user-facing docs should not oversell.
 
+All three are now stated to the user, in those terms, in the
+[README](README.md) under *What it does not protect against*, alongside the
+things the app does do.
+
 ### 3.7 Clipboard and UI leakage (medium)
 
 - Copying a *code* is acceptable (30 s lifetime) but: X11 clipboard is
   readable by every app, and clipboard managers persist history. Auto-clear
   the clipboard ~30 s after copy (only if it still holds our value), and
   never offer copy for the *secret*.
-- App lock (PIN or the master password) with exponential back-off, and
-  auto-lock on minimize/idle. Codes should not be visible on a lock screen
-  or in a window-switcher preview.
-- Tap-to-reveal (codes hidden by default) is worth offering for
-  shoulder-surfing resistance.
+- ~~App lock (PIN or the master password) with exponential back-off, and
+  auto-lock on minimize/idle.~~ — **DONE** (`LockScreenDialog`,
+  `AccountStore::Lock`/`Unlock`, `LockPolicy.h`). The vault locks on the
+  Lock button, after a configurable period without input to the window
+  (default 5 minutes), and when the window is minimised; each lock clears
+  every card *and* drops the decrypted vault, so a locked window holds no more
+  than one that was never unlocked. The lock screen cannot be dismissed —
+  no Cancel, no Escape, the window manager's close is refused — only the
+  master password or Quit gets past it. Back-off is enforced by the store,
+  not the dialog: three wrong passwords are free, then each failure doubles
+  the wait (2 s, 4 s, … capped at 5 minutes) and an attempt during the wait
+  is refused with `TooManyAttempts` *before* the password is checked, so the
+  refusal costs no Argon2id work and is not an oracle. The PIN option was
+  not taken: a PIN is a weaker second password protecting the same key, and
+  the framework's password field is the same widget either way. Verified by
+  `Tests/UltraAuthenticatorAccountTests.cpp` (lock/unlock, throttle) and
+  `Tests/UltraAuthenticatorLockTests.cpp` (the schedule as a pure function).
+
+  Detecting a user-initiated minimise needed a framework change: on X11 the
+  window's `IsMinimized()` only tracked the application's own `Minimize()`
+  call. The Linux backend now watches the ICCCM `WM_STATE` property and the
+  base window raises `onWindowMinimize` / `onWindowRestore` (new
+  `UCEventType::WindowRestore`) on the transitions, for every application.
+- ~~Tap-to-reveal (codes hidden by default) is worth offering for
+  shoulder-surfing resistance.~~ — **DONE**, as an option (Settings → "Hide
+  codes until a card is clicked", off by default). A hidden card shows
+  "••• •••" and, on click, its code for 15 seconds; while hidden the seed is
+  not even read, so the option also cuts the once-a-second decryptions to
+  zero. Off by default because for most people the whole point of the app is
+  glancing at a code, and the shoulder-surfing threat is theirs to opt into.
 
 ### 3.8 Process and dependency hygiene (medium)
 

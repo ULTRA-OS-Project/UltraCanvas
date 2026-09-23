@@ -1,0 +1,27 @@
+[Desktop Entry]
+# The freedesktop shortcut for the UltraAI dashboard: the application menu
+# entry. It opens no files, so there is no MimeType= and Exec takes no
+# argument.
+#
+# `Icon=UltraAI` is an icon *name*, resolved through the installed icon
+# themes; the project's install rules put media/appicon/UltraAI.png into
+# share/icons/hicolor/256x256/apps and media/appicon/UltraAI.svg into
+# share/icons/hicolor/scalable/apps so the lookup lands on them. The window
+# and taskbar icon come from the same PNG by a different route: main.cpp
+# hands it to SetDefaultWindowIcon.
+#
+# Installed to share/applications by the project's install rules; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=UltraAI
+GenericName=AI Services Dashboard
+Comment=Chat, image, speech and other AI services through the UltraAI module
+Exec=UltraAIApp
+TryExec=UltraAIApp
+Icon=UltraAI
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraAI
+Categories=Utility;
+Keywords=ai;assistant;chat;llm;speech;image;

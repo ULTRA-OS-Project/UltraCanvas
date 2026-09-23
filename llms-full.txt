@@ -231,12 +231,22 @@ the backing implementation can be replaced without affecting callers.
     `StrokeData` with the line gallery — `StartArrow` / `EndArrow`,
     `WidthProfile`, `Brush` — opacities, blend, an optional Xara-style
     `Transparency` ramp with its mix, clip, mask), `Effects` (optional
-    `ShadowEffect` and `FeatherEffect`), an optional double-precision
-    `Matrix3x3` `Transform`, `GetBoundingBox()` in its parent's space and
-    `Clone()`.
+    `ShadowEffect`, `FeatherEffect`, `ContourEffect` and `BevelEffect`),
+    an optional double-precision `Matrix3x3` `Transform`,
+    `GetBoundingBox()` in its parent's space and `Clone()`. The Xara-class
+    containers `VectorClipView` (keyholes clip the rest), `VectorBlend`
+    (steps between children) and `VectorMould` (children warped into an
+    envelope or perspective shape) are groups too (`IsGroupType`).
   - Geometry helpers shared by the renderer, the editor and the writers:
     `BuildOutlinePath` (any shape's outline as path data), `FlattenPathData`,
     `PathEndpoints`, `ArrowheadOutline`, `VariableWidthOutline`.
+  - `DataFormats/UltraCanvasVectorGeometry.h` — polygon booleans and
+    offsetting over path data, a planar-map clipper in core:
+    `PolygonBoolean` / `PathBoolean` (union, subtract, intersect, exclude,
+    per-input fill rules), `SlicePath`, `OffsetPolygons` / `OffsetPath`
+    (round, mitre, bevel joins), `FlattenToPolygons`, `PolygonsToPath`,
+    `PolygonSetArea`, `WindingNumber`, `PolygonSetContains`. What
+    `CombineShapes`, the contour effect and the XAR writer use.
   - `ParsePathString` / `SerializePathData`, `ParseColorString`,
     `ParseTransformString` / `SerializeTransform`; `LengthUnit`,
     `PointsPerUnit`, `LengthUnitSymbol`.
@@ -274,7 +284,9 @@ the backing implementation can be replaced without affecting callers.
   `ReorderElements` (`ZOrderMove`), `GroupElements` / `UngroupElements` /
   `ReparentElement` (placement preserved), `DeleteElements`,
   `DuplicateElements`, `AlignElements` / `DistributeElements`,
-  `ConvertToPath` / `OutlineOf`.
+  `ConvertToPath` / `OutlineOf`, `CombineShapes` (`CombineOp` Add /
+  Subtract / Intersect / Slice, Xara's Combine Shapes over the outlines);
+  `UngroupElements` dissolves the ClipView / Blend / Mould containers too.
 - **UltraCanvasBezierPath** (`UltraCanvasBezierPath.h`) — the editing model
   of a path: `BezierNode` (anchor, two handles, `BezierNodeType` Corner /
   Smooth / Symmetric), `UltraCanvasBezierSubpath` (`InsertNodeAt` by de
@@ -1308,12 +1320,25 @@ Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
 `ProviderConfig::apiKeyVaultRef` through `UltraVault::Get` when built with
 `ULTRAAI_USE_ULTRAVAULT` (on by default in-tree).
 
+`DeviceKeyVault` (`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target) is
+the per-application vault on top of that: one encrypted vault file in the
+application's directory, unlocked without a prompt by an owner-only
+`device.key` beside it (`TryAutoUnlock`) or by a master password (`Unlock`
+-> `UnlockStatus`, `PersistDeviceKey`), per-account
+`Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
+slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
+the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
+(vault file name + key prefix) tells one application's vault from another's;
+UltraMail (`mail.ultramail.`) and UltraSocial (`social.ultrasocial.`) are
+one-line profiles of it in `Apps/*/engine/*CredentialVault.h` — no
+application carries a vault implementation of its own.
+
 **Implementation status (this branch):** v0.1 — memory backend (CI /
 ephemeral) and encrypted-file backend (Argon2id-derived key, stored cost
 parameters, XChaCha20-Poly1305 with the header as associated data; wrong
 passphrase and file tampering are deliberately indistinguishable). Unit
-tests in `Tests/UltraVaultTests.cpp`; the UltraAI resolution path is
-covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
+tests in `Tests/UltraVaultTests.cpp` (the device-key vault included); the
+UltraAI resolution path is covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
 backends (libsecret / Keychain / Credential Manager) and
 `Import`/`PromptUserForSecret` are planned.
 persisted drive mappings), application launch/supervision, and the
@@ -1442,9 +1467,10 @@ can carry an FTP server as a drive; no share links, and SFTP authenticates
 with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
-Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
-(`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
-HTTP goes through UltraNet. `CloudService` is the app-facing facade;
+Accounts persist on UltraDatabase (`AccountStore`), secrets go to the
+application's UltraVault (`VaultSecretStore`; `MemorySecretStore` for tests,
+and `MigrateLegacyFileSecrets` carries the obfuscated files of earlier builds
+across once), HTTP goes through UltraNet. `CloudService` is the app-facing facade;
 `UltraCloudUI` holds the shared add-account and link-picker dialogs.
 Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
 and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;
@@ -1693,34 +1719,52 @@ process's traffic; NetworkMonitor observes other processes' sockets, which is
 an OS question, and has no dependency on UltraNet. It observes and records;
 it never blocks, filters or modifies traffic, and never terminates TLS.
 
-**Implementation status:** Phase 2 (platforms). Linux — netlink `sock_diag`
+**Implementation status:** Phase 2 (platforms, persistence, names). Linux — netlink `sock_diag`
 with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
 `/proc/<pid>/fd` walk for attribution; Windows — IP Helper
 (`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
 macOS — libproc, per process. All polling. Persistence: the activity store
-over UltraDatabase (flows, daily roll-up, retention, CSV export). Connection
-events (ETW, eBPF), domain names and file-transfer correlation are still to
-come. Where there is no backend the module reports `NotSupported`.
+over UltraDatabase (flows, daily roll-up, retention, CSV export, DNS
+observations). Domain names: the name-source plug-in point with the local
+DNS proxy, reverse DNS (weak, labelled) and, on Windows elevated, the DNS
+client's ETW events with the asking PID. Connection events (ETW, eBPF) and
+file-transfer correlation are still to come. Where there is no backend the
+module reports `NotSupported`.
 
 - Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
   `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,
-  `NetworkMonitorOptions`, `ProcessTrafficSummary`, `NetworkMonitorResult`
+  `NetworkMonitorOptions`, `ProcessTrafficSummary`, `NetworkMonitorResult`,
+  `NameSource`, `DnsObservation`
 - `NetworkMonitor_GetCapabilities`, `NetworkMonitor_IsAvailable`
 - `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
-  `NetworkMonitor_FormatEndpoint`
+  `NetworkMonitor_FormatEndpoint`, `NetworkMonitor_NameSourceName`,
+  `NetworkMonitor_NameIsObserved`
+- Names (`NetworkMonitorNames.h`): `INameSource`,
+  `NetworkMonitor_RegisterNameSource`, `NetworkMonitor_ListNameSources`,
+  `NetworkMonitor_StopNameSources`, `NetworkMonitor_WaitForNames`,
+  `NetworkMonitor_AddNameListener`, `NetworkMonitor_RemoveNameListener`,
+  `NetworkMonitor_ObserveName`, `NetworkMonitor_LookupName`,
+  `NetworkMonitor_ListNames`, `NetworkMonitor_ClearNames`,
+  `NetworkMonitor_CreateDnsProxySource`, `NetworkMonitor_CreateReverseDnsSource`,
+  `NetworkMonitor_CreateSystemDnsSource`, `NetworkMonitor_SystemResolver`;
+  types `DnsProxyOptions`, `ReverseDnsOptions`, `NameSourceStatus`,
+  `NameRecord`
 - The activity store (`NetworkMonitorStore.h`, over UltraDatabase):
   `NetworkMonitor_StoreAvailable`, `NetworkMonitor_Now`,
   `NetworkMonitor_OpenStore`, `NetworkMonitor_CloseStore`,
   `NetworkMonitor_RecordSnapshot`, `NetworkMonitor_QueryFlows`,
-  `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RollUp`,
+  `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RecordDnsObservation`,
+  `NetworkMonitor_QueryDnsObservations`, `NetworkMonitor_RollUp`,
   `NetworkMonitor_ApplyRetention`, `NetworkMonitor_Purge`,
   `NetworkMonitor_StoreStats`, `NetworkMonitor_ExportFlowsCsv`; types
   `NetworkMonitorStoreOptions`, `RecordedFlow`, `DailyProcessTotal`,
-  `ActivityQuery`, `NetworkMonitorStoreStats`
+  `RecordedDnsObservation`, `ActivityQuery`, `NetworkMonitorStoreStats`
 - Internal: `INetworkMonitorBackend`, `CreateNativeNetworkMonitorBackend`
   (`NetworkMonitorBackend.h`); `NetworkMonitorProcfs::{DecodeAddress,
-  StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`)
+  StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`);
+  `NetworkMonitorDns::{Parse, ToObservation, BuildQuery, BuildResponse,
+  NormalizeName}` (`NetworkMonitorDns.h`)
 
 Rules: every blocking call returns `NetworkMonitorResult`; `std::optional`
 for anything a backend may not report, so "0" and "not reported" are never
@@ -23335,7 +23379,7 @@ FILE: Docs/UltraCanvas/UltraCanvasFormLayout.md
 # Forms: captions that line up and still translate
 
 `UltraCanvasFormLayout.h` is the "caption: control" form — the shape of nearly
-every dialog. It is a header of four inline helpers over one CSS grid, and it
+every dialog. It is a header of a few inline helpers over one CSS grid, and it
 exists because the obvious alternative is quietly broken.
 
 ```cpp
@@ -23379,11 +23423,26 @@ coordinate, and a longer caption widens the column instead of clipping.
 | `AddFormWideRow(grid, element)` | An element across both columns: a checkbox, a section heading, a note. |
 | `CreateFormCellRow(id, gap, height)` | A flex row for controls that share one cell — `700 × 500 [x] Lock`, a slider and its value, a checkbox and a button. |
 | `CreateFormCaption(id, text)` | A caption sized by its own text (no width), if you need one outside a row. |
+| `DisableScrollbars(container)` | Turns a container's scrollbars off — for any container that only arranges what is in it. `CreateFormGrid` and `CreateFormCellRow` call it themselves. |
 
-The grid does not scroll: whatever needs to, the pane or dialog around it
-does. A grid left on the container default would raise a scrollbar for a row
-a pixel taller than its track, and the bar - plus the second one its own width
-brings on - covers that row.
+The grid does not scroll, and neither does a cell row: whatever needs to, the
+pane or dialog around it does. Left on the container default, either one raises
+a scrollbar for a child a pixel taller than the space it was given, and that bar
+— plus the second one its own width brings on — is painted straight across the
+caption and the field it was meant to be laying out. A caption is never
+scrollable: it is one line, and it is as wide as its text. That is what
+UltraFiler's FTP login looked like before this: every row of the add-account
+dialog carried a scrollbar pair over its own caption, because the dialog was a
+couple of pixels shorter than the rows it held and each row was squeezed below
+the 32 px field inside it.
+
+Since framework 0.9.22 this is also the container default: `autoShowScrollbars`
+is off, so a container arranges its children and scrolls nothing unless it is
+asked to. `DisableScrollbars` stays as the way to say it outright (it clears the
+forced flags too, and states the intent where a reader will look for it), but a
+plain `CreateContainer` no longer needs it. A container that really is a
+viewport onto taller content opts in with `CreateScrollableContainer` or
+`autoShowScrollbars = true`.
 
 Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
 so a form can swap one set of rows for another — the export dialog shows the
@@ -23417,7 +23476,9 @@ contributes nothing to the base size of the intrinsic tracks it also spans, and
 `GridLayout.cpp` implements that. Without it, one wide full-width note would
 make the caption column as wide as the note and push every control across the
 dialog. `Tests/CSSLayoutFormGridTest.cpp` pins this, together with the
-column-sharing and hidden-row behaviour.
+column-sharing and hidden-row behaviour, and the rule that a dialog too short
+for its form leaves the rows at their own height (`flex-shrink: 0`) instead of
+squeezing them below their controls.
 
 ## See also
 
@@ -32529,6 +32590,34 @@ what a double-click asks for when a pane is too small for the file — see
 [UltraCanvasMediaViewerWindow](UltraCanvasMediaViewerWindow.md), which wraps a
 viewer in a top-level window.
 
+## Choosing this over a single-format view
+
+Prefer this widget over embedding a format-specific view
+([UltraCanvasPDFView](UltraCanvasPDFExamples.md#choosing-a-widget),
+`UltraCanvasSpreadsheet`, `UltraCanvasEBookViewer`, …) whenever the pane shows
+*whatever the user put there*. The single-format views are not an alternative to
+this one — this widget owns instances of them and dispatches by file kind, so
+using it costs nothing in capability and gains two things:
+
+- **Kinds you did not plan for.** A pane built for PDFs meets a receipt
+  photographed as a JPEG, an `.ods` attachment, a `.eml` body. Each is a
+  different widget; the dispatch is already written here.
+- **Builds where a plugin is absent.** Every plugin-backed view is behind its
+  `#ifdef` inside this file, so the viewer compiles and runs without it and the
+  remaining kinds still display. The PDF gate is the common case:
+  `ULTRACANVAS_PLUGIN_PDF` defaults ON, but a machine without MuPDF disables the
+  plugin at configure time rather than failing the build, so an application that
+  embeds `UltraCanvasPDFView` itself must repeat the guards and supply its own
+  fallback.
+
+Embed it as UltraFiler does, with `SetTopBarsVisible(false)` for a pane too
+small for two toolbar rows (`Apps/UltraFiler/UltraFilerWindow.cpp:829`).
+`UltraCanvasMediaViewer::IsSupportedMedia(path)` answers, before you load
+anything, whether this build can show a given file at all.
+
+Go direct to a single-format view only when the application *is* that format's
+tool and a missing plugin should stop it running.
+
 ## Media kinds and display views
 
 | `MediaKind` | Formats | Display view |
@@ -36124,7 +36213,12 @@ FILE: Docs/UltraCanvas/UltraCanvasPDFExamples.md
 
 ## Overview
 
-**UltraCanvasPDF** is the PDF subsystem for UltraCanvas. It has two layers:
+**UltraCanvasPDF** is the PDF subsystem: the `UltraCanvasPDFView` widget and the
+headless `IPDFDocument` engine. For a preview pane, prefer
+[UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) — it wraps this view and
+still builds without MuPDF. See *Choosing a widget* below.
+
+The subsystem has two layers:
 
 - **`UltraCanvasPDFView`** — a ready-to-use viewer widget with a thumbnail
   strip, scrollable page render, zoom, and search-hit overlay. This is what the
@@ -36134,6 +36228,46 @@ FILE: Docs/UltraCanvas/UltraCanvasPDFExamples.md
 
 The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 (requires MuPDF / `libmupdf-dev`).
+
+### Choosing a widget
+
+`UltraCanvasPDFView` is not usually what an application should embed directly.
+[UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) **contains** a
+`UltraCanvasPDFView` and hands PDFs to it, so choosing the media viewer costs
+nothing in PDF capability and decides three things in its favour:
+
+| | `UltraCanvasPDFView` | `UltraCanvasMediaViewer` |
+|---|---|---|
+| PDF pages, thumbnails, zoom, search | yes | yes — the same view, embedded |
+| A receipt photographed as JPEG/PNG/HEIC, or a `.ods`/`.csv` attachment | no | yes, dispatched by file kind |
+| Build without MuPDF | the widget does not exist | compiles and runs; other kinds still display |
+
+That last row is the one that bites. `ULTRACANVAS_PLUGIN_PDF` defaults **ON**,
+but a machine without MuPDF does not fail the build — `UltraCanvas/CMakeLists.txt`
+sets `MUPDF_FOUND FALSE`, prints `[✗] PDF Plugin - DISABLED (MuPDF not found…)`
+and carries on. So the option being ON is **not** a promise that the view exists.
+Every PDF reference inside the media viewer is `#ifdef ULTRACANVAS_PLUGIN_PDF`-guarded
+already; an application that embeds `UltraCanvasPDFView` itself has to repeat
+those guards and invent its own fallback, or it silently ships a pane that is
+simply absent on such a build.
+
+Embed it the way UltraFiler does — the established preview-pane pattern
+(`Apps/UltraFiler/UltraFilerWindow.cpp:829`):
+
+```cpp
+preview = CreateMediaViewer("app-preview", 0, 0, 0, 0);
+preview->SetTopBarsVisible(false);   // no toolbars in a pane this small
+AddChild(preview);
+preview->LoadFile(path);             // kind chosen from the file's bytes
+```
+
+Use `UltraCanvasPDFView` directly only when the application is a PDF tool as
+such — it will never be handed anything but a PDF, and a missing MuPDF is a
+reason for it not to run at all. Use `IPDFDocument` when no UI is wanted:
+extracting text, searching or rewriting a PDF headlessly.
+
+To open one file full size in a window of its own, see
+[UltraCanvasMediaViewerWindow](UltraCanvasMediaViewerWindow.md).
 
 **Version:** 1.1.0
 **Headers:** `include/Plugins/Documents/UltraCanvasPDFView.h`,
@@ -42964,6 +43098,55 @@ Search reaches into cells, so **find and replace now cover table content**.
 `AllContainers()` enumerates every container in document order if you need to
 walk the document yourself.
 
+#### Editing a table's structure
+
+Tables are created and reshaped from the caret, so a menu item says what the
+user means — "insert a row below *this* one":
+
+```cpp
+editor->InsertTable(3, 4, /*headerRow=*/true);   // caret lands in the first cell
+
+editor->InsertRowAbove();      editor->InsertRowBelow();
+editor->InsertColumnLeft();    editor->InsertColumnRight();
+editor->DeleteCurrentRow();    editor->DeleteCurrentColumn();
+editor->MergeWithCellRight();  editor->MergeWithCellBelow();
+editor->SplitCurrentCell();
+```
+
+Each returns `false` when it does not apply — the caret is not in a table,
+there is no neighbour to merge with, the cell is not merged — which is also
+what a menu should ask to decide whether to offer the item:
+
+```cpp
+if (editor->IsCaretInTable()) {
+    int rows = 0, columns = 0, row = 0, column = 0;
+    editor->CaretTableGeometry(rows, columns, row, column);   // for "Delete row 2 of 5"
+    menu.SetEnabled("split", editor->CanSplitCurrentCell());
+}
+```
+
+Each operation is **one undo step**, and each keeps the grid rectangular:
+
+- A span reaching across an insertion point **grows** rather than being cut in
+  two, because the text in it lives in one cell and cannot be in two places.
+- A span reaching into a deleted row or column **shrinks**; where the span
+  *started* in the deleted row, the cell moves down into the next one instead,
+  so its text is not deleted along with the row.
+- **Merging keeps the text of every cell it absorbs**, appended to the
+  surviving cell. A merge is a layout decision, and dropping what somebody
+  typed would be a silent deletion.
+- A merge whose rectangle would cut an existing span in half is **refused**:
+  the model cannot store half a cell, so approximating it would corrupt the
+  grid.
+- Deleting the last row or the last column deletes the table, because a table
+  with no cells has nothing to type into and no way back.
+
+Cells are stored sparsely — a merged cell is one `RichTableCell` with a span,
+and the slots it covers hold nothing — so **a cell's index within its row is
+not its column**. `BuildTableGrid()` (in `UltraCanvasRichDocument.h`) resolves
+which cell occupies each slot, and is what both the layout and these operations
+use; positions keep addressing cells as `{row, index-within-row}`.
+
 ### Structure
 
 ```cpp
@@ -43118,11 +43301,16 @@ This is the shortest path to a faithful `.odt`/`.docx` preview pane.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **A table's own structure is not edited yet.** Merged cells load, save and
-  lay out correctly, but *making* them does not: adding or removing rows and
-  columns, merging and splitting cells, and selecting across several cells at
-  once are not there — and neither is inserting a new table, which is why
-  UltraTexter's Insert Table button stays disabled for these documents.
+- **A selection cannot span several cells.** Rows, columns, merging and
+  splitting are all there (see *Editing a table's structure*), but they act on
+  the cell the caret is in: there is no drag-select across a block of cells, so
+  "merge these six" has to be done as a merge right and a merge down. The
+  selection model holds a range inside one container, and widening it is a
+  piece of work in its own right — rendering, hit testing and copying all
+  change with it.
+- **Column widths are uniform.** The grid divides the available width evenly;
+  a column width stored in a `.docx` or `.odt` is preserved on save but not
+  honoured on screen.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
@@ -55791,7 +55979,7 @@ BakeTransform(el);                            // write the transform into the ge
 
 ReorderElements(els, ZOrderMove::ToFront);    // ToFront / Forward / Backward / ToBack
 auto group = GroupElements(els);              // into the topmost member's parent
-auto freed = UngroupElements({group});        // placement preserved both ways
+auto freed = UngroupElements({group});        // placement preserved both ways; clip views, blends and moulds dissolve too
 ReparentElement(el, otherGroup, index);
 
 DeleteElements(els);
@@ -55799,6 +55987,8 @@ auto copies = DuplicateElements(els, 10, 10); // above the originals, fresh Ids
 AlignElements(els, AlignMode::Left);          // to the selection, or a reference rect (the page)
 DistributeElements(els, DistributeMode::HorizontalCenters);
 auto path = ConvertToPath(el);                // rect / circle / ellipse / line / polygon → path, in place
+auto made = CombineShapes(sel.Elements(), CombineOp::Subtract);   // Xara's Combine Shapes: the front shape
+                                              // cuts the others (Add / Intersect: one shape, the back one's style)
 ```
 
 A document-space matrix `M` lands on an element as `T' = P⁻¹·M·P·T`, `P`
@@ -55927,7 +56117,7 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | Format | Class | Read | Write | Fidelity notes |
 |---|---|---|---|---|
 | SVG | `SVGConverter` | ✓ | ✓ | Lossless both ways — the storage model is SVG-shaped. Gradients keep all stops, transforms stay attributes, text keeps spans. |
-| XAR | `XARConverter` | ✓ (XAR plugin) | ✓ | Spec-correct record grammar; native shape records when axis-aligned, paths otherwise; linear / radial / conical gradients with every stop (multistage records), flat and gradient transparency with Xara's mixes, line transparency, shadows (`TAG_SHADOWCONTROLLER`), feathers (`TAG_FEATHER`), dash patterns, text stories; Xara's stock arrowheads as `TAG_ARROWHEAD` (start) / `TAG_ARROWTAIL` (end) line attributes with their reference and FIXED16 size, as Xara writes them, every other arrowhead, width profiles and brushes baked into plain shapes under a group carrying a `TAG_USERVALUE` marker (`UltraCanvas.LineGallery`) the reader rebuilds the stroke from. Reading is the XAR plugin's `XARDocument` (compressed files too) translated into the model — with `ULTRACANVAS_PLUGIN_XAR` off the converter only writes and `CanImport()` is false. Bevel, contour, blend, mould, ClipView, live effects, Xara brushes and pages are read as their contents or dropped, and reported; `TAG_DEFINEARROW` is a tag Xara never writes, and a reference to one reads as the straight arrow. |
+| XAR | `XARConverter` | ✓ (XAR plugin) | ✓ | Spec-correct record grammar; native shape records when axis-aligned, paths otherwise; linear / radial / conical gradients with every stop (multistage records), flat and gradient transparency with Xara's mixes, line transparency, shadows (`TAG_SHADOWCONTROLLER`), feathers (`TAG_FEATHER`), dash patterns, text stories; clip views, contours, blends, moulds and bevels as Xara's own controller records (`TAG_CLIPVIEWCONTROLLER`, `TAG_CONTOURCONTROLLER`, `TAG_BLEND` with its blenders, `TAG_MOULD_ENVELOPE` / `_PERSPECTIVE` with the shape and sources, `TAG_BEVEL`) read back as the model's containers and effects; Xara's stock arrowheads as `TAG_ARROWHEAD` (start) / `TAG_ARROWTAIL` (end) line attributes with their reference and FIXED16 size, as Xara writes them, every other arrowhead, width profiles and brushes baked into plain shapes under a group carrying a `TAG_USERVALUE` marker (`UltraCanvas.LineGallery`) the reader rebuilds the stroke from. Reading is the XAR plugin's `XARDocument` (compressed files too) translated into the model — with `ULTRACANVAS_PLUGIN_XAR` off the converter only writes and `CanImport()` is false. Live effects, Xara brushes and pages are read as their contents or dropped, and reported; `TAG_DEFINEARROW` is a tag Xara never writes, and a reference to one reads as the straight arrow. |
 | EPS | `EPSConverter` | – | ✓ | PostScript program restricted to operators the EPS plugin's interpreter knows. Opacity flattens toward white; gradients blend end stops. Reading via the EPS plugin. |
 | CDR | `CDRConverter` | – | ✓ | Version-7 RIFF targeting libcdr's parser layouts (no public spec exists). Solid fills, outline state, fill opacity; text/bitmaps skipped. Reading via the CDR plugin. |
 | PDF | `PDFVectorConverter` | – | ✓ | Hand-assembled PDF 1.4: base-14 fonts, ExtGState opacity, dashes, verified xref. Reading via the MuPDF PDF plugin. |
@@ -55951,7 +56141,9 @@ Unsupported features never change meaning silently: each converter reports its f
 
 **Effects, transparency and the line gallery** (phase 4 of [ArtCreatorVectorCanvasProposal](../Research/ArtCreatorVectorCanvasProposal.md)). `VectorElement::Effects` holds an optional `ShadowEffect` (`Kind` wall / floor / glow, `Offset`, `Blur` — the penumbra width, `Colour`, `Darkness`, and `FloorSquash` / `FloorShear` for floor shadows) and an optional `FeatherEffect` (`Radius`); they are per object, cloned with it, never inherited. `VectorStyle::Transparency` is an optional `TransparencyData`: a `Shape` (flat, linear, radial, conical), a flat `Level` or `Stops` of `{Position, Level}` along `Start`..`End` in the element's own space (Xara's convention: level 0 is opaque, 1 clear), and a `Mix` (`Mix`, `StainedGlass`, `Bleach`, `Contrast`, `Saturation`, `Darken`, `Lighten`, `Brightness`, `Luminosity`, `Hue`) that the renderer paints as the matching blend mode; `LevelAt(t)` interpolates. It sits beside the flat `Opacity`, which stays the plain normal-mix alpha every other format uses. `StrokeData` carries the line gallery: `StartArrow` / `EndArrow` (`ArrowheadData`: `Kind` triangle, open arrow, circle, square, diamond, bar - the tip on the line's end, `Scale` 1 = four line widths long - and Xara's eight stock arrowheads, straight, angled, rounded, spot, solid diamond, feather, feather 2, hollow diamond, with Xara's own geometry and placement, where `Scale` 1 is Xara's default size 3; `IsXaraArrowhead`), a `WidthProfile` of `WidthSample{T, Factor}` (two or more turn the stroke into a filled band; `WidthAt(t)`), and an optional `BrushData` (`Stamp` group drawn every `Spacing` stamp-widths, scaled to `Width * Scale`, rotated to the tangent). The geometry they draw is public — `BuildOutlinePath` (any shape's outline as path data), `FlattenPathData`, `PathEndpoints`, `ArrowheadOutline`, `VariableWidthOutline` — so the renderer and the XAR writer produce the same shapes.
 
-**Rendering effects.** `VectorRenderer` draws an element with effects through groups: the shadow and the feather need a raster of the element's silhouette, which it draws black into an offscreen context at the current device scale, blurs (three box passes approximating a gaussian whose penumbra spans about 3.3 σ), and caches per object (`EffectCacheSize()`, `ClearCaches()`; an entry is replaced when the geometry, blur or zoom changes and the cache empties itself past 256 entries). The shadow is the raster painted as a colour mask at its offset (squashed and sheared from the bottom edge for floor shadows, unshifted for glows); the feather masks the element's own group with it; a transparency ramp masks the group with an alpha gradient and paints it with the mix's operator. Arrowheads, width bands and brush stamps are drawn from the outline after the fill.
+**Depth: containers, contour, bevel, booleans** (phase 5 of the proposal, first slice). Three group kinds (`IsGroupType`): `VectorClipView` (its first `Keyholes` children are the clip shapes, not drawn; the rest draw clipped to their union), `VectorBlend` (`Steps` intermediate shapes between each pair of children, outlines resampled to a common count and start-matched, colours run as `ColourBlendKind` fade / rainbow / alt rainbow / constant, strokes and opacity interpolated; `OneToOne`, `Antialiased`, `Tangential` and Xara's bias / gain profiles kept for the round trip) and `VectorMould` (`Kind` `Envelope` or `Perspective`; the children warped from `SourceBounds` — their joint bounds when empty — into `Shape`, a closed four-sided path starting at the source's top-left corner and running along its top, right, bottom and left edges: four cubics for an envelope, a Coons patch, four lines for a perspective, a projective map; `Warp`, `ShapeCorners`, `IdentityShape`; text and images move to their moulded anchor). Two more effects on `VectorElement::Effects`: `ContourEffect` (`Steps` rings between the outline and a copy `Width` units out — or in, when negative — each filled with the colour between the object's fill and `Colour`; outward rings draw behind the object, inward ones over it) and `BevelEffect` (`Kind`: Xara's fifteen profiles, `Indent`, `LightAngle` and `Tilt` in degrees, `Contrast`, `Outer`). The geometry under them is `DataFormats/UltraCanvasVectorGeometry.h`: `PolygonBoolean` / `PathBoolean` (union, subtract, intersect, exclude, each input with its own fill rule; a planar-map clipper that splits every edge at every crossing, classifies each piece by the winding numbers on its two sides and links the separating pieces into consistently wound rings), `SlicePath`, `OffsetPolygons` / `OffsetPath` (round, mitre or bevel joins through the same clipper), `FlattenToPolygons`, `PolygonsToPath`, `PolygonSetArea`, `WindingNumber`, `PolygonSetContains`. The editing layer's `CombineShapes` is Xara's Combine Shapes over it.
+
+**Rendering effects.** `VectorRenderer` draws an element with effects through groups: the shadow and the feather need a raster of the element's silhouette, which it draws black into an offscreen context at the current device scale, blurs (three box passes approximating a gaussian whose penumbra spans about 3.3 σ), and caches per object (`EffectCacheSize()`, `ClearCaches()`; an entry is replaced when the geometry, blur or zoom changes and the cache empties itself past 256 entries). The shadow is the raster painted as a colour mask at its offset (squashed and sheared from the bottom edge for floor shadows, unshifted for glows); the feather masks the element's own group with it; a transparency ramp masks the group with an alpha gradient and paints it with the mix's operator. Arrowheads, width bands and brush stamps are drawn from the outline after the fill. Contour rings come from the offsetter and are cached with the geometry, width and step count; the bevel's highlight and shadow masks come from a distance transform of the silhouette shaped by the profile and lit from the effect's angle and tilt, cached like the effect rasters (`EffectCacheSize()` counts all three caches).
 
 The survey of what each converter reads and writes, the dead model surface and the planned steps live in [UltraCanvasVectorModelProposal](../Research/UltraCanvasVectorModelProposal.md).
 
@@ -61557,10 +61749,10 @@ FILE: Docs/Modules/NetworkMonitor/README.md
 
 # NetworkMonitor — System-Wide Network Activity
 
-**Status:** Phase 1, the platform half of Phase 2 (Linux, Windows, macOS) and persistence implemented; connection events, names and Phase 3 in the proposal.
-**Version:** 0.3.0
+**Status:** Phase 1, the platform half of Phase 2 (Linux, Windows, macOS), persistence and domain names implemented; connection events and Phase 3 in the proposal.
+**Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-09-19
+**Last Modified:** 2026-09-22
 
 NetworkMonitor reads the operating system's socket table — the one `ss -p`,
 `netstat -p` and `lsof -i` read — and reports every connection the machine
@@ -61589,12 +61781,14 @@ reference for what is built.
 | Owning user | ✅ from the table's UID | ✅ process token | ✅ `PROC_PIDTBSDINFO` | — |
 | Byte counters | ✅ `tcp_info` (TCP only) | later (ETW) | none — see below | — |
 | Connection events | later (eBPF) | later (ETW) | none | — |
-| Domain names | later | later | later | — |
+| Domain names | ✅ local DNS proxy, reverse DNS | ✅ DNS client events (ETW, elevated), proxy, reverse DNS | ✅ local DNS proxy, reverse DNS | proxy, reverse DNS |
 
 Each backend reports what it cannot see in `NetworkMonitorCapabilities`:
 `perConnectionBytes` is true only on Linux with netlink; `allUsers` is root
-on Linux and macOS, an elevated token on Windows; and the `notes` count the
-processes the last snapshot could not inspect.
+on Linux and macOS, an elevated token on Windows; `dnsWithProcess` is true
+while a name source that reports the asking process is running (the
+Windows DNS client events); and the `notes` count the processes the last
+snapshot could not inspect.
 
 Where there is no backend, `NetworkMonitor_IsAvailable()` is false, the
 capabilities read as all-false with `backendName == "none"`, and every
@@ -61640,12 +61834,14 @@ for (const auto& app : NetworkMonitor_SummarizeByProcess(connections)) { /* … 
 
 | Type | Holds |
 |---|---|
-| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional, unset in Phase 1) |
+| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional), `remoteName` / `nameSource` (empty / `None` until a source has named the peer) |
 | `ProcessIdentity` | `pid`, `executablePath`, `displayName` (the kernel's comm), `userName` |
 | `NetworkConnectionState` | the TCP state machine, plus `Unconnected` for a UDP socket without a fixed peer |
 | `NetworkMonitorCapabilities` | `socketTable`, `processAttribution`, `allUsers`, `connectionEvents`, `perConnectionBytes`, `dnsWithProcess`, `backendName`, `notes` |
-| `NetworkMonitorOptions` | `includeListening`, `includeLoopback`, `resolveProcesses` |
-| `ProcessTrafficSummary` | one process's counts, distinct `remoteAddresses`, byte totals present only when every connection reported them |
+| `NetworkMonitorOptions` | `includeListening`, `includeLoopback`, `resolveProcesses`, `resolveNames` |
+| `ProcessTrafficSummary` | one process's counts, distinct `remoteAddresses` and `remoteNames`, byte totals present only when every connection reported them |
+| `NameSource` | where a name came from: `DnsProxy`, `EtwDnsClient`, `PacketCapture`, `Sni` are *observed*; `ReverseDns`, `Inferred` are *weak* |
+| `DnsObservation` | one answered query as a source reports it: `queryName`, `addresses`, `process` (where known), `source`, `observedAt`, `ttlSeconds` |
 | `NetworkMonitorResult` | `code`, `success`, `message`; `operator bool` |
 
 `std::optional` throughout, as in `UltraCanvasHardwareInfo`: "0 bytes" and
@@ -61662,6 +61858,78 @@ lies.
 | `NetworkMonitor_SummarizeByProcess(connections)` | Per-process roll-up, sorted by connection count then name |
 | `NetworkMonitor_TransportName` / `NetworkMonitor_StateName` | Display names, the kernel's spelling (`ESTABLISHED`, `CLOSE_WAIT`, `UNCONN`) |
 | `NetworkMonitor_FormatEndpoint(address, port)` | `1.2.3.4:443`, `[::1]:22`, `*:0` |
+| `NetworkMonitor_NameSourceName` / `NetworkMonitor_NameIsObserved` | A source's display name, and whether it is observed or weak |
+
+## Domain names
+
+Sockets carry addresses, not names, and resolving `104.18.x.x` back to the
+site the user visited needs a separate source. The proposal (§2.3) made
+that a plug-in point: `NetworkMonitor/NetworkMonitorNames.h` is the
+contract (`INameSource`), the registry that runs the sources, and the
+**name table** every source feeds — address → the best name known for it,
+with the `NameSource` it came from. An *observed* name (a source saw the
+query that produced the address) always beats a *weak* one (a PTR record,
+a guess), however old; between two of the same grade the newer wins.
+Names outlive their DNS TTL — at least an hour — because a connection
+outlives the answer that started it.
+
+```cpp
+#include "NetworkMonitor/NetworkMonitorNames.h"
+
+// Reverse DNS for whatever the snapshots see, on its own thread; weak.
+NetworkMonitor_RegisterNameSource(NetworkMonitor_CreateReverseDnsSource(ReverseDnsOptions()));
+
+// The local DNS proxy: every query that passes through names its answers.
+DnsProxyOptions proxy;
+proxy.listenPort = 5353;                       // 53 needs privilege
+if (NetworkMonitorResult r = NetworkMonitor_RegisterNameSource(
+        NetworkMonitor_CreateDnsProxySource(proxy)); !r) { /* r.message: the port, the upstream */ }
+
+// Windows, elevated: the DNS client's own events, with the asking PID.
+if (auto system = NetworkMonitor_CreateSystemDnsSource()) NetworkMonitor_RegisterNameSource(std::move(system));
+
+// From here every snapshot names its peers where it can:
+NetworkMonitor_ListConnections(connections);   // c.remoteName, c.nameSource
+NameRecord record;
+if (NetworkMonitor_LookupName("93.184.216.34", record)) { /* record.name, record.source */ }
+
+NetworkMonitor_StopNameSources();               // before exit: joins their threads
+```
+
+| Source | Sees | Gives the PID | Privilege | Blind to |
+|---|---|---|---|---|
+| **Local DNS proxy** (`NetworkMonitor_CreateDnsProxySource`) | every client of the system resolver, once the resolver points at 127.0.0.1 | no | port 53 needs root / admin; any other port needs the resolver pointed at it | a browser resolving over HTTPS on its own |
+| **Reverse DNS** (`NetworkMonitor_CreateReverseDnsSource`) | any public address | no | none | a CDN: everything answers "cloudflare". Labelled weak |
+| **Windows DNS client events** (`NetworkMonitor_CreateSystemDnsSource`) | every query through the Windows resolver | **yes** | elevated token | DNS over HTTPS inside the browser |
+
+The proxy is a window, not a resolver: one thread, one `select()` loop,
+each UDP query forwarded on a socket of its own and the answer relayed
+back to the client and read on the way; TCP (a truncated answer makes a
+resolver retry over TCP) relayed the same way. It never rewrites, caches
+or filters, refuses an upstream that is itself, and reads the upstream
+from `/etc/resolv.conf` or `GetNetworkParams` when none is given
+(`NetworkMonitor_SystemResolver`). The wire format — `NetworkMonitorDns.h`
+— is pure functions over bytes, every read bounds-checked, compression
+pointers that do not go backwards refused, CNAME chains followed so the
+address maps to the name the application asked for.
+
+Reverse DNS never looks up loopback, link-local, multicast or (unless
+`includePrivateRanges`) private addresses, remembers a missing PTR for ten
+minutes, and drops queued addresses past `maxQueueLength` rather than
+falling behind. `NetworkMonitor_WaitForNames(ms)` waits for its queue.
+
+The Windows source is a real-time ETW session on
+`Microsoft-Windows-DNS-Client` (event 3008, *DNS query completed*), whose
+payload carries the name and the answers and whose header the PID. It
+needs an elevated token and reports `PermissionDenied` without one. It is
+compiled on the Windows CI rows; it has not yet been exercised at run
+time — treat the first elevated run as its acceptance test.
+
+An application that has a better source (a browser extension, an
+enterprise resolver's log) implements `INameSource` and registers it; the
+core, the store and the UI treat it like the built-in ones.
+`NetworkMonitor_AddNameListener` hears every observation from any source —
+the way UltraNetMonitor records them while recording.
 
 ## The activity store
 
@@ -61700,8 +61968,9 @@ NetworkMonitor_CloseStore(store);
 | `NetworkMonitor_RecordSnapshot` | Every connection either extends the flow it continues or starts a new one; processes are deduplicated and cached |
 | `NetworkMonitor_QueryFlows` | Filters: `since`, `until`, `pid`, `processName`, `text` (substring over addresses, name, executable), `includeListening`, `includeLoopback`, `limit`; newest first |
 | `NetworkMonitor_QueryDailyTotals` | The rolled-up totals, newest day first |
+| `NetworkMonitor_RecordDnsObservation` / `QueryDnsObservations` | Every observation a name source reported, one row per address, with the asking process where known; the same filters, on `observedAt` |
 | `NetworkMonitor_RollUp(olderThan)` | Aggregates flows last seen before the time into daily totals and deletes them; a second roll-up onto the same day accumulates |
-| `NetworkMonitor_ApplyRetention` | Rolls up flows older than the window, drops daily totals and snapshot records older than twelve windows |
+| `NetworkMonitor_ApplyRetention` | Rolls up flows older than the window, drops DNS observations and snapshot records older than the window, and daily totals older than twelve windows |
 | `NetworkMonitor_Purge` | Deletes everything; irreversible, so the caller confirms |
 | `NetworkMonitor_StoreStats` | Counts and the oldest / newest flow |
 | `NetworkMonitor_ExportFlowsCsv` | RFC 4180 quoting, UTC ISO-8601 times, dot-decimal numbers |
@@ -61717,9 +61986,16 @@ cumulative). A daily total sums only the flows that had counters and says
 how many did (`countedFlows`), so a day with no counters reads as zero
 counted flows, not as zero bytes.
 
-**Threads.** One mutex per store: a recording thread and a reading thread
-never share the single SQLite connection at once. One transaction per
-snapshot.
+**Names.** A flow keeps the best name it was seen with: an observed name
+replaces a weak one, never the reverse, and a sighting without a name
+keeps the one recorded. The daily total remembers the last name its flows
+carried. The text filter and the CSV (`remote_name`, `name_source`)
+include it. Schema version 2; a file written by version 1 migrates in
+place on open.
+
+**Threads.** One mutex per store: a recording thread, the name sources'
+threads and a reading thread never share the single SQLite connection at
+once. One transaction per snapshot, one per observation.
 
 **What it does not do yet.** Encrypt at rest — the proposal's plan is
 UltraCrypt with the key in UltraVault, and it is the next store increment.
@@ -61745,15 +62021,22 @@ UltraCanvas/include/NetworkMonitor/
     NetworkMonitorBackend.h       INetworkMonitorBackend + the native define (internal)
     NetworkMonitorAddress.h       address bytes -> text, shared by every backend (internal, pure)
     NetworkMonitorProcfs.h        the /proc/net parser (internal, pure)
+    NetworkMonitorNames.h         INameSource, the registry, the name table, the built-in sources
+    NetworkMonitorDns.h           the DNS wire format (internal, pure)
 UltraCanvas/core/NetworkMonitor/
-    NetworkMonitorCore.cpp        NetworkMonitor_* functions, filters, roll-up, null backend
+    NetworkMonitorCore.cpp        NetworkMonitor_* functions, filters, names, roll-up, null backend
     NetworkMonitorAddress.cpp     RFC 5952 IPv6 text, IPv4-mapped in mixed notation
     NetworkMonitorProcfs.cpp      table parsing - no I/O, so it is tested on every platform
     NetworkMonitorStore.cpp       the activity store over UltraDatabase (stubs without it)
+    NetworkMonitorNames.cpp       the name table, the registry, reverse DNS, the system resolver
+    NetworkMonitorDns.cpp         message parsing and building, bounds-checked
+    NetworkMonitorDnsProxy.cpp    the local DNS proxy source (BSD sockets, Winsock shims)
 UltraCanvas/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp
                                   netlink sock_diag, the /proc/net fallback, the /proc walk
 UltraCanvas/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp
                                   IP Helper tables, QueryFullProcessImageNameW, the token user
+UltraCanvas/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp
+                                  the DNS client's ETW events as a name source
 UltraCanvas/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp
                                   libproc: PROC_PIDLISTFDS / PROC_PIDFDSOCKETINFO per process
 Tests/NetworkMonitorTests.cpp     target NetworkMonitorTests (ctest)
@@ -61826,13 +62109,21 @@ that the option filters remove what they should. The socket code compiles
 on Winsock too. Where there is no backend, it asserts the module says so.
 The store is tested on an in-memory database: continuation across
 snapshots and its cut-off, every query filter, the CSV export, the
-roll-up's accumulation onto an existing day, retention and purge.
+roll-up's accumulation onto an existing day, retention and purge. Names:
+the wire format from fixture bytes (a CNAME chain, a compression pointer,
+a pointer loop, a cut message), the table's precedence and lifetime rules
+and its listener, the reverse DNS source's address filters, the proxy end
+to end over UDP and TCP against a fake resolver on loopback, and the
+store's names, observations, CSV, roll-up and the version-1 migration.
 
 ## Not built yet
 
-- Connection events (ETW on Windows, eBPF on Linux), domain names,
-  throughput charts, at-rest encryption of the store and file-transfer
-  correlation — the rest of Phase 2 and Phase 3, in the proposal's §9 order.
+- Connection events (ETW on Windows, eBPF on Linux), throughput charts,
+  at-rest encryption of the store and file-transfer correlation — the rest
+  of Phase 2 and Phase 3, in the proposal's §9 order.
+- The name sources that need packet capture — port-53 capture and the TLS
+  SNI reader — and any source for a browser resolving over HTTPS on its
+  own; `NameSource` already names them.
 - Byte counters on Windows (ETW) and macOS (no public source).
 - Any blocking or TLS interception, by decision (proposal §7).
 
@@ -63557,8 +63848,8 @@ What already existed and stays where it is:
   CloudService ──────────── AddAccount / List / Upload / CreateShareLink / UploadAndShare
     ├── AccountStore        the account list + default      (UltraDatabase, SQLite)
     ├── ISecretStore        passwords / tokens by accountId
-    │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password")
-    │     └── FileSecretStore    obfuscated files (per-app fallback)
+    │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password"), the app's own vault
+    │     └── MemorySecretStore  process-lifetime (tests, demos)
     └── provider registry   RegisterProvider / GetProvider / RegisterBuiltInProviders
           │                 + LoadProviderPlugins() for provider DSOs
           ├── HttpProviderBase                      one HttpFn, Basic / Bearer auth, HTTP → Result
@@ -63635,7 +63926,11 @@ using namespace UltraCloud;
 // Once per process.
 RegisterBuiltInProviders();
 AccountStore accounts;  accounts.Open("myapp-cloud", dataDir + "/cloud.db");
-FileSecretStore secrets(dataDir + "/cloud-vault");   // or VaultSecretStore
+// The secrets go into the application's own vault (UltraVault::DeviceKeyVault,
+// Docs/Modules/UltraVault/README.md), opened before the accounts are touched.
+UltraVault::DeviceKeyVault vault(dataDir + "/vault", {"myapp.vault", "myapp.myapp."});
+vault.TryAutoUnlock();
+VaultSecretStore secrets;                            // "cloud.<accountId>.*" in that vault
 CloudService cloud(accounts, secrets);
 
 // Set up an account (the first one becomes the default).
@@ -63704,7 +63999,7 @@ providers.
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
-| `UltraCloudSecrets.h` | `ISecretStore`, `FileSecretStore`, `VaultSecretStore` (with UltraVault) |
+| `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
@@ -66133,13 +66428,79 @@ UltraVault::Shutdown();
 readers and a "requires user presence" flag; the memory and file backends
 store it, OS-native backends will enforce it.
 
+## Per-application vaults: `DeviceKeyVault`
+
+An application that keeps a password or a token set per account does not
+drive `Initialize`/`Put`/`Get` itself. It uses `UltraVault::DeviceKeyVault`
+(`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target): one encrypted
+vault file in a directory the application owns, unlocked without a prompt
+by a random passphrase kept owner-only in `device.key` beside it — the
+posture of Thunderbird with no Primary Password: encrypted at rest, no
+prompt, and the key is readable by whoever can read the directory. A
+`DeviceKeyVaultProfile` — the vault file name and the key prefix in the
+`<vendor>.<app>.` convention — tells one application's vault from another's.
+
+```cpp
+#include <UltraVault/UltraVaultDeviceKeyVault.h>
+
+// Usually a one-line subclass per application fixes the profile
+// (Apps/UltraMail/engine/UltraMailCredentialVault.h is the pattern).
+UltraVault::DeviceKeyVault vault(dataDir + "/vault",
+                                 {"ultramail.vault", "mail.ultramail."});
+
+// First run: a device key is generated and the vault created. Later runs:
+// the key unlocks it. False only when a vault exists that was made with a
+// master password (prompt once, Unlock(), then PersistDeviceKey()) or when
+// this build has no crypto backend.
+if (!vault.TryAutoUnlock()) { /* say so; Store() will refuse, not drop */ }
+
+vault.Store("erika@example.com", password);         // key mail.ultramail.erika@example.com
+std::string got;
+if (vault.Retrieve("erika@example.com", got)) { /* … */ }
+
+UltraVault::OAuthTokens tokens = { access, refresh, expiresAt };
+vault.StoreOAuthTokens("erika@example.com", tokens); // drops the password slot
+switch (vault.MethodFor("erika@example.com")) { /* None / Password / OAuth2 */ }
+
+vault.Lock();                                       // wipes the derived key
+```
+
+| Group | Members |
+|---|---|
+| Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
+| Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
+| OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
+
+`UnlockStatus` tells a wrong master password (`WrongPassphrase` — also what a
+tampered file reports) from a build that cannot open a vault at all
+(`Unavailable`: UltraCrypt without libsodium) and from a path that cannot be
+written (`IoError`). An empty passphrase is refused. A vault in the 0.1 format
+the applications used before UltraVault (secrets XOR-ed against a `vault.key`
+sidecar, one line per account in `creds.dat`) is carried across on the first
+successful unlock and its files removed.
+
+UltraVault itself is one store per process: `Unlock()` closes whatever
+UltraVault had open and opens this vault, so a process works with one
+`DeviceKeyVault` at a time.
+
 ## Consumers
 
 - **UltraAI** — `ProviderConfig::apiKeyVaultRef` resolves through
   `UltraVault::Get` when built with `ULTRAAI_USE_ULTRAVAULT` (on by default
   in-tree); see `Docs/Modules/UltraAI/README.md`.
-- **UltraCloud** — `VaultSecretStore` keeps cloud account tokens here, falling
-  back to a per-app obfuscated file store when UltraVault is not built.
+- **UltraCloud** — `VaultSecretStore` keeps cloud account credentials in
+  whichever vault the application opened, under `cloud.<accountId>.*`; there
+  is no file store of its own any more.
+- **UltraFiler** — its own `DeviceKeyVault` (`ultrafiler.vault` /
+  `files.ultrafiler.`) under the config directory, holding the remote-drive
+  credentials through UltraCloud's `VaultSecretStore`.
+- **UltraMail** and **EmailCleaner** — `UltraMail::CredentialVault`
+  (`Apps/UltraMail/engine/UltraMailCredentialVault.h`) is `DeviceKeyVault`
+  with the profile `ultramail.vault` / `mail.ultramail.`; mail passwords and
+  OAuth2 token sets per account.
+- **UltraSocial** — `UltraSocial::CredentialVault`
+  (`Apps/UltraSocial/engine/UltraSocialCredentialVault.h`), profile
+  `ultrasocial.vault` / `social.ultrasocial.`; one credential blob per account.
 
 ## Third-party dependencies
 
@@ -67723,6 +68084,168 @@ FILE: Docs/Modules/VirtualFS/intro.md
 Browse inside archives as if they were ordinary folders. Open ZIP, 7z, TAR, and many more formats without extracting anything first, navigate seamlessly into nested archives, and read files on demand with intelligent caching, streaming for large files, and password support for encrypted content. One consistent, cross-platform interface powers file managers, document viewers, asset loaders, and backup browsers alike.
 
 ==============================================================================
+FILE: Docs/UltraAuthenticator/README.md
+==============================================================================
+
+# UltraAuthenticator
+
+## Overview
+
+UltraAuthenticator generates the six- or eight-digit sign-in codes (TOTP and
+HOTP, the same codes Google Authenticator, Aegis and 2FAS produce) for
+accounts you enrol by scanning a QR code or typing a setup key. It ships as
+`Apps/UltraAuthenticator`, is built from UltraCanvas elements, works fully
+offline, and keeps every account in one encrypted file that only your master
+password opens.
+
+This page is for the person using it. It says what the app protects, how,
+and — at least as important — what it cannot protect against, so that nobody
+relies on it for something it does not do. The engineering behind each
+statement is in the
+[feasibility investigation](UltraAuthenticator-Investigation.md); the
+cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
+
+- Version: its own, from the first line of
+  [`Docs/UltraAuthenticator/CHANGELOG.md`](CHANGELOG.md). `--version`
+  prints it.
+- Files: `accounts.vault` and `settings.ini` under
+  `$XDG_DATA_HOME/UltraAuthenticator/` (`~/.local/share/UltraAuthenticator/`
+  by default). `--vault PATH` uses another vault file; its settings live
+  beside it.
+
+## What the secret is
+
+When a service shows you a QR code to enrol, the QR contains a **seed**: a
+random key the service also keeps. Every code the app ever shows is computed
+from that seed and the current time (or, for HOTP, a counter). That makes the
+seed *the second factor itself*: anyone who copies it once can produce your
+codes forever, without your phone, your password or your machine. Everything
+below follows from treating the seed as the thing to protect, not the codes.
+
+## How the app protects it
+
+**On disk.** All accounts sit in one file, encrypted with
+XChaCha20-Poly1305. The key is derived from your master password with
+Argon2id, whose cost parameters and salt are stored in the file header — and
+the header is authenticated along with the data, so a downgraded cost
+parameter or an edited header is detected, not obeyed. The file is written
+with owner-only permissions (`0600`) and replaced atomically, so a crash
+mid-save leaves the previous vault, never a half-written one. Nothing about
+the accounts — not the seeds, not the names, not the services — is readable
+without the password; the file is one opaque block.
+
+A wrong password and a tampered file are reported with the *same* message,
+on purpose. Telling them apart would tell an attacker which of the two they
+had achieved.
+
+**There is no unprotected mode.** The app refuses to start without a crypto
+backend and refuses to open a vault without a password. It never falls back
+to storing seeds in the clear.
+
+**In memory.** A seed is read out of the vault, used to compute one code, and
+wiped, inside a single call; it does not sit in memory while the window is
+open. Secrets live in buffers that are zeroed on release and, where the
+platform allows, locked against being paged to swap. The window that shows
+codes never holds a seed at all, with one deliberate exception (*Show key*,
+below).
+
+**Locking.** The vault locks — every code disappears from the screen and the
+decrypted vault is dropped from memory — when you press **Lock**, after a
+period without input to the window (5 minutes by default, or never; see
+*Settings*), and when the window is minimised. The lock screen accepts only
+the master password or *Quit*; it cannot be closed or escaped. After three
+wrong passwords each further attempt waits twice as long as the last, up to
+five minutes, and the wait is enforced by the vault code, not by the
+dialog.
+
+**Showing a code only on request.** *Settings → Hide codes until a card is
+clicked* replaces every code with dots; clicking a card shows its code for
+15 seconds. Hidden cards are not even computed. This is for working where
+someone may be looking over your shoulder.
+
+**Getting a seed back out.** Moving to a new phone means reading the seed
+again, and an app that could never do that would push people into keeping
+the original QR code in a photo album — far worse than this vault. So *Show
+key* exists, and it is fenced: it asks for the master password again even
+though the vault is open, shows the key and the `otpauth://` URI as text on
+screen only, renders no QR code and writes nothing to disk, and wipes its
+own widgets when closed.
+
+**Backups.** *Back up…* writes every account to one encrypted file, sealed
+with a passphrase that **must differ from the master password** — a backup
+is the file most likely to reach a USB stick or a cloud folder, and one that
+opened with your device password would make finding it as good as having
+the machine. Export asks for the master password first. *Restore…* never
+overwrites: an account already in the vault is kept and reported as skipped,
+because a restore that replaced a re-enrolled seed or a newer HOTP counter
+would destroy a working second factor.
+
+**Untrusted input.** Scanned QR codes and typed keys go through the same
+strict parser; a malformed seed is refused rather than silently turned into
+a different one. Camera frames are decoded in memory and never written to
+disk as images.
+
+## What it does not protect against
+
+Be clear-eyed about these. None of them is a defect the app can fix on its
+own; each is stated here so the app is not credited with more than it does.
+
+- **Anyone who can see your screen.** Under X11, any program running in
+  your session can capture window contents and read keystrokes. Codes are
+  visible for up to 30 seconds while shown; the setup key is visible for as
+  long as *Show key* is open. Screenshot tools, screen recorders and malware
+  in the same session see what you see. Prefer Wayland or a native ULTRA OS
+  build, keep *Show key* open only as long as the other device needs, and
+  use *Hide codes* on a shared screen.
+- **Other programs running as you.** On a standard Linux host, a process
+  running under your user account can read your files and, unless the
+  kernel restricts `ptrace`, your programs' memory. The encryption defends
+  the vault file against theft, backups and disk forensics; it does **not**
+  defeat malware already running as you while the vault is unlocked. That
+  needs the per-application isolation ULTRA OS is built for, which this app
+  is designed to take advantage of but cannot provide by itself.
+- **A compromised machine in general.** A keylogger captures the master
+  password. A modified copy of the app can do anything. Verify the build you
+  run.
+- **Phishing.** A one-time code typed into a fake sign-in page is relayed
+  to the real one in seconds. Time-based codes do not resist this; only
+  phishing-resistant methods (hardware keys, passkeys) do. Check the address
+  bar before you type a code.
+- **A lost master password.** It is not stored anywhere and cannot be
+  recovered. Without it, the vault is unreadable — by you and by everyone
+  else. Keep a backup (encrypted, with its own passphrase) somewhere safe.
+- **A wrong clock.** Time-based codes are computed from the system clock. If
+  the clock is minutes off, every code is rejected by the service and the
+  app cannot tell. Keep the system time synchronised.
+- **Text you type into a password field.** The framework's text field keeps
+  its own copy of what was typed until it is cleared; the app clears its
+  fields after every use, but that copy is the widget's, not the app's.
+
+## Settings
+
+Three options, in *Settings…*, kept in `settings.ini` beside the vault. The
+file is plain `key = value` text and contains nothing secret; hand-edited
+values are clamped, never trusted.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Lock after no input for | 5 minutes | Lock when the window has had no mouse or keyboard input for this long. *Never* disables it; the Lock button and the minimise lock still work. |
+| Lock when the window is minimised | on | Lock the moment the window is minimised, so nothing is on the cards when it comes back. |
+| Hide codes until a card is clicked | off | Show dots instead of codes; a click shows one code for 15 seconds. |
+
+## Everyday advice
+
+- Enrol by scanning where you can; typing a 32-character key is the
+  fallback.
+- Take a backup after enrolling anything important, with a passphrase you
+  will still know in a year. Keep it off cloud folders unless you accept
+  that the passphrase is then the only thing protecting it.
+- Use *Show key* only to enrol another device, and close it as soon as that
+  device shows the same code.
+- Lock the app when you leave the desk. The button is at the top right for
+  exactly that moment.
+
+==============================================================================
 FILE: Docs/UltraAuthenticator/UltraAuthenticator-Investigation.md
 ==============================================================================
 
@@ -68167,17 +68690,46 @@ codes the server rejects.
 - **Phishing:** TOTP does not resist real-time relay phishing. Out of scope,
   but user-facing docs should not oversell.
 
+All three are now stated to the user, in those terms, in the
+[README](README.md) under *What it does not protect against*, alongside the
+things the app does do.
+
 ### 3.7 Clipboard and UI leakage (medium)
 
 - Copying a *code* is acceptable (30 s lifetime) but: X11 clipboard is
   readable by every app, and clipboard managers persist history. Auto-clear
   the clipboard ~30 s after copy (only if it still holds our value), and
   never offer copy for the *secret*.
-- App lock (PIN or the master password) with exponential back-off, and
-  auto-lock on minimize/idle. Codes should not be visible on a lock screen
-  or in a window-switcher preview.
-- Tap-to-reveal (codes hidden by default) is worth offering for
-  shoulder-surfing resistance.
+- ~~App lock (PIN or the master password) with exponential back-off, and
+  auto-lock on minimize/idle.~~ — **DONE** (`LockScreenDialog`,
+  `AccountStore::Lock`/`Unlock`, `LockPolicy.h`). The vault locks on the
+  Lock button, after a configurable period without input to the window
+  (default 5 minutes), and when the window is minimised; each lock clears
+  every card *and* drops the decrypted vault, so a locked window holds no more
+  than one that was never unlocked. The lock screen cannot be dismissed —
+  no Cancel, no Escape, the window manager's close is refused — only the
+  master password or Quit gets past it. Back-off is enforced by the store,
+  not the dialog: three wrong passwords are free, then each failure doubles
+  the wait (2 s, 4 s, … capped at 5 minutes) and an attempt during the wait
+  is refused with `TooManyAttempts` *before* the password is checked, so the
+  refusal costs no Argon2id work and is not an oracle. The PIN option was
+  not taken: a PIN is a weaker second password protecting the same key, and
+  the framework's password field is the same widget either way. Verified by
+  `Tests/UltraAuthenticatorAccountTests.cpp` (lock/unlock, throttle) and
+  `Tests/UltraAuthenticatorLockTests.cpp` (the schedule as a pure function).
+
+  Detecting a user-initiated minimise needed a framework change: on X11 the
+  window's `IsMinimized()` only tracked the application's own `Minimize()`
+  call. The Linux backend now watches the ICCCM `WM_STATE` property and the
+  base window raises `onWindowMinimize` / `onWindowRestore` (new
+  `UCEventType::WindowRestore`) on the transitions, for every application.
+- ~~Tap-to-reveal (codes hidden by default) is worth offering for
+  shoulder-surfing resistance.~~ — **DONE**, as an option (Settings → "Hide
+  codes until a card is clicked", off by default). A hidden card shows
+  "••• •••" and, on click, its code for 15 seconds; while hidden the seed is
+  not even read, so the option also cuts the once-a-second decryptions to
+  zero. Off by default because for most people the whole point of the app is
+  glancing at a code, and the shoulder-surfing threat is theirs to opt into.
 
 ### 3.8 Process and dependency hygiene (medium)
 

@@ -86,6 +86,12 @@ public:
         return SetFlags(accountId, folder, uid, Flag_Answered, true);
     }
 
+    // Drop a message from the index (its envelope row and any stored scan
+    // verdict). Used after a Delete/Junk move takes it out of this folder — the
+    // message list does not filter deleted rows, so it must actually be removed.
+    UltraDbResult RemoveMessage(const std::string& accountId, const std::string& folder,
+                                int64_t uid);
+
     // ---- Sender security verdicts -----------------------------------------
     // The content scan's verdict for one message, kept in its own table so an
     // envelope upsert (which happens on every header sync, long before a body

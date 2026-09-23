@@ -14,6 +14,8 @@
 // fully processed before the engine headers are seen.
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasMenu.h"
 
 #include "UltraMailAttachmentStrip.h"
 #include "UltraMailComposer.h"   // SourceMessage
@@ -63,6 +65,17 @@ public:
     // Delegated to the app: build a reply for the shown message.
     std::function<void(const SourceMessage&, const std::string& selfName,
                        const std::string& selfAddr)> onReply;
+    // Delegated to the app: build a forward of the shown message.
+    std::function<void(const SourceMessage&, const std::string& selfName,
+                       const std::string& selfAddr)> onForward;
+    // Delegated to the app: move the shown message to Trash (server + local).
+    std::function<void(const MessageEnvelope&)> onDelete;
+    // Delegated to the app: move the shown message to the Junk mailbox.
+    std::function<void(const MessageEnvelope&)> onJunk;
+    // Delegated to the app: clear \Seen on the shown message (server + local).
+    std::function<void(const MessageEnvelope&)> onMarkUnread;
+    // Delegated to the app: open the raw .eml source in a read-only window.
+    std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
 
     // Raised when a body was scanned for the first time (the verdict has been
     // stored already): the message list refreshes that row's badge.
@@ -91,6 +104,9 @@ private:
     SenderBadgeResolver  badges_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> actions_;      // Reply · Forward · Junk · Delete · More
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    junkBtn_;      // hidden while reading the Junk mailbox
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu>      moreMenu_;     // "Mark as Unread" / "View source"
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     subject_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     from_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     to_;
@@ -103,7 +119,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningText_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyHost_;
     AttachmentStrip attachmentStrip_;
-    SourceMessage   current_;   // the shown message, for Reply
+    SourceMessage   current_;   // the shown message, for Reply / Forward
+    MessageEnvelope curEnv_;    // the shown message's identity, for Delete / Junk / Mark-Unread
+    std::string     curRaw_;    // the shown message's raw .eml, for View source
 };
 
 } // namespace UltraMail

@@ -5,10 +5,12 @@
 
 #include "UltraCleanerRules.h"
 
-// The app's own version, from the first line of Docs/UltraCleaner/CHANGELOG.md
-// through cmake/UltraCanvasVersion.cmake. Independent of the framework's.
+// ULTRACLEANER_VERSION comes from the build alone: CMake reads the first line
+// of Docs/UltraCleaner/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it
+// as a compile definition. No fallback here, so a build that lost it
+// fails instead of reporting a wrong number.
 #ifndef ULTRACLEANER_VERSION
-#define ULTRACLEANER_VERSION "0.0-dev"
+#error "ULTRACLEANER_VERSION is not defined: build through CMake, which reads it from Docs/UltraCleaner/CHANGELOG.md"
 #endif
 
 #include "UltraCanvasApplication.h"

@@ -2,7 +2,12 @@
 
 ## Overview
 
-**UltraCanvasPDF** is the PDF subsystem for UltraCanvas. It has two layers:
+**UltraCanvasPDF** is the PDF subsystem: the `UltraCanvasPDFView` widget and the
+headless `IPDFDocument` engine. For a preview pane, prefer
+[UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) — it wraps this view and
+still builds without MuPDF. See *Choosing a widget* below.
+
+The subsystem has two layers:
 
 - **`UltraCanvasPDFView`** — a ready-to-use viewer widget with a thumbnail
   strip, scrollable page render, zoom, and search-hit overlay. This is what the
@@ -12,6 +17,46 @@
 
 The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 (requires MuPDF / `libmupdf-dev`).
+
+### Choosing a widget
+
+`UltraCanvasPDFView` is not usually what an application should embed directly.
+[UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) **contains** a
+`UltraCanvasPDFView` and hands PDFs to it, so choosing the media viewer costs
+nothing in PDF capability and decides three things in its favour:
+
+| | `UltraCanvasPDFView` | `UltraCanvasMediaViewer` |
+|---|---|---|
+| PDF pages, thumbnails, zoom, search | yes | yes — the same view, embedded |
+| A receipt photographed as JPEG/PNG/HEIC, or a `.ods`/`.csv` attachment | no | yes, dispatched by file kind |
+| Build without MuPDF | the widget does not exist | compiles and runs; other kinds still display |
+
+That last row is the one that bites. `ULTRACANVAS_PLUGIN_PDF` defaults **ON**,
+but a machine without MuPDF does not fail the build — `UltraCanvas/CMakeLists.txt`
+sets `MUPDF_FOUND FALSE`, prints `[✗] PDF Plugin - DISABLED (MuPDF not found…)`
+and carries on. So the option being ON is **not** a promise that the view exists.
+Every PDF reference inside the media viewer is `#ifdef ULTRACANVAS_PLUGIN_PDF`-guarded
+already; an application that embeds `UltraCanvasPDFView` itself has to repeat
+those guards and invent its own fallback, or it silently ships a pane that is
+simply absent on such a build.
+
+Embed it the way UltraFiler does — the established preview-pane pattern
+(`Apps/UltraFiler/UltraFilerWindow.cpp:829`):
+
+```cpp
+preview = CreateMediaViewer("app-preview", 0, 0, 0, 0);
+preview->SetTopBarsVisible(false);   // no toolbars in a pane this small
+AddChild(preview);
+preview->LoadFile(path);             // kind chosen from the file's bytes
+```
+
+Use `UltraCanvasPDFView` directly only when the application is a PDF tool as
+such — it will never be handed anything but a PDF, and a missing MuPDF is a
+reason for it not to run at all. Use `IPDFDocument` when no UI is wanted:
+extracting text, searching or rewriting a PDF headlessly.
+
+To open one file full size in a window of its own, see
+[UltraCanvasMediaViewerWindow](UltraCanvasMediaViewerWindow.md).
 
 **Version:** 1.1.0
 **Headers:** `include/Plugins/Documents/UltraCanvasPDFView.h`,

@@ -706,7 +706,6 @@ namespace UltraCanvas {
 
         // Color settings
         void SetTextColor(const Color& color);
-        void SetBackgroundColor(const Color& color) { style.backgroundColor = color; RequestRedraw(); }
         void SetSelectionColor(const Color& color) { style.selectionColor = color; RequestRedraw(); }
         void SetCursorColor(const Color& color) { style.cursorColor = color; RequestRedraw(); }
 

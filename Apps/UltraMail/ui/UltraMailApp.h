@@ -21,6 +21,7 @@
 #include "UltraMailPreferences.h"
 
 #include "UltraMailLocalStore.h"
+#include "UltraMailSyncEngine.h"
 #include "UltraMailMimeCodec.h"
 #include "UltraMailContactStore.h"
 #include "UltraMailSenderIconCache.h"
@@ -164,9 +165,28 @@ private:
     void SeedDemoMail();
     // Add an in-memory demo cloud account with a few files (demo only).
     void SeedDemoCloud();
+    void MigrateCloudSecrets();
 
     // Open a compose window for the given draft (new / reply / forward).
     void OpenComposer(const Draft& draft);
+
+    // Message actions from the reading pane, mirrored to the IMAP server on a
+    // background worker and then refreshed. Delete moves to Trash (fallback:
+    // \Deleted flag + local removal); Junk moves to the Junk mailbox; Mark-Unread
+    // clears \Seen. All non-blocking; failures surface an alert.
+    void HandleDeleteMessage(const MessageEnvelope& env);
+    void HandleJunkMessage(const MessageEnvelope& env);
+    void HandleMarkUnread(const MessageEnvelope& env);
+    // Run one IMAP mailbox op on a worker (credentials resolved off the UI
+    // thread), then Refresh() on success or alert `actionName` on failure.
+    void RunMailboxAction(const std::string& accountId,
+                          std::function<SyncOutcome(SyncEngine&, const std::string& serverUrl,
+                                                    const UltraNetMailOptions&)> op,
+                          const std::string& actionName);
+    // The name of the account's folder with the given special-use role, or "".
+    std::string FolderWithRole(const std::string& accountId, FolderRole role) const;
+    // Open the raw .eml source of a message in a read-only window.
+    void OpenSourceViewer(const std::string& subject, const std::string& raw);
     // Attempt to send a draft via the SMTP plug-in; report the outcome.
     void HandleSendDraft(const Draft& draft);
     // Re-flush the outbox after a failed send (the Retry button's action).
@@ -230,9 +250,11 @@ private:
     SenderIconCache senderIcons_;
     OutboxStore outbox_;
     // Cloud storage (UltraCloud): accounts + secrets behind the composer's
-    // "Attach cloud link". Per-app store for now (see the module README).
+    // "Attach cloud link". The secrets live in the mail vault (vault_) under
+    // "cloud.<accountId>.*"; MigrateCloudSecrets() carries the obfuscated
+    // cloud-vault/ files of earlier releases into it once it is unlocked.
     UltraCloud::AccountStore cloudAccounts_;
-    std::unique_ptr<UltraCloud::FileSecretStore> cloudSecrets_;
+    std::unique_ptr<UltraCloud::VaultSecretStore> cloudSecrets_;
     std::unique_ptr<UltraCloud::CloudService> cloud_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
