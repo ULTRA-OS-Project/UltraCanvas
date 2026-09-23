@@ -15,6 +15,12 @@
   `ToggleDetails()` / `IsDetailsVisible()`; the surface's `SetInfoText()` /
   `ToggleInfoPopup()` / `IsInfoPopupVisible()` are gone (nothing outside the
   viewer used them). Docs: `UltraCanvasMediaViewer.md` §Details panel.
+- **Markdown tables in `UltraCanvasTextArea` keep short columns readable.**
+  When a table was wider than the view, every column shrank in proportion,
+  so one long cell (a path, a URL) squeezed a column of short labels until
+  they broke mid-word ("Dimens-ions"). `NormalizeTableGroupWidths` now lets a
+  column that fits its fair share keep its natural width and shrinks only
+  the wider ones.
 
 #### 2026-09-23 *0.9.34*
 - **New: UltraNet's OAuth2 app registry** (`<UltraNet/UltraNetOAuth2Apps.h>`,

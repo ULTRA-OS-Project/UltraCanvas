@@ -1208,7 +1208,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         dv->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
         dv->SetZIndex(OverlayZOrder::Overlays);
         dv->ApplyDarkTheme();
-        dv->SetBackgroundColor(Color(22, 22, 28, 240));
+        dv->SetBackgroundColor(Color(22, 22, 28, 255));
         dv->SetBorders(1.0f, Color(255, 255, 255, 50), 8.0f);
         dv->SetFontSize(12);
         dv->SetWordWrap(true);

@@ -1116,7 +1116,8 @@ namespace UltraCanvas {
         }
 
         // Compute final per-column widths (including padding). Fit case: natural widths + leftover
-        // distributed evenly. Overflow case: proportional shrink with a 20px floor. Both cases
+        // distributed evenly. Overflow case: columns that fit their fair share keep their natural
+        // width and the rest shrink proportionally, with a 20px floor. Both cases
         // assign the rounding remainder to the last column so `sum(colWidth) == availWidth`.
         int naturalTotal = 0;
         for (int c = 0; c < colCount; c++) naturalTotal += colNatural[c] + 2 * cellPadding;
@@ -1126,8 +1127,36 @@ namespace UltraCanvas {
             int extra = (availWidth - naturalTotal) / colCount;
             for (int c = 0; c < colCount; c++) colWidth[c] = colNatural[c] + 2 * cellPadding + extra;
         } else if (naturalTotal > 0) {
+            // A column that fits in its fair share of the width keeps its natural
+            // width; only the wider ones shrink, in proportion to what they need.
+            // Otherwise one long cell (a path, a URL) squeezes a column of short
+            // labels until they wrap mid-word.
+            std::vector<bool> fixed(colCount, false);
+            int remainingWidth = static_cast<int>(availWidth);
+            int remainingCols = colCount;
+            bool changed = true;
+            while (changed && remainingCols > 0) {
+                changed = false;
+                const int fair = remainingWidth / remainingCols;
+                for (int c = 0; c < colCount; c++) {
+                    if (fixed[c]) continue;
+                    const int need = static_cast<int>(colNatural[c]) + 2 * cellPadding;
+                    if (need <= fair) {
+                        colWidth[c] = need;
+                        fixed[c] = true;
+                        remainingWidth -= need;
+                        --remainingCols;
+                        changed = true;
+                    }
+                }
+            }
+            int64_t wideTotal = 0;
+            for (int c = 0; c < colCount; c++)
+                if (!fixed[c]) wideTotal += static_cast<int64_t>(colNatural[c]) + 2 * cellPadding;
             for (int c = 0; c < colCount; c++) {
-                int w = (int)((int64_t)(colNatural[c] + 2 * cellPadding) * availWidth / naturalTotal);
+                if (fixed[c]) continue;
+                const int64_t need = static_cast<int64_t>(colNatural[c]) + 2 * cellPadding;
+                int w = wideTotal > 0 ? static_cast<int>(need * remainingWidth / wideTotal) : 0;
                 colWidth[c] = std::max(20, w);
             }
         } else {
