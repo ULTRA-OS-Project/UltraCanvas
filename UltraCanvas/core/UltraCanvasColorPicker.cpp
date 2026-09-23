@@ -1654,7 +1654,7 @@ namespace UltraCanvas {
                 Changed(true);
             } else {
                 int row = (int)field - (int)EditField::Channel0;
-                float v = std::stof(text);
+                float v = std::stof(text);   // locale-ok: the user typed this channel value
                 SetChannelValue(row, v);
                 Changed(true);
             }

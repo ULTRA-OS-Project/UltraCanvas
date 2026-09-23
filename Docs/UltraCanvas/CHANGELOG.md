@@ -84,6 +84,28 @@
     numeric text input, the spinner, the colour picker, spreadsheet cell entry
     and filter values — and every label rendered for display. `AGENTS.md`
     draws that line and it is the right one.
+  - **`scripts/check_locale_numbers.py` now enforces the rule**, and found
+    what the sweep above missed — including a `std::strtod` in the vector
+    storage arrowhead parser that the sweep's own grep had excluded, because
+    its lookbehind rejected the `:` in `std::strtod`. A checker does not get
+    tired at site 40.
+    - It reports a locale-dependent read anywhere, and a locale-dependent
+      write in a file that writes a format (Storage / Writer / Export /
+      FileIO / Serializer / Converter, or anything under `DataFormats/` or
+      `Vector/`), including a stream that is never imbued.
+    - The stream rule skips any file that mentions `std::locale::classic`
+      at all. The first version flagged the SVG converter — whose streams are
+      correct, because every number goes through its own imbued `Num()` — so
+      it was pointing at the reference implementation of the fix.
+    - Text a person typed or reads says so at the site with
+      `// locale-ok: <why>`, and eleven such sites now do. They never reach
+      the baseline; `scripts/locale_numbers_baseline.txt` is debt — 100
+      format and protocol sites the sweep did not reach (the OBJ, XAR, X3D,
+      STEP and PDF converters, the LaTeX reader, the Linux hardware probe
+      reading `/proc`, the xlsx reader) — and it should trend to empty.
+    - `.github/workflows/locale-numbers.yml` runs it `--strict`, so a new one
+      fails the build. Verified in both directions: adding a `std::stof`
+      fails the gate, removing it passes.
 - **Matter thermostat setpoints: the units were right, the range was not.**
   `SendThermostatCommand` takes whole degrees and multiplies by 100 for
   `OccupiedHeatingSetpoint`, which the spec carries in hundredths in an int16

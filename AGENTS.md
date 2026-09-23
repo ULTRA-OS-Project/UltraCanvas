@@ -81,8 +81,12 @@ before adding cross-module code.
   backend calls `setlocale(LC_ALL, "")` for XIM — so on a comma-decimal
   desktop an SVG `opacity="0.25"` read as 0 and the shape vanished, and the
   SVG writer emitted `M 1,5`, which reads back as the point (1, 5). This has
-  now been fixed twice, in CSS and in SVG; the remaining ~110 call sites
-  elsewhere in the tree are the same defect waiting to be reported.
+  now been fixed three times - in CSS, in SVG, and across the file-format
+  readers and writers in 0.9.33 - which is why the rule is now checked rather
+  than remembered: `scripts/check_locale_numbers.py` blocks a new one, and
+  `scripts/locale_numbers_baseline.txt` lists the sites still to fix. A number
+  a person typed or reads follows their locale on purpose and says so at the
+  site with `// locale-ok: <why>`.
 - **Third-party code** is vendored under `UltraCanvas/third_party/` and
   `3rdparty/` — do not modify it, and record licenses in
   `THIRD_PARTY_LICENSES.md`.
@@ -306,6 +310,11 @@ number anywhere else, and never introduce a new literal copy of one:
    Wiring a callback on that element? It must not capture a `shared_ptr` to
    the element or to a container above it — capture it raw. Run
    `python3 scripts/check_callback_cycles.py`; CI runs that too.
+   Writing a number into a file format or a protocol? Read it with
+   `TryParseFloat` / `ParseFloatClassic` and write it with
+   `FormatFloatClassic`, never `std::stof` / `atof` / `std::to_string(double)`
+   / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
+   that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change.

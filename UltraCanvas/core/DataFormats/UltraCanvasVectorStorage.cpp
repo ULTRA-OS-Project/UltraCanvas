@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <sstream>
 #include <locale>
+#include <cstring>
 #include <regex>
 #include <numeric>
 
@@ -1699,7 +1700,14 @@ namespace {
             return Point2Dd(tip.x + d.x * ax + n.x * ay, tip.y + d.y * ax + n.y * ay);
         };
         const char* s = stock->Spec;
-        auto num = [&]() { char* e = nullptr; const double v = std::strtod(s, &e); s = e; return v; };
+        // The arrowhead spec is a built-in dot-decimal string, so it must be
+        // read as one: strtod goes through LC_NUMERIC and would stop at the
+        // first '.' on a comma-decimal desktop, truncating every arrowhead.
+        auto num = [&]() {
+            double v = 0.0;
+            s = ParseFloatClassic(s, s + std::strlen(s), v);
+            return v;
+        };
         while (*s) {
             while (*s == ' ') ++s;
             const char verb = *s;

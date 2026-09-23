@@ -214,7 +214,7 @@ bool RulesDialog::AddFromForm(std::string& outError) {
         const std::string text = weight_->GetText();
         if (!text.empty()) {
             char* end = nullptr;
-            weight = std::strtod(text.c_str(), &end);
+            weight = std::strtod(text.c_str(), &end);   // locale-ok: the user typed this into the rule dialog
             if (end == text.c_str() || weight == 0.0) {
                 outError = "Weight must be a number, and not zero — a zero-weight "
                            "rule would never change a verdict.";

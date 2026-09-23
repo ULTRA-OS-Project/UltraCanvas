@@ -578,7 +578,7 @@ inline void SpreadsheetCell::SetValueFromString(const std::string& input) {
     // Try to parse as number
     try {
         size_t pos;
-        double num = std::stod(input, &pos);
+        double num = std::stod(input, &pos);   // locale-ok: cell entry - what the user typed, in their locale
         if (pos == input.length()) {
             // Check if it looks like a percentage
             if (input.back() == '%') {
