@@ -2896,6 +2896,10 @@ bool UltraFilerWindow::IsTreeDropTarget(const TreeNode* node) const {
     // A regular folder node accepts a move into the folder it stands for.
     const std::string path = TreeNodeTargetPath(node);
     if (path.empty()) return false;
+    // A remote drive's row takes files too - as an upload, when the drive
+    // can take one. Asked of the drives, never of the local filesystem.
+    if (IsRemoteFilerPath(path))
+        return remoteDrives && remoteDrives->CanUpload(path);
     std::error_code ec;
     return fs::is_directory(path, ec) && !ec;
 }
@@ -2925,6 +2929,36 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
     // Otherwise a move into the folder the node represents.
     const std::string dest = TreeNodeTargetPath(target);
     if (dest.empty()) return false;
+
+    // A remote drive's row: the files are uploaded into that folder, one
+    // request each, and the drive's own reply (a refresh of the folder, or
+    // the server's refusal) comes back through onOperationFinished. Local
+    // files only, and files only: a folder is not one transfer, and a
+    // remote entry has no local file to send.
+    if (IsRemoteFilerPath(dest)) {
+        if (!remoteDrives) return false;
+        int queued = 0, skipped = 0;
+        std::string firstRefusal;
+        for (const std::string& f : files) {
+            std::string why;
+            if (remoteDrives->Upload(dest, f, why)) ++queued;
+            else { ++skipped; if (firstRefusal.empty()) firstRefusal = why; }
+        }
+        if (statusLabel) {
+            std::string line;
+            if (queued > 0)
+                line = "Uploading " + std::to_string(queued) +
+                       (queued == 1 ? " file" : " files") + " to " +
+                       target->data.text + "...";
+            if (skipped > 0)
+                line += (line.empty() ? "" : "  ") + std::to_string(skipped) +
+                        (skipped == 1 ? " item not uploaded: " : " items not uploaded: ") +
+                        firstRefusal;
+            statusLabel->SetText(line);
+        }
+        return queued > 0 || skipped > 0;
+    }
+
     std::error_code ec;
     if (!fs::is_directory(dest, ec) || ec) return false;
 

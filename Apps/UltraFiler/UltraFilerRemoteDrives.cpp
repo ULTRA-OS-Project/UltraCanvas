@@ -9,6 +9,7 @@
 #include "UltraCanvasApplication.h"    // PostToUIThread
 
 #include <algorithm>
+#include <filesystem>
 
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
@@ -20,6 +21,8 @@
 #endif
 
 namespace UltraCanvas {
+
+namespace fs = std::filesystem;
 
 // ===== THE ULTRACLOUD SIDE =====
 // Everything that needs the module is in here, so the class itself compiles
@@ -140,6 +143,7 @@ bool UltraFilerRemoteDrives::Reload(std::string& error) {
         if (std::shared_ptr<UltraCloud::ICloudProvider> p =
                 UltraCloud::GetProvider(a.providerId)) {
             d.canModify = p->Capabilities().modify;
+            d.canUpload = p->Capabilities().upload;
         }
         drives.push_back(std::move(d));
     }
@@ -340,6 +344,72 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
     return true;
 }
 
+bool UltraFilerRemoteDrives::CanUpload(const std::string& path) const {
+    std::string accountId, remotePath;
+    if (!SplitRemoteFilerPath(path, accountId, remotePath)) return false;
+    if (!Available()) return false;
+    std::lock_guard<std::mutex> lk(mutex_);
+    for (const RemoteDrive& d : drives_) {
+        if (d.accountId == accountId) return d.canUpload;
+    }
+    return false;
+}
+
+bool UltraFilerRemoteDrives::Upload(const std::string& remoteFolder,
+                                    const std::string& localFile,
+                                    std::string& error) {
+    std::string accountId, remotePath;
+    if (!SplitRemoteFilerPath(remoteFolder, accountId, remotePath)) {
+        error = "not a remote drive: " + remoteFolder;
+        return false;
+    }
+    if (!Available()) {
+        error = "this build of UltraFiler carries no cloud support";
+        return false;
+    }
+    // A local path on a server is meaningless, and a folder is not one
+    // transfer: the provider verb takes one file.
+    if (localFile.empty() || IsRemoteFilerPath(localFile)) {
+        error = "only local files can be uploaded";
+        return false;
+    }
+    std::error_code ec;
+    if (fs::is_directory(localFile, ec)) {
+        error = "folders cannot be uploaded - drop the files inside it";
+        return false;
+    }
+    if (!fs::is_regular_file(localFile, ec) || ec) {
+        error = "cannot read " + localFile;
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        const RemoteDrive* drive = nullptr;
+        for (const RemoteDrive& d : drives_) {
+            if (d.accountId == accountId) { drive = &d; break; }
+        }
+        if (!drive) {
+            error = "this drive is no longer configured";
+            return false;
+        }
+        if (!drive->canUpload) {
+            error = "this kind of drive cannot take uploads from here";
+            return false;
+        }
+        Job job;
+        job.isListing = false;
+        job.path = remoteFolder;
+        job.operation = RemoteOperation::Upload;
+        job.argument = localFile;
+        job.isDirectory = false;
+        queue_.push_back(std::move(job));
+        EnsureWorker();
+    }
+    cond_.notify_one();
+    return true;
+}
+
 void UltraFilerRemoteDrives::RunOperation(const Job& job) {
 #ifndef ULTRAFILER_HAS_ULTRACLOUD
     std::lock_guard<std::mutex> lk(mutex_);
@@ -362,6 +432,14 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job) {
             const std::string parent = remotePath == "/" ? std::string()
                                                          : remotePath;
             r = impl_->service->MakeDirectory(accountId, parent + "/" + job.argument);
+            break;
+        }
+        case RemoteOperation::Upload: {
+            // Under the file's own name, in the folder the job names.
+            const std::string parent = remotePath == "/" ? std::string()
+                                                         : remotePath;
+            const std::string name = fs::path(job.argument).filename().string();
+            r = impl_->service->Upload(accountId, job.argument, parent + "/" + name);
             break;
         }
     }
@@ -461,8 +539,9 @@ void UltraFilerRemoteDrives::WorkerMain() {
         // is exactly when the cached listing is least trustworthy.
         std::string changedFolder;
         if (!job.isListing) {
-            changedFolder = job.operation == RemoteOperation::MakeDirectory
-                    ? job.path                       // the folder created in
+            changedFolder = (job.operation == RemoteOperation::MakeDirectory ||
+                             job.operation == RemoteOperation::Upload)
+                    ? job.path                       // the folder created / uploaded in
                     : RemoteFilerParent(job.path);   // the entry's own folder
             if (changedFolder.empty()) changedFolder = job.path;
             std::lock_guard<std::mutex> lk(mutex_);
@@ -533,6 +612,10 @@ void UltraFilerRemoteDrives::FetchListing(const std::string& path) {
             f.isDirectory = e.isDirectory;
             f.size = e.isDirectory ? 0 : static_cast<uint64_t>(e.size < 0 ? 0 : e.size);
             f.modifiedTime = ParseRemoteFilerTime(e.modified);
+            // The Unix convention, which is what a server lists: a dot-entry
+            // is hidden the way a local one is (Display > Hidden files shows
+            // it), rather than shown on a drive and hidden on a disk.
+            f.isHidden = !e.name.empty() && e.name[0] == '.';
             // The display draws its read-only badge from this, so it has to
             // follow what the drive can actually do: an FTP drive can be
             // changed, a Nextcloud or Dropbox one cannot (yet) and says so on

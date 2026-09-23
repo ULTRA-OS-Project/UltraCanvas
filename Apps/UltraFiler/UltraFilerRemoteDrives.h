@@ -54,6 +54,7 @@ struct RemoteDrive {
     std::string serverUrl;     // shown under the name; empty for OAuth providers
     std::string rootPath;      // MakeRemoteFilerPath(accountId, "/")
     bool canModify = false;    // the provider's ProviderCapabilities::modify
+    bool canUpload = true;     // ... and its ProviderCapabilities::upload
 };
 
 // What the toolbar's "+ Drive" button offers. The two differ only in which
@@ -73,7 +74,9 @@ enum class RemoteDriveKind {
 enum class RemoteOperation {
     Delete,          // a file or a folder: the provider picks DELE over RMD
     Rename,          // in place; the argument is a bare name
-    MakeDirectory    // the argument is the new folder's name
+    MakeDirectory,   // the argument is the new folder's name
+    Upload           // `path` is the folder uploaded INTO, the argument the
+                     // local file's full path; queued by Upload(), not Submit
 };
 
 class UltraFilerRemoteDrives {
@@ -143,6 +146,22 @@ public:
     // that is not a remote path, a drive that is gone, a provider that cannot
     // write at all (ProviderCapabilities::modify), a name that is really a
     // path, or the drive's own root.
+    // Whether files can be put onto the drive `path` is on: the provider's
+    // upload capability (a Nextcloud or Dropbox drive takes uploads although
+    // it cannot be changed in place). False for a path that is not a remote
+    // path or a drive that is gone.
+    bool CanUpload(const std::string& path) const;
+
+    // Queues the upload of one local file into the remote folder `remoteFolder`
+    // (an ultracloud:// folder path) under the file's own name, and answers at
+    // once; onOperationFinished fires for that folder when the server has
+    // taken it or refused it. Returns false with a message for what can be
+    // refused outright: a path that is not a remote path, a drive that is
+    // gone or cannot take uploads, a local path that is not a file (folders
+    // are not uploaded - a transfer of a tree is not one provider verb).
+    bool Upload(const std::string& remoteFolder, const std::string& localFile,
+                std::string& error);
+
     bool Submit(RemoteOperation operation, const std::string& path,
                 const std::string& argument, bool isDirectory,
                 std::string& error);
