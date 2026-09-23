@@ -1,3 +1,15 @@
+#### 2026-09-23 *0.9.31*
+- **DemoApp: the ListView page's multi-column table shows the sorting API**
+  (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`). Table 2 used to copy
+  and `std::stable_sort` its own rows on every header click. It now hands the
+  view an `UltraCanvasListSortFilterProxy` in front of the model: File Name
+  sorts naturally, and Size gets a column comparator that reads the number in
+  front of "KB". A new **Sortable columns** checkbox next to the section title
+  turns header-click sorting on and off. Turning it off restores the model's
+  own order and clears the header triangle. The click and selection handlers
+  now map proxy rows back through `MapToSource()` before they look up a file,
+  so the status label names the right file while the table is sorted.
+
 #### 2026-09-23 *0.9.30*
 - **UltraCalendar proposal: the OAuth app registration is UltraNet's**
   (`Docs/Research/UltraCalendarDesignProposal.md`). The accounts section, the
