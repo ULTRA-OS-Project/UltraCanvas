@@ -1,6 +1,6 @@
 #### 2026-09-23 *0.10.3*
 - **`OAuthApps` is a profile of UltraNet's shared OAuth2 app registry**
-  (framework 0.9.33). Same API, same order - `Set()`, `ULTRAMAIL_*` in the
+  (framework 0.9.34). Same API, same order - `Set()`, `ULTRAMAIL_*` in the
   environment, `oauth.ini`, the baked-in client - and the same behaviour for
   the wizard; what changes is where the registration lives: the Google and
   Microsoft clients UltraMail ships or reads from `oauth.ini` now also serve
