@@ -246,7 +246,7 @@ What the transport already provides, verified in the tree:
 |---|---|
 | HTTP with arbitrary verbs (`PROPFIND`, `REPORT`, `MKCALENDAR`) and custom headers (`Depth`, `If-Match`, `Prefer`) | `UltraNetHttpMethod::Custom` + `customMethod` (`UltraCanvas/include/UltraNet/UltraNetHttp.h:16`); UltraCloud's WebDAV provider already does `PROPFIND` and `MKCOL` this way (`UltraCloud/providers/UltraCloudWebDav.cpp:210`, `:233`) |
 | Multistatus XML parsing | `UltraCloud::ParseMultistatus` (`UltraCloudWebDav.h`) — extend for `calendar-data`, `getetag`, `sync-token`, `getctag`; the FIBU proposal's `UltraCanvasXML` facade over tinyxml2 would be the right home if it lands first |
-| OAuth2 + PKCE through the system browser, refresh | `UltraNet_OAuth2AuthorizeInteractive` (`UltraNetOAuth2.h`); the per-provider app registration in UltraNet's shared registry (`UltraNetOAuth2Apps.h`, framework 0.9.31), of which `UltraMail::OAuthApps` and `UltraCloud::SetOAuthApp` are profiles |
+| OAuth2 + PKCE through the system browser, refresh | `UltraNet_OAuth2AuthorizeInteractive` (`UltraNetOAuth2.h`); the per-provider app registration in UltraNet's shared registry (`UltraNetOAuth2Apps.h`, framework 0.9.33), of which `UltraMail::OAuthApps` and `UltraCloud::SetOAuthApp` are profiles |
 | DNS SRV for RFC 6764 | `UltraNet_DnsResolveAsync` (used by UltraMail's discovery plan) |
 | TLS on by default, verification on | UltraNet's defaults |
 
@@ -337,7 +337,7 @@ that unification is one step later, not a rewrite:
   stores a password or an OAuth token set per account and answers
   `MethodFor(account)`. The calendar adds no vault code of its own.
 - The Google and Microsoft OAuth *app registrations* come from **UltraNet's
-  shared OAuth2 app registry** (`UltraNetOAuth2Apps.h`, framework 0.9.31):
+  shared OAuth2 app registry** (`UltraNetOAuth2Apps.h`, framework 0.9.33):
   `UltraNet_OAuth2GetApp("google")` returns whatever UltraMail baked in
   (`UltraMailOAuthDefaults.h.in`, `cmake/oauth.local.cmake`), an `oauth.ini`
   named, or the environment set, with the calendar scopes added to that same
@@ -826,7 +826,7 @@ sync engine is.
 | Piece | State | Action |
 |---|---|---|
 | HTTP with custom verbs and headers, TLS, DNS SRV | ✅ UltraNet | none |
-| OAuth2 + PKCE + loopback, token refresh; the app registration | ✅ UltraNet, including the shared app registry (`UltraNetOAuth2Apps.h`, 0.9.31) | add calendar scopes to the Google / Microsoft registrations; register an `ULTRACALENDAR_` prefix |
+| OAuth2 + PKCE + loopback, token refresh; the app registration | ✅ UltraNet, including the shared app registry (`UltraNetOAuth2Apps.h`, 0.9.33) | add calendar scopes to the Google / Microsoft registrations; register an `ULTRACALENDAR_` prefix |
 | WebDAV multistatus parsing | ✅ `UltraCloud::ParseMultistatus` (props limited to files) | extend, or replace with the proposed `UltraCanvasXML` facade |
 | Named SQLite connections, migrations, bound parameters | ✅ UltraDatabase | none |
 | Secret storage with a device-key unlock | ✅ `UltraVault::DeviceKeyVault` (framework 0.9.23; UltraMail and UltraSocial are profiles of it) | use with a calendar profile |
@@ -854,7 +854,7 @@ sync engine is.
    is the third app to want it (after UltraMail and UltraFiler). Should that
    land *before* phase 2 so the calendar never grows its own?
 3. ~~**Move `OAuthApps` out of `Apps/UltraMail/engine/`**~~ **Resolved** by
-   framework 0.9.31: the lookup is UltraNet's OAuth2 app registry
+   framework 0.9.33: the lookup is UltraNet's OAuth2 app registry
    (`UltraNetOAuth2Apps.h`) and `UltraMail::OAuthApps` and
    `UltraCloud::SetOAuthApp` are profiles of it, so one Google and one
    Microsoft registration serve mail, files and, with a calendar profile,

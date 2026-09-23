@@ -362,7 +362,7 @@ namespace UltraCanvas {
         //newTabATabs->UseDefaultNewTabColors(true);  // Inherit tab colors
 
         // Set up new tab callback
-        newTabATabs->onNewTabRequest = [newTabATabs]() {
+        newTabATabs->onNewTabRequest = [newTabATabs = newTabATabs.get()]() {
             static int tabCounter = 1;
 
             std::ostringstream titleStream;
@@ -444,7 +444,7 @@ namespace UltraCanvas {
 //        );
 
         // Set up new tab callback
-        newTabBTabs->onNewTabRequest = [newTabBTabs]() {
+        newTabBTabs->onNewTabRequest = [newTabBTabs = newTabBTabs.get()]() {
             static int tabCounter = 1;
 
             std::ostringstream titleStream;

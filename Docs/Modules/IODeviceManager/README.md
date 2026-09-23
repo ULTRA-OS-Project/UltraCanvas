@@ -195,6 +195,18 @@ manager.Shutdown();
 
 ---
 
+## See It: DeviceExplorer
+
+The **DeviceExplorer** application (`Apps/DeviceExplorer`) is IODeviceManager's
+user interface: every device the compiled-in backends find, as a tree grouped by
+category, connection or backend, with the selected device's full description —
+manufacturer, model, masked serial, transport, backend, connection path, state,
+last error and backend-specific attributes — on the right. It follows hot-plug
+changes through `StartMonitoring()` and has a headless `--list` mode. See
+[Docs/DeviceExplorer/README.md](../../DeviceExplorer/README.md).
+
+---
+
 ## The Bottom Line
 
 **Stop managing hardware. Start building features.**

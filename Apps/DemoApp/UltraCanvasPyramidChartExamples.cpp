@@ -730,7 +730,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
 
     // The callbacks report indices into the data source, so sorting cannot shift them
     auto source = chart->GetPyramidDataSource();
-    chart->onLevelClick = [selection, source, chart](size_t levelIndex) {
+    chart->onLevelClick = [selection, source, chart = chart.get()](size_t levelIndex) {
         if (!source || levelIndex >= source->GetPointCount()) return;
         const auto& level = source->GetLevel(levelIndex);
         PyramidLevelMetrics metrics = chart->GetLevelMetrics(levelIndex);

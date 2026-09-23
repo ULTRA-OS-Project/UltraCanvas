@@ -647,7 +647,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
 
     // The callbacks report indices into the data source, so sorting cannot shift them
     auto source = chart->GetFunnelDataSource();
-    chart->onStageClick = [selection, source, chart](size_t stageIndex) {
+    chart->onStageClick = [selection, source, chart = chart.get()](size_t stageIndex) {
         if (!source || stageIndex >= source->GetPointCount()) return;
         const auto& stage = source->GetStage(stageIndex);
         FunnelStageMetrics metrics = chart->GetStageMetrics(stageIndex);
@@ -664,7 +664,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPlaygroundTab() {
         selection->SetText(buffer);
     };
 
-    chart->onConnectorClick = [selection, source, chart](size_t upperStageIndex) {
+    chart->onConnectorClick = [selection, source, chart = chart.get()](size_t upperStageIndex) {
         if (!source || upperStageIndex + 1 >= source->GetPointCount()) return;
         const auto& upper = source->GetStage(upperStageIndex);
         const auto& lower = source->GetStage(upperStageIndex + 1);
