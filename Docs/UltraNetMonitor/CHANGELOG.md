@@ -24,6 +24,11 @@
     `--seconds`; `--capabilities` lists the event sources.
   - The store's directory is now created for its owner alone (`0700`) on
     Linux and macOS; `%LOCALAPPDATA%` is per-user already.
+  - Ctrl-C in the window no longer exits from inside the signal handler,
+    which ran the static destructors while the worker and the sources'
+    threads were alive: the handler sets the framework's signal flag
+    (`RequestExitFromSignal`, framework 0.9.33) and the window shuts down
+    in order.
 
 #### 2026-09-22 *0.6*
 - **Names.** Connections carry the domain name behind the peer where a name

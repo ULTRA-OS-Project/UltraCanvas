@@ -45,6 +45,15 @@
     the platform source starting where it can, and the store's events.
   - A registry never holds its lock while asking a source a question,
     since a source may read the capabilities, which ask the registry.
+- **`UltraCanvasApplicationBase::RequestExitFromSignal()`** - the one call
+  a signal handler may make. `RequestExit()` logs and runs the
+  exit-request callback, neither of which is async-signal-safe, and the
+  applications' handlers called it (and then `std::exit`, which ran the
+  static destructors under live threads). The new call stores a lock-free
+  flag; `RunOnce()` turns it into `RequestExit()` on the main thread at
+  the next iteration, so `main` returns and the application's destructors
+  run in order. UltraNetMonitor uses it; the other applications' handlers
+  are unchanged and can adopt it the same way.
 #### 2026-09-23 *0.9.30*
 - **UltraCalendar proposal: the OAuth app registration is UltraNet's**
   (`Docs/Research/UltraCalendarDesignProposal.md`). The accounts section, the

@@ -67,17 +67,17 @@ using namespace UltraCanvas;
 
 namespace {
 
-UltraCanvasApplication* g_app = nullptr;
 std::atomic<bool> g_stopRecording{false};
 
-// Ctrl-C and SIGTERM. In the window, ask the event loop to end and let
-// main return: the window's destructor then stops the worker and the
-// name and event sources, closes the store, and only then do the static
-// destructors run. A std::exit from here ran them while those threads
-// were alive. Headless, the recording or event loop finishes its round,
-// applies retention and closes cleanly.
+// Ctrl-C and SIGTERM. Two flag stores, nothing else: a handler may not
+// log, lock or exit. In the window, the framework's flag makes the next
+// loop iteration request the exit on the main thread, main returns, and
+// the window's destructor stops the worker, the name and event sources
+// and the store before any static destructor runs. Headless, the
+// recording or event loop finishes its round, applies retention and
+// closes cleanly.
 void SignalHandler(int) {
-    if (g_app) g_app->RequestExit();
+    UltraCanvasApplicationBase::RequestExitFromSignal();
     g_stopRecording = true;
 }
 
@@ -238,62 +238,6 @@ struct NameSourcesScope {
     }
 };
 
-std::string EventLine(const NetworkConnectionEvent& e) {
-    const std::time_t when = static_cast<std::time_t>(e.observedAtMs / 1000);
-    std::tm local{};
-#if defined(_WIN32)
-    localtime_s(&local, &when);
-#else
-    localtime_r(&when, &local);
-#endif
-    char stamp[32];
-    std::strftime(stamp, sizeof stamp, "%H:%M:%S", &local);
-    char line[512];
-    const std::string app = e.process
-        ? e.process->displayName + " (" + std::to_string(e.process->pid) + ")"
-        : std::string("(unattributed)");
-    const std::string bytes = e.kind == NetworkEventKind::Closed
-        ? ByteText(e.bytesSent) + " / " + ByteText(e.bytesReceived) : std::string();
-    std::snprintf(line, sizeof line, "%s.%03d %-8s %-4s%-2s %-28s %-28s %-22.22s %-18s %s",
-                  stamp, static_cast<int>(e.observedAtMs % 1000), NetworkMonitor_EventKindName(e.kind),
-                  NetworkMonitor_TransportName(e.transport), e.family == NetworkAddressFamily::IPv6 ? "6" : "",
-                  e.LocalEndpoint().c_str(), e.RemoteEndpoint().c_str(), app.c_str(),
-                  HostColumn(e.remoteName, e.nameSource).c_str(), bytes.c_str());
-    return line;
-}
-
-int RunEvents(int seconds) {
-    std::vector<EventSourceStatus> sources;
-    NetworkMonitor_ListEventSources(sources);
-    if (sources.empty()) {
-        std::printf("No event source is running (see --capabilities).\n");
-        return EXIT_FAILURE;
-    }
-    for (const auto& source : sources) {
-        std::printf("%s: %s%s\n", source.name.c_str(), source.running ? "running" : "stopped",
-                    source.lastError.empty() ? "" : (" - " + source.lastError).c_str());
-    }
-    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %s\n",
-                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV");
-    std::mutex printMutex;
-    const EventListenerId listener = NetworkMonitor_AddEventListener([&printMutex](const NetworkConnectionEvent& e) {
-        std::lock_guard<std::mutex> lock(printMutex);
-        std::printf("%s\n", EventLine(e).c_str());
-        std::fflush(stdout);
-    });
-    std::signal(SIGINT, SignalHandler);
-    std::signal(SIGTERM, SignalHandler);
-    using clock = std::chrono::steady_clock;
-    const auto started = clock::now();
-    while (!g_stopRecording.load()) {
-        if (seconds > 0 && clock::now() - started >= std::chrono::seconds(seconds)) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-    NetworkMonitor_StopEventSources();
-    NetworkMonitor_RemoveEventListener(listener);
-    return EXIT_SUCCESS;
-}
-
 std::string HostColumn(const std::string& name, NameSource source) {
     if (name.empty()) return std::string();
     return NetworkMonitor_NameIsObserved(source) ? name : name + " ?";
@@ -394,6 +338,62 @@ int RunHeadless(bool byApp, const NetworkMonitorOptions& options, bool resolve) 
         std::printf("\n%zu connections\n", connections.size());
     }
     PrintAttributionNotes();
+    return EXIT_SUCCESS;
+}
+
+std::string EventLine(const NetworkConnectionEvent& e) {
+    const std::time_t when = static_cast<std::time_t>(e.observedAtMs / 1000);
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &when);
+#else
+    localtime_r(&when, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof stamp, "%H:%M:%S", &local);
+    char line[512];
+    const std::string app = e.process
+        ? e.process->displayName + " (" + std::to_string(e.process->pid) + ")"
+        : std::string("(unattributed)");
+    const std::string bytes = e.kind == NetworkEventKind::Closed
+        ? ByteText(e.bytesSent) + " / " + ByteText(e.bytesReceived) : std::string();
+    std::snprintf(line, sizeof line, "%s.%03d %-8s %-4s%-2s %-28s %-28s %-22.22s %-18s %s",
+                  stamp, static_cast<int>(e.observedAtMs % 1000), NetworkMonitor_EventKindName(e.kind),
+                  NetworkMonitor_TransportName(e.transport), e.family == NetworkAddressFamily::IPv6 ? "6" : "",
+                  e.LocalEndpoint().c_str(), e.RemoteEndpoint().c_str(), app.c_str(),
+                  HostColumn(e.remoteName, e.nameSource).c_str(), bytes.c_str());
+    return line;
+}
+
+int RunEvents(int seconds) {
+    std::vector<EventSourceStatus> sources;
+    NetworkMonitor_ListEventSources(sources);
+    if (sources.empty()) {
+        std::printf("No event source is running (see --capabilities).\n");
+        return EXIT_FAILURE;
+    }
+    for (const auto& source : sources) {
+        std::printf("%s: %s%s\n", source.name.c_str(), source.running ? "running" : "stopped",
+                    source.lastError.empty() ? "" : (" - " + source.lastError).c_str());
+    }
+    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %s\n",
+                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV");
+    std::mutex printMutex;
+    const EventListenerId listener = NetworkMonitor_AddEventListener([&printMutex](const NetworkConnectionEvent& e) {
+        std::lock_guard<std::mutex> lock(printMutex);
+        std::printf("%s\n", EventLine(e).c_str());
+        std::fflush(stdout);
+    });
+    std::signal(SIGINT, SignalHandler);
+    std::signal(SIGTERM, SignalHandler);
+    using clock = std::chrono::steady_clock;
+    const auto started = clock::now();
+    while (!g_stopRecording.load()) {
+        if (seconds > 0 && clock::now() - started >= std::chrono::seconds(seconds)) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    NetworkMonitor_StopEventSources();
+    NetworkMonitor_RemoveEventListener(listener);
     return EXIT_SUCCESS;
 }
 
@@ -835,7 +835,6 @@ int main(int argc, char* argv[]) {
     }
 
     UltraCanvasApplication app;
-    g_app = &app;
 
 #ifdef __linux__
     std::signal(SIGINT, SignalHandler);
