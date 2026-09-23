@@ -1,12 +1,144 @@
 #### 2026-09-23 *0.9.42*
-- **The dependency tables now list libudev.** IODeviceManager's Linux
-  hot-plug watcher links libudev when the configure step finds it, and without
-  it `StartMonitoring()` returns `BackendUnavailable`. Nothing said so outside
-  `UltraCanvas/CMakeLists.txt`. `Docs/Dependencies.md` and the DemoApp's
-  in-app copy (`UltraCanvasDependenciesExamples.cpp`) gain a *Hot-plug
-  watching* row: libudev (optional) on Linux, no watcher yet on macOS or
-  Windows. libudev is also added to the library-links table (LGPL 2.1, part of
-  systemd). Its effect on DeviceExplorer is documented in that app's own docs.
+- **The callback-cycle check now runs in CI, and the rule is written down.**
+  `scripts/check_callback_cycles.py` shipped in 0.9.32 with nothing calling
+  it, which is the same blind spot as a test no pipeline builds.
+  `.github/workflows/callback-cycles.yml` runs it with `--strict` on every
+  pull request that touches the roots it scans — `UltraCanvas/core`,
+  `UltraCanvas/include`, `UltraCanvas/dialogs`, `Apps`, `SmartHome` — plus
+  the script and the workflow itself. Triggers, path filters and the
+  concurrency group mirror `ui-reuse.yml` exactly, including the base-branch
+  list that covers stacked pull requests (`main` and `claude/**`): #455 once
+  reached 1059 changed lines with no job running because that list said
+  `main` alone.
+  - **`AGENTS.md` states the rule** beside "Build UI out of UltraCanvas
+    elements", where the next author is already reading, and in the house
+    rules beside the line about running the UI check before pushing. A
+    callback stored on a widget must not capture a `shared_ptr` to that
+    widget or to a container above it; capture the back-reference raw. The
+    entry says which captures are ownership rather than a cycle, so the rule
+    cannot be read as "never capture anything".
+  - Verified by reintroducing one of the 53 cycles that 0.9.32 removed:
+    the workflow's exact command reports it and exits 1, and exits 0 again
+    once reverted. On a clean tree it takes about five seconds over 1173
+    files, so it costs a CI slot, not a CI budget.
+- **The framework's version number is assigned on `main` now, not on the
+  branch.** Line 1 of this file *is* the version — cmake reads it and every
+  `project(VERSION …)`, compile definition and packaging script follows — so
+  every branch wanted to write that one line, and two open at once always
+  collided. On 2026-09-23 one branch was renumbered five times in a morning
+  (0.9.23 → 0.9.27 → 0.9.28 → 0.9.29 → 0.9.31), each renumber throwing away a
+  six-platform CI matrix, and 0.9.29 was consumed and lost in the churn.
+  - **A branch now writes `Docs/UltraCanvas/changelog.d/<change>.md`** — just
+    the bullets, no header, no number. Two branches adding two files cannot
+    conflict, and there is nothing to renumber when `main` moves.
+  - **`.github/workflows/changelog-fold.yml`** folds whatever is pending into
+    this file under the next patch version once it lands on `main`, and
+    deletes the entries. `scripts/fold_changelog.py` does the same locally
+    (`--check` to look without touching anything, `--version` for a release
+    that must carry a chosen number).
+  - **`build.yml` gained a `gate` job.** The merge commit still has the entry
+    pending, so its line 1 is the *previous* release; building the release
+    there would package new code under an already-published number. The gate
+    skips the release build for that one commit and lets the fold commit —
+    which carries the right number — produce the artifacts. Pull requests are
+    never gated.
+  - **`check_changelog.py` refuses a `####` header inside a pending entry**,
+    since a number chosen on a branch is the collision the directory exists to
+    end, and would otherwise be folded in verbatim as a second header. A
+    hand-cut hotfix that must carry a specific number can still be written
+    straight into this file as a top entry, held to the same rules as before.
+  - `AGENTS.md` documents the flow where the old "pick the next number"
+    instruction used to be. Application changelogs are unchanged: one product
+    to a file, little contention.
+- **The locale-decimal defect, swept through the file formats.** `AGENTS.md`
+  has warned since the CSS and SVG fixes that the remaining `std::stof` /
+  `atof` / `snprintf("%f")` call sites are the same defect waiting to be
+  reported. A census found 195, not the ~110 estimated — but most are chart
+  labels and other text shown to a person, where following the reader's locale
+  is *correct*. What was actually broken is every place a number crosses into
+  a file format or a wire protocol, and those are fixed here.
+  - **`UltraCanvas::FormatFloatClassic`** joins `ParseFloatClassic` in
+    `UltraCanvasTextUtils.h`, promoting the helper the SVG converter had kept
+    to itself. `std::to_string(1.5)` renders as `1,500000` under de_DE and
+    `snprintf("%.6g")` as `1,5`; this formats as "%.6g" does with the decimal
+    point pinned to '.'.
+  - **Three writers were corrupting documents, not just misreading them.**
+    `SerializeColor` wrote `rgba(255,0,0,0,500000)` — the alpha's comma is the
+    channel separator, so the colour read back as a five-argument function.
+    `SerializePathData` wrote `M 1,5 2`, which reads back as the point (1, 5):
+    the exact defect fixed in the SVG converter and left here. The ODS formula
+    writer emitted literals through an unimbued stream, and a comma there
+    splits one argument into two.
+  - **~40 readers now parse dot-decimal**: the CDR transform matrices and dash
+    patterns (11 sites), the chart CSV loaders, the JSON readers in the
+    compositor and node diagrams, the ODF/OOXML attribute readers, tone
+    curves, templates, `rgba()` alpha, the spreadsheet formula tokenizer and
+    metrics, and the Z-Wave and KNX `temperature` parameters. Most of them
+    also **stopped throwing**: `std::stof` threw on malformed input in readers
+    whose job is to survive a damaged file, and several had no `catch` at all.
+  - **The CSV importer was undoing its own work.** It normalises the user's
+    chosen decimal separator to '.' and then called `std::stod`, which read
+    that back through `LC_NUMERIC` — so on a comma-decimal desktop a column of
+    `1.5` imported as 1.
+  - **Left alone deliberately**: text a person typed in their own locale — the
+    numeric text input, the spinner, the colour picker, spreadsheet cell entry
+    and filter values — and every label rendered for display. `AGENTS.md`
+    draws that line and it is the right one.
+  - **`scripts/check_locale_numbers.py` now enforces the rule**, and found
+    what the sweep above missed — including a `std::strtod` in the vector
+    storage arrowhead parser that the sweep's own grep had excluded, because
+    its lookbehind rejected the `:` in `std::strtod`. A checker does not get
+    tired at site 40.
+    - It reports a locale-dependent read anywhere, and a locale-dependent
+      write in a file that writes a format (Storage / Writer / Export /
+      FileIO / Serializer / Converter, or anything under `DataFormats/` or
+      `Vector/`), including a stream that is never imbued.
+    - The stream rule skips any file that mentions `std::locale::classic`
+      at all. The first version flagged the SVG converter — whose streams are
+      correct, because every number goes through its own imbued `Num()` — so
+      it was pointing at the reference implementation of the fix.
+    - Text a person typed or reads says so at the site with
+      `// locale-ok: <why>`, and eleven such sites now do. They never reach
+      the baseline; `scripts/locale_numbers_baseline.txt` is debt — 100
+      format and protocol sites the sweep did not reach (the OBJ, XAR, X3D,
+      STEP and PDF converters, the LaTeX reader, the Linux hardware probe
+      reading `/proc`, the xlsx reader) — and it should trend to empty.
+    - `.github/workflows/locale-numbers.yml` runs it `--strict`, so a new one
+      fails the build. Verified in both directions: adding a `std::stof`
+      fails the gate, removing it passes.
+    - **The OBJ and XAR converters are fixed rather than baselined** — 29 of
+      the 100 sites, and the two where a misread number is a wrong drawing or
+      a wrong model. OBJ's 17 `strtof`/`strtod` reads became dot-decimal, and
+      its `ScopedPrecision` — the guard that shapes every number the OBJ and
+      MTL writers emit — now pins the decimal point as well as the digit
+      count, *before* its compact-precision early-out. Without that it wrote
+      `v 1,5 0 2`, which every other OBJ reader takes as a different vertex,
+      since OBJ separates components with spaces. XAR's ten `atof` reads
+      (dash lengths, width profiles, stamp matrices) became dot-decimal, and
+      its writer's `Num()` — the one place every number it emits passes
+      through — uses `FormatFloatClassic`. The baseline is down to 34 keys.
+    - **X3D as well, where the reader failed hardest.** On a comma-decimal
+      desktop its `ParseNumbers` read *nothing at all* from
+      `point="1.5 0.25 -2.75"` — the `.` is that locale's digit-group
+      separator, so the very first token failed and the extraction stopped
+      there, and every coordinate, transform, colour and key frame in the
+      file came back empty rather than merely wrong. Both encodings share
+      those parsers, so `.x3d` and `.x3dv` alike. Every number now passes
+      through one of two stream types that carry the format's own locale,
+      and the writer's `ScopedPrecision` pins the decimal point beside the
+      digit count exactly as OBJ's now does. That last one also matters for
+      whole numbers: `coordIndex` wrote the index 123456 as `123.456`,
+      because digit grouping is the same locale's business. The baseline is
+      down to 31 keys, 68 sites.
+- **Matter thermostat setpoints: the units were right, the range was not.**
+  `SendThermostatCommand` takes whole degrees and multiplies by 100 for
+  `OccupiedHeatingSetpoint`, which the spec carries in hundredths in an int16
+  — so the conversion was correct all along. But the parameter guard accepted
+  the full int16 range, and `temperature=1000` became 100000 hundredths, which
+  overflows the attribute. It is bounded to ±327 now, the range that survives
+  the conversion, and both sides say which unit they are in. The facade still
+  cannot express a half-degree setpoint; that is an API limit, noted where the
+  conversion happens.
 
 #### 2026-09-23 *0.9.41*
 - **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not

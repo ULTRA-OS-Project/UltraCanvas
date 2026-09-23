@@ -4,6 +4,7 @@
 // Last Modified: 2025-10-16
 // Author: UltraCanvas Framework
 #include "Plugins/Diagrams/UltraCanvasSankey.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "UltraCanvasTooltipManager.h"
 
 namespace UltraCanvas {
@@ -119,12 +120,10 @@ namespace UltraCanvas {
                 std::getline(ss, target, ',') &&
                 std::getline(ss, valueStr, ',')) {
 
-                try {
-                    float value = std::stof(valueStr);
+                float value = 0.0f;
+                if (TryParseFloat(valueStr, value)) {
                     AddLink(source, target, value);
-                } catch (...) {
-                    // Skip malformed lines
-                }
+                }   // a malformed line is skipped, as before
             }
         }
 

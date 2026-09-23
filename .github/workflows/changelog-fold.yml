@@ -1,0 +1,74 @@
+name: Changelog fold
+
+# Assigns the framework's version number, once, on main.
+#
+# Line 1 of Docs/UltraCanvas/CHANGELOG.md IS the version — cmake reads it and
+# every project(VERSION …), compile definition and packaging script follows —
+# so every branch wanted to write that one line and two open at once always
+# collided. Branches now drop their bullets in Docs/UltraCanvas/changelog.d/
+# with no number (two files never conflict), and this job folds whatever is
+# pending into CHANGELOG.md under the next patch version after it lands.
+#
+# The fold is a second commit on main. That is deliberate: the merge commit
+# itself still has the entry pending, so its CHANGELOG.md line 1 is the
+# PREVIOUS release, and a release build there would package new code under an
+# already-published number. build.yml's `gate` job skips the release build for
+# exactly that commit and lets this one — which carries the right number —
+# produce the artifacts.
+#
+# If the push below is refused (branch protection, or a race with another
+# merge), nothing is lost: the entries stay pending and the next push to main
+# folds them. A red run here is the signal to look, not a reason to hand-edit
+# line 1.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Docs/UltraCanvas/changelog.d/**'
+  workflow_dispatch:
+
+# Never cancel a fold: it commits and pushes, and a half-run that is killed
+# between the two would leave the entries pending with the changelog rewritten.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  fold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The push below needs a real ref, not the detached single commit
+          # the default checkout leaves behind.
+          ref: main
+          fetch-depth: 0
+
+      - name: Fold pending entries
+        id: fold
+        run: |
+          python3 scripts/fold_changelog.py | tee fold.log
+          # The script prints ::folded::<version> only when it changed
+          # something; a push with nothing pending is the normal case.
+          if grep -q '^::folded::' fold.log; then
+            echo "version=$(sed -nE 's/^::folded:://p' fold.log)" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f fold.log
+
+      - name: Commit and push
+        if: steps.fold.outputs.version != ''
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Docs/UltraCanvas/CHANGELOG.md Docs/UltraCanvas/changelog.d
+          git commit -m "Changelog: ${{ steps.fold.outputs.version }}" \
+                     -m "Folded from Docs/UltraCanvas/changelog.d by changelog-fold.yml."
+          # Another merge may have landed while this ran. Rebase once and try
+          # again; if it still fails, the entries stay pending and the next
+          # push to main folds them.
+          git pull --rebase --no-tags origin main
+          git push origin HEAD:main

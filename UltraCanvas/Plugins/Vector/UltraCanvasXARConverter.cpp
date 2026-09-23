@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasXARConverter.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / FormatFloatClassic
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
@@ -26,6 +27,19 @@
 #include <variant>
 
 namespace UltraCanvas {
+
+namespace {
+// The marker attributes XAR carries are dot-decimal, like the format itself.
+// std::atof reads through LC_NUMERIC and returns 0 on anything it cannot
+// read, so a comma-decimal desktop silently truncated every dash length,
+// width profile and stamp matrix it loaded - with no error to say so.
+inline double XarFloat(const std::string& text, double fallback = 0.0) {
+    double value = fallback;
+    TryParseFloat(text, value);
+    return value;
+}
+}  // namespace
+
     namespace VectorConverter {
 
         using namespace VectorStorage;
@@ -451,7 +465,7 @@ namespace UltraCanvas {
             double MarkerNumber(const std::map<std::string, std::string>& m, const char* key, double fallback) {
                 auto it = m.find(key);
                 if (it == m.end() || it->second.empty()) return fallback;
-                return std::atof(it->second.c_str());
+                return XarFloat(it->second);
             }
 
         }   // anonymous namespace
@@ -716,12 +730,12 @@ namespace UltraCanvas {
                         }
                         return items;
                     };
-                    for (const auto& d : list("dash")) if (!d.empty()) st.DashArray.push_back(std::atof(d.c_str()));
+                    for (const auto& d : list("dash")) if (!d.empty()) st.DashArray.push_back(XarFloat(d));
                     for (const auto& p : list("profile")) {
                         const size_t colon = p.find(':');
                         if (colon == std::string::npos) continue;
-                        st.WidthProfile.push_back({static_cast<float>(std::atof(p.substr(0, colon).c_str())),
-                                                   static_cast<float>(std::atof(p.substr(colon + 1).c_str()))});
+                        st.WidthProfile.push_back({static_cast<float>(XarFloat(p.substr(0, colon))),
+                                                   static_cast<float>(XarFloat(p.substr(colon + 1)))});
                     }
                     if (MarkerNumber(m, "brush", 0) > 0 && tmp->Children.size() >= 2) {
                         // The stamps group is the last child; its first copy,
@@ -732,9 +746,9 @@ namespace UltraCanvas {
                         if (stamps && !stamps->Children.empty()) copy = std::dynamic_pointer_cast<VectorGroup>(stamps->Children.front());
                         const auto mm = list("stampm");
                         if (copy && mm.size() == 6) {
-                            const Matrix3x3 placement = Matrix3x3::FromValues(std::atof(mm[0].c_str()), std::atof(mm[1].c_str()),
-                                                                              std::atof(mm[2].c_str()), std::atof(mm[3].c_str()),
-                                                                              std::atof(mm[4].c_str()), std::atof(mm[5].c_str()));
+                            const Matrix3x3 placement = Matrix3x3::FromValues(XarFloat(mm[0]), XarFloat(mm[1]),
+                                                                              XarFloat(mm[2]), XarFloat(mm[3]),
+                                                                              XarFloat(mm[4]), XarFloat(mm[5]));
                             stamps->Children.erase(stamps->Children.begin());
                             copy->Parent.reset();
                             copy->Transform = placement.Inverse();
@@ -1932,9 +1946,11 @@ namespace UltraCanvas {
                 }
 
                 static std::string Num(double v) {
-                    char buf[48];
-                    std::snprintf(buf, sizeof(buf), "%.6g", v);
-                    return buf;
+                    // snprintf renders through LC_NUMERIC: on a comma-decimal
+                    // desktop this wrote `1,5` into marker attributes whose
+                    // own separator is a comma, so one value became two.
+                    // Every number the writer emits comes through here.
+                    return FormatFloatClassic(v);
                 }
                 static std::string HexColour(const Color& c) {
                     char buf[16];
