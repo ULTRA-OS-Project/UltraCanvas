@@ -1,10 +1,11 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorModels.cpp
-// Version: 0.4.0
+// Version: 0.5.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorModels.h"
 
 #include "UltraCanvasHardwareInfo.h"
 
+#include <cstdio>
 #include <ctime>
 #include <optional>
 #include <string>
@@ -23,6 +24,23 @@ std::string ByteText(const std::optional<uint64_t>& bytes) {
 ListDataValue ByteSortKey(const std::optional<uint64_t>& bytes) {
     if (!bytes) return {};
     return static_cast<float>(*bytes);
+}
+
+// Local time to the millisecond, for the event column.
+std::string LocalTimeMs(int64_t milliseconds) {
+    if (milliseconds <= 0) return "\u2014";
+    const std::time_t when = static_cast<std::time_t>(milliseconds / 1000);
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &when);
+#else
+    localtime_r(&when, &local);
+#endif
+    char buffer[40];
+    std::strftime(buffer, sizeof buffer, "%H:%M:%S", &local);
+    char withMs[48];
+    std::snprintf(withMs, sizeof withMs, "%s.%03d", buffer, static_cast<int>(milliseconds % 1000));
+    return withMs;
 }
 
 // Local time, to the second, for the history columns.
@@ -313,6 +331,90 @@ void FlowListModel::Replace(std::vector<RecordedFlow> rows) {
 }
 
 const RecordedFlow* FlowListModel::At(int row) const {
+    if (row < 0 || row >= static_cast<int>(rows_.size())) return nullptr;
+    return &rows_[static_cast<std::size_t>(row)];
+}
+
+// ===== EVENTS =====
+
+int EventListModel::GetRowCount() const { return static_cast<int>(rows_.size()); }
+int EventListModel::GetColumnCount() const { return ColumnCount; }
+
+ListDataValue EventListModel::GetData(const ListIndex& index, ListDataRole role) const {
+    const NetworkConnectionEvent* e = At(index.row);
+    if (!e) return {};
+    switch (role) {
+        case ListDataRole::DisplayRole:
+            switch (index.column) {
+                case Time:        return LocalTimeMs(e->observedAtMs);
+                case Kind:        return std::string(NetworkMonitor_EventKindName(e->kind));
+                case Application: return ProcessName(e->process);
+                case Pid:         return e->process ? std::to_string(e->process->pid) : std::string("-");
+                case Protocol:    return std::string(NetworkMonitor_TransportName(e->transport)) +
+                                         (e->family == NetworkAddressFamily::IPv6 ? "6" : "");
+                case Local:       return e->LocalEndpoint();
+                case Remote:      return e->RemoteEndpoint();
+                case Host:        return HostText(e->remoteName, e->nameSource);
+                case Sent:        return e->kind == NetworkEventKind::Closed ? ByteText(e->bytesSent) : std::string();
+                case Received:    return e->kind == NetworkEventKind::Closed ? ByteText(e->bytesReceived) : std::string();
+                case Source:      return e->sourceName;
+                default:          return {};
+            }
+        case ListDataRole::SortRole:
+            switch (index.column) {
+                case Time:     return static_cast<float>(e->observedAtMs);
+                case Pid:      return static_cast<int>(e->process ? e->process->pid : 0);
+                case Sent:     return ByteSortKey(e->bytesSent);
+                case Received: return ByteSortKey(e->bytesReceived);
+                default:       return {};
+            }
+        case ListDataRole::ToolTipRole:
+            if (index.column == Application || index.column == Pid) {
+                if (!e->process) {
+                    return "Not attributed: the socket was not in the table when the event came "
+                           "(too short-lived, or another user's process).";
+                }
+                return e->process->executablePath.empty() ? std::string() : e->process->executablePath;
+            }
+            if (index.column == Host) return HostTooltip(e->remoteName, e->nameSource);
+            if (index.column == Kind) {
+                switch (e->kind) {
+                    case NetworkEventKind::Opened:   return "This machine initiated the connection (or the source cannot tell)";
+                    case NetworkEventKind::Accepted: return "A peer connected to a listener on this machine";
+                    default:                         return "The connection ended; the counters are what it moved, where the source counts";
+                }
+            }
+            return {};
+        default:
+            return {};
+    }
+}
+
+ListColumnDef EventListModel::GetColumnDef(int column) const {
+    switch (column) {
+        case Time:        return ListColumnDef("Time", 100);
+        case Kind:        return ListColumnDef("Event", 80);
+        case Application: return ListColumnDef("Application", 140);
+        case Pid:         return ListColumnDef("PID", 60, TextAlignment::Right);
+        case Protocol:    return ListColumnDef("Proto", 56);
+        case Local:       return ListColumnDef("Local", 150);
+        case Remote:      return ListColumnDef("Remote", 160);
+        case Host:        return ListColumnDef("Host", 170, TextAlignment::Left,
+                                               "The peer's domain name; a trailing ? marks a weak name");
+        case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right,
+                                               "On a closed event: the bytes the connection moved, where the source counts");
+        case Received:    return ListColumnDef("Received", 80, TextAlignment::Right);
+        case Source:      return ListColumnDef("Source", 150, TextAlignment::Left, "Which event source reported it");
+        default:          return ListColumnDef("", 60);
+    }
+}
+
+void EventListModel::Replace(std::vector<NetworkConnectionEvent> rows) {
+    rows_ = std::move(rows);
+    NotifyDataChanged();
+}
+
+const NetworkConnectionEvent* EventListModel::At(int row) const {
     if (row < 0 || row >= static_cast<int>(rows_.size())) return nullptr;
     return &rows_[static_cast<std::size_t>(row)];
 }

@@ -609,11 +609,27 @@ namespace UltraCanvas {
         }
     }
 
+    namespace {
+        // Set from a signal handler, read by the loop. A lock-free atomic
+        // store is the whole of what the handler does.
+        std::atomic<bool> g_exitRequestedFromSignal{false};
+    }
+
+    void UltraCanvasApplicationBase::RequestExitFromSignal() {
+        g_exitRequestedFromSignal.store(true, std::memory_order_relaxed);
+    }
+
     void UltraCanvasApplicationBase::RunOnce() {
         // Service native events (X11 + wakeup + registered fd watches), then drain
         // the UI event queue, fire timers, run PostToUIThread tasks, and render.
         // Factored out of Run() so a host embedding UltraCanvas under its own event
         // loop (e.g. Ladybird's Core::EventLoop bridge) can drive one iteration.
+        // A signal's exit request is honoured here, on the main thread, where
+        // logging and the exit-request callback are safe.
+        if (g_exitRequestedFromSignal.exchange(false, std::memory_order_relaxed)) {
+            RequestExit();
+            if (!running) return;
+        }
         CollectAndProcessNativeEvents();
         ProcessEvents();
         ProcessTimers();
