@@ -69,6 +69,20 @@ void AccountStore::Lock() {
     vault_.Close();
 }
 
+StoreResult AccountStore::Attach(const std::string& path) {
+    if (vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "a vault is already open");
+    }
+    if (!EncryptedFileStore::Exists(path)) {
+        return StoreResult::Error(StoreResultCode::NotFound,
+                                  "no vault at " + path);
+    }
+    path_ = path;
+    throttle_.RecordSuccess();   // a fresh session starts with a clean slate
+    return StoreResult::Ok();
+}
+
 StoreResult AccountStore::Unlock(const UltraCryptSecureBuffer& password,
                                  int64_t nowUnix) {
     if (path_.empty()) {

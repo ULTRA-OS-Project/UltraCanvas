@@ -234,14 +234,27 @@ bool AuthenticatorWindow::Create() {
         kWindowHeight - kHeaderHeight - margin);
     window_->AddChild(listContainer_);
 
+    // Short enough to fit the list width at body size: the longer first
+    // wording clipped to "...to typ..." on a 720 px window.
     emptyLabel_ = std::make_shared<UltraCanvasLabel>(
         "auth-empty", 0, 8, width, 40,
-        "No accounts yet — choose \"Scan QR code\" to begin, or \"Enter key\" to type one in.");
+        "No accounts yet. Use \"Scan QR code\" or \"Enter key\" to add one.");
     emptyLabel_->SetFont(Theme::kUiFont, Theme::kSizeBody);
     emptyLabel_->SetTextColor(Theme::kTextMuted);
     listContainer_->AddChild(emptyLabel_);
 
-    RebuildRows();
+    if (store_.IsLocked()) {
+        // Launched over an existing vault that has not been opened yet: the
+        // window comes up locked and Show() puts the lock screen over it, so
+        // the first unlock is the same throttled path as every later one.
+        // Nothing about the accounts is rendered before the password.
+        locked_ = true;
+        lockMessage_ = "Enter your master password to unlock your accounts.";
+        if (emptyLabel_) emptyLabel_->SetText("");
+        SetStatus("Locked.");
+    } else {
+        RebuildRows();
+    }
     NoteActivity();
 
     // One periodic timer drives every row and the auto-lock. 1 Hz is the
@@ -254,6 +267,7 @@ bool AuthenticatorWindow::Create() {
 
 void AuthenticatorWindow::Show() {
     if (window_) window_->Show();
+    if (locked_ && !lockDialog_) ShowLockScreen();
 }
 
 void AuthenticatorWindow::SetStatus(const std::string& text, bool isError) {
@@ -314,8 +328,8 @@ void AuthenticatorWindow::Tick() {
 
 void AuthenticatorWindow::Lock(const std::string& reason) {
     if (locked_) return;
-    locked_     = true;
-    lockReason_ = reason;
+    locked_      = true;
+    lockMessage_ = reason + " Enter your master password to show the codes again.";
 
     // Order: take the codes off the screen, then drop the vault. Nothing on a
     // card survives the first step, and nothing in memory survives the second.
@@ -351,13 +365,13 @@ void AuthenticatorWindow::ShowLockScreen() {
         lockDialog_.reset();
         if (result != DialogResult::OK) return;   // quit; the app is exiting
         locked_ = false;
-        lockReason_.clear();
+        lockMessage_.clear();
         NoteActivity();
         SetStatus("");
         RebuildRows();
     };
 
-    dialog->CreateLockScreenDialog(lockReason_);
+    dialog->CreateLockScreenDialog(lockMessage_);
     dialog->ShowModal(window_.get());
 }
 
@@ -390,7 +404,7 @@ void AuthenticatorWindow::RebuildRows() {
     if (emptyLabel_) {
         emptyLabel_->SetText(
             accounts.empty()
-                ? "No accounts yet — choose \"Scan QR code\" to begin, or \"Enter key\" to type one in."
+                ? "No accounts yet. Use \"Scan QR code\" or \"Enter key\" to add one."
                 : "");
     }
 

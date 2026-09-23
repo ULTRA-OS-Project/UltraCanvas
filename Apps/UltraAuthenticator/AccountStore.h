@@ -92,6 +92,13 @@ public:
     // an oracle, and it must not cost the Argon2id derivation either.
     void Lock();
     bool IsLocked() const { return !path_.empty() && !vault_.IsOpen(); }
+
+    // Binds the store to an existing vault file without opening it, so the
+    // very first unlock goes through Unlock() and its throttle instead of a
+    // separate launch-time path. Refuses a missing file (NotFound — creation
+    // is Create()'s job and needs a password) and a store that is already
+    // open. Afterwards IsLocked() is true and nothing has been decrypted.
+    StoreResult Attach(const std::string& path);
     StoreResult Unlock(const UltraCryptSecureBuffer& password, int64_t nowUnix);
     uint32_t SecondsUntilUnlockAllowed(int64_t nowUnix) const {
         return throttle_.SecondsUntilAllowed(nowUnix);

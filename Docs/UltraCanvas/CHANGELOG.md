@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.36*
+#### 2026-09-23 *0.9.38*
 - **NetworkMonitor connection events.** `NetworkMonitorEvents.h`: a
   connection reported as it opens, is accepted or closes, rather than
   found in the next snapshot - the event-rate collection the proposal
@@ -54,6 +54,32 @@
   the next iteration, so `main` returns and the application's destructors
   run in order. UltraNetMonitor uses it; the other applications' handlers
   are unchanged and can adopt it the same way.
+#### 2026-09-23 *0.9.37*
+- **`UCEvent::ToString()` names the right event again.** The name table it
+  indexes by `UCEventType` carried three entries with no enum counterpart
+  (`KeyChar`, `Shortcut`, `WindowClosing`), so every event from `TextInput`
+  onwards printed as the name of an earlier one - a `WindowResize` logged as
+  `WindowCloseRequest`, a `Timer` as `Drop`. The three are gone, the table is
+  now a compile-time array with a `static_assert` that its length equals the
+  enum's, so the two cannot drift apart again without failing the build, and
+  an out-of-range value prints `OutOfRange` instead of reading past the end.
+- **`scripts/check_changelog.py` refuses a runaway version number.** The
+  guard required line 1 to be strictly above every other version in the file
+  and above `main`'s, and nothing more - so when a renumbering script took the
+  highest patch number across every minor in the file and wrote 0.9.120 over
+  a `main` on 0.9.32, the check passed and that number would have become the
+  released version. A new top entry must now be within ten of the release
+  before it (open pull requests each hold one number, so a small gap is
+  normal), and a minor or major bump must start near .0. Applied per file and,
+  with `--base`, against the base's version.
+- **`scripts/check_changelog.py --base` no longer misreports files `main`
+  changed during an uncommitted merge.** It decided "edited by this branch"
+  by comparing the working copy with the merge base's, so in the middle of a
+  merge of `main` every changelog `main` had released on since the fork
+  "differed" and was reported as still claiming `main`'s version - a false
+  alarm that vanished once the merge was committed, which the message did not
+  say. A file identical to `main`'s copy is now never this branch's edit.
+
 #### 2026-09-23 *0.9.35*
 - **DemoApp: the ListView page's multi-column table shows the sorting API**
   (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`). Table 2 used to copy
