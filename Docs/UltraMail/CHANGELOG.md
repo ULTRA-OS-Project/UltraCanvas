@@ -1,3 +1,15 @@
+#### 2026-09-23 *0.10.3*
+- **`OAuthApps` is a profile of UltraNet's shared OAuth2 app registry**
+  (framework 0.9.29). Same API, same order - `Set()`, `ULTRAMAIL_*` in the
+  environment, `oauth.ini`, the baked-in client - and the same behaviour for
+  the wizard; what changes is where the registration lives: the Google and
+  Microsoft clients UltraMail ships or reads from `oauth.ini` now also serve
+  UltraCloud's Google Drive and OneDrive sign-ins in the composer's "Attach
+  cloud link…" picker, and the shared `ULTRANET_OAUTH_GOOGLE_CLIENT_ID` /
+  `ULTRANET_OAUTH_MICROSOFT_CLIENT_ID` names work beside the `ULTRAMAIL_`
+  ones. `Docs/UltraMail/AccountSetup.md` §3 says what to add to the consent
+  screen for that.
+
 #### 2026-09-20 *0.10.2*
 - **The credential vault is the framework's now.** `UltraMailCredentialVault.cpp`
   was the only implementation of the device-key vault, and UltraSocial had
