@@ -1,13 +1,20 @@
 #### 2026-09-23 *0.9.35*
-- **Fix: the media viewer's Details overlay now shows the image's metadata.**
-  `UltraCanvasMediaViewer::UpdateDetailedInfo` listed only the header facts
-  (size, dimensions, channels, colour space, dpi, loader) and never read the
-  file's own metadata blocks, so EXIF, IPTC, XMP, ICC and PNG text chunks
-  were invisible in UltraFiler and UltraViewer. It now appends a "Metadata"
-  section from `PixelFX::Header::ReadMetadata` (grouped EXIF / IPTC / XMP /
-  Colour / Other, up to 80 entries, "Metadata: none" when the file carries
-  nothing). The overlay box was fixed at 280 px high, which the header facts
-  alone already filled; it now grows with the text up to the surface height.
+- **Media viewer Details panel: image metadata, scrollable, laid out as
+  Markdown.** `UltraCanvasMediaViewer::UpdateDetailedInfo` listed only the
+  header facts (size, dimensions, channels, colour space, dpi, loader) and
+  never read the file's own metadata, so EXIF, IPTC, XMP, ICC and PNG text
+  chunks were invisible in UltraFiler and UltraViewer. It now adds a
+  "Metadata" section from `PixelFX::Header::ReadMetadata`, one sub-section per
+  block, or a line saying the file carries none. The details were drawn by
+  `UltraCanvasMediaSurface` as plain text in a box fixed at 280 px, which the
+  header facts alone already filled, and only over images. They now show in
+  an `UltraCanvasTextArea` (`MarkdownHybrid`, dark theme) placed over the
+  active view for every media kind: a heading per section over a two-column
+  Property / Value table, scrolled by the wheel, Up / Down and PageUp /
+  PageDown, closed with Escape. New `SetDetailsVisible()` /
+  `ToggleDetails()` / `IsDetailsVisible()`; the surface's `SetInfoText()` /
+  `ToggleInfoPopup()` / `IsInfoPopupVisible()` are gone (nothing outside the
+  viewer used them). Docs: `UltraCanvasMediaViewer.md` §Details panel.
 
 #### 2026-09-23 *0.9.34*
 - **New: UltraNet's OAuth2 app registry** (`<UltraNet/UltraNetOAuth2Apps.h>`,

@@ -32613,7 +32613,7 @@ One widget displays every media kind the framework knows, chooses the right
 display view automatically from the file kind, and brings its own chrome: a
 folder breadcrumb, two toolbar rows (open / navigation / slideshow /
 transitions, zoom / rotate / mirror / adjust / curves / save / info), an image
-adjustments panel and a bottom info bar with a details popup.
+adjustments panel and a bottom info bar with a Details panel.
 
 Used full-window by the **UltraViewer** app (`Apps/UltraViewer`) and as the
 embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
@@ -32779,11 +32779,34 @@ without parsing the body:
   `PRIVATE` flag, which suppresses the preview;
 - otherwise a **header summary** in the text view.
 
-The info bar labels the file `UC DOCUMENT`, and the details popup lists the
+The info bar labels the file `UC DOCUMENT`, and the Details panel lists the
 container fields: type descriptor (`UCDoc`, `UCForm`, `UCVector`, …),
 version, body encoding, compression, encryption and thumbnail info. A
 `*.ucd` file without a valid v2 signature (e.g. a v1 XML/JSON document) gets
 a summary saying so.
+
+## Details panel
+
+The **Details** button in the info bar (and **Info** on the second toolbar
+row) opens a scrollable panel over the active view, for every media kind:
+file name, path and size, the kind-specific facts (dimensions, channels,
+colour space, dpi and loader for an image; title / author for an e-book; page
+count for a PDF; container fields for a `*.ucd`) and, for images, the
+file's own **metadata** read with `PixelFX::Header::ReadMetadata` — one
+section per block (EXIF, IPTC, XMP, Colour / ICC, Other such as PNG text
+chunks), or a line saying the file carries none.
+
+The panel is an `UltraCanvasTextArea` in `MarkdownHybrid` mode, dark themed,
+so each section is a heading over a two-column *Property / Value* table.
+The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
+button again closes it. Left / Right keep browsing, and the panel follows
+to the next file.
+
+```cpp
+viewer->SetDetailsVisible(true);
+viewer->ToggleDetails();
+bool open = viewer->IsDetailsVisible();
+```
 
 ## Content, navigation, slideshow
 

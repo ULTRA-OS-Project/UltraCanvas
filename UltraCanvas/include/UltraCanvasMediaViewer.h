@@ -197,11 +197,6 @@ public:
     // false and fills `error` on failure.
     bool SaveProcessed(const std::string& path, std::string& error);
 
-    // ===== INFO POPUP OVERLAY =====
-    void SetInfoText(const std::string& text) { infoText = text; RequestRedraw(); }
-    void ToggleInfoPopup() { showInfoPopup = !showInfoPopup; RequestRedraw(); }
-    bool IsInfoPopupVisible() const { return showInfoPopup; }
-
     void SetCanvasColor(const Color& c) { canvasColor = c; RequestRedraw(); }
 
     // ===== BACKDROP BEHIND TRANSPARENT IMAGES =====
@@ -249,7 +244,6 @@ private:
                       double scale, double cx, double cy, int rotQ, double alpha);
 
     void DrawCurrent(IRenderContext* ctx, const Rect2Df& b);
-    void DrawInfoOverlay(IRenderContext* ctx, const Rect2Df& b);
     void StartTransitionTimer(int durationMs);
     void StopTransitionTimer();
 
@@ -297,9 +291,6 @@ private:
     int  prevRotQ = 0;
     bool prevFlipH = false, prevFlipV = false;
 
-    // Info popup overlay.
-    bool showInfoPopup = false;
-    std::string infoText;
 };
 
 // How the viewer behaves when a video file becomes the shown item.
@@ -459,9 +450,20 @@ public:
     bool AcceptsFocus() const override { return true; }
     void SetWindow(UltraCanvasWindowBase* win) override;
     bool OnEvent(const UCEvent& event) override;
+    // Lays the children out, then fits the Details panel over the active view.
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
     // Whether a path is a media file this viewer can display.
     static bool IsSupportedMedia(const std::string& path);
+
+    // ===== DETAILS PANEL =====
+    // The panel the "Details" button opens over the display area: file facts
+    // and, for images, the file's own metadata (EXIF / IPTC / XMP / ICC /
+    // PNG text), laid out as Markdown tables in a scrollable text area.
+    // Works for every kind of file the viewer shows. Escape closes it.
+    void SetDetailsVisible(bool visible);
+    void ToggleDetails() { SetDetailsVisible(!IsDetailsVisible()); }
+    bool IsDetailsVisible() const;
 
 private:
     void BuildUI(float w, float h);
@@ -486,6 +488,9 @@ private:
     void SyncBackdropSelection();
     void UpdateInfoBar();
     void UpdateDetailedInfo();
+    // Hand the Details panel its text: "Title\n\nKey: value" lines (plus any
+    // "## " / "### " headings) converted to Markdown tables.
+    void ShowDetailsText(const std::string& plain);
     void ApplyAdjustments();          // push `adjustments` to the surface
     // Put every adjustment control back to its default without firing one
     // re-render per control (the callbacks are suppressed while they move).
@@ -590,10 +595,14 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    pluginView;
     std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
     std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
+    // The Details panel (UltraCanvasTextArea in MarkdownHybrid mode),
+    // positioned absolutely over the display area; see SetDetailsVisible().
+    std::shared_ptr<UltraCanvasUIElement>    detailsView;
+    std::string detailsMarkdown;   // what detailsView shows for the current file
     MediaKind activeKind = MediaKind::Image;
 
     // Details text for the current UCD container (empty when the current file
-    // is not a *.ucd). Feeds the info popup instead of the image/text details.
+    // is not a *.ucd). Feeds the Details panel instead of the image/text details.
     std::string ucdDetails;
 
     MediaAdjustments adjustments;
