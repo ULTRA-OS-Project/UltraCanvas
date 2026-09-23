@@ -707,6 +707,9 @@ message(STATUS "  Building SpreadsheetColumnSizingTest...")
 add_executable(SpreadsheetColumnSizingTest
     ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetColumnSizingTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    # SpreadsheetLengthToPixels reads lengths with TryParseFloat, which lives
+    # in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(SpreadsheetColumnSizingTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
