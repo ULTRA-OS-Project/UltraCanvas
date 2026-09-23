@@ -1324,7 +1324,9 @@ static void TestEventRegistry() {
         const uint16_t clientPort = ntohs(clientSide.sin_port);
 
         // The tuple the way conntrack would give it for a connection that
-        // came *to* the listener: source = the client side.
+        // came *to* the listener: source = the client side. The registry
+        // re-reads its table for a tuple it lacks, at most every 20 ms.
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
         NetworkConnectionEvent bare;
         bare.kind = NetworkEventKind::Opened;
         bare.localAddress = "127.0.0.1";
@@ -1340,6 +1342,13 @@ static void TestEventRegistry() {
         // what matters is that the process is right and the kind sound.
         CHECK(!recent.empty() && (recent[0].kind == NetworkEventKind::Opened || recent[0].kind == NetworkEventKind::Accepted),
               "and reads as opened or accepted");
+        // Both ends are ours, so the chain names this process on the
+        // other end, with the role of whichever socket matched.
+        const std::string self = attributed ? recent[0].process->Label() : std::string();
+        CHECK(!recent.empty() && recent[0].chainDecoded && recent[0].loopbackRole != LoopbackRole::None &&
+              recent[0].localPeer == self,
+              "and the loopback chain names the process on the other end");
+        const LoopbackRole openedRole = recent.empty() ? LoopbackRole::None : recent[0].loopbackRole;
 
         NetworkConnectionEvent closing = bare;
         closing.kind = NetworkEventKind::Closed;
@@ -1350,6 +1359,9 @@ static void TestEventRegistry() {
         CHECK(!recent.empty() && recent[0].kind == NetworkEventKind::Closed && recent[0].process &&
               recent[0].process->pid == OwnPid(),
               "its Closed is attributed from memory, though the socket is gone");
+        CHECK(!recent.empty() && recent[0].chainDecoded && recent[0].loopbackRole == openedRole &&
+              recent[0].localPeer == self,
+              "and carries the chain its Opened had");
         CloseSocket(server);
     }
     NetworkMonitor_RemoveEventListener(listener);
@@ -1483,6 +1495,8 @@ static void TestStoreEvents() {
     loop.remoteAddress = "127.0.0.1";
     loop.remotePort = 40000;
     loop.observedAtMs = (t0 + 5) * 1000;
+    loop.loopbackRole = LoopbackRole::Server;
+    loop.localPeer = "ssh (4321)";
     CHECK(NetworkMonitor_RecordConnectionEvent(store, loop), "an unattributed loopback event records");
 
     std::vector<RecordedConnectionEvent> events;
@@ -1493,6 +1507,14 @@ static void TestStoreEvents() {
           events[1].event.process && events[1].event.process->pid == 100 && events[1].event.observedAtMs == t0 * 1000 + 900,
           "with counters, name, process and the millisecond");
     CHECK(!events[0].event.process && !events[0].event.bytesSent, "and absent stays absent");
+    CHECK(events[0].event.loopbackRole == LoopbackRole::Server && events[0].event.localPeer == "ssh (4321)" &&
+          events[0].event.chainDecoded && events[2].event.loopbackRole == LoopbackRole::None &&
+          events[2].event.localPeer.empty() && events[2].event.forProcesses.empty(),
+          "the loopback chain reads back where an event had one, and stays empty where not");
+    ActivityQuery byPeer;
+    byPeer.text = "ssh (43";
+    CHECK(NetworkMonitor_QueryConnectionEvents(store, byPeer, events) && events.size() == 1 &&
+          events[0].event.kind == NetworkEventKind::Accepted, "the text filter matches the loopback peer");
     ActivityQuery noLoopback;
     noLoopback.includeLoopback = false;
     CHECK(NetworkMonitor_QueryConnectionEvents(store, noLoopback, events) && events.size() == 2, "loopback filtered out");
@@ -1521,6 +1543,9 @@ static void TestStoreEvents() {
         std::getline(file, line);
         CHECK(header.rfind("observed_at,milliseconds,kind,", 0) == 0 && line.find(",accepted,TCP,") != std::string::npos,
               "with the kind and the millisecond as columns");
+        CHECK(header.find(",user,loopback_role,local_peer,for,bytes_sent,") != std::string::npos &&
+              line.find(",server,ssh (4321),,,,") != std::string::npos,
+              "and the chain columns after the user");
         std::filesystem::remove(csv);
     }
     CHECK(NetworkMonitor_ApplyRetention(store, t0 + 8LL * 86400) && NetworkMonitor_StoreStats(store, stats) &&

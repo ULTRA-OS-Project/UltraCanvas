@@ -23,16 +23,16 @@
 // record with their process and, where the source counts, their bytes.
 //
 // Loopback chains (NetworkMonitor_DecodeLoopback) travel with the flows
-// too: a flow keeps its role, the process on the other end of the
-// loopback and, on a proxy's outbound connections, whom the traffic was
-// for, so "what did the mail client fetch on Tuesday" is answerable
-// although the mail server only ever saw the antivirus proxy.
+// and the events too: each keeps its role, the process on the other end
+// of the loopback and, on a proxy's outbound connections, whom the
+// traffic was for, so "what did the mail client fetch on Tuesday" is
+// answerable although the mail server only ever saw the antivirus proxy.
 //
 // Every function returns NetworkMonitorResult; where the build has no
 // UltraDatabase, NetworkMonitor_StoreAvailable() is false and every call
 // reports NotSupported.
 //
-// Version: 0.7.0
+// Version: 0.8.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

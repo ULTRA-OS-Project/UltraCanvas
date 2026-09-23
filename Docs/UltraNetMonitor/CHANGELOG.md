@@ -1,3 +1,15 @@
+#### 2026-09-23 *0.11*
+- **The Events tab shows the loopback chain.** A *Via* column on the
+  events (NetworkMonitor 0.9, framework 0.9.42), read as on the other
+  tabs: a mail client's connection to the antivirus proxy opens as
+  "→ AvastSvc (4720)", the proxy's accepted side as "← thunderbird
+  (4120)", and the proxy's own connection to the mail server as "for
+  thunderbird (4120)" - on the closed event too, after the sockets are
+  gone. *Show recorded* reads the chain back from the store, the filter
+  box searches it, `--events` and `--events-history` print it, and
+  `--events-history --csv` writes `loopback_role`, `local_peer` and
+  `for`.
+
 #### 2026-09-23 *0.10*
 - **The History tab says whom a flow was for.** A *Via* column on the
   history shows the loopback chain each recorded flow was last seen with

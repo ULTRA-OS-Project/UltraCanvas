@@ -18,7 +18,7 @@
 // Connection events come from the event sources: the snapshot differ
 // unless --no-diff, and the platform's own (nf_conntrack as root on
 // Linux, the kernel network ETW provider elevated on Windows).
-// Version: 0.8.0
+// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 // Before the window header: on Linux that one reaches X11, whose `None`
@@ -389,11 +389,12 @@ std::string EventLine(const NetworkConnectionEvent& e) {
         : std::string("(unattributed)");
     const std::string bytes = e.kind == NetworkEventKind::Closed
         ? ByteText(e.bytesSent) + " / " + ByteText(e.bytesReceived) : std::string();
-    std::snprintf(line, sizeof line, "%s.%03d %-8s %-4s%-2s %-28s %-28s %-22.22s %-18s %s",
+    std::snprintf(line, sizeof line, "%s.%03d %-8s %-4s%-2s %-28s %-28s %-22.22s %-18s %-14s %s",
                   stamp, static_cast<int>(e.observedAtMs % 1000), NetworkMonitor_EventKindName(e.kind),
                   NetworkMonitor_TransportName(e.transport), e.family == NetworkAddressFamily::IPv6 ? "6" : "",
                   e.LocalEndpoint().c_str(), e.RemoteEndpoint().c_str(), app.c_str(),
-                  HostColumn(e.remoteName, e.nameSource).c_str(), bytes.c_str());
+                  HostColumn(e.remoteName, e.nameSource).c_str(), bytes.c_str(),
+                  ViaColumn(e.loopbackRole, e.localPeer, e.forProcesses).c_str());
     return line;
 }
 
@@ -408,8 +409,8 @@ int RunEvents(int seconds) {
         std::printf("%s: %s%s\n", source.name.c_str(), source.running ? "running" : "stopped",
                     source.lastError.empty() ? "" : (" - " + source.lastError).c_str());
     }
-    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %s\n",
-                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV");
+    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %-14s %s\n",
+                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV", "VIA");
     std::mutex printMutex;
     const EventListenerId listener = NetworkMonitor_AddEventListener([&printMutex](const NetworkConnectionEvent& e) {
         std::lock_guard<std::mutex> lock(printMutex);
@@ -641,8 +642,8 @@ int RunEventsHistory(const std::string& path, const ActivityQuery& query, const 
         std::printf("Could not read the store: %s\n", read.message.c_str());
         return EXIT_FAILURE;
     }
-    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %s\n",
-                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV");
+    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %-14s %s\n",
+                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV", "VIA");
     for (const auto& r : events) std::printf("%s\n", EventLine(r.event).c_str());
     std::printf("\n%zu events from %s\n", events.size(), session.path.c_str());
     return EXIT_SUCCESS;

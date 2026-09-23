@@ -1,7 +1,7 @@
 # NetworkMonitor — System-Wide Network Activity
 
 **Status:** Phase 1 and Phase 2 implemented (Linux, Windows, macOS; persistence; domain names; connection events); throughput charts and Phase 3 in the proposal.
-**Version:** 0.8.0
+**Version:** 0.9.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-09-23
 
@@ -151,7 +151,13 @@ peer from the name table and, for a source that knows only the tuple,
 attributes the event from a socket table it refreshes a few times a
 second — in either orientation, so a tuple whose source is the remote side
 becomes an *Accepted* on the listener's process — and remembers the match
-so the *Closed* that follows is attributed though the socket is gone.
+so the *Closed* that follows is attributed though the socket is gone. From
+the same table, already decoded, it fills the event's loopback chain
+(`loopbackRole`, `localPeer`, `forProcesses`, as on `NetworkConnection`):
+an event on a local proxy's socket says which application is on the other
+end, a proxy's outbound event whom it is for, and a *Closed* gets what
+its *Opened* had. A source whose events come from a decoded table — the
+differ — fills them itself and sets `chainDecoded`.
 
 ```cpp
 #include "NetworkMonitor/NetworkMonitorEvents.h"
@@ -331,7 +337,8 @@ keeps it. So the proxy's flow to the mail server says `for thunderbird
 second. The daily total remembers the last `for` its flows carried. The
 text filter matches the peer and the `for` list, so a search for the
 client finds the proxy's flows too, and the CSV carries `loopback_role`,
-`local_peer` and `for`. Schema version 4; a file written by an earlier
+`local_peer` and `for`. Recorded events carry the same three, filter and
+export the same way. Schema version 5; a file written by an earlier
 version migrates in place on open.
 
 **Threads.** One mutex per store: a recording thread, the name sources'

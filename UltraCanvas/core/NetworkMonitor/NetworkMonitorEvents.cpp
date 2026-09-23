@@ -12,7 +12,7 @@
 // accepted - and remembers what it found, so the Closed event that follows
 // a matched Opened is attributed too, though the socket is gone by then.
 //
-// Version: 0.5.0
+// Version: 0.8.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitorEvents.h"
@@ -86,12 +86,20 @@ std::string EventKey(const NetworkConnectionEvent& e) {
 
 // ===== ATTRIBUTION =====
 
+// What an Opened or Accepted told about a flow, kept so its Closed gets
+// the same although the socket is gone by then.
+struct Remembered {
+    std::optional<ProcessIdentity> process;
+    LoopbackRole                   loopbackRole = LoopbackRole::None;
+    std::string                    localPeer;
+    std::vector<std::string>       forProcesses;
+};
+
 struct Attribution {
     std::mutex mutex;
-    std::vector<NetworkConnection> table;
+    std::vector<NetworkConnection> table;   // decoded: ListConnections ran DecodeLoopback
     Clock::time_point taken{};
-    // Flows attributed at their Opened, so their Closed is attributed too.
-    std::unordered_map<std::string, ProcessIdentity> remembered;
+    std::unordered_map<std::string, Remembered> remembered;
     std::deque<std::string> rememberedOrder;
 };
 
@@ -101,10 +109,18 @@ Attribution& TheAttribution() {
 }
 
 constexpr auto kTableMaxAge = std::chrono::milliseconds(300);
+// A tuple the table lacks is often a connection younger than the table:
+// one re-read for it, at most this often.
+constexpr auto kTableMinAgeOnMiss = std::chrono::milliseconds(20);
 constexpr std::size_t kRememberedCapacity = 20000;
 
-void Remember(Attribution& a, const std::string& key, const ProcessIdentity& process) {
-    if (a.remembered.emplace(key, process).second) {
+void Remember(Attribution& a, const std::string& key, const NetworkConnectionEvent& e) {
+    Remembered kept;
+    kept.process = e.process;
+    kept.loopbackRole = e.loopbackRole;
+    kept.localPeer = e.localPeer;
+    kept.forProcesses = e.forProcesses;
+    if (a.remembered.insert_or_assign(key, std::move(kept)).second) {
         a.rememberedOrder.push_back(key);
         while (a.rememberedOrder.size() > kRememberedCapacity) {
             a.remembered.erase(a.rememberedOrder.front());
@@ -113,8 +129,19 @@ void Remember(Attribution& a, const std::string& key, const ProcessIdentity& pro
     }
 }
 
+void TakeChain(NetworkConnectionEvent& e, const NetworkConnection& c) {
+    e.loopbackRole = c.loopbackRole;
+    e.localPeer = c.localPeer ? c.localPeer->Label() : std::string();
+    e.forProcesses = c.forProcesses;
+    e.chainDecoded = true;
+}
+
+// The process, where the source did not know it, and the loopback chain,
+// where the source's table was not decoded: both from the socket table,
+// refreshed at most a few times a second, for an Opened or Accepted; from
+// what that Opened told, for a Closed.
 void Attribute(NetworkConnectionEvent& e) {
-    if (e.process) return;
+    if (e.process && e.chainDecoded) return;
     Attribution& a = TheAttribution();
     std::lock_guard<std::mutex> lock(a.mutex);
 
@@ -130,37 +157,58 @@ void Attribute(NetworkConnectionEvent& e) {
             }
         }
         if (found != a.remembered.end()) {
-            e.process = found->second;
+            if (!e.process) e.process = found->second.process;
+            if (!e.chainDecoded) {
+                e.loopbackRole = found->second.loopbackRole;
+                e.localPeer = found->second.localPeer;
+                e.forProcesses = found->second.forProcesses;
+                e.chainDecoded = true;
+            }
             a.remembered.erase(found);
         }
         return;
     }
 
-    const auto now = Clock::now();
-    if (a.table.empty() || now - a.taken > kTableMaxAge) {
+    auto refresh = [&a]() {
         NetworkMonitorOptions options;
         options.resolveNames = false;
-        if (NetworkMonitor_ListConnections(a.table, options)) a.taken = now;
-    }
+        if (NetworkMonitor_ListConnections(a.table, options)) a.taken = Clock::now();
+    };
+    if (a.table.empty() || Clock::now() - a.taken > kTableMaxAge) refresh();
     const NetworkConnection* listener = nullptr;
-    for (const auto& c : a.table) {
-        if (c.transport != e.transport) continue;
-        const bool same = c.localAddress == e.localAddress && c.localPort == e.localPort &&
-                          c.remoteAddress == e.remoteAddress && c.remotePort == e.remotePort;
-        const bool reversed = c.localAddress == e.remoteAddress && c.localPort == e.remotePort &&
-                              c.remoteAddress == e.localAddress && c.remotePort == e.localPort;
-        if (same || reversed) {
-            if (reversed) {
-                std::swap(e.localAddress, e.remoteAddress);
-                std::swap(e.localPort, e.remotePort);
-                if (e.kind == NetworkEventKind::Opened) e.kind = NetworkEventKind::Accepted;
-            }
-            e.process = c.process;
-            break;
+    bool found = false;
+    for (int attempt = 0; attempt < 2 && !found; ++attempt) {
+        if (attempt == 1) {
+            // Not in the table: a connection younger than it, as often as
+            // not. Read again, unless the table is fresher than the limit.
+            if (Clock::now() - a.taken < kTableMinAgeOnMiss) break;
+            refresh();
+            listener = nullptr;
         }
-        // A listener on the tuple's destination port: the connection came
-        // to us, and the listener's owner is the best process we have.
-        if (c.IsListening() && c.localPort == e.remotePort && !listener) listener = &c;
+        for (const auto& c : a.table) {
+            if (c.transport != e.transport) continue;
+            const bool same = c.localAddress == e.localAddress && c.localPort == e.localPort &&
+                              c.remoteAddress == e.remoteAddress && c.remotePort == e.remotePort;
+            const bool reversed = c.localAddress == e.remoteAddress && c.localPort == e.remotePort &&
+                                  c.remoteAddress == e.localAddress && c.remotePort == e.localPort;
+            if (same || reversed) {
+                if (reversed && !e.process) {
+                    std::swap(e.localAddress, e.remoteAddress);
+                    std::swap(e.localPort, e.remotePort);
+                    if (e.kind == NetworkEventKind::Opened) e.kind = NetworkEventKind::Accepted;
+                }
+                // The chain of this socket: the event's own (same), or the
+                // socket the event now describes after the swap above.
+                const bool describesThisSocket = same || !e.process;
+                if (!e.process) e.process = c.process;
+                if (!e.chainDecoded && describesThisSocket) TakeChain(e, c);
+                found = true;
+                break;
+            }
+            // A listener on the tuple's destination port: the connection
+            // came to us, and the listener's owner is the best process we have.
+            if (c.IsListening() && c.localPort == e.remotePort && !listener) listener = &c;
+        }
     }
     if (!e.process && listener) {
         std::swap(e.localAddress, e.remoteAddress);
@@ -168,7 +216,7 @@ void Attribute(NetworkConnectionEvent& e) {
         if (e.kind == NetworkEventKind::Opened) e.kind = NetworkEventKind::Accepted;
         e.process = listener->process;
     }
-    if (e.process) Remember(a, EventKey(e), *e.process);
+    if (e.process || e.chainDecoded) Remember(a, EventKey(e), e);
 }
 
 // ===== THE REGISTRY =====
@@ -276,8 +324,21 @@ private:
                     if (c.IsListening() && c.transport == NetworkTransport::Tcp) nowListening[c.localPort] = true;
                     if (unbound && !options_.includeListening) continue;
                     if (!options_.includeLoopback && c.IsLoopback()) continue;
-                    current.emplace(FlowKey(c.transport, c.family, c.localAddress, c.localPort,
-                                            c.remoteAddress, c.remotePort), std::move(c));
+                    std::string key = FlowKey(c.transport, c.family, c.localAddress, c.localPort,
+                                              c.remoteAddress, c.remotePort);
+                    // A connection closing loses its chain before it goes: the
+                    // peer's socket lingers ownerless (TIME_WAIT), so the
+                    // decoder pairs it with no process. Keep what an earlier
+                    // read told, so the Closed names the peer too.
+                    if (auto earlier = previous.find(key); earlier != previous.end()) {
+                        const NetworkConnection& was = earlier->second;
+                        if (!c.localPeer && was.localPeer) {
+                            c.localPeer = was.localPeer;
+                            if (c.loopbackRole == LoopbackRole::None) c.loopbackRole = was.loopbackRole;
+                        }
+                        if (c.forProcesses.empty() && !was.forProcesses.empty()) c.forProcesses = was.forProcesses;
+                    }
+                    current.emplace(std::move(key), std::move(c));
                 }
                 if (seeded) {
                     const int64_t now = NetworkMonitor_NowMs();
@@ -319,6 +380,7 @@ private:
         e.process = c.process;
         e.observedAtMs = now;
         e.sourceName = Name();
+        TakeChain(e, c);   // the table ListConnections gave is decoded
         return e;
     }
 

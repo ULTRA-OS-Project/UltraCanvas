@@ -67,8 +67,10 @@ client's own events, the one source that knows which process asked.
 
 The *Events* tab lists connections as they open and close, newest first,
 with the time to the millisecond, the application, both endpoints, the
-host and — on a closed event — the bytes moved where the source counts
-them. Two sources: the snapshot differ (`--no-diff`, `--diff-interval
+host, the loopback chain in a *Via* column (the proxy a connection went
+to, the client a proxy accepted, or whom a proxy's own connection was
+for — kept on the closed event though the socket is gone) and — on a
+closed event — the bytes moved where the source counts them. Two sources: the snapshot differ (`--no-diff`, `--diff-interval
 <ms>`) reports what appeared and went between two reads of the socket
 table and misses anything shorter than its interval; the platform's own
 source does not — on Linux the kernel's connection tracker, which needs
