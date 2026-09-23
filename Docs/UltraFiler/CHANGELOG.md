@@ -1,3 +1,13 @@
+#### 2026-09-23 *1.47.0*
+- **Find text: Match case and file patterns.** *Extras > Find text* opens a
+  dialog of its own instead of the one-line prompt: besides the text it asks
+  **In files named** - patterns such as `*.cpp; *.h` (`*`, `?`; separated by
+  `;`, `,` or blanks; empty for every file), checked before a file is opened,
+  so a narrowed search reads only the files it names - and **Match case**,
+  which compares the text byte for byte. The dialog opens with the previous
+  search's entries, and the status line names the patterns and the case
+  option along with the text.
+
 #### 2026-09-23 *1.46.0*
 - **A remote folder being fetched shows progress, not "Folder is empty!".**
   Opening a folder on an FTP, SFTP or cloud drive now shows a turning progress

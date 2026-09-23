@@ -103,6 +103,7 @@
 #include "UltraFilerRemoteDrives.h"
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
+#include "UltraFilerFindTextDialog.h"
 #include "UltraFilerVolumeSpace.h"
 
 #include <atomic>
@@ -353,12 +354,15 @@ private:
     // took and, on a large volume, long enough for the user to conclude the
     // application had died. Wired to the search field's Enter, to its in-field
     // "Scan sub folder" button and to the filer's centered "Scan sub folder"
-    // button. With `inContents` the same walk looks inside the files instead
-    // of at their names (Extras > Find text): it lists every file that
-    // contains `query`, compared case-insensitively.
-    void RunSearch(const std::string& query, bool inContents = false);
-    // Extras > Find text: asks for the text and starts a content search of
-    // the browsing view's folder and its sub folders (RunSearch).
+    // button. With `findText` the same walk looks inside the files instead
+    // of at their names (Extras > Find text): it lists every file whose name
+    // matches findText->filePattern and that contains `query` (its text),
+    // case-insensitively unless findText->matchCase.
+    void RunSearch(const std::string& query,
+                   const FilerFindTextOptions* findText = nullptr);
+    // Extras > Find text: asks for the text, the file pattern and the case
+    // option, then starts a content search of the browsing view's folder and
+    // its sub folders (RunSearch).
     void OpenFindTextDialog();
     // Filter-as-you-type: every edit of the search field narrows the active
     // tab's folder listing to the names containing the text (the filer's
@@ -394,7 +398,9 @@ private:
     void SubfolderSearchWorkerMain(std::shared_ptr<SubfolderSearchState> state,
                                    std::shared_ptr<std::atomic<bool>> alive,
                                    std::string root, std::string needle,
-                                   bool inContents, uint64_t generation);
+                                   bool inContents, bool matchCase,
+                                   std::vector<std::string> filePatterns,
+                                   uint64_t generation);
     // Moves what the worker has found onto the display (UI thread), refreshes
     // the status line and, when the walk is done, retires the worker.
     void DrainSubfolderSearch(std::shared_ptr<SubfolderSearchState> state,
@@ -865,7 +871,10 @@ private:
     FilerTabState* searchTab = nullptr;    // tab the results belong to
     std::string searchQueryText;           // query of the running / last scan
     bool searchInContents = false;         // that scan reads file contents
-    std::string lastFindText;              // Find text dialog's previous query
+    // What a Find text scan's status line names besides the text: " in
+    // *.cpp; *.h", ", match case" ("" for a plain search of every file).
+    std::string searchFindQualifier;
+    FilerFindTextOptions lastFindText;     // Find text dialog's previous options
     std::string searchStatus;              // what the status bar says about it
     bool searchResultsShown = false;       // first batch already on display
     bool scanButtonStops = false;          // the in-field button reads "Stop"

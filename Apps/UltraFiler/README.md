@@ -303,12 +303,17 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   every tab, the folder preview, the History and Favorites lists, the tree row
   and its Pinned bookmark — and beats the built-in icon of a main user folder.
   **Extras > Remove folder icon** takes it away again.
-- **Extras > Find text…** (in the file context menu's Extras submenu): asks
-  for a text and lists every file in the shown folder and its sub folders
-  that contains it, in the same result display the search field's
-  *Scan sub folder* fills — results appear while the walk goes on, the status
-  bar counts the files found and read, and the field's *Stop* button ends it.
-  The comparison ignores the case of ASCII letters; other characters match
+- **Extras > Find text…** (in the file context menu's Extras submenu): lists
+  every file in the shown folder and its sub folders that contains a text.
+  The dialog asks for the text, **In files named** — file-name patterns such
+  as `*.cpp; *.h` (`*` any characters, `?` one; separated by `;`, `,` or
+  blanks; empty for every file; the case of the name does not matter) — and
+  **Match case**. The dialog remembers its last entries until UltraFiler
+  closes. Results land in the same result display the search field's
+  *Scan sub folder* fills, while the walk goes on; the status bar names the
+  text, the patterns and the case option and counts the files found and
+  read, and the field's *Stop* button ends it. Without *Match case* the
+  comparison ignores the case of ASCII letters; other characters match
   exactly (UTF-8 bytes). Hidden entries, links, binary files (a NUL byte in
   the first 8 KB) and files over 64 MB are skipped. Local folders only — the
   item is disabled on a remote drive and in the History, Favorites and
