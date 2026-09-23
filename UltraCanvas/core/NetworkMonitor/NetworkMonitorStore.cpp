@@ -8,8 +8,8 @@
 // Without UltraDatabase in the build (ULTRACANVAS_HAS_DATABASE undefined)
 // this file compiles to stubs that report NotSupported.
 //
-// Version: 0.4.0
-// Last Modified: 2026-09-22
+// Version: 0.5.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitorStore.h"
 
@@ -74,6 +74,9 @@ NetworkMonitorResult NetworkMonitor_QueryFlows(NetworkMonitorStoreHandle, const 
 NetworkMonitorResult NetworkMonitor_QueryDailyTotals(NetworkMonitorStoreHandle, const ActivityQuery&, std::vector<DailyProcessTotal>& out) { out.clear(); return NoStore(); }
 NetworkMonitorResult NetworkMonitor_RecordDnsObservation(NetworkMonitorStoreHandle, const DnsObservation&) { return NoStore(); }
 NetworkMonitorResult NetworkMonitor_QueryDnsObservations(NetworkMonitorStoreHandle, const ActivityQuery&, std::vector<RecordedDnsObservation>& out) { out.clear(); return NoStore(); }
+NetworkMonitorResult NetworkMonitor_RecordConnectionEvent(NetworkMonitorStoreHandle, const NetworkConnectionEvent&) { return NoStore(); }
+NetworkMonitorResult NetworkMonitor_QueryConnectionEvents(NetworkMonitorStoreHandle, const ActivityQuery&, std::vector<RecordedConnectionEvent>& out) { out.clear(); return NoStore(); }
+NetworkMonitorResult NetworkMonitor_ExportEventsCsv(NetworkMonitorStoreHandle, const ActivityQuery&, const std::string&, int64_t* rows) { if (rows) *rows = 0; return NoStore(); }
 NetworkMonitorResult NetworkMonitor_RollUp(NetworkMonitorStoreHandle, int64_t, int64_t* rolledUp) { if (rolledUp) *rolledUp = 0; return NoStore(); }
 NetworkMonitorResult NetworkMonitor_ApplyRetention(NetworkMonitorStoreHandle, int64_t) { return NoStore(); }
 NetworkMonitorResult NetworkMonitor_Purge(NetworkMonitorStoreHandle) { return NoStore(); }
@@ -88,9 +91,10 @@ namespace {
 // Version 1: a flow row is one connection across consecutive snapshots;
 // processes are deduplicated so a busy browser is one row, not thousands.
 // Version 2 adds the peer's name to flows and daily totals, and the DNS
-// observations table. Each version is one migration step, applied in
-// order by UltraDb_Migrate, so a version-1 file opens and gains the columns.
-constexpr int kSchemaVersion = 2;
+// observations table. Version 3 adds the connection events table. Each
+// version is one migration step, applied in order by UltraDb_Migrate, so
+// an older file opens and gains what it lacks.
+constexpr int kSchemaVersion = 3;
 const char* const kSchemaV1 =
     "CREATE TABLE IF NOT EXISTS processes ("
     "  id INTEGER PRIMARY KEY,"
@@ -147,6 +151,27 @@ const char* const kSchemaV2 =
     "  executable TEXT NOT NULL DEFAULT '');"
     "CREATE INDEX IF NOT EXISTS dns_observed_at ON dns_observations(observed_at);"
     "CREATE INDEX IF NOT EXISTS dns_query_name ON dns_observations(query_name);";
+const char* const kSchemaV3 =
+    "CREATE TABLE IF NOT EXISTS connection_events ("
+    "  id INTEGER PRIMARY KEY,"
+    "  observed_at_ms INTEGER NOT NULL,"
+    "  kind INTEGER NOT NULL,"
+    "  transport INTEGER NOT NULL,"
+    "  family INTEGER NOT NULL,"
+    "  local_address TEXT NOT NULL,"
+    "  local_port INTEGER NOT NULL,"
+    "  remote_address TEXT NOT NULL,"
+    "  remote_port INTEGER NOT NULL,"
+    "  remote_name TEXT NOT NULL DEFAULT '',"
+    "  name_source INTEGER NOT NULL DEFAULT 0,"
+    "  pid INTEGER,"
+    "  process_name TEXT NOT NULL DEFAULT '',"
+    "  executable TEXT NOT NULL DEFAULT '',"
+    "  user TEXT NOT NULL DEFAULT '',"
+    "  bytes_sent INTEGER,"
+    "  bytes_received INTEGER,"
+    "  source TEXT NOT NULL DEFAULT '');"
+    "CREATE INDEX IF NOT EXISTS events_observed_at ON connection_events(observed_at_ms);";
 
 struct StoreState {
     std::string connection;
@@ -342,6 +367,7 @@ NetworkMonitorResult NetworkMonitor_OpenStore(const NetworkMonitorStoreOptions& 
     const std::vector<UltraDbMigration> steps = {
         { 1, "NetworkMonitor activity store", kSchemaV1 },
         { 2, "NetworkMonitor names", kSchemaV2 },
+        { 3, "NetworkMonitor connection events", kSchemaV3 },
     };
     if (UltraDbResult migrated = UltraDb_Migrate(state->connection, steps); !migrated) {
         UltraDb_CloseConnection(state->connection);
@@ -582,6 +608,128 @@ NetworkMonitorResult NetworkMonitor_ApplyRetention(NetworkMonitorStoreHandle sto
     step = UltraDb_Exec(state->connection, "DELETE FROM dns_observations WHERE observed_at < ?",
                         { now - window });
     if (!step) return Storage("dropping old DNS observations", step);
+    step = UltraDb_Exec(state->connection, "DELETE FROM connection_events WHERE observed_at_ms < ?",
+                        { (now - window) * 1000 });
+    if (!step) return Storage("dropping old connection events", step);
+    return NetworkMonitorResult::Ok();
+}
+
+NetworkMonitorResult NetworkMonitor_RecordConnectionEvent(NetworkMonitorStoreHandle store,
+                                                          const NetworkConnectionEvent& event) {
+    auto state = Find(store);
+    if (!state) return BadHandle();
+    const int64_t observedAtMs = event.observedAtMs == 0 ? NetworkMonitor_Now() * 1000 : event.observedAtMs;
+    std::lock_guard<std::mutex> lock(state->mutex);
+    const UltraDbResult step = UltraDb_Exec(
+        state->connection,
+        "INSERT INTO connection_events(observed_at_ms, kind, transport, family, local_address, local_port,"
+        " remote_address, remote_port, remote_name, name_source, pid, process_name, executable, user,"
+        " bytes_sent, bytes_received, source) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        { observedAtMs, static_cast<int>(event.kind), static_cast<int>(event.transport),
+          static_cast<int>(event.family), event.localAddress, static_cast<int>(event.localPort),
+          event.remoteAddress, static_cast<int>(event.remotePort), event.remoteName,
+          static_cast<int>(event.nameSource),
+          event.process ? UltraDbValue(static_cast<int64_t>(event.process->pid)) : UltraDbValue::Null(),
+          event.process ? event.process->displayName : std::string(),
+          event.process ? event.process->executablePath : std::string(),
+          event.process ? event.process->userName : std::string(),
+          OptionalBytes(event.bytesSent), OptionalBytes(event.bytesReceived), event.sourceName });
+    if (!step) return Storage("recording the connection event", step);
+    return NetworkMonitorResult::Ok();
+}
+
+NetworkMonitorResult NetworkMonitor_QueryConnectionEvents(NetworkMonitorStoreHandle store,
+                                                          const ActivityQuery& query,
+                                                          std::vector<RecordedConnectionEvent>& out) {
+    out.clear();
+    auto state = Find(store);
+    if (!state) return BadHandle();
+    std::lock_guard<std::mutex> lock(state->mutex);
+    std::string sql = "SELECT id, observed_at_ms, kind, transport, family, local_address, local_port,"
+                      " remote_address, remote_port, remote_name, name_source, pid, process_name, executable,"
+                      " user, bytes_sent, bytes_received, source FROM connection_events WHERE 1 = 1";
+    UltraDbParams params;
+    if (query.since) { sql += " AND observed_at_ms >= ?"; params.push_back(*query.since * 1000); }
+    if (query.until) { sql += " AND observed_at_ms <= ?"; params.push_back(*query.until * 1000 + 999); }
+    if (query.pid) { sql += " AND pid = ?"; params.push_back(*query.pid); }
+    if (!query.processName.empty()) { sql += " AND process_name = ?"; params.push_back(query.processName); }
+    if (!query.text.empty()) {
+        const std::string pattern = "%" + query.text + "%";
+        sql += " AND (local_address LIKE ? OR remote_address LIKE ? OR remote_name LIKE ?"
+               " OR process_name LIKE ? OR executable LIKE ?)";
+        for (int i = 0; i < 5; ++i) params.push_back(pattern);
+    }
+    sql += " ORDER BY observed_at_ms DESC, id DESC";
+    if (query.includeLoopback && query.limit > 0) { sql += " LIMIT ?"; params.push_back(query.limit); }
+    UltraDbResultSet rows;
+    if (UltraDbResult result = UltraDb_Query(state->connection, sql, params, rows); !result) {
+        return Storage("reading the connection events", result);
+    }
+    for (const auto& row : rows) {
+        RecordedConnectionEvent record;
+        record.id = row[0].AsInt64();
+        NetworkConnectionEvent& e = record.event;
+        e.observedAtMs = row[1].AsInt64();
+        e.kind = static_cast<NetworkEventKind>(row[2].AsInt());
+        e.transport = static_cast<NetworkTransport>(row[3].AsInt());
+        e.family = static_cast<NetworkAddressFamily>(row[4].AsInt());
+        e.localAddress = row[5].AsString();
+        e.localPort = static_cast<uint16_t>(row[6].AsInt());
+        e.remoteAddress = row[7].AsString();
+        e.remotePort = static_cast<uint16_t>(row[8].AsInt());
+        e.remoteName = row[9].AsString();
+        e.nameSource = static_cast<NameSource>(row[10].AsInt());
+        if (!row[11].IsNull()) {
+            ProcessIdentity process;
+            process.pid = row[11].AsU32();
+            process.displayName = row[12].AsString();
+            process.executablePath = row[13].AsString();
+            process.userName = row[14].AsString();
+            e.process = process;
+        }
+        e.bytesSent = BytesFrom(row[15]);
+        e.bytesReceived = BytesFrom(row[16]);
+        e.sourceName = row[17].AsString();
+        if (!query.includeLoopback && e.IsLoopback()) continue;
+        out.push_back(std::move(record));
+        if (query.limit > 0 && static_cast<int>(out.size()) >= query.limit) break;
+    }
+    return NetworkMonitorResult::Ok();
+}
+
+NetworkMonitorResult NetworkMonitor_ExportEventsCsv(NetworkMonitorStoreHandle store,
+                                                    const ActivityQuery& query,
+                                                    const std::string& path,
+                                                    int64_t* rowsWritten) {
+    if (rowsWritten) *rowsWritten = 0;
+    std::vector<RecordedConnectionEvent> events;
+    if (NetworkMonitorResult read = NetworkMonitor_QueryConnectionEvents(store, query, events); !read) return read;
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file) {
+        return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError, "Could not write " + path);
+    }
+    file << "observed_at,milliseconds,kind,transport,family,local,remote,remote_name,name_source,"
+            "application,pid,executable,user,bytes_sent,bytes_received,source\r\n";
+    for (const auto& r : events) {
+        const NetworkConnectionEvent& e = r.event;
+        file << IsoUtc(e.observedAtMs / 1000) << ',' << (e.observedAtMs % 1000) << ','
+             << NetworkMonitor_EventKindName(e.kind) << ',' << NetworkMonitor_TransportName(e.transport) << ','
+             << (e.family == NetworkAddressFamily::IPv6 ? "IPv6" : "IPv4") << ','
+             << CsvField(e.LocalEndpoint()) << ',' << CsvField(e.RemoteEndpoint()) << ','
+             << CsvField(e.remoteName) << ','
+             << (e.remoteName.empty() ? "" : NetworkMonitor_NameSourceName(e.nameSource)) << ','
+             << CsvField(e.process ? e.process->displayName : std::string("(unattributed)")) << ','
+             << (e.process ? std::to_string(e.process->pid) : std::string()) << ','
+             << CsvField(e.process ? e.process->executablePath : std::string()) << ','
+             << CsvField(e.process ? e.process->userName : std::string()) << ','
+             << (e.bytesSent ? std::to_string(*e.bytesSent) : std::string()) << ','
+             << (e.bytesReceived ? std::to_string(*e.bytesReceived) : std::string()) << ','
+             << CsvField(e.sourceName) << "\r\n";
+    }
+    if (!file) {
+        return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError, "Writing " + path + " failed part-way.");
+    }
+    if (rowsWritten) *rowsWritten = static_cast<int64_t>(events.size());
     return NetworkMonitorResult::Ok();
 }
 
@@ -667,7 +815,7 @@ NetworkMonitorResult NetworkMonitor_Purge(NetworkMonitorStoreHandle store) {
     std::lock_guard<std::mutex> lock(state->mutex);
     UltraDbResult step = UltraDb_Exec(state->connection,
         "DELETE FROM flows; DELETE FROM daily_totals; DELETE FROM snapshots; DELETE FROM processes;"
-        " DELETE FROM dns_observations;");
+        " DELETE FROM dns_observations; DELETE FROM connection_events;");
     if (!step) return Storage("purging the activity store", step);
     state->processIds.clear();
     return NetworkMonitorResult::Ok();
@@ -695,6 +843,9 @@ NetworkMonitorResult NetworkMonitor_StoreStats(NetworkMonitorStoreHandle store,
     step = UltraDb_Query(state->connection, "SELECT COUNT(*) FROM dns_observations", rows);
     if (!step || rows.Empty()) return Storage("counting DNS observations", step);
     out.dnsObservations = rows.Row(0)[0].AsInt64();
+    step = UltraDb_Query(state->connection, "SELECT COUNT(*) FROM connection_events", rows);
+    if (!step || rows.Empty()) return Storage("counting connection events", step);
+    out.connectionEvents = rows.Row(0)[0].AsInt64();
     return NetworkMonitorResult::Ok();
 }
 

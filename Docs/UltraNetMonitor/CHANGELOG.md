@@ -1,3 +1,30 @@
+#### 2026-09-23 *0.7*
+- **Events.** Connections as they open and close, not only as the next
+  snapshot finds them (NetworkMonitor 0.5, framework 0.9.22): a new
+  *Events* tab lists every event the sources report, newest first, with
+  the time to the millisecond, whether the connection was opened here or
+  accepted from a peer, the application, both endpoints, the host, and on
+  a closed event the bytes it moved where the source counts them. *Show
+  recorded* switches the tab to what the store holds over the History
+  tab's range; *Clear* empties the live list.
+  - **Two sources.** The snapshot differ runs everywhere (`--no-diff`
+    turns it off, `--diff-interval <ms>` sets its pace, 250 ms by default)
+    and reports what appeared and what went between two reads of the
+    socket table - so it misses connections shorter than its interval,
+    and says so. The platform's own source does not: on Linux the
+    kernel's connection tracker (`nf_conntrack`), which needs root and a
+    firewall rule that has activated it; on Windows, run elevated, the
+    kernel's network events, which also bring the byte counters the
+    Windows socket table lacks. The subtitle names what is running.
+  - **Recorded.** While recording, every event goes into the store beside
+    the flows and the DNS observations; `--events-history` prints them
+    with the `--history` filters (`--csv` exports), `--store-stats` counts
+    them, and an older store gains the table on open.
+  - **Headless.** `--events` prints events as they happen until Ctrl-C or
+    `--seconds`; `--capabilities` lists the event sources.
+  - The store's directory is now created for its owner alone (`0700`) on
+    Linux and macOS; `%LOCALAPPDATA%` is per-user already.
+
 #### 2026-09-22 *0.6*
 - **Names.** Connections carry the domain name behind the peer where a name
   source has seen one (NetworkMonitor 0.4, framework 0.9.21): a *Host*

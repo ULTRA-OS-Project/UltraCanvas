@@ -1,3 +1,51 @@
+#### 2026-09-23 *0.9.22*
+- **NetworkMonitor connection events.** `NetworkMonitorEvents.h`: a
+  connection reported as it opens, is accepted or closes, rather than
+  found in the next snapshot - the event-rate collection the proposal
+  asked for (§2.1, §5.2), so the connections shorter than a polling
+  interval are in the record. Same shape as the name sources: an
+  `IConnectionEventSource` implements it, `NetworkMonitor_RegisterEventSource`
+  runs it, every `NetworkConnectionEvent` goes to the listeners
+  (`NetworkMonitor_AddEventListener`) and into a bounded ring
+  (`NetworkMonitor_RecentEvents`). On its way through, the registry names
+  the peer from the name table and, for a source that reports no process,
+  attributes the event from a socket table it refreshes a few times a
+  second - in either orientation, so a tuple whose source is the remote
+  side becomes an *Accepted* on the listener's process - and remembers
+  the match, so the *Closed* that follows is attributed though the socket
+  is gone. `NetworkMonitorCapabilities::connectionEvents` is true while a
+  source runs.
+  - **The snapshot differ** (`NetworkMonitor_CreateSnapshotDiffEventSource`):
+    reads the socket table at an interval and reports what appeared and
+    what went, with the process and the counters the table carries. Runs
+    on every platform with a backend; misses connections shorter than its
+    interval, and says so.
+  - **nf_conntrack on Linux** (`NetworkMonitor_CreateSystemEventSource`,
+    `OS/Linux/UltraCanvasLinuxNetworkMonitorEvents.cpp`): the kernel's
+    connection tracker over `NETLINK_NETFILTER`, NEW and DESTROY, with the
+    bytes each direction moved when accounting is on. Needs
+    `CAP_NET_ADMIN` and a tracker that a firewall rule has activated; an
+    idle tracker is reported, never silently empty. The message parser
+    (`NetworkMonitorConntrack.h`) is pure and tested from captured bytes on
+    every platform; the source never adds a rule.
+  - **The kernel network ETW provider on Windows**
+    (`OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp`): connect,
+    accept and disconnect with the PID, and the sends and receives summed
+    per connection into the *Closed* event's counters - the per-connection
+    bytes the IP Helper backend cannot give. Elevated only; compiled on
+    CI, not yet exercised at run time. Null on macOS.
+  - **The store records events.** Schema version 3 (older files migrate in
+    place): a `connection_events` table, `NetworkMonitor_RecordConnectionEvent`
+    / `QueryConnectionEvents` / `ExportEventsCsv`, retention and purge
+    cover it, `StoreStats` counts it.
+  - Tests: the conntrack parser against a captured NEW and DESTROY, the
+    registry's ring, listener, naming and both-orientation attribution
+    against sockets the test opens, the differ reporting opened, accepted
+    and closed for a loopback connection attributed to the test's PID,
+    the platform source starting where it can, and the store's events.
+  - A registry never holds its lock while asking a source a question,
+    since a source may read the capabilities, which ask the registry.
+
 #### 2026-09-22 *0.9.21*
 - **NetworkMonitor names.** `NetworkMonitorNames.h`: the name-source
   plug-in point the proposal asked for (§2.3), and the sources behind it.
