@@ -3,7 +3,8 @@
 // streaming download/upload uses constant memory (libcurl write/read callbacks
 // to/from FILE*). Mutating operations (DELE / RNFR-RNTO / MKD / RMD) ride on
 // CURLOPT_QUOTE so libcurl handles connection setup and authentication for us.
-// Version: 0.3.0 (Stage 3)
+// Version: 0.3.1 (Stage 3)
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetFtp.h"
@@ -54,6 +55,39 @@ void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
                          static_cast<long>(opt.transferTimeoutMs));
     }
     curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+}
+
+// Transfer progress for a file moving to or from a server.
+//
+// libcurl calls this as the bytes go by; it feeds the module's global
+// transfer callbacks - the same bag every HTTP request already reports
+// through (UltraNet_SetTransferCallbacks), so a caller that wants to show a
+// progress bar sets it once and hears about every transfer, whatever the
+// protocol. Without this an FTP upload was silent from first byte to last.
+//
+// Fires on the transfer thread and must not block; UltraNet's contract for
+// these callbacks says so, and libcurl stalls the transfer for as long as
+// this takes.
+int ReportTransferProgress(void* /*userdata*/, curl_off_t dltotal, curl_off_t dlnow,
+                           curl_off_t ultotal, curl_off_t ulnow) {
+    const UltraNetTransferCallbacks cb = UltraNet_GetTransferCallbacks();
+    if (cb.onDownloadProgress && dlnow > 0) {
+        cb.onDownloadProgress(static_cast<int64_t>(dlnow),
+                              static_cast<int64_t>(dltotal));
+    }
+    if (cb.onUploadProgress && ulnow > 0) {
+        cb.onUploadProgress(static_cast<int64_t>(ulnow),
+                            static_cast<int64_t>(ultotal));
+    }
+    return 0;   // non-zero would abort the transfer
+}
+
+// Turns the progress callback on for one handle. Only the two file transfers
+// use it: a listing or a DELE moves too little for anyone to watch.
+void ApplyProgressCallback(CURL* h) {
+    curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, &ReportTransferProgress);
+    curl_easy_setopt(h, CURLOPT_XFERINFODATA, nullptr);
+    curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
 }
 
 UltraNetResult Perform(CURL* h, const std::string& url) {
@@ -288,6 +322,7 @@ UltraNetResult UltraNet_FtpDownload(const std::string& url,
                          static_cast<curl_off_t>(opt.resumeOffset));
     }
     ApplyCommonOptions(h.get(), opt);
+    ApplyProgressCallback(h.get());
 
     UltraNetResult r = Perform(h.get(), url);
     std::fclose(fp);
@@ -329,6 +364,7 @@ UltraNetResult UltraNet_FtpUpload(const std::string& localPath,
     curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
                      static_cast<curl_off_t>(size > 0 ? size : 0));
     ApplyCommonOptions(h.get(), opt);
+    ApplyProgressCallback(h.get());
 
     UltraNetResult r = Perform(h.get(), url);
     std::fclose(fp);

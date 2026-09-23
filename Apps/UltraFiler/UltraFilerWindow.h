@@ -101,6 +101,8 @@
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
 #include "UltraFilerRemoteDrives.h"
+
+#include "UltraCanvasProgressBar.h"   // the status strip's transfer bar
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerVolumeSpace.h"
@@ -321,6 +323,15 @@ private:
     // change what is on it (UltraCanvasFilerWidget::isRemotePath,
     // remoteListing, remoteDelete, remoteRename, remoteMakeDirectory).
     void WireRemoteDriveHooks(UltraCanvasFilerWidget* widget);
+    // What the status line says about a drive that is busy - "Opening \"Videos\"
+    // - receiving folder data...", "Uploading \"clip.mp4\" - 3.2 MB of 8.0 MB".
+    // Empty while the drives are idle, which is when the status line goes back
+    // to describing the folder in front of the user.
+    std::string DescribeRemoteActivity() const;
+    // Puts the progress bar in step with `remoteActivity`: shown with a
+    // percentage during a transfer whose size the server gave, shown busy when
+    // it did not, and hidden the rest of the time.
+    void UpdateRemoteProgressBar();
     // Refreshes whatever display is showing `folderPath`. Used both when a
     // queued listing arrives and after a change to the drive.
     void RefreshRemoteFolderDisplays(const std::string& folderPath);
@@ -819,7 +830,14 @@ private:
     std::shared_ptr<UltraCanvasContainer>       searchBox;    // field + in-field button
     std::shared_ptr<UltraCanvasTextInput>       searchInput;
     std::shared_ptr<UltraCanvasButton>          scanButton;   // "Scan sub folder" / "Stop"
+    // The status strip: the line of text, and the bar that appears beside it
+    // while a transfer to a drive is running.
+    std::shared_ptr<UltraCanvasContainer>       statusRow;
     std::shared_ptr<UltraCanvasLabel>           statusLabel;
+    std::shared_ptr<UltraCanvasProgressBar>     statusProgress;
+    // What the drives last said they were doing. Idle most of the time; the
+    // status line and the bar are drawn from it.
+    RemoteActivity remoteActivity;
     std::shared_ptr<UltraCanvasButton>          backButton;
     std::shared_ptr<UltraCanvasButton>          forwardButton;
     std::shared_ptr<UltraCanvasButton>          upButton;

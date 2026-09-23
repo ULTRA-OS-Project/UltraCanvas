@@ -770,6 +770,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     // had already posted is queued on the UI thread and cannot be recalled.
     if (remoteDrives) {
         remoteDrives->onListingArrived = nullptr;
+        remoteDrives->onActivityChanged = nullptr;
         remoteDrives->Stop();
     }
     StopVolumeSpaceQuery();
@@ -985,15 +986,34 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     BuildFavoritesView();
 
     // Status bar under the split.
-    statusLabel = std::make_shared<UltraCanvasLabel>("ufl-status", 0, 0, 0, 24);
+    // The status strip is a row rather than a single label now: the text on
+    // the left, and on the right the bar that appears while a file is going
+    // to or from a drive. The row carries the background so the whole strip
+    // is one colour whether or not the bar is up.
+    statusRow = CreateContainer("ufl-status-row", 0, 0, 0, 24);
+    statusRow->layout.SetFlexRow()
+                     .SetFlexGap(10)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    statusRow->SetBackgroundColor(Color(243, 243, 246, 255));
+    statusRow->SetPadding(4, 10, 4, 10);
+    statusRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    statusLabel = std::make_shared<UltraCanvasLabel>("ufl-status", 0, 0, 0, 16);
     statusLabel->SetFontSize(kUiFontSize);
     statusLabel->SetTextColor(Color(70, 70, 76, 255));
-    statusLabel->SetBackgroundColor(Color(243, 243, 246, 255));
-    statusLabel->SetPadding(4, 10, 4, 10);
     statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    statusLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    window->AddChild(statusLabel);
+    statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    statusRow->AddChild(statusLabel);
+
+    // Hidden until something is actually moving: an empty bar sitting in the
+    // status line at all times is furniture, not information.
+    statusProgress = CreateProgressBar("ufl-status-progress", 160, 6);
+    statusProgress->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    statusProgress->SetVisible(false);
+    statusRow->AddChild(statusProgress);
+
+    window->AddChild(statusRow);
 
     std::string start = startFolder;
     std::error_code ec;
@@ -2922,6 +2942,11 @@ void UltraFilerWindow::BuildFolderTree() {
     remoteDrives = std::make_unique<UltraFilerRemoteDrives>();
     // Fires on the UI thread once a queued listing has arrived: the folder
     // display is asked again, and this time the cache answers.
+    // What the drives are doing, straight into the status line.
+    remoteDrives->onActivityChanged = [this](const RemoteActivity& activity) {
+        remoteActivity = activity;
+        UpdateStatusBar();
+    };
     remoteDrives->onListingArrived = [this](const std::string& path) {
         // Only the display actually showing that folder needs redoing.
         RefreshRemoteFolderDisplays(path);
@@ -5192,8 +5217,89 @@ void UltraFilerWindow::UpdateNavButtons() {
 
 // ===== STATUS BAR / PREVIEW =====
 
+std::string UltraFilerWindow::DescribeRemoteActivity() const {
+    if (!remoteActivity.IsBusy()) return {};
+
+    // A name in quotes where there is one. A listing of a drive's own root has
+    // no name of its own, so it is "the drive" - which is what the user
+    // clicked on and what the row is called.
+    const std::string name = remoteActivity.what;
+    const std::string quoted = name.empty() ? std::string() : "\"" + name + "\"";
+
+    std::string text;
+    switch (remoteActivity.kind) {
+        case RemoteActivity::Kind::Listing:
+            // Both halves of the wait in one line: the request went out, and
+            // what comes back is the folder's contents.
+            text = "Opening " + (quoted.empty() ? "the drive" : quoted) +
+                   " - receiving folder data...";
+            break;
+        case RemoteActivity::Kind::Uploading: {
+            text = "Uploading " + (quoted.empty() ? "a file" : quoted);
+            if (remoteActivity.bytesTotal > 0) {
+                text += " - " +
+                        FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
+                        " of " +
+                        FormatFileSize(static_cast<size_t>(remoteActivity.bytesTotal));
+            } else if (remoteActivity.bytesDone > 0) {
+                // A server that never said how big the file is: what has gone
+                // is still worth showing, and is all there is to show.
+                text += " - " +
+                        FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
+                        " sent";
+            } else {
+                text += "...";
+            }
+            break;
+        }
+        case RemoteActivity::Kind::Deleting:
+            text = "Deleting " + (quoted.empty() ? "an entry" : quoted) +
+                   " on the drive...";
+            break;
+        case RemoteActivity::Kind::Renaming:
+            text = "Renaming " + (quoted.empty() ? "an entry" : quoted) +
+                   " on the drive...";
+            break;
+        case RemoteActivity::Kind::MakingDirectory:
+            text = "Creating folder " + (quoted.empty() ? "" : quoted + " ") +
+                   "on the drive...";
+            break;
+        case RemoteActivity::Kind::Idle:
+            return {};
+    }
+    // What is still behind it, so a drop of five files does not look like one.
+    if (remoteActivity.queued > 0) {
+        text += "  (" + std::to_string(remoteActivity.queued) + " more queued)";
+    }
+    return text;
+}
+
+void UltraFilerWindow::UpdateRemoteProgressBar() {
+    if (!statusProgress) return;
+    // Only a transfer gets a bar. A listing or a rename is one round trip
+    // with nothing to count, and a bar that only ever sweeps says no more
+    // than the words beside it already do.
+    const bool show = remoteActivity.IsTransfer();
+    if (statusProgress->IsVisible() != show) statusProgress->SetVisible(show);
+    if (!show) return;
+    if (remoteActivity.bytesTotal > 0)
+        statusProgress->SetProgress(remoteActivity.bytesDone,
+                                    remoteActivity.bytesTotal);
+    else
+        statusProgress->SetFraction(-1.0f);   // no total: a busy sweep
+}
+
 void UltraFilerWindow::UpdateStatusBar() {
     if (!statusLabel) return;
+    UpdateRemoteProgressBar();
+    // A drive is busy whatever the window happens to be showing - the History
+    // view, the Computer page, another tab - so this is said first and in
+    // place of the rest. What a server is doing is the one thing in this
+    // window the user cannot see for themselves.
+    if (const std::string activity = DescribeRemoteActivity(); !activity.empty()) {
+        statusLabel->SetText(activity);
+        return;
+    }
     if (historyShown) {
         const int index = historyTabs ? historyTabs->GetActiveTab() : -1;
         std::string text = "History";

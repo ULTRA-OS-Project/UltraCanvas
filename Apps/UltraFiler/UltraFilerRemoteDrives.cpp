@@ -8,6 +8,8 @@
 
 #include "UltraCanvasApplication.h"    // PostToUIThread
 
+#include "UltraNet/UltraNetCore.h"   // the transfer callbacks a job reports through
+
 #include <algorithm>
 #include <filesystem>   // Submit checks an upload's local file
 
@@ -415,15 +417,87 @@ void UltraFilerRemoteDrives::EnsureWorker() {
     worker_ = std::thread([this]() { WorkerMain(); });
 }
 
+RemoteActivity::Kind UltraFilerRemoteDrives::ActivityKindFor(const Job& job) {
+    if (job.isListing) return RemoteActivity::Kind::Listing;
+    switch (job.operation) {
+        case RemoteOperation::Delete:        return RemoteActivity::Kind::Deleting;
+        case RemoteOperation::Rename:        return RemoteActivity::Kind::Renaming;
+        case RemoteOperation::MakeDirectory: return RemoteActivity::Kind::MakingDirectory;
+        case RemoteOperation::Upload:        return RemoteActivity::Kind::Uploading;
+    }
+    return RemoteActivity::Kind::Idle;
+}
+
+void UltraFilerRemoteDrives::ReportActivity(const RemoteActivity& activity,
+                                            bool force) {
+    if (!onActivityChanged) return;
+    // libcurl counts bytes, so a transfer would otherwise post hundreds of
+    // times a second at a UI thread that can only repaint sixty. The first
+    // and last report of a job are forced through: those are the ones that
+    // say what started and that it is over.
+    const auto now = std::chrono::steady_clock::now();
+    if (!force) {
+        const auto since = now - lastActivityPost_;
+        if (since < std::chrono::milliseconds(80)) return;
+    }
+    lastActivityPost_ = now;
+
+    UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    auto alive = alive_;
+    app->PostToUIThread([this, alive, activity]() {
+        if (!alive->load()) return;   // owner destroyed meanwhile
+        if (onActivityChanged) onActivityChanged(activity);
+    });
+}
+
 void UltraFilerRemoteDrives::WorkerMain() {
     for (;;) {
         Job job;
+        std::size_t waiting = 0;
         {
             std::unique_lock<std::mutex> lk(mutex_);
             cond_.wait(lk, [this]() { return shutdown_ || !queue_.empty(); });
             if (shutdown_) return;
             job = std::move(queue_.front());
             queue_.pop_front();
+            waiting = queue_.size();
+        }
+
+        // What this job is, said before it starts rather than after: the whole
+        // point is to fill the wait, and a report that arrives with the answer
+        // fills nothing.
+        RemoteActivity activity;
+        activity.kind = ActivityKindFor(job);
+        activity.queued = waiting;
+        activity.what = job.isListing
+                ? RemoteFilerName(job.path)   // "" at a drive root: its own name
+                : job.operation == RemoteOperation::Upload
+                        ? std::filesystem::path(job.argument).filename().string()
+                        : job.operation == RemoteOperation::MakeDirectory
+                                ? job.argument
+                                : RemoteFilerName(job.path);
+        ReportActivity(activity, /*force=*/true);
+
+        // A transfer counts its own bytes. UltraNet reports them through the
+        // module's global transfer callbacks, which is why the previous bag is
+        // put back afterwards rather than simply cleared: this process shares
+        // them with every other UltraNet caller, and an upload is no reason to
+        // deafen the rest of the application.
+        UltraNetTransferCallbacks previousCallbacks;
+        const bool watchesBytes = !job.isListing &&
+                                  job.operation == RemoteOperation::Upload;
+        if (watchesBytes) {
+            UltraNetTransferCallbacks bag;
+            bag.onUploadProgress = [this, activity](int64_t sent, int64_t total) {
+                RemoteActivity moving = activity;
+                moving.bytesDone = sent > 0 ? static_cast<uint64_t>(sent) : 0;
+                // A server that sent no length reports -1; that is the busy
+                // case, not a total of zero bytes to send.
+                moving.bytesTotal = total > 0 ? static_cast<uint64_t>(total) : 0;
+                ReportActivity(moving, /*force=*/false);
+            };
+            previousCallbacks = UltraNet_SetTransferCallbacks(bag);
         }
 
         // An exception leaving a std::thread ends the process, and a provider
@@ -469,6 +543,20 @@ void UltraFilerRemoteDrives::WorkerMain() {
             if (operationError.empty() && !lastOperationError_.empty())
                 operationError = lastOperationError_;
             lastOperationError_.clear();
+        }
+
+        if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
+
+        // Idle only when nothing is left: between two files of one drop the
+        // status line should say what is still coming, not blink back to
+        // nothing and out again.
+        {
+            std::size_t left = 0;
+            {
+                std::lock_guard<std::mutex> lk(mutex_);
+                left = queue_.size();
+            }
+            if (left == 0) ReportActivity(RemoteActivity{}, /*force=*/true);
         }
 
         // Tell the window on the UI thread. Posted rather than called: this is

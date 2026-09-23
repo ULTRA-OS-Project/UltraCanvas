@@ -1,3 +1,31 @@
+#### 2026-09-23 *1.48.0*
+- **The status line says what a drive is doing, and a transfer gets a bar.** A
+  drive is the one place in this file manager where the answer to "why is
+  nothing happening?" is "a server is thinking about it", and nothing said so:
+  opening a folder over a slow link looked like a window that had stopped
+  responding. Every job the drives run now reports itself as it starts -
+  `Opening "Videos" - receiving folder data...`, `Uploading "clip.mp4" - 3.2 MB
+  of 8.0 MB`, `Deleting ... on the drive` - with what is still queued behind it
+  (`(2 more queued)`), so a drop of five files does not read as one.
+  - **The status strip is a row now**, the line of text on the left and an
+    `UltraCanvasProgressBar` on the right. The bar is there only while a file
+    is actually moving: a listing is one round trip with nothing to count, and
+    an empty bar sitting in the status line at all times is furniture rather
+    than information.
+  - **A server that does not say how big the file is** gets a busy sweep and
+    "3.2 MB sent" instead of a percentage, rather than a bar stuck at zero.
+  - **The report is said before the job runs, not after.** The whole point is
+    to fill the wait, and a report that arrives with the answer fills nothing.
+    Bytes are thinned to one report every 80 ms on the way to the UI thread -
+    libcurl counts bytes, not milestones - with the first and last of each job
+    forced through.
+  - It is said whatever the window is showing: the History view, the Computer
+    page, another tab. What a server is doing is the one thing in this window
+    the user cannot see for themselves.
+  - The drives share the process-wide UltraNet transfer callbacks while a
+    transfer runs and put the previous ones back afterwards. An upload is no
+    reason to deafen the rest of the application.
+
 #### 2026-09-23 *1.47.0*
 - **Files dropped on a drive's folder are uploaded to it.** Dragging from the
   file list onto a remote row was refused, because the tree asked

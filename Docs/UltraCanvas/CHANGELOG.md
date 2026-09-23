@@ -1,3 +1,31 @@
+#### 2026-09-23 *0.9.38*
+- **`UltraCanvasProgressBar`: progress that sits beside the work.** The
+  catalogue had a progress *dialog* - a modal window with a ring and a Cancel
+  button - and nothing for the far commoner case of a bar in a status line, a
+  row or a panel footer, so anyone wanting one had to paint it, which is the
+  mistake `scripts/check_ui_reuse.py` exists to catch. It is a track and a
+  fill and nothing else: no text (the label beside it says far more than a
+  number fitted inside a 6 px bar could) and no input (`Contains()` answers
+  false, so it never takes the pointer from what it sits on).
+  - **A negative fraction is "nobody knows the total"** - an FTP server that
+    sends no length, a queue still being counted - and draws a block sliding
+    along the track. The block is moved by the next report, not by a timer of
+    the element's own: a caller that stops reporting leaves the bar where it
+    stood instead of animating for ever over work that has died.
+  - `SetProgress(done, total)` takes the caller's own units, and a total of 0
+    is the unknown case, so a caller that may not know the size does not have
+    to branch. The corner radius is clamped to half the height, so one value
+    suits a 4 px bar and a 20 px one.
+- **An FTP transfer reports its bytes.** `UltraNet_FtpUpload` and
+  `UltraNet_FtpDownload` set up libcurl without a progress callback, so a file
+  moving to or from a server was silent from first byte to last and nothing
+  above them could draw a progress bar however much it wanted to. Both install
+  one now, feeding the module's existing global transfer callbacks
+  (`UltraNet_SetTransferCallbacks`) - the same bag every HTTP request already
+  reports through, so a caller sets it once and hears about every transfer
+  whatever the protocol. Listings and the one-shot verbs are left alone: they
+  move too little for anyone to watch.
+
 #### 2026-09-23 *0.9.37*
 - **`UCEvent::ToString()` names the right event again.** The name table it
   indexes by `UCEventType` carried three entries with no enum counterpart
