@@ -17,8 +17,10 @@
 //     decreasing priority: OAuthApps::Set(), then ULTRAMAIL_<PROVIDER>_CLIENT_ID
 //     / _CLIENT_SECRET / _REDIRECT_URI in the environment, then an INI file in
 //     the data folder (OAuthApps::LoadFile) — all of which win over the
-//     baked-in default, which is the escape hatch for rotation.
-// Version: 0.2.0 - Microsoft (Outlook / Microsoft 365) beside Google; login hint
+//     baked-in default, which is the escape hatch for rotation. The lookup
+//     itself is the framework's (UltraNet's OAuth2 app registry, shared with
+//     UltraCloud); OAuthApps is UltraMail's profile of it.
+// Version: 0.3.0 - OAuthApps is a profile of UltraNet's shared app registry
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -27,6 +29,7 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetOAuth2.h>
+#include <UltraNet/UltraNetOAuth2Apps.h>
 
 #include <cstdint>
 #include <functional>
@@ -34,24 +37,17 @@
 
 namespace UltraMail {
 
-// The OAuth app UltraMail signs in as, per provider.
-struct OAuthApp {
-    std::string clientId;
-    std::string clientSecret;    // empty = public client (PKCE only)
-    // Loopback redirect. Both providers ignore the port of a loopback URI, so
-    // port 0 lets UltraNet bind an ephemeral one per attempt — a cancelled
-    // sign-in whose listener is still waiting never blocks a retry. Empty =
-    // the provider's default (DefaultRedirectUri).
-    std::string redirectUri;
+// The OAuth app UltraMail signs in as, per provider: the framework's type.
+using OAuthApp = UltraNetOAuth2App;
 
-    bool IsConfigured() const { return !clientId.empty(); }
-};
-
-// Registry of app registrations. Lookup order: Set() > environment
-// (ULTRAMAIL_GOOGLE_CLIENT_ID, ULTRAMAIL_MICROSOFT_CLIENT_ID, ...) > entries
-// loaded from the INI file > the client baked into this build (empty unless the
-// build was configured with credentials). Get() fills an empty redirectUri with
-// the provider's default.
+// UltraMail's profile of the process-wide registry in UltraNet
+// (<UltraNet/UltraNetOAuth2Apps.h>): the same Set() > environment > INI file >
+// baked-in order, with "ULTRAMAIL_" as the environment prefix
+// (ULTRAMAIL_GOOGLE_CLIENT_ID, ULTRAMAIL_MICROSOFT_CLIENT_ID, ...) beside the
+// shared ULTRANET_OAUTH_ one, the build's baked-in client registered as the
+// floor, and an empty redirect URI filled with the provider's default. The
+// registry is shared, so a Google client configured here also serves
+// UltraCloud's Google Drive sign-in (its "googledrive" falls back to "google").
 class OAuthApps {
 public:
     static void     Set(const std::string& providerId, const OAuthApp& app);
@@ -63,14 +59,20 @@ public:
     static std::string DefaultRedirectUri(const std::string& providerId);
 
     // Load "[google]\nclient_id = ...\nclient_secret = ...\nredirect_uri = ..."
-    // from `path`. A missing file is not an error (returns 0). Returns the
-    // number of providers with a client id.
+    // from `path` into the shared registry. A missing file is not an error
+    // (returns 0). Returns the number of providers with a client id.
     static int LoadFile(const std::string& path);
-    // The parser behind LoadFile — pure, for tests.
+    // The parser behind LoadFile — pure apart from the registry write, for tests.
     static int ParseIni(const std::string& text);
 
-    // Forget everything Set() or LoadFile() registered (tests).
+    // Forget everything Set() or LoadFile() registered, in the shared registry
+    // (tests). The baked-in client stays.
     static void Clear();
+
+    // Make sure the profile is registered with the shared registry (prefix and
+    // baked-in client). Every entry point calls it; an app that reads the
+    // registry through UltraNet directly may call it once at start-up.
+    static void EnsureRegistered();
 };
 
 // The provider id UltraMail can sign in to with OAuth2 for a discovered
