@@ -7,6 +7,15 @@
   now a compile-time array with a `static_assert` that its length equals the
   enum's, so the two cannot drift apart again without failing the build, and
   an out-of-range value prints `OutOfRange` instead of reading past the end.
+- **`scripts/check_changelog.py` refuses a runaway version number.** The
+  guard required line 1 to be strictly above every other version in the file
+  and above `main`'s, and nothing more - so when a renumbering script took the
+  highest patch number across every minor in the file and wrote 0.9.120 over
+  a `main` on 0.9.32, the check passed and that number would have become the
+  released version. A new top entry must now be within ten of the release
+  before it (open pull requests each hold one number, so a small gap is
+  normal), and a minor or major bump must start near .0. Applied per file and,
+  with `--base`, against the base's version.
 
 #### 2026-09-23 *0.9.35*
 - **DemoApp: the ListView page's multi-column table shows the sorting API**

@@ -34,6 +34,23 @@ Both are caught by one rule, applied per changelog:
     the version on line 1 must be unique in the file, and strictly greater
     than every other version in it.
 
+A third shape is a typo, not a collision, and the rule above lets it through:
+
+  Runaway.   The entry is renumbered above what main released, and the new
+             number is not the next free one but something far past it -
+             0.9.120 landed on a file whose previous release was 0.9.32,
+             from a script that took the highest patch number across every
+             minor in the file. "Strictly greater" is satisfied, so nothing
+             objected, and that number would have become the released
+             version with eighty-odd numbers burnt behind it.
+
+So the top entry must also be CLOSE to the release before it: at most
+GAP_LIMIT patch numbers above the next-highest version in the file (and,
+with --base, above the base's version). A few numbers of headroom are needed
+because every open pull request reserves one and they merge in any order; a
+gap wider than that is a mistake. A minor or major bump (0.9.x to 0.10.0) is
+a new series, so its patch number only has to be small, not adjacent.
+
 History below line 1 is not policed. The file carries sixteen duplicate
 version numbers from before this check existed, some of them months old and
 long since released; renumbering a published release would be a lie, so they
@@ -43,7 +60,8 @@ With --base <ref>, the stricter pull-request rule also applies: a changelog
 that this branch modified (its copy differs from the merge base's - not from
 <ref>'s head, which also differs whenever <ref> released something the branch
 has not merged yet) must claim a version strictly above every version <ref>'s
-copy of the file carries. That catches both shapes before the merge:
+copy of the file carries, and by no more than GAP_LIMIT. That catches all
+three shapes before the merge:
 the same number as <ref> (bullets appended to a released entry, or two
 branches choosing one number), and a lower one - the branch picked the next
 number, main released past it, and the branch has not merged main since, so
@@ -67,6 +85,12 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 VERSION_CMAKE = REPO / "cmake" / "UltraCanvasVersion.cmake"
+
+# How far above the previous release a new top entry may sit. Each open pull
+# request reserves the next free number and they merge in any order, so the
+# gap is legitimately more than one; eight is the widest the framework's
+# history shows. Anything past this is a typo, not a queue.
+GAP_LIMIT = 10
 
 # `#### YYYY-MM-DD *x.y.z*` - the format cmake/UltraCanvasVersion.cmake parses.
 HEADER = re.compile(r"^#### (\d{4}-\d{2}-\d{2}) \*(\d+(?:\.\d+)*)\*\s*$")
@@ -97,6 +121,34 @@ def parse(text):
 
 def show(version):
     return ".".join(str(p) for p in version)
+
+
+def gap_problem(relative, top, previous, previous_is):
+    """The Runaway shape: `top` is above `previous`, but by too much.
+
+    `previous` is the release `top` must follow closely - the next-highest
+    version in the file, or the base's version. Same series (all but the
+    last component equal): the last component may advance by at most
+    GAP_LIMIT. New series (a minor or major bump): the last component must
+    itself be small, since a fresh series starts near zero. Returns the
+    message, or None when the gap is acceptable. Callers ensure top > previous.
+    """
+    same_series = top[:-1] == previous[:-1]
+    if same_series:
+        gap = top[-1] - previous[-1]
+        if gap <= GAP_LIMIT:
+            return None
+        return (f"{relative}:1: version {show(top)} is {gap} numbers past {show(previous)}, "
+                f"{previous_is}. A release is at most {GAP_LIMIT} past the one before it "
+                f"(open pull requests each hold one number, nothing holds eighty) - a gap "
+                f"like this is a renumbering typo. Give this entry the next free number "
+                f"above {show(previous)}.")
+    if top[-1] <= GAP_LIMIT:
+        return None
+    return (f"{relative}:1: version {show(top)} starts a new series after {show(previous)}, "
+            f"{previous_is}, but not near its beginning: a bumped minor or major begins "
+            f"at .0, or within {GAP_LIMIT} of it when open pull requests hold the first "
+            f"numbers. This looks like a renumbering typo.")
 
 
 def git(*args):
@@ -155,6 +207,12 @@ def check(prefix, relative, base):
             f"{relative}:1: version {show(top)} is lower than {show(v)} on line {ln}, so "
             f"{prefix}_VERSION would go BACKWARDS. main released further versions while "
             f"this was open - renumber this entry above {show(v)}.")
+    elif rest and not duplicates:
+        # Above everything else in the file, as required - but not by a mile.
+        ln, v = max(((ln, v) for ln, _, v in rest), key=lambda p: p[1])
+        gap = gap_problem(relative, top, v, f"the next-highest version in this file (line {ln})")
+        if gap:
+            problems.append(gap)
 
     if base:
         # Compare the WORKING TREE against base, not HEAD against base: the
@@ -180,6 +238,10 @@ def check(prefix, relative, base):
                     f"was open and they are not in this branch's copy of the file yet - "
                     f"renumber this entry above {show(base_top)} (and merge {base} so the "
                     f"file carries what was released).")
+            elif base_top is not None:
+                gap = gap_problem(relative, top, base_top, f"the version {base} is on")
+                if gap:
+                    problems.append(gap)
     return problems
 
 
