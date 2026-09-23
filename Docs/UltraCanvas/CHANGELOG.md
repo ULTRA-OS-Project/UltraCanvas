@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.33*
+#### 2026-09-23 *0.9.37*
 - **`UCEvent::ToString()` names the right event again.** The name table it
   indexes by `UCEventType` carried three entries with no enum counterpart
   (`KeyChar`, `Shortcut`, `WindowClosing`), so every event from `TextInput`
