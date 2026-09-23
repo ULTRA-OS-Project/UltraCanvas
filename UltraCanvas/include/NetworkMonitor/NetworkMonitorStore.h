@@ -18,16 +18,21 @@
 // so "which sites were looked up on Tuesday" is answerable even for the
 // short connections no snapshot caught.
 //
+// Connection events (NetworkMonitorEvents.h) are recorded as they come,
+// one row each, so the connections too short for any snapshot are in the
+// record with their process and, where the source counts, their bytes.
+//
 // Every function returns NetworkMonitorResult; where the build has no
 // UltraDatabase, NetworkMonitor_StoreAvailable() is false and every call
 // reports NotSupported.
 //
-// Version: 0.4.0
-// Last Modified: 2026-09-22
+// Version: 0.5.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "NetworkMonitor/NetworkMonitor.h"
+#include "NetworkMonitor/NetworkMonitorEvents.h"
 
 #include <cstdint>
 #include <optional>
@@ -113,11 +118,18 @@ struct RecordedDnsObservation {
     std::optional<ProcessIdentity> process;   // the asking process, where the source knew it
 };
 
+// One connection event as recorded.
+struct RecordedConnectionEvent {
+    int64_t id = 0;
+    NetworkConnectionEvent event;
+};
+
 struct NetworkMonitorStoreStats {
     int64_t flows = 0;
     int64_t dailyTotals = 0;
     int64_t snapshots = 0;
     int64_t dnsObservations = 0;
+    int64_t connectionEvents = 0;
     int64_t oldestFlow = 0;   // 0 when empty
     int64_t newestFlow = 0;
 };
@@ -157,13 +169,31 @@ NetworkMonitorResult NetworkMonitor_QueryDnsObservations(NetworkMonitorStoreHand
                                                          const ActivityQuery& query,
                                                          std::vector<RecordedDnsObservation>& out);
 
+// Records one connection event - what the app's event listener
+// (NetworkMonitor_AddEventListener) does while recording. Its own
+// transaction; a source's thread calls this.
+NetworkMonitorResult NetworkMonitor_RecordConnectionEvent(NetworkMonitorStoreHandle store,
+                                                          const NetworkConnectionEvent& event);
+// The recorded events a query selects, newest first. `since` / `until`
+// apply to the event's second; `text` to addresses, name, process name
+// and executable; `pid`, `processName`, `includeLoopback` and `limit` as
+// for flows.
+NetworkMonitorResult NetworkMonitor_QueryConnectionEvents(NetworkMonitorStoreHandle store,
+                                                          const ActivityQuery& query,
+                                                          std::vector<RecordedConnectionEvent>& out);
+// Writes the events a query selects as CSV, the way ExportFlowsCsv does.
+NetworkMonitorResult NetworkMonitor_ExportEventsCsv(NetworkMonitorStoreHandle store,
+                                                    const ActivityQuery& query,
+                                                    const std::string& path,
+                                                    int64_t* rowsWritten = nullptr);
+
 // Aggregates every flow last seen before `olderThan` into the daily totals
 // and deletes it. `rolledUp`, when given, receives the number of flows.
 NetworkMonitorResult NetworkMonitor_RollUp(NetworkMonitorStoreHandle store, int64_t olderThan,
                                            int64_t* rolledUp = nullptr);
 // The retention policy in one call: roll up flows older than the window,
-// drop DNS observations and snapshot records older than the window, and
-// daily totals older than twelve windows.
+// drop DNS observations, connection events and snapshot records older
+// than the window, and daily totals older than twelve windows.
 NetworkMonitorResult NetworkMonitor_ApplyRetention(NetworkMonitorStoreHandle store, int64_t now = 0);
 // Deletes everything recorded. Irreversible; the caller confirms.
 NetworkMonitorResult NetworkMonitor_Purge(NetworkMonitorStoreHandle store);

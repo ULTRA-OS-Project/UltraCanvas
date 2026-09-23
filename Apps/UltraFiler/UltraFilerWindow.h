@@ -335,17 +335,6 @@ private:
     // Refreshes whatever display is showing `folderPath`. Used both when a
     // queued listing arrives and after a change to the drive.
     void RefreshRemoteFolderDisplays(const std::string& folderPath);
-    // Does the drive `path` is on accept uploads? Asked of the provider's
-    // capability, not of the local filesystem - which answers "not a
-    // directory" for every remote path and so refused every drop onto one.
-    bool RemoteDriveTakesUploads(const std::string& path) const;
-    // Sends `files` into a folder on a drive, one queued upload each, and
-    // reports in one dialog whatever never got as far as the queue (a folder
-    // among the files, a drive that takes no uploads). True when anything was
-    // queued. The transfers themselves are the worker's, and the folder they
-    // land in is refreshed by onOperationFinished.
-    bool UploadFilesToRemoteFolder(const std::string& folderPath,
-                                   const std::vector<std::string>& files);
     // Takes one drive row out of the tree and out of the bookkeeping that
     // would otherwise keep it from ever being scanned again.
     void DropDriveNode(const std::string& path);
@@ -841,6 +830,11 @@ private:
     // What the drives last said they were doing. Idle most of the time; the
     // status line and the bar are drawn from it.
     RemoteActivity remoteActivity;
+    // What a drop onto a drive could not send, held on the status line until
+    // the next drop or the next folder: the activity line owns the strip
+    // while the files that did go are going, so this would otherwise show for
+    // a fraction of a second and vanish.
+    std::string remoteDropNote;
     std::shared_ptr<UltraCanvasButton>          backButton;
     std::shared_ptr<UltraCanvasButton>          forwardButton;
     std::shared_ptr<UltraCanvasButton>          upButton;
@@ -863,6 +857,12 @@ private:
     SplitSide activeSplitSide = SplitSide::Left;   // the pane the toolbars act on
     bool treeDockShown = false;            // the tree is docked in a pane
     SplitSide treeDockSide = SplitSide::Left;      // ... in this one
+    // What docking the tree took from the other display and from the rest
+    // of the split (the preview pane), so undocking gives back exactly that
+    // - not the tree's full width, which the other display may not have had
+    // to give.
+    int treeDockTakenFromOther = 0;
+    int treeDockTakenFromRest = 0;
     // The tree pane's width while it is out of the split, so it comes back
     // as wide as the user had it. Starts at the start-up width.
     int treePaneWidth = 280;

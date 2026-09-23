@@ -2163,6 +2163,11 @@ void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
                                    std::string& error) {
         return remoteDrives->List(path, out, error);
     };
+    // What the display says under its progress ring while that fetch is
+    // on its way: queued behind other requests, or waiting on the server.
+    widget->remoteListingStatus = [this](const std::string& path) {
+        return remoteDrives->ListingStatus(path);
+    };
 
     // The three changes a drive can take. Each is queued and answered at once;
     // what the server said arrives through onOperationFinished.
@@ -3052,59 +3057,16 @@ bool UltraFilerWindow::IsTreeDropTarget(const TreeNode* node) const {
         return true;
     const std::string path = TreeNodeTargetPath(node);
     if (path.empty()) return false;
-    // A folder on a drive accepts an upload, which is not the same question
-    // as "is this a directory on this disk" - that one answers no for every
-    // remote path, which is why a drive used to refuse every drop.
-    if (IsRemoteFilerPath(path)) return RemoteDriveTakesUploads(path);
+    // A remote drive's row takes files too - as an upload, when the drive
+    // can take one. Asked of the drives, never of the local filesystem.
+    if (IsRemoteFilerPath(path))
+        return remoteDrives && remoteDrives->CanUpload(path);
     // A regular folder node accepts a move into the folder it stands for.
     std::error_code ec;
     return fs::is_directory(path, ec) && !ec;
 }
 
-bool UltraFilerWindow::RemoteDriveTakesUploads(const std::string& path) const {
-    if (!remoteDrives || !IsRemoteFilerPath(path)) return false;
-    RemoteDrive drive;
-    if (!remoteDrives->Find(RemoteFilerAccountId(path), drive)) return false;
-    return drive.canUpload;
-}
 
-// Sends the files onto a drive, one queued upload each. Answers on the spot:
-// the transfers run on the drives' worker and report back through
-// onOperationFinished, which refreshes the folder they land in.
-bool UltraFilerWindow::UploadFilesToRemoteFolder(
-        const std::string& folderPath, const std::vector<std::string>& files) {
-    if (!remoteDrives || files.empty()) return false;
-
-    std::vector<std::string> refused;   // what never got as far as the queue
-    std::string firstError;
-    int queued = 0;
-    for (const std::string& f : files) {
-        std::string error;
-        if (remoteDrives->Submit(RemoteOperation::Upload, folderPath, f,
-                                 /*isDirectory=*/false, error)) {
-            ++queued;
-            continue;
-        }
-        refused.push_back(f);
-        if (firstError.empty()) firstError = error;
-    }
-
-    // Dropping a folder among files is the ordinary case of this: the files
-    // go and the folder is refused, so saying which is more use than a bare
-    // "that did not work". One dialog for the lot, not one per file.
-    if (!refused.empty()) {
-        std::string message = firstError;
-        if (refused.size() > 1)
-            message += "\n\n" + std::to_string(refused.size()) +
-                       " items were not sent.";
-        if (queued > 0)
-            message += "\n\n" + std::to_string(queued) +
-                       (queued == 1 ? " file is on its way."
-                                    : " files are on their way.");
-        UltraCanvasAlert::Error(message, "Upload to drive", nullptr, window.get());
-    }
-    return queued > 0 || refused.empty();
-}
 
 bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
                                            const std::vector<std::string>& files) {
@@ -3130,13 +3092,40 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
 
     const std::string dest = TreeNodeTargetPath(target);
     if (dest.empty()) return false;
-    // Onto a drive: an upload, not a move. The local files stay where they
-    // are - this is a copy to a server, and there is no undo on the far side
-    // of one - and each is queued on its own so that one file the server
-    // refuses does not take the rest with it.
-    if (IsRemoteFilerPath(dest)) return UploadFilesToRemoteFolder(dest, files);
 
-    // Otherwise a move into the folder the node represents.
+    // A remote drive's row: the files are uploaded into that folder, one
+    // request each, and the drive's own reply (a refresh of the folder, or
+    // the server's refusal) comes back through onOperationFinished. Local
+    // files only, and files only: a folder is not one transfer, and a
+    // remote entry has no local file to send.
+    if (IsRemoteFilerPath(dest)) {
+        if (!remoteDrives) return false;
+        int queued = 0, skipped = 0;
+        std::string firstRefusal;
+        for (const std::string& f : files) {
+            std::string why;
+            if (remoteDrives->Upload(dest, f, why)) ++queued;
+            else { ++skipped; if (firstRefusal.empty()) firstRefusal = why; }
+        }
+        if (statusLabel) {
+            std::string line;
+            if (queued > 0)
+                line = "Uploading " + std::to_string(queued) +
+                       (queued == 1 ? " file" : " files") + " to " +
+                       target->data.text + "...";
+            if (skipped > 0)
+                line += (line.empty() ? "" : "  ") + std::to_string(skipped) +
+                        (skipped == 1 ? " item not uploaded: " : " items not uploaded: ") +
+                        firstRefusal;
+            statusLabel->SetText(line);
+            // Kept, because the activity line takes the status strip over as
+            // soon as the first upload starts: what was NOT sent would
+            // otherwise be on screen for a fraction of a second. Shown again
+            // by UpdateStatusBar once the drive falls idle.
+            remoteDropNote = skipped > 0 ? line : std::string();
+        }
+        return queued > 0 || skipped > 0;
+    }
     std::error_code ec;
     if (!fs::is_directory(dest, ec) || ec) return false;
 
@@ -5059,6 +5048,8 @@ void UltraFilerWindow::FillComputerBreadcrumb(UltraCanvasBreadcrumb* crumb) {
 void UltraFilerWindow::NavigateTo(const std::string& path) {
     // Navigating shows a folder, so it always brings the folder display back.
     ShowBrowsingView();
+    // A new folder ends whatever the last drop onto a drive had to report.
+    remoteDropNote.clear();
     if (!filer || path.empty() || path == filer->GetPath()) return;
     filer->SetPath(path);
 }
@@ -5323,6 +5314,13 @@ void UltraFilerWindow::UpdateStatusBar() {
     // window the user cannot see for themselves.
     if (const std::string activity = DescribeRemoteActivity(); !activity.empty()) {
         statusLabel->SetText(activity);
+        return;
+    }
+    // What a drop onto a drive could not send. Held until the next drop or the
+    // next folder, because the activity line above owns the strip while the
+    // files that DID go are going.
+    if (!remoteDropNote.empty()) {
+        statusLabel->SetText(remoteDropNote);
         return;
     }
     if (historyShown) {
@@ -5758,6 +5756,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             const int treeW = static_cast<int>(treePane->GetWidth());
             if (treeW > 0) treePaneWidth = treeW;
             treeDockShown = false;
+            treeDockTakenFromOther = treeDockTakenFromRest = 0;
             folderTree->SetVisible(false);
             leftPaneBody->AddChild(folderTree);
             split->RemovePane(treePane.get());
@@ -5809,6 +5808,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         // re-homed below), the right-hand pane leaves, and the tree pane
         // comes back in front.
         treeDockShown = false;
+        treeDockTakenFromOther = treeDockTakenFromRest = 0;
         // The left-hand display is the active one again.
         ActivateSplitSide(SplitSide::Left);
         leftPaneHeader->SetVisible(false);
@@ -5893,6 +5893,71 @@ void UltraFilerWindow::ActivateSplitSide(SplitSide side) {
 
 void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
     if (!splitViewShown || !folderTree || !leftPaneBody || !rightPaneBody) return;
+    // The two displays' widths before the change. The tree's width moves
+    // between them with the tree: the pane it docks into grows by it at the
+    // other display's expense, and an undocked tree gives that width back
+    // to the display it was taken from - rather than leaving the pane the
+    // tree left as wide as it was, with the display beside it squeezed.
+    std::vector<int> sizes;
+    bool arranged = split && rightPane && filerPane;
+    if (arranged) {
+        for (size_t i = 0; i < split->PaneCount(); ++i) {
+            const int w = static_cast<int>(split->GetPane(i)->GetWidth());
+            if (w <= 0) arranged = false;
+            sizes.push_back(w);
+        }
+    }
+    const int leftIndex  = arranged ? split->GetPaneIndex(filerPane.get()) : -1;
+    const int rightIndex = arranged ? split->GetPaneIndex(rightPane.get()) : -1;
+    if (leftIndex < 0 || rightIndex < 0) arranged = false;
+    auto paneOf = [&](SplitSide s) { return s == SplitSide::Right ? rightIndex : leftIndex; };
+    auto otherOf = [](SplitSide s) { return s == SplitSide::Right ? SplitSide::Left : SplitSide::Right; };
+    // The panes that are neither display: the preview pane, when it is up.
+    std::vector<size_t> rest;
+    if (arranged) {
+        for (size_t i = 0; i < sizes.size(); ++i)
+            if (static_cast<int>(i) != leftIndex && static_cast<int>(i) != rightIndex)
+                rest.push_back(i);
+    }
+    if (arranged) {
+        const bool wasDocked = treeDockShown;
+        const SplitSide wasSide = treeDockSide;
+        if (wasDocked && (!visible || side != wasSide)) {
+            // The tree leaves its pane: what docking took goes back where it
+            // came from, as far as the pane can give it (it keeps its own
+            // minimum), and what the preview pane gave but cannot take back
+            // - it has gone meanwhile - goes to the other display.
+            const int from = paneOf(wasSide);
+            const int to = paneOf(otherOf(wasSide));
+            int give = std::min(treeDockTakenFromOther + treeDockTakenFromRest,
+                                sizes[from] - kSplitPaneMinWidth);
+            int toRest = rest.empty() ? 0 : std::min(treeDockTakenFromRest, give);
+            if (toRest > 0) TakeFromPanes(sizes, rest, -toRest);
+            sizes[from] -= give;
+            sizes[to] += give - toRest;
+            treeDockTakenFromOther = treeDockTakenFromRest = 0;
+        }
+        if (visible && !(wasDocked && side == wasSide)) {
+            // The tree's width comes out of the other display first, and
+            // when that display cannot spare it all, out of the preview
+            // pane - which takes its own width from the displays, so it is
+            // the one to give here rather than leave the docked display a
+            // sliver beside the tree.
+            const int to = paneOf(side);
+            const int from = paneOf(otherOf(side));
+            int want = treePaneWidth;
+            const int fromOther = std::clamp(sizes[from] - kSplitPaneMinWidth, 0, want);
+            want -= fromOther;
+            int restSpare = 0;
+            for (size_t i : rest) restSpare += std::max(0, sizes[i] - kPreviewMinWidth);
+            const int fromRest = std::min(want, restSpare);
+            if (fromRest > 0) TakeFromPanes(sizes, rest, fromRest);
+            sizes[from] -= fromOther;
+            sizes[to] += fromOther + fromRest;
+            treeDockTakenFromOther = fromOther;
+            treeDockTakenFromRest = fromRest;
+        }
+    }
     if (visible) {
         // Into the body row of that pane, in front of its display: the tree
         // has a width of its own and the display takes the rest.
@@ -5923,6 +5988,7 @@ void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
         treeDockShown = false;
     }
     ApplySplitPaneMinSizes();
+    if (arranged) split->SetPaneSizes(sizes);
     StyleSplitHeaders();
 }
 

@@ -8,12 +8,13 @@
 // tables themselves.
 //
 // What it cannot see, it says: a process this monitor may not open (another
-// user's, when not elevated; a protected process) keeps its PID but gets no
-// executable path, and every such process is counted and reported through
-// the capabilities' notes.
+// user's, when not elevated; a protected process) keeps its PID and gets its
+// executable's name from the Toolhelp process list, which needs no handle
+// and no elevation, but no path and no user; every such process is counted
+// and reported through the capabilities' notes.
 //
-// Version: 0.2.0
-// Last Modified: 2026-09-19
+// Version: 0.7.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 // QueryFullProcessImageNameW and the token elevation query are Vista+; the
@@ -32,6 +33,7 @@
 #include "NetworkMonitor/NetworkMonitorBackend.h"
 
 #include <cctype>
+#include <cwchar>
 #include <cstdint>
 #include <cstring>
 #include <optional>
@@ -51,6 +53,7 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <iphlpapi.h>
+#include <tlhelp32.h>
 
 namespace UltraCanvas {
 namespace {
@@ -128,7 +131,8 @@ public:
         }
         if (lastUnreadableProcesses_ > 0) {
             caps.notes.push_back(std::to_string(lastUnreadableProcesses_) +
-                                 " processes could not be opened in the last snapshot.");
+                                 " processes could not be opened in the last snapshot: named from the "
+                                 "process list, without path or user (elevate for those).");
         }
         caps.notes.push_back("Byte counters and connection events are not collected by the "
                              "IP Helper backend (ETW, later phase).");
@@ -141,6 +145,9 @@ public:
         std::vector<unsigned char> buffer;
         DWORD error = 0;
         int readable = 0;
+        // The process list, once per snapshot: the executable's name for
+        // every PID, the ones this monitor may not open included.
+        if (resolveProcesses) ReadProcessList();
 
         if (FetchTable(buffer, true, AF_INET, error)) {
             ++readable;
@@ -282,12 +289,38 @@ private:
                     for (auto& ch : tail) ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
                     if (tail == ".exe") identity.displayName.resize(identity.displayName.size() - 4);
                 }
+            } else if (auto listed = processNames_.find(identity.pid); listed != processNames_.end()) {
+                // Not openable, but the process list names it (Toolhelp
+                // reads no handle): "AvastSvc" rather than "pid 4720".
+                identity.displayName = listed->second;
             } else {
                 identity.displayName = "pid " + std::to_string(pid);
             }
         }
         identities_.emplace(identity.pid, identity);
         return identity;
+    }
+
+    // Every process's executable name from a Toolhelp snapshot, ".exe"
+    // stripped. Needs no rights on the processes themselves.
+    void ReadProcessList() {
+        processNames_.clear();
+        HANDLE snapshot = ::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snapshot == INVALID_HANDLE_VALUE) return;
+        PROCESSENTRY32W entry{};
+        entry.dwSize = sizeof entry;
+        if (::Process32FirstW(snapshot, &entry)) {
+            do {
+                std::string name = Utf8FromWide(entry.szExeFile, static_cast<int>(::wcslen(entry.szExeFile)));
+                if (name.size() > 4) {
+                    std::string tail = name.substr(name.size() - 4);
+                    for (auto& ch : tail) ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
+                    if (tail == ".exe") name.resize(name.size() - 4);
+                }
+                if (!name.empty()) processNames_[static_cast<uint32_t>(entry.th32ProcessID)] = name;
+            } while (::Process32NextW(snapshot, &entry));
+        }
+        ::CloseHandle(snapshot);
     }
 
     static std::string UserOf(HANDLE process) {
@@ -316,6 +349,7 @@ private:
     }
 
     std::unordered_map<uint32_t, ProcessIdentity> identities_;
+    std::unordered_map<uint32_t, std::string> processNames_;   // from the last Toolhelp snapshot
     int lastUnreadableProcesses_ = 0;
 };
 

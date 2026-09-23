@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.38*
+#### 2026-09-23 *0.9.42*
 - **A gauge's `LinearBar` can say "busy, total unknown".** `SetIndeterminate`
   drops the value entirely and slides a block along the track - a download
   whose server sent no length, a queue still being counted - where before the
@@ -34,6 +34,120 @@
   whatever the protocol. Listings and the one-shot verbs are left alone: they
   move too little for anyone to watch.
 
+#### 2026-09-23 *0.9.41*
+- **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not
+  as empty.** A new optional hook, `remoteListingStatus`, is asked when
+  `remoteListing` answered with an empty listing; a non-empty answer puts a
+  turning progress ring, "Loading folder" and the host's own status line
+  ("Connecting to Backup NAS and reading /photos - 7 s") where "Folder is
+  empty!" used to go, and the line follows the fetch on a 50 ms timer until
+  the host's `Refresh()` brings the data. A remote listing the host refused
+  (an unreachable server, a rejected login) now shows its reason in the
+  folder area too, instead of an empty folder. Used by UltraFiler's FTP and
+  cloud drives (UltraFiler 1.46.0).
+- **A mouse press hides the tooltip.** A click answers what the tooltip was
+  for; before, a button whose click changed the layout under the pointer
+  (UltraFiler's tree-dock button) left its tooltip floating over the new
+  content until the mouse moved.
+
+#### 2026-09-23 *0.9.40*
+- **NetworkMonitor decodes loopback chains.** A mail client that talks to
+  an antivirus mail proxy on 127.0.0.1:12993, which talks to the mail
+  server for it, used to show as two unrelated processes.
+  `NetworkMonitor_DecodeLoopback` pairs every connection whose peer is on
+  this machine with its mirror - the socket on the other end, an
+  IPv4-mapped spelling matched to its plain one - and fills
+  `NetworkConnection::loopbackRole` (client or server: the server is the
+  side a listener holds) and `localPeer` (the process on the other end) on
+  both; on the outbound connections of a process that serves loopback
+  clients it fills `forProcesses`, the applications that traffic is really
+  for, an inference labelled as such. `ProcessTrafficSummary` gains
+  `viaProcesses` and `servesProcesses`; `NetworkMonitor_ListConnections`
+  decodes every snapshot before its filters; both snapshot CSVs carry the
+  chain (`loopback_role`, `local_peer`, `for`; `via`, `serves`).
+  `ProcessIdentity::Label()` is "name (pid)". Pure and tested from a
+  fixture of a client, a proxy and its outbound connection.
+- **Windows names the processes it cannot open.** The IP Helper backend
+  reads the Toolhelp process list once per snapshot - every PID's
+  executable name, no handle and no elevation needed - and uses it for a
+  process `OpenProcess` refuses, so an antivirus service reads as
+  `AvastSvc` rather than `pid 4720`. The path and the user still need
+  elevation, and the capabilities' note says so.
+
+#### 2026-09-23 *0.9.39*
+- **`UltraCanvasListView::onContextMenu(row, event)`** - a right-button
+  press in the rows area, with the row under the pointer (-1 below the
+  rows) selected alone first, as every desktop does, so the handler's menu
+  acts on what the user pointed at. When set, the press is consumed; when
+  not, a right press is handled like a left one, as before. The usual
+  handler opens an `UltraCanvasMenu` of type `PopupMenu` at
+  `event.pointerWindow`; the ListView page shows it. First consumer is
+  UltraNetMonitor's process list.
+- **NetworkMonitor exports a snapshot as CSV.** `NetworkMonitor_ExportSummaryCsv`
+  writes the per-process roll-up, one row per process with its distinct
+  peers and hosts semicolon-joined; `NetworkMonitor_ExportConnectionsCsv`
+  writes the connections, one row each with the process behind it. Both in
+  the order given, RFC 4180 quoting, dot-decimal numbers, absent counters
+  as empty fields, never zero. The quoting and the UTC timestamp the store's
+  exports used move to `NetworkMonitorCsv.h`, shared by all four. Tested
+  from fixtures.
+
+#### 2026-09-23 *0.9.38*
+- **NetworkMonitor connection events.** `NetworkMonitorEvents.h`: a
+  connection reported as it opens, is accepted or closes, rather than
+  found in the next snapshot - the event-rate collection the proposal
+  asked for (§2.1, §5.2), so the connections shorter than a polling
+  interval are in the record. Same shape as the name sources: an
+  `IConnectionEventSource` implements it, `NetworkMonitor_RegisterEventSource`
+  runs it, every `NetworkConnectionEvent` goes to the listeners
+  (`NetworkMonitor_AddEventListener`) and into a bounded ring
+  (`NetworkMonitor_RecentEvents`). On its way through, the registry names
+  the peer from the name table and, for a source that reports no process,
+  attributes the event from a socket table it refreshes a few times a
+  second - in either orientation, so a tuple whose source is the remote
+  side becomes an *Accepted* on the listener's process - and remembers
+  the match, so the *Closed* that follows is attributed though the socket
+  is gone. `NetworkMonitorCapabilities::connectionEvents` is true while a
+  source runs.
+  - **The snapshot differ** (`NetworkMonitor_CreateSnapshotDiffEventSource`):
+    reads the socket table at an interval and reports what appeared and
+    what went, with the process and the counters the table carries. Runs
+    on every platform with a backend; misses connections shorter than its
+    interval, and says so.
+  - **nf_conntrack on Linux** (`NetworkMonitor_CreateSystemEventSource`,
+    `OS/Linux/UltraCanvasLinuxNetworkMonitorEvents.cpp`): the kernel's
+    connection tracker over `NETLINK_NETFILTER`, NEW and DESTROY, with the
+    bytes each direction moved when accounting is on. Needs
+    `CAP_NET_ADMIN` and a tracker that a firewall rule has activated; an
+    idle tracker is reported, never silently empty. The message parser
+    (`NetworkMonitorConntrack.h`) is pure and tested from captured bytes on
+    every platform; the source never adds a rule.
+  - **The kernel network ETW provider on Windows**
+    (`OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp`): connect,
+    accept and disconnect with the PID, and the sends and receives summed
+    per connection into the *Closed* event's counters - the per-connection
+    bytes the IP Helper backend cannot give. Elevated only; compiled on
+    CI, not yet exercised at run time. Null on macOS.
+  - **The store records events.** Schema version 3 (older files migrate in
+    place): a `connection_events` table, `NetworkMonitor_RecordConnectionEvent`
+    / `QueryConnectionEvents` / `ExportEventsCsv`, retention and purge
+    cover it, `StoreStats` counts it.
+  - Tests: the conntrack parser against a captured NEW and DESTROY, the
+    registry's ring, listener, naming and both-orientation attribution
+    against sockets the test opens, the differ reporting opened, accepted
+    and closed for a loopback connection attributed to the test's PID,
+    the platform source starting where it can, and the store's events.
+  - A registry never holds its lock while asking a source a question,
+    since a source may read the capabilities, which ask the registry.
+- **`UltraCanvasApplicationBase::RequestExitFromSignal()`** - the one call
+  a signal handler may make. `RequestExit()` logs and runs the
+  exit-request callback, neither of which is async-signal-safe, and the
+  applications' handlers called it (and then `std::exit`, which ran the
+  static destructors under live threads). The new call stores a lock-free
+  flag; `RunOnce()` turns it into `RequestExit()` on the main thread at
+  the next iteration, so `main` returns and the application's destructors
+  run in order. UltraNetMonitor uses it; the other applications' handlers
+  are unchanged and can adopt it the same way.
 #### 2026-09-23 *0.9.37*
 - **`UCEvent::ToString()` names the right event again.** The name table it
   indexes by `UCEventType` carried three entries with no enum counterpart

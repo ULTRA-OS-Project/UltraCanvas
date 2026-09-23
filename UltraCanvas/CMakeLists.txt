@@ -2130,15 +2130,21 @@ set(_uc_networkmonitor_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorStore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDns.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorNames.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDnsProxy.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDnsProxy.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorEvents.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorConntrack.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # The socket table, and nf_conntrack's netlink events as an event source.
     list(APPEND _uc_networkmonitor_sources
-        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitorEvents.cpp)
 elseif(WIN32)
-    # The socket tables, and the DNS client's ETW events as a name source.
+    # The socket tables, the DNS client's ETW events as a name source, and
+    # the kernel network ETW events as an event source.
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp)
 elseif(APPLE)
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp)

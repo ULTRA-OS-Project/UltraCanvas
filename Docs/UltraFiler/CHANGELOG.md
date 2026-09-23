@@ -1,9 +1,12 @@
 #### 2026-09-23 *1.48.0*
-- **The status line says what a drive is doing, and a transfer gets a bar.** A
-  drive is the one place in this file manager where the answer to "why is
-  nothing happening?" is "a server is thinking about it", and nothing said so:
-  opening a folder over a slow link looked like a window that had stopped
-  responding. Every job the drives run now reports itself as it starts -
+- **The status line says what a drive is doing, and a transfer gets a bar.**
+  1.46.0 gave the folder area its own message while a listing is on its way.
+  This is the other half: the status strip, and the jobs that are not
+  listings. A drive is the one place in this file manager where the answer to
+  "why is nothing happening?" is "a server is thinking about it", and an
+  upload, a delete or a rename still said nothing at all - and nothing
+  anywhere said how far a transfer had got. Every job the drives run now
+  reports itself as it starts -
   `Opening "Videos" - receiving folder data...`, `Uploading "clip.mp4" - 3.2 MB
   of 8.0 MB`, `Deleting ... on the drive` - with what is still queued behind it
   (`(2 more queued)`), so a drop of five files does not read as one.
@@ -31,36 +34,6 @@
     reason to deafen the rest of the application.
 
 #### 2026-09-23 *1.47.0*
-- **Files dropped on a drive's folder are uploaded to it.** Dragging from the
-  file list onto a remote row was refused, because the tree asked
-  `is_directory` of the drop target and that is "no" for every path on a
-  server. It asks the drive whether it takes uploads now, and a drop queues one
-  upload per file on the same worker the listings use, so a slow server never
-  holds the window. The folder they land in refreshes itself when they arrive.
-  - **`RemoteOperation::Upload` is the fourth verb** the drives carry. Its
-    argument is a local path rather than a bare name - the one operation for
-    which a separator is not a mistake - and it asks the provider's `upload`
-    capability rather than `modify`, because the two differ: a Nextcloud or
-    Dropbox drive can be uploaded to while it cannot be changed in place, and
-    would otherwise have refused a drop it can perfectly well accept.
-  - **A folder among the files is refused by name, not silently.** One file at
-    a time is what this queue can do; a recursive copy needs progress, conflict
-    handling and a cancel, and belongs with the paste machinery. What was
-    refused and what is on its way are reported together, in one dialog rather
-    than one per file.
-  - The local files stay where they are. A drop onto a local folder moves them,
-    but this is a copy to a server, and there is no undo on the far side of one.
-- **A dot-name on a drive is hidden, as it is on this disk.** The listing never
-  set `FilerEntry::isHidden`, so a ".ssh" on a server was shown even with hidden
-  files turned off while the one in the home folder was not, and the tree's new
-  rows would have listed it too. The display already filtered on that flag and
-  counted what it held back, so the flag was all that was missing. The rule -
-  the leading dot, the same one the filer widget applies to a POSIX name, since
-  a server has no attribute to read - lives in `UltraFilerRemotePath.h` next to
-  the path scheme, where `Tests/FilerRemotePathTest.cpp` covers it without
-  needing a server.
-
-#### 2026-09-23 *1.46.0*
 - **An FTP drive's folders appear under it in the tree.** A remote drive was a
   leaf: it had no expand button, and opening it listed its folders on the right
   while its row in the tree stayed empty. The tree deliberately refused to go
@@ -88,6 +61,37 @@
     answers `is_directory` for the folder it is given; for a path on a server
     that is "no", and the row - with everything under it - would have been
     dropped from the tree the moment anything changed inside it.
+
+#### 2026-09-23 *1.46.0*
+- **A remote folder being fetched shows progress, not "Folder is empty!".**
+  Opening a folder on an FTP, SFTP or cloud drive now shows a turning progress
+  ring with "Loading folder" and a line about what is going on: "Waiting for
+  Backup NAS - 2 requests ahead" while the fetch is queued behind other
+  requests, then "Connecting to Backup NAS (ftp://nas.local) and reading
+  /photos", with a seconds count once the server keeps it waiting. The line
+  updates as the fetch moves along; the listing replaces it when it lands.
+  A folder the server refused shows the reason (a rejected login, an
+  unreachable host) in the folder area instead of an empty folder. Needs
+  framework 0.9.41 (the widget's `remoteListingStatus` hook).
+- **Split view: the docked tree's width moves with the tree.** Docking the
+  folder tree into a pane widens that pane by the tree's width at the other
+  display's expense, and undocking it (or docking it on the other side) gives
+  that width back - the display beside the tree used to stay squeezed after
+  the tree had gone. The "Folder tree" tooltip no longer lingers over the
+  docked tree after the click (framework 0.9.41).
+- **Drop files onto a remote drive's row in the folder tree to upload them.**
+  The row takes local files the way a folder row takes a move, when the
+  drive can take uploads (an FTP drive can; so can a Nextcloud or Dropbox
+  drive, which cannot otherwise be changed from here). Each file goes up as
+  its own request under its own name, the status bar says how many are on
+  their way, and the folder re-lists from the server as they land; a
+  refusal comes back as the server's own message. Folders are not uploaded
+  (a tree is not one transfer) and remote entries have no local file to
+  send: both are counted in the status bar with the reason.
+- **Dot-entries on a remote drive are hidden like local ones.** A `.git`
+  folder or `.htaccess` on a server was listed on every display while the
+  same name on a disk was hidden; the listing now marks them hidden, so
+  Display > Hidden files and the display's own toggle govern both alike.
 
 #### 2026-09-22 *1.45.0*
 - **Extras > Find text: search inside files.** A new first item in the file
