@@ -1602,7 +1602,8 @@ come. Where there is no backend the module reports `NotSupported`.
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
   `NetworkMonitor_FormatEndpoint`, `NetworkMonitor_NameSourceName`,
   `NetworkMonitor_NameIsObserved`, `NetworkMonitor_ExportSummaryCsv`,
-  `NetworkMonitor_ExportConnectionsCsv`
+  `NetworkMonitor_ExportConnectionsCsv`, `NetworkMonitor_DecodeLoopback`,
+  `NetworkMonitor_LoopbackRoleName`; `LoopbackRole`
 - Names (`NetworkMonitorNames.h`): `INameSource`,
   `NetworkMonitor_RegisterNameSource`, `NetworkMonitor_ListNameSources`,
   `NetworkMonitor_StopNameSources`, `NetworkMonitor_WaitForNames`,
