@@ -1,3 +1,50 @@
+#### 2026-09-23 *0.9.28*
+- **New design proposal: UltraCalendar, a stand-alone calendar for ULTRA OS**
+  (`Docs/Research/UltraCalendarDesignProposal.md`). A calendar *separate* from
+  UltraMail - a headless `UltraCalendar` module beside a thin
+  `Apps/UltraCalendar`, the split UltraCloud uses - that works with the
+  calendar service the user already has, or with an ULTRA OS-hosted one, and
+  lets the user decide which, on first run and again later. The investigation
+  checks every need against the tree: UltraNet already has the custom HTTP
+  verbs CalDAV needs (UltraCloud's WebDAV provider sends `PROPFIND` and
+  `MKCOL` that way), the OAuth2 + PKCE flow, and DNS; UltraDatabase,
+  UltraVault, UltraMessage and the date / time pickers are there; what is
+  missing is an iCalendar engine, a CalDAV client, a Microsoft Graph client,
+  and two elements - a day / week time grid and a month grid with events -
+  which the proposal argues belong in the framework because
+  `UltraCanvasCalendarView` is a date picker, not a schedule.
+  - **CalDAV is the one client protocol.** The ULTRA OS cloud, Nextcloud,
+    iCloud, Google (over OAuth2), Fastmail and the German mail providers are
+    all presets over a single `CalDavProvider`; Microsoft, which has no
+    CalDAV and is retiring EWS, is the single second implementation over
+    Graph, converting to iCalendar at its edge so the store sees one format.
+    The ULTRA OS cloud is therefore a standards server (CalDAV + CardDAV +
+    WebDAV behind one ULTRA account) and the client needs nothing invented
+    for it - UltraCloud's roadmap item 4, made concrete.
+  - **Wrap libical**, never write an `RRULE` expander: the reference
+    implementation, MPL-2.0 / LGPL-2.1 dual-licensed and packaged on all
+    three CI platforms, behind an UltraCalendar-owned API that exposes no
+    libical type.
+  - **Local-first, as UltraMail:** a raw `.ics` per event beside an
+    UltraDatabase index, an instance cache the views read, and a
+    pending-change queue that is the outbox pattern for calendars.
+  - **Copy, do not bridge, when migrating:** the wizard copies calendars
+    with their UIDs intact into the target, then offers to keep the old
+    account read-only for a grace period, disconnect it (never deleting on
+    the old server), or keep both. Export to `.ics` is the same engine, so
+    the door opens both ways.
+  - **Invitations stay out of the calendar's process:** UltraMail shows the
+    iMIP card and hands the answer over two new UltraMessage topics; server
+    scheduling (RFC 6638) is used where the server has it. Reminders go out
+    through the platform's notification API, which the Phase 2 adapters
+    (0.9.27) mirror into the feed - the tree still lacks the outbound seam
+    that raises a toast, and the proposal asks for it as framework code.
+  - Found on the way: three civil-date types live in the tree (`UCDate`,
+    `UltraCanvasCalendarDate.h`, `UltraFIBUDate`), and the ULTRA OS cloud
+    service has no specification beyond a roadmap line - the proposal's
+    section 8 is the client's requirement list for it. The per-account
+    secret store the calendar needs is `UltraVault::DeviceKeyVault` (0.9.23),
+    which UltraMail, UltraSocial, UltraFiler and EmailCleaner already share.
 #### 2026-09-23 *0.9.27*
 - **New: UltraMessage Phase 2, first slice — adapters and the first feeds**
   (`Docs/Modules/UltraMessage/README.md` §3.6, `Masterfile_modules.md` §13).
