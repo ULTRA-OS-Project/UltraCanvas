@@ -437,7 +437,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
 
     auto rotBtn = std::make_shared<UltraCanvasButton>("AutoRotateBtn", 10, 80, 130, 30);
     rotBtn->SetText("Pause Spin");
-    rotBtn->onClick = [rotBtn, state]() {
+    rotBtn->onClick = [rotBtn = rotBtn.get(), state]() {
         state->autoRotate = !state->autoRotate;
         rotBtn->SetText(state->autoRotate ? "Pause Spin" : "Resume Spin");
     };
@@ -445,7 +445,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
 
     auto wireBtn = std::make_shared<UltraCanvasButton>("WireframeBtn", 150, 80, 130, 30);
     wireBtn->SetText("Wireframe");
-    wireBtn->onClick = [wireBtn, state, surface]() {
+    wireBtn->onClick = [wireBtn = wireBtn.get(), state, surface]() {
         state->wireframe = !state->wireframe;
         wireBtn->SetText(state->wireframe ? "Solid" : "Wireframe");
         surface->RequestRender();

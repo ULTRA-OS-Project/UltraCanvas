@@ -168,11 +168,11 @@ namespace UltraCanvas {
                 statusBar->SetText("Message " + std::to_string(index) + ": \"" +
                                    message.label + "\"");
             };
-            diagram->onLifelineClick = [statusBar, diagram](const std::string& id) {
+            diagram->onLifelineClick = [statusBar, diagram = diagram.get()](const std::string& id) {
                 const SequenceLifeline* lifeline = diagram->Model().GetLifeline(id);
                 if (lifeline) statusBar->SetText("Lifeline: " + lifeline->name);
             };
-            diagram->onFragmentClick = [statusBar, diagram](const std::string& id) {
+            diagram->onFragmentClick = [statusBar, diagram = diagram.get()](const std::string& id) {
                 const SequenceFragment* fragment = diagram->Model().GetFragment(id);
                 if (fragment) {
                     statusBar->SetText(std::string("Fragment: ") + fragment->Keyword());

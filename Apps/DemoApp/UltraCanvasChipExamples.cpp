@@ -49,12 +49,12 @@ namespace UltraCanvas {
         container->AddChild(c2);
 
         auto c3 = CreateChip("Chip3", 250, 116, "Removable", true);
-        c3->onClose = [c3]() { c3->SetVisible(false); };
+        c3->onClose = [c3 = c3.get()]() { c3->SetVisible(false); };
         container->AddChild(c3);
 
         auto c4 = CreateChip("Chip4", 390, 116, "Outlined ×", true);
         c4->SetVariant(ChipVariant::Outlined);
-        c4->onClose = [c4]() { c4->SetVisible(false); };
+        c4->onClose = [c4 = c4.get()]() { c4->SetVisible(false); };
         container->AddChild(c4);
 
         // ===== 2. FILTER CHIPS (selectable) =====

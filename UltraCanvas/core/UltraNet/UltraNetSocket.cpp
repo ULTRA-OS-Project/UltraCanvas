@@ -574,6 +574,11 @@ bool IsTlsAttached(UltraNetHandle handle) {
     return e && e->tlsCtx != nullptr;
 }
 
+void* GetTlsCtx(UltraNetHandle handle) {
+    auto e = Find(handle);
+    return e ? e->tlsCtx : nullptr;
+}
+
 } // namespace ultranet_internal
 
 UltraNetResult UltraNet_SocketSetTimeout(UltraNetHandle handle,

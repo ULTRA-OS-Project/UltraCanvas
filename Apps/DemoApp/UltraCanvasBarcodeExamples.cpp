@@ -245,7 +245,7 @@ namespace UltraCanvas {
         dataInput->onTextChanged = [applyLive](const std::string&) { applyLive(); };
 
         // Text position toggle button.
-        textBtn->onClick = [liveBarcode, textBtn]() {
+        textBtn->onClick = [liveBarcode, textBtn = textBtn.get()]() {
             static int state = 0;
             state = (state + 1) % 4;
             BarcodeTextPosition pos = BarcodeTextPosition::TextBelow;
@@ -261,7 +261,7 @@ namespace UltraCanvas {
         };
 
         // Rotation cycler.
-        rotBtn->onClick = [liveBarcode, rotBtn]() {
+        rotBtn->onClick = [liveBarcode, rotBtn = rotBtn.get()]() {
             static int state = 0;
             state = (state + 1) % 4;
             BarcodeRotation r = BarcodeRotation::Rotate0;
