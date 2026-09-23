@@ -28,6 +28,7 @@
 #include "UltraMailSenderTrust.h"
 #include "UltraMailOutbox.h"
 #include "UltraMailSyncScheduler.h"
+#include "UltraMailFeedPublisher.h"
 #include "UltraMailCredentialVault.h"
 #include "UltraMailOAuth.h"
 
@@ -297,6 +298,9 @@ private:
     ContactsView    contactsView_;
     ComposeView     composeView_;
     SyncScheduler   scheduler_;
+    // New mail to the desktop feed (UltraMessage mail.message); fed from the
+    // sync workers' progress callbacks.
+    FeedPublisher   feed_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
 };
 

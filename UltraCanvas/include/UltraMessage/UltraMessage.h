@@ -164,6 +164,17 @@ UltraMsgResult UltraMsg_Export(UltraMsgHandle endpoint, const UltraMsgQuery& que
                                const std::string& path, int64_t* outCount = nullptr);
 
 // ---------------------------------------------------------------------------
+// Adapters (§9) — hosted by the broker; the switch is persisted in the journal
+// ---------------------------------------------------------------------------
+
+// Every adapter compiled into the broker's build, with its switch and state.
+UltraMsgResult UltraMsg_ListAdapters(UltraMsgHandle endpoint, std::vector<UltraMsgAdapterInfo>& out);
+// Turns an adapter on or off; on starts it now, off stops it. Persisted.
+UltraMsgResult UltraMsg_EnableAdapter(UltraMsgHandle endpoint, const std::string& name, bool enabled);
+UltraMsgResult UltraMsg_GetAdapterState(UltraMsgHandle endpoint, const std::string& name,
+                                        UltraMsgAdapterState& out);
+
+// ---------------------------------------------------------------------------
 // Schemas (§5.3)
 // ---------------------------------------------------------------------------
 

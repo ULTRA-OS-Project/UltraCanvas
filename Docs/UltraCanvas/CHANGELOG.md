@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.28*
+#### 2026-09-23 *0.9.29*
 - **The demo leaked its whole widget tree, and every callback in it.** A
   widget owns its callbacks, so a callback that captures a `shared_ptr` to
   that widget — or to any container above it — closes a cycle that neither
@@ -64,7 +64,7 @@
     first non-digit) and are refused now. A device command is not the place
     to guess what half a number meant.
 
-#### 2026-09-23 *0.9.27*
+#### 2026-09-23 *0.9.28*
 - **Seven ownership defects found by auditing every raw `new` in the tree.**
   A census of the 45 hand-written allocations outside vendored code (the rest
   of the framework allocates through `make_shared` / `make_unique`) turned up
@@ -135,6 +135,58 @@
     examples captured `new bool(false)` / `new int(0)` raw pointers in their
     `onClick` lambdas and never freed them. They are `make_shared` now — the
     DemoApp is the framework's worked example, so a leak in it propagates.
+
+#### 2026-09-23 *0.9.27*
+- **New: UltraMessage Phase 2, first slice — adapters and the first feeds**
+  (`Docs/Modules/UltraMessage/README.md` §3.6, `Masterfile_modules.md` §13).
+  The broker hosts *adapters*: broker-side plugins (`Internal::IAdapter`,
+  `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h`) that publish under
+  their own verified identity and receive the feed's
+  `system.notification.action` / `.dismissed` back. API
+  `UltraMsg_ListAdapters`, `UltraMsg_EnableAdapter`, `UltraMsg_GetAdapterState`
+  with `UltraMsgAdapterInfo` / `UltraMsgAdapterState` (status, message,
+  remedy, mode); the switch is persisted in the journal (`adapters` table,
+  schema v2); `ultramsg adapters [enable|disable <name>]`.
+- **New: `freedesktop-notifications` adapter** (Linux,
+  `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp`,
+  GDBus, built where `gio-2.0` is found): serves `org.freedesktop.Notifications`
+  (`Notify`, `CloseNotification`, `GetCapabilities`, `GetServerInformation`,
+  `ActionInvoked` / `NotificationClosed` back to the application) so every
+  desktop application's toast becomes a `system.notification`; where GNOME,
+  Plasma or dunst own the name it reads the same calls passively in monitor
+  mode (`BecomeMonitor`), reporting `needs-permission` when the bus refuses.
+  `im.received` toasts are mirrored to `messaging.message`, `email*` ones to
+  `mail.message`, each with `mirrorOf`.
+- **New: `windows-notification-listener` adapter** (Windows,
+  `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp`,
+  C++/WinRT, built where the projection headers are found — CI's MSYS2 rows
+  install `cppwinrt`): reads the Action Center through
+  `UserNotificationListener`, polling every two seconds since Windows sends
+  a desktop process no change event; every toast becomes a
+  `system.notification`, what leaves the Action Center a
+  `system.notification.dismissed`; a feed action clears the toast (the
+  listener cannot press its buttons). `needs-permission` with the Settings
+  remedy until the user allows access, re-checked without a restart.
+- **New: category guessing and shared mirrors** — `Internal::GuessAppKind`
+  classifies an application by identity (Telegram, Signal, Slack, Teams … /
+  Thunderbird, Outlook, Windows Mail, Evolution …) where no category hint
+  exists, on Windows and for the many Linux applications that set none; the
+  chat / mail mirrors moved to `Internal::PublishMirror`, shared by every
+  notification adapter.
+- **New: UltraMail publishes new mail to the feed** —
+  `UltraMail::FeedPublisher` (`Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`):
+  the sync workers hand it every stored envelope and it posts `mail.message`
+  as `org.ultraos.ultramail` for unread, recent (7 days) mail, at most 100
+  per account per ten minutes. A no-op in a build without `UltraMessage`.
+- **Tests:** `Tests/UltraMessage` grows to 34 cases; on Linux the suite
+  starts a private `dbus-daemon --session` and drives the adapter over real
+  D-Bus (serving, mirrors, replace/close, actions signalled back, the switch,
+  monitor mode with a rival owner). `Tests/UltraMail` gains the publisher's
+  filter and rate-limit tests. The Linux CI row installs `dbus`.
+- **Build:** UltraDatabase's source list lives once in
+  `cmake/UltraDatabaseSources.cmake` (`ultradatabase_sources(<var> <dir>)`),
+  used by the in-tree build and the standalone `Tests/UltraMessage` tree, so
+  a new driver (the Postgres one broke the standalone link) is one edit.
 
 #### 2026-09-22 *0.9.26*
 - **A window minimised by the user now reports it.** `IsMinimized()` and the

@@ -476,6 +476,44 @@ UltraMsgResult ResultFromJson(const JSONValue& json) {
     return UltraMsgResult::Error(c, Str(json, "message"));
 }
 
+JSONValue AdapterStateToJson(const UltraMsgAdapterState& state) {
+    JSONValue j = JSONValue::MakeObject();
+    j.Set("status", UltraMsg_AdapterStatusName(state.status));
+    j.Set("message", state.message);
+    j.Set("remedy", state.remedy);
+    j.Set("mode", state.mode);
+    return j;
+}
+
+bool AdapterStateFromJson(const JSONValue& json, UltraMsgAdapterState& out) {
+    if (!json.IsObject()) return false;
+    UltraMsg_AdapterStatusFromName(Str(json, "status"), out.status);
+    out.message = Str(json, "message");
+    out.remedy = Str(json, "remedy");
+    out.mode = Str(json, "mode");
+    return true;
+}
+
+JSONValue AdapterInfoToJson(const UltraMsgAdapterInfo& info) {
+    JSONValue j = JSONValue::MakeObject();
+    j.Set("name", info.name);
+    j.Set("description", info.description);
+    j.Set("platform", info.platform);
+    j.Set("enabled", info.enabled);
+    j.Set("state", AdapterStateToJson(info.state));
+    return j;
+}
+
+bool AdapterInfoFromJson(const JSONValue& json, UltraMsgAdapterInfo& out) {
+    if (!json.IsObject()) return false;
+    out.name = Str(json, "name");
+    out.description = Str(json, "description");
+    out.platform = Str(json, "platform");
+    out.enabled = Bool(json, "enabled");
+    if (const JSONValue* state = json.Find("state")) AdapterStateFromJson(*state, out.state);
+    return !out.name.empty();
+}
+
 // ===========================================================================
 // Frames
 // ===========================================================================
@@ -744,6 +782,29 @@ bool UltraMsg_KindFromName(const std::string& name, UltraMsgKind& out) {
     else if (name == "request") out = UltraMsgKind::Request;
     else if (name == "reply") out = UltraMsgKind::Reply;
     else if (name == "bounce") out = UltraMsgKind::Bounce;
+    else return false;
+    return true;
+}
+
+const char* UltraMsg_AdapterStatusName(UltraMsgAdapterStatus status) {
+    switch (status) {
+        case UltraMsgAdapterStatus::Disabled: return "disabled";
+        case UltraMsgAdapterStatus::Starting: return "starting";
+        case UltraMsgAdapterStatus::Running: return "running";
+        case UltraMsgAdapterStatus::NeedsPermission: return "needs-permission";
+        case UltraMsgAdapterStatus::Unavailable: return "unavailable";
+        case UltraMsgAdapterStatus::Error: return "error";
+    }
+    return "error";
+}
+
+bool UltraMsg_AdapterStatusFromName(const std::string& name, UltraMsgAdapterStatus& out) {
+    if (name == "disabled") out = UltraMsgAdapterStatus::Disabled;
+    else if (name == "starting") out = UltraMsgAdapterStatus::Starting;
+    else if (name == "running") out = UltraMsgAdapterStatus::Running;
+    else if (name == "needs-permission") out = UltraMsgAdapterStatus::NeedsPermission;
+    else if (name == "unavailable") out = UltraMsgAdapterStatus::Unavailable;
+    else if (name == "error") out = UltraMsgAdapterStatus::Error;
     else return false;
     return true;
 }
