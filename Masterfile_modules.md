@@ -684,7 +684,7 @@ the backing implementation can be replaced without affecting callers.
     dependency and is what `--list` and `Tests/DeviceExplorerModelTest` use.
   - `IODevice` — the base every category derives from (`ScannerDevice`,
     `CameraDevice`, `PrinterDevice`): identity, `Connect` / `Disconnect` /
-    `IsConnected` / `GetState`, `GetLastError`. Lifecycle is non-virtual
+    `IsConnected` / `GetState`, `GetLastDeviceError`. Lifecycle is non-virtual
     public, virtual protected: backends implement `DoConnect` / `DoDisconnect`
     and the base owns the state machine, the error slot and the locking.
   - Backends attach as **enumerators**, one per (category, backend) pair, not
