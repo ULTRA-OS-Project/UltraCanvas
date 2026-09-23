@@ -3,34 +3,46 @@
 // per-provider app registration (client id / secret / redirect URI) and the
 // provider base that signs in through the system browser and refreshes
 // tokens, both over UltraNet's OAuth2 client (PKCE, loopback redirect).
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.3.0 - the app registration is UltraNet's shared registry
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraCloudHttp.h"
 
 #include <UltraNet/UltraNetOAuth2.h>
+#include <UltraNet/UltraNetOAuth2Apps.h>
 
 #include <functional>
 #include <string>
 
 namespace UltraCloud {
 
-// The OAuth app a provider signs in as. Each hosted provider needs one
-// registered by the ULTRA OS project (or the app vendor); it is
-// configuration, never a literal in the code. Sources, in order: SetOAuthApp,
-// then the environment (ULTRACLOUD_<PROVIDER>_CLIENT_ID, _CLIENT_SECRET,
-// _REDIRECT_URI, provider id upper-cased).
-struct OAuthApp {
-    std::string clientId;
-    std::string clientSecret;    // empty = public client (PKCE only)
-    std::string redirectUri = "http://127.0.0.1:53682/callback";
-    bool IsConfigured() const { return !clientId.empty(); }
-};
+// The OAuth app a provider signs in as: the framework's type. Each hosted
+// provider needs one registered by the ULTRA OS project (or the app vendor);
+// it is configuration, never a literal in the code.
+using OAuthApp = UltraNetOAuth2App;
+
+// UltraCloud's profile of the process-wide registry in UltraNet
+// (<UltraNet/UltraNetOAuth2Apps.h>), shared with UltraMail: SetOAuthApp, then
+// the environment (ULTRACLOUD_<PROVIDER>_CLIENT_ID, _CLIENT_SECRET,
+// _REDIRECT_URI, the provider id upper-cased — beside the shared
+// ULTRANET_OAUTH_ prefix), then any INI file loaded through UltraNet, then a
+// baked-in client another module registered. "googledrive" falls back to a
+// "google" registration and "onedrive" to a "microsoft" one, so the client
+// UltraMail ships for Gmail and Outlook serves Drive and OneDrive too when its
+// consent screen carries their scopes. An empty redirect URI comes back as
+// DefaultRedirectUri().
 void     SetOAuthApp(const std::string& providerId, const OAuthApp& app);
 OAuthApp GetOAuthApp(const std::string& providerId);
 bool     HasOAuthApp(const std::string& providerId);
+// The loopback redirect UltraCloud registers with a provider when no
+// registration names one: "http://127.0.0.1:53682/callback".
+std::string DefaultRedirectUri();
+// Register the profile (prefix and aliases) with the shared registry. Every
+// entry point above calls it; a host that reads the registry through UltraNet
+// directly may call it once at start-up.
+void     EnsureOAuthAppsRegistered();
 
 // The OAuth seam for tests: the interactive authorization and the refresh.
 struct OAuthHooks {
