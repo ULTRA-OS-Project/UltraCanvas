@@ -33,8 +33,15 @@ The reader does the tidying a person would otherwise have to do in their head:
   components, 20 bytes)` → `UltraCanvas Cameras`). Where libvips' own reading of
   a numeric tag says more than the number, it is kept: `65535 (Uncalibrated)`,
   `2 (Inch)`.
-- Binary blocks (ICC profiles, the raw EXIF/XMP/IPTC payloads) are reported by
-  size, not dumped.
+- The IPTC and XMP blocks, which libvips keeps as raw bytes, are decoded into
+  one row per tag (`PixelFX/PixelFXMetadataDecode.h`): IPTC by its IIM names
+  (`Keywords`, `By-line`, `City`, `Caption/Abstract`, dates as `2026-09-20`),
+  from bare IIM or a JPEG's Photoshop "8BIM" block, Latin-1 converted to UTF-8;
+  XMP as `prefix:Name` for every property (`dc:title` in its x-default
+  language, `dc:subject` bags joined, structures as `prefix:Struct/prefix:Field`).
+  A block that does not decode is still listed by size.
+- Other binary blocks (ICC profiles) are reported by size, not dumped; the raw
+  EXIF block is left out once its tags are listed.
 - Markdown special characters are escaped, so `VIPS_CODING_NONE` does not come
   out italicised with its underscores eaten.
 

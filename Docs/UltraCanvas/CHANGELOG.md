@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.35*
+#### 2026-09-23 *0.9.36*
 - **Media viewer Details panel: image metadata, scrollable, laid out as
   Markdown.** `UltraCanvasMediaViewer::UpdateDetailedInfo` listed only the
   header facts (size, dimensions, channels, colour space, dpi, loader) and
@@ -21,6 +21,45 @@
   they broke mid-word ("Dimens-ions"). `NormalizeTableGroupWidths` now lets a
   column that fits its fair share keep its natural width and shrinks only
   the wider ones.
+- **PixelFX decodes IPTC and XMP into one row per tag**
+  (`PixelFX/PixelFXMetadataDecode.h`, `Header::DecodeIPTC` /
+  `Header::DecodeXMP`). libvips lists EXIF tag by tag but hands IPTC and XMP
+  over as raw blocks, so `Header::ReadMetadata` - and with it the Details
+  panel and `UltraCanvasMetadataDialog` - showed only "iptc-data: 56 bytes"
+  and "xmp-data: 2988 bytes". IPTC is read from bare IIM (TIFF) and from the
+  Photoshop APP13 "8BIM" wrapper a JPEG carries: record-2 datasets get their
+  IIM names (Keywords, By-line, City, Caption/Abstract, ...), repeated ones
+  are joined, dates and times are written 2026-09-20 / 14:32:11+01:00, and
+  Latin-1 text becomes UTF-8 unless the block declares UTF-8. XMP is read
+  with tinyxml2: every property of every `rdf:Description` as
+  `prefix:Name`, written as an attribute or an element - language
+  alternatives (x-default first), bags and sequences, structures
+  (`prefix:Struct/prefix:Field`, arrays of them indexed), resources. A block
+  that does not decode keeps its size row. The raw `exif-data` row is
+  dropped once libvips has listed the EXIF tags, since it repeated them as
+  "data: 518 bytes". Test: `Tests/PixelFXMetadataDecodeTest.cpp` (bare and
+  wrapped IIM, encodings, truncated and lying blocks, every XMP form,
+  malformed XML, value length cap).
+
+#### 2026-09-23 *0.9.35*
+- **DemoApp: the ListView page's multi-column table shows the sorting API**
+  (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`). Table 2 used to copy
+  and `std::stable_sort` its own rows on every header click. It now hands the
+  view an `UltraCanvasListSortFilterProxy` in front of the model: File Name
+  sorts naturally, and Size gets a column comparator that reads the number in
+  front of "KB". A new **Sortable columns** checkbox next to the section title
+  turns header-click sorting on and off. Turning it off restores the model's
+  own order and clears the header triangle. The click and selection handlers
+  now map proxy rows back through `MapToSource()` before they look up a file,
+  so the status label names the right file while the table is sorted.
+- **DemoApp: the ListView page's subtitle no longer runs under the status
+  box.** It was one 600 px line and the status box starts at x = 600, so the
+  end of the sentence was hidden. It is now two lines, 570 px wide, and the
+  status box stays where it was.
+- **`UltraCanvasListView.h`: removed an orphaned comment.** It said the view
+  itself cycles a column's sort on a header click, and it sat above no
+  declaration. The view never sorts: a header click only fires
+  `onHeaderClicked`, which is what the surrounding comments say.
 
 #### 2026-09-23 *0.9.34*
 - **New: UltraNet's OAuth2 app registry** (`<UltraNet/UltraNetOAuth2Apps.h>`,
