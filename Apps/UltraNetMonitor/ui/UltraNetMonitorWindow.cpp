@@ -1,14 +1,17 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.cpp
-// Version: 0.5.0
+// Version: 0.6.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorWindow.h"
 
 #include "UltraNetMonitorPaths.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasModalDialog.h"
 
 #include <algorithm>
 #include <chrono>
+#include <ctime>
 #include <variant>
 
 // ULTRANETMONITOR_VERSION comes from the build alone: CMake reads the first line
@@ -345,6 +348,7 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildProcessList() {
         if (!summary) { SelectProcess(std::nullopt); return; }
         SelectProcess(summary->attributed ? summary->process.pid : 0u);
     };
+    processView_->onContextMenu = [this](int, const UCEvent& event) { ShowProcessMenu(event); };
     return processView_;
 }
 
@@ -750,6 +754,81 @@ void UltraNetMonitorWindow::RebuildConnectionFilter() {
     connectionProxy_->SetFilterPredicate([wanted](const IListModel& model, int sourceRow) {
         return PidOfSourceRow(model, sourceRow, ConnectionListModel::Pid) == wanted;
     });
+}
+
+// ===== EXPORT =====
+
+void UltraNetMonitorWindow::ShowProcessMenu(const UCEvent& event) {
+    if (!window_) return;
+    processMenu_ = std::make_shared<UltraCanvasMenu>("nmProcessMenu", 0, 0, 220, 0);
+    processMenu_->SetMenuType(MenuType::PopupMenu);
+    processMenu_->AddItem(MenuItemData::Submenu("Export", {
+        MenuItemData::Action("App list…", [this]() { ExportAppList(false); }),
+        MenuItemData::Action("App list details…", [this]() { ExportAppList(true); }),
+    }));
+    PopupElementSettings settings;
+    processMenu_->OpenMenu(event.pointerWindow, *window_, settings);
+}
+
+void UltraNetMonitorWindow::ExportAppList(bool details) {
+    // The list as shown: the proxy's order, every row (the filter box
+    // narrows connections, never processes).
+    std::vector<ProcessTrafficSummary> summaries;
+    for (int row = 0; row < processProxy_->GetRowCount(); ++row) {
+        if (const ProcessTrafficSummary* s = processModel_->At(processProxy_->MapToSource(row))) {
+            summaries.push_back(*s);
+        }
+    }
+    // The details: every application's connections, grouped in that order.
+    std::vector<NetworkConnection> connections;
+    if (details) {
+        const auto& all = connectionModel_->Rows();
+        for (const auto& s : summaries) {
+            for (const auto& c : all) {
+                const bool belongs = s.attributed ? (c.process && c.process->pid == s.process.pid) : !c.process;
+                if (belongs) connections.push_back(c);
+            }
+        }
+    }
+    if (summaries.empty()) {
+        UltraCanvasDialogManager::ShowInformation("There is nothing to export yet - no snapshot has been taken.",
+                                                  "Export", nullptr, window_.get());
+        return;
+    }
+
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", &local);
+
+    FileDialogOptions options;
+    options.SetTitle(details ? "Export the app list with its connections" : "Export the app list")
+           .SetDefaultFileName(std::string(details ? "UltraNetMonitor-app-details-" : "UltraNetMonitor-apps-") +
+                               stamp + ".csv")
+           .AddFilter("CSV files", "csv")
+           .AddFilter("All files", "*")
+           .SetParentWindow(window_.get());
+    UltraCanvasWindowBase* parent = window_.get();
+    UltraCanvasFileLoader::SaveFileDialog(options,
+        [summaries, connections, details, parent](DialogResult result, const std::string& path) {
+            if (result != DialogResult::OK || path.empty()) return;   // cancelled
+            int64_t rows = 0;
+            const NetworkMonitorResult written = details
+                ? NetworkMonitor_ExportConnectionsCsv(connections, path, &rows)
+                : NetworkMonitor_ExportSummaryCsv(summaries, path, &rows);
+            if (!written) {
+                UltraCanvasDialogManager::ShowError(written.message, "Export failed", nullptr, parent);
+                return;
+            }
+            UltraCanvasDialogManager::ShowInformation(
+                "Wrote " + std::to_string(rows) + (details ? " connections" : " applications") + " to " + path,
+                "Exported", nullptr, parent);
+        });
 }
 
 // ===== THE STORE =====

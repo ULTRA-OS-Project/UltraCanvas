@@ -1,6 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
-// Last Modified: 2026-09-19
+// Last Modified: 2026-09-23
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -71,6 +71,15 @@ namespace UltraCanvas {
         // direction when it is already the sort column, then calls
         // SetSortIndicator so the header shows the new order.
         std::function<void(int column)> onHeaderClicked;
+
+        // A right-button press in the rows area. `row` is the row under the
+        // pointer, -1 for the empty space below the rows; a row under the
+        // pointer is selected first (alone), as every desktop does, so the
+        // handler's menu acts on what the user pointed at. The usual handler
+        // builds an UltraCanvasMenu of type PopupMenu and calls OpenMenu with
+        // event.pointerWindow. When set, the press is consumed here; when not,
+        // a right press is handled like a left one.
+        std::function<void(int row, const UCEvent& event)> onContextMenu;
 
         // Optional tooltip source, consulted before the model's ToolTipRole.
         // Called with the hovered cell; row == -1 means the pointer is over the

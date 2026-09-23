@@ -9,7 +9,10 @@
 // every DNS observation and every connection event the sources report,
 // into the store at the platform's per-user data path. Nothing is painted
 // by hand: five UltraCanvasListViews over the models in
-// UltraNetMonitorModels, each behind an UltraCanvasListSortFilterProxy.
+// UltraNetMonitorModels, each behind an UltraCanvasListSortFilterProxy. A
+// right click on the process list opens an *Export* menu that writes the
+// list, or the list with every application's connections, to a CSV file
+// chosen in the native save dialog.
 //
 // The socket table is read on a worker thread once a second (walking /proc
 // is I/O, and it must never stall a repaint); the result is parked in one
@@ -19,7 +22,7 @@
 // queries share, so the single SQLite connection is never used from two
 // threads at once. The name and event sources themselves are started by
 // main.cpp before the window opens; the window only reports them.
-// Version: 0.5.0
+// Version: 0.6.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -35,6 +38,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTextInput.h"
@@ -90,6 +94,14 @@ private:
     void ReapplyProcessSelection();
     void RebuildConnectionFilter();
 
+    // ===== EXPORT =====
+    // The process list's right-click menu: Export -> App list / App list
+    // details. Both take the list as shown (its current sort order) and
+    // write it to a CSV the user picks in the native save dialog; the
+    // details variant adds every application's connections beneath it.
+    void ShowProcessMenu(const UltraCanvas::UCEvent& event);
+    void ExportAppList(bool details);
+
     // ===== THE STORE =====
     // Opens the store at the default path on first use. Caller holds
     // storeMutex_. False, with storeError_ set, when it cannot be opened.
@@ -124,6 +136,7 @@ private:
     std::shared_ptr<ProcessListModel> processModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> processProxy_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> processView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> processMenu_;   // kept alive while open
 
     std::shared_ptr<ConnectionListModel> connectionModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> connectionProxy_;
