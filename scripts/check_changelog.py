@@ -53,6 +53,23 @@ merge base needs history: in a clone too shallow to find one, every file
 that differs from <ref>'s copy is taken as modified, which can only add a
 report, never miss one.
 
+Pending entries
+---------------
+Because line 1 is contended, the routine case no longer writes it: a branch
+drops its bullets in `Docs/UltraCanvas/changelog.d/<name>.md` with no header
+and no number, and `.github/workflows/changelog-fold.yml` assigns the number
+once, on main, after the merge. Two branches adding two files never collide,
+so neither shape above can happen.
+
+This script refuses a `####` header inside those files. A number chosen on a
+branch is exactly the collision the directory exists to end, and one that
+slipped through would be folded into the changelog verbatim, giving the entry
+two headers.
+
+A top entry written straight into the changelog is still accepted - a hotfix
+that has to carry a chosen number is a real case - and is still held to the
+rules above.
+
 Usage:
     python3 scripts/check_changelog.py                 # check the working tree
     python3 scripts/check_changelog.py --base origin/main
@@ -183,6 +200,31 @@ def check(prefix, relative, base):
     return problems
 
 
+def check_pending():
+    """Pending entries must not carry a version - the fold assigns it."""
+    problems = []
+    directory = REPO / "Docs" / "UltraCanvas" / "changelog.d"
+    if not directory.is_dir():
+        return problems
+    for path in sorted(directory.glob("*.md")):
+        if path.name == "README.md":
+            continue
+        relative = path.relative_to(REPO).as_posix()
+        text = path.read_text(encoding="utf-8")
+        if not text.strip():
+            problems.append(f"{relative}: empty - write the bullets, or delete the file")
+            continue
+        for number, line in enumerate(text.splitlines(), start=1):
+            if line.startswith("#### "):
+                problems.append(
+                    f"{relative}:{number}: a pending entry must not carry a version "
+                    f"header - changelog-fold.yml assigns the number on main, which is "
+                    f"what keeps two branches from choosing the same one. Leave the "
+                    f"bullets; drop the header.")
+                break
+    return problems
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -195,6 +237,7 @@ def main():
     products = changelogs()
     for prefix, relative in products:
         problems.extend(check(prefix, relative, args.base))
+    problems.extend(check_pending())
 
     if problems:
         for p in problems:

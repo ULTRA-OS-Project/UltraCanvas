@@ -205,9 +205,13 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
 
-Format: `#### YYYY-MM-DD *x.y.z*`. To release, add an entry at the top of the
-changelog — that is the whole bump. Do **not** hand-edit a version number
-anywhere else, and never introduce a new literal copy of one:
+Format: `#### YYYY-MM-DD *x.y.z*`. **For the framework changelog you do not
+write that line at all**: drop your bullets in a new file under
+[`Docs/UltraCanvas/changelog.d/`](Docs/UltraCanvas/changelog.d/README.md) with
+no header and no number, and CI assigns the number on `main` after the merge
+(see *Pending entries* below). For an application changelog, adding the entry
+at the top is still the whole bump. Either way, do **not** hand-edit a version
+number anywhere else, and never introduce a new literal copy of one:
 
 - `cmake/UltraCanvasVersion.cmake` parses the first line of each file at
   configure time and sets one `<PREFIX>_VERSION` per row of the table above —
@@ -242,32 +246,36 @@ anywhere else, and never introduce a new literal copy of one:
   it was published, so `Docs/UltraCanvas/CHANGELOG.md` remains the record of
   what shipped in each framework release. Do not backfill it into the app
   files — that would put one change in two places under two numbers.
-- **Your entry must be a NEW top entry with a number nobody else has taken.**
-  Line 1 of a shared file is the most contended line in the repository, and two
-  open pull requests collide there every time, in one of two ways. Either a
-  branch picks the next number, `main` releases past it while the branch waits
-  for review, and it merges carrying a number *lower* than versions already
-  released below it — the product's version then goes backwards. Or two
-  branches write the same `#### <date> *x.y.z*` line, git merges both bullet
-  lists under the one header with no conflict, and two releases share a number
-  while the version never increments — which is also why such a branch's
-  changelog diff never settles no matter how often `main` is merged into it.
-  Both have happened repeatedly; the file still carries sixteen duplicated
-  numbers from before this was checked. So: re-read the top of the changelog
-  just before you push, and if `main` has moved past your number, renumber your
-  entry rather than leaving it — and never add bullets to an entry that is
-  already on `main`. Run `git fetch origin main` and then
+- **Pending entries: the framework's number is assigned on `main`, not by
+  you.** Line 1 of a shared file was the most contended line in the
+  repository, and two open pull requests collided there every time, in one of
+  two ways. Either a branch picked the next number, `main` released past it
+  while the branch waited for review, and it merged carrying a number *lower*
+  than versions already released below it — the product's version then goes
+  backwards. Or two branches wrote the same `#### <date> *x.y.z*` line, git
+  merged both bullet lists under the one header with no conflict, and two
+  releases shared a number while the version never incremented. Both happened
+  repeatedly; the file still carries sixteen duplicated numbers from before
+  any of this was checked, and on 2026-09-23 one branch was renumbered five
+  times in a morning (0.9.23 → 0.9.27 → 0.9.28 → 0.9.29 → 0.9.31), each
+  renumber throwing away a six-platform CI matrix, with 0.9.29 consumed and
+  lost in the churn.
+  So the routine case no longer touches line 1: write
+  `Docs/UltraCanvas/changelog.d/<change-name>.md` containing just the bullets.
+  Two branches adding two files cannot collide, there is nothing to renumber
+  when `main` moves, and `.github/workflows/changelog-fold.yml` folds whatever
+  is pending into `CHANGELOG.md` under the next free version once it lands —
+  `scripts/fold_changelog.py` does the same locally if you want to see it.
+  Name the file after the change, not the branch. Never put a `####` header in
+  one: a number chosen on a branch is the collision this ends, and
+  `scripts/check_changelog.py` refuses it.
+  A release that must carry a *specific* number — a hand-cut hotfix — can
+  still be written straight into the changelog as a top entry, and the same
+  rules apply to it: unique, and above every version below it. Application
+  changelogs are unchanged; they see little contention, one product to a file.
+  Run `git fetch origin main` and then
   `python3 scripts/check_changelog.py --base origin/main` before pushing; CI
-  runs it too. The check compares your entry with line 1 of `main`'s copy of
-  the file, so it is only as current as your `origin/main` - an unfetched one
-  lets a stale number through.
-  GitHub's *Update branch* button cannot do the renumbering: it merges `main`
-  into the branch and, when `main` has meanwhile released the number the
-  branch chose, folds the two entries under the one header (or leaves a
-  conflict marker in line 1) — and the guard then fails on the very merge
-  that was meant to fix it. When the check goes red after such a merge, fix
-  it locally: merge `main`, split the shared header back into two entries,
-  give the branch's entry the next free number, and push.
+  runs it too.
 - **Do not add a version number to a compile definition that anything but its
   own consumers see.** `ULTRACANVAS_VERSION` was `PUBLIC` on the core library,
   so it sat on the compile command line of 621 of the build's 1136 objects

@@ -21,6 +21,35 @@
     the workflow's exact command reports it and exits 1, and exits 0 again
     once reverted. On a clean tree it takes about five seconds over 1173
     files, so it costs a CI slot, not a CI budget.
+- **The framework's version number is assigned on `main` now, not on the
+  branch.** Line 1 of this file *is* the version — cmake reads it and every
+  `project(VERSION …)`, compile definition and packaging script follows — so
+  every branch wanted to write that one line, and two open at once always
+  collided. On 2026-09-23 one branch was renumbered five times in a morning
+  (0.9.23 → 0.9.27 → 0.9.28 → 0.9.29 → 0.9.31), each renumber throwing away a
+  six-platform CI matrix, and 0.9.29 was consumed and lost in the churn.
+  - **A branch now writes `Docs/UltraCanvas/changelog.d/<change>.md`** — just
+    the bullets, no header, no number. Two branches adding two files cannot
+    conflict, and there is nothing to renumber when `main` moves.
+  - **`.github/workflows/changelog-fold.yml`** folds whatever is pending into
+    this file under the next patch version once it lands on `main`, and
+    deletes the entries. `scripts/fold_changelog.py` does the same locally
+    (`--check` to look without touching anything, `--version` for a release
+    that must carry a chosen number).
+  - **`build.yml` gained a `gate` job.** The merge commit still has the entry
+    pending, so its line 1 is the *previous* release; building the release
+    there would package new code under an already-published number. The gate
+    skips the release build for that one commit and lets the fold commit —
+    which carries the right number — produce the artifacts. Pull requests are
+    never gated.
+  - **`check_changelog.py` refuses a `####` header inside a pending entry**,
+    since a number chosen on a branch is the collision the directory exists to
+    end, and would otherwise be folded in verbatim as a second header. A
+    hand-cut hotfix that must carry a specific number can still be written
+    straight into this file as a top entry, held to the same rules as before.
+  - `AGENTS.md` documents the flow where the old "pick the next number"
+    instruction used to be. Application changelogs are unchanged: one product
+    to a file, little contention.
 
 #### 2026-09-23 *0.9.32*
 - **The demo leaked its whole widget tree, and every callback in it.** A
