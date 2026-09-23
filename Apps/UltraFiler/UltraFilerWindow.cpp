@@ -2168,6 +2168,14 @@ void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
     widget->remoteListingStatus = [this](const std::string& path) {
         return remoteDrives->ListingStatus(path);
     };
+    // Files dropped onto a remote folder shown in the display: uploaded the
+    // way a drop on the drive's tree row uploads, with the status bar saying
+    // how many went up and why any did not.
+    widget->remoteUpload = [this](const std::string& folder,
+                                  const std::vector<std::string>& files,
+                                  std::string& error) {
+        return UploadToRemoteFolder(folder, files, error) > 0;
+    };
 
     // The three changes a drive can take. Each is queued and answered at once;
     // what the server said arrives through onOperationFinished.
@@ -3100,31 +3108,9 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
     // remote entry has no local file to send.
     if (IsRemoteFilerPath(dest)) {
         if (!remoteDrives) return false;
-        int queued = 0, skipped = 0;
-        std::string firstRefusal;
-        for (const std::string& f : files) {
-            std::string why;
-            if (remoteDrives->Upload(dest, f, why)) ++queued;
-            else { ++skipped; if (firstRefusal.empty()) firstRefusal = why; }
-        }
-        if (statusLabel) {
-            std::string line;
-            if (queued > 0)
-                line = "Uploading " + std::to_string(queued) +
-                       (queued == 1 ? " file" : " files") + " to " +
-                       target->data.text + "...";
-            if (skipped > 0)
-                line += (line.empty() ? "" : "  ") + std::to_string(skipped) +
-                        (skipped == 1 ? " item not uploaded: " : " items not uploaded: ") +
-                        firstRefusal;
-            statusLabel->SetText(line);
-            // Kept, because the activity line takes the status strip over as
-            // soon as the first upload starts: what was NOT sent would
-            // otherwise be on screen for a fraction of a second. Shown again
-            // by UpdateStatusBar once the drive falls idle.
-            remoteDropNote = skipped > 0 ? line : std::string();
-        }
-        return queued > 0 || skipped > 0;
+        std::string why;
+        UploadToRemoteFolder(dest, files, why);
+        return true;
     }
     std::error_code ec;
     if (!fs::is_directory(dest, ec) || ec) return false;
@@ -3149,6 +3135,45 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         HandleFolderModified(dest);
     });
     return true;
+}
+
+int UltraFilerWindow::UploadToRemoteFolder(const std::string& folder,
+                                           const std::vector<std::string>& files,
+                                           std::string& firstRefusal) {
+    firstRefusal.clear();
+    if (!remoteDrives || files.empty()) return 0;
+    int queued = 0, skipped = 0;
+    for (const std::string& f : files) {
+        std::string why;
+        if (remoteDrives->Upload(folder, f, why)) ++queued;
+        else { ++skipped; if (firstRefusal.empty()) firstRefusal = why; }
+    }
+    if (statusLabel) {
+        // Where they are going, as the user knows it: the drive's name, and
+        // the folder on it when it is not the drive's root.
+        std::string where;
+        RemoteDrive drive;
+        if (remoteDrives->Find(RemoteFilerAccountId(folder), drive))
+            where = drive.displayName;
+        if (where.empty()) where = "the drive";
+        const std::string sub = RemoteFilerName(folder);
+        if (!sub.empty()) where += " / " + sub;
+        std::string line;
+        if (queued > 0)
+            line = "Uploading " + std::to_string(queued) +
+                   (queued == 1 ? " file" : " files") + " to " + where + "...";
+        if (skipped > 0)
+            line += (line.empty() ? "" : "  ") + std::to_string(skipped) +
+                    (skipped == 1 ? " item not uploaded: " : " items not uploaded: ") +
+                    firstRefusal;
+        statusLabel->SetText(line);
+        // Kept, because the activity line takes the status strip over as
+        // soon as the first upload starts: what was NOT sent would
+        // otherwise be on screen for a fraction of a second. Shown again
+        // by UpdateStatusBar once the drive falls idle.
+        remoteDropNote = skipped > 0 ? line : std::string();
+    }
+    return queued;
 }
 
 void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,

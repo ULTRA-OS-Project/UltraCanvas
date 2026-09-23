@@ -1,0 +1,52 @@
+name: Locale-independent numbers
+
+# Blocks new numbers that cross into a file format or a wire protocol through
+# LC_NUMERIC. std::stof / atof / std::to_string(double) / snprintf("%g") all
+# consult the C locale's decimal point, so on a comma-decimal desktop -- de_DE,
+# fr_FR, ru_RU, pt_BR, and the Linux backend calls setlocale(LC_ALL, "") for
+# XIM -- `opacity="0.25"` reads as 0 and `M 1.5 2` is written `M 1,5 2`, which
+# reads back as the point (1, 5). Not a crash: a different file.
+#
+# Sites that predate the check are listed in
+# scripts/locale_numbers_baseline.txt and do not fail the build -- only
+# additions do. A number a person typed or reads follows their locale on
+# purpose and says so at the site with `// locale-ok: <why>`.
+
+# Trigger policy matches build.yml / ui-reuse.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/**'
+      - 'SmartHome/**'
+      - 'UltraAI/**'
+      - 'UltraCloud/**'
+      - 'VirtualFS/**'
+      - 'Apps/**'
+      - 'scripts/check_locale_numbers.py'
+      - 'scripts/locale_numbers_baseline.txt'
+      - '.github/workflows/locale-numbers.yml'
+  pull_request:
+    # `branches` filters the BASE branch -- the branch the pull request
+    # TARGETS. `main` alone would leave a pull request based on another pull
+    # request's branch matching no trigger at all, which is how #455 reached
+    # 1059 changed lines without a job running.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check for locale-dependent numbers in file formats
+        run: python3 scripts/check_locale_numbers.py --strict

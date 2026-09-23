@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasFinancialChart.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
 #include "UltraCanvasTooltipManager.h"
 #include <fstream>
 #include <sstream>
@@ -69,11 +70,13 @@ namespace UltraCanvas {
         // Expected format: Date,Open,High,Low,Close,Volume
         if (values.size() >= 5) {
             std::string date = values[0];
-            double open = std::stod(values[1]);
-            double high = std::stod(values[2]);
-            double low = std::stod(values[3]);
-            double close = std::stod(values[4]);
-            double volume = values.size() > 5 ? std::stod(values[5]) : 0.0;
+            double open = 0.0, high = 0.0, low = 0.0, close = 0.0, volume = 0.0;
+            const bool parsed = TryParseFloat(values[1], open) &&
+                                TryParseFloat(values[2], high) &&
+                                TryParseFloat(values[3], low) &&
+                                TryParseFloat(values[4], close);
+            if (values.size() > 5) TryParseFloat(values[5], volume);
+            if (!parsed) return FinancialChartDataPoint(0, 0, 0, 0, 0, 0, "");
 
             // Use index as time for now (could parse date later)
             static double timeIndex = 0.0;

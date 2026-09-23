@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include <stdexcept>   // predeclare std::runtime_error for libspecific/Cairo/ImageCairo.h
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetSheet.h"
 #include "UltraCanvasSpreadsheetCell.h"
@@ -13,6 +14,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <locale>
 #include <algorithm>
 #include <cstring>
 #include <cctype>
@@ -116,15 +118,15 @@ double ParseODSTime(const std::string& timeStr) {
         size_t sPos = timePart.find('S');
         
         if (hPos != std::string::npos) {
-            hours = std::stod(timePart.substr(0, hPos));
+            TryParseFloat(timePart.substr(0, hPos), hours);
         }
         if (mPos != std::string::npos) {
             size_t start = (hPos != std::string::npos) ? hPos + 1 : 0;
-            minutes = std::stod(timePart.substr(start, mPos - start));
+            TryParseFloat(timePart.substr(start, mPos - start), minutes);
         }
         if (sPos != std::string::npos) {
             size_t start = (mPos != std::string::npos) ? mPos + 1 : ((hPos != std::string::npos) ? hPos + 1 : 0);
-            seconds = std::stod(timePart.substr(start, sPos - start));
+            TryParseFloat(timePart.substr(start, sPos - start), seconds);
         }
     }
     
@@ -156,7 +158,9 @@ int GetAttrInt(const tinyxml2::XMLElement* elem, const char* name, int defaultVa
 double GetAttrDouble(const tinyxml2::XMLElement* elem, const char* name, double defaultVal = 0.0) {
     if (!elem) return defaultVal;
     const char* val = elem->Attribute(name);
-    return val ? std::stod(val) : defaultVal;
+    double parsed = defaultVal;
+    if (val) TryParseFloat(val, parsed);
+    return parsed;
 }
 
 // Recursively gather the text of an ODF text element (text:p / text:span /
@@ -515,7 +519,7 @@ private:
                     cellStyle.font.family = GetAttr(textProps, "style:font-name", "Arial");
                     std::string fontSize = GetAttr(textProps, "fo:font-size");
                     if (!fontSize.empty()) {
-                        cellStyle.font.size = std::stof(fontSize);
+                        TryParseFloat(fontSize, cellStyle.font.size);
                     }
                     cellStyle.font.bold = (GetAttr(textProps, "fo:font-weight") == "bold");
                     cellStyle.font.italic = (GetAttr(textProps, "fo:font-style") == "italic");
@@ -1507,7 +1511,12 @@ private:
                 if (v.IsText()) return "\"" + v.GetText() + "\"";
                 if (v.IsBoolean()) return v.GetBoolean() ? "TRUE()" : "FALSE()";
                 if (v.IsError()) return CellErrorToString(v.GetError());
+                // An ODS formula uses the comma (or semicolon) as its
+                // argument separator, so a comma decimal point would split one
+                // literal into two arguments. The document's numbers are
+                // dot-decimal whatever the writer's locale is.
                 std::ostringstream os;
+                os.imbue(std::locale::classic());
                 os << v.GetNumber();
                 return os.str();
             }

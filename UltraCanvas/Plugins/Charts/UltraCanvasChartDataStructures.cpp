@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include <sstream>
+#include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
 #include "Plugins/Charts/UltraCanvasChartDataStructures.h"
 
 namespace UltraCanvas {
@@ -50,9 +51,11 @@ namespace UltraCanvas {
         }
 
         if (values.size() >= 2) {
-            double x = std::stod(values[0]);
-            double y = std::stod(values[1]);
-            double z = values.size() > 2 ? std::stod(values[2]) : 0.0;
+            double x = 0.0, y = 0.0, z = 0.0;
+            if (!TryParseFloat(values[0], x) || !TryParseFloat(values[1], y)) {
+                return ChartDataPoint(0, 0, 0);
+            }
+            if (values.size() > 2) TryParseFloat(values[2], z);
             std::string label = values.size() > 3 ? values[3] : "";
 
             return ChartDataPoint(x, y, z, label);
@@ -175,9 +178,11 @@ namespace UltraCanvas {
         }
 
         if (values.size() >= 2) {
-            double x = std::stod(values[0]);
-            double y = std::stod(values[1]);
-            double z = values.size() > 2 ? std::stod(values[2]) : 0.0;
+            double x = 0.0, y = 0.0, z = 0.0;
+            if (!TryParseFloat(values[0], x) || !TryParseFloat(values[1], y)) {
+                return ChartDataPoint(0, 0, 0);
+            }
+            if (values.size() > 2) TryParseFloat(values[2], z);
             std::string label = values.size() > 3 ? values[3] : "";
 
             return ChartDataPoint(x, y, z, label);

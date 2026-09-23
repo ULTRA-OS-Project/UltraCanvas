@@ -608,6 +608,16 @@ private:
     // `DropFilesOnTreeNode` pins onto the Pinned section or moves the files into
     // a folder node, returning whether it handled the drop.
     bool IsTreeDropTarget(const TreeNode* node) const;
+    // Queues the upload of `files` into the remote folder `folder`, one request
+    // per file, and puts what happened on the status bar: how many are on
+    // their way to which drive, and how many were left out (a folder, a
+    // remote entry) with the first reason. Returns the number queued; the
+    // reason for what was left out comes back in `firstRefusal`. Used by a
+    // drop on a remote row of the tree and by a drop onto a remote folder in
+    // a display (the widget's remoteUpload hook).
+    int UploadToRemoteFolder(const std::string& folder,
+                             const std::vector<std::string>& files,
+                             std::string& firstRefusal);
     bool DropFilesOnTreeNode(TreeNode* target,
                              const std::vector<std::string>& files);
     // The tree's context menu (Copy / Delete / Paste / Pin / Unpin) at the

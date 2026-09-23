@@ -649,7 +649,7 @@ void VideoGenDialog::RunCapability() {
         }
     }
     if (input3_ && !input3_->GetText().empty()) {
-        try { req.durationSec = std::stod(input3_->GetText()); } catch (...) {}
+        try { req.durationSec = std::stod(input3_->GetText()); } catch (...) {}   // locale-ok: the user typed this duration into the dialog
     }
 
     RunOffThread([cfg, req]() -> RunOutcome {
@@ -727,7 +727,7 @@ void MusicGenDialog::RunCapability() {
     req.prompt = input1_ ? input1_->GetText() : "";
     req.mode   = MusicGenMode::Instrumental;
     if (input2_ && !input2_->GetText().empty()) {
-        try { req.durationSec = std::stod(input2_->GetText()); } catch (...) {}
+        try { req.durationSec = std::stod(input2_->GetText()); } catch (...) {}   // locale-ok: the user typed this duration into the dialog
     }
     if (input3_ && !input3_->GetText().empty()) {
         try { req.bpm = std::stoi(input3_->GetText()); } catch (...) {}

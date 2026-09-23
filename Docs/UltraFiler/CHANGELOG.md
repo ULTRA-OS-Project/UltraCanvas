@@ -1,4 +1,4 @@
-#### 2026-09-23 *1.48.0*
+#### 2026-09-23 *1.49.0*
 - **The status line says what a drive is doing, and a transfer gets a bar.**
   1.46.0 gave the folder area its own message while a listing is on its way.
   This is the other half: the status strip, and the jobs that are not
@@ -33,7 +33,7 @@
     transfer runs and put the previous ones back afterwards. An upload is no
     reason to deafen the rest of the application.
 
-#### 2026-09-23 *1.47.0*
+#### 2026-09-23 *1.48.0*
 - **An FTP drive's folders appear under it in the tree.** A remote drive was a
   leaf: it had no expand button, and opening it listed its folders on the right
   while its row in the tree stayed empty. The tree deliberately refused to go
@@ -61,6 +61,16 @@
     answers `is_directory` for the folder it is given; for a path on a server
     that is "no", and the row - with everything under it - would have been
     dropped from the tree the moment anything changed inside it.
+
+#### 2026-09-23 *1.47.0*
+- **Drop files onto a remote folder in the display to upload them, too.**
+  1.46.0 let a drop on the drive's tree row upload; now a drop onto the
+  folder shown in a display does the same - from another program, or from
+  the other display of the split view. The status bar says how many files
+  are on their way to which drive and folder, and what was left out and why
+  (a folder, a remote entry). Moving or copying between two places on the
+  same drive is still not offered, and says so. Needs the framework change
+  that adds the widget's `remoteUpload` hook.
 
 #### 2026-09-23 *1.46.0*
 - **A remote folder being fetched shows progress, not "Folder is empty!".**
@@ -543,10 +553,10 @@
   pulls that display back. The folder tree leaves hidden folders out either
   way. Stored as `display.files.show.hidden` in the config file.
 - **The settings pages showed their explanations half-cut.** The line under
-  each page title and the notes block at its foot were drawn one line tall with
-  the text clipped through them. The cause was in the layout engine, not in the
-  settings window - see the framework changelog for 0.8.43 (wrapped text in a
-  flex column) - and every page is legible with that fix.
+  each page title and the notes block at its foot were drawn one line tall
+  with the text clipped through them. The cause was in the layout engine,
+  not in the settings window - see the framework changelog for 0.8.43
+  (wrapped text in a flex column) - and every page is legible with that fix.
 
 #### 2026-09-13 *1.31.0*
 - **Folder icons show the first pictures inside the folder**, peeking out of
