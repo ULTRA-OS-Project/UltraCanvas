@@ -1,3 +1,27 @@
+#### 2026-09-23 *0.9.33*
+- **The callback-cycle check now runs in CI, and the rule is written down.**
+  `scripts/check_callback_cycles.py` shipped in 0.9.32 with nothing calling
+  it, which is the same blind spot as a test no pipeline builds.
+  `.github/workflows/callback-cycles.yml` runs it with `--strict` on every
+  pull request that touches the roots it scans — `UltraCanvas/core`,
+  `UltraCanvas/include`, `UltraCanvas/dialogs`, `Apps`, `SmartHome` — plus
+  the script and the workflow itself. Triggers, path filters and the
+  concurrency group mirror `ui-reuse.yml` exactly, including the base-branch
+  list that covers stacked pull requests (`main` and `claude/**`): #455 once
+  reached 1059 changed lines with no job running because that list said
+  `main` alone.
+  - **`AGENTS.md` states the rule** beside "Build UI out of UltraCanvas
+    elements", where the next author is already reading, and in the house
+    rules beside the line about running the UI check before pushing. A
+    callback stored on a widget must not capture a `shared_ptr` to that
+    widget or to a container above it; capture the back-reference raw. The
+    entry says which captures are ownership rather than a cycle, so the rule
+    cannot be read as "never capture anything".
+  - Verified by reintroducing one of the 53 cycles that 0.9.32 removed:
+    the workflow's exact command reports it and exits 1, and exits 0 again
+    once reverted. On a clean tree it takes about five seconds over 1173
+    files, so it costs a CI slot, not a CI budget.
+
 #### 2026-09-23 *0.9.32*
 - **The demo leaked its whole widget tree, and every callback in it.** A
   widget owns its callbacks, so a callback that captures a `shared_ptr` to

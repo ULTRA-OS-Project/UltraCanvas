@@ -138,6 +138,18 @@ naturally owns its buffer and caret. Declare any other exception in the source:
 empty, and the intent is that it stays empty. Do not add to it to silence a
 finding.
 
+A second rule follows from using the elements: **a callback stored on a widget
+must not capture a `std::shared_ptr` to that widget, or to any container above
+it.** The widget owns the callback, so the callback owning it back closes a
+cycle neither end escapes and the whole subtree leaks. Capture the
+back-reference raw — `[button = button.get(), status]` — which is valid for as
+long as the callback can run, because the thing holding the callback is the
+thing being pointed at. Captures pointing the other way (a popup the lambda
+keeps alive, a sibling it updates, `make_shared` state) are ownership, not a
+cycle, and stay `shared_ptr`. `scripts/check_callback_cycles.py` enforces this
+and runs in CI; a genuine exception opts out with
+`// callback-cycle-exempt: <why>`.
+
 ## Building and testing
 
 ```bash
@@ -283,6 +295,9 @@ anywhere else, and never introduce a new literal copy of one:
    Writing `DrawText` / `FillRoundedRectangle` plus a private buffer, caret or
    `hovered` flag to make a control is a defect, not a shortcut. Run
    `python3 scripts/check_ui_reuse.py` before pushing; CI runs it too.
+   Wiring a callback on that element? It must not capture a `shared_ptr` to
+   the element or to a container above it — capture it raw. Run
+   `python3 scripts/check_callback_cycles.py`; CI runs that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change.
