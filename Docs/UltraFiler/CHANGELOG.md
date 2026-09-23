@@ -1,3 +1,32 @@
+#### 2026-09-23 *1.46.0*
+- **An FTP drive's folders appear under it in the tree.** A remote drive was a
+  leaf: it had no expand button, and opening it listed its folders on the right
+  while its row in the tree stayed empty. The tree deliberately refused to go
+  further, because a remote folder's children have to be fetched from a server
+  and the tree cannot wait on one while it paints.
+  - **It no longer has to wait.** The drives already keep a listing cache whose
+    misses are filled by a worker (that is how the folder display shows a
+    server without blocking), so the tree reads the same cache: a hit fills the
+    row now, a miss only queues the fetch, and the arriving listing - the very
+    one that refreshes the display - fills the row when it lands. Opening a
+    drive is therefore enough to make its folders appear beneath it, and
+    expanding the row without opening it works too.
+  - **Folders inside a drive expand in turn**, down as far as the server goes,
+    each one fetched only when it is asked for.
+  - **The expand button is offered rather than probed for.** Asking whether a
+    remote folder has subfolders means listing it, which would be one round
+    trip per row before the user has asked to see any of them; the button is
+    there from the start and withdrawn again when the listing turns out to
+    hold no folders.
+  - **The rows follow the drive.** A folder created, renamed or deleted on it
+    updates them, a folder that is gone from the server leaves the tree with
+    its subtree, a drive that is removed takes its rows with it, and the tree
+    follows the display into a remote subfolder once the row to select exists.
+  - **A remote path never reaches the local reconcile.** `RefreshTreeFolder`
+    answers `is_directory` for the folder it is given; for a path on a server
+    that is "no", and the row - with everything under it - would have been
+    dropped from the tree the moment anything changed inside it.
+
 #### 2026-09-22 *1.45.0*
 - **Extras > Find text: search inside files.** A new first item in the file
   context menu's *Extras* submenu asks for a text and lists every file in the

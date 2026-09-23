@@ -293,8 +293,30 @@ private:
     void RefreshRemoteDriveNodes();
     // Adds one drive row. Unlike AddTreeFolderNode this queues no subfolder
     // probe: that probe reads the local filesystem, which has nothing to say
-    // about a path on a server.
+    // about a path on a server. The row's expand button comes from the
+    // placeholder below instead, and its subfolders from the drive's listing.
     void AddTreeRemoteDriveNode(const RemoteDrive& drive);
+    // Adds one folder row inside a remote drive. The remote counterpart of
+    // AddTreeFolderNode: same shape, but the expand button is offered up
+    // front rather than probed for, because probing a remote folder means
+    // listing it over the network.
+    void AddTreeRemoteFolderNode(const std::string& parentId,
+                                 const std::string& path,
+                                 const std::string& label);
+    // Gives a remote row the "..." placeholder child that draws its expand
+    // button. Does nothing for a row that already holds children, or whose
+    // real children are already in.
+    void AddRemoteTreePlaceholder(const std::string& path);
+    // Fills a remote folder's row with the subfolders its listing holds.
+    //
+    // Never waits on a server: it reads the drives' cache, and a miss only
+    // queues the fetch. That is what `listingReady` is for - a cache miss and
+    // a folder that really holds no subfolders both come back as an empty
+    // listing, and only the caller knows which it is. onListingArrived passes
+    // true (the answer is in, and an empty one is the truth, so rows that are
+    // gone leave and the expand button goes with them); an expand passes
+    // false (keep the button and wait for the fetch this call just queued).
+    void LoadRemoteTreeChildren(const std::string& path, bool listingReady);
     // Gives one filer widget the hooks that let it show a remote folder and
     // change what is on it (UltraCanvasFilerWidget::isRemotePath,
     // remoteListing, remoteDelete, remoteRename, remoteMakeDirectory).

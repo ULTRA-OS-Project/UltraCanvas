@@ -1979,12 +1979,114 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
 void UltraFilerWindow::AddTreeRemoteDriveNode(const RemoteDrive& drive) {
     if (!folderTree) return;
     // No subfolder probe: it reads the local filesystem, which knows nothing
-    // about a path on a server. The row is given the expand button the first
-    // time it is opened instead, by the listing itself.
+    // about a path on a server.
     TreeNodeData data = MakeFolderNodeData(drive.rootPath, drive.displayName,
                                            "cloud.svg");
     if (!folderTree->AddNode(kRemoteNodeId, data)) return;
     treeRemoteDriveNodeIds.push_back(drive.rootPath);
+    // A drive opens like any other folder row. What is below it is fetched
+    // when the row is expanded - or arrives on its own once the drive has
+    // been opened in a display, because that listing comes back here too.
+    AddRemoteTreePlaceholder(drive.rootPath);
+}
+
+void UltraFilerWindow::AddRemoteTreePlaceholder(const std::string& path) {
+    if (!folderTree) return;
+    if (treeChildrenLoaded.count(path)) return;   // its real children are in
+    TreeNode* node = folderTree->FindNode(path);
+    if (!node || !node->children.empty()) return;
+    TreeNodeData placeholder;
+    placeholder.nodeId = PlaceholderId(path);
+    placeholder.text = "...";
+    folderTree->AddNode(path, placeholder);
+}
+
+void UltraFilerWindow::AddTreeRemoteFolderNode(const std::string& parentId,
+                                               const std::string& path,
+                                               const std::string& label) {
+    if (!folderTree) return;
+    if (!folderTree->AddNode(parentId,
+                             MakeFolderNodeData(path, label, "folder-brown.svg")))
+        return;
+    // Offered rather than probed: asking whether a remote folder has
+    // subfolders means listing it, which is a round trip per row, for every
+    // row, before the user has asked to see any of them. The button is taken
+    // away again by LoadRemoteTreeChildren when the listing turns out to hold
+    // no folders.
+    AddRemoteTreePlaceholder(path);
+}
+
+void UltraFilerWindow::LoadRemoteTreeChildren(const std::string& path,
+                                              bool listingReady) {
+    if (!folderTree || !remoteDrives) return;
+    TreeNode* node = folderTree->FindNode(path);
+    if (!node) return;   // the tree does not show this folder
+
+    // Answers from the cache; a miss queues the fetch and comes back through
+    // onListingArrived. Nothing here blocks on the network.
+    std::vector<FilerEntry> entries;
+    std::string error;
+    if (!remoteDrives->List(path, entries, error)) {
+        // The drive refused it - an account that is gone, a folder the server
+        // will not list. Nothing below it, and no button promising there is.
+        folderTree->RemoveNode(PlaceholderId(path));
+        folderTree->RequestRedraw();
+        return;
+    }
+
+    std::vector<TreeChild> wanted;
+    for (const FilerEntry& e : entries) {
+        if (!e.isDirectory || e.isHidden || e.name.empty()) continue;
+        // The drive spells each entry's path for us (MakeRemoteFilerPath over
+        // the account id and what the server returned), so that is what the
+        // row is keyed by - the same string the display and the history use.
+        // The fallback is for an entry that arrived carrying only its name.
+        const std::string childPath =
+                e.path.empty() ? RemoteFilerChild(path, e.name) : e.path;
+        if (!childPath.empty())
+            wanted.push_back({childPath, e.name, "folder-brown.svg"});
+    }
+
+    // An empty answer before the listing is in is "not yet", not "no
+    // subfolders": leave the row as it stands and wait to be called again.
+    if (wanted.empty() && !listingReady) return;
+
+    std::unordered_set<std::string> wantedPaths;
+    for (const TreeChild& c : wanted) wantedPaths.insert(c.path);
+
+    // Rows whose folder is no longer on the server. Collected before anything
+    // is removed: dropping a row edits node->children.
+    std::vector<std::string> gone;
+    if (listingReady) {
+        for (const std::unique_ptr<TreeNode>& child : node->children) {
+            const std::string& id = child->data.nodeId;
+            if (id.find(kPlaceholderSuffix) != std::string::npos) continue;
+            if (!wantedPaths.count(id)) gone.push_back(id);
+        }
+    }
+    for (const std::string& id : gone) DropTreeSubtree(id);
+
+    // Rows already there keep their place and their own subtree: an arriving
+    // listing is usually the same folders over again.
+    bool added = false;
+    for (const TreeChild& c : wanted) {
+        if (folderTree->FindNode(c.path)) continue;
+        AddTreeRemoteFolderNode(path, c.path, c.label);
+        added = true;
+    }
+    // Appended rows would sit below the ones already there; the tree lists a
+    // folder's children by name, as TreeChildrenOf sorts the local ones.
+    if (added) folderTree->SortNodeChildren(path, false, true);
+
+    if (listingReady) {
+        // The real children are in. The placeholder goes last, because a node
+        // whose last child is removed is demoted to a leaf and loses its
+        // expanded state - and going last is also what turns a folder with
+        // nothing below it back into the leaf it is.
+        treeChildrenLoaded.insert(path);
+        folderTree->RemoveNode(PlaceholderId(path));
+    }
+    if (added || !gone.empty() || listingReady) folderTree->RequestRedraw();
 }
 
 void UltraFilerWindow::RefreshRemoteDriveNodes() {
@@ -1992,8 +2094,11 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     TreeNode* section = folderTree->FindNode(kRemoteNodeId);
     if (!section) return;
 
+    // DropTreeSubtree, not RemoveNode: the rows below a drive are real folder
+    // rows now, and the record that they were loaded has to go with them, or
+    // the same drive added back would never be listed again.
     for (const std::string& id : treeRemoteDriveNodeIds)
-        folderTree->RemoveNode(id);
+        DropTreeSubtree(id);
     treeRemoteDriveNodeIds.clear();
 
     for (const RemoteDrive& d : remoteDrives->Drives())
@@ -2820,12 +2925,30 @@ void UltraFilerWindow::BuildFolderTree() {
     remoteDrives->onListingArrived = [this](const std::string& path) {
         // Only the display actually showing that folder needs redoing.
         RefreshRemoteFolderDisplays(path);
+        // The tree too: this is the answer its row was waiting for, whether
+        // it was expanded or the drive was simply opened in a display - which
+        // is what makes a drive's folders appear under it once it is browsed.
+        LoadRemoteTreeChildren(path, /*listingReady=*/true);
+        // And now that the rows below it exist, the tree can follow the
+        // display into them. The selection could not be synced while the
+        // listing was still in flight: the row to select was not there yet.
+        FilerTabState* tab = ActiveTabState();
+        if (tab && tab->filer && !tab->filer->IsShowingFileList() &&
+            TreeFollowsActiveDisplay() &&
+            IsRemoteFilerPath(tab->filer->GetPath()) &&
+            IsPathInside(tab->filer->GetPath(), path))
+            SyncTreeSelection(tab->filer->GetPath());
     };
     // A change to a drive finished: the folder it touched has already been
     // dropped from the cache, so refreshing it refetches from the server.
     remoteDrives->onOperationFinished = [this](const std::string& folderPath,
                                                const std::string& message) {
         RefreshRemoteFolderDisplays(folderPath);
+        // The folder was dropped from the cache when the change finished, so
+        // this queues the refetch that brings the tree's rows back in line -
+        // a folder created, renamed or deleted on the drive. The rows are not
+        // touched until that answer arrives.
+        LoadRemoteTreeChildren(folderPath, /*listingReady=*/false);
         if (message.empty()) {
             lastRemoteOperationError.clear();
             return;
@@ -3073,11 +3196,17 @@ void UltraFilerWindow::ApplyTreeColors() {
 void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     if (!node) return;
     const std::string path = node->data.nodeId;
-    // A remote drive's row is a leaf in the tree: its children would have to
-    // be fetched from a server, which the tree cannot wait for. Clicking it
-    // browses the drive in the folder display, which can. Guarded rather than
-    // left to find nothing, so no local scan is ever run on a remote path.
-    if (IsRemoteFilerPath(path)) return;
+    // A remote folder's children come from the drive's listing, never from
+    // the local filesystem - and never by waiting on a server here, on the UI
+    // thread. LoadRemoteTreeChildren answers from the cache and leaves the
+    // fetch it queues to arrive through onListingArrived, which calls it
+    // again. It keeps its own record of what is loaded, so the guard below
+    // (which would mark the path scanned before any answer was in) is not
+    // used for remote paths.
+    if (IsRemoteFilerPath(path)) {
+        LoadRemoteTreeChildren(path, /*listingReady=*/false);
+        return;
+    }
     // Once per node: the placeholder is only a hint that a scan is due, and a
     // node may reach this before its probe has even added one.
     if (!treeChildrenLoaded.insert(path).second) return;
@@ -3109,6 +3238,14 @@ void UltraFilerWindow::DropTreeSubtree(const std::string& path) {
 // put right.
 void UltraFilerWindow::RefreshTreeFolder(const std::string& folder) {
     if (!folderTree || folder.empty()) return;
+    // A remote folder is not on this disk. Left to the code below, the
+    // is_directory test would answer no and the row - with everything under
+    // it - would be dropped from the tree. The drive's own listing is what
+    // brings a remote row back in line.
+    if (IsRemoteFilerPath(folder)) {
+        LoadRemoteTreeChildren(folder, /*listingReady=*/false);
+        return;
+    }
     TreeNode* node = folderTree->FindNode(folder);
     if (!node) return;   // the tree never reached this far: nothing is stale
 
@@ -3371,12 +3508,21 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
     if (!node) {
         // Expand the deepest known ancestor down towards the target folder.
         std::vector<std::string> chain;    // [path, parent, ..., root]
-        fs::path p(path);
-        while (true) {
-            chain.push_back(p.string());
-            const fs::path parent = p.parent_path();
-            if (parent.empty() || parent == p) break;
-            p = parent;
+        if (IsRemoteFilerPath(path)) {
+            // A remote path climbs by its own scheme. fs::path would read
+            // "ultracloud://acct/Videos" as an ordinary relative path and
+            // never arrive at the drive's root, which is spelled with the
+            // trailing slash RemoteFilerParent returns.
+            for (std::string p = path; !p.empty(); p = RemoteFilerParent(p))
+                chain.push_back(p);
+        } else {
+            fs::path p(path);
+            while (true) {
+                chain.push_back(p.string());
+                const fs::path parent = p.parent_path();
+                if (parent.empty() || parent == p) break;
+                p = parent;
+            }
         }
         size_t idx = 0;
         TreeNode* anchor = nullptr;
