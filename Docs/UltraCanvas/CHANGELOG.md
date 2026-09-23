@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.29*
+#### 2026-09-23 *0.9.31*
 - **New: UltraNet's OAuth2 app registry** (`<UltraNet/UltraNetOAuth2Apps.h>`,
   `UltraNet_OAuth2SetApp` / `SetBuiltInApp` / `AddAppEnvPrefix` /
   `SetAppAlias` / `ParseAppsIni` / `LoadAppsFile` / `GetApp` / `HasApp` /
@@ -28,6 +28,16 @@
   cases: tier order and whole-tier precedence, the built-in floor surviving
   `ClearApps`, prefix order, aliases with chains and cycles, the tolerant
   file load); the UltraMail and UltraCloud suites run unchanged.
+#### 2026-09-23 *0.9.30*
+- **UltraCalendar proposal: the OAuth app registration is UltraNet's**
+  (`Docs/Research/UltraCalendarDesignProposal.md`). The accounts section, the
+  two gap tables and open question 3 described the Google / Microsoft app
+  registration as UltraMail's baked-in client and named the two module
+  lookups as two patterns; the shared OAuth2 app registry
+  (`UltraNetOAuth2Apps.h`, 0.9.29) makes it one, so the proposal now says the
+  calendar reads `UltraNet_OAuth2GetApp("google")`, adds an `ULTRACALENDAR_`
+  environment prefix as its profile, and marks the question resolved. 0.9.29
+  is the registry's own entry, on its pull request.
 
 #### 2026-09-23 *0.9.28*
 - **New design proposal: UltraCalendar, a stand-alone calendar for ULTRA OS**
