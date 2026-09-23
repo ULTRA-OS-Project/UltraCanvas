@@ -1554,11 +1554,11 @@ static void TestSnapshotCsv() {
         std::string line;
         while (std::getline(file, line)) { if (!line.empty() && line.back() == '\r') line.pop_back(); lines.push_back(line); }
         CHECK(lines.size() == 4 && lines[0] == "application,pid,executable,user,attributed,connections,established,"
-              "listening,peers,peer_addresses,hosts,bytes_sent,bytes_received", "with the header");
+              "listening,peers,peer_addresses,hosts,via,serves,bytes_sent,bytes_received", "with the header");
         CHECK(lines.size() > 1 && lines[1].rfind("firefox,100,", 0) == 0 &&
               lines[1].find(",yes,2,2,0,2,203.0.113.7;93.184.216.34,\"a203.deploy, static;www.example.com\",") != std::string::npos,
               "the busiest first, peers and hosts semicolon-joined and quoted when a comma is inside");
-        CHECK(lines.size() > 1 && (lines[1].find(",1000,5000") != std::string::npos || lines[1].find(",,") != std::string::npos),
+        CHECK(lines.size() > 1 && (lines[1].find(",,,1000,5000") != std::string::npos || lines[1].find(",,,,") != std::string::npos),
               "byte totals present only when every connection had them");
         bool orphan = false;
         for (const auto& l : lines) if (l.rfind("(unattributed),,", 0) == 0 && l.find(",no,") != std::string::npos) orphan = true;
@@ -1577,9 +1577,9 @@ static void TestSnapshotCsv() {
         CHECK(lines.size() == 5 && lines[0].rfind("application,pid,executable,user,transport,family,local,remote,"
               "remote_name,name_source,state,", 0) == 0, "with the header");
         CHECK(lines.size() > 1 && lines[1].find("firefox,100,") == 0 &&
-              lines[1].find(",93.184.216.34:443,www.example.com,DNS proxy,ESTABLISHED,1000,5000") != std::string::npos,
+              lines[1].find(",93.184.216.34:443,www.example.com,DNS proxy,ESTABLISHED,,,,1000,5000") != std::string::npos,
               "a named connection carries the name, its source and its counters");
-        CHECK(lines.size() > 3 && lines[3].find(",*,,,LISTEN,,") != std::string::npos,
+        CHECK(lines.size() > 3 && lines[3].find(",*,,,LISTEN,,,,,") != std::string::npos,
               "a listener's peer is * and absent counters are empty, never zero");
         CHECK(lines.size() > 4 && lines[4].rfind("(unattributed),,,uid 1000,", 0) == 0,
               "an unattributed socket shows its owning UID");
@@ -1587,6 +1587,90 @@ static void TestSnapshotCsv() {
     }
     CHECK(!NetworkMonitor_ExportSummaryCsv(summaries, "/nonexistent-dir/x.csv"),
           "a path that cannot be written is refused");
+}
+
+// =============================================================================
+// Loopback chains
+
+static void TestLoopbackDecode() {
+    std::printf("Loopback chains\n");
+    // A mail client (pid 1) talks to an antivirus proxy (pid 2) on
+    // 127.0.0.1:12993; the proxy talks to the mail server for it. An
+    // unrelated app (pid 3) talks to the internet directly.
+    std::vector<NetworkConnection> table;
+    NetworkConnection client = MakeConnection(1, "thunderbird", "127.0.0.1", NetworkConnectionState::Established);
+    client.localAddress = "127.0.0.1"; client.localPort = 57547; client.remotePort = 12993;
+    NetworkConnection listener = MakeConnection(2, "AvastSvc", "0.0.0.0", NetworkConnectionState::Listening);
+    listener.localAddress = "127.0.0.1"; listener.localPort = 12993; listener.remotePort = 0;
+    NetworkConnection accepted = MakeConnection(2, "AvastSvc", "127.0.0.1", NetworkConnectionState::Established);
+    accepted.localAddress = "127.0.0.1"; accepted.localPort = 12993; accepted.remotePort = 57547;
+    NetworkConnection outbound = MakeConnection(2, "AvastSvc", "95.217.106.38", NetworkConnectionState::Established);
+    outbound.localPort = 57616; outbound.remotePort = 993; outbound.remoteName = "mail.example.net";
+    NetworkConnection direct = MakeConnection(3, "firefox", "93.184.216.34", NetworkConnectionState::Established);
+    // A dual-stack proxy reports its IPv4 client as ::ffff:127.0.0.1.
+    NetworkConnection client6 = MakeConnection(1, "thunderbird", "127.0.0.1", NetworkConnectionState::Established);
+    client6.localAddress = "127.0.0.1"; client6.localPort = 57613; client6.remotePort = 12995;
+    NetworkConnection accepted6 = MakeConnection(2, "AvastSvc", "::ffff:127.0.0.1", NetworkConnectionState::Established);
+    accepted6.family = NetworkAddressFamily::IPv6; accepted6.localAddress = "::ffff:127.0.0.1";
+    accepted6.localPort = 12995; accepted6.remotePort = 57613;
+    NetworkConnection listener6 = MakeConnection(2, "AvastSvc", "::", NetworkConnectionState::Listening);
+    listener6.family = NetworkAddressFamily::IPv6; listener6.localAddress = "::"; listener6.localPort = 12995; listener6.remotePort = 0;
+    table = { client, listener, accepted, outbound, direct, client6, accepted6, listener6 };
+
+    NetworkMonitor_DecodeLoopback(table);
+    CHECK(table[0].loopbackRole == LoopbackRole::Client && table[0].localPeer && table[0].localPeer->pid == 2,
+          "the client's connection points at the proxy");
+    CHECK(table[2].loopbackRole == LoopbackRole::Server && table[2].localPeer && table[2].localPeer->pid == 1,
+          "the proxy's accepted socket points back at the client");
+    CHECK(table[1].loopbackRole == LoopbackRole::None && !table[1].localPeer, "the listener itself is not a chain");
+    CHECK(table[3].loopbackRole == LoopbackRole::None && table[3].forProcesses.size() == 1 &&
+          table[3].forProcesses[0] == "thunderbird (1)",
+          "the proxy's outbound connection is marked as for the client it serves");
+    CHECK(table[4].forProcesses.empty() && !table[4].localPeer, "an application with no proxy carries nothing");
+    CHECK(table[5].loopbackRole == LoopbackRole::Client && table[5].localPeer && table[5].localPeer->pid == 2 &&
+          table[6].loopbackRole == LoopbackRole::Server && table[6].localPeer && table[6].localPeer->pid == 1,
+          "an IPv4-mapped peer pairs with its plain IPv4 mirror");
+    CHECK(std::string(NetworkMonitor_LoopbackRoleName(LoopbackRole::Server)) == "server" &&
+          std::string(NetworkMonitor_LoopbackRoleName(LoopbackRole::None)).empty(), "roles have names");
+
+    const auto groups = NetworkMonitor_SummarizeByProcess(table);
+    const ProcessTrafficSummary* proxy = nullptr;
+    const ProcessTrafficSummary* mail = nullptr;
+    for (const auto& g : groups) { if (g.process.pid == 2) proxy = &g; if (g.process.pid == 1) mail = &g; }
+    CHECK(proxy && proxy->servesProcesses.size() == 1 && proxy->servesProcesses[0] == "thunderbird (1)" &&
+          proxy->viaProcesses.empty(), "the roll-up says whom the proxy serves");
+    CHECK(mail && mail->viaProcesses.size() == 1 && mail->viaProcesses[0] == "AvastSvc (2)" &&
+          mail->servesProcesses.empty(), "and what the client goes through");
+
+    // The CSVs carry the chain.
+    const std::filesystem::path conns = std::filesystem::temp_directory_path() / "networkmonitor-via.csv";
+    int64_t rows = 0;
+    CHECK(NetworkMonitor_ExportConnectionsCsv(table, conns.string(), &rows) && rows == 8, "the connections export");
+    {
+        std::ifstream file(conns);
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(file, line)) { if (!line.empty() && line.back() == '\r') line.pop_back(); lines.push_back(line); }
+        CHECK(lines.size() == 9 && lines[0].find(",state,loopback_role,local_peer,for,") != std::string::npos,
+              "with the chain columns in the header");
+        CHECK(lines.size() > 1 && lines[1].find(",ESTABLISHED,client,AvastSvc (2),,") != std::string::npos,
+              "the client's row names the proxy");
+        CHECK(lines.size() > 4 && lines[4].find(",mail.example.net,none,ESTABLISHED,,,thunderbird (1),") != std::string::npos,
+              "the proxy's outbound row says whom it is for");
+        std::filesystem::remove(conns);
+    }
+    const std::filesystem::path apps = std::filesystem::temp_directory_path() / "networkmonitor-via-apps.csv";
+    CHECK(NetworkMonitor_ExportSummaryCsv(groups, apps.string(), &rows) && rows == 3, "the roll-up exports");
+    {
+        std::ifstream file(apps);
+        std::string header, first;
+        std::getline(file, header);
+        bool found = false;
+        std::string line;
+        while (std::getline(file, line)) if (line.rfind("AvastSvc,2,", 0) == 0 && line.find(",,thunderbird (1),") != std::string::npos) found = true;
+        CHECK(header.find(",hosts,via,serves,") != std::string::npos && found, "with via and serves columns");
+        std::filesystem::remove(apps);
+    }
 }
 
 int main() {
@@ -1610,6 +1694,7 @@ int main() {
     TestSystemEventSource();
     TestStoreEvents();
     TestSnapshotCsv();
+    TestLoopbackDecode();
     std::printf("=== %s ===\n", g_failures == 0 ? "all tests passed" : "FAILURES");
     return g_failures == 0 ? 0 : 1;
 }

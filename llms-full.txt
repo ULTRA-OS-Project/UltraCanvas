@@ -1774,7 +1774,8 @@ come. Where there is no backend the module reports `NotSupported`.
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
   `NetworkMonitor_FormatEndpoint`, `NetworkMonitor_NameSourceName`,
   `NetworkMonitor_NameIsObserved`, `NetworkMonitor_ExportSummaryCsv`,
-  `NetworkMonitor_ExportConnectionsCsv`
+  `NetworkMonitor_ExportConnectionsCsv`, `NetworkMonitor_DecodeLoopback`,
+  `NetworkMonitor_LoopbackRoleName`; `LoopbackRole`
 - Names (`NetworkMonitorNames.h`): `INameSource`,
   `NetworkMonitor_RegisterNameSource`, `NetworkMonitor_ListNameSources`,
   `NetworkMonitor_StopNameSources`, `NetworkMonitor_WaitForNames`,
@@ -61836,7 +61837,7 @@ FILE: Docs/Modules/NetworkMonitor/README.md
 # NetworkMonitor — System-Wide Network Activity
 
 **Status:** Phase 1 and Phase 2 implemented (Linux, Windows, macOS; persistence; domain names; connection events); throughput charts and Phase 3 in the proposal.
-**Version:** 0.6.0
+**Version:** 0.7.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-09-23
 
@@ -61946,7 +61947,29 @@ lies.
 | `NetworkMonitor_TransportName` / `NetworkMonitor_StateName` | Display names, the kernel's spelling (`ESTABLISHED`, `CLOSE_WAIT`, `UNCONN`) |
 | `NetworkMonitor_FormatEndpoint(address, port)` | `1.2.3.4:443`, `[::1]:22`, `*:0` |
 | `NetworkMonitor_NameSourceName` / `NetworkMonitor_NameIsObserved` | A source's display name, and whether it is observed or weak |
-| `NetworkMonitor_ExportSummaryCsv` / `NetworkMonitor_ExportConnectionsCsv` | A snapshot as CSV: the roll-up one row per process (peers and hosts semicolon-joined), or the connections one row each; RFC 4180 quoting, absent counters as empty fields |
+| `NetworkMonitor_ExportSummaryCsv` / `NetworkMonitor_ExportConnectionsCsv` | A snapshot as CSV: the roll-up one row per process (peers, hosts and the loopback chain semicolon-joined), or the connections one row each with the chain; RFC 4180 quoting, absent counters as empty fields |
+| `NetworkMonitor_DecodeLoopback(connections)` | Pairs every loopback connection with its mirror and fills `loopbackRole`, `localPeer` and `forProcesses`; applied to every snapshot, exposed for fixtures |
+
+## Loopback chains
+
+An antivirus mail shield, a VPN client or a local proxy takes an
+application's connections on 127.0.0.1 and makes the real ones itself. The
+socket table shows the two halves as unrelated processes, and the
+question "which application is talking to this host?" gets the proxy's
+name. `NetworkMonitor_DecodeLoopback` joins them: every connection whose
+peer is on this machine is paired with its mirror, the socket whose local
+endpoint is this one's remote and whose remote is this one's local (an
+IPv4-mapped spelling matched to its plain one), and both get
+`loopbackRole` — *server* on the side a listener holds, *client* on the
+other — and `localPeer`, the process on the other end. Then, on the
+outbound connections of every process that serves loopback clients,
+`forProcesses` lists those clients: the applications that traffic is
+really for. That last step is an inference — the table cannot say which
+client caused one particular outbound connection — and a UI labels it
+so. `ProcessTrafficSummary` carries the same at process level
+(`viaProcesses`, `servesProcesses`), and `NetworkMonitor_ListConnections`
+decodes every snapshot before its filters, so a connection kept without
+its loopback mirror still carries what the mirror told.
 
 ## Connection events
 
@@ -62229,7 +62252,10 @@ return each socket's owning PID directly, for IPv4 and IPv6, so there is no
 join to perform. `QueryFullProcessImageNameW` (through a
 `PROCESS_QUERY_LIMITED_INFORMATION` handle) gives the executable and the
 process token the user; a process the monitor may not open keeps its PID
-and gets a `pid N` name, and is counted in the notes. `allUsers` is whether
+and is named from the Toolhelp process list (`CreateToolhelp32Snapshot`,
+read once per snapshot, no handle and no elevation needed) — an antivirus
+service reads as `AvastSvc`, not `pid 4720` — without a path or a user,
+and is counted in the notes. `allUsers` is whether
 the monitor's own token is elevated. Byte counters and events are the ETW
 work of a later increment.
 

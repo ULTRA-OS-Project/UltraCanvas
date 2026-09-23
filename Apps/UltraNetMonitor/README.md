@@ -25,6 +25,20 @@ the UI thread by a timer; both lists sit behind an
 narrows the connection list as you type. Selecting a process narrows it to
 that PID; *All applications* widens it again.
 
+## Behind a local proxy
+
+An antivirus mail shield, a VPN client or a local proxy takes an
+application's connections on 127.0.0.1 and makes the real ones itself, so
+the socket table shows two unrelated processes. The *Via* column decodes
+that chain: on the client's connection, the local process it goes to
+("→ AvastSvc (4720)"); on the proxy's accepted socket, the client
+("← thunderbird (4120)"); on the proxy's own outbound connections, the
+applications it serves ("for thunderbird (4120)") - the last is an
+inference, labelled as such in the tooltip, since the table cannot tell
+which client caused one particular outbound connection. The process
+list's *Via* says the same per application. On Windows, run unelevated,
+a service the monitor cannot open is still named from the process list.
+
 ## Export
 
 A right click on the process list opens *Export → App list…* and *Export →
@@ -32,8 +46,8 @@ App list details…*. The app list is one row per application as the list
 shows it, in its current sort order: counts, the distinct peer addresses
 and hosts, and the byte totals where every connection had them. The
 details are one row per connection, grouped by application in that order,
-with both endpoints, the host and its source, the state and the counters.
-Both go to a CSV chosen in the native save dialog; `--list --csv` and
+with both endpoints, the host and its source, the state, the loopback
+chain and the counters. Both go to a CSV chosen in the native save dialog; `--list --csv` and
 `--by-app --csv` write the same files from the command line.
 
 ## Names

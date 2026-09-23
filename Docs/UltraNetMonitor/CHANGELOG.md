@@ -1,3 +1,18 @@
+#### 2026-09-23 *0.9*
+- **Who is behind the proxy.** A *Via* column on the connection list and
+  the process list decodes loopback chains (NetworkMonitor 0.7, framework
+  0.9.40): a mail client's connection to 127.0.0.1:12993 reads
+  "→ AvastSvc (4720)", the proxy's accepted socket "← thunderbird (4120)",
+  and the proxy's own connections to the mail server "for thunderbird
+  (4120)" - the applications that traffic is really for, an inference the
+  tooltip labels as such. The process list's *Via* says what an
+  application talks through, or whom a service serves. Both CSV exports
+  gain the same columns, and `--list` / `--by-app` show them.
+- **Names for the processes Windows will not open.** A service the
+  monitor may not open, run unelevated, is named from the process list
+  instead of "pid 4720"; the tooltip says its path and user still need
+  elevation.
+
 #### 2026-09-23 *0.8*
 - **Export.** A right click on the process list opens a menu with
   *Export → App list…* and *Export → App list details…* (NetworkMonitor 0.6,
