@@ -1,3 +1,14 @@
+#### 2026-09-23 *0.9.33*
+- **Fix: `dns_resolve_honours_its_deadline` was red on the macOS Apple-silicon
+  row of every build since it landed** (`Tests/UltraNet/test_dns_timeout.cpp`,
+  from PR #514). The test asserted `Timeout` for a 1 ms lookup of a name under
+  `.invalid`, but that runner's local resolver answers NXDOMAIN inside the
+  millisecond, so c-ares reported `HostNotFound` - the deadline was met, not
+  missed, and the assertion failed on the base branch (`main` at a916fe6b)
+  as well as on every pull request that merged it. The test now accepts
+  either outcome; a hang or any other code still fails, which is what it is
+  there to catch.
+
 #### 2026-09-23 *0.9.32*
 - **The demo leaked its whole widget tree, and every callback in it.** A
   widget owns its callbacks, so a callback that captures a `shared_ptr` to
