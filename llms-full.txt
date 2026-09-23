@@ -2450,6 +2450,7 @@ their *License* is likewise marked **—** (OS component).
 | librevenge | [sourceforge.net/p/libwpd](https://sourceforge.net/p/libwpd/wiki/librevenge/) | [sourceforge.net/p/libwpd/librevenge](https://sourceforge.net/p/libwpd/librevenge/) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libsndfile | [libsndfile.github.io](https://libsndfile.github.io/libsndfile/) | [github.com/libsndfile/libsndfile](https://github.com/libsndfile/libsndfile) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libtiff | [simplesystems.org/libtiff](http://www.simplesystems.org/libtiff/) | [gitlab.com/libtiff/libtiff](https://gitlab.com/libtiff/libtiff) | [libtiff](https://spdx.org/licenses/libtiff.html) |
+| libudev (systemd) | [systemd.io](https://systemd.io/) | [github.com/systemd/systemd](https://github.com/systemd/systemd) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libvips | [libvips.org](https://www.libvips.org/) | [github.com/libvips/libvips](https://github.com/libvips/libvips) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libvorbis | [xiph.org/vorbis](https://xiph.org/vorbis/) | [github.com/xiph/vorbis](https://github.com/xiph/vorbis) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libwebp | [developers.google.com/speed/webp](https://developers.google.com/speed/webp) | [chromium.googlesource.com/webm/libwebp](https://chromium.googlesource.com/webm/libwebp/) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -2607,6 +2608,18 @@ for the full search order.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Scanners / cameras / print (native OS) | SANE, V4L2, CUPS | ICA, AVFoundation | WIA, TWAIN, Media Foundation |
+| Hot-plug watching | libudev (optional) | – (no watcher yet) | – (no watcher yet) |
+
+Hot-plug watching is what lets `IODeviceManager::StartMonitoring()` notice a
+device being plugged in or removed without the application rescanning.
+UltraCanvas' configure step looks for libudev with `pkg-config` (Debian/Ubuntu
+package `libudev-dev`, Fedora `systemd-devel`) and prints either
+`udev: <version> - hot-plug watching ENABLED` or
+`[-] udev - not found (no hot-plug watching on this build)`. Without it the
+module still builds, and `StartMonitoring()` returns `BackendUnavailable`. That
+reaches DeviceExplorer too: without libudev its tree only changes when the user
+presses **Rescan**. macOS and Windows have no watcher yet, so the same applies
+there whatever is installed.
 
 ### PixelFX module
 
@@ -69160,11 +69173,26 @@ the filter shows), and whether changes are being watched for.
 
 The first scan starts when the window opens and runs on a worker thread —
 SANE and CUPS can each take seconds to answer, and the window never waits for
-them. After it, DeviceExplorer turns on IODeviceManager's hot-plug watcher:
-where the platform has one (udev on Linux), a device plugged in or removed
-appears or disappears by itself, and the selection stays on the device you
-were looking at. Where there is no watcher, the status text says
-*press Rescan after plugging in*.
+them. After it, DeviceExplorer turns on IODeviceManager's hot-plug watcher.
+While the watcher runs, a device plugged in or removed appears or disappears by
+itself, and the selection stays on the device you were looking at.
+
+**Whether there is a watcher depends on the platform and on how UltraCanvas was
+built:**
+
+| Platform | Hot-plug watching |
+|---|---|
+| Linux | Only when the framework was built with **libudev** (`libudev-dev` on Debian/Ubuntu, `systemd-devel` on Fedora). Configuring UltraCanvas prints `udev: <version> - hot-plug watching ENABLED` when it found it, `[-] udev - not found (no hot-plug watching on this build)` when it did not. |
+| macOS, Windows | Not yet — IODeviceManager has no watcher there. |
+
+The computer node shows which case you are in: *Hot-plug monitoring* reads
+*On* or *Off*, and with it off the status text says *press Rescan after
+plugging in*. Nothing else changes — every device is still found, it just
+takes a **Rescan** to see one that arrived or left after the last scan.
+
+Even with udev, the watcher reacts to what the kernel sees: USB, video and
+sound devices arriving or leaving. A network printer or eSCL scanner that comes
+online is not a kernel event, so it still needs a **Rescan**.
 
 ## What it can find
 
@@ -69227,4 +69255,5 @@ workstation  (3 devices, grouped by Category)
 | No category at all under the computer | The build carries no device backend (the computer node says so). Rebuild with CUPS / SANE development packages installed. |
 | *Scanners (0)* although a scanner is connected | SANE has no driver for it, or the user may not access the USB device (udev rule / `scanner` group). `scanimage -L` should list it first. |
 | *Cameras (0)* on Linux | No `/dev/video*` node the user can open — check membership of the `video` group. |
-| A device stays after it was unplugged | No hot-plug watcher on this platform; press **Rescan**. |
+| A device stays after it was unplugged, or a new one does not appear | No hot-plug watcher: on Linux the framework was built without libudev (install `libudev-dev` and reconfigure), on macOS and Windows there is none yet. Press **Rescan**. |
+| A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |

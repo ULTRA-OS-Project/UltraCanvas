@@ -103,11 +103,26 @@ the filter shows), and whether changes are being watched for.
 
 The first scan starts when the window opens and runs on a worker thread —
 SANE and CUPS can each take seconds to answer, and the window never waits for
-them. After it, DeviceExplorer turns on IODeviceManager's hot-plug watcher:
-where the platform has one (udev on Linux), a device plugged in or removed
-appears or disappears by itself, and the selection stays on the device you
-were looking at. Where there is no watcher, the status text says
-*press Rescan after plugging in*.
+them. After it, DeviceExplorer turns on IODeviceManager's hot-plug watcher.
+While the watcher runs, a device plugged in or removed appears or disappears by
+itself, and the selection stays on the device you were looking at.
+
+**Whether there is a watcher depends on the platform and on how UltraCanvas was
+built:**
+
+| Platform | Hot-plug watching |
+|---|---|
+| Linux | Only when the framework was built with **libudev** (`libudev-dev` on Debian/Ubuntu, `systemd-devel` on Fedora). Configuring UltraCanvas prints `udev: <version> - hot-plug watching ENABLED` when it found it, `[-] udev - not found (no hot-plug watching on this build)` when it did not. |
+| macOS, Windows | Not yet — IODeviceManager has no watcher there. |
+
+The computer node shows which case you are in: *Hot-plug monitoring* reads
+*On* or *Off*, and with it off the status text says *press Rescan after
+plugging in*. Nothing else changes — every device is still found, it just
+takes a **Rescan** to see one that arrived or left after the last scan.
+
+Even with udev, the watcher reacts to what the kernel sees: USB, video and
+sound devices arriving or leaving. A network printer or eSCL scanner that comes
+online is not a kernel event, so it still needs a **Rescan**.
 
 ## What it can find
 
@@ -170,4 +185,5 @@ workstation  (3 devices, grouped by Category)
 | No category at all under the computer | The build carries no device backend (the computer node says so). Rebuild with CUPS / SANE development packages installed. |
 | *Scanners (0)* although a scanner is connected | SANE has no driver for it, or the user may not access the USB device (udev rule / `scanner` group). `scanimage -L` should list it first. |
 | *Cameras (0)* on Linux | No `/dev/video*` node the user can open — check membership of the `video` group. |
-| A device stays after it was unplugged | No hot-plug watcher on this platform; press **Rescan**. |
+| A device stays after it was unplugged, or a new one does not appear | No hot-plug watcher: on Linux the framework was built without libudev (install `libudev-dev` and reconfigure), on macOS and Windows there is none yet. Press **Rescan**. |
+| A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |

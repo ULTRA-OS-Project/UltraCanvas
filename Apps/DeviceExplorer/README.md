@@ -32,7 +32,11 @@ Tree icons are in `media/icons/DeviceExplorer/` (plus the framework's own
   The manager re-enumerates the category that changed on its watcher thread
   and fires the change callback, which only sets a flag; the UI timer then
   re-reads the registry with `SnapshotInventory()` — cheap, nothing is
-  enumerated twice.
+  enumerated twice. The only watcher so far is the Linux udev one, compiled
+  in when the framework's configure step finds libudev
+  (`ULTRACANVAS_HAS_UDEV`). Everywhere else `StartMonitoring()` returns
+  `BackendUnavailable`, the computer node says monitoring is off, and the
+  tree changes only on *Rescan*.
 - **Rebuild.** Every new inventory, grouping or filter rebuilds the tree.
   The selected node id and the set of groups the user collapsed are kept
   across rebuilds; a device that disappears leaves the computer shown, and
@@ -48,8 +52,11 @@ Nothing is painted by hand: every control is a framework element
 
 Built by default with the rest of the tree (`BUILD_DEVICEEXPLORER`, on);
 target and binary `DeviceExplorer`. Which device backends it can use is
-decided by the framework's configure step — CUPS and SANE need their
-development packages installed when UltraCanvas is configured.
+decided by the framework's configure step: CUPS and SANE need their
+development packages installed when UltraCanvas is configured, and so does
+libudev (`libudev-dev`) for plug-in/unplug updates on Linux. Without libudev
+the app builds and finds everything, but only a *Rescan* picks up a device
+that arrived after the last scan.
 
 ```bash
 cmake --build build --target DeviceExplorer
