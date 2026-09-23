@@ -42,6 +42,7 @@ namespace UltraCanvas {
         WindowResize,
         WindowMove,
         WindowMinimize,
+        WindowRestore,    // un-minimized by the user or the window manager
         WindowFocus,
         WindowBlur,
         WindowRepaint,

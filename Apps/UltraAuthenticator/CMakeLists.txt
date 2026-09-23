@@ -22,6 +22,8 @@ set(ULTRAAUTHENTICATOR_CORE_SOURCES
     store/EncryptedFileStore.cpp
     AccountStore.cpp
     AccountExport.cpp
+    LockPolicy.cpp
+    Preferences.cpp
     # The backup file is sealed with UCDCrypto::Seal, the framework's
     # password envelope. It is compiled here rather than linked because
     # nothing else builds it: the source lives under Plugins/Documents but the
@@ -57,7 +59,13 @@ add_executable(UltraAuthenticator
     RevealSecretDialog.cpp
     ScanAccountDialog.cpp
     BackupDialog.cpp
+    LockScreenDialog.cpp
+    SettingsDialog.cpp
 )
+
+# --version reports the release recorded in Docs/UltraAuthenticator/CHANGELOG.md.
+target_compile_definitions(UltraAuthenticator PRIVATE
+    ULTRAAUTHENTICATOR_VERSION="${ULTRAAUTHENTICATOR_VERSION}")
 
 target_include_directories(UltraAuthenticator PRIVATE
     ${ULTRACANVAS_INCLUDE_DIRS}

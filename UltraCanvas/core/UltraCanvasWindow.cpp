@@ -327,6 +327,26 @@ namespace UltraCanvas {
                 Close();
                 return true;
 
+            // Sent by a platform backend when the window manager iconifies or
+            // restores the window (Linux: WM_STATE PropertyNotify). Before
+            // this, _state only tracked Minimize()/Restore() calls made by the
+            // application itself, so IsMinimized() was false after the user
+            // clicked the title-bar button — and an application that wanted to
+            // react to that (lock, pause) had nothing to hook.
+            case UCEventType::WindowMinimize:
+                _state = WindowState::Minimized;
+                if (onWindowMinimize) {
+                    onWindowMinimize();
+                }
+                return true;
+            case UCEventType::WindowRestore:
+                _state = WindowState::Normal;
+                if (onWindowRestore) {
+                    onWindowRestore();
+                }
+                RequestRedraw();
+                return true;
+
             case UCEventType::WindowResize:
                 HandleResizeEvent(event.width, event.height);
                 RequestRedraw();

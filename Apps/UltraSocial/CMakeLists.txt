@@ -21,7 +21,6 @@ endif()
 set(ULTRASOCIAL_ENGINE_SOURCES
     engine/UltraSocialTypes.cpp
     engine/UltraSocialComposer.cpp
-    engine/UltraSocialCredentialVault.cpp
     engine/UltraSocialStore.cpp
     engine/UltraSocialWebUtil.cpp
     engine/UltraSocialConnector.cpp
@@ -43,6 +42,9 @@ target_compile_features(UltraSocialEngine PUBLIC cxx_std_20)
 target_include_directories(UltraSocialEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 target_link_libraries(UltraSocialEngine PUBLIC UltraDatabase)
+# Account credentials live in UltraVault's device-key vault (Argon2id +
+# XChaCha20-Poly1305 via UltraCrypt), not in a format of UltraSocial's own.
+target_link_libraries(UltraSocialEngine PUBLIC UltraVault)
 
 # UltraCanvasJSON lives in the UltraCanvas core library; UltraNet supplies
 # HTTP/OAuth2/sockets. With a SHARED core, UltraNet is absorbed into (and

@@ -685,7 +685,7 @@ void FibuApp::BelegeHochladen(const std::vector<std::string>& pfade) {
             if (!e.ok) { text += " (" + e.dateiname + ": " + e.fehler + ")"; break; }
         }
     }
-    text += ". Betrag und Konto fehlen noch - aus dem PDF wird nichts ausgelesen.";
+    text += ". Betrag und Konto fehlen noch - aus dem Beleg wird nichts ausgelesen.";
     Melden(text);
     Aktualisieren();
 }

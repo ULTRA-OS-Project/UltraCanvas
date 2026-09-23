@@ -120,9 +120,18 @@ void PrintUsage() {
         "                              erneut zulassen\n"
         "  datev-importe <datei>   Bisherige DATEV-Importe anzeigen\n"
         "\n"
-        "  beleg-import <datei> <pdf> [<pdf> ...]\n"
-        "                          PDF-Belege einlesen und archivieren;\n"
-        "                          je Datei entsteht ein Entwurf\n"
+        "  konten-import <datei> <EXTF_Kontenbeschriftungen.csv>\n"
+        "                          Kontenrahmen aus einem DATEV-Export\n"
+        "                          einlesen (Format-Kategorie 20); zeigt nur\n"
+        "                          an, bis --uebernehmen angegeben wird.\n"
+        "                          Nummer und Bezeichnung; Steuerschluessel\n"
+        "                          bleiben unveraendert\n"
+        "        --uebernehmen         Konten wirklich schreiben\n"
+        "\n"
+        "  beleg-import <datei> <beleg> [<beleg> ...]\n"
+        "                          Belege einlesen und archivieren (PDF oder\n"
+        "                          abfotografiert: JPEG, PNG, TIFF, HEIC,\n"
+        "                          WebP); je Datei entsteht ein Entwurf\n"
         "        --datum <datum>       Belegdatum (Pflicht)\n"
         "        --art <art>           eingangsrechnung (Standard),\n"
         "                              ausgangsrechnung, ...\n"
@@ -1194,6 +1203,85 @@ void ZeigeDatevErgebnis(const DatevErgebnis& ergebnis) {
         std::printf("  ACHTUNG: %s\n", warnung.c_str());
 }
 
+int KontenImport(int argc, char** argv) {
+    const std::string datei     = Positional(argc, argv, 0);
+    const std::string datevDatei = Positional(argc, argv, 1);
+    if (datevDatei.empty()) {
+        std::printf("Fehler: Keine DATEV-Datei angegeben.\n"
+                    "Aufruf: ultrafibu konten-import <datei> "
+                    "<EXTF_Kontenbeschriftungen.csv> [--uebernehmen]\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    DatevDefinition definition;
+    if (!LadeDatevDefinition("DATEV-Sachkontenbeschriftungen-v700.csv", definition))
+        return 1;
+
+    const KontenImportBericht bericht =
+        LeseKontenbeschriftungen(datevDatei, definition);
+    if (!bericht.ok) {
+        std::printf("Fehler: %s\n", bericht.fehler.c_str());
+        return 1;
+    }
+    std::printf("%s, Kategorie %d, Berater %s, Mandant %s\n",
+                bericht.kennzeichen.c_str(), bericht.kategorie,
+                bericht.beraternummer.c_str(), bericht.mandantennummer.c_str());
+    if (!bericht.bezeichnung.empty())
+        std::printf("\"%s\"\n", bericht.bezeichnung.c_str());
+
+    // Which chart the numbers belong to decides how a new account is
+    // classified, so it comes from the Geschäftsjahr rather than a guess.
+    std::vector<Geschaeftsjahr> jahre = store.Geschaeftsjahre(mandant.id);
+    const std::string skr = jahre.empty() ? std::string("SKR03") : jahre.back().skr;
+
+    int neu = 0, geaendert = 0;
+    const std::vector<Konto> zuSpeichern = FuegeKontenZusammen(
+        store.Konten(mandant.id), bericht.konten, skr, neu, geaendert);
+    const int unveraendert = bericht.uebernommen - neu - geaendert;
+
+    std::printf("\n%d Zeile(n) gelesen, %d Konto/Konten lesbar, %d übersprungen\n",
+                bericht.gelesen, bericht.uebernommen, bericht.uebersprungen);
+    std::printf("Kontenrahmen %s: %d neu, %d umbenannt, %d unverändert\n",
+                skr.c_str(), neu, geaendert, unveraendert);
+
+    for (const std::string& z : bericht.fehlerZeilen)
+        std::printf("  %s\n", z.c_str());
+    for (const std::string& w : bericht.warnungen)
+        std::printf("  ACHTUNG: %s\n", w.c_str());
+
+    // The format carries no tax key, so an import can never switch a tax
+    // split on - and must not switch one off either. Saying so is the point:
+    // a user who expected the Automatik to arrive with the chart would
+    // otherwise wait for something that is not in the file.
+    std::printf("\nHinweis: Dieses Format enthält nur Nummer und Bezeichnung.\n"
+                "         Steuerschlüssel (Automatikkonten) stehen nicht darin und\n"
+                "         bleiben unverändert - vorhandene werden nicht gelöscht.\n");
+
+    if (!HasOption(argc, argv, "--uebernehmen")) {
+        std::printf("\nEs wurde nichts geschrieben. "
+                    "Zum Übernehmen mit --uebernehmen wiederholen.\n");
+        return 0;
+    }
+    if (zuSpeichern.empty()) {
+        std::printf("\nNichts zu schreiben - der Kontenrahmen ist schon aktuell.\n");
+        return 0;
+    }
+    int geschrieben = 0;
+    const StoreResult ergebnis =
+        store.ImportKonten(mandant.id, zuSpeichern, akteur, geschrieben);
+    if (!ergebnis) {
+        std::printf("Fehler: %s\n", ergebnis.fehler.c_str());
+        return 1;
+    }
+    std::printf("\n%d Konto/Konten geschrieben.\n", geschrieben);
+    return 0;
+}
+
 int DatevExport(int argc, char** argv) {
     const std::string datei = Positional(argc, argv, 0);
     Store store;
@@ -1330,7 +1418,10 @@ int DatevImport(int argc, char** argv) {
 
     const DatevImportBericht bericht = LeseBuchungsstapel(
         datevDatei, mandant, jahre.back(),
-        store.SteuerschluesselListe(mandant.id));
+        store.SteuerschluesselListe(mandant.id),
+        // The chart of accounts, so a row on an Automatikkonto is split by the
+        // account the way DATEV would split it.
+        store.Konten(mandant.id));
 
     std::printf("%s, Version %d, Kategorie %d\n", bericht.kennzeichen.c_str(),
                 bericht.versionsnummer, bericht.kategorie);
@@ -1412,7 +1503,7 @@ int BelegImport(int argc, char** argv) {
     }
     if (pfade.empty()) {
         std::printf("Fehler: Aufruf ist "
-                    "ultrafibu beleg-import <datei> <pdf> [<pdf> ...] "
+                    "ultrafibu beleg-import <datei> <beleg> [<beleg> ...] "
                     "--datum <datum>\n");
         return 2;
     }
@@ -1422,7 +1513,7 @@ int BelegImport(int argc, char** argv) {
     if (datumText.empty() || !TryParseDateGerman(datumText, datum)) {
         std::printf("Fehler: --datum <datum> ist erforderlich.\n"
                     "Ohne Belegdatum lässt sich der Beleg keinem Geschäftsjahr "
-                    "zuordnen; aus dem PDF wird es nicht geraten.\n");
+                    "zuordnen; aus dem Beleg wird es nicht geraten.\n");
         return 2;
     }
     BelegArt art = BelegArt::Eingangsrechnung;
@@ -2403,6 +2494,7 @@ int main(int argc, char** argv) {
     if (befehl == "datev-pruefen") return DatevPruefen(argc, argv);
     if (befehl == "datev-import")  return DatevImport(argc, argv);
     if (befehl == "datev-importe") return DatevImporte(argc, argv);
+    if (befehl == "konten-import") return KontenImport(argc, argv);
     if (befehl == "beleg-import")     return BelegImport(argc, argv);
     if (befehl == "oss")              return Oss(argc, argv);
     if (befehl == "lieferschwelle")   return Lieferschwelle(argc, argv);

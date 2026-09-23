@@ -1,4 +1,4 @@
-#### 2026-09-22 *0.9.24*
+#### 2026-09-23 *0.9.28*
 - **The demo leaked its whole widget tree, and every callback in it.** A
   widget owns its callbacks, so a callback that captures a `shared_ptr` to
   that widget — or to any container above it — closes a cycle that neither
@@ -38,7 +38,7 @@
   - The float parse now has to consume the whole string, so `"1e"` is a
     string rather than the 1 that `std::stod` silently made of it.
 
-#### 2026-09-22 *0.9.23*
+#### 2026-09-23 *0.9.27*
 - **Seven ownership defects found by auditing every raw `new` in the tree.**
   A census of the 45 hand-written allocations outside vendored code (the rest
   of the framework allocates through `make_shared` / `make_unique`) turned up
@@ -109,6 +109,185 @@
     examples captured `new bool(false)` / `new int(0)` raw pointers in their
     `onClick` lambdas and never freed them. They are `make_shared` now — the
     DemoApp is the framework's worked example, so a leak in it propagates.
+
+#### 2026-09-22 *0.9.26*
+- **A window minimised by the user now reports it.** `IsMinimized()` and the
+  `onWindowMinimize` callback only ever reflected the application's own
+  `Minimize()` call; a click on the title-bar button changed nothing, so an
+  application had no way to notice it had been put away. The Linux backend
+  now watches the ICCCM `WM_STATE` property and raises `WindowMinimize` when
+  it becomes iconic and the new `UCEventType::WindowRestore` when it returns
+  to normal; the base window updates its state on both and calls
+  `onWindowMinimize` / `onWindowRestore`. The first consumer is
+  UltraAuthenticator, which locks its vault on minimise.
+- **Configure no longer fails on machines with Clang installed.** The
+  Linux compiler auto-detection built the C++ driver name with a
+  `REGEX REPLACE` whose replacement used `\1` for an optional group; CMake
+  3.28 rejects that as an "out-of-range escape", so every configure that did
+  not name the compiler explicitly stopped at line 59. The suffix is now
+  matched separately and appended.
+
+#### 2026-09-22 *0.9.25*
+- **Every 3D sample audited for the fault the STL aeroplane had**, by
+  measuring rather than squinting: each file of the E-45 aircraft was loaded
+  through the same path the demo pages and the Filer's thumbnails use, and
+  its silhouette profile matched against the export that draws correctly
+  (the OBJ) over all 24 axis-aligned rotations. Ten of the thirteen agree.
+  Two did not, and are fixed:
+  - **`media/3D/PLY/E-45-Aircraft.ply` held Blender's Z-up coordinates.**
+    PLY declares no up axis and this reader takes the format as Y-up - the
+    convention of the tools that write it most - so the aircraft stood on
+    its nose in every viewer that believed it. The sample is rotated into
+    the Y-up frame, where it agrees with the OBJ export vertex for vertex;
+    `Tests/ModelPLYTest.cpp` pins the new axes and says why.
+  - **`media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx` mis-declared itself.** Its
+    GlobalSettings said UpAxis = Y while its geometry is Z-up (the mesh node
+    connects straight to the scene, with no rotation to make up the
+    difference), so it too came out nose-down while the binary FBX of the
+    same scene was upright. The file now declares the Z-up frame it is
+    actually in; no vertex is touched, and the reader is unchanged.
+- Three samples are left as they are, with what they are:
+  - `X3D` and `VRML` hold the aircraft turned 180 degrees about its up
+    axis - upright, facing the other way. No format says which way a model
+    must face, so this is the files' own choice rather than a fault.
+  - `XFile` comes through **mirrored**: its mesh nodes are drawn with a
+    transform of determinant -1, because the DirectX .x format is
+    left-handed and the reader deliberately leaves that reflection in the
+    root frame (as its header documents) instead of converting to the
+    right-handed frame the rest of the model pipeline uses. The aircraft is
+    left-right symmetric, so the mirror reads as the model lying the wrong
+    way up rather than as an obvious left-right swap. Converting on import
+    (negate one axis, reverse the winding) is the fix, and it belongs to the
+    reader rather than to the sample.
+  - The `.dae`, `.blend` and `.abc` exports carry half a hull each, which is
+    what they were exported as; `Tests/ModelPLYTest.cpp` already says so.
+
+#### 2026-09-22 *0.9.24*
+- **The hostel plan in the DWG demo was a black smudge in the corner of an
+  empty sheet.** Two faults in one tile, both of them general.
+  - **A lineweight is a plot width, and it was being scaled by the block it
+    sat in.** The DXF/DWG reader resolves an entity's lineweight into points
+    and the block's INSERT becomes a group transform, which then multiplied
+    the pen along with the geometry. The hostel's elevations are inserted at
+    1054x, so their 1 pt pens came out 1054 units wide and painted a quarter
+    of the sheet solid black. `Ctx::penScale` now carries the accumulated
+    insert scale and `MakeStroke()` divides the width - and the dash
+    lengths - by it, so a drawing strokes the same whatever scale its blocks
+    are inserted at. `Tests/DWGReaderTest.cpp` checks that every circle in
+    the synthetic drawing, inserted at 1x and at 2x, comes out the same
+    width on the page.
+  - **One forgotten speck decided the framing.** That drawing carries a
+    4 x 0.7 unit hatched scrap a quarter of a million units away from the
+    plans, so fitting the union of everything (what `GetBoundingBox()`
+    returns, and what AutoCAD's zoom-extents does) left the plans a
+    postage stamp in the corner. `VectorStorage::ContentBounds()` is the
+    same box with such specks left out - a run of drawables is ignored only
+    when it holds at most 1% of them AND stands at least a fifth of the
+    drawing's extent clear of the rest, so a frame, a title block or a
+    legend always counts - and `UltraCanvasVectorElement`'s fit and centring
+    use it. Nothing is removed from the document: the speck is still drawn,
+    still exported, and still reachable by panning.
+- **The STL aeroplane stood on its back.** `media/3D/STL/Toy airplane
+  model...stl` was exported with the model turned 180 degrees about X - its
+  wheels at the top of the file's Z range and its wings at the bottom - so
+  the Z-up correction every viewer applies stood it on its canopy. The
+  sample is rotated to the orientation the format assumes (+Z up), which
+  fixes it in the STL page, the media viewer and the Filer's thumbnails
+  alike. The import path is unchanged: `UltraCanvasSTLLoader` still reads
+  the file as written and still declares Z-up, and the page reports the
+  same extents (114.05 x 79.49 x 55.69) as before.
+
+#### 2026-09-22 *0.9.23*
+- **The DWG / DXF demo page was five white squares, and so was everything
+  below them.** Four separate faults, each of which hid the next.
+  - **`UltraCanvasVectorElement` declared no CSS box.** Its
+    `(identifier, x, y, w, h)` constructor called the identifier-only base
+    constructor and then `SetPosition()`/`SetSize()`, which write
+    `finalBounds` and nothing else - so the layout engine arranged the
+    element as a widget that asked for no size, and it collapsed to nothing.
+    A container never renders a child that does not intersect its content
+    area, so the element was not drawn at all: not its document, not even its
+    background. It now passes x/y/w/h to the base constructor like every
+    other widget, which stamps the px size and the absolute origin. Callers
+    that pass 0 (the flex/grid ones - the AI page, the media viewer, the
+    plugin's own element) are unchanged.
+  - **Painting used the parent's frame.** `Render()`, the background, the
+    border, the debug box, the document transform, the hit test and the wheel
+    anchor all added `finalBounds.x/y`, although the container has already
+    translated the context to the element's origin and delivers pointer
+    events in element-local coordinates. Everything is element-local now;
+    `ScreenToDocument()`/`DocumentToScreen()` speak that frame too.
+  - **A fit was clamped to the interactive zoom limit.** `ZoomToFit()` ran
+    its computed scale through `options.MinZoom`, so a 10 000-unit site plan
+    in a 280 px tile was pinned at 0.1 and the tile showed an empty patch of
+    the drawing's middle. The fit is honoured as computed and becomes the
+    lower bound for zooming out (`MinAllowedZoom()`), so a wheel-out still
+    stops at the whole drawing.
+  - **The element swallowed its host's events.** `OnEvent()` handled panning
+    and selection and returned false for everything else without ever calling
+    the base, so the demo's click-to-open-fullscreen and its hover status line
+    never ran. The host callback is consulted first now.
+- **One collapsed transform used to end all drawing in the window.** The
+  bathroom sample (`media/3D/DWG/bagno_3d_1.dwg`) carries a block standing in
+  a vertical plane; projected to plan view its transform scales one axis to
+  zero. Cairo latches a non-invertible matrix as a permanent error on the
+  `cairo_t`, after which every later fill, stroke, text and image is silently
+  dropped - which is why the DXF row, the info panel and the "How it works"
+  panel below the drawings were blank as well.
+  - `VectorRenderer` skips an element whose transform is singular (it has no
+    area to draw), and
+  - `RenderContextCairo::Scale/SetTransform/Transform` refuse a matrix they
+    cannot invert and log it once, so no caller can kill a context this way.
+- `Tests/VectorElementViewTest.cpp` pins all of it: the box survives the
+  parent's layout, a fit below `MinZoom` fits, painting is element-local, a
+  singular transform leaves the context able to draw, and the host's event
+  callback runs.
+#### 2026-09-22 *0.9.23*
+- **New: `UltraVault::DeviceKeyVault` — an application's own vault on
+  UltraVault** (`<UltraVault/UltraVaultDeviceKeyVault.h>`, target `UltraVault`,
+  reference `Docs/Modules/UltraVault/README.md`). One encrypted vault file in a
+  directory the application owns, unlocked without a prompt by a random
+  passphrase kept owner-only in `device.key` beside it (`TryAutoUnlock`) or by
+  an explicit master password (`Unlock` -> `UnlockStatus`, which tells a wrong
+  password from a build without crypto; `PersistDeviceKey` makes the next run
+  silent); per-account `Store` / `Retrieve` / `Has` / `Remove`, an OAuth2
+  token set beside the password slot (`StoreOAuthTokens` …, `MethodFor` ->
+  `SignInMethod`), and migration of the 0.1 XOR-sidecar format (`vault.key` +
+  `creds.dat`) on the first unlock. A `DeviceKeyVaultProfile` — vault file
+  name and key prefix in the `<vendor>.<app>.` convention — tells one
+  application's vault from another's. This is UltraMail's `CredentialVault`
+  0.6.0 moved into the framework: UltraSocial carried a copy of it that had
+  never left the 0.1 format, so the two had drifted apart; both apps are now
+  one-line profiles of the one class (UltraMail 0.10.2, UltraSocial 0.1.1). The
+  legacy reader keeps a private Base64 decoder because UltraVault stays off the
+  UltraCanvas library on purpose (the link-time split that keeps UltraCrypt
+  UI-free). Covered in `Tests/UltraVaultTests.cpp`: locked-until-unlocked,
+  first-run key + vault creation and reopen, profile-prefixed keys, no
+  plaintext on disk, wrong / empty passphrase, token sets, the
+  "vault without a device key must prompt" case, and the migration.
+- **UltraCloud keeps no secret files of its own any more.** `FileSecretStore`
+  — obfuscated per-account files, XOR against a `cloud.key` beside them — was
+  a third copy of the weak format UltraMail and UltraSocial had left behind,
+  and it is gone: `VaultSecretStore` (in whichever UltraVault the application
+  opened, under `cloud.<accountId>.*`) is the store, `MemorySecretStore` the
+  process-lifetime one for tests and demos, and `MigrateLegacyFileSecrets`
+  carries an old directory into a store once, deleting each file as its
+  secret lands and the key file when none is left. UltraVault is a hard
+  dependency of the module now (`ULTRACLOUD_USE_ULTRAVAULT` stays defined for
+  consumers that test it). The UltraCloud suite covers all three
+  (`Tests/UltraCloud/test_secrets.cpp`). UltraMail 0.10.2 and UltraFiler
+  1.44.1 are the consumers that moved.
+- **`scripts/check_changelog.py --base` now catches a stale number before the
+  merge.** It compared the branch's entry only with the versions in the
+  branch's own copy of the file, plus one rule against the base: not the same
+  number as the base's line 1. A branch that picked the next number, was
+  overtaken by releases on `main` and had not merged `main` since therefore
+  passed - its file simply did not contain the newer entries - which is how
+  this branch's own entry sat at 0.9.16 while `main` was on 0.9.20. The
+  pull-request rule is now "strictly above the base's line 1", so both the
+  shared and the stale shape are refused while the number is still cheap to
+  change. `AGENTS.md` says to fetch `main` first, since the comparison is only
+  as current as the local `origin/main`.
 
 #### 2026-09-22 *0.9.22*
 - **A container no longer scrolls unless it is asked to.**

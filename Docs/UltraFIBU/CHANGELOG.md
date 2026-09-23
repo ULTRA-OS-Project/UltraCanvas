@@ -1,3 +1,168 @@
+#### 2026-09-22 *0.21.0*
+- **SKR03 und SKR04 vollstaendig, aus den DATEV-Kontenrahmen-PDFs.** Bisher
+  lagen 74 Konten als "Startbestand" vor und SKR04 fehlte ganz -- `--skr SKR04`
+  legte einen Mandanten mit **null Konten** an und verdaechtigte in seinem
+  Hinweis faelschlich `ULTRAFIBU_DATA_DIR`. Jetzt: **SKR03 1768 Konten,
+  SKR04 1855 Konten**, beide ohne Ladewarnung.
+  - **Alle Spalten des PDF sind uebernommen**, nicht nur Nummer und Name.
+    Neu in `konto` (Schema 8): `funktion`, `abschlusszweck`,
+    `programmverbindung`, `nummer_bis`. `bilanz_position` gab es schon und ist
+    jetzt zum ersten Mal gefuellt -- bei 96 % der Konten.
+  - **`funktion` traegt AV und AM, die DATEV-Automatikkonten.** Damit ist die
+    Steueraufteilung aus 0.19.0 nicht mehr aus Belegen erschlossen, sondern
+    aus DATEVs eigenem Dokument belegt: 8400 ist AM, 3400 und 3106 sind AV.
+    Und 1576/1776 sind `S` (Sammelkonten), nicht Automatikkonten -- der
+    Ausschluss der Steuerkonten war richtig.
+  - **Die Haupt- schlaegt die Zusatzfunktion.** KU/V/M gelten laut Legende
+    fuer eine ganze Kontenklasse, AV/AM/S/F/R fuer ein einzelnes Konto. Ohne
+    diese Reihenfolge bekaeme 1576 das klassenweite KU statt seines eigenen S.
+  - **Die 14 handgepflegten Steuerschluessel sind uebernommen.** Ein
+    Vollimport, der sie ueberschreibt, haette die Automatik wieder
+    abgeschaltet. Weitere werden NICHT aus Kontenbezeichnungen abgeleitet:
+    das PDF nennt die Automatikfunktion, nicht den Satz.
+  - **Die sieben Konten aus dem echten Buchungsstapel, die im Kontenrahmen
+    fehlten, sind da** -- 3106 Fremdleistungen 19 % Vorsteuer, 3109 (§ 13b),
+    4110, 4760, 4955, 8195, 8200. Die Warnung "stehen in der Datei, aber nicht
+    im Kontenrahmen" entfaellt damit vollstaendig.
+  - Bestehende Datenbanken migrieren auf Schema 8 und behalten ihren
+    Kontenrahmen; die neuen Spalten bleiben dort leer, bis der volle Rahmen
+    bewusst importiert wird.
+  - Konten, die im PDF ueberhaupt keine Beschriftung tragen (meist Funktion R,
+    also gesperrt bis ihnen eine Funktion zugeteilt wird), stehen als
+    "(ohne Standardbeschriftung)" im Rahmen statt zu fehlen.
+
+#### 2026-09-22 *0.20.0*
+- **Der Kontenrahmen laesst sich jetzt aus einem DATEV-Export einlesen**
+  (`ultrafibu konten-import <datei> <EXTF.csv>`, Format-Kategorie 20
+  "Kontenbeschriftungen"). Damit kommen Nummern und Bezeichnungen von der
+  Kanzlei statt aus einer geratenen Liste -- einschliesslich der
+  mandantenspezifischen Konten, die in keinem Standard-SKR stehen
+  (3106, 3109, 4110, 4760, 4955, 8195, 8200 im echten Stapel).
+  Schreiben erst mit `--uebernehmen`.
+  - **Der Merge ist der eigentliche Punkt, nicht das Lesen.**
+    `Store::SaveKonto` matcht auf die Kontonummer und aktualisiert dann
+    *jede* Spalte. Ein Import von Bezeichnungen haette also jeden
+    Automatik-Steuerschluessel mit einem leeren Wert ueberschrieben und die
+    Steueraufteilung aus 0.19.0 stillschweigend wieder abgeschaltet.
+    `FuegeKontenZusammen()` uebernimmt bei bekannten Konten deshalb nur die
+    Bezeichnung und laesst `typ`, `steuerschluessel`, `eurZeile`,
+    `bwaPosition` und `bilanzPosition` stehen. Ein Mutationstest (Datei-Konto
+    direkt durchgereicht) schlaegt vier Pruefungen.
+  - **Unveraenderte Bezeichnungen werden nicht geschrieben.** Dieselbe Datei
+    zweimal einzulesen beruehrt nichts; im Round-Trip-Test wurden von 75
+    gelesenen Konten genau 2 geschrieben.
+  - **Nur die deutsche Beschriftung.** DATEV haelt je Konto mehrere Sprachen;
+    eine Zeile mit anderer Sprach-ID wird uebergangen und gemeldet, sonst
+    haenge der gespeicherte Name von der Zeilenreihenfolge ab.
+  - **Neue Konten werden ueber die Nummer klassifiziert, je Kontenrahmen.**
+    Dieselbe Ziffer bedeutet in SKR03 und SKR04 Verschiedenes -- 8xxx ist in
+    SKR03 Ertrag, in SKR04 sind es 4xxx. Sagt die Ziffer nichts, wird nichts
+    behauptet. `steuerschluessel` bleibt immer leer: das Format enthaelt
+    keinen, und ein Schluessel hier wuerde eine Steueraufteilung ausloesen.
+  - **Der Import liest die Spalten aus der Spaltenzeile der Datei**, wie der
+    Buchungsstapel-Import. Die ungeprueft ausgelieferte Definition in
+    `data/DATEV-Sachkontenbeschriftungen-v700.csv` spielt dafuer keine Rolle.
+  - Kategorie 21 wird hier abgewiesen, mit Verweis auf `datev-import`.
+  - Die Kopfzeilen-Positionen fuer Berater- und Mandantennummer waren zuerst
+    falsch (7/8/13 statt 10/11/16) und fielen erst im Round-Trip gegen eine
+    echte exportierte Datei auf -- nicht beim Lesen des Codes.
+  - `ZerlegeZeilen()` ist aus `LeseBuchungsstapel()` herausgezogen und wird
+    von beiden Importen benutzt, damit die Zeilennummern in Fehlermeldungen
+    gleich gezaehlt werden.
+
+#### 2026-09-21 *0.19.0*
+- **DATEV-Automatikkonten werden beim Import ausgewertet.** Die haeufigste
+  Erloeszeile eines echten Buchungsstapels traegt ueberhaupt keinen
+  BU-Schluessel: 8400 heisst "Erloese 19 % USt", und das Konto gibt den Satz
+  vor. Der Import sah nur in die BU-Spalte und uebernahm solche Zeilen
+  brutto - das Erloeskonto um die Steuer zu hoch, das Steuerkonto leer, und
+  nichts in der Datei, was darauf hinweist. Am echten Stapel 2026 sind das
+  drei Zeilen auf 8400; danach stehen 674,50 auf 1776 und 3.550,00 netto auf
+  8400 statt 4.224,50 brutto, und Soll und Haben gleichen sich weiterhin aus.
+  - **Die Zuordnung lag bereits vor und wurde nur nicht gelesen.**
+    `Konto::steuerschluessel` ist in `SKR03.csv` seit jeher gefuellt (8400 ->
+    USt19) und im Header als "default tax key for postings on this account"
+    beschrieben; ausgewertet hat sie niemand. `LeseBuchungsstapel()` nimmt
+    dafuer den Kontenrahmen als zusaetzliches, optionales Argument.
+  - **Ein BU-Schluessel in der Datei hat Vorrang.** Die Automatik ist ein
+    Standardwert, und ein Standardwert ueberschreibt nicht, was dasteht.
+  - **Nur Erloes- und Aufwandskonten zaehlen.** 1776 traegt `USt19`, weil es
+    das Konto *dieses Schluessels* ist; eine Buchung darauf ist kein
+    steuerpflichtiger Umsatz. Ohne diese Einschraenkung wuerde die Steuer
+    besteuert.
+  - **`steuerSeite` folgt dem Konto.** Welche Seite das Nettokonto ist, wird
+    gesucht, nicht angenommen: im Testfall steht 8400 im Gegenkonto, im
+    echten Stapel des Mandanten steht es im Konto.
+  - **Tragen beide Seiten eine Automatik, bleibt die Zeile ungeteilt** und
+    wird mit dem Kontenpaar gemeldet - raten hiesse, eine nicht pruefbare
+    Zahl auf ein Steuerkonto zu schreiben.
+  - Ohne uebergebenen Kontenrahmen verhaelt sich der Import exakt wie bisher.
+  - Die Meldung "keine einzige Buchung hat eine Steueraufteilung" nannte nur
+    die leere Spalte `datev_bu`. Sie nennt jetzt beide moeglichen Ursachen,
+    denn die zweite - ein Kontenrahmen ohne Steuerschluessel oder ohne das
+    benutzte Konto - ist seit dieser Aenderung genauso wahrscheinlich.
+
+#### 2026-09-21 *0.18.0*
+- **Ein abfotografierter Beleg ist ein Beleg.** Das Belegarchiv nahm nur
+  Dateien an, die mit `%PDF-` beginnen, und wies alles andere mit "ist keine
+  PDF-Datei" ab - also ausgerechnet den haeufigsten Fall: die mit dem Handy
+  fotografierte Quittung. Die GoBD sehen die bildliche Erfassung eines
+  Papierbelegs ausdruecklich vor, mobiles Scannen eingeschlossen. Abgelegt
+  werden jetzt PDF, JPEG, PNG, TIFF, HEIF/HEIC und WebP.
+  - **Erkannt wird weiter an den Bytes, nicht an der Endung.** Neu ist
+    `ErkenneDateiArt()`; `IstPdf()` bleibt, was es war. Die Signaturen an
+    Offset 0 werden *vor* dem PDF-Test geprueft, denn der toleriert
+    absichtlich Muell vor seinem Header - ein JPEG, das die Zeichenfolge
+    `%PDF-` in seinen Metadaten fuehrt, waere sonst als Dokument abgelegt
+    worden. Genau dieser Fall ist jetzt ein Test.
+  - **Eine `ftyp`-Box allein genuegt nicht.** Auch ein MP4 hat eine; geprueft
+    wird die Marke dahinter (`heic`, `mif1`, `avif` ...).
+  - **Die Datei behaelt die Endung ihrer tatsaechlichen Art**
+    (`<jahr>/<hash>.jpg`), damit ein Dateimanager oder ein Pruefer mit einem
+    Verzeichnislisting sie ohne Raten oeffnen kann. Der Hash bleibt die
+    Identitaet: `Enthaelt()` sucht deshalb ueber alle bekannten Endungen,
+    weil ein Aufrufer mit einem Hash aus dem Journal das Format nicht kennt.
+  - Abgewiesen wird weiterhin alles Uebrige - eine Textdatei bleibt eine
+    Textdatei. Die Meldung nennt jetzt aber, was angenommen worden waere,
+    statt nur `%PDF-` zu verlangen.
+  - Geprueft an echten Dateien, nicht nur an synthetischen: drei echte Fotos
+    (JPEG, PNG, WebP) byte-identisch abgelegt und ueber den Hash allein
+    wiedergefunden, die 24 echten PDF-Belege unveraendert (22 abgelegt, 2 als
+    Dubletten erkannt).
+
+#### 2026-09-21 *0.17.0*
+- **Die DATEV-Spaltendefinition war eine Rekonstruktion - jetzt ist sie an
+  einer echten EXTF-Datei geprueft.** `data/DATEV-Buchungsstapel-v700.csv`
+  trug seit dem ersten Tag die Warnung, dass sie ohne Original entstanden
+  ist. Gegen zwei echte Buchungsstapel gehalten, war sie an drei Stellen
+  zugleich falsch:
+  - **125 Spalten, nicht 120.** `Abrechnungsreferent`, `BVV-Position`,
+    `EU-Mitgliedstaat u. UStID (Ursprung)`, `EU-Steuersatz (Ursprung)` und
+    `Abw. Skontokonto` fehlten vollstaendig.
+  - **DATEV schreibt einen Gedankenstrich (U+2013), keinen Bindestrich** -
+    in `Beleginfo - Art 1`, `Zusatzinformation - Art 1`, `KOST1 -
+    Kostenstelle` und zwei Dutzend weiteren Namen.
+  - Mehrere Namen sind kuerzer als die Formatbeschreibung vermuten laesst
+    (`Bezeichnung`, nicht `Bezeichnung SoBil-Sachverhalt`).
+- **Dadurch gingen Kostenstellen still verloren.** Export und Import suchen
+  ihre Spalte ueber den Namen. `KOST1 - Kostenstelle` mit Bindestrich fand
+  nichts, `Index` lieferte -1, und die Zuweisung sprang die Spalte
+  wortlos ueber: der Wert wurde nie geschrieben und nie gelesen, die Datei
+  sah korrekt aus, und niemand haette es bemerkt.
+- **Eine nicht gefundene Spalte ist jetzt eine Warnung, kein Schweigen.**
+  Export wie Import nennen jede optionale Spalte, die sie nicht finden, und
+  sagen dazu, dass `ultrafibu datev-pruefen` sie gegen eine echte Datei
+  haelt. Die Umbenennung allein haette denselben Fehler beim naechsten Mal
+  nur erneut versteckt.
+- **Die Korrektur ist gegen eine echte Spaltenzeile festgenagelt.**
+  `Tests/UltraFIBU/data/EXTF-Buchungsstapel-Spaltenzeile.csv` enthaelt die
+  beiden Kopfzeilen eines echten Exports - Berater- und Mandantennummer
+  ersetzt, keine einzige Buchung darin. Der Test vergleicht die
+  Definition Spalte fuer Spalte damit.
+- Geprueft an echten Daten: 637 Buchungen eines vollen Jahres eingelesen,
+  0 uebersprungen, Soll und Haben gleichen sich auf den Cent aus, und die
+  Pruefsummenkette des Journals bleibt unversehrt.
+
 #### 2026-09-21 *0.16.0*
 - **UltraFIBU war in keinem fertigen Paket enthalten.** Es wurde gebaut, es
   bestand seine Tests, und `package-linux.sh` listete beim Packen auf:

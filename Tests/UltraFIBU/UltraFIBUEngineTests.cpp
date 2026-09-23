@@ -471,6 +471,52 @@ static void TestDatenDateien() {
         Check(unique, "account numbers are unique");
         Check(labelled, "every row records the chart it came from");
 
+        // --- what the DATEV Kontenrahmen PDF adds ---
+        //
+        // The chart is no longer a 74-account stub: it is extracted from
+        // DATEV's own Kontenrahmen. The columns that come with it are what
+        // make a Bilanz possible at all, and `funktion` is the authority
+        // behind the Automatikkonten.
+        Check(konten.size() > 1000,
+              "the full chart is present, not the old starter stub");
+        auto finde = [&konten](const std::string& nr) -> const Konto* {
+            for (const Konto& k : konten) if (k.nummer == nr) return &k;
+            return nullptr;
+        };
+        const Konto* erloese = finde("8400");
+        Check(erloese != nullptr, "8400 is in the chart");
+        if (erloese != nullptr) {
+            CheckText(erloese->funktion, "AM",
+                      "and carries DATEV's AM - automatische Errechnung der "
+                      "Umsatzsteuer, which is what makes it an Automatikkonto");
+            CheckText(erloese->bilanzPosition, "Umsatzerlöse",
+                      "with its GuV position, so a Jahresabschluss can place it");
+            CheckText(erloese->steuerschluessel, "USt19",
+                      "and the hand-verified tax key survived the full import - "
+                      "losing it here would switch the tax split back off");
+        }
+        const Konto* fremd = finde("3106");
+        Check(fremd != nullptr,
+              "3106 exists now - it is in the real Buchungsstapel and was "
+              "missing from the stub");
+        if (fremd != nullptr)
+            CheckText(fremd->funktion, "AV",
+                      "with AV, the input-tax automatic");
+        const Konto* vorsteuer = finde("1576");
+        if (vorsteuer != nullptr)
+            CheckText(vorsteuer->funktion, "S",
+                      "1576 is a Sammelkonto, not an Automatikkonto - the main "
+                      "function beats the class-wide KU");
+
+        int mitBilanz = 0, mitFunktion = 0;
+        for (const Konto& k : konten) {
+            if (!k.bilanzPosition.empty()) ++mitBilanz;
+            if (!k.funktion.empty())       ++mitFunktion;
+        }
+        Check(mitBilanz > konten.size() * 9 / 10,
+              "almost every account states its Bilanz-/GuV-Posten");
+        Check(mitFunktion > 1000, "and most carry a Kontenfunktion");
+
         // The accounts a bookkeeping application cannot work without.
         const char* const kMustExist[] = { "1000", "1200", "1400", "1600", "1576", "1776",
                                            "8400", "8300", "8125", nullptr };
@@ -1992,13 +2038,26 @@ static void TestDatev() {
         return;
     }
     Check(definition.Laden(pfad, fehler), "the shipped column definition loads");
-    CheckInt(static_cast<int64_t>(definition.Anzahl()), 120,
-             "and has the 120 columns the format describes");
+    CheckInt(static_cast<int64_t>(definition.Anzahl()), 125,
+             "and has the 125 columns a real EXTF file carries");
     Check(definition.Index("Umsatz (ohne Soll/Haben-Kz)") == 0,
           "Umsatz is the first column");
     Check(definition.Index("Soll/Haben-Kennzeichen") == 1, "the S/H flag the second");
     Check(definition.Index("Festschreibung") > 0, "and Festschreibung is in there");
     Check(definition.Index("Gibt Es Nicht") == -1, "an unknown column reports -1");
+
+    // DATEV spells these with a dash (U+2013), not a hyphen. The definition
+    // used a hyphen, `Index` returned -1, and the exporter's `setze` skipped
+    // the column without a word - so a Kostenstelle was never written and
+    // never read back, and nothing anywhere said so. The names are asserted
+    // byte for byte because that is precisely what went wrong.
+    Check(definition.Index("KOST1 – Kostenstelle") > 0,
+          "KOST1 is found under the name DATEV actually writes");
+    Check(definition.Index("KOST2 – Kostenstelle") > 0, "and KOST2 too");
+    Check(definition.Index("KOST1 - Kostenstelle") == -1,
+          "the hyphen spelling is not what the format uses");
+    Check(definition.Index("Abrechnungsreferent") > 0,
+          "and the five columns past 120 are there too");
 
     // A definition with a line missing would write every later value into the
     // wrong column, so the loader refuses a gap rather than shifting silently.
@@ -2014,6 +2073,40 @@ static void TestDatev() {
           "a gap in the column numbering is refused, not silently shifted");
     Check(fehler.find("springen") != std::string::npos, "and the reason says so");
     std::remove(luecke.c_str());
+
+    // --- the definition against a real DATEV file ---
+    // The shipped column order was a reconstruction from the format
+    // description for months, and the header of the file it lives in said so.
+    // It was wrong in three ways at once: five columns short, the wrong kind
+    // of dash in twenty-odd names, and several names longer than DATEV
+    // actually writes. None of that could be found by reading the code.
+    //
+    // `Tests/UltraFIBU/data/EXTF-Buchungsstapel-Spaltenzeile.csv` is the two
+    // header lines of a real EXTF export - the Berater- and Mandantennummer
+    // replaced, and not one posting in it. Comparing the definition against
+    // that file is what keeps the correction from being undone by the next
+    // person who edits the definition by hand.
+#ifdef ULTRAFIBU_TEST_DATA_DIR
+    {
+        const std::string echt = std::string(ULTRAFIBU_TEST_DATA_DIR) +
+                                 "/EXTF-Buchungsstapel-Spaltenzeile.csv";
+        const DatevPruefung pruefung = PruefeDateiGegenDefinition(echt, definition);
+        Check(pruefung.fehler.empty(),
+              "the real DATEV column line is readable");
+        CheckInt(static_cast<int64_t>(pruefung.spaltenInDatei), 125,
+                 "it has 125 columns");
+        CheckInt(pruefung.formatversion, 13, "and calls itself Formatversion 13");
+        if (!pruefung.ok) {
+            for (const std::string& abweichung : pruefung.abweichungen)
+                std::printf("    ABWEICHUNG: %s\n", abweichung.c_str());
+        }
+        Check(pruefung.ok,
+              "and the shipped definition matches it column for column");
+    }
+#else
+    std::printf("    note: ULTRAFIBU_TEST_DATA_DIR not defined, "
+                "skipping the check against the real DATEV column line\n");
+#endif
 
     // --- the ground for an export ---
     Mandant mandant;
@@ -2133,7 +2226,7 @@ static void TestDatev() {
     // --- the checker, both ways ---
     DatevPruefung gut = PruefeDateiGegenDefinition(juni.datei, definition);
     Check(gut.ok, "the checker accepts a file written from the same definition");
-    CheckInt(static_cast<int64_t>(gut.spaltenInDatei), 120, "and counts its columns");
+    CheckInt(static_cast<int64_t>(gut.spaltenInDatei), 125, "and counts its columns");
     CheckInt(gut.kategorie, 21, "and reads the category out of the header");
 
     // Corrupt one column name and confirm the position is named. This is the
@@ -2330,6 +2423,129 @@ static void TestDatevImport() {
     Check(nenntBu, "the warning names where the mapping belongs");
     Check(nenntDenSchluessel, "and which key it belongs for");
 
+    // --- Automatikkonten: the account carries the rate, not the file ---
+    //
+    // The commonest revenue row in a real Buchungsstapel has an EMPTY BU
+    // column: 8400 is "Erlöse 19 % USt" and the account supplies the rate.
+    // Reading only the BU column imports such a row gross - revenue too high
+    // by the tax, the tax account empty, and nothing in the file saying so.
+    {
+        std::vector<Konto> chart;
+        auto konto = [&chart](const std::string& nummer, KontoTyp typ,
+                              const std::string& key) {
+            Konto k;
+            k.nummer           = nummer;
+            k.typ              = typ;
+            k.steuerschluessel = key;
+            chart.push_back(k);
+        };
+        konto("8400", KontoTyp::Ertrag, "USt19");   // the Automatikkonto
+        konto("1776", KontoTyp::Passiv, "USt19");   // the tax account itself
+        konto("10000", KontoTyp::Debitor, "");      // the customer side
+
+        // Gegenkonto is the Automatikkonto.
+        const std::string ohneBu =
+            kopf + spalten +
+            "1190,00;\"S\";\"EUR\";10000;8400;\"\";1506;\"R-1\";\"Erlös\";0\r\n";
+        SchreibeDatei("import-automatik.csv", Cp1252(ohneBu));
+
+        // Without the chart, nothing changes - that is the previous behaviour,
+        // and passing no accounts has to keep it exactly.
+        const DatevImportBericht ohneChart =
+            LeseBuchungsstapel("import-automatik.csv", mandant, jahr, mitMapping);
+        CheckInt(ohneChart.mitSteuer, 0,
+                 "without a chart of accounts an empty BU column stays unsplit");
+        CheckInt(ohneChart.mitAutomatik, 0, "and nothing claims an automatic");
+
+        const DatevImportBericht autom = LeseBuchungsstapel(
+            "import-automatik.csv", mandant, jahr, mitMapping, chart);
+        Check(autom.ok, "the same row reads with a chart");
+        CheckInt(autom.mitSteuer, 1,
+                 "and now gets its split from the account - 8400 is an "
+                 "Automatikkonto and carries 19 % without any BU-Schlüssel");
+        CheckInt(autom.mitAutomatik, 1, "counted as coming from the account");
+        if (!autom.zeilen.empty()) {
+            const Buchung& b = autom.zeilen[0].buchung;
+            CheckText(b.steuerschluessel, "USt19", "with the account's key");
+            CheckInt(b.steuer.Minor(), 19000, "190,00 out of 1.190,00 gross");
+            CheckInt(b.netto.Minor(), 100000, "leaving 1.000,00 net");
+            CheckText(b.steuerkonto, "1776", "on the key's tax account");
+            Check(b.steuerSeite == SteuerSeite::Gegenkonto,
+                  "and the net side is the one the Automatikkonto stands on");
+            Check(b.buSchluessel.empty(), "the BU column stays empty - it was");
+        }
+
+        // The other way round: in a real Buchungsstapel the revenue account is
+        // just as often the Konto, with the bank opposite. The side has to be
+        // found, not assumed.
+        const std::string andersHerum =
+            kopf + spalten +
+            "1190,00;\"H\";\"EUR\";8400;1200;\"\";1506;\"R-2\";\"Erlös\";0\r\n";
+        SchreibeDatei("import-automatik-konto.csv", Cp1252(andersHerum));
+        const DatevImportBericht seite = LeseBuchungsstapel(
+            "import-automatik-konto.csv", mandant, jahr, mitMapping, chart);
+        CheckInt(seite.mitSteuer, 1, "the automatic is found on the Konto side too");
+        if (!seite.zeilen.empty())
+            Check(seite.zeilen[0].buchung.steuerSeite == SteuerSeite::Konto,
+                  "and the net side follows the account, not a fixed assumption");
+
+        // An explicit BU-Schlüssel is in the file; the automatic is a default.
+        // The file wins.
+        const std::string mitBeidem =
+            kopf + spalten +
+            "1190,00;\"S\";\"EUR\";10000;8400;\"3\";1506;\"R-3\";\"Erlös\";0\r\n";
+        SchreibeDatei("import-automatik-bu.csv", Cp1252(mitBeidem));
+        const DatevImportBericht vorrang = LeseBuchungsstapel(
+            "import-automatik-bu.csv", mandant, jahr, mitMapping, chart);
+        CheckInt(vorrang.mitSteuer, 1, "a row with both still splits once");
+        CheckInt(vorrang.mitAutomatik, 0,
+                 "but through the BU-Schlüssel - what the file says beats what "
+                 "the account would have defaulted to");
+
+        // A tax account names a key because it IS that key's account. Posting
+        // onto it is not a taxable turnover, and treating it as one would tax
+        // the tax.
+        const std::string aufSteuerkonto =
+            kopf + spalten +
+            "190,00;\"S\";\"EUR\";1776;1200;\"\";1506;\"R-4\";\"Zahlung\";0\r\n";
+        SchreibeDatei("import-steuerkonto.csv", Cp1252(aufSteuerkonto));
+        const DatevImportBericht steuerkonto = LeseBuchungsstapel(
+            "import-steuerkonto.csv", mandant, jahr, mitMapping, chart);
+        CheckInt(steuerkonto.mitSteuer, 0,
+                 "a posting onto the tax account itself gets no automatic - "
+                 "1776 carries USt19 because it is that key's account");
+
+        // Both sides claiming an automatic is not a row DATEV writes. Guessing
+        // which was meant would put an unverifiable figure in a tax account.
+        std::vector<Konto> beide = chart;
+        beide[2].typ = KontoTyp::Ertrag;          // make 10000 an Automatikkonto too
+        beide[2].steuerschluessel = "USt19";
+        const DatevImportBericht mehrdeutig = LeseBuchungsstapel(
+            "import-automatik.csv", mandant, jahr, mitMapping, beide);
+        CheckInt(mehrdeutig.mitSteuer, 0,
+                 "with an automatic on both sides the row stays unsplit");
+        bool nenntPaar = false;
+        for (const std::string& w : mehrdeutig.warnungen)
+            if (w.find("beide Seiten") != std::string::npos &&
+                w.find("10000/8400") != std::string::npos) nenntPaar = true;
+        Check(nenntPaar, "and the warning names the pair, not just a count");
+
+        // The key's validity still governs. A 2026 key does not apply to a
+        // 2025 document - which is exactly why a real 2025 stack imports flat
+        // against a chart seeded for 2026.
+        std::vector<Steuerschluessel> ab2027 = mitMapping;
+        ab2027[0].gueltigVon = Date(2027, 1, 1);
+        const DatevImportBericht zuFrueh = LeseBuchungsstapel(
+            "import-automatik.csv", mandant, jahr, ab2027, chart);
+        CheckInt(zuFrueh.mitSteuer, 0,
+                 "an account key not yet valid on the Belegdatum does not apply");
+
+        std::remove("import-automatik.csv");
+        std::remove("import-automatik-konto.csv");
+        std::remove("import-automatik-bu.csv");
+        std::remove("import-steuerkonto.csv");
+    }
+
     // --- the unsigned rule ---
     // DATEV's Umsatz is never signed. A file from elsewhere that carries one
     // must not double up with the Soll/Haben flag.
@@ -2422,6 +2638,153 @@ static void TestDatevImport() {
     std::remove("import-kaputt.csv");
     std::remove("import-fremd.csv");
     std::remove("import-kategorie.csv");
+}
+
+// ===== KONTENBESCHRIFTUNGEN (Format-Kategorie 20) =====
+//
+// The chart of accounts as a DATEV export delivers it. The format is three
+// columns wide and carries no tax key, which is why the interesting risk is
+// not reading it but merging it: `SaveKonto` writes every column, so an import
+// of *names* could wipe the Automatikkonten and switch the tax split back off
+// with nothing to show for it.
+static void TestKontenbeschriftungen() {
+    std::printf("Kontenbeschriftungen (DATEV-Kategorie 20)\n");
+
+    // --- the number range tells the type, and differently per chart ---
+    {
+        KontoTyp typ = KontoTyp::Aufwand;
+        Check(KontoTypAusNummer("8400", "SKR03", typ) && typ == KontoTyp::Ertrag,
+              "in SKR03 an 8xxx account is revenue");
+        Check(KontoTypAusNummer("4400", "SKR04", typ) && typ == KontoTyp::Ertrag,
+              "in SKR04 revenue is 4xxx - the same digit means different things");
+        Check(KontoTypAusNummer("4100", "SKR03", typ) && typ == KontoTyp::Aufwand,
+              "while 4xxx in SKR03 is expense");
+        Check(KontoTypAusNummer("6000", "SKR04", typ) && typ == KontoTyp::Aufwand,
+              "and expense in SKR04 is 5xxx-7xxx");
+        Check(KontoTypAusNummer("2000", "SKR04", typ) && typ == KontoTyp::Eigenkapital,
+              "equity in SKR04 is 2xxx");
+        Check(!KontoTypAusNummer("9000", "SKR04", typ),
+              "a digit the table does not cover says nothing rather than guessing");
+        Check(!KontoTypAusNummer("8400", "EIGEN", typ),
+              "and an unknown chart classifies nothing at all");
+    }
+
+    const std::string kopf20 =
+        "\"EXTF\";700;20;\"Kontenbeschriftungen\";3;20260101000000000;;\"UF\";"
+        "\"test\";;1000;10000;20260101;4;20260101;20261231;\"Konten 2026\";"
+        "\"EUR\";;;;;;;;0\r\n";
+    const std::string spalten20 =
+        "\"Konto\";\"Kontenbeschriftung\";\"Sprach-ID\"\r\n";
+
+    // --- reading ---
+    {
+        const std::string datei = kopf20 + spalten20 +
+            "8400;\"Erlöse 19 % USt\";\"de-DE\"\r\n"
+            "8200;\"Erlöse\";\"de-DE\"\r\n"
+            "8400;\"Revenue 19%\";\"en-GB\"\r\n";
+        SchreibeDatei("konten20.csv", Cp1252(datei));
+        DatevDefinition leer;
+        const KontenImportBericht b = LeseKontenbeschriftungen("konten20.csv", leer);
+        Check(b.ok, "a Kategorie-20 file reads");
+        CheckInt(b.kategorie, 20, "and reports its category");
+        CheckText(b.beraternummer, "1000", "Beraternummer from the preamble");
+        CheckText(b.mandantennummer, "10000", "and Mandantennummer - the same "
+                  "header positions the Buchungsstapel import uses");
+        CheckText(b.bezeichnung, "Konten 2026", "and the stack's own name");
+        CheckInt(b.uebernommen, 2, "the two German rows become accounts");
+        if (b.konten.size() >= 2) {
+            CheckText(b.konten[0].nummer, "8400", "with its number");
+            CheckText(b.konten[0].bezeichnung, "Erlöse 19 % USt", "and its label");
+            Check(b.konten[0].steuerschluessel.empty(),
+                  "and no tax key - this format does not carry one, and a key "
+                  "here would drive a tax split");
+        }
+        bool nenntSprache = false;
+        for (const std::string& w : b.warnungen)
+            if (w.find("de-DE") != std::string::npos) nenntSprache = true;
+        Check(nenntSprache,
+              "the English row is skipped and said out loud - taking it would "
+              "make the stored name depend on row order");
+        std::remove("konten20.csv");
+    }
+
+    // --- a Buchungsstapel is not a chart of accounts ---
+    {
+        const std::string falsch =
+            "\"EXTF\";700;21;\"Buchungsstapel\";13;20260101000000000;;\"UF\";"
+            "\"test\";;1000;10000;20260101;4;20260101;20261231;\"X\"\r\n"
+            "\"Konto\"\r\n8400\r\n";
+        SchreibeDatei("konten21.csv", Cp1252(falsch));
+        DatevDefinition leer;
+        const KontenImportBericht b = LeseKontenbeschriftungen("konten21.csv", leer);
+        Check(!b.ok, "a Kategorie-21 file is refused here");
+        Check(b.fehler.find("21") != std::string::npos &&
+                  b.fehler.find("datev-import") != std::string::npos,
+              "and the message names the category and the command that reads it");
+        std::remove("konten21.csv");
+    }
+
+    // --- THE MERGE: an import of names must not wipe a tax key ---
+    {
+        std::vector<Konto> vorhanden;
+        {
+            Konto k;
+            k.nummer = "8400"; k.bezeichnung = "Erlöse 19 % USt";
+            k.typ = KontoTyp::Ertrag; k.steuerschluessel = "USt19";
+            k.eurZeile = "14"; k.bwaPosition = "Umsatzerloese";
+            vorhanden.push_back(k);
+        }
+        std::vector<Konto> ausDatei;
+        {
+            Konto k; k.nummer = "8400"; k.bezeichnung = "Erlöse 19 % USt (neu)";
+            ausDatei.push_back(k);
+            Konto n; n.nummer = "8200"; n.bezeichnung = "Erlöse";
+            ausDatei.push_back(n);
+        }
+        int neu = 0, geaendert = 0;
+        const std::vector<Konto> zuSpeichern =
+            FuegeKontenZusammen(vorhanden, ausDatei, "SKR03", neu, geaendert);
+        CheckInt(neu, 1, "the account the chart does not have is new");
+        CheckInt(geaendert, 1, "and the renamed one counts as changed");
+        CheckInt(static_cast<int>(zuSpeichern.size()), 2, "so two rows are written");
+
+        const Konto* achtvier = nullptr;
+        const Konto* achtzwei = nullptr;
+        for (const Konto& k : zuSpeichern) {
+            if (k.nummer == "8400") achtvier = &k;
+            if (k.nummer == "8200") achtzwei = &k;
+        }
+        Check(achtvier != nullptr, "8400 is among them");
+        if (achtvier != nullptr) {
+            CheckText(achtvier->bezeichnung, "Erlöse 19 % USt (neu)",
+                      "with the new label");
+            CheckText(achtvier->steuerschluessel, "USt19",
+                      "and its tax key INTACT - SaveKonto writes every column, "
+                      "so losing it here would silently switch the Automatik "
+                      "split back off");
+            Check(achtvier->typ == KontoTyp::Ertrag, "the type is kept as well");
+            CheckText(achtvier->eurZeile, "14", "and so is the EUeR line");
+            CheckText(achtvier->bwaPosition, "Umsatzerloese", "and the BWA position");
+        }
+        if (achtzwei != nullptr) {
+            Check(achtzwei->typ == KontoTyp::Ertrag,
+                  "a new 8xxx account in SKR03 is classified as revenue");
+            Check(achtzwei->steuerschluessel.empty(),
+                  "but gets no tax key - the file has none and inventing one "
+                  "would post tax nobody checked");
+            CheckText(achtzwei->skr, "SKR03", "and is stamped with the chart");
+        }
+
+        // An account whose label already matches produces no write at all.
+        int n2 = 0, g2 = 0;
+        std::vector<Konto> gleich;
+        { Konto k; k.nummer = "8400"; k.bezeichnung = "Erlöse 19 % USt"; gleich.push_back(k); }
+        const std::vector<Konto> nichts =
+            FuegeKontenZusammen(vorhanden, gleich, "SKR03", n2, g2);
+        Check(nichts.empty() && n2 == 0 && g2 == 0,
+              "an unchanged label is not rewritten - re-importing the same file "
+              "touches nothing");
+    }
 }
 
 // ===== THE IMPORT AS IT REACHES THE LEDGER =====
@@ -4172,6 +4535,26 @@ static std::string BaueMiniPdf(const std::string& inhalt) {
     return std::string(kPdfKopf) + "1 0 obj<<>>endobj\n" + inhalt + "\n%%EOF\n";
 }
 
+// Smallest things that carry each magic number. Not decodable images - the
+// archive does not decode, it recognises, and a test that needed a real JPEG
+// would be testing libjpeg instead of this file.
+static std::string BaueMiniJpeg(const std::string& inhalt) {
+    return std::string("\xFF\xD8\xFF\xE0", 4) + inhalt + std::string("\xFF\xD9", 2);
+}
+static std::string BaueMiniPng(const std::string& inhalt) {
+    return std::string("\x89PNG\r\n\x1A\n", 8) + inhalt;
+}
+static std::string BaueMiniTiff(const std::string& inhalt) {
+    return std::string("II*\0", 4) + inhalt;
+}
+static std::string BaueMiniHeic(const std::string& inhalt) {
+    // length, "ftyp", brand - an ISO-BMFF box header.
+    return std::string("\0\0\0\x18", 4) + "ftyp" + "heic" + inhalt;
+}
+static std::string BaueMiniWebp(const std::string& inhalt) {
+    return std::string("RIFF") + std::string("\0\0\0\x10", 4) + "WEBP" + inhalt;
+}
+
 static void TestBelegArchiv() {
     std::printf("Belegarchiv (PDF-Import)\n");
 
@@ -4193,6 +4576,84 @@ static void TestBelegArchiv() {
               "an encrypted PDF is recognised");
         Check(!IstVerschluesseltesPdf(BaueMiniPdf("trailer<</Root 1 0 R>>")),
               "and an ordinary one is not");
+    }
+
+    // --- a photographed receipt is a receipt ---
+    //
+    // The commonest way a Beleg arrives is a phone photo, and the archive used
+    // to answer that with "ist keine PDF-Datei". These are the formats a phone
+    // or a scanner actually produces.
+    {
+        Check(ErkenneDateiArt(BaueMiniPdf("x"))   == DateiArt::Pdf,  "a PDF is a PDF");
+        Check(ErkenneDateiArt(BaueMiniJpeg("x"))  == DateiArt::Jpeg, "a JPEG is recognised");
+        Check(ErkenneDateiArt(BaueMiniPng("x"))   == DateiArt::Png,  "a PNG is recognised");
+        Check(ErkenneDateiArt(BaueMiniTiff("x"))  == DateiArt::Tiff, "a TIFF is recognised");
+        Check(ErkenneDateiArt(BaueMiniHeic("x"))  == DateiArt::Heif,
+              "and HEIC - what an iPhone writes unless told otherwise");
+        Check(ErkenneDateiArt(BaueMiniWebp("x"))  == DateiArt::WebP, "and WebP");
+
+        Check(ErkenneDateiArt("Das hier ist Text.\n") == DateiArt::Unbekannt,
+              "while a text file is still refused - widening the archive is not "
+              "the same as accepting anything");
+        Check(ErkenneDateiArt("") == DateiArt::Unbekannt, "and an empty file is");
+
+        // An ftyp box is not on its own an image: an MP4 has one too.
+        Check(ErkenneDateiArt(std::string("\0\0\0\x18", 4) + "ftyp" + "isom" + "x")
+                  == DateiArt::Unbekannt,
+              "an ftyp box with a video brand is not filed as an image");
+
+        // The ordering guarantee. IstPdf tolerates junk ahead of its header, so
+        // a JPEG whose EXIF happens to carry the string would be filed as a
+        // document if the PDF test ran first.
+        const std::string jpegMitText = BaueMiniJpeg("Scanner-Kommentar: %PDF-1.4");
+        Check(IstPdf(jpegMitText), "a JPEG can contain the PDF header string");
+        Check(ErkenneDateiArt(jpegMitText) == DateiArt::Jpeg,
+              "but it is still a JPEG - the offset-zero signature decides first");
+
+        CheckText(EndungFuer(DateiArt::Jpeg), "jpg", "a JPEG is stored as .jpg");
+        CheckText(EndungFuer(DateiArt::Pdf),  "pdf", "and a PDF as .pdf");
+    }
+
+    // --- filing a photograph, and finding it again ---
+    {
+        BelegArchiv archiv("archiv-bild-test");
+        SchreibeDatei("quelle-foto.jpg", BaueMiniJpeg("Quittung Tankstelle"));
+
+        const ArchivEintrag foto = archiv.Ablegen("quelle-foto.jpg", 2026);
+        Check(foto.ok, "a photographed receipt is filed");
+        Check(foto.art == DateiArt::Jpeg, "and recorded as a JPEG");
+        Check(foto.pfad.size() > 4 &&
+                  foto.pfad.compare(foto.pfad.size() - 4, 4, ".jpg") == 0,
+              "under .jpg, so a file manager can open it without guessing");
+
+        // The journal keeps a hash, not a format. A lookup has to find the file
+        // from the hash alone.
+        std::string gefunden;
+        DateiArt art = DateiArt::Unbekannt;
+        Check(archiv.Enthaelt(foto.hash, 2026, gefunden, &art),
+              "and is found again from the hash alone, without knowing the kind");
+        CheckText(gefunden, foto.pfad, "at the path it was written to");
+        Check(art == DateiArt::Jpeg, "reporting the kind it turned out to be");
+
+        // Same bytes, different name: still one receipt.
+        SchreibeDatei("quelle-foto-kopie.jpg", BaueMiniJpeg("Quittung Tankstelle"));
+        const ArchivEintrag nochmal = archiv.Ablegen("quelle-foto-kopie.jpg", 2026);
+        Check(nochmal.ok && nochmal.schonVorhanden,
+              "the same photograph twice is one photograph");
+        CheckText(nochmal.pfad, foto.pfad, "and keeps the first path");
+
+        // A kind the archive cannot display is still refused, with a message
+        // that now says what would work.
+        SchreibeDatei("notiz.txt", "Das ist nur eine Notiz.\n");
+        const ArchivEintrag notiz = archiv.Ablegen("notiz.txt", 2026);
+        Check(!notiz.ok, "a text file is still refused");
+        Check(notiz.fehler.find("JPEG") != std::string::npos,
+              "and the refusal names the kinds that would be accepted");
+
+        std::remove("quelle-foto.jpg");
+        std::remove("quelle-foto-kopie.jpg");
+        std::remove("notiz.txt");
+        RaeumeArchivAuf("archiv-bild-test");
     }
 
     // --- filing a document ---
@@ -4260,9 +4721,12 @@ static void TestBelegArchiv() {
         // What is refused.
         SchreibeDatei("kein.pdf", "Das ist nur Text.\n");
         const ArchivEintrag kein = archiv.Ablegen("kein.pdf", 2026);
-        Check(!kein.ok, "a file that is not a PDF is refused");
-        Check(kein.fehler.find("%PDF-") != std::string::npos,
-              "and the reason says what was looked for");
+        Check(!kein.ok, "a file of no kind the archive knows is refused");
+        Check(kein.fehler.find("PDF") != std::string::npos &&
+                  kein.fehler.find("JPEG") != std::string::npos,
+              "and the reason lists what would have been accepted - since the "
+              "archive widened, naming only %PDF- would send a user with a "
+              "photograph away for the wrong reason");
         std::remove("kein.pdf");
         Check(!archiv.Ablegen("gibtesnicht.pdf", 2026).ok,
               "a missing file is reported rather than crashing");
@@ -5423,6 +5887,7 @@ int main() {
     TestRechnungPdf();
     TestDatev();
     TestDatevImport();
+    TestKontenbeschriftungen();
     TestDatevImportInDenBestand();
     TestDatevRundlauf();
     TestBankLesen();

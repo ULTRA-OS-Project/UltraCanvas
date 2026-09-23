@@ -16917,10 +16917,10 @@ Objects:  {
 	GlobalSettings:  {
 		Version: 1000
 		Properties60:  {
-			Property: "UpAxis", "int", "",1
+			Property: "UpAxis", "int", "",2
 			Property: "UpAxisSign", "int", "",1
-			Property: "FrontAxis", "int", "",2
-			Property: "FrontAxisSign", "int", "",1
+			Property: "FrontAxis", "int", "",1
+			Property: "FrontAxisSign", "int", "",-1
 			Property: "CoordAxis", "int", "",0
 			Property: "CoordAxisSign", "int", "",1
 			Property: "UnitScaleFactor", "double", "",1

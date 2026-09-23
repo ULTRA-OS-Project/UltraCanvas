@@ -2,7 +2,7 @@
 // The document archive. See the header for why files are copied in rather than
 // pointed at, and why the name is the hash.
 //
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUBelegArchiv.h"
 
@@ -103,7 +103,85 @@ std::string OhneEndung(const std::string& pfad) {
 
 } // namespace
 
-// ===== WHAT A PDF LOOKS LIKE =====
+// ===== WHAT EACH KIND LOOKS LIKE =====
+
+namespace {
+
+// Do these bytes start with this signature? Kept explicit rather than using
+// rfind/compare so an embedded NUL in a signature (TIFF, PNG) is not a
+// terminator.
+bool BeginntMit(const std::string& inhalt, const char* muster, size_t laenge) {
+    return inhalt.size() >= laenge && std::memcmp(inhalt.data(), muster, laenge) == 0;
+}
+
+// A HEIF/AVIF-family file is an ISO-BMFF box: a four-byte length, then "ftyp",
+// then the brand. The brand is what separates a HEIC photo from an MP4, so it
+// is checked rather than accepting every ftyp box as an image.
+bool IstHeif(const std::string& inhalt) {
+    if (inhalt.size() < 12) return false;
+    if (std::memcmp(inhalt.data() + 4, "ftyp", 4) != 0) return false;
+    static const char* const marken[] = {
+        "heic", "heix", "heim", "heis",   // HEVC-coded stills
+        "hevc", "hevm", "hevs",           // HEVC-coded sequences
+        "mif1", "msf1",                   // the generic image / sequence brands
+        "avif", "avis",                   // AV1-coded, what newer Androids write
+    };
+    for (const char* marke : marken)
+        if (std::memcmp(inhalt.data() + 8, marke, 4) == 0) return true;
+    return false;
+}
+
+} // namespace
+
+DateiArt ErkenneDateiArt(const std::string& inhalt) {
+    // Offset-zero signatures first. `IstPdf` deliberately tolerates junk ahead
+    // of its header, so asking it first would let an image whose metadata
+    // happens to contain "%PDF-" be filed as a document.
+    if (BeginntMit(inhalt, "\xFF\xD8\xFF", 3))                  return DateiArt::Jpeg;
+    if (BeginntMit(inhalt, "\x89PNG\r\n\x1A\n", 8))             return DateiArt::Png;
+    if (BeginntMit(inhalt, "II*\0", 4) ||
+        BeginntMit(inhalt, "MM\0*", 4))                          return DateiArt::Tiff;
+    if (IstHeif(inhalt))                                         return DateiArt::Heif;
+    if (BeginntMit(inhalt, "RIFF", 4) && inhalt.size() >= 12 &&
+        std::memcmp(inhalt.data() + 8, "WEBP", 4) == 0)          return DateiArt::WebP;
+    if (IstPdf(inhalt))                                          return DateiArt::Pdf;
+    return DateiArt::Unbekannt;
+}
+
+std::string EndungFuer(DateiArt art) {
+    switch (art) {
+        case DateiArt::Pdf:  return "pdf";
+        case DateiArt::Jpeg: return "jpg";
+        case DateiArt::Png:  return "png";
+        case DateiArt::Tiff: return "tiff";
+        case DateiArt::Heif: return "heic";
+        case DateiArt::WebP: return "webp";
+        case DateiArt::Unbekannt: break;
+    }
+    return "bin";
+}
+
+std::string BezeichnungFuer(DateiArt art) {
+    switch (art) {
+        case DateiArt::Pdf:  return "PDF";
+        case DateiArt::Jpeg: return "JPEG";
+        case DateiArt::Png:  return "PNG";
+        case DateiArt::Tiff: return "TIFF";
+        case DateiArt::Heif: return "HEIF/HEIC";
+        case DateiArt::WebP: return "WebP";
+        case DateiArt::Unbekannt: break;
+    }
+    return "unbekannt";
+}
+
+const std::vector<std::string>& AlleEndungen() {
+    // PDF first: it is still the great majority of what is filed, and a lookup
+    // by hash should not stat five missing names to find the usual one.
+    static const std::vector<std::string> endungen = {
+        "pdf", "jpg", "png", "tiff", "heic", "webp"
+    };
+    return endungen;
+}
 
 bool IstPdf(const std::string& inhalt) {
     // "%PDF-" at the start. Some producers put a few bytes of junk in front,
@@ -126,21 +204,37 @@ bool IstVerschluesseltesPdf(const std::string& inhalt) {
 
 // ===== THE ARCHIVE =====
 
-std::string BelegArchiv::PfadFuer(const std::string& hash, int jahr) const {
-    return wurzel_ + "/" + Zahl(jahr) + "/" + hash + ".pdf";
+std::string BelegArchiv::PfadFuer(const std::string& hash, int jahr,
+                                  DateiArt art) const {
+    return wurzel_ + "/" + Zahl(jahr) + "/" + hash + "." + EndungFuer(art);
 }
 
 bool BelegArchiv::Enthaelt(const std::string& hash, int jahr,
-                           std::string& outPfad) const {
-    const std::string pfad = PfadFuer(hash, jahr);
-    std::vector<uint8_t> digest;
-    if (!UltraCrypt_HashFile(UltraCryptHashAlgorithm::SHA256, pfad, digest))
-        return false;
-    // The name claims a hash; this checks the contents still match it. A file
-    // that was altered in place is not the document that was filed.
-    if (UltraCrypt_ToHex(digest) != hash) return false;
-    outPfad = pfad;
-    return true;
+                           std::string& outPfad, DateiArt* outArt) const {
+    // A caller with a hash out of the journal has no reason to know which
+    // format it was, so every extension the archive uses is tried. The hash is
+    // the identity; the extension only decides the name.
+    const std::string stamm = wurzel_ + "/" + Zahl(jahr) + "/" + hash + ".";
+    for (const std::string& endung : AlleEndungen()) {
+        const std::string pfad = stamm + endung;
+        std::vector<uint8_t> digest;
+        if (!UltraCrypt_HashFile(UltraCryptHashAlgorithm::SHA256, pfad, digest))
+            continue;
+        // The name claims a hash; this checks the contents still match it. A
+        // file that was altered in place is not the document that was filed.
+        if (UltraCrypt_ToHex(digest) != hash) continue;
+        outPfad = pfad;
+        if (outArt != nullptr) {
+            *outArt = DateiArt::Unbekannt;
+            for (int i = static_cast<int>(DateiArt::Pdf);
+                 i <= static_cast<int>(DateiArt::WebP); ++i) {
+                const DateiArt kandidat = static_cast<DateiArt>(i);
+                if (EndungFuer(kandidat) == endung) { *outArt = kandidat; break; }
+            }
+        }
+        return true;
+    }
+    return false;
 }
 
 ArchivEintrag BelegArchiv::Ablegen(const std::string& quellPfad, int jahr) {
@@ -152,13 +246,16 @@ ArchivEintrag BelegArchiv::Ablegen(const std::string& quellPfad, int jahr) {
     if (!LiesGanz(quellPfad, inhalt, eintrag.fehler)) return eintrag;
     eintrag.groesse = static_cast<int64_t>(inhalt.size());
 
-    if (!IstPdf(inhalt)) {
-        eintrag.fehler = "\"" + eintrag.dateiname + "\" ist keine PDF-Datei. Die "
-                         "Endung sagt nichts; entscheidend ist der Inhalt, und "
-                         "der beginnt hier nicht mit %PDF-.";
+    eintrag.art = ErkenneDateiArt(inhalt);
+    if (eintrag.art == DateiArt::Unbekannt) {
+        eintrag.fehler = "\"" + eintrag.dateiname + "\" ist kein Beleg, den das "
+                         "Archiv lesen kann. Die Endung sagt nichts; entscheidend "
+                         "ist der Inhalt. Abgelegt werden PDF, JPEG, PNG, TIFF, "
+                         "HEIF/HEIC und WebP - ein abfotografierter Beleg also "
+                         "auch.";
         return eintrag;
     }
-    if (IstVerschluesseltesPdf(inhalt)) {
+    if (eintrag.art == DateiArt::Pdf && IstVerschluesseltesPdf(inhalt)) {
         // Stored, but the user has to know: in ten years nobody will have the
         // password, and that is the moment the document is needed.
         eintrag.warnungen.push_back(
@@ -176,6 +273,9 @@ ArchivEintrag BelegArchiv::Ablegen(const std::string& quellPfad, int jahr) {
     eintrag.hash = UltraCrypt_ToHex(digest);
 
     std::string vorhanden;
+    // The kind stays the one the bytes gave: it is what decided the extension
+    // this lookup just found, and letting the lookup write it back could only
+    // ever replace a right answer with a worse one.
     if (Enthaelt(eintrag.hash, jahr, vorhanden)) {
         // Byte-identical to something already filed. Nothing to write.
         eintrag.ok             = true;
@@ -191,7 +291,7 @@ ArchivEintrag BelegArchiv::Ablegen(const std::string& quellPfad, int jahr) {
         return eintrag;
     }
 
-    const std::string ziel = PfadFuer(eintrag.hash, jahr);
+    const std::string ziel = PfadFuer(eintrag.hash, jahr, eintrag.art);
     if (!SchreibeGanz(ziel, inhalt, eintrag.fehler)) return eintrag;
 
     // Read it back and hash it again. A copy that was truncated by a full disk
