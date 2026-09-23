@@ -33,9 +33,6 @@ UltraCanvas/Plugins/LaTeX/UltraCanvasMathParser.cpp::locale-parse::strtof
 UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp::locale-parse::atof
 UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp::locale-parse::atof
 UltraCanvas/Plugins/Models/FBX/UltraCanvasFbxFile.cpp::locale-parse::strtod
-UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp::locale-parse::strtod
-UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp::locale-parse::strtof
-UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp::locale-write::out
 UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp::locale-parse::strtod
 UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp::locale-write::printf
 UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp::locale-parse::atof
@@ -53,8 +50,6 @@ UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::page
 UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::printf
 UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::res
 UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::stream
-UltraCanvas/Plugins/Vector/UltraCanvasXARConverter.cpp::locale-parse::atof
-UltraCanvas/Plugins/Vector/UltraCanvasXARConverter.cpp::locale-write::printf
 UltraCanvas/core/UltraCanvasMediaViewer.cpp::locale-parse::atof
 UltraCanvas/core/UltraCanvasSpreadsheetXlsxIO.cpp::locale-parse::atof
 UltraCanvas/core/UltraDatabase/UltraDatabasePostgresDriver.cpp::locale-parse::strtod

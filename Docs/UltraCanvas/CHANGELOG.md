@@ -106,6 +106,17 @@
     - `.github/workflows/locale-numbers.yml` runs it `--strict`, so a new one
       fails the build. Verified in both directions: adding a `std::stof`
       fails the gate, removing it passes.
+    - **The OBJ and XAR converters are fixed rather than baselined** — 29 of
+      the 100 sites, and the two where a misread number is a wrong drawing or
+      a wrong model. OBJ's 17 `strtof`/`strtod` reads became dot-decimal, and
+      its `ScopedPrecision` — the guard that shapes every number the OBJ and
+      MTL writers emit — now pins the decimal point as well as the digit
+      count, *before* its compact-precision early-out. Without that it wrote
+      `v 1,5 0 2`, which every other OBJ reader takes as a different vertex,
+      since OBJ separates components with spaces. XAR's ten `atof` reads
+      (dash lengths, width profiles, stamp matrices) became dot-decimal, and
+      its writer's `Num()` — the one place every number it emits passes
+      through — uses `FormatFloatClassic`. The baseline is down to 34 keys.
 - **Matter thermostat setpoints: the units were right, the range was not.**
   `SendThermostatCommand` takes whole degrees and multiplies by 100 for
   `OccupiedHeatingSetpoint`, which the spec carries in hundredths in an int16
