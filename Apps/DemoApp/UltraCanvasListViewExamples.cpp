@@ -3,8 +3,9 @@
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasListSortFilterProxy.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasTextUtils.h"
-#include <algorithm>
 
 namespace UltraCanvas {
 
@@ -20,8 +21,9 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Subtitle
-        auto subtitle = std::make_shared<UltraCanvasLabel>("ListViewSubtitle", 20, 45, 600, 25);
-        subtitle->SetText("Simple lists, multi-column, styled, and icon views — "
+        // Two lines, and narrow enough to end before the status box at x = 600.
+        auto subtitle = std::make_shared<UltraCanvasLabel>("ListViewSubtitle", 20, 45, 570, 40);
+        subtitle->SetText("Simple lists, multi-column, styled, and icon views —\n"
                           "hover a row or a column header for its tooltip");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(120, 120, 120, 255));
@@ -85,7 +87,7 @@ namespace UltraCanvas {
         // ============================================================
         // Section 2: Multi-Column List with Header — top-right
         // ============================================================
-        auto section2 = std::make_shared<UltraCanvasLabel>("LVSection2", 500, 90, 480, 25);
+        auto section2 = std::make_shared<UltraCanvasLabel>("LVSection2", 500, 90, 320, 25);
         section2->SetText("2. Multi-Column List with Header");
         section2->SetFontWeight(FontWeight::Bold);
         section2->SetTextColor(Color(0, 100, 200, 255));
@@ -95,13 +97,13 @@ namespace UltraCanvas {
         // The 4th ListColumnDef argument is the header tooltip, shown when the
         // pointer rests on that column's header cell.
         multiModel->AddColumn(ListColumnDef("File Name", 170, TextAlignment::Left,
-                                            "Name of the file on disk"));
+                                            "Name of the file on disk — click to sort"));
         multiModel->AddColumn(ListColumnDef("Type", 90, TextAlignment::Left,
-                                            "File type, derived from the extension"));
+                                            "File type, derived from the extension — click to sort"));
         multiModel->AddColumn(ListColumnDef("Size", 70, TextAlignment::Right,
-                                            "Size on disk, rounded to one decimal"));
+                                            "Size on disk, rounded to one decimal — click to sort"));
         multiModel->AddColumn(ListColumnDef("Modified", 110, TextAlignment::Left,
-                                            "Date of the last write, YYYY-MM-DD"));
+                                            "Date of the last write, YYYY-MM-DD — click to sort"));
 
         // Rows carry both a row-wide tooltip and per-column tooltips: hovering
         // a cell shows that column's text, and any column left without one
@@ -131,39 +133,37 @@ namespace UltraCanvas {
             {{"CHANGELOG.md", "Markdown", "12.3 KB", "2025-03-15"}, "Docs/CHANGELOG.md",
              "Markdown document", "12,595 bytes", "15 Mar 2025, 09:41"},
         };
-        // Rows are (re)filled from `fileRows` in the current sort order: the
-        // view shows which column is sorted (SetSortIndicator); ordering the
-        // rows stays with the model's owner.
-        auto fillRows = [multiModel, fileRows](int sortColumn, bool ascending) {
-            std::vector<FileRow> rows = fileRows;
-            if (sortColumn >= 0) {
-                auto key = [sortColumn](const FileRow& r) -> double {
-                    float kb = 0;   // "2.4 KB" sorts by its number, not its text
-                    return TryParseFloat(r.cells[sortColumn], kb) ? kb : 0;
-                };
-                std::stable_sort(rows.begin(), rows.end(),
-                    [&](const FileRow& a, const FileRow& b) {
-                        bool less = (sortColumn == 2) ? key(a) < key(b)
-                                                      : a.cells[sortColumn] < b.cells[sortColumn];
-                        bool greater = (sortColumn == 2) ? key(b) < key(a)
-                                                         : b.cells[sortColumn] < a.cells[sortColumn];
-                        return ascending ? less : greater;
-                    });
-            }
-            multiModel->Clear();
-            for (const auto& row : rows) {
-                MultiColumnListItem item(row.cells);
-                item.tooltip = row.path;                    // row-wide fallback
-                item.SetCellTooltip(1, row.typeTip);
-                item.SetCellTooltip(2, row.bytes);
-                item.SetCellTooltip(3, row.modifiedTip);    // column 0 uses the path
-                multiModel->AddItem(item);
-            }
-        };
-        fillRows(-1, true);
+        for (const auto& row : fileRows) {
+            MultiColumnListItem item(row.cells);
+            item.tooltip = row.path;                    // row-wide fallback
+            item.SetCellTooltip(1, row.typeTip);
+            item.SetCellTooltip(2, row.bytes);
+            item.SetCellTooltip(3, row.modifiedTip);    // column 0 uses the path
+            multiModel->AddItem(item);
+        }
+
+        // Sorting: the model keeps its rows in insertion order, and the view is
+        // handed a UltraCanvasListSortFilterProxy in front of it, which presents
+        // them re-ordered. Every row index the view reports is a *proxy* row —
+        // map it with MapToSource() before looking the record up in the model.
+        auto multiProxy = std::make_shared<UltraCanvasListSortFilterProxy>(multiModel);
+        multiProxy->SetColumnSortKind(0, ListSortKind::Natural);   // "file2" before "file10"
+        // "2.4 KB" is not a plain number (the unit is a letter), so the Size
+        // column gets a comparator that reads the number in front of the unit.
+        multiProxy->SetColumnComparator(2, [](const IListModel& source, int left, int right, int column) {
+            auto kilobytes = [&](int row) {
+                double kb = 0;
+                TryParseFloat(GetStringValue(source.GetData({row, column}, ListDataRole::DisplayRole)), kb);
+                return kb;
+            };
+            const double a = kilobytes(left), b = kilobytes(right);
+            return a < b ? -1 : (b < a ? 1 : 0);
+        });
+        // Type and Modified use the default (Auto): case-insensitive text, and
+        // ISO dates sort correctly as text.
 
         auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 500, 125, 480, 225);
-        multiList->SetModel(multiModel);
+        multiList->SetModel(multiProxy);
 
         ListViewStyle multiStyle;
         multiStyle.headerFontSize = 10;
@@ -179,45 +179,71 @@ namespace UltraCanvas {
 
         auto multiSelection = std::make_shared<UltraCanvasMultiSelection>();
         multiList->SetSelection(multiSelection);
-        
 
-
-        multiList->onCellClicked = [statusLabel, multiModel](int row, int column, const Point2Di&) {
-            const auto& item = multiModel->GetItem(row);
+        multiList->onCellClicked = [statusLabel, multiModel, multiProxy](int row, int column, const Point2Di&) {
+            const int sourceRow = multiProxy->MapToSource(row);
+            if (sourceRow < 0) return;
+            const auto& item = multiModel->GetItem(sourceRow);
             statusLabel->SetText("Multi-Column: Clicked row " + std::to_string(row) +
+                                 " (model row " + std::to_string(sourceRow) + ")" +
                                  ", column " + std::to_string(column) +
                                  " (" + multiModel->GetColumnDef(column).title + ")" +
                                  "\nFile: " + item.labels[0] +
                                  "\nCell tooltip: " + item.GetCellTooltip(column));
         };
-        multiList->onSelectionChanged = [statusLabel](const std::vector<int>& rows) {
-            std::string rowList;
+        multiList->onSelectionChanged = [statusLabel, multiModel, multiProxy](const std::vector<int>& rows) {
+            std::string names;
             for (size_t i = 0; i < rows.size(); i++) {
-                if (i > 0) rowList += ", ";
-                rowList += std::to_string(rows[i]);
+                const int sourceRow = multiProxy->MapToSource(rows[i]);
+                if (sourceRow < 0) continue;
+                if (!names.empty()) names += ", ";
+                names += multiModel->GetItem(sourceRow).labels[0];
             }
             statusLabel->SetText("Multi-Column: " + std::to_string(rows.size()) +
-                                 " items selected\nRows: [" + rowList + "]");
+                                 " items selected\nFiles: " + names);
         };
 
-        // Clicking a header sorts by that column; clicking it again flips the
-        // direction. The triangle in the header cell follows SetSortIndicator.
+        // Sorting can be switched on and off. While it is on, clicking a header
+        // sorts by that column ascending, clicking the sorted column again
+        // turns it round, and the triangle in the header cell follows
+        // SetSortIndicator. Switching it off restores the model's own order.
+        auto sortCheckbox = std::make_shared<UltraCanvasCheckbox>("MultiColSortable", 830, 90, 150, 24,
+                                                                  "Sortable columns");
+        sortCheckbox->SetChecked(true);
+        container->AddChild(sortCheckbox);
+
         std::weak_ptr<UltraCanvasListView> multiListWeak = multiList;
-        multiList->onHeaderClicked = [multiListWeak, multiModel, fillRows, statusLabel](int column) {
+        std::weak_ptr<UltraCanvasCheckbox> sortCheckboxWeak = sortCheckbox;
+        multiList->onHeaderClicked = [multiListWeak, sortCheckboxWeak, multiModel, multiProxy, statusLabel](int column) {
             auto view = multiListWeak.lock();
-            if (!view) return;
-            bool ascending = (view->GetSortColumn() == column) ? !view->GetSortAscending() : true;
-            view->ResetSelection();
-            fillRows(column, ascending);
+            auto sortable = sortCheckboxWeak.lock();
+            if (!view || !sortable || !sortable->IsChecked()) return;
+            const bool ascending = !(column == view->GetSortColumn() && view->GetSortAscending());
+            view->ResetSelection();     // proxy rows move under a sort
+            multiProxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
+                                                       : ListSortOrder::Descending);
             view->SetSortIndicator(column, ascending);
             statusLabel->SetText("Multi-Column: sorted by " + multiModel->GetColumnDef(column).title +
-                                 (ascending ? " (ascending)" : " (descending)"));
+                                 (ascending ? " (ascending)" : " (descending)") +
+                                 "\nClick the header again to reverse the order.");
+        };
+        sortCheckbox->onStateChanged = [multiListWeak, multiProxy, statusLabel](CheckedState, CheckedState newState) {
+            auto view = multiListWeak.lock();
+            if (!view) return;
+            if (newState == CheckedState::Checked) {
+                statusLabel->SetText("Multi-Column: sorting on\nClick a column header to sort by it.");
+                return;
+            }
+            view->ResetSelection();
+            multiProxy->ClearSort();
+            view->ClearSortIndicator();
+            statusLabel->SetText("Multi-Column: sorting off\nRows are back in model order.");
         };
 
         container->AddChild(multiList);
 
         auto desc2 = std::make_shared<UltraCanvasLabel>("MultiColDesc", 500, 355, 480, 20);
-        desc2->SetText("Header + grid lines, multi-select (Ctrl+Click), per-column and per-cell tooltips");
+        desc2->SetText("Click a header to sort (again to reverse), multi-select (Ctrl+Click), per-cell tooltips");
         desc2->SetFontSize(10);
         desc2->SetTextColor(Color(140, 140, 140, 255));
         container->AddChild(desc2);

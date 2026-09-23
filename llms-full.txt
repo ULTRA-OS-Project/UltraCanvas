@@ -30930,6 +30930,8 @@ happening.
 - Tests: `Tests/ListSortFilterProxyTests.cpp` (target `ListSortFilterProxyTests`)
 - Works with: [`UltraCanvasListView`](UltraCanvasListViewExamples.md), which
   already renders, virtualises, selects and navigates whatever model it is given
+- Live example: DemoApp → ListView page, table 2 (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`),
+  with header-click sorting behind a "Sortable columns" checkbox
 
 ```cpp
 auto rows  = std::make_shared<UltraCanvasMultiColumnListModel>();
