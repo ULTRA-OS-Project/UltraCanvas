@@ -12,12 +12,13 @@
 // This file: a polled snapshot of the socket table with process attribution
 // and byte counters where the backend has them, a per-process roll-up, and
 // the domain name behind a peer address where a name source has seen it
-// (NetworkMonitorNames.h). Connection events and file-transfer correlation
-// are later phases - see Docs/Modules/NetworkMonitor/README.md for what is
-// built and what is not.
+// (NetworkMonitorNames.h), and connections reported as they open and close
+// where an event source runs (NetworkMonitorEvents.h). File-transfer
+// correlation is a later phase - see Docs/Modules/NetworkMonitor/README.md
+// for what is built and what is not.
 //
-// Version: 0.4.0
-// Last Modified: 2026-09-22
+// Version: 0.5.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -166,8 +167,8 @@ struct NetworkMonitorCapabilities {
     bool socketTable        = false;  // a snapshot is possible at all
     bool processAttribution = false;  // sockets can be mapped to a PID
     bool allUsers           = false;  // false = only this user's processes are attributable
-    bool connectionEvents   = false;  // event-rate collection (not in Phase 1)
-    bool perConnectionBytes = false;  // byte counters (not in Phase 1)
+    bool connectionEvents   = false;  // an event source is running (NetworkMonitorEvents.h)
+    bool perConnectionBytes = false;  // byte counters in the snapshot
     bool dnsWithProcess     = false;  // a running name source reports the asking PID
     std::string backendName;          // "procfs", "none"
     // Human-readable lines for what is missing and why, in the order a

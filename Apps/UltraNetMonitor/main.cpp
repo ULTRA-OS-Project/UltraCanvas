@@ -6,15 +6,19 @@
 //
 // Two ways in. Without arguments it opens the UltraCanvas window. With
 // --list / --by-app / --names / --capabilities it prints one snapshot and
-// exits; with --record it writes snapshots (and DNS observations) to the
-// store until stopped, and --history / --dns / --totals / --store-stats
-// read the store back, --purge empties it. All of that runs headless,
-// which is what makes it usable over ssh and checkable in CI.
+// exits, --events prints connection events as they come; with --record it
+// writes snapshots, DNS observations and events to the store until
+// stopped, and --history / --dns / --events-history / --totals /
+// --store-stats read the store back, --purge empties it. All of that runs
+// headless, which is what makes it usable over ssh and checkable in CI.
 //
 // Domain names come from the name sources started here in every mode:
 // reverse DNS unless --no-rdns, the platform's own resolver events where
 // it has any (Windows, elevated), and the local DNS proxy with --dns-proxy.
-// Version: 0.4.0
+// Connection events come from the event sources: the snapshot differ
+// unless --no-diff, and the platform's own (nf_conntrack as root on
+// Linux, the kernel network ETW provider elevated on Windows).
+// Version: 0.5.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 // Before the window header: on Linux that one reaches X11, whose `None`
@@ -25,6 +29,7 @@
 #include "ui/UltraNetMonitorWindow.h"
 
 #include "NetworkMonitor/NetworkMonitor.h"
+#include "NetworkMonitor/NetworkMonitorEvents.h"
 #include "NetworkMonitor/NetworkMonitorNames.h"
 #include "NetworkMonitor/NetworkMonitorStore.h"
 
@@ -41,6 +46,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <exception>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -61,15 +67,17 @@ using namespace UltraCanvas;
 
 namespace {
 
-UltraCanvasApplication* g_app = nullptr;
 std::atomic<bool> g_stopRecording{false};
 
+// Ctrl-C and SIGTERM. Two flag stores, nothing else: a handler may not
+// log, lock or exit. In the window, the framework's flag makes the next
+// loop iteration request the exit on the main thread, main returns, and
+// the window's destructor stops the worker, the name and event sources
+// and the store before any static destructor runs. Headless, the
+// recording or event loop finishes its round, applies retention and
+// closes cleanly.
 void SignalHandler(int) {
-    if (g_app) {
-        g_app->RequestExit();
-        std::exit(EXIT_SUCCESS);
-    }
-    // Headless recording: finish the loop, apply retention, close cleanly.
+    UltraCanvasApplicationBase::RequestExitFromSignal();
     g_stopRecording = true;
 }
 
@@ -85,6 +93,8 @@ void PrintUsage(const char* programName) {
         "  --by-app            Print the per-process roll-up and exit\n"
         "  --capabilities      Print what this machine's backend can deliver\n"
         "  --names             Print every address the name sources have named\n"
+        "  --events            Print connection events as they happen, until Ctrl-C\n"
+        "                      (or --seconds)\n"
         "  --no-listen         With --list / --by-app / --history: leave out listeners\n"
         "  --no-loopback       With --list / --by-app / --history: leave out loopback\n"
         "  --resolve           With --list / --by-app / --names: wait up to 3 s for\n"
@@ -96,6 +106,10 @@ void PrintUsage(const char* programName) {
         "                      that pass through it; point the system resolver at it\n"
         "      --upstream <ip> The resolver to forward to (default: the system's)\n"
         "  --no-rdns           Do not look up names by reverse DNS\n"
+        "  --no-diff           Do not diff snapshots for events (only the platform's own)\n"
+        "  --diff-interval <ms>\n"
+        "                      The differ's interval (default 250); shorter connections\n"
+        "                      are missed by it, never by the platform's own source\n"
         "\n"
         "  --record [<db>]     Record a snapshot every --interval into the store\n"
         "                      until Ctrl-C (or --seconds), then apply retention\n"
@@ -107,6 +121,8 @@ void PrintUsage(const char* programName) {
         "      --limit <n>     At most n flows (default 200)\n"
         "      --csv <file>    Write the flows to a CSV file instead\n"
         "  --dns [<db>]        Print recorded DNS observations (same filters)\n"
+        "  --events-history [<db>]\n"
+        "                      Print recorded connection events (same filters; --csv)\n"
         "  --totals [<db>]     Print the rolled-up daily totals per application and peer\n"
         "  --store-stats [<db>]\n"
         "  --purge [<db>] --yes\n"
@@ -119,7 +135,10 @@ void PrintUsage(const char* programName) {
         "Windows other users' sockets are still listed, as (unattributed).\n"
         "Byte counters come from netlink sock_diag on Linux; elsewhere a dash.\n"
         "A host name with a trailing ? came from reverse DNS - a guess, not\n"
-        "what the application asked for.\n",
+        "what the application asked for. Events from the snapshot differ miss\n"
+        "connections shorter than its interval; nf_conntrack (Linux, root, a\n"
+        "firewall rule active) and the kernel's ETW events (Windows, elevated)\n"
+        "do not.\n",
         programName);
 }
 
@@ -143,6 +162,15 @@ void PrintCapabilities(const NetworkMonitorCapabilities& caps) {
     }
     const std::string resolver = NetworkMonitor_SystemResolver();
     std::printf("  system resolver:      %s\n", resolver.empty() ? "(none found)" : resolver.c_str());
+    std::vector<EventSourceStatus> eventSources;
+    NetworkMonitor_ListEventSources(eventSources);
+    std::printf("Event sources: %s\n", eventSources.empty() ? "none" : "");
+    for (const auto& source : eventSources) {
+        std::printf("  %s: %s%s%s%s\n", source.name.c_str(), source.running ? "running" : "stopped",
+                    source.reportsProcess ? ", with the process" : "",
+                    source.reportsBytes ? ", with byte counts" : "",
+                    source.lastError.empty() ? "" : (" - " + source.lastError).c_str());
+    }
 }
 
 // ===== NAME SOURCES =====
@@ -152,6 +180,8 @@ struct NameSettings {
     bool dnsProxy = false;
     uint16_t dnsProxyPort = 53;
     std::string upstream;
+    bool snapshotDiff = true;
+    int diffIntervalMs = 250;
 };
 
 // Starts the sources the settings ask for. What could not start is
@@ -183,13 +213,29 @@ bool StartNameSources(const NameSettings& settings, bool verbose, std::vector<st
                         "to see every query.\n", static_cast<unsigned>(settings.dnsProxyPort));
         }
     }
+    // Events: the platform's own source first, then the differ.
+    if (auto system = NetworkMonitor_CreateSystemEventSource()) {
+        const std::string name = system->Name();
+        const NetworkMonitorResult started = NetworkMonitor_RegisterEventSource(std::move(system));
+        if (!started) notes.push_back("Events from " + name + ": " + started.message);
+    }
+    if (settings.snapshotDiff) {
+        SnapshotDiffOptions options;
+        options.intervalMs = settings.diffIntervalMs;
+        const NetworkMonitorResult started =
+            NetworkMonitor_RegisterEventSource(NetworkMonitor_CreateSnapshotDiffEventSource(options));
+        if (!started) notes.push_back("Events from the snapshot differ: " + started.message);
+    }
     if (verbose) for (const auto& note : notes) std::printf("%s\n", note.c_str());
     return ok;
 }
 
 // Stops every source at exit, whichever way main returns.
 struct NameSourcesScope {
-    ~NameSourcesScope() { NetworkMonitor_StopNameSources(); }
+    ~NameSourcesScope() {
+        NetworkMonitor_StopEventSources();
+        NetworkMonitor_StopNameSources();
+    }
 };
 
 std::string HostColumn(const std::string& name, NameSource source) {
@@ -295,6 +341,62 @@ int RunHeadless(bool byApp, const NetworkMonitorOptions& options, bool resolve) 
     return EXIT_SUCCESS;
 }
 
+std::string EventLine(const NetworkConnectionEvent& e) {
+    const std::time_t when = static_cast<std::time_t>(e.observedAtMs / 1000);
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &when);
+#else
+    localtime_r(&when, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof stamp, "%H:%M:%S", &local);
+    char line[512];
+    const std::string app = e.process
+        ? e.process->displayName + " (" + std::to_string(e.process->pid) + ")"
+        : std::string("(unattributed)");
+    const std::string bytes = e.kind == NetworkEventKind::Closed
+        ? ByteText(e.bytesSent) + " / " + ByteText(e.bytesReceived) : std::string();
+    std::snprintf(line, sizeof line, "%s.%03d %-8s %-4s%-2s %-28s %-28s %-22.22s %-18s %s",
+                  stamp, static_cast<int>(e.observedAtMs % 1000), NetworkMonitor_EventKindName(e.kind),
+                  NetworkMonitor_TransportName(e.transport), e.family == NetworkAddressFamily::IPv6 ? "6" : "",
+                  e.LocalEndpoint().c_str(), e.RemoteEndpoint().c_str(), app.c_str(),
+                  HostColumn(e.remoteName, e.nameSource).c_str(), bytes.c_str());
+    return line;
+}
+
+int RunEvents(int seconds) {
+    std::vector<EventSourceStatus> sources;
+    NetworkMonitor_ListEventSources(sources);
+    if (sources.empty()) {
+        std::printf("No event source is running (see --capabilities).\n");
+        return EXIT_FAILURE;
+    }
+    for (const auto& source : sources) {
+        std::printf("%s: %s%s\n", source.name.c_str(), source.running ? "running" : "stopped",
+                    source.lastError.empty() ? "" : (" - " + source.lastError).c_str());
+    }
+    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %s\n",
+                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV");
+    std::mutex printMutex;
+    const EventListenerId listener = NetworkMonitor_AddEventListener([&printMutex](const NetworkConnectionEvent& e) {
+        std::lock_guard<std::mutex> lock(printMutex);
+        std::printf("%s\n", EventLine(e).c_str());
+        std::fflush(stdout);
+    });
+    std::signal(SIGINT, SignalHandler);
+    std::signal(SIGTERM, SignalHandler);
+    using clock = std::chrono::steady_clock;
+    const auto started = clock::now();
+    while (!g_stopRecording.load()) {
+        if (seconds > 0 && clock::now() - started >= std::chrono::seconds(seconds)) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    NetworkMonitor_StopEventSources();
+    NetworkMonitor_RemoveEventListener(listener);
+    return EXIT_SUCCESS;
+}
+
 int RunNames(const NetworkMonitorOptions& options, bool resolve) {
     // A snapshot first, so the peers of the moment are queued for the
     // on-demand sources; then the table as it stands.
@@ -358,13 +460,19 @@ int RunRecord(const std::string& path, int seconds, int intervalMs, const Networ
     std::signal(SIGINT, SignalHandler);
     std::signal(SIGTERM, SignalHandler);
 
-    // Every DNS observation the sources report goes in too, from the
-    // source's thread; the store serialises the two writers itself.
+    // Every DNS observation and every connection event the sources report
+    // goes in too, from the source's thread; the store serialises the
+    // writers itself.
     std::atomic<int64_t> observations{0};
+    std::atomic<int64_t> events{0};
     const NetworkMonitorStoreHandle handle = session.handle;
     const NameListenerId listener = NetworkMonitor_AddNameListener(
         [handle, &observations](const DnsObservation& observation) {
             if (NetworkMonitor_RecordDnsObservation(handle, observation)) ++observations;
+        });
+    const EventListenerId eventListener = NetworkMonitor_AddEventListener(
+        [handle, &events](const NetworkConnectionEvent& event) {
+            if (NetworkMonitor_RecordConnectionEvent(handle, event)) ++events;
         });
 
     using clock = std::chrono::steady_clock;
@@ -377,13 +485,20 @@ int RunRecord(const std::string& path, int seconds, int intervalMs, const Networ
         const NetworkMonitorResult read = NetworkMonitor_ListConnections(connections, options);
         if (!read) {
             std::printf("Could not read the socket table: %s\n", read.message.c_str());
+            NetworkMonitor_StopEventSources();
             NetworkMonitor_RemoveNameListener(listener);
+            NetworkMonitor_RemoveEventListener(eventListener);
             return EXIT_FAILURE;
         }
         const NetworkMonitorResult recorded = NetworkMonitor_RecordSnapshot(session.handle, connections);
         if (!recorded) {
             std::printf("Could not record: %s\n", recorded.message.c_str());
-            if (++failures >= 3) { NetworkMonitor_RemoveNameListener(listener); return EXIT_FAILURE; }
+            if (++failures >= 3) {
+                NetworkMonitor_StopEventSources();
+                NetworkMonitor_RemoveNameListener(listener);
+                NetworkMonitor_RemoveEventListener(eventListener);
+                return EXIT_FAILURE;
+            }
         } else {
             ++snapshots;
         }
@@ -392,18 +507,21 @@ int RunRecord(const std::string& path, int seconds, int intervalMs, const Networ
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
-    // The sources stop before the listener goes, so no observation is
+    // The sources stop before the listeners go, so nothing is
     // half-recorded into a store about to close.
+    NetworkMonitor_StopEventSources();
     NetworkMonitor_StopNameSources();
     NetworkMonitor_RemoveNameListener(listener);
+    NetworkMonitor_RemoveEventListener(eventListener);
     NetworkMonitor_ApplyRetention(session.handle);
     NetworkMonitorStoreStats stats;
     NetworkMonitor_StoreStats(session.handle, stats);
-    std::printf("\nRecorded %lld snapshots and %lld DNS observations. The store holds %lld flows, "
-                "%lld daily totals and %lld observations.\n",
+    std::printf("\nRecorded %lld snapshots, %lld DNS observations and %lld events. The store holds %lld flows, "
+                "%lld daily totals, %lld observations and %lld events.\n",
                 static_cast<long long>(snapshots), static_cast<long long>(observations.load()),
+                static_cast<long long>(events.load()),
                 static_cast<long long>(stats.flows), static_cast<long long>(stats.dailyTotals),
-                static_cast<long long>(stats.dnsObservations));
+                static_cast<long long>(stats.dnsObservations), static_cast<long long>(stats.connectionEvents));
     return EXIT_SUCCESS;
 }
 
@@ -471,6 +589,32 @@ int RunDns(const std::string& path, const ActivityQuery& query) {
     return EXIT_SUCCESS;
 }
 
+int RunEventsHistory(const std::string& path, const ActivityQuery& query, const std::string& csvPath) {
+    StoreSession session;
+    if (!OpenStore(path, session)) return EXIT_FAILURE;
+    if (!csvPath.empty()) {
+        int64_t rows = 0;
+        const NetworkMonitorResult written = NetworkMonitor_ExportEventsCsv(session.handle, query, csvPath, &rows);
+        if (!written) {
+            std::printf("Export failed: %s\n", written.message.c_str());
+            return EXIT_FAILURE;
+        }
+        std::printf("Wrote %lld events to %s\n", static_cast<long long>(rows), csvPath.c_str());
+        return EXIT_SUCCESS;
+    }
+    std::vector<RecordedConnectionEvent> events;
+    const NetworkMonitorResult read = NetworkMonitor_QueryConnectionEvents(session.handle, query, events);
+    if (!read) {
+        std::printf("Could not read the store: %s\n", read.message.c_str());
+        return EXIT_FAILURE;
+    }
+    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %s\n",
+                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV");
+    for (const auto& r : events) std::printf("%s\n", EventLine(r.event).c_str());
+    std::printf("\n%zu events from %s\n", events.size(), session.path.c_str());
+    return EXIT_SUCCESS;
+}
+
 int RunTotals(const std::string& path, const ActivityQuery& query) {
     StoreSession session;
     if (!OpenStore(path, session)) return EXIT_FAILURE;
@@ -508,6 +652,7 @@ int RunStoreStats(const std::string& path) {
     std::printf("Daily totals: %lld\n", static_cast<long long>(stats.dailyTotals));
     std::printf("Snapshots:    %lld\n", static_cast<long long>(stats.snapshots));
     std::printf("DNS records:  %lld\n", static_cast<long long>(stats.dnsObservations));
+    std::printf("Events:       %lld\n", static_cast<long long>(stats.connectionEvents));
     if (stats.flows > 0) {
         std::printf("Oldest flow:  %s\nNewest flow:  %s\n",
                     LocalTime(stats.oldestFlow).c_str(), LocalTime(stats.newestFlow).c_str());
@@ -547,7 +692,7 @@ bool NeedsValue(int argc, int i, const char* option) {
 } // namespace
 
 int main(int argc, char* argv[]) {
-    enum class Mode { Window, List, ByApp, Names, Record, History, Dns, Totals, StoreStats, Purge };
+    enum class Mode { Window, List, ByApp, Names, Events, Record, History, Dns, EventsHistory, Totals, StoreStats, Purge };
     Mode mode = Mode::Window;
     bool capabilities = false;
     bool confirmed = false;
@@ -579,6 +724,16 @@ int main(int argc, char* argv[]) {
             capabilities = true;
         } else if (arg == "--names") {
             mode = Mode::Names;
+        } else if (arg == "--events") {
+            mode = Mode::Events;
+        } else if (arg == "--events-history") {
+            mode = Mode::EventsHistory;
+            storePath = OptionalPath(argc, argv, i);
+        } else if (arg == "--no-diff") {
+            names.snapshotDiff = false;
+        } else if (arg == "--diff-interval") {
+            if (!NeedsValue(argc, i, "--diff-interval")) return EXIT_FAILURE;
+            names.diffIntervalMs = std::max(50, std::atoi(argv[++i]));
         } else if (arg == "--resolve") {
             resolve = true;
         } else if (arg == "--no-rdns") {
@@ -644,8 +799,8 @@ int main(int argc, char* argv[]) {
     // them, so those modes skip the start.
     NameSourcesScope sourcesScope;
     std::vector<std::string> nameNotes;
-    const bool readsOnly = mode == Mode::History || mode == Mode::Dns || mode == Mode::Totals ||
-                           mode == Mode::StoreStats || mode == Mode::Purge;
+    const bool readsOnly = mode == Mode::History || mode == Mode::Dns || mode == Mode::EventsHistory ||
+                           mode == Mode::Totals || mode == Mode::StoreStats || mode == Mode::Purge;
     if (!readsOnly) {
         const bool verbose = mode != Mode::Window;
         if (!StartNameSources(names, verbose, nameNotes) && mode != Mode::Window) return EXIT_FAILURE;
@@ -668,9 +823,11 @@ int main(int argc, char* argv[]) {
         case Mode::List:       return RunHeadless(false, options, resolve);
         case Mode::ByApp:      return RunHeadless(true, options, resolve);
         case Mode::Names:      return RunNames(options, resolve);
+        case Mode::Events:     return RunEvents(seconds);
         case Mode::Record:     return RunRecord(storePath, seconds, intervalMs, options);
         case Mode::History:    return RunHistory(storePath, query, csvPath);
         case Mode::Dns:        return RunDns(storePath, query);
+        case Mode::EventsHistory: return RunEventsHistory(storePath, query, csvPath);
         case Mode::Totals:     return RunTotals(storePath, query);
         case Mode::StoreStats: return RunStoreStats(storePath);
         case Mode::Purge:      return RunPurge(storePath, confirmed);
@@ -678,7 +835,6 @@ int main(int argc, char* argv[]) {
     }
 
     UltraCanvasApplication app;
-    g_app = &app;
 
 #ifdef __linux__
     std::signal(SIGINT, SignalHandler);

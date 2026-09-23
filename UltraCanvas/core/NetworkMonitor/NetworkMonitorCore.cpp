@@ -4,8 +4,8 @@
 // the names a snapshot's peers are known by, the per-process roll-up, the
 // display names, and the null backend for platforms that have none yet.
 //
-// Version: 0.4.0
-// Last Modified: 2026-09-22
+// Version: 0.5.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitor.h"
 #include "NetworkMonitor/NetworkMonitorBackend.h"
@@ -85,8 +85,9 @@ NetworkMonitorCapabilities NetworkMonitor_GetCapabilities() {
         caps.backendName = "none";
         caps.notes.push_back("No NetworkMonitor backend for this platform in this build.");
     }
-    // Names come from the registered sources, not the backend.
+    // Names and events come from the registered sources, not the backend.
     caps.dnsWithProcess = NetworkMonitor_AnySourceReportsProcess();
+    caps.connectionEvents = NetworkMonitor_AnyEventSourceRunning();
     return caps;
 }
 
