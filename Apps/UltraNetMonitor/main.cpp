@@ -18,7 +18,7 @@
 // Connection events come from the event sources: the snapshot differ
 // unless --no-diff, and the platform's own (nf_conntrack as root on
 // Linux, the kernel network ETW provider elevated on Windows).
-// Version: 0.6.0
+// Version: 0.7.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 // Before the window header: on Linux that one reaches X11, whose `None`
@@ -315,25 +315,28 @@ int RunHeadless(bool byApp, const NetworkMonitorOptions& options, bool resolve, 
 
     if (byApp) {
         const auto groups = NetworkMonitor_SummarizeByProcess(connections);
-        std::printf("%-24s %7s %6s %6s %6s %6s %9s %9s  %s\n",
-                    "APPLICATION", "PID", "CONNS", "ESTAB", "LISTEN", "PEERS", "SENT", "RECV", "HOSTS");
+        std::printf("%-24s %7s %6s %6s %6s %6s %9s %9s  %-30s %s\n",
+                    "APPLICATION", "PID", "CONNS", "ESTAB", "LISTEN", "PEERS", "SENT", "RECV", "VIA / FOR", "HOSTS");
         for (const auto& g : groups) {
             std::string hosts;
             for (std::size_t i = 0; i < g.remoteNames.size() && i < 3; ++i) {
                 hosts += (i ? ", " : "") + g.remoteNames[i];
             }
             if (g.remoteNames.size() > 3) hosts += ", +" + std::to_string(g.remoteNames.size() - 3);
-            std::printf("%-24.24s %7s %6d %6d %6d %6zu %9s %9s  %s\n",
+            std::string via;
+            for (std::size_t i = 0; i < g.viaProcesses.size() && i < 2; ++i) via += (i ? ", " : "-> ") + g.viaProcesses[i];
+            for (std::size_t i = 0; i < g.servesProcesses.size() && i < 2; ++i) via += (i ? ", " : (via.empty() ? "for " : "; for ")) + g.servesProcesses[i];
+            std::printf("%-24.24s %7s %6d %6d %6d %6zu %9s %9s  %-30.30s %s\n",
                         g.process.displayName.c_str(),
                         g.attributed ? std::to_string(g.process.pid).c_str() : "-",
                         g.connectionCount, g.establishedCount, g.listeningCount,
                         g.remoteAddresses.size(),
-                        ByteText(g.bytesSent).c_str(), ByteText(g.bytesReceived).c_str(), hosts.c_str());
+                        ByteText(g.bytesSent).c_str(), ByteText(g.bytesReceived).c_str(), via.c_str(), hosts.c_str());
         }
         std::printf("\n%zu connections in %zu applications\n", connections.size(), groups.size());
     } else {
-        std::printf("%-6s %-42s %-42s %-11s %9s %9s %-20s %-12s %s\n",
-                    "PROTO", "LOCAL", "REMOTE", "STATE", "SENT", "RECV", "APPLICATION", "USER", "HOST");
+        std::printf("%-6s %-42s %-42s %-11s %9s %9s %-20s %-12s %-24s %s\n",
+                    "PROTO", "LOCAL", "REMOTE", "STATE", "SENT", "RECV", "APPLICATION", "USER", "HOST", "VIA");
         for (const auto& c : connections) {
             const bool unbound = c.IsListening() || c.state == NetworkConnectionState::Unconnected;
             const std::string app = c.process
@@ -341,14 +344,21 @@ int RunHeadless(bool byApp, const NetworkMonitorOptions& options, bool resolve, 
                 : std::string("(unattributed)");
             const std::string user = c.process ? c.process->userName
                 : (c.ownerUid ? "uid " + std::to_string(*c.ownerUid) : std::string());
-            std::printf("%-4s%-2s %-42s %-42s %-11s %9s %9s %-20.20s %-12.12s %s\n",
+            std::string via;
+            if (c.localPeer) {
+                via = std::string(c.loopbackRole == LoopbackRole::Client ? "-> " :
+                                  c.loopbackRole == LoopbackRole::Server ? "<- " : "") + c.localPeer->Label();
+            } else if (!c.forProcesses.empty()) {
+                via = "for " + c.forProcesses.front() + (c.forProcesses.size() > 1 ? ", +" + std::to_string(c.forProcesses.size() - 1) : "");
+            }
+            std::printf("%-4s%-2s %-42s %-42s %-11s %9s %9s %-20.20s %-12.12s %-24.24s %s\n",
                         NetworkMonitor_TransportName(c.transport),
                         c.family == NetworkAddressFamily::IPv6 ? "6" : "",
                         c.LocalEndpoint().c_str(),
                         unbound ? "*" : c.RemoteEndpoint().c_str(),
                         NetworkMonitor_StateName(c.state),
                         ByteText(c.bytesSent).c_str(), ByteText(c.bytesReceived).c_str(),
-                        app.c_str(), user.c_str(), HostColumn(c.remoteName, c.nameSource).c_str());
+                        app.c_str(), user.c_str(), HostColumn(c.remoteName, c.nameSource).c_str(), via.c_str());
         }
         std::printf("\n%zu connections\n", connections.size());
     }
