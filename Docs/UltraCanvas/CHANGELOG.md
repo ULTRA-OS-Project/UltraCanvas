@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.30*
+#### 2026-09-23 *0.9.32*
 - **The demo leaked its whole widget tree, and every callback in it.** A
   widget owns its callbacks, so a callback that captures a `shared_ptr` to
   that widget — or to any container above it — closes a cycle that neither
@@ -79,7 +79,7 @@
     first non-digit) and are refused now. A device command is not the place
     to guess what half a number meant.
 
-#### 2026-09-23 *0.9.29*
+#### 2026-09-23 *0.9.31*
 - **Seven ownership defects found by auditing every raw `new` in the tree.**
   A census of the 45 hand-written allocations outside vendored code (the rest
   of the framework allocates through `make_shared` / `make_unique`) turned up
@@ -150,6 +150,17 @@
     examples captured `new bool(false)` / `new int(0)` raw pointers in their
     `onClick` lambdas and never freed them. They are `make_shared` now — the
     DemoApp is the framework's worked example, so a leak in it propagates.
+
+#### 2026-09-23 *0.9.30*
+- **UltraCalendar proposal: the OAuth app registration is UltraNet's**
+  (`Docs/Research/UltraCalendarDesignProposal.md`). The accounts section, the
+  two gap tables and open question 3 described the Google / Microsoft app
+  registration as UltraMail's baked-in client and named the two module
+  lookups as two patterns; the shared OAuth2 app registry
+  (`UltraNetOAuth2Apps.h`, 0.9.29) makes it one, so the proposal now says the
+  calendar reads `UltraNet_OAuth2GetApp("google")`, adds an `ULTRACALENDAR_`
+  environment prefix as its profile, and marks the question resolved. 0.9.29
+  is the registry's own entry, on its pull request.
 
 #### 2026-09-23 *0.9.28*
 - **New design proposal: UltraCalendar, a stand-alone calendar for ULTRA OS**
