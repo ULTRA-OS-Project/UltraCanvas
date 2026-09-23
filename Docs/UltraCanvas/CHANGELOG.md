@@ -1,3 +1,14 @@
+#### 2026-09-23 *0.9.35*
+- **Fix: the media viewer's Details overlay now shows the image's metadata.**
+  `UltraCanvasMediaViewer::UpdateDetailedInfo` listed only the header facts
+  (size, dimensions, channels, colour space, dpi, loader) and never read the
+  file's own metadata blocks, so EXIF, IPTC, XMP, ICC and PNG text chunks
+  were invisible in UltraFiler and UltraViewer. It now appends a "Metadata"
+  section from `PixelFX::Header::ReadMetadata` (grouped EXIF / IPTC / XMP /
+  Colour / Other, up to 80 entries, "Metadata: none" when the file carries
+  nothing). The overlay box was fixed at 280 px high, which the header facts
+  alone already filled; it now grows with the text up to the surface height.
+
 #### 2026-09-23 *0.9.34*
 - **New: UltraNet's OAuth2 app registry** (`<UltraNet/UltraNetOAuth2Apps.h>`,
   `UltraNet_OAuth2SetApp` / `SetBuiltInApp` / `AddAppEnvPrefix` /

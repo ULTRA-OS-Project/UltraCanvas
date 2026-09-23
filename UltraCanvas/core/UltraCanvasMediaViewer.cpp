@@ -563,15 +563,20 @@ void UltraCanvasMediaSurface::DrawCurrent(IRenderContext* ctx, const Rect2Df& b)
 void UltraCanvasMediaSurface::DrawInfoOverlay(IRenderContext* ctx, const Rect2Df& b) {
     if (infoText.empty()) return;
     double boxW = std::min(440.0, static_cast<double>(b.width) - 24.0);
-    double boxH = std::min(280.0, static_cast<double>(b.height) - 24.0);
-    if (boxW <= 40 || boxH <= 40) return;
-    Rect2Dd box(b.x + 12, b.y + 12, boxW, boxH);
-    ctx->DrawFilledRectangle(box, Color(0, 0, 0, 190), 1.0f, Color(255, 255, 255, 45), 8.0f);
+    double maxH = static_cast<double>(b.height) - 24.0;
+    if (boxW <= 40 || maxH <= 40) return;
     double pad = 14;
     ctx->SetFontSize(12);
     ctx->SetTextPaint(Color(235, 235, 240, 255));
     ctx->SetTextAlignment(TextAlignment::Left);
     ctx->SetTextWrap(TextWrap::WrapWord);
+    // Grow the box with the text (metadata lists can be long) up to the
+    // surface height; anything beyond that is clipped by the rect.
+    Size2Di textSz = ctx->GetTextDimensions(
+            infoText, Size2Di(static_cast<int>(boxW - 2 * pad), 0));
+    double boxH = std::min(maxH, std::max(80.0, textSz.height + 2 * pad));
+    Rect2Dd box(b.x + 12, b.y + 12, boxW, boxH);
+    ctx->DrawFilledRectangle(box, Color(0, 0, 0, 190), 1.0f, Color(255, 255, 255, 45), 8.0f);
     ctx->DrawTextInRect(infoText,
             Rect2Dd(box.x + pad, box.y + pad, box.width - 2 * pad, box.height - 2 * pad));
 }
@@ -2410,6 +2415,34 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         if (fi.dpiX > 0 || fi.dpiY > 0)
             os << "Resolution: " << fi.dpiX << " x " << fi.dpiY << " dpi\n";
         if (!fi.loader.empty()) os << "Loader: " << fi.loader << "\n";
+    } catch (...) {
+        // Metadata extraction is best-effort.
+    }
+
+    // The file's own metadata blocks (EXIF, IPTC, XMP, ICC, PNG text chunks).
+    // The "Image" group repeats what is listed above, so it is skipped.
+    try {
+        PixelFX::PFXImage header = PixelFX::PFXImage::FromFile(path);
+        const auto entries = PixelFX::Header::ReadMetadata(header);
+        constexpr size_t kMaxEntries = 80;
+        size_t shown = 0, total = 0;
+        std::string group;
+        for (const auto& e : entries) {
+            if (e.group == "Image") continue;
+            ++total;
+            if (shown >= kMaxEntries) continue;
+            if (shown == 0) os << "\nMetadata\n";
+            if (e.group != group) {
+                group = e.group;
+                os << "\n" << group << "\n";
+            }
+            os << "  " << e.key << ": " << e.value << "\n";
+            ++shown;
+        }
+        if (total == 0)
+            os << "\nMetadata: none\n";
+        else if (total > shown)
+            os << "  ... " << (total - shown) << " more\n";
     } catch (...) {
         // Metadata extraction is best-effort.
     }
