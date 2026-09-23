@@ -20,6 +20,21 @@
     takes a raw pointer now, for the same reason.
   - One capture in the table demo was of a container the lambda never used,
     in a body that is entirely commented out. It captures nothing now.
+  - **`scripts/check_callback_cycles.py` now finds these**, because a sweep
+    that is not enforced comes back. It reads each function's `AddChild`
+    graph, so it catches a callback that captures a container two levels
+    above it, not just one that captures itself — and it reports a capture
+    only when that name is *demonstrably* a `shared_ptr` in scope
+    (`make_shared`, a declared `shared_ptr`, or a factory whose declared
+    return type is one, harvested from the headers). The first version
+    matched names alone and called three raw pointers in Texter and
+    UltraFiler leaks: `auto* editorPtr = editor.get()` and a `T* target`
+    parameter own nothing. A name is not a type, so an unresolved one is
+    left alone rather than guessed at.
+    - Run against this release's parent it reports all 53, and against the
+      tree as it now stands, none. `--strict` makes it a gate; a genuine
+      exception opts out with `// callback-cycle-exempt: <why>`, as the UI
+      reuse check does. 4.6 s over 1168 files.
 - **Matter attribute writes read their numbers locale-independently.**
   `EncodeTextValue` turned the facade's text into a TLV value with
   `std::stoll` / `std::stod`, and `std::stod` consults `LC_NUMERIC` — which
