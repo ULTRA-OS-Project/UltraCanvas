@@ -1,3 +1,13 @@
+#### 2026-09-23 *0.9.31*
+- **`UCEvent::ToString()` names the right event again.** The name table it
+  indexes by `UCEventType` carried three entries with no enum counterpart
+  (`KeyChar`, `Shortcut`, `WindowClosing`), so every event from `TextInput`
+  onwards printed as the name of an earlier one - a `WindowResize` logged as
+  `WindowCloseRequest`, a `Timer` as `Drop`. The three are gone, the table is
+  now a compile-time array with a `static_assert` that its length equals the
+  enum's, so the two cannot drift apart again without failing the build, and
+  an out-of-range value prints `OutOfRange` instead of reading past the end.
+
 #### 2026-09-23 *0.9.30*
 - **UltraCalendar proposal: the OAuth app registration is UltraNet's**
   (`Docs/Research/UltraCalendarDesignProposal.md`). The accounts section, the
