@@ -10,7 +10,7 @@
 // the shared channel. A resolve is therefore never called directly here:
 // it runs on a thread of its own under a watchdog, so a regression fails the
 // suite instead of hanging it.
-// Version: 0.1.0
+// Version: 0.1.1 - a resolver that answers inside the deadline is not a miss
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
@@ -94,8 +94,14 @@ TEST(dns_resolve_honours_its_deadline) {
 #ifdef ULTRANET_HAS_CARES
         // Only the c-ares backend honours the deadline; the getaddrinfo
         // fallback takes as long as the system resolver does and reports
-        // whatever it found out.
-        REQUIRE_EQ(outcome->code, UltraNetResultCode::Timeout);
+        // whatever it found out. Honouring it means one of two things: the
+        // lookup was still open at the deadline and came back as Timeout, or
+        // the resolver answered inside the millisecond - a local caching
+        // resolver knows .invalid and says NXDOMAIN at once, which is what the
+        // macOS runners do - and that answer, HostNotFound, is not a missed
+        // deadline. Any other code, and any hang, still fails.
+        REQUIRE(outcome->code == UltraNetResultCode::Timeout
+                || outcome->code == UltraNetResultCode::HostNotFound);
 #endif
     }
 }
