@@ -1348,6 +1348,17 @@ namespace UltraCanvas {
                            std::string& error)> remoteRename;
         std::function<bool(const std::string& folderPath, const std::string& name,
                            std::string& error)> remoteMakeDirectory;
+        // Puts local files onto the drive: `localFiles` are uploaded into the
+        // remote folder `folderPath` under their own names, one request each.
+        // Return true when at least one was accepted; `error` carries the
+        // first refusal even then (a folder, which is not one transfer; a
+        // remote entry, which has no local file to send; a drive that cannot
+        // take uploads), so the widget can say what was left out. Files
+        // dropped onto a remote folder shown in this widget go through this;
+        // left unset, such a drop is refused with a message.
+        std::function<bool(const std::string& folderPath,
+                           const std::vector<std::string>& localFiles,
+                           std::string& error)> remoteUpload;
 
         // Extra info column provider (e.g. plays a media header to report the
         // duration). Called once per entry at scan time; empty result keeps the
@@ -2717,6 +2728,10 @@ namespace UltraCanvas {
         // Files dropped onto the widget from other applications / windows are
         // copied into the current folder (sources already there are skipped).
         void AcceptDroppedFiles(const std::vector<std::string>& paths);
+        // The remote counterpart: the paths go to the host's remoteUpload,
+        // which puts them onto the drive the shown folder is on. Nothing is
+        // copied locally; what arrives is shown by the host's refresh.
+        void UploadDroppedFiles(const std::vector<std::string>& paths);
         // Commit / abandon the inline rename. `restoreFocus` gives the
         // keyboard focus back to the widget after the editor is removed —
         // the Enter / Escape / programmatic paths want that; the focus-loss
