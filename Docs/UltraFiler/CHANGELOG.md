@@ -8,13 +8,13 @@
   updates as the fetch moves along; the listing replaces it when it lands.
   A folder the server refused shows the reason (a rejected login, an
   unreachable host) in the folder area instead of an empty folder. Needs
-  framework 0.9.36 (the widget's `remoteListingStatus` hook).
+  framework 0.9.38 (the widget's `remoteListingStatus` hook).
 - **Split view: the docked tree's width moves with the tree.** Docking the
   folder tree into a pane widens that pane by the tree's width at the other
   display's expense, and undocking it (or docking it on the other side) gives
   that width back - the display beside the tree used to stay squeezed after
   the tree had gone. The "Folder tree" tooltip no longer lingers over the
-  docked tree after the click (framework 0.9.36).
+  docked tree after the click (framework 0.9.38).
 
 #### 2026-09-22 *1.45.0*
 - **Extras > Find text: search inside files.** A new first item in the file
