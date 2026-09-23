@@ -117,6 +117,19 @@
       (dash lengths, width profiles, stamp matrices) became dot-decimal, and
       its writer's `Num()` — the one place every number it emits passes
       through — uses `FormatFloatClassic`. The baseline is down to 34 keys.
+    - **X3D as well, where the reader failed hardest.** On a comma-decimal
+      desktop its `ParseNumbers` read *nothing at all* from
+      `point="1.5 0.25 -2.75"` — the `.` is that locale's digit-group
+      separator, so the very first token failed and the extraction stopped
+      there, and every coordinate, transform, colour and key frame in the
+      file came back empty rather than merely wrong. Both encodings share
+      those parsers, so `.x3d` and `.x3dv` alike. Every number now passes
+      through one of two stream types that carry the format's own locale,
+      and the writer's `ScopedPrecision` pins the decimal point beside the
+      digit count exactly as OBJ's now does. That last one also matters for
+      whole numbers: `coordIndex` wrote the index 123456 as `123.456`,
+      because digit grouping is the same locale's business. The baseline is
+      down to 31 keys, 68 sites.
 - **Matter thermostat setpoints: the units were right, the range was not.**
   `SendThermostatCommand` takes whole degrees and multiplies by 100 for
   `OccupiedHeatingSetpoint`, which the spec carries in hundredths in an int16

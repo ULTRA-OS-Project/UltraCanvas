@@ -36,9 +36,6 @@ UltraCanvas/Plugins/Models/FBX/UltraCanvasFbxFile.cpp::locale-parse::strtod
 UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp::locale-parse::strtod
 UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp::locale-write::printf
 UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp::locale-parse::atof
-UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DConverter.cpp::locale-write::coordIndex
-UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DConverter.cpp::locale-write::points
-UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DConverter.cpp::locale-write::vectors
 UltraCanvas/Plugins/Models/XFile/UltraCanvasXFile.cpp::locale-parse::strtod
 UltraCanvas/Plugins/Vector/EPS/UltraCanvasEPSPlugin.cpp::locale-parse::strtod
 UltraCanvas/Plugins/Vector/UltraCanvasDWGDecoder.cpp::locale-write::printf
