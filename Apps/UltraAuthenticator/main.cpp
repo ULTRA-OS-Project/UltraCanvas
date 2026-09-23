@@ -7,6 +7,14 @@
 // model in Docs/UltraAuthenticator/UltraAuthenticator-Investigation.md §3.1
 // asks for and the one Aegis and andOTP use.
 //
+// For an existing vault that gate is the same LockScreenDialog the app uses
+// after an idle or minimise lock: the store is attached to the file without
+// opening it, the window comes up locked, and the first unlock goes through
+// AccountStore::Unlock with its back-off. The earlier launch prompt quit the
+// app on a wrong password, which punished a typo with a restart and a guesser
+// with nothing more. Only a *new* vault still uses a plain input dialog,
+// because choosing a password is not an unlock and there is nothing to guess.
+//
 // There is no "skip" and no "remember me". A vault that can be opened without
 // the password is a vault that an attacker with the file can open too, and a
 // silent unprotected mode is exactly the hole UltraCrypt exists to close.
@@ -107,24 +115,48 @@ std::string PreferencesPathFor(const std::string& vaultPath) {
     return (fs::path(vaultPath).parent_path() / "settings.ini").string();
 }
 
-// Opens (or creates) the vault, then hands off to the window. Kept as a
-// continuation because the password dialog is asynchronous.
+bool CreateMainWindow(UltraCanvasApplication& app, AccountStore& store,
+                      const std::string& vaultPath,
+                      std::shared_ptr<AuthenticatorWindow>& windowOut) {
+    const std::string prefsPath = PreferencesPathFor(vaultPath);
+    windowOut = std::make_shared<AuthenticatorWindow>(
+        app, store, Preferences::Load(prefsPath), prefsPath);
+    if (!windowOut->Create()) {
+        std::cerr << "Failed to create the main window\n";
+        app.RequestExit();
+        return false;
+    }
+    windowOut->Show();
+    return true;
+}
+
+// Opens (or creates) the vault, then hands off to the window.
 void OpenVaultThen(UltraCanvasApplication& app, AccountStore& store,
                    const std::string& vaultPath,
                    std::shared_ptr<AuthenticatorWindow>& windowOut) {
-    const bool exists = AccountStore::Exists(vaultPath);
+    if (AccountStore::Exists(vaultPath)) {
+        // Existing vault: attach without opening, and let the window's lock
+        // screen do the unlock — throttled, retryable, and the same dialog
+        // the user meets after every later lock.
+        StoreResult attached = store.Attach(vaultPath);
+        if (!attached) {
+            UltraCanvasDialogManager::ShowError(
+                attached.message, "Could not open the vault");
+            app.RequestExit();
+            return;
+        }
+        CreateMainWindow(app, store, vaultPath, windowOut);
+        return;
+    }
 
-    const std::string prompt =
-        exists ? "Enter your master password to unlock your accounts."
-               : "Choose a master password.\n\nIt protects every account "
-                 "in this app and cannot be recovered — if you forget it, "
-                 "the accounts are gone.";
-
+    // New vault: choose a password. Kept as a continuation because the
+    // dialog is asynchronous.
     UltraCanvasDialogManager::ShowInputDialog(
-        prompt,
-        exists ? "Unlock UltraAuthenticator" : "Set up UltraAuthenticator",
+        "Choose a master password.\n\nIt protects every account in this app "
+        "and cannot be recovered — if you forget it, the accounts are gone.",
+        "Set up UltraAuthenticator",
         "", InputType::Password,
-        [&app, &store, vaultPath, exists, &windowOut](
+        [&app, &store, vaultPath, &windowOut](
             DialogResult result, const std::string& typed) {
             if (result != DialogResult::OK) {
                 app.RequestExit();
@@ -138,27 +170,14 @@ void OpenVaultThen(UltraCanvasApplication& app, AccountStore& store,
             }
 
             UltraCryptSecureBuffer password = AdoptPassword(typed);
-            StoreResult opened = exists ? store.Open(vaultPath, password)
-                                        : store.Create(vaultPath, password);
-            if (!opened) {
-                // A wrong password and a modified vault deliberately produce
-                // the same message; telling them apart would say which of the
-                // two an attacker achieved.
+            StoreResult created = store.Create(vaultPath, password);
+            if (!created) {
                 UltraCanvasDialogManager::ShowError(
-                    opened.message, "Could not open the vault");
+                    created.message, "Could not create the vault");
                 app.RequestExit();
                 return;
             }
-
-            const std::string prefsPath = PreferencesPathFor(vaultPath);
-            windowOut = std::make_shared<AuthenticatorWindow>(
-                app, store, Preferences::Load(prefsPath), prefsPath);
-            if (!windowOut->Create()) {
-                std::cerr << "Failed to create the main window\n";
-                app.RequestExit();
-                return;
-            }
-            windowOut->Show();
+            CreateMainWindow(app, store, vaultPath, windowOut);
         },
         nullptr);
 }

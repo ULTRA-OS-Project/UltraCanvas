@@ -1,3 +1,14 @@
+#### 2026-09-23 *0.2.1*
+- **The launch unlock is the lock screen.** Opening an existing vault used a
+  separate password prompt that quit the app on a wrong password — a typo
+  cost a restart, and a guesser paid nothing more than that. The window now
+  comes up locked over the attached vault (`AccountStore::Attach`) and the
+  same `LockScreenDialog` as after an idle or minimise lock unlocks it, with
+  the same back-off: three wrong passwords are free, then the wait doubles.
+  Nothing about the accounts is rendered before the password, as before.
+  Only a *new* vault still uses a plain input dialog, because choosing a
+  password is not an unlock and there is nothing to guess.
+
 #### 2026-09-22 *0.2.0*
 - **The vault locks itself.** A new **Lock** button, a lock after a period
   without input to the window (Settings → *Lock after no input for*, default

@@ -77,7 +77,11 @@ length:
 
 The master password is asked for at launch, as a modal gate: nothing about the
 accounts, not even how many there are, is rendered before it is accepted.
-There is no "skip" and no "remember me".
+There is no "skip" and no "remember me". The gate is `LockScreenDialog` over a
+window that starts locked — `AccountStore::Attach` binds the store to the
+file without opening it — so the first unlock is the same throttled
+`AccountStore::Unlock` as every later one (see *Locking*). Only a new vault
+uses a plain input dialog, to choose the password.
 
 ## Getting an account in
 

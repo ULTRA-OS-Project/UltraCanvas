@@ -68263,7 +68263,8 @@ period without input to the window (5 minutes by default, or never; see
 the master password or *Quit*; it cannot be closed or escaped. After three
 wrong passwords each further attempt waits twice as long as the last, up to
 five minutes, and the wait is enforced by the vault code, not by the
-dialog.
+dialog. The same screen, with the same back-off, is what opens the app: a
+mistyped password at launch is retried there, not punished with a restart.
 
 **Showing a code only on request.** *Settings → Hide codes until a card is
 clicked* replaces every code with dots; clicking a card shows its code for
