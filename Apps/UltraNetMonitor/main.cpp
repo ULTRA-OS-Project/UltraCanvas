@@ -70,12 +70,14 @@ namespace {
 UltraCanvasApplication* g_app = nullptr;
 std::atomic<bool> g_stopRecording{false};
 
+// Ctrl-C and SIGTERM. In the window, ask the event loop to end and let
+// main return: the window's destructor then stops the worker and the
+// name and event sources, closes the store, and only then do the static
+// destructors run. A std::exit from here ran them while those threads
+// were alive. Headless, the recording or event loop finishes its round,
+// applies retention and closes cleanly.
 void SignalHandler(int) {
-    if (g_app) {
-        g_app->RequestExit();
-        std::exit(EXIT_SUCCESS);
-    }
-    // Headless recording: finish the loop, apply retention, close cleanly.
+    if (g_app) g_app->RequestExit();
     g_stopRecording = true;
 }
 
