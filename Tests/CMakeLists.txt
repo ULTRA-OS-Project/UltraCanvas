@@ -882,6 +882,9 @@ add_executable(ModelAlembicTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
+    # The OBJ converter reads its numbers with TryParseFloat, which lives in
+    # UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
@@ -1009,6 +1012,9 @@ add_executable(ModelOBJTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelOBJTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    # The OBJ converter reads its numbers with TryParseFloat, which lives in
+    # UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
@@ -2043,6 +2049,9 @@ message(STATUS "  Building ToneCurveTest...")
 add_executable(ToneCurveTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ToneCurveTest.cpp
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasToneCurve.cpp
+    # Tone-curve presets are read with TryParseFloat, which lives in
+    # UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(ToneCurveTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
