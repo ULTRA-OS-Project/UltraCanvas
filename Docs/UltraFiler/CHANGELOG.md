@@ -1,3 +1,13 @@
+#### 2026-09-23 *1.47.0*
+- **Drop files onto a remote folder in the display to upload them, too.**
+  1.46.0 let a drop on the drive's tree row upload; now a drop onto the
+  folder shown in a display does the same - from another program, or from
+  the other display of the split view. The status bar says how many files
+  are on their way to which drive and folder, and what was left out and why
+  (a folder, a remote entry). Moving or copying between two places on the
+  same drive is still not offered, and says so. Needs framework 0.9.42 (the
+  widget's `remoteUpload` hook).
+
 #### 2026-09-23 *1.46.0*
 - **A remote folder being fetched shows progress, not "Folder is empty!".**
   Opening a folder on an FTP, SFTP or cloud drive now shows a turning progress
