@@ -57,6 +57,7 @@ is purely a libcurl build option.
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
+| Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
 | MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build | `UltraNet/UltraNetMime.h` |
@@ -182,6 +183,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetDns.h
 │   ├── UltraNetCookies.h
 │   ├── UltraNetOAuth2.h
+│   ├── UltraNetOAuth2Apps.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
 │   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)

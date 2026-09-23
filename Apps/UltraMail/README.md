@@ -192,7 +192,11 @@ or through the environment: `ULTRAMAIL_GOOGLE_CLIENT_ID` /
 `ULTRAMAIL_GOOGLE_CLIENT_SECRET`, `ULTRAMAIL_MICROSOFT_CLIENT_ID` (an optional
 `…_REDIRECT_URI` overrides the provider's default). In code:
 `OAuthApps::Set("google", app)`. Until a client is configured the wizard says
-so and asks for an app password instead.
+so and asks for an app password instead. `OAuthApps` is UltraMail's profile
+of UltraNet's process-wide OAuth2 app registry (`UltraNetOAuth2Apps.h`) — the
+`ULTRAMAIL_` prefix, the `oauth.ini` in the data folder and the baked-in
+client — so the same registration serves UltraCloud's Google Drive and
+OneDrive sign-ins in the composer's cloud picker.
 
 *Google:* in the [Google Cloud console](https://console.cloud.google.com/)
 create a project, open *APIs & Services → OAuth consent screen* and configure

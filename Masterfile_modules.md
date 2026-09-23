@@ -910,6 +910,18 @@ future.
   `UltraNet_OAuth2WaitForCallback`, `UltraNet_OAuth2ExchangeCode`,
   `UltraNet_OAuth2Refresh`, `UltraNet_OAuth2ParseTokenResponse`,
   `UltraNet_OAuth2AuthorizeInteractive`
+- `UltraNet_OAuth2SetApp`, `UltraNet_OAuth2SetBuiltInApp`,
+  `UltraNet_OAuth2AddAppEnvPrefix`, `UltraNet_OAuth2AppEnvPrefixes`,
+  `UltraNet_OAuth2AppEnvName`, `UltraNet_OAuth2SetAppAlias`,
+  `UltraNet_OAuth2ParseAppsIni`, `UltraNet_OAuth2LoadAppsFile`,
+  `UltraNet_OAuth2GetApp`, `UltraNet_OAuth2HasApp`, `UltraNet_OAuth2ClearApps` —
+  the one OAuth2 *app registry* of a process (`UltraNetOAuth2Apps.h`): the
+  client id, secret and redirect URI an application signs in as, per
+  provider, looked up as Set() > environment (`ULTRANET_OAUTH_<PROVIDER>_…`
+  plus the prefixes modules add) > INI file > baked-in default, then the
+  alias chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` family
+  are profiles of it, so a Google client registered once serves Gmail and
+  Google Drive
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
@@ -1294,8 +1306,10 @@ provider carried as a drive implements); v0.2 ships Nextcloud / ownCloud
 (WebDAV + OCS share API, password and expiry on links), generic WebDAV (links
 through a public web-folder URL), Dropbox, OneDrive and Google Drive (OAuth2 +
 PKCE through the system browser via UltraNet, tokens refreshed automatically;
-the OAuth client id is configuration, `SetOAuthApp` or
-`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), FTP / FTPS / SFTP over UltraNet's FTP
+the OAuth client id is configuration in UltraNet's shared app registry —
+`SetOAuthApp`, `ULTRACLOUD_<PROVIDER>_CLIENT_ID`, or the client UltraMail
+registered, since `googledrive` falls back to `google` and `onedrive` to
+`microsoft`), FTP / FTPS / SFTP over UltraNet's FTP
 surface (the one provider that can also delete and rename, so a file manager
 can carry an FTP server as a drive; no share links, and SFTP authenticates
 with a password only), and an in-memory demo provider. Providers
@@ -1565,7 +1579,7 @@ process's traffic; NetworkMonitor observes other processes' sockets, which is
 an OS question, and has no dependency on UltraNet. It observes and records;
 it never blocks, filters or modifies traffic, and never terminates TLS.
 
-**Implementation status:** Phase 2 (platforms, persistence, names). Linux — netlink `sock_diag`
+**Implementation status:** Phase 2 complete (platforms, persistence, names, events). Linux — netlink `sock_diag`
 with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
 `/proc/<pid>/fd` walk for attribution; Windows — IP Helper
 (`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
@@ -1573,9 +1587,11 @@ macOS — libproc, per process. All polling. Persistence: the activity store
 over UltraDatabase (flows, daily roll-up, retention, CSV export, DNS
 observations). Domain names: the name-source plug-in point with the local
 DNS proxy, reverse DNS (weak, labelled) and, on Windows elevated, the DNS
-client's ETW events with the asking PID. Connection events (ETW, eBPF) and
-file-transfer correlation are still to come. Where there is no backend the
-module reports `NotSupported`.
+client's ETW events with the asking PID. Connection events: the event-source
+plug-in point with the snapshot differ everywhere, `nf_conntrack` on Linux
+(root, tracker active) and the kernel network ETW provider on Windows
+(elevated), recorded beside the flows. File-transfer correlation is still to
+come. Where there is no backend the module reports `NotSupported`.
 
 - Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
   `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,
@@ -1585,7 +1601,9 @@ module reports `NotSupported`.
 - `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
   `NetworkMonitor_FormatEndpoint`, `NetworkMonitor_NameSourceName`,
-  `NetworkMonitor_NameIsObserved`
+  `NetworkMonitor_NameIsObserved`, `NetworkMonitor_ExportSummaryCsv`,
+  `NetworkMonitor_ExportConnectionsCsv`, `NetworkMonitor_DecodeLoopback`,
+  `NetworkMonitor_LoopbackRoleName`; `LoopbackRole`
 - Names (`NetworkMonitorNames.h`): `INameSource`,
   `NetworkMonitor_RegisterNameSource`, `NetworkMonitor_ListNameSources`,
   `NetworkMonitor_StopNameSources`, `NetworkMonitor_WaitForNames`,
@@ -1596,21 +1614,34 @@ module reports `NotSupported`.
   `NetworkMonitor_CreateSystemDnsSource`, `NetworkMonitor_SystemResolver`;
   types `DnsProxyOptions`, `ReverseDnsOptions`, `NameSourceStatus`,
   `NameRecord`
+- Events (`NetworkMonitorEvents.h`): `IConnectionEventSource`,
+  `NetworkMonitor_RegisterEventSource`, `NetworkMonitor_ListEventSources`,
+  `NetworkMonitor_StopEventSources`, `NetworkMonitor_AddEventListener`,
+  `NetworkMonitor_RemoveEventListener`, `NetworkMonitor_RecentEvents`,
+  `NetworkMonitor_ClearRecentEvents`, `NetworkMonitor_ReportEvent`,
+  `NetworkMonitor_CreateSnapshotDiffEventSource`,
+  `NetworkMonitor_CreateSystemEventSource`, `NetworkMonitor_EventKindName`,
+  `NetworkMonitor_NowMs`; types `NetworkConnectionEvent`, `NetworkEventKind`,
+  `SnapshotDiffOptions`, `EventSourceStatus`
 - The activity store (`NetworkMonitorStore.h`, over UltraDatabase):
   `NetworkMonitor_StoreAvailable`, `NetworkMonitor_Now`,
   `NetworkMonitor_OpenStore`, `NetworkMonitor_CloseStore`,
   `NetworkMonitor_RecordSnapshot`, `NetworkMonitor_QueryFlows`,
   `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RecordDnsObservation`,
-  `NetworkMonitor_QueryDnsObservations`, `NetworkMonitor_RollUp`,
+  `NetworkMonitor_QueryDnsObservations`, `NetworkMonitor_RecordConnectionEvent`,
+  `NetworkMonitor_QueryConnectionEvents`, `NetworkMonitor_ExportEventsCsv`,
+  `NetworkMonitor_RollUp`,
   `NetworkMonitor_ApplyRetention`, `NetworkMonitor_Purge`,
   `NetworkMonitor_StoreStats`, `NetworkMonitor_ExportFlowsCsv`; types
   `NetworkMonitorStoreOptions`, `RecordedFlow`, `DailyProcessTotal`,
-  `RecordedDnsObservation`, `ActivityQuery`, `NetworkMonitorStoreStats`
+  `RecordedDnsObservation`, `RecordedConnectionEvent`, `ActivityQuery`,
+  `NetworkMonitorStoreStats`
 - Internal: `INetworkMonitorBackend`, `CreateNativeNetworkMonitorBackend`
   (`NetworkMonitorBackend.h`); `NetworkMonitorProcfs::{DecodeAddress,
   StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`);
   `NetworkMonitorDns::{Parse, ToObservation, BuildQuery, BuildResponse,
-  NormalizeName}` (`NetworkMonitorDns.h`)
+  NormalizeName}` (`NetworkMonitorDns.h`); `NetworkMonitorConntrack::Parse`
+  (`NetworkMonitorConntrack.h`)
 
 Rules: every blocking call returns `NetworkMonitorResult`; `std::optional`
 for anything a backend may not report, so "0" and "not reported" are never

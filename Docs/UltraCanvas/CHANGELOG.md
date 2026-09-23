@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.33*
+#### 2026-09-23 *0.9.42*
 - **The dependency tables now list libudev.** IODeviceManager's Linux
   hot-plug watcher links libudev when the configure step finds it, and without
   it `StartMonitoring()` returns `BackendUnavailable`. Nothing said so outside
@@ -7,6 +7,208 @@
   watching* row: libudev (optional) on Linux, no watcher yet on macOS or
   Windows. libudev is also added to the library-links table (LGPL 2.1, part of
   systemd). Its effect on DeviceExplorer is documented in that app's own docs.
+
+#### 2026-09-23 *0.9.41*
+- **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not
+  as empty.** A new optional hook, `remoteListingStatus`, is asked when
+  `remoteListing` answered with an empty listing; a non-empty answer puts a
+  turning progress ring, "Loading folder" and the host's own status line
+  ("Connecting to Backup NAS and reading /photos - 7 s") where "Folder is
+  empty!" used to go, and the line follows the fetch on a 50 ms timer until
+  the host's `Refresh()` brings the data. A remote listing the host refused
+  (an unreachable server, a rejected login) now shows its reason in the
+  folder area too, instead of an empty folder. Used by UltraFiler's FTP and
+  cloud drives (UltraFiler 1.46.0).
+- **A mouse press hides the tooltip.** A click answers what the tooltip was
+  for; before, a button whose click changed the layout under the pointer
+  (UltraFiler's tree-dock button) left its tooltip floating over the new
+  content until the mouse moved.
+
+#### 2026-09-23 *0.9.40*
+- **NetworkMonitor decodes loopback chains.** A mail client that talks to
+  an antivirus mail proxy on 127.0.0.1:12993, which talks to the mail
+  server for it, used to show as two unrelated processes.
+  `NetworkMonitor_DecodeLoopback` pairs every connection whose peer is on
+  this machine with its mirror - the socket on the other end, an
+  IPv4-mapped spelling matched to its plain one - and fills
+  `NetworkConnection::loopbackRole` (client or server: the server is the
+  side a listener holds) and `localPeer` (the process on the other end) on
+  both; on the outbound connections of a process that serves loopback
+  clients it fills `forProcesses`, the applications that traffic is really
+  for, an inference labelled as such. `ProcessTrafficSummary` gains
+  `viaProcesses` and `servesProcesses`; `NetworkMonitor_ListConnections`
+  decodes every snapshot before its filters; both snapshot CSVs carry the
+  chain (`loopback_role`, `local_peer`, `for`; `via`, `serves`).
+  `ProcessIdentity::Label()` is "name (pid)". Pure and tested from a
+  fixture of a client, a proxy and its outbound connection.
+- **Windows names the processes it cannot open.** The IP Helper backend
+  reads the Toolhelp process list once per snapshot - every PID's
+  executable name, no handle and no elevation needed - and uses it for a
+  process `OpenProcess` refuses, so an antivirus service reads as
+  `AvastSvc` rather than `pid 4720`. The path and the user still need
+  elevation, and the capabilities' note says so.
+
+#### 2026-09-23 *0.9.39*
+- **`UltraCanvasListView::onContextMenu(row, event)`** - a right-button
+  press in the rows area, with the row under the pointer (-1 below the
+  rows) selected alone first, as every desktop does, so the handler's menu
+  acts on what the user pointed at. When set, the press is consumed; when
+  not, a right press is handled like a left one, as before. The usual
+  handler opens an `UltraCanvasMenu` of type `PopupMenu` at
+  `event.pointerWindow`; the ListView page shows it. First consumer is
+  UltraNetMonitor's process list.
+- **NetworkMonitor exports a snapshot as CSV.** `NetworkMonitor_ExportSummaryCsv`
+  writes the per-process roll-up, one row per process with its distinct
+  peers and hosts semicolon-joined; `NetworkMonitor_ExportConnectionsCsv`
+  writes the connections, one row each with the process behind it. Both in
+  the order given, RFC 4180 quoting, dot-decimal numbers, absent counters
+  as empty fields, never zero. The quoting and the UTC timestamp the store's
+  exports used move to `NetworkMonitorCsv.h`, shared by all four. Tested
+  from fixtures.
+
+#### 2026-09-23 *0.9.38*
+- **NetworkMonitor connection events.** `NetworkMonitorEvents.h`: a
+  connection reported as it opens, is accepted or closes, rather than
+  found in the next snapshot - the event-rate collection the proposal
+  asked for (§2.1, §5.2), so the connections shorter than a polling
+  interval are in the record. Same shape as the name sources: an
+  `IConnectionEventSource` implements it, `NetworkMonitor_RegisterEventSource`
+  runs it, every `NetworkConnectionEvent` goes to the listeners
+  (`NetworkMonitor_AddEventListener`) and into a bounded ring
+  (`NetworkMonitor_RecentEvents`). On its way through, the registry names
+  the peer from the name table and, for a source that reports no process,
+  attributes the event from a socket table it refreshes a few times a
+  second - in either orientation, so a tuple whose source is the remote
+  side becomes an *Accepted* on the listener's process - and remembers
+  the match, so the *Closed* that follows is attributed though the socket
+  is gone. `NetworkMonitorCapabilities::connectionEvents` is true while a
+  source runs.
+  - **The snapshot differ** (`NetworkMonitor_CreateSnapshotDiffEventSource`):
+    reads the socket table at an interval and reports what appeared and
+    what went, with the process and the counters the table carries. Runs
+    on every platform with a backend; misses connections shorter than its
+    interval, and says so.
+  - **nf_conntrack on Linux** (`NetworkMonitor_CreateSystemEventSource`,
+    `OS/Linux/UltraCanvasLinuxNetworkMonitorEvents.cpp`): the kernel's
+    connection tracker over `NETLINK_NETFILTER`, NEW and DESTROY, with the
+    bytes each direction moved when accounting is on. Needs
+    `CAP_NET_ADMIN` and a tracker that a firewall rule has activated; an
+    idle tracker is reported, never silently empty. The message parser
+    (`NetworkMonitorConntrack.h`) is pure and tested from captured bytes on
+    every platform; the source never adds a rule.
+  - **The kernel network ETW provider on Windows**
+    (`OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp`): connect,
+    accept and disconnect with the PID, and the sends and receives summed
+    per connection into the *Closed* event's counters - the per-connection
+    bytes the IP Helper backend cannot give. Elevated only; compiled on
+    CI, not yet exercised at run time. Null on macOS.
+  - **The store records events.** Schema version 3 (older files migrate in
+    place): a `connection_events` table, `NetworkMonitor_RecordConnectionEvent`
+    / `QueryConnectionEvents` / `ExportEventsCsv`, retention and purge
+    cover it, `StoreStats` counts it.
+  - Tests: the conntrack parser against a captured NEW and DESTROY, the
+    registry's ring, listener, naming and both-orientation attribution
+    against sockets the test opens, the differ reporting opened, accepted
+    and closed for a loopback connection attributed to the test's PID,
+    the platform source starting where it can, and the store's events.
+  - A registry never holds its lock while asking a source a question,
+    since a source may read the capabilities, which ask the registry.
+- **`UltraCanvasApplicationBase::RequestExitFromSignal()`** - the one call
+  a signal handler may make. `RequestExit()` logs and runs the
+  exit-request callback, neither of which is async-signal-safe, and the
+  applications' handlers called it (and then `std::exit`, which ran the
+  static destructors under live threads). The new call stores a lock-free
+  flag; `RunOnce()` turns it into `RequestExit()` on the main thread at
+  the next iteration, so `main` returns and the application's destructors
+  run in order. UltraNetMonitor uses it; the other applications' handlers
+  are unchanged and can adopt it the same way.
+#### 2026-09-23 *0.9.37*
+- **`UCEvent::ToString()` names the right event again.** The name table it
+  indexes by `UCEventType` carried three entries with no enum counterpart
+  (`KeyChar`, `Shortcut`, `WindowClosing`), so every event from `TextInput`
+  onwards printed as the name of an earlier one - a `WindowResize` logged as
+  `WindowCloseRequest`, a `Timer` as `Drop`. The three are gone, the table is
+  now a compile-time array with a `static_assert` that its length equals the
+  enum's, so the two cannot drift apart again without failing the build, and
+  an out-of-range value prints `OutOfRange` instead of reading past the end.
+- **`scripts/check_changelog.py` refuses a runaway version number.** The
+  guard required line 1 to be strictly above every other version in the file
+  and above `main`'s, and nothing more - so when a renumbering script took the
+  highest patch number across every minor in the file and wrote 0.9.120 over
+  a `main` on 0.9.32, the check passed and that number would have become the
+  released version. A new top entry must now be within ten of the release
+  before it (open pull requests each hold one number, so a small gap is
+  normal), and a minor or major bump must start near .0. Applied per file and,
+  with `--base`, against the base's version.
+- **`scripts/check_changelog.py --base` no longer misreports files `main`
+  changed during an uncommitted merge.** It decided "edited by this branch"
+  by comparing the working copy with the merge base's, so in the middle of a
+  merge of `main` every changelog `main` had released on since the fork
+  "differed" and was reported as still claiming `main`'s version - a false
+  alarm that vanished once the merge was committed, which the message did not
+  say. A file identical to `main`'s copy is now never this branch's edit.
+
+#### 2026-09-23 *0.9.35*
+- **DemoApp: the ListView page's multi-column table shows the sorting API**
+  (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`). Table 2 used to copy
+  and `std::stable_sort` its own rows on every header click. It now hands the
+  view an `UltraCanvasListSortFilterProxy` in front of the model: File Name
+  sorts naturally, and Size gets a column comparator that reads the number in
+  front of "KB". A new **Sortable columns** checkbox next to the section title
+  turns header-click sorting on and off. Turning it off restores the model's
+  own order and clears the header triangle. The click and selection handlers
+  now map proxy rows back through `MapToSource()` before they look up a file,
+  so the status label names the right file while the table is sorted.
+- **DemoApp: the ListView page's subtitle no longer runs under the status
+  box.** It was one 600 px line and the status box starts at x = 600, so the
+  end of the sentence was hidden. It is now two lines, 570 px wide, and the
+  status box stays where it was.
+- **`UltraCanvasListView.h`: removed an orphaned comment.** It said the view
+  itself cycles a column's sort on a header click, and it sat above no
+  declaration. The view never sorts: a header click only fires
+  `onHeaderClicked`, which is what the surrounding comments say.
+
+#### 2026-09-23 *0.9.34*
+- **New: UltraNet's OAuth2 app registry** (`<UltraNet/UltraNetOAuth2Apps.h>`,
+  `UltraNet_OAuth2SetApp` / `SetBuiltInApp` / `AddAppEnvPrefix` /
+  `SetAppAlias` / `ParseAppsIni` / `LoadAppsFile` / `GetApp` / `HasApp` /
+  `ClearApps`, `Masterfile_modules.md` §UltraNet). The client id, secret and
+  redirect URI an application signs in as, per provider, in one place per
+  process: Set() from code, then the environment
+  (`ULTRANET_OAUTH_<PROVIDER>_CLIENT_ID` and the prefixes modules add), then
+  an INI file, then a build's baked-in default - a tier taken whole, never
+  a secret from one tier under a client id from another - and then an alias
+  chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` /
+  `GetOAuthApp` / `HasOAuthApp` each carried a copy of this lookup with a
+  different priority chain (UltraMail knew the INI file and the baked-in
+  client, UltraCloud neither) and different environment names, so a Google
+  client registered for Gmail was invisible to the composer's cloud picker
+  two menus away. Both are profiles of the registry now, the way the app
+  credential vaults became profiles of `UltraVault::DeviceKeyVault` in
+  0.9.23: UltraMail adds the `ULTRAMAIL_` prefix, loads its `oauth.ini` into
+  the shared file tier and registers the baked-in client as the floor;
+  UltraCloud adds `ULTRACLOUD_`, its `127.0.0.1:53682` redirect default, and
+  the aliases `googledrive` -> `google` and `onedrive` -> `microsoft`, so one
+  Google and one Microsoft registration serve mail, Drive and OneDrive when
+  the consent screen carries the scopes. Every documented name and priority
+  keeps working; a registration under the specific id wins over the alias at
+  every tier. `UltraCloud::OAuthApp` and `UltraMail::OAuthApp` are the one
+  `UltraNetOAuth2App` (the cloud struct's built-in redirect default moved
+  into `GetOAuthApp`). Tests: `Tests/UltraNet/test_oauth2_apps.cpp` (six
+  cases: tier order and whole-tier precedence, the built-in floor surviving
+  `ClearApps`, prefix order, aliases with chains and cycles, the tolerant
+  file load); the UltraMail and UltraCloud suites run unchanged.
+
+#### 2026-09-23 *0.9.33*
+- **Fix: `dns_resolve_honours_its_deadline` was red on the macOS Apple-silicon
+  row of every build since it landed** (`Tests/UltraNet/test_dns_timeout.cpp`,
+  from PR #514). The test asserted `Timeout` for a 1 ms lookup of a name under
+  `.invalid`, but that runner's local resolver answers NXDOMAIN inside the
+  millisecond, so c-ares reported `HostNotFound` - the deadline was met, not
+  missed, and the assertion failed on the base branch (`main` at a916fe6b)
+  as well as on every pull request that merged it. The test now accepts
+  either outcome; a hang or any other code still fails, which is what it is
+  there to catch.
 
 #### 2026-09-23 *0.9.32*
 - **The demo leaked its whole widget tree, and every callback in it.** A

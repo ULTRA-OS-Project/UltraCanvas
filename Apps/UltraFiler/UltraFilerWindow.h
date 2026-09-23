@@ -809,6 +809,12 @@ private:
     SplitSide activeSplitSide = SplitSide::Left;   // the pane the toolbars act on
     bool treeDockShown = false;            // the tree is docked in a pane
     SplitSide treeDockSide = SplitSide::Left;      // ... in this one
+    // What docking the tree took from the other display and from the rest
+    // of the split (the preview pane), so undocking gives back exactly that
+    // - not the tree's full width, which the other display may not have had
+    // to give.
+    int treeDockTakenFromOther = 0;
+    int treeDockTakenFromRest = 0;
     // The tree pane's width while it is out of the split, so it comes back
     // as wide as the user had it. Starts at the start-up width.
     int treePaneWidth = 280;

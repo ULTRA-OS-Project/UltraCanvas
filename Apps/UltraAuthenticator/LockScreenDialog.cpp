@@ -19,7 +19,7 @@ void WipeString(std::string& s) {
 
 } // namespace
 
-void LockScreenDialog::CreateLockScreenDialog(const std::string& reason) {
+void LockScreenDialog::CreateLockScreenDialog(const std::string& message) {
     DialogConfig cfg;
     cfg.title         = "UltraAuthenticator — locked";
     cfg.width         = kDialogWidth;
@@ -52,7 +52,7 @@ void LockScreenDialog::CreateLockScreenDialog(const std::string& reason) {
 
     reasonLabel_ = std::make_shared<UltraCanvasLabel>(
         "lock-reason", margin, y, fieldWidth, 36,
-        reason + " Enter your master password to show the codes again.");
+        message);
     reasonLabel_->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
     reasonLabel_->SetTextColor(Theme::kTextSecondary);
     reasonLabel_->SetWrap(TextWrap::WrapWord);
