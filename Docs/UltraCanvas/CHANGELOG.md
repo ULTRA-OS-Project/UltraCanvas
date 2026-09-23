@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.33*
+#### 2026-09-23 *0.9.35*
 - **DemoApp: the ListView page's multi-column table shows the sorting API**
   (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`). Table 2 used to copy
   and `std::stable_sort` its own rows on every header click. It now hands the
