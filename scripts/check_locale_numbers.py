@@ -15,7 +15,7 @@ It is not a crash. It is a *different file*:
     rgba(…, 0.5)     written as `rgba(…, 0,500000)` -> a 5-argument function
     GDK_SCALE=1.5    read as 1      -> the HiDPI override does nothing
 
-which is why it survived three separate fixes (CSS, SVG, and the 0.9.33
+which is why it survived three separate fixes (CSS, SVG, and the 0.9.42
 sweep) and kept turning up somewhere else.
 
 The rule, from AGENTS.md: numbers in file formats and wire protocols are
@@ -51,7 +51,7 @@ What is reported:
       converter streams every number through its own imbued `Num()`, so its
       streams are correct and flagging them would point at the reference
       implementation of the fix. This check is for code that has never heard
-      of the problem, which is what VectorStorage was before 0.9.33.
+      of the problem, which is what VectorStorage was before 0.9.42.
 
 A site that is deliberately locale-aware says so and is skipped:
 
@@ -162,7 +162,7 @@ BASELINE_HEADER = """\
 # format, a document, a /proc file or a wire protocol, where the decimal point
 # is a '.' by definition - so on a comma-decimal desktop each is a misread
 # value or a corrupted file waiting to be reported. They are listed rather
-# than fixed only because 0.9.33 swept the readers it could reach and this
+# than fixed only because 0.9.42 swept the readers it could reach and this
 # check then found the rest.
 #
 # Do not add to this file to silence a new finding. Read with

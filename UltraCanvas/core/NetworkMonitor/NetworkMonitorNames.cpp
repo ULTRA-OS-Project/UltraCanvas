@@ -362,8 +362,14 @@ NetworkMonitorResult NetworkMonitor_RegisterNameSource(std::unique_ptr<INameSour
 
 void NetworkMonitor_ListNameSources(std::vector<NameSourceStatus>& out) {
     out.clear();
-    std::lock_guard<std::mutex> lock(TheRegistry().mutex);
-    for (const auto& entry : TheRegistry().sources) {
+    // Asked outside the registry lock, so a source's method may reach the
+    // capabilities (which ask the registry) without deadlocking.
+    std::vector<std::shared_ptr<RegisteredSource>> sources;
+    {
+        std::lock_guard<std::mutex> lock(TheRegistry().mutex);
+        sources = TheRegistry().sources;
+    }
+    for (const auto& entry : sources) {
         NameSourceStatus status;
         status.name = entry->source->Name();
         status.kind = entry->source->Kind();
@@ -406,13 +412,21 @@ bool NetworkMonitor_WaitForNames(int timeoutMs) {
 // The core asks every registered source, through this, to look at an
 // address a snapshot could not name (declared in NetworkMonitorBackend.h).
 void NetworkMonitor_NoteUnnamedAddress(const std::string& address) {
-    std::lock_guard<std::mutex> lock(TheRegistry().mutex);
-    for (const auto& entry : TheRegistry().sources) entry->source->NoteAddress(address);
+    std::vector<std::shared_ptr<RegisteredSource>> sources;
+    {
+        std::lock_guard<std::mutex> lock(TheRegistry().mutex);
+        sources = TheRegistry().sources;
+    }
+    for (const auto& entry : sources) entry->source->NoteAddress(address);
 }
 
 bool NetworkMonitor_AnySourceReportsProcess() {
-    std::lock_guard<std::mutex> lock(TheRegistry().mutex);
-    for (const auto& entry : TheRegistry().sources) {
+    std::vector<std::shared_ptr<RegisteredSource>> sources;
+    {
+        std::lock_guard<std::mutex> lock(TheRegistry().mutex);
+        sources = TheRegistry().sources;
+    }
+    for (const auto& entry : sources) {
         if (entry->source->IsRunning() && entry->source->ReportsProcess()) return true;
     }
     return false;

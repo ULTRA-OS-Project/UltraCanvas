@@ -68,8 +68,8 @@ jobs:
           # header) and a lower one (the base released past this branch, which
           # has not merged it since and so cannot see the newer entries).
           # On a push to main there is no other side to compare against, so the
-          # per-file rules (top entry unique, and the highest in its file) stand
-          # on their own.
+          # per-file rules (top entry unique, the highest in its file, and no
+          # more than a few numbers past the one before it) stand on their own.
           # The base is fetched with its history: the check tells the files
           # this branch edited from the files the base moved on by their merge
           # base, which a depth-1 fetch cannot supply.

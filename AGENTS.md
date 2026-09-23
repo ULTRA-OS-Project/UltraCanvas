@@ -82,7 +82,7 @@ before adding cross-module code.
   desktop an SVG `opacity="0.25"` read as 0 and the shape vanished, and the
   SVG writer emitted `M 1,5`, which reads back as the point (1, 5). This has
   now been fixed three times - in CSS, in SVG, and across the file-format
-  readers and writers in 0.9.33 - which is why the rule is now checked rather
+  readers and writers in 0.9.42 - which is why the rule is now checked rather
   than remembered: `scripts/check_locale_numbers.py` blocks a new one, and
   `scripts/locale_numbers_baseline.txt` lists the sites still to fix. A number
   a person typed or reads follows their locale on purpose and says so at the
@@ -279,7 +279,20 @@ number anywhere else, and never introduce a new literal copy of one:
   changelogs are unchanged; they see little contention, one product to a file.
   Run `git fetch origin main` and then
   `python3 scripts/check_changelog.py --base origin/main` before pushing; CI
-  runs it too.
+  runs it too. The check compares a top entry with line 1 of `main`'s copy of
+  the file, so it is only as current as your `origin/main` - an unfetched one
+  lets a stale number through. It also refuses a number more than ten past
+  the release before it: open pull requests each hold one number, so a small
+  gap is normal, but 0.9.120 over a `main` on 0.9.32 once passed the
+  "strictly greater" rule and would have become the released version.
+  GitHub's *Update branch* button cannot renumber a top entry: it merges
+  `main` into the branch and, when `main` has meanwhile released the number
+  the branch chose, folds the two entries under the one header (or leaves a
+  conflict marker in line 1) — and the guard then fails on the very merge
+  that was meant to fix it. When the check goes red after such a merge, fix
+  it locally: merge `main`, split the shared header back into two entries,
+  give the branch's entry the next free number, and push. A pending
+  `changelog.d/` entry has none of this to do.
 - **Do not add a version number to a compile definition that anything but its
   own consumers see.** `ULTRACANVAS_VERSION` was `PUBLIC` on the core library,
   so it sat on the compile command line of 621 of the build's 1136 objects

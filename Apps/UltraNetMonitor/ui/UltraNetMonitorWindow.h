@@ -1,14 +1,18 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.h
-// UltraNetMonitor's window. Three tabs: *Live* - the processes on the left,
+// UltraNetMonitor's window. Four tabs: *Live* - the processes on the left,
 // every connection on the right, a filter box and a pause button above them
 // - *History* - the flows the activity store has recorded, over a chosen
-// range - and *Names* - every address the name sources have put a domain
-// name to, with the source and how far to trust it. A *Record* toggle on
-// the toolbar writes every snapshot the worker takes, and every DNS
-// observation the sources report, into the store at the platform's
-// per-user data path. Nothing is painted by hand: four UltraCanvasListViews
-// over the models in UltraNetMonitorModels, each behind an
-// UltraCanvasListSortFilterProxy.
+// range - *Names* - every address the name sources have put a domain name
+// to, with the source and how far to trust it - and *Events* - connections
+// as they open and close, from the event sources, live or as recorded. A
+// *Record* toggle on the toolbar writes every snapshot the worker takes,
+// every DNS observation and every connection event the sources report,
+// into the store at the platform's per-user data path. Nothing is painted
+// by hand: five UltraCanvasListViews over the models in
+// UltraNetMonitorModels, each behind an UltraCanvasListSortFilterProxy. A
+// right click on the process list opens an *Export* menu that writes the
+// list, or the list with every application's connections, to a CSV file
+// chosen in the native save dialog.
 //
 // The socket table is read on a worker thread once a second (walking /proc
 // is I/O, and it must never stall a repaint); the result is parked in one
@@ -16,15 +20,16 @@
 // UltraCleaner uses for its scanner. Recording happens on that worker too,
 // and on the name sources' threads, under a mutex the History tab's
 // queries share, so the single SQLite connection is never used from two
-// threads at once. The name sources themselves are started by main.cpp
-// before the window opens; the window only reports them.
-// Version: 0.4.0
+// threads at once. The name and event sources themselves are started by
+// main.cpp before the window opens; the window only reports them.
+// Version: 0.7.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraNetMonitorModels.h"
 
 #include "NetworkMonitor/NetworkMonitor.h"
+#include "NetworkMonitor/NetworkMonitorEvents.h"
 #include "NetworkMonitor/NetworkMonitorNames.h"
 #include "NetworkMonitor/NetworkMonitorStore.h"
 #include "UltraCanvasButton.h"
@@ -33,6 +38,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTextInput.h"
@@ -53,9 +59,9 @@ class UltraNetMonitorWindow {
 public:
     ~UltraNetMonitorWindow();
 
-    // `nameNotes` are what main.cpp has to say about the name sources it
-    // started or could not (a proxy port that needed privilege); the Names
-    // tab shows them.
+    // `nameNotes` are what main.cpp has to say about the name and event
+    // sources it started or could not (a proxy port that needed privilege,
+    // a tracker that needs root); the Names and Events tabs show them.
     bool Initialize(std::vector<std::string> nameNotes = {});
     void Show();
 
@@ -70,6 +76,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasListView> BuildFlowList();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildNamesPage();
     std::shared_ptr<UltraCanvas::UltraCanvasListView> BuildNameList();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildEventsPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> BuildEventList();
 
     // ===== DATA FLOW =====
     void StartWorker();
@@ -86,6 +94,14 @@ private:
     void ReapplyProcessSelection();
     void RebuildConnectionFilter();
 
+    // ===== EXPORT =====
+    // The process list's right-click menu: Export -> App list / App list
+    // details. Both take the list as shown (its current sort order) and
+    // write it to a CSV the user picks in the native save dialog; the
+    // details variant adds every application's connections beneath it.
+    void ShowProcessMenu(const UltraCanvas::UCEvent& event);
+    void ExportAppList(bool details);
+
     // ===== THE STORE =====
     // Opens the store at the default path on first use. Caller holds
     // storeMutex_. False, with storeError_ set, when it cannot be opened.
@@ -98,6 +114,13 @@ private:
     // ===== NAMES =====
     void RefreshNames();
     std::string NameSourcesSummary() const;
+
+    // ===== EVENTS =====
+    // Live shows the registry's ring; Recorded queries the store over the
+    // History tab's range. The toggle switches, Refresh re-reads.
+    void RefreshEvents();
+    void ToggleEventsRecorded();
+    std::string EventSourcesSummary() const;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> page_;
@@ -113,6 +136,7 @@ private:
     std::shared_ptr<ProcessListModel> processModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> processProxy_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> processView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> processMenu_;   // kept alive while open
 
     std::shared_ptr<ConnectionListModel> connectionModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> connectionProxy_;
@@ -142,6 +166,19 @@ private:
     UltraCanvas::NameListenerId nameListener_ = 0;
     std::atomic<int64_t> recordedObservations_{0};
     unsigned snapshotsApplied_ = 0;
+
+    // Events tab
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> eventsFilter_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> eventsModeButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> eventsRefreshButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> eventsClearButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> eventsStatus_;
+    std::shared_ptr<EventListModel> eventModel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> eventProxy_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> eventView_;
+    bool eventsRecorded_ = false;
+    UltraCanvas::EventListenerId eventListener_ = 0;
+    std::atomic<int64_t> recordedEvents_{0};
 
     // Worker -> UI: one slot, overwritten, never queued.
     std::thread worker_;

@@ -1,6 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
-// Last Modified: 2026-09-19
+// Last Modified: 2026-09-23
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
@@ -778,6 +778,22 @@ namespace UltraCanvas {
                 default:
                     break;
             }
+        }
+
+        // A right press asks for a context menu, when a handler wants one:
+        // select what is under the pointer, then hand over. Before the row
+        // handler, which would treat the press as a left click.
+        if (onContextMenu && event.type == UCEventType::MouseDown &&
+            event.button == UCMouseButton::Right && Contains(event.pointer)) {
+            SetFocus(true);
+            const int row = GetRowAtY(event.pointer.y);
+            if (row >= 0) {
+                focusedRow = row;
+                if (selection && !selection->IsSelected(row)) selection->Select(row, false);
+                RequestRedraw();
+            }
+            onContextMenu(row, event);
+            return true;
         }
 
         switch (event.type) {
