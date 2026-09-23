@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.38*
+#### 2026-09-23 *0.9.39*
 - **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not
   as empty.** A new optional hook, `remoteListingStatus`, is asked when
   `remoteListing` answered with an empty listing; a non-empty answer puts a
@@ -14,6 +14,7 @@
   (UltraFiler's tree-dock button) left its tooltip floating over the new
   content until the mouse moved.
 
+#### 2026-09-23 *0.9.38*
 - **NetworkMonitor connection events.** `NetworkMonitorEvents.h`: a
   connection reported as it opens, is accepted or closes, rather than
   found in the next snapshot - the event-rate collection the proposal
