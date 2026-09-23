@@ -237,5 +237,6 @@
 
 ## Applications
 
+- [UltraAuthenticator](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraAuthenticator/README.md): UltraAuthenticator generates the six- or eight-digit sign-in codes (TOTP and HOTP, the same codes Google Authenticator, Aegis and 2FAS produce) for accounts you enrol by scanning a QR code or typing a setup key. It…
 - [UltraAuthenticator — Feasibility Investigation & Security Analysis](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraAuthenticator/UltraAuthenticator-Investigation.md): This document answers two questions:
 - [UltraPaint — feature gap analysis](https://raw.githubusercontent.com/ULTRA-OS-Project/UltraCanvas/main/Docs/UltraPaint/FeatureGapAnalysis.md): What a bitmap editor of the Paint Shop Pro / GIMP class needs, what the UltraCanvas framework and PixelFX already provided when UltraPaint was started (2026-09-06), and what had to be built. This is the investigation…

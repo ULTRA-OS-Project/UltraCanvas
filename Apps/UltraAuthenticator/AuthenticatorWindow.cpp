@@ -1,5 +1,5 @@
 // Apps/UltraAuthenticator/AuthenticatorWindow.cpp
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "AuthenticatorWindow.h"
@@ -9,6 +9,7 @@
 #include "EditAccountDialog.h"
 #include "RevealSecretDialog.h"
 #include "ScanAccountDialog.h"
+#include "SettingsDialog.h"
 #include "Theme.h"
 
 #include "UltraCanvasFileLoader.h"
@@ -37,8 +38,30 @@ std::string CodePlaceholder(uint32_t digits) {
     return GroupCode(std::string(digits, '-'));
 }
 
+// What a hidden code looks like: one bullet per digit, grouped like the code.
+// Built by hand because the bullet is three bytes in UTF-8 and GroupCode
+// counts bytes.
+std::string CodeMask(uint32_t digits) {
+    const std::string bullet = "\xE2\x80\xA2";   // U+2022
+    std::string out;
+    const uint32_t groupAt = (digits == 8) ? 4 : 3;
+    for (uint32_t i = 0; i < digits; ++i) {
+        if (i == groupAt && (digits == 6 || digits == 8)) out += " ";
+        out += bullet;
+    }
+    return out;
+}
+
 int64_t NowUnix() {
     return static_cast<int64_t>(std::time(nullptr));
+}
+
+std::string MinutesText(uint32_t seconds) {
+    if (seconds % 60 == 0 && seconds >= 60) {
+        const uint32_t minutes = seconds / 60;
+        return std::to_string(minutes) + (minutes == 1 ? " minute" : " minutes");
+    }
+    return std::to_string(seconds) + " seconds";
 }
 
 // The second line of a card: the account name, plus the details worth knowing
@@ -66,14 +89,30 @@ std::string DisplayName(const Otp::Parameters& params) {
 } // namespace
 
 AuthenticatorWindow::AuthenticatorWindow(UltraCanvasApplication& app,
-                                         AccountStore& store)
-    : app_(app), store_(store) {}
+                                         AccountStore& store,
+                                         const Preferences& preferences,
+                                         const std::string& preferencesPath)
+    : app_(app), store_(store), prefs_(preferences), prefsPath_(preferencesPath) {}
 
 AuthenticatorWindow::~AuthenticatorWindow() {
     if (timerRunning_) {
         app_.StopTimer(refreshTimer_);
         timerRunning_ = false;
     }
+}
+
+template <class Dialog>
+void AuthenticatorWindow::ShowTracked(const std::shared_ptr<Dialog>& dialog) {
+    ++modalDepth_;
+    auto previous = dialog->onResult;
+    dialog->onResult = [this, previous](DialogResult result) {
+        if (modalDepth_ > 0) --modalDepth_;
+        // Time spent in the dialog was not idleness, even though none of its
+        // input reached this window's filter.
+        NoteActivity();
+        if (previous) previous(result);
+    };
+    dialog->ShowModal(window_.get());
 }
 
 bool AuthenticatorWindow::Create() {
@@ -103,6 +142,25 @@ bool AuthenticatorWindow::Create() {
         return true;
     };
 
+    // Idle means no input *to this window*. Anything the user does here —
+    // clicks, keys, even moving the pointer — resets the clock. The filter
+    // never consumes; it only takes the time.
+    window_->InstallEventFilter(
+        "auth-activity",
+        [this](const UCEvent&) { NoteActivity(); return false; },
+        {UCEventType::MouseDown, UCEventType::MouseUp, UCEventType::MouseMove,
+         UCEventType::MouseWheel, UCEventType::KeyDown, UCEventType::KeyUp});
+
+    // Minimising is a signal that the user has stopped looking; lock now so
+    // that nothing is on the cards when the window comes back.
+    window_->onWindowMinimize = [this]() {
+        if (prefs_.lockOnMinimize && modalDepth_ == 0) Lock("The window was minimised.");
+    };
+    // No onWindowRestore handler on purpose: the lock screen is put up by the
+    // next Tick() once IsMinimized() is false again. Showing it from inside
+    // the restore notification centred it on where the window *had* been
+    // before the window manager finished putting it back.
+
     const long margin = Theme::kMargin;
     const long width  = kWindowWidth - 2 * margin;
 
@@ -126,6 +184,16 @@ bool AuthenticatorWindow::Create() {
     addBtn->onClick = [this]() { OpenAddAccountDialog(); };
     window_->AddChild(addBtn);
 
+    // Lock sits alone at the right of the first row: it is the one action
+    // that should be findable without reading, when someone is leaving the
+    // desk.
+    auto lockBtn = std::make_shared<UltraCanvasButton>(
+        "auth-lock", kWindowWidth - margin - Theme::kButtonLock, 54,
+        Theme::kButtonLock, 32);
+    lockBtn->SetText("Lock");
+    lockBtn->onClick = [this]() { Lock("Locked by request."); };
+    window_->AddChild(lockBtn);
+
     // Second row: things that act on the vault rather than on one account.
     // Wide enough for the whole label — the button clips rather than shrinking
     // its text, and "Change master p..." reads as a truncated menu item.
@@ -147,6 +215,13 @@ bool AuthenticatorWindow::Create() {
     restoreBtn->onClick = [this]() { OpenRestoreDialog(); };
     window_->AddChild(restoreBtn);
 
+    auto settingsBtn = std::make_shared<UltraCanvasButton>(
+        "auth-settings", kWindowWidth - margin - Theme::kButtonSettings, 94,
+        Theme::kButtonSettings, 32);
+    settingsBtn->SetText("Settings…");
+    settingsBtn->onClick = [this]() { OpenSettingsDialog(); };
+    window_->AddChild(settingsBtn);
+
     statusLabel_ = std::make_shared<UltraCanvasLabel>(
         "auth-status", margin, kHeaderHeight - 22, width, 18, "");
     statusLabel_->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
@@ -167,12 +242,11 @@ bool AuthenticatorWindow::Create() {
     listContainer_->AddChild(emptyLabel_);
 
     RebuildRows();
+    NoteActivity();
 
-    // One periodic timer drives every row. 1 Hz is the coarsest rate that
-    // still makes the countdown look live.
-    refreshTimer_ = app_.StartTimer(1000, true, [this](TimerId) {
-        RefreshCodes();
-    });
+    // One periodic timer drives every row and the auto-lock. 1 Hz is the
+    // coarsest rate that still makes the countdown look live.
+    refreshTimer_ = app_.StartTimer(1000, true, [this](TimerId) { Tick(); });
     timerRunning_ = true;
 
     return true;
@@ -187,6 +261,109 @@ void AuthenticatorWindow::SetStatus(const std::string& text, bool isError) {
     statusLabel_->SetText(text);
     statusLabel_->SetTextColor(isError ? Theme::kDanger : Theme::kTextMuted);
 }
+
+void AuthenticatorWindow::NoteActivity() {
+    lastActivity_ = NowUnix();
+}
+
+// ---------------------------------------------------------------------------
+// The clock
+// ---------------------------------------------------------------------------
+
+void AuthenticatorWindow::Tick() {
+    const int64_t now = NowUnix();
+
+    if (locked_) {
+        if (lockDialog_) {
+            lockDialog_->Tick();
+        } else if (window_ && !window_->IsMinimized()) {
+            // Wait one extra tick after a restore. The window manager can
+            // park a window it is un-iconifying at a temporary position for
+            // a few hundred milliseconds before moving it back; a dialog
+            // centred during that moment lands wherever the parent was
+            // parked, clamped to the screen edge.
+            if (++ticksSinceRestore_ >= 2) ShowLockScreen();
+        } else {
+            ticksSinceRestore_ = 0;
+        }
+        return;
+    }
+
+    // No auto-lock while a dialog is open; see ShowTracked.
+    if (modalDepth_ == 0) {
+        if (prefs_.lockOnMinimize && window_ && window_->IsMinimized()) {
+            // Belt and braces for a platform that never delivers the minimise
+            // event: the state is polled as well.
+            Lock("The window was minimised.");
+            return;
+        }
+        if (prefs_.idleLockSeconds > 0 &&
+            now - lastActivity_ >= static_cast<int64_t>(prefs_.idleLockSeconds)) {
+            Lock("Locked after " + MinutesText(prefs_.idleLockSeconds) +
+                 " without input.");
+            return;
+        }
+    }
+
+    RefreshCodes();
+}
+
+// ---------------------------------------------------------------------------
+// Locking
+// ---------------------------------------------------------------------------
+
+void AuthenticatorWindow::Lock(const std::string& reason) {
+    if (locked_) return;
+    locked_     = true;
+    lockReason_ = reason;
+
+    // Order: take the codes off the screen, then drop the vault. Nothing on a
+    // card survives the first step, and nothing in memory survives the second.
+    ClearRows();
+    if (emptyLabel_) emptyLabel_->SetText("");
+    SetStatus("Locked.");
+    store_.Lock();
+
+    ticksSinceRestore_ = 0;
+    if (window_ && !window_->IsMinimized()) ShowLockScreen();
+}
+
+void AuthenticatorWindow::ShowLockScreen() {
+    if (lockDialog_) return;
+
+    auto dialog = std::make_shared<LockScreenDialog>();
+    lockDialog_ = dialog;
+
+    dialog->onQueryWait = [this]() {
+        return store_.SecondsUntilUnlockAllowed(NowUnix());
+    };
+    dialog->onUnlock = [this](const std::string& password) -> std::string {
+        UltraCryptSecureBuffer pw(password.data(), password.size());
+        StoreResult unlocked = store_.Unlock(pw, NowUnix());
+        if (!unlocked) return unlocked.message;
+        return std::string();
+    };
+    dialog->onQuit = [this]() {
+        store_.Close();
+        app_.RequestExit();
+    };
+    dialog->onResult = [this](DialogResult result) {
+        lockDialog_.reset();
+        if (result != DialogResult::OK) return;   // quit; the app is exiting
+        locked_ = false;
+        lockReason_.clear();
+        NoteActivity();
+        SetStatus("");
+        RebuildRows();
+    };
+
+    dialog->CreateLockScreenDialog(lockReason_);
+    dialog->ShowModal(window_.get());
+}
+
+// ---------------------------------------------------------------------------
+// Rows
+// ---------------------------------------------------------------------------
 
 void AuthenticatorWindow::ClearRows() {
     if (!listContainer_) return;
@@ -249,8 +426,7 @@ void AuthenticatorWindow::RebuildRows() {
 
         row.accountLabel = std::make_shared<UltraCanvasLabel>(
             id + "-account", pad, pad + 20, cardWidth - 2 * pad - 290, 18,
-            account.params.issuer.empty() ? SubtitleFor(account.params)
-                                          : SubtitleFor(account.params));
+            SubtitleFor(account.params));
         row.accountLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
         row.accountLabel->SetTextColor(Theme::kTextSecondary);
         row.card->AddChild(row.accountLabel);
@@ -264,10 +440,18 @@ void AuthenticatorWindow::RebuildRows() {
         row.codeLabel->SetFont(Theme::kCodeFont, Theme::kSizeCode,
                                FontWeight::Bold);
         row.codeLabel->SetTextColor(Theme::kTextPrimary);
+        if (prefs_.hideCodes) {
+            // A label with a click handler reports the hand cursor, which is
+            // the affordance: the mask is something to click.
+            const std::string key = account.key;
+            row.codeLabel->onClick = [this, key]() { RevealRow(key); };
+        }
         row.card->AddChild(row.codeLabel);
 
+        // Wide enough for "click to show" in bold; at 110 it clipped to
+        // "click to sh…", which reads as a cut-off menu entry.
         row.countdownLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-left", pad + 240, pad + 50, 110, 20, "");
+            id + "-left", pad + 240, pad + 50, 130, 20, "");
         row.countdownLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary,
                                     FontWeight::Bold);
         row.countdownLabel->SetTextColor(Theme::kTextMuted);
@@ -333,12 +517,34 @@ void AuthenticatorWindow::RefreshCodes() {
 
     const int64_t now = NowUnix();
     for (Row& row : rows_) {
+        const bool hidden = prefs_.hideCodes && now >= row.revealedUntil;
+
         if (row.isHotp) {
             // Nothing to tick: an HOTP code changes only when "Next code" is
             // pressed, and showing one until then would imply it is still
-            // valid.
+            // valid. In hidden mode the code shown by that press is masked
+            // again once its reveal window closes.
+            if (hidden && row.revealedUntil != 0) {
+                row.revealedUntil = 0;
+                if (row.codeLabel) row.codeLabel->SetText(CodeMask(row.params.digits));
+                if (row.countdownLabel) row.countdownLabel->SetText("");
+            } else if (hidden && row.codeLabel &&
+                       row.codeLabel->GetText() == CodePlaceholder(row.params.digits)) {
+                row.codeLabel->SetText(CodeMask(row.params.digits));
+            }
             continue;
         }
+
+        if (hidden) {
+            // Not even generated: a hidden code costs no decryption.
+            if (row.codeLabel) row.codeLabel->SetText(CodeMask(row.params.digits));
+            if (row.countdownLabel) {
+                row.countdownLabel->SetText("click to show");
+                row.countdownLabel->SetTextColor(Theme::kTextMuted);
+            }
+            continue;
+        }
+
         std::string code;
         uint32_t remaining = 0;
         StoreResult generated = store_.GenerateTotp(row.key, now, code, remaining);
@@ -358,6 +564,19 @@ void AuthenticatorWindow::RefreshCodes() {
     }
 }
 
+void AuthenticatorWindow::RevealRow(const std::string& key) {
+    if (!prefs_.hideCodes) return;
+    for (Row& row : rows_) {
+        if (row.key != key) continue;
+        // A hidden HOTP card has nothing to reveal: its code exists only once
+        // "Next code" produces it, and that press shows it (AdvanceHotpRow).
+        // Clicking the mask must not spend a counter, so it does nothing.
+        if (row.isHotp) return;
+        row.revealedUntil = NowUnix() + kRevealSeconds;
+    }
+    RefreshCodes();
+}
+
 void AuthenticatorWindow::AdvanceHotpRow(const std::string& key) {
     std::string code;
     StoreResult advanced = store_.AdvanceHotp(key, code);
@@ -365,6 +584,7 @@ void AuthenticatorWindow::AdvanceHotpRow(const std::string& key) {
         SetStatus(advanced.message, true);
         return;
     }
+    const int64_t now = NowUnix();
     for (Row& row : rows_) {
         if (row.key != key) continue;
         if (row.codeLabel) row.codeLabel->SetText(GroupCode(code));
@@ -377,19 +597,29 @@ void AuthenticatorWindow::AdvanceHotpRow(const std::string& key) {
         if (row.accountLabel) {
             row.accountLabel->SetText(SubtitleFor(row.params));
         }
+        // In hidden mode the freshly produced code is on screen for the same
+        // window a click would give, then masked again.
+        row.revealedUntil = prefs_.hideCodes ? now + kRevealSeconds : 0;
     }
     SetStatus("");
 }
 
+// ---------------------------------------------------------------------------
+// Dialogs
+// ---------------------------------------------------------------------------
+
 void AuthenticatorWindow::RemoveAccount(const std::string& key) {
     // Deleting an account destroys a second factor, so it is confirmed rather
     // than done on a single click.
+    ++modalDepth_;
     UltraCanvasDialogManager::ShowConfirmation(
         "Remove \"" + key + "\"?\n\n"
         "You will not be able to sign in with this account's codes again "
         "unless you still have its setup key or recovery codes.",
         "Remove account",
         [this, key](bool confirmed) {
+            if (modalDepth_ > 0) --modalDepth_;
+            NoteActivity();
             if (!confirmed) return;
             StoreResult removed = store_.Remove(key);
             if (!removed) {
@@ -413,7 +643,7 @@ void AuthenticatorWindow::OpenAddAccountDialog() {
         return std::string();
     };
     dialog->CreateAddAccountDialog();
-    dialog->ShowModal(window_.get());
+    ShowTracked(dialog);
 }
 
 void AuthenticatorWindow::OpenScanAccountDialog() {
@@ -429,7 +659,33 @@ void AuthenticatorWindow::OpenScanAccountDialog() {
         return std::string();
     };
     dialog->CreateScanAccountDialog();
-    dialog->ShowModal(window_.get());
+    ShowTracked(dialog);
+}
+
+void AuthenticatorWindow::OpenSettingsDialog() {
+    auto dialog = std::make_shared<SettingsDialog>();
+    dialog->onSave = [this](const Preferences& edited) { ApplyPreferences(edited); };
+    dialog->CreateSettingsDialog(prefs_);
+    ShowTracked(dialog);
+}
+
+void AuthenticatorWindow::ApplyPreferences(const Preferences& edited) {
+    const bool hideChanged = (edited.hideCodes != prefs_.hideCodes);
+    prefs_ = edited;
+    if (!prefs_.Save(prefsPath_)) {
+        SetStatus("Settings applied for this session but could not be saved to " +
+                      prefsPath_,
+                  true);
+    } else {
+        SetStatus("Settings saved.");
+    }
+    // The card click handlers exist only in hidden mode, so a change of that
+    // setting is a rebuild, not a refresh.
+    if (hideChanged) {
+        RebuildRows();
+    } else {
+        RefreshCodes();
+    }
 }
 
 void AuthenticatorWindow::OpenBackupDialog() {
@@ -459,9 +715,13 @@ void AuthenticatorWindow::OpenBackupDialog() {
         opts.AddFilter("Authenticator backup", "ucaexport");
         opts.parentWindow = window_.get();
 
+        // The picker is a dialog too, as far as the auto-lock is concerned.
+        ++modalDepth_;
         UltraCanvasFileLoader::SaveFileDialog(
             opts, [this, masterCopy, passCopy](DialogResult result,
                                                const std::string& path) {
+                if (modalDepth_ > 0) --modalDepth_;
+                NoteActivity();
                 if (result != DialogResult::OK || path.empty()) {
                     masterCopy->Clear();
                     passCopy->Clear();
@@ -484,7 +744,7 @@ void AuthenticatorWindow::OpenBackupDialog() {
         return std::string();
     };
     dialog->CreateBackupDialog();
-    dialog->ShowModal(window_.get());
+    ShowTracked(dialog);
 }
 
 void AuthenticatorWindow::OpenRestoreDialog() {
@@ -499,9 +759,12 @@ void AuthenticatorWindow::OpenRestoreDialog() {
         opts.AddFilter("Authenticator backup", "ucaexport");
         opts.parentWindow = window_.get();
 
+        ++modalDepth_;
         UltraCanvasFileLoader::OpenFileDialog(
             opts, [this, passCopy](DialogResult result,
                                    const std::string& path) {
+                if (modalDepth_ > 0) --modalDepth_;
+                NoteActivity();
                 if (result != DialogResult::OK || path.empty()) {
                     passCopy->Clear();
                     return;
@@ -535,7 +798,7 @@ void AuthenticatorWindow::OpenRestoreDialog() {
         return std::string();
     };
     dialog->CreateBackupDialog();
-    dialog->ShowModal(window_.get());
+    ShowTracked(dialog);
 }
 
 void AuthenticatorWindow::OpenEditAccountDialog(const std::string& key) {
@@ -562,7 +825,7 @@ void AuthenticatorWindow::OpenEditAccountDialog(const std::string& key) {
         return std::string();
     };
     dialog->CreateEditAccountDialog(*current);
-    dialog->ShowModal(window_.get());
+    ShowTracked(dialog);
 }
 
 void AuthenticatorWindow::OpenRevealSecretDialog(const std::string& key) {
@@ -588,7 +851,7 @@ void AuthenticatorWindow::OpenRevealSecretDialog(const std::string& key) {
         return std::string();
     };
     dialog->CreateRevealSecretDialog(DisplayName(*current));
-    dialog->ShowModal(window_.get());
+    ShowTracked(dialog);
 }
 
 void AuthenticatorWindow::OpenChangePasswordDialog() {
@@ -603,7 +866,7 @@ void AuthenticatorWindow::OpenChangePasswordDialog() {
         return std::string();
     };
     dialog->CreateChangePasswordDialog();
-    dialog->ShowModal(window_.get());
+    ShowTracked(dialog);
 }
 
 } // namespace Authenticator

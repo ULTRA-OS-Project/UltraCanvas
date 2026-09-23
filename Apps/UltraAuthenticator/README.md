@@ -24,7 +24,11 @@ Changelog and version:
 | `store/EncryptedFileStore.*` | The vault: XChaCha20-Poly1305 over an Argon2id-derived key, one AEAD blob for the whole file |
 | `AccountStore.*` | The account layer, and the only thing that ever touches a seed. The UI gets accounts and codes, never secrets |
 | `AccountExport.*` | The encrypted backup file: every account in one portable blob under its own passphrase |
-| `AuthenticatorWindow.*` | The main window: the scrolling card list, the 1 Hz refresh timer, the two button rows |
+| `LockPolicy.*` | `UnlockThrottle`: the exponential back-off between unlock attempts, time-injected so it is tested without sleeping |
+| `Preferences.*` | The three user settings and the `settings.ini` file beside the vault they live in; every value clamped on load |
+| `AuthenticatorWindow.*` | The main window: the scrolling card list, the 1 Hz refresh timer that also drives the auto-lock, the two button rows |
+| `LockScreenDialog.*` | What covers the window once the vault is locked: master password or Quit, nothing else |
+| `SettingsDialog.*` | Idle timeout, lock on minimise, hide codes |
 | `AddAccountDialog.*` | Manual entry — issuer, account name, Base32 key, masked while typing |
 | `ScanAccountDialog.*` | Camera enrolment: preview, poll, decode, hand the URI to the same parser manual entry uses |
 | `EditAccountDialog.*` | Rewrites an account's label and its OTP parameters |
@@ -131,8 +135,10 @@ UltraAuthenticator [--vault PATH] [-h|--help] [-v|--version]
 OTP modes: printing a code to a terminal would put it in the shell history and
 the scrollback, and the app has no reason to want that.
 
-`--version` currently prints a hard-coded `0.1.0` rather than the version on
-the first line of the changelog — see the note at the end of this file.
+`--version` prints the version on the first line of
+`Docs/UltraAuthenticator/CHANGELOG.md`: `cmake/UltraCanvasVersion.cmake`
+reads it into `ULTRAAUTHENTICATOR_VERSION` and this directory's
+`CMakeLists.txt` passes it to the target.
 
 ## Building and testing
 
@@ -158,7 +164,8 @@ ctest --test-dir build -R 'UltraOtp|UltraAuthenticator'
 |---|---|
 | `UltraOtpTests` | RFC 4226 App. D and RFC 6238 App. B vectors, plus the provisioning-URI rejection cases |
 | `UltraAuthenticatorStoreTests` | Confidentiality on disk, wrong-password refusal, tamper detection over the whole container, durability of each mutation |
-| `UltraAuthenticatorAccountTests` | Duplicate refusal, HOTP counter durability across a reopen, type-mismatch refusal, and that no seed, URI or label reaches the disk in the clear |
+| `UltraAuthenticatorAccountTests` | Duplicate refusal, HOTP counter durability across a reopen, type-mismatch refusal, that no seed, URI or label reaches the disk in the clear, and lock/unlock with the throttled refusal |
+| `UltraAuthenticatorLockTests` | The back-off schedule as a pure function of failures and time, the throttle state machine, and the settings-file round trip with clamping of hand-edited values |
 | `UltraAuthenticatorExportTests` | Backup round trip, refusal to reuse the master password, tamper detection, and that a restore never overwrites a live account |
 
 ## What it does not defend against
@@ -188,19 +195,43 @@ Rotating the master password re-keys the vault in place. It cannot reach a
 copy of the old file somebody already took — that copy stays readable with the
 old password, as it must.
 
+## Locking
+
+The vault does not stay unlocked for the life of the process. Three things
+lock it — the **Lock** button, a period without mouse or keyboard input to
+the window (`Preferences::idleLockSeconds`, default 5 minutes, 0 = never),
+and minimising the window (`Preferences::lockOnMinimize`, default on) — and
+each does the same two things in order: every card is cleared, then
+`AccountStore::Lock()` drops the derived key and the decrypted entries while
+remembering the vault path. `LockScreenDialog` then sits over the window
+until `AccountStore::Unlock()` accepts the master password; it has no Cancel,
+ignores Escape and refuses the window manager's close.
+
+Back-off is enforced by the store, not the dialog (`LockPolicy.h`,
+`UnlockThrottle`): three failures are free, then each doubles the wait from
+2 s up to 5 minutes, and an attempt inside the wait is refused with
+`StoreResultCode::TooManyAttempts` *before* the password is checked, so the
+refusal costs no Argon2id work and is not an oracle. The dialog polls the
+remaining wait once a second to grey its button; if it did not, the store
+would still refuse.
+
+The minimise trigger needed the framework to report a user-initiated
+minimise, which on X11 it did not (UltraCanvas 0.9.26: `WM_STATE` is watched,
+`onWindowMinimize` / `onWindowRestore` fire). The lock screen is put up on
+the second tick after a restore rather than the first, because the window
+manager can park an un-iconifying window at a temporary position for a few
+hundred milliseconds and a dialog centred during that moment lands there.
+
+`Preferences::hideCodes` ("Hide codes until a card is clicked", off by
+default) masks every code; a click shows one for 15 s, and a hidden TOTP card
+is not computed at all. The three settings are edited in `SettingsDialog` and
+kept in `settings.ini` beside the vault (`Preferences.h`): plain
+`key = value`, nothing secret, every value clamped on load.
+
+The user-facing statement of all this, including what it does not defend
+against, is `Docs/UltraAuthenticator/README.md`.
+
 ## Known gaps
-
-Two things this app should do and does not yet:
-
-- **Auto-lock.** The vault stays unlocked for the life of the process. There
-  is no idle timeout, no lock on minimise, and no app-lock with back-off
-  (§3.7). A walk-up attacker at an unlocked session sees the codes.
-- **`--version` reports a literal.** `main.cpp` prints `0.1.0` from a string
-  in the source rather than from `ULTRAAUTHENTICATOR_VERSION`, which
-  `cmake/UltraCanvasVersion.cmake` already computes from the changelog but
-  which this directory's `CMakeLists.txt` never passes to the target. The
-  number is therefore stale as soon as the changelog moves — the defect
-  `AGENTS.md` describes under *Versioning*.
 
 There is deliberately **no code verification function** and **no
 copy-to-clipboard**. An authenticator displays codes; it never checks them,
