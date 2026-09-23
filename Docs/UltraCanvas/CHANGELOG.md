@@ -50,6 +50,49 @@
   - `AGENTS.md` documents the flow where the old "pick the next number"
     instruction used to be. Application changelogs are unchanged: one product
     to a file, little contention.
+- **The locale-decimal defect, swept through the file formats.** `AGENTS.md`
+  has warned since the CSS and SVG fixes that the remaining `std::stof` /
+  `atof` / `snprintf("%f")` call sites are the same defect waiting to be
+  reported. A census found 195, not the ~110 estimated — but most are chart
+  labels and other text shown to a person, where following the reader's locale
+  is *correct*. What was actually broken is every place a number crosses into
+  a file format or a wire protocol, and those are fixed here.
+  - **`UltraCanvas::FormatFloatClassic`** joins `ParseFloatClassic` in
+    `UltraCanvasTextUtils.h`, promoting the helper the SVG converter had kept
+    to itself. `std::to_string(1.5)` renders as `1,500000` under de_DE and
+    `snprintf("%.6g")` as `1,5`; this formats as "%.6g" does with the decimal
+    point pinned to '.'.
+  - **Three writers were corrupting documents, not just misreading them.**
+    `SerializeColor` wrote `rgba(255,0,0,0,500000)` — the alpha's comma is the
+    channel separator, so the colour read back as a five-argument function.
+    `SerializePathData` wrote `M 1,5 2`, which reads back as the point (1, 5):
+    the exact defect fixed in the SVG converter and left here. The ODS formula
+    writer emitted literals through an unimbued stream, and a comma there
+    splits one argument into two.
+  - **~40 readers now parse dot-decimal**: the CDR transform matrices and dash
+    patterns (11 sites), the chart CSV loaders, the JSON readers in the
+    compositor and node diagrams, the ODF/OOXML attribute readers, tone
+    curves, templates, `rgba()` alpha, the spreadsheet formula tokenizer and
+    metrics, and the Z-Wave and KNX `temperature` parameters. Most of them
+    also **stopped throwing**: `std::stof` threw on malformed input in readers
+    whose job is to survive a damaged file, and several had no `catch` at all.
+  - **The CSV importer was undoing its own work.** It normalises the user's
+    chosen decimal separator to '.' and then called `std::stod`, which read
+    that back through `LC_NUMERIC` — so on a comma-decimal desktop a column of
+    `1.5` imported as 1.
+  - **Left alone deliberately**: text a person typed in their own locale — the
+    numeric text input, the spinner, the colour picker, spreadsheet cell entry
+    and filter values — and every label rendered for display. `AGENTS.md`
+    draws that line and it is the right one.
+- **Matter thermostat setpoints: the units were right, the range was not.**
+  `SendThermostatCommand` takes whole degrees and multiplies by 100 for
+  `OccupiedHeatingSetpoint`, which the spec carries in hundredths in an int16
+  — so the conversion was correct all along. But the parameter guard accepted
+  the full int16 range, and `temperature=1000` became 100000 hundredths, which
+  overflows the attribute. It is bounded to ±327 now, the range that survives
+  the conversion, and both sides say which unit they are in. The facade still
+  cannot express a half-degree setpoint; that is an API limit, noted where the
+  conversion happens.
 
 #### 2026-09-23 *0.9.32*
 - **The demo leaked its whole widget tree, and every callback in it.** A

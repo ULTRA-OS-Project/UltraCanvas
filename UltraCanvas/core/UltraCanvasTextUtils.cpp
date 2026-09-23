@@ -13,6 +13,7 @@
 
 #include <locale>
 #include <sstream>
+#include <iomanip>
 
 namespace UltraCanvas {
 
@@ -121,6 +122,13 @@ const char* ParseFloatClassic(const char* first, const char* last, double& out) 
 
 bool TryParseFloat(const std::string& text, float& out)  { return TryParseClassic(text, out); }
 bool TryParseFloat(const std::string& text, double& out) { return TryParseClassic(text, out); }
+
+std::string FormatFloatClassic(double value, int precision) {
+    std::ostringstream out;
+    out.imbue(std::locale::classic());   // '.' is the decimal point, always
+    out << std::setprecision(precision) << value;
+    return out.str();
+}
 
 namespace {
 

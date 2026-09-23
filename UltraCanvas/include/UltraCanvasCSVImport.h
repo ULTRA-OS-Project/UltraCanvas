@@ -8,6 +8,7 @@
 #pragma once
 
 #include <string>
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <vector>
 #include <set>
 #include <map>
@@ -491,15 +492,16 @@ inline bool CSVTryParseNumber(const std::string& raw, const CSVImportOptions& op
         else norm.push_back(c);
     }
 
-    try {
-        size_t pos = 0;
-        double v = std::stod(norm, &pos);
-        if (pos != norm.size()) return false;  // trailing junk -> not a number
-        value = isPercent ? v / 100.0 : v;
-        return true;
-    } catch (...) {
-        return false;
-    }
+    // `norm` is dot-decimal by construction above, so it has to be read as
+    // dot-decimal: std::stod went through LC_NUMERIC and undid exactly the
+    // normalisation the loop just did, so on a comma-decimal desktop a column
+    // of "1.5" imported as 1. The end pointer is the same "all of it, or not
+    // a number" test `pos != norm.size()` was, and nothing throws.
+    const char* const end = norm.data() + norm.size();
+    double v = 0.0;
+    if (ParseFloatClassic(norm.data(), end, v) != end) return false;
+    value = isPercent ? v / 100.0 : v;
+    return true;
 }
 
 // ============================================================================

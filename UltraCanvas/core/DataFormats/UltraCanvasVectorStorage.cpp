@@ -5,11 +5,13 @@
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "DataFormats/UltraCanvasVectorPathOps.h"
 #include <cmath>
 #include <cstdlib>
 #include <algorithm>
 #include <sstream>
+#include <locale>
 #include <regex>
 #include <numeric>
 
@@ -1907,6 +1909,12 @@ PathData ParsePathString(const std::string& pathStr) {
 
 std::string SerializePathData(const PathData& path) {
     std::ostringstream oss;
+    // Path parameters are separated by spaces and commas, so a comma decimal
+    // point does not just misread - it changes the number of coordinates.
+    // `M 1.5 2` written on a comma-decimal desktop becomes `M 1,5 2`, which
+    // reads back as the point (1, 5). This is the defect that was fixed in
+    // the SVG converter and left here.
+    oss.imbue(std::locale::classic());
     
     for (const auto& cmd : path.commands) {
         char cmdChar = 0;
@@ -1982,7 +1990,9 @@ Color ParseColorString(const std::string& colorStr) {
             result.r = std::stoi(match[1]);
             result.g = std::stoi(match[2]);
             result.b = std::stoi(match[3]);
-            result.a = static_cast<uint8_t>(std::stof(match[4]) * 255);
+            float alpha = 1.0f;
+            TryParseFloat(match[4].str(), alpha);   // rgba() alpha: dot-decimal
+            result.a = static_cast<uint8_t>(alpha * 255);
         }
     }
     // Handle named colors (basic set)
@@ -2013,10 +2023,14 @@ Color ParseColorString(const std::string& colorStr) {
 std::string SerializeColor(const Color& color) {
     if (color.a < 255) {
         // Use rgba format if transparency
-        return "rgba(" + std::to_string(color.r) + "," + 
-               std::to_string(color.g) + "," + 
-               std::to_string(color.b) + "," + 
-               std::to_string(color.a / 255.0f) + ")";
+        // The alpha must not be written through LC_NUMERIC: std::to_string
+        // renders 0.5 as "0,500000" on a comma-decimal desktop, and a comma
+        // inside rgba() is the channel separator - the colour would read back
+        // as a five-argument function, not as a transparent one.
+        return "rgba(" + std::to_string(color.r) + "," +
+               std::to_string(color.g) + "," +
+               std::to_string(color.b) + "," +
+               FormatFloatClassic(color.a / 255.0f) + ")";
     } else {
         // Use hex format for opaque colors
         char hex[8];
