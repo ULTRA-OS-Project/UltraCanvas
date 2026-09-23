@@ -1,7 +1,7 @@
 # NetworkMonitor — System-Wide Network Activity
 
 **Status:** Phase 1 and Phase 2 implemented (Linux, Windows, macOS; persistence; domain names; connection events); throughput charts and Phase 3 in the proposal.
-**Version:** 0.7.0
+**Version:** 0.8.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-09-23
 
@@ -133,7 +133,9 @@ client caused one particular outbound connection — and a UI labels it
 so. `ProcessTrafficSummary` carries the same at process level
 (`viaProcesses`, `servesProcesses`), and `NetworkMonitor_ListConnections`
 decodes every snapshot before its filters, so a connection kept without
-its loopback mirror still carries what the mirror told.
+its loopback mirror still carries what the mirror told. The activity
+store records the chain with each flow (below), so the question keeps its
+answer after the sockets are gone.
 
 ## Connection events
 
@@ -293,7 +295,7 @@ NetworkMonitor_CloseStore(store);
 | `NetworkMonitor_StoreAvailable()` | Whether this build has UltraDatabase; without it every call below reports `NotSupported` |
 | `NetworkMonitor_OpenStore` / `CloseStore` | Registers a named SQLite connection and migrates the schema (versioned; a newer file is refused, not damaged) |
 | `NetworkMonitor_RecordSnapshot` | Every connection either extends the flow it continues or starts a new one; processes are deduplicated and cached |
-| `NetworkMonitor_QueryFlows` | Filters: `since`, `until`, `pid`, `processName`, `text` (substring over addresses, name, executable), `includeListening`, `includeLoopback`, `limit`; newest first |
+| `NetworkMonitor_QueryFlows` | Filters: `since`, `until`, `pid`, `processName`, `text` (substring over addresses, name, executable, the loopback peer and whom a flow was for), `includeListening`, `includeLoopback`, `limit`; newest first |
 | `NetworkMonitor_QueryDailyTotals` | The rolled-up totals, newest day first |
 | `NetworkMonitor_RecordDnsObservation` / `QueryDnsObservations` | Every observation a name source reported, one row per address, with the asking process where known; the same filters, on `observedAt` |
 | `NetworkMonitor_RecordConnectionEvent` / `QueryConnectionEvents` / `ExportEventsCsv` | Every connection event a source reported, with its millisecond, process, name and counters; the same filters |
@@ -318,8 +320,19 @@ counted flows, not as zero bytes.
 replaces a weak one, never the reverse, and a sighting without a name
 keeps the one recorded. The daily total remembers the last name its flows
 carried. The text filter and the CSV (`remote_name`, `name_source`)
-include it. Events are one row each with their millisecond. Schema
-version 3; a file written by an earlier version migrates in place on open.
+include it. Events are one row each with their millisecond.
+
+**Chains.** A flow keeps the loopback chain its sightings decoded
+(`loopbackRole`, `localPeer`, `forProcesses`, the same as on
+`NetworkConnection`): a sighting that carries a chain replaces the
+recorded one, a sighting without one — the mirror socket already gone —
+keeps it. So the proxy's flow to the mail server says `for thunderbird
+(4120)` on Tuesday's history although the client's own socket lasted a
+second. The daily total remembers the last `for` its flows carried. The
+text filter matches the peer and the `for` list, so a search for the
+client finds the proxy's flows too, and the CSV carries `loopback_role`,
+`local_peer` and `for`. Schema version 4; a file written by an earlier
+version migrates in place on open.
 
 **Threads.** One mutex per store: a recording thread, the name sources'
 threads and a reading thread never share the single SQLite connection at

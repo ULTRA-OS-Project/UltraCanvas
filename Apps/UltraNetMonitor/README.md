@@ -83,10 +83,14 @@ the store holds over the History tab's range.
 Support/UltraNetMonitor/activity.db` or `$XDG_DATA_HOME/UltraNetMonitor/activity.db`
 — and every DNS observation and connection event the sources report
 beside them — and the *History* tab shows what was recorded over the last hour, day, week or
-month, one row per flow with the host it was seen under. Flows older than
-30 days are rolled up into daily totals per application and peer; those
-age out after a year. *Purge…* asks twice. The store never leaves the
-machine.
+month, one row per flow with the host it was seen under and, in its
+*Via* column, the loopback chain the flow was last seen with: the proxy a
+client's flow went through, or whom a proxy's flow was for — so the
+mail server's history names the mail client although only the antivirus
+proxy ever talked to it. A search for the client's name finds those rows
+too. Flows older than 30 days are rolled up into daily totals per
+application and peer, which keep the last *for*; those age out after a
+year. *Purge…* asks twice. The store never leaves the machine.
 
 ## Command line
 

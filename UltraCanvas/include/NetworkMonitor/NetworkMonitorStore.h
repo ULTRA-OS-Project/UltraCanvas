@@ -22,11 +22,17 @@
 // one row each, so the connections too short for any snapshot are in the
 // record with their process and, where the source counts, their bytes.
 //
+// Loopback chains (NetworkMonitor_DecodeLoopback) travel with the flows
+// too: a flow keeps its role, the process on the other end of the
+// loopback and, on a proxy's outbound connections, whom the traffic was
+// for, so "what did the mail client fetch on Tuesday" is answerable
+// although the mail server only ever saw the antivirus proxy.
+//
 // Every function returns NetworkMonitorResult; where the build has no
 // UltraDatabase, NetworkMonitor_StoreAvailable() is false and every call
 // reports NotSupported.
 //
-// Version: 0.5.0
+// Version: 0.7.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -76,6 +82,12 @@ struct RecordedFlow {
     std::optional<uint64_t> bytesReceived;
     std::string            remoteName;         // the best name seen for the peer, or empty
     NameSource             nameSource = NameSource::None;
+    // The loopback chain as last decoded (NetworkConnection's loopbackRole,
+    // localPeer and forProcesses): a sighting that carries a chain
+    // replaces the recorded one, a sighting without one keeps it.
+    LoopbackRole             loopbackRole = LoopbackRole::None;
+    std::string              localPeer;        // "AvastSvc (4720)", or empty
+    std::vector<std::string> forProcesses;     // "thunderbird (4120)", distinct
 
     bool IsLoopback() const;
     std::string LocalEndpoint() const;
@@ -90,6 +102,7 @@ struct DailyProcessTotal {
     std::string executablePath;
     std::string remoteAddress;    // the listeners' wildcard included
     std::string remoteName;       // the last name the rolled-up flows carried, or empty
+    std::vector<std::string> forProcesses;   // the last "for" the rolled-up flows carried
     int         flows = 0;
     int         countedFlows = 0; // flows that carried byte counters
     uint64_t    bytesSent = 0;    // over the counted flows only
@@ -101,7 +114,8 @@ struct ActivityQuery {
     std::optional<int64_t>  until;         // first seen at or before
     std::optional<uint32_t> pid;
     std::string             processName;   // exact match
-    std::string             text;          // substring over addresses, names, process name, executable
+    std::string             text;          // substring over addresses, names, process name, executable,
+                                           // the loopback peer and whom a flow was for
     bool                    includeListening = true;
     bool                    includeLoopback = true;
     int                     limit = 1000;

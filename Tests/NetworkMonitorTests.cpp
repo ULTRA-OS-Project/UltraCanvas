@@ -571,7 +571,8 @@ static void TestStore() {
         bool header = false;
         bool isoTime = false;
         while (std::getline(file, line)) {
-            if (lines == 0) header = line.rfind("first_seen,last_seen,", 0) == 0;
+            if (lines == 0) header = line.rfind("first_seen,last_seen,", 0) == 0 &&
+                                     line.find(",user,loopback_role,local_peer,for,bytes_sent,") != std::string::npos;
             if (line.find("T") != std::string::npos && line.find("Z,") != std::string::npos) isoTime = true;
             ++lines;
         }
@@ -1184,8 +1185,10 @@ static void TestStoreNames() {
     CHECK(reopened, ("the version-1 file opens: " + reopened.message).c_str());
     if (reopened) {
         CHECK(NetworkMonitor_QueryFlows(migrated, ActivityQuery(), flows) && flows.size() == 1 &&
-              flows[0].remoteName.empty() && flows[0].nameSource == NameSource::None,
-              "its old flow reads back without a name");
+              flows[0].remoteName.empty() && flows[0].nameSource == NameSource::None &&
+              flows[0].loopbackRole == LoopbackRole::None && flows[0].localPeer.empty() &&
+              flows[0].forProcesses.empty(),
+              "its old flow reads back without a name or a chain");
         snapshot[0].remoteName = "www.example.com";
         snapshot[0].nameSource = NameSource::DnsProxy;
         NetworkConnectionEvent migratedEvent;
@@ -1673,6 +1676,118 @@ static void TestLoopbackDecode() {
     }
 }
 
+// =============================================================================
+// Loopback chains in the store
+
+static void TestStoreChains() {
+    std::printf("Loopback chains in the store\n");
+#ifdef ULTRACANVAS_HAS_DATABASE
+    NetworkMonitorStoreOptions options;
+    options.path = ":memory:";
+    NetworkMonitorStoreHandle store = NetworkMonitorInvalidStore;
+    if (!NetworkMonitor_OpenStore(options, store)) { std::printf("  skipped: no store\n"); return; }
+
+    // The fixture of TestLoopbackDecode: a mail client behind a proxy.
+    NetworkConnection client = MakeConnection(1, "thunderbird", "127.0.0.1", NetworkConnectionState::Established);
+    client.localAddress = "127.0.0.1"; client.localPort = 57547; client.remotePort = 12993;
+    NetworkConnection listener = MakeConnection(2, "AvastSvc", "0.0.0.0", NetworkConnectionState::Listening);
+    listener.localAddress = "127.0.0.1"; listener.localPort = 12993; listener.remotePort = 0;
+    NetworkConnection accepted = MakeConnection(2, "AvastSvc", "127.0.0.1", NetworkConnectionState::Established);
+    accepted.localAddress = "127.0.0.1"; accepted.localPort = 12993; accepted.remotePort = 57547;
+    NetworkConnection outbound = MakeConnection(2, "AvastSvc", "95.217.106.38", NetworkConnectionState::Established);
+    outbound.localPort = 57616; outbound.remotePort = 993; outbound.remoteName = "mail.example.net";
+    outbound.nameSource = NameSource::DnsProxy; outbound.bytesSent = 100; outbound.bytesReceived = 900;
+    NetworkConnection direct = MakeConnection(3, "firefox", "93.184.216.34", NetworkConnectionState::Established);
+    std::vector<NetworkConnection> table = { client, listener, accepted, outbound, direct };
+    NetworkMonitor_DecodeLoopback(table);
+
+    const int64_t t0 = 1'800'000'000;
+    CHECK(NetworkMonitor_RecordSnapshot(store, table, t0), "a decoded snapshot records");
+
+    std::vector<RecordedFlow> flows;
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows.size() == 5, "five flows read back");
+    const RecordedFlow* clientFlow = nullptr;
+    const RecordedFlow* acceptedFlow = nullptr;
+    const RecordedFlow* outboundFlow = nullptr;
+    const RecordedFlow* directFlow = nullptr;
+    for (const auto& f : flows) {
+        if (f.process && f.process->pid == 1) clientFlow = &f;
+        if (f.process && f.process->pid == 2 && f.remotePort == 57547) acceptedFlow = &f;
+        if (f.process && f.process->pid == 2 && f.remotePort == 993) outboundFlow = &f;
+        if (f.process && f.process->pid == 3) directFlow = &f;
+    }
+    CHECK(clientFlow && clientFlow->loopbackRole == LoopbackRole::Client && clientFlow->localPeer == "AvastSvc (2)",
+          "the client's flow records the proxy it went through");
+    CHECK(acceptedFlow && acceptedFlow->loopbackRole == LoopbackRole::Server &&
+          acceptedFlow->localPeer == "thunderbird (1)", "the proxy's accepted flow records its client");
+    CHECK(outboundFlow && outboundFlow->loopbackRole == LoopbackRole::None && outboundFlow->localPeer.empty() &&
+          outboundFlow->forProcesses.size() == 1 && outboundFlow->forProcesses[0] == "thunderbird (1)",
+          "the proxy's outbound flow records whom it was for");
+    CHECK(directFlow && directFlow->loopbackRole == LoopbackRole::None && directFlow->forProcesses.empty(),
+          "a direct flow carries no chain");
+
+    // A later sighting without the chain (the client's socket already
+    // gone, so nothing to pair) keeps what was recorded; one with a
+    // different chain replaces it.
+    std::vector<NetworkConnection> later = { outbound };
+    later[0].bytesSent = 200;
+    CHECK(NetworkMonitor_RecordSnapshot(store, later, t0 + 1), "a bare sighting records");
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows.size() == 5, "and extends the flow");
+    for (const auto& f : flows) if (f.process && f.process->pid == 2 && f.remotePort == 993) outboundFlow = &f;
+    CHECK(outboundFlow && outboundFlow->snapshots == 2 && outboundFlow->bytesSent && *outboundFlow->bytesSent == 200 &&
+          outboundFlow->forProcesses.size() == 1 && outboundFlow->forProcesses[0] == "thunderbird (1)",
+          "a sighting without the chain keeps the recorded one");
+    later[0].forProcesses = { "evolution (4)", "thunderbird (1)" };
+    CHECK(NetworkMonitor_RecordSnapshot(store, later, t0 + 2), "a sighting with a wider chain records");
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows), "the flows read back");
+    for (const auto& f : flows) if (f.process && f.process->pid == 2 && f.remotePort == 993) outboundFlow = &f;
+    CHECK(outboundFlow && outboundFlow->forProcesses.size() == 2 && outboundFlow->forProcesses[0] == "evolution (4)" &&
+          outboundFlow->forProcesses[1] == "thunderbird (1)", "and replaces it, the list intact");
+
+    // The text filter finds the proxy's flows by the client's name.
+    ActivityQuery byClient;
+    byClient.text = "thunderbird";
+    CHECK(NetworkMonitor_QueryFlows(store, byClient, flows) && flows.size() == 3,
+          "\"thunderbird\" finds the client's flow, the proxy's accepted flow and its outbound flow");
+    ActivityQuery byOther;
+    byOther.text = "evolution";
+    CHECK(NetworkMonitor_QueryFlows(store, byOther, flows) && flows.size() == 1 && flows[0].remotePort == 993,
+          "and a name only the \"for\" list has finds the outbound flow alone");
+
+    // The CSV carries the chain.
+    const std::filesystem::path csv = std::filesystem::temp_directory_path() / "networkmonitor-chains.csv";
+    int64_t written = 0;
+    CHECK(NetworkMonitor_ExportFlowsCsv(store, byOther, csv.string(), &written) && written == 1, "the flow exports");
+    {
+        std::ifstream file(csv);
+        std::string header, row;
+        std::getline(file, header);
+        std::getline(file, row);
+        if (!row.empty() && row.back() == '\r') row.pop_back();
+        CHECK(row.find(",AvastSvc,2,,,,,evolution (4);thunderbird (1),200,900") != std::string::npos,
+              "with the role, the peer and the \"for\" list after the user");
+        std::filesystem::remove(csv);
+    }
+
+    // The roll-up keeps the last "for" the flows carried.
+    int64_t rolled = 0;
+    CHECK(NetworkMonitor_RollUp(store, t0 + 100, &rolled) && rolled == 5, "the flows roll up");
+    std::vector<DailyProcessTotal> totals;
+    CHECK(NetworkMonitor_QueryDailyTotals(store, ActivityQuery(), totals), "the totals read back");
+    const DailyProcessTotal* proxyDay = nullptr;
+    for (const auto& t : totals) if (t.processName == "AvastSvc" && t.remoteAddress == "95.217.106.38") proxyDay = &t;
+    CHECK(proxyDay && proxyDay->forProcesses.size() == 2 && proxyDay->forProcesses[1] == "thunderbird (1)",
+          "the proxy's daily total says whom its traffic was for");
+    ActivityQuery totalsByClient;
+    totalsByClient.text = "evolution";
+    CHECK(NetworkMonitor_QueryDailyTotals(store, totalsByClient, totals) && totals.size() == 1,
+          "and the totals' text filter finds it");
+    NetworkMonitor_CloseStore(store);
+#else
+    std::printf("  skipped: no UltraDatabase in this build\n");
+#endif
+}
+
 int main() {
     std::printf("=== NetworkMonitor tests ===\n");
     TestAddressFormatting();
@@ -1695,6 +1810,7 @@ int main() {
     TestStoreEvents();
     TestSnapshotCsv();
     TestLoopbackDecode();
+    TestStoreChains();
     std::printf("=== %s ===\n", g_failures == 0 ? "all tests passed" : "FAILURES");
     return g_failures == 0 ? 0 : 1;
 }
