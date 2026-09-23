@@ -402,6 +402,18 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== DEVICEEXPLORER =====
+# Shows the devices connected to this computer - printers, scanners, cameras -
+# as the IODeviceManager module finds them: a tree grouped by category,
+# connection or backend on the left, the selected device's details on the
+# right. A headless --list mode prints the same tree.
+option(BUILD_DEVICEEXPLORER "Build the DeviceExplorer application" ON)
+if(BUILD_DEVICEEXPLORER)
+    message(STATUS "")
+    message(STATUS "── Building DeviceExplorer ──")
+    add_subdirectory(Apps/DeviceExplorer)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -1880,6 +1892,11 @@ if(TARGET UltraNetMonitor)
 endif()
 if(TARGET UltraAuthenticator)
     add_dependencies(UltraAuthenticator copy_assets)
+endif()
+if(TARGET DeviceExplorer)
+    # Reads media/appicon/DeviceExplorer.png and its tree icons from
+    # media/icons/ in the resources dir.
+    add_dependencies(DeviceExplorer copy_assets)
 endif()
 
 # The LaTeX plugin is a dlopen()ed CMake MODULE - never linked by any app, so

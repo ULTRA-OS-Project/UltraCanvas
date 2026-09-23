@@ -676,6 +676,12 @@ the backing implementation can be replaced without affecting callers.
     `UnregisterDevice`, `GetDevices` / `GetDeviceInfos` / `GetDeviceById` /
     `GetDevice(category, index)` / `GetDeviceCount`,
     `SetDeviceChangeCallback` for hot-plug.
+  - Its user interface is the **DeviceExplorer** application
+    (`Apps/DeviceExplorer`, `Docs/DeviceExplorer/README.md`): the registered
+    devices as a tree grouped by category, connection or backend, with the
+    selected device's `IODeviceInfo` on the right. Read-only; its
+    `DeviceExplorerModel` (snapshot, grouping, property sections) has no UI
+    dependency and is what `--list` and `Tests/DeviceExplorerModelTest` use.
   - `IODevice` — the base every category derives from (`ScannerDevice`,
     `CameraDevice`, `PrinterDevice`): identity, `Connect` / `Disconnect` /
     `IsConnected` / `GetState`, `GetLastError`. Lifecycle is non-virtual
