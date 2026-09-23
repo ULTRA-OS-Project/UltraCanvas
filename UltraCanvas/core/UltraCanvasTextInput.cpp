@@ -1401,7 +1401,7 @@ namespace UltraCanvas {
     ValidationRule ValidationRule::Numeric(const std::string &message) {
         return ValidationRule("Numeric", message, [](const std::string& value) {
             try {
-                std::stod(value);
+                std::stod(value);   // locale-ok: the user typed this into the field
                 return true;
             } catch (...) {
                 return false;
@@ -1414,7 +1414,7 @@ namespace UltraCanvas {
                           "Must be between " + std::to_string(min) + " and " + std::to_string(max) : message;
         return ValidationRule("Range", msg, [min, max](const std::string& value) {
             try {
-                double val = std::stod(value);
+                double val = std::stod(value);   // locale-ok: the user typed this into the field
                 return val >= min && val <= max;
             } catch (...) {
                 return false;

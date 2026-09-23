@@ -7,6 +7,7 @@
 // See header for full changelog (2.0.6 + 2.0.5 + 2.0.4 + 2.0.3 + 2.0.2 + 2.0.1 patches + 2.0.0 mayor).
 
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <sstream>
 #include <iomanip>
 #include <cmath>
@@ -3257,8 +3258,9 @@ double ExtractNumberValue(const std::string& json, const std::string& key, doubl
         ve++;
     }
     if (ve == vs) return defaultVal;
-    try { return std::stof(json.substr(vs, ve - vs)); }
-    catch (...) { return defaultVal; }
+    float value = defaultVal;
+    TryParseFloat(json.substr(vs, ve - vs), value);   // JSON: dot-decimal
+    return value;
 }
 
 bool ExtractBoolValue(const std::string& json, const std::string& key, bool defaultVal = false) {

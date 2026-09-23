@@ -1,7 +1,7 @@
 #### 2026-09-23 *0.10*
 - **The History tab says whom a flow was for.** A *Via* column on the
   history shows the loopback chain each recorded flow was last seen with
-  (NetworkMonitor 0.8, framework 0.9.42): "→ AvastSvc (4720)" on the mail
+  (NetworkMonitor 0.8, with the framework change that keeps loopback chains in the activity store): "→ AvastSvc (4720)" on the mail
   client's flow to the proxy, "← thunderbird (4120)" on the proxy's side,
   and "for thunderbird (4120)" on the proxy's flows to the mail server -
   kept after the client's own socket is gone, so last Tuesday's history

@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasMekkoChart.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 #include <cmath>
@@ -147,11 +148,9 @@ namespace UltraCanvas {
             } else {
                 std::vector<double> values;
                 for (size_t i = 1; i < cells.size(); ++i) {
-                    try {
-                        values.push_back(std::stod(cells[i]));
-                    } catch (...) {
-                        values.push_back(0.0);
-                    }
+                    double parsed = 0.0;
+                    TryParseFloat(cells[i], parsed);   // a cell that is not a number counts as 0
+                    values.push_back(parsed);
                 }
                 AddColumn(cells[0], values);
             }

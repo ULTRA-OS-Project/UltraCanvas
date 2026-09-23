@@ -7,6 +7,7 @@
 #pragma once
 
 #include "UltraCanvasSpreadsheetTypes.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
@@ -60,9 +61,7 @@ inline int SpreadsheetLengthToPixels(const std::string& value, int fallbackPixel
     if (!sawDigit) return fallbackPixels;
 
     double magnitude = 0.0;
-    try {
-        magnitude = std::stod(value.substr(numStart, i - numStart));
-    } catch (...) {
+    if (!TryParseFloat(value.substr(numStart, i - numStart), magnitude)) {
         return fallbackPixels;
     }
     if (!(magnitude > 0.0)) return fallbackPixels;
