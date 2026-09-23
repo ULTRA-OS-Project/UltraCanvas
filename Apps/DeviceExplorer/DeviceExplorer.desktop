@@ -1,0 +1,28 @@
+[Desktop Entry]
+# The freedesktop shortcut for DeviceExplorer: the application menu entry, and
+# the name every desktop-aware program resolves the icon by. `Icon=DeviceExplorer`
+# is an icon *name*, looked up through the installed icon themes; the project's
+# install rules put media/appicon/DeviceExplorer.png into
+# share/icons/hicolor/256x256/apps and media/appicon/DeviceExplorer.svg into
+# share/icons/hicolor/scalable/apps so the lookup lands on them. The window and
+# taskbar icon come from the same PNG — main.cpp hands it to
+# SetDefaultWindowIcon.
+#
+# It opens no files, so there is no MimeType= and Exec takes no argument: the
+# headless --list mode is for the command line, and the entry opens the window.
+#
+# Installed to share/applications by the project's install rules; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=DeviceExplorer
+GenericName=Device Explorer
+Comment=See the printers, scanners and cameras connected to this computer
+Exec=DeviceExplorer
+TryExec=DeviceExplorer
+Icon=DeviceExplorer
+Terminal=false
+StartupNotify=true
+StartupWMClass=DeviceExplorer
+Categories=System;HardwareSettings;Monitor;
+Keywords=devices;hardware;printer;scanner;camera;webcam;usb;cups;sane;v4l2;

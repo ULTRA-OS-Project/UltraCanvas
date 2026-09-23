@@ -3311,6 +3311,43 @@ add_test(
 )
 message(STATUS "    Test registered: IODeviceManagerTest")
 
+# DeviceExplorer's model (Apps/DeviceExplorer/ui/DeviceExplorerModel.cpp):
+# grouping, filter and property sections over fake devices registered with
+# the manager. Needs no UI library, so it builds with the same sources as
+# IODeviceManagerTest plus the model.
+message(STATUS "  Building DeviceExplorerModelTest...")
+add_executable(DeviceExplorerModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DeviceExplorerModelTest.cpp
+    ${ULTRACANVAS_ROOT}/Apps/DeviceExplorer/ui/DeviceExplorerModel.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceManager.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceBackends.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceWatcherFallback.cpp
+)
+target_include_directories(DeviceExplorerModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+    ${ULTRACANVAS_ROOT}/Apps/DeviceExplorer/ui
+)
+target_compile_features(DeviceExplorerModelTest PRIVATE cxx_std_20)
+target_link_libraries(DeviceExplorerModelTest PRIVATE Threads::Threads)
+set_target_properties(DeviceExplorerModelTest PROPERTIES
+    OUTPUT_NAME "DeviceExplorerModelTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME DeviceExplorerModelTest
+    COMMAND DeviceExplorerModelTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: DeviceExplorerModelTest")
+
 # ===== IODEVICEMANAGER PRINTER TEST =====
 # Renderer selection and the option resolver, driven by a fake transport and a
 # fake raw-emitting renderer. That fake stands in for GutenPrint, so the seam
