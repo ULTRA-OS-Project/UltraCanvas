@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "../include/UltraCanvasTemplate.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "../include/UltraCanvasButton.h"
 #include "../include/UltraCanvasLabel.h"
 #include "../include/UltraCanvasDropdown.h"
@@ -941,7 +942,7 @@ namespace UltraCanvas {
         float size = 8.0f;
         auto sizeIt = desc.properties.find("size");
         if (sizeIt != desc.properties.end()) {
-            size = std::stof(sizeIt->second);
+            TryParseFloat(sizeIt->second, size);   // template property: dot-decimal
         }
 
         // Create an invisible element that takes up space

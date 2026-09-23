@@ -6,6 +6,7 @@
 #pragma once
 
 #include "UltraCanvasSpreadsheetTypes.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <string>
 #include <vector>
 #include <memory>
@@ -186,11 +187,11 @@ struct FormulaValue {
             case CellValueType::Boolean:
                 return GetBoolean() ? 1.0 : 0.0;
             case CellValueType::Text: {
-                try {
-                    return std::stod(GetText());
-                } catch (...) {
-                    return 0.0;
-                }
+                // Text that looks like a number counts as one; text that does
+                // not counts as zero, which is what the old catch produced.
+                double parsed = 0.0;
+                TryParseFloat(GetText(), parsed);
+                return parsed;
             }
             default:
                 return 0.0;
@@ -603,7 +604,11 @@ inline FormulaToken FormulaTokenizer::ReadNumber() {
         }
     }
     
-    return FormulaToken::Number(std::stod(numStr), startPos);
+    // A formula is stored in the document, so its literals are dot-decimal
+    // whatever the reader's locale is.
+    double literal = 0.0;
+    TryParseFloat(numStr, literal);
+    return FormulaToken::Number(literal, startPos);
 }
 
 inline FormulaToken FormulaTokenizer::ReadString() {
