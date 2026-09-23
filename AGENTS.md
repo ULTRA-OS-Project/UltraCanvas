@@ -407,8 +407,11 @@ For assistants:
    python3 scripts/check_publication.py --all    # every branch on the remote
    ```
 
-   It lists the commits on the branch that are not in `main` and exits 1 when
-   there are any. Then verify on GitHub that an *open* PR has this branch as
+   It fetches `main` and the branch first (a stale `origin/main` otherwise
+   makes already-merged commits look undelivered), lists the commits on the
+   branch that are not in `main`, and exits 1 when there are any — or when the
+   branch is gone from the remote, which usually means its PR was merged and
+   the branch deleted (rule 2 applies). Then verify on GitHub that an *open* PR has this branch as
    its head and that its head is the commit just pushed, and report the PR
    number and head SHA.
 
