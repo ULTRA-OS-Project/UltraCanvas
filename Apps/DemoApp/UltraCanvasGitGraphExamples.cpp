@@ -398,13 +398,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
     mainContainer->AddChild(tabs);
 
     auto wireStatus = [statusLabel](const std::shared_ptr<UltraCanvasGitGraph>& graph) {
-        graph->onCommitClick = [graph, statusLabel](const std::string& sha) {
+        graph->onCommitClick = [graph = graph.get(), statusLabel](const std::string& sha) {
             const GitGraphCommit* commit = graph->GetCommit(sha);
             statusLabel->SetText(commit ? ("Selected " + commit->ShortSha() + " - " +
                                            commit->subject)
                                         : ("Selected " + sha));
         };
-        graph->onCommitHover = [graph, statusLabel](const std::string& sha) {
+        graph->onCommitHover = [graph = graph.get(), statusLabel](const std::string& sha) {
             const GitGraphCommit* commit = graph->GetCommit(sha);
             if (commit) statusLabel->SetText(commit->ShortSha() + "  " + commit->subject);
         };

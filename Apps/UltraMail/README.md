@@ -68,8 +68,11 @@ Apps/UltraMail/
     UltraMailDiscovery.{h,cpp}    account auto-discovery: provider presets +
                                   Mozilla-autoconfig XML (over UltraNet HTTP);
                                   ForAccount (stored settings, else presets)
-    UltraMailCredentialVault.{h,cpp} per-account secrets out of the config:
-                                  a password or an OAuth2 token set, in UltraVault
+    UltraMailCredentialVault.h    per-account secrets out of the config: a
+                                  password or an OAuth2 token set, in the
+                                  framework's UltraVault::DeviceKeyVault with
+                                  UltraMail's profile (ultramail.vault,
+                                  device.key, keys mail.ultramail.<account>)
     UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail): provider table, app
                                   registration (env / oauth.ini), sign-in +
                                   token refresh, credentials for IMAP/SMTP
@@ -189,7 +192,11 @@ or through the environment: `ULTRAMAIL_GOOGLE_CLIENT_ID` /
 `ULTRAMAIL_GOOGLE_CLIENT_SECRET`, `ULTRAMAIL_MICROSOFT_CLIENT_ID` (an optional
 `…_REDIRECT_URI` overrides the provider's default). In code:
 `OAuthApps::Set("google", app)`. Until a client is configured the wizard says
-so and asks for an app password instead.
+so and asks for an app password instead. `OAuthApps` is UltraMail's profile
+of UltraNet's process-wide OAuth2 app registry (`UltraNetOAuth2Apps.h`) — the
+`ULTRAMAIL_` prefix, the `oauth.ini` in the data folder and the baked-in
+client — so the same registration serves UltraCloud's Google Drive and
+OneDrive sign-ins in the composer's cloud picker.
 
 *Google:* in the [Google Cloud console](https://console.cloud.google.com/)
 create a project, open *APIs & Services → OAuth consent screen* and configure

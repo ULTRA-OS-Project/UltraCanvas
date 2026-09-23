@@ -4,8 +4,18 @@
 // Last Modified: 2026-04-21
 // Author: UltraCanvas Framework
 #include "UltraCanvasEvent.h"
+#include <iterator>   // std::size
 namespace UltraCanvas {
-    std::vector<std::string> eventTypeNames = {
+    // Indexed by UCEventType, so this table must list exactly the enum's
+    // members in the enum's order. It once carried three names with no enum
+    // counterpart ("KeyChar", "Shortcut", "WindowClosing"), so every event
+    // from TextInput onwards printed as the name of an earlier one - a
+    // WindowResize showed up as "WindowCloseRequest" in the debug output.
+    // The static_assert below fails the build when the two drift apart again;
+    // a name added here without its enum member, or the reverse, is caught at
+    // compile time rather than in a misleading log line.
+    namespace {
+    constexpr const char* const kEventTypeNames[] = {
             "NoneEvent",
 
             // Mouse Events
@@ -21,16 +31,14 @@ namespace UltraCanvas {
             // Keyboard Events
             "KeyDown",
             "KeyUp",
-            "KeyChar",
             "TextInput",        // Added for text input events
-            "Shortcut",
 
             // Window Events
             "WindowCloseRequest",
-            "WindowClosing",
             "WindowResize",
             "WindowMove",
             "WindowMinimize",
+            "WindowRestore",
             "WindowFocus",
             "WindowBlur",
             "WindowRepaint",
@@ -69,10 +77,14 @@ namespace UltraCanvas {
             "Redraw",
             "Unknown"
     };
+    static_assert(std::size(kEventTypeNames) == static_cast<size_t>(UCEventType::Unknown) + 1,
+                  "eventTypeNames must have one entry per UCEventType member, in enum order");
+    } // namespace
 
     std::string UCEvent::ToString() const {
         std::string result = "UCEvent{type=";
-        result += eventTypeNames[static_cast<int>(type)];
+        const auto index = static_cast<size_t>(type);
+        result += index < std::size(kEventTypeNames) ? kEventTypeNames[index] : "OutOfRange";
         if (IsMouseEvent()) {
             result += ",pos=(" + std::to_string(pointer.x) + "," + std::to_string(pointer.y) + ")";
             result += ",btn=" + std::to_string(static_cast<int>(button));

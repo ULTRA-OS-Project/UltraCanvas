@@ -3,6 +3,23 @@
 // Version: 1.0.1
 // Last Modified: 2026-06-17
 // Author: UltraCanvas Framework
+//
+// One rule that every example file here follows, because the demo is the
+// framework's worked example and gets copied outwards:
+//
+//   A callback stored on a widget must not capture a std::shared_ptr to that
+//   widget, or to any container above it. The widget owns the callback, so
+//   the callback owning the widget back closes a cycle neither end escapes -
+//   the refcount never reaches zero and the whole subtree leaks. Capture the
+//   back-reference raw instead:
+//
+//       button->onClick = [button = button.get(), status]() { ... };
+//
+//   which is valid for exactly as long as the callback can run, because the
+//   thing holding the callback is the thing being pointed at. Captures that
+//   point the other way are ownership and stay shared_ptr: a popup the
+//   lambda keeps alive, a sibling it updates, the make_shared state it
+//   counts in.
 #pragma once
 
 #include "UltraCanvasWindow.h"

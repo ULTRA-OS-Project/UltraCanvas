@@ -653,8 +653,43 @@ namespace UltraCanvas {
                 break;
             }
 
+            case PropertyNotify: {
+                // ICCCM: the window manager records iconification in the
+                // WM_STATE property (IconicState / NormalState). Watching that
+                // property, rather than UnmapNotify, is what tells a
+                // user-initiated minimise apart from Hide(), which also unmaps.
+                // Only a change *into* the iconic state, or *out of it* while
+                // we believe the window is minimized, becomes an event, so the
+                // initial NormalState written at first map is not a "restore".
+                event.type = UCEventType::Unknown;
+                static Atom wmStateAtom = XInternAtom(GetDisplay(), "WM_STATE", False);
+                if (targetWindow && xEvent.xproperty.atom == wmStateAtom &&
+                    xEvent.xproperty.state == PropertyNewValue) {
+                    Atom actualType = None;
+                    int actualFormat = 0;
+                    unsigned long items = 0, remaining = 0;
+                    unsigned char* data = nullptr;
+                    if (XGetWindowProperty(GetDisplay(), xEvent.xproperty.window,
+                                           wmStateAtom, 0, 2, False, wmStateAtom,
+                                           &actualType, &actualFormat, &items,
+                                           &remaining, &data) == Success && data) {
+                        if (actualType == wmStateAtom && actualFormat == 32 && items >= 1) {
+                            const long wmState = reinterpret_cast<long*>(data)[0];
+                            const bool minimizedNow = targetWindow->IsMinimized();
+                            if (wmState == IconicState) {
+                                event.type = UCEventType::WindowMinimize;
+                            } else if (wmState == NormalState && minimizedNow) {
+                                event.type = UCEventType::WindowRestore;
+                            }
+                        }
+                        XFree(data);
+                    }
+                }
+                break;
+            }
+
             case FocusIn: {
-                debugOutput << "focus xwindow=" << xEvent.xany.window << std::endl;
+                //debugOutput << "focus xwindow=" << xEvent.xany.window << std::endl;
                 event.type = UCEventType::WindowFocus;
                 
                 // Set XIC focus when window gains focus
@@ -668,7 +703,7 @@ namespace UltraCanvas {
             }
 
             case FocusOut: {
-                debugOutput << "blur xwindow=" << xEvent.xany.window << std::endl;
+                //debugOutput << "blur xwindow=" << xEvent.xany.window << std::endl;
                 event.type = UCEventType::WindowBlur;
                 
                 // Unset XIC focus when window loses focus

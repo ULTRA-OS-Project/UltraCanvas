@@ -814,7 +814,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     inW->onFocusLost = applyNodeSize;
     inH->onFocusLost = applyNodeSize;
     
-    inFont->onFocusLost = [chart, selectedNodeId, inFont, parseDimension, suppressEvents]() {
+    inFont->onFocusLost = [chart, selectedNodeId, inFont = inFont.get(), parseDimension, suppressEvents]() {
         if (selectedNodeId->empty()) return;
         const FlowChartNode* n = chart->GetNode(*selectedNodeId);
         if (!n) return;
@@ -880,7 +880,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
         chart->SetConnectionWidth(snap.id, snap.lineWidth);
     };
     
-    inCWidth->onFocusLost = [chart, selectedConnId, inCWidth, parseDimension, suppressEvents]() {
+    inCWidth->onFocusLost = [chart, selectedConnId, inCWidth = inCWidth.get(), parseDimension, suppressEvents]() {
         if (selectedConnId->empty()) return;
         FlowChartConnection* cp = chart->GetConnection(*selectedConnId);
         if (!cp) return;

@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToneCurve.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -215,13 +216,12 @@ bool UltraCanvasToneCurve::FromString(const std::string& text) {
         if (token.empty()) continue;
         size_t comma = token.find(',');
         if (comma == std::string::npos) return false;
-        try {
-            float in  = std::stof(token.substr(0, comma));
-            float out = std::stof(token.substr(comma + 1));
-            parsed.push_back(ToneCurvePoint(in, out));
-        } catch (...) {
+        float in = 0.0f, out = 0.0f;
+        if (!TryParseFloat(token.substr(0, comma), in) ||
+            !TryParseFloat(token.substr(comma + 1), out)) {
             return false;
         }
+        parsed.push_back(ToneCurvePoint(in, out));
     }
     if (parsed.size() < 2) return false;
     SetPoints(std::move(parsed));

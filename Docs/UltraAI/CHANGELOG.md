@@ -1,3 +1,14 @@
+#### 2026-09-22 *0.1.3*
+- **The dashboard icon is back.** `media/appicon/UltraAI.svg` had been
+  overwritten by an empty Xara page — a blank A4 canvas with nothing on the
+  one layer — so the scalable half of the pair drew nothing at all, while
+  `media/appicon/UltraAI.png` still held the artwork from 0.1.2. Nothing in
+  the window would have changed, because that reads the PNG; what breaks is
+  the desktop lookup, which prefers `share/icons/hicolor/scalable/apps` where
+  the install rules put the SVG, so the application menu would have shown an
+  empty tile. The SVG is restored, and it renders pixel-identical to the
+  shipped PNG again.
+
 #### 2026-09-21 *0.1.2*
 - **The dashboard app has an icon.** `media/appicon/UltraAI.svg` is the
   uploaded artwork; `media/appicon/UltraAI.png` is its 256 px render and

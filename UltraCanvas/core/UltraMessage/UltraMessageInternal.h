@@ -58,6 +58,9 @@ namespace Op {
     constexpr const char* JournalConversations = "journal.conversations";
     constexpr const char* JournalRetention = "journal.retention";
     constexpr const char* JournalExport    = "journal.export";
+    constexpr const char* AdaptersList     = "adapters.list";
+    constexpr const char* AdaptersEnable   = "adapters.enable";
+    constexpr const char* AdaptersState    = "adapters.state";
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +96,10 @@ JSONValue BrokerInfoToJson(const UltraMsgBrokerInfo& info);
 bool      BrokerInfoFromJson(const JSONValue& json, UltraMsgBrokerInfo& out);
 JSONValue ResultToJson(const UltraMsgResult& result);
 UltraMsgResult ResultFromJson(const JSONValue& json);
+JSONValue AdapterStateToJson(const UltraMsgAdapterState& state);
+bool      AdapterStateFromJson(const JSONValue& json, UltraMsgAdapterState& out);
+JSONValue AdapterInfoToJson(const UltraMsgAdapterInfo& info);
+bool      AdapterInfoFromJson(const JSONValue& json, UltraMsgAdapterInfo& out);
 
 JSONValue StringsToJson(const std::vector<std::string>& values);
 std::vector<std::string> StringsFromJson(const JSONValue& json);

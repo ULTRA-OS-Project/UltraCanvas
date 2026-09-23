@@ -657,6 +657,9 @@ endif()
 message(STATUS "  Building SpreadsheetOdsFormulaTest...")
 add_executable(SpreadsheetOdsFormulaTest
     ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetOdsFormulaTest.cpp
+    # FormulaTokenizer::ReadNumber reads literals with TryParseFloat, which
+    # lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(SpreadsheetOdsFormulaTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -704,6 +707,9 @@ message(STATUS "  Building SpreadsheetColumnSizingTest...")
 add_executable(SpreadsheetColumnSizingTest
     ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetColumnSizingTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    # SpreadsheetLengthToPixels reads lengths with TryParseFloat, which lives
+    # in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(SpreadsheetColumnSizingTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -876,6 +882,9 @@ add_executable(ModelAlembicTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
+    # The OBJ converter reads its numbers with TryParseFloat, which lives in
+    # UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
@@ -1003,6 +1012,9 @@ add_executable(ModelOBJTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelOBJTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    # The OBJ converter reads its numbers with TryParseFloat, which lives in
+    # UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
@@ -2037,6 +2049,9 @@ message(STATUS "  Building ToneCurveTest...")
 add_executable(ToneCurveTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ToneCurveTest.cpp
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasToneCurve.cpp
+    # Tone-curve presets are read with TryParseFloat, which lives in
+    # UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(ToneCurveTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -3081,6 +3096,31 @@ else()
     message(STATUS "  FontViewerTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== VECTOR ELEMENT VIEW TEST =====
+# What UltraCanvasVectorElement has to get right for a drawing to appear on a
+# page: it keeps the box it was built with through its parent's layout, a fit
+# is not clamped to the interactive zoom limits, painting is element-local,
+# a collapsed (non-invertible) transform never reaches the backend, and the
+# host's own event callback is heard. Every one of these was a white tile on
+# the DemoApp's DWG/DXF page.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building VectorElementViewTest...")
+    add_executable(VectorElementViewTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorElementViewTest.cpp
+    )
+    target_include_directories(VectorElementViewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorElementViewTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorElementViewTest PRIVATE UltraCanvas)
+    set_target_properties(VectorElementViewTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorElementViewTest COMMAND VectorElementViewTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorElementViewTest")
+else()
+    message(STATUS "  VectorElementViewTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== OFFSCREEN RENDER TEST =====
 # Widgets drawn into a surface with no window behind it. Everything a widget
 # needs at paint time has to come from the context it was handed, and a widget
@@ -3285,6 +3325,43 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: IODeviceManagerTest")
+
+# DeviceExplorer's model (Apps/DeviceExplorer/ui/DeviceExplorerModel.cpp):
+# grouping, filter and property sections over fake devices registered with
+# the manager. Needs no UI library, so it builds with the same sources as
+# IODeviceManagerTest plus the model.
+message(STATUS "  Building DeviceExplorerModelTest...")
+add_executable(DeviceExplorerModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DeviceExplorerModelTest.cpp
+    ${ULTRACANVAS_ROOT}/Apps/DeviceExplorer/ui/DeviceExplorerModel.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceManager.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceBackends.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceWatcherFallback.cpp
+)
+target_include_directories(DeviceExplorerModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+    ${ULTRACANVAS_ROOT}/Apps/DeviceExplorer/ui
+)
+target_compile_features(DeviceExplorerModelTest PRIVATE cxx_std_20)
+target_link_libraries(DeviceExplorerModelTest PRIVATE Threads::Threads)
+set_target_properties(DeviceExplorerModelTest PROPERTIES
+    OUTPUT_NAME "DeviceExplorerModelTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME DeviceExplorerModelTest
+    COMMAND DeviceExplorerModelTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: DeviceExplorerModelTest")
 
 # ===== IODEVICEMANAGER PRINTER TEST =====
 # Renderer selection and the option resolver, driven by a fake transport and a

@@ -1,14 +1,17 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.cpp
-// Version: 0.3.0
+// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorWindow.h"
 
 #include "UltraNetMonitorPaths.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasModalDialog.h"
 
 #include <algorithm>
 #include <chrono>
+#include <ctime>
 #include <variant>
 
 // ULTRANETMONITOR_VERSION comes from the build alone: CMake reads the first line
@@ -39,6 +42,9 @@ constexpr unsigned kUiTimerMs          = 200;
 // Tab order, as added below.
 constexpr int kLiveTab    = 0;
 constexpr int kHistoryTab = 1;
+constexpr int kNamesTab   = 2;
+constexpr int kEventsTab  = 3;
+constexpr int kEventsShown = 1000;
 
 // The history range dropdown's entries, in seconds.
 const int64_t kRanges[] = { 3600, 24 * 3600, 7 * 24 * 3600, 30 * 24 * 3600 };
@@ -109,6 +115,11 @@ int PidOfSourceRow(const IListModel& model, int sourceRow, int pidColumn) {
 
 UltraNetMonitorWindow::~UltraNetMonitorWindow() {
     StopWorker();
+    // The sources first: their threads are the other writers of the store.
+    NetworkMonitor_StopEventSources();
+    NetworkMonitor_StopNameSources();
+    if (eventListener_ != 0) NetworkMonitor_RemoveEventListener(eventListener_);
+    if (nameListener_ != 0) NetworkMonitor_RemoveNameListener(nameListener_);
     if (uiTimer_ != 0) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(uiTimer_);
     }
@@ -120,8 +131,9 @@ UltraNetMonitorWindow::~UltraNetMonitorWindow() {
     }
 }
 
-bool UltraNetMonitorWindow::Initialize() {
+bool UltraNetMonitorWindow::Initialize(std::vector<std::string> nameNotes) {
     capabilities_ = NetworkMonitor_GetCapabilities();
+    nameNotes_ = std::move(nameNotes);
 
     WindowConfig config;
     config.title  = std::string("UltraNetMonitor ") + ULTRANETMONITOR_VERSION;
@@ -152,8 +164,30 @@ bool UltraNetMonitorWindow::Initialize() {
     tabs_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
     tabs_->AddTab("Live", BuildLivePage());
     tabs_->AddTab("History", BuildHistoryPage());
+    tabs_->AddTab("Names", BuildNamesPage());
+    tabs_->AddTab("Events", BuildEventsPage());
     tabs_->SetActiveTab(kLiveTab);
+    tabs_->onTabChange = [this](int, int newTab) {
+        if (newTab == kNamesTab) RefreshNames();
+        if (newTab == kEventsTab) RefreshEvents();
+    };
     FillWith(page_, tabs_);
+
+    // Every observation a source reports goes to the store while recording.
+    // Runs on the source's thread; the store's mutex is the same one the
+    // worker records under.
+    nameListener_ = NetworkMonitor_AddNameListener([this](const DnsObservation& observation) {
+        if (!recording_.load()) return;
+        std::lock_guard<std::mutex> lock(storeMutex_);
+        if (store_ == NetworkMonitorInvalidStore) return;
+        if (NetworkMonitor_RecordDnsObservation(store_, observation)) ++recordedObservations_;
+    });
+    eventListener_ = NetworkMonitor_AddEventListener([this](const NetworkConnectionEvent& event) {
+        if (!recording_.load()) return;
+        std::lock_guard<std::mutex> lock(storeMutex_);
+        if (store_ == NetworkMonitorInvalidStore) return;
+        if (NetworkMonitor_RecordConnectionEvent(store_, event)) ++recordedEvents_;
+    });
 
     window_->AddChild(page_);
     LayoutForSize(kWindowWidth, kWindowHeight);
@@ -296,6 +330,7 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildProcessList() {
     processModel_ = std::make_shared<ProcessListModel>();
     processProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(processModel_);
     for (int column = ProcessListModel::Pid; column < ProcessListModel::ColumnCount; ++column) {
+        if (column == ProcessListModel::Via) continue;   // text
         processProxy_->SetColumnSortKind(column, ListSortKind::Number);
     }
     processView_ = std::make_shared<UltraCanvasListView>("nmProcesses", -1, -1, 400, 300);
@@ -314,6 +349,7 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildProcessList() {
         if (!summary) { SelectProcess(std::nullopt); return; }
         SelectProcess(summary->attributed ? summary->process.pid : 0u);
     };
+    processView_->onContextMenu = [this](int, const UCEvent& event) { ShowProcessMenu(event); };
     return processView_;
 }
 
@@ -345,6 +381,101 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildFlowList() {
     flowView_->SetShowItemTooltips(true);
     WireHeaderSorting(flowView_, flowProxy_);
     return flowView_;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildNamesPage() {
+    auto names = CreateContainer("nmNamesPage", 0, 0, 0, 0);
+    MakePlainColumn(names);
+    names->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+
+    auto bar = MakeToolbar("nmNamesBar");
+    namesFilter_ = CreateTextInput("nmNamesFilter", 0, 0, 260, 28);
+    namesFilter_->SetPlaceholder("Filter names (name, address, source)");
+    namesFilter_->onTextChanged = [this](const std::string& text) {
+        if (nameProxy_) nameProxy_->SetFilterText(text);
+    };
+    bar->AddChild(namesFilter_);
+
+    namesRefreshButton_ = CreateButton("nmNamesRefresh", 0, 0, 90, 28, "Refresh");
+    namesRefreshButton_->SetOnClick([this]() { RefreshNames(); });
+    bar->AddChild(namesRefreshButton_);
+
+    namesStatus_ = CreateLabel("nmNamesStatus", 0, 0, 0, 24, "");
+    namesStatus_->layoutItem.SetFlexGrow(1);
+    namesStatus_->layoutItem.SetFlexShrink(1);
+    bar->AddChild(namesStatus_);
+
+    names->AddChild(bar);
+    PinToolbar(bar);
+    FillWith(names, BuildNameList());
+    return names;
+}
+
+std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildNameList() {
+    nameModel_ = std::make_shared<NameListModel>();
+    nameProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(nameModel_);
+    nameProxy_->SetColumnSortKind(NameListModel::Observed, ListSortKind::Number);
+    nameProxy_->SetColumnSortKind(NameListModel::Expires, ListSortKind::Number);
+    nameView_ = std::make_shared<UltraCanvasListView>("nmNames", -1, -1, 900, 300);
+    nameView_->SetModel(nameProxy_);
+    nameView_->SetShowHeader(true);
+    nameView_->SetShowItemTooltips(true);
+    WireHeaderSorting(nameView_, nameProxy_);
+    return nameView_;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildEventsPage() {
+    auto events = CreateContainer("nmEventsPage", 0, 0, 0, 0);
+    MakePlainColumn(events);
+    events->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+
+    auto bar = MakeToolbar("nmEventsBar");
+    eventsFilter_ = CreateTextInput("nmEventsFilter", 0, 0, 260, 28);
+    eventsFilter_->SetPlaceholder("Filter events (app, address, host, kind)");
+    eventsFilter_->onTextChanged = [this](const std::string& text) {
+        if (eventProxy_) eventProxy_->SetFilterText(text);
+    };
+    bar->AddChild(eventsFilter_);
+
+    eventsModeButton_ = CreateButton("nmEventsMode", 0, 0, 120, 28, "Show recorded");
+    eventsModeButton_->SetOnClick([this]() { ToggleEventsRecorded(); });
+    bar->AddChild(eventsModeButton_);
+
+    eventsRefreshButton_ = CreateButton("nmEventsRefresh", 0, 0, 90, 28, "Refresh");
+    eventsRefreshButton_->SetOnClick([this]() { RefreshEvents(); });
+    bar->AddChild(eventsRefreshButton_);
+
+    eventsClearButton_ = CreateButton("nmEventsClear", 0, 0, 90, 28, "Clear");
+    eventsClearButton_->SetOnClick([this]() {
+        NetworkMonitor_ClearRecentEvents();
+        RefreshEvents();
+    });
+    bar->AddChild(eventsClearButton_);
+
+    eventsStatus_ = CreateLabel("nmEventsStatus", 0, 0, 0, 24, "");
+    eventsStatus_->layoutItem.SetFlexGrow(1);
+    eventsStatus_->layoutItem.SetFlexShrink(1);
+    bar->AddChild(eventsStatus_);
+
+    events->AddChild(bar);
+    PinToolbar(bar);
+    FillWith(events, BuildEventList());
+    return events;
+}
+
+std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildEventList() {
+    eventModel_ = std::make_shared<EventListModel>();
+    eventProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(eventModel_);
+    for (int column : { static_cast<int>(EventListModel::Time), static_cast<int>(EventListModel::Pid),
+                        static_cast<int>(EventListModel::Sent), static_cast<int>(EventListModel::Received) }) {
+        eventProxy_->SetColumnSortKind(column, ListSortKind::Number);
+    }
+    eventView_ = std::make_shared<UltraCanvasListView>("nmEvents", -1, -1, 900, 300);
+    eventView_->SetModel(eventProxy_);
+    eventView_->SetShowHeader(true);
+    eventView_->SetShowItemTooltips(true);
+    WireHeaderSorting(eventView_, eventProxy_);
+    return eventView_;
 }
 
 // ===== DATA FLOW =====
@@ -408,6 +539,13 @@ void UltraNetMonitorWindow::ApplyPendingSnapshot() {
         processModel_->Replace(std::move(summaries));
         connectionModel_->Replace(std::move(connections));
         ReapplyProcessSelection();
+        // The Names tab follows the sources while it is in front, every
+        // other snapshot - a name table is cheap to list, not free.
+        ++snapshotsApplied_;
+        if (tabs_ && tabs_->GetActiveTab() == kNamesTab && (snapshotsApplied_ % 2) == 0) RefreshNames();
+        // The live event list follows the ring every snapshot; the
+        // recorded view only on Refresh, since a query is not free.
+        if (tabs_ && tabs_->GetActiveTab() == kEventsTab && !eventsRecorded_) RefreshEvents();
     }
     // Attribution notes ("N processes could not be inspected") move with
     // each snapshot, so the capabilities are re-read here, not once.
@@ -424,6 +562,8 @@ void UltraNetMonitorWindow::RefreshStatus() {
         subtitle += capabilities_.perConnectionBytes ? " · byte counters"
                                                      : " · no byte counters on this backend";
     }
+    subtitle += " · names: " + NameSourcesSummary();
+    subtitle += " · events: " + EventSourcesSummary();
     if (subtitleLabel_) subtitleLabel_->SetText(subtitle);
 
     std::string status;
@@ -456,10 +596,116 @@ void UltraNetMonitorWindow::RefreshStatus() {
             error = recordError_;
         }
         status += error.empty()
-            ? " · recording (" + std::to_string(recordedSnapshots_.load()) + " snapshots)"
+            ? " · recording (" + std::to_string(recordedSnapshots_.load()) + " snapshots, " +
+              std::to_string(recordedObservations_.load()) + " DNS observations, " +
+              std::to_string(recordedEvents_.load()) + " events)"
             : " · recording failed: " + error;
     }
     if (statusLabel_) statusLabel_->SetText(status);
+}
+
+// ===== NAMES =====
+
+std::string UltraNetMonitorWindow::NameSourcesSummary() const {
+    std::vector<NameSourceStatus> sources;
+    NetworkMonitor_ListNameSources(sources);
+    if (sources.empty()) return "no sources";
+    std::string text;
+    for (const auto& source : sources) {
+        if (!text.empty()) text += ", ";
+        text += source.name;
+        if (!source.running) text += " (stopped)";
+        else if (!source.lastError.empty()) text += " (failed)";
+    }
+    return text;
+}
+
+void UltraNetMonitorWindow::RefreshNames() {
+    std::vector<NameRecord> records;
+    NetworkMonitor_ListNames(records);
+    const std::size_t count = records.size();
+    std::size_t observed = 0;
+    for (const auto& record : records) if (NetworkMonitor_NameIsObserved(record.source)) ++observed;
+    nameModel_->Replace(std::move(records));
+
+    std::string text = std::to_string(count) + " addresses named, " + std::to_string(observed) +
+                       " from observed queries";
+    std::vector<NameSourceStatus> sources;
+    NetworkMonitor_ListNameSources(sources);
+    for (const auto& source : sources) {
+        text += " · " + source.name + ": " + std::to_string(source.observations) + " observations";
+        if (!source.lastError.empty()) text += " - " + source.lastError;
+    }
+    for (const auto& note : nameNotes_) text += " · " + note;
+    if (namesStatus_) namesStatus_->SetText(text);
+}
+
+// ===== EVENTS =====
+
+std::string UltraNetMonitorWindow::EventSourcesSummary() const {
+    std::vector<EventSourceStatus> sources;
+    NetworkMonitor_ListEventSources(sources);
+    if (sources.empty()) return "no sources";
+    std::string text;
+    for (const auto& source : sources) {
+        if (!text.empty()) text += ", ";
+        text += source.name;
+        if (!source.running) text += " (stopped)";
+        else if (!source.lastError.empty()) text += " (idle)";
+    }
+    return text;
+}
+
+void UltraNetMonitorWindow::ToggleEventsRecorded() {
+    eventsRecorded_ = !eventsRecorded_;
+    if (eventsModeButton_) eventsModeButton_->SetText(eventsRecorded_ ? "Show live" : "Show recorded");
+    if (eventsClearButton_) eventsClearButton_->SetVisible(!eventsRecorded_);
+    RefreshEvents();
+}
+
+void UltraNetMonitorWindow::RefreshEvents() {
+    std::vector<NetworkConnectionEvent> events;
+    std::string text;
+    if (eventsRecorded_) {
+        std::string error;
+        std::vector<RecordedConnectionEvent> recorded;
+        {
+            std::lock_guard<std::mutex> lock(storeMutex_);
+            if (!EnsureStoreOpen()) {
+                error = storeError_;
+            } else {
+                ActivityQuery query;
+                query.since = NetworkMonitor_Now() - HistoryRangeSeconds();
+                query.limit = kHistoryLimit;
+                const NetworkMonitorResult read = NetworkMonitor_QueryConnectionEvents(store_, query, recorded);
+                if (!read) error = read.message;
+            }
+        }
+        if (!error.empty()) {
+            if (eventsStatus_) eventsStatus_->SetText(error);
+            return;
+        }
+        events.reserve(recorded.size());
+        for (auto& r : recorded) events.push_back(std::move(r.event));
+        text = std::to_string(events.size()) + " recorded events in the History tab's range";
+    } else {
+        NetworkMonitor_RecentEvents(events, kEventsShown);
+        text = std::to_string(events.size()) + " recent events (newest " + std::to_string(kEventsShown) + " kept)";
+    }
+    eventModel_->Replace(std::move(events));
+    std::vector<EventSourceStatus> sources;
+    NetworkMonitor_ListEventSources(sources);
+    for (const auto& source : sources) {
+        text += " · " + source.name + ": " + std::to_string(source.events) + " events";
+        if (!source.lastError.empty()) text += " - " + source.lastError;
+    }
+    for (const auto& note : nameNotes_) {
+        if (note.rfind("Events", 0) == 0 || note.find("conntrack") != std::string::npos ||
+            note.find("kernel network") != std::string::npos) {
+            text += " · " + note;
+        }
+    }
+    if (eventsStatus_) eventsStatus_->SetText(text);
 }
 
 void UltraNetMonitorWindow::SetPaused(bool paused) {
@@ -511,6 +757,81 @@ void UltraNetMonitorWindow::RebuildConnectionFilter() {
     });
 }
 
+// ===== EXPORT =====
+
+void UltraNetMonitorWindow::ShowProcessMenu(const UCEvent& event) {
+    if (!window_) return;
+    processMenu_ = std::make_shared<UltraCanvasMenu>("nmProcessMenu", 0, 0, 220, 0);
+    processMenu_->SetMenuType(MenuType::PopupMenu);
+    processMenu_->AddItem(MenuItemData::Submenu("Export", {
+        MenuItemData::Action("App list…", [this]() { ExportAppList(false); }),
+        MenuItemData::Action("App list details…", [this]() { ExportAppList(true); }),
+    }));
+    PopupElementSettings settings;
+    processMenu_->OpenMenu(event.pointerWindow, *window_, settings);
+}
+
+void UltraNetMonitorWindow::ExportAppList(bool details) {
+    // The list as shown: the proxy's order, every row (the filter box
+    // narrows connections, never processes).
+    std::vector<ProcessTrafficSummary> summaries;
+    for (int row = 0; row < processProxy_->GetRowCount(); ++row) {
+        if (const ProcessTrafficSummary* s = processModel_->At(processProxy_->MapToSource(row))) {
+            summaries.push_back(*s);
+        }
+    }
+    // The details: every application's connections, grouped in that order.
+    std::vector<NetworkConnection> connections;
+    if (details) {
+        const auto& all = connectionModel_->Rows();
+        for (const auto& s : summaries) {
+            for (const auto& c : all) {
+                const bool belongs = s.attributed ? (c.process && c.process->pid == s.process.pid) : !c.process;
+                if (belongs) connections.push_back(c);
+            }
+        }
+    }
+    if (summaries.empty()) {
+        UltraCanvasDialogManager::ShowInformation("There is nothing to export yet - no snapshot has been taken.",
+                                                  "Export", nullptr, window_.get());
+        return;
+    }
+
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", &local);
+
+    FileDialogOptions options;
+    options.SetTitle(details ? "Export the app list with its connections" : "Export the app list")
+           .SetDefaultFileName(std::string(details ? "UltraNetMonitor-app-details-" : "UltraNetMonitor-apps-") +
+                               stamp + ".csv")
+           .AddFilter("CSV files", "csv")
+           .AddFilter("All files", "*")
+           .SetParentWindow(window_.get());
+    UltraCanvasWindowBase* parent = window_.get();
+    UltraCanvasFileLoader::SaveFileDialog(options,
+        [summaries, connections, details, parent](DialogResult result, const std::string& path) {
+            if (result != DialogResult::OK || path.empty()) return;   // cancelled
+            int64_t rows = 0;
+            const NetworkMonitorResult written = details
+                ? NetworkMonitor_ExportConnectionsCsv(connections, path, &rows)
+                : NetworkMonitor_ExportSummaryCsv(summaries, path, &rows);
+            if (!written) {
+                UltraCanvasDialogManager::ShowError(written.message, "Export failed", nullptr, parent);
+                return;
+            }
+            UltraCanvasDialogManager::ShowInformation(
+                "Wrote " + std::to_string(rows) + (details ? " connections" : " applications") + " to " + path,
+                "Exported", nullptr, parent);
+        });
+}
+
 // ===== THE STORE =====
 
 bool UltraNetMonitorWindow::EnsureStoreOpen() {
@@ -552,6 +873,8 @@ void UltraNetMonitorWindow::ToggleRecording() {
             return;
         }
         recordedSnapshots_ = 0;
+        recordedObservations_ = 0;
+        recordedEvents_ = 0;
         recordError_.clear();
         recording_ = true;
         if (recordButton_) recordButton_->SetText("Stop recording");

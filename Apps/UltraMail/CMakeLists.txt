@@ -26,7 +26,6 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailThreatScan.cpp
     engine/UltraMailSyncEngine.cpp
     engine/UltraMailDiscovery.cpp
-    engine/UltraMailCredentialVault.cpp
     engine/UltraMailOAuth.cpp
     engine/UltraMailLoginCheck.cpp
     engine/UltraMailComposer.cpp
@@ -35,6 +34,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailSyncService.cpp
     engine/UltraMailSyncScheduler.cpp
     engine/UltraMailContactCollector.cpp
+    engine/UltraMailFeedPublisher.cpp
 )
 
 # ── Built-in OAuth client credentials (compiled-in fallback) ─────────────────
@@ -126,6 +126,12 @@ target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
 if(TARGET UltraVault)
     target_link_libraries(UltraMailEngine PUBLIC UltraVault)
 endif()
+# New mail goes to the desktop feed over UltraMessage (mail.message); the
+# publisher compiles to a no-op when the module is not in the build.
+if(TARGET UltraMessage)
+    target_link_libraries(UltraMailEngine PUBLIC UltraMessage)
+    target_compile_definitions(UltraMailEngine PUBLIC ULTRAMAIL_HAVE_ULTRAMESSAGE=1)
+endif()
 # UltraNet provides the MIME/HTTP/Base64 helpers the engine builds on.
 # With a STATIC UltraCanvas we link the UltraNet archive directly. With a SHARED
 # UltraCanvas, UltraNet is absorbed into (and exported by) libultracanvas — link
@@ -207,6 +213,20 @@ if(TARGET fmt::fmt)
     target_link_libraries(UltraMail PRIVATE fmt::fmt)
 endif()
 target_compile_features(UltraMail PRIVATE cxx_std_20)
+
+# UltraMail dlopens these UltraNet mailbox plug-ins at runtime (see ENABLE_EXPORTS
+# above). As MODULE libraries they have no link relationship to the executable, so
+# a build that only targets UltraMail would leave a stale .so behind whenever the
+# shared plug-in interface (UltraNetPlugins.h) changes — and the first virtual
+# call into a method the old .so lacks crashes (SIGSEGV), or a reworked method
+# silently runs old code. Force them to rebuild whenever UltraMail does so the
+# loaded .so is never older than the app.
+foreach(_mail_plugin UltraNetImapPlugin UltraNetSmtpPlugin
+                     UltraNetPop3Plugin UltraNetJmapPlugin)
+    if(TARGET ${_mail_plugin})
+        add_dependencies(UltraMail ${_mail_plugin})
+    endif()
+endforeach()
 
 # The app icon, in one place for every consumer of it. main.cpp asks for this
 # same file by name; UCAPP_ICON_PATH is the fallback the core applies when an

@@ -25,7 +25,7 @@ Store FreshStore(const std::string& tag) {
     return store;
 }
 
-// A vault in a fresh temp dir per test.
+// A vault in a fresh temp dir per test, unlocked with a new device key.
 struct TempVault {
     std::string dir;
     CredentialVault vault;
@@ -34,8 +34,12 @@ struct TempVault {
                ("ultrasocial-outbox-" + tag)).string()),
           vault(dir) {
         std::filesystem::remove_all(dir);
+        REQUIRE(vault.TryAutoUnlock());
     }
-    ~TempVault() { std::filesystem::remove_all(dir); }
+    ~TempVault() {
+        vault.Lock();
+        std::filesystem::remove_all(dir);
+    }
 };
 
 // A telegram account whose credentials point at the fake server — the

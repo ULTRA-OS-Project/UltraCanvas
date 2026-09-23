@@ -97,6 +97,13 @@ struct Pending {
     std::function<void(const std::vector<std::string>&)> asyncCb;
 };
 
+// A query outlives the call that issued it: c-ares answers on its own worker
+// thread, and there is no way to withdraw one query from a shared channel
+// (ares_cancel takes down every query in flight, including other threads').
+// So the state is shared — the caller drops its reference when it stops
+// waiting, the callback drops the query's, and whichever comes last frees it.
+using PendingPtr = std::shared_ptr<Pending>;
+
 // =====================================================================
 // Response parsers — c-ares ships per-record-type helpers that walk the
 // reply packet. We format each record into a single string for the public
@@ -198,7 +205,10 @@ void ParseSoa(const unsigned char* buf, int len, std::vector<std::string>& out) 
 // =====================================================================
 void OnHostCallback(void* arg, int status, int /*timeouts*/,
                     struct hostent* he) {
-    auto* p = static_cast<Pending*>(arg);
+    // Takes back the reference Issue() handed to c-ares; it is released when
+    // this function returns, however it returns.
+    const std::unique_ptr<PendingPtr> owner(static_cast<PendingPtr*>(arg));
+    Pending* p = owner->get();
     std::vector<std::string> results;
     if (status == ARES_SUCCESS && he) FormatA(he, results);
 
@@ -211,15 +221,13 @@ void OnHostCallback(void* arg, int status, int /*timeouts*/,
         cb         = std::move(p->asyncCb);
     }
     p->cv.notify_all();
-    if (cb) {
-        cb(results);
-        delete p;             // async path — we own the Pending
-    }
+    if (cb) cb(results);
 }
 
 void OnQueryCallback(void* arg, int status, int /*timeouts*/,
                      unsigned char* abuf, int alen) {
-    auto* p = static_cast<Pending*>(arg);
+    const std::unique_ptr<PendingPtr> owner(static_cast<PendingPtr*>(arg));
+    Pending* p = owner->get();
     std::vector<std::string> results;
     if (status == ARES_SUCCESS && abuf && alen > 0) {
         switch (p->type) {
@@ -242,10 +250,7 @@ void OnQueryCallback(void* arg, int status, int /*timeouts*/,
         cb         = std::move(p->asyncCb);
     }
     p->cv.notify_all();
-    if (cb) {
-        cb(results);
-        delete p;
-    }
+    if (cb) cb(results);
 }
 
 int ToAresType(UltraNetDnsType t) {
@@ -279,19 +284,21 @@ UltraNetResultCode MapAresStatus(int s) {
 
 // =====================================================================
 // Issues an A/AAAA gethostbyname; other types go through raw ares_query.
-// `pending` is the heap-allocated state; on the sync path the caller
-// retains ownership and waits, on the async path the callback frees.
+// The query is given a reference of its own to `p`, which its callback
+// releases — so the state stays alive even if the caller has already given
+// up waiting for it.
 // =====================================================================
-void Issue(Channel& ch, Pending* p, const std::string& host,
+void Issue(Channel& ch, const PendingPtr& p, const std::string& host,
            UltraNetDnsType type) {
     p->type = type;
+    auto* owner = new PendingPtr(p);
     if (type == UltraNetDnsType::A || type == UltraNetDnsType::AAAA) {
         const int family = (type == UltraNetDnsType::AAAA) ? AF_INET6 : AF_INET;
         ares_gethostbyname(ch.handle, host.c_str(), family,
-                           &OnHostCallback, p);
+                           &OnHostCallback, owner);
     } else {
         ares_query(ch.handle, host.c_str(), ns_c_in,
-                   ToAresType(type), &OnQueryCallback, p);
+                   ToAresType(type), &OnQueryCallback, owner);
     }
 }
 
@@ -311,28 +318,31 @@ UltraNetResult Resolve(const std::string& hostname,
                                      "c-ares channel not initialised");
     }
 
-    Pending p{};
-    Issue(ch, &p, hostname, type);
+    auto p = std::make_shared<Pending>();
+    Issue(ch, p, hostname, type);
 
-    std::unique_lock<std::mutex> lk(p.mu);
+    std::unique_lock<std::mutex> lk(p->mu);
     const auto deadline = std::chrono::milliseconds(
         timeoutMs > 0 ? timeoutMs : 5000);
-    if (!p.cv.wait_for(lk, deadline, [&] { return p.done; })) {
-        // Best-effort cancel — the channel callback may still fire on a
-        // future event-thread tick, but with `cancelled` status (harmless).
-        ares_cancel(ch.handle);
+    if (!p->cv.wait_for(lk, deadline, [&] { return p->done; })) {
+        // The query is abandoned, not cancelled: ares_cancel would take down
+        // every other query in flight on the shared channel, and the answer
+        // is no longer wanted anyway. The callback still fires on c-ares's
+        // worker and writes into the state, which is why the state is shared
+        // — this frame's reference goes away here, the query's when it
+        // answers.
         return UltraNetResult::Error(UltraNetResultCode::Timeout,
                                      "DNS query timed out");
     }
-    if (p.status != ARES_SUCCESS) {
-        return UltraNetResult::Error(MapAresStatus(p.status),
-                                     ares_strerror(p.status));
+    if (p->status != ARES_SUCCESS) {
+        return UltraNetResult::Error(MapAresStatus(p->status),
+                                     ares_strerror(p->status));
     }
-    if (p.results.empty()) {
+    if (p->results.empty()) {
         return UltraNetResult::Error(UltraNetResultCode::HostNotFound,
                                      "no records of requested type");
     }
-    outRecords = std::move(p.results);
+    outRecords = std::move(p->results);
     return UltraNetResult::Ok();
 }
 
@@ -353,7 +363,7 @@ UltraNetResult ResolveAsyncCares(
         return UltraNetResult::Error(UltraNetResultCode::Unknown,
                                      "c-ares channel not initialised");
     }
-    auto* p = new Pending{};
+    auto p = std::make_shared<Pending>();
     p->asyncCb = std::move(onResult);
     Issue(ch, p, hostname, type);
     return UltraNetResult::Ok();

@@ -1200,8 +1200,8 @@ endif()
 # UltraCanvas::NetworkMonitorAddress::FormatIPv4". Compile them exactly once,
 # into NetworkMonitor, which the applications link.
 file(GLOB _ultracanvas_networkmonitor_platform_srcs
-    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor*.mm
 )
 if(_ultracanvas_networkmonitor_platform_srcs)
     list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_networkmonitor_platform_srcs})
@@ -2107,7 +2107,8 @@ endif()
 # encrypted-file backends on UltraCrypt; UI-free, so headless consumers
 # (UltraAI adapters, tools) link it without the widget layer.
 add_library(UltraVault STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultCore.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultDeviceKeyVault.cpp)
 target_include_directories(UltraVault PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas>)
@@ -2126,13 +2127,24 @@ set(_uc_networkmonitor_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorCore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorAddress.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorProcfs.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorStore.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorStore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDns.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorNames.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDnsProxy.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorEvents.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorConntrack.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # The socket table, and nf_conntrack's netlink events as an event source.
     list(APPEND _uc_networkmonitor_sources
-        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitorEvents.cpp)
 elseif(WIN32)
+    # The socket tables, the DNS client's ETW events as a name source, and
+    # the kernel network ETW events as an event source.
     list(APPEND _uc_networkmonitor_sources
-        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp)
 elseif(APPLE)
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp)
@@ -2254,6 +2266,7 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetUrl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetMime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2Apps.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetWebSocket.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetFtp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSocket.cpp
@@ -2642,13 +2655,10 @@ if(ULTRACANVAS_ENABLE_DATABASE)
     if(NOT SQLITE3_LIBRARIES)
         message(STATUS "  [−] UltraDatabase - DISABLED (libsqlite3 not found)")
     else()
-        set(ULTRADATABASE_SOURCES
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseValue.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseManager.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseSqliteDriver.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabasePostgresDriver.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabasePostgresSql.cpp
-        )
+        # The source list is shared with the standalone test trees; see
+        # cmake/UltraDatabaseSources.cmake.
+        include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/UltraDatabaseSources.cmake)
+        ultradatabase_sources(ULTRADATABASE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR})
 
         # PostgreSQL, for the multi-user mode. Optional and soft-failing: with
         # libpq the driver registers itself, without it the same source
@@ -2724,7 +2734,41 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageBroker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageEndpoint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageHelpers.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageAdapters.cpp
     )
+    # Phase 2 feed adapters (§9). The freedesktop notification adapter mirrors
+    # org.freedesktop.Notifications toasts into the feed over GDBus; it is
+    # built wherever gio-2.0 is available (Linux, the BSDs) and skipped
+    # elsewhere, in which case the broker simply lists no adapters.
+    set(_um_gio_found FALSE)
+    if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+        pkg_check_modules(UM_GIO QUIET gio-2.0)
+        if(UM_GIO_FOUND)
+            set(_um_gio_found TRUE)
+            list(APPEND ULTRAMESSAGE_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp)
+        endif()
+    endif()
+    # The Windows notification listener adapter reads the Action Center
+    # through WinRT (C++/WinRT projection headers: the MSYS2 `cppwinrt`
+    # package or the Windows SDK). Skipped where the headers are absent.
+    set(_um_winrt_found FALSE)
+    if(WIN32)
+        include(CheckIncludeFileCXX)
+        set(_um_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
+        if(MSVC)
+            set(CMAKE_REQUIRED_FLAGS "/std:c++20 /EHsc")
+        else()
+            set(CMAKE_REQUIRED_FLAGS "-std=c++20")
+        endif()
+        check_include_file_cxx("winrt/Windows.UI.Notifications.Management.h" UM_HAVE_CPPWINRT)
+        set(CMAKE_REQUIRED_FLAGS "${_um_saved_required_flags}")
+        if(UM_HAVE_CPPWINRT)
+            set(_um_winrt_found TRUE)
+            list(APPEND ULTRAMESSAGE_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
+        endif()
+    endif()
     # UltraCanvasJSON lives in the core library. With a STATIC core, compile
     # it into this archive too so UltraMessage links without the widget layer
     # (a static-library duplicate the linker resolves to one copy); with a
@@ -2751,7 +2795,30 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         target_link_libraries(UltraMessage PRIVATE uc-yyjson)
     endif()
     target_compile_definitions(UltraMessage PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
-    message(STATUS "  [✓] UltraMessage - ENABLED")
+    if(_um_gio_found)
+        # PUBLIC on purpose: the test suite drives the adapter over D-Bus
+        # itself and takes gio and the switch from this target.
+        target_include_directories(UltraMessage PUBLIC ${UM_GIO_INCLUDE_DIRS})
+        target_link_directories(UltraMessage PUBLIC ${UM_GIO_LIBRARY_DIRS})
+        target_link_libraries(UltraMessage PUBLIC ${UM_GIO_LIBRARIES})
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
+        message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter via gio ${UM_GIO_VERSION})")
+    elseif(_um_winrt_found)
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_WINRT=1)
+        if(MSVC)
+            target_link_libraries(UltraMessage PUBLIC windowsapp)
+        else()
+            # C++/WinRT under GCC/Clang binds its imports by name: the WinRT
+            # activation and string functions live in runtimeobject, COM in
+            # ole32, BSTRs in oleaut32.
+            target_link_libraries(UltraMessage PUBLIC runtimeobject ole32 oleaut32)
+        endif()
+        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT)")
+    elseif(WIN32)
+        message(STATUS "  [✓] UltraMessage - ENABLED (no C++/WinRT headers: no notification adapter)")
+    else()
+        message(STATUS "  [✓] UltraMessage - ENABLED (no gio: no notification adapter)")
+    endif()
 elseif(ULTRACANVAS_ENABLE_ULTRAMESSAGE)
     message(STATUS "  [−] UltraMessage - DISABLED (needs UltraDatabase)")
 else()

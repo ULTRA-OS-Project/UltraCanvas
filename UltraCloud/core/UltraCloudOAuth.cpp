@@ -1,49 +1,35 @@
 // UltraCloud/core/UltraCloudOAuth.cpp
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.3.0 - the app registration is UltraNet's shared registry
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudOAuth.h>
 
-#include <cctype>
-#include <cstdlib>
 #include <ctime>
-#include <map>
-#include <mutex>
 
 namespace UltraCloud {
 
-namespace {
-std::mutex& AppsMutex() { static std::mutex m; return m; }
-std::map<std::string, OAuthApp>& Apps() { static std::map<std::string, OAuthApp> a; return a; }
+void EnsureOAuthAppsRegistered() {
+    static const bool once = [] {
+        UltraNet_OAuth2AddAppEnvPrefix("ULTRACLOUD_");
+        UltraNet_OAuth2SetAppAlias("googledrive", "google");
+        UltraNet_OAuth2SetAppAlias("onedrive", "microsoft");
+        return true;
+    }();
+    (void)once;
+}
 
-std::string EnvName(const std::string& providerId, const char* suffix) {
-    std::string name = "ULTRACLOUD_";
-    for (char c : providerId)
-        name.push_back(std::isalnum(static_cast<unsigned char>(c))
-                           ? static_cast<char>(std::toupper(static_cast<unsigned char>(c))) : '_');
-    return name + suffix;
-}
-std::string Env(const std::string& name) {
-    const char* v = std::getenv(name.c_str());
-    return v ? v : "";
-}
-} // namespace
+std::string DefaultRedirectUri() { return "http://127.0.0.1:53682/callback"; }
 
 void SetOAuthApp(const std::string& providerId, const OAuthApp& app) {
-    std::lock_guard<std::mutex> lock(AppsMutex());
-    Apps()[providerId] = app;
+    EnsureOAuthAppsRegistered();
+    UltraNet_OAuth2SetApp(providerId, app);
 }
 
 OAuthApp GetOAuthApp(const std::string& providerId) {
-    {
-        std::lock_guard<std::mutex> lock(AppsMutex());
-        auto it = Apps().find(providerId);
-        if (it != Apps().end() && it->second.IsConfigured()) return it->second;
-    }
-    OAuthApp app;
-    app.clientId     = Env(EnvName(providerId, "_CLIENT_ID"));
-    app.clientSecret = Env(EnvName(providerId, "_CLIENT_SECRET"));
-    if (std::string r = Env(EnvName(providerId, "_REDIRECT_URI")); !r.empty()) app.redirectUri = r;
+    EnsureOAuthAppsRegistered();
+    OAuthApp app = UltraNet_OAuth2GetApp(providerId);
+    if (!app.IsConfigured()) return OAuthApp{};
+    if (app.redirectUri.empty()) app.redirectUri = DefaultRedirectUri();
     return app;
 }
 

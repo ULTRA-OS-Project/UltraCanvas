@@ -142,6 +142,10 @@ UltraCanvasGaugeDiagramElement::~UltraCanvasGaugeDiagramElement() {
         app->StopTimer(warningBlinkTimerId);
         warningBlinkTimerId = 0;
     }
+    if (indeterminateTimerId) {
+        app->StopTimer(indeterminateTimerId);
+        indeterminateTimerId = 0;
+    }
 }
 
 // =============================================================================
@@ -178,6 +182,9 @@ void UltraCanvasGaugeDiagramElement::SetMode(GaugeMode m) {
     // Start/stop the 1-second redraw timer for live displays.
     UpdateClockTimer();
     UpdateWarningBlinkTimer();
+    // Leaving LinearBar leaves the only mode that can be indeterminate, so
+    // the slide timer goes with it.
+    UpdateIndeterminateTimer();
     RequestRedraw();
 }
 
@@ -217,6 +224,35 @@ void UltraCanvasGaugeDiagramElement::UpdateWarningBlinkTimer() {
         warningBlinkTimerId = 0;
         warningBlinkOn = true;
     }
+}
+
+// Runs the slide timer only while a LinearBar is actually indeterminate. When
+// it stops, the block returns to the left so the next busy spell starts from
+// the beginning rather than wherever the last one was interrupted.
+void UltraCanvasGaugeDiagramElement::UpdateIndeterminateTimer() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    const bool needTimer = (mode == GaugeMode::LinearBar) && indeterminate;
+    if (needTimer && !indeterminateTimerId) {
+        // ~16 fps: enough for the eye to read it as movement, little enough
+        // that a bar nobody is watching costs almost nothing.
+        indeterminateTimerId = app->StartTimer(60, true, [this](TimerId) {
+            indeterminateOffset += 0.04f;
+            if (indeterminateOffset > 1.0f) indeterminateOffset -= 1.0f;
+            if (IsVisible()) RequestRedraw();
+        });
+    } else if (!needTimer && indeterminateTimerId) {
+        app->StopTimer(indeterminateTimerId);
+        indeterminateTimerId = 0;
+        indeterminateOffset = 0.0f;
+    }
+}
+
+void UltraCanvasGaugeDiagramElement::SetIndeterminate(bool on) {
+    if (indeterminate == on) return;
+    indeterminate = on;
+    UpdateIndeterminateTimer();
+    RequestRedraw();
 }
 
 void UltraCanvasGaugeDiagramElement::SetValue(double val) {
@@ -1560,33 +1596,81 @@ void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
     const auto b = GetLocalBounds();
     bool vertical = (orientation == GaugeOrientation::Vertical);
 
+    // A LinearBar is usually a dashboard gauge: a caption over a 28 px bar
+    // with the value spelled out underneath, which needs some 114 px of
+    // height before any of it fits. It is also the obvious bar for a status
+    // line, a list row or a panel footer - places where the whole strip is
+    // twenty-odd pixels tall - and there it used to lay out for the height it
+    // wanted rather than the height it was given, drawing its bar and its
+    // value outside the box.
+    //
+    // So: reserve room for the caption and the value only while there is room
+    // for them, and otherwise be the bar. Nothing changes for a gauge with the
+    // height to be one, which is every gauge that was drawing correctly
+    // before.
+    const float wanted = kPaddingTop + 28.0f + kPaddingBottom + kValueHeight + 4.0f;
+    const float have = static_cast<float>(vertical ? b.width : b.height);
+    const bool compact = have < wanted;
+
     // Title at top
-    if (!title.empty()) {
+    if (!compact && !title.empty()) {
         DrawTitleText(ctx, Point2Df(static_cast<float>(b.x + b.width / 2),
                                      static_cast<float>(b.y) + kPaddingTop - kTitleRaise));
     }
 
-    float topReserved = kPaddingTop + (title.empty() ? 0.0f : kTitleHeight + 8.0f);
-    float bottomReserved = kPaddingBottom + kValueHeight + 4.0f;
+    float topReserved = compact ? 0.0f
+                                : kPaddingTop + (title.empty() ? 0.0f : kTitleHeight + 8.0f);
+    float bottomReserved = compact ? 0.0f : kPaddingBottom + kValueHeight + 4.0f;
+    const float sidePadding = compact ? 0.0f : kPaddingSide;
 
     float barX, barY, barW, barH;
     if (vertical) {
-        barW = 36.0f;
+        barW = compact ? static_cast<float>(b.width) : 36.0f;
         barH = static_cast<float>(b.height) - topReserved - bottomReserved;
         barX = static_cast<float>(b.x + b.width / 2) - barW / 2.0f;
         barY = static_cast<float>(b.y) + topReserved;
     } else {
-        barW = static_cast<float>(b.width) - 2.0f * kPaddingSide;
-        barH = 28.0f;
-        barX = static_cast<float>(b.x) + kPaddingSide;
+        barW = static_cast<float>(b.width) - 2.0f * sidePadding;
+        barH = compact ? static_cast<float>(b.height) : 28.0f;
+        barX = static_cast<float>(b.x) + sidePadding;
         // Center vertically in available area
         float availTop = static_cast<float>(b.y) + topReserved;
         float availBottom = static_cast<float>(b.y + b.height) - bottomReserved;
         barY = availTop + (availBottom - availTop - barH) / 2.0f;
     }
+    if (barW <= 0.0f || barH <= 0.0f) return;
 
     ctx->SetFillPaint(Color(225, 226, 235, 255));
     ctx->FillRoundedRectangle(Rect2Df(barX, barY, barW, barH), barH / 2.0f);
+
+    // Diameter of a rounded end = the bar's cross dimension.
+    float capD = vertical ? barW : barH;
+
+    // Busy, total unknown: a block sliding along the track rather than a fill
+    // that would have to pretend to a value nobody has. Clipped at both ends
+    // instead of wrapping round - a block reappearing at one end while its
+    // tail is still at the other reads as two blocks.
+    if (indeterminate) {
+        const float trackLen = vertical ? barH : barW;
+        float blockLen = trackLen * 0.30f;
+        if (blockLen < capD) blockLen = std::min(capD, trackLen);
+        float start = indeterminateOffset * trackLen;
+        if (start + blockLen > trackLen) blockLen = trackLen - start;
+        if (blockLen <= 0.0f) return;
+        ctx->SetFillPaint(gaugeColor);
+        if (vertical) {
+            // Vertical bars fill upwards, so the block slides up from the foot.
+            const float y = barY + barH - start - blockLen;
+            ctx->FillRoundedRectangle(Rect2Df(barX, y, barW, blockLen),
+                                      std::min(barW, blockLen) / 2.0f);
+        } else {
+            ctx->FillRoundedRectangle(Rect2Df(barX + start, barY, blockLen, barH),
+                                      std::min(blockLen, barH) / 2.0f);
+        }
+        // No value text: there is no value. The caller's own label says what
+        // is happening, which is all there is to say.
+        return;
+    }
 
     // Fill. The pill keeps the bar's full corner radius at every value: just
     // above the minimum it is a full-radius circle and it grows lengthwise
@@ -1599,8 +1683,6 @@ void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
     bool atZero = ratio <= 0.00001;
     bool lowWarn = lowLevelWarning && currentValue <= lowLevelLimit;
     bool blinkVisible = !lowWarn || warningBlinkOn;
-    // Diameter of the fill's rounded end = the bar's cross dimension.
-    float capD = vertical ? barW : barH;
 
     if (atZero) {
         if (showZeroValueWarning && blinkVisible) {
@@ -1625,12 +1707,17 @@ void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
         }
     }
 
-    // Value below
-    std::string vt = FormatValue(currentValue) + (unit.empty() ? "" : (" " + unit));
-    float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - 4.0f;
-    DrawValueText(ctx, vt,
-                  Point2Df(static_cast<float>(b.x + b.width / 2), valueY),
-                  13.0f, textColor);
+    // Value below - where there is a below. In a compact bar the caller has
+    // the room for the words and the gauge does not: a status line says
+    // "3.2 MB of 8.0 MB" in its own label, which is more than a number
+    // squeezed under a 6 px bar could ever be.
+    if (!compact) {
+        std::string vt = FormatValue(currentValue) + (unit.empty() ? "" : (" " + unit));
+        float valueY = static_cast<float>(b.y + b.height) - kPaddingBottom - 4.0f;
+        DrawValueText(ctx, vt,
+                      Point2Df(static_cast<float>(b.x + b.width / 2), valueY),
+                      13.0f, textColor);
+    }
 }
 
 // V2.1 FIX: Title at top, segments centered, value visible below

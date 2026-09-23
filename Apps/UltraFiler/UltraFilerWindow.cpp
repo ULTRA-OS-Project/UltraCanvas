@@ -91,6 +91,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -149,6 +150,60 @@ namespace {
     // enough to read as "results appearing while it searches", large enough
     // that the walk is not paced by the re-sort of what is already listed.
     constexpr int kSearchBatchMs = 200;
+    // Find text (content search): files larger than this are not read - a
+    // disk image or a video would take the walk minutes and never hold the
+    // kind of text the user is looking for.
+    constexpr uintmax_t kMaxContentSearchFileBytes = 64ull * 1024 * 1024;
+    // Content search reads a file in pieces of this size, so memory stays
+    // flat however large the file is and a Stop lands between two pieces.
+    constexpr size_t kContentSearchChunkBytes = 64 * 1024;
+    // A NUL byte in this many leading bytes marks a file as binary, and a
+    // binary file is not searched (an executable matches almost any word).
+    constexpr size_t kContentSearchBinaryProbeBytes = 8 * 1024;
+
+    // std::tolower for one char of a std::string. The plain ::tolower(char)
+    // is undefined for every byte of a UTF-8 sequence (a negative char where
+    // char is signed); going through unsigned char keeps what it folds the
+    // same and removes the undefined behaviour.
+    char ToLowerChar(char c) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+
+    // ASCII-only case folding: multi-byte UTF-8 sequences stay as they are,
+    // so a non-ASCII query still matches, just case-sensitively.
+    char FoldAsciiCase(char c) {
+        return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+
+    // Whether the file at `path` contains `needle` (non-empty, already
+    // folded with FoldAsciiCase). Binary and unreadable files never match.
+    bool FileContainsText(const fs::path& path, const std::string& needle,
+                          const std::atomic<bool>& cancelled) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+        std::vector<char> chunk(kContentSearchChunkBytes);
+        // The tail of the previous piece is carried over, so a match that
+        // straddles two pieces is still found.
+        std::string window;
+        bool firstChunk = true;
+        while (in && !cancelled.load()) {
+            in.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+            const size_t got = static_cast<size_t>(in.gcount());
+            if (got == 0) break;
+            if (firstChunk) {
+                firstChunk = false;
+                const size_t probe = std::min(got, kContentSearchBinaryProbeBytes);
+                if (std::find(chunk.begin(), chunk.begin() + probe, '\0')
+                        != chunk.begin() + probe)
+                    return false;
+            }
+            for (size_t i = 0; i < got; ++i) window.push_back(FoldAsciiCase(chunk[i]));
+            if (window.find(needle) != std::string::npos) return true;
+            if (window.size() >= needle.size())
+                window.erase(0, window.size() - (needle.size() - 1));
+        }
+        return false;
+    }
 
     // Split-pane minimum widths (px): the folder display and the detail
     // (preview) pane never get narrower than these.
@@ -392,8 +447,8 @@ namespace {
         }
         std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) {
             std::string an = a.filename().string(), bn = b.filename().string();
-            std::transform(an.begin(), an.end(), an.begin(), ::tolower);
-            std::transform(bn.begin(), bn.end(), bn.begin(), ::tolower);
+            std::transform(an.begin(), an.end(), an.begin(), ToLowerChar);
+            std::transform(bn.begin(), bn.end(), bn.begin(), ToLowerChar);
             return an < bn;
         });
         return dirs;
@@ -432,8 +487,8 @@ namespace {
         std::sort(children.begin(), children.end(),
                   [](const TreeChild& a, const TreeChild& b) {
             std::string an = a.label, bn = b.label;
-            std::transform(an.begin(), an.end(), an.begin(), ::tolower);
-            std::transform(bn.begin(), bn.end(), bn.begin(), ::tolower);
+            std::transform(an.begin(), an.end(), an.begin(), ToLowerChar);
+            std::transform(bn.begin(), bn.end(), bn.begin(), ToLowerChar);
             return an < bn;
         });
         return children;
@@ -715,6 +770,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     // had already posted is queued on the UI thread and cannot be recalled.
     if (remoteDrives) {
         remoteDrives->onListingArrived = nullptr;
+        remoteDrives->onActivityChanged = nullptr;
         remoteDrives->Stop();
     }
     StopVolumeSpaceQuery();
@@ -930,15 +986,47 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     BuildFavoritesView();
 
     // Status bar under the split.
-    statusLabel = std::make_shared<UltraCanvasLabel>("ufl-status", 0, 0, 0, 24);
+    // The status strip is a row rather than a single label now: the text on
+    // the left, and on the right the bar that appears while a file is going
+    // to or from a drive. The row carries the background so the whole strip
+    // is one colour whether or not the bar is up.
+    statusRow = CreateContainer("ufl-status-row", 0, 0, 0, 24);
+    statusRow->layout.SetFlexRow()
+                     .SetFlexGap(10)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    statusRow->SetBackgroundColor(Color(243, 243, 246, 255));
+    statusRow->SetPadding(4, 10, 4, 10);
+    statusRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    statusLabel = std::make_shared<UltraCanvasLabel>("ufl-status", 0, 0, 0, 16);
     statusLabel->SetFontSize(kUiFontSize);
     statusLabel->SetTextColor(Color(70, 70, 76, 255));
-    statusLabel->SetBackgroundColor(Color(243, 243, 246, 255));
-    statusLabel->SetPadding(4, 10, 4, 10);
     statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    statusLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    window->AddChild(statusLabel);
+    statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    statusRow->AddChild(statusLabel);
+
+    // The framework's progress bar is the gauge in LinearBar mode. At this
+    // height it drops the caption and value line a dashboard gauge draws and
+    // is just the bar; the words belong to the label beside it, which can say
+    // far more than a number squeezed under 8 px of bar.
+    //
+    // Hidden until something is actually moving: an empty bar sitting in the
+    // status line at all times is furniture, not information.
+    statusProgress = CreateGaugeDiagramElement("ufl-status-progress", 0, 0, 160, 8);
+    statusProgress->SetMode(GaugeMode::LinearBar);
+    statusProgress->SetOrientation(GaugeOrientation::Horizontal);
+    statusProgress->SetMinValue(0.0);
+    statusProgress->SetMaxValue(100.0);       // a percentage of the transfer
+    statusProgress->SetValue(0.0);
+    statusProgress->SetTitle("");             // no caption: the label is the caption
+    statusProgress->SetUnit("");
+    statusProgress->SetGaugeColor(Color(37, 99, 235, 255));   // the accent blue
+    statusProgress->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    statusProgress->SetVisible(false);
+    statusRow->AddChild(statusProgress);
+
+    window->AddChild(statusRow);
 
     std::string start = startFolder;
     std::error_code ec;
@@ -1478,7 +1566,17 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
             [this]() { RemoveFolderIconForTargets(); });
     removeIcon.enabled = anyCustomIcon;
 
+    // Find text searches the folder the browsing view shows; the History,
+    // Favorites and Computer views list entries from everywhere, so there is
+    // no one folder there to search.
+    const std::string findRoot =
+            (filer && VisibleFiler() == filer.get()) ? filer->GetPath() : std::string();
+    MenuItemData findText = MenuItemData::Action("Find text…",
+            [this]() { OpenFindTextDialog(); });
+    findText.enabled = !findRoot.empty() && !IsRemoteFilerPath(findRoot);
+
     return {
+            findText,
             MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
             MenuItemData::Separator(),
             setIcon,
@@ -1914,12 +2012,114 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
 void UltraFilerWindow::AddTreeRemoteDriveNode(const RemoteDrive& drive) {
     if (!folderTree) return;
     // No subfolder probe: it reads the local filesystem, which knows nothing
-    // about a path on a server. The row is given the expand button the first
-    // time it is opened instead, by the listing itself.
+    // about a path on a server.
     TreeNodeData data = MakeFolderNodeData(drive.rootPath, drive.displayName,
                                            "cloud.svg");
     if (!folderTree->AddNode(kRemoteNodeId, data)) return;
     treeRemoteDriveNodeIds.push_back(drive.rootPath);
+    // A drive opens like any other folder row. What is below it is fetched
+    // when the row is expanded - or arrives on its own once the drive has
+    // been opened in a display, because that listing comes back here too.
+    AddRemoteTreePlaceholder(drive.rootPath);
+}
+
+void UltraFilerWindow::AddRemoteTreePlaceholder(const std::string& path) {
+    if (!folderTree) return;
+    if (treeChildrenLoaded.count(path)) return;   // its real children are in
+    TreeNode* node = folderTree->FindNode(path);
+    if (!node || !node->children.empty()) return;
+    TreeNodeData placeholder;
+    placeholder.nodeId = PlaceholderId(path);
+    placeholder.text = "...";
+    folderTree->AddNode(path, placeholder);
+}
+
+void UltraFilerWindow::AddTreeRemoteFolderNode(const std::string& parentId,
+                                               const std::string& path,
+                                               const std::string& label) {
+    if (!folderTree) return;
+    if (!folderTree->AddNode(parentId,
+                             MakeFolderNodeData(path, label, "folder-brown.svg")))
+        return;
+    // Offered rather than probed: asking whether a remote folder has
+    // subfolders means listing it, which is a round trip per row, for every
+    // row, before the user has asked to see any of them. The button is taken
+    // away again by LoadRemoteTreeChildren when the listing turns out to hold
+    // no folders.
+    AddRemoteTreePlaceholder(path);
+}
+
+void UltraFilerWindow::LoadRemoteTreeChildren(const std::string& path,
+                                              bool listingReady) {
+    if (!folderTree || !remoteDrives) return;
+    TreeNode* node = folderTree->FindNode(path);
+    if (!node) return;   // the tree does not show this folder
+
+    // Answers from the cache; a miss queues the fetch and comes back through
+    // onListingArrived. Nothing here blocks on the network.
+    std::vector<FilerEntry> entries;
+    std::string error;
+    if (!remoteDrives->List(path, entries, error)) {
+        // The drive refused it - an account that is gone, a folder the server
+        // will not list. Nothing below it, and no button promising there is.
+        folderTree->RemoveNode(PlaceholderId(path));
+        folderTree->RequestRedraw();
+        return;
+    }
+
+    std::vector<TreeChild> wanted;
+    for (const FilerEntry& e : entries) {
+        if (!e.isDirectory || e.isHidden || e.name.empty()) continue;
+        // The drive spells each entry's path for us (MakeRemoteFilerPath over
+        // the account id and what the server returned), so that is what the
+        // row is keyed by - the same string the display and the history use.
+        // The fallback is for an entry that arrived carrying only its name.
+        const std::string childPath =
+                e.path.empty() ? RemoteFilerChild(path, e.name) : e.path;
+        if (!childPath.empty())
+            wanted.push_back({childPath, e.name, "folder-brown.svg"});
+    }
+
+    // An empty answer before the listing is in is "not yet", not "no
+    // subfolders": leave the row as it stands and wait to be called again.
+    if (wanted.empty() && !listingReady) return;
+
+    std::unordered_set<std::string> wantedPaths;
+    for (const TreeChild& c : wanted) wantedPaths.insert(c.path);
+
+    // Rows whose folder is no longer on the server. Collected before anything
+    // is removed: dropping a row edits node->children.
+    std::vector<std::string> gone;
+    if (listingReady) {
+        for (const std::unique_ptr<TreeNode>& child : node->children) {
+            const std::string& id = child->data.nodeId;
+            if (id.find(kPlaceholderSuffix) != std::string::npos) continue;
+            if (!wantedPaths.count(id)) gone.push_back(id);
+        }
+    }
+    for (const std::string& id : gone) DropTreeSubtree(id);
+
+    // Rows already there keep their place and their own subtree: an arriving
+    // listing is usually the same folders over again.
+    bool added = false;
+    for (const TreeChild& c : wanted) {
+        if (folderTree->FindNode(c.path)) continue;
+        AddTreeRemoteFolderNode(path, c.path, c.label);
+        added = true;
+    }
+    // Appended rows would sit below the ones already there; the tree lists a
+    // folder's children by name, as TreeChildrenOf sorts the local ones.
+    if (added) folderTree->SortNodeChildren(path, false, true);
+
+    if (listingReady) {
+        // The real children are in. The placeholder goes last, because a node
+        // whose last child is removed is demoted to a leaf and loses its
+        // expanded state - and going last is also what turns a folder with
+        // nothing below it back into the leaf it is.
+        treeChildrenLoaded.insert(path);
+        folderTree->RemoveNode(PlaceholderId(path));
+    }
+    if (added || !gone.empty() || listingReady) folderTree->RequestRedraw();
 }
 
 void UltraFilerWindow::RefreshRemoteDriveNodes() {
@@ -1927,8 +2127,11 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     TreeNode* section = folderTree->FindNode(kRemoteNodeId);
     if (!section) return;
 
+    // DropTreeSubtree, not RemoveNode: the rows below a drive are real folder
+    // rows now, and the record that they were loaded has to go with them, or
+    // the same drive added back would never be listed again.
     for (const std::string& id : treeRemoteDriveNodeIds)
-        folderTree->RemoveNode(id);
+        DropTreeSubtree(id);
     treeRemoteDriveNodeIds.clear();
 
     for (const RemoteDrive& d : remoteDrives->Drives())
@@ -1959,6 +2162,19 @@ void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
                                    std::vector<FilerEntry>& out,
                                    std::string& error) {
         return remoteDrives->List(path, out, error);
+    };
+    // What the display says under its progress ring while that fetch is
+    // on its way: queued behind other requests, or waiting on the server.
+    widget->remoteListingStatus = [this](const std::string& path) {
+        return remoteDrives->ListingStatus(path);
+    };
+    // Files dropped onto a remote folder shown in the display: uploaded the
+    // way a drop on the drive's tree row uploads, with the status bar saying
+    // how many went up and why any did not.
+    widget->remoteUpload = [this](const std::string& folder,
+                                  const std::vector<std::string>& files,
+                                  std::string& error) {
+        return UploadToRemoteFolder(folder, files, error) > 0;
     };
 
     // The three changes a drive can take. Each is queued and answered at once;
@@ -2006,7 +2222,7 @@ void UltraFilerWindow::RefreshRemoteFolderDisplays(const std::string& folderPath
         folderPreview->Refresh();
 }
 
-void UltraFilerWindow::RunSearch(const std::string& query) {
+void UltraFilerWindow::RunSearch(const std::string& query, bool inContents) {
     // The results are shown in the folder display, so a search leaves the
     // History / Favorites views.
     ShowBrowsingView();
@@ -2035,16 +2251,25 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
     // filer's (now empty) filter text back into the search field unless the
     // tab is already known to be showing a search.
     tab->searchQuery = query;
+    tab->searchInContents = inContents;
     searchTab = tab;
     searchQueryText = query;
+    searchInContents = inContents;
     searchResultsShown = false;
+    // A Find text query is not a name filter: the field stays empty rather
+    // than suggesting that Enter would repeat this search. (Programmatic
+    // SetText fires no onTextChanged, so this ends no search.)
+    if (inContents && searchInput) searchInput->SetText("");
 
     // The scan results replace the as-you-type folder filter — they are an
     // explicit file list, not a narrowed folder listing.
     filer->SetNameFilter("");
 
     std::string needle = query;
-    std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+    if (inContents)
+        std::transform(needle.begin(), needle.end(), needle.begin(), FoldAsciiCase);
+    else
+        std::transform(needle.begin(), needle.end(), needle.begin(), ToLowerChar);
     filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
     // An empty result display right away: the folder listing the search was
     // typed against is not what the search is about, and the first matches
@@ -2053,21 +2278,44 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
 
     searchState = std::make_shared<SubfolderSearchState>();
     const uint64_t generation = ++searchGeneration;
-    searchStatus = "Searching \"" + query + "\" ...";
+    searchStatus = (inContents ? "Searching files for the text \"" : "Searching \"")
+            + query + "\" ...";
     UpdateScanButton();
     UpdateStatusBar();
 
     auto state = searchState;
     auto alive = probeAlive;
-    searchWorker = std::thread([this, state, alive, root, needle, generation]() {
-        SubfolderSearchWorkerMain(state, alive, root, needle, generation);
+    searchWorker = std::thread([this, state, alive, root, needle, inContents, generation]() {
+        SubfolderSearchWorkerMain(state, alive, root, needle, inContents, generation);
     });
+}
+
+void UltraFilerWindow::OpenFindTextDialog() {
+    const std::string folder = filer ? filer->GetPath() : std::string();
+    if (folder.empty()) return;
+    // The walk reads the local file system; a remote drive's folders are
+    // only reachable through its connection.
+    if (IsRemoteFilerPath(folder)) {
+        UltraCanvasAlert::Info("Find text searches local folders only.",
+                               "Find text", nullptr, window.get());
+        return;
+    }
+    UltraCanvasDialogManager::ShowInputDialog(
+            "Find files in this folder and its sub folders that contain:",
+            "Find text", lastFindText, InputType::Text,
+            [this](DialogResult result, const std::string& text) {
+                if (result != DialogResult::OK || text.empty()) return;
+                lastFindText = text;
+                RunSearch(text, true);
+            },
+            window.get());
 }
 
 void UltraFilerWindow::SubfolderSearchWorkerMain(
         std::shared_ptr<SubfolderSearchState> state,
         std::shared_ptr<std::atomic<bool>> alive,
-        std::string root, std::string needle, uint64_t generation) {
+        std::string root, std::string needle, bool inContents,
+        uint64_t generation) {
     // Hands the batch collected so far to the UI thread. Only one is ever in
     // flight: a walk over a fast local tree finds matches far quicker than the
     // display can absorb them, and every posted batch costs a stat per path
@@ -2099,6 +2347,30 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
             if (ec) continue;   // vanished, unreadable, not a directory any more
 
             std::vector<std::string> found;
+            // Moves `found` into the shared state; true once the result cap
+            // is reached and the walk has to end.
+            auto publish = [&]() {
+                const size_t total = state->matches.load() + found.size();
+                bool truncated = false;
+                if (total >= kMaxSearchResults) {
+                    // Bounded so a match-everything query on a huge tree cannot
+                    // grow the result list without end.
+                    if (found.size() > kMaxSearchResults - state->matches.load())
+                        found.resize(kMaxSearchResults - state->matches.load());
+                    truncated = true;
+                }
+                if (!found.empty()) {
+                    std::lock_guard<std::mutex> lk(state->mutex);
+                    state->matches.fetch_add(found.size());
+                    state->pending.insert(state->pending.end(),
+                                          std::make_move_iterator(found.begin()),
+                                          std::make_move_iterator(found.end()));
+                    found.clear();
+                }
+                if (truncated) state->truncated.store(true);
+                return truncated;
+            };
+            bool stop = false;
             for (; it != end; it.increment(ec)) {
                 if (ec || state->cancelled.load()) break;
                 const fs::path p = it->path();
@@ -2113,34 +2385,42 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
                 dec.clear();
                 const bool isDir = !link && it->is_directory(dec) && !dec;
 
-                const std::string name = p.filename().string();
-                std::string lower = name;
-                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                if (lower.find(needle) != std::string::npos)
-                    found.push_back(p.string());
-
                 if (isDir && dir.depth < kMaxSearchDepth)
                     stack.push_back({p, dir.depth + 1});
+
+                if (!inContents) {
+                    const std::string name = p.filename().string();
+                    std::string lower = name;
+                    std::transform(lower.begin(), lower.end(), lower.begin(), ToLowerChar);
+                    if (lower.find(needle) != std::string::npos)
+                        found.push_back(p.string());
+                    continue;
+                }
+
+                // Find text: only regular files are read - never a folder, a
+                // link (see above) or a device - and never an oversized one.
+                if (isDir || link) continue;
+                dec.clear();
+                if (!it->is_regular_file(dec) || dec) continue;
+                const uintmax_t size = it->file_size(dec);
+                if (dec || size == 0 || size > kMaxContentSearchFileBytes) continue;
+                state->filesRead.fetch_add(1);
+                if (FileContainsText(p, needle, state->cancelled))
+                    found.push_back(p.string());
+
+                // Reading a folder of large files takes a while: matches and
+                // the files-read count reach the display while it goes on,
+                // not only once the folder is done.
+                const auto now = std::chrono::steady_clock::now();
+                if (now - lastPost >= std::chrono::milliseconds(kSearchBatchMs)) {
+                    lastPost = now;
+                    if (publish()) { stop = true; break; }
+                    post(false);
+                }
             }
 
             state->foldersScanned.fetch_add(1);
-            const size_t total = state->matches.load() + found.size();
-            bool truncated = false;
-            if (total >= kMaxSearchResults) {
-                // Bounded so a match-everything query on a huge tree cannot
-                // grow the result list without end.
-                if (found.size() > kMaxSearchResults - state->matches.load())
-                    found.resize(kMaxSearchResults - state->matches.load());
-                truncated = true;
-            }
-            if (!found.empty()) {
-                std::lock_guard<std::mutex> lk(state->mutex);
-                state->matches.fetch_add(found.size());
-                state->pending.insert(state->pending.end(),
-                                      std::make_move_iterator(found.begin()),
-                                      std::make_move_iterator(found.end()));
-            }
-            if (truncated) { state->truncated.store(true); break; }
+            if (stop || publish()) break;
 
             const auto now = std::chrono::steady_clock::now();
             if (now - lastPost >= std::chrono::milliseconds(kSearchBatchMs)) {
@@ -2191,7 +2471,22 @@ void UltraFilerWindow::DrainSubfolderSearch(
     const bool done = state->finished.load();
     const bool truncated = state->truncated.load();
 
-    if (!done) {
+    if (searchInContents) {
+        const size_t files = state->filesRead.load();
+        if (!done) {
+            searchStatus = "Searching files for the text \"" + searchQueryText + "\" - "
+                    + std::to_string(matches)
+                    + (matches == 1 ? " file found, " : " files found, ")
+                    + std::to_string(files) + (files == 1 ? " file read" : " files read");
+        } else {
+            searchStatus = std::to_string(matches)
+                    + (matches == 1 ? " file contains \"" : " files contain \"")
+                    + searchQueryText + "\" (" + std::to_string(files)
+                    + (files == 1 ? " file read in " : " files read in ")
+                    + std::to_string(folders)
+                    + (folders == 1 ? " folder)" : " folders)");
+        }
+    } else if (!done) {
         searchStatus = "Searching \"" + searchQueryText + "\" - "
                 + std::to_string(matches)
                 + (matches == 1 ? " result, " : " results, ")
@@ -2201,9 +2496,9 @@ void UltraFilerWindow::DrainSubfolderSearch(
                 + (matches == 1 ? " result for \"" : " results for \"")
                 + searchQueryText + "\" in " + std::to_string(folders)
                 + (folders == 1 ? " folder" : " folders");
-        if (truncated)
-            searchStatus += " (stopped at " + std::to_string(kMaxSearchResults) + ")";
     }
+    if (done && truncated)
+        searchStatus += " (stopped at " + std::to_string(kMaxSearchResults) + ")";
 
     if (done) {
         // The worker is on its way out (it posted this batch as its last act).
@@ -2233,7 +2528,8 @@ void UltraFilerWindow::StopSubfolderSearch() {
     // dropped by the generation bump rather than landing in the next search.
     ++searchGeneration;
     if (wasRunning && !searchQueryText.empty()) {
-        searchStatus = "Search for \"" + searchQueryText + "\" stopped";
+        searchStatus = (searchInContents ? "Text search for \"" : "Search for \"")
+                + searchQueryText + "\" stopped";
         UpdateStatusBar();
     }
     UpdateScanButton();
@@ -2672,15 +2968,38 @@ void UltraFilerWindow::BuildFolderTree() {
     remoteDrives = std::make_unique<UltraFilerRemoteDrives>();
     // Fires on the UI thread once a queued listing has arrived: the folder
     // display is asked again, and this time the cache answers.
+    // What the drives are doing, straight into the status line.
+    remoteDrives->onActivityChanged = [this](const RemoteActivity& activity) {
+        remoteActivity = activity;
+        UpdateStatusBar();
+    };
     remoteDrives->onListingArrived = [this](const std::string& path) {
         // Only the display actually showing that folder needs redoing.
         RefreshRemoteFolderDisplays(path);
+        // The tree too: this is the answer its row was waiting for, whether
+        // it was expanded or the drive was simply opened in a display - which
+        // is what makes a drive's folders appear under it once it is browsed.
+        LoadRemoteTreeChildren(path, /*listingReady=*/true);
+        // And now that the rows below it exist, the tree can follow the
+        // display into them. The selection could not be synced while the
+        // listing was still in flight: the row to select was not there yet.
+        FilerTabState* tab = ActiveTabState();
+        if (tab && tab->filer && !tab->filer->IsShowingFileList() &&
+            TreeFollowsActiveDisplay() &&
+            IsRemoteFilerPath(tab->filer->GetPath()) &&
+            IsPathInside(tab->filer->GetPath(), path))
+            SyncTreeSelection(tab->filer->GetPath());
     };
     // A change to a drive finished: the folder it touched has already been
     // dropped from the cache, so refreshing it refetches from the server.
     remoteDrives->onOperationFinished = [this](const std::string& folderPath,
                                                const std::string& message) {
         RefreshRemoteFolderDisplays(folderPath);
+        // The folder was dropped from the cache when the change finished, so
+        // this queues the refetch that brings the tree's rows back in line -
+        // a folder created, renamed or deleted on the drive. The rows are not
+        // touched until that answer arrives.
+        LoadRemoteTreeChildren(folderPath, /*listingReady=*/false);
         if (message.empty()) {
             lastRemoteOperationError.clear();
             return;
@@ -2726,8 +3045,9 @@ void UltraFilerWindow::BuildFolderTree() {
     folderTree->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) {
         ShowTreeContextMenu(node, event);
     };
-    // Drag a folder from the file list onto the tree: dropping on the Pinned
-    // section pins it, dropping on a folder node moves the files into it.
+    // Drag from the file list onto the tree: dropping on the Pinned section
+    // pins it, dropping on a local folder node moves the files into it, and
+    // dropping on a folder of a remote drive uploads them to it.
     folderTree->onFilesDragAccept = [this](TreeNode* node) {
         return IsTreeDropTarget(node);
     };
@@ -2743,12 +3063,18 @@ bool UltraFilerWindow::IsTreeDropTarget(const TreeNode* node) const {
     if (id == kPinnedNodeId ||
         id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0)
         return true;
-    // A regular folder node accepts a move into the folder it stands for.
     const std::string path = TreeNodeTargetPath(node);
     if (path.empty()) return false;
+    // A remote drive's row takes files too - as an upload, when the drive
+    // can take one. Asked of the drives, never of the local filesystem.
+    if (IsRemoteFilerPath(path))
+        return remoteDrives && remoteDrives->CanUpload(path);
+    // A regular folder node accepts a move into the folder it stands for.
     std::error_code ec;
     return fs::is_directory(path, ec) && !ec;
 }
+
+
 
 bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
                                            const std::vector<std::string>& files) {
@@ -2772,9 +3098,20 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         return true;
     }
 
-    // Otherwise a move into the folder the node represents.
     const std::string dest = TreeNodeTargetPath(target);
     if (dest.empty()) return false;
+
+    // A remote drive's row: the files are uploaded into that folder, one
+    // request each, and the drive's own reply (a refresh of the folder, or
+    // the server's refusal) comes back through onOperationFinished. Local
+    // files only, and files only: a folder is not one transfer, and a
+    // remote entry has no local file to send.
+    if (IsRemoteFilerPath(dest)) {
+        if (!remoteDrives) return false;
+        std::string why;
+        UploadToRemoteFolder(dest, files, why);
+        return true;
+    }
     std::error_code ec;
     if (!fs::is_directory(dest, ec) || ec) return false;
 
@@ -2798,6 +3135,45 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         HandleFolderModified(dest);
     });
     return true;
+}
+
+int UltraFilerWindow::UploadToRemoteFolder(const std::string& folder,
+                                           const std::vector<std::string>& files,
+                                           std::string& firstRefusal) {
+    firstRefusal.clear();
+    if (!remoteDrives || files.empty()) return 0;
+    int queued = 0, skipped = 0;
+    for (const std::string& f : files) {
+        std::string why;
+        if (remoteDrives->Upload(folder, f, why)) ++queued;
+        else { ++skipped; if (firstRefusal.empty()) firstRefusal = why; }
+    }
+    if (statusLabel) {
+        // Where they are going, as the user knows it: the drive's name, and
+        // the folder on it when it is not the drive's root.
+        std::string where;
+        RemoteDrive drive;
+        if (remoteDrives->Find(RemoteFilerAccountId(folder), drive))
+            where = drive.displayName;
+        if (where.empty()) where = "the drive";
+        const std::string sub = RemoteFilerName(folder);
+        if (!sub.empty()) where += " / " + sub;
+        std::string line;
+        if (queued > 0)
+            line = "Uploading " + std::to_string(queued) +
+                   (queued == 1 ? " file" : " files") + " to " + where + "...";
+        if (skipped > 0)
+            line += (line.empty() ? "" : "  ") + std::to_string(skipped) +
+                    (skipped == 1 ? " item not uploaded: " : " items not uploaded: ") +
+                    firstRefusal;
+        statusLabel->SetText(line);
+        // Kept, because the activity line takes the status strip over as
+        // soon as the first upload starts: what was NOT sent would
+        // otherwise be on screen for a fraction of a second. Shown again
+        // by UpdateStatusBar once the drive falls idle.
+        remoteDropNote = skipped > 0 ? line : std::string();
+    }
+    return queued;
 }
 
 void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,
@@ -2928,11 +3304,17 @@ void UltraFilerWindow::ApplyTreeColors() {
 void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     if (!node) return;
     const std::string path = node->data.nodeId;
-    // A remote drive's row is a leaf in the tree: its children would have to
-    // be fetched from a server, which the tree cannot wait for. Clicking it
-    // browses the drive in the folder display, which can. Guarded rather than
-    // left to find nothing, so no local scan is ever run on a remote path.
-    if (IsRemoteFilerPath(path)) return;
+    // A remote folder's children come from the drive's listing, never from
+    // the local filesystem - and never by waiting on a server here, on the UI
+    // thread. LoadRemoteTreeChildren answers from the cache and leaves the
+    // fetch it queues to arrive through onListingArrived, which calls it
+    // again. It keeps its own record of what is loaded, so the guard below
+    // (which would mark the path scanned before any answer was in) is not
+    // used for remote paths.
+    if (IsRemoteFilerPath(path)) {
+        LoadRemoteTreeChildren(path, /*listingReady=*/false);
+        return;
+    }
     // Once per node: the placeholder is only a hint that a scan is due, and a
     // node may reach this before its probe has even added one.
     if (!treeChildrenLoaded.insert(path).second) return;
@@ -2964,6 +3346,14 @@ void UltraFilerWindow::DropTreeSubtree(const std::string& path) {
 // put right.
 void UltraFilerWindow::RefreshTreeFolder(const std::string& folder) {
     if (!folderTree || folder.empty()) return;
+    // A remote folder is not on this disk. Left to the code below, the
+    // is_directory test would answer no and the row - with everything under
+    // it - would be dropped from the tree. The drive's own listing is what
+    // brings a remote row back in line.
+    if (IsRemoteFilerPath(folder)) {
+        LoadRemoteTreeChildren(folder, /*listingReady=*/false);
+        return;
+    }
     TreeNode* node = folderTree->FindNode(folder);
     if (!node) return;   // the tree never reached this far: nothing is stale
 
@@ -3226,12 +3616,21 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
     if (!node) {
         // Expand the deepest known ancestor down towards the target folder.
         std::vector<std::string> chain;    // [path, parent, ..., root]
-        fs::path p(path);
-        while (true) {
-            chain.push_back(p.string());
-            const fs::path parent = p.parent_path();
-            if (parent.empty() || parent == p) break;
-            p = parent;
+        if (IsRemoteFilerPath(path)) {
+            // A remote path climbs by its own scheme. fs::path would read
+            // "ultracloud://acct/Videos" as an ordinary relative path and
+            // never arrive at the drive's root, which is spelled with the
+            // trailing slash RemoteFilerParent returns.
+            for (std::string p = path; !p.empty(); p = RemoteFilerParent(p))
+                chain.push_back(p);
+        } else {
+            fs::path p(path);
+            while (true) {
+                chain.push_back(p.string());
+                const fs::path parent = p.parent_path();
+                if (parent.empty() || parent == p) break;
+                p = parent;
+            }
         }
         size_t idx = 0;
         TreeNode* anchor = nullptr;
@@ -3788,7 +4187,8 @@ void UltraFilerWindow::SyncControlsToActiveDisplay() {
     // query while its results are displayed, else the tab's live filter.
     if (searchInput) {
         searchInput->SetText(!tab->searchQuery.empty()
-                                     ? tab->searchQuery
+                                     ? (tab->searchInContents ? std::string()
+                                                              : tab->searchQuery)
                                      : (tab->filer ? tab->filer->GetNameFilter()
                                                    : std::string()));
     }
@@ -4673,6 +5073,8 @@ void UltraFilerWindow::FillComputerBreadcrumb(UltraCanvasBreadcrumb* crumb) {
 void UltraFilerWindow::NavigateTo(const std::string& path) {
     // Navigating shows a folder, so it always brings the folder display back.
     ShowBrowsingView();
+    // A new folder ends whatever the last drop onto a drive had to report.
+    remoteDropNote.clear();
     if (!filer || path.empty() || path == filer->GetPath()) return;
     filer->SetPath(path);
 }
@@ -4844,8 +5246,108 @@ void UltraFilerWindow::UpdateNavButtons() {
 
 // ===== STATUS BAR / PREVIEW =====
 
+std::string UltraFilerWindow::DescribeRemoteActivity() const {
+    if (!remoteActivity.IsBusy()) return {};
+
+    // A name in quotes where there is one. A listing of a drive's own root has
+    // no name of its own, so it is "the drive" - which is what the user
+    // clicked on and what the row is called.
+    const std::string name = remoteActivity.what;
+    const std::string quoted = name.empty() ? std::string() : "\"" + name + "\"";
+
+    std::string text;
+    switch (remoteActivity.kind) {
+        case RemoteActivity::Kind::Listing:
+            // Both halves of the wait in one line: the request went out, and
+            // what comes back is the folder's contents.
+            text = "Opening " + (quoted.empty() ? "the drive" : quoted) +
+                   " - receiving folder data...";
+            break;
+        case RemoteActivity::Kind::Uploading: {
+            text = "Uploading " + (quoted.empty() ? "a file" : quoted);
+            if (remoteActivity.bytesTotal > 0) {
+                text += " - " +
+                        FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
+                        " of " +
+                        FormatFileSize(static_cast<size_t>(remoteActivity.bytesTotal));
+            } else if (remoteActivity.bytesDone > 0) {
+                // A server that never said how big the file is: what has gone
+                // is still worth showing, and is all there is to show.
+                text += " - " +
+                        FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
+                        " sent";
+            } else {
+                text += "...";
+            }
+            break;
+        }
+        case RemoteActivity::Kind::Deleting:
+            text = "Deleting " + (quoted.empty() ? "an entry" : quoted) +
+                   " on the drive...";
+            break;
+        case RemoteActivity::Kind::Renaming:
+            text = "Renaming " + (quoted.empty() ? "an entry" : quoted) +
+                   " on the drive...";
+            break;
+        case RemoteActivity::Kind::MakingDirectory:
+            text = "Creating folder " + (quoted.empty() ? "" : quoted + " ") +
+                   "on the drive...";
+            break;
+        case RemoteActivity::Kind::Idle:
+            return {};
+    }
+    // What is still behind it, so a drop of five files does not look like one.
+    if (remoteActivity.queued > 0) {
+        text += "  (" + std::to_string(remoteActivity.queued) + " more queued)";
+    }
+    return text;
+}
+
+void UltraFilerWindow::UpdateRemoteProgressBar() {
+    if (!statusProgress) return;
+    // Only a transfer gets a bar: a listing or a rename is one round trip
+    // with nothing to count.
+    const bool show = remoteActivity.IsTransfer();
+    if (statusProgress->IsVisible() != show) statusProgress->SetVisible(show);
+    if (!show) {
+        // Stops the gauge's slide timer as well, so a bar nobody can see is
+        // not being animated.
+        statusProgress->SetIndeterminate(false);
+        return;
+    }
+    // A server that never said how big the file is gives no progress to draw,
+    // but the transfer is running and the bar should say so: the gauge slides
+    // a block instead, on its own timer, which keeps moving between the byte
+    // reports rather than freezing whenever a chunk is in flight.
+    if (remoteActivity.bytesTotal == 0) {
+        statusProgress->SetIndeterminate(true);
+        return;
+    }
+    statusProgress->SetIndeterminate(false);
+    const double percent = 100.0 *
+            static_cast<double>(remoteActivity.bytesDone) /
+            static_cast<double>(remoteActivity.bytesTotal);
+    statusProgress->SetValue(percent < 0.0 ? 0.0 : percent > 100.0 ? 100.0 : percent);
+}
+
 void UltraFilerWindow::UpdateStatusBar() {
     if (!statusLabel) return;
+    UpdateRemoteProgressBar();
+    // A drive is busy whatever the window happens to be showing - the History
+    // view, the Computer page, another tab - so this is said first and in
+    // place of the rest. What a server is doing is the one thing in this
+    // window the user cannot see for themselves.
+    if (const std::string activity = DescribeRemoteActivity(); !activity.empty()) {
+        statusLabel->SetText(activity);
+        return;
+    }
+    // What a drop onto a drive could not send. Held until the next drop or the
+    // next folder, because the activity line above owns the strip while the
+    // files that DID go are going.
+    if (!remoteDropNote.empty()) {
+        statusLabel->SetText(remoteDropNote);
+        return;
+    }
     if (historyShown) {
         const int index = historyTabs ? historyTabs->GetActiveTab() : -1;
         std::string text = "History";
@@ -5279,6 +5781,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             const int treeW = static_cast<int>(treePane->GetWidth());
             if (treeW > 0) treePaneWidth = treeW;
             treeDockShown = false;
+            treeDockTakenFromOther = treeDockTakenFromRest = 0;
             folderTree->SetVisible(false);
             leftPaneBody->AddChild(folderTree);
             split->RemovePane(treePane.get());
@@ -5330,6 +5833,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         // re-homed below), the right-hand pane leaves, and the tree pane
         // comes back in front.
         treeDockShown = false;
+        treeDockTakenFromOther = treeDockTakenFromRest = 0;
         // The left-hand display is the active one again.
         ActivateSplitSide(SplitSide::Left);
         leftPaneHeader->SetVisible(false);
@@ -5414,6 +5918,71 @@ void UltraFilerWindow::ActivateSplitSide(SplitSide side) {
 
 void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
     if (!splitViewShown || !folderTree || !leftPaneBody || !rightPaneBody) return;
+    // The two displays' widths before the change. The tree's width moves
+    // between them with the tree: the pane it docks into grows by it at the
+    // other display's expense, and an undocked tree gives that width back
+    // to the display it was taken from - rather than leaving the pane the
+    // tree left as wide as it was, with the display beside it squeezed.
+    std::vector<int> sizes;
+    bool arranged = split && rightPane && filerPane;
+    if (arranged) {
+        for (size_t i = 0; i < split->PaneCount(); ++i) {
+            const int w = static_cast<int>(split->GetPane(i)->GetWidth());
+            if (w <= 0) arranged = false;
+            sizes.push_back(w);
+        }
+    }
+    const int leftIndex  = arranged ? split->GetPaneIndex(filerPane.get()) : -1;
+    const int rightIndex = arranged ? split->GetPaneIndex(rightPane.get()) : -1;
+    if (leftIndex < 0 || rightIndex < 0) arranged = false;
+    auto paneOf = [&](SplitSide s) { return s == SplitSide::Right ? rightIndex : leftIndex; };
+    auto otherOf = [](SplitSide s) { return s == SplitSide::Right ? SplitSide::Left : SplitSide::Right; };
+    // The panes that are neither display: the preview pane, when it is up.
+    std::vector<size_t> rest;
+    if (arranged) {
+        for (size_t i = 0; i < sizes.size(); ++i)
+            if (static_cast<int>(i) != leftIndex && static_cast<int>(i) != rightIndex)
+                rest.push_back(i);
+    }
+    if (arranged) {
+        const bool wasDocked = treeDockShown;
+        const SplitSide wasSide = treeDockSide;
+        if (wasDocked && (!visible || side != wasSide)) {
+            // The tree leaves its pane: what docking took goes back where it
+            // came from, as far as the pane can give it (it keeps its own
+            // minimum), and what the preview pane gave but cannot take back
+            // - it has gone meanwhile - goes to the other display.
+            const int from = paneOf(wasSide);
+            const int to = paneOf(otherOf(wasSide));
+            int give = std::min(treeDockTakenFromOther + treeDockTakenFromRest,
+                                sizes[from] - kSplitPaneMinWidth);
+            int toRest = rest.empty() ? 0 : std::min(treeDockTakenFromRest, give);
+            if (toRest > 0) TakeFromPanes(sizes, rest, -toRest);
+            sizes[from] -= give;
+            sizes[to] += give - toRest;
+            treeDockTakenFromOther = treeDockTakenFromRest = 0;
+        }
+        if (visible && !(wasDocked && side == wasSide)) {
+            // The tree's width comes out of the other display first, and
+            // when that display cannot spare it all, out of the preview
+            // pane - which takes its own width from the displays, so it is
+            // the one to give here rather than leave the docked display a
+            // sliver beside the tree.
+            const int to = paneOf(side);
+            const int from = paneOf(otherOf(side));
+            int want = treePaneWidth;
+            const int fromOther = std::clamp(sizes[from] - kSplitPaneMinWidth, 0, want);
+            want -= fromOther;
+            int restSpare = 0;
+            for (size_t i : rest) restSpare += std::max(0, sizes[i] - kPreviewMinWidth);
+            const int fromRest = std::min(want, restSpare);
+            if (fromRest > 0) TakeFromPanes(sizes, rest, fromRest);
+            sizes[from] -= fromOther;
+            sizes[to] += fromOther + fromRest;
+            treeDockTakenFromOther = fromOther;
+            treeDockTakenFromRest = fromRest;
+        }
+    }
     if (visible) {
         // Into the body row of that pane, in front of its display: the tree
         // has a width of its own and the display takes the rest.
@@ -5444,6 +6013,7 @@ void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
         treeDockShown = false;
     }
     ApplySplitPaneMinSizes();
+    if (arranged) split->SetPaneSizes(sizes);
     StyleSplitHeaders();
 }
 

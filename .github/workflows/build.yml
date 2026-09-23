@@ -35,7 +35,37 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # A merge commit that brings in a pending changelog entry does not carry its
+  # version yet: changelog-fold.yml assigns it in the commit that follows, and
+  # line 1 of CHANGELOG.md here is still the PREVIOUS release. Building the
+  # release from this commit would package new code under an already-published
+  # number, so the release build waits for the fold commit - which carries the
+  # right one - and this gate skips the commit before it.
+  #
+  # Only pushes are gated. A pull request always builds: its entry is pending
+  # by design, and nothing it produces is published.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      pending: ${{ steps.check.outputs.pending }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: check
+        shell: bash
+        run: |
+          count=$(find Docs/UltraCanvas/changelog.d -maxdepth 1 -name '*.md' \
+                       ! -name 'README.md' 2>/dev/null | wc -l)
+          if [ "${{ github.event_name }}" = "push" ] && [ "$count" -gt 0 ]; then
+            echo "pending=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$count changelog entr(y/ies) still pending - the release " \
+                 "build runs on the fold commit that changelog-fold.yml is about to push."
+          else
+            echo "pending=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: gate
+    if: needs.gate.outputs.pending == 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -149,6 +179,7 @@ jobs:
             ${{ matrix.msys_prefix }}-ccache
             ${{ matrix.msys_prefix }}-ninja
             ${{ matrix.msys_prefix }}-pkgconf
+            ${{ matrix.msys_prefix }}-cppwinrt
             ${{ matrix.msys_prefix }}-rust
             ${{ matrix.msys_prefix }}-cairo
             ${{ matrix.msys_prefix }}-pango
@@ -227,7 +258,7 @@ jobs:
             || gcc -print-multiarch)
           echo "Building Linux dependencies for $MULTIARCH ($(uname -m))"
           sudo apt-get install -y libcairo2-dev libpango1.0-dev libharfbuzz-dev
-          sudo apt-get install -y libvips-dev libglib2.0-dev libfreetype6-dev
+          sudo apt-get install -y libvips-dev libglib2.0-dev libfreetype6-dev dbus
           sudo apt-get install -y libtinyxml2-dev libfmt-dev
           sudo apt-get install -y libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
           sudo apt-get install -y libcdr-dev librevenge-dev zlib1g-dev
@@ -744,6 +775,8 @@ jobs:
   # ordering regressions, and CMake breakage - not link errors.
   android-check:
     name: Android backend check
+    needs: gate
+    if: needs.gate.outputs.pending == 'false'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

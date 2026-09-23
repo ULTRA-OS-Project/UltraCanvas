@@ -1,15 +1,18 @@
 // UltraCanvasVectorStorage.cpp
 // Implementation of the Vector Graphics Storage System for UltraCanvas
-// Version: 1.0.0
-// Last Modified: 2025-01-20
+// Version: 1.1.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "DataFormats/UltraCanvasVectorPathOps.h"
 #include <cmath>
 #include <cstdlib>
 #include <algorithm>
 #include <sstream>
+#include <locale>
+#include <cstring>
 #include <regex>
 #include <numeric>
 
@@ -1351,6 +1354,113 @@ Rect2Dd VectorDocument::GetBoundingBox() const {
     return bbox;
 }
 
+// ===== WHERE THE DRAWING ACTUALLY IS =====
+// ContentBounds(): GetBoundingBox() with far-away specks left out. See the
+// header for what this is for and what it promises.
+namespace {
+
+    // A run of drawables is a speck to ignore only when it holds at most this
+    // fraction of them AND stands at least this much of the drawing's extent
+    // clear of the rest. Both have to hold: a few entities at the edge of a
+    // dense drawing (a frame, a north arrow) are not specks because they are
+    // not far away, and a quarter of the drawing is not a speck however far
+    // off it sits - it is the second half of a two-part sheet.
+    constexpr double kSpeckFraction = 0.01;
+    constexpr double kGapFraction   = 0.20;
+    // Below this, every drawable is a meaningful part of the picture.
+    constexpr size_t kMinDrawables  = 50;
+
+    void CollectDrawableBounds(const VectorElement& element, const Matrix3x3& parent,
+                               std::vector<Rect2Dd>& out) {
+        if (!element.Style.Visible || !element.Style.Display) return;
+        if (const auto* group = dynamic_cast<const VectorGroup*>(&element)) {
+            // A group's own GetBoundingBox() applies its transform to the
+            // union of its children, so the accumulated matrix picks it up
+            // here and the children are walked in their own space.
+            Matrix3x3 here = element.Transform.has_value() ? parent * element.Transform.value()
+                                                           : parent;
+            for (const auto& child : group->Children) {
+                if (child) CollectDrawableBounds(*child, here, out);
+            }
+            return;
+        }
+        Rect2Dd box = element.GetBoundingBox();     // the element's own transform is in it
+        if (IsEmptyBounds(box)) return;
+        out.push_back(parent.IsIdentity() ? box : parent.Transform(box));
+    }
+
+    // The indices that survive on one axis: the drawables are grouped into
+    // runs separated by gaps of at least `gap`, and the runs too small to
+    // matter are dropped - never all of them, and never more than the speck
+    // budget in total.
+    std::vector<size_t> DropDistantRuns(const std::vector<Rect2Dd>& boxes,
+                                        std::vector<size_t> keep, bool vertical, double gap) {
+        if (keep.size() < kMinDrawables || !(gap > 0)) return keep;
+        auto lo = [&](size_t i) { return vertical ? boxes[i].y : boxes[i].x; };
+        auto hi = [&](size_t i) { return vertical ? boxes[i].y + boxes[i].height
+                                                  : boxes[i].x + boxes[i].width; };
+        std::sort(keep.begin(), keep.end(), [&](size_t a, size_t b) { return lo(a) < lo(b); });
+
+        std::vector<std::vector<size_t>> runs;
+        double reach = 0;
+        for (size_t i : keep) {
+            if (runs.empty() || lo(i) - reach > gap) {
+                runs.push_back({i});
+                reach = hi(i);
+            } else {
+                runs.back().push_back(i);
+                reach = std::max(reach, hi(i));
+            }
+        }
+        if (runs.size() < 2) return keep;
+
+        // Smallest first, so the budget is spent on the specks.
+        std::vector<size_t> order(runs.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::sort(order.begin(), order.end(),
+                  [&](size_t a, size_t b) { return runs[a].size() < runs[b].size(); });
+
+        std::vector<bool> dropped(runs.size(), false);
+        size_t budget = static_cast<size_t>(keep.size() * kSpeckFraction);
+        size_t left = runs.size();
+        for (size_t r : order) {
+            if (left <= 1) break;
+            if (runs[r].size() > budget) break;     // and so is every larger run
+            budget -= runs[r].size();
+            dropped[r] = true;
+            --left;
+        }
+
+        std::vector<size_t> survivors;
+        survivors.reserve(keep.size());
+        for (size_t r = 0; r < runs.size(); ++r) {
+            if (!dropped[r]) survivors.insert(survivors.end(), runs[r].begin(), runs[r].end());
+        }
+        return survivors;
+    }
+
+}   // namespace
+
+Rect2Dd ContentBounds(const VectorDocument& document) {
+    std::vector<Rect2Dd> boxes;
+    for (const auto& layer : document.Layers) {
+        if (layer && layer->Visible) CollectDrawableBounds(*layer, Matrix3x3::Identity(), boxes);
+    }
+    Rect2Dd full{0, 0, 0, 0};
+    for (const Rect2Dd& b : boxes) full = UnionBounds(full, b);
+    if (boxes.size() < kMinDrawables || IsEmptyBounds(full)) return document.GetBoundingBox();
+
+    std::vector<size_t> keep(boxes.size());
+    std::iota(keep.begin(), keep.end(), size_t{0});
+    keep = DropDistantRuns(boxes, std::move(keep), false, full.width * kGapFraction);
+    keep = DropDistantRuns(boxes, std::move(keep), true, full.height * kGapFraction);
+    if (keep.size() == boxes.size()) return full;
+
+    Rect2Dd dense{0, 0, 0, 0};
+    for (size_t i : keep) dense = UnionBounds(dense, boxes[i]);
+    return IsEmptyBounds(dense) ? full : dense;
+}
+
 void VectorDocument::FitToContent(float padding) {
     Rect2Dd bbox = GetBoundingBox();
     
@@ -1590,7 +1700,17 @@ namespace {
             return Point2Dd(tip.x + d.x * ax + n.x * ay, tip.y + d.y * ax + n.y * ay);
         };
         const char* s = stock->Spec;
-        auto num = [&]() { char* e = nullptr; const double v = std::strtod(s, &e); s = e; return v; };
+        // The arrowhead spec is a built-in dot-decimal string, so it must be
+        // read as one: strtod goes through LC_NUMERIC and would stop at the
+        // first '.' on a comma-decimal desktop, truncating every arrowhead.
+        // ParseFloatClassic, unlike strtod, does not skip leading blanks, and
+        // every number in the spec follows one.
+        auto num = [&]() {
+            while (*s == ' ') ++s;
+            double v = 0.0;
+            s = ParseFloatClassic(s, s + std::strlen(s), v);
+            return v;
+        };
         while (*s) {
             while (*s == ' ') ++s;
             const char verb = *s;
@@ -1800,6 +1920,12 @@ PathData ParsePathString(const std::string& pathStr) {
 
 std::string SerializePathData(const PathData& path) {
     std::ostringstream oss;
+    // Path parameters are separated by spaces and commas, so a comma decimal
+    // point does not just misread - it changes the number of coordinates.
+    // `M 1.5 2` written on a comma-decimal desktop becomes `M 1,5 2`, which
+    // reads back as the point (1, 5). This is the defect that was fixed in
+    // the SVG converter and left here.
+    oss.imbue(std::locale::classic());
     
     for (const auto& cmd : path.commands) {
         char cmdChar = 0;
@@ -1875,7 +2001,9 @@ Color ParseColorString(const std::string& colorStr) {
             result.r = std::stoi(match[1]);
             result.g = std::stoi(match[2]);
             result.b = std::stoi(match[3]);
-            result.a = static_cast<uint8_t>(std::stof(match[4]) * 255);
+            float alpha = 1.0f;
+            TryParseFloat(match[4].str(), alpha);   // rgba() alpha: dot-decimal
+            result.a = static_cast<uint8_t>(alpha * 255);
         }
     }
     // Handle named colors (basic set)
@@ -1906,10 +2034,14 @@ Color ParseColorString(const std::string& colorStr) {
 std::string SerializeColor(const Color& color) {
     if (color.a < 255) {
         // Use rgba format if transparency
-        return "rgba(" + std::to_string(color.r) + "," + 
-               std::to_string(color.g) + "," + 
-               std::to_string(color.b) + "," + 
-               std::to_string(color.a / 255.0f) + ")";
+        // The alpha must not be written through LC_NUMERIC: std::to_string
+        // renders 0.5 as "0,500000" on a comma-decimal desktop, and a comma
+        // inside rgba() is the channel separator - the colour would read back
+        // as a five-argument function, not as a transparent one.
+        return "rgba(" + std::to_string(color.r) + "," +
+               std::to_string(color.g) + "," +
+               std::to_string(color.b) + "," +
+               FormatFloatClassic(color.a / 255.0f) + ")";
     } else {
         // Use hex format for opaque colors
         char hex[8];

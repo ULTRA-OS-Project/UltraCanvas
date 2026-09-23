@@ -10,6 +10,9 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 #include <UltraCanvasUtils.h>
 #include <UltraNet/UltraNetMime.h>
 namespace fs = std::filesystem;
@@ -251,6 +254,57 @@ SyncOutcome SyncEngine::SetFlag(const std::string& accountId, const std::string&
     UltraDbResult lr = store_.SetFlags(accountId, folder, uid, ultramailFlag, set);
     if (!lr) return SyncOutcome::Fail(lr.message);
     return SyncOutcome{};
+}
+
+SyncOutcome SyncEngine::ReconcileFlags(const std::string& accountId,
+                                       const std::string& folder,
+                                       const std::string& serverUrl,
+                                       const UltraNetMailOptions& options) {
+    // Snapshot what we hold locally so we can both diff flags and notice UIDs the
+    // server has dropped.
+    std::vector<MessageEnvelope> locals;
+    store_.ListMessages(accountId, folder, 0, locals);
+    std::unordered_map<int64_t, uint32_t> localFlags;
+    localFlags.reserve(locals.size());
+    for (const auto& m : locals) localFlags[m.uid] = m.flags;
+
+    SyncOutcome out;
+    std::unordered_set<int64_t> serverUids;
+    UltraNetResult r = mailbox_.FetchAllFlags(
+        serverUrl, folder,
+        [&](uint32_t uid, UltraNetMailFlags nf, bool flagsKnown) {
+            const int64_t u = static_cast<int64_t>(uid);
+            serverUids.insert(u);   // existence — drives deletion detection
+            // Reconcile a flag only when the server flags were actually read;
+            // rewriting on an unknown flag would wrongly mark read mail unread.
+            // (UIDs new to us are the incremental SyncMessages step's job.)
+            if (!flagsKnown) return;
+            auto it = localFlags.find(u);
+            if (it == localFlags.end()) return;
+            const uint32_t want = MapNetFlagsToLocal(nf);
+            if (it->second != want &&
+                store_.ReplaceFlags(accountId, folder, u, want))
+                out.stats.reconciled++;
+        },
+        options);
+
+    // Expunge locally-held messages the server no longer lists — but NEVER on an
+    // empty enumeration while we still hold mail. A failed/empty flag fetch is not
+    // "the folder is empty"; treating it as such would delete the whole cache. So
+    // the expunge runs only when the server positively enumerated the folder.
+    const bool enumerated = r && !(serverUids.empty() && !locals.empty());
+    if (enumerated) {
+        for (const auto& m : locals) {
+            if (!serverUids.count(m.uid) &&
+                store_.RemoveMessage(accountId, folder, m.uid))
+                out.stats.expunged++;
+        }
+    }
+    std::fprintf(stderr, "[UMSTREAM] ReconcileFlags folder=%s locals=%zu serverUids=%zu "
+                         "reconciled=%d expunged=%d enumerated=%d ok=%d\n",
+                 folder.c_str(), locals.size(), serverUids.size(),
+                 out.stats.reconciled, out.stats.expunged, (int)enumerated, (int)(bool)r);
+    return out;
 }
 
 SyncOutcome SyncEngine::MoveMessage(const std::string& accountId,

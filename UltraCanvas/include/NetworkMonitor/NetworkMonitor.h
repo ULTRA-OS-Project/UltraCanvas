@@ -9,13 +9,16 @@
 // read, and so sees every process it is allowed to look at. It observes and
 // records; it never blocks, filters or modifies traffic.
 //
-// Phase 1 (this file): a polled snapshot of the socket table with process
-// attribution, and a per-process roll-up. Byte counters, connection events,
-// name resolution and file-transfer correlation are later phases - see
-// Docs/Modules/NetworkMonitor/README.md for what is built and what is not.
+// This file: a polled snapshot of the socket table with process attribution
+// and byte counters where the backend has them, a per-process roll-up, and
+// the domain name behind a peer address where a name source has seen it
+// (NetworkMonitorNames.h), and connections reported as they open and close
+// where an event source runs (NetworkMonitorEvents.h). File-transfer
+// correlation is a later phase - see Docs/Modules/NetworkMonitor/README.md
+// for what is built and what is not.
 //
-// Version: 0.1.0
-// Last Modified: 2026-09-19
+// Version: 0.9.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -88,6 +91,40 @@ struct ProcessIdentity {
     std::string executablePath;   // "/usr/lib/firefox/firefox"; empty when unreadable
     std::string displayName;      // "firefox" - the kernel's comm, or the exe's basename
     std::string userName;         // owner of the socket, from the table's UID
+
+    // "firefox (27352)", or "(unattributed)" for an empty identity.
+    std::string Label() const { return displayName + " (" + std::to_string(pid) + ")"; }
+};
+
+// A connection whose other end is on this machine: which side of it this
+// socket is. The server is the side whose port a listener holds.
+enum class LoopbackRole { None, Client, Server };
+
+// Where a domain name came from. The first four are *observed*: a source saw
+// the query that produced the address, so the name is the one the
+// application asked for. ReverseDns and Inferred are *weak*: a PTR record
+// or a guess, near-useless behind a CDN, and a UI shows them as such. The
+// order is the precedence when two sources name one address.
+enum class NameSource {
+    None,
+    DnsProxy,        // the local DNS proxy saw the query (NetworkMonitorNames.h)
+    EtwDnsClient,    // the Windows DNS client's own events, with the PID
+    PacketCapture,   // port-53 capture (not built yet)
+    Sni,             // the TLS ClientHello's server name (not built yet)
+    ReverseDns,      // a PTR lookup of the address - weak
+    Inferred         // a guess from other evidence - weak
+};
+
+// One answered query as a name source reports it: the name asked for and
+// the addresses it resolved to, with the process where the source knows it
+// (only the Windows DNS client events do).
+struct DnsObservation {
+    std::string              queryName;      // "www.example.com", lower-case, no trailing dot
+    std::vector<std::string> addresses;      // the A / AAAA answers, in text
+    std::optional<ProcessIdentity> process;  // the asking process, where known
+    NameSource               source = NameSource::None;
+    int64_t                  observedAt = 0; // Unix seconds; 0 = now
+    int                      ttlSeconds = 0; // the shortest answer TTL; 0 = unknown
 };
 
 struct NetworkConnection {
@@ -111,9 +148,28 @@ struct NetworkConnection {
     std::optional<ProcessIdentity> process;
 
     // std::optional, as UltraCanvasHardwareInfo does: "0 bytes" and "not
-    // reported" are different facts. Not filled by the Phase 1 backends.
+    // reported" are different facts. Filled where the backend has counters.
     std::optional<uint64_t> bytesSent;
     std::optional<uint64_t> bytesReceived;
+
+    // The domain name behind remoteAddress, when a name source has seen
+    // one, and which source: empty / None until then. Filled by
+    // NetworkMonitor_ListConnections from the name table
+    // (NetworkMonitorNames.h) when the options ask for it.
+    std::string remoteName;
+    NameSource  nameSource = NameSource::None;
+
+    // The loopback chain (NetworkMonitor_DecodeLoopback): when the other
+    // end of this connection is a socket on this machine, the process on
+    // that end and which side this is. A mail client talking to an
+    // antivirus mail proxy on 127.0.0.1:12993 is the Client with the proxy
+    // as localPeer; the proxy's accepted socket is the Server with the
+    // client as localPeer. `forProcesses` is the inference the other way:
+    // on a process's outbound connections, the loopback clients that
+    // process serves - the applications its traffic is really for.
+    LoopbackRole                   loopbackRole = LoopbackRole::None;
+    std::optional<ProcessIdentity> localPeer;
+    std::vector<std::string>       forProcesses;   // "thunderbird (4120)", distinct
 
     bool IsListening() const { return state == NetworkConnectionState::Listening; }
     bool IsLoopback() const;
@@ -130,9 +186,9 @@ struct NetworkMonitorCapabilities {
     bool socketTable        = false;  // a snapshot is possible at all
     bool processAttribution = false;  // sockets can be mapped to a PID
     bool allUsers           = false;  // false = only this user's processes are attributable
-    bool connectionEvents   = false;  // event-rate collection (not in Phase 1)
-    bool perConnectionBytes = false;  // byte counters (not in Phase 1)
-    bool dnsWithProcess     = false;  // DNS queries with a PID (not in Phase 1)
+    bool connectionEvents   = false;  // an event source is running (NetworkMonitorEvents.h)
+    bool perConnectionBytes = false;  // byte counters in the snapshot
+    bool dnsWithProcess     = false;  // a running name source reports the asking PID
     std::string backendName;          // "procfs", "none"
     // Human-readable lines for what is missing and why, in the order a
     // status line wants them.
@@ -144,6 +200,7 @@ struct NetworkMonitorOptions {
     bool includeListening = true;   // LISTEN / unconnected UDP sockets
     bool includeLoopback  = true;   // 127.0.0.0/8 and ::1 endpoints
     bool resolveProcesses = true;   // map sockets to PIDs (the expensive part)
+    bool resolveNames     = true;   // fill remoteName from the name table
 };
 
 // ===== PER-PROCESS ROLL-UP =====
@@ -153,8 +210,15 @@ struct ProcessTrafficSummary {
     int      connectionCount  = 0;
     int      establishedCount = 0;
     int      listeningCount   = 0;
-    // Distinct remote addresses, listeners' wildcard excluded.
+    // Distinct remote addresses, listeners' wildcard excluded, and the
+    // distinct names known for them.
     std::vector<std::string> remoteAddresses;
+    std::vector<std::string> remoteNames;
+    // The loopback chain at process level: the local processes this one
+    // connects to (a proxy it goes through), and the local processes that
+    // connect to this one (the applications it serves). "name (pid)" each.
+    std::vector<std::string> viaProcesses;
+    std::vector<std::string> servesProcesses;
     // Sums, present only when every connection in the group reported a value.
     std::optional<uint64_t> bytesSent;
     std::optional<uint64_t> bytesReceived;
@@ -176,10 +240,37 @@ NetworkMonitorResult NetworkMonitor_ListConnections(
 std::vector<ProcessTrafficSummary> NetworkMonitor_SummarizeByProcess(
     const std::vector<NetworkConnection>& connections);
 
+// Decodes the loopback chains in a snapshot: pairs every connection whose
+// peer is on this machine with its mirror (the socket on the other end),
+// fills loopbackRole and localPeer on both, and, on the outbound
+// connections of a process that serves loopback clients, forProcesses.
+// Pure; NetworkMonitor_ListConnections applies it to every snapshot before
+// the filters, so a connection kept without its loopback mirror still
+// carries what the mirror told. A test drives it from fixtures.
+void NetworkMonitor_DecodeLoopback(std::vector<NetworkConnection>& connections);
+// "client", "server", "" for None. Never null.
+const char* NetworkMonitor_LoopbackRoleName(LoopbackRole role);
+
 // Names for display and for the command line. Never null.
 const char* NetworkMonitor_TransportName(NetworkTransport transport);
 const char* NetworkMonitor_StateName(NetworkConnectionState state);
+// "DNS proxy", "reverse DNS", ...; "none" for None.
+const char* NetworkMonitor_NameSourceName(NameSource source);
+// True for the observed sources, false for the weak ones and None.
+bool        NetworkMonitor_NameIsObserved(NameSource source);
 // "1.2.3.4:443", "[fe80::1]:22"; an empty address is "*".
 std::string NetworkMonitor_FormatEndpoint(const std::string& address, uint16_t port);
+
+// A snapshot as CSV (RFC 4180 quoting, dot-decimal numbers), in the order
+// given: the per-process roll-up one row per process, with its distinct
+// peers, hosts and loopback chain semicolon-joined; the connections one
+// row each with the process behind it and the loopback chain. `rowsWritten`,
+// when given, receives the row count.
+NetworkMonitorResult NetworkMonitor_ExportSummaryCsv(const std::vector<ProcessTrafficSummary>& summaries,
+                                                     const std::string& path,
+                                                     int64_t* rowsWritten = nullptr);
+NetworkMonitorResult NetworkMonitor_ExportConnectionsCsv(const std::vector<NetworkConnection>& connections,
+                                                         const std::string& path,
+                                                         int64_t* rowsWritten = nullptr);
 
 } // namespace UltraCanvas

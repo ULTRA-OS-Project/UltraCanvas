@@ -120,6 +120,7 @@ _ultracanvas_declare_product(ULTRACANVAS         "Docs/UltraCanvas/CHANGELOG.md"
 _ultracanvas_declare_product(ULTRATEXTER         "Docs/Texter/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLEANER        "Docs/UltraCleaner/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRANETMONITOR     "Docs/UltraNetMonitor/CHANGELOG.md")
+_ultracanvas_declare_product(DEVICEEXPLORER      "Docs/DeviceExplorer/CHANGELOG.md")
 _ultracanvas_declare_product(ANCHORPOINT         "Docs/AnchorPoint/CHANGELOG.md")
 _ultracanvas_declare_product(EMAILCLEANER        "Docs/EmailCleaner/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRAAI             "Docs/UltraAI/CHANGELOG.md")

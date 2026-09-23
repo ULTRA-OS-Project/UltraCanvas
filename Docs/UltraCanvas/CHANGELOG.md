@@ -1,3 +1,952 @@
+#### 2026-09-23 *0.9.47*
+- **A gauge's `LinearBar` can say "busy, total unknown".** `SetIndeterminate`
+  drops the value entirely and slides a block along the track - a download
+  whose server sent no length, a queue still being counted - where before the
+  only honest option was to leave the bar at zero, which reads as progress
+  that is stuck, or to hide it and say nothing. It animates on a timer the
+  gauge owns, started and stopped with the flag and torn down with the element:
+  a caller reporting bytes has nothing to report while the total is unknown, so
+  a bar driven by those reports would freeze whenever a chunk was in flight.
+  LinearBar only; other modes ignore it.
+- **A gauge's `LinearBar` fits the box it is given.** It is the framework's
+  progress bar - "Horizontal or vertical bar (e.g. download progress)" - but it
+  was sized only as a dashboard gauge: a caption over a 28 px bar with the
+  value spelled out underneath, which needs some 114 px of height before any of
+  it fits. In anything shorter it laid out for the height it wanted rather than
+  the height it was given and drew its bar and its value outside the element,
+  which is what kept it out of the one place a progress bar is most wanted - a
+  status line, a list row, a panel footer, all of them twenty-odd pixels tall.
+  Below the height its caption and value line need it now drops both, drops its
+  side padding, and is simply the bar across the whole element. A gauge with the
+  room to be a dashboard gauge is unchanged, pixel for pixel.
+- **`UltraCanvasGaugeDiagramElement` is in the element catalogue.** It was not,
+  so `Docs/UltraCanvas/UltraCanvasUIElements.md` - the file every assistant and
+  contributor is told to consult before building UI - offered a progress
+  *dialog* and nothing else, and the gauge was findable only by already knowing
+  its name. That is exactly how a second progress bar gets written.
+- **An FTP transfer reports its bytes.** `UltraNet_FtpUpload` and
+  `UltraNet_FtpDownload` set up libcurl without a progress callback, so a file
+  moving to or from a server was silent from first byte to last and nothing
+  above them could draw a progress bar however much it wanted to. Both install
+  one now, feeding the module's existing global transfer callbacks
+  (`UltraNet_SetTransferCallbacks`) - the same bag every HTTP request already
+  reports through, so a caller sets it once and hears about every transfer
+  whatever the protocol. Listings and the one-shot verbs are left alone: they
+  move too little for anyone to watch.
+
+#### 2026-09-23 *0.9.46*
+- **UltraCanvasFilerWidget: files dropped onto a remote folder are uploaded.**
+  A new optional hook, `remoteUpload`, receives the paths dropped onto a
+  remote folder shown in the widget (from another program, or from another
+  display of the same window); the host puts them onto the drive and
+  refreshes. Without it the drop went through the local paste path and was
+  refused as "not a writable folder". Dragging a remote display's own
+  entries onto one of its folder tiles is refused with a message that says
+  so, instead of "not a folder". Used by UltraFiler 1.47.0.
+
+#### 2026-09-23 *0.9.45*
+- **Connection events carry the loopback chain.** `NetworkConnectionEvent`
+  gains `loopbackRole`, `localPeer` and `forProcesses`, as on
+  `NetworkConnection`: the registry fills them from the socket table it
+  already attributes from (decoded by `NetworkMonitor_ListConnections`),
+  remembers them with the process so a Closed carries what its Opened
+  had, and the snapshot differ fills them from its own table and keeps
+  a closing connection's chain from the read that still saw the peer's
+  socket owned (`chainDecoded` says a source did). A tuple the table
+  lacks - a connection younger than the table, as often as not - makes
+  the registry read the table again, at most every 20 ms, which also
+  attributes conntrack's NEW events better. The store records them with each
+  event (schema version 5, migrated in place), its text filter matches
+  the peer and the `for` list, and the events CSV gains `loopback_role`,
+  `local_peer` and `for`. NetworkMonitor 0.9.
+
+#### 2026-09-23 *0.9.44*
+- **The activity store keeps loopback chains.** A recorded flow carries
+  the chain its sightings decoded - `RecordedFlow::loopbackRole`,
+  `localPeer` and `forProcesses`, the same as on `NetworkConnection` - so
+  "what did the mail client fetch on Tuesday" has an answer although the
+  mail server only ever saw the antivirus proxy. A sighting with a chain
+  replaces the recorded one; a sighting without (the mirror socket
+  already gone) keeps it. The daily totals keep the last `for` their
+  flows carried (`DailyProcessTotal::forProcesses`), the text filter
+  matches the peer and the `for` list on both, and the flows CSV gains
+  `loopback_role`, `local_peer` and `for`. Schema version 4, migrated in
+  place; a file from an earlier version reads back with no chain, as
+  before. NetworkMonitor 0.8.
+
+#### 2026-09-23 *0.9.43*
+- **The dependency tables now list libudev.** IODeviceManager's Linux
+  hot-plug watcher links libudev when the configure step finds it, and without
+  it `StartMonitoring()` returns `BackendUnavailable`. Nothing said so outside
+  `UltraCanvas/CMakeLists.txt`. `Docs/Dependencies.md` and the DemoApp's
+  in-app copy (`UltraCanvasDependenciesExamples.cpp`) gain a *Hot-plug
+  watching* row: libudev (optional) on Linux, no watcher yet on macOS or
+  Windows. libudev is also added to the library-links table (LGPL 2.1, part of
+  systemd). Its effect on DeviceExplorer is documented in that app's own docs.
+
+#### 2026-09-23 *0.9.42*
+- **The callback-cycle check now runs in CI, and the rule is written down.**
+  `scripts/check_callback_cycles.py` shipped in 0.9.32 with nothing calling
+  it, which is the same blind spot as a test no pipeline builds.
+  `.github/workflows/callback-cycles.yml` runs it with `--strict` on every
+  pull request that touches the roots it scans — `UltraCanvas/core`,
+  `UltraCanvas/include`, `UltraCanvas/dialogs`, `Apps`, `SmartHome` — plus
+  the script and the workflow itself. Triggers, path filters and the
+  concurrency group mirror `ui-reuse.yml` exactly, including the base-branch
+  list that covers stacked pull requests (`main` and `claude/**`): #455 once
+  reached 1059 changed lines with no job running because that list said
+  `main` alone.
+  - **`AGENTS.md` states the rule** beside "Build UI out of UltraCanvas
+    elements", where the next author is already reading, and in the house
+    rules beside the line about running the UI check before pushing. A
+    callback stored on a widget must not capture a `shared_ptr` to that
+    widget or to a container above it; capture the back-reference raw. The
+    entry says which captures are ownership rather than a cycle, so the rule
+    cannot be read as "never capture anything".
+  - Verified by reintroducing one of the 53 cycles that 0.9.32 removed:
+    the workflow's exact command reports it and exits 1, and exits 0 again
+    once reverted. On a clean tree it takes about five seconds over 1173
+    files, so it costs a CI slot, not a CI budget.
+- **The framework's version number is assigned on `main` now, not on the
+  branch.** Line 1 of this file *is* the version — cmake reads it and every
+  `project(VERSION …)`, compile definition and packaging script follows — so
+  every branch wanted to write that one line, and two open at once always
+  collided. On 2026-09-23 one branch was renumbered five times in a morning
+  (0.9.23 → 0.9.27 → 0.9.28 → 0.9.29 → 0.9.31), each renumber throwing away a
+  six-platform CI matrix, and 0.9.29 was consumed and lost in the churn.
+  - **A branch now writes `Docs/UltraCanvas/changelog.d/<change>.md`** — just
+    the bullets, no header, no number. Two branches adding two files cannot
+    conflict, and there is nothing to renumber when `main` moves.
+  - **`.github/workflows/changelog-fold.yml`** folds whatever is pending into
+    this file under the next patch version once it lands on `main`, and
+    deletes the entries. `scripts/fold_changelog.py` does the same locally
+    (`--check` to look without touching anything, `--version` for a release
+    that must carry a chosen number).
+  - **`build.yml` gained a `gate` job.** The merge commit still has the entry
+    pending, so its line 1 is the *previous* release; building the release
+    there would package new code under an already-published number. The gate
+    skips the release build for that one commit and lets the fold commit —
+    which carries the right number — produce the artifacts. Pull requests are
+    never gated.
+  - **`check_changelog.py` refuses a `####` header inside a pending entry**,
+    since a number chosen on a branch is the collision the directory exists to
+    end, and would otherwise be folded in verbatim as a second header. A
+    hand-cut hotfix that must carry a specific number can still be written
+    straight into this file as a top entry, held to the same rules as before.
+  - `AGENTS.md` documents the flow where the old "pick the next number"
+    instruction used to be. Application changelogs are unchanged: one product
+    to a file, little contention.
+- **The locale-decimal defect, swept through the file formats.** `AGENTS.md`
+  has warned since the CSS and SVG fixes that the remaining `std::stof` /
+  `atof` / `snprintf("%f")` call sites are the same defect waiting to be
+  reported. A census found 195, not the ~110 estimated — but most are chart
+  labels and other text shown to a person, where following the reader's locale
+  is *correct*. What was actually broken is every place a number crosses into
+  a file format or a wire protocol, and those are fixed here.
+  - **`UltraCanvas::FormatFloatClassic`** joins `ParseFloatClassic` in
+    `UltraCanvasTextUtils.h`, promoting the helper the SVG converter had kept
+    to itself. `std::to_string(1.5)` renders as `1,500000` under de_DE and
+    `snprintf("%.6g")` as `1,5`; this formats as "%.6g" does with the decimal
+    point pinned to '.'.
+  - **Three writers were corrupting documents, not just misreading them.**
+    `SerializeColor` wrote `rgba(255,0,0,0,500000)` — the alpha's comma is the
+    channel separator, so the colour read back as a five-argument function.
+    `SerializePathData` wrote `M 1,5 2`, which reads back as the point (1, 5):
+    the exact defect fixed in the SVG converter and left here. The ODS formula
+    writer emitted literals through an unimbued stream, and a comma there
+    splits one argument into two.
+  - **~40 readers now parse dot-decimal**: the CDR transform matrices and dash
+    patterns (11 sites), the chart CSV loaders, the JSON readers in the
+    compositor and node diagrams, the ODF/OOXML attribute readers, tone
+    curves, templates, `rgba()` alpha, the spreadsheet formula tokenizer and
+    metrics, and the Z-Wave and KNX `temperature` parameters. Most of them
+    also **stopped throwing**: `std::stof` threw on malformed input in readers
+    whose job is to survive a damaged file, and several had no `catch` at all.
+  - **The CSV importer was undoing its own work.** It normalises the user's
+    chosen decimal separator to '.' and then called `std::stod`, which read
+    that back through `LC_NUMERIC` — so on a comma-decimal desktop a column of
+    `1.5` imported as 1.
+  - **Left alone deliberately**: text a person typed in their own locale — the
+    numeric text input, the spinner, the colour picker, spreadsheet cell entry
+    and filter values — and every label rendered for display. `AGENTS.md`
+    draws that line and it is the right one.
+  - **`scripts/check_locale_numbers.py` now enforces the rule**, and found
+    what the sweep above missed — including a `std::strtod` in the vector
+    storage arrowhead parser that the sweep's own grep had excluded, because
+    its lookbehind rejected the `:` in `std::strtod`. A checker does not get
+    tired at site 40.
+    - It reports a locale-dependent read anywhere, and a locale-dependent
+      write in a file that writes a format (Storage / Writer / Export /
+      FileIO / Serializer / Converter, or anything under `DataFormats/` or
+      `Vector/`), including a stream that is never imbued.
+    - The stream rule skips any file that mentions `std::locale::classic`
+      at all. The first version flagged the SVG converter — whose streams are
+      correct, because every number goes through its own imbued `Num()` — so
+      it was pointing at the reference implementation of the fix.
+    - Text a person typed or reads says so at the site with
+      `// locale-ok: <why>`, and eleven such sites now do. They never reach
+      the baseline; `scripts/locale_numbers_baseline.txt` is debt — 100
+      format and protocol sites the sweep did not reach (the OBJ, XAR, X3D,
+      STEP and PDF converters, the LaTeX reader, the Linux hardware probe
+      reading `/proc`, the xlsx reader) — and it should trend to empty.
+    - `.github/workflows/locale-numbers.yml` runs it `--strict`, so a new one
+      fails the build. Verified in both directions: adding a `std::stof`
+      fails the gate, removing it passes.
+    - **The OBJ and XAR converters are fixed rather than baselined** — 29 of
+      the 100 sites, and the two where a misread number is a wrong drawing or
+      a wrong model. OBJ's 17 `strtof`/`strtod` reads became dot-decimal, and
+      its `ScopedPrecision` — the guard that shapes every number the OBJ and
+      MTL writers emit — now pins the decimal point as well as the digit
+      count, *before* its compact-precision early-out. Without that it wrote
+      `v 1,5 0 2`, which every other OBJ reader takes as a different vertex,
+      since OBJ separates components with spaces. XAR's ten `atof` reads
+      (dash lengths, width profiles, stamp matrices) became dot-decimal, and
+      its writer's `Num()` — the one place every number it emits passes
+      through — uses `FormatFloatClassic`. The baseline is down to 34 keys.
+    - **X3D as well, where the reader failed hardest.** On a comma-decimal
+      desktop its `ParseNumbers` read *nothing at all* from
+      `point="1.5 0.25 -2.75"` — the `.` is that locale's digit-group
+      separator, so the very first token failed and the extraction stopped
+      there, and every coordinate, transform, colour and key frame in the
+      file came back empty rather than merely wrong. Both encodings share
+      those parsers, so `.x3d` and `.x3dv` alike. Every number now passes
+      through one of two stream types that carry the format's own locale,
+      and the writer's `ScopedPrecision` pins the decimal point beside the
+      digit count exactly as OBJ's now does. That last one also matters for
+      whole numbers: `coordIndex` wrote the index 123456 as `123.456`,
+      because digit grouping is the same locale's business. The baseline is
+      down to 31 keys, 68 sites.
+- **Matter thermostat setpoints: the units were right, the range was not.**
+  `SendThermostatCommand` takes whole degrees and multiplies by 100 for
+  `OccupiedHeatingSetpoint`, which the spec carries in hundredths in an int16
+  — so the conversion was correct all along. But the parameter guard accepted
+  the full int16 range, and `temperature=1000` became 100000 hundredths, which
+  overflows the attribute. It is bounded to ±327 now, the range that survives
+  the conversion, and both sides say which unit they are in. The facade still
+  cannot express a half-degree setpoint; that is an API limit, noted where the
+  conversion happens.
+
+#### 2026-09-23 *0.9.41*
+- **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not
+  as empty.** A new optional hook, `remoteListingStatus`, is asked when
+  `remoteListing` answered with an empty listing; a non-empty answer puts a
+  turning progress ring, "Loading folder" and the host's own status line
+  ("Connecting to Backup NAS and reading /photos - 7 s") where "Folder is
+  empty!" used to go, and the line follows the fetch on a 50 ms timer until
+  the host's `Refresh()` brings the data. A remote listing the host refused
+  (an unreachable server, a rejected login) now shows its reason in the
+  folder area too, instead of an empty folder. Used by UltraFiler's FTP and
+  cloud drives (UltraFiler 1.46.0).
+- **A mouse press hides the tooltip.** A click answers what the tooltip was
+  for; before, a button whose click changed the layout under the pointer
+  (UltraFiler's tree-dock button) left its tooltip floating over the new
+  content until the mouse moved.
+
+#### 2026-09-23 *0.9.40*
+- **NetworkMonitor decodes loopback chains.** A mail client that talks to
+  an antivirus mail proxy on 127.0.0.1:12993, which talks to the mail
+  server for it, used to show as two unrelated processes.
+  `NetworkMonitor_DecodeLoopback` pairs every connection whose peer is on
+  this machine with its mirror - the socket on the other end, an
+  IPv4-mapped spelling matched to its plain one - and fills
+  `NetworkConnection::loopbackRole` (client or server: the server is the
+  side a listener holds) and `localPeer` (the process on the other end) on
+  both; on the outbound connections of a process that serves loopback
+  clients it fills `forProcesses`, the applications that traffic is really
+  for, an inference labelled as such. `ProcessTrafficSummary` gains
+  `viaProcesses` and `servesProcesses`; `NetworkMonitor_ListConnections`
+  decodes every snapshot before its filters; both snapshot CSVs carry the
+  chain (`loopback_role`, `local_peer`, `for`; `via`, `serves`).
+  `ProcessIdentity::Label()` is "name (pid)". Pure and tested from a
+  fixture of a client, a proxy and its outbound connection.
+- **Windows names the processes it cannot open.** The IP Helper backend
+  reads the Toolhelp process list once per snapshot - every PID's
+  executable name, no handle and no elevation needed - and uses it for a
+  process `OpenProcess` refuses, so an antivirus service reads as
+  `AvastSvc` rather than `pid 4720`. The path and the user still need
+  elevation, and the capabilities' note says so.
+
+#### 2026-09-23 *0.9.39*
+- **`UltraCanvasListView::onContextMenu(row, event)`** - a right-button
+  press in the rows area, with the row under the pointer (-1 below the
+  rows) selected alone first, as every desktop does, so the handler's menu
+  acts on what the user pointed at. When set, the press is consumed; when
+  not, a right press is handled like a left one, as before. The usual
+  handler opens an `UltraCanvasMenu` of type `PopupMenu` at
+  `event.pointerWindow`; the ListView page shows it. First consumer is
+  UltraNetMonitor's process list.
+- **NetworkMonitor exports a snapshot as CSV.** `NetworkMonitor_ExportSummaryCsv`
+  writes the per-process roll-up, one row per process with its distinct
+  peers and hosts semicolon-joined; `NetworkMonitor_ExportConnectionsCsv`
+  writes the connections, one row each with the process behind it. Both in
+  the order given, RFC 4180 quoting, dot-decimal numbers, absent counters
+  as empty fields, never zero. The quoting and the UTC timestamp the store's
+  exports used move to `NetworkMonitorCsv.h`, shared by all four. Tested
+  from fixtures.
+
+#### 2026-09-23 *0.9.38*
+- **NetworkMonitor connection events.** `NetworkMonitorEvents.h`: a
+  connection reported as it opens, is accepted or closes, rather than
+  found in the next snapshot - the event-rate collection the proposal
+  asked for (§2.1, §5.2), so the connections shorter than a polling
+  interval are in the record. Same shape as the name sources: an
+  `IConnectionEventSource` implements it, `NetworkMonitor_RegisterEventSource`
+  runs it, every `NetworkConnectionEvent` goes to the listeners
+  (`NetworkMonitor_AddEventListener`) and into a bounded ring
+  (`NetworkMonitor_RecentEvents`). On its way through, the registry names
+  the peer from the name table and, for a source that reports no process,
+  attributes the event from a socket table it refreshes a few times a
+  second - in either orientation, so a tuple whose source is the remote
+  side becomes an *Accepted* on the listener's process - and remembers
+  the match, so the *Closed* that follows is attributed though the socket
+  is gone. `NetworkMonitorCapabilities::connectionEvents` is true while a
+  source runs.
+  - **The snapshot differ** (`NetworkMonitor_CreateSnapshotDiffEventSource`):
+    reads the socket table at an interval and reports what appeared and
+    what went, with the process and the counters the table carries. Runs
+    on every platform with a backend; misses connections shorter than its
+    interval, and says so.
+  - **nf_conntrack on Linux** (`NetworkMonitor_CreateSystemEventSource`,
+    `OS/Linux/UltraCanvasLinuxNetworkMonitorEvents.cpp`): the kernel's
+    connection tracker over `NETLINK_NETFILTER`, NEW and DESTROY, with the
+    bytes each direction moved when accounting is on. Needs
+    `CAP_NET_ADMIN` and a tracker that a firewall rule has activated; an
+    idle tracker is reported, never silently empty. The message parser
+    (`NetworkMonitorConntrack.h`) is pure and tested from captured bytes on
+    every platform; the source never adds a rule.
+  - **The kernel network ETW provider on Windows**
+    (`OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp`): connect,
+    accept and disconnect with the PID, and the sends and receives summed
+    per connection into the *Closed* event's counters - the per-connection
+    bytes the IP Helper backend cannot give. Elevated only; compiled on
+    CI, not yet exercised at run time. Null on macOS.
+  - **The store records events.** Schema version 3 (older files migrate in
+    place): a `connection_events` table, `NetworkMonitor_RecordConnectionEvent`
+    / `QueryConnectionEvents` / `ExportEventsCsv`, retention and purge
+    cover it, `StoreStats` counts it.
+  - Tests: the conntrack parser against a captured NEW and DESTROY, the
+    registry's ring, listener, naming and both-orientation attribution
+    against sockets the test opens, the differ reporting opened, accepted
+    and closed for a loopback connection attributed to the test's PID,
+    the platform source starting where it can, and the store's events.
+  - A registry never holds its lock while asking a source a question,
+    since a source may read the capabilities, which ask the registry.
+- **`UltraCanvasApplicationBase::RequestExitFromSignal()`** - the one call
+  a signal handler may make. `RequestExit()` logs and runs the
+  exit-request callback, neither of which is async-signal-safe, and the
+  applications' handlers called it (and then `std::exit`, which ran the
+  static destructors under live threads). The new call stores a lock-free
+  flag; `RunOnce()` turns it into `RequestExit()` on the main thread at
+  the next iteration, so `main` returns and the application's destructors
+  run in order. UltraNetMonitor uses it; the other applications' handlers
+  are unchanged and can adopt it the same way.
+#### 2026-09-23 *0.9.37*
+- **`UCEvent::ToString()` names the right event again.** The name table it
+  indexes by `UCEventType` carried three entries with no enum counterpart
+  (`KeyChar`, `Shortcut`, `WindowClosing`), so every event from `TextInput`
+  onwards printed as the name of an earlier one - a `WindowResize` logged as
+  `WindowCloseRequest`, a `Timer` as `Drop`. The three are gone, the table is
+  now a compile-time array with a `static_assert` that its length equals the
+  enum's, so the two cannot drift apart again without failing the build, and
+  an out-of-range value prints `OutOfRange` instead of reading past the end.
+- **`scripts/check_changelog.py` refuses a runaway version number.** The
+  guard required line 1 to be strictly above every other version in the file
+  and above `main`'s, and nothing more - so when a renumbering script took the
+  highest patch number across every minor in the file and wrote 0.9.120 over
+  a `main` on 0.9.32, the check passed and that number would have become the
+  released version. A new top entry must now be within ten of the release
+  before it (open pull requests each hold one number, so a small gap is
+  normal), and a minor or major bump must start near .0. Applied per file and,
+  with `--base`, against the base's version.
+- **`scripts/check_changelog.py --base` no longer misreports files `main`
+  changed during an uncommitted merge.** It decided "edited by this branch"
+  by comparing the working copy with the merge base's, so in the middle of a
+  merge of `main` every changelog `main` had released on since the fork
+  "differed" and was reported as still claiming `main`'s version - a false
+  alarm that vanished once the merge was committed, which the message did not
+  say. A file identical to `main`'s copy is now never this branch's edit.
+
+#### 2026-09-23 *0.9.35*
+- **DemoApp: the ListView page's multi-column table shows the sorting API**
+  (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`). Table 2 used to copy
+  and `std::stable_sort` its own rows on every header click. It now hands the
+  view an `UltraCanvasListSortFilterProxy` in front of the model: File Name
+  sorts naturally, and Size gets a column comparator that reads the number in
+  front of "KB". A new **Sortable columns** checkbox next to the section title
+  turns header-click sorting on and off. Turning it off restores the model's
+  own order and clears the header triangle. The click and selection handlers
+  now map proxy rows back through `MapToSource()` before they look up a file,
+  so the status label names the right file while the table is sorted.
+- **DemoApp: the ListView page's subtitle no longer runs under the status
+  box.** It was one 600 px line and the status box starts at x = 600, so the
+  end of the sentence was hidden. It is now two lines, 570 px wide, and the
+  status box stays where it was.
+- **`UltraCanvasListView.h`: removed an orphaned comment.** It said the view
+  itself cycles a column's sort on a header click, and it sat above no
+  declaration. The view never sorts: a header click only fires
+  `onHeaderClicked`, which is what the surrounding comments say.
+
+#### 2026-09-23 *0.9.34*
+- **New: UltraNet's OAuth2 app registry** (`<UltraNet/UltraNetOAuth2Apps.h>`,
+  `UltraNet_OAuth2SetApp` / `SetBuiltInApp` / `AddAppEnvPrefix` /
+  `SetAppAlias` / `ParseAppsIni` / `LoadAppsFile` / `GetApp` / `HasApp` /
+  `ClearApps`, `Masterfile_modules.md` §UltraNet). The client id, secret and
+  redirect URI an application signs in as, per provider, in one place per
+  process: Set() from code, then the environment
+  (`ULTRANET_OAUTH_<PROVIDER>_CLIENT_ID` and the prefixes modules add), then
+  an INI file, then a build's baked-in default - a tier taken whole, never
+  a secret from one tier under a client id from another - and then an alias
+  chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` /
+  `GetOAuthApp` / `HasOAuthApp` each carried a copy of this lookup with a
+  different priority chain (UltraMail knew the INI file and the baked-in
+  client, UltraCloud neither) and different environment names, so a Google
+  client registered for Gmail was invisible to the composer's cloud picker
+  two menus away. Both are profiles of the registry now, the way the app
+  credential vaults became profiles of `UltraVault::DeviceKeyVault` in
+  0.9.23: UltraMail adds the `ULTRAMAIL_` prefix, loads its `oauth.ini` into
+  the shared file tier and registers the baked-in client as the floor;
+  UltraCloud adds `ULTRACLOUD_`, its `127.0.0.1:53682` redirect default, and
+  the aliases `googledrive` -> `google` and `onedrive` -> `microsoft`, so one
+  Google and one Microsoft registration serve mail, Drive and OneDrive when
+  the consent screen carries the scopes. Every documented name and priority
+  keeps working; a registration under the specific id wins over the alias at
+  every tier. `UltraCloud::OAuthApp` and `UltraMail::OAuthApp` are the one
+  `UltraNetOAuth2App` (the cloud struct's built-in redirect default moved
+  into `GetOAuthApp`). Tests: `Tests/UltraNet/test_oauth2_apps.cpp` (six
+  cases: tier order and whole-tier precedence, the built-in floor surviving
+  `ClearApps`, prefix order, aliases with chains and cycles, the tolerant
+  file load); the UltraMail and UltraCloud suites run unchanged.
+
+#### 2026-09-23 *0.9.33*
+- **Fix: `dns_resolve_honours_its_deadline` was red on the macOS Apple-silicon
+  row of every build since it landed** (`Tests/UltraNet/test_dns_timeout.cpp`,
+  from PR #514). The test asserted `Timeout` for a 1 ms lookup of a name under
+  `.invalid`, but that runner's local resolver answers NXDOMAIN inside the
+  millisecond, so c-ares reported `HostNotFound` - the deadline was met, not
+  missed, and the assertion failed on the base branch (`main` at a916fe6b)
+  as well as on every pull request that merged it. The test now accepts
+  either outcome; a hang or any other code still fails, which is what it is
+  there to catch.
+
+#### 2026-09-23 *0.9.32*
+- **The demo leaked its whole widget tree, and every callback in it.** A
+  widget owns its callbacks, so a callback that captures a `shared_ptr` to
+  that widget — or to any container above it — closes a cycle that neither
+  end ever escapes: the refcount never reaches zero, and the subtree, its
+  images and its render buffers stay allocated for the life of the process.
+  53 callbacks across 25 DemoApp files did exactly that (`[btn, ...]` on
+  `btn->onClick`, and six that captured the container they had just been
+  added to). Every one now captures the back-reference raw
+  (`[btn = btn.get(), ...]`), which is valid for precisely as long as the
+  callback can run, because the thing holding the callback is the thing
+  being pointed at. Forward captures — a popup the lambda keeps alive, a
+  sibling label, the `make_shared` state a toggle button counts in — are
+  untouched: those are ownership, not a cycle.
+  - The DemoApp is the framework's worked example, so the pattern was being
+    copied outwards; `UltraCanvasDemo.h` now states the rule where the next
+    author will read it.
+  - `BuildScheduleSummary` (PERT examples) took its chart by
+    `const shared_ptr&` and had one caller, a callback the chart owns. It
+    takes a raw pointer now, for the same reason.
+  - One capture in the table demo was of a container the lambda never used,
+    in a body that is entirely commented out. It captures nothing now.
+  - **`scripts/check_callback_cycles.py` now finds these**, because a sweep
+    that is not enforced comes back. It reads each function's `AddChild`
+    graph, so it catches a callback that captures a container two levels
+    above it, not just one that captures itself — and it reports a capture
+    only when that name is *demonstrably* a `shared_ptr` in scope
+    (`make_shared`, a declared `shared_ptr`, or a factory whose declared
+    return type is one, harvested from the headers). The first version
+    matched names alone and called three raw pointers in Texter and
+    UltraFiler leaks: `auto* editorPtr = editor.get()` and a `T* target`
+    parameter own nothing. A name is not a type, so an unresolved one is
+    left alone rather than guessed at.
+    - Run against this release's parent it reports all 53, and against the
+      tree as it now stands, none. `--strict` makes it a gate; a genuine
+      exception opts out with `// callback-cycle-exempt: <why>`, as the UI
+      reuse check does. 4.6 s over 1168 files.
+- **Matter attribute writes read their numbers locale-independently.**
+  `EncodeTextValue` turned the facade's text into a TLV value with
+  `std::stoll` / `std::stod`, and `std::stod` consults `LC_NUMERIC` — which
+  the Linux backend sets from the environment for XIM. On a comma-decimal
+  desktop (de_DE, fr_FR, ru_RU, pt_BR) `"1.5"` stopped at the point and went
+  to the device as **1**, and `"-0.25"` as **-0**: a silently different value
+  than the caller asked to write, which is the failure mode the function's
+  own comment says cannot happen. Reproduced under `de_DE.UTF-8` before the
+  change and verified after it. Integers now go through `std::from_chars`
+  and doubles through `ParseFloatClassic`, per the rule in `AGENTS.md`.
+  - Both of the old calls also **threw** on input the character guards let
+    through — `std::stoll("--")`, or a number too large for `int64_t` —
+    unwinding out of the Matter SDK's write path. Neither replacement
+    throws; text that is not a number after all falls through to the string
+    encoding, where the device's schema check reports it as a failed write.
+  - The float parse now has to consume the whole string, so `"1e"` is a
+    string rather than the 1 that `std::stod` silently made of it.
+- **A mistyped Matter command parameter no longer throws, truncates or
+  divides by zero.** `SendCommand` read its ten numeric parameters with
+  `std::stoi`, and there is not one `catch` in the file: `endpoint=on` threw
+  `std::invalid_argument` straight out of the call, and a long run of digits
+  threw `std::out_of_range`. Where it did not throw it lied — the result was
+  cast into the field's width unchecked, so `level=999` reached the device as
+  **231** — and `colorTemp=0` reached `1000000 / kelvin`, an integer division
+  by zero. This is not behind `ULTRACANVAS_WITH_MATTER`: it is in every
+  build, reachable from `SendGroupCommand` too, which forwards the same
+  parameters to every member of a group.
+  - All ten now go through one `ReadIntParam`, which reads with
+    `std::from_chars` (no throw, no locale) and checks the value against the
+    range its field can actually carry — level and saturation 0..254,
+    brightness and position percent, hue 0..360, endpoint and transition the
+    uint16 range, thermostat temperature the int16 one. A parameter that is
+    absent still leaves the caller's default; a bad one is reported through
+    `ReportError(-302, …)` with the name, the text and the range, and the
+    command is refused rather than half-executed.
+  - `colorTemp` is accepted as 16..1000000 K, which is exactly the range
+    whose mireds conversion (`1000000 / K`) lands in the uint16 field the
+    device is given — and which cannot be zero. `mireds` still wins when
+    both are supplied, and `brightness` still wins over `level`, as before.
+  - **Stricter than `std::stoi` in two places, deliberately**: `" 3"` and
+    `"3x"` were accepted before (it skips leading space and stops at the
+    first non-digit) and are refused now. A device command is not the place
+    to guess what half a number meant.
+
+#### 2026-09-23 *0.9.31*
+- **Seven ownership defects found by auditing every raw `new` in the tree.**
+  A census of the 45 hand-written allocations outside vendored code (the rest
+  of the framework allocates through `make_shared` / `make_unique`) turned up
+  three leaks, one growing side table and three lifetime bugs. All are fixed
+  here; the other 38 sites were already correct and are unchanged.
+  - **`ZWaveProtocol::GetScenes` leaked its array on every call.** It allocated
+    `new uint8_t[numScenes]` and then passed `&sceneIds` to OpenZWave's
+    `GetAllScenes`, which allocates the array itself and assigns it through the
+    out-parameter — that is why its contract asks the caller to `delete[]` the
+    result, which the function already did. The buffer allocated up front was
+    overwritten before anything read it. It now starts as `nullptr` and takes
+    both the array and the count from `GetAllScenes`, which also drops the
+    redundant `GetNumScenes` call.
+  - **`UltraNet_TlsWrap` no longer keeps a second table of TLS contexts.**
+    `g_ctxByHandle` was written on every wrap and never erased: it grew by an
+    entry per TLS connection for the life of the process, and each entry
+    outlived the `Ctx` it pointed at, so `UltraNet_TlsHandshake` or
+    `UltraNet_TlsGetInfo` on a closed handle dereferenced freed memory instead
+    of reporting `InvalidHandle`. The socket entry already owns that pointer
+    and clears it in `UltraNet_SocketClose`, so both entry points now ask it
+    through the new `ultranet_internal::GetTlsCtx` hook. The table, its mutex
+    and the two includes they needed are gone.
+  - **A synchronous DNS timeout hung the calling thread forever.** On expiry
+    `Resolve` called `ares_cancel` while still holding the lock its
+    `wait_for` had taken; `ares_cancel` answers the query it cancels on the
+    spot, on the calling thread, so `OnHostCallback` re-entered that same
+    mutex and the thread deadlocked against itself — with c-ares's worker
+    stuck behind the channel lock `ares_cancel` held. Every caller of
+    `UltraNet_DnsResolve` whose lookup did not beat the deadline stopped
+    there. A one-millisecond deadline against an unresolvable name now
+    returns `Timeout` eight times out of eight under ASan/UBSan, where the
+    old code did not reach its second query.
+  - **A timeout no longer takes every other DNS query down with it, or
+    leaves c-ares writing into a dead stack frame.** `ares_cancel` cancels
+    every query in flight on the shared channel, not just the one that timed
+    out, and there is no per-query cancel to replace it with. So the query is
+    abandoned instead, which needs the answer to have somewhere to land: the
+    `Pending` was a local of `Resolve`, and c-ares's worker wrote into it
+    after that frame was gone. It is a `shared_ptr` now — the caller drops
+    its reference when it stops waiting, the query holds one until its
+    callback answers, and the last one out frees it. This also retires the
+    hand-written `delete p` on the async path, so a throwing user callback no
+    longer leaks the state.
+  - **The UltraMessage accept path closed the same descriptor twice.** When
+    `MakeWakePipe` failed, `Listener::Accept` closed the accepted fd and then
+    returned, letting `~Connection` shut down and close it a second time — by
+    which point another thread may have been handed that number. The
+    `Connection` owns the descriptor from the assignment onwards, so the
+    explicit close is gone, matching what `ConnectToBus` already did.
+  - **`UltraCanvasMathParser` and `UltraCanvasMathLayout` are no longer
+    copyable.** Both hold a raw `Impl*` and `delete` it in their destructors
+    with no copy operations declared, so any copy would have double-freed. No
+    caller copies one today; the copy constructor and assignment are now
+    `= delete` rather than waiting for one to.
+  - **`UltraNetTests` now covers the deadline itself** (`test_dns_timeout.cpp`,
+    three cases): that a one-millisecond lookup comes back at all, that the
+    query it abandons leaves the shared channel usable for the next one, and
+    that every asynchronous query answers its callback. None of it calls
+    `UltraNet_DnsResolve` directly — each resolve runs on a thread of its own
+    under a watchdog, because the failure being guarded against is a hang,
+    and a test that hangs stops a CI run instead of failing it. When the
+    watchdog fires the suite says so and exits non-zero rather than carrying
+    on: the c-ares channel is a static whose destructor would block on the
+    same lock at exit. Against the code as it stood before this release the
+    first case fails in thirty seconds; against the code in it, all three
+    pass in well under a second.
+  - **Two demo buttons leaked their captured state.** The toggle and counter
+    examples captured `new bool(false)` / `new int(0)` raw pointers in their
+    `onClick` lambdas and never freed them. They are `make_shared` now — the
+    DemoApp is the framework's worked example, so a leak in it propagates.
+
+#### 2026-09-23 *0.9.30*
+- **UltraCalendar proposal: the OAuth app registration is UltraNet's**
+  (`Docs/Research/UltraCalendarDesignProposal.md`). The accounts section, the
+  two gap tables and open question 3 described the Google / Microsoft app
+  registration as UltraMail's baked-in client and named the two module
+  lookups as two patterns; the shared OAuth2 app registry
+  (`UltraNetOAuth2Apps.h`, 0.9.29) makes it one, so the proposal now says the
+  calendar reads `UltraNet_OAuth2GetApp("google")`, adds an `ULTRACALENDAR_`
+  environment prefix as its profile, and marks the question resolved. 0.9.29
+  is the registry's own entry, on its pull request.
+
+#### 2026-09-23 *0.9.28*
+- **New design proposal: UltraCalendar, a stand-alone calendar for ULTRA OS**
+  (`Docs/Research/UltraCalendarDesignProposal.md`). A calendar *separate* from
+  UltraMail - a headless `UltraCalendar` module beside a thin
+  `Apps/UltraCalendar`, the split UltraCloud uses - that works with the
+  calendar service the user already has, or with an ULTRA OS-hosted one, and
+  lets the user decide which, on first run and again later. The investigation
+  checks every need against the tree: UltraNet already has the custom HTTP
+  verbs CalDAV needs (UltraCloud's WebDAV provider sends `PROPFIND` and
+  `MKCOL` that way), the OAuth2 + PKCE flow, and DNS; UltraDatabase,
+  UltraVault, UltraMessage and the date / time pickers are there; what is
+  missing is an iCalendar engine, a CalDAV client, a Microsoft Graph client,
+  and two elements - a day / week time grid and a month grid with events -
+  which the proposal argues belong in the framework because
+  `UltraCanvasCalendarView` is a date picker, not a schedule.
+  - **CalDAV is the one client protocol.** The ULTRA OS cloud, Nextcloud,
+    iCloud, Google (over OAuth2), Fastmail and the German mail providers are
+    all presets over a single `CalDavProvider`; Microsoft, which has no
+    CalDAV and is retiring EWS, is the single second implementation over
+    Graph, converting to iCalendar at its edge so the store sees one format.
+    The ULTRA OS cloud is therefore a standards server (CalDAV + CardDAV +
+    WebDAV behind one ULTRA account) and the client needs nothing invented
+    for it - UltraCloud's roadmap item 4, made concrete.
+  - **Wrap libical**, never write an `RRULE` expander: the reference
+    implementation, MPL-2.0 / LGPL-2.1 dual-licensed and packaged on all
+    three CI platforms, behind an UltraCalendar-owned API that exposes no
+    libical type.
+  - **Local-first, as UltraMail:** a raw `.ics` per event beside an
+    UltraDatabase index, an instance cache the views read, and a
+    pending-change queue that is the outbox pattern for calendars.
+  - **Copy, do not bridge, when migrating:** the wizard copies calendars
+    with their UIDs intact into the target, then offers to keep the old
+    account read-only for a grace period, disconnect it (never deleting on
+    the old server), or keep both. Export to `.ics` is the same engine, so
+    the door opens both ways.
+  - **Invitations stay out of the calendar's process:** UltraMail shows the
+    iMIP card and hands the answer over two new UltraMessage topics; server
+    scheduling (RFC 6638) is used where the server has it. Reminders go out
+    through the platform's notification API, which the Phase 2 adapters
+    (0.9.27) mirror into the feed - the tree still lacks the outbound seam
+    that raises a toast, and the proposal asks for it as framework code.
+  - Found on the way: three civil-date types live in the tree (`UCDate`,
+    `UltraCanvasCalendarDate.h`, `UltraFIBUDate`), and the ULTRA OS cloud
+    service has no specification beyond a roadmap line - the proposal's
+    section 8 is the client's requirement list for it. The per-account
+    secret store the calendar needs is `UltraVault::DeviceKeyVault` (0.9.23),
+    which UltraMail, UltraSocial, UltraFiler and EmailCleaner already share.
+#### 2026-09-23 *0.9.27*
+- **New: UltraMessage Phase 2, first slice — adapters and the first feeds**
+  (`Docs/Modules/UltraMessage/README.md` §3.6, `Masterfile_modules.md` §13).
+  The broker hosts *adapters*: broker-side plugins (`Internal::IAdapter`,
+  `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h`) that publish under
+  their own verified identity and receive the feed's
+  `system.notification.action` / `.dismissed` back. API
+  `UltraMsg_ListAdapters`, `UltraMsg_EnableAdapter`, `UltraMsg_GetAdapterState`
+  with `UltraMsgAdapterInfo` / `UltraMsgAdapterState` (status, message,
+  remedy, mode); the switch is persisted in the journal (`adapters` table,
+  schema v2); `ultramsg adapters [enable|disable <name>]`.
+- **New: `freedesktop-notifications` adapter** (Linux,
+  `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp`,
+  GDBus, built where `gio-2.0` is found): serves `org.freedesktop.Notifications`
+  (`Notify`, `CloseNotification`, `GetCapabilities`, `GetServerInformation`,
+  `ActionInvoked` / `NotificationClosed` back to the application) so every
+  desktop application's toast becomes a `system.notification`; where GNOME,
+  Plasma or dunst own the name it reads the same calls passively in monitor
+  mode (`BecomeMonitor`), reporting `needs-permission` when the bus refuses.
+  `im.received` toasts are mirrored to `messaging.message`, `email*` ones to
+  `mail.message`, each with `mirrorOf`.
+- **New: `windows-notification-listener` adapter** (Windows,
+  `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp`,
+  C++/WinRT, built where the projection headers are found — CI's MSYS2 rows
+  install `cppwinrt`): reads the Action Center through
+  `UserNotificationListener`, polling every two seconds since Windows sends
+  a desktop process no change event; every toast becomes a
+  `system.notification`, what leaves the Action Center a
+  `system.notification.dismissed`; a feed action clears the toast (the
+  listener cannot press its buttons). `needs-permission` with the Settings
+  remedy until the user allows access, re-checked without a restart.
+- **New: category guessing and shared mirrors** — `Internal::GuessAppKind`
+  classifies an application by identity (Telegram, Signal, Slack, Teams … /
+  Thunderbird, Outlook, Windows Mail, Evolution …) where no category hint
+  exists, on Windows and for the many Linux applications that set none; the
+  chat / mail mirrors moved to `Internal::PublishMirror`, shared by every
+  notification adapter.
+- **New: UltraMail publishes new mail to the feed** —
+  `UltraMail::FeedPublisher` (`Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`):
+  the sync workers hand it every stored envelope and it posts `mail.message`
+  as `org.ultraos.ultramail` for unread, recent (7 days) mail, at most 100
+  per account per ten minutes. A no-op in a build without `UltraMessage`.
+- **Tests:** `Tests/UltraMessage` grows to 34 cases; on Linux the suite
+  starts a private `dbus-daemon --session` and drives the adapter over real
+  D-Bus (serving, mirrors, replace/close, actions signalled back, the switch,
+  monitor mode with a rival owner). `Tests/UltraMail` gains the publisher's
+  filter and rate-limit tests. The Linux CI row installs `dbus`.
+- **Build:** UltraDatabase's source list lives once in
+  `cmake/UltraDatabaseSources.cmake` (`ultradatabase_sources(<var> <dir>)`),
+  used by the in-tree build and the standalone `Tests/UltraMessage` tree, so
+  a new driver (the Postgres one broke the standalone link) is one edit.
+
+#### 2026-09-22 *0.9.26*
+- **A window minimised by the user now reports it.** `IsMinimized()` and the
+  `onWindowMinimize` callback only ever reflected the application's own
+  `Minimize()` call; a click on the title-bar button changed nothing, so an
+  application had no way to notice it had been put away. The Linux backend
+  now watches the ICCCM `WM_STATE` property and raises `WindowMinimize` when
+  it becomes iconic and the new `UCEventType::WindowRestore` when it returns
+  to normal; the base window updates its state on both and calls
+  `onWindowMinimize` / `onWindowRestore`. The first consumer is
+  UltraAuthenticator, which locks its vault on minimise.
+- **Configure no longer fails on machines with Clang installed.** The
+  Linux compiler auto-detection built the C++ driver name with a
+  `REGEX REPLACE` whose replacement used `\1` for an optional group; CMake
+  3.28 rejects that as an "out-of-range escape", so every configure that did
+  not name the compiler explicitly stopped at line 59. The suffix is now
+  matched separately and appended.
+
+#### 2026-09-22 *0.9.25*
+- **Every 3D sample audited for the fault the STL aeroplane had**, by
+  measuring rather than squinting: each file of the E-45 aircraft was loaded
+  through the same path the demo pages and the Filer's thumbnails use, and
+  its silhouette profile matched against the export that draws correctly
+  (the OBJ) over all 24 axis-aligned rotations. Ten of the thirteen agree.
+  Two did not, and are fixed:
+  - **`media/3D/PLY/E-45-Aircraft.ply` held Blender's Z-up coordinates.**
+    PLY declares no up axis and this reader takes the format as Y-up - the
+    convention of the tools that write it most - so the aircraft stood on
+    its nose in every viewer that believed it. The sample is rotated into
+    the Y-up frame, where it agrees with the OBJ export vertex for vertex;
+    `Tests/ModelPLYTest.cpp` pins the new axes and says why.
+  - **`media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx` mis-declared itself.** Its
+    GlobalSettings said UpAxis = Y while its geometry is Z-up (the mesh node
+    connects straight to the scene, with no rotation to make up the
+    difference), so it too came out nose-down while the binary FBX of the
+    same scene was upright. The file now declares the Z-up frame it is
+    actually in; no vertex is touched, and the reader is unchanged.
+- Three samples are left as they are, with what they are:
+  - `X3D` and `VRML` hold the aircraft turned 180 degrees about its up
+    axis - upright, facing the other way. No format says which way a model
+    must face, so this is the files' own choice rather than a fault.
+  - `XFile` comes through **mirrored**: its mesh nodes are drawn with a
+    transform of determinant -1, because the DirectX .x format is
+    left-handed and the reader deliberately leaves that reflection in the
+    root frame (as its header documents) instead of converting to the
+    right-handed frame the rest of the model pipeline uses. The aircraft is
+    left-right symmetric, so the mirror reads as the model lying the wrong
+    way up rather than as an obvious left-right swap. Converting on import
+    (negate one axis, reverse the winding) is the fix, and it belongs to the
+    reader rather than to the sample.
+  - The `.dae`, `.blend` and `.abc` exports carry half a hull each, which is
+    what they were exported as; `Tests/ModelPLYTest.cpp` already says so.
+
+#### 2026-09-22 *0.9.24*
+- **The hostel plan in the DWG demo was a black smudge in the corner of an
+  empty sheet.** Two faults in one tile, both of them general.
+  - **A lineweight is a plot width, and it was being scaled by the block it
+    sat in.** The DXF/DWG reader resolves an entity's lineweight into points
+    and the block's INSERT becomes a group transform, which then multiplied
+    the pen along with the geometry. The hostel's elevations are inserted at
+    1054x, so their 1 pt pens came out 1054 units wide and painted a quarter
+    of the sheet solid black. `Ctx::penScale` now carries the accumulated
+    insert scale and `MakeStroke()` divides the width - and the dash
+    lengths - by it, so a drawing strokes the same whatever scale its blocks
+    are inserted at. `Tests/DWGReaderTest.cpp` checks that every circle in
+    the synthetic drawing, inserted at 1x and at 2x, comes out the same
+    width on the page.
+  - **One forgotten speck decided the framing.** That drawing carries a
+    4 x 0.7 unit hatched scrap a quarter of a million units away from the
+    plans, so fitting the union of everything (what `GetBoundingBox()`
+    returns, and what AutoCAD's zoom-extents does) left the plans a
+    postage stamp in the corner. `VectorStorage::ContentBounds()` is the
+    same box with such specks left out - a run of drawables is ignored only
+    when it holds at most 1% of them AND stands at least a fifth of the
+    drawing's extent clear of the rest, so a frame, a title block or a
+    legend always counts - and `UltraCanvasVectorElement`'s fit and centring
+    use it. Nothing is removed from the document: the speck is still drawn,
+    still exported, and still reachable by panning.
+- **The STL aeroplane stood on its back.** `media/3D/STL/Toy airplane
+  model...stl` was exported with the model turned 180 degrees about X - its
+  wheels at the top of the file's Z range and its wings at the bottom - so
+  the Z-up correction every viewer applies stood it on its canopy. The
+  sample is rotated to the orientation the format assumes (+Z up), which
+  fixes it in the STL page, the media viewer and the Filer's thumbnails
+  alike. The import path is unchanged: `UltraCanvasSTLLoader` still reads
+  the file as written and still declares Z-up, and the page reports the
+  same extents (114.05 x 79.49 x 55.69) as before.
+
+#### 2026-09-22 *0.9.23*
+- **The DWG / DXF demo page was five white squares, and so was everything
+  below them.** Four separate faults, each of which hid the next.
+  - **`UltraCanvasVectorElement` declared no CSS box.** Its
+    `(identifier, x, y, w, h)` constructor called the identifier-only base
+    constructor and then `SetPosition()`/`SetSize()`, which write
+    `finalBounds` and nothing else - so the layout engine arranged the
+    element as a widget that asked for no size, and it collapsed to nothing.
+    A container never renders a child that does not intersect its content
+    area, so the element was not drawn at all: not its document, not even its
+    background. It now passes x/y/w/h to the base constructor like every
+    other widget, which stamps the px size and the absolute origin. Callers
+    that pass 0 (the flex/grid ones - the AI page, the media viewer, the
+    plugin's own element) are unchanged.
+  - **Painting used the parent's frame.** `Render()`, the background, the
+    border, the debug box, the document transform, the hit test and the wheel
+    anchor all added `finalBounds.x/y`, although the container has already
+    translated the context to the element's origin and delivers pointer
+    events in element-local coordinates. Everything is element-local now;
+    `ScreenToDocument()`/`DocumentToScreen()` speak that frame too.
+  - **A fit was clamped to the interactive zoom limit.** `ZoomToFit()` ran
+    its computed scale through `options.MinZoom`, so a 10 000-unit site plan
+    in a 280 px tile was pinned at 0.1 and the tile showed an empty patch of
+    the drawing's middle. The fit is honoured as computed and becomes the
+    lower bound for zooming out (`MinAllowedZoom()`), so a wheel-out still
+    stops at the whole drawing.
+  - **The element swallowed its host's events.** `OnEvent()` handled panning
+    and selection and returned false for everything else without ever calling
+    the base, so the demo's click-to-open-fullscreen and its hover status line
+    never ran. The host callback is consulted first now.
+- **One collapsed transform used to end all drawing in the window.** The
+  bathroom sample (`media/3D/DWG/bagno_3d_1.dwg`) carries a block standing in
+  a vertical plane; projected to plan view its transform scales one axis to
+  zero. Cairo latches a non-invertible matrix as a permanent error on the
+  `cairo_t`, after which every later fill, stroke, text and image is silently
+  dropped - which is why the DXF row, the info panel and the "How it works"
+  panel below the drawings were blank as well.
+  - `VectorRenderer` skips an element whose transform is singular (it has no
+    area to draw), and
+  - `RenderContextCairo::Scale/SetTransform/Transform` refuse a matrix they
+    cannot invert and log it once, so no caller can kill a context this way.
+- `Tests/VectorElementViewTest.cpp` pins all of it: the box survives the
+  parent's layout, a fit below `MinZoom` fits, painting is element-local, a
+  singular transform leaves the context able to draw, and the host's event
+  callback runs.
+#### 2026-09-22 *0.9.23*
+- **New: `UltraVault::DeviceKeyVault` — an application's own vault on
+  UltraVault** (`<UltraVault/UltraVaultDeviceKeyVault.h>`, target `UltraVault`,
+  reference `Docs/Modules/UltraVault/README.md`). One encrypted vault file in a
+  directory the application owns, unlocked without a prompt by a random
+  passphrase kept owner-only in `device.key` beside it (`TryAutoUnlock`) or by
+  an explicit master password (`Unlock` -> `UnlockStatus`, which tells a wrong
+  password from a build without crypto; `PersistDeviceKey` makes the next run
+  silent); per-account `Store` / `Retrieve` / `Has` / `Remove`, an OAuth2
+  token set beside the password slot (`StoreOAuthTokens` …, `MethodFor` ->
+  `SignInMethod`), and migration of the 0.1 XOR-sidecar format (`vault.key` +
+  `creds.dat`) on the first unlock. A `DeviceKeyVaultProfile` — vault file
+  name and key prefix in the `<vendor>.<app>.` convention — tells one
+  application's vault from another's. This is UltraMail's `CredentialVault`
+  0.6.0 moved into the framework: UltraSocial carried a copy of it that had
+  never left the 0.1 format, so the two had drifted apart; both apps are now
+  one-line profiles of the one class (UltraMail 0.10.2, UltraSocial 0.1.1). The
+  legacy reader keeps a private Base64 decoder because UltraVault stays off the
+  UltraCanvas library on purpose (the link-time split that keeps UltraCrypt
+  UI-free). Covered in `Tests/UltraVaultTests.cpp`: locked-until-unlocked,
+  first-run key + vault creation and reopen, profile-prefixed keys, no
+  plaintext on disk, wrong / empty passphrase, token sets, the
+  "vault without a device key must prompt" case, and the migration.
+- **UltraCloud keeps no secret files of its own any more.** `FileSecretStore`
+  — obfuscated per-account files, XOR against a `cloud.key` beside them — was
+  a third copy of the weak format UltraMail and UltraSocial had left behind,
+  and it is gone: `VaultSecretStore` (in whichever UltraVault the application
+  opened, under `cloud.<accountId>.*`) is the store, `MemorySecretStore` the
+  process-lifetime one for tests and demos, and `MigrateLegacyFileSecrets`
+  carries an old directory into a store once, deleting each file as its
+  secret lands and the key file when none is left. UltraVault is a hard
+  dependency of the module now (`ULTRACLOUD_USE_ULTRAVAULT` stays defined for
+  consumers that test it). The UltraCloud suite covers all three
+  (`Tests/UltraCloud/test_secrets.cpp`). UltraMail 0.10.2 and UltraFiler
+  1.44.1 are the consumers that moved.
+- **`scripts/check_changelog.py --base` now catches a stale number before the
+  merge.** It compared the branch's entry only with the versions in the
+  branch's own copy of the file, plus one rule against the base: not the same
+  number as the base's line 1. A branch that picked the next number, was
+  overtaken by releases on `main` and had not merged `main` since therefore
+  passed - its file simply did not contain the newer entries - which is how
+  this branch's own entry sat at 0.9.16 while `main` was on 0.9.20. The
+  pull-request rule is now "strictly above the base's line 1", so both the
+  shared and the stale shape are refused while the number is still cheap to
+  change. `AGENTS.md` says to fetch `main` first, since the comparison is only
+  as current as the local `origin/main`.
+
+#### 2026-09-22 *0.9.22*
+- **A container no longer scrolls unless it is asked to.**
+  `ContainerStyle::autoShowScrollbars` now defaults to **off**. It defaulted to
+  on, and most containers in this tree are not viewports: they are form rows,
+  button bars, toolbar strips, cards and panes, laid out to fit. For those a
+  scrollbar was never the answer to anything — it appeared because the content
+  came out a pixel or two larger than the box, and then made it worse, because
+  the bar narrows the viewport by its own track size and so fabricates an
+  overflow on the other axis too. The pair was then drawn across the very row
+  it was meant to be laying out.
+  - **The default had already been written off three times in place** — the
+    window's own style (`enableWindowScrolling`), the eBook reader's nested
+    blocks, and the form grid each turn it off with a comment explaining this
+    exact cascade — and a dozen more call sites turn it off by hand before it
+    can happen to them (the toolbar, the album, the filer, the split pane, the
+    audio bars, Texter's rows, UltraCleaner's cards, UltraNetMonitor's bars).
+    UltraFiler's FTP login in 0.9.20 was the same defect once more.
+  - **A real scroll view opts in**, with `CreateScrollableContainer` (unchanged:
+    it sets the flag itself) or `autoShowScrollbars = true`. Three places in the
+    tree are deliberate scroll views and now say so: the eBook reader's chapter
+    pane and UltraMail's message body and its HTML host. The demo's scrolling
+    text block already said so.
+  - The opt-outs left at the call sites are no-ops now rather than load-bearing.
+    They are not removed here: each is one line stating an intent, and a sweep
+    that touches a dozen files to delete lines that do nothing is its own
+    change, not a rider on this one.
+
+#### 2026-09-22 *0.9.21*
+- **NetworkMonitor names.** `NetworkMonitorNames.h`: the name-source
+  plug-in point the proposal asked for (§2.3), and the sources behind it.
+  `INameSource` is what a source implements; `NetworkMonitor_RegisterNameSource`
+  starts it and feeds its observations to one *name table*
+  (`NetworkMonitor_LookupName` / `ListNames` / `ObserveName`), where every
+  address carries the name it was seen under and the `NameSource` it came
+  from - `DnsProxy`, `EtwDnsClient`, `PacketCapture` and `Sni` are
+  *observed* (a source saw the query), `ReverseDns` and `Inferred` are
+  *weak*, and an observed name always beats a weak one, however old.
+  `NetworkMonitor_ListConnections` fills each connection's `remoteName`
+  and `nameSource` from the table when `NetworkMonitorOptions::resolveNames`
+  is set (the default) and hands the peers nobody has named to the sources,
+  so reverse DNS knows what to look up. Names outlive their DNS TTL - at
+  least an hour - since a connection outlives the answer that started it.
+  - **The local DNS proxy** (`NetworkMonitor_CreateDnsProxySource`): listens
+    on 127.0.0.1, forwards every query to the upstream resolver unchanged
+    over UDP or TCP and reads the answers on the way back, following CNAME
+    chains so the address maps to the name the application asked for.
+    Cross-platform, one thread, one `select()` loop; refuses an upstream
+    that is itself. The wire format is `NetworkMonitorDns.h`: pure
+    functions over bytes, every read bounds-checked, compression pointers
+    that do not go backwards refused, tested from fixture bytes.
+  - **Reverse DNS** (`NetworkMonitor_CreateReverseDnsSource`): `getnameinfo`
+    on its own thread with a negative cache, never for loopback, link-local,
+    multicast or (unless asked) private addresses; labelled weak.
+  - **The Windows DNS client's ETW events** (`NetworkMonitor_CreateSystemDnsSource`,
+    `OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp`): a real-time
+    session on `Microsoft-Windows-DNS-Client`, event 3008, the one source
+    that reports the asking PID; needs an elevated token and says so.
+    Null on Linux and macOS. Compiled on CI, not yet exercised at run time.
+  - **The store records names.** Schema version 2 (a version-1 file
+    migrates in place): flows and daily totals carry `remote_name`, a flow
+    keeps the best name it was seen with, the text filter and the CSV
+    include it, and a `dns_observations` table holds every observation a
+    source reported (`NetworkMonitor_RecordDnsObservation` /
+    `QueryDnsObservations`), one row per address, dropped by retention
+    with the flows. `NetworkMonitor_AddNameListener` is how an app's
+    recorder hears them.
+  - `NetworkMonitorCapabilities::dnsWithProcess` is now true while a source
+    that reports the process is running; `ProcessTrafficSummary` lists the
+    distinct `remoteNames` it saw; `NetworkMonitor_NameSourceName` and
+    `NetworkMonitor_NameIsObserved` name and grade a source.
+  - Tests: the wire format, the table's precedence and lifetime rules, the
+    listener, the reverse DNS filters, the proxy end to end over UDP and
+    TCP against a fake resolver on loopback, and the store's names, the
+    observations, the CSV, the roll-up and the version-1 migration.
+  - The platform-glob exclusion in `UltraCanvas/CMakeLists.txt` now covers
+    every `*NetworkMonitor*.cpp`, so the new Windows source is compiled
+    once, into `NetworkMonitor`, and not into the core DLL.
 #### 2026-09-22 *0.9.20*
 - **A form caption is not something you scroll.** Every row of UltraCloud's
   add-account dialog - the FTP / SFTP login UltraFiler's "+ Drive" opens -

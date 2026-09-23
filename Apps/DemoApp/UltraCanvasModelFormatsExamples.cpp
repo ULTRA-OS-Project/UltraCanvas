@@ -534,7 +534,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
 
     // ===== VIEWER CONTROLS =====
     auto rotateBtn = MakeToolButton("MFRotate", 10, 450, 130, "Auto-rotate: on", nullptr);
-    rotateBtn->onClick = [viewer, rotateBtn, autoRotate]() {
+    rotateBtn->onClick = [viewer, rotateBtn = rotateBtn.get(), autoRotate]() {
         *autoRotate = !*autoRotate;
         viewer->SetAutoRotate(*autoRotate);
         rotateBtn->SetText(*autoRotate ? "Auto-rotate: on" : "Auto-rotate: off");
@@ -543,7 +543,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
 
     auto materialBtn = MakeToolButton("MFMaterial", 150, 450, 130,
                                       "Material: " + ModelColors()[0].first, nullptr);
-    materialBtn->onClick = [viewer, materialBtn, colorIndex]() {
+    materialBtn->onClick = [viewer, materialBtn = materialBtn.get(), colorIndex]() {
         *colorIndex = (*colorIndex + 1) % ModelColors().size();
         viewer->SetModelColor(ModelColors()[*colorIndex].second);
         materialBtn->SetText("Material: " + ModelColors()[*colorIndex].first);

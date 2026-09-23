@@ -68,8 +68,8 @@ What already existed and stays where it is:
   CloudService ──────────── AddAccount / List / Upload / CreateShareLink / UploadAndShare
     ├── AccountStore        the account list + default      (UltraDatabase, SQLite)
     ├── ISecretStore        passwords / tokens by accountId
-    │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password")
-    │     └── FileSecretStore    obfuscated files (per-app fallback)
+    │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password"), the app's own vault
+    │     └── MemorySecretStore  process-lifetime (tests, demos)
     └── provider registry   RegisterProvider / GetProvider / RegisterBuiltInProviders
           │                 + LoadProviderPlugins() for provider DSOs
           ├── HttpProviderBase                      one HttpFn, Basic / Bearer auth, HTTP → Result
@@ -115,6 +115,19 @@ or, without code, the environment: `ULTRACLOUD_DROPBOX_CLIENT_ID`,
 `_CLIENT_SECRET` and `_REDIRECT_URI` where needed). Until one is set the
 add-account dialog says so and the provider's `SignIn` returns `Unsupported`.
 
+The registration lives in **UltraNet's OAuth2 app registry**
+(`<UltraNet/UltraNetOAuth2Apps.h>`), one per process and shared with
+UltraMail; `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` are UltraCloud's
+profile of it: the `ULTRACLOUD_` environment prefix beside the shared
+`ULTRANET_OAUTH_` one, `http://127.0.0.1:53682/callback` when a registration
+names no redirect URI, and two aliases — `googledrive` falls back to a
+`google` registration and `onedrive` to a `microsoft` one. So the Google and
+Microsoft clients a UltraMail build bakes in (or an `oauth.ini` names) serve
+Drive and OneDrive too, provided their consent screens carry the Drive and
+Files scopes; a registration under the specific id always wins. An
+application that wants an INI file of its own loads it with
+`UltraNet_OAuth2LoadAppsFile(path)` and every module in the process sees it.
+
 Scopes requested: Dropbox `account_info.read files.metadata.read
 files.content.read files.content.write sharing.read sharing.write`
 (`token_access_type=offline`); OneDrive `Files.ReadWrite User.Read
@@ -146,7 +159,11 @@ using namespace UltraCloud;
 // Once per process.
 RegisterBuiltInProviders();
 AccountStore accounts;  accounts.Open("myapp-cloud", dataDir + "/cloud.db");
-FileSecretStore secrets(dataDir + "/cloud-vault");   // or VaultSecretStore
+// The secrets go into the application's own vault (UltraVault::DeviceKeyVault,
+// Docs/Modules/UltraVault/README.md), opened before the accounts are touched.
+UltraVault::DeviceKeyVault vault(dataDir + "/vault", {"myapp.vault", "myapp.myapp."});
+vault.TryAutoUnlock();
+VaultSecretStore secrets;                            // "cloud.<accountId>.*" in that vault
 CloudService cloud(accounts, secrets);
 
 // Set up an account (the first one becomes the default).
@@ -209,13 +226,13 @@ providers.
 | `UltraCloudTypes.h` | `Result` / `ResultCode`, `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
-| `UltraCloudOAuth.h` | `OAuthApp`, `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp`, `OAuthHooks`, `OAuthProviderBase` |
+| `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
-| `UltraCloudSecrets.h` | `ISecretStore`, `FileSecretStore`, `VaultSecretStore` (with UltraVault) |
+| `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |

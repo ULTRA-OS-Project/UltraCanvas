@@ -1,13 +1,18 @@
 // Apps/UltraSocial/ui/UltraSocialAccountWizard.cpp
-// Version: 0.1.0 (Phase 1)
+// Version: 0.3.0 - the form is a UltraCanvasFormLayout grid: captions size
+//                  themselves to the wording the chosen network uses, and a
+//                  field the network has no use for leaves the form
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialAccountWizard.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasFormLayout.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSpacer.h"
 #include "UltraCanvasTextInput.h"
 
 #include <array>
@@ -19,8 +24,13 @@ namespace UltraSocial {
 
 namespace {
 
-// Per-network form wording. The three fields keep their positions; only
-// labels, placeholders and the hint change with the dropdown.
+// Per-network form wording. The fields keep their positions; only labels,
+// placeholders and the hint change with the dropdown.
+//
+// An EMPTY label means this network has no such field, and the row leaves the
+// form: no network needs all four, and a row captioned "(not used)" over an
+// input that does nothing is a question the user has to answer ("do I fill
+// this in?") where there should be no question at all.
 struct NetworkForm {
     SocialNetwork network;
     const char* dropdownText;
@@ -41,23 +51,23 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "you in through your browser; no keys needed. Advanced: paste an "
       "access token instead to skip the browser.",
       "Instance", "mastodon.social",
-      "(not used)", "",
+      "", "",
       "Access token", "optional — empty opens the browser",
-      "(not used)", "" },
+      "", "" },
     { SocialNetwork::Bluesky, "Bluesky",
       "Create an app password under Settings → App Passwords on "
       "Bluesky, then sign in with it here — never your main password.",
       "Server (PDS)", "bsky.social (default)",
       "Handle / e-mail", "erika.bsky.social",
       "App password", "xxxx-xxxx-xxxx-xxxx",
-      "(not used)", "" },
+      "", "" },
     { SocialNetwork::Telegram, "Telegram channel",
       "Create a bot with @BotFather, add it to your channel as an "
       "administrator, and paste its token here.",
       "Server", "(default)",
       "Channel", "@mychannel",
       "Bot token", "123456:ABC-DEF…",
-      "(not used)", "" },
+      "", "" },
     { SocialNetwork::Reddit, "Reddit",
       "Register an 'installed app' at reddit.com/prefs/apps with redirect "
       "http://127.0.0.1:17995/callback, paste its client id, then sign in "
@@ -65,15 +75,15 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "your profile).",
       "Server", "(default)",
       "Subreddit", "optional, e.g. r/test",
-      "(not used)", "",
+      "", "",
       "Client ID", "from reddit.com/prefs/apps" },
     { SocialNetwork::X, "X (Twitter)",
       "Register an app in the X developer portal (OAuth 2.0 public client, "
       "redirect http://127.0.0.1:17996/callback), paste its client id, then "
       "sign in through your browser. Mind the free tier's monthly write cap.",
       "Server", "(default)",
-      "(not used)", "",
-      "(not used)", "",
+      "", "",
+      "", "",
       "Client ID", "from the X developer portal" },
     { SocialNetwork::LinkedIn, "LinkedIn",
       "Register an app at linkedin.com/developers with the 'Sign In with "
@@ -81,7 +91,7 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "http://127.0.0.1:17997/callback, paste its client id and secret, "
       "then sign in through your browser.",
       "Server", "(default)",
-      "(not used)", "",
+      "", "",
       "Client secret", "from your LinkedIn app",
       "Client ID", "from your LinkedIn app" },
     { SocialNetwork::Facebook, "Facebook Page",
@@ -92,7 +102,7 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "Server", "(default)",
       "Page ID", "e.g. 103245...",
       "Page access token", "EAAB…",
-      "(not used)", "" },
+      "", "" },
 }};
 
 } // namespace
@@ -116,79 +126,77 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
 
-    auto content = CreateContainer("swForm", 0, 0, 0, 0);
-    content->layout.SetFlexColumn()
-                   .SetFlexGap(8)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // One two-column grid rather than a flex container per field. The
+    // captions here are rewritten every time the network changes - "Access
+    // token" becomes "Page access token" becomes "(not used)" - so a caption
+    // column that measures its own text is not a nicety: a fixed 120 px would
+    // have to be wide enough for the longest wording of all seven networks,
+    // and would cut off the first one that grows past it. The grid is also
+    // flex-shrink: 0 and never scrolls, so a field can no longer be squeezed
+    // below the input inside it and raise a scrollbar across its own caption.
+    auto content = CreateFormGrid("swForm", 8.0f, 8.0f);
 
-    // Build a [label + input] flex row and append it to the content column.
+    // A [caption | input] row. The input gets no width of its own: the `1fr`
+    // column hands it whatever is left after the caption column.
     struct Row {
         std::shared_ptr<UltraCanvasLabel> label;
         std::shared_ptr<UltraCanvasTextInput> input;
     };
     auto addRow = [&content](const std::string& id, const std::string& labelText,
                              const std::shared_ptr<UltraCanvasTextInput>& input) {
-        auto row = CreateContainer(id + "Row", 0, 0, 0, 30);
-        row->layout.SetFlexRow()
-                   .SetFlexGap(8)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-
-        auto label = CreateLabel(id + "Label", 0, 0, 120, 26, labelText);
-        row->AddChild(label);
-        label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
-
-        row->AddChild(input);
-        input->layoutItem.SetFlexGrow(1);
-
-        content->AddChild(row);
-        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        auto label = CreateFormCaption(id + "Label", labelText);
+        AddFormRow(content, label, input);
         return Row{label, input};
     };
 
     // Network picker row.
-    auto networkRow = CreateContainer("swNetworkRow", 0, 0, 0, 30);
-    networkRow->layout.SetFlexRow()
-                      .SetFlexGap(8)
-                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    auto networkLabel = CreateLabel("swNetworkLabel", 0, 0, 120, 26, "Network");
-    networkRow->AddChild(networkLabel);
-    networkLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
-    auto network = CreateDropdown("swNetwork", 0, 0, 260, 28);
+    auto network = CreateDropdown("swNetwork", 0, 0, 0, 28);
     for (const auto& form : kForms) network->AddItem(form.dropdownText);
-    networkRow->AddChild(network);
-    network->layoutItem.SetFlexGrow(1);
-    content->AddChild(networkRow);
-    networkRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    AddFormRow(content, CreateFormCaption("swNetworkLabel", "Network"), network);
 
-    auto hint = CreateLabel("swHint", 0, 0, 460, 78, kForms[0].hint);
+    // The hint is its own caption, so it spans both columns.
+    auto hint = CreateLabel("swHint", 0, 0, 0, 78, kForms[0].hint);
     hint->SetWrap(TextWrap::WrapWord);
-    content->AddChild(hint);
-    hint->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    AddFormWideRow(content, hint);
 
-    auto server = CreateTextInput("swServer", 0, 0, 260, 28);
+    auto server = CreateTextInput("swServer", 0, 0, 0, 28);
     Row serverRow = addRow("swServer", kForms[0].serverLabel, server);
 
-    auto identifier = CreateTextInput("swIdentifier", 0, 0, 260, 28);
+    auto identifier = CreateTextInput("swIdentifier", 0, 0, 0, 28);
     Row identifierRow = addRow("swIdentifier", kForms[0].identifierLabel, identifier);
 
-    auto secret = CreatePasswordInput("swSecret", 0, 0, 260, 28);
+    auto secret = CreatePasswordInput("swSecret", 0, 0, 0, 28);
     Row secretRow = addRow("swSecret", kForms[0].secretLabel, secret);
 
-    auto clientId = CreateTextInput("swClientId", 0, 0, 260, 28);
+    auto clientId = CreateTextInput("swClientId", 0, 0, 0, 28);
     Row clientIdRow = addRow("swClientId", kForms[0].clientIdLabel, clientId);
 
-    auto applyForm = [hint, serverRow, identifierRow, secretRow,
+    // A row this network does not use (empty caption) leaves the grid
+    // entirely - hiding both cells is display:none, so no gap is left behind -
+    // and its input is emptied on the way out. That last part is not tidiness:
+    // a Bluesky app password typed before switching to Reddit would otherwise
+    // still be in the box at submit time, now invisible, and would be sent as
+    // Reddit's secret.
+    auto applyRow = [](const Row& row, const char* caption, const char* placeholder) {
+        const bool used = caption && *caption;
+        row.label->SetVisible(used);
+        row.input->SetVisible(used);
+        if (!used) {
+            row.input->SetText("");
+            return;
+        }
+        row.label->SetText(caption);
+        row.input->SetPlaceholder(placeholder);
+    };
+
+    auto applyForm = [hint, applyRow, serverRow, identifierRow, secretRow,
                       clientIdRow](int index) {
         const auto& form = kForms[static_cast<std::size_t>(index)];
         hint->SetText(form.hint);
-        serverRow.label->SetText(form.serverLabel);
-        serverRow.input->SetPlaceholder(form.serverPlaceholder);
-        identifierRow.label->SetText(form.identifierLabel);
-        identifierRow.input->SetPlaceholder(form.identifierPlaceholder);
-        secretRow.label->SetText(form.secretLabel);
-        secretRow.input->SetPlaceholder(form.secretPlaceholder);
-        clientIdRow.label->SetText(form.clientIdLabel);
-        clientIdRow.input->SetPlaceholder(form.clientIdPlaceholder);
+        applyRow(serverRow,     form.serverLabel,     form.serverPlaceholder);
+        applyRow(identifierRow, form.identifierLabel, form.identifierPlaceholder);
+        applyRow(secretRow,     form.secretLabel,     form.secretPlaceholder);
+        applyRow(clientIdRow,   form.clientIdLabel,   form.clientIdPlaceholder);
     };
     applyForm(0);
     network->SetSelectedIndex(0, /*runNotifications=*/false);
@@ -197,7 +205,9 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     };
 
     dialog->AddChild(content);
-    content->layoutItem.SetFlexGrow(1);
+    // The grid keeps its rows at their own height; the spacer takes the slack
+    // so the buttons stay at the bottom of the dialog.
+    dialog->AddChild(std::make_shared<UltraCanvasSpacer>(0, 0, 1.0f));
 
     // ===== BUTTON ROW: Connect / Cancel =====
     auto buttonRow = CreateContainer("swButtons", 0, 0, 0, 36);

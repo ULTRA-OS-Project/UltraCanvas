@@ -37,6 +37,7 @@
 #ifndef ACCOUNTSTORE_H
 #define ACCOUNTSTORE_H
 
+#include "LockPolicy.h"
 #include "otp/UltraOtp.h"
 #include "store/EncryptedFileStore.h"
 
@@ -77,6 +78,32 @@ public:
 
     void Close();
     bool IsOpen() const { return vault_.IsOpen(); }
+
+    // --- Session lock -------------------------------------------------------
+    // Lock() is Close() that remembers where the vault is: the derived key and
+    // every decrypted entry are dropped, so a locked app holds no more than an
+    // app that was never unlocked, and Unlock() re-derives the key from a
+    // freshly typed password. Everything else reports NotOpen while locked.
+    //
+    // Unlock attempts are throttled (LockPolicy.h): a few failures are free,
+    // then each one doubles the wait before the next is even tried, and an
+    // attempt made during the wait is refused with TooManyAttempts *before*
+    // the password is checked. That order matters — the refusal must not be
+    // an oracle, and it must not cost the Argon2id derivation either.
+    void Lock();
+    bool IsLocked() const { return !path_.empty() && !vault_.IsOpen(); }
+
+    // Binds the store to an existing vault file without opening it, so the
+    // very first unlock goes through Unlock() and its throttle instead of a
+    // separate launch-time path. Refuses a missing file (NotFound — creation
+    // is Create()'s job and needs a password) and a store that is already
+    // open. Afterwards IsLocked() is true and nothing has been decrypted.
+    StoreResult Attach(const std::string& path);
+    StoreResult Unlock(const UltraCryptSecureBuffer& password, int64_t nowUnix);
+    uint32_t SecondsUntilUnlockAllowed(int64_t nowUnix) const {
+        return throttle_.SecondsUntilAllowed(nowUnix);
+    }
+    unsigned FailedUnlockAttempts() const { return throttle_.ConsecutiveFailures(); }
 
     static bool Exists(const std::string& path) {
         return EncryptedFileStore::Exists(path);
@@ -191,6 +218,7 @@ private:
     std::string path_;
 
     mutable EncryptedFileStore vault_;
+    UnlockThrottle             throttle_;
 };
 
 } // namespace Authenticator

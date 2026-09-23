@@ -9,17 +9,12 @@
 #include "UltraNetSocketInternal.h"
 #include "UltraNetTlsImpl.h"
 
-#include <mutex>
-#include <unordered_map>
-
-namespace {
-    // Tracks the per-handle TLS context pointer so UltraNet_TlsGetInfo and
-    // UltraNet_TlsHandshake can find the right backend context. The pointer
-    // is also held by the socket entry vtable (for Read/Write/Close), but
-    // GetInfo / Handshake go through this side table.
-    std::mutex g_mutex;
-    std::unordered_map<UltraNetHandle, void*> g_ctxByHandle;
-}
+// The TLS context belongs to the socket entry, which hands it to `Close`
+// when the socket is closed, so Handshake and GetInfo below ask the socket
+// for it (ultranet_internal::GetTlsCtx) rather than keeping a table of their
+// own. One kept here would never learn that a connection had closed: it
+// would grow by an entry per connection for the life of the process and
+// answer later calls with a pointer that had already been freed.
 
 UltraNetHandle UltraNet_TlsWrap(UltraNetHandle tcpHandle,
                                 const std::string& serverName,
@@ -39,35 +34,21 @@ UltraNetHandle UltraNet_TlsWrap(UltraNetHandle tcpHandle,
         ultranet_tls_platform::Close(ctx);
         return UltraNetInvalidHandle;
     }
-    {
-        std::lock_guard<std::mutex> lk(g_mutex);
-        g_ctxByHandle[tcpHandle] = ctx;
-    }
     return tcpHandle;
 }
 
 UltraNetResult UltraNet_TlsHandshake(UltraNetHandle handle) {
-    void* ctx = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_mutex);
-        auto it = g_ctxByHandle.find(handle);
-        if (it == g_ctxByHandle.end()) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
-                                         "no TLS context attached to handle");
-        }
-        ctx = it->second;
+    void* ctx = ultranet_internal::GetTlsCtx(handle);
+    if (!ctx) {
+        return UltraNetResult::Error(UltraNetResultCode::InvalidHandle,
+                                     "no TLS context attached to handle");
     }
     return ultranet_tls_platform::Handshake(ctx);
 }
 
 UltraNetTlsInfo UltraNet_TlsGetInfo(UltraNetHandle handle) {
-    void* ctx = nullptr;
-    {
-        std::lock_guard<std::mutex> lk(g_mutex);
-        auto it = g_ctxByHandle.find(handle);
-        if (it == g_ctxByHandle.end()) return {};
-        ctx = it->second;
-    }
+    void* ctx = ultranet_internal::GetTlsCtx(handle);
+    if (!ctx) return {};
     return ultranet_tls_platform::GetInfo(ctx);
 }
 

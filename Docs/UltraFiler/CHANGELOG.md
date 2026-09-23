@@ -1,3 +1,136 @@
+#### 2026-09-23 *1.49.0*
+- **The status line says what a drive is doing, and a transfer gets a bar.**
+  1.46.0 gave the folder area its own message while a listing is on its way.
+  This is the other half: the status strip, and the jobs that are not
+  listings. A drive is the one place in this file manager where the answer to
+  "why is nothing happening?" is "a server is thinking about it", and an
+  upload, a delete or a rename still said nothing at all - and nothing
+  anywhere said how far a transfer had got. Every job the drives run now
+  reports itself as it starts -
+  `Opening "Videos" - receiving folder data...`, `Uploading "clip.mp4" - 3.2 MB
+  of 8.0 MB`, `Deleting ... on the drive` - with what is still queued behind it
+  (`(2 more queued)`), so a drop of five files does not read as one.
+  - **The status strip is a row now**, the line of text on the left and the
+    framework's progress bar - `UltraCanvasGaugeDiagramElement` in
+    `GaugeMode::LinearBar` - on the right. The bar is there only while a file
+    is actually moving: a listing is one round trip with nothing to count, and
+    an empty bar sitting in the status line at all times is furniture rather
+    than information.
+  - **A server that does not say how big the file is** gets "3.2 MB sent" in
+    the words and the gauge's indeterminate slide in the bar: there is no
+    progress to draw, but the transfer is running and the bar says so. The
+    slide is the gauge's own timer, so it keeps moving between the byte
+    reports rather than freezing whenever a chunk is in flight.
+  - **The report is said before the job runs, not after.** The whole point is
+    to fill the wait, and a report that arrives with the answer fills nothing.
+    Bytes are thinned to one report every 80 ms on the way to the UI thread -
+    libcurl counts bytes, not milestones - with the first and last of each job
+    forced through.
+  - It is said whatever the window is showing: the History view, the Computer
+    page, another tab. What a server is doing is the one thing in this window
+    the user cannot see for themselves.
+  - The drives share the process-wide UltraNet transfer callbacks while a
+    transfer runs and put the previous ones back afterwards. An upload is no
+    reason to deafen the rest of the application.
+
+#### 2026-09-23 *1.48.0*
+- **An FTP drive's folders appear under it in the tree.** A remote drive was a
+  leaf: it had no expand button, and opening it listed its folders on the right
+  while its row in the tree stayed empty. The tree deliberately refused to go
+  further, because a remote folder's children have to be fetched from a server
+  and the tree cannot wait on one while it paints.
+  - **It no longer has to wait.** The drives already keep a listing cache whose
+    misses are filled by a worker (that is how the folder display shows a
+    server without blocking), so the tree reads the same cache: a hit fills the
+    row now, a miss only queues the fetch, and the arriving listing - the very
+    one that refreshes the display - fills the row when it lands. Opening a
+    drive is therefore enough to make its folders appear beneath it, and
+    expanding the row without opening it works too.
+  - **Folders inside a drive expand in turn**, down as far as the server goes,
+    each one fetched only when it is asked for.
+  - **The expand button is offered rather than probed for.** Asking whether a
+    remote folder has subfolders means listing it, which would be one round
+    trip per row before the user has asked to see any of them; the button is
+    there from the start and withdrawn again when the listing turns out to
+    hold no folders.
+  - **The rows follow the drive.** A folder created, renamed or deleted on it
+    updates them, a folder that is gone from the server leaves the tree with
+    its subtree, a drive that is removed takes its rows with it, and the tree
+    follows the display into a remote subfolder once the row to select exists.
+  - **A remote path never reaches the local reconcile.** `RefreshTreeFolder`
+    answers `is_directory` for the folder it is given; for a path on a server
+    that is "no", and the row - with everything under it - would have been
+    dropped from the tree the moment anything changed inside it.
+
+#### 2026-09-23 *1.47.0*
+- **Drop files onto a remote folder in the display to upload them, too.**
+  1.46.0 let a drop on the drive's tree row upload; now a drop onto the
+  folder shown in a display does the same - from another program, or from
+  the other display of the split view. The status bar says how many files
+  are on their way to which drive and folder, and what was left out and why
+  (a folder, a remote entry). Moving or copying between two places on the
+  same drive is still not offered, and says so. Needs the framework change
+  that adds the widget's `remoteUpload` hook.
+
+#### 2026-09-23 *1.46.0*
+- **A remote folder being fetched shows progress, not "Folder is empty!".**
+  Opening a folder on an FTP, SFTP or cloud drive now shows a turning progress
+  ring with "Loading folder" and a line about what is going on: "Waiting for
+  Backup NAS - 2 requests ahead" while the fetch is queued behind other
+  requests, then "Connecting to Backup NAS (ftp://nas.local) and reading
+  /photos", with a seconds count once the server keeps it waiting. The line
+  updates as the fetch moves along; the listing replaces it when it lands.
+  A folder the server refused shows the reason (a rejected login, an
+  unreachable host) in the folder area instead of an empty folder. Needs
+  framework 0.9.41 (the widget's `remoteListingStatus` hook).
+- **Split view: the docked tree's width moves with the tree.** Docking the
+  folder tree into a pane widens that pane by the tree's width at the other
+  display's expense, and undocking it (or docking it on the other side) gives
+  that width back - the display beside the tree used to stay squeezed after
+  the tree had gone. The "Folder tree" tooltip no longer lingers over the
+  docked tree after the click (framework 0.9.41).
+- **Drop files onto a remote drive's row in the folder tree to upload them.**
+  The row takes local files the way a folder row takes a move, when the
+  drive can take uploads (an FTP drive can; so can a Nextcloud or Dropbox
+  drive, which cannot otherwise be changed from here). Each file goes up as
+  its own request under its own name, the status bar says how many are on
+  their way, and the folder re-lists from the server as they land; a
+  refusal comes back as the server's own message. Folders are not uploaded
+  (a tree is not one transfer) and remote entries have no local file to
+  send: both are counted in the status bar with the reason.
+- **Dot-entries on a remote drive are hidden like local ones.** A `.git`
+  folder or `.htaccess` on a server was listed on every display while the
+  same name on a disk was hidden; the listing now marks them hidden, so
+  Display > Hidden files and the display's own toggle govern both alike.
+
+#### 2026-09-22 *1.45.0*
+- **Extras > Find text: search inside files.** A new first item in the file
+  context menu's *Extras* submenu asks for a text and lists every file in the
+  shown folder and its sub folders that contains it. It runs on the
+  background walk behind *Scan sub folder*: matches land in the same result
+  display (with *Open path* on each entry) while it searches, the status bar
+  counts files found and files read, and the search field's *Stop* button
+  ends it. The comparison ignores the case of ASCII letters; binary files,
+  files over 64 MB, hidden entries and links are skipped. Local folders only.
+- **Case-insensitive name comparisons no longer rely on undefined behaviour.**
+  The sub-folder name search, the folder tree's sort and the folder-icon keys
+  (Windows) lowercased with `::tolower` on plain `char`, which is undefined
+  for the bytes of a non-ASCII (UTF-8) name. They now go through
+  `unsigned char`; what matches and how folders sort is unchanged.
+
+#### 2026-09-22 *1.44.1*
+- **Remote-drive credentials are actually saved now.** UltraFiler handed its
+  drive passwords and tokens to UltraCloud's `VaultSecretStore` but never
+  opened a vault for it to write into, so every store was refused and a drive
+  had to be signed in to again on each start. UltraFiler now has a vault of
+  its own — `ultrafiler.vault` and `device.key` under the configuration
+  directory, the framework's `UltraVault::DeviceKeyVault` (0.9.23), unlocked
+  without a prompt — and the secret store writes into it under UltraCloud's
+  `cloud.<accountId>.*` keys. Credentials a build without UltraVault kept in
+  `remote-drive-secrets/` are carried into the vault on the first start and
+  the files removed. When the vault cannot be opened the remote-drive list
+  says so instead of silently forgetting every sign-in.
+
 #### 2026-09-19 *1.44.0*
 - **Split view: two folder displays side by side.** A split-screen button in
   the navigation row, left of the clock, replaces the folder tree and the one
@@ -420,10 +553,10 @@
   pulls that display back. The folder tree leaves hidden folders out either
   way. Stored as `display.files.show.hidden` in the config file.
 - **The settings pages showed their explanations half-cut.** The line under
-  each page title and the notes block at its foot were drawn one line tall with
-  the text clipped through them. The cause was in the layout engine, not in the
-  settings window - see the framework changelog for 0.8.43 (wrapped text in a
-  flex column) - and every page is legible with that fix.
+  each page title and the notes block at its foot were drawn one line tall
+  with the text clipped through them. The cause was in the layout engine,
+  not in the settings window - see the framework changelog for 0.8.43
+  (wrapped text in a flex column) - and every page is legible with that fix.
 
 #### 2026-09-13 *1.31.0*
 - **Folder icons show the first pictures inside the folder**, peeking out of

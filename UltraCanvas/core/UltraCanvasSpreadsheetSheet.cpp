@@ -347,7 +347,7 @@ void SpreadsheetSheet::RefreshFilter() {
                     double cellVal = cell ? cell->GetNumber() : 0.0;
                     double cmpVal = 0.0;
                     if (!filter.values.empty()) {
-                        try { cmpVal = std::stod(filter.values.front()); } catch (...) { cmpVal = 0.0; }
+                        try { cmpVal = std::stod(filter.values.front()); } catch (...) { cmpVal = 0.0; }   // locale-ok: compares against what the user typed into the filter
                     }
                     if (filter.op == FilterOperator::GreaterThan) match = cellVal > cmpVal;
                     else if (filter.op == FilterOperator::LessThan) match = cellVal < cmpVal;
@@ -491,7 +491,7 @@ std::optional<CellStyle> SpreadsheetSheet::GetConditionalStyle(int row, int col)
             double value = cell ? cell->GetNumber() : 0.0;
 
             auto parseNum = [](const std::string& s) -> double {
-                try { return std::stod(s); } catch (...) { return 0.0; }
+                try { return std::stod(s); } catch (...) { return 0.0; }   // locale-ok: compares against what the user typed into the filter
             };
 
             switch (rule.type) {
@@ -606,7 +606,7 @@ bool SpreadsheetSheet::ValidateCell(int row, int col, std::string* errorMessage)
     double value = cell->GetNumber();
 
     auto parseNum = [](const std::string& s) -> double {
-        try { return std::stod(s); } catch (...) { return 0.0; }
+        try { return std::stod(s); } catch (...) { return 0.0; }   // locale-ok: compares against what the user typed into the filter
     };
 
     bool valid = true;

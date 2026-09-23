@@ -56,7 +56,14 @@ if(UNIX AND NOT APPLE AND NOT ANDROID
         # name untouched, so CMAKE_CXX_COMPILER became the C driver "clang-NN",
         # which compiles C++ fine but does NOT add -lstdc++ at link time - every
         # C++ runtime symbol then comes back undefined.
-        string(REGEX REPLACE "clang(-[0-9]+)?$" "clang++\\1" _uc_cxx_name "${_uc_name}")
+        #
+        # Done as MATCH + append rather than one REGEX REPLACE with an optional
+        # group and a "\1" back-reference: CMake (3.28 at least) rejects that
+        # replacement outright - "out-of-range escape for regex" - so the
+        # configure failed for anyone with clang installed unless they passed
+        # the compiler explicitly. An unmatched suffix leaves _uc_suffix empty.
+        string(REGEX MATCH "-[0-9]+$" _uc_suffix "${_uc_name}")
+        set(_uc_cxx_name "clang++${_uc_suffix}")
         unset(_uc_candidate_cxx CACHE)
         find_program(_uc_candidate_cxx NAMES ${_uc_cxx_name})
         if(_uc_candidate_cxx)
@@ -393,6 +400,18 @@ if(BUILD_ULTRANETMONITOR)
     message(STATUS "")
     message(STATUS "── Building UltraNetMonitor ──")
     add_subdirectory(Apps/UltraNetMonitor)
+endif()
+
+# ===== DEVICEEXPLORER =====
+# Shows the devices connected to this computer - printers, scanners, cameras -
+# as the IODeviceManager module finds them: a tree grouped by category,
+# connection or backend on the left, the selected device's details on the
+# right. A headless --list mode prints the same tree.
+option(BUILD_DEVICEEXPLORER "Build the DeviceExplorer application" ON)
+if(BUILD_DEVICEEXPLORER)
+    message(STATUS "")
+    message(STATUS "── Building DeviceExplorer ──")
+    add_subdirectory(Apps/DeviceExplorer)
 endif()
 
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
@@ -1541,6 +1560,7 @@ if (BUILD_TESTS)
     add_executable(UltraAuthenticatorExportTests
         Tests/UltraAuthenticatorExportTests.cpp
         Apps/UltraAuthenticator/AccountStore.cpp
+        Apps/UltraAuthenticator/LockPolicy.cpp
         Apps/UltraAuthenticator/AccountExport.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
         Apps/UltraAuthenticator/otp/UltraOtp.cpp
@@ -1597,6 +1617,7 @@ if (BUILD_TESTS)
     add_executable(UltraAuthenticatorAccountTests
         Tests/UltraAuthenticatorAccountTests.cpp
         Apps/UltraAuthenticator/AccountStore.cpp
+        Apps/UltraAuthenticator/LockPolicy.cpp
         # AccountStore now exports and imports backups, so it needs the export
         # container and the envelope underneath it.
         Apps/UltraAuthenticator/AccountExport.cpp
@@ -1615,6 +1636,24 @@ if (BUILD_TESTS)
     )
     add_test(NAME UltraAuthenticatorAccountTests
              COMMAND UltraAuthenticatorAccountTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Authenticator lock policy and settings file: the unlock back-off
+    # schedule as a pure function of failures and time, and the preferences
+    # round trip with clamping of hand-edited values. No crypto, no UI.
+    add_executable(UltraAuthenticatorLockTests
+        Tests/UltraAuthenticatorLockTests.cpp
+        Apps/UltraAuthenticator/LockPolicy.cpp
+        Apps/UltraAuthenticator/Preferences.cpp
+    )
+    target_include_directories(UltraAuthenticatorLockTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator)
+    target_compile_features(UltraAuthenticatorLockTests PRIVATE cxx_std_20)
+    set_target_properties(UltraAuthenticatorLockTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAuthenticatorLockTests
+             COMMAND UltraAuthenticatorLockTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraVault unit tests: memory-backend CRUD and lifecycle, encrypted-file
@@ -1845,6 +1884,19 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAIApp)
     # The dashboard reads media/appicon/UltraAI.png from the resources dir,
     # which is this copy in the build tree.
     add_dependencies(UltraAIApp copy_assets)
+endif()
+# Same reason: both read their media/appicon/<App>.png from the resources dir,
+# so the asset copy has to exist before the binary is run out of the build tree.
+if(TARGET UltraNetMonitor)
+    add_dependencies(UltraNetMonitor copy_assets)
+endif()
+if(TARGET UltraAuthenticator)
+    add_dependencies(UltraAuthenticator copy_assets)
+endif()
+if(TARGET DeviceExplorer)
+    # Reads media/appicon/DeviceExplorer.png and its tree icons from
+    # media/icons/ in the resources dir.
+    add_dependencies(DeviceExplorer copy_assets)
 endif()
 
 # The LaTeX plugin is a dlopen()ed CMake MODULE - never linked by any app, so

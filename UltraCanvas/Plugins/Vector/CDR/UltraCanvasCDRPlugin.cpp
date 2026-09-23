@@ -8,6 +8,7 @@
 #include "UltraCanvasCDRPluginImpl.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasFileError.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
 #include <atomic>
 #include <iostream>
 #include <fstream>
@@ -18,6 +19,22 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+
+namespace {
+// CDR writes its numbers dot-decimal, as file formats do. std::stof reads
+// through LC_NUMERIC, so on a comma-decimal desktop - and the Linux backend
+// calls setlocale(LC_ALL, "") for XIM - it stopped at the '.' and read 1.5 as
+// 1: a transform an eighth of the intended scale, a dash pattern of the wrong
+// length. It also throws on malformed input, here in a reader whose whole job
+// is to survive a damaged file. TryParseFloat does neither, and leaves the
+// fallback in place when there is no number to read.
+float CdrFloat(const std::string& text, float fallback = 0.0f) {
+    float value = fallback;
+    TryParseFloat(text, value);
+    return value;
+}
+}  // namespace
+
 
 // ===== UNIT CONVERSION CONSTANTS =====
 // libcdr uses inches as base unit, convert to pixels (assuming 96 DPI)
@@ -630,9 +647,10 @@ namespace UltraCanvas {
                 std::istringstream iss(dashStr);
                 std::string token;
                 while (std::getline(iss, token, ',')) {
-                    try {
-                        style.dashPattern.dashes.push_back(std::stof(token));
-                    } catch (...) {}
+                    float dash = 0.0f;
+                    if (TryParseFloat(token, dash)) {
+                        style.dashPattern.dashes.push_back(dash);
+                    }
                 }
             }
         }
@@ -1362,12 +1380,12 @@ namespace UltraCanvas {
 
             // Matrix transform
             if (std::regex_search(transformStr, match, matrixRe)) {
-                float a = std::stof(match[1].str());
-                float b = std::stof(match[2].str());
-                float c = std::stof(match[3].str());
-                float d = std::stof(match[4].str());
-                float e = std::stof(match[5].str()) * INCHES_TO_PIXELS;
-                float f = std::stof(match[6].str()) * INCHES_TO_PIXELS;
+                float a = CdrFloat(match[1].str());
+                float b = CdrFloat(match[2].str());
+                float c = CdrFloat(match[3].str());
+                float d = CdrFloat(match[4].str());
+                float e = CdrFloat(match[5].str()) * INCHES_TO_PIXELS;
+                float f = CdrFloat(match[6].str()) * INCHES_TO_PIXELS;
 
                 AddDrawCommand([=](IRenderContext* ctx) {
                     ctx->Transform(a, b, c, d, e, f);
@@ -1376,8 +1394,8 @@ namespace UltraCanvas {
 
             // Translate
             if (std::regex_search(transformStr, match, translateRe)) {
-                float tx = std::stof(match[1].str()) * INCHES_TO_PIXELS;
-                float ty = match[2].length() > 0 ? std::stof(match[2].str()) * INCHES_TO_PIXELS : 0;
+                float tx = CdrFloat(match[1].str()) * INCHES_TO_PIXELS;
+                float ty = match[2].length() > 0 ? CdrFloat(match[2].str()) * INCHES_TO_PIXELS : 0;
 
                 AddDrawCommand([=](IRenderContext* ctx) {
                     ctx->Translate(tx, ty);
@@ -1386,7 +1404,7 @@ namespace UltraCanvas {
 
             // Rotate
             if (std::regex_search(transformStr, match, rotateRe)) {
-                float angle = std::stof(match[1].str()) * M_PI / 180.0f;
+                float angle = CdrFloat(match[1].str()) * M_PI / 180.0f;
 
                 AddDrawCommand([=](IRenderContext* ctx) {
                     ctx->Rotate(angle);
@@ -1395,8 +1413,8 @@ namespace UltraCanvas {
 
             // Scale
             if (std::regex_search(transformStr, match, scaleRe)) {
-                float sx = std::stof(match[1].str());
-                float sy = match[2].length() > 0 ? std::stof(match[2].str()) : sx;
+                float sx = CdrFloat(match[1].str());
+                float sy = match[2].length() > 0 ? CdrFloat(match[2].str()) : sx;
 
                 AddDrawCommand([=](IRenderContext* ctx) {
                     ctx->Scale(sx, sy);
