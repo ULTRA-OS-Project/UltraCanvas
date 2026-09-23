@@ -7,7 +7,7 @@
 // and filters them; the numeric columns answer SortRole with the number, so
 // "10" sorts after "9". A peer's name shows in a *Host* column, with a
 // trailing "?" when it is a weak one (reverse DNS), never as a fact.
-// Version: 0.7.0
+// Version: 0.8.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -64,7 +64,7 @@ private:
 // One row per recorded flow, for the History tab.
 class FlowListModel : public UltraCanvas::IListModel {
 public:
-    enum Column { Application = 0, Pid, Protocol, Local, Remote, Host, State, FirstSeen, LastSeen,
+    enum Column { Application = 0, Pid, Protocol, Local, Remote, Host, Via, State, FirstSeen, LastSeen,
                   Seen, Sent, Received, ColumnCount };
 
     int GetRowCount() const override;
@@ -128,6 +128,10 @@ private:
 // "for thunderbird (4120)" on the proxy's own outbound connections.
 std::string ViaText(const UltraCanvas::NetworkConnection& connection);
 std::string ViaTooltip(const UltraCanvas::NetworkConnection& connection);
+// The same for a recorded flow, whose chain is what the last sighting
+// that had one decoded.
+std::string ViaText(const UltraCanvas::RecordedFlow& flow);
+std::string ViaTooltip(const UltraCanvas::RecordedFlow& flow);
 
 // "www.example.com" for an observed name, "www.example.com ?" for a weak
 // one, empty for none. Shared by every list that shows a host.

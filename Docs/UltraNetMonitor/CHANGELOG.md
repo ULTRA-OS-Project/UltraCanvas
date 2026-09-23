@@ -1,3 +1,16 @@
+#### 2026-09-23 *0.10*
+- **The History tab says whom a flow was for.** A *Via* column on the
+  history shows the loopback chain each recorded flow was last seen with
+  (NetworkMonitor 0.8, framework 0.9.41): "→ AvastSvc (4720)" on the mail
+  client's flow to the proxy, "← thunderbird (4120)" on the proxy's side,
+  and "for thunderbird (4120)" on the proxy's flows to the mail server -
+  kept after the client's own socket is gone, so last Tuesday's history
+  still names the application behind the proxy. The history's search
+  finds those flows by the client's name, `--history` prints the column,
+  `--history --csv` writes `loopback_role`, `local_peer` and `for`, and
+  `--totals` shows the last *for* a day's flows carried. The store
+  migrates in place on the first run.
+
 #### 2026-09-23 *0.9*
 - **Who is behind the proxy.** A *Via* column on the connection list and
   the process list decodes loopback chains (NetworkMonitor 0.7, framework
