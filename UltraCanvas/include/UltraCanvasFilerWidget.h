@@ -1318,6 +1318,16 @@ namespace UltraCanvas {
         // freezes the window for as long as the server takes.
         std::function<bool(const std::string& path, std::vector<FilerEntry>& out,
                            std::string& error)> remoteListing;
+        // What is going on while the remote listing is still on its way: a
+        // line such as "Connecting to ftp.example.org" or "Waiting for 2
+        // requests ahead". Asked after remoteListing answered "nothing yet"
+        // (true with an empty listing), and again on every tick while the
+        // waiting notice is shown, so the text can follow the fetch. A
+        // non-empty answer shows the listing as loading - a progress ring
+        // over the text - instead of as an empty folder; an empty answer means
+        // the folder really is empty. Left unset, a folder being fetched shows
+        // as empty until the host's Refresh(), as it did before.
+        std::function<std::string(const std::string& path)> remoteListingStatus;
 
         // ---- Changing a remote drive ---------------------------------------
         // Unlike remoteListing these do not answer with the result. The host
@@ -1669,6 +1679,20 @@ namespace UltraCanvas {
         // open" — a double-click cancels the pending rename.
         int pendingRenameIndex = -1;
         TimerId pendingRenameTimer = InvalidTimerId;
+
+        // The folder being fetched from a remote drive (see remoteListingStatus):
+        // what the host says is happening, shown with a progress ring in place
+        // of the empty-folder notice; the ring turns on the timer below, which
+        // also re-asks the host so the words follow the fetch. Empty when
+        // nothing is being waited for.
+        std::string listingPendingStatus;
+        TimerId listingPendingTimer = InvalidTimerId;
+        std::chrono::steady_clock::time_point listingPendingSince{};
+        // Why the last scan of the current folder produced nothing: a remote
+        // listing the host refused (an unreachable server, a rejected login).
+        // Painted where "Folder is empty!" would otherwise go, since that
+        // folder is not known to be empty at all.
+        std::string listingFailureNotice;
 
         // ===== DRAGGING ENTRIES (in-widget drag + native OS drag out) =====
         // A left press on an item arms the gesture and captures the mouse, so
@@ -2378,6 +2402,17 @@ namespace UltraCanvas {
                                  const std::string& message);
         // "Nothing to show" notice for an empty folder / file list: an
         // attention icon above the message, vertically centered in the view.
+        // The waiting notice of a remote folder still being fetched: a turning
+        // progress ring, "Loading folder", and under it the host's status
+        // line (listingPendingStatus). Drawn where the empty-folder notice
+        // goes, in the same layout.
+        void DrawLoadingState(IRenderContext* ctx, const Rect2Di& bounds);
+        // Keeps the ring turning and the status line current while the
+        // notice is up: a periodic timer that re-asks remoteListingStatus and
+        // repaints. Stopped as soon as the listing arrives or the folder
+        // changes, and in the destructor.
+        void StartListingPendingTicks();
+        void StopListingPendingTicks();
         void DrawEmptyState(IRenderContext* ctx, const Rect2Di& bounds,
                             const std::string& message);
         // ===== NAME FILTER (helpers) =====

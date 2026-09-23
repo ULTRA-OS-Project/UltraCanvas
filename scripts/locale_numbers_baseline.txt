@@ -6,7 +6,7 @@
 # format, a document, a /proc file or a wire protocol, where the decimal point
 # is a '.' by definition - so on a comma-decimal desktop each is a misread
 # value or a corrupted file waiting to be reported. They are listed rather
-# than fixed only because 0.9.33 swept the readers it could reach and this
+# than fixed only because 0.9.42 swept the readers it could reach and this
 # check then found the rest.
 #
 # Do not add to this file to silence a new finding. Read with
