@@ -31,6 +31,7 @@ namespace UltraCanvas {
             "WindowResize",
             "WindowMove",
             "WindowMinimize",
+            "WindowRestore",
             "WindowFocus",
             "WindowBlur",
             "WindowRepaint",

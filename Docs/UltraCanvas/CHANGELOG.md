@@ -49,6 +49,21 @@
   `cmake/UltraDatabaseSources.cmake` (`ultradatabase_sources(<var> <dir>)`),
   used by the in-tree build and the standalone `Tests/UltraMessage` tree, so
   a new driver (the Postgres one broke the standalone link) is one edit.
+- **A window minimised by the user now reports it.** `IsMinimized()` and the
+  `onWindowMinimize` callback only ever reflected the application's own
+  `Minimize()` call; a click on the title-bar button changed nothing, so an
+  application had no way to notice it had been put away. The Linux backend
+  now watches the ICCCM `WM_STATE` property and raises `WindowMinimize` when
+  it becomes iconic and the new `UCEventType::WindowRestore` when it returns
+  to normal; the base window updates its state on both and calls
+  `onWindowMinimize` / `onWindowRestore`. The first consumer is
+  UltraAuthenticator, which locks its vault on minimise.
+- **Configure no longer fails on machines with Clang installed.** The
+  Linux compiler auto-detection built the C++ driver name with a
+  `REGEX REPLACE` whose replacement used `\1` for an optional group; CMake
+  3.28 rejects that as an "out-of-range escape", so every configure that did
+  not name the compiler explicitly stopped at line 59. The suffix is now
+  matched separately and appended.
 
 #### 2026-09-22 *0.9.25*
 - **Every 3D sample audited for the fault the STL aeroplane had**, by
