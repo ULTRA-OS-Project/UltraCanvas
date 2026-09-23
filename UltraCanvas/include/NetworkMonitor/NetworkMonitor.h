@@ -17,7 +17,7 @@
 // correlation is a later phase - see Docs/Modules/NetworkMonitor/README.md
 // for what is built and what is not.
 //
-// Version: 0.5.0
+// Version: 0.6.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -225,5 +225,16 @@ const char* NetworkMonitor_NameSourceName(NameSource source);
 bool        NetworkMonitor_NameIsObserved(NameSource source);
 // "1.2.3.4:443", "[fe80::1]:22"; an empty address is "*".
 std::string NetworkMonitor_FormatEndpoint(const std::string& address, uint16_t port);
+
+// A snapshot as CSV (RFC 4180 quoting, dot-decimal numbers), in the order
+// given: the per-process roll-up one row per process, with its distinct
+// peers and hosts semicolon-joined; the connections one row each with the
+// process behind it. `rowsWritten`, when given, receives the row count.
+NetworkMonitorResult NetworkMonitor_ExportSummaryCsv(const std::vector<ProcessTrafficSummary>& summaries,
+                                                     const std::string& path,
+                                                     int64_t* rowsWritten = nullptr);
+NetworkMonitorResult NetworkMonitor_ExportConnectionsCsv(const std::vector<NetworkConnection>& connections,
+                                                         const std::string& path,
+                                                         int64_t* rowsWritten = nullptr);
 
 } // namespace UltraCanvas

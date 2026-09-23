@@ -1,3 +1,17 @@
+#### 2026-09-23 *0.8*
+- **Export.** A right click on the process list opens a menu with
+  *Export → App list…* and *Export → App list details…* (NetworkMonitor 0.6,
+  framework 0.9.37). Both write a CSV to the file chosen in the native
+  save dialog: the app list is one row per application as the list shows
+  it, in its current sort order, with the connection, established,
+  listening and peer counts, the distinct peer addresses and hosts, and the
+  byte totals where every connection had them; the details are one row per
+  connection, grouped by application in that order, with both endpoints,
+  the host and its source, the state and the counters. A dialog says how
+  many rows went where, or why the file could not be written.
+  - **Headless too.** `--list --csv <file>` and `--by-app --csv <file>`
+    write the same two files instead of printing.
+
 #### 2026-09-23 *0.7*
 - **Events.** Connections as they open and close, not only as the next
   snapshot finds them (NetworkMonitor 0.5, framework 0.9.36): a new

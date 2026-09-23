@@ -384,6 +384,11 @@ std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovere
 // A click (press and release in the same cell) on a column header. A press
 // on a resize border starts a drag instead and never reports a click.
 std::function<void(int column)> onHeaderClicked;
+
+// A right-button press in the rows area: `row` is the row under the pointer
+// (-1 below the rows), selected alone first so the menu acts on it. When
+// set, the press is consumed; when not, a right press behaves like a left.
+std::function<void(int row, const UCEvent& event)> onContextMenu;
 ```
 
 `onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
@@ -392,6 +397,25 @@ std::function<void(int column)> onHeaderClicked;
 column, toggling the direction when it is already the sort column, then tell
 the view which column is sorted so the header shows it. A header press no
 longer counts as a click on "no row", so it leaves the selection alone.
+
+`onContextMenu` is where a right-click menu is wired up. The view has
+already selected the row under the pointer, so the handler reads the
+selection (or `row`) and opens a popup menu at the pointer:
+
+```cpp
+listView->onContextMenu = [this](int row, const UCEvent& event) {
+    contextMenu_ = std::make_shared<UltraCanvasMenu>("listCtx", 0, 0, 200, 0);
+    contextMenu_->SetMenuType(MenuType::PopupMenu);
+    contextMenu_->AddItem(MenuItemData::Submenu("Export", {
+        MenuItemData::Action("As CSV…", [this]() { ExportCsv(); }),
+    }));
+    PopupElementSettings settings;
+    contextMenu_->OpenMenu(event.pointerWindow, *window_, settings);
+};
+```
+
+Keep the menu in a member: `OpenMenu` shows it, and a menu that goes out of
+scope at the end of the handler closes before it is seen.
 
 ```cpp
 listView->onHeaderClicked = [view = listView.get(), model](int column) {

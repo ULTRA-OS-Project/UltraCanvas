@@ -8,10 +8,11 @@
 // Without UltraDatabase in the build (ULTRACANVAS_HAS_DATABASE undefined)
 // this file compiles to stubs that report NotSupported.
 //
-// Version: 0.5.0
+// Version: 0.6.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitorStore.h"
+#include "NetworkMonitor/NetworkMonitorCsv.h"
 
 #include <chrono>
 #include <cstdio>
@@ -306,25 +307,8 @@ void MergeName(const std::string& oldName, NameSource oldSource, const std::stri
     }
 }
 
-std::string CsvField(const std::string& text) {
-    if (text.find_first_of(",\"\r\n") == std::string::npos) return text;
-    std::string quoted = "\"";
-    for (char c : text) { if (c == '"') quoted += '"'; quoted += c; }
-    return quoted + "\"";
-}
-
-std::string IsoUtc(int64_t seconds) {
-    const std::time_t when = static_cast<std::time_t>(seconds);
-    std::tm utc{};
-#if defined(_WIN32)
-    gmtime_s(&utc, &when);
-#else
-    gmtime_r(&when, &utc);
-#endif
-    char buffer[32];
-    std::strftime(buffer, sizeof buffer, "%Y-%m-%dT%H:%M:%SZ", &utc);
-    return buffer;
-}
+using NetworkMonitorCsv::IsoUtc;
+const auto CsvField = NetworkMonitorCsv::Field;
 
 } // namespace
 
