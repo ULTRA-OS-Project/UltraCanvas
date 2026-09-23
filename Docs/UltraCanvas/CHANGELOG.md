@@ -1,3 +1,34 @@
+#### 2026-09-23 *0.9.34*
+- **New: UltraNet's OAuth2 app registry** (`<UltraNet/UltraNetOAuth2Apps.h>`,
+  `UltraNet_OAuth2SetApp` / `SetBuiltInApp` / `AddAppEnvPrefix` /
+  `SetAppAlias` / `ParseAppsIni` / `LoadAppsFile` / `GetApp` / `HasApp` /
+  `ClearApps`, `Masterfile_modules.md` §UltraNet). The client id, secret and
+  redirect URI an application signs in as, per provider, in one place per
+  process: Set() from code, then the environment
+  (`ULTRANET_OAUTH_<PROVIDER>_CLIENT_ID` and the prefixes modules add), then
+  an INI file, then a build's baked-in default - a tier taken whole, never
+  a secret from one tier under a client id from another - and then an alias
+  chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` /
+  `GetOAuthApp` / `HasOAuthApp` each carried a copy of this lookup with a
+  different priority chain (UltraMail knew the INI file and the baked-in
+  client, UltraCloud neither) and different environment names, so a Google
+  client registered for Gmail was invisible to the composer's cloud picker
+  two menus away. Both are profiles of the registry now, the way the app
+  credential vaults became profiles of `UltraVault::DeviceKeyVault` in
+  0.9.23: UltraMail adds the `ULTRAMAIL_` prefix, loads its `oauth.ini` into
+  the shared file tier and registers the baked-in client as the floor;
+  UltraCloud adds `ULTRACLOUD_`, its `127.0.0.1:53682` redirect default, and
+  the aliases `googledrive` -> `google` and `onedrive` -> `microsoft`, so one
+  Google and one Microsoft registration serve mail, Drive and OneDrive when
+  the consent screen carries the scopes. Every documented name and priority
+  keeps working; a registration under the specific id wins over the alias at
+  every tier. `UltraCloud::OAuthApp` and `UltraMail::OAuthApp` are the one
+  `UltraNetOAuth2App` (the cloud struct's built-in redirect default moved
+  into `GetOAuthApp`). Tests: `Tests/UltraNet/test_oauth2_apps.cpp` (six
+  cases: tier order and whole-tier precedence, the built-in floor surviving
+  `ClearApps`, prefix order, aliases with chains and cycles, the tolerant
+  file load); the UltraMail and UltraCloud suites run unchanged.
+
 #### 2026-09-23 *0.9.33*
 - **Fix: `dns_resolve_honours_its_deadline` was red on the macOS Apple-silicon
   row of every build since it landed** (`Tests/UltraNet/test_dns_timeout.cpp`,
