@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFX.h"
+#include "PixelFX/PixelFXMetadataDecode.h"
 #include "UltraCanvasFileError.h"
 #include "../libspecific/Cairo/VipsQoiLoader.h"
 #include "../libspecific/Cairo/UltraCanvasGifEncoder.h"
@@ -1252,9 +1253,30 @@ namespace PixelFX {
             AppendImageGroup(im, image, entries);
             const size_t imageGroupSize = entries.size();
 
-            for (const auto& field : GetFields(image)) {
+            const std::vector<std::string> fields = GetFields(image);
+            const bool hasExifTags = std::any_of(fields.begin(), fields.end(), [](const std::string& f) {
+                return f.rfind("exif-ifd", 0) == 0;
+            });
+            for (const auto& field : fields) {
                 // The geometry fields are already said better above.
                 if (IsGeometryField(field)) continue;
+                // The raw EXIF block, once libvips has listed its tags one by one.
+                if (field == "exif-data" && hasExifTags) continue;
+                // libvips leaves IPTC and XMP as raw blocks; decode them into
+                // one row per tag. A block that does not decode keeps its
+                // "N bytes" row, so it is still visible that one is there.
+                if (field == "iptc-data" || field == "xmp-data") {
+                    const void* data = nullptr;
+                    size_t length = 0;
+                    if (vips_image_get_blob(im, field.c_str(), &data, &length) == 0 && data) {
+                        const bool iptc = field == "iptc-data";
+                        const auto tags = iptc ? DecodeIPTC(data, length) : DecodeXMP(data, length);
+                        for (const auto& tag : tags) {
+                            entries.push_back(MetadataEntry{iptc ? "IPTC" : "XMP", tag.first, tag.second});
+                        }
+                        if (!tags.empty()) continue;
+                    }
+                }
                 MetadataEntry entry;
                 entry.group = MetadataGroupOf(field);
                 entry.key = MetadataKeyOf(field);

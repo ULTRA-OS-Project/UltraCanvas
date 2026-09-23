@@ -1,0 +1,411 @@
+// PixelFXMetadataDecode.cpp
+// IPTC-IIM and XMP decoding for PixelFX::Header::ReadMetadata(). See
+// PixelFX/PixelFXMetadataDecode.h.
+// Version: 1.0.0
+// Last Modified: 2026-09-23
+// Author: UltraCanvas Framework
+
+#include "PixelFX/PixelFXMetadataDecode.h"
+
+#include <cctype>
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <string>
+#include <vector>
+#include "tinyxml2.h"
+
+namespace PixelFX {
+namespace Header {
+
+namespace {
+
+    // Longest value handed back. A metadata table is not the place for an
+    // embedded thumbnail's base64 or a full edit history.
+    constexpr std::size_t kMaxValueLength = 512;
+
+    std::string Trim(const std::string& s) {
+        std::size_t a = 0, b = s.size();
+        while (a < b && (std::isspace(static_cast<unsigned char>(s[a])) || s[a] == '\0')) ++a;
+        while (b > a && (std::isspace(static_cast<unsigned char>(s[b - 1])) || s[b - 1] == '\0')) --b;
+        return s.substr(a, b - a);
+    }
+
+    // One line, bounded: line breaks become spaces, and a very long value is
+    // cut on a UTF-8 character boundary.
+    std::string Tidy(std::string s) {
+        for (char& c : s) {
+            if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+        }
+        s = Trim(s);
+        if (s.size() > kMaxValueLength) {
+            std::size_t cut = kMaxValueLength - 3;
+            while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;
+            s = s.substr(0, cut) + "...";
+        }
+        return s;
+    }
+
+    bool IsValidUtf8(const std::string& s) {
+        std::size_t i = 0;
+        while (i < s.size()) {
+            const unsigned char c = static_cast<unsigned char>(s[i]);
+            const int extra = c < 0x80 ? 0 : (c >> 5) == 0x6 ? 1 : (c >> 4) == 0xE ? 2
+                            : (c >> 3) == 0x1E ? 3 : -1;
+            if (extra < 0 || i + extra >= s.size() + (extra == 0 ? 1 : 0)) return false;
+            for (int k = 1; k <= extra; ++k) {
+                if ((static_cast<unsigned char>(s[i + k]) & 0xC0) != 0x80) return false;
+            }
+            i += extra + 1;
+        }
+        return true;
+    }
+
+    std::string Latin1ToUtf8(const std::string& s) {
+        std::string out;
+        out.reserve(s.size() + s.size() / 4);
+        for (unsigned char c : s) {
+            if (c < 0x80) {
+                out.push_back(static_cast<char>(c));
+            } else {
+                out.push_back(static_cast<char>(0xC0 | (c >> 6)));
+                out.push_back(static_cast<char>(0x80 | (c & 0x3F)));
+            }
+        }
+        return out;
+    }
+
+    // Collects tags in first-seen order, joining repeats ("Keywords" appears
+    // once per keyword in IIM).
+    class TagList {
+    public:
+        void Add(const std::string& key, const std::string& value) {
+            const std::string v = Tidy(value);
+            if (key.empty() || v.empty()) return;
+            auto it = index.find(key);
+            if (it == index.end()) {
+                index[key] = tags.size();
+                tags.emplace_back(key, v);
+            } else {
+                std::string& existing = tags[it->second].second;
+                if (existing.size() < kMaxValueLength) existing = Tidy(existing + ", " + v);
+            }
+        }
+        std::vector<DecodedTag> Take() { return std::move(tags); }
+
+    private:
+        std::vector<DecodedTag> tags;
+        std::map<std::string, std::size_t> index;
+    };
+
+    // ===== IPTC-IIM =====
+
+    const char* IptcRecord2Name(int dataset) {
+        switch (dataset) {
+            case 3:   return "Object Type Reference";
+            case 4:   return "Object Attribute Reference";
+            case 5:   return "Object Name";
+            case 7:   return "Edit Status";
+            case 10:  return "Urgency";
+            case 12:  return "Subject Reference";
+            case 15:  return "Category";
+            case 20:  return "Supplemental Category";
+            case 22:  return "Fixture Identifier";
+            case 25:  return "Keywords";
+            case 26:  return "Content Location Code";
+            case 27:  return "Content Location Name";
+            case 30:  return "Release Date";
+            case 35:  return "Release Time";
+            case 37:  return "Expiration Date";
+            case 38:  return "Expiration Time";
+            case 40:  return "Special Instructions";
+            case 45:  return "Reference Service";
+            case 47:  return "Reference Date";
+            case 50:  return "Reference Number";
+            case 55:  return "Date Created";
+            case 60:  return "Time Created";
+            case 62:  return "Digital Creation Date";
+            case 63:  return "Digital Creation Time";
+            case 65:  return "Originating Program";
+            case 70:  return "Program Version";
+            case 75:  return "Object Cycle";
+            case 80:  return "By-line";
+            case 85:  return "By-line Title";
+            case 90:  return "City";
+            case 92:  return "Sub-location";
+            case 95:  return "Province/State";
+            case 100: return "Country Code";
+            case 101: return "Country Name";
+            case 103: return "Original Transmission Reference";
+            case 105: return "Headline";
+            case 110: return "Credit";
+            case 115: return "Source";
+            case 116: return "Copyright Notice";
+            case 118: return "Contact";
+            case 120: return "Caption/Abstract";
+            case 122: return "Writer/Editor";
+            case 130: return "Image Type";
+            case 131: return "Image Orientation";
+            case 135: return "Language Identifier";
+            default:  return nullptr;
+        }
+    }
+
+    bool IsIptcDate(int dataset) {
+        return dataset == 30 || dataset == 37 || dataset == 47 || dataset == 55 || dataset == 62;
+    }
+    bool IsIptcTime(int dataset) {
+        return dataset == 35 || dataset == 38 || dataset == 60 || dataset == 63;
+    }
+
+    bool AllDigits(const std::string& s, std::size_t from, std::size_t count) {
+        if (from + count > s.size()) return false;
+        for (std::size_t i = from; i < from + count; ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(s[i]))) return false;
+        }
+        return true;
+    }
+
+    // CCYYMMDD -> CCYY-MM-DD
+    std::string FormatIptcDate(const std::string& v) {
+        if (v.size() != 8 || !AllDigits(v, 0, 8)) return v;
+        return v.substr(0, 4) + "-" + v.substr(4, 2) + "-" + v.substr(6, 2);
+    }
+
+    // HHMMSS±HHMM -> HH:MM:SS±HH:MM
+    std::string FormatIptcTime(const std::string& v) {
+        if (v.size() < 6 || !AllDigits(v, 0, 6)) return v;
+        std::string out = v.substr(0, 2) + ":" + v.substr(2, 2) + ":" + v.substr(4, 2);
+        if (v.size() == 11 && (v[6] == '+' || v[6] == '-') && AllDigits(v, 7, 4)) {
+            out += v.substr(6, 3) + ":" + v.substr(9, 2);
+        }
+        return out;
+    }
+
+    void DecodeIim(const unsigned char* p, std::size_t n, TagList& out) {
+        struct Dataset { int record; int number; std::string value; };
+        std::vector<Dataset> datasets;
+        bool utf8 = false;
+
+        std::size_t pos = 0;
+        while (pos + 5 <= n && p[pos] == 0x1C) {
+            const int record = p[pos + 1];
+            const int number = p[pos + 2];
+            std::size_t length = (static_cast<std::size_t>(p[pos + 3]) << 8) | p[pos + 4];
+            pos += 5;
+            if (length & 0x8000) {
+                // Extended dataset: the low bits count the length bytes that follow.
+                const std::size_t count = length & 0x7FFF;
+                if (count == 0 || count > 4 || pos + count > n) break;
+                length = 0;
+                for (std::size_t k = 0; k < count; ++k) length = (length << 8) | p[pos + k];
+                pos += count;
+            }
+            if (length > n - pos) break;
+            std::string value(reinterpret_cast<const char*>(p + pos), length);
+            pos += length;
+
+            // 1:90 Coded Character Set; ESC % G announces UTF-8.
+            if (record == 1 && number == 90 && value.find("\x1B%G") != std::string::npos) utf8 = true;
+            datasets.push_back({record, number, std::move(value)});
+        }
+
+        for (auto& d : datasets) {
+            // Record 2 is what a person reads; record 1 is transmission
+            // envelope, dataset 2:0 the record version, 2:200+ binary previews.
+            if (d.record != 2 || d.number == 0 || d.number >= 200) continue;
+            std::string value = Trim(d.value);
+            if (!utf8 && !IsValidUtf8(value)) value = Latin1ToUtf8(value);
+            if (IsIptcDate(d.number)) value = FormatIptcDate(value);
+            else if (IsIptcTime(d.number)) value = FormatIptcTime(value);
+            const char* name = IptcRecord2Name(d.number);
+            out.Add(name ? name : "2:" + std::to_string(d.number), value);
+        }
+    }
+
+    std::uint32_t ReadBE32(const unsigned char* p) {
+        return (std::uint32_t(p[0]) << 24) | (std::uint32_t(p[1]) << 16) |
+               (std::uint32_t(p[2]) << 8) | std::uint32_t(p[3]);
+    }
+
+    // Photoshop image resource blocks: "8BIM", id, Pascal name padded to even,
+    // size, data padded to even. Resource 0x0404 is the IPTC-IIM.
+    void DecodePhotoshopResources(const unsigned char* p, std::size_t n, TagList& out) {
+        std::size_t pos = 0;
+        while (pos + 12 <= n && std::memcmp(p + pos, "8BIM", 4) == 0) {
+            const int id = (p[pos + 4] << 8) | p[pos + 5];
+            std::size_t namePart = 1 + p[pos + 6];
+            if (namePart % 2) ++namePart;
+            std::size_t sizeAt = pos + 6 + namePart;
+            if (sizeAt + 4 > n) break;
+            std::size_t size = ReadBE32(p + sizeAt);
+            std::size_t dataAt = sizeAt + 4;
+            if (size > n - dataAt) break;
+            if (id == 0x0404) DecodeIim(p + dataAt, size, out);
+            pos = dataAt + size + (size % 2);
+        }
+    }
+
+    // ===== XMP =====
+
+    bool NameIs(const tinyxml2::XMLElement* e, const char* name) {
+        return e && e->Name() && std::strcmp(e->Name(), name) == 0;
+    }
+
+    bool IsSyntaxAttribute(const char* name) {
+        return std::strncmp(name, "xmlns", 5) == 0 || std::strncmp(name, "rdf:", 4) == 0 ||
+               std::strncmp(name, "xml:", 4) == 0;
+    }
+
+    std::string TextOf(const tinyxml2::XMLElement* e) {
+        const char* t = e->GetText();
+        return t ? std::string(t) : std::string();
+    }
+
+    bool HasFieldAttributes(const tinyxml2::XMLElement* e) {
+        for (auto* a = e->FirstAttribute(); a; a = a->Next()) {
+            if (!IsSyntaxAttribute(a->Name())) return true;
+        }
+        return false;
+    }
+
+    void DecodeXmpProperty(const tinyxml2::XMLElement* e, const std::string& name, TagList& out, int depth);
+
+    // Attributes and child elements of a structure (rdf:Description or an
+    // element with rdf:parseType="Resource") are its fields.
+    void DecodeXmpStruct(const tinyxml2::XMLElement* e, const std::string& prefix, TagList& out, int depth) {
+        for (auto* a = e->FirstAttribute(); a; a = a->Next()) {
+            if (IsSyntaxAttribute(a->Name())) continue;
+            out.Add(prefix + a->Name(), a->Value() ? a->Value() : "");
+        }
+        for (auto* c = e->FirstChildElement(); c; c = c->NextSiblingElement()) {
+            DecodeXmpProperty(c, prefix + c->Name(), out, depth + 1);
+        }
+    }
+
+    void DecodeXmpProperty(const tinyxml2::XMLElement* e, const std::string& name, TagList& out, int depth) {
+        if (depth > 8) return;   // nothing a person reads nests this deep
+
+        if (const char* res = e->Attribute("rdf:resource")) {
+            out.Add(name, res);
+            return;
+        }
+        const char* parseType = e->Attribute("rdf:parseType");
+        if (parseType && std::strcmp(parseType, "Resource") == 0) {
+            DecodeXmpStruct(e, name + "/", out, depth);
+            return;
+        }
+
+        const tinyxml2::XMLElement* child = e->FirstChildElement();
+        if (!child) {
+            // Simple value, or a structure written only with attributes.
+            if (HasFieldAttributes(e)) DecodeXmpStruct(e, name + "/", out, depth);
+            else out.Add(name, TextOf(e));
+            return;
+        }
+
+        if (NameIs(child, "rdf:Alt")) {
+            // Language alternative: x-default, else the first one.
+            const tinyxml2::XMLElement* pick = nullptr;
+            for (auto* li = child->FirstChildElement("rdf:li"); li; li = li->NextSiblingElement("rdf:li")) {
+                if (!pick) pick = li;
+                const char* lang = li->Attribute("xml:lang");
+                if (lang && std::strcmp(lang, "x-default") == 0) { pick = li; break; }
+            }
+            if (pick) out.Add(name, TextOf(pick));
+            return;
+        }
+
+        if (NameIs(child, "rdf:Seq") || NameIs(child, "rdf:Bag")) {
+            int index = 0;
+            for (auto* li = child->FirstChildElement("rdf:li"); li; li = li->NextSiblingElement("rdf:li")) {
+                ++index;
+                const char* pt = li->Attribute("rdf:parseType");
+                const tinyxml2::XMLElement* inner = li->FirstChildElement();
+                const std::string item = name + "[" + std::to_string(index) + "]/";
+                if ((pt && std::strcmp(pt, "Resource") == 0) || (!inner && HasFieldAttributes(li))) {
+                    DecodeXmpStruct(li, item, out, depth + 1);
+                } else if (inner && NameIs(inner, "rdf:Description")) {
+                    DecodeXmpStruct(inner, item, out, depth + 1);
+                } else if (inner) {
+                    for (auto* c = inner; c; c = c->NextSiblingElement())
+                        DecodeXmpProperty(c, item + c->Name(), out, depth + 1);
+                } else {
+                    out.Add(name, TextOf(li));   // plain items join into one row
+                }
+            }
+            return;
+        }
+
+        if (NameIs(child, "rdf:Description")) {
+            DecodeXmpStruct(child, name + "/", out, depth);
+            return;
+        }
+
+        // Fields written straight inside the property element.
+        DecodeXmpStruct(e, name + "/", out, depth);
+    }
+
+    const tinyxml2::XMLElement* FindRdf(const tinyxml2::XMLElement* e, int depth) {
+        if (!e || depth > 4) return nullptr;
+        if (NameIs(e, "rdf:RDF")) return e;
+        for (auto* c = e->FirstChildElement(); c; c = c->NextSiblingElement()) {
+            if (auto* found = FindRdf(c, depth + 1)) return found;
+        }
+        return nullptr;
+    }
+
+} // namespace
+
+std::vector<DecodedTag> DecodeIPTC(const void* data, std::size_t length) {
+    TagList out;
+    if (!data || length == 0) return out.Take();
+    const auto* p = static_cast<const unsigned char*>(data);
+
+    static const char kPhotoshop[] = "Photoshop 3.0";   // followed by a NUL
+    const std::size_t sig = sizeof(kPhotoshop);          // includes that NUL
+    if (length >= sig && std::memcmp(p, kPhotoshop, sig) == 0) {
+        DecodePhotoshopResources(p + sig, length - sig, out);
+    } else if (length >= 4 && std::memcmp(p, "8BIM", 4) == 0) {
+        DecodePhotoshopResources(p, length, out);
+    } else if (p[0] == 0x1C) {
+        DecodeIim(p, length, out);
+    }
+    return out.Take();
+}
+
+std::vector<DecodedTag> DecodeXMP(const void* data, std::size_t length) {
+    TagList out;
+    if (!data || length == 0) return out.Take();
+
+    // The packet is not NUL-terminated inside the file, and writers pad it
+    // with whitespace (and sometimes trailing NULs).
+    std::string xml(static_cast<const char*>(data), length);
+    while (!xml.empty() && xml.back() == '\0') xml.pop_back();
+    // The packet wrapper: <?xpacket begin...?> ... <?xpacket end="w"?>. The
+    // closing one follows the root element, which tinyxml2 rejects, and
+    // neither carries anything, so both go.
+    for (std::size_t at = xml.find("<?xpacket"); at != std::string::npos; at = xml.find("<?xpacket", at)) {
+        const std::size_t end = xml.find("?>", at);
+        if (end == std::string::npos) { xml.erase(at); break; }
+        xml.erase(at, end + 2 - at);
+    }
+
+    tinyxml2::XMLDocument doc;
+    if (doc.Parse(xml.c_str(), xml.size()) != tinyxml2::XML_SUCCESS) return out.Take();
+
+    const tinyxml2::XMLElement* rdf = nullptr;
+    for (auto* e = doc.FirstChildElement(); e && !rdf; e = e->NextSiblingElement()) {
+        rdf = FindRdf(e, 0);
+    }
+    if (!rdf) return out.Take();
+
+    for (auto* desc = rdf->FirstChildElement("rdf:Description"); desc;
+         desc = desc->NextSiblingElement("rdf:Description")) {
+        DecodeXmpStruct(desc, "", out, 0);
+    }
+    return out.Take();
+}
+
+} // namespace Header
+} // namespace PixelFX

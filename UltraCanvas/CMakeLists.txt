@@ -960,6 +960,7 @@ if(ULTRACANVAS_HAS_VIPS)
     list(APPEND ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXMetadataDecode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
     )
 endif()
