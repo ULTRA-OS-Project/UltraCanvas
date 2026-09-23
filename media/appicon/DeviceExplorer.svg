@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="256" height="256" viewBox="0 0 256 256">
+  <title>DeviceExplorer</title>
+  <desc>A device tree beside a magnifier over a chip: the device explorer mark.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b82c4"/>
+      <stop offset="1" stop-color="#1e4f86"/>
+    </linearGradient>
+    <linearGradient id="lens" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#d7e8f7" stop-opacity="0.95"/>
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="44" fill="url(#bg)"/>
+  <!-- tree: trunk and three branches -->
+  <g fill="none" stroke="#cfe3f6" stroke-width="7" stroke-linecap="round">
+    <path d="M58 58 L58 190"/>
+    <path d="M58 92 L86 92"/>
+    <path d="M58 140 L86 140"/>
+    <path d="M58 188 L86 188"/>
+  </g>
+  <rect x="40" y="40" width="36" height="28" rx="6" fill="#ffffff"/>
+  <rect x="90" y="80" width="46" height="24" rx="6" fill="#ffd166"/>
+  <rect x="90" y="128" width="46" height="24" rx="6" fill="#7bdcb5"/>
+  <rect x="90" y="176" width="46" height="24" rx="6" fill="#f79d84"/>
+  <!-- magnifier over a chip -->
+  <circle cx="176" cy="128" r="46" fill="url(#lens)" stroke="#ffffff" stroke-width="10"/>
+  <rect x="156" y="108" width="40" height="40" rx="6" fill="#1e4f86"/>
+  <rect x="166" y="118" width="20" height="20" rx="3" fill="#7bdcb5"/>
+  <g stroke="#1e4f86" stroke-width="5" stroke-linecap="round">
+    <path d="M166 98 L166 106"/><path d="M186 98 L186 106"/>
+    <path d="M166 150 L166 158"/><path d="M186 150 L186 158"/>
+    <path d="M146 118 L154 118"/><path d="M146 138 L154 138"/>
+    <path d="M198 118 L206 118"/><path d="M198 138 L206 138"/>
+  </g>
+  <path d="M209 161 L232 184" stroke="#ffffff" stroke-width="16" stroke-linecap="round"/>
+</svg>

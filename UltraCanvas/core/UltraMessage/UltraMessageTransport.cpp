@@ -296,7 +296,10 @@ ConnectionPtr Listener::Accept() {
         ConnectionPtr connection(new Connection());
         connection->fd_ = client;
         if (!MakeWakePipe(connection->wakeRead_, connection->wakeWrite_)) {
-            ::close(client);
+            // `connection` owns the descriptor from the assignment above, so
+            // ~Connection closes it. Closing it here as well would shut down
+            // and close a number a concurrent thread may already have
+            // reopened.
             return nullptr;
         }
         connection->QueryPeer();

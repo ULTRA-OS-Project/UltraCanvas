@@ -37,4 +37,11 @@ namespace ultranet_internal {
     // Returns true if the socket has TLS hooks attached.
     bool IsTlsAttached(UltraNetHandle handle);
 
+    // The TLS context attached to `handle`, or nullptr when the socket has
+    // no TLS layer, was never a TCP stream, or has been closed. The socket
+    // entry is the one owner of that pointer and clears it in
+    // UltraNet_SocketClose, so a handle whose socket is gone answers
+    // nullptr here instead of a context that has already been freed.
+    void* GetTlsCtx(UltraNetHandle handle);
+
 } // namespace ultranet_internal

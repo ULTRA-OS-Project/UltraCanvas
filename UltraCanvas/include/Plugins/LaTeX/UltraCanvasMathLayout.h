@@ -48,6 +48,11 @@ public:
                           std::vector<MathDiagnostic>& diagnostics);
     ~UltraCanvasMathLayout();
 
+    // Owns its Impl outright — see UltraCanvasMathParser. A layout is built
+    // for one formula and discarded, so a copy has no meaning either.
+    UltraCanvasMathLayout(const UltraCanvasMathLayout&) = delete;
+    UltraCanvasMathLayout& operator=(const UltraCanvasMathLayout&) = delete;
+
     // Lays out the atom tree the parser produced. The returned box is a List
     // whose origin is the left end of the baseline of the first line.
     MathBoxPtr Layout(const MathAtomPtr& root);

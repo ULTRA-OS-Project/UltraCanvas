@@ -200,7 +200,7 @@ namespace UltraCanvas {
         textStyleControl->SetAllowNoSelection(true);  // Allow toggling off
         textStyleControl->SetWidthMode(SegmentWidthMode::Equal);
         textStyleControl->SetSelectionMode(SegmentSelectionMode::Toggle);
-        textStyleControl->onSegmentClick = [statusLabel, textStyleControl](int index) {
+        textStyleControl->onSegmentClick = [statusLabel, textStyleControl = textStyleControl.get()](int index) {
                 const char* labels[] = {"Bold", "Italic", "Underline", "Strikethrough", "Superscript", "Subscript"};
                 std::ostringstream oss;
                 if (textStyleControl->IsSegmentSelected(index)) {
@@ -219,7 +219,7 @@ namespace UltraCanvas {
         textStyleControl2->AddSegment("X<sup>2</sup>");   // X^2
         textStyleControl2->AddSegment("X<sub>2</sub>");   // X_2
 //        textStyleControl->SetStyle(SegmentedControlStyle::Bordered);
-        textStyleControl2->onSegmentClick = [statusLabel, textStyleControl2](int index) {
+        textStyleControl2->onSegmentClick = [statusLabel, textStyleControl2 = textStyleControl2.get()](int index) {
                 const char* labels[] = {"Superscript", "Subscript"};
                 std::ostringstream oss;
                 if (textStyleControl2->IsSegmentSelected(index)) {

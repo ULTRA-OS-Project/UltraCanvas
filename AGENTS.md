@@ -178,6 +178,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, the modules, the build system, DemoApp |
 | `Docs/AnchorPoint/CHANGELOG.md` | AnchorPoint |
 | `Docs/ArtCreator/CHANGELOG.md` | ArtCreator |
+| `Docs/DeviceExplorer/CHANGELOG.md` | DeviceExplorer |
 | `Docs/EmailCleaner/CHANGELOG.md` | EmailCleaner |
 | `Docs/Ladybird/CHANGELOG.md` | The Ladybird browser port (built from its own tree, outside this repository) |
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |

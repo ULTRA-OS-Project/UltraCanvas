@@ -33,6 +33,12 @@ public:
     UltraCanvasMathParser();
     ~UltraCanvasMathParser();
 
+    // The parser owns its Impl outright. Copying one would hand the same
+    // pointer to two destructors; there is no use for a copy, so there is
+    // none rather than a deep one nobody would exercise.
+    UltraCanvasMathParser(const UltraCanvasMathParser&) = delete;
+    UltraCanvasMathParser& operator=(const UltraCanvasMathParser&) = delete;
+
     // Parses math-mode source. The returned atom is a Row (or an Array of
     // kind Lines when the source contains top-level \\ line breaks).
     MathAtomPtr Parse(const std::string& source, std::vector<MathDiagnostic>& diagnostics);
