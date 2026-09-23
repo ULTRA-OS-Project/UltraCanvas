@@ -1,8 +1,13 @@
 // Plugins/Gauges/UltraCanvasGaugeDiagramElement.h
 // Comprehensive gauge element supporting analog, digital, progress, and specialized gauge modes
-// Version: 2.1.0
-// Last Modified: 2026-07-02
+// Version: 2.2.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
+// V2.2.0 changelog: a LinearBar fits the box it is given. Below the height
+//   its caption and value line need, it drops both and draws the bar across
+//   the whole element - which is what makes it usable as the progress bar of
+//   a status line or a list row, and changes nothing for a gauge with the
+//   room to be a dashboard gauge.
 // V2.1.0 changelog: LinearBar low-value options — SetShowZeroValueWarning
 //   (red circle at the empty/zero position), SetLowLevelWarning +
 //   SetLowLevelLimit (blinking fill while the value is at or below the

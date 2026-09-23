@@ -139,7 +139,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
-| Progress beside the work rather than over it (a bar in a status line, a row, a panel footer) | `UltraCanvasProgressBar` | `UltraCanvasProgressBar.h` |
+| A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |

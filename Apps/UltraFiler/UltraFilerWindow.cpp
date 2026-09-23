@@ -1006,9 +1006,22 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     statusRow->AddChild(statusLabel);
 
+    // The framework's progress bar is the gauge in LinearBar mode. At this
+    // height it drops the caption and value line a dashboard gauge draws and
+    // is just the bar; the words belong to the label beside it, which can say
+    // far more than a number squeezed under 8 px of bar.
+    //
     // Hidden until something is actually moving: an empty bar sitting in the
     // status line at all times is furniture, not information.
-    statusProgress = CreateProgressBar("ufl-status-progress", 160, 6);
+    statusProgress = CreateGaugeDiagramElement("ufl-status-progress", 0, 0, 160, 8);
+    statusProgress->SetMode(GaugeMode::LinearBar);
+    statusProgress->SetOrientation(GaugeOrientation::Horizontal);
+    statusProgress->SetMinValue(0.0);
+    statusProgress->SetMaxValue(100.0);       // a percentage of the transfer
+    statusProgress->SetValue(0.0);
+    statusProgress->SetTitle("");             // no caption: the label is the caption
+    statusProgress->SetUnit("");
+    statusProgress->SetGaugeColor(Color(37, 99, 235, 255));   // the accent blue
     statusProgress->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     statusProgress->SetVisible(false);
     statusRow->AddChild(statusProgress);
@@ -5276,17 +5289,17 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
 
 void UltraFilerWindow::UpdateRemoteProgressBar() {
     if (!statusProgress) return;
-    // Only a transfer gets a bar. A listing or a rename is one round trip
-    // with nothing to count, and a bar that only ever sweeps says no more
-    // than the words beside it already do.
-    const bool show = remoteActivity.IsTransfer();
+    // Only a transfer whose size is known gets a bar. A listing or a rename is
+    // one round trip with nothing to count; a transfer the server gave no
+    // length for has no progress to draw either, and a bar that cannot move
+    // would say less than the "3.2 MB sent" beside it already does.
+    const bool show = remoteActivity.IsTransfer() && remoteActivity.bytesTotal > 0;
     if (statusProgress->IsVisible() != show) statusProgress->SetVisible(show);
     if (!show) return;
-    if (remoteActivity.bytesTotal > 0)
-        statusProgress->SetProgress(remoteActivity.bytesDone,
-                                    remoteActivity.bytesTotal);
-    else
-        statusProgress->SetFraction(-1.0f);   // no total: a busy sweep
+    const double percent = 100.0 *
+            static_cast<double>(remoteActivity.bytesDone) /
+            static_cast<double>(remoteActivity.bytesTotal);
+    statusProgress->SetValue(percent < 0.0 ? 0.0 : percent > 100.0 ? 100.0 : percent);
 }
 
 void UltraFilerWindow::UpdateStatusBar() {

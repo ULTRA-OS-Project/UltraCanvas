@@ -102,7 +102,7 @@
 #include "UltraFilerHistory.h"
 #include "UltraFilerRemoteDrives.h"
 
-#include "UltraCanvasProgressBar.h"   // the status strip's transfer bar
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"   // the transfer bar
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerVolumeSpace.h"
@@ -328,9 +328,10 @@ private:
     // Empty while the drives are idle, which is when the status line goes back
     // to describing the folder in front of the user.
     std::string DescribeRemoteActivity() const;
-    // Puts the progress bar in step with `remoteActivity`: shown with a
-    // percentage during a transfer whose size the server gave, shown busy when
-    // it did not, and hidden the rest of the time.
+    // Puts the progress bar in step with `remoteActivity`: shown during a
+    // transfer whose size the server gave, and hidden the rest of the time -
+    // including during a transfer whose size it did not give, where there is
+    // no progress to draw and the status line says how much has gone instead.
     void UpdateRemoteProgressBar();
     // Refreshes whatever display is showing `folderPath`. Used both when a
     // queued listing arrives and after a change to the drive.
@@ -834,7 +835,10 @@ private:
     // while a transfer to a drive is running.
     std::shared_ptr<UltraCanvasContainer>       statusRow;
     std::shared_ptr<UltraCanvasLabel>           statusLabel;
-    std::shared_ptr<UltraCanvasProgressBar>     statusProgress;
+    // The transfer bar: an UltraCanvasGaugeDiagramElement in LinearBar mode,
+    // which is the framework's progress bar. Short enough that the gauge
+    // drops its caption and value line and is simply the bar.
+    std::shared_ptr<UltraCanvasGaugeDiagramElement> statusProgress;
     // What the drives last said they were doing. Idle most of the time; the
     // status line and the bar are drawn from it.
     RemoteActivity remoteActivity;

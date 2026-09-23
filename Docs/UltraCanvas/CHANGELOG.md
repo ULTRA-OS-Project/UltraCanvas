@@ -1,21 +1,20 @@
 #### 2026-09-23 *0.9.38*
-- **`UltraCanvasProgressBar`: progress that sits beside the work.** The
-  catalogue had a progress *dialog* - a modal window with a ring and a Cancel
-  button - and nothing for the far commoner case of a bar in a status line, a
-  row or a panel footer, so anyone wanting one had to paint it, which is the
-  mistake `scripts/check_ui_reuse.py` exists to catch. It is a track and a
-  fill and nothing else: no text (the label beside it says far more than a
-  number fitted inside a 6 px bar could) and no input (`Contains()` answers
-  false, so it never takes the pointer from what it sits on).
-  - **A negative fraction is "nobody knows the total"** - an FTP server that
-    sends no length, a queue still being counted - and draws a block sliding
-    along the track. The block is moved by the next report, not by a timer of
-    the element's own: a caller that stops reporting leaves the bar where it
-    stood instead of animating for ever over work that has died.
-  - `SetProgress(done, total)` takes the caller's own units, and a total of 0
-    is the unknown case, so a caller that may not know the size does not have
-    to branch. The corner radius is clamped to half the height, so one value
-    suits a 4 px bar and a 20 px one.
+- **A gauge's `LinearBar` fits the box it is given.** It is the framework's
+  progress bar - "Horizontal or vertical bar (e.g. download progress)" - but it
+  was sized only as a dashboard gauge: a caption over a 28 px bar with the
+  value spelled out underneath, which needs some 114 px of height before any of
+  it fits. In anything shorter it laid out for the height it wanted rather than
+  the height it was given and drew its bar and its value outside the element,
+  which is what kept it out of the one place a progress bar is most wanted - a
+  status line, a list row, a panel footer, all of them twenty-odd pixels tall.
+  Below the height its caption and value line need it now drops both, drops its
+  side padding, and is simply the bar across the whole element. A gauge with the
+  room to be a dashboard gauge is unchanged, pixel for pixel.
+- **`UltraCanvasGaugeDiagramElement` is in the element catalogue.** It was not,
+  so `Docs/UltraCanvas/UltraCanvasUIElements.md` - the file every assistant and
+  contributor is told to consult before building UI - offered a progress
+  *dialog* and nothing else, and the gauge was findable only by already knowing
+  its name. That is exactly how a second progress bar gets written.
 - **An FTP transfer reports its bytes.** `UltraNet_FtpUpload` and
   `UltraNet_FtpDownload` set up libcurl without a progress callback, so a file
   moving to or from a server was silent from first byte to last and nothing
