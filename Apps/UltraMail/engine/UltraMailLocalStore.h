@@ -80,6 +80,12 @@ public:
     UltraDbResult SetFlags(const std::string& accountId, const std::string& folder,
                            int64_t uid, uint32_t flags, bool set);
 
+    // Overwrite a message's flags with the exact value the server reported (used
+    // by the folder-switch flag reconcile, which cannot express "these flags and
+    // no others" through the bit-mask SetFlags); recomputes the needs-answer bit.
+    UltraDbResult ReplaceFlags(const std::string& accountId, const std::string& folder,
+                               int64_t uid, uint32_t flags);
+
     // Convenience: mark a message answered (sets \Answered, clears needs-answer).
     UltraDbResult MarkAnswered(const std::string& accountId, const std::string& folder,
                                int64_t uid) {

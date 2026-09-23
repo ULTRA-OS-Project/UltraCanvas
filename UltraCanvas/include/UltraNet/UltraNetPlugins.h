@@ -294,6 +294,27 @@ public:
         const std::string& rawMessage,
         UltraNetMailFlags flags,
         const UltraNetMailOptions& options) = 0;
+
+    // One pass over the whole folder used to reconcile read/deleted state a
+    // message had changed on another client. Fires `onFlags(uid, flags,
+    // flagsKnown)` once per LIVE message (the authoritative set the server still
+    // holds — enumerate it reliably, e.g. UID SEARCH ALL). `flagsKnown` is false
+    // when the message exists but its flags could not be read, so the caller can
+    // still detect deletions (a UID never reported is gone) without mistaking an
+    // unread flag read for a real change. The default reports "not implemented"
+    // so backends that cannot enumerate flags (and test fakes) are simply skipped
+    // by the reconcile step rather than having every local message treated as
+    // expunged. Added last so the vtable layout of the existing methods is
+    // undisturbed across the DSO.
+    virtual UltraNetResult FetchAllFlags(
+        const std::string& serverUrl,
+        const std::string& folder,
+        const std::function<void(uint32_t uid, UltraNetMailFlags flags, bool flagsKnown)>& onFlags,
+        const UltraNetMailOptions& options) {
+        (void)serverUrl; (void)folder; (void)onFlags; (void)options;
+        return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                     "FetchAllFlags not implemented");
+    }
 };
 
 // MQTT / AMQP.
