@@ -5,6 +5,7 @@
 // V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasFunnelChart.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 
 #include <cstdio>
 #include <fstream>
@@ -102,13 +103,11 @@ namespace {
 
             // Rows whose value column does not parse are skipped - this also swallows
             // a header line without needing to special-case it.
-            try {
-                FunnelStage stage(fields[0], std::stod(fields[1]));
-                if (fields.size() > 2) stage.description = fields[2];
-                stages.push_back(stage);
-            } catch (const std::exception&) {
-                continue;
-            }
+            double value = 0.0;
+            if (!TryParseFloat(fields[1], value)) continue;
+            FunnelStage stage(fields[0], value);
+            if (fields.size() > 2) stage.description = fields[2];
+            stages.push_back(stage);
         }
     }
 

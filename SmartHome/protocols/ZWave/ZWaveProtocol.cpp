@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "ZWaveProtocol.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <filesystem>
 #include <iostream>
 #include <sstream>
@@ -338,7 +339,7 @@ bool ZWaveProtocol::SendCommand(const std::string& deviceId, const std::string& 
         float temp = 21.0f;
         uint8_t setpointType = 1;
         if (params.count("temperature")) {
-            temp = std::stof(params.at("temperature"));
+            UltraCanvas::TryParseFloat(params.at("temperature"), temp);
         }
         if (params.count("type")) {
             setpointType = static_cast<uint8_t>(std::stoi(params.at("type")));
@@ -1701,7 +1702,7 @@ ZWaveValue ZWaveProtocol::ConvertValue(const OpenZWave::ValueID& valueId) const 
             {
                 std::string decStr;
                 mgr->GetValueAsString(valueId, &decStr);
-                value.DecimalValue = std::stof(decStr);
+                UltraCanvas::TryParseFloat(decStr, value.DecimalValue);
             }
             break;
             
