@@ -1,3 +1,34 @@
+#### 2026-09-23 *1.46.0*
+- **A remote folder being fetched shows progress, not "Folder is empty!".**
+  Opening a folder on an FTP, SFTP or cloud drive now shows a turning progress
+  ring with "Loading folder" and a line about what is going on: "Waiting for
+  Backup NAS - 2 requests ahead" while the fetch is queued behind other
+  requests, then "Connecting to Backup NAS (ftp://nas.local) and reading
+  /photos", with a seconds count once the server keeps it waiting. The line
+  updates as the fetch moves along; the listing replaces it when it lands.
+  A folder the server refused shows the reason (a rejected login, an
+  unreachable host) in the folder area instead of an empty folder. Needs
+  framework 0.9.41 (the widget's `remoteListingStatus` hook).
+- **Split view: the docked tree's width moves with the tree.** Docking the
+  folder tree into a pane widens that pane by the tree's width at the other
+  display's expense, and undocking it (or docking it on the other side) gives
+  that width back - the display beside the tree used to stay squeezed after
+  the tree had gone. The "Folder tree" tooltip no longer lingers over the
+  docked tree after the click (framework 0.9.41).
+- **Drop files onto a remote drive's row in the folder tree to upload them.**
+  The row takes local files the way a folder row takes a move, when the
+  drive can take uploads (an FTP drive can; so can a Nextcloud or Dropbox
+  drive, which cannot otherwise be changed from here). Each file goes up as
+  its own request under its own name, the status bar says how many are on
+  their way, and the folder re-lists from the server as they land; a
+  refusal comes back as the server's own message. Folders are not uploaded
+  (a tree is not one transfer) and remote entries have no local file to
+  send: both are counted in the status bar with the reason.
+- **Dot-entries on a remote drive are hidden like local ones.** A `.git`
+  folder or `.htaccess` on a server was listed on every display while the
+  same name on a disk was hidden; the listing now marks them hidden, so
+  Display > Hidden files and the display's own toggle govern both alike.
+
 #### 2026-09-22 *1.45.0*
 - **Extras > Find text: search inside files.** A new first item in the file
   context menu's *Extras* submenu asks for a text and lists every file in the

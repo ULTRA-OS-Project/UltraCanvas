@@ -943,8 +943,31 @@ filer->remoteListing = [drives](const std::string& path,
   information itself, so a remote file gets the same icon and category as a
   local one of the same name.
 - **Returning `false`** with `error` set reports the message the way any
-  listing error is reported; returning `true` with an empty listing means
-  "nothing yet".
+  listing error is reported, and the display shows that message where the
+  empty-folder notice would go — a folder the server refused is not known to
+  be empty; returning `true` with an empty listing means "nothing yet".
+
+### Showing that a folder is on its way
+
+"Nothing yet" and "nothing at all" look the same in a listing, so a third,
+optional hook tells them apart:
+
+```cpp
+filer->remoteListingStatus = [drives](const std::string& path) {
+    return drives->ListingStatus(path);   // "" once the listing is in
+};
+```
+
+It is asked after `remoteListing` answered with an empty listing, and again
+on every tick while the notice is up. A non-empty answer — "Connecting to
+Backup NAS (ftp://nas.local) and reading /photos - 7 s", "Waiting for Backup
+NAS - 2 requests ahead" — puts a turning progress ring, **Loading folder**
+and that line in place of "Folder is empty!", and the words follow the fetch
+as the host's answer changes. An empty answer means the folder really is
+empty. Left unset, a folder being fetched shows as empty until the host's
+`Refresh()`, as before. The ring runs on a 50 ms application timer that stops
+as soon as the listing arrives, the folder changes or the widget is
+destroyed.
 ### Changing a remote folder
 
 Three more hooks let the host carry out the changes that act on the drive
