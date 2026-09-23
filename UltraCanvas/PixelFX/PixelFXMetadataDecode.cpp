@@ -1,7 +1,7 @@
 // PixelFXMetadataDecode.cpp
-// IPTC-IIM and XMP decoding, and EXIF value formatting, for
+// IPTC-IIM and XMP decoding, EXIF value formatting and display names, for
 // PixelFX::Header::ReadMetadata(). See PixelFX/PixelFXMetadataDecode.h.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 
@@ -723,6 +723,237 @@ std::vector<DecodedTag> HumanizeExif(const std::vector<ExifField>& fields) {
         out.Add(label, value);
     }
     return out.Take();
+}
+
+// ===== DISPLAY NAMES =====
+
+namespace {
+
+    const std::map<std::string, std::string>& ExifNames() {
+        static const std::map<std::string, std::string> names = {
+            {"Make", "Camera make"}, {"Model", "Camera model"},
+            {"BodySerialNumber", "Camera serial number"}, {"CameraOwnerName", "Camera owner"},
+            {"LensMake", "Lens make"}, {"LensModel", "Lens"}, {"LensSerialNumber", "Lens serial number"},
+            {"LensSpecification", "Lens specification"}, {"LensInfo", "Lens specification"},
+            {"Software", "Software"}, {"Artist", "Artist"}, {"Copyright", "Copyright"},
+            {"ImageDescription", "Description"}, {"UserComment", "Comment"}, {"ImageUniqueID", "Image ID"},
+            {"DateTime", "Date modified"}, {"DateTimeOriginal", "Date taken"},
+            {"DateTimeDigitized", "Date digitized"}, {"OffsetTime", "Time zone (modified)"},
+            {"OffsetTimeOriginal", "Time zone (taken)"}, {"OffsetTimeDigitized", "Time zone (digitized)"},
+            {"SubSecTime", "Sub-second (modified)"}, {"SubSecTimeOriginal", "Sub-second (taken)"},
+            {"SubSecTimeDigitized", "Sub-second (digitized)"},
+            {"ExposureTime", "Exposure time"}, {"FNumber", "F-number"}, {"ApertureValue", "Aperture"},
+            {"MaxApertureValue", "Max aperture"}, {"ShutterSpeedValue", "Shutter speed"},
+            {"BrightnessValue", "Brightness"}, {"ExposureBiasValue", "Exposure compensation"},
+            {"ExposureProgram", "Exposure program"}, {"ExposureMode", "Exposure mode"},
+            {"ExposureIndex", "Exposure index"}, {"ISOSpeedRatings", "ISO"},
+            {"PhotographicSensitivity", "ISO"}, {"RecommendedExposureIndex", "Recommended exposure index"},
+            {"SensitivityType", "Sensitivity type"}, {"MeteringMode", "Metering mode"}, {"Flash", "Flash"},
+            {"FlashEnergy", "Flash energy"}, {"FocalLength", "Focal length"},
+            {"FocalLengthIn35mmFilm", "Focal length (35 mm equivalent)"}, {"DigitalZoomRatio", "Digital zoom"},
+            {"SubjectDistance", "Subject distance"}, {"SubjectDistanceRange", "Subject distance range"},
+            {"WhiteBalance", "White balance"}, {"LightSource", "Light source"}, {"ColorSpace", "Colour space"},
+            {"SceneCaptureType", "Scene type"}, {"SceneType", "Scene source"}, {"CustomRendered", "Processing"},
+            {"Contrast", "Contrast"}, {"Saturation", "Saturation"}, {"Sharpness", "Sharpness"},
+            {"GainControl", "Gain control"}, {"SensingMethod", "Sensor type"}, {"FileSource", "File source"},
+            {"Orientation", "Orientation"}, {"XResolution", "Horizontal resolution"},
+            {"YResolution", "Vertical resolution"}, {"FocalPlaneXResolution", "Focal plane horizontal resolution"},
+            {"FocalPlaneYResolution", "Focal plane vertical resolution"},
+            {"PixelXDimension", "Image width"}, {"PixelYDimension", "Image height"},
+            {"ImageWidth", "Image width"}, {"ImageLength", "Image height"},
+            {"YCbCrPositioning", "YCbCr positioning"}, {"YCbCrSubSampling", "YCbCr subsampling"},
+            {"ComponentsConfiguration", "Components configuration"}, {"Compression", "Compression"},
+            {"ExifVersion", "EXIF version"}, {"FlashpixVersion", "FlashPix version"},
+            {"InteroperabilityIndex", "Interoperability index"},
+            {"InteroperabilityVersion", "Interoperability version"}, {"MakerNote", "Maker note"},
+            {"GPSLatitude", "Latitude"}, {"GPSLongitude", "Longitude"}, {"GPSAltitude", "Altitude"},
+            {"GPSTimeStamp", "GPS time"}, {"GPSDateStamp", "GPS date"}, {"GPSImgDirection", "Camera direction"},
+            {"GPSSpeed", "Speed"}, {"GPSTrack", "Direction of travel"}, {"GPSVersionID", "GPS version"},
+            {"GPSMapDatum", "Map datum"}, {"GPSSatellites", "GPS satellites"}, {"GPSStatus", "GPS status"},
+            {"GPSMeasureMode", "GPS measure mode"}, {"GPSDOP", "GPS precision (DOP)"},
+            {"GPSProcessingMethod", "GPS method"}, {"GPSAreaInformation", "GPS area"},
+            {"GPSDestLatitude", "Destination latitude"}, {"GPSDestLongitude", "Destination longitude"},
+            {"GPSDestBearing", "Destination bearing"}, {"GPSDestDistance", "Destination distance"},
+            {"GPSHPositioningError", "GPS accuracy"}, {"GPSDifferential", "GPS differential correction"},
+        };
+        return names;
+    }
+
+    const std::map<std::string, std::string>& IptcNames() {
+        static const std::map<std::string, std::string> names = {
+            {"Object Name", "Title"}, {"By-line", "Author"}, {"By-line Title", "Author title"},
+            {"Caption/Abstract", "Caption"}, {"Writer/Editor", "Caption writer"},
+            {"Copyright Notice", "Copyright"}, {"Country Name", "Country"},
+            {"Province/State", "State/Province"}, {"Sub-location", "Location"},
+            {"Originating Program", "Created with"}, {"Special Instructions", "Instructions"},
+            {"Original Transmission Reference", "Job ID"},
+        };
+        return names;
+    }
+
+    const std::map<std::string, std::string>& XmpNames() {
+        static const std::map<std::string, std::string> names = {
+            {"dc:title", "Title"}, {"dc:description", "Description"}, {"dc:subject", "Keywords"},
+            {"dc:creator", "Creator"}, {"dc:rights", "Rights"}, {"dc:format", "Format"},
+            {"dc:publisher", "Publisher"}, {"dc:contributor", "Contributor"}, {"dc:date", "Date"},
+            {"dc:language", "Language"}, {"dc:identifier", "Identifier"}, {"dc:source", "Source"},
+            {"xmp:Rating", "Rating"}, {"xmp:Label", "Label"}, {"xmp:CreatorTool", "Created with"},
+            {"xmp:CreateDate", "Date created"}, {"xmp:ModifyDate", "Date modified"},
+            {"xmp:MetadataDate", "Metadata date"}, {"xmp:Nickname", "Nickname"},
+            {"xmpRights:WebStatement", "Licence URL"}, {"xmpRights:UsageTerms", "Usage terms"},
+            {"xmpRights:Marked", "Copyrighted"}, {"xmpRights:Owner", "Rights owner"},
+            {"photoshop:City", "City"}, {"photoshop:State", "State/Province"}, {"photoshop:Country", "Country"},
+            {"photoshop:Headline", "Headline"}, {"photoshop:Credit", "Credit"}, {"photoshop:Source", "Source"},
+            {"photoshop:DateCreated", "Date created"}, {"photoshop:AuthorsPosition", "Author title"},
+            {"photoshop:CaptionWriter", "Caption writer"}, {"photoshop:Instructions", "Instructions"},
+            {"photoshop:TransmissionReference", "Job ID"}, {"photoshop:Category", "Category"},
+            {"photoshop:ColorMode", "Colour mode"}, {"photoshop:ICCProfile", "ICC profile"},
+            {"Iptc4xmpCore:Location", "Location"}, {"Iptc4xmpCore:CountryCode", "Country code"},
+            {"Iptc4xmpCore:CreatorContactInfo", "Creator contact"},
+            {"Iptc4xmpCore:CiAdrExtadr", "Address"}, {"Iptc4xmpCore:CiAdrCity", "City"},
+            {"Iptc4xmpCore:CiAdrRegion", "Region"}, {"Iptc4xmpCore:CiAdrPcode", "Postcode"},
+            {"Iptc4xmpCore:CiAdrCtry", "Country"}, {"Iptc4xmpCore:CiEmailWork", "Email"},
+            {"Iptc4xmpCore:CiTelWork", "Phone"}, {"Iptc4xmpCore:CiUrlWork", "Website"},
+            {"xmpMM:DocumentID", "Document ID"}, {"xmpMM:InstanceID", "Instance ID"},
+            {"xmpMM:OriginalDocumentID", "Original document ID"}, {"xmpMM:History", "History"},
+            {"xmpMM:DerivedFrom", "Derived from"}, {"stEvt:action", "Action"}, {"stEvt:when", "When"},
+            {"stEvt:softwareAgent", "Software"}, {"stEvt:changed", "Changed"},
+            {"stEvt:instanceID", "Instance ID"}, {"tiff:Make", "Camera make"}, {"tiff:Model", "Camera model"},
+            {"aux:Lens", "Lens"}, {"aux:SerialNumber", "Camera serial number"},
+            {"crs:Version", "Camera Raw version"}, {"lr:hierarchicalSubject", "Keyword hierarchy"},
+        };
+        return names;
+    }
+
+    const std::map<std::string, std::string>& OtherNames() {
+        static const std::map<std::string, std::string> names = {
+            {"jpeg-chroma-subsample", "Chroma subsampling"}, {"jpeg-multiscan", "Progressive"},
+            {"icc-profile-data", "ICC profile"}, {"exif-data", "EXIF block"},
+            {"iptc-data", "IPTC block"}, {"xmp-data", "XMP block"},
+            {"heif-primary", "Primary image"}, {"heif-compression", "Compression"},
+            {"interlaced", "Interlaced"}, {"palette", "Palette"}, {"bits-per-sample", "Bits per sample"},
+            {"gif-loop", "Loop count"}, {"gif-palette", "GIF palette"}, {"loop", "Loop count"},
+            {"delay", "Frame delays"}, {"n-pages", "Pages"}, {"page-height", "Page height"},
+            {"orientation", "Orientation"}, {"background", "Background"},
+        };
+        return names;
+    }
+
+    bool IsUpper(char c) { return std::isupper(static_cast<unsigned char>(c)) != 0; }
+    bool IsLower(char c) { return std::islower(static_cast<unsigned char>(c)) != 0; }
+    bool IsDigit(char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; }
+
+    // "SensingMethod" -> "Sensing method", "GPSHPositioningError" -> "GPS H
+    // positioning error", "jpeg-multiscan" -> "Jpeg multiscan". A word in
+    // capitals (an acronym) keeps them; the first word is capitalised.
+    std::string SplitWords(const std::string& raw) {
+        std::vector<std::string> words;
+        std::string cur;
+        auto flush = [&] { if (!cur.empty()) { words.push_back(cur); cur.clear(); } };
+        for (std::size_t i = 0; i < raw.size(); ++i) {
+            const char c = raw[i];
+            if (c == '-' || c == '_' || c == ' ') { flush(); continue; }
+            if (!cur.empty()) {
+                const char prev = cur.back();
+                const bool next = i + 1 < raw.size();
+                if (IsUpper(c) && (IsLower(prev) || IsDigit(prev))) flush();                        // aB -> a|B
+                else if (IsUpper(c) && IsUpper(prev) && next && IsLower(raw[i + 1])) flush();       // ABc -> A|Bc
+                else if (IsDigit(c) != IsDigit(prev) && !(IsDigit(c) && IsUpper(prev) && cur.size() == 1)) flush();
+            }
+            cur.push_back(c);
+        }
+        flush();
+
+        std::string out;
+        for (std::size_t w = 0; w < words.size(); ++w) {
+            std::string word = words[w];
+            // All capitals (GPS, ISO, a lone X or H) stays as written.
+            bool acronym = !word.empty() && IsUpper(word[0]);
+            for (char c : word) acronym = acronym && (IsUpper(c) || IsDigit(c));
+            if (!acronym) {
+                for (char& c : word) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+            if (w == 0 && !word.empty()) word[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(word[0])));
+            if (w) out += ' ';
+            out += word;
+        }
+        return out;
+    }
+
+    std::string ExifName(const std::string& key) {
+        auto it = ExifNames().find(key);
+        return it != ExifNames().end() ? it->second : SplitWords(key);
+    }
+
+    // One step of an XMP path: "Iptc4xmpCore:CiAdrCity" or "xmpMM:History[2]".
+    std::string XmpStepName(const std::string& step) {
+        std::string name = step, index;
+        const std::size_t bracket = step.find('[');
+        if (bracket != std::string::npos && step.back() == ']') {
+            name = step.substr(0, bracket);
+            index = step.substr(bracket + 1, step.size() - bracket - 2);
+        }
+        auto it = XmpNames().find(name);
+        std::string out;
+        if (it != XmpNames().end()) {
+            out = it->second;
+        } else {
+            const std::size_t colon = name.find(':');
+            out = SplitWords(colon == std::string::npos ? name : name.substr(colon + 1));
+        }
+        return index.empty() ? out : out + " " + index;
+    }
+
+} // namespace
+
+std::string FriendlyTagName(const std::string& group, const std::string& key) {
+    if (key.empty()) return key;
+
+    if (group == "EXIF") {
+        static const std::string thumb = "Thumbnail ";
+        if (key.rfind(thumb, 0) == 0) return thumb + ExifName(key.substr(thumb.size()));
+        return ExifName(key);
+    }
+    if (group == "IPTC") {
+        auto it = IptcNames().find(key);
+        if (it != IptcNames().end()) return it->second;
+        // The IIM names are in title case ("Date Created"); the rest of the
+        // panel is in sentence case.
+        std::string out = key;
+        bool wordStart = false;
+        for (std::size_t i = 1; i < out.size(); ++i) {
+            if (out[i - 1] == ' ') wordStart = true;
+            const bool acronym = i + 1 < out.size() && IsUpper(out[i]) && IsUpper(out[i + 1]);
+            if (wordStart && IsUpper(out[i]) && !acronym)
+                out[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out[i])));
+            wordStart = false;
+        }
+        return out;
+    }
+    if (group == "XMP") {
+        std::string out;
+        std::size_t start = 0;
+        while (start <= key.size()) {
+            std::size_t slash = key.find('/', start);
+            if (slash == std::string::npos) slash = key.size();
+            if (slash > start) {
+                if (!out.empty()) out += " \xE2\x80\xBA ";   // ›
+                out += XmpStepName(key.substr(start, slash - start));
+            }
+            start = slash + 1;
+        }
+        return out.empty() ? key : out;
+    }
+    if (group == "Image") return key;   // already written for a person
+
+    auto it = OtherNames().find(key);
+    if (it != OtherNames().end()) return it->second;
+    // PNG text chunks: "png-comment-0-Title" -> "Title".
+    if (key.rfind("png-comment-", 0) == 0) {
+        const std::size_t dash = key.find('-', 12);
+        if (dash != std::string::npos && dash + 1 < key.size()) return key.substr(dash + 1);
+    }
+    return SplitWords(key);
 }
 
 } // namespace Header

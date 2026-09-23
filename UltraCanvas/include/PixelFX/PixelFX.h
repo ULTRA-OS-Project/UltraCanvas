@@ -642,9 +642,11 @@ namespace PixelFX {
 
         // ===== READABLE METADATA =====
         // One metadata item of an image as a person would read it: which block
-        // of the file it came from, the tag name as that block spells it, and
-        // the value as text. Binary blocks (ICC profiles, raw EXIF/XMP/IPTC
-        // payloads) are reported by size rather than dumped.
+        // of the file it came from, the tag's display name ("Date taken", not
+        // "DateTimeOriginal"; see Header::FriendlyTagName in
+        // PixelFXMetadataDecode.h) and the value as text. IPTC and XMP are
+        // decoded tag by tag; other binary blocks (ICC profiles) are reported
+        // by size rather than dumped.
         struct MetadataEntry {
             std::string group;   // "Image", "EXIF", "XMP", "IPTC", "Colour", "Other"
             std::string key;

@@ -2456,9 +2456,11 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
 namespace {
 // A Markdown table cell must not hold a bare pipe, and the characters Markdown
 // reads as emphasis or links are escaped so a Windows path or an EXIF value
-// like "VIPS_CODING_NONE" is shown as written.
+// like "VIPS_CODING_NONE" is shown as written. Parentheses are left alone:
+// with the brackets escaped they cannot form a link, and the text area does
+// not unescape inside bold, where the tag names are ("Time zone (taken)").
 std::string EscapeDetailsCell(const std::string& text) {
-    static const std::string specials = "\\`*_[]()#<>$~=^";
+    static const std::string specials = "\\`*_[]#<>$~=^";
     std::string out;
     out.reserve(text.size() + 8);
     for (char c : text) {

@@ -6,7 +6,7 @@
 // formatting (HumanizeExif), which turns libvips' raw rationals and codes into
 // what a person reads.
 // Plain C++ and tinyxml2 - no libvips - so it can be tested on its own.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 #pragma once
@@ -61,6 +61,17 @@ namespace Header {
     // thumbnail's fields are named "Thumbnail ...". Values are capped at 512
     // bytes like the other decoders.
     std::vector<DecodedTag> HumanizeExif(const std::vector<ExifField>& fields);
+
+    // ===== DISPLAY NAMES =====
+    // The name a person reads for a metadata key, by group ("EXIF", "IPTC",
+    // "XMP", "Colour", "Other"): "FNumber" -> "F-number", "DateTimeOriginal"
+    // -> "Date taken", "GPSLatitude" -> "Latitude", IPTC "By-line" -> "Author",
+    // XMP "dc:subject" -> "Keywords", "Iptc4xmpCore:CreatorContactInfo/
+    // Iptc4xmpCore:CiEmailWork" -> "Creator contact › Email". Keys without a
+    // name of their own are split into words ("SensingMethod" -> "Sensing
+    // method", "GPSHPositioningError" -> "GPS H positioning error"), with the
+    // XMP namespace prefix dropped. A thumbnail's "Thumbnail " prefix is kept.
+    std::string FriendlyTagName(const std::string& group, const std::string& key);
 
 } // namespace Header
 } // namespace PixelFX

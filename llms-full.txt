@@ -33940,7 +33940,13 @@ The reader does the tidying a person would otherwise have to do in their head:
 - The **Image** group is written the way a person says it — `Dimensions:
   640 x 480 px`, `Colour space: sRGB`, `Resolution: 72 dpi`, `Read by:
   jpegload` — instead of the dozen raw fields underneath it.
-- EXIF tag names lose their `exif-ifd0-` prefix, and values are written the
+- Tags carry names a person reads (`Header::FriendlyTagName`): `Date taken`,
+  `F-number`, `Exposure compensation`, `Camera model`, `Latitude` for EXIF;
+  `Author`, `Caption`, `Country` for IPTC; `Title`, `Keywords`, `Created with`,
+  `Creator contact › Email` for XMP; `Chroma subsampling`, `ICC profile` for
+  the rest. A tag without a name of its own is split into words
+  (`SensingMethod` → `Sensing method`), XMP namespace prefixes dropped.
+- EXIF values are written the
   way a camera app shows them (`Header::HumanizeExif`,
   `PixelFX/PixelFXMetadataDecode.h`) instead of libvips' raw string
   (`28/5 (f/5.6, Rational, 1 components, 8 bytes)`):

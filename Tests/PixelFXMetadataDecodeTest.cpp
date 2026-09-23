@@ -6,8 +6,9 @@
 // XMP forms writers use - attributes, language alternatives, bags and
 // sequences, structures, resources - plus input that is truncated or not
 // XML at all, which must give nothing rather than crash. And the EXIF value
-// formatting (HumanizeExif), fed the strings libvips 8.15 actually produces.
-// Version: 1.1.0
+// formatting (HumanizeExif), fed the strings libvips 8.15 actually produces,
+// and the display names (FriendlyTagName).
+// Version: 1.2.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 
@@ -21,6 +22,7 @@ using PixelFX::Header::DecodedTag;
 using PixelFX::Header::DecodeIPTC;
 using PixelFX::Header::DecodeXMP;
 using PixelFX::Header::ExifField;
+using PixelFX::Header::FriendlyTagName;
 using PixelFX::Header::HumanizeExif;
 using PixelFX::Header::SplitExifString;
 
@@ -363,11 +365,62 @@ void TestExifLeftOut() {
     CheckValue(odd, "Orientation", "99999999999");
 }
 
+
+// ===== DISPLAY NAMES =====
+
+void CheckName(const std::string& group, const std::string& key, const std::string& expected) {
+    const std::string got = FriendlyTagName(group, key);
+    Check(got == expected, group + " " + key + " -> \"" + expected + "\"" +
+                               (got == expected ? "" : " (got \"" + got + "\")"));
+}
+
+void TestFriendlyNames() {
+    std::cout << "\nDisplay names:\n";
+    CheckName("EXIF", "FNumber", "F-number");
+    CheckName("EXIF", "DateTimeOriginal", "Date taken");
+    CheckName("EXIF", "ExposureBiasValue", "Exposure compensation");
+    CheckName("EXIF", "ISOSpeedRatings", "ISO");
+    CheckName("EXIF", "GPSLatitude", "Latitude");
+    CheckName("EXIF", "Make", "Camera make");
+    CheckName("EXIF", "Thumbnail Compression", "Thumbnail Compression");
+    CheckName("EXIF", "Thumbnail XResolution", "Thumbnail Horizontal resolution");
+    // Not in the table: split into words, acronyms kept.
+    CheckName("EXIF", "CompositeImage", "Composite image");
+    CheckName("EXIF", "GPSHPositioningErrorX", "GPSH positioning error X");
+    CheckName("EXIF", "FocalLengthIn35mmFilmX", "Focal length in 35 mm film X");
+    CheckName("EXIF", "SourceExposureTimesOfCompositeImage", "Source exposure times of composite image");
+
+    CheckName("IPTC", "By-line", "Author");
+    CheckName("IPTC", "Caption/Abstract", "Caption");
+    CheckName("IPTC", "Keywords", "Keywords");
+    CheckName("IPTC", "2:199", "2:199");
+    CheckName("IPTC", "Date Created", "Date created");
+    CheckName("IPTC", "Content Location Name", "Content location name");
+    CheckName("IPTC", "Country Code", "Country code");
+
+    CheckName("XMP", "dc:subject", "Keywords");
+    CheckName("XMP", "xmp:CreatorTool", "Created with");
+    CheckName("XMP", "Iptc4xmpCore:CreatorContactInfo/Iptc4xmpCore:CiEmailWork",
+              "Creator contact \xE2\x80\xBA Email");
+    CheckName("XMP", "xmpMM:History[2]/stEvt:action", "History 2 \xE2\x80\xBA Action");
+    CheckName("XMP", "exif:Flash/exif:Fired", "Flash \xE2\x80\xBA Fired");
+    CheckName("XMP", "crs:WhiteBalance", "White balance");
+    CheckName("XMP", "noprefix", "Noprefix");
+
+    CheckName("Other", "jpeg-chroma-subsample", "Chroma subsampling");
+    CheckName("Other", "png-comment-0-Title", "Title");
+    CheckName("Other", "png-comment-3-Creation Time", "Creation Time");
+    CheckName("Other", "heif-bitdepth", "Heif bitdepth");
+    CheckName("Colour", "icc-profile-data", "ICC profile");
+    CheckName("Image", "Dimensions", "Dimensions");
+    CheckName("EXIF", "", "");
+}
+
 } // namespace
 
 int main() {
-    std::cout << "PixelFX IPTC / XMP decoding, EXIF formatting\n";
-    std::cout << "============================================\n";
+    std::cout << "PixelFX IPTC / XMP decoding, EXIF formatting, display names\n";
+    std::cout << "=============================================================\n";
 
     TestBareIim();
     TestPhotoshopWrapper();
@@ -380,6 +433,7 @@ int main() {
     TestExifValues();
     TestExifGps();
     TestExifLeftOut();
+    TestFriendlyNames();
 
     std::cout << "\n";
     if (g_failures == 0) {

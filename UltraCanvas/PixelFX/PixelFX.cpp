@@ -1262,6 +1262,12 @@ namespace PixelFX {
                 entries.push_back(MetadataEntry{"EXIF", tag.first, tag.second});
             }
 
+            // Tag names as a person reads them ("Date taken", not
+            // "DateTimeOriginal"); the Image group is written that way already.
+            for (size_t i = imageGroupSize; i < entries.size(); ++i) {
+                entries[i].key = FriendlyTagName(entries[i].group, entries[i].key);
+            }
+
             // The Image group keeps the order it was written in; the file's own
             // blocks are alphabetical within each group.
             std::stable_sort(entries.begin() + imageGroupSize, entries.end(),
