@@ -8,13 +8,14 @@
 // folder look like two folders to a cache keyed by path, and a parent that
 // climbs past a drive's root walks out of the drive into a string nothing can
 // resolve.
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+// Version: 1.1.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 #include "UltraFilerRemotePath.h"
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 using namespace UltraCanvas;
 
@@ -157,6 +158,33 @@ int main() {
                 "up from the root leaves the drive, it does not climb past it");
         CheckEq(RemoteFilerParent("/home/erika"), "",
                 "a local path has no remote parent");
+
+        // The folder tree climbs with this in a loop, to find the deepest row
+        // it already shows and expand from there down to the folder that was
+        // navigated to (UltraFilerWindow::SyncTreeSelection). Two properties
+        // it depends on: the climb ends, and the last path it yields is the
+        // drive root spelled the way the tree keys that row - WITH the
+        // trailing slash, since MakeRemoteFilerPath(acc, "/") is the node id
+        // AddTreeRemoteDriveNode used. A chain that stopped one short of it,
+        // or at "ultracloud://acc" without the slash, would never match the
+        // drive's row and the tree would not follow the display into a
+        // remote subfolder.
+        {
+            std::vector<std::string> chain;
+            for (std::string p = "ultracloud://" + acc + "/a/b/c";
+                 !p.empty(); p = RemoteFilerParent(p)) {
+                chain.push_back(p);
+                if (chain.size() > 8) break;   // a climb that will not end
+            }
+            Check(chain.size() == 4, "the climb ends at the drive root");
+            if (chain.size() == 4) {
+                CheckEq(chain[0], "ultracloud://" + acc + "/a/b/c", "it starts where it was asked");
+                CheckEq(chain[1], "ultracloud://" + acc + "/a/b", "then the parent");
+                CheckEq(chain[2], "ultracloud://" + acc + "/a", "then its parent");
+                CheckEq(chain[3], "ultracloud://" + acc + "/",
+                        "and last the drive root, as the tree spells it");
+            }
+        }
     }
 
     // ===== APPENDING A CHILD =====
@@ -174,6 +202,16 @@ int main() {
                 "no name, no path");
         CheckEq(RemoteFilerChild("/home/erika", "x"), "",
                 "a local folder takes no remote child");
+    }
+
+    // ===== WHAT COUNTS AS HIDDEN ON A SERVER =====
+    {
+        Check(IsHiddenRemoteFilerName(".ssh"), "a dot name is hidden");
+        Check(IsHiddenRemoteFilerName(".htaccess"), "so is a dot file");
+        Check(!IsHiddenRemoteFilerName("Videos"), "an ordinary name is not");
+        Check(!IsHiddenRemoteFilerName("report.2026.txt"),
+              "a dot inside a name does not hide it");
+        Check(!IsHiddenRemoteFilerName(""), "and there is no empty name to hide");
     }
 
     // ===== THE TIME A LISTING REPORTS =====

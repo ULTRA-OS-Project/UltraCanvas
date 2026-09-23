@@ -18,8 +18,8 @@
 //
 // The account id is an UltraCloud slug and never contains '/', which is what
 // makes the split unambiguous.
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+// Version: 1.1.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -123,6 +123,17 @@ inline std::string RemoteFilerChild(const std::string& folderPath,
         return std::string();
     return MakeRemoteFilerPath(id, remote == "/" ? "/" + name
                                                  : remote + "/" + name);
+}
+
+// Is this the name of a hidden entry on a server?
+//
+// What the platform calls hidden cannot be asked of one: there is no
+// attribute to read and no API to ask through. The leading dot is the one
+// convention all of these providers share, and it is the same rule the filer
+// widget applies to a POSIX name of its own - so a ".ssh" on a drive is
+// treated the way a ".ssh" on this disk is.
+inline bool IsHiddenRemoteFilerName(const std::string& name) {
+    return !name.empty() && name[0] == '.';
 }
 
 // ===== THE TIME A REMOTE LISTING REPORTS =====
