@@ -1,6 +1,6 @@
 #### 2026-09-23 *0.11*
 - **The Events tab shows the loopback chain.** A *Via* column on the
-  events (NetworkMonitor 0.9, framework 0.9.42), read as on the other
+  events (NetworkMonitor 0.9, framework 0.9.43), read as on the other
   tabs: a mail client's connection to the antivirus proxy opens as
   "→ AvastSvc (4720)", the proxy's accepted side as "← thunderbird
   (4120)", and the proxy's own connection to the mail server as "for
@@ -13,7 +13,7 @@
 #### 2026-09-23 *0.10*
 - **The History tab says whom a flow was for.** A *Via* column on the
   history shows the loopback chain each recorded flow was last seen with
-  (NetworkMonitor 0.8, framework 0.9.41): "→ AvastSvc (4720)" on the mail
+  (NetworkMonitor 0.8, framework 0.9.42): "→ AvastSvc (4720)" on the mail
   client's flow to the proxy, "← thunderbird (4120)" on the proxy's side,
   and "for thunderbird (4120)" on the proxy's flows to the mail server -
   kept after the client's own socket is gone, so last Tuesday's history
