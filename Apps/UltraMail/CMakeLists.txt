@@ -214,6 +214,20 @@ if(TARGET fmt::fmt)
 endif()
 target_compile_features(UltraMail PRIVATE cxx_std_20)
 
+# UltraMail dlopens these UltraNet mailbox plug-ins at runtime (see ENABLE_EXPORTS
+# above). As MODULE libraries they have no link relationship to the executable, so
+# a build that only targets UltraMail would leave a stale .so behind whenever the
+# shared plug-in interface (UltraNetPlugins.h) changes — and the first virtual
+# call into a method the old .so lacks crashes (SIGSEGV), or a reworked method
+# silently runs old code. Force them to rebuild whenever UltraMail does so the
+# loaded .so is never older than the app.
+foreach(_mail_plugin UltraNetImapPlugin UltraNetSmtpPlugin
+                     UltraNetPop3Plugin UltraNetJmapPlugin)
+    if(TARGET ${_mail_plugin})
+        add_dependencies(UltraMail ${_mail_plugin})
+    endif()
+endforeach()
+
 # The app icon, in one place for every consumer of it. main.cpp asks for this
 # same file by name; UCAPP_ICON_PATH is the fallback the core applies when an
 # app sets no icon of its own (UltraCanvasApplicationBase::Initialize), so the

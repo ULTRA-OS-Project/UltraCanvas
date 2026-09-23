@@ -361,6 +361,27 @@ UltraDbResult LocalStore::SetFlags(const std::string& accountId,
         { updated, needsAnswer ? 1 : 0, accountId, folder, uid });
 }
 
+UltraDbResult LocalStore::ReplaceFlags(const std::string& accountId,
+                                       const std::string& folder, int64_t uid,
+                                       uint32_t flags) {
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT eligible FROM messages "
+        "WHERE account_id=? AND folder=? AND uid=?",
+        { accountId, folder, uid }, rs);
+    if (!q) return q;
+    if (rs.Empty())
+        return UltraDbResult::Error(UltraDbResultCode::NotFound, "message not found");
+
+    bool eligible = rs.Row(0)["eligible"].AsInt64() != 0;
+    bool needsAnswer = eligible && (flags & Flag_Answered) == 0;
+
+    return UltraDb_Exec(connection_,
+        "UPDATE messages SET flags=?, needs_answer=? "
+        "WHERE account_id=? AND folder=? AND uid=?",
+        { flags, needsAnswer ? 1 : 0, accountId, folder, uid });
+}
+
 UltraDbResult LocalStore::RemoveMessage(const std::string& accountId,
                                         const std::string& folder, int64_t uid) {
     UltraDbHandle tx = UltraDb_Begin(connection_);

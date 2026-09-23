@@ -92,6 +92,7 @@ their *License* is likewise marked **—** (OS component).
 | librevenge | [sourceforge.net/p/libwpd](https://sourceforge.net/p/libwpd/wiki/librevenge/) | [sourceforge.net/p/libwpd/librevenge](https://sourceforge.net/p/libwpd/librevenge/) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libsndfile | [libsndfile.github.io](https://libsndfile.github.io/libsndfile/) | [github.com/libsndfile/libsndfile](https://github.com/libsndfile/libsndfile) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libtiff | [simplesystems.org/libtiff](http://www.simplesystems.org/libtiff/) | [gitlab.com/libtiff/libtiff](https://gitlab.com/libtiff/libtiff) | [libtiff](https://spdx.org/licenses/libtiff.html) |
+| libudev (systemd) | [systemd.io](https://systemd.io/) | [github.com/systemd/systemd](https://github.com/systemd/systemd) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libvips | [libvips.org](https://www.libvips.org/) | [github.com/libvips/libvips](https://github.com/libvips/libvips) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libvorbis | [xiph.org/vorbis](https://xiph.org/vorbis/) | [github.com/xiph/vorbis](https://github.com/xiph/vorbis) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libwebp | [developers.google.com/speed/webp](https://developers.google.com/speed/webp) | [chromium.googlesource.com/webm/libwebp](https://chromium.googlesource.com/webm/libwebp/) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -249,6 +250,18 @@ for the full search order.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Scanners / cameras / print (native OS) | SANE, V4L2, CUPS | ICA, AVFoundation | WIA, TWAIN, Media Foundation |
+| Hot-plug watching | libudev (optional) | – (no watcher yet) | – (no watcher yet) |
+
+Hot-plug watching is what lets `IODeviceManager::StartMonitoring()` notice a
+device being plugged in or removed without the application rescanning.
+UltraCanvas' configure step looks for libudev with `pkg-config` (Debian/Ubuntu
+package `libudev-dev`, Fedora `systemd-devel`) and prints either
+`udev: <version> - hot-plug watching ENABLED` or
+`[-] udev - not found (no hot-plug watching on this build)`. Without it the
+module still builds, and `StartMonitoring()` returns `BackendUnavailable`. That
+reaches DeviceExplorer too: without libudev its tree only changes when the user
+presses **Rescan**. macOS and Windows have no watcher yet, so the same applies
+there whatever is installed.
 
 ### PixelFX module
 

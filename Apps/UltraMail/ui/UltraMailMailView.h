@@ -77,6 +77,12 @@ public:
     void AppendMessages(const std::string& accountId,
                         const std::vector<MessageEnvelope>& batch);
 
+    // Mark one message read in the list without a full rebuild: clears the ●
+    // glyph and dims the row, and updates the unread count. No-op unless the
+    // message is in the account/folder currently shown. The app calls this after
+    // it has written \Seen to the store (and is pushing it to the server).
+    void MarkRead(const std::string& accountId, const std::string& folder, int64_t uid);
+
     // Turn the message preview (reading) pane on or off. On: list | preview
     // side by side. Off (Gmail): the list fills the area and a clicked message
     // opens in its place, with a "Back to list" button. Rebuilds the content.
@@ -98,6 +104,10 @@ public:
     std::function<void(const MessageEnvelope&)> onDelete;
     std::function<void(const MessageEnvelope&)> onJunk;
     std::function<void(const MessageEnvelope&)> onMarkUnread;
+    // An unread message was opened by the user: the app marks it read (local
+    // store + server). Not raised for a message merely re-selected by a
+    // background rebuild (see suppressAutoRead_).
+    std::function<void(const MessageEnvelope&)> onMarkRead;
     std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
 
     // The folder tree selected a folder under a different account: the app
@@ -122,8 +132,13 @@ private:
     void SelectFolderNode(const std::string& accountId, const std::string& folder);
 
     // Message list ----------------------------------------------------------
-    void RebuildList();
+    // `markTopRead` marks the auto-selected top message read (a reading-pane
+    // folder switch, where showing it counts as reading it); a background
+    // rebuild passes false so newly-arrived mail is not silently marked read.
+    void RebuildList(bool markTopRead = false);
     void AddMessageRow(const MessageEnvelope& m, const std::set<int64_t>& waitingUids);
+    // Clear the unread ● and dim one row in place (keeps the ↩ waiting glyph).
+    void MarkRowRead(int row);
     // The badge for one message, from the address book, the brand registry and
     // the stored content-scan verdict.
     SenderBadge BadgeFor(const MessageEnvelope& m) const;
@@ -134,7 +149,11 @@ private:
     // body for the first time.
     void RefreshRowBadge(const MessageEnvelope& message, const MessageSecurity& security);
     void UpdateListTitle();
+    // Show the message at `row` in the preview. The public entry marks it read
+    // unless a programmatic (background) selection is in progress; SelectRowImpl
+    // takes the decision explicitly so the reading-pane auto-preview can opt in.
     void SelectRow(int row);
+    void SelectRowImpl(int row, bool markRead);
 
     LocalStore*                  store_ = nullptr;
     std::vector<Account>         accounts_;
@@ -151,6 +170,9 @@ private:
     int                          shownUnread_ = 0;
     bool                         readingPane_ = true;
     bool                         suppressTreeCallback_ = false;
+    // True while RebuildList drives a programmatic row selection, so the
+    // selection-changed callback does not mark that auto-selected row read.
+    bool                         suppressAutoRead_ = false;
 
     // Folder-tree node id -> (accountId, folderName).
     std::map<std::string, std::pair<std::string, std::string>> folderNodeId_;

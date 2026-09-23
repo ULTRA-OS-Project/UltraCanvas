@@ -4479,9 +4479,33 @@ namespace UltraCanvas {
         return idx;
     }
 
+    void UltraCanvasFilerWidget::UploadDroppedFiles(const std::vector<std::string>& paths) {
+        if (paths.empty()) return;
+        if (!remoteUpload) {
+            ReportError("Cannot upload to this drive.");
+            return;
+        }
+        // The host queues what it can and names the first thing it could
+        // not; with nothing accepted that is the whole answer, with some
+        // accepted it is the part worth saying while the rest goes up.
+        std::string error;
+        const bool any = remoteUpload(currentPath, paths, error);
+        if (!any) ReportError(error.empty() ? "Cannot upload to this drive." : error);
+        else if (!error.empty()) ReportError(error);
+    }
+
     void UltraCanvasFilerWidget::DropPathsInto(const std::vector<std::string>& paths,
                                                const std::string& destDir,
                                                bool copy) {
+        // A folder tile on a remote drive: the dragged items are this
+        // display's own entries, which live on the server too, and a move or
+        // copy between two places on a drive is not a provider verb yet. Said
+        // so, rather than "not a folder", which it plainly is.
+        if (isRemotePath && isRemotePath(destDir)) {
+            ReportError("Moving or copying within a drive is not supported yet - "
+                        "drop files from a local folder to upload them.");
+            return;
+        }
         std::error_code ec;
         if (!fs::is_directory(destDir, ec)) {
             ReportError("Drop target is not a folder: " + destDir);
@@ -4604,6 +4628,11 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::AcceptDroppedFiles(const std::vector<std::string>& paths) {
         if (paths.empty()) return;
+        // A remote folder has no local disk to copy onto: the files go up.
+        if (ShowingRemoteFolder()) {
+            UploadDroppedFiles(paths);
+            return;
+        }
         std::error_code ec;
         if (!fs::is_directory(currentPath, ec)) return;
 

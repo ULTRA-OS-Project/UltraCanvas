@@ -578,7 +578,9 @@ void MailView::ShowFolder(const std::string& accountId, const std::string& folde
     curAccount_ = accountId;
     curFolder_  = folder;
     SelectFolderNode(accountId, folder);
-    RebuildList();
+    // A user folder switch: in the reading pane the auto-shown top message is
+    // being read, so mark it read (Gmail/Thunderbird style).
+    RebuildList(/*markTopRead=*/true);
     if (onOpenFolder) onOpenFolder(accountId, folder);
 }
 
@@ -616,6 +618,34 @@ void MailView::AddMessageRow(const MessageEnvelope& m,
     rowBadges_.push_back(badge);
 }
 
+void MailView::MarkRead(const std::string& accountId, const std::string& folder,
+                        int64_t uid) {
+    if (accountId != curAccount_ || folder != curFolder_) return;
+    for (std::size_t row = 0; row < messages_.size(); ++row) {
+        if (messages_[row].uid != uid) continue;
+        MarkRowRead(static_cast<int>(row));
+        break;
+    }
+}
+
+void MailView::MarkRowRead(int row) {
+    if (row < 0 || row >= static_cast<int>(messages_.size())) return;
+    if (row >= static_cast<int>(rowStates_.size()) || !rowStates_[row].unread) return;
+
+    rowStates_[row].unread = false;                 // delegate dims the row on paint
+    messages_[row].flags |= Flag_Seen;              // so re-selecting can't re-fire
+    if (shownUnread_ > 0) --shownUnread_;
+
+    // Rebuild cell 0 without the ● (keep the ↩ waiting glyph), mirroring
+    // AddMessageRow; SetData(DisplayRole) also requests the row's redraw.
+    std::string sender = UltraNet_MimeDecodeHeader(
+        messages_[row].fromName.empty() ? messages_[row].fromAddr : messages_[row].fromName);
+    std::string state = rowStates_[row].waiting ? "\xE2\x86\xA9 " : "";
+    if (model_)
+        model_->SetData(ListIndex{row, 0}, ListDataRole::DisplayRole, state + sender);
+    UpdateListTitle();
+}
+
 void MailView::UpdateListTitle() {
     if (!listBox_) return;
     std::string title = FriendlyLeaf(curFolder_, curFolder_);
@@ -627,7 +657,7 @@ void MailView::UpdateListTitle() {
     listBox_->SetTitle(title);
 }
 
-void MailView::RebuildList() {
+void MailView::RebuildList(bool markTopRead) {
     if (!list_ || !model_) return;
     messages_.clear();
     rowStates_.clear();
@@ -664,9 +694,15 @@ void MailView::RebuildList() {
     // pane is on (Gmail mode waits for a click before hiding the list).
     if (!readingPane_) ShowListInPlace();
     if (!messages_.empty()) {
+        // Selecting row 0 fires onSelectionChanged synchronously → SelectRow(0);
+        // suppress its mark-read so a background rebuild never marks unseen mail
+        // read. The reading-pane preview below then opts in explicitly when this
+        // rebuild was a user folder switch (markTopRead).
+        suppressAutoRead_ = true;
         if (auto sel = list_->GetSelection()) sel->Select(0);
         list_->EnsureRowVisible(0);
-        if (readingPane_) SelectRow(0);
+        suppressAutoRead_ = false;
+        if (readingPane_) SelectRowImpl(0, /*markRead=*/markTopRead);
         else              preview_.Show(messages_[0]);
     }
 }
@@ -691,6 +727,13 @@ void MailView::AppendMessages(const std::string& accountId,
 }
 
 void MailView::SelectRow(int row) {
+    // A genuine click / arrow-key selection marks the message read; a
+    // programmatic selection during RebuildList sets suppressAutoRead_ so only
+    // the reading-pane auto-preview (via SelectRowImpl) decides for itself.
+    SelectRowImpl(row, /*markRead=*/!suppressAutoRead_);
+}
+
+void MailView::SelectRowImpl(int row, bool markRead) {
     if (row < 0 || row >= static_cast<int>(messages_.size())) return;
     // Reading pane: pin the list pane to its current width before the preview
     // rebuilds its body, so the weight-based divider does not drift on the
@@ -703,8 +746,13 @@ void MailView::SelectRow(int row) {
             if (listW > 0) innerSplit_->SetPaneFixedSize(0, listW);
         }
     }
-    preview_.Show(messages_[static_cast<std::size_t>(row)]);
+    const MessageEnvelope& m = messages_[static_cast<std::size_t>(row)];
+    preview_.Show(m);
     if (!readingPane_) OpenMessageInPlace();
+    // Opening an unread message reads it: hand the app the envelope so it can
+    // set \Seen locally and on the server. MarkRowRead (driven back through
+    // MarkRead) then updates this very row, so re-selecting it won't re-fire.
+    if (markRead && onMarkRead && (m.flags & Flag_Seen) == 0) onMarkRead(m);
 }
 
 } // namespace UltraMail

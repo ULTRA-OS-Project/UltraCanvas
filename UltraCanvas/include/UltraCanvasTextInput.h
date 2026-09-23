@@ -172,7 +172,7 @@ struct TextFormatter {
         return TextFormatter("Currency",
             [](const std::string& value) {
                 try {
-                    double val = std::stod(value);
+                    double val = std::stod(value);   // locale-ok: the user typed this into the field
                     return "$" + std::to_string(val);
                 } catch (...) {
                     return value;

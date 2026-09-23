@@ -1,0 +1,55 @@
+name: Callback ownership cycles
+
+# Blocks callbacks that own the widget holding them. A widget owns its
+# callbacks, so `button->onClick = [button, ...]` — or a capture of a container
+# above it — closes a cycle neither end escapes, and the subtree, its images and
+# its render buffers stay allocated for the life of the process. 53 of these
+# were fixed across 25 DemoApp files in 0.9.32; the check exists so they do not
+# come back. A capture is only reported when it is demonstrably a shared_ptr, so
+# a raw back-reference (`[button = button.get(), ...]`) is the fix and passes.
+
+# Trigger policy matches build.yml / ui-reuse.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'UltraCanvas/core/**'
+      - 'UltraCanvas/include/**'
+      - 'UltraCanvas/dialogs/**'
+      - 'Apps/**'
+      - 'SmartHome/**'
+      - 'scripts/check_callback_cycles.py'
+      - '.github/workflows/callback-cycles.yml'
+  pull_request:
+    # `branches` filters the BASE branch — the branch the pull request TARGETS.
+    # `main` alone would leave a pull request based on another pull request's
+    # branch matching no trigger at all, which is how #455 reached 1059 changed
+    # lines without a job running. Deliberately NOT added to `push` above: that
+    # would run on every commit of every claude/** branch whether or not a pull
+    # request exists.
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'UltraCanvas/core/**'
+      - 'UltraCanvas/include/**'
+      - 'UltraCanvas/dialogs/**'
+      - 'Apps/**'
+      - 'SmartHome/**'
+      - 'scripts/check_callback_cycles.py'
+      - '.github/workflows/callback-cycles.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check for callbacks that own their widget
+        run: python3 scripts/check_callback_cycles.py --strict

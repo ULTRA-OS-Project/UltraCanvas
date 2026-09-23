@@ -18,8 +18,8 @@
 // Builds without UltraCloud: Available() answers false, the drive list is
 // empty and every call fails with a message saying so, so UltraFiler still
 // compiles and runs when the module is not built.
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+// Version: 1.2.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -66,17 +66,46 @@ enum class RemoteDriveKind {
     CloudStorage    // everything else UltraCloud knows
 };
 
-// A change to what is on a drive. Each maps onto one UltraCloud provider verb,
-// which is why these three and not more: a transfer between the local disk and
-// a drive is not a provider verb applied in place, it is a copy with progress,
-// conflicts and a cancel, and it belongs with the paste machinery rather than
-// here.
+// A change to what is on a drive. Each maps onto one UltraCloud provider verb.
 enum class RemoteOperation {
     Delete,          // a file or a folder: the provider picks DELE over RMD
     Rename,          // in place; the argument is a bare name
     MakeDirectory,   // the argument is the new folder's name
     Upload           // `path` is the folder uploaded INTO, the argument the
                      // local file's full path; queued by Upload(), not Submit
+};
+
+// What the drives are doing right now, for the status line.
+//
+// A drive is the one place in this file manager where the answer to "why is
+// nothing happening?" is "a server is thinking about it", and the only honest
+// answer is to say so. Every job the worker runs reports itself here as it
+// starts, and Idle when the queue drains.
+struct RemoteActivity {
+    enum class Kind {
+        Idle,
+        Listing,          // opening a folder: asking the server for it
+        Deleting,
+        Renaming,
+        MakingDirectory,
+        Uploading
+    };
+
+    Kind kind = Kind::Idle;
+    // What is being worked on, as a name rather than a path: the folder being
+    // opened, the file going up. Empty for Idle.
+    std::string what;
+    // Jobs still waiting behind this one, so "1 of 4" can be said without the
+    // window keeping its own count of what it queued.
+    std::size_t queued = 0;
+    // Transfers only, and only while the server said how big the file is:
+    // bytesTotal of 0 means "no total known", which is a busy bar rather than
+    // a percentage. An FTP server does not always say.
+    uint64_t bytesDone = 0;
+    uint64_t bytesTotal = 0;
+
+    bool IsBusy() const { return kind != Kind::Idle; }
+    bool IsTransfer() const { return kind == Kind::Uploading; }
 };
 
 class UltraFilerRemoteDrives {
@@ -136,11 +165,12 @@ public:
     // ---- Changing what is on a drive --------------------------------------
     // Queues one change and answers at once: the work happens on the worker,
     // so a slow server never holds the UI thread, and onOperationFinished
-    // fires when it is done. `path` is the entry acted on (for MakeDirectory,
-    // the folder to create it in); `argument` is the new name for Rename and
-    // MakeDirectory and is ignored by Delete; `isDirectory` is what the caller
-    // already knows from the entry, which is what lets the FTP provider pick
-    // DELE over RMD without a probe.
+    // fires when it is done. `path` is the entry acted on (for MakeDirectory
+    // and Upload, the folder to put the new thing in); `argument` is the new
+    // name for Rename and MakeDirectory, the local file for Upload, and is
+    // ignored by Delete; `isDirectory` is what the caller already knows from
+    // the entry, which is what lets the FTP provider pick DELE over RMD
+    // without a probe.
     //
     // Returns false with a message for what can be refused outright: a path
     // that is not a remote path, a drive that is gone, a provider that cannot
@@ -165,6 +195,15 @@ public:
     bool Submit(RemoteOperation operation, const std::string& path,
                 const std::string& argument, bool isDirectory,
                 std::string& error);
+
+    // Fires on the UI THREAD whenever what the drives are doing changes: a job
+    // starting, a transfer moving, the queue draining to Idle. Reported rather
+    // than polled, so the window can say what is happening without a timer.
+    //
+    // A transfer reports often - libcurl counts bytes, not milestones - so the
+    // worker thins these down to one every few dozen milliseconds before
+    // posting. The last one of a job always gets through.
+    std::function<void(const RemoteActivity&)> onActivityChanged;
 
     // Fires on the UI THREAD when a queued change has finished. `message` is
     // empty on success and carries the provider's reason on failure;
@@ -209,6 +248,12 @@ private:
 
     void EnsureWorker();
     void WorkerMain();
+    // Posts one activity report to the UI thread. `force` sends it even when
+    // the thinning interval has not elapsed - used for the first and last
+    // report of a job, which are the two nobody may miss.
+    void ReportActivity(const RemoteActivity& activity, bool force);
+    // Turns the kind of a job into the kind of activity it is.
+    static RemoteActivity::Kind ActivityKindFor(const Job& job);
     // Both run on the worker thread and make the actual UltraCloud call.
     void FetchListing(const std::string& path);
     void RunOperation(const Job& job);
@@ -231,6 +276,9 @@ private:
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;
+    // When the last activity report went out, so a transfer counting bytes
+    // does not post one per chunk. Touched only by the worker thread.
+    std::chrono::steady_clock::time_point lastActivityPost_{};
     bool workerStarted_ = false;
     // Where RunOperation leaves a provider's refusal for the worker loop to
     // report. Written and read on the worker thread only, under the lock.

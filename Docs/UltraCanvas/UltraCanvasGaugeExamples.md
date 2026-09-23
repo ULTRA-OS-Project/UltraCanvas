@@ -379,6 +379,38 @@ bar->SetLowLevelLimit(10.0);
 bar->SetWarningColor(Color(230, 55, 45, 255));
 ```
 
+#### Busy, when nobody knows the total
+
+A download whose server sent no length, a queue still being counted: there is
+no value to draw, and a bar left at zero reads as progress that is stuck.
+
+```cpp
+bar->SetIndeterminate(true);    // slides a block along the track
+bar->SetIndeterminate(false);   // back to the value it was last given
+```
+
+The block animates on a timer the gauge owns, running only while the flag is
+on. That is deliberate: a caller reporting bytes has nothing to report when
+the total is unknown, so a bar driven by those reports would freeze whenever a
+chunk was in flight. No value text is drawn in this state — there is no value,
+and the caller's own label is where "3.2 MB sent" belongs.
+
+LinearBar only; other modes ignore the flag.
+
+#### It fits the box it is given
+
+A LinearBar is normally a dashboard gauge: a caption over a 28 px bar with the
+value underneath, which wants some 114 px of height. Given less than that it
+drops the caption, the value line and its side padding, and draws the bar
+across the whole element — which is what makes it the progress bar of a status
+line or a list row:
+
+```cpp
+auto strip = CreateGaugeDiagramElement("transfer", 0, 0, 160, 8);
+strip->SetMode(GaugeMode::LinearBar);
+strip->SetTitle("");    // the label beside it is the caption
+strip->SetUnit("");
+```
 ### 7. Vertical LED VU Meter
 
 ```cpp

@@ -54,6 +54,28 @@ TEST(imap_parse_fetch_flags) {
     REQUIRE_EQ(static_cast<uint32_t>(none), (uint32_t)0);
 }
 
+TEST(imap_parse_all_flags) {
+    // A whole "UID FETCH 1:* (FLAGS)" response: one (uid, flags) pair per line,
+    // UID before or after the FLAGS group (Gmail returns either order).
+    const std::string body =
+        "* 1 FETCH (UID 100 FLAGS (\\Seen))\r\n"
+        "* 2 FETCH (FLAGS (\\Seen \\Flagged) UID 101)\r\n"
+        "* 3 FETCH (UID 102 FLAGS ())\r\n"
+        "a1 OK FETCH completed\r\n";
+    auto pairs = ParseAllFlags(body);
+    REQUIRE_EQ(pairs.size(), (size_t)3);
+    REQUIRE_EQ(pairs[0].first, (uint32_t)100);
+    REQUIRE(UltraNetHasFlag(pairs[0].second, UltraNetMailFlags::Seen));
+    REQUIRE_EQ(pairs[1].first, (uint32_t)101);
+    REQUIRE(UltraNetHasFlag(pairs[1].second, UltraNetMailFlags::Flagged));
+    REQUIRE_EQ(pairs[2].first, (uint32_t)102);
+    REQUIRE_EQ(static_cast<uint32_t>(pairs[2].second), (uint32_t)0);
+
+    // Empty folder → no data lines → no pairs (caller must not read this as a
+    // failure and expunge everything; that decision lives above the parser).
+    REQUIRE_EQ(ParseAllFlags("a1 OK FETCH completed\r\n").size(), (size_t)0);
+}
+
 TEST(imap_parse_list_response_with_roles) {
     const std::string body =
         "* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n"

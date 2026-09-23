@@ -44,6 +44,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <locale>
 #include <map>
 #include <set>
 #include <sstream>
@@ -64,6 +65,27 @@ using Element = X3D::Node;
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
+
+// Every number in an X3D file is dot-decimal, in both encodings: the XML one
+// is XML Schema float/double and the classic one is VRML's, and neither has
+// ever had a locale. A stringstream, though, reads and writes through its own
+// locale, which starts as the global one - and the Linux backend calls
+// setlocale(LC_ALL, "") for XIM, so on a comma-decimal desktop `1.5` was not
+// merely misread: the `.` is that locale's digit-group separator, the token
+// failed to extract at all, and `point="1.5 0.25 -2.75"` yielded an EMPTY
+// vector - the whole field gone, not one wrong number. The writer's half
+// emitted `1,5`, which every other X3D tool then reads as two numbers. These
+// two types are the format's own locale, whatever the host is set to; every
+// number the file carries goes through one of them.
+struct ClassicIn : std::istringstream {
+    explicit ClassicIn(const std::string& text) : std::istringstream(text) {
+        imbue(std::locale::classic());
+    }
+};
+
+struct ClassicOut : std::ostringstream {
+    ClassicOut() { imbue(std::locale::classic()); }
+};
 
 // ===== FIELD PARSING =====
 //
@@ -88,7 +110,7 @@ std::vector<double> ParseNumbers(const char* text) {
     std::string cleaned(text);
     for (char& c : cleaned)
         if (c == ',') c = ' ';
-    std::istringstream stream(cleaned);
+    ClassicIn stream(cleaned);
     double value = 0.0;
     while (stream >> value) values.push_back(value);
     return values;
@@ -108,7 +130,7 @@ std::vector<int> ParseIndices(const Element* element, const char* name) {
     std::string cleaned(text);
     for (char& c : cleaned)
         if (c == ',') c = ' ';
-    std::istringstream stream(cleaned);
+    ClassicIn stream(cleaned);
     long long value = 0;
     while (stream >> value) {
         if (value < -1 || value > 0x7fffffffLL) value = -1;
@@ -946,7 +968,7 @@ private:
     }
 
     static std::string FormatNumber(double value) {
-        std::ostringstream out;
+        ClassicOut out;
         out.precision(9);
         out << value;
         return out.str();
@@ -2269,16 +2291,25 @@ private:
 class ScopedPrecision {
 public:
     ScopedPrecision(std::ostream& stream, NumericPrecision precision, bool forDouble)
-            : stream_(stream), previous_(stream.precision()) {
+            : stream_(stream), previous_(stream.precision()),
+              previousLocale_(stream.getloc()) {
+        // The digit count was set here from the first version; the decimal
+        // point was not, and it is the half that decides whether another
+        // reader can open the file at all.
+        stream_.imbue(std::locale::classic());
         stream_.precision(precision == NumericPrecision::Full ? (forDouble ? 17 : 9) : 6);
     }
-    ~ScopedPrecision() { stream_.precision(previous_); }
+    ~ScopedPrecision() {
+        stream_.precision(previous_);
+        stream_.imbue(previousLocale_);
+    }
     ScopedPrecision(const ScopedPrecision&) = delete;
     ScopedPrecision& operator=(const ScopedPrecision&) = delete;
 
 private:
     std::ostream& stream_;
     std::streamsize previous_;
+    std::locale previousLocale_;
 };
 
 class Writer {
@@ -2352,7 +2383,7 @@ private:
     }
 
     static std::string Number(double v) {
-        std::ostringstream s;
+        ClassicOut s;
         s.precision(9);
         s << v;
         return s.str();
@@ -2494,7 +2525,7 @@ private:
     void WriteIndexedFaceSet(Sink& sink, const MeshPrimitive& prim, const Matrix4x4* bake) {
         // coordIndex is one stream with -1 ending each face, which is what
         // makes IndexedFaceSet the n-gon workhorse: a quad stays a quad.
-        std::ostringstream coordIndex;
+        ClassicOut coordIndex;
         const size_t faceCount = prim.FaceCount();
         for (size_t f = 0; f < faceCount; ++f) {
             for (uint32_t index : prim.Face(f)) coordIndex << index << " ";
@@ -2513,7 +2544,7 @@ private:
         fields.push_back({"solid", "false", false});
         sink.Open("IndexedFaceSet", fields);
 
-        std::ostringstream points;
+        ClassicOut points;
         for (const Vec3d& p : prim.Positions) {
             // No up-axis correction here: the whole scene, baked subtrees
             // included, sits under the enclosing Transform that carries it.
@@ -2525,7 +2556,7 @@ private:
         sink.EndField();
 
         if (!prim.Normals.empty()) {
-            std::ostringstream vectors;
+            ClassicOut vectors;
             for (const Vec3f& n : prim.Normals)
                 vectors << Number(n.x) << " " << Number(n.y) << " " << Number(n.z) << " ";
             sink.BeginField("normal");
@@ -2533,7 +2564,7 @@ private:
             sink.EndField();
         }
         if (uv && uv->Components >= 2) {
-            std::ostringstream points2;
+            ClassicOut points2;
             for (size_t v = 0; v < uv->Count(); ++v)
                 points2 << Number(uv->Values[v * static_cast<size_t>(uv->Components)]) << " "
                         << Number(uv->Values[v * static_cast<size_t>(uv->Components) + 1]) << " ";
@@ -2542,7 +2573,7 @@ private:
             sink.EndField();
         }
         if (colour && colour->Components >= 3) {
-            std::ostringstream values;
+            ClassicOut values;
             for (size_t v = 0; v < colour->Count(); ++v) {
                 const size_t at = v * static_cast<size_t>(colour->Components);
                 values << Number(colour->Values[at]) << " " << Number(colour->Values[at + 1])
