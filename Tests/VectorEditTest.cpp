@@ -10,8 +10,8 @@
 //
 // Usage: VectorEditTest
 // Exit code is the number of failed checks.
-// Version: 1.0.0
-// Last Modified: 2026-09-15
+// Version: 1.1.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBezierPath.h"

@@ -2,8 +2,8 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
-// Version: 1.2.0
-// Last Modified: 2026-09-18
+// Version: 1.3.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
