@@ -1704,7 +1704,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
                 s->SetText(os.str());
             }
         };
-        d->onHistoryChange = [sl, d]() {
+        d->onHistoryChange = [sl, d = d.get()]() {
             if (auto s = sl.lock()) {
                 std::ostringstream os;
                 os << "History: undo " << d->GetUndoStackSize()
@@ -1719,7 +1719,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
                            src.label + " -> " + dst.label + ")");
             }
         };
-        d->onPaletteRequested = [sl, d](double wx, double wy) {
+        d->onPaletteRequested = [sl, d = d.get()](double wx, double wy) {
             if (auto s = sl.lock()) {
                 std::ostringstream os;
                 auto ids = d->SearchTemplates("");
