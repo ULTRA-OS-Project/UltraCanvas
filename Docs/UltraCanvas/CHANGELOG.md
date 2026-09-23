@@ -1,3 +1,32 @@
+#### 2026-09-23 *0.9.42*
+- **New: `UltraCanvasMessageCenter` — the desktop message centre as one element**
+  (`UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`,
+  target `UltraMessageCenter`, `Docs/UltraCanvas/UltraCanvasMessageCenter.md`;
+  UltraMessage proposal §11). Every chat, mail and system notification on the
+  UltraMessage feed in one view, built from catalogue elements only: an
+  `UltraCanvasSegmentedControl` for *All / Chats / Mail / System*,
+  `UltraCanvasChip` filters (unread, one per service), an
+  `UltraCanvasTextInput` search, an `UltraCanvasTreeView` of sources
+  (conversations, mail accounts, applications with unread counts), an
+  `UltraCanvasListView` of rows (unread mark, who, what, time) and a detail
+  pane whose `UltraCanvasButton`s mark read / unread, dismiss, open, and
+  invoke a notification's own actions. `Connect()` reads the journal and
+  subscribes to the feed; it posts `feed.read`, `feed.dismissed`,
+  `system.notification.dismissed` and `system.notification.action` back so
+  sources and adapters stay in step. A chat or mail row mirrored from a
+  notification stands in for it; a replacing message takes its row.
+  `Ingest()` feeds rows without a bus; `onOpen`, `onUnreadCountChanged`,
+  `onSelectionChanged`, `onError`; `MessageCenterStyle` hides the sources,
+  detail, search or filters for a compact embedding. Catalogue row added.
+- **DemoApp: Message Centre page** (Extended functionality) hosting a private
+  broker with an in-memory journal, seeded chats, mails and notifications,
+  and a *Post another* button that adds live traffic.
+- **Tests:** `UltraMessageCenterTests` (in-tree, headless): the translation
+  of feed messages into rows, sections / sources / filters / search, the
+  mirror and replace rules, and the element on a private bus receiving live
+  messages, reading the journal and answering with `feed.read`,
+  `system.notification.action` and the dismissals.
+
 #### 2026-09-23 *0.9.41*
 - **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not
   as empty.** A new optional hook, `remoteListingStatus`, is asked when

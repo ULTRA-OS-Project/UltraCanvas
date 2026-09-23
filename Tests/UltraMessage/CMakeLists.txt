@@ -107,3 +107,18 @@ set_target_properties(UltraMessageTests PROPERTIES
 include(CTest)
 add_test(NAME UltraMessage COMMAND UltraMessageTests
          WORKING_DIRECTORY ${_um_output_dir})
+
+# The message centre element, headless: in-tree only, since it needs the
+# widget library. Same framework, same private bus.
+if(TARGET UltraMessageCenter)
+    add_executable(UltraMessageCenterTests test_main.cpp test_messagecenter.cpp)
+    target_compile_features(UltraMessageCenterTests PRIVATE cxx_std_20)
+    target_link_libraries(UltraMessageCenterTests PRIVATE UltraMessageCenter UltraMessage)
+    target_include_directories(UltraMessageCenterTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/core/UltraMessage)
+    set_target_properties(UltraMessageCenterTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_um_output_dir})
+    add_test(NAME UltraMessageCenter COMMAND UltraMessageCenterTests
+             WORKING_DIRECTORY ${_um_output_dir})
+endif()
