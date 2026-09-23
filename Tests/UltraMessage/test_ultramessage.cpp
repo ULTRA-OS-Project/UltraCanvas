@@ -6,6 +6,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
+#include "test_helpers.h"
 
 #include <UltraMessage/UltraMessage.h>
 #include <UltraMessage/UltraMessageEndpoint.h>
@@ -21,59 +22,14 @@
 #include <thread>
 #include <vector>
 
-#ifdef _WIN32
-#  include <process.h>
-#  define ULTRAMSG_TEST_GETPID _getpid
-#else
-#  include <unistd.h>
-#  define ULTRAMSG_TEST_GETPID getpid
-#endif
-
 using UltraCanvas::JSONValue;
 using namespace std::chrono_literals;
+using ultramsg_test::Connect;
+using ultramsg_test::Scoped;
+using ultramsg_test::TestBusPath;
+using ultramsg_test::WaitFor;
 
 namespace {
-
-// A private bus per test process, so a broker of the user's own never
-// answers and parallel test runs never meet.
-std::string TestBusPath() {
-    static const std::string path = [] {
-        const std::string pid = std::to_string(ULTRAMSG_TEST_GETPID());
-#ifdef _WIN32
-        return "\\\\.\\pipe\\UltraMessageTest-" + pid;
-#else
-        const char* tmp = std::getenv("TMPDIR");
-        std::string base = tmp && *tmp ? tmp : "/tmp";
-        return base + "/ultramsg-test-" + pid + "/bus.sock";
-#endif
-    }();
-    return path;
-}
-
-UltraMsgHandle Connect(const std::string& appId, const std::string& name = "") {
-    UltraMsgConnectOptions options;
-    options.appId = appId;
-    options.displayName = name.empty() ? appId : name;
-    options.busPath = TestBusPath();
-    options.journalPath = ":memory:";
-    UltraMsgResult error;
-    UltraMsgHandle handle = UltraMsg_Connect(options, &error);
-    if (handle == UltraMsgInvalidHandle)
-        throw ultramsg_test::Failure{"connect " + appId + " failed: " + error.message};
-    return handle;
-}
-
-// Pumps queued callbacks until `done` holds or `timeout` elapses.
-bool WaitFor(const std::function<bool()>& done, std::chrono::milliseconds timeout = 3000ms) {
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        UltraMsg_ProcessPending();
-        if (done()) return true;
-        std::this_thread::sleep_for(5ms);
-    }
-    UltraMsg_ProcessPending();
-    return done();
-}
 
 JSONValue Mail(const std::string& subject, const std::string& snippet = "") {
     UltraMessage::MailMessage m;
@@ -95,11 +51,6 @@ JSONValue Chat(const std::string& conversation, const std::string& text, const s
     m.text = text;
     return UltraMessage::MakeMessagingMessage(m);
 }
-
-struct Scoped {
-    UltraMsgHandle handle;
-    ~Scoped() { UltraMsg_Disconnect(handle); }
-};
 
 } // namespace
 

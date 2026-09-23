@@ -47,6 +47,11 @@ public:
     UltraMsgResult ApplyRetention();
     UltraMsgResult Export(const UltraMsgQuery& query, const std::string& path, int64_t& outCount);
 
+    // The persisted adapter switches (§9). Unknown names report `found` false
+    // so the caller applies the adapter's default.
+    UltraMsgResult GetAdapterEnabled(const std::string& name, bool& enabled, bool& found);
+    UltraMsgResult SetAdapterEnabled(const std::string& name, bool enabled);
+
 private:
     struct Clause {
         std::string sql;                  // " AND ..." fragments

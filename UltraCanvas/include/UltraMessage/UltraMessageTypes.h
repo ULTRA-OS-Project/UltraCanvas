@@ -227,6 +227,37 @@ struct UltraMsgBrokerInfo {
     std::string version;
 };
 
+// ---------------------------------------------------------------------------
+// Adapters (§9): broker-side bridges from platform channels onto the topics
+// ---------------------------------------------------------------------------
+
+enum class UltraMsgAdapterStatus {
+    Disabled = 0,     // switched off (UltraMsg_EnableAdapter false, or by default)
+    Starting,
+    Running,
+    NeedsPermission,  // the platform withholds access; `remedy` says what to grant
+    Unavailable,      // nothing to bridge on this machine (no session bus, ...)
+    Error
+};
+
+const char* UltraMsg_AdapterStatusName(UltraMsgAdapterStatus status);
+bool UltraMsg_AdapterStatusFromName(const std::string& name, UltraMsgAdapterStatus& out);
+
+struct UltraMsgAdapterState {
+    UltraMsgAdapterStatus status = UltraMsgAdapterStatus::Disabled;
+    std::string message;   // what the adapter is doing, or why it is not
+    std::string remedy;    // NeedsPermission: the setting to grant, for the message centre
+    std::string mode;      // adapter-specific: "server" / "monitor" for notifications
+};
+
+struct UltraMsgAdapterInfo {
+    std::string name;          // "freedesktop-notifications"
+    std::string description;
+    std::string platform;      // "linux" | "windows" | "macos" | "any"
+    bool enabled = false;      // the persisted switch
+    UltraMsgAdapterState state;
+};
+
 // Schema registry (§5.3): a lightweight description, not full JSON Schema.
 struct UltraMsgFieldSpec {
     std::string name;
