@@ -497,9 +497,13 @@ inline bool CSVTryParseNumber(const std::string& raw, const CSVImportOptions& op
     // normalisation the loop just did, so on a comma-decimal desktop a column
     // of "1.5" imported as 1. The end pointer is the same "all of it, or not
     // a number" test `pos != norm.size()` was, and nothing throws.
+    // std::stod also took a leading '+' ("+3.2%" in a change column);
+    // ParseFloatClassic, like from_chars, does not, so step over it here.
+    const char* begin = norm.data();
     const char* const end = norm.data() + norm.size();
+    if (begin != end && *begin == '+') ++begin;
     double v = 0.0;
-    if (ParseFloatClassic(norm.data(), end, v) != end) return false;
+    if (begin == end || ParseFloatClassic(begin, end, v) != end) return false;
     value = isPercent ? v / 100.0 : v;
     return true;
 }

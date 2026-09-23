@@ -1703,7 +1703,10 @@ namespace {
         // The arrowhead spec is a built-in dot-decimal string, so it must be
         // read as one: strtod goes through LC_NUMERIC and would stop at the
         // first '.' on a comma-decimal desktop, truncating every arrowhead.
+        // ParseFloatClassic, unlike strtod, does not skip leading blanks, and
+        // every number in the spec follows one.
         auto num = [&]() {
+            while (*s == ' ') ++s;
             double v = 0.0;
             s = ParseFloatClassic(s, s + std::strlen(s), v);
             return v;

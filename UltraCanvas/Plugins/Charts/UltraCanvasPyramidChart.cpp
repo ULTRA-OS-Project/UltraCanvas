@@ -154,9 +154,11 @@ namespace {
                 // ParseFloatClassic returning the end pointer says it consumed
                 // all of it, which is what `consumed == size` used to check -
                 // without reading through LC_NUMERIC or throwing on a header.
+                const char* begin = fields[1].data();
                 const char* const end = fields[1].data() + fields[1].size();
+                if (begin != end && *begin == '+') ++begin;   // stod took "+5" too
                 double value = 0.0;
-                if (ParseFloatClassic(fields[1].data(), end, value) == end) {
+                if (begin != end && ParseFloatClassic(begin, end, value) == end) {
                     level.levelValue = value;
                     level.y = value;
                     level.value = value;
