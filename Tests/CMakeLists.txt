@@ -657,6 +657,9 @@ endif()
 message(STATUS "  Building SpreadsheetOdsFormulaTest...")
 add_executable(SpreadsheetOdsFormulaTest
     ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetOdsFormulaTest.cpp
+    # FormulaTokenizer::ReadNumber reads literals with TryParseFloat, which
+    # lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(SpreadsheetOdsFormulaTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
