@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.33*
+#### 2026-09-23 *0.9.36*
 - **NetworkMonitor connection events.** `NetworkMonitorEvents.h`: a
   connection reported as it opens, is accepted or closes, rather than
   found in the next snapshot - the event-rate collection the proposal
