@@ -264,9 +264,6 @@ namespace UltraCanvas {
         void RebuildRowGeometryIfNeeded() const;
         void InvalidateRowGeometry();
 
-        // Act on a click in the header band: cycle the sort of that column and
-        // tell whoever is listening.
-
         // Rendering
         void RenderHeader(IRenderContext* ctx, const Rect2Di& contentRect);
         void RenderSortIndicator(IRenderContext* ctx, const Rect2Di& cell);

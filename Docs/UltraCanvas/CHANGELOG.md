@@ -1,3 +1,23 @@
+#### 2026-09-23 *0.9.35*
+- **DemoApp: the ListView page's multi-column table shows the sorting API**
+  (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`). Table 2 used to copy
+  and `std::stable_sort` its own rows on every header click. It now hands the
+  view an `UltraCanvasListSortFilterProxy` in front of the model: File Name
+  sorts naturally, and Size gets a column comparator that reads the number in
+  front of "KB". A new **Sortable columns** checkbox next to the section title
+  turns header-click sorting on and off. Turning it off restores the model's
+  own order and clears the header triangle. The click and selection handlers
+  now map proxy rows back through `MapToSource()` before they look up a file,
+  so the status label names the right file while the table is sorted.
+- **DemoApp: the ListView page's subtitle no longer runs under the status
+  box.** It was one 600 px line and the status box starts at x = 600, so the
+  end of the sentence was hidden. It is now two lines, 570 px wide, and the
+  status box stays where it was.
+- **`UltraCanvasListView.h`: removed an orphaned comment.** It said the view
+  itself cycles a column's sort on a header click, and it sat above no
+  declaration. The view never sorts: a header click only fires
+  `onHeaderClicked`, which is what the surrounding comments say.
+
 #### 2026-09-23 *0.9.34*
 - **New: UltraNet's OAuth2 app registry** (`<UltraNet/UltraNetOAuth2Apps.h>`,
   `UltraNet_OAuth2SetApp` / `SetBuiltInApp` / `AddAppEnvPrefix` /
