@@ -125,11 +125,13 @@ UltraMsgResult Broker::Start(const Config& config, bool& alreadyInUse) {
     running_.store(true);
     acceptThread_ = std::thread([this] { AcceptLoop(); });
     housekeepingThread_ = std::thread([this] { HousekeepingLoop(); });
+    StartAdapters();
     return UltraMsgResult::Ok();
 }
 
 void Broker::Stop() {
     if (!running_.exchange(false)) return;
+    StopAdapters();
     if (listener_) listener_->Close();
     housekeepingCv_.notify_all();
     if (acceptThread_.joinable()) acceptThread_.join();
@@ -590,6 +592,25 @@ JSONValue Broker::RunControl(const SessionPtr& session, const std::string& op, c
         out.Set("count", count);
         return out;
     }
+    if (op == Op::AdaptersList) {
+        JSONValue list = JSONValue::MakeArray();
+        for (const auto& info : ListAdapters()) list.Append(AdapterInfoToJson(info));
+        out.Set("adapters", std::move(list));
+        return out;
+    }
+    if (op == Op::AdaptersEnable) {
+        result = EnableAdapter(Str(args, "name"), Bool(args, "enabled", true));
+        return out;
+    }
+    if (op == Op::AdaptersState) {
+        UltraMsgAdapterState state;
+        if (!GetAdapterState(Str(args, "name"), state)) {
+            result = UltraMsgResult::Error(UltraMsgResultCode::InvalidArgument, "no adapter " + Str(args, "name"));
+            return out;
+        }
+        out.Set("state", AdapterStateToJson(state));
+        return out;
+    }
     result = UltraMsgResult::Error(UltraMsgResultCode::InvalidArgument, "unknown control op: " + op);
     return out;
 }
@@ -626,8 +647,157 @@ void Broker::Route(const SessionPtr& from, UltraMsgMessage& message) {
                            ((e.flags & UltraMsgFlag_Persistent) || UltraMsg_IsPersistentTopic(e.topic));
     if (journaled) journal_.Store(message);
 
-    std::lock_guard<std::mutex> lock(mutex_);
-    RouteLocked(from, message);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        RouteLocked(from, message);
+    }
+    // The feed acting on a notification an adapter produced (§9): outside the
+    // routing lock, because the adapter may publish in response.
+    if (e.kind == UltraMsgKind::Notice &&
+        (e.topic == UltraMsgTopics::SystemNotificationAction ||
+         e.topic == UltraMsgTopics::SystemNotificationDismissed))
+        DispatchAction(message);
+}
+
+// ===========================================================================
+// Adapters
+// ===========================================================================
+
+std::string Broker::AdapterHost::Publish(const std::string& adapterName, const std::string& topic,
+                                         const JSONValue& body, const UltraMsgSendOptions& options) {
+    if (!broker_.running_.load()) return std::string();
+    if (!IsValidTopic(topic) || IsControlTopic(topic)) return std::string();
+    if (!UltraMsg_Validate(topic, body)) return std::string();
+    UltraMsgMessage message;
+    message.envelope.id = GenerateUlid();
+    message.envelope.kind = UltraMsgKind::Notice;
+    message.envelope.topic = topic;
+    message.envelope.from = AdapterSender(adapterName);
+    message.envelope.to = options.to.empty() ? std::string("*") : options.to;
+    message.envelope.conversation = options.conversation;
+    message.envelope.timestampMs = NowMs();
+    message.envelope.ttlSeconds = options.ttlSeconds;
+    message.envelope.flags = options.flags;
+    message.envelope.replaces = options.replaces;
+    message.body = body.IsNull() ? JSONValue::MakeObject() : body;
+    message.attachments = options.attachments;
+    broker_.Route(nullptr, message);
+    return message.envelope.id;
+}
+
+void Broker::AdapterHost::ReportState(const std::string& adapterName, const UltraMsgAdapterState& state) {
+    std::lock_guard<std::mutex> lock(broker_.adaptersMutex_);
+    if (AdapterSlot* slot = broker_.FindAdapterLocked(adapterName)) slot->state = state;
+}
+
+Broker::AdapterSlot* Broker::FindAdapterLocked(const std::string& name) {
+    for (auto& slot : adapters_) if (slot.adapter->Name() == name) return &slot;
+    return nullptr;
+}
+
+void Broker::StartAdapters() {
+    std::vector<std::unique_ptr<IAdapter>> created = CreateBuiltinAdapters();
+    std::vector<IAdapter*> toStart;
+    {
+        std::lock_guard<std::mutex> lock(adaptersMutex_);
+        adapters_.clear();
+        for (auto& adapter : created) {
+            AdapterSlot slot;
+            slot.enabled = adapter->EnabledByDefault();
+            if (journalOpen_) {
+                bool enabled = false, found = false;
+                if (journal_.GetAdapterEnabled(adapter->Name(), enabled, found) && found) slot.enabled = enabled;
+            }
+            slot.state.status = slot.enabled ? UltraMsgAdapterStatus::Starting : UltraMsgAdapterStatus::Disabled;
+            slot.adapter = std::move(adapter);
+            if (slot.enabled) toStart.push_back(slot.adapter.get());
+            adapters_.push_back(std::move(slot));
+        }
+    }
+    // Start outside the lock: an adapter may report its state while starting.
+    for (IAdapter* adapter : toStart) {
+        const UltraMsgAdapterState state = adapter->Start(adapterHost_);
+        std::lock_guard<std::mutex> lock(adaptersMutex_);
+        if (AdapterSlot* slot = FindAdapterLocked(adapter->Name())) slot->state = state;
+    }
+}
+
+void Broker::StopAdapters() {
+    std::vector<IAdapter*> running;
+    {
+        std::lock_guard<std::mutex> lock(adaptersMutex_);
+        for (auto& slot : adapters_)
+            if (slot.state.status != UltraMsgAdapterStatus::Disabled) running.push_back(slot.adapter.get());
+    }
+    for (IAdapter* adapter : running) adapter->Stop();
+    std::lock_guard<std::mutex> lock(adaptersMutex_);
+    adapters_.clear();
+}
+
+void Broker::DispatchAction(const UltraMsgMessage& message) {
+    std::vector<IAdapter*> running;
+    {
+        std::lock_guard<std::mutex> lock(adaptersMutex_);
+        for (auto& slot : adapters_)
+            if (slot.state.status == UltraMsgAdapterStatus::Running) running.push_back(slot.adapter.get());
+    }
+    for (IAdapter* adapter : running)
+        if (adapter->HandleAction(message)) break;
+}
+
+std::vector<UltraMsgAdapterInfo> Broker::ListAdapters() const {
+    std::vector<UltraMsgAdapterInfo> out;
+    std::lock_guard<std::mutex> lock(adaptersMutex_);
+    for (const auto& slot : adapters_) {
+        UltraMsgAdapterInfo info;
+        info.name = slot.adapter->Name();
+        info.description = slot.adapter->Description();
+        info.platform = slot.adapter->Platform();
+        info.enabled = slot.enabled;
+        info.state = slot.state;
+        if (slot.enabled && slot.state.status != UltraMsgAdapterStatus::Disabled) info.state = slot.adapter->State();
+        out.push_back(std::move(info));
+    }
+    return out;
+}
+
+bool Broker::GetAdapterState(const std::string& name, UltraMsgAdapterState& out) const {
+    std::lock_guard<std::mutex> lock(adaptersMutex_);
+    for (const auto& slot : adapters_) {
+        if (slot.adapter->Name() != name) continue;
+        out = slot.enabled && slot.state.status != UltraMsgAdapterStatus::Disabled ? slot.adapter->State()
+                                                                                    : slot.state;
+        return true;
+    }
+    return false;
+}
+
+UltraMsgResult Broker::EnableAdapter(const std::string& name, bool enabled) {
+    IAdapter* adapter = nullptr;
+    bool wasEnabled = false;
+    {
+        std::lock_guard<std::mutex> lock(adaptersMutex_);
+        AdapterSlot* slot = FindAdapterLocked(name);
+        if (!slot) return UltraMsgResult::Error(UltraMsgResultCode::InvalidArgument, "no adapter " + name);
+        adapter = slot->adapter.get();
+        wasEnabled = slot->enabled;
+        slot->enabled = enabled;
+        if (enabled && !wasEnabled) slot->state.status = UltraMsgAdapterStatus::Starting;
+    }
+    if (journalOpen_) journal_.SetAdapterEnabled(name, enabled);
+    if (enabled && !wasEnabled) {
+        const UltraMsgAdapterState state = adapter->Start(adapterHost_);
+        std::lock_guard<std::mutex> lock(adaptersMutex_);
+        if (AdapterSlot* slot = FindAdapterLocked(name)) slot->state = state;
+    } else if (!enabled && wasEnabled) {
+        adapter->Stop();
+        std::lock_guard<std::mutex> lock(adaptersMutex_);
+        if (AdapterSlot* slot = FindAdapterLocked(name)) {
+            slot->state = UltraMsgAdapterState{};
+            slot->state.status = UltraMsgAdapterStatus::Disabled;
+        }
+    }
+    return UltraMsgResult::Ok();
 }
 
 void Broker::RouteLocked(const SessionPtr& from, UltraMsgMessage& message) {

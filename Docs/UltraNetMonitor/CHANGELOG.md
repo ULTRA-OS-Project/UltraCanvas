@@ -1,6 +1,6 @@
 #### 2026-09-23 *0.7*
 - **Events.** Connections as they open and close, not only as the next
-  snapshot finds them (NetworkMonitor 0.5, framework 0.9.22): a new
+  snapshot finds them (NetworkMonitor 0.5, framework 0.9.33): a new
   *Events* tab lists every event the sources report, newest first, with
   the time to the millisecond, whether the connection was opened here or
   accepted from a peer, the application, both endpoints, the host, and on

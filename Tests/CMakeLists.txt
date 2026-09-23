@@ -3081,6 +3081,31 @@ else()
     message(STATUS "  FontViewerTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== VECTOR ELEMENT VIEW TEST =====
+# What UltraCanvasVectorElement has to get right for a drawing to appear on a
+# page: it keeps the box it was built with through its parent's layout, a fit
+# is not clamped to the interactive zoom limits, painting is element-local,
+# a collapsed (non-invertible) transform never reaches the backend, and the
+# host's own event callback is heard. Every one of these was a white tile on
+# the DemoApp's DWG/DXF page.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building VectorElementViewTest...")
+    add_executable(VectorElementViewTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorElementViewTest.cpp
+    )
+    target_include_directories(VectorElementViewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorElementViewTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorElementViewTest PRIVATE UltraCanvas)
+    set_target_properties(VectorElementViewTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorElementViewTest COMMAND VectorElementViewTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorElementViewTest")
+else()
+    message(STATUS "  VectorElementViewTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== OFFSCREEN RENDER TEST =====
 # Widgets drawn into a surface with no window behind it. Everything a widget
 # needs at paint time has to come from the context it was handed, and a widget

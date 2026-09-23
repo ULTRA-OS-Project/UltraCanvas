@@ -68,8 +68,8 @@ What already existed and stays where it is:
   CloudService ──────────── AddAccount / List / Upload / CreateShareLink / UploadAndShare
     ├── AccountStore        the account list + default      (UltraDatabase, SQLite)
     ├── ISecretStore        passwords / tokens by accountId
-    │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password")
-    │     └── FileSecretStore    obfuscated files (per-app fallback)
+    │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password"), the app's own vault
+    │     └── MemorySecretStore  process-lifetime (tests, demos)
     └── provider registry   RegisterProvider / GetProvider / RegisterBuiltInProviders
           │                 + LoadProviderPlugins() for provider DSOs
           ├── HttpProviderBase                      one HttpFn, Basic / Bearer auth, HTTP → Result
@@ -146,7 +146,11 @@ using namespace UltraCloud;
 // Once per process.
 RegisterBuiltInProviders();
 AccountStore accounts;  accounts.Open("myapp-cloud", dataDir + "/cloud.db");
-FileSecretStore secrets(dataDir + "/cloud-vault");   // or VaultSecretStore
+// The secrets go into the application's own vault (UltraVault::DeviceKeyVault,
+// Docs/Modules/UltraVault/README.md), opened before the accounts are touched.
+UltraVault::DeviceKeyVault vault(dataDir + "/vault", {"myapp.vault", "myapp.myapp."});
+vault.TryAutoUnlock();
+VaultSecretStore secrets;                            // "cloud.<accountId>.*" in that vault
 CloudService cloud(accounts, secrets);
 
 // Set up an account (the first one becomes the default).
@@ -215,7 +219,7 @@ providers.
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
-| `UltraCloudSecrets.h` | `ISecretStore`, `FileSecretStore`, `VaultSecretStore` (with UltraVault) |
+| `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |

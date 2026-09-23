@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraMessageAdapter.h"
 #include "UltraMessageInternal.h"
 #include "UltraMessageJournal.h"
 #include "UltraMessageTransport.h"
@@ -46,7 +47,34 @@ public:
     UltraMsgBrokerInfo Info() const;
     const Config& GetConfig() const { return config_; }
 
+    // Adapters (§9): the switch is persisted in the journal.
+    std::vector<UltraMsgAdapterInfo> ListAdapters() const;
+    UltraMsgResult EnableAdapter(const std::string& name, bool enabled);
+    bool GetAdapterState(const std::string& name, UltraMsgAdapterState& out) const;
+
 private:
+    // What the adapters see of the broker.
+    class AdapterHost final : public IAdapterHost {
+    public:
+        explicit AdapterHost(Broker& broker) : broker_(broker) {}
+        std::string Publish(const std::string& adapterName, const std::string& topic,
+                            const JSONValue& body, const UltraMsgSendOptions& options) override;
+        void ReportState(const std::string& adapterName, const UltraMsgAdapterState& state) override;
+    private:
+        Broker& broker_;
+    };
+
+    struct AdapterSlot {
+        std::unique_ptr<IAdapter> adapter;
+        bool enabled = false;
+        UltraMsgAdapterState state;
+    };
+
+    void StartAdapters();
+    void StopAdapters();
+    void DispatchAction(const UltraMsgMessage& message);
+    AdapterSlot* FindAdapterLocked(const std::string& name);
+
     struct Subscription {
         uint64_t id = 0;
         std::string pattern;
@@ -138,6 +166,10 @@ private:
     Journal journal_;
     bool journalOpen_ = false;
     std::string journalError_;
+
+    AdapterHost adapterHost_{*this};
+    mutable std::mutex adaptersMutex_;
+    std::vector<AdapterSlot> adapters_;
 };
 
 } // namespace Internal

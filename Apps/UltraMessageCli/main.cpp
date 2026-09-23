@@ -92,6 +92,7 @@ void Usage() {
         "  conversations\n"
         "  endpoints\n"
         "  info\n"
+        "  adapters [enable <name> | disable <name>]\n"
         "  mark-read <id>...  |  dismiss <id>...  |  delete <id>...\n"
         "  export <path> [--topic <pattern>]\n"
         "options: --bus <path> --journal <path> --app <id> --no-broker\n",
@@ -281,6 +282,32 @@ int main(int argc, char** argv) {
             std::printf("host pid:  %d%s\n", info.hostProcessId, info.inProcess ? " (this process)" : "");
             std::printf("endpoints: %d\n", info.endpointCount);
             std::printf("version:   %s\n", info.version.c_str());
+        }
+    } else if (cmd == "adapters") {
+        if (args.positional.empty()) {
+            std::vector<UltraMsgAdapterInfo> adapters;
+            UltraMsgResult r = UltraMsg_ListAdapters(endpoint, adapters);
+            if (!r) rc = Fail(r, "adapters");
+            else if (adapters.empty()) std::printf("no adapters in this broker's build\n");
+            for (const auto& a : adapters) {
+                std::string status = UltraMsg_AdapterStatusName(a.state.status);
+                if (!a.state.mode.empty()) status += " (" + a.state.mode + ")";
+                std::printf("%-28s %-8s %-22s %s\n", a.name.c_str(), a.enabled ? "on" : "off", status.c_str(),
+                            a.state.message.c_str());
+                if (!a.state.remedy.empty()) std::printf("%-28s          remedy: %s\n", "", a.state.remedy.c_str());
+            }
+        } else if ((args.positional[0] == "enable" || args.positional[0] == "disable") && args.positional.size() == 2) {
+            UltraMsgResult r = UltraMsg_EnableAdapter(endpoint, args.positional[1], args.positional[0] == "enable");
+            if (!r) rc = Fail(r, "adapters");
+            else {
+                UltraMsgAdapterState state;
+                if (UltraMsg_GetAdapterState(endpoint, args.positional[1], state))
+                    std::printf("%s: %s%s%s\n", args.positional[1].c_str(), UltraMsg_AdapterStatusName(state.status),
+                                state.message.empty() ? "" : " - ", state.message.c_str());
+            }
+        } else {
+            Usage();
+            rc = 2;
         }
     } else if (cmd == "mark-read" || cmd == "dismiss" || cmd == "delete") {
         if (args.positional.empty()) { Usage(); rc = 2; }

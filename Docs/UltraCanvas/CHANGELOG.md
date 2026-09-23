@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.22*
+#### 2026-09-23 *0.9.33*
 - **NetworkMonitor connection events.** `NetworkMonitorEvents.h`: a
   connection reported as it opens, is accepted or closes, rather than
   found in the next snapshot - the event-rate collection the proposal
@@ -45,6 +45,321 @@
     the platform source starting where it can, and the store's events.
   - A registry never holds its lock while asking a source a question,
     since a source may read the capabilities, which ask the registry.
+#### 2026-09-23 *0.9.30*
+- **UltraCalendar proposal: the OAuth app registration is UltraNet's**
+  (`Docs/Research/UltraCalendarDesignProposal.md`). The accounts section, the
+  two gap tables and open question 3 described the Google / Microsoft app
+  registration as UltraMail's baked-in client and named the two module
+  lookups as two patterns; the shared OAuth2 app registry
+  (`UltraNetOAuth2Apps.h`, 0.9.29) makes it one, so the proposal now says the
+  calendar reads `UltraNet_OAuth2GetApp("google")`, adds an `ULTRACALENDAR_`
+  environment prefix as its profile, and marks the question resolved. 0.9.29
+  is the registry's own entry, on its pull request.
+
+#### 2026-09-23 *0.9.28*
+- **New design proposal: UltraCalendar, a stand-alone calendar for ULTRA OS**
+  (`Docs/Research/UltraCalendarDesignProposal.md`). A calendar *separate* from
+  UltraMail - a headless `UltraCalendar` module beside a thin
+  `Apps/UltraCalendar`, the split UltraCloud uses - that works with the
+  calendar service the user already has, or with an ULTRA OS-hosted one, and
+  lets the user decide which, on first run and again later. The investigation
+  checks every need against the tree: UltraNet already has the custom HTTP
+  verbs CalDAV needs (UltraCloud's WebDAV provider sends `PROPFIND` and
+  `MKCOL` that way), the OAuth2 + PKCE flow, and DNS; UltraDatabase,
+  UltraVault, UltraMessage and the date / time pickers are there; what is
+  missing is an iCalendar engine, a CalDAV client, a Microsoft Graph client,
+  and two elements - a day / week time grid and a month grid with events -
+  which the proposal argues belong in the framework because
+  `UltraCanvasCalendarView` is a date picker, not a schedule.
+  - **CalDAV is the one client protocol.** The ULTRA OS cloud, Nextcloud,
+    iCloud, Google (over OAuth2), Fastmail and the German mail providers are
+    all presets over a single `CalDavProvider`; Microsoft, which has no
+    CalDAV and is retiring EWS, is the single second implementation over
+    Graph, converting to iCalendar at its edge so the store sees one format.
+    The ULTRA OS cloud is therefore a standards server (CalDAV + CardDAV +
+    WebDAV behind one ULTRA account) and the client needs nothing invented
+    for it - UltraCloud's roadmap item 4, made concrete.
+  - **Wrap libical**, never write an `RRULE` expander: the reference
+    implementation, MPL-2.0 / LGPL-2.1 dual-licensed and packaged on all
+    three CI platforms, behind an UltraCalendar-owned API that exposes no
+    libical type.
+  - **Local-first, as UltraMail:** a raw `.ics` per event beside an
+    UltraDatabase index, an instance cache the views read, and a
+    pending-change queue that is the outbox pattern for calendars.
+  - **Copy, do not bridge, when migrating:** the wizard copies calendars
+    with their UIDs intact into the target, then offers to keep the old
+    account read-only for a grace period, disconnect it (never deleting on
+    the old server), or keep both. Export to `.ics` is the same engine, so
+    the door opens both ways.
+  - **Invitations stay out of the calendar's process:** UltraMail shows the
+    iMIP card and hands the answer over two new UltraMessage topics; server
+    scheduling (RFC 6638) is used where the server has it. Reminders go out
+    through the platform's notification API, which the Phase 2 adapters
+    (0.9.27) mirror into the feed - the tree still lacks the outbound seam
+    that raises a toast, and the proposal asks for it as framework code.
+  - Found on the way: three civil-date types live in the tree (`UCDate`,
+    `UltraCanvasCalendarDate.h`, `UltraFIBUDate`), and the ULTRA OS cloud
+    service has no specification beyond a roadmap line - the proposal's
+    section 8 is the client's requirement list for it. The per-account
+    secret store the calendar needs is `UltraVault::DeviceKeyVault` (0.9.23),
+    which UltraMail, UltraSocial, UltraFiler and EmailCleaner already share.
+#### 2026-09-23 *0.9.27*
+- **New: UltraMessage Phase 2, first slice — adapters and the first feeds**
+  (`Docs/Modules/UltraMessage/README.md` §3.6, `Masterfile_modules.md` §13).
+  The broker hosts *adapters*: broker-side plugins (`Internal::IAdapter`,
+  `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h`) that publish under
+  their own verified identity and receive the feed's
+  `system.notification.action` / `.dismissed` back. API
+  `UltraMsg_ListAdapters`, `UltraMsg_EnableAdapter`, `UltraMsg_GetAdapterState`
+  with `UltraMsgAdapterInfo` / `UltraMsgAdapterState` (status, message,
+  remedy, mode); the switch is persisted in the journal (`adapters` table,
+  schema v2); `ultramsg adapters [enable|disable <name>]`.
+- **New: `freedesktop-notifications` adapter** (Linux,
+  `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp`,
+  GDBus, built where `gio-2.0` is found): serves `org.freedesktop.Notifications`
+  (`Notify`, `CloseNotification`, `GetCapabilities`, `GetServerInformation`,
+  `ActionInvoked` / `NotificationClosed` back to the application) so every
+  desktop application's toast becomes a `system.notification`; where GNOME,
+  Plasma or dunst own the name it reads the same calls passively in monitor
+  mode (`BecomeMonitor`), reporting `needs-permission` when the bus refuses.
+  `im.received` toasts are mirrored to `messaging.message`, `email*` ones to
+  `mail.message`, each with `mirrorOf`.
+- **New: `windows-notification-listener` adapter** (Windows,
+  `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp`,
+  C++/WinRT, built where the projection headers are found — CI's MSYS2 rows
+  install `cppwinrt`): reads the Action Center through
+  `UserNotificationListener`, polling every two seconds since Windows sends
+  a desktop process no change event; every toast becomes a
+  `system.notification`, what leaves the Action Center a
+  `system.notification.dismissed`; a feed action clears the toast (the
+  listener cannot press its buttons). `needs-permission` with the Settings
+  remedy until the user allows access, re-checked without a restart.
+- **New: category guessing and shared mirrors** — `Internal::GuessAppKind`
+  classifies an application by identity (Telegram, Signal, Slack, Teams … /
+  Thunderbird, Outlook, Windows Mail, Evolution …) where no category hint
+  exists, on Windows and for the many Linux applications that set none; the
+  chat / mail mirrors moved to `Internal::PublishMirror`, shared by every
+  notification adapter.
+- **New: UltraMail publishes new mail to the feed** —
+  `UltraMail::FeedPublisher` (`Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`):
+  the sync workers hand it every stored envelope and it posts `mail.message`
+  as `org.ultraos.ultramail` for unread, recent (7 days) mail, at most 100
+  per account per ten minutes. A no-op in a build without `UltraMessage`.
+- **Tests:** `Tests/UltraMessage` grows to 34 cases; on Linux the suite
+  starts a private `dbus-daemon --session` and drives the adapter over real
+  D-Bus (serving, mirrors, replace/close, actions signalled back, the switch,
+  monitor mode with a rival owner). `Tests/UltraMail` gains the publisher's
+  filter and rate-limit tests. The Linux CI row installs `dbus`.
+- **Build:** UltraDatabase's source list lives once in
+  `cmake/UltraDatabaseSources.cmake` (`ultradatabase_sources(<var> <dir>)`),
+  used by the in-tree build and the standalone `Tests/UltraMessage` tree, so
+  a new driver (the Postgres one broke the standalone link) is one edit.
+
+#### 2026-09-22 *0.9.26*
+- **A window minimised by the user now reports it.** `IsMinimized()` and the
+  `onWindowMinimize` callback only ever reflected the application's own
+  `Minimize()` call; a click on the title-bar button changed nothing, so an
+  application had no way to notice it had been put away. The Linux backend
+  now watches the ICCCM `WM_STATE` property and raises `WindowMinimize` when
+  it becomes iconic and the new `UCEventType::WindowRestore` when it returns
+  to normal; the base window updates its state on both and calls
+  `onWindowMinimize` / `onWindowRestore`. The first consumer is
+  UltraAuthenticator, which locks its vault on minimise.
+- **Configure no longer fails on machines with Clang installed.** The
+  Linux compiler auto-detection built the C++ driver name with a
+  `REGEX REPLACE` whose replacement used `\1` for an optional group; CMake
+  3.28 rejects that as an "out-of-range escape", so every configure that did
+  not name the compiler explicitly stopped at line 59. The suffix is now
+  matched separately and appended.
+
+#### 2026-09-22 *0.9.25*
+- **Every 3D sample audited for the fault the STL aeroplane had**, by
+  measuring rather than squinting: each file of the E-45 aircraft was loaded
+  through the same path the demo pages and the Filer's thumbnails use, and
+  its silhouette profile matched against the export that draws correctly
+  (the OBJ) over all 24 axis-aligned rotations. Ten of the thirteen agree.
+  Two did not, and are fixed:
+  - **`media/3D/PLY/E-45-Aircraft.ply` held Blender's Z-up coordinates.**
+    PLY declares no up axis and this reader takes the format as Y-up - the
+    convention of the tools that write it most - so the aircraft stood on
+    its nose in every viewer that believed it. The sample is rotated into
+    the Y-up frame, where it agrees with the OBJ export vertex for vertex;
+    `Tests/ModelPLYTest.cpp` pins the new axes and says why.
+  - **`media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx` mis-declared itself.** Its
+    GlobalSettings said UpAxis = Y while its geometry is Z-up (the mesh node
+    connects straight to the scene, with no rotation to make up the
+    difference), so it too came out nose-down while the binary FBX of the
+    same scene was upright. The file now declares the Z-up frame it is
+    actually in; no vertex is touched, and the reader is unchanged.
+- Three samples are left as they are, with what they are:
+  - `X3D` and `VRML` hold the aircraft turned 180 degrees about its up
+    axis - upright, facing the other way. No format says which way a model
+    must face, so this is the files' own choice rather than a fault.
+  - `XFile` comes through **mirrored**: its mesh nodes are drawn with a
+    transform of determinant -1, because the DirectX .x format is
+    left-handed and the reader deliberately leaves that reflection in the
+    root frame (as its header documents) instead of converting to the
+    right-handed frame the rest of the model pipeline uses. The aircraft is
+    left-right symmetric, so the mirror reads as the model lying the wrong
+    way up rather than as an obvious left-right swap. Converting on import
+    (negate one axis, reverse the winding) is the fix, and it belongs to the
+    reader rather than to the sample.
+  - The `.dae`, `.blend` and `.abc` exports carry half a hull each, which is
+    what they were exported as; `Tests/ModelPLYTest.cpp` already says so.
+
+#### 2026-09-22 *0.9.24*
+- **The hostel plan in the DWG demo was a black smudge in the corner of an
+  empty sheet.** Two faults in one tile, both of them general.
+  - **A lineweight is a plot width, and it was being scaled by the block it
+    sat in.** The DXF/DWG reader resolves an entity's lineweight into points
+    and the block's INSERT becomes a group transform, which then multiplied
+    the pen along with the geometry. The hostel's elevations are inserted at
+    1054x, so their 1 pt pens came out 1054 units wide and painted a quarter
+    of the sheet solid black. `Ctx::penScale` now carries the accumulated
+    insert scale and `MakeStroke()` divides the width - and the dash
+    lengths - by it, so a drawing strokes the same whatever scale its blocks
+    are inserted at. `Tests/DWGReaderTest.cpp` checks that every circle in
+    the synthetic drawing, inserted at 1x and at 2x, comes out the same
+    width on the page.
+  - **One forgotten speck decided the framing.** That drawing carries a
+    4 x 0.7 unit hatched scrap a quarter of a million units away from the
+    plans, so fitting the union of everything (what `GetBoundingBox()`
+    returns, and what AutoCAD's zoom-extents does) left the plans a
+    postage stamp in the corner. `VectorStorage::ContentBounds()` is the
+    same box with such specks left out - a run of drawables is ignored only
+    when it holds at most 1% of them AND stands at least a fifth of the
+    drawing's extent clear of the rest, so a frame, a title block or a
+    legend always counts - and `UltraCanvasVectorElement`'s fit and centring
+    use it. Nothing is removed from the document: the speck is still drawn,
+    still exported, and still reachable by panning.
+- **The STL aeroplane stood on its back.** `media/3D/STL/Toy airplane
+  model...stl` was exported with the model turned 180 degrees about X - its
+  wheels at the top of the file's Z range and its wings at the bottom - so
+  the Z-up correction every viewer applies stood it on its canopy. The
+  sample is rotated to the orientation the format assumes (+Z up), which
+  fixes it in the STL page, the media viewer and the Filer's thumbnails
+  alike. The import path is unchanged: `UltraCanvasSTLLoader` still reads
+  the file as written and still declares Z-up, and the page reports the
+  same extents (114.05 x 79.49 x 55.69) as before.
+
+#### 2026-09-22 *0.9.23*
+- **The DWG / DXF demo page was five white squares, and so was everything
+  below them.** Four separate faults, each of which hid the next.
+  - **`UltraCanvasVectorElement` declared no CSS box.** Its
+    `(identifier, x, y, w, h)` constructor called the identifier-only base
+    constructor and then `SetPosition()`/`SetSize()`, which write
+    `finalBounds` and nothing else - so the layout engine arranged the
+    element as a widget that asked for no size, and it collapsed to nothing.
+    A container never renders a child that does not intersect its content
+    area, so the element was not drawn at all: not its document, not even its
+    background. It now passes x/y/w/h to the base constructor like every
+    other widget, which stamps the px size and the absolute origin. Callers
+    that pass 0 (the flex/grid ones - the AI page, the media viewer, the
+    plugin's own element) are unchanged.
+  - **Painting used the parent's frame.** `Render()`, the background, the
+    border, the debug box, the document transform, the hit test and the wheel
+    anchor all added `finalBounds.x/y`, although the container has already
+    translated the context to the element's origin and delivers pointer
+    events in element-local coordinates. Everything is element-local now;
+    `ScreenToDocument()`/`DocumentToScreen()` speak that frame too.
+  - **A fit was clamped to the interactive zoom limit.** `ZoomToFit()` ran
+    its computed scale through `options.MinZoom`, so a 10 000-unit site plan
+    in a 280 px tile was pinned at 0.1 and the tile showed an empty patch of
+    the drawing's middle. The fit is honoured as computed and becomes the
+    lower bound for zooming out (`MinAllowedZoom()`), so a wheel-out still
+    stops at the whole drawing.
+  - **The element swallowed its host's events.** `OnEvent()` handled panning
+    and selection and returned false for everything else without ever calling
+    the base, so the demo's click-to-open-fullscreen and its hover status line
+    never ran. The host callback is consulted first now.
+- **One collapsed transform used to end all drawing in the window.** The
+  bathroom sample (`media/3D/DWG/bagno_3d_1.dwg`) carries a block standing in
+  a vertical plane; projected to plan view its transform scales one axis to
+  zero. Cairo latches a non-invertible matrix as a permanent error on the
+  `cairo_t`, after which every later fill, stroke, text and image is silently
+  dropped - which is why the DXF row, the info panel and the "How it works"
+  panel below the drawings were blank as well.
+  - `VectorRenderer` skips an element whose transform is singular (it has no
+    area to draw), and
+  - `RenderContextCairo::Scale/SetTransform/Transform` refuse a matrix they
+    cannot invert and log it once, so no caller can kill a context this way.
+- `Tests/VectorElementViewTest.cpp` pins all of it: the box survives the
+  parent's layout, a fit below `MinZoom` fits, painting is element-local, a
+  singular transform leaves the context able to draw, and the host's event
+  callback runs.
+#### 2026-09-22 *0.9.23*
+- **New: `UltraVault::DeviceKeyVault` — an application's own vault on
+  UltraVault** (`<UltraVault/UltraVaultDeviceKeyVault.h>`, target `UltraVault`,
+  reference `Docs/Modules/UltraVault/README.md`). One encrypted vault file in a
+  directory the application owns, unlocked without a prompt by a random
+  passphrase kept owner-only in `device.key` beside it (`TryAutoUnlock`) or by
+  an explicit master password (`Unlock` -> `UnlockStatus`, which tells a wrong
+  password from a build without crypto; `PersistDeviceKey` makes the next run
+  silent); per-account `Store` / `Retrieve` / `Has` / `Remove`, an OAuth2
+  token set beside the password slot (`StoreOAuthTokens` …, `MethodFor` ->
+  `SignInMethod`), and migration of the 0.1 XOR-sidecar format (`vault.key` +
+  `creds.dat`) on the first unlock. A `DeviceKeyVaultProfile` — vault file
+  name and key prefix in the `<vendor>.<app>.` convention — tells one
+  application's vault from another's. This is UltraMail's `CredentialVault`
+  0.6.0 moved into the framework: UltraSocial carried a copy of it that had
+  never left the 0.1 format, so the two had drifted apart; both apps are now
+  one-line profiles of the one class (UltraMail 0.10.2, UltraSocial 0.1.1). The
+  legacy reader keeps a private Base64 decoder because UltraVault stays off the
+  UltraCanvas library on purpose (the link-time split that keeps UltraCrypt
+  UI-free). Covered in `Tests/UltraVaultTests.cpp`: locked-until-unlocked,
+  first-run key + vault creation and reopen, profile-prefixed keys, no
+  plaintext on disk, wrong / empty passphrase, token sets, the
+  "vault without a device key must prompt" case, and the migration.
+- **UltraCloud keeps no secret files of its own any more.** `FileSecretStore`
+  — obfuscated per-account files, XOR against a `cloud.key` beside them — was
+  a third copy of the weak format UltraMail and UltraSocial had left behind,
+  and it is gone: `VaultSecretStore` (in whichever UltraVault the application
+  opened, under `cloud.<accountId>.*`) is the store, `MemorySecretStore` the
+  process-lifetime one for tests and demos, and `MigrateLegacyFileSecrets`
+  carries an old directory into a store once, deleting each file as its
+  secret lands and the key file when none is left. UltraVault is a hard
+  dependency of the module now (`ULTRACLOUD_USE_ULTRAVAULT` stays defined for
+  consumers that test it). The UltraCloud suite covers all three
+  (`Tests/UltraCloud/test_secrets.cpp`). UltraMail 0.10.2 and UltraFiler
+  1.44.1 are the consumers that moved.
+- **`scripts/check_changelog.py --base` now catches a stale number before the
+  merge.** It compared the branch's entry only with the versions in the
+  branch's own copy of the file, plus one rule against the base: not the same
+  number as the base's line 1. A branch that picked the next number, was
+  overtaken by releases on `main` and had not merged `main` since therefore
+  passed - its file simply did not contain the newer entries - which is how
+  this branch's own entry sat at 0.9.16 while `main` was on 0.9.20. The
+  pull-request rule is now "strictly above the base's line 1", so both the
+  shared and the stale shape are refused while the number is still cheap to
+  change. `AGENTS.md` says to fetch `main` first, since the comparison is only
+  as current as the local `origin/main`.
+
+#### 2026-09-22 *0.9.22*
+- **A container no longer scrolls unless it is asked to.**
+  `ContainerStyle::autoShowScrollbars` now defaults to **off**. It defaulted to
+  on, and most containers in this tree are not viewports: they are form rows,
+  button bars, toolbar strips, cards and panes, laid out to fit. For those a
+  scrollbar was never the answer to anything — it appeared because the content
+  came out a pixel or two larger than the box, and then made it worse, because
+  the bar narrows the viewport by its own track size and so fabricates an
+  overflow on the other axis too. The pair was then drawn across the very row
+  it was meant to be laying out.
+  - **The default had already been written off three times in place** — the
+    window's own style (`enableWindowScrolling`), the eBook reader's nested
+    blocks, and the form grid each turn it off with a comment explaining this
+    exact cascade — and a dozen more call sites turn it off by hand before it
+    can happen to them (the toolbar, the album, the filer, the split pane, the
+    audio bars, Texter's rows, UltraCleaner's cards, UltraNetMonitor's bars).
+    UltraFiler's FTP login in 0.9.20 was the same defect once more.
+  - **A real scroll view opts in**, with `CreateScrollableContainer` (unchanged:
+    it sets the flag itself) or `autoShowScrollbars = true`. Three places in the
+    tree are deliberate scroll views and now say so: the eBook reader's chapter
+    pane and UltraMail's message body and its HTML host. The demo's scrolling
+    text block already said so.
+  - The opt-outs left at the call sites are no-ops now rather than load-bearing.
+    They are not removed here: each is one line stating an intent, and a sweep
+    that touches a dozen files to delete lines that do nothing is its own
+    change, not a rider on this one.
 
 #### 2026-09-22 *0.9.21*
 - **NetworkMonitor names.** `NetworkMonitorNames.h`: the name-source

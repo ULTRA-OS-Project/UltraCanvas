@@ -243,8 +243,11 @@ anywhere else, and never introduce a new literal copy of one:
   numbers from before this was checked. So: re-read the top of the changelog
   just before you push, and if `main` has moved past your number, renumber your
   entry rather than leaving it — and never add bullets to an entry that is
-  already on `main`. Run `python3 scripts/check_changelog.py --base origin/main`
-  before pushing; CI runs it too.
+  already on `main`. Run `git fetch origin main` and then
+  `python3 scripts/check_changelog.py --base origin/main` before pushing; CI
+  runs it too. The check compares your entry with line 1 of `main`'s copy of
+  the file, so it is only as current as your `origin/main` - an unfetched one
+  lets a stale number through.
   GitHub's *Update branch* button cannot do the renumbering: it merges `main`
   into the branch and, when `main` has meanwhile released the number the
   branch chose, folds the two entries under the one header (or leaves a
@@ -386,8 +389,34 @@ For assistants:
    validation. Open the PR (draft counts) or dispatch the workflow manually
    against the branch when a change needs checking before review.
 
+6. **Titles say what changed and why — never the branch name.** Session
+   branches get random names (`claude/exciting-davinci-v0zksb`) that tell a
+   reader of `git log` nothing. So:
+
+   - **PR title**: `<Module or area>: <what changes, and why>`, in the same
+     style as commit subjects — e.g. `check_changelog: refuse a version behind
+     the base branch's, not only equal`. Never the branch name, a session
+     nickname, `WIP`, `Update <file>`, `Fixes` or any other word that does
+     not describe the change. When follow-up pushes change what the PR does,
+     update the title (and description) to match.
+   - **Merge commits you create** (bringing `main` into the branch): write the
+     subject yourself with `git merge -m`, naming the branch's purpose and the
+     reason for the merge — e.g. `Merge main into the UltraCalendar proposal
+     branch, and take 0.9.28`. Never keep git's default
+     `Merge branch 'main' into claude/<random-name>`.
+   - **Commit subjects** follow the same rule: the reason for the change, not
+     the tool, session or branch that produced it.
+
 For maintainers:
 
-6. **Do not merge a session's PR while the session may still push to it.**
+7. **Merge with the PR title, not the branch name.** GitHub's default merge
+   commit is `Merge pull request #N from <owner>/<branch>`, which puts the
+   branch's random words into `main`'s history. In the repository's
+   *Settings → General → Pull Requests*, set the merge-commit default message
+   to **Pull request title** (or *Pull request title and description*), and
+   squash merges to **Pull request title** as well. Until that is set, edit
+   the commit message in the merge dialog before confirming.
+
+8. **Do not merge a session's PR while the session may still push to it.**
    Merge after the session says it is done — or, if merging early, tell the
    session so it restarts from `main` and opens a fresh PR for the rest.

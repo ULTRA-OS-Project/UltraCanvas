@@ -109,6 +109,15 @@ struct Konto {
     std::string steuerschluessel;    // default tax key for postings on this account
     std::string eurZeile;            // Anlage EUeR line, for the cash-basis report
     std::string bwaPosition;         // BWA position
+    // ---- What the DATEV chart of accounts says about this account ----
+    // From the Kontenrahmen PDF's own legend. `funktion` is the interesting
+    // one: AV and AM mark the Automatikkonten, so it is the authority behind
+    // `steuerschluessel` rather than a second, competing statement of it.
+    std::string funktion;            // KU/V/M (Zusatz), AV/AM/S/F/R (Haupt), "S/AV"
+    std::string abschlusszweck;      // HB | SB | EUeR - which statement it belongs in
+    std::string programmverbindung;  // U/G/K: hand-over to the tax programs
+    std::string nummerBis;           // set when the row describes a range ("0040-42")
+
     std::string bilanzPosition;      // balance-sheet classification - carried from the
                                      // first import because the Jahresabschluss is in
                                      // scope (proposal §1.1), and retrofitting it means

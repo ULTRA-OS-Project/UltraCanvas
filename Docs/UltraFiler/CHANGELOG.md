@@ -1,3 +1,31 @@
+#### 2026-09-22 *1.45.0*
+- **Extras > Find text: search inside files.** A new first item in the file
+  context menu's *Extras* submenu asks for a text and lists every file in the
+  shown folder and its sub folders that contains it. It runs on the
+  background walk behind *Scan sub folder*: matches land in the same result
+  display (with *Open path* on each entry) while it searches, the status bar
+  counts files found and files read, and the search field's *Stop* button
+  ends it. The comparison ignores the case of ASCII letters; binary files,
+  files over 64 MB, hidden entries and links are skipped. Local folders only.
+- **Case-insensitive name comparisons no longer rely on undefined behaviour.**
+  The sub-folder name search, the folder tree's sort and the folder-icon keys
+  (Windows) lowercased with `::tolower` on plain `char`, which is undefined
+  for the bytes of a non-ASCII (UTF-8) name. They now go through
+  `unsigned char`; what matches and how folders sort is unchanged.
+
+#### 2026-09-22 *1.44.1*
+- **Remote-drive credentials are actually saved now.** UltraFiler handed its
+  drive passwords and tokens to UltraCloud's `VaultSecretStore` but never
+  opened a vault for it to write into, so every store was refused and a drive
+  had to be signed in to again on each start. UltraFiler now has a vault of
+  its own — `ultrafiler.vault` and `device.key` under the configuration
+  directory, the framework's `UltraVault::DeviceKeyVault` (0.9.23), unlocked
+  without a prompt — and the secret store writes into it under UltraCloud's
+  `cloud.<accountId>.*` keys. Credentials a build without UltraVault kept in
+  `remote-drive-secrets/` are carried into the vault on the first start and
+  the files removed. When the vault cannot be opened the remote-drive list
+  says so instead of silently forgetting every sign-in.
+
 #### 2026-09-19 *1.44.0*
 - **Split view: two folder displays side by side.** A split-screen button in
   the navigation row, left of the clock, replaces the folder tree and the one

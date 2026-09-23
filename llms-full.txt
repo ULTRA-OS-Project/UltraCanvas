@@ -1320,12 +1320,25 @@ Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
 `ProviderConfig::apiKeyVaultRef` through `UltraVault::Get` when built with
 `ULTRAAI_USE_ULTRAVAULT` (on by default in-tree).
 
+`DeviceKeyVault` (`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target) is
+the per-application vault on top of that: one encrypted vault file in the
+application's directory, unlocked without a prompt by an owner-only
+`device.key` beside it (`TryAutoUnlock`) or by a master password (`Unlock`
+-> `UnlockStatus`, `PersistDeviceKey`), per-account
+`Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
+slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
+the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
+(vault file name + key prefix) tells one application's vault from another's;
+UltraMail (`mail.ultramail.`) and UltraSocial (`social.ultrasocial.`) are
+one-line profiles of it in `Apps/*/engine/*CredentialVault.h` — no
+application carries a vault implementation of its own.
+
 **Implementation status (this branch):** v0.1 — memory backend (CI /
 ephemeral) and encrypted-file backend (Argon2id-derived key, stored cost
 parameters, XChaCha20-Poly1305 with the header as associated data; wrong
 passphrase and file tampering are deliberately indistinguishable). Unit
-tests in `Tests/UltraVaultTests.cpp`; the UltraAI resolution path is
-covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
+tests in `Tests/UltraVaultTests.cpp` (the device-key vault included); the
+UltraAI resolution path is covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
 backends (libsecret / Keychain / Credential Manager) and
 `Import`/`PromptUserForSecret` are planned.
 persisted drive mappings), application launch/supervision, and the
@@ -1454,9 +1467,10 @@ can carry an FTP server as a drive; no share links, and SFTP authenticates
 with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
-Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
-(`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
-HTTP goes through UltraNet. `CloudService` is the app-facing facade;
+Accounts persist on UltraDatabase (`AccountStore`), secrets go to the
+application's UltraVault (`VaultSecretStore`; `MemorySecretStore` for tests,
+and `MigrateLegacyFileSecrets` carries the obfuscated files of earlier builds
+across once), HTTP goes through UltraNet. `CloudService` is the app-facing facade;
 `UltraCloudUI` holds the shared add-account and link-picker dialogs.
 Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
 and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;
@@ -1614,8 +1628,8 @@ UltraMessage is intended to be the recommended way for UltraFiler,
 UltraViewer, UltraMail, UltraSocial and the ULTRA OS desktop to talk to one
 another and for the desktop to collect messages from every source.
 
-**Implementation status:** Phase 1 implemented — library target
-`UltraMessage` (`UltraCanvas/{include,core}/UltraMessage/`, header
+**Implementation status:** Phase 1 implemented, Phase 2 started — library
+target `UltraMessage` (`UltraCanvas/{include,core}/UltraMessage/`, header
 `<UltraMessage/UltraMessage.h>`, C++ layer `<UltraMessage/UltraMessageEndpoint.h>`,
 UI bridge `<UltraMessage/UltraMessageUltraCanvas.h>`): the broker with
 in-process hosting and lock-file election, the Unix-socket / named-pipe
@@ -1623,11 +1637,23 @@ transport, `Connect` / `Post` / `PostRecorded` / `Request` / `Reply` /
 `Subscribe`, UI-thread delivery through an installable dispatcher, the journal
 on UltraDatabase with the `Query` / `MarkRead` / `Dismiss` / `Delete` /
 `ListConversations` / `SetRetention` / `Export` calls, the schema registry with
-the well-known topics, and the `ultramsg` command line. Tests in
-`Tests/UltraMessage` (24 cases, in-tree and standalone). Not yet: the
-`AddFdWatch` event-loop path (a reader thread serves every endpoint), an FTS5
-index (text search is a LIKE), automatic reconnection after the hosting broker
-exits, and the adapters of Phase 2. See `Docs/Modules/UltraMessage/README.md`.
+the well-known topics, and the `ultramsg` command line. Of Phase 2: the
+adapter framework (`UltraMsg_ListAdapters` / `EnableAdapter` /
+`GetAdapterState`, switches persisted in the journal, `ultramsg adapters`),
+the Linux `freedesktop-notifications` adapter
+(`UltraCanvas/OS/Linux/UltraMessage/`, GDBus: serves
+`org.freedesktop.Notifications` or reads it in monitor mode), the
+`windows-notification-listener` adapter (`UltraCanvas/OS/MSWindows/UltraMessage/`,
+C++/WinRT `UserNotificationListener`: polls the Action Center, read-only),
+the shared chat / mail mirrors with category guessing from the application's
+identity, and UltraMail publishing new mail as `mail.message`
+(`Apps/UltraMail/engine/UltraMailFeedPublisher`). Tests in
+`Tests/UltraMessage` (34 cases, in-tree and standalone, the adapter ones on a
+private D-Bus session). Not yet: the `AddFdWatch` event-loop path (a reader
+thread serves every endpoint), an FTS5 index (text search is a LIKE),
+automatic reconnection after the hosting broker exits, the macOS and
+Telegram adapters and the `UltraCanvasMessageCenter` element. See
+`Docs/Modules/UltraMessage/README.md`.
 
 ---
 
@@ -23437,10 +23463,13 @@ dialog carried a scrollbar pair over its own caption, because the dialog was a
 couple of pixels shorter than the rows it held and each row was squeezed below
 the 32 px field inside it.
 
-Any other container that only places children — a button bar, a toolbar strip —
-should call `DisableScrollbars` for the same reason. The container default
-(auto scrollbars on) is right for a pane that holds content, not for one that
-holds a layout.
+Since framework 0.9.22 this is also the container default: `autoShowScrollbars`
+is off, so a container arranges its children and scrolls nothing unless it is
+asked to. `DisableScrollbars` stays as the way to say it outright (it clears the
+forced flags too, and states the intent where a reader will look for it), but a
+plain `CreateContainer` no longer needs it. A container that really is a
+viewport onto taller content opts in with `CreateScrollableContainer` or
+`autoShowScrollbars = true`.
 
 Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
 so a form can swap one set of rows for another — the export dialog shows the
@@ -32588,6 +32617,34 @@ what a double-click asks for when a pane is too small for the file — see
 [UltraCanvasMediaViewerWindow](UltraCanvasMediaViewerWindow.md), which wraps a
 viewer in a top-level window.
 
+## Choosing this over a single-format view
+
+Prefer this widget over embedding a format-specific view
+([UltraCanvasPDFView](UltraCanvasPDFExamples.md#choosing-a-widget),
+`UltraCanvasSpreadsheet`, `UltraCanvasEBookViewer`, …) whenever the pane shows
+*whatever the user put there*. The single-format views are not an alternative to
+this one — this widget owns instances of them and dispatches by file kind, so
+using it costs nothing in capability and gains two things:
+
+- **Kinds you did not plan for.** A pane built for PDFs meets a receipt
+  photographed as a JPEG, an `.ods` attachment, a `.eml` body. Each is a
+  different widget; the dispatch is already written here.
+- **Builds where a plugin is absent.** Every plugin-backed view is behind its
+  `#ifdef` inside this file, so the viewer compiles and runs without it and the
+  remaining kinds still display. The PDF gate is the common case:
+  `ULTRACANVAS_PLUGIN_PDF` defaults ON, but a machine without MuPDF disables the
+  plugin at configure time rather than failing the build, so an application that
+  embeds `UltraCanvasPDFView` itself must repeat the guards and supply its own
+  fallback.
+
+Embed it as UltraFiler does, with `SetTopBarsVisible(false)` for a pane too
+small for two toolbar rows (`Apps/UltraFiler/UltraFilerWindow.cpp:829`).
+`UltraCanvasMediaViewer::IsSupportedMedia(path)` answers, before you load
+anything, whether this build can show a given file at all.
+
+Go direct to a single-format view only when the application *is* that format's
+tool and a missing plugin should stop it running.
+
 ## Media kinds and display views
 
 | `MediaKind` | Formats | Display view |
@@ -36183,7 +36240,12 @@ FILE: Docs/UltraCanvas/UltraCanvasPDFExamples.md
 
 ## Overview
 
-**UltraCanvasPDF** is the PDF subsystem for UltraCanvas. It has two layers:
+**UltraCanvasPDF** is the PDF subsystem: the `UltraCanvasPDFView` widget and the
+headless `IPDFDocument` engine. For a preview pane, prefer
+[UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) — it wraps this view and
+still builds without MuPDF. See *Choosing a widget* below.
+
+The subsystem has two layers:
 
 - **`UltraCanvasPDFView`** — a ready-to-use viewer widget with a thumbnail
   strip, scrollable page render, zoom, and search-hit overlay. This is what the
@@ -36193,6 +36255,46 @@ FILE: Docs/UltraCanvas/UltraCanvasPDFExamples.md
 
 The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 (requires MuPDF / `libmupdf-dev`).
+
+### Choosing a widget
+
+`UltraCanvasPDFView` is not usually what an application should embed directly.
+[UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) **contains** a
+`UltraCanvasPDFView` and hands PDFs to it, so choosing the media viewer costs
+nothing in PDF capability and decides three things in its favour:
+
+| | `UltraCanvasPDFView` | `UltraCanvasMediaViewer` |
+|---|---|---|
+| PDF pages, thumbnails, zoom, search | yes | yes — the same view, embedded |
+| A receipt photographed as JPEG/PNG/HEIC, or a `.ods`/`.csv` attachment | no | yes, dispatched by file kind |
+| Build without MuPDF | the widget does not exist | compiles and runs; other kinds still display |
+
+That last row is the one that bites. `ULTRACANVAS_PLUGIN_PDF` defaults **ON**,
+but a machine without MuPDF does not fail the build — `UltraCanvas/CMakeLists.txt`
+sets `MUPDF_FOUND FALSE`, prints `[✗] PDF Plugin - DISABLED (MuPDF not found…)`
+and carries on. So the option being ON is **not** a promise that the view exists.
+Every PDF reference inside the media viewer is `#ifdef ULTRACANVAS_PLUGIN_PDF`-guarded
+already; an application that embeds `UltraCanvasPDFView` itself has to repeat
+those guards and invent its own fallback, or it silently ships a pane that is
+simply absent on such a build.
+
+Embed it the way UltraFiler does — the established preview-pane pattern
+(`Apps/UltraFiler/UltraFilerWindow.cpp:829`):
+
+```cpp
+preview = CreateMediaViewer("app-preview", 0, 0, 0, 0);
+preview->SetTopBarsVisible(false);   // no toolbars in a pane this small
+AddChild(preview);
+preview->LoadFile(path);             // kind chosen from the file's bytes
+```
+
+Use `UltraCanvasPDFView` directly only when the application is a PDF tool as
+such — it will never be handed anything but a PDF, and a missing MuPDF is a
+reason for it not to run at all. Use `IPDFDocument` when no UI is wanted:
+extracting text, searching or rewriting a PDF headlessly.
+
+To open one file full size in a window of its own, see
+[UltraCanvasMediaViewerWindow](UltraCanvasMediaViewerWindow.md).
 
 **Version:** 1.1.0
 **Headers:** `include/Plugins/Documents/UltraCanvasPDFView.h`,
@@ -63841,8 +63943,8 @@ What already existed and stays where it is:
   CloudService ──────────── AddAccount / List / Upload / CreateShareLink / UploadAndShare
     ├── AccountStore        the account list + default      (UltraDatabase, SQLite)
     ├── ISecretStore        passwords / tokens by accountId
-    │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password")
-    │     └── FileSecretStore    obfuscated files (per-app fallback)
+    │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password"), the app's own vault
+    │     └── MemorySecretStore  process-lifetime (tests, demos)
     └── provider registry   RegisterProvider / GetProvider / RegisterBuiltInProviders
           │                 + LoadProviderPlugins() for provider DSOs
           ├── HttpProviderBase                      one HttpFn, Basic / Bearer auth, HTTP → Result
@@ -63919,7 +64021,11 @@ using namespace UltraCloud;
 // Once per process.
 RegisterBuiltInProviders();
 AccountStore accounts;  accounts.Open("myapp-cloud", dataDir + "/cloud.db");
-FileSecretStore secrets(dataDir + "/cloud-vault");   // or VaultSecretStore
+// The secrets go into the application's own vault (UltraVault::DeviceKeyVault,
+// Docs/Modules/UltraVault/README.md), opened before the accounts are touched.
+UltraVault::DeviceKeyVault vault(dataDir + "/vault", {"myapp.vault", "myapp.myapp."});
+vault.TryAutoUnlock();
+VaultSecretStore secrets;                            // "cloud.<accountId>.*" in that vault
 CloudService cloud(accounts, secrets);
 
 // Set up an account (the first one becomes the default).
@@ -63988,7 +64094,7 @@ providers.
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
-| `UltraCloudSecrets.h` | `ISecretStore`, `FileSecretStore`, `VaultSecretStore` (with UltraVault) |
+| `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
@@ -65375,10 +65481,13 @@ FILE: Docs/Modules/UltraMessage/README.md
 
 # UltraMessage — The Message Channel
 
-**Status:** Phase 1 implemented (channel and journal); Phases 2–4 in the proposal.
-**Version:** 0.1.0
+**Status:** Phase 1 implemented (channel and journal); Phase 2 started —
+adapter framework, the Linux `freedesktop-notifications` adapter, the
+`windows-notification-listener` adapter and UltraMail publishing to the
+feed. The rest of Phases 2–4 is in the proposal.
+**Version:** 0.2.1
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-09-19
+**Last Modified:** 2026-09-20
 
 UltraMessage is the message channel of the ULTRA OS stack: one API through
 which applications send structured messages to each other, receive what other
@@ -65414,8 +65523,12 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | Broker: sessions, routing, bounce, request/reply, control RPC | `UltraCanvas/core/UltraMessage/UltraMessageBroker.cpp` |
 | Journal on UltraDatabase | `UltraCanvas/core/UltraMessage/UltraMessageJournal.cpp` |
 | Endpoint client and the API implementation | `UltraCanvas/core/UltraMessage/UltraMessageEndpoint.cpp` |
+| Adapter interface (`IAdapter`, `IAdapterHost`) and registry | `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h`, `UltraMessageAdapters.cpp` |
+| `freedesktop-notifications` adapter (GDBus) | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp` |
+| `windows-notification-listener` adapter (C++/WinRT) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp` |
+| UltraMail → `mail.message` | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
-| Tests (24 cases) | `Tests/UltraMessage/` |
+| Tests (34 cases; the adapter ones on a private D-Bus session) | `Tests/UltraMessage/` |
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
@@ -65551,6 +65664,85 @@ own under a vendor prefix (`com.example.myapp.*`). Their names are in
 | `app.command.list` / `.invoke` / `.echo` | no | the Phase 3 command surface; the topics exist, the consent and manifests do not yet |
 | `file.changed`, `clipboard.changed` | no | |
 
+### 3.6 Adapters
+
+`UltraMsg_ListAdapters`, `UltraMsg_EnableAdapter`, `UltraMsg_GetAdapterState`.
+An adapter is a broker-side plugin (`Internal::IAdapter` in
+`core/UltraMessage/UltraMessageAdapter.h`) that bridges a platform channel onto
+the bus: it publishes under its own identity
+(`org.ultraos.ultramessage.adapter.<name>`, verified) through the host the
+broker hands it, and receives back the `system.notification.action` /
+`.dismissed` messages the feed posts about notifications it produced. The
+broker starts every adapter of its build when it starts, stops them when it
+stops, and keeps the on/off switch in the journal (`adapters` table), so
+`UltraMsg_EnableAdapter(ep, name, false)` holds across restarts.
+`UltraMsgAdapterInfo` lists name, description, platform, the switch and the
+`UltraMsgAdapterState`: `status` (`disabled`, `starting`, `running`,
+`needs-permission`, `unavailable`, `error`), a `message`, a `remedy` where the
+user can do something, and a `mode` the adapter defines.
+
+**`freedesktop-notifications`** (Linux, built where `gio-2.0` is found; the
+`UltraMessage` target exports `ULTRAMESSAGE_HAVE_GIO` then). It owns
+`org.freedesktop.Notifications` on the session bus and serves `Notify`,
+`CloseNotification`, `GetCapabilities` and `GetServerInformation` — mode
+`server`: every desktop application's toast becomes a `system.notification`
+(`appName`, `appId` from the `desktop-entry` hint, `category`, `summary`,
+`body`, `urgency`, `actions[]`, `origin: "freedesktop"`, plus `adapter`,
+`nativeId` and `senderPid`); a `replaces_id` becomes a replace of the earlier
+message; `CloseNotification` publishes `system.notification.dismissed`; a
+`system.notification.action` from the feed raises `ActionInvoked` and
+`NotificationClosed` towards the application. Where another server already
+owns the name (GNOME Shell, Plasma, dunst) the adapter takes **monitor mode**
+(`org.freedesktop.DBus.Monitoring.BecomeMonitor` on a private connection):
+the same `Notify` calls are read passively (`origin: "freedesktop-monitor"`,
+no `nativeId`), and actions are not available; when the bus refuses
+monitoring the state is `needs-permission` with the remedy. Toasts with
+category `im.received` are additionally mirrored to `messaging.message`
+(service from the desktop entry or app name, conversation and sender from the
+summary, text from the body), `email*` ones to `mail.message` (sender from the
+summary, subject from the body's first line); each mirror carries `mirrorOf`
+with the notification's id. Note for a session without any notification
+daemon: the adapter then *is* the server and, until the message centre
+renders toasts, nothing pops up on screen — the feed and `ultramsg tail` show
+them; `ultramsg adapters disable freedesktop-notifications` hands the name
+back.
+
+**`windows-notification-listener`** (Windows, built where the C++/WinRT
+projection headers are found — the MSYS2 `cppwinrt` package, which CI
+installs, or the Windows SDK; the `UltraMessage` target then exports
+`ULTRAMESSAGE_HAVE_WINRT` and links `runtimeobject`, `ole32` and `oleaut32`).
+It reads the Action Center through
+`Windows.UI.Notifications.Management.UserNotificationListener`: every toast
+becomes a `system.notification` (`appName` and `appId` from the application's
+display info and AppUserModelId, the first text line as `summary`, the rest
+as `body`, `origin: "windows-listener"`, plus `adapter`, `nativeId` and
+`createdMs`). Windows sends a desktop process no change event, so the adapter
+polls every two seconds — mode `listener` — publishing what is new and a
+`system.notification.dismissed` (`reason: "removed"`) for what left the
+Action Center. It is read-only: a toast's buttons cannot be pressed from
+outside the application, so a `system.notification.action` from the feed only
+clears the toast, as a dismissal does. Access is the user's to grant
+(Settings > Privacy & security > Notifications); until then the state is
+`needs-permission` with that remedy, re-checked every few seconds so no
+restart is needed. Where the listener is unavailable to the process (older
+Windows, or a build without package identity) the state is `unavailable`.
+
+**Category guessing.** Windows carries no category hint and most Linux
+applications set none, so both adapters guess it from the application's
+identity (`Internal::GuessAppKind` in `core/UltraMessage/UltraMessageAdapters.cpp`:
+Telegram, Signal, WhatsApp, Discord, Slack, Teams … → `im.received`;
+Thunderbird, Outlook, Windows Mail, Evolution, UltraMail … → `email.arrived`).
+The chat and mail mirrors (`Internal::PublishMirror`) are shared by every
+notification adapter. The list is a heuristic and easy to extend.
+
+**UltraMail** publishes new mail itself (`UltraMail::FeedPublisher`,
+`Apps/UltraMail/engine/`): the sync workers pass every stored envelope to it,
+and it posts a `mail.message` (endpoint `org.ultraos.ultramail`) for the ones
+that are news — unread, not deleted or draft, dated within the last 7 days —
+at most 100 per account per ten minutes so an initial sync never floods the
+feed. Built with the engine wherever `UltraMessage` is (`ULTRAMAIL_HAVE_ULTRAMESSAGE`);
+without it the publisher compiles to a no-op.
+
 ## 4. The C++ layer
 
 `UltraMessage::Endpoint` (`Connect`, `Subscribe`, `Post`, `PostRecorded`,
@@ -65574,6 +65766,7 @@ ultramsg post <topic> [json-body] [--to <app>] [--conversation <id>] [--persiste
 ultramsg tail [pattern] [--json]        follow the bus
 ultramsg query [--topic <pattern>] [--unread] [--text <s>] [--service <s>] [--limit <n>] [--json]
 ultramsg conversations | endpoints | info
+ultramsg adapters [enable <name> | disable <name>]     the broker's adapters, their state, the switch
 ultramsg mark-read <id>... | dismiss <id>... | delete <id>...
 ultramsg export <path> [--topic <pattern>]
 ```
@@ -65616,8 +65809,15 @@ cmake -S Tests/UltraMessage -B build-um && cmake --build build-um && build-um/Ul
 
 The suite hosts an in-process broker on a private bus path (`/tmp/ultramsg-test-<pid>/bus.sock`,
 a per-process pipe name on Windows) and drives it over the real transport with
-several endpoints; the journal is in memory. CI enables the suite on every
-platform and runs it on Linux.
+several endpoints; the journal is in memory. On Linux `test_main.cpp` also
+starts a private `dbus-daemon --session` (its address goes to
+`DBUS_SESSION_BUS_ADDRESS` for the test process only) so the adapter tests
+drive the freedesktop adapter over real D-Bus — a client sending `Notify`, a
+rival owning the name to force monitor mode — without touching the user's
+bus; without `dbus-daemon` those tests skip. CI enables the suite on every
+platform and runs it on Linux. The standalone tree takes UltraDatabase's
+source list from `cmake/UltraDatabaseSources.cmake`, the same list the
+in-tree build uses.
 
 ## 9. Not in this phase
 
@@ -65628,9 +65828,10 @@ platform and runs it on Linux.
   host the broker permanently, which removes the case there.
 - **FTS5** for text search.
 - **The spool** for attachments over 1 MiB (a file path is passed instead).
-- **Adapters** (Phase 2: freedesktop notifications, the Windows listener,
-  Apple Mail, UltraMail publishing, Telegram) and the `UltraCanvasMessageCenter`
-  element.
+- **The other Phase 2 adapters** (Apple Mail, Telegram) and the
+  `UltraCanvasMessageCenter` element; the adapter framework,
+  `freedesktop-notifications`, `windows-notification-listener` and UltraMail
+  publishing are built (§3.6).
 - **Commands** (Phase 3: `RegisterCommand` / `ListCommands` / `Invoke`,
   manifests, consent) — the `app.command.*` topics are reserved for them.
 
@@ -66417,13 +66618,79 @@ UltraVault::Shutdown();
 readers and a "requires user presence" flag; the memory and file backends
 store it, OS-native backends will enforce it.
 
+## Per-application vaults: `DeviceKeyVault`
+
+An application that keeps a password or a token set per account does not
+drive `Initialize`/`Put`/`Get` itself. It uses `UltraVault::DeviceKeyVault`
+(`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target): one encrypted
+vault file in a directory the application owns, unlocked without a prompt
+by a random passphrase kept owner-only in `device.key` beside it — the
+posture of Thunderbird with no Primary Password: encrypted at rest, no
+prompt, and the key is readable by whoever can read the directory. A
+`DeviceKeyVaultProfile` — the vault file name and the key prefix in the
+`<vendor>.<app>.` convention — tells one application's vault from another's.
+
+```cpp
+#include <UltraVault/UltraVaultDeviceKeyVault.h>
+
+// Usually a one-line subclass per application fixes the profile
+// (Apps/UltraMail/engine/UltraMailCredentialVault.h is the pattern).
+UltraVault::DeviceKeyVault vault(dataDir + "/vault",
+                                 {"ultramail.vault", "mail.ultramail."});
+
+// First run: a device key is generated and the vault created. Later runs:
+// the key unlocks it. False only when a vault exists that was made with a
+// master password (prompt once, Unlock(), then PersistDeviceKey()) or when
+// this build has no crypto backend.
+if (!vault.TryAutoUnlock()) { /* say so; Store() will refuse, not drop */ }
+
+vault.Store("erika@example.com", password);         // key mail.ultramail.erika@example.com
+std::string got;
+if (vault.Retrieve("erika@example.com", got)) { /* … */ }
+
+UltraVault::OAuthTokens tokens = { access, refresh, expiresAt };
+vault.StoreOAuthTokens("erika@example.com", tokens); // drops the password slot
+switch (vault.MethodFor("erika@example.com")) { /* None / Password / OAuth2 */ }
+
+vault.Lock();                                       // wipes the derived key
+```
+
+| Group | Members |
+|---|---|
+| Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
+| Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
+| OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
+
+`UnlockStatus` tells a wrong master password (`WrongPassphrase` — also what a
+tampered file reports) from a build that cannot open a vault at all
+(`Unavailable`: UltraCrypt without libsodium) and from a path that cannot be
+written (`IoError`). An empty passphrase is refused. A vault in the 0.1 format
+the applications used before UltraVault (secrets XOR-ed against a `vault.key`
+sidecar, one line per account in `creds.dat`) is carried across on the first
+successful unlock and its files removed.
+
+UltraVault itself is one store per process: `Unlock()` closes whatever
+UltraVault had open and opens this vault, so a process works with one
+`DeviceKeyVault` at a time.
+
 ## Consumers
 
 - **UltraAI** — `ProviderConfig::apiKeyVaultRef` resolves through
   `UltraVault::Get` when built with `ULTRAAI_USE_ULTRAVAULT` (on by default
   in-tree); see `Docs/Modules/UltraAI/README.md`.
-- **UltraCloud** — `VaultSecretStore` keeps cloud account tokens here, falling
-  back to a per-app obfuscated file store when UltraVault is not built.
+- **UltraCloud** — `VaultSecretStore` keeps cloud account credentials in
+  whichever vault the application opened, under `cloud.<accountId>.*`; there
+  is no file store of its own any more.
+- **UltraFiler** — its own `DeviceKeyVault` (`ultrafiler.vault` /
+  `files.ultrafiler.`) under the config directory, holding the remote-drive
+  credentials through UltraCloud's `VaultSecretStore`.
+- **UltraMail** and **EmailCleaner** — `UltraMail::CredentialVault`
+  (`Apps/UltraMail/engine/UltraMailCredentialVault.h`) is `DeviceKeyVault`
+  with the profile `ultramail.vault` / `mail.ultramail.`; mail passwords and
+  OAuth2 token sets per account.
+- **UltraSocial** — `UltraSocial::CredentialVault`
+  (`Apps/UltraSocial/engine/UltraSocialCredentialVault.h`), profile
+  `ultrasocial.vault` / `social.ultrasocial.`; one credential blob per account.
 
 ## Third-party dependencies
 
@@ -68007,6 +68274,168 @@ FILE: Docs/Modules/VirtualFS/intro.md
 Browse inside archives as if they were ordinary folders. Open ZIP, 7z, TAR, and many more formats without extracting anything first, navigate seamlessly into nested archives, and read files on demand with intelligent caching, streaming for large files, and password support for encrypted content. One consistent, cross-platform interface powers file managers, document viewers, asset loaders, and backup browsers alike.
 
 ==============================================================================
+FILE: Docs/UltraAuthenticator/README.md
+==============================================================================
+
+# UltraAuthenticator
+
+## Overview
+
+UltraAuthenticator generates the six- or eight-digit sign-in codes (TOTP and
+HOTP, the same codes Google Authenticator, Aegis and 2FAS produce) for
+accounts you enrol by scanning a QR code or typing a setup key. It ships as
+`Apps/UltraAuthenticator`, is built from UltraCanvas elements, works fully
+offline, and keeps every account in one encrypted file that only your master
+password opens.
+
+This page is for the person using it. It says what the app protects, how,
+and — at least as important — what it cannot protect against, so that nobody
+relies on it for something it does not do. The engineering behind each
+statement is in the
+[feasibility investigation](UltraAuthenticator-Investigation.md); the
+cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
+
+- Version: its own, from the first line of
+  [`Docs/UltraAuthenticator/CHANGELOG.md`](CHANGELOG.md). `--version`
+  prints it.
+- Files: `accounts.vault` and `settings.ini` under
+  `$XDG_DATA_HOME/UltraAuthenticator/` (`~/.local/share/UltraAuthenticator/`
+  by default). `--vault PATH` uses another vault file; its settings live
+  beside it.
+
+## What the secret is
+
+When a service shows you a QR code to enrol, the QR contains a **seed**: a
+random key the service also keeps. Every code the app ever shows is computed
+from that seed and the current time (or, for HOTP, a counter). That makes the
+seed *the second factor itself*: anyone who copies it once can produce your
+codes forever, without your phone, your password or your machine. Everything
+below follows from treating the seed as the thing to protect, not the codes.
+
+## How the app protects it
+
+**On disk.** All accounts sit in one file, encrypted with
+XChaCha20-Poly1305. The key is derived from your master password with
+Argon2id, whose cost parameters and salt are stored in the file header — and
+the header is authenticated along with the data, so a downgraded cost
+parameter or an edited header is detected, not obeyed. The file is written
+with owner-only permissions (`0600`) and replaced atomically, so a crash
+mid-save leaves the previous vault, never a half-written one. Nothing about
+the accounts — not the seeds, not the names, not the services — is readable
+without the password; the file is one opaque block.
+
+A wrong password and a tampered file are reported with the *same* message,
+on purpose. Telling them apart would tell an attacker which of the two they
+had achieved.
+
+**There is no unprotected mode.** The app refuses to start without a crypto
+backend and refuses to open a vault without a password. It never falls back
+to storing seeds in the clear.
+
+**In memory.** A seed is read out of the vault, used to compute one code, and
+wiped, inside a single call; it does not sit in memory while the window is
+open. Secrets live in buffers that are zeroed on release and, where the
+platform allows, locked against being paged to swap. The window that shows
+codes never holds a seed at all, with one deliberate exception (*Show key*,
+below).
+
+**Locking.** The vault locks — every code disappears from the screen and the
+decrypted vault is dropped from memory — when you press **Lock**, after a
+period without input to the window (5 minutes by default, or never; see
+*Settings*), and when the window is minimised. The lock screen accepts only
+the master password or *Quit*; it cannot be closed or escaped. After three
+wrong passwords each further attempt waits twice as long as the last, up to
+five minutes, and the wait is enforced by the vault code, not by the
+dialog.
+
+**Showing a code only on request.** *Settings → Hide codes until a card is
+clicked* replaces every code with dots; clicking a card shows its code for
+15 seconds. Hidden cards are not even computed. This is for working where
+someone may be looking over your shoulder.
+
+**Getting a seed back out.** Moving to a new phone means reading the seed
+again, and an app that could never do that would push people into keeping
+the original QR code in a photo album — far worse than this vault. So *Show
+key* exists, and it is fenced: it asks for the master password again even
+though the vault is open, shows the key and the `otpauth://` URI as text on
+screen only, renders no QR code and writes nothing to disk, and wipes its
+own widgets when closed.
+
+**Backups.** *Back up…* writes every account to one encrypted file, sealed
+with a passphrase that **must differ from the master password** — a backup
+is the file most likely to reach a USB stick or a cloud folder, and one that
+opened with your device password would make finding it as good as having
+the machine. Export asks for the master password first. *Restore…* never
+overwrites: an account already in the vault is kept and reported as skipped,
+because a restore that replaced a re-enrolled seed or a newer HOTP counter
+would destroy a working second factor.
+
+**Untrusted input.** Scanned QR codes and typed keys go through the same
+strict parser; a malformed seed is refused rather than silently turned into
+a different one. Camera frames are decoded in memory and never written to
+disk as images.
+
+## What it does not protect against
+
+Be clear-eyed about these. None of them is a defect the app can fix on its
+own; each is stated here so the app is not credited with more than it does.
+
+- **Anyone who can see your screen.** Under X11, any program running in
+  your session can capture window contents and read keystrokes. Codes are
+  visible for up to 30 seconds while shown; the setup key is visible for as
+  long as *Show key* is open. Screenshot tools, screen recorders and malware
+  in the same session see what you see. Prefer Wayland or a native ULTRA OS
+  build, keep *Show key* open only as long as the other device needs, and
+  use *Hide codes* on a shared screen.
+- **Other programs running as you.** On a standard Linux host, a process
+  running under your user account can read your files and, unless the
+  kernel restricts `ptrace`, your programs' memory. The encryption defends
+  the vault file against theft, backups and disk forensics; it does **not**
+  defeat malware already running as you while the vault is unlocked. That
+  needs the per-application isolation ULTRA OS is built for, which this app
+  is designed to take advantage of but cannot provide by itself.
+- **A compromised machine in general.** A keylogger captures the master
+  password. A modified copy of the app can do anything. Verify the build you
+  run.
+- **Phishing.** A one-time code typed into a fake sign-in page is relayed
+  to the real one in seconds. Time-based codes do not resist this; only
+  phishing-resistant methods (hardware keys, passkeys) do. Check the address
+  bar before you type a code.
+- **A lost master password.** It is not stored anywhere and cannot be
+  recovered. Without it, the vault is unreadable — by you and by everyone
+  else. Keep a backup (encrypted, with its own passphrase) somewhere safe.
+- **A wrong clock.** Time-based codes are computed from the system clock. If
+  the clock is minutes off, every code is rejected by the service and the
+  app cannot tell. Keep the system time synchronised.
+- **Text you type into a password field.** The framework's text field keeps
+  its own copy of what was typed until it is cleared; the app clears its
+  fields after every use, but that copy is the widget's, not the app's.
+
+## Settings
+
+Three options, in *Settings…*, kept in `settings.ini` beside the vault. The
+file is plain `key = value` text and contains nothing secret; hand-edited
+values are clamped, never trusted.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Lock after no input for | 5 minutes | Lock when the window has had no mouse or keyboard input for this long. *Never* disables it; the Lock button and the minimise lock still work. |
+| Lock when the window is minimised | on | Lock the moment the window is minimised, so nothing is on the cards when it comes back. |
+| Hide codes until a card is clicked | off | Show dots instead of codes; a click shows one code for 15 seconds. |
+
+## Everyday advice
+
+- Enrol by scanning where you can; typing a 32-character key is the
+  fallback.
+- Take a backup after enrolling anything important, with a passphrase you
+  will still know in a year. Keep it off cloud folders unless you accept
+  that the passphrase is then the only thing protecting it.
+- Use *Show key* only to enrol another device, and close it as soon as that
+  device shows the same code.
+- Lock the app when you leave the desk. The button is at the top right for
+  exactly that moment.
+
+==============================================================================
 FILE: Docs/UltraAuthenticator/UltraAuthenticator-Investigation.md
 ==============================================================================
 
@@ -68451,17 +68880,46 @@ codes the server rejects.
 - **Phishing:** TOTP does not resist real-time relay phishing. Out of scope,
   but user-facing docs should not oversell.
 
+All three are now stated to the user, in those terms, in the
+[README](README.md) under *What it does not protect against*, alongside the
+things the app does do.
+
 ### 3.7 Clipboard and UI leakage (medium)
 
 - Copying a *code* is acceptable (30 s lifetime) but: X11 clipboard is
   readable by every app, and clipboard managers persist history. Auto-clear
   the clipboard ~30 s after copy (only if it still holds our value), and
   never offer copy for the *secret*.
-- App lock (PIN or the master password) with exponential back-off, and
-  auto-lock on minimize/idle. Codes should not be visible on a lock screen
-  or in a window-switcher preview.
-- Tap-to-reveal (codes hidden by default) is worth offering for
-  shoulder-surfing resistance.
+- ~~App lock (PIN or the master password) with exponential back-off, and
+  auto-lock on minimize/idle.~~ — **DONE** (`LockScreenDialog`,
+  `AccountStore::Lock`/`Unlock`, `LockPolicy.h`). The vault locks on the
+  Lock button, after a configurable period without input to the window
+  (default 5 minutes), and when the window is minimised; each lock clears
+  every card *and* drops the decrypted vault, so a locked window holds no more
+  than one that was never unlocked. The lock screen cannot be dismissed —
+  no Cancel, no Escape, the window manager's close is refused — only the
+  master password or Quit gets past it. Back-off is enforced by the store,
+  not the dialog: three wrong passwords are free, then each failure doubles
+  the wait (2 s, 4 s, … capped at 5 minutes) and an attempt during the wait
+  is refused with `TooManyAttempts` *before* the password is checked, so the
+  refusal costs no Argon2id work and is not an oracle. The PIN option was
+  not taken: a PIN is a weaker second password protecting the same key, and
+  the framework's password field is the same widget either way. Verified by
+  `Tests/UltraAuthenticatorAccountTests.cpp` (lock/unlock, throttle) and
+  `Tests/UltraAuthenticatorLockTests.cpp` (the schedule as a pure function).
+
+  Detecting a user-initiated minimise needed a framework change: on X11 the
+  window's `IsMinimized()` only tracked the application's own `Minimize()`
+  call. The Linux backend now watches the ICCCM `WM_STATE` property and the
+  base window raises `onWindowMinimize` / `onWindowRestore` (new
+  `UCEventType::WindowRestore`) on the transitions, for every application.
+- ~~Tap-to-reveal (codes hidden by default) is worth offering for
+  shoulder-surfing resistance.~~ — **DONE**, as an option (Settings → "Hide
+  codes until a card is clicked", off by default). A hidden card shows
+  "••• •••" and, on click, its code for 15 seconds; while hidden the seed is
+  not even read, so the option also cuts the once-a-second decryptions to
+  zero. Off by default because for most people the whole point of the app is
+  glancing at a code, and the shoulder-surfing threat is theirs to opt into.
 
 ### 3.8 Process and dependency hygiene (medium)
 

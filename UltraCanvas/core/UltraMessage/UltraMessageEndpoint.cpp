@@ -971,6 +971,51 @@ UltraMsgResult UltraMsg_Unsubscribe(UltraMsgHandle subscriptionHandle) {
 }
 
 // ===========================================================================
+// Adapters
+// ===========================================================================
+
+UltraMsgResult UltraMsg_ListAdapters(UltraMsgHandle handle, std::vector<UltraMsgAdapterInfo>& out) {
+    out.clear();
+    EndpointPtr endpoint = FindEndpoint(handle);
+    if (!endpoint) return NotConnected();
+    UltraMsgResult result;
+    JSONValue reply = Control(endpoint, Op::AdaptersList, JSONValue::MakeObject(), result);
+    if (!result) return result;
+    const JSONValue& list = Obj(reply, "adapters");
+    if (list.IsArray()) {
+        for (const JSONValue& item : list.GetElements()) {
+            UltraMsgAdapterInfo info;
+            if (AdapterInfoFromJson(item, info)) out.push_back(std::move(info));
+        }
+    }
+    return UltraMsgResult::Ok();
+}
+
+UltraMsgResult UltraMsg_EnableAdapter(UltraMsgHandle handle, const std::string& name, bool enabled) {
+    EndpointPtr endpoint = FindEndpoint(handle);
+    if (!endpoint) return NotConnected();
+    JSONValue args = JSONValue::MakeObject();
+    args.Set("name", name);
+    args.Set("enabled", enabled);
+    UltraMsgResult result;
+    Control(endpoint, Op::AdaptersEnable, std::move(args), result);
+    return result;
+}
+
+UltraMsgResult UltraMsg_GetAdapterState(UltraMsgHandle handle, const std::string& name,
+                                        UltraMsgAdapterState& out) {
+    EndpointPtr endpoint = FindEndpoint(handle);
+    if (!endpoint) return NotConnected();
+    JSONValue args = JSONValue::MakeObject();
+    args.Set("name", name);
+    UltraMsgResult result;
+    JSONValue reply = Control(endpoint, Op::AdaptersState, std::move(args), result);
+    if (!result) return result;
+    AdapterStateFromJson(Obj(reply, "state"), out);
+    return UltraMsgResult::Ok();
+}
+
+// ===========================================================================
 // Journal
 // ===========================================================================
 

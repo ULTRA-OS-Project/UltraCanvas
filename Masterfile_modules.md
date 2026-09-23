@@ -1148,12 +1148,25 @@ Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
 `ProviderConfig::apiKeyVaultRef` through `UltraVault::Get` when built with
 `ULTRAAI_USE_ULTRAVAULT` (on by default in-tree).
 
+`DeviceKeyVault` (`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target) is
+the per-application vault on top of that: one encrypted vault file in the
+application's directory, unlocked without a prompt by an owner-only
+`device.key` beside it (`TryAutoUnlock`) or by a master password (`Unlock`
+-> `UnlockStatus`, `PersistDeviceKey`), per-account
+`Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
+slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
+the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
+(vault file name + key prefix) tells one application's vault from another's;
+UltraMail (`mail.ultramail.`) and UltraSocial (`social.ultrasocial.`) are
+one-line profiles of it in `Apps/*/engine/*CredentialVault.h` — no
+application carries a vault implementation of its own.
+
 **Implementation status (this branch):** v0.1 — memory backend (CI /
 ephemeral) and encrypted-file backend (Argon2id-derived key, stored cost
 parameters, XChaCha20-Poly1305 with the header as associated data; wrong
 passphrase and file tampering are deliberately indistinguishable). Unit
-tests in `Tests/UltraVaultTests.cpp`; the UltraAI resolution path is
-covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
+tests in `Tests/UltraVaultTests.cpp` (the device-key vault included); the
+UltraAI resolution path is covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
 backends (libsecret / Keychain / Credential Manager) and
 `Import`/`PromptUserForSecret` are planned.
 persisted drive mappings), application launch/supervision, and the
@@ -1282,9 +1295,10 @@ can carry an FTP server as a drive; no share links, and SFTP authenticates
 with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
-Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
-(`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
-HTTP goes through UltraNet. `CloudService` is the app-facing facade;
+Accounts persist on UltraDatabase (`AccountStore`), secrets go to the
+application's UltraVault (`VaultSecretStore`; `MemorySecretStore` for tests,
+and `MigrateLegacyFileSecrets` carries the obfuscated files of earlier builds
+across once), HTTP goes through UltraNet. `CloudService` is the app-facing facade;
 `UltraCloudUI` holds the shared add-account and link-picker dialogs.
 Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
 and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;
@@ -1442,8 +1456,8 @@ UltraMessage is intended to be the recommended way for UltraFiler,
 UltraViewer, UltraMail, UltraSocial and the ULTRA OS desktop to talk to one
 another and for the desktop to collect messages from every source.
 
-**Implementation status:** Phase 1 implemented — library target
-`UltraMessage` (`UltraCanvas/{include,core}/UltraMessage/`, header
+**Implementation status:** Phase 1 implemented, Phase 2 started — library
+target `UltraMessage` (`UltraCanvas/{include,core}/UltraMessage/`, header
 `<UltraMessage/UltraMessage.h>`, C++ layer `<UltraMessage/UltraMessageEndpoint.h>`,
 UI bridge `<UltraMessage/UltraMessageUltraCanvas.h>`): the broker with
 in-process hosting and lock-file election, the Unix-socket / named-pipe
@@ -1451,11 +1465,23 @@ transport, `Connect` / `Post` / `PostRecorded` / `Request` / `Reply` /
 `Subscribe`, UI-thread delivery through an installable dispatcher, the journal
 on UltraDatabase with the `Query` / `MarkRead` / `Dismiss` / `Delete` /
 `ListConversations` / `SetRetention` / `Export` calls, the schema registry with
-the well-known topics, and the `ultramsg` command line. Tests in
-`Tests/UltraMessage` (24 cases, in-tree and standalone). Not yet: the
-`AddFdWatch` event-loop path (a reader thread serves every endpoint), an FTS5
-index (text search is a LIKE), automatic reconnection after the hosting broker
-exits, and the adapters of Phase 2. See `Docs/Modules/UltraMessage/README.md`.
+the well-known topics, and the `ultramsg` command line. Of Phase 2: the
+adapter framework (`UltraMsg_ListAdapters` / `EnableAdapter` /
+`GetAdapterState`, switches persisted in the journal, `ultramsg adapters`),
+the Linux `freedesktop-notifications` adapter
+(`UltraCanvas/OS/Linux/UltraMessage/`, GDBus: serves
+`org.freedesktop.Notifications` or reads it in monitor mode), the
+`windows-notification-listener` adapter (`UltraCanvas/OS/MSWindows/UltraMessage/`,
+C++/WinRT `UserNotificationListener`: polls the Action Center, read-only),
+the shared chat / mail mirrors with category guessing from the application's
+identity, and UltraMail publishing new mail as `mail.message`
+(`Apps/UltraMail/engine/UltraMailFeedPublisher`). Tests in
+`Tests/UltraMessage` (34 cases, in-tree and standalone, the adapter ones on a
+private D-Bus session). Not yet: the `AddFdWatch` event-loop path (a reader
+thread serves every endpoint), an FTS5 index (text search is a LIKE),
+automatic reconnection after the hosting broker exits, the macOS and
+Telegram adapters and the `UltraCanvasMessageCenter` element. See
+`Docs/Modules/UltraMessage/README.md`.
 
 ---
 
