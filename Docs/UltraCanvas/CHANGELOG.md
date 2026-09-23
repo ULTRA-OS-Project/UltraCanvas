@@ -13,6 +13,10 @@
   box.** It was one 600 px line and the status box starts at x = 600, so the
   end of the sentence was hidden. It is now two lines, 570 px wide, and the
   status box stays where it was.
+- **`UltraCanvasListView.h`: removed an orphaned comment.** It said the view
+  itself cycles a column's sort on a header click, and it sat above no
+  declaration. The view never sorts: a header click only fires
+  `onHeaderClicked`, which is what the surrounding comments say.
 
 #### 2026-09-23 *0.9.32*
 - **The demo leaked its whole widget tree, and every callback in it.** A
