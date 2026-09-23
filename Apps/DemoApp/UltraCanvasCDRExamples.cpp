@@ -98,7 +98,7 @@ namespace UltraCanvas {
             fullscreenWindow->AddChild(pageLabel);
 
             // Update page label on page change
-            fullscreenCDR->onPageChanged = [pageLabel, fullscreenCDR](int page) {
+            fullscreenCDR->onPageChanged = [pageLabel, fullscreenCDR = fullscreenCDR.get()](int page) {
                 pageLabel->SetText("Page " + std::to_string(page + 1) + "/" +
                                    std::to_string(fullscreenCDR->GetPageCount()));
             };
@@ -285,7 +285,7 @@ namespace UltraCanvas {
             pageLabel->SetText(element->IsLoaded()
                                        ? "1/" + std::to_string(element->GetPageCount())
                                        : "-/-");
-            element->onPageChanged = [pageLabel, element](int page) {
+            element->onPageChanged = [pageLabel, element = element.get()](int page) {
                 pageLabel->SetText(std::to_string(page + 1) + "/" +
                                    std::to_string(element->GetPageCount()));
             };

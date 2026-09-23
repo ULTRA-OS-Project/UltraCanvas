@@ -102,7 +102,9 @@ void PopulateSoftwareProject(const std::shared_ptr<UltraCanvasPertChart>& chart)
     chart->AddDependency("d13", "test", "end");
 }
 
-std::string BuildScheduleSummary(const std::shared_ptr<UltraCanvasPertChart>& chart) {
+// Takes the chart raw: its one caller is a callback the chart itself owns,
+// which cannot hold a shared_ptr back to it without making a cycle.
+std::string BuildScheduleSummary(const UltraCanvasPertChart* chart) {
     std::ostringstream oss;
     oss << "Project duration: " << std::fixed << std::setprecision(1)
         << chart->GetProjectDuration() << " " << chart->GetDurationUnit();
@@ -157,7 +159,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
     container->AddChild(status);
 
     // Keep the status line in sync with every schedule recomputation.
-    chart->onScheduleComputed = [chart, statusWeak = std::weak_ptr<UltraCanvasLabel>(status)](double) {
+    chart->onScheduleComputed = [chart = chart.get(), statusWeak = std::weak_ptr<UltraCanvasLabel>(status)](double) {
         if (auto s = statusWeak.lock()) {
             s->SetText(BuildScheduleSummary(chart));
         }

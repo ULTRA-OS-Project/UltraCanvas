@@ -311,7 +311,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildPackedTab() {
 
     auto encBtn = std::make_shared<UltraCanvasButton>("PackedEncBtn", ctrlX, ctrlY + 126, 250, 30);
     encBtn->SetText("Show Enclosure Circle");
-    encBtn->onClick = [encBtn, packed]() {
+    encBtn->onClick = [encBtn = encBtn.get(), packed]() {
         static bool enclosed = false;
         enclosed = !enclosed;
         packed->SetPackedEnclosure(enclosed, Color(45, 55, 85, 255), 1.5f);
@@ -892,7 +892,7 @@ std::shared_ptr<UltraCanvasUIElement> Build3DTab() {
 
     auto spinBtn = std::make_shared<UltraCanvasButton>("B3DSpinBtn", 840, 60, 140, 32);
     spinBtn->SetText("Pause Spin");
-    spinBtn->onClick = [spinBtn, state]() {
+    spinBtn->onClick = [spinBtn = spinBtn.get(), state]() {
         state->autoRotate = !state->autoRotate;
         spinBtn->SetText(state->autoRotate ? "Pause Spin" : "Resume Spin");
     };
