@@ -12,12 +12,13 @@
 // This file: a polled snapshot of the socket table with process attribution
 // and byte counters where the backend has them, a per-process roll-up, and
 // the domain name behind a peer address where a name source has seen it
-// (NetworkMonitorNames.h). Connection events and file-transfer correlation
-// are later phases - see Docs/Modules/NetworkMonitor/README.md for what is
-// built and what is not.
+// (NetworkMonitorNames.h), and connections reported as they open and close
+// where an event source runs (NetworkMonitorEvents.h). File-transfer
+// correlation is a later phase - see Docs/Modules/NetworkMonitor/README.md
+// for what is built and what is not.
 //
-// Version: 0.4.0
-// Last Modified: 2026-09-22
+// Version: 0.6.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -166,8 +167,8 @@ struct NetworkMonitorCapabilities {
     bool socketTable        = false;  // a snapshot is possible at all
     bool processAttribution = false;  // sockets can be mapped to a PID
     bool allUsers           = false;  // false = only this user's processes are attributable
-    bool connectionEvents   = false;  // event-rate collection (not in Phase 1)
-    bool perConnectionBytes = false;  // byte counters (not in Phase 1)
+    bool connectionEvents   = false;  // an event source is running (NetworkMonitorEvents.h)
+    bool perConnectionBytes = false;  // byte counters in the snapshot
     bool dnsWithProcess     = false;  // a running name source reports the asking PID
     std::string backendName;          // "procfs", "none"
     // Human-readable lines for what is missing and why, in the order a
@@ -224,5 +225,16 @@ const char* NetworkMonitor_NameSourceName(NameSource source);
 bool        NetworkMonitor_NameIsObserved(NameSource source);
 // "1.2.3.4:443", "[fe80::1]:22"; an empty address is "*".
 std::string NetworkMonitor_FormatEndpoint(const std::string& address, uint16_t port);
+
+// A snapshot as CSV (RFC 4180 quoting, dot-decimal numbers), in the order
+// given: the per-process roll-up one row per process, with its distinct
+// peers and hosts semicolon-joined; the connections one row each with the
+// process behind it. `rowsWritten`, when given, receives the row count.
+NetworkMonitorResult NetworkMonitor_ExportSummaryCsv(const std::vector<ProcessTrafficSummary>& summaries,
+                                                     const std::string& path,
+                                                     int64_t* rowsWritten = nullptr);
+NetworkMonitorResult NetworkMonitor_ExportConnectionsCsv(const std::vector<NetworkConnection>& connections,
+                                                         const std::string& path,
+                                                         int64_t* rowsWritten = nullptr);
 
 } // namespace UltraCanvas

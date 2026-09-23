@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.36*
+#### 2026-09-23 *0.9.40*
 - **Media viewer Details panel: image metadata, scrollable, laid out as
   Markdown.** `UltraCanvasMediaViewer::UpdateDetailedInfo` listed only the
   header facts (size, dimensions, channels, colour space, dpi, loader) and
@@ -40,6 +40,126 @@
   "data: 518 bytes". Test: `Tests/PixelFXMetadataDecodeTest.cpp` (bare and
   wrapped IIM, encodings, truncated and lying blocks, every XMP form,
   malformed XML, value length cap).
+- **PixelFX writes EXIF values the way a camera app shows them**
+  (`Header::HumanizeExif` / `Header::SplitExifString` in
+  `PixelFX/PixelFXMetadataDecode.h`). `Header::ReadMetadata` showed libvips'
+  raw strings, only trimmed: `28/5 (f/5.6)`, `51/1 30/1 0/1 (51)`, `0/1 ( 0)`,
+  `ResolutionUnit: 1`. Now: `f/5.6`, `1/250 s`, `50 mm`, `ISO 400`,
+  `-0.67 EV`, aperture and shutter speed converted from their APEX values,
+  `LensSpecification: 24–70 mm f/2.8`, dates as `2026-09-20 14:32:11`,
+  `Orientation: Rotated 90° clockwise` and the meaning of every coded number
+  (`MeteringMode: Pattern`); a code libexif does not know stays a number. GPS
+  reads `51° 30′ 0″ N (51.5°)`, `35 m` (or `below sea level`), `13:32:11
+  UTC`, `123.4° (true north)`, speed in km/h, mph or knots. `…Ref` and unit
+  fields fold into the value they qualify (`XResolution: 300 dpi`); unset
+  values (a `0/1` resolution, a digital zoom of 0), strip and thumbnail
+  offsets are left out; the embedded thumbnail's fields are named
+  `Thumbnail …` instead of colliding with the image's. The EXIF tags are
+  formatted together because a value can depend on another field.
+  `TrimExifAnnotation` is gone; `SplitExifString` replaces it. Tests:
+  `Tests/PixelFXMetadataDecodeTest.cpp` gains the strings libvips 8.15
+  produces for a Canon JPEG, GPS above and below sea level, decimal minutes,
+  and malformed rationals.
+
+#### 2026-09-23 *0.9.39*
+- **`UltraCanvasListView::onContextMenu(row, event)`** - a right-button
+  press in the rows area, with the row under the pointer (-1 below the
+  rows) selected alone first, as every desktop does, so the handler's menu
+  acts on what the user pointed at. When set, the press is consumed; when
+  not, a right press is handled like a left one, as before. The usual
+  handler opens an `UltraCanvasMenu` of type `PopupMenu` at
+  `event.pointerWindow`; the ListView page shows it. First consumer is
+  UltraNetMonitor's process list.
+- **NetworkMonitor exports a snapshot as CSV.** `NetworkMonitor_ExportSummaryCsv`
+  writes the per-process roll-up, one row per process with its distinct
+  peers and hosts semicolon-joined; `NetworkMonitor_ExportConnectionsCsv`
+  writes the connections, one row each with the process behind it. Both in
+  the order given, RFC 4180 quoting, dot-decimal numbers, absent counters
+  as empty fields, never zero. The quoting and the UTC timestamp the store's
+  exports used move to `NetworkMonitorCsv.h`, shared by all four. Tested
+  from fixtures.
+
+#### 2026-09-23 *0.9.38*
+- **NetworkMonitor connection events.** `NetworkMonitorEvents.h`: a
+  connection reported as it opens, is accepted or closes, rather than
+  found in the next snapshot - the event-rate collection the proposal
+  asked for (§2.1, §5.2), so the connections shorter than a polling
+  interval are in the record. Same shape as the name sources: an
+  `IConnectionEventSource` implements it, `NetworkMonitor_RegisterEventSource`
+  runs it, every `NetworkConnectionEvent` goes to the listeners
+  (`NetworkMonitor_AddEventListener`) and into a bounded ring
+  (`NetworkMonitor_RecentEvents`). On its way through, the registry names
+  the peer from the name table and, for a source that reports no process,
+  attributes the event from a socket table it refreshes a few times a
+  second - in either orientation, so a tuple whose source is the remote
+  side becomes an *Accepted* on the listener's process - and remembers
+  the match, so the *Closed* that follows is attributed though the socket
+  is gone. `NetworkMonitorCapabilities::connectionEvents` is true while a
+  source runs.
+  - **The snapshot differ** (`NetworkMonitor_CreateSnapshotDiffEventSource`):
+    reads the socket table at an interval and reports what appeared and
+    what went, with the process and the counters the table carries. Runs
+    on every platform with a backend; misses connections shorter than its
+    interval, and says so.
+  - **nf_conntrack on Linux** (`NetworkMonitor_CreateSystemEventSource`,
+    `OS/Linux/UltraCanvasLinuxNetworkMonitorEvents.cpp`): the kernel's
+    connection tracker over `NETLINK_NETFILTER`, NEW and DESTROY, with the
+    bytes each direction moved when accounting is on. Needs
+    `CAP_NET_ADMIN` and a tracker that a firewall rule has activated; an
+    idle tracker is reported, never silently empty. The message parser
+    (`NetworkMonitorConntrack.h`) is pure and tested from captured bytes on
+    every platform; the source never adds a rule.
+  - **The kernel network ETW provider on Windows**
+    (`OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp`): connect,
+    accept and disconnect with the PID, and the sends and receives summed
+    per connection into the *Closed* event's counters - the per-connection
+    bytes the IP Helper backend cannot give. Elevated only; compiled on
+    CI, not yet exercised at run time. Null on macOS.
+  - **The store records events.** Schema version 3 (older files migrate in
+    place): a `connection_events` table, `NetworkMonitor_RecordConnectionEvent`
+    / `QueryConnectionEvents` / `ExportEventsCsv`, retention and purge
+    cover it, `StoreStats` counts it.
+  - Tests: the conntrack parser against a captured NEW and DESTROY, the
+    registry's ring, listener, naming and both-orientation attribution
+    against sockets the test opens, the differ reporting opened, accepted
+    and closed for a loopback connection attributed to the test's PID,
+    the platform source starting where it can, and the store's events.
+  - A registry never holds its lock while asking a source a question,
+    since a source may read the capabilities, which ask the registry.
+- **`UltraCanvasApplicationBase::RequestExitFromSignal()`** - the one call
+  a signal handler may make. `RequestExit()` logs and runs the
+  exit-request callback, neither of which is async-signal-safe, and the
+  applications' handlers called it (and then `std::exit`, which ran the
+  static destructors under live threads). The new call stores a lock-free
+  flag; `RunOnce()` turns it into `RequestExit()` on the main thread at
+  the next iteration, so `main` returns and the application's destructors
+  run in order. UltraNetMonitor uses it; the other applications' handlers
+  are unchanged and can adopt it the same way.
+#### 2026-09-23 *0.9.37*
+- **`UCEvent::ToString()` names the right event again.** The name table it
+  indexes by `UCEventType` carried three entries with no enum counterpart
+  (`KeyChar`, `Shortcut`, `WindowClosing`), so every event from `TextInput`
+  onwards printed as the name of an earlier one - a `WindowResize` logged as
+  `WindowCloseRequest`, a `Timer` as `Drop`. The three are gone, the table is
+  now a compile-time array with a `static_assert` that its length equals the
+  enum's, so the two cannot drift apart again without failing the build, and
+  an out-of-range value prints `OutOfRange` instead of reading past the end.
+- **`scripts/check_changelog.py` refuses a runaway version number.** The
+  guard required line 1 to be strictly above every other version in the file
+  and above `main`'s, and nothing more - so when a renumbering script took the
+  highest patch number across every minor in the file and wrote 0.9.120 over
+  a `main` on 0.9.32, the check passed and that number would have become the
+  released version. A new top entry must now be within ten of the release
+  before it (open pull requests each hold one number, so a small gap is
+  normal), and a minor or major bump must start near .0. Applied per file and,
+  with `--base`, against the base's version.
+- **`scripts/check_changelog.py --base` no longer misreports files `main`
+  changed during an uncommitted merge.** It decided "edited by this branch"
+  by comparing the working copy with the merge base's, so in the middle of a
+  merge of `main` every changelog `main` had released on since the fork
+  "differed" and was reported as still claiming `main`'s version - a false
+  alarm that vanished once the merge was committed, which the message did not
+  say. A file identical to `main`'s copy is now never this branch's edit.
 
 #### 2026-09-23 *0.9.35*
 - **DemoApp: the ListView page's multi-column table shows the sorting API**

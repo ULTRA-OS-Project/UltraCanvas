@@ -248,7 +248,10 @@ anywhere else, and never introduce a new literal copy of one:
   `python3 scripts/check_changelog.py --base origin/main` before pushing; CI
   runs it too. The check compares your entry with line 1 of `main`'s copy of
   the file, so it is only as current as your `origin/main` - an unfetched one
-  lets a stale number through.
+  lets a stale number through. It also refuses a number more than ten past
+  the release before it: open pull requests each hold one number, so a small
+  gap is normal, but 0.9.120 over a `main` on 0.9.32 once passed the
+  "strictly greater" rule and would have become the released version.
   GitHub's *Update branch* button cannot do the renumbering: it merges `main`
   into the branch and, when `main` has meanwhile released the number the
   branch chose, folds the two entries under the one header (or leaves a

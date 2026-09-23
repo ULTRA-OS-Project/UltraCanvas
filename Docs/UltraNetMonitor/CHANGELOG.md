@@ -1,3 +1,49 @@
+#### 2026-09-23 *0.8*
+- **Export.** A right click on the process list opens a menu with
+  *Export → App list…* and *Export → App list details…* (NetworkMonitor 0.6,
+  framework 0.9.39). Both write a CSV to the file chosen in the native
+  save dialog: the app list is one row per application as the list shows
+  it, in its current sort order, with the connection, established,
+  listening and peer counts, the distinct peer addresses and hosts, and the
+  byte totals where every connection had them; the details are one row per
+  connection, grouped by application in that order, with both endpoints,
+  the host and its source, the state and the counters. A dialog says how
+  many rows went where, or why the file could not be written.
+  - **Headless too.** `--list --csv <file>` and `--by-app --csv <file>`
+    write the same two files instead of printing.
+
+#### 2026-09-23 *0.7*
+- **Events.** Connections as they open and close, not only as the next
+  snapshot finds them (NetworkMonitor 0.5, framework 0.9.38): a new
+  *Events* tab lists every event the sources report, newest first, with
+  the time to the millisecond, whether the connection was opened here or
+  accepted from a peer, the application, both endpoints, the host, and on
+  a closed event the bytes it moved where the source counts them. *Show
+  recorded* switches the tab to what the store holds over the History
+  tab's range; *Clear* empties the live list.
+  - **Two sources.** The snapshot differ runs everywhere (`--no-diff`
+    turns it off, `--diff-interval <ms>` sets its pace, 250 ms by default)
+    and reports what appeared and what went between two reads of the
+    socket table - so it misses connections shorter than its interval,
+    and says so. The platform's own source does not: on Linux the
+    kernel's connection tracker (`nf_conntrack`), which needs root and a
+    firewall rule that has activated it; on Windows, run elevated, the
+    kernel's network events, which also bring the byte counters the
+    Windows socket table lacks. The subtitle names what is running.
+  - **Recorded.** While recording, every event goes into the store beside
+    the flows and the DNS observations; `--events-history` prints them
+    with the `--history` filters (`--csv` exports), `--store-stats` counts
+    them, and an older store gains the table on open.
+  - **Headless.** `--events` prints events as they happen until Ctrl-C or
+    `--seconds`; `--capabilities` lists the event sources.
+  - The store's directory is now created for its owner alone (`0700`) on
+    Linux and macOS; `%LOCALAPPDATA%` is per-user already.
+  - Ctrl-C in the window no longer exits from inside the signal handler,
+    which ran the static destructors while the worker and the sources'
+    threads were alive: the handler sets the framework's signal flag
+    (`RequestExitFromSignal`, framework 0.9.38) and the window shuts down
+    in order.
+
 #### 2026-09-22 *0.6*
 - **Names.** Connections carry the domain name behind the peer where a name
   source has seen one (NetworkMonitor 0.4, framework 0.9.21): a *Host*
