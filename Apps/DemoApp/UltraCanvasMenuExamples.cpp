@@ -93,11 +93,11 @@ namespace UltraCanvas {
         // UltraCanvasButton never routes a right-click to onClick: it hands it to
         // onContextMenu and activates only on left-click. So the context menu has
         // to be wired to onContextMenu, and the scolding popup to onClick.
-        contextMenuBtn->onContextMenu = [contextMenu, container](int windowX, int windowY) {
+        contextMenuBtn->onContextMenu = [contextMenu, container = container.get()](int windowX, int windowY) {
             contextMenu->OpenMenu(Point2Di(windowX, windowY), *container->GetWindow(), PopupElementSettings());
         };
 
-        contextMenuBtn->onClick = [contextWrongClickPopup, container]() {
+        contextMenuBtn->onClick = [contextWrongClickPopup, container = container.get()]() {
             auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
             if (ev.button == UCMouseButton::Left) {
                 container->GetWindow()->OpenPopup(ev.pointerWindow, *contextWrongClickPopup, PopupElementSettings());
@@ -229,7 +229,7 @@ namespace UltraCanvas {
             debugOutput << "Custom theme" << std::endl;
         }));
 
-        darkMenuBtn->onClick = [darkMenu, darkMenuBtn, container]() {
+        darkMenuBtn->onClick = [darkMenu, darkMenuBtn = darkMenuBtn.get(), container = container.get()]() {
             darkMenu->OpenMenu(Point2Di(darkMenuBtn->GetXInWindow(), darkMenuBtn->GetYInWindow() + darkMenuBtn->GetHeight() + 1),
                                *container->GetWindow(), PopupElementSettings());
         };
@@ -257,7 +257,7 @@ namespace UltraCanvas {
             debugOutput << "Tablet view" << std::endl;
         }));
 
-        flatMenuBtn->onClick = [flatMenu, flatMenuBtn, container]() {
+        flatMenuBtn->onClick = [flatMenu, flatMenuBtn = flatMenuBtn.get(), container = container.get()]() {
             flatMenu->OpenMenu(Point2Di(flatMenuBtn->GetXInWindow(), flatMenuBtn->GetYInWindow() + flatMenuBtn->GetHeight() + 1),
                                *container->GetWindow(), PopupElementSettings());
         };
@@ -339,7 +339,8 @@ namespace UltraCanvas {
             wrongClickPopup->AddChild(wrongClickText);
 
             // Set click handler: right-click opens the menu, left-click scolds.
-            itemLabel->onClick = [itemMenu, wrongClickPopup, itemLabel, container]() {
+            itemLabel->onClick = [itemMenu, wrongClickPopup, itemLabel = itemLabel.get(),
+                                  container = container.get()]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 if (ev.button == UCMouseButton::Right) {
                     itemMenu->OpenMenu(ev.pointerWindow, *container->GetWindow(), PopupElementSettings());

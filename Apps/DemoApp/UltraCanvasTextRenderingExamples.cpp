@@ -223,7 +223,7 @@ namespace UltraCanvas {
         // ===== EVENT HANDLERS =====
         auto labelsPtr = std::make_shared<std::vector<std::shared_ptr<UltraCanvasLabel>>>(sampleLabels);
 
-        aaDropdown->onSelectionChanged = [mainContainer](int index, const DropdownItem& item) {
+        aaDropdown->onSelectionChanged = [mainContainer = mainContainer.get()](int index, const DropdownItem& item) {
             cairo_antialias_t modes[] = {
                 CAIRO_ANTIALIAS_DEFAULT, CAIRO_ANTIALIAS_NONE, CAIRO_ANTIALIAS_GRAY,
                 CAIRO_ANTIALIAS_SUBPIXEL, CAIRO_ANTIALIAS_FAST, CAIRO_ANTIALIAS_GOOD,
@@ -233,7 +233,7 @@ namespace UltraCanvas {
             mainContainer->RequestRedraw();
         };
 
-        hsDropdown->onSelectionChanged = [mainContainer](int index, const DropdownItem& item) {
+        hsDropdown->onSelectionChanged = [mainContainer = mainContainer.get()](int index, const DropdownItem& item) {
             cairo_hint_style_t styles[] = {
                 CAIRO_HINT_STYLE_DEFAULT, CAIRO_HINT_STYLE_NONE, CAIRO_HINT_STYLE_SLIGHT,
                 CAIRO_HINT_STYLE_MEDIUM, CAIRO_HINT_STYLE_FULL
@@ -242,7 +242,7 @@ namespace UltraCanvas {
             mainContainer->RequestRedraw();
         };
 
-        hmDropdown->onSelectionChanged = [mainContainer](int index, const DropdownItem& item) {
+        hmDropdown->onSelectionChanged = [mainContainer = mainContainer.get()](int index, const DropdownItem& item) {
             cairo_hint_metrics_t metrics[] = {
                 CAIRO_HINT_METRICS_DEFAULT, CAIRO_HINT_METRICS_OFF, CAIRO_HINT_METRICS_ON
             };

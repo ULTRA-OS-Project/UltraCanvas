@@ -7,6 +7,158 @@
   now a compile-time array with a `static_assert` that its length equals the
   enum's, so the two cannot drift apart again without failing the build, and
   an out-of-range value prints `OutOfRange` instead of reading past the end.
+#### 2026-09-23 *0.9.32*
+- **The demo leaked its whole widget tree, and every callback in it.** A
+  widget owns its callbacks, so a callback that captures a `shared_ptr` to
+  that widget — or to any container above it — closes a cycle that neither
+  end ever escapes: the refcount never reaches zero, and the subtree, its
+  images and its render buffers stay allocated for the life of the process.
+  53 callbacks across 25 DemoApp files did exactly that (`[btn, ...]` on
+  `btn->onClick`, and six that captured the container they had just been
+  added to). Every one now captures the back-reference raw
+  (`[btn = btn.get(), ...]`), which is valid for precisely as long as the
+  callback can run, because the thing holding the callback is the thing
+  being pointed at. Forward captures — a popup the lambda keeps alive, a
+  sibling label, the `make_shared` state a toggle button counts in — are
+  untouched: those are ownership, not a cycle.
+  - The DemoApp is the framework's worked example, so the pattern was being
+    copied outwards; `UltraCanvasDemo.h` now states the rule where the next
+    author will read it.
+  - `BuildScheduleSummary` (PERT examples) took its chart by
+    `const shared_ptr&` and had one caller, a callback the chart owns. It
+    takes a raw pointer now, for the same reason.
+  - One capture in the table demo was of a container the lambda never used,
+    in a body that is entirely commented out. It captures nothing now.
+  - **`scripts/check_callback_cycles.py` now finds these**, because a sweep
+    that is not enforced comes back. It reads each function's `AddChild`
+    graph, so it catches a callback that captures a container two levels
+    above it, not just one that captures itself — and it reports a capture
+    only when that name is *demonstrably* a `shared_ptr` in scope
+    (`make_shared`, a declared `shared_ptr`, or a factory whose declared
+    return type is one, harvested from the headers). The first version
+    matched names alone and called three raw pointers in Texter and
+    UltraFiler leaks: `auto* editorPtr = editor.get()` and a `T* target`
+    parameter own nothing. A name is not a type, so an unresolved one is
+    left alone rather than guessed at.
+    - Run against this release's parent it reports all 53, and against the
+      tree as it now stands, none. `--strict` makes it a gate; a genuine
+      exception opts out with `// callback-cycle-exempt: <why>`, as the UI
+      reuse check does. 4.6 s over 1168 files.
+- **Matter attribute writes read their numbers locale-independently.**
+  `EncodeTextValue` turned the facade's text into a TLV value with
+  `std::stoll` / `std::stod`, and `std::stod` consults `LC_NUMERIC` — which
+  the Linux backend sets from the environment for XIM. On a comma-decimal
+  desktop (de_DE, fr_FR, ru_RU, pt_BR) `"1.5"` stopped at the point and went
+  to the device as **1**, and `"-0.25"` as **-0**: a silently different value
+  than the caller asked to write, which is the failure mode the function's
+  own comment says cannot happen. Reproduced under `de_DE.UTF-8` before the
+  change and verified after it. Integers now go through `std::from_chars`
+  and doubles through `ParseFloatClassic`, per the rule in `AGENTS.md`.
+  - Both of the old calls also **threw** on input the character guards let
+    through — `std::stoll("--")`, or a number too large for `int64_t` —
+    unwinding out of the Matter SDK's write path. Neither replacement
+    throws; text that is not a number after all falls through to the string
+    encoding, where the device's schema check reports it as a failed write.
+  - The float parse now has to consume the whole string, so `"1e"` is a
+    string rather than the 1 that `std::stod` silently made of it.
+- **A mistyped Matter command parameter no longer throws, truncates or
+  divides by zero.** `SendCommand` read its ten numeric parameters with
+  `std::stoi`, and there is not one `catch` in the file: `endpoint=on` threw
+  `std::invalid_argument` straight out of the call, and a long run of digits
+  threw `std::out_of_range`. Where it did not throw it lied — the result was
+  cast into the field's width unchecked, so `level=999` reached the device as
+  **231** — and `colorTemp=0` reached `1000000 / kelvin`, an integer division
+  by zero. This is not behind `ULTRACANVAS_WITH_MATTER`: it is in every
+  build, reachable from `SendGroupCommand` too, which forwards the same
+  parameters to every member of a group.
+  - All ten now go through one `ReadIntParam`, which reads with
+    `std::from_chars` (no throw, no locale) and checks the value against the
+    range its field can actually carry — level and saturation 0..254,
+    brightness and position percent, hue 0..360, endpoint and transition the
+    uint16 range, thermostat temperature the int16 one. A parameter that is
+    absent still leaves the caller's default; a bad one is reported through
+    `ReportError(-302, …)` with the name, the text and the range, and the
+    command is refused rather than half-executed.
+  - `colorTemp` is accepted as 16..1000000 K, which is exactly the range
+    whose mireds conversion (`1000000 / K`) lands in the uint16 field the
+    device is given — and which cannot be zero. `mireds` still wins when
+    both are supplied, and `brightness` still wins over `level`, as before.
+  - **Stricter than `std::stoi` in two places, deliberately**: `" 3"` and
+    `"3x"` were accepted before (it skips leading space and stops at the
+    first non-digit) and are refused now. A device command is not the place
+    to guess what half a number meant.
+
+#### 2026-09-23 *0.9.31*
+- **Seven ownership defects found by auditing every raw `new` in the tree.**
+  A census of the 45 hand-written allocations outside vendored code (the rest
+  of the framework allocates through `make_shared` / `make_unique`) turned up
+  three leaks, one growing side table and three lifetime bugs. All are fixed
+  here; the other 38 sites were already correct and are unchanged.
+  - **`ZWaveProtocol::GetScenes` leaked its array on every call.** It allocated
+    `new uint8_t[numScenes]` and then passed `&sceneIds` to OpenZWave's
+    `GetAllScenes`, which allocates the array itself and assigns it through the
+    out-parameter — that is why its contract asks the caller to `delete[]` the
+    result, which the function already did. The buffer allocated up front was
+    overwritten before anything read it. It now starts as `nullptr` and takes
+    both the array and the count from `GetAllScenes`, which also drops the
+    redundant `GetNumScenes` call.
+  - **`UltraNet_TlsWrap` no longer keeps a second table of TLS contexts.**
+    `g_ctxByHandle` was written on every wrap and never erased: it grew by an
+    entry per TLS connection for the life of the process, and each entry
+    outlived the `Ctx` it pointed at, so `UltraNet_TlsHandshake` or
+    `UltraNet_TlsGetInfo` on a closed handle dereferenced freed memory instead
+    of reporting `InvalidHandle`. The socket entry already owns that pointer
+    and clears it in `UltraNet_SocketClose`, so both entry points now ask it
+    through the new `ultranet_internal::GetTlsCtx` hook. The table, its mutex
+    and the two includes they needed are gone.
+  - **A synchronous DNS timeout hung the calling thread forever.** On expiry
+    `Resolve` called `ares_cancel` while still holding the lock its
+    `wait_for` had taken; `ares_cancel` answers the query it cancels on the
+    spot, on the calling thread, so `OnHostCallback` re-entered that same
+    mutex and the thread deadlocked against itself — with c-ares's worker
+    stuck behind the channel lock `ares_cancel` held. Every caller of
+    `UltraNet_DnsResolve` whose lookup did not beat the deadline stopped
+    there. A one-millisecond deadline against an unresolvable name now
+    returns `Timeout` eight times out of eight under ASan/UBSan, where the
+    old code did not reach its second query.
+  - **A timeout no longer takes every other DNS query down with it, or
+    leaves c-ares writing into a dead stack frame.** `ares_cancel` cancels
+    every query in flight on the shared channel, not just the one that timed
+    out, and there is no per-query cancel to replace it with. So the query is
+    abandoned instead, which needs the answer to have somewhere to land: the
+    `Pending` was a local of `Resolve`, and c-ares's worker wrote into it
+    after that frame was gone. It is a `shared_ptr` now — the caller drops
+    its reference when it stops waiting, the query holds one until its
+    callback answers, and the last one out frees it. This also retires the
+    hand-written `delete p` on the async path, so a throwing user callback no
+    longer leaks the state.
+  - **The UltraMessage accept path closed the same descriptor twice.** When
+    `MakeWakePipe` failed, `Listener::Accept` closed the accepted fd and then
+    returned, letting `~Connection` shut down and close it a second time — by
+    which point another thread may have been handed that number. The
+    `Connection` owns the descriptor from the assignment onwards, so the
+    explicit close is gone, matching what `ConnectToBus` already did.
+  - **`UltraCanvasMathParser` and `UltraCanvasMathLayout` are no longer
+    copyable.** Both hold a raw `Impl*` and `delete` it in their destructors
+    with no copy operations declared, so any copy would have double-freed. No
+    caller copies one today; the copy constructor and assignment are now
+    `= delete` rather than waiting for one to.
+  - **`UltraNetTests` now covers the deadline itself** (`test_dns_timeout.cpp`,
+    three cases): that a one-millisecond lookup comes back at all, that the
+    query it abandons leaves the shared channel usable for the next one, and
+    that every asynchronous query answers its callback. None of it calls
+    `UltraNet_DnsResolve` directly — each resolve runs on a thread of its own
+    under a watchdog, because the failure being guarded against is a hang,
+    and a test that hangs stops a CI run instead of failing it. When the
+    watchdog fires the suite says so and exits non-zero rather than carrying
+    on: the c-ares channel is a static whose destructor would block on the
+    same lock at exit. Against the code as it stood before this release the
+    first case fails in thirty seconds; against the code in it, all three
+    pass in well under a second.
+  - **Two demo buttons leaked their captured state.** The toggle and counter
+    examples captured `new bool(false)` / `new int(0)` raw pointers in their
+    `onClick` lambdas and never freed them. They are `make_shared` now — the
+    DemoApp is the framework's worked example, so a leak in it propagates.
 
 #### 2026-09-23 *0.9.30*
 - **UltraCalendar proposal: the OAuth app registration is UltraNet's**

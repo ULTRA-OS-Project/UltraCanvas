@@ -1187,10 +1187,13 @@ std::vector<ZWaveScene> ZWaveProtocol::GetScenes() const {
     std::vector<ZWaveScene> scenes;
     
 #ifdef ULTRACANVAS_WITH_ZWAVE
-    uint8_t numScenes = OpenZWave::Manager::Get()->GetNumScenes();
-    uint8_t* sceneIds = new uint8_t[numScenes];
-    OpenZWave::Manager::Get()->GetAllScenes(&sceneIds);
-    
+    // GetAllScenes allocates the array itself and hands it back through the
+    // out-parameter — which is why its contract asks the caller to delete[]
+    // it. Passing a buffer of our own would simply be overwritten and lost.
+    uint8_t* sceneIds = nullptr;
+    uint8_t numScenes = OpenZWave::Manager::Get()->GetAllScenes(&sceneIds);
+    if (sceneIds == nullptr) return scenes;
+
     for (uint8_t i = 0; i < numScenes; i++) {
         ZWaveScene scene;
         scene.SceneId = sceneIds[i];

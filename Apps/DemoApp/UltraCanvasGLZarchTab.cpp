@@ -591,7 +591,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
 
     auto runBtn = std::make_shared<UltraCanvasButton>("ZarchRunBtn", 10, 36, 130, 30);
     runBtn->SetText("Pause");
-    runBtn->onClick = [runBtn, state]() {
+    runBtn->onClick = [runBtn = runBtn.get(), state]() {
         state->running = !state->running;
         runBtn->SetText(state->running ? "Pause" : "Resume");
     };
