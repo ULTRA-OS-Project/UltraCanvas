@@ -170,6 +170,24 @@ std::string VonCp1252(const std::string& roh) {
     return out;
 }
 
+// Split a decoded file into lines, tolerating both CRLF and LF. Shared by the
+// two importers so their line numbers - which end up in error messages - are
+// counted the same way.
+std::vector<std::string> ZerlegeZeilen(const std::string& inhalt) {
+    std::vector<std::string> zeilen;
+    size_t start = 0;
+    while (start <= inhalt.size()) {
+        size_t ende = inhalt.find('\n', start);
+        if (ende == std::string::npos) ende = inhalt.size();
+        std::string zeile = inhalt.substr(start, ende - start);
+        if (!zeile.empty() && zeile.back() == '\r') zeile.pop_back();
+        zeilen.push_back(zeile);
+        if (ende == inhalt.size()) break;
+        start = ende + 1;
+    }
+    return zeilen;
+}
+
 } // namespace
 
 // ===== ENCODING =====
@@ -432,10 +450,39 @@ DatevErgebnis SchreibeBuchungsstapel(const Mandant& mandant,
     const int beleg1Spalte     = definition.Index("Belegfeld 1");
     const int beleg2Spalte     = definition.Index("Belegfeld 2");
     const int textSpalte       = definition.Index("Buchungstext");
-    const int kost1Spalte      = definition.Index("KOST1 - Kostenstelle");
-    const int kost2Spalte      = definition.Index("KOST2 - Kostenstelle");
+    const int kost1Spalte      = definition.Index("KOST1 – Kostenstelle");
+    const int kost2Spalte      = definition.Index("KOST2 – Kostenstelle");
     const int festSpalte       = definition.Index("Festschreibung");
     const int leistungSpalte   = definition.Index("Leistungsdatum");
+
+    // A column the definition does not contain silently drops its value: the
+    // row is written, DATEV accepts it, and the Kostenstelle or the
+    // Leistungsdatum is simply gone. That is how KOST1/KOST2 were lost for
+    // months - the definition spelled them with a hyphen where DATEV uses a
+    // dash, `Index` returned -1, and nothing said so. So every optional column
+    // that cannot be found is named here.
+    {
+        const std::pair<const char*, int> optional[] = {
+            {"WKZ Umsatz",           wkzSpalte},
+            {"BU-Schlüssel",         buSpalte},
+            {"Belegdatum",           belegdatumSpalte},
+            {"Belegfeld 1",          beleg1Spalte},
+            {"Belegfeld 2",          beleg2Spalte},
+            {"Buchungstext",         textSpalte},
+            {"KOST1 – Kostenstelle", kost1Spalte},
+            {"KOST2 – Kostenstelle", kost2Spalte},
+            {"Festschreibung",       festSpalte},
+            {"Leistungsdatum",       leistungSpalte},
+        };
+        for (const std::pair<const char*, int>& spalte : optional) {
+            if (spalte.second >= 0) continue;
+            ergebnis.warnungen.push_back(
+                std::string("Die Spaltendefinition kennt keine Spalte \"") +
+                spalte.first + "\"; dieser Wert fehlt in der Datei. Bitte "
+                "data/DATEV-Buchungsstapel-v700.csv mit \"ultrafibu "
+                "datev-pruefen\" gegen eine echte DATEV-Datei prüfen.");
+        }
+    }
 
     std::vector<std::vector<std::string>> zeilen;
     bool alleFestgeschrieben = true;
@@ -653,7 +700,8 @@ std::string Trimme(const std::string& text) {
 DatevImportBericht LeseBuchungsstapel(
         const std::string& dateipfad, const Mandant& mandant,
         const Geschaeftsjahr& jahr,
-        const std::vector<Steuerschluessel>& steuerschluessel) {
+        const std::vector<Steuerschluessel>& steuerschluessel,
+        const std::vector<Konto>& konten) {
     DatevImportBericht bericht;
 
     std::FILE* datei = std::fopen(dateipfad.c_str(), "rb");
@@ -686,17 +734,7 @@ DatevImportBericht LeseBuchungsstapel(
 
     // Split into lines once; a Buchungsstapel is small enough that this is
     // simpler than a streaming parser and the line numbers stay honest.
-    std::vector<std::string> zeilen;
-    size_t start = 0;
-    while (start <= inhalt.size()) {
-        size_t ende = inhalt.find('\n', start);
-        if (ende == std::string::npos) ende = inhalt.size();
-        std::string zeile = inhalt.substr(start, ende - start);
-        if (!zeile.empty() && zeile.back() == '\r') zeile.pop_back();
-        zeilen.push_back(zeile);
-        if (ende == inhalt.size()) break;
-        start = ende + 1;
-    }
+    const std::vector<std::string> zeilen = ZerlegeZeilen(inhalt);
 
     if (zeilen.size() < 2) {
         bericht.fehler = "Die Datei hat weniger als zwei Zeilen - eine DATEV-Datei "
@@ -784,17 +822,64 @@ DatevImportBericht LeseBuchungsstapel(
     const int iBeleg1     = spalteIndex("Belegfeld 1");
     const int iBeleg2     = spalteIndex("Belegfeld 2");
     const int iText       = spalteIndex("Buchungstext");
-    const int iKost1      = spalteIndex("KOST1 - Kostenstelle");
-    const int iKost2      = spalteIndex("KOST2 - Kostenstelle");
+    const int iKost1      = spalteIndex("KOST1 – Kostenstelle");
+    const int iKost2      = spalteIndex("KOST2 – Kostenstelle");
     const int iFest       = spalteIndex("Festschreibung");
+
+    // The same silence as on the export side: a column this file spells
+    // differently is simply not read, and the posting arrives without its
+    // Kostenstelle with nothing said. Naming it turns that into one line.
+    {
+        const std::pair<const char*, int> optional[] = {
+            {"Belegfeld 1",          iBeleg1},
+            {"Belegfeld 2",          iBeleg2},
+            {"Buchungstext",         iText},
+            {"KOST1 – Kostenstelle", iKost1},
+            {"KOST2 – Kostenstelle", iKost2},
+        };
+        for (const std::pair<const char*, int>& spalte : optional) {
+            if (spalte.second >= 0) continue;
+            bericht.warnungen.push_back(
+                std::string("Die Datei hat keine Spalte \"") + spalte.first +
+                "\"; dieser Wert wird nicht übernommen.");
+        }
+    }
 
     if (iBelegdatum < 0)
         bericht.warnungen.push_back(
             "Die Datei hat keine Spalte \"Belegdatum\"; alle Buchungen werden auf "
             "den Beginn des Zeitraums datiert.");
 
+    // ---- Automatikkonten ----
+    //
+    // A DATEV row on an Automatikkonto carries no BU-Schlüssel: the account
+    // supplies the rate. 8400 with an empty BU column is a 19 % revenue
+    // posting, and reading only the BU column imports it gross - the revenue
+    // account too high by the tax, the tax account empty, and nothing in the
+    // file to say so.
+    //
+    // Only revenue and expense accounts qualify. 1576 names `VSt19` because it
+    // *is* the input-tax account; treating a posting onto it as taxable would
+    // tax the tax.
+    std::vector<std::pair<std::string, std::string>> automatikKonten;
+    for (const Konto& k : konten) {
+        if (k.steuerschluessel.empty()) continue;
+        if (k.typ != KontoTyp::Ertrag && k.typ != KontoTyp::Aufwand) continue;
+        automatikKonten.emplace_back(k.nummer, k.steuerschluessel);
+    }
+    auto automatikFuer = [&automatikKonten](const std::string& nummer) -> std::string {
+        for (const std::pair<std::string, std::string>& a : automatikKonten)
+            if (a.first == nummer) return a.second;
+        return std::string();
+    };
+
     // ---- the rows ----
     int ohneBuZuordnung = 0;
+    // Accounts whose automatic actually applied, and rows where both sides
+    // claimed one. Both are listed rather than counted: the first explains a
+    // figure the file does not contain, the second is a row left unsplit.
+    std::vector<std::string> automatikVerwendet;
+    std::vector<std::string> automatikMehrdeutig;
     // Which DATEV keys could not be mapped. Counting them is not enough: the
     // user has to fill in `datev_bu` for exactly these, and looking them up
     // means reading the whole file otherwise.
@@ -910,6 +995,47 @@ DatevImportBericht LeseBuchungsstapel(
                               eintrag.buSchluessel) == unbekannteBu.end())
                     unbekannteBu.push_back(eintrag.buSchluessel);
             }
+        } else {
+            // No BU-Schlüssel. The account may still carry one of its own -
+            // this is the Automatikkonto, and it is the ordinary way a revenue
+            // row is written, not an exception.
+            const std::string keyKonto      = automatikFuer(konto);
+            const std::string keyGegenkonto = automatikFuer(gegenkonto);
+            if (!keyKonto.empty() && !keyGegenkonto.empty()) {
+                // Both sides claim an automatic. DATEV would not write such a
+                // row, and picking one would put a figure nobody can check in
+                // a tax account. Imported unsplit, and said out loud.
+                const std::string paar = konto + "/" + gegenkonto;
+                if (std::find(automatikMehrdeutig.begin(), automatikMehrdeutig.end(),
+                              paar) == automatikMehrdeutig.end())
+                    automatikMehrdeutig.push_back(paar);
+            } else if (!keyKonto.empty() || !keyGegenkonto.empty()) {
+                const bool aufKonto = !keyKonto.empty();
+                const std::string& name = aufKonto ? keyKonto : keyGegenkonto;
+                for (const Steuerschluessel& key : steuerschluessel) {
+                    if (key.schluessel != name) continue;
+                    if (!key.GueltigAm(belegdatum)) continue;
+                    b.steuerschluessel = key.schluessel;
+                    b.satzPromille     = key.satzPromille;
+                    if (key.satzPromille != 0 && !key.kontoSteuer.empty()) {
+                        // `steuerSeite` names the net account, so it is the
+                        // side the automatic was found on - not always the
+                        // Gegenkonto, as the BU path can assume.
+                        b.steuerSeite = aufKonto ? SteuerSeite::Konto
+                                                 : SteuerSeite::Gegenkonto;
+                        b.steuer      = b.umsatz.TaxInGross(key.satzPromille);
+                        b.netto       = b.umsatz - b.steuer;
+                        b.steuerkonto = key.kontoSteuer;
+                    }
+                    ++bericht.mitAutomatik;
+                    const std::string wo = (aufKonto ? konto : gegenkonto) + " (" +
+                                           key.schluessel + ")";
+                    if (std::find(automatikVerwendet.begin(), automatikVerwendet.end(),
+                                  wo) == automatikVerwendet.end())
+                        automatikVerwendet.push_back(wo);
+                    break;
+                }
+            }
         }
 
         if (iFest >= 0 && feld(iFest) == "1")
@@ -934,6 +1060,33 @@ DatevImportBericht LeseBuchungsstapel(
             "übernommen; der BU-Schlüssel bleibt erhalten, die Zuordnung kann "
             "also nachgetragen und die Datei erneut eingelesen werden.");
     }
+    if (!automatikVerwendet.empty()) {
+        std::string liste;
+        for (const std::string& a : automatikVerwendet) {
+            if (!liste.empty()) liste += ", ";
+            liste += a;
+        }
+        bericht.warnungen.push_back(
+            Zahl(bericht.mitAutomatik) + " Buchung(en) haben ihren "
+            "Steuerschlüssel nicht aus der Datei, sondern vom Konto: " + liste +
+            ". Das ist die DATEV-Automatik - eine Zeile auf einem solchen Konto "
+            "traegt keinen BU-Schlüssel, weil das Konto den Satz vorgibt. Die "
+            "Zuordnung steht in der Spalte steuerschluessel des Kontenrahmens "
+            "und laesst sich dort pruefen.");
+    }
+    if (!automatikMehrdeutig.empty()) {
+        std::string liste;
+        for (const std::string& a : automatikMehrdeutig) {
+            if (!liste.empty()) liste += ", ";
+            liste += a;
+        }
+        bericht.warnungen.push_back(
+            "Bei " + Zahl(static_cast<int>(automatikMehrdeutig.size())) +
+            " Kontenpaar(en) tragen beide Seiten eine Automatik: " + liste +
+            ". Welche gemeint war, ist der Zeile nicht zu entnehmen; sie wird "
+            "ohne Steueraufteilung uebernommen, damit keine erfundene Zahl auf "
+            "einem Steuerkonto landet.");
+    }
     if (bericht.uebernommen > 0 && bericht.mitSteuer == 0) {
         // Every posting arrived without a tax split. On a stack that really is
         // tax-free that is right; on one that is not, the revenue accounts now
@@ -942,8 +1095,11 @@ DatevImportBericht LeseBuchungsstapel(
         bericht.warnungen.push_back(
             "Keine einzige Buchung hat eine Steueraufteilung bekommen. Die "
             "Beträge stehen damit brutto auf den Erlös- und Aufwandskonten und "
-            "die Steuerkonten bleiben leer. Ursache ist fast immer die noch "
-            "leere Spalte datev_bu in data/Steuerschluessel.csv.");
+            "die Steuerkonten bleiben leer. Zwei Ursachen kommen in Frage: die "
+            "noch leere Spalte datev_bu in data/Steuerschluessel.csv (fuer "
+            "Zeilen mit BU-Schlüssel) und ein Kontenrahmen, in dem die "
+            "benutzten Erlös- und Aufwandskonten keinen Steuerschlüssel tragen "
+            "oder ganz fehlen (fuer Zeilen ohne).");
     }
     if (bericht.festgeschrieben) {
         bericht.warnungen.push_back(
@@ -962,6 +1118,219 @@ DatevImportBericht LeseBuchungsstapel(
     if (!bericht.ok && bericht.fehler.empty())
         bericht.fehler = "Die Datei enthält keine lesbare Buchung.";
     return bericht;
+}
+
+// ===== KONTENBESCHRIFTUNGEN (Format-Kategorie 20) =====
+
+bool KontoTypAusNummer(const std::string& nummer, const std::string& skr,
+                       KontoTyp& out) {
+    if (nummer.empty() || nummer[0] < '0' || nummer[0] > '9') return false;
+    const char erste = nummer[0];
+    // The same digit means different things in the two charts: SKR03 is
+    // ordered by process, SKR04 by the closing balance sheet. Getting this
+    // backwards would classify every revenue account as an expense, so the
+    // chart has to be known - guessing one table for both is not an option.
+    if (skr == "SKR04") {
+        switch (erste) {
+            case '0': out = KontoTyp::Aktiv;        return true;  // Anlagevermögen
+            case '1': out = KontoTyp::Aktiv;        return true;  // Umlaufvermögen
+            case '2': out = KontoTyp::Eigenkapital; return true;
+            case '3': out = KontoTyp::Passiv;       return true;  // Fremdkapital
+            case '4': out = KontoTyp::Ertrag;       return true;
+            case '5': case '6': case '7':
+                      out = KontoTyp::Aufwand;      return true;
+            default:  return false;                               // 8, 9: statistisch/Vortrag
+        }
+    }
+    if (skr == "SKR03") {
+        switch (erste) {
+            case '0': out = KontoTyp::Aktiv;        return true;  // Anlagen und Kapital
+            case '1': out = KontoTyp::Aktiv;        return true;  // Finanzkonten
+            case '3': case '4':
+                      out = KontoTyp::Aufwand;      return true;  // Wareneingang, Aufwand
+            case '8': out = KontoTyp::Ertrag;       return true;
+            default:  return false;                               // 2, 5-7, 9
+        }
+    }
+    return false;
+}
+
+KontenImportBericht LeseKontenbeschriftungen(const std::string& dateipfad,
+                                             const DatevDefinition& definition) {
+    (void)definition;   // the file's own column line decides, see below
+    KontenImportBericht bericht;
+
+    std::FILE* datei = std::fopen(dateipfad.c_str(), "rb");
+    if (datei == nullptr) {
+        bericht.fehler = "Die Datei \"" + dateipfad + "\" ist nicht lesbar.";
+        return bericht;
+    }
+    std::string roh;
+    char puffer[8192];
+    size_t gelesen = 0;
+    while ((gelesen = std::fread(puffer, 1, sizeof(puffer), datei)) > 0)
+        roh.append(puffer, gelesen);
+    std::fclose(datei);
+    if (roh.empty()) {
+        bericht.fehler = "Die Datei \"" + dateipfad + "\" ist leer.";
+        return bericht;
+    }
+
+    std::vector<uint8_t> digest;
+    if (UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, roh.data(), roh.size(), digest))
+        bericht.dateiHash = UltraCrypt_ToHex(digest);
+
+    const std::string inhalt = VonCp1252(roh);
+    const std::vector<std::string> zeilen = ZerlegeZeilen(inhalt);
+    if (zeilen.size() < 3) {
+        bericht.fehler = "Die Datei hat weniger als drei Zeilen - eine "
+                         "DATEV-Datei besteht aus Kopfzeile, Spaltenzeile und "
+                         "Daten.";
+        return bericht;
+    }
+
+    const std::vector<std::string> kopf = ZerlegeCsvZeile(zeilen[0]);
+    auto kopfFeld = [&](size_t i) -> std::string {
+        return i < kopf.size() ? Trimme(kopf[i]) : std::string();
+    };
+    // The same header positions the Buchungsstapel import uses - the preamble
+    // is one layout for every category, so these must not drift apart.
+    bericht.kennzeichen     = kopfFeld(0);
+    bericht.kategorie       = std::atoi(kopfFeld(2).c_str());
+    bericht.beraternummer   = kopfFeld(10);
+    bericht.mandantennummer = kopfFeld(11);
+    bericht.bezeichnung     = kopfFeld(16);
+
+    if (bericht.kennzeichen != "EXTF" && bericht.kennzeichen != "DTVF") {
+        bericht.fehler = "Die erste Spalte der Kopfzeile ist \"" +
+                         bericht.kennzeichen + "\" und nicht EXTF oder DTVF - "
+                         "das ist keine DATEV-Datei.";
+        return bericht;
+    }
+    if (bericht.kategorie != 20) {
+        bericht.fehler = "Die Datei ist Format-Kategorie " +
+                         Zahl(bericht.kategorie) +
+                         ", eingelesen werden kann hier nur 20 "
+                         "(Kontenbeschriftungen). Ein Buchungsstapel ist "
+                         "Kategorie 21 und gehört zu \"datev-import\".";
+        return bericht;
+    }
+
+    // The file's own column line decides where the values are - the same rule
+    // as the Buchungsstapel import, and the reason the unverified definition
+    // in data/ does not matter here.
+    const std::vector<std::string> spalten = ZerlegeCsvZeile(zeilen[1]);
+    auto spalteIndex = [&](const std::string& name) -> int {
+        for (size_t i = 0; i < spalten.size(); ++i)
+            if (Trimme(spalten[i]) == name) return static_cast<int>(i);
+        return -1;
+    };
+    const int iKonto   = spalteIndex("Konto");
+    const int iText    = spalteIndex("Kontenbeschriftung");
+    const int iSprache = spalteIndex("Sprach-ID");
+    if (iKonto < 0 || iText < 0) {
+        bericht.fehler =
+            "In der Spaltenzeile fehlen \"Konto\" oder "
+            "\"Kontenbeschriftung\". Gefunden wurden " +
+            Zahl(static_cast<int64_t>(spalten.size())) + " Spalten.";
+        return bericht;
+    }
+    if (iSprache < 0)
+        bericht.warnungen.push_back(
+            "Die Datei hat keine Spalte \"Sprach-ID\". Alle Zeilen werden als "
+            "deutsche Beschriftung gelesen; enthält die Datei mehrere Sprachen, "
+            "gewinnt die zuletzt gelesene.");
+
+    int fremdsprachig = 0;
+    for (size_t nr = 2; nr < zeilen.size(); ++nr) {
+        if (Trimme(zeilen[nr]).empty()) continue;
+        ++bericht.gelesen;
+        const int zeilenNummer = static_cast<int>(nr) + 1;
+        const std::vector<std::string> felder = ZerlegeCsvZeile(zeilen[nr]);
+        auto feld = [&](int index) -> std::string {
+            return (index >= 0 && index < static_cast<int>(felder.size()))
+                       ? Trimme(felder[static_cast<size_t>(index)]) : std::string();
+        };
+
+        // Another language's label for the same account. Skipping it is not
+        // cosmetic: taking it would make the stored name depend on row order.
+        if (iSprache >= 0) {
+            const std::string sprache = feld(iSprache);
+            if (!sprache.empty() && sprache != "de-DE" && sprache != "de") {
+                ++fremdsprachig;
+                continue;
+            }
+        }
+
+        const std::string nummer = feld(iKonto);
+        const std::string name   = feld(iText);
+        if (nummer.empty()) {
+            bericht.fehlerZeilen.push_back(
+                "Zeile " + Zahl(zeilenNummer) + ": ohne Kontonummer.");
+            ++bericht.uebersprungen;
+            continue;
+        }
+        if (name.empty()) {
+            bericht.fehlerZeilen.push_back(
+                "Zeile " + Zahl(zeilenNummer) + ": Konto " + nummer +
+                " hat keine Beschriftung.");
+            ++bericht.uebersprungen;
+            continue;
+        }
+
+        Konto konto;
+        konto.nummer      = nummer;
+        konto.bezeichnung = name;
+        bericht.konten.push_back(std::move(konto));
+        ++bericht.uebernommen;
+    }
+
+    if (fremdsprachig > 0)
+        bericht.warnungen.push_back(
+            Zahl(fremdsprachig) + " Zeile(n) tragen eine andere Sprach-ID als "
+            "de-DE und wurden übergangen - übernommen wird die deutsche "
+            "Beschriftung.");
+
+    bericht.ok = bericht.uebernommen > 0;
+    if (!bericht.ok && bericht.fehler.empty())
+        bericht.fehler = "Die Datei enthält keine lesbare Kontenbeschriftung.";
+    return bericht;
+}
+
+std::vector<Konto> FuegeKontenZusammen(const std::vector<Konto>& vorhanden,
+                                       const std::vector<Konto>& ausDatei,
+                                       const std::string& skr,
+                                       int& outNeu, int& outGeaendert) {
+    outNeu = 0;
+    outGeaendert = 0;
+    std::vector<Konto> ergebnis;
+    for (const Konto& neu : ausDatei) {
+        const Konto* alt = nullptr;
+        for (const Konto& k : vorhanden)
+            if (k.nummer == neu.nummer) { alt = &k; break; }
+
+        if (alt != nullptr) {
+            // Take the name and nothing else. SaveKonto writes every column,
+            // so carrying the old values across is what stops an import of
+            // labels from wiping the Automatik tax keys.
+            if (alt->bezeichnung == neu.bezeichnung) continue;   // nothing to write
+            Konto zusammen = *alt;
+            zusammen.bezeichnung = neu.bezeichnung;
+            ergebnis.push_back(std::move(zusammen));
+            ++outGeaendert;
+            continue;
+        }
+
+        Konto angelegt = neu;
+        angelegt.skr = skr;
+        KontoTyp typ = KontoTyp::Aufwand;
+        if (KontoTypAusNummer(angelegt.nummer, skr, typ)) angelegt.typ = typ;
+        // steuerschluessel stays empty on purpose: this format does not carry
+        // one, and a key here would drive a tax split.
+        ergebnis.push_back(std::move(angelegt));
+        ++outNeu;
+    }
+    return ergebnis;
 }
 
 std::vector<std::string> UnbekannteSachkonten(const DatevImportBericht& bericht,

@@ -15,6 +15,34 @@ what a double-click asks for when a pane is too small for the file — see
 [UltraCanvasMediaViewerWindow](UltraCanvasMediaViewerWindow.md), which wraps a
 viewer in a top-level window.
 
+## Choosing this over a single-format view
+
+Prefer this widget over embedding a format-specific view
+([UltraCanvasPDFView](UltraCanvasPDFExamples.md#choosing-a-widget),
+`UltraCanvasSpreadsheet`, `UltraCanvasEBookViewer`, …) whenever the pane shows
+*whatever the user put there*. The single-format views are not an alternative to
+this one — this widget owns instances of them and dispatches by file kind, so
+using it costs nothing in capability and gains two things:
+
+- **Kinds you did not plan for.** A pane built for PDFs meets a receipt
+  photographed as a JPEG, an `.ods` attachment, a `.eml` body. Each is a
+  different widget; the dispatch is already written here.
+- **Builds where a plugin is absent.** Every plugin-backed view is behind its
+  `#ifdef` inside this file, so the viewer compiles and runs without it and the
+  remaining kinds still display. The PDF gate is the common case:
+  `ULTRACANVAS_PLUGIN_PDF` defaults ON, but a machine without MuPDF disables the
+  plugin at configure time rather than failing the build, so an application that
+  embeds `UltraCanvasPDFView` itself must repeat the guards and supply its own
+  fallback.
+
+Embed it as UltraFiler does, with `SetTopBarsVisible(false)` for a pane too
+small for two toolbar rows (`Apps/UltraFiler/UltraFilerWindow.cpp:829`).
+`UltraCanvasMediaViewer::IsSupportedMedia(path)` answers, before you load
+anything, whether this build can show a given file at all.
+
+Go direct to a single-format view only when the application *is* that format's
+tool and a missing plugin should stop it running.
+
 ## Media kinds and display views
 
 | `MediaKind` | Formats | Display view |

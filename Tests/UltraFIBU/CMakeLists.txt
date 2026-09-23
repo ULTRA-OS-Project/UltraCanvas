@@ -55,6 +55,12 @@ target_include_directories(UltraFIBUEngineTests PRIVATE
     ${CMAKE_SOURCE_DIR}/UltraCanvas/include
     ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
 target_link_libraries(UltraFIBUEngineTests PRIVATE UltraDatabase)
+# The DATEV column line of a real EXTF export lives in data/ next to this file.
+# It is passed as a path rather than found relative to the working directory,
+# because the test runs from ${CMAKE_BINARY_DIR}/bin and a fixture that is
+# merely "not found" would turn the check that matters into a silent skip.
+target_compile_definitions(UltraFIBUEngineTests PRIVATE
+    ULTRAFIBU_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 # CAMT.053 is XML. tinyxml2 is already a REQUIRED core dependency, so this is
 # an include path and a library name rather than a new dependency - and it is
 # named here explicitly because this suite deliberately does not link the core
