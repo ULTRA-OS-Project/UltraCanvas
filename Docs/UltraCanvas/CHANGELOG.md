@@ -9,6 +9,10 @@
   own order and clears the header triangle. The click and selection handlers
   now map proxy rows back through `MapToSource()` before they look up a file,
   so the status label names the right file while the table is sorted.
+- **DemoApp: the ListView page's subtitle no longer runs under the status
+  box.** It was one 600 px line and the status box starts at x = 600, so the
+  end of the sentence was hidden. It is now two lines, 570 px wide, and the
+  status box stays where it was.
 
 #### 2026-09-23 *0.9.32*
 - **The demo leaked its whole widget tree, and every callback in it.** A

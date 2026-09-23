@@ -21,8 +21,9 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Subtitle
-        auto subtitle = std::make_shared<UltraCanvasLabel>("ListViewSubtitle", 20, 45, 600, 25);
-        subtitle->SetText("Simple lists, multi-column, styled, and icon views — "
+        // Two lines, and narrow enough to end before the status box at x = 600.
+        auto subtitle = std::make_shared<UltraCanvasLabel>("ListViewSubtitle", 20, 45, 570, 40);
+        subtitle->SetText("Simple lists, multi-column, styled, and icon views —\n"
                           "hover a row or a column header for its tooltip");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(120, 120, 120, 255));
