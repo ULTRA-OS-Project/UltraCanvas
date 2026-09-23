@@ -68296,7 +68296,10 @@ had achieved.
 
 **There is no unprotected mode.** The app refuses to start without a crypto
 backend and refuses to open a vault without a password. It never falls back
-to storing seeds in the clear.
+to storing seeds in the clear. When the vault is first created the password
+is asked for twice and the two must match, because a typo in the one password
+that cannot be recovered would otherwise become it; a strength bar under the
+field shows what the vault will rest on while it is still cheap to change.
 
 **In memory.** A seed is read out of the vault, used to compute one code, and
 wiped, inside a single call; it does not sit in memory while the window is

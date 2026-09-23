@@ -16,6 +16,13 @@
   before it (open pull requests each hold one number, so a small gap is
   normal), and a minor or major bump must start near .0. Applied per file and,
   with `--base`, against the base's version.
+- **`scripts/check_changelog.py --base` no longer misreports files `main`
+  changed during an uncommitted merge.** It decided "edited by this branch"
+  by comparing the working copy with the merge base's, so in the middle of a
+  merge of `main` every changelog `main` had released on since the fork
+  "differed" and was reported as still claiming `main`'s version - a false
+  alarm that vanished once the merge was committed, which the message did not
+  say. A file identical to `main`'s copy is now never this branch's edit.
 
 #### 2026-09-23 *0.9.35*
 - **DemoApp: the ListView page's multi-column table shows the sorting API**

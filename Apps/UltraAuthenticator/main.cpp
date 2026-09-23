@@ -12,8 +12,9 @@
 // opening it, the window comes up locked, and the first unlock goes through
 // AccountStore::Unlock with its back-off. The earlier launch prompt quit the
 // app on a wrong password, which punished a typo with a restart and a guesser
-// with nothing more. Only a *new* vault still uses a plain input dialog,
-// because choosing a password is not an unlock and there is nothing to guess.
+// with nothing more. A *new* vault goes through NewVaultDialog instead: not an
+// unlock, so no back-off, but the password is typed twice, because a typo in
+// the one password that cannot be recovered would otherwise become it.
 //
 // There is no "skip" and no "remember me". A vault that can be opened without
 // the password is a vault that an attacker with the file can open too, and a
@@ -29,6 +30,7 @@
 
 #include "AccountStore.h"
 #include "AuthenticatorWindow.h"
+#include "NewVaultDialog.h"
 #include "Preferences.h"
 
 #include "UltraCanvasApplication.h"
@@ -61,6 +63,9 @@ using namespace UltraCanvas::Authenticator;
 namespace {
 
 UltraCanvasApplication* g_app = nullptr;
+
+// Kept alive for as long as it is on screen; there is no window to own it yet.
+std::shared_ptr<NewVaultDialog> g_newVaultDialog;
 
 #ifdef __linux__
 void OnSignal(int sig) {
@@ -149,37 +154,22 @@ void OpenVaultThen(UltraCanvasApplication& app, AccountStore& store,
         return;
     }
 
-    // New vault: choose a password. Kept as a continuation because the
-    // dialog is asynchronous.
-    UltraCanvasDialogManager::ShowInputDialog(
-        "Choose a master password.\n\nIt protects every account in this app "
-        "and cannot be recovered — if you forget it, the accounts are gone.",
-        "Set up UltraAuthenticator",
-        "", InputType::Password,
-        [&app, &store, vaultPath, &windowOut](
-            DialogResult result, const std::string& typed) {
-            if (result != DialogResult::OK) {
-                app.RequestExit();
-                return;
-            }
-            if (typed.empty()) {
-                UltraCanvasDialogManager::ShowError(
-                    "A master password is required.", "UltraAuthenticator");
-                app.RequestExit();
-                return;
-            }
-
-            UltraCryptSecureBuffer password = AdoptPassword(typed);
-            StoreResult created = store.Create(vaultPath, password);
-            if (!created) {
-                UltraCanvasDialogManager::ShowError(
-                    created.message, "Could not create the vault");
-                app.RequestExit();
-                return;
-            }
-            CreateMainWindow(app, store, vaultPath, windowOut);
-        },
-        nullptr);
+    // New vault: choose a password, twice. The dialog is asynchronous, so the
+    // rest is a continuation.
+    g_newVaultDialog = std::make_shared<NewVaultDialog>();
+    g_newVaultDialog->onAccept = [&store, vaultPath](const std::string& typed) -> std::string {
+        UltraCryptSecureBuffer password = AdoptPassword(typed);
+        StoreResult created = store.Create(vaultPath, password);
+        return created ? std::string() : created.message;
+    };
+    g_newVaultDialog->onQuit = [&app]() { app.RequestExit(); };
+    g_newVaultDialog->onResult = [&app, &store, vaultPath, &windowOut](DialogResult result) {
+        g_newVaultDialog.reset();
+        if (result != DialogResult::OK) return;   // quit; the app is exiting
+        CreateMainWindow(app, store, vaultPath, windowOut);
+    };
+    g_newVaultDialog->CreateNewVaultDialog();
+    g_newVaultDialog->ShowModal(nullptr);
 }
 
 } // namespace

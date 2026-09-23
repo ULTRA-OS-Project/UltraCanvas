@@ -234,9 +234,11 @@ bool AuthenticatorWindow::Create() {
         kWindowHeight - kHeaderHeight - margin);
     window_->AddChild(listContainer_);
 
+    // Short enough to fit the list width at body size: the longer first
+    // wording clipped to "...to typ..." on a 720 px window.
     emptyLabel_ = std::make_shared<UltraCanvasLabel>(
         "auth-empty", 0, 8, width, 40,
-        "No accounts yet — choose \"Scan QR code\" to begin, or \"Enter key\" to type one in.");
+        "No accounts yet. Use \"Scan QR code\" or \"Enter key\" to add one.");
     emptyLabel_->SetFont(Theme::kUiFont, Theme::kSizeBody);
     emptyLabel_->SetTextColor(Theme::kTextMuted);
     listContainer_->AddChild(emptyLabel_);
@@ -402,7 +404,7 @@ void AuthenticatorWindow::RebuildRows() {
     if (emptyLabel_) {
         emptyLabel_->SetText(
             accounts.empty()
-                ? "No accounts yet — choose \"Scan QR code\" to begin, or \"Enter key\" to type one in."
+                ? "No accounts yet. Use \"Scan QR code\" or \"Enter key\" to add one."
                 : "");
     }
 

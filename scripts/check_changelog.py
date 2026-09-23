@@ -69,7 +69,9 @@ the per-file rule above cannot see the newer releases. Line 1 of <ref>'s copy
 is what it is compared with, so <ref> has to be current: fetch it first. The
 merge base needs history: in a clone too shallow to find one, every file
 that differs from <ref>'s copy is taken as modified, which can only add a
-report, never miss one.
+report, never miss one. A file identical to <ref>'s copy is never taken as
+modified, so the check can be run in the middle of an uncommitted merge of
+<ref> without the files <ref> moved on being reported as this branch's.
 
 Usage:
     python3 scripts/check_changelog.py                 # check the working tree
@@ -157,7 +159,7 @@ def git(*args):
     return done.stdout if done.returncode == 0 else None
 
 
-def branch_edited(relative, base, text):
+def branch_edited(relative, base, text, base_copy):
     """Whether this branch changed the file.
 
     Compared against the merge base with `base`, not against base's head: a
@@ -165,7 +167,18 @@ def branch_edited(relative, base, text):
     base's head, and it is not this branch's edit. Without a merge base (a
     shallow clone) base's head is the best available and errs towards
     reporting.
+
+    A file whose working copy is byte-for-byte base's copy is not this
+    branch's edit either, whatever the merge base says. That is the state of
+    every file base changed while a merge of base is in progress and not yet
+    committed: the merge base still predates the change, so the file
+    "differs", yet the branch added nothing to it. Before this exception the
+    check, run mid-merge, reported such files as edits that "still claim
+    base's version" - a false alarm that went away only once the merge was
+    committed, which nobody could tell from the message.
     """
+    if base_copy is not None and text == base_copy:
+        return False
     ancestor = git("merge-base", base, "HEAD")
     ref = ancestor.strip() if ancestor else base
     before = git("show", f"{ref}:{relative}")
@@ -220,7 +233,7 @@ def check(prefix, relative, base):
         # the edit is still uncommitted, and `git diff base...HEAD` cannot see
         # that. Reading base's blob and comparing content covers both.
         before = git("show", f"{base}:{relative}")
-        if before is not None and branch_edited(relative, base, text):
+        if before is not None and branch_edited(relative, base, text, before):
             was = parse(before)
             # Line 1 of base's copy is its version; the max covers a base that
             # is itself malformed, so the comparison never trusts a bad line 1.
