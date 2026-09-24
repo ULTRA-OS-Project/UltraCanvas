@@ -71,7 +71,12 @@ enum class UltraNetResultCode {
     NotInitialized,
     InvalidHandle,
     InvalidState,
-    Unknown
+    Unknown,
+    // The backend in this build cannot do what was asked - a per-call DNS
+    // server it cannot address, for instance - as opposed to a request it
+    // understood and that failed. Last on purpose: the values above are
+    // stable for callers that stored them.
+    Unsupported
 };
 
 // ============================================================================

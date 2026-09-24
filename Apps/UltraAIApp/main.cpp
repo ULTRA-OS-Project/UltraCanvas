@@ -9,6 +9,8 @@
 
 #include "UltraAIDashboard.h"
 #include "UltraAIEndpoints.h"
+#include "UltraAIAppSettings.h"
+#include "UltraAISettingsWindow.h"
 #include "UltraCanvasApplication.h"
 #ifdef ULTRAAI_HAS_ULTRAVAULT
 #include <UltraVault/UltraVault.h>
@@ -96,6 +98,12 @@ int main(int argc, char* argv[]) {
         // fine — the Settings dialog starts empty and writes it on first save.
         UltraAIApp::EndpointStore::Instance().Load();
 
+        // The routing settings (config.ini): local AI is the default, and
+        // cloud fallback stays off unless the user turned it on. Applied
+        // before any service dialog can resolve "(default route)".
+        UltraAIApp::UltraAIAppSettings::Instance().Load();
+        UltraAIApp::UltraAIAppSettings::Instance().Apply();
+
         UltraAIDashboard dashboard(app);
         if (!dashboard.Create()) {
             std::cerr << "Failed to create dashboard window\n";
@@ -104,6 +112,7 @@ int main(int argc, char* argv[]) {
         dashboard.Show();
 
         app.Run();
+        UltraAIApp::UltraAISettingsWindow::Shutdown();
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << "\n";
         return EXIT_FAILURE;

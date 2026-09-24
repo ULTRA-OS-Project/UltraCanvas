@@ -1,11 +1,11 @@
 // Apps/UltraAIApp/UltraAIDashboard.cpp
-// Version: 0.1.1
-// Last Modified: 2026-07-12
+// Version: 0.1.2
+// Last Modified: 2026-09-24
 
 #include "UltraAIDashboard.h"
 #include "UltraAIDialogs.h"
 #include "UltraAIChatDialog.h"
-#include "UltraAISettingsDialog.h"
+#include "UltraAISettingsWindow.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -48,11 +48,11 @@ bool UltraAIDashboard::Create() {
 
     auto sub = std::make_shared<UltraCanvasLabel>(
         "dash-sub", 20, 38, kWindowWidth - 240, 18,
-        "Configure endpoints once in Settings, then pick one per service — "
-        "one model can serve several modes.");
+        "Services run locally by default — choose providers, cloud "
+        "fallback and endpoints in Settings.");
     window_->AddChild(sub);
 
-    // Settings button (top-right of the header): opens the endpoints editor.
+    // Settings button (top-right of the header): opens the settings window.
     auto settingsBtn = std::make_shared<UltraCanvasButton>(
         "dash-settings", kWindowWidth - 20 - 160, 14, 160, 32);
     settingsBtn->SetText("⚙  Settings");
@@ -121,9 +121,7 @@ void ShowServiceDialog(UltraCanvas::UltraCanvasWindow* parent, Args&&... args) {
 } // namespace
 
 void UltraAIDashboard::OpenSettingsDialog() {
-    auto dlg = std::make_shared<UltraAISettingsDialog>();
-    dlg->CreateSettingsDialog();
-    dlg->ShowModal(window_.get());
+    UltraAISettingsWindow::Show(window_.get());
 }
 
 void UltraAIDashboard::OpenChatDialog() {

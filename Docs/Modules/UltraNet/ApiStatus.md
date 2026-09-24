@@ -81,7 +81,9 @@ the surface.
   certificate. That also makes the trust-store entries checkable *in both
   directions*: the same handshake must fail against the default trust store
   and succeed once the probe's own certificate is trusted.
-* **DNS** — numeric addresses and `localhost` resolve without a network;
+* **DNS** — the per-call server option is proven offline against the
+  TEST-NET-1 black hole, which can only answer through the deadline;
+  numeric addresses and `localhost` resolve without a network;
   record types beyond A/AAAA/PTR need `--network`.
 * **URL / MIME / SSE parser / plugin registry** — pure code, always verified.
 * **FTP** — the one area with no offline peer. The probes still establish
