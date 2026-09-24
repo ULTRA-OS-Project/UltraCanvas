@@ -2825,6 +2825,27 @@ else()
     message(STATUS "  [−] UltraMessage - DISABLED")
 endif()
 
+# ===== BUILD ULTRAMESSAGECENTER (the desktop message centre element) =====
+# UltraCanvasMessageCenter (include/Plugins/UltraMessage/) is the feed's first
+# UI consumer: one composite element built from catalogue elements on top of
+# UltraMessage. It links both the widget library and the headless module, so
+# it is its own target rather than part of either.
+if(TARGET UltraMessage)
+    add_library(UltraMessageCenter STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp)
+    set_target_properties(UltraMessageCenter PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultramessagecenter")
+    target_compile_features(UltraMessageCenter PUBLIC cxx_std_20)
+    target_include_directories(UltraMessageCenter
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas>)
+    target_link_libraries(UltraMessageCenter PUBLIC ${ULTRACANVAS_LIB_NAME} UltraMessage)
+    target_compile_definitions(UltraMessageCenter PUBLIC ULTRACANVAS_HAS_MESSAGECENTER=1)
+    message(STATUS "  [✓] UltraMessageCenter - ENABLED")
+endif()
+
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")
 set(ULTRACANVAS_PLUGIN_INCLUDE_DIRS "")

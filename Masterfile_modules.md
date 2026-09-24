@@ -1494,13 +1494,16 @@ the Linux `freedesktop-notifications` adapter
 `windows-notification-listener` adapter (`UltraCanvas/OS/MSWindows/UltraMessage/`,
 C++/WinRT `UserNotificationListener`: polls the Action Center, read-only),
 the shared chat / mail mirrors with category guessing from the application's
-identity, and UltraMail publishing new mail as `mail.message`
-(`Apps/UltraMail/engine/UltraMailFeedPublisher`). Tests in
-`Tests/UltraMessage` (34 cases, in-tree and standalone, the adapter ones on a
-private D-Bus session). Not yet: the `AddFdWatch` event-loop path (a reader
-thread serves every endpoint), an FTS5 index (text search is a LIKE),
-automatic reconnection after the hosting broker exits, the macOS and
-Telegram adapters and the `UltraCanvasMessageCenter` element. See
+identity, UltraMail publishing new mail as `mail.message`
+(`Apps/UltraMail/engine/UltraMailFeedPublisher`), and the desktop message
+centre as one element (`UltraCanvasMessageCenter`, target `UltraMessageCenter`,
+`UltraCanvas/include/Plugins/UltraMessage/`: sections, sources, filters,
+search, detail and actions on the feed; `Docs/UltraCanvas/UltraCanvasMessageCenter.md`,
+a DemoApp page). Tests in `Tests/UltraMessage` (34 cases, in-tree and
+standalone, the adapter ones on a private D-Bus session; 5 for the element
+in-tree). Not yet: the `AddFdWatch` event-loop path (a reader thread serves
+every endpoint), an FTS5 index (text search is a LIKE), automatic reconnection
+after the hosting broker exits, and the macOS and Telegram adapters. See
 `Docs/Modules/UltraMessage/README.md`.
 
 ---

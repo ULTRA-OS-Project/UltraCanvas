@@ -459,6 +459,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasRatingExamples.cpp
             Apps/DemoApp/UltraCanvasStepperExamples.cpp
             Apps/DemoApp/UltraCanvasChipExamples.cpp
+            Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
@@ -718,6 +719,12 @@ if(BUILD_DEMO_APP)
         FetchContent_MakeAvailable(fmt)
     endif()
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
+
+    # The message centre page (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp)
+    # needs the element's library; without UltraMessage the page says so.
+    if(TARGET UltraMessageCenter)
+        target_link_libraries(UltraCanvasDemo PRIVATE UltraMessageCenter)
+    endif()
 
     # Link against all plugin libraries
     if(ULTRACANVAS_PLUGIN_TARGETS)
