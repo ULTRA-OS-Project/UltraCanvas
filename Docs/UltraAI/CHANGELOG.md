@@ -1,3 +1,26 @@
+#### 2026-09-24 *0.1.4*
+- **ElevenLabs text-to-speech.** A new `elevenlabs` adapter
+  (`UltraAI/adapters/elevenlabs/`, `ULTRAAI_ADAPTER_ELEVENLABS`, on by
+  default) implements `ITextToSpeech`: one-shot synthesis, streamed
+  synthesis, voice listing filtered by language, and instant voice cloning.
+  It serves both ways of offering the service: pointed at a hosted relay
+  with the user's session token as a bearer credential
+  (`providerOptions["auth_scheme"] = "bearer"`), or straight at ElevenLabs
+  with the user's own key from `ai.elevenlabs.api_key`. Responses report the
+  character cost ElevenLabs bills, which is what a relay meters. See
+  `Docs/Modules/UltraAI/Adapters.md`.
+- **The transport seam streams raw response bodies.** `ITransport::ByteStream`
+  hands a chunked body over as it arrives, for bodies that are not
+  Server-Sent Events (newline-delimited JSON, streamed audio).
+  `UltraNetTransport` backs it with UltraNet's `onDataChunk`; every other
+  transport — `ScriptedTransport`, `RecordingTransport`, cassette replay —
+  gets a default that delivers the whole body as one chunk.
+- With no provider named, text-to-speech now resolves to `elevenlabs`
+  rather than `minimax` when both are built: the default route picks the
+  first registered cloud provider by name. Set a default with
+  `SetDefaultProvider("texttospeech", ...)` or
+  `ULTRAAI_DEFAULT_TEXTTOSPEECH` to choose.
+
 #### 2026-09-22 *0.1.3*
 - **The dashboard icon is back.** `media/appicon/UltraAI.svg` had been
   overwritten by an empty Xara page — a blank A4 canvas with nothing on the

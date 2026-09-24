@@ -39,6 +39,9 @@
 #ifdef ULTRAAI_HAS_QWEN_ADAPTER
 #include "UltraAIQwen.h"
 #endif
+#ifdef ULTRAAI_HAS_ELEVENLABS_ADAPTER
+#include "UltraAIElevenLabs.h"
+#endif
 #ifdef ULTRAAI_HAS_MINIMAX_ADAPTER
 #include "UltraAIMiniMax.h"
 #endif
@@ -208,6 +211,14 @@ Registry<ITextToSpeech, TextToSpeechConfig>& TtsReg() {
                 r.providers["minimax"] = [](const TextToSpeechConfig& cfg,
                                             Error* err) {
                     return CreateMiniMaxTextToSpeech(cfg, err);
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_ELEVENLABS_ADAPTER
+            if (!r.providers.count("elevenlabs")) {
+                r.providers["elevenlabs"] = [](const TextToSpeechConfig& cfg,
+                                               Error* err) {
+                    return CreateElevenLabsTextToSpeech(cfg, err);
                 };
             }
 #endif

@@ -1,8 +1,8 @@
 // UltraAI/adapters/_shared/src/UltraNetTransport.cpp
 // Implementation of UltraNetTransport. Compiled only when the module is
 // built with ULTRAAI_USE_ULTRANET=ON and the UltraNet target is visible.
-// Version: 0.2.0
-// Last Modified: 2026-08-24
+// Version: 0.3.0
+// Last Modified: 2026-09-24
 // Author: UltraAI Module
 
 #ifdef ULTRAAI_HAS_ULTRANET
@@ -426,6 +426,54 @@ CancelFn UltraNetTransport::SseStream(const TransportRequest& request,
             e.message = "UltraNet_SseStreamAsync refused the request";
             onComplete(e, 0);
         }
+        return [] {};
+    }
+    return [handle] { UltraNet_CancelRequest(handle); };
+}
+
+CancelFn UltraNetTransport::ByteStream(const TransportRequest& request,
+                                       ByteChunkCallback onChunk,
+                                       SseCompleteCallback onComplete) {
+    UltraNetHttpRequest net = BuildNetRequest(request);
+    net.onDataChunk = [onChunk](const std::vector<uint8_t>& chunk) {
+        if (onChunk && !chunk.empty()) {
+            onChunk(std::string(chunk.begin(), chunk.end()));
+        }
+    };
+
+    // UltraNet_HttpRequestAsync reports some synchronous refusals through
+    // its callback *and* an invalid handle; the flag keeps onComplete to
+    // exactly one call.
+    auto completed = std::make_shared<std::atomic<bool>>(false);
+    auto finish = [onComplete, completed](const Error& error, int status) {
+        if (completed->exchange(true)) return;
+        if (onComplete) onComplete(error, status);
+    };
+
+    UltraNetHandle handle = UltraNet_HttpRequestAsync(
+        net,
+        [finish](const UltraNetResponse& resp) {
+            if (resp.statusCode > 0) {
+                finish(MapHttpStatus(resp.statusCode, resp.statusMessage),
+                       resp.statusCode);
+                return;
+            }
+            // No HTTP status: the exchange never completed. The async
+            // worker reports cancellation and transport failures only
+            // through statusMessage.
+            Error e;
+            e.code    = resp.statusMessage == "Cancelled"
+                            ? ErrorCode::Cancelled
+                            : ErrorCode::NetworkError;
+            e.message = resp.statusMessage;
+            finish(e, 0);
+        });
+
+    if (handle == UltraNetInvalidHandle) {
+        Error e;
+        e.code    = ErrorCode::NetworkError;
+        e.message = "UltraNet_HttpRequestAsync refused the request";
+        finish(e, 0);
         return [] {};
     }
     return [handle] { UltraNet_CancelRequest(handle); };
