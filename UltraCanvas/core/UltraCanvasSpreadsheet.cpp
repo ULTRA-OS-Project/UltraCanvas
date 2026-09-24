@@ -858,6 +858,39 @@ void UltraCanvasSpreadsheet::RenderAutoFillHandle(IRenderContext* ctx) {
     int handleSize = 6;
     ctx->SetFillPaint(selectionBorderColor_);
     ctx->FillRectangle(Rect2Df(corner.x - handleSize, corner.y - handleSize, handleSize, handleSize));
+
+    // While the handle is dragged, a dashed outline shows the range the
+    // release will fill.
+    if (editMode_ == SpreadsheetEditMode::AutoFilling && !(autoFillTarget_ == autoFillSource_)) {
+        Point2Di topLeft = CellToScreen(autoFillTarget_.start.row, autoFillTarget_.start.col);
+        Point2Di bottomRight = CellToScreen(autoFillTarget_.end.row + 1, autoFillTarget_.end.col + 1);
+        ctx->SetStrokePaint(selectionBorderColor_);
+        ctx->SetStrokeWidth(1.5f);
+        ctx->SetLineDash(UCDashPattern({ 4.0, 3.0 }));
+        ctx->DrawRectangle(Rect2Df(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y));
+        ctx->SetLineDash(UCDashPattern());
+    }
+}
+
+CellRange UltraCanvasSpreadsheet::AutoFillTargetFor(int row, int col) const {
+    const CellRange& src = autoFillSource_;
+    const int down  = row - src.end.row;
+    const int up    = src.start.row - row;
+    const int right = col - src.end.col;
+    const int left  = src.start.col - col;
+    const int vertical = std::max(down, up);
+    const int horizontal = std::max(right, left);
+    if (vertical <= 0 && horizontal <= 0) return src;   // still over the source
+
+    CellRange target = src;
+    if (vertical >= horizontal) {
+        if (down > 0) target.end.row = std::min(row, SpreadsheetLimits::MaxRows - 1);
+        else          target.start.row = std::max(row, 0);
+    } else {
+        if (right > 0) target.end.col = std::min(col, SpreadsheetLimits::MaxColumns - 1);
+        else           target.start.col = std::max(col, 0);
+    }
+    return target;
 }
 
 // ============================================================================
@@ -1013,7 +1046,11 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
         }
         
         case HitArea::AutoFillHandle: {
+            if (IsEditing()) StopEditing(true);
+            autoFillSource_ = GetSelection();
+            autoFillTarget_ = autoFillSource_;
             editMode_ = SpreadsheetEditMode::AutoFilling;
+            UltraCanvasApplication::GetInstance()->CaptureMouse(this);
             break;
         }
 
@@ -1048,6 +1085,13 @@ void UltraCanvasSpreadsheet::HandleMouseUp(const UCEvent& event) {
     if (editMode_ == SpreadsheetEditMode::Resizing) {
         resizingColumn_ = -1;
         resizingRow_ = -1;
+    }
+
+    if (editMode_ == SpreadsheetEditMode::AutoFilling) {
+        editMode_ = SpreadsheetEditMode::Normal;
+        if (!(autoFillTarget_ == autoFillSource_)) AutoFillSelection(autoFillTarget_);
+        autoFillTarget_ = autoFillSource_;
+        Invalidate();
     }
 
     draggingHScrollbar_ = false;
@@ -1091,6 +1135,16 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
                 }
             }
         }
+        else if (editMode_ == SpreadsheetEditMode::AutoFilling) {
+            // ScreenToCell also answers for a pointer beyond the last visible
+            // cell, so the drag keeps tracking outside the grid.
+            CellAddress over = ScreenToCell(event.pointer.x, event.pointer.y);
+            CellRange target = AutoFillTargetFor(over.row, over.col);
+            if (!(target == autoFillTarget_)) {
+                autoFillTarget_ = target;
+                Invalidate();
+            }
+        }
         else if (editMode_ == SpreadsheetEditMode::Resizing) {
             if (resizingColumn_ >= 0) {
                 int delta = event.pointer.x - resizeStartPos_;
@@ -1117,6 +1171,7 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
         case HitArea::RowResizer:    SetMouseCursor(UCMouseCursor::SizeNS); break;
         case HitArea::FormulaBar:    SetMouseCursor(UCMouseCursor::Text);   break;
         case HitArea::ColumnSortButton: SetMouseCursor(UCMouseCursor::Hand); break;
+        case HitArea::AutoFillHandle: SetMouseCursor(UCMouseCursor::Cross);  break;
         default:                     SetMouseCursor(UCMouseCursor::Default); break;
     }
 }

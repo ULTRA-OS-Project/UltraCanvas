@@ -751,6 +751,31 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetRangeSortTest")
 
+# ===== SPREADSHEET AUTO-FILL TEST =====
+# What dragging the fill handle writes: number series, "Item 1" counting on,
+# copied formulas with shifted relative references, repeated patterns.
+# Exercises the real SpreadsheetSheet with no UI stack.
+message(STATUS "  Building SpreadsheetAutoFillTest...")
+add_executable(SpreadsheetAutoFillTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetAutoFillTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetAutoFillTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetAutoFillTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetAutoFillTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetAutoFillTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetAutoFillTest
+    COMMAND SpreadsheetAutoFillTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetAutoFillTest")
+
 # ===== LISTVIEW TOOLTIP TEST =====
 # The tooltip text a ListView reads on hover: per-cell tooltips over the
 # row-wide fallback, the header tooltip on ListColumnDef, and the ToolTipRole

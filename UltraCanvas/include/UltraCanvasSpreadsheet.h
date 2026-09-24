@@ -169,6 +169,11 @@ private:
     int headerSortColumn_ = -1;
     bool headerSortAscending_ = true;
     bool sortFormulaWarningEnabled_ = true;
+
+    // Fill-handle drag: the selection it started from and the range the
+    // pointer currently extends it to (drawn as a dashed outline).
+    CellRange autoFillSource_;
+    CellRange autoFillTarget_;
     // Set by a file load: columns the document did not size are fitted to their
     // content on the next render, when a render context exists to measure text
     // with. Doing it at load time would have to guess the font metrics.
@@ -394,6 +399,15 @@ public:
     // block stays together; cells outside the selection are not touched.
     void SortSelectionByColumn(int column, SortOrder order);
 
+    // ===== AUTO-FILL =====
+    // Fill `destination` - the selection extended down, up, right or left -
+    // from the selection, as dragging the fill handle does: number series
+    // continue, "Item 1" counts on, formulas shift their relative references,
+    // anything else repeats (see SpreadsheetSheet::AutoFill). One undo step;
+    // the destination is selected afterwards. False when the destination is
+    // not such an extension or overlaps merged cells.
+    bool AutoFillSelection(const CellRange& destination);
+
     // Header sort buttons: while a block of two or more rows is selected, the
     // header of every column in it shows a small up/down button. Clicking it
     // sorts the block by that column (see SortSelectionByColumn); clicking the
@@ -533,6 +547,9 @@ private:
     // A header sort button was clicked: sorts, after the formula warning
     // when the block holds formulas.
     void RequestHeaderSort(int column, SortOrder order);
+    // The fill-handle drag's destination for a pointer over (row, col): the
+    // source extended along the axis the pointer has moved furthest out on.
+    CellRange AutoFillTargetFor(int row, int col) const;
     
     void BeginUndoGroup(UndoActionType type, const std::string& description);
     void RecordCellChange(int row, int col);

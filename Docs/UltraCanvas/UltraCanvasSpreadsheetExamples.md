@@ -20,6 +20,7 @@
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
 - **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
 - **Data Tools**: Sorting, auto-filter, find/replace, named ranges, and data validation
+- **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
 - **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
 - **File I/O**: Load/Save OpenDocument (`.ods`) and CSV/TSV, with auto-detection or explicit import/export options
@@ -196,6 +197,18 @@ int  GetHeaderSortColumn() const;      // -1 unless the current selection was he
 bool GetHeaderSortAscending() const;
 bool IsSortFormulaWarningEnabled() const;   // OK/Cancel warning before sorting formulas
 void SetSortFormulaWarningEnabled(bool enabled);
+```
+
+### Auto-Fill
+
+```cpp
+// Fill the selection's extension, as the fill handle does. False when the
+// destination does not grow the selection along one axis, or hits merged cells.
+bool AutoFillSelection(const CellRange& destination);
+
+// Sheet level (UltraCanvasSpreadsheetSheet.h)
+void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destination);
+std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int colDelta);
 ```
 
 ### File Operations
@@ -644,6 +657,30 @@ Rebuild the items each time the menu opens (`PopulateSpreadsheetFormatMenu`)
 so the ticks and radio marks reflect the cell that was just clicked.
 `SpreadsheetNumberFormatPresets()` returns the preset list on its own — label,
 `NumberFormat` and sample — if you want to drive a dropdown or a dialog with it.
+
+## Fill handle
+
+The small square at the bottom-right corner of the selection is the fill
+handle (the pointer turns into a crosshair over it). Drag it down, up, right
+or left: a dashed outline shows the range the release will fill, following
+whichever direction the pointer has moved furthest from the selection. On
+release the new cells are filled from the selection, repeating its pattern:
+
+| Selection holds | The new cells get |
+|---|---|
+| two or more numbers in a column (or row) | the series continued: `1, 2` → `3, 4, 5`; `10, 20` → `30, 40`; also backwards when dragged up or left |
+| one text ending in a number | the number counted on: `Item 1` → `Item 2`, `Item 3` |
+| a formula | the formula with its relative references shifted by the distance moved: `=C2*$D$1` one row down is `=C3*$D$1` |
+| anything else (one number, plain text) | a copy |
+
+Formatting comes along with each value. The filled range is selected
+afterwards, the fill is one undo step (Ctrl+Z), and every formula is
+recalculated, so totals that read the filled cells update. A drag that would
+cover merged cells does nothing.
+
+From code, select the source and call `AutoFillSelection(destination)`; the
+sheet-level `SpreadsheetSheet::AutoFill` does the same without selection or
+undo, and `ShiftFormulaReferences` shifts a formula's text on its own.
 
 ## Sorting a selection from the header
 

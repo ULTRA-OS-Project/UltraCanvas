@@ -889,7 +889,9 @@ void UltraCanvasSpreadsheet::SortSelectionByColumn(int column, SortOrder order) 
     // Sort moves every column of the range with the key column, so each
     // selected row keeps its cells together and nothing outside moves.
     sheet->SortByColumn(sel, column, order);
-    Recalculate();
+    // Formulas elsewhere may read the moved cells; they are not dirty, so
+    // recalculate them all.
+    RecalculateAll();
 
     headerSortSheet_ = sheet->GetName();
     headerSortRange_ = sel;
@@ -902,6 +904,31 @@ void UltraCanvasSpreadsheet::SortSelectionByColumn(int column, SortOrder order) 
                        (headerSortAscending_ ? ", ascending" : ", descending"));
     }
     Invalidate();
+}
+
+bool UltraCanvasSpreadsheet::AutoFillSelection(const CellRange& destination) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return false;
+    const CellRange source = GetSelection();
+
+    // The destination must be the source grown along one axis only.
+    const bool sameCols = destination.start.col == source.start.col && destination.end.col == source.end.col;
+    const bool sameRows = destination.start.row == source.start.row && destination.end.row == source.end.row;
+    const bool grows = sameCols ? (destination.start.row <= source.start.row && destination.end.row >= source.end.row)
+                     : sameRows ? (destination.start.col <= source.start.col && destination.end.col >= source.end.col)
+                     : false;
+    if (!grows || destination == source) return false;
+    for (const auto& merge : sheet->GetMergedCells()) {
+        if (merge.range.Intersects(destination)) return false;
+    }
+
+    if (recordingUndo_) RecordRangeChange(destination);
+    sheet->AutoFill(source, destination);
+    sheet->SelectRange(destination);
+    RecalculateAll();   // formulas elsewhere may read the filled cells
+    if (onStatusChange) onStatusChange("Filled " + destination.ToString() + " from " + source.ToString());
+    Invalidate();
+    return true;
 }
 
 void UltraCanvasSpreadsheet::SetHeaderSortEnabled(bool enabled) {
