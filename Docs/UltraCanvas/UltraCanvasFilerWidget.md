@@ -327,7 +327,7 @@ Open with      >  clicking the entry opens the selection with the OS default
 ──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 ──────────         displays; the label is configurable)
-Copy / Cut / Paste / Delete / Duplicate / Rename
+Copy / Cut / Paste / Delete / Delete Permanently / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
 ──────────
@@ -1515,9 +1515,14 @@ filer->Paste();               // into the current folder, with the conflict
                               // text becomes a new file
 filer->PasteFilesInto(folder, paths, cut, onDone);  // same paste machinery
                               // aimed at any folder (see below)
-filer->DeleteSelection();     // gated by confirmDelete when set
-filer->DeletePaths(paths, onDone);   // delete without asking again - for a
-                              // host that ran its own confirmation
+filer->DeleteSelection();     // asks: Move to Trash (chosen) / Delete permanently
+filer->DeleteSelection(FilerDeleteMode::Permanently);  // asks, opened on
+                              // "Delete permanently" (what Shift+Del does)
+filer->ConfirmDeletePaths(paths, onDone);  // the same dialog for paths the
+                              // display is not showing (a folder-tree delete)
+filer->DeletePaths(paths, onDone, FilerDeleteMode::MoveToTrash);  // no
+                              // question - for a host that ran its own
+                              // confirmation (default mode: Permanently)
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
@@ -1528,6 +1533,33 @@ filer->ExtractSelection();           // into sibling folders; a taken folder
 filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Delete: to the Trash, or permanently
+
+**Del** and **Shift+Del** open the same confirmation, `Delete "X"?`, with the
+choice as two radio buttons: **Move to the Trash** (*Recycle Bin* on Windows)
+and **Delete permanently**. Del opens it on the trash, Shift+Del on the
+permanent delete — the keys Explorer gives the two — and the line under the
+question follows the choice: *It can be restored from the Trash.* or *This
+cannot be undone.* The context menu has both, **Delete** (Del) and **Delete
+Permanently** (Shift+Del).
+
+The trash is `UltraCanvasTrash` (`MoveToTrash`): the Recycle Bin through the
+shell, the Finder's Trash through NSFileManager (so *Put Back* works), and the
+freedesktop.org trash on Linux and the BSDs — the drive's own
+`.Trash-$uid` for a file on a USB stick, never a copy into the home folder.
+Moving to the trash is one move per entry, so a folder of any size goes at
+once, and a write-protected entry is not asked about (moving it does not
+write to it). An entry the trash refuses stops at the problem dialog below
+(*Cannot Move to the Trash*); it is **never** deleted for good instead.
+
+Where the trash cannot take the entries — no trash on this platform (Android,
+WebAssembly), entries inside an archive, entries on a remote drive — the
+trash option is greyed out, the dialog opens on **Delete permanently**, and
+the line says why. `CanMoveToTrash(victims)` answers the same question for a
+host. A host `confirmDelete` veto replaces the dialog and so has no choice to
+offer: the delete then goes the way `DeleteSelection` was asked for, as far as
+the trash can take the entries.
 
 ### Progress window (copy / move / delete)
 

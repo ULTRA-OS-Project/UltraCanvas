@@ -77,11 +77,13 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasTrash.h"
 #include "../libspecific/Cairo/QoiPixmapCodec.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasRadio.h"
 #include "UltraCanvasProgressDialog.h"
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasSwitch.h"
@@ -5402,17 +5404,40 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasFilerWidget::DeleteSelection() {
+    void UltraCanvasFilerWidget::DeleteSelection(FilerDeleteMode preferred) {
         // No guard here: a remote delete is supported when the host wired
         // remoteDelete, and PerformDeletion - which every route to a delete
         // passes through, the confirmation dialog and a host's own
         // confirmDelete veto alike - is where the two part company.
-        DeleteEntries(GetSelectedEntries());
+        DeleteEntries(GetSelectedEntries(), preferred);
     }
 
     void UltraCanvasFilerWidget::DeletePaths(
             std::vector<std::string> paths,
-            std::function<void(bool changed)> onDone) {
+            std::function<void(bool changed)> onDone,
+            FilerDeleteMode mode) {
+        std::vector<FilerEntry> victims = EntriesForPaths(paths);
+        if (victims.empty()) {
+            if (onDone) onDone(false);
+            return;
+        }
+        PerformDeletion(victims, std::move(onDone), mode);
+    }
+
+    void UltraCanvasFilerWidget::ConfirmDeletePaths(
+            std::vector<std::string> paths,
+            std::function<void(bool changed)> onDone,
+            FilerDeleteMode preferred) {
+        std::vector<FilerEntry> victims = EntriesForPaths(paths);
+        if (victims.empty()) {
+            if (onDone) onDone(false);
+            return;
+        }
+        ShowDeleteConfirmation(victims, preferred, std::move(onDone));
+    }
+
+    std::vector<FilerEntry> UltraCanvasFilerWidget::EntriesForPaths(
+            const std::vector<std::string>& paths) const {
         std::vector<FilerEntry> victims;
         victims.reserve(paths.size());
         std::error_code ec;
@@ -5431,24 +5456,37 @@ namespace UltraCanvas {
                     == fs::perms::none;
             victims.push_back(std::move(entry));
         }
-        if (victims.empty()) {
-            if (onDone) onDone(false);
-            return;
-        }
-        PerformDeletion(victims, std::move(onDone));
+        return victims;
     }
 
     void UltraCanvasFilerWidget::DeleteEntries(
-            const std::vector<FilerEntry>& victims) {
+            const std::vector<FilerEntry>& victims, FilerDeleteMode preferred) {
         if (victims.empty()) return;
         // An app-provided veto takes precedence over the built-in dialog so
-        // existing hosts keep full control of the confirmation flow.
+        // existing hosts keep full control of the confirmation flow. It has
+        // no trash / permanent choice to offer, so the delete goes the way
+        // it was asked for - as far as the trash can take the entries.
         if (confirmDelete) {
             if (!confirmDelete(victims)) return;
-            PerformDeletion(victims);
+            const FilerDeleteMode mode =
+                    preferred == FilerDeleteMode::MoveToTrash && CanMoveToTrash(victims)
+                    ? FilerDeleteMode::MoveToTrash : FilerDeleteMode::Permanently;
+            PerformDeletion(victims, nullptr, mode);
             return;
         }
-        ShowDeleteConfirmation(victims);
+        ShowDeleteConfirmation(victims, preferred);
+    }
+
+    bool UltraCanvasFilerWidget::CanMoveToTrash(
+            const std::vector<FilerEntry>& victims) const {
+        if (!TrashAvailable() || ShowingRemoteFolder()) return false;
+        // Entries inside an archive exist only as VirtualFS paths: there is no
+        // file for the trash to take, only an archive to rewrite.
+        std::error_code ec;
+        for (const FilerEntry& e : victims) {
+            if (!fs::exists(fs::symlink_status(e.path, ec))) return false;
+        }
+        return true;
     }
 
     std::string UltraCanvasFilerWidget::NeighbourPathAfterRemoval(
@@ -5475,7 +5513,8 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::PerformDeletion(
             const std::vector<FilerEntry>& victims,
-            std::function<void(bool changed)> onDone) {
+            std::function<void(bool changed)> onDone,
+            FilerDeleteMode mode) {
         // A remote drive's entries are the host's to remove: the queue below
         // works in std::filesystem terms and would simply find nothing there.
         // The host accepts the request at once and refreshes the display when
@@ -5580,10 +5619,13 @@ namespace UltraCanvas {
         pendingDelete->victims = fsVictims;   // copy: Refresh() rebuilds `entries`
         pendingDelete->modifiedFolders = std::move(archiveModified);
         pendingDelete->onDone = std::move(onDone);
+        pendingDelete->toTrash = mode == FilerDeleteMode::MoveToTrash;
         // The removals run on the file-operation worker; the window over them
         // opens only if the delete is still going two seconds from now.
-        BeginFileOperation("Deleting",
-                FileOperationCaption("Deleting", pendingDelete->victims.size(),
+        const std::string verb = pendingDelete->toTrash
+                ? "Moving to the " + TrashDisplayName() : std::string("Deleting");
+        BeginFileOperation(verb,
+                FileOperationCaption(verb, pendingDelete->victims.size(),
                         pendingDelete->victims.empty()
                                 ? std::string()
                                 : pendingDelete->victims.front().name,
@@ -5609,6 +5651,34 @@ namespace UltraCanvas {
                 return;
             }
             const FilerEntry& e = pd->victims[pd->next];
+            // To the trash: one move per entry, whatever it holds - nothing
+            // inside a folder is touched, so there is nothing to count and a
+            // write-protected entry needs no question (moving it does not
+            // write to it; Explorer recycles read-only files the same way).
+            if (pd->toTrash) {
+                FileOpItemCredit credit{.op = op, .slice = kFileOpItemUnits};
+                credit.SetFile(fs::path(e.path).filename().string());
+                std::string trashError;
+                if (!MoveToTrash(e.path, trashError)) {
+                    credit.Rollback();
+                    if (pd->skipFailedForAll) { AdvancePendingDelete(); continue; }
+                    if (pd->retryFailedForAll && !pd->currentRetried) {
+                        pd->currentRetried = true;   // one silent retry, then ask
+                        continue;
+                    }
+                    // Never deleted for good instead: the user chose the
+                    // trash, and the problem dialog says why it refused.
+                    pd->stop = FileOpStop::Problem;
+                    pd->stopKind = DeleteProblemKind::Failed;
+                    pd->stopReason = trashError;
+                    return;
+                }
+                credit.Finish();
+                const std::string folder = fs::path(e.path).parent_path().string();
+                if (!folder.empty()) pd->modifiedFolders.push_back(folder);
+                AdvancePendingDelete();
+                continue;
+            }
             // A write-protected (locked) entry asks before the attempt.
             if (e.isReadOnly) {
                 DeleteProblemAction action;
@@ -5887,6 +5957,17 @@ namespace UltraCanvas {
             choices = {"Delete as administrator", "Try again", "Skip this " + kindWord};
             defaultChoice = 0;
             allLabel = "Do this for all remaining items";
+        } else if (pendingDelete && pendingDelete->toTrash) {
+            const std::string trash = TrashDisplayName();
+            cfg.title = "Cannot Move to the " + trash;
+            cfg.message = "\"" + RepairLegacyEncodedName(entry.name) +
+                    "\" could not be moved to the " + trash + ": " +
+                    (reason.empty() ? std::string("unknown error") : reason) + ".";
+            cfg.details = "To remove it anyway, cancel and delete it with "
+                    "\"Delete permanently\" (Shift+Del).";
+            choices = {"Try again", "Skip this " + kindWord};
+            defaultChoice = 0;
+            allLabel = "Do this for all remaining items";
         } else {
             cfg.title = "Cannot Delete";
             cfg.message = failure;
@@ -5965,35 +6046,88 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::ShowDeleteConfirmation(
-            const std::vector<FilerEntry>& victims) {
-        // Build the confirmation message.
-        size_t folderCount = 0, fileCount = 0;
+            const std::vector<FilerEntry>& victims, FilerDeleteMode preferred,
+            std::function<void(bool changed)> onDone) {
+        size_t folderCount = 0;
         for (const FilerEntry& e : victims) {
-            if (e.isDirectory) ++folderCount; else ++fileCount;
+            if (e.isDirectory) ++folderCount;
         }
-        std::string message;
-        if (victims.size() == 1) {
-            message = "Delete \"" + victims.front().name + "\" permanently?";
-        } else {
-            message = "Delete " + std::to_string(victims.size())
-                    + " items permanently?";
+
+        // The trash / permanent choice. Where the trash cannot take these
+        // entries only the permanent delete is offered, and the details line
+        // says why rather than leaving a greyed-out option unexplained.
+        const std::string trash = TrashDisplayName();
+        const bool trashPossible = CanMoveToTrash(victims);
+        std::string noTrashWhy;
+        if (!trashPossible) {
+            if (!TrashAvailable())
+                noTrashWhy = "This system has no " + trash + ".";
+            else if (ShowingRemoteFolder())
+                noTrashWhy = "Items on a remote drive cannot go to the " + trash + ".";
+            else
+                noTrashWhy = "Items inside an archive cannot go to the " + trash + ".";
         }
+        const bool startInTrash =
+                trashPossible && preferred == FilerDeleteMode::MoveToTrash;
+        const bool one = victims.size() == 1;
+        auto detailsFor = [trash, noTrashWhy, one](bool toTrash) {
+            if (toTrash)
+                return std::string(one ? "It" : "They") + " can be restored from the "
+                       + trash + ".";
+            return noTrashWhy.empty() ? std::string("This cannot be undone.")
+                                      : "This cannot be undone. " + noTrashWhy;
+        };
 
         DialogConfig cfg;
         cfg.title = "Confirm Delete";
         cfg.dialogType = DialogType::Warning;
-        cfg.message = message;
-        cfg.details = "This action cannot be undone.";
+        cfg.message = one
+                ? "Delete \"" + RepairLegacyEncodedName(victims.front().name) + "\"?"
+                : "Delete " + std::to_string(victims.size()) + " items?";
+        cfg.details = detailsFor(startInTrash);
         cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
         cfg.width = 480;
-        // Taller when a folder preview (thumbnail grid) is shown.
-        cfg.height = folderCount > 0 ? 440 : 200;
+        // Room for the two choices, and more when a folder preview
+        // (thumbnail grid) is shown.
+        cfg.height = folderCount > 0 ? 500 : 260;
 
+        const FilerDeleteMode startMode = startInTrash ? FilerDeleteMode::MoveToTrash
+                                                       : FilerDeleteMode::Permanently;
         auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
         if (!dialog) {   // dialogs disabled — fall back to an immediate delete
-            PerformDeletion(victims);
+            PerformDeletion(victims, std::move(onDone), startMode);
             return;
         }
+
+        // The two radio buttons. Wired to each other rather than through an
+        // UltraCanvasRadioGroup: the group keeps a raw pointer to itself in
+        // each button, which a dialog built per delete would have to outlive.
+        // The back-references are raw for the same reason every callback's is
+        // (AGENTS.md): each radio is kept alive by the dialog that holds the
+        // callbacks, so a shared_ptr each way would be a cycle.
+        auto choice = std::make_shared<FilerDeleteMode>(startMode);
+        auto choiceBox = std::make_shared<UltraCanvasContainer>("FilerDelChoice");
+        choiceBox->layout.SetFlexColumn().SetFlexGap(6);
+        choiceBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        auto toTrash = UltraCanvasRadio::Create("FilerDelToTrash", 0, 0,
+                "Move to the " + trash, startInTrash);
+        auto permanently = UltraCanvasRadio::Create("FilerDelPermanently", 0, 0,
+                "Delete permanently", !startInTrash);
+        if (!trashPossible) toTrash->SetDisabled(true);
+        UltraCanvasModalDialog* dlg = dialog.get();
+        toTrash->onChecked = [choice, other = permanently.get(), dlg, detailsFor]() {
+            *choice = FilerDeleteMode::MoveToTrash;
+            other->SetChecked(false);
+            dlg->SetDetails(detailsFor(true));
+        };
+        permanently->onChecked = [choice, other = toTrash.get(), dlg, detailsFor]() {
+            *choice = FilerDeleteMode::Permanently;
+            other->SetChecked(false);
+            dlg->SetDetails(detailsFor(false));
+        };
+        choiceBox->AddChild(toTrash);
+        choiceBox->AddChild(permanently);
+        dialog->AddDialogElement(choiceBox);
 
         // When a folder is being deleted, preview the first entries inside it
         // (with thumbnails) so the user sees what the folder holds.
@@ -6039,7 +6173,7 @@ namespace UltraCanvas {
 
             auto caption = std::make_shared<UltraCanvasLabel>(
                     "FilerDelPreviewCap", 0, 0, 0, 18);
-            caption->SetText("Folder \"" + previewFolder->name + "\" contains "
+            caption->SetText("Folder \"" + RepairLegacyEncodedName(previewFolder->name) + "\" contains "
                              + std::to_string(totalInner) + " item(s)"
                              + (totalInner > inner.size()
                                     ? "  ·  showing first "
@@ -6081,7 +6215,12 @@ namespace UltraCanvas {
 
                 auto lbl = std::make_shared<UltraCanvasLabel>(
                         "FilerDelName" + std::to_string(idx), 0, 0, tile, 14);
-                std::string shown = name.size() > 12 ? name.substr(0, 11) + "…" : name;
+                // Twelve characters, not bytes: a byte cut would split a
+                // Thai, Cyrillic or CJK character and draw it as U+FFFD.
+                const std::string display = RepairLegacyEncodedName(name);
+                const std::vector<size_t> cuts = TextWrapping::Utf8Boundaries(display);
+                const std::string shown = cuts.size() - 1 > 12
+                        ? display.substr(0, cuts[11]) + "…" : display;
                 lbl->SetText(shown);
                 lbl->SetFontSize(9);
                 lbl->SetTextColor(Color(80, 80, 86, 255));
@@ -6098,8 +6237,11 @@ namespace UltraCanvas {
         auto self = this;
         std::vector<FilerEntry> captured = victims;
         dialog->AddCustomButton("Delete", DialogResult::Yes,
-                [self, captured]() { self->PerformDeletion(captured); });
-        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
+                [self, captured, choice, onDone]() {
+            self->PerformDeletion(captured, onDone, *choice);
+        });
+        dialog->AddCustomButton("Cancel", DialogResult::Cancel,
+                [onDone]() { if (onDone) onDone(false); });
 
         UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
     }
@@ -13140,7 +13282,12 @@ namespace UltraCanvas {
         addAction("Cut", hasSel && !ShowingRemoteFolder(),
                   [this]() { CutSelection(); }, "Ctrl+X");
         addAction("Paste", ClipboardHasContent(), [this]() { Paste(); }, "Ctrl+V");
-        addAction("Delete", hasSel, [this]() { DeleteSelection(); }, "Del");
+        addAction("Delete", hasSel, [this]() {
+            DeleteSelection(FilerDeleteMode::MoveToTrash);
+        }, "Del");
+        addAction("Delete Permanently", hasSel, [this]() {
+            DeleteSelection(FilerDeleteMode::Permanently);
+        }, "Shift+Del");
         addAction("Duplicate", hasSel && !ShowingRemoteFolder(),
                   [this]() { DuplicateSelection(); }, "Ctrl+D");
         {
@@ -13984,8 +14131,11 @@ namespace UltraCanvas {
                     case UCKeys::Return:
                         if (!selection.empty()) ActivateEntry(selection.front());
                         return true;
+                    // Del asks with "Move to the Trash" chosen, Shift+Del
+                    // with "Delete permanently" - Explorer's two keys.
                     case UCKeys::Delete:
-                        DeleteSelection();
+                        DeleteSelection(event.shift ? FilerDeleteMode::Permanently
+                                                    : FilerDeleteMode::MoveToTrash);
                         return true;
                     case UCKeys::F2:
                         if (selection.size() == 1) StartRename(selection.front());

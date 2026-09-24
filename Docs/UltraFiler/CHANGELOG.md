@@ -1,3 +1,14 @@
+#### 2026-09-24 *1.51.0*
+- **Delete moves to the Trash now, and asks which it should be.** The delete
+  confirmation offers **Move to the Trash** and **Delete permanently** as two
+  radio buttons; Del opens it on the trash, Shift+Del on the permanent delete,
+  as in Explorer. (The framework side - the trash itself and the dialog - is
+  in the UltraCanvas changelog.)
+  - The toolbar's delete button asked "Delete X?" in a box of its own and then
+    the widget asked again. It now opens the widget's confirmation directly.
+  - The folder tree's **Delete** used its own "Delete X and everything in it?"
+    box and always deleted for good; it now opens the same confirmation, with
+    the trash choice and the preview of what the folder holds.
 #### 2026-09-24 *1.50.0*
 - **Files can be taken off a drive now, and the status line counts them down.**
   1.49.0 gave every job on a drive a line in the status strip and a progress

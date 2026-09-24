@@ -352,6 +352,18 @@ namespace UltraCanvas {
         AlwaysConfirm
     };
 
+    // ===== WHAT A DELETE DOES =====
+    // The choice the delete confirmation offers as two radio buttons, and the
+    // one it opens on: Del opens on MoveToTrash, Shift+Del on Permanently -
+    // the keys Windows Explorer gives the two. Where the trash cannot take the
+    // victims (UltraCanvasTrash is missing on this platform, the entries are
+    // inside an archive or on a remote drive) the dialog offers Permanently
+    // only, and says why.
+    enum class FilerDeleteMode {
+        MoveToTrash,   // into the Recycle Bin / Trash, restorable from there
+        Permanently    // removed from the disk; cannot be undone
+    };
+
     // ===== THE HIDDEN-ITEMS NOTICE =====
     // When the strip along the foot of the display says what the listing is
     // leaving out. A display that drops entries without a word is how a user
@@ -1180,15 +1192,33 @@ namespace UltraCanvas {
         void PasteFilesInto(std::string folder, std::vector<std::string> paths,
                             bool cut,
                             std::function<void(bool changed)> onDone = nullptr);
-        void DeleteSelection();    // gated by confirmDelete when set
+        // Asks (the built-in confirmation, or confirmDelete when set) and
+        // deletes the selection. `preferred` is the choice the dialog opens
+        // on - Del passes MoveToTrash, Shift+Del Permanently - and what a
+        // confirmDelete host gets when the trash can take the entries.
+        void DeleteSelection(FilerDeleteMode preferred = FilerDeleteMode::MoveToTrash);
         // Delete `paths` with no confirmation of the widget's own - the caller
-        // has already asked. They go through the same worker, progress window
-        // and problem dialogs as a delete started in the view, which is the
-        // point: UltraFiler's folder-tree delete used a bare remove_all and
-        // froze the window for as long as it took. `onDone` is told whether
-        // anything was removed.
+        // has already asked, and chose `mode`. They go through the same worker,
+        // progress window and problem dialogs as a delete started in the view,
+        // which is the point: UltraFiler's folder-tree delete used a bare
+        // remove_all and froze the window for as long as it took. `onDone` is
+        // told whether anything was removed. With MoveToTrash, an entry the
+        // trash refuses stops at the problem dialog; it is never deleted for
+        // good instead.
         void DeletePaths(std::vector<std::string> paths,
-                         std::function<void(bool changed)> onDone = nullptr);
+                         std::function<void(bool changed)> onDone = nullptr,
+                         FilerDeleteMode mode = FilerDeleteMode::Permanently);
+        // The same, behind the widget's own confirmation dialog (the trash /
+        // permanent choice, the folder preview) - for a host command that
+        // deletes paths the display is not showing, such as UltraFiler's
+        // folder-tree "Delete". `onDone` hears false when the user cancels.
+        void ConfirmDeletePaths(std::vector<std::string> paths,
+                                std::function<void(bool changed)> onDone = nullptr,
+                                FilerDeleteMode preferred = FilerDeleteMode::MoveToTrash);
+        // Whether the trash can take every one of `victims`: this platform has
+        // one (TrashAvailable) and each entry is a real file here - not inside
+        // an archive, not on a remote drive.
+        bool CanMoveToTrash(const std::vector<FilerEntry>& victims) const;
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
         // What a delete that wipes out the whole selection leaves selected.
@@ -1305,7 +1335,9 @@ namespace UltraCanvas {
         // application can persist the widths and restore them later.
         std::function<void()> onColumnWidthsChanged;
 
-        // Optional veto for DeleteSelection: return false to abort.
+        // Optional veto for DeleteSelection: return false to abort. It replaces
+        // the built-in dialog, so the delete then goes the way DeleteSelection
+        // was asked for (to the trash when it can take the entries).
         std::function<bool(const std::vector<FilerEntry>&)> confirmDelete;
 
         // ---- Remote drives (an FTP or a cloud account carried as a drive) --
@@ -2690,7 +2722,8 @@ namespace UltraCanvas {
         std::vector<FilerEntry> SelectionOrEntry(size_t entryIndex) const;
         // Delete an explicit set (confirmDelete / the built-in dialog still
         // gate it). DeleteSelection() is this over the selected entries.
-        void DeleteEntries(const std::vector<FilerEntry>& victims);
+        void DeleteEntries(const std::vector<FilerEntry>& victims,
+                           FilerDeleteMode preferred = FilerDeleteMode::MoveToTrash);
         // Entry that should inherit the selection once `victims` are gone:
         // the first survivor after them, else the last one before them.
         // Empty when the folder holds nothing else.
@@ -3070,6 +3103,8 @@ namespace UltraCanvas {
             std::string stopReason;
             // Runs when the queue is done, if the caller asked to be told.
             std::function<void(bool changed)> onDone;
+            // Each entry goes to the trash instead of being removed.
+            bool toTrash = false;
         };
         std::unique_ptr<PendingDelete> pendingDelete;
 
@@ -3283,13 +3318,23 @@ namespace UltraCanvas {
         // ===== DELETE CONFIRMATION =====
         // Actually removes the given entries from disk (no confirmation).
         // `onDone` is told, when the queue is through, whether anything went.
+        // `mode` MoveToTrash sends each real-filesystem entry to the trash;
+        // entries inside an archive are always removed from it.
         void PerformDeletion(const std::vector<FilerEntry>& victims,
-                             std::function<void(bool changed)> onDone = nullptr);
+                             std::function<void(bool changed)> onDone = nullptr,
+                             FilerDeleteMode mode = FilerDeleteMode::Permanently);
         // Shows the built-in modal confirmation dialog (used when no
-        // confirmDelete veto is installed). Deletes on confirm. When a folder is
-        // among the victims, a preview of its first entries (with thumbnails) is
-        // shown so the user sees what is about to be lost.
-        void ShowDeleteConfirmation(const std::vector<FilerEntry>& victims);
+        // confirmDelete veto is installed): "Move to Trash" / "Delete
+        // permanently" as two radio buttons opened on `preferred`, the
+        // warning line following the choice. Deletes on confirm; `onDone`
+        // hears false on cancel. When a folder is among the victims, a
+        // preview of its first entries (with thumbnails) is shown so the user
+        // sees what is about to go.
+        void ShowDeleteConfirmation(const std::vector<FilerEntry>& victims,
+                                    FilerDeleteMode preferred = FilerDeleteMode::MoveToTrash,
+                                    std::function<void(bool changed)> onDone = nullptr);
+        // DeletePaths' entries: what the filesystem says about each path.
+        std::vector<FilerEntry> EntriesForPaths(const std::vector<std::string>& paths) const;
     };
 
     // ===== FACTORY =====

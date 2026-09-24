@@ -219,6 +219,30 @@ add_test(NAME FileLockTest COMMAND FileLockTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FileLockTest")
 
+# ===== TRASH TEST =====
+# MoveToTrash's freedesktop.org backend (Linux, the BSDs), built from its own
+# sources like the file-lock test above and pointed at a private
+# XDG_DATA_HOME, so the user's real trash is never touched. The Windows and
+# macOS backends are single calls into the shell / NSFileManager; a test there
+# would fill the build machine's own Recycle Bin, so it is not built there.
+if(ULTRACANVAS_HAS_NATIVE_TRASH AND UNIX AND NOT APPLE)
+    message(STATUS "  Building TrashTest...")
+    add_executable(TrashTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TrashTest.cpp
+        ${ULTRACANVAS_CORE_DIR}/UltraCanvasTrash.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxTrash.cpp
+    )
+    target_include_directories(TrashTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TrashTest PRIVATE cxx_std_20)
+    target_compile_definitions(TrashTest PRIVATE ULTRACANVAS_HAS_NATIVE_TRASH)
+    set_target_properties(TrashTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TrashTest COMMAND TrashTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TrashTest")
+endif()
+
 # ===== VOLUME MONITOR TEST =====
 # Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
 # built from its own sources, needs no display and does not link UltraCanvas.
