@@ -48,8 +48,9 @@
 // (Display > File extensions), and a thumbnail tile can carry the extension
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
-// the real one.
-// Version: 1.33.0
+// the real one. A name that is not UTF-8 — written in a legacy code page by an
+// old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.33.1
 // Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 
@@ -3912,22 +3913,30 @@ namespace UltraCanvas {
         // as "Home" rather than under the account it is named after).
         if (displayNameProvider) {
             const std::string provided = displayNameProvider(e);
-            if (!provided.empty()) return provided;
+            if (!provided.empty()) return RepairLegacyEncodedName(provided);
         }
         // A launcher that carries its own name is shown by it: the file name
         // of a desktop entry is an id nobody reads
         // ("org.mozilla.firefox.desktop"), while its Name= is what the menus
         // of the machine call it. Only the drawn name changes — renaming,
         // sorting and every file operation still use the real one.
-        if (!e.linkDisplayName.empty()) return e.linkDisplayName;
-        if (fileExtensionsInNames) return e.name;
+        if (!e.linkDisplayName.empty()) return RepairLegacyEncodedName(e.linkDisplayName);
+        // A name on disk is whatever bytes the program that made it wrote; one
+        // written in a legacy code page ("Namens\xE4nderung" from an old
+        // Latin-1 tool, "Namens\x84nderung" out of a ZIP made on Windows) is
+        // not UTF-8, and drawn as it is each such byte became U+FFFD —
+        // "Namens\uFFFDnderung". Show it decoded; the file is still reached by
+        // e.name / e.path, its real bytes. UTF-8 names (Thai, Cyrillic, CJK)
+        // pass through unchanged.
+        const std::string name = RepairLegacyEncodedName(e.name);
+        if (fileExtensionsInNames) return name;
         // Only a plausible file type is dropped: the tail of
         // "UCDemo-Windows-0.3.27-x86_64" is a version, not an extension, and a
         // folder has no extension at all, so every dot in it belongs to it.
-        if (ExtensionTagOf(e).empty()) return e.name;
-        const size_t dot = e.name.find_last_of('.');
-        if (dot == std::string::npos || dot == 0) return e.name;
-        return e.name.substr(0, dot);
+        if (ExtensionTagOf(e).empty()) return name;
+        const size_t dot = name.find_last_of('.');
+        if (dot == std::string::npos || dot == 0) return name;
+        return name.substr(0, dot);
     }
 
     bool UltraCanvasFilerWidget::PreviewFitsRect(const FilerEntry& e,
@@ -6153,12 +6162,16 @@ namespace UltraCanvas {
         // A rename field is not a form: no validation state (its ✓/✗ glyph
         // would sit inside the narrow field) and no clear button.
         renameInput->SetShowValidationState(false);
-        renameInput->SetText(e.name);
+        // The name as the display shows it: a legacy-encoded one decoded (see
+        // DisplayNameOf), not its raw bytes, which the field could only show -
+        // and save back - as U+FFFD. An edited name is written as UTF-8.
+        const std::string shownName = RepairLegacyEncodedName(e.name);
+        renameInput->SetText(shownName);
         // Windows-style initial selection: the base name without the extension
         // (folders select whole), so typing replaces the name and keeps ".ext".
-        size_t selEnd = e.name.size();
+        size_t selEnd = shownName.size();
         if (!e.isDirectory) {
-            size_t dot = e.name.rfind('.');
+            size_t dot = shownName.rfind('.');
             if (dot != std::string::npos && dot > 0) selEnd = dot;
         }
         renameInput->SetSelection(0, selEnd);
@@ -6195,7 +6208,10 @@ namespace UltraCanvas {
         std::string newName = renameInput ? renameInput->GetText() : std::string();
         renamingIndex = -1;
         DestroyRenameInput(restoreFocus);
+        // The field opened on the decoded spelling of a legacy-encoded name
+        // (StartRename): committing that unedited is no rename either.
         if (newName.empty() || newName == oldName ||
+            newName == RepairLegacyEncodedName(oldName) ||
             newName.find('/') != std::string::npos) {
             RequestRedraw();
             return;

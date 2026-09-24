@@ -1981,6 +1981,44 @@ if(LIBARCHIVE_TEST_FOUND)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: VirtualFSDeleteTest")
+
+    # ===== VIRTUALFS NAME ENCODING TEST =====
+    # ZIP entry names in the DOS code page (no UTF-8 flag, as Windows writes
+    # "Namensänderung") list and extract as UTF-8; Thai / Russian / Chinese
+    # UTF-8 names survive unchanged.
+    message(STATUS "  Building VirtualFSNameEncodingTest...")
+    add_executable(VirtualFSNameEncodingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSNameEncodingTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSNameEncodingTest PRIVATE
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSNameEncodingTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSNameEncodingTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSNameEncodingTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSNameEncodingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSNameEncodingTest
+        COMMAND VirtualFSNameEncodingTest ${CMAKE_BINARY_DIR}/vfs-name-encoding-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSNameEncodingTest")
 else()
     message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
 endif()
@@ -2924,6 +2962,30 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MacBundleTest")
 else()
     message(STATUS "  MacBundleTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FILER NAME ENCODING TEST =====
+# The file display draws German umlauts, Thai, Russian and Chinese names
+# intact, and a name in a legacy code page (Latin-1, or IBM437 out of a
+# Windows ZIP) decoded instead of as U+FFFD ("Namens•nderung").
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerNameEncodingTest...")
+    add_executable(FilerNameEncodingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerNameEncodingTest.cpp
+    )
+    target_include_directories(FilerNameEncodingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerNameEncodingTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerNameEncodingTest PRIVATE UltraCanvas)
+    set_target_properties(FilerNameEncodingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerNameEncodingTest COMMAND FilerNameEncodingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerNameEncodingTest")
+else()
+    message(STATUS "  FilerNameEncodingTest skipped (UltraCanvas target not present)")
 endif()
 
 message(STATUS "")

@@ -1263,6 +1263,24 @@ rule, including a desktop launcher's own `Name=`
 where the home folder is shown as *Home* — what the folder tree's row and the
 folder tab call it too — instead of the account the folder is named after.
 
+### Names in every script, and names that are not UTF-8
+
+Names are UTF-8 throughout: German umlauts, Thai, Cyrillic, CJK and emoji are
+listed, drawn, wrapped under a tile, ellipsized in a column and renamed as
+whole characters (a caption never breaks inside a multibyte character).
+
+A file name on disk, though, is whatever bytes the program that made it
+wrote, and some are not UTF-8: an old Latin-1 tool writes "Namensänderung" as
+`Namens\xE4nderung`, and a ZIP made on Windows and unpacked by a tool that did
+not re-encode it leaves `Namens\x84nderung` (IBM437). Drawn as they were, each
+such byte became U+FFFD — "Namens•nderung". `DisplayNameOf` now shows such a
+name decoded (`RepairLegacyEncodedName` in `UltraCanvasTextUtils.h` picks
+Windows-1252 or IBM437, whichever makes letters of the stray bytes), while
+`FilerEntry::name` / `path` keep the real bytes, so opening, copying and
+deleting the file still work. The rename field opens on the decoded name, and
+an edited name is written as UTF-8. Archives the widget unpacks through
+VirtualFS already come out with UTF-8 names (see the VirtualFS README).
+
 ## File type colours
 
 Every colour the display gives an entry — the band across the foot of its

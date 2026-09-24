@@ -325,6 +325,14 @@ direct zlib calls throughout the codebase.
   for quick success checks; `VirtualFSResultToString()` for messages.
 * **Paths:** forward slashes only, normalized automatically. Archive
   boundaries detected by extension matching against 40+ known formats.
+* **Entry names are UTF-8**, in listings, reads and on disk after
+  `ExtractAll`, whatever the archive stored and whatever the process locale.
+  A ZIP entry without the UTF-8 flag is read as IBM437 (the ZIP
+  specification's default, and what Windows Explorer writes: "Namensänderung"
+  arrives as `Namens\x84nderung`), unless its bytes already are valid UTF-8
+  (Info-ZIP on Linux, macOS); other formats fall back to Windows-1252. The
+  libarchive provider pins `LC_CTYPE` to UTF-8 for the calling thread while it
+  reads, so Thai, Russian or Chinese names do not vanish in the "C" locale.
 * **Passwords:** set via `VirtualFS_SetPasswordCallback()` — the
   callback is invoked when an encrypted archive is encountered.
 * **Threading:** extraction/creation callbacks run on the calling
