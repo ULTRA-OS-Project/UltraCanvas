@@ -880,6 +880,65 @@ void UltraCanvasSpreadsheet::SortSelectionDescending() {
     Recalculate();
 }
 
+void UltraCanvasSpreadsheet::SortSelectionByColumn(int column, SortOrder order) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return;
+    CellRange sel = GetSelection();
+    if (column < sel.start.col || column > sel.end.col || sel.RowCount() < 2) return;
+    if (recordingUndo_) RecordRangeChange(sel);
+    // Sort moves every column of the range with the key column, so each
+    // selected row keeps its cells together and nothing outside moves.
+    sheet->SortByColumn(sel, column, order);
+    Recalculate();
+
+    headerSortSheet_ = sheet->GetName();
+    headerSortRange_ = sel;
+    headerSortColumn_ = column;
+    headerSortAscending_ = (order == SortOrder::Ascending);
+
+    if (onSelectionSorted) onSelectionSorted(sel, column, order);
+    if (onStatusChange) {
+        onStatusChange("Sorted " + sel.ToString() + " by column " + CellAddress::ColumnToLetter(column) +
+                       (headerSortAscending_ ? ", ascending" : ", descending"));
+    }
+    Invalidate();
+}
+
+void UltraCanvasSpreadsheet::SetHeaderSortEnabled(bool enabled) {
+    if (headerSortEnabled_ == enabled) return;
+    headerSortEnabled_ = enabled;
+    Invalidate();
+}
+
+int UltraCanvasSpreadsheet::GetHeaderSortColumn() const {
+    const auto* sheet = GetActiveSheet();
+    if (!sheet || headerSortColumn_ < 0 || sheet->GetName() != headerSortSheet_) return -1;
+    return GetSelection() == headerSortRange_ ? headerSortColumn_ : -1;
+}
+
+bool UltraCanvasSpreadsheet::GetHeaderSortableRange(CellRange& range) const {
+    const auto* sheet = GetActiveSheet();
+    if (!sheet || !headerSortEnabled_ || !showColumnHeaders_) return false;
+
+    // One rectangular block of at least two rows. Whole rows and whole
+    // columns are left out: sorting a full column would take its title row
+    // along and run over the entire sheet, which is never what a click on a
+    // small header button means.
+    const auto& selection = sheet->GetSelection();
+    if (selection.selections.size() != 1) return false;
+    const CellRange sel = selection.selections[0];
+    if (sel.RowCount() < 2) return false;
+    if (sel.end.row >= SpreadsheetLimits::MaxRows - 1 ||
+        sel.end.col >= SpreadsheetLimits::MaxColumns - 1) return false;
+
+    // Moving rows through a merged area would tear it apart.
+    for (const auto& merge : sheet->GetMergedCells()) {
+        if (merge.range.Intersects(sel)) return false;
+    }
+    range = sel;
+    return true;
+}
+
 void UltraCanvasSpreadsheet::SetAutoFilter() {
     auto* sheet = GetActiveSheet();
     if (!sheet) return;

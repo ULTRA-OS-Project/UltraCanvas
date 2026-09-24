@@ -20,6 +20,7 @@
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
 - **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
 - **Data Tools**: Sorting, auto-filter, find/replace, named ranges, and data validation
+- **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
 - **File I/O**: Load/Save OpenDocument (`.ods`) and CSV/TSV, with auto-detection or explicit import/export options
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
@@ -180,6 +181,21 @@ bool IsAutoCalculateEnabled() const;
 void SetAutoCalculate(bool enabled);
 ```
 
+### Sorting
+
+```cpp
+void SortSelection(const std::vector<SortCriteria>& criteria);
+void SortSelectionAscending();                 // by the selection's first column
+void SortSelectionDescending();
+void SortSelectionByColumn(int column, SortOrder order);   // by any column of the selection
+
+// Header sort buttons (on by default)
+bool IsHeaderSortEnabled() const;
+void SetHeaderSortEnabled(bool enabled);
+int  GetHeaderSortColumn() const;      // -1 unless the current selection was header-sorted
+bool GetHeaderSortAscending() const;
+```
+
 ### File Operations
 
 ```cpp
@@ -226,6 +242,7 @@ std::function<void(int)>      onSheetChange;       // active sheet index
 std::function<void(const std::string&)> onFormulaError;
 std::function<void()>         onStructureChange;
 std::function<void(const std::string&)> onStatusChange;
+std::function<void(const CellRange&, int, SortOrder)> onSelectionSorted;  // header sort: (range, column, order)
 ```
 
 ### SpreadsheetCell
@@ -625,6 +642,50 @@ Rebuild the items each time the menu opens (`PopulateSpreadsheetFormatMenu`)
 so the ticks and radio marks reflect the cell that was just clicked.
 `SpreadsheetNumberFormatPresets()` returns the preset list on its own — label,
 `NumberFormat` and sample — if you want to drive a dropdown or a dialog with it.
+
+## Sorting a selection from the header
+
+Select a block of two or more rows — say `A2:E8`, the months of the demo's
+sales report without its title and totals rows — and every column header over
+the block shows a small button with an up and a down triangle. Clicking one:
+
+- sorts **only the selected rows**, by the column whose button was clicked,
+  ascending (numbers by value, text case-insensitively, empty cells last);
+- moves the **other selected columns with it**, so each row of the block stays
+  together — sort by Sales and the month, the refunds and the percentage of
+  each row travel with its sales figure;
+- leaves **everything outside the block alone**: the title row above, the
+  totals row below and the columns beside it do not move.
+
+The clicked button then shows a single filled triangle (apex up ascending,
+apex down descending), and clicking it again reverses the order. The block
+stays selected, so you can sort it by another column straight away. The
+direction is shown for as long as that block remains the selection. A sort is
+one undo step (Ctrl+Z).
+
+The buttons appear only for a single rectangular selection of two rows or
+more. Whole-column and whole-row selections get none (sorting a full column
+would take its title along and run over the entire sheet), a block that
+overlaps merged cells gets none (moving rows would tear the merge apart), and
+a column narrower than about 44 px has no room for one.
+
+```cpp
+grid->onSelectionSorted = [statusLabel](const CellRange& range, int column, SortOrder order) {
+    statusLabel->SetText("Sorted " + range.ToString() + " by column " +
+                         CellAddress::ColumnToLetter(column));
+};
+
+// The same sort without the button:
+grid->Select(CellRange(1, 0, 7, 4));                  // A2:E8
+grid->SortSelectionByColumn(2, SortOrder::Descending); // by column C
+
+grid->SetHeaderSortEnabled(false);                     // no header buttons
+```
+
+Formulas inside a sorted block move as they are: their references are not
+rewritten, so a row formula such as `=D3/C3` keeps pointing at row 3 after
+it moves. Formulas that cover the whole block (a `SUM(C2:C8)` in the totals
+row) are unaffected.
 
 ## Best Practices
 

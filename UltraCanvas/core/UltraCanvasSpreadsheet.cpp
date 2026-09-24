@@ -1,7 +1,7 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
-// Version: 1.2.0
-// Last Modified: 2026-08-09
+// Version: 1.3.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 
 #include <stdexcept>
@@ -192,6 +192,11 @@ void UltraCanvasSpreadsheet::RenderColumnHeaders(IRenderContext* ctx) {
     
     CellRange visible = GetVisibleRange();
     const auto& selection = sheet->GetSelection();
+
+    // A selected block of rows gets a sort button in each of its column headers.
+    CellRange sortRange;
+    const bool sortable = GetHeaderSortableRange(sortRange);
+    const int sortedColumn = GetHeaderSortColumn();
     
     int x = startX;
     for (int col = visible.start.col; col <= visible.end.col && x < gridBounds_.x + gridBounds_.width; ++col) {
@@ -226,7 +231,54 @@ void UltraCanvasSpreadsheet::RenderColumnHeaders(IRenderContext* ctx) {
         ctx->DrawText(colName, Point2Df(x + (colWidth - textWidth) / 2,
                       headerY + (headerHeight - ctx->GetTextLineHeight(colName)) / 2));
 
+        if (sortable && col >= sortRange.start.col && col <= sortRange.end.col) {
+            Rect2Di button = GetHeaderSortButtonRect(x, colWidth);
+            if (button.width > 0) {
+                RenderHeaderSortButton(ctx, button, col == sortedColumn, headerSortAscending_,
+                                       isSelected ? Colors::White : headerTextColor_);
+            }
+        }
+
         x += colWidth;
+    }
+}
+
+Rect2Di UltraCanvasSpreadsheet::GetHeaderSortButtonRect(int colX, int colWidth) const {
+    const int size = 14;
+    // Leave the column letter room in the middle and keep clear of the
+    // resize grip on the right-hand border.
+    if (colWidth < 2 * size + 16) return Rect2Di(0, 0, 0, 0);
+    const int headerHeight = SpreadsheetLimits::HeaderRowHeight;
+    return Rect2Di(colX + colWidth - size - 6,
+                   static_cast<int>(gridBounds_.y) + (headerHeight - size) / 2, size, size);
+}
+
+// The button is geometry, like the ListView's sort indicator: an outline with
+// both directions offered while the block is unsorted, and a single filled
+// triangle (apex up ascending, apex down descending) once it has been sorted
+// by this column.
+void UltraCanvasSpreadsheet::RenderHeaderSortButton(IRenderContext* ctx, const Rect2Di& button,
+                                                    bool sorted, bool ascending, const Color& color) {
+    ctx->SetStrokePaint(Color(color.r, color.g, color.b, 140));
+    ctx->SetStrokeWidth(1.0f);
+    ctx->DrawRoundedRectangle(Rect2Dd(button.x + 0.5, button.y + 0.5, button.width - 1, button.height - 1), 2.0);
+
+    const double cx = button.x + button.width * 0.5;
+    const double cy = button.y + button.height * 0.5;
+    auto up = [&](double top, double w, double h) {
+        return std::vector<Point2Dd>{ Point2Dd(cx, top), Point2Dd(cx + w / 2, top + h), Point2Dd(cx - w / 2, top + h) };
+    };
+    auto down = [&](double top, double w, double h) {
+        return std::vector<Point2Dd>{ Point2Dd(cx - w / 2, top), Point2Dd(cx + w / 2, top), Point2Dd(cx, top + h) };
+    };
+
+    if (sorted) {
+        ctx->SetFillPaint(color);
+        ctx->FillLinePath(ascending ? up(cy - 2.5, 8, 5) : down(cy - 2.5, 8, 5));
+    } else {
+        ctx->SetFillPaint(Color(color.r, color.g, color.b, 190));
+        ctx->FillLinePath(up(cy - 5, 6, 3.5));
+        ctx->FillLinePath(down(cy + 1.5, 6, 3.5));
     }
 }
 
@@ -819,6 +871,7 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
     // right-click on a multi-cell range formats the whole range), and never
     // starts a drag-selection.
     if (event.button == UCMouseButton::Right) {
+        if (hit.area == HitArea::ColumnSortButton) hit.area = HitArea::ColumnHeader;
         if (hit.area == HitArea::Cell || hit.area == HitArea::ColumnHeader ||
             hit.area == HitArea::RowHeader) {
             if (IsEditing()) StopEditing(true);
@@ -876,6 +929,15 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
             if (IsEditing()) StopEditing(true);
             SelectRow(hit.row);
             Invalidate();
+            break;
+        }
+
+        case HitArea::ColumnSortButton: {
+            // Sorts the selection, which stays selected; the same button
+            // again turns the order round.
+            if (IsEditing()) StopEditing(true);
+            const bool ascending = !(GetHeaderSortColumn() == hit.col && headerSortAscending_);
+            SortSelectionByColumn(hit.col, ascending ? SortOrder::Ascending : SortOrder::Descending);
             break;
         }
         
@@ -1020,6 +1082,7 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
         case HitArea::ColumnResizer: SetMouseCursor(UCMouseCursor::SizeWE); break;
         case HitArea::RowResizer:    SetMouseCursor(UCMouseCursor::SizeNS); break;
         case HitArea::FormulaBar:    SetMouseCursor(UCMouseCursor::Text);   break;
+        case HitArea::ColumnSortButton: SetMouseCursor(UCMouseCursor::Hand); break;
         default:                     SetMouseCursor(UCMouseCursor::Default); break;
     }
 }
@@ -1257,6 +1320,20 @@ UltraCanvasSpreadsheet::HitTestResult UltraCanvasSpreadsheet::HitTest(int x, int
                     break;
                 }
                 if (colX > x) break;
+            }
+
+            // Sort button of a column inside the selected block.
+            CellRange sortRange;
+            if (result.area == HitArea::ColumnHeader && GetHeaderSortableRange(sortRange) &&
+                result.col >= sortRange.start.col && result.col <= sortRange.end.col) {
+                int left = static_cast<int>(gridBounds_.x) + headerWidth;
+                for (int c = sheet->GetScrollColumn(); c < result.col; ++c) {
+                    if (!sheet->IsColumnHidden(c)) left += sheet->GetColumnWidth(c);
+                }
+                Rect2Di button = GetHeaderSortButtonRect(left, sheet->GetColumnWidth(result.col));
+                if (button.width > 0 && button.Contains(x, y)) {
+                    result.area = HitArea::ColumnSortButton;
+                }
             }
         }
         return result;

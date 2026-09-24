@@ -726,6 +726,31 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetColumnSizingTest")
 
+# ===== SPREADSHEET RANGE SORT TEST =====
+# Sorting a selected block by one of its columns (the header sort buttons):
+# the block's other columns move with the key column, and nothing outside the
+# block moves. Exercises the real SpreadsheetSheet with no UI stack.
+message(STATUS "  Building SpreadsheetRangeSortTest...")
+add_executable(SpreadsheetRangeSortTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetRangeSortTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetRangeSortTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetRangeSortTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetRangeSortTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetRangeSortTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetRangeSortTest
+    COMMAND SpreadsheetRangeSortTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetRangeSortTest")
+
 # ===== LISTVIEW TOOLTIP TEST =====
 # The tooltip text a ListView reads on hover: per-cell tooltips over the
 # row-wide fallback, the header tooltip on ListColumnDef, and the ToolTipRole
