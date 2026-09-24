@@ -128,7 +128,7 @@ std::unique_ptr<ITextLLM> CreateTextLLM(const TextLLMConfig& config,
 
     // Default route (UltraAIRouting.h): walk the preference order —
     // explicit SetDefaultProvider, ULTRAAI_DEFAULT_TEXTLLM environment,
-    // local-first, real providers, then the mock — falling through
+    // local-first, cloud only when allowed, then the mock — falling through
     // providers that cannot construct in this build.
     std::vector<std::string> registered;
     registered.reserve(r.providers.size());
@@ -140,7 +140,10 @@ std::unique_ptr<ITextLLM> CreateTextLLM(const TextLLMConfig& config,
     }
     if (err->code == ErrorCode::None) {
         err->code    = ErrorCode::ModelNotFound;
-        err->message = "No TextLLM provider registered";
+        err->message = registered.empty()
+            ? "No TextLLM provider registered"
+            : "No local TextLLM provider; name a provider, set a default, "
+              "or allow cloud fallback";
     }
     return nullptr;
 }

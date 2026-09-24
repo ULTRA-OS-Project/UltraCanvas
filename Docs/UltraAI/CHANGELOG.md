@@ -15,11 +15,27 @@
   `UltraNetTransport` backs it with UltraNet's `onDataChunk`; every other
   transport — `ScriptedTransport`, `RecordingTransport`, cassette replay —
   gets a default that delivers the whole body as one chunk.
-- With no provider named, text-to-speech now resolves to `elevenlabs`
-  rather than `minimax` when both are built: the default route picks the
-  first registered cloud provider by name. Set a default with
-  `SetDefaultProvider("texttospeech", ...)` or
-  `ULTRAAI_DEFAULT_TEXTTOSPEECH` to choose.
+- **Local AI is the default.** With no provider named, a service now
+  routes to a provider that runs on this machine (llama.cpp, an Ollama /
+  vLLM server, ComfyUI, ...) and to the in-process test double where there
+  is none — never to a cloud service. Until now the default route fell back
+  to the first registered cloud provider by name, so text-to-speech would
+  have gone to `elevenlabs`, a paid service, without anyone choosing it.
+  A cloud provider is used when it is named: as `providerId`, with
+  `SetDefaultProvider`, or with `ULTRAAI_DEFAULT_<CAPABILITY>`. The old
+  fallback is still there as an opt-in — `SetCloudFallbackAllowed(true)` or
+  `ULTRAAI_ALLOW_CLOUD_FALLBACK=1` — and `IsLocalProvider()` tells the two
+  kinds apart (`UltraAIRouting.h`).
+- **The dashboard has a settings window like UltraFiler's.** "⚙ Settings"
+  now opens a window with a page tree on the left and the page on the
+  right: *Services > Default providers* picks the provider each service's
+  "(default route)" uses — "Automatic — local first" unless one is chosen,
+  with what Automatic resolves to right now shown beside it — *Services >
+  Local & cloud* turns cloud fallback on (off by default), and *Accounts >
+  Endpoints* opens the endpoint editor, which is titled "UltraAI —
+  Endpoints" now. Every change applies at once and is saved to
+  `config.ini` beside `endpoints.json` in the UltraAI config directory; the
+  app applies it at startup.
 
 #### 2026-09-22 *0.1.3*
 - **The dashboard icon is back.** `media/appicon/UltraAI.svg` had been

@@ -85,13 +85,9 @@ bool ReadTextFile(const std::string& path, std::string& outText) {
 bool ProviderNeedsApiKey(const std::string& provider) {
     // Local providers run the model on this machine — llama-cpp in-process,
     // qwen against Ollama/vLLM, comfyui against a ComfyUI the user started —
-    // and take no credential.
-    static const char* kKeyless[] = {"mock", "llama-cpp", "qwen", "comfyui"};
-    if (provider.empty()) return false;
-    for (const char* keyless : kKeyless) {
-        if (provider == keyless) return false;
-    }
-    return true;
+    // and take no credential; neither does the mock.
+    if (provider.empty() || provider == "mock") return false;
+    return !IsLocalProvider(provider);
 }
 
 // Route a typed key into UltraVault (or, in a build without it, straight

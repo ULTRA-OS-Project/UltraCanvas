@@ -28,7 +28,7 @@ public:
 private:
     void CreateButtons();
 
-    // Open the endpoints Settings dialog.
+    // Open the settings window (default providers, cloud fallback, endpoints).
     void OpenSettingsDialog();
 
     // Open a modal dialog for the chosen capability.

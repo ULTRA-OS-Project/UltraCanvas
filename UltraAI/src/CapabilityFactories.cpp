@@ -107,7 +107,10 @@ std::unique_ptr<Interface> Create(Registry<Interface, Config>& r,
     }
     if (err->code == ErrorCode::None) {
         err->code    = ErrorCode::ModelNotFound;
-        err->message = "No provider registered";
+        err->message = registered.empty()
+            ? "No provider registered"
+            : std::string("No local provider for ") + r.capabilityName +
+              "; name a provider, set a default, or allow cloud fallback";
     }
     return nullptr;
 }
