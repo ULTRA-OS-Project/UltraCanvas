@@ -1,8 +1,9 @@
 // Apps/UltraAuthenticator/NewVaultDialog.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "NewVaultDialog.h"
+#include "BrandHeader.h"
 #include "Theme.h"
 
 #include "UltraCrypt/UltraCryptCore.h"
@@ -41,7 +42,7 @@ void NewVaultDialog::CreateNewVaultDialog() {
 
     const long margin     = Theme::kMargin;
     const long fieldWidth = kDialogWidth - 2 * margin;
-    long y = margin;
+    long y = AddBrandHeader(*this, "nv", kDialogWidth, margin);
 
     auto title = std::make_shared<UltraCanvasLabel>(
         "nv-title", margin, y, fieldWidth, 24, "Choose a master password");
@@ -50,20 +51,21 @@ void NewVaultDialog::CreateNewVaultDialog() {
     AddChild(title);
     y += 30;
 
-    // Four lines at this width, and the box must cover all of them: a label
-    // centres its text in the box it is given, so a line the box has no room
-    // for spills half above (into the title) and half below (into the
+    // Small type: this is the fine print under the title, not a second title.
+    // Three to four lines at this width, and the box must cover all of them: a
+    // label centres its text in the box it is given, so a line the box has no
+    // room for spills half above (into the title) and half below (into the
     // caption). Sized for four; the first attempt at three lost a line each way.
     auto intro = std::make_shared<UltraCanvasLabel>(
-        "nv-intro", margin, y, fieldWidth, 72,
+        "nv-intro", margin, y, fieldWidth, 60,
         "It protects every account in this app and cannot be recovered: "
         "forget it and the accounts are gone. It is typed twice, since a "
         "typo here would become the password.");
-    intro->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+    intro->SetFont(Theme::kUiFont, Theme::kSizeSmall);
     intro->SetTextColor(Theme::kTextSecondary);
     intro->SetWrap(TextWrap::WrapWord);
     AddChild(intro);
-    y += 82;
+    y += 68;
 
     auto caption = std::make_shared<UltraCanvasLabel>(
         "nv-pw-lbl", margin, y, fieldWidth, 18, "Master password");

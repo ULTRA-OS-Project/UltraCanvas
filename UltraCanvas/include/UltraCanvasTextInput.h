@@ -1,7 +1,10 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.5.0
-// Last Modified: 2026-09-15
+// Version: 1.6.0
+// Last Modified: 2026-09-24
+// V1.6.0: The password eye button is on by default. A masked field with no way
+//   to read it back made every typo a blind retry; SetShowPasswordToggle(false)
+//   still turns it off for a field that must never show its text.
 // V1.5.0: Caret movement, Backspace/Delete, hit testing, masking and the length
 //   limit all count characters instead of bytes, so a name like "Fröhling"
 //   edits normally instead of being split into invalid UTF-8.
@@ -344,7 +347,9 @@ private:
     // Only ever shown for password fields; clicking it flips the mask off so the
     // user can check what they typed. The reveal state is separate from the
     // button so an external control ("Show password" checkbox) can drive it too.
-    bool showPasswordToggle = false;
+    // On by default: it is only painted in password mode, so plain fields are
+    // unaffected.
+    bool showPasswordToggle = true;
     bool passwordRevealed = false;
     bool isPasswordToggleHovered = false;
     int passwordToggleSize = 18;
@@ -429,8 +434,8 @@ public:
     bool IsShowClearButton() const { return showClearButton; }
 
     // ===== PASSWORD REVEAL =====
-    // In-field eye button. Ignored unless the input is in password mode, so it is
-    // safe to switch on before SetInputType().
+    // In-field eye button, on by default. Ignored unless the input is in
+    // password mode, so it is safe to switch on before SetInputType().
     void SetShowPasswordToggle(bool show) { showPasswordToggle = show; UpdateScrollOffset(); RequestRedraw(); }
     bool IsShowPasswordToggle() const { return showPasswordToggle; }
 
@@ -685,6 +690,7 @@ inline std::shared_ptr<UltraCanvasTextInput> CreatePasswordInput(
 }
 
 // Password input that carries the in-field eye button for showing the typed text.
+// Every password input does now; kept so existing callers still read clearly.
 inline std::shared_ptr<UltraCanvasTextInput> CreateRevealablePasswordInput(
     const std::string& identifier, int x, int y, int w, int h) {
     auto input = CreatePasswordInput(identifier, x, y, w, h);
@@ -726,7 +732,7 @@ private:
     TextFormatter formatter = TextFormatter::NoFormat();
     bool readOnly = false;
     int maxLength = -1;
-    bool showPasswordToggle = false;
+    bool showPasswordToggle = true;
     
 public:
     TextInputBuilder& SetIdentifier(const std::string& inputId) { identifier = inputId; return *this; }

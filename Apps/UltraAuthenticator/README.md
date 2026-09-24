@@ -36,6 +36,7 @@ Changelog and version:
 | `RevealSecretDialog.*` | Shows one account's setup key, so it can be enrolled elsewhere |
 | `ChangePasswordDialog.*` | Re-derives the vault key from a new master password |
 | `BackupDialog.*` | Both directions of the encrypted backup — export and restore |
+| `BrandHeader.h` | The centred logo and small app name at the top of the new-vault and lock screens |
 | `Theme.h` | One place for the colours, type sizes and metrics, so the window and the dialogs cannot drift apart |
 | `main.cpp` | The unlock gate, the vault path, and the `--vault` / `--help` / `--version` command line |
 | `UltraAuthenticator.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/UltraAuthenticator.png` / `.svg`, the PNG rendered from the SVG) in the `hicolor` icon theme, which is how the application menu and UltraFiler find the app and its icon |

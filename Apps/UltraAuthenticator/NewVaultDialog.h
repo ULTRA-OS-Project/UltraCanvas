@@ -12,11 +12,17 @@
 // Like the lock screen it cannot be waved away: the only ways out are a
 // password or Quit. There is no vault yet, so "cancel" can only mean quit.
 //
-// Version: 0.1.0
+// It is the first thing a new user sees, so it opens with the app's logo and
+// name (BrandHeader.h). Both password fields carry the framework's eye button,
+// so what was typed can be checked before it becomes the password.
+//
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 #ifndef NEWVAULTDIALOG_H
 #define NEWVAULTDIALOG_H
+
+#include "BrandHeader.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -62,7 +68,7 @@ private:
     bool quitting_ = false;
 
     static constexpr long kDialogWidth  = 460;
-    static constexpr long kDialogHeight = 430;
+    static constexpr long kDialogHeight = 416 + kBrandHeaderHeight;
 };
 
 } // namespace Authenticator
