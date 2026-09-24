@@ -78,6 +78,7 @@
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasTrash.h"
+#include "UltraCanvasSyntaxTokenizer.h"   // which extensions are source text
 #include "../libspecific/Cairo/QoiPixmapCodec.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
@@ -614,12 +615,41 @@ namespace UltraCanvas {
 
         // The file category of an extension: the table first (it also carries
         // the type name), the registered formats after it.
+        // Source text the widget's own table does not name: every extension
+        // a language of the syntax highlighter claims (Swift, Rust, SQL, Go,
+        // Kotlin, the assemblers, ...), with that language's name. Without it
+        // those files were "Other": no miniature page of their text on the
+        // tile, and no switch for them under Display > Thumbnails > Text.
+        // Binary files that ride along in a language's list stay out: MATLAB's
+        // .mat data and .mlx live scripts (a ZIP), and gzip-compressed .svgz.
+        const std::map<std::string, std::string>& SourceTextExtensions() {
+            static const std::map<std::string, std::string> map = [] {
+                static const std::set<std::string> binary = {"mat", "mlx", "svgz"};
+                std::map<std::string, std::string> out;
+                const SyntaxTokenizer tokenizer;
+                for (const auto& [language, extensions] : tokenizer.GetLanguageExtensions()) {
+                    for (std::string ext : extensions) {
+                        std::transform(ext.begin(), ext.end(), ext.begin(),
+                                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                        if (ext.empty() || binary.count(ext)) continue;
+                        out.emplace(ext, language);   // first claimant names it
+                    }
+                }
+                return out;
+            }();
+            return map;
+        }
+
         FilerFileCategory FilerCategoryForExtension(const std::string& ext) {
             const auto& m = ExtensionTypeMap();
             auto it = m.find(ext);
             if (it != m.end()) return it->second.category;
             FilerFileCategory c = FilerFileCategory::Other;
             if (RegisteredCategoryForExtension(ext, c)) return c;
+            // Last: what the syntax highlighter knows as source text. The
+            // table and the registered plugins speak first, so .svg stays a
+            // vector graphic and .ts TypeScript.
+            if (SourceTextExtensions().count(ext)) return FilerFileCategory::Text;
             return FilerFileCategory::Other;
         }
 
@@ -2675,9 +2705,15 @@ namespace UltraCanvas {
             std::string upper = e.extension;
             std::transform(upper.begin(), upper.end(), upper.begin(),
                            [](unsigned char c) { return std::toupper(c); });
-            e.typeName = upper.empty()
-                                 ? "File"
-                                 : upper + " " + CategoryNoun(e.category);
+            // Source text is named after its language ("Swift Text").
+            const auto& source = SourceTextExtensions();
+            const auto language = source.find(e.extension);
+            if (e.category == FilerFileCategory::Text && language != source.end())
+                e.typeName = language->second + " " + CategoryNoun(e.category);
+            else
+                e.typeName = upper.empty()
+                                     ? "File"
+                                     : upper + " " + CategoryNoun(e.category);
         }
         if (e.category == FilerFileCategory::Archive) e.isArchive = true;
     }
@@ -3784,6 +3820,14 @@ namespace UltraCanvas {
             const FilerFileCategory c = CategoryFromMediaCategory(f.category);
             add(f.extension, f.description, c);
             for (const std::string& alias : f.aliases) add(alias, f.description, c);
+        }
+        // Then every source-text extension the syntax highlighter knows, so
+        // Display > Thumbnails > Text has a switch for each of them. Only
+        // where nothing above claimed the extension (add() keeps the first),
+        // and only as Text where that is what the display will treat it as.
+        for (const auto& [ext, language] : SourceTextExtensions()) {
+            if (FilerCategoryForExtension(ext) == FilerFileCategory::Text)
+                add(ext, language, FilerFileCategory::Text);
         }
         std::vector<FilerFormatInfo> out;
         out.reserve(byExtension.size());

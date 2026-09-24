@@ -3067,6 +3067,26 @@ endif()
 
 message(STATUS "")
 
+# ===== FILER SOURCE TEXT FORMATS TEST =====
+# Every source-text extension the syntax highlighter knows is a Text format
+# of the file display (miniature text on its tile, a switch under Display >
+# Thumbnails > Text); binary formats in a language's list stay out.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerSourceTextFormatsTest...")
+    add_executable(FilerSourceTextFormatsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerSourceTextFormatsTest.cpp
+    )
+    target_include_directories(FilerSourceTextFormatsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerSourceTextFormatsTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerSourceTextFormatsTest PRIVATE UltraCanvas)
+    set_target_properties(FilerSourceTextFormatsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerSourceTextFormatsTest COMMAND FilerSourceTextFormatsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerSourceTextFormatsTest")
+endif()
+
 # ===== FILER NAME ENCODING TEST =====
 # The file display draws German umlauts, Thai, Russian and Chinese names
 # intact, and a name in a legacy code page (Latin-1, or IBM437 out of a
