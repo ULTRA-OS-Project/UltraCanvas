@@ -93,7 +93,9 @@ before adding cross-module code.
 
 ## Build UI out of UltraCanvas elements
 
-The framework ships ~60 UI elements. New UI is assembled from them; it is not
+The framework ships ~60 UI elements in `UltraCanvas/include/`, plus ~70 more
+under `UltraCanvas/include/Plugins/` — charts, diagrams, gauges, codes and
+document views, in the same library. New UI is assembled from them; it is not
 painted from scratch. This is the single most-repeated mistake in this
 repository, so the rule is a prohibition rather than a lookup:
 
@@ -112,8 +114,11 @@ end, and it stopped answering the keyboard entirely as soon as another element
 took the focus.
 
 **[`Docs/UltraCanvas/UltraCanvasUIElements.md`](Docs/UltraCanvas/UltraCanvasUIElements.md)
-is the catalogue** — every element, what it is for, and its defining header.
-Start there; the per-component docs only help once you know the name. The ones
+is the catalogue** — every element, what it is for, and its defining header,
+including the ones under `Plugins/`. Start there; the per-component docs only
+help once you know the name. Searching `include/` alone is how a second
+progress bar came to be written in 2026-09 while
+`UltraCanvasGaugeDiagramElement` sat in `include/Plugins/Diagrams/`. The ones
 reinvented most often:
 
 | You need | Element |
@@ -127,6 +132,8 @@ reinvented most often:
 | Show an image / any media file | `UltraCanvasImageElement`, `UltraCanvasMediaViewer` |
 | Scrolling, panes, tabs, toolbars | `UltraCanvasContainer`, `UltraCanvasSplitPane`, `UltraCanvasTabbedContainer`, `UltraCanvasToolbar` |
 | Menus, modal dialogs, tooltips | `UltraCanvasMenu`, `UltraCanvasModalDialog`, `UltraCanvasTooltipManager` |
+| **A progress bar, or any gauge** | `UltraCanvasGaugeDiagramElement` in `GaugeMode::LinearBar` — `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
+| A chart, a diagram, a QR code or a barcode | one of the ~70 plugin elements — see the catalogue's *Charts, diagrams and codes* section |
 
 Two exceptions only: a **self-rendered view** may paint its own *content*
 (`UltraCanvasFilerWidget`, `UltraCanvasAlbum`, charts) — but it still adds real
@@ -137,7 +144,10 @@ naturally owns its buffer and caret. Declare any other exception in the source:
 // ui-reuse-exempt: <why this one paints directly>
 ```
 
-`scripts/check_ui_reuse.py` enforces this and runs in CI.
+`scripts/check_ui_reuse.py` enforces this and runs in CI, and
+`scripts/check_element_catalogue.py` enforces the other half of it: an element
+that exists but is not on that page cannot be reused, because nobody can find
+it.
 `scripts/ui_reuse_baseline.txt` — which records pre-existing offenders — is
 empty, and the intent is that it stays empty. Do not add to it to silence a
 finding.
@@ -316,10 +326,14 @@ number anywhere else, and never introduce a new literal copy of one:
 1. Match the style of the file you are editing; PascalCase everywhere.
 2. **Before painting any UI, check whether the element already exists** — the
    catalogue is
-   [`Docs/UltraCanvas/UltraCanvasUIElements.md`](Docs/UltraCanvas/UltraCanvasUIElements.md).
-   Writing `DrawText` / `FillRoundedRectangle` plus a private buffer, caret or
-   `hovered` flag to make a control is a defect, not a shortcut. Run
-   `python3 scripts/check_ui_reuse.py` before pushing; CI runs it too.
+   [`Docs/UltraCanvas/UltraCanvasUIElements.md`](Docs/UltraCanvas/UltraCanvasUIElements.md),
+   and it covers `include/Plugins/` as well as `include/`: searching one
+   directory is how a second progress bar got written while the gauge sat in
+   the other. Writing `DrawText` / `FillRoundedRectangle` plus a private
+   buffer, caret or `hovered` flag to make a control is a defect, not a
+   shortcut. Run `python3 scripts/check_ui_reuse.py` before pushing; CI runs
+   it too. Adding an element? Add its row to the catalogue in the same change
+   — `python3 scripts/check_element_catalogue.py` fails without it.
    Wiring a callback on that element? It must not capture a `shared_ptr` to
    the element or to a container above it — capture it raw. Run
    `python3 scripts/check_callback_cycles.py`; CI runs that too.

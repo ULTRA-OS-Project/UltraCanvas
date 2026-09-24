@@ -4,8 +4,10 @@ Every other document here describes **one** component. This one answers the
 question that comes first: *does an element for this already exist?* Read it
 before you draw anything.
 
-The framework ships around sixty UI elements. New UI is assembled from them; it
-is not painted from scratch.
+The framework ships around sixty UI elements in `UltraCanvas/include/`, and
+about seventy more under `UltraCanvas/include/Plugins/` — charts, diagrams,
+gauges, codes and document views, all built into the same library. **Both are
+listed here.** New UI is assembled from them; it is not painted from scratch.
 
 > **If it takes input, shows a picture, or presents a value, it is an element.**
 > Never build one out of `ctx->DrawText` / `FillRoundedRectangle` plus a private
@@ -139,6 +141,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
@@ -151,8 +154,91 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
 | Startup splash (logo, version, "GUI by" attribution, timeout) | `UltraCanvasSplashScreen` | `UltraCanvasSplashScreen.h` |
 
-Charts, diagrams and document views live under `UltraCanvas/Plugins/` with their
-own docs — check there before drawing a graph by hand as well.
+## Charts, diagrams and codes — the plugin elements
+
+These live under `UltraCanvas/include/Plugins/` and are built into the same
+library; an application includes the header and adds the element like any
+other. They were missing from this page for a long time, which is exactly the
+trap it exists to close: a progress bar was written from scratch in 2026-09
+because `GaugeMode::LinearBar` was not listed here, and nothing else on this
+page suggested that the answer was a *gauge*. **Search this section before
+drawing a graph, a diagram, a gauge or a code by hand.**
+
+Each takes its data through setters and renders itself; most have a
+`Create<Name>(…)` factory beside the class. Several have a doc of their own —
+`grep -l <Class> Docs/UltraCanvas/*.md`.
+
+### Charts — `Plugins/Charts/`
+
+| You need | Element | Header |
+|---|---|---|
+| Line, bar, scatter, area — the four basics | `UltraCanvasLineChartElement`, `UltraCanvasBarChartElement`, `UltraCanvasScatterPlotElement`, `UltraCanvasAreaChartElement` | `Plugins/Charts/UltraCanvasSpecificChartElements.h` |
+| Parts of a whole: pie, donut, 3D pie | `UltraCanvasPieChartElement` | `Plugins/Charts/UltraCanvasPieChart.h` |
+| Parts of a whole, nested: sunburst, treemap, layered proportional areas | `UltraCanvasSunburstChart`, `UltraCanvasTreeMapElement`, `UltraCanvasNestedAreaChart` | `Plugins/Charts/UltraCanvasSunburstChart.h`, `Plugins/Diagrams/UltraCanvasTreeMapElement.h`, `Plugins/Charts/UltraCanvasNestedAreaChart.h` |
+| Three variables at once (x, y, size): XY bubbles, packed bubbles, bubble matrix | `UltraCanvasBubbleChartElement` | `Plugins/Charts/UltraCanvasBubbleChart.h` |
+| A staged process that shrinks step by step | `UltraCanvasFunnelChart` | `Plugins/Charts/UltraCanvasFunnelChart.h` |
+| A static hierarchy whose levels are parts of a whole | `UltraCanvasPyramidChart` | `Plugins/Charts/UltraCanvasPyramidChart.h` |
+| A running total built from ups and downs | `UltraCanvasWaterfallChartElement` | `Plugins/Charts/UltraCanvasWaterfallChart.h` |
+| Two paired values per category (before / after) | `UltraCanvasDumbbellChart` | `Plugins/Charts/UltraCanvasDumbbellChart.h` |
+| Values either side of a centre: likert scales, demographics | `UltraCanvasDivergingBarChart`, `UltraCanvasPopulationChart` | `Plugins/Charts/UltraCanvasDivergingBarChart.h`, `Plugins/Charts/UltraCanvasPopulationChart.h` |
+| 100% stacked columns of *different widths* (Marimekko / mosaic) | `UltraCanvasMekkoChartElement` | `Plugins/Charts/UltraCanvasMekkoChart.h` |
+| Many measures per item: radar, or parallel coordinates | `UltraCanvasRadarChartElement`, `UltraCanvasParallelCoordinateChartElement` | `Plugins/Charts/UltraCanvasRadarChartElement.h`, `Plugins/Charts/UltraCanvasParallelCoordinateChart.h` |
+| Angle / radius space: polar series, radial bars, activity rings, ringed infographic | `UltraCanvasPolarChart`, `UltraCanvasRadialBarChart`, `UltraCanvasCircularProgressChart`, `UltraCanvasCircularInfoGraphic` | matching `Plugins/Charts/*.h` |
+| A matrix of values as colour: heatmap, hexbin, contribution calendar | `UltraCanvasHeatmapChartElement`, `UltraCanvasHexbinChartElement`, `UltraCanvasCalendarHeatmapElement` | `Plugins/Charts/UltraCanvasHeatmapChart.h`, `Plugins/Charts/UltraCanvasHexbinChart.h`, `Plugins/Charts/UltraCanvasCalendarHeatmap.h` |
+| The spread of individual points (strip / jitter plot, with box or violin overlay) | `UltraCanvasJitterPlotElement` | `Plugins/Charts/UltraCanvasJitterPlotElement.h` |
+| A scalar field: isolines and filled bands, or a shaded 3D height field | `UltraCanvasContourChartElement`, `UltraCanvasContourSurface3DElement` (`UltraCanvasContourSurfaceGLElement` for depth-tested GL) | `Plugins/Charts/UltraCanvasContourChart.h`, `Plugins/Charts/UltraCanvasContourSurface3D.h`, `Plugins/Charts/UltraCanvasContourSurfaceGL.h` |
+| An (x, y, z) point cloud in an orbitable axes box | `UltraCanvasScatterPlot3DElement` | `Plugins/Charts/UltraCanvasScatterPlot3D.h` |
+| Audio as time × frequency (STFT) | `UltraCanvasSpectrogramElement` | `Plugins/Charts/UltraCanvasSpectrogram.h` |
+| OHLC candlesticks with volume | `UltraCanvasFinancialChartElement` | `Plugins/Charts/UltraCanvasFinancialChart.h` |
+| A two-axis strategic grid: SWOT, BCG, Eisenhower, risk / priority | `UltraCanvasQuadrantChart` | `Plugins/Charts/UltraCanvasQuadrantChart.h` |
+| Flows between categories arranged on a circle | `UltraCanvasChordChart` | `Plugins/Charts/UltraCanvasChordChart.h` |
+| A project schedule: task table, dependencies, milestones, critical path | `UltraCanvasGanttChartElement` | `Plugins/Charts/UltraCanvasGanttChart.h` |
+| A Kanban board, and the cumulative flow diagram over its history | `UltraCanvasKanbanBoardElement`, `UltraCanvasCumulativeFlowChartElement` | `Plugins/Charts/UltraCanvasKanbanBoard.h`, `Plugins/Charts/UltraCanvasCumulativeFlowChart.h` |
+| Milestones and spans on a real date axis | `UltraCanvasTimelineChart` | `Plugins/Charts/UltraCanvasTimelineChart.h` |
+| **A chart type that does not exist yet** — derive, do not paint | `UltraCanvasChartEngineElement` (three-phase engine; implement phase 2) or `UltraCanvasChartElementBase` | `Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`, `Plugins/Charts/UltraCanvasChartElementBase.h` |
+
+### Diagrams — `Plugins/Diagrams/`
+
+| You need | Element | Header |
+|---|---|---|
+| Boxes and arrows: a flow chart (with a shape palette for editing) | `UltraCanvasFlowChart`, `UltraCanvasFlowChartPalette` | `Plugins/Diagrams/UltraCanvasFlowChart.h`, `Plugins/Diagrams/UltraCanvasFlowChartPalette.h` |
+| Blocks in 3D isometric | `UltraCanvasBlockDiagram` | `Plugins/Diagrams/UltraCanvasBlockDiagram.h` |
+| A graph / network, or a node editor whose nodes are panels with typed sockets | `UltraCanvasNodeDiagram`, `UltraCanvasCompositorDiagram` | `Plugins/Diagrams/UltraCanvasNodeDiagram.h`, `Plugins/Diagrams/UltraCanvasCompositorDiagram.h` |
+| UML: classes, or a sequence | `UltraCanvasClassDiagram`, `UltraCanvasSequenceDiagram` | `Plugins/Diagrams/UltraCanvasClassDiagram.h`, `Plugins/Diagrams/UltraCanvasSequenceDiagram.h` |
+| A database schema (Chen, Chen min-max/ISO, Crow's Foot) | `UltraCanvasERDiagram` | `Plugins/Diagrams/UltraCanvasERDiagram.h` |
+| SysML requirements with traceability and coverage | `UltraCanvasRequirementDiagram` | `Plugins/Diagrams/UltraCanvasRequirementDiagram.h` |
+| A PERT network | `UltraCanvasPertChart` | `Plugins/Diagrams/UltraCanvasPertChart.h` |
+| A mind map | `UltraCanvasMindMap` | `Plugins/Diagrams/UltraCanvasMindMap.h` |
+| A tree: clustering / phylogenetic, or a Gource-style radial filesystem | `UltraCanvasDendrogram`, `UltraCanvasGourceTree` | `Plugins/Diagrams/UltraCanvasDendrogram.h`, `Plugins/Diagrams/UltraCanvasGourceTree.h` |
+| A repository history as lanes or git-flow swimlanes | `UltraCanvasGitGraph` | `Plugins/Diagrams/UltraCanvasGitGraph.h` |
+| Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
+| Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
+| Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
+| Two item sets crossed in an L or T, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
+| Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
+| Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
+| The four-panel SWOT infographic | `UltraCanvasSWOTDiagram` | `Plugins/Diagrams/UltraCanvasSWOTDiagram.h` |
+| Cause and effect (Ishikawa / fishbone) | `UltraCanvasFishboneDiagram` | `Plugins/Diagrams/UltraCanvasFishboneDiagram.h` |
+| A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
+| A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |
+| A bit-accurate map of a protocol data unit | `UltraCanvasPacketDiagram` | `Plugins/Diagrams/UltraCanvasPacketDiagram.h` |
+| A gauge, **and the framework's progress bar** | `UltraCanvasGaugeDiagramElement` — see *Pickers, dialogs and feedback* above | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
+
+### Codes and documents
+
+| You need | Element | Header |
+|---|---|---|
+| A QR code | `UltraCanvasQRCode` | `Plugins/QRCode/UltraCanvasQRCode.h` |
+| A 1D barcode (EAN, UPC, Code 39/128, ITF, Codabar …) with its human-readable line | `UltraCanvasBarcodeElement` ([doc](UltraCanvasBarcodeElement.md)) | `Plugins/Barcode/UltraCanvasBarcodeElement.h` |
+| A PDF on its own, with thumbnail strip, zoom and search-hit overlay (`UltraCanvasMediaViewer` embeds this for `.pdf`) | `UltraCanvasPDFView` | `Plugins/Documents/UltraCanvasPDFView.h` |
+| Markdown rendered as a standalone display (`UltraCanvasTextArea`'s Markdown mode is the editable route) | `UltraCanvasMarkdownDisplay` | `Plugins/Text/UltraCanvasMarkdown.h` |
+
+The vector format plugins (`UltraCanvasSVGElement`, `UltraCanvasCDRElement`,
+`UltraCanvasEPSElement`, `UltraCanvasXARElement`) are **not** in these tables on
+purpose: they are decoders behind `UltraCanvasVectorElement` and
+`UltraCanvasImageElement`, which are what an application reaches for. Same for
+the LaTeX and STL elements, listed under *Text, images and media* above.
 
 ## Creating them
 
@@ -211,7 +297,16 @@ finding. A genuine exception is declared in the source instead, with a reason:
 
 ## When the element does not exist
 
-Add it under `UltraCanvas/{include,core}` with a doc in `Docs/UltraCanvas/`, a
+Add it under `UltraCanvas/{include,core}` — or `UltraCanvas/include/Plugins/`
+for a chart, diagram or document view — with a doc in `Docs/UltraCanvas/`, a
 row in the tables above, and a changelog entry. A one-off painted into a single
 dialog helps one screen; an element helps every caller and gets the keyboard,
 focus and theming behaviour right once.
+
+**The row is not optional.** `scripts/check_element_catalogue.py` fails when an
+element in the tree is not named on this page, because a page with holes in it
+is worse than no page: it is read as a complete answer to "does this already
+exist?", and a hole reads as "no". A class that genuinely is not something a
+caller reaches for — a base to derive from, a format decoder behind one of the
+elements above — goes in `scripts/element_catalogue_exempt.txt` with its
+reason.
