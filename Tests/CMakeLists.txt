@@ -726,6 +726,56 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetColumnSizingTest")
 
+# ===== SPREADSHEET RANGE SORT TEST =====
+# Sorting a selected block by one of its columns (the header sort buttons):
+# the block's other columns move with the key column, and nothing outside the
+# block moves. Exercises the real SpreadsheetSheet with no UI stack.
+message(STATUS "  Building SpreadsheetRangeSortTest...")
+add_executable(SpreadsheetRangeSortTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetRangeSortTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetRangeSortTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetRangeSortTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetRangeSortTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetRangeSortTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetRangeSortTest
+    COMMAND SpreadsheetRangeSortTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetRangeSortTest")
+
+# ===== SPREADSHEET AUTO-FILL TEST =====
+# What dragging the fill handle writes: number series, "Item 1" counting on,
+# copied formulas with shifted relative references, repeated patterns.
+# Exercises the real SpreadsheetSheet with no UI stack.
+message(STATUS "  Building SpreadsheetAutoFillTest...")
+add_executable(SpreadsheetAutoFillTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetAutoFillTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetAutoFillTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetAutoFillTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetAutoFillTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetAutoFillTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetAutoFillTest
+    COMMAND SpreadsheetAutoFillTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetAutoFillTest")
+
 # ===== LISTVIEW TOOLTIP TEST =====
 # The tooltip text a ListView reads on hover: per-cell tooltips over the
 # row-wide fallback, the header tooltip on ListColumnDef, and the ToolTipRole

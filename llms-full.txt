@@ -49291,6 +49291,8 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
 - **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
 - **Data Tools**: Sorting, auto-filter, find/replace, named ranges, and data validation
+- **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
+- **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
 - **File I/O**: Load/Save OpenDocument (`.ods`) and CSV/TSV, with auto-detection or explicit import/export options
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
@@ -49451,6 +49453,35 @@ bool IsAutoCalculateEnabled() const;
 void SetAutoCalculate(bool enabled);
 ```
 
+### Sorting
+
+```cpp
+void SortSelection(const std::vector<SortCriteria>& criteria);
+void SortSelectionAscending();                 // by the selection's first column
+void SortSelectionDescending();
+void SortSelectionByColumn(int column, SortOrder order);   // by any column of the selection
+
+// Header sort buttons (on by default)
+bool IsHeaderSortEnabled() const;
+void SetHeaderSortEnabled(bool enabled);
+int  GetHeaderSortColumn() const;      // -1 unless the current selection was header-sorted
+bool GetHeaderSortAscending() const;
+bool IsSortFormulaWarningEnabled() const;   // OK/Cancel warning before sorting formulas
+void SetSortFormulaWarningEnabled(bool enabled);
+```
+
+### Auto-Fill
+
+```cpp
+// Fill the selection's extension, as the fill handle does. False when the
+// destination does not grow the selection along one axis, or hits merged cells.
+bool AutoFillSelection(const CellRange& destination);
+
+// Sheet level (UltraCanvasSpreadsheetSheet.h)
+void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destination);
+std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int colDelta);
+```
+
 ### File Operations
 
 ```cpp
@@ -49497,6 +49528,7 @@ std::function<void(int)>      onSheetChange;       // active sheet index
 std::function<void(const std::string&)> onFormulaError;
 std::function<void()>         onStructureChange;
 std::function<void(const std::string&)> onStatusChange;
+std::function<void(const CellRange&, int, SortOrder)> onSelectionSorted;  // header sort: (range, column, order)
 ```
 
 ### SpreadsheetCell
@@ -49896,6 +49928,83 @@ Rebuild the items each time the menu opens (`PopulateSpreadsheetFormatMenu`)
 so the ticks and radio marks reflect the cell that was just clicked.
 `SpreadsheetNumberFormatPresets()` returns the preset list on its own — label,
 `NumberFormat` and sample — if you want to drive a dropdown or a dialog with it.
+
+## Fill handle
+
+The small square at the bottom-right corner of the selection is the fill
+handle (the pointer turns into a crosshair over it). Drag it down, up, right
+or left: a dashed outline shows the range the release will fill, following
+whichever direction the pointer has moved furthest from the selection. On
+release the new cells are filled from the selection, repeating its pattern:
+
+| Selection holds | The new cells get |
+|---|---|
+| two or more numbers in a column (or row) | the series continued: `1, 2` → `3, 4, 5`; `10, 20` → `30, 40`; also backwards when dragged up or left |
+| one text ending in a number | the number counted on: `Item 1` → `Item 2`, `Item 3` |
+| a formula | the formula with its relative references shifted by the distance moved: `=C2*$D$1` one row down is `=C3*$D$1` |
+| anything else (one number, plain text) | a copy |
+
+Formatting comes along with each value. The filled range is selected
+afterwards, the fill is one undo step (Ctrl+Z), and every formula is
+recalculated, so totals that read the filled cells update. A drag that would
+cover merged cells does nothing.
+
+From code, select the source and call `AutoFillSelection(destination)`; the
+sheet-level `SpreadsheetSheet::AutoFill` does the same without selection or
+undo, and `ShiftFormulaReferences` shifts a formula's text on its own.
+
+## Sorting a selection from the header
+
+Select a block of two or more rows — say `A2:E8`, the months of the demo's
+sales report without its title and totals rows — and every column header over
+the block shows a small button with an up and a down triangle. Clicking one:
+
+- sorts **only the selected rows**, by the column whose button was clicked,
+  ascending (numbers by value, text case-insensitively, empty cells last);
+- moves the **other selected columns with it**, so each row of the block stays
+  together — sort by Sales and the month, the refunds and the percentage of
+  each row travel with its sales figure;
+- leaves **everything outside the block alone**: the title row above, the
+  totals row below and the columns beside it do not move.
+
+The clicked button then shows a single filled triangle (apex up ascending,
+apex down descending), and clicking it again reverses the order. The block
+stays selected, so you can sort it by another column straight away. The
+direction is shown for as long as that block remains the selection. A sort is
+one undo step (Ctrl+Z).
+
+The buttons appear only for a single rectangular selection of two rows or
+more. Whole-column and whole-row selections get none (sorting a full column
+would take its title along and run over the entire sheet), a block that
+overlaps merged cells gets none (moving rows would tear the merge apart), and
+a column narrower than about 44 px has no room for one.
+
+```cpp
+grid->onSelectionSorted = [statusLabel](const CellRange& range, int column, SortOrder order) {
+    statusLabel->SetText("Sorted " + range.ToString() + " by column " +
+                         CellAddress::ColumnToLetter(column));
+};
+
+// The same sort without the button:
+grid->Select(CellRange(1, 0, 7, 4));                  // A2:E8
+grid->SortSelectionByColumn(2, SortOrder::Descending); // by column C
+
+grid->SetHeaderSortEnabled(false);                     // no header buttons
+```
+
+Formulas inside a sorted block move as they are: their references are not
+rewritten, so a row formula such as `=D3/C3` keeps pointing at row 3 after
+it moves. Formulas that cover the whole block (a `SUM(C2:C8)` in the totals
+row) are unaffected as long as they sit outside it.
+
+So when the block holds formulas, the header button asks first: an OK/Cancel
+warning names the block and how many formula cells it contains, and explains
+that they will keep their references. OK sorts, Cancel leaves the block as it
+is. In the demo, select `A2:E10` (the months *and* the totals row) to see it.
+Turn the warning off with `SetSortFormulaWarningEnabled(false)`.
+`SortSelectionByColumn` itself never asks — code that calls it has decided —
+and `SpreadsheetSheet::CountFormulaCells(range)` gives the count if you want
+to warn in your own way.
 
 ## Best Practices
 
