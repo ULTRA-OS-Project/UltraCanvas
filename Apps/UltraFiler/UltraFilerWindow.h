@@ -73,8 +73,8 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.18.0
-// Last Modified: 2026-09-19
+// Version: 1.19.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -618,6 +618,16 @@ private:
     int UploadToRemoteFolder(const std::string& folder,
                              const std::vector<std::string>& files,
                              std::string& firstRefusal);
+    // The mirror of it: queues the download of the remote `files` into the
+    // local folder `folder`, one request per file, and puts what happened on
+    // the status bar. Returns the number queued, with the first reason for
+    // what was left out (a folder, a path that is already local, a drive that
+    // is gone) in `firstRefusal`. Used by a drop of a drive's entries on a
+    // local row of the tree and by the same drop in a display (the widget's
+    // remoteDownload hook).
+    int DownloadToLocalFolder(const std::string& folder,
+                              const std::vector<std::string>& files,
+                              std::string& firstRefusal);
     bool DropFilesOnTreeNode(TreeNode* target,
                              const std::vector<std::string>& files);
     // The tree's context menu (Copy / Delete / Paste / Pin / Unpin) at the
@@ -840,10 +850,10 @@ private:
     // What the drives last said they were doing. Idle most of the time; the
     // status line and the bar are drawn from it.
     RemoteActivity remoteActivity;
-    // What a drop onto a drive could not send, held on the status line until
-    // the next drop or the next folder: the activity line owns the strip
-    // while the files that did go are going, so this would otherwise show for
-    // a fraction of a second and vanish.
+    // What a drop could not transfer - onto a drive or off one - held on the
+    // status line until the next drop or the next folder: the activity line
+    // owns the strip while the files that did go are going, so this would
+    // otherwise show for a fraction of a second and vanish.
     std::string remoteDropNote;
     std::shared_ptr<UltraCanvasButton>          backButton;
     std::shared_ptr<UltraCanvasButton>          forwardButton;

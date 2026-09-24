@@ -49,8 +49,8 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.31.0
-// Last Modified: 2026-09-17
+// Version: 1.32.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -4494,6 +4494,28 @@ namespace UltraCanvas {
         else if (!error.empty()) ReportError(error);
     }
 
+    void UltraCanvasFilerWidget::DownloadDroppedFiles(
+            const std::vector<std::string>& paths, const std::string& destDir) {
+        if (paths.empty()) return;
+        if (!remoteDownload) {
+            ReportError("Cannot copy files off this drive.");
+            return;
+        }
+        std::error_code ec;
+        if (!fs::is_directory(destDir, ec)) {
+            ReportError("Drop target is not a folder: " + destDir);
+            return;
+        }
+        // Same contract as the upload side: the host queues what it can and
+        // names the first thing it could not, so "nothing happened" and "four
+        // of five are coming" read differently.
+        std::string error;
+        const bool any = remoteDownload(destDir, paths, error);
+        if (!any) ReportError(error.empty() ? "Cannot copy files off this drive."
+                                            : error);
+        else if (!error.empty()) ReportError(error);
+    }
+
     void UltraCanvasFilerWidget::DropPathsInto(const std::vector<std::string>& paths,
                                                const std::string& destDir,
                                                bool copy) {
@@ -4636,12 +4658,26 @@ namespace UltraCanvas {
         std::error_code ec;
         if (!fs::is_directory(currentPath, ec)) return;
 
+        // The reverse of the upload above: entries dropped here that live
+        // on a drive come DOWN into this folder, and the local paste below
+        // would only hand std::filesystem an ultracloud:// path no disk has.
+        // A drop can carry both kinds at once - a selection dragged from a
+        // drive pane and one from a local pane - so each half goes its own
+        // way.
+        std::vector<std::string> remoteSources, localSources;
+        for (const std::string& p : paths) {
+            if (isRemotePath && isRemotePath(p)) remoteSources.push_back(p);
+            else                                 localSources.push_back(p);
+        }
+        if (!remoteSources.empty()) DownloadDroppedFiles(remoteSources, currentPath);
+        if (localSources.empty()) return;
+
         // Skip files already in this folder and the folder itself; the rest
         // goes through the paste machinery, so a taken name raises the
         // conflict dialog and the folder-into-itself guard applies there.
         fs::path canonicalHere = fs::weakly_canonical(fs::path(currentPath), ec);
         std::vector<std::string> sources;
-        for (const std::string& src : paths) {
+        for (const std::string& src : localSources) {
             ec.clear();
             fs::path canonicalFrom = fs::weakly_canonical(fs::path(src), ec);
             if (canonicalFrom == canonicalHere) continue;
@@ -4662,8 +4698,9 @@ namespace UltraCanvas {
             perform();
     }
 
-    std::string UltraCanvasFilerWidget::UniquePathIn(const std::string& folder,
-                                                     const std::string& baseName) {
+    std::string UltraCanvasFilerWidget::UniquePathIn(
+            const std::string& folder, const std::string& baseName,
+            const std::function<bool(const std::string&)>& alsoTaken) {
         fs::path base(baseName);
         std::string stem = base.stem().string();
         std::string ext = base.extension().string();   // includes the dot
@@ -4671,7 +4708,13 @@ namespace UltraCanvas {
         fs::path candidate = dir / baseName;
         std::error_code ec;
         int n = 2;
-        while (fs::exists(candidate, ec)) {
+        // A name is free when nothing on the disk has it and the caller has
+        // not already promised it to something still on its way.
+        auto taken = [&](const fs::path& p) {
+            if (fs::exists(p, ec)) return true;
+            return alsoTaken && alsoTaken(p.string());
+        };
+        while (taken(candidate)) {
             candidate = dir / (stem + " (" + std::to_string(n++) + ")" + ext);
         }
         return candidate.string();

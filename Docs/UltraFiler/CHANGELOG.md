@@ -1,3 +1,29 @@
+#### 2026-09-24 *1.50.0*
+- **Files can be taken off a drive now, and the status line counts them down.**
+  1.49.0 gave every job on a drive a line in the status strip and a progress
+  bar, and FTP learned to report its bytes in both directions - but only one
+  direction existed. There was no way to fetch a file off a drive at all, so
+  the download half of that reporting had nothing to describe. Dragging
+  entries from a drive onto a local folder now copies them down, and says so
+  the same way an upload does: `Downloading "clip.mp4" - 3.2 MB of 8.0 MB`,
+  with the bar in the status strip following the bytes and sliding when the
+  server did not say how big the file is.
+  - **Two places take the drop**: a local folder row in the tree, and the
+    folder a display is showing. Both used to hand the dragged
+    `ultracloud://` path to the local move machinery, which asked
+    `std::filesystem` about a path no disk has and did nothing; a drop that
+    carries entries from a drive and files from this computer at once is now
+    split, and each half goes its own way.
+  - **A download never overwrites.** The name is settled before the request
+    goes out, using the same rule the display's "Keep both" paste uses, so a
+    file already in that folder is left alone and the copy lands beside it as
+    "name (2)".
+  - **A folder is refused, not half-fetched.** A tree is not one transfer, the
+    same way it is not one upload; the entry's own listing is still cached, so
+    saying so costs a lookup rather than a request.
+  - Each file is one queued job, so a drop of five reports `(4 more queued)`
+    and the folder they land in is refreshed once each has arrived.
+
 #### 2026-09-23 *1.49.0*
 - **The status line says what a drive is doing, and a transfer gets a bar.**
   1.46.0 gave the folder area its own message while a listing is on its way.

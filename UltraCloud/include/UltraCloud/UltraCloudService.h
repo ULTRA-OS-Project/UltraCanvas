@@ -1,8 +1,8 @@
 // UltraCloud/include/UltraCloud/UltraCloudService.h
 // The app-facing facade: accounts + secrets + providers behind one object.
 // "Share this file through my default cloud account" is one call.
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.3.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -52,6 +52,14 @@ public:
 
     Result Upload(const std::string& accountId, const std::string& localPath,
                   const std::string& remotePath);
+    // The other direction. `localPath` is a full local path including the
+    // name to save under, not a folder: the caller knows what it wants the
+    // file called, and a provider that had to invent the name would have to
+    // guess at a collision it cannot see. An existing file there is
+    // overwritten, so a caller that must not lose one picks a free name
+    // before calling.
+    Result Download(const std::string& accountId, const std::string& remotePath,
+                    const std::string& localPath);
     Result CreateShareLink(const std::string& accountId, const std::string& remotePath,
                            const ShareLinkOptions& options, ShareLink& out);
 

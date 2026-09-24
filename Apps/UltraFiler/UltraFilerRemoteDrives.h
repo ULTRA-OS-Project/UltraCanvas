@@ -18,8 +18,8 @@
 // Builds without UltraCloud: Available() answers false, the drive list is
 // empty and every call fails with a message saying so, so UltraFiler still
 // compiles and runs when the module is not built.
-// Version: 1.2.0
-// Last Modified: 2026-09-23
+// Version: 1.3.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -37,6 +37,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // Forward-declared, not included: the add-account dialog needs the service to
@@ -71,8 +72,11 @@ enum class RemoteOperation {
     Delete,          // a file or a folder: the provider picks DELE over RMD
     Rename,          // in place; the argument is a bare name
     MakeDirectory,   // the argument is the new folder's name
-    Upload           // `path` is the folder uploaded INTO, the argument the
+    Upload,          // `path` is the folder uploaded INTO, the argument the
                      // local file's full path; queued by Upload(), not Submit
+    Download         // the other direction: `path` is the remote FILE, the
+                     // argument the full local path to save it as; queued by
+                     // Download(), not Submit
 };
 
 // What the drives are doing right now, for the status line.
@@ -88,7 +92,8 @@ struct RemoteActivity {
         Deleting,
         Renaming,
         MakingDirectory,
-        Uploading
+        Uploading,
+        Downloading       // a file coming off the drive onto this disk
     };
 
     Kind kind = Kind::Idle;
@@ -105,7 +110,11 @@ struct RemoteActivity {
     uint64_t bytesTotal = 0;
 
     bool IsBusy() const { return kind != Kind::Idle; }
-    bool IsTransfer() const { return kind == Kind::Uploading; }
+    // The two kinds that move bytes, and so the two that have a length to
+    // draw a bar of. Everything else is one round trip with nothing to count.
+    bool IsTransfer() const {
+        return kind == Kind::Uploading || kind == Kind::Downloading;
+    }
 };
 
 class UltraFilerRemoteDrives {
@@ -192,6 +201,18 @@ public:
     bool Upload(const std::string& remoteFolder, const std::string& localFile,
                 std::string& error);
 
+    // Queues the download of the remote file `remoteFile` into the local
+    // folder `localFolder`, under its own name, and answers at once;
+    // onOperationFinished fires for `localFolder` when the file is there or
+    // the server refused it. The name is settled here rather than on the
+    // worker: a file already in that folder is never overwritten, the copy
+    // lands beside it as "name (2)", and `savedAs` says which. Returns false
+    // with a message for what can be refused outright: a source that is not a
+    // remote path, a drive that is gone, a folder (a tree is not one
+    // transfer), or a destination that is not a writable local folder.
+    bool Download(const std::string& remoteFile, const std::string& localFolder,
+                  std::string& savedAs, std::string& error);
+
     bool Submit(RemoteOperation operation, const std::string& path,
                 const std::string& argument, bool isDirectory,
                 std::string& error);
@@ -208,7 +229,9 @@ public:
     // Fires on the UI THREAD when a queued change has finished. `message` is
     // empty on success and carries the provider's reason on failure;
     // `folderPath` is the folder whose listing changed, already invalidated,
-    // so the window can refresh it either way.
+    // so the window can refresh it either way. For a download that folder is
+    // the LOCAL one the file landed in - nothing on the drive changed - so a
+    // handler that refreshes has to ask which kind of path it was given.
     std::function<void(const std::string& folderPath,
                        const std::string& message)> onOperationFinished;
 
@@ -276,6 +299,13 @@ private:
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;
+    // The local paths downloads have been promised but not yet written. A
+    // queued download has nothing on the disk to collide with, so without
+    // this every file of one name queued together would be given that same
+    // free name and the last to land would be the only one kept. A path
+    // leaves when its job ends - failed or not, because a failure wrote
+    // nothing and the name is free again.
+    std::unordered_set<std::string> promisedDownloads_;
     // When the last activity report went out, so a transfer counting bytes
     // does not post one per chunk. Touched only by the worker thread.
     std::chrono::steady_clock::time_point lastActivityPost_{};

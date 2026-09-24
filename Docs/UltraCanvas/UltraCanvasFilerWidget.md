@@ -970,8 +970,8 @@ as soon as the listing arrives, the folder changes or the widget is
 destroyed.
 ### Changing a remote folder
 
-Three more hooks let the host carry out the changes that act on the drive
-itself. Unlike `remoteListing` they do not answer with the result: the host
+Four more hooks let the host carry out the changes that act on the drive
+itself, and a fifth takes files back off it. Unlike `remoteListing` they do not answer with the result: the host
 queues the work and refreshes the display once the server has replied, so a
 slow drive never holds the UI thread.
 
@@ -987,6 +987,9 @@ filer->remoteMakeDirectory = [drives](const std::string& folderPath,
 filer->remoteUpload = [drives](const std::string& folderPath,
                                const std::vector<std::string>& localFiles,
                                std::string& error) { … };
+filer->remoteDownload = [drives](const std::string& folderPath,
+                                 const std::vector<std::string>& remoteFiles,
+                                 std::string& error) { … };
 ```
 
 - `remoteUpload` is what a **drop onto a remote folder** shown in the widget
@@ -997,6 +1000,16 @@ filer->remoteUpload = [drives](const std::string& folderPath,
   can say what was left out. Left unset, the drop is refused with a message.
   Dragging the widget's own entries onto one of its folder tiles is still
   refused on a remote drive — a move within a drive is not a provider verb.
+
+- `remoteDownload` is its mirror: what a **drop of a drive's entries onto a
+  local folder** goes through, so a file can be dragged off a server the same
+  way one is dragged onto it. The host is handed the local folder and the
+  remote paths and fetches them into it under their own names, one request
+  each; the return value and `error` mean exactly what they do for
+  `remoteUpload`. A drop carrying entries from a drive *and* files from this
+  computer at once — a selection dragged out of a drive pane and one out of a
+  local pane — is split, each half taking its own route. Left unset, such a drop is refused with a message rather than
+  reaching `std::filesystem` with an `ultracloud://` path it cannot open.
 
 - Each returns `true` when the request was **accepted**, not when it finished;
   `false` with `error` is for what can be refused outright — a drive that
