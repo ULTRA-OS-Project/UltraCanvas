@@ -1,3 +1,150 @@
+#### 2026-09-24 *0.9.51*
+- **A file could be put onto a drive but never taken off one.** `CloudService`
+  had `Upload` and no `Download`, although every provider - FTP, WebDAV,
+  Nextcloud, Dropbox, OneDrive, Google Drive - has implemented `Download`
+  since the module was written. The facade simply never exposed it, so the
+  only way bytes moved was outwards, and the FTP transfer progress added in
+  the last release reported a direction nothing could ask for. `Download` now
+  sits beside `Upload`: it takes the full local path to write, because the
+  caller is the one who knows what the file should be called and a provider
+  inventing the name could not see a collision it was about to cause, and it
+  checks that the destination folder exists first - every provider but FTP
+  writes with an `ofstream`, which fails with nothing more useful than
+  "cannot write" when the directory is missing.
+- **Dragging a file off a drive onto a local folder now copies it down.**
+  `UltraCanvasFilerWidget` gained `remoteDownload`, the exact mirror of
+  `remoteUpload`: the host is handed the remote paths and the local folder,
+  queues the transfers and refreshes when the server has answered. Before
+  this, the widget passed those entries to the local paste machinery, which
+  handed `std::filesystem` an `ultracloud://` path no disk has - so the drag
+  that most obviously means "copy this off the server" did nothing at all.
+  A drop that carries entries from a drive *and* files from this disk at once
+  - a selection dragged out of a drive pane and one out of a local pane - is
+  split, and each half done its own way.
+- **`UltraCanvasFilerWidget::UniquePathIn` is public.** It answers what a
+  "Keep both" paste would call a file in a given folder ("name (2)", with the
+  extension kept on the end). A host that writes into a folder without going
+  through the widget - saving a file fetched off a drive - needs the same
+  answer, and a second implementation of it would be a second set of rules
+  about what "(2)" means.
+- **The element catalogue was missing seventy elements, and now cannot be
+  again.** `Docs/UltraCanvas/UltraCanvasUIElements.md` answers the question
+  that comes before every piece of new UI - *does an element for this already
+  exist?* - and it listed only the ~60 elements in `UltraCanvas/include/`. The
+  ~70 under `include/Plugins/` got one sentence: "charts, diagrams and
+  document views live under `UltraCanvas/Plugins/` with their own docs". That
+  is not an answer to anyone searching the page for what they need: in
+  2026-09 a second progress bar was written from scratch for UltraFiler's
+  status strip because `UltraCanvasGaugeDiagramElement` - the framework's
+  progress bar, in `GaugeMode::LinearBar` - was in
+  `include/Plugins/Diagrams/` and in no table. The duplicate was found and
+  deleted, and the gauge got a row; the audit behind this entry shows it was
+  three of seventy-five.
+  - **Every plugin element is now catalogued**, in three tables under
+    *Charts, diagrams and codes*: 34 chart elements (from line/bar/scatter/area
+    through contour surfaces, spectrograms, Gantt and Kanban to the engine you
+    derive a new chart type from), 26 diagram elements (flow, node and
+    compositor graphs, UML, ER, SysML, mind map, Sankey, Venn, word cloud,
+    packet layout and the rest) and the codes and document views -
+    `UltraCanvasQRCode`, `UltraCanvasBarcodeElement`, `UltraCanvasPDFView`,
+    `UltraCanvasMarkdownDisplay`. Each row says what the element is FOR,
+    because the reader knows the need and not the name.
+  - The vector format decoders (`UltraCanvasSVGElement`,
+    `UltraCanvasCDRElement`, `UltraCanvasEPSElement`, `UltraCanvasXARElement`)
+    are named in a closing note rather than given rows: they work behind
+    `UltraCanvasVectorElement` and `UltraCanvasImageElement`, which are what a
+    caller reaches for. Saying so is worth more than silence.
+  - `UltraCanvasNewDocumentDialog`, missing from the dialogs table, turned up
+    in the same audit and was added.
+- **`scripts/check_element_catalogue.py` keeps it complete.** An element in
+  the tree that is not named on that page fails the check - the moment the
+  author is best placed to write the one row that saves the next reader a
+  week. A page with holes in it is worse than no page: it is read as a
+  complete answer to "does this already exist?", and a hole reads as "no".
+  Deliberate omissions (a base class, a decoder behind a catalogued facade, a
+  platform implementation) go in `scripts/element_catalogue_exempt.txt` with
+  their reason; there are six. Runs in CI as `element-catalogue.yml`.
+- **A drive's entries could be dragged out of the window and copied to the
+  system clipboard, and neither gave the receiver anything it could open.**
+  A path on a drive is `ultracloud://<account>/<path>`: it names a file on a
+  server, not a file on this computer. `UpdateItemDrag` handed those straight
+  to `StartNativeDragOfPaths` when the pointer left the window, and
+  `EntriesToClipboard` mirrored them to the system clipboard as a
+  `text/uri-list`, so another application would accept the drop or the paste
+  and then fail on a path nothing there can resolve.
+  - **The native drag is refused for them.** The gesture is not lost: it
+    carries on as the widget's own in-window drag, which is where it can
+    actually do something - dropped on a local folder it downloads.
+  - **A copy puts the entry NAMES on the system clipboard as text**, rather
+    than paths or nothing at all. The clipboard still has to be *taken* - a
+    paste reads the system clipboard before the internal one, so leaving the
+    previous copy's file list in place would paste those files instead of
+    these - and text takes it while giving another application something
+    usable. The paths stay on the widget's internal clipboard, which is
+    shared between panes, so copy in a drive pane and paste in a local one
+    works.
+- **Ctrl+V now does on the keyboard what a drop already did with the mouse.**
+  `Paste` began with `RefuseWriteHere`, so pasting files INTO a drive was
+  refused outright although dropping the same files on it uploaded them, and
+  pasting a drive's entries into a local folder handed `std::filesystem` a
+  path no disk has and did nothing at all. Into a drive is now an upload
+  (through `remoteUpload`), out of one is a download (through
+  `remoteDownload`), and a clipboard holding both kinds is split with each
+  half taking its own route. Only the two genuinely unsupported cases still
+  refuse: a paste from one place on a drive to another (no provider has a
+  server-side copy) and pasting raw clipboard data - an image, text - as a new
+  file on a drive.
+- **Cut and Duplicate are greyed out on a drive** instead of being offered and
+  then refused. A cut is a move, and moving a file off a drive is a download
+  followed by a destructive delete with nothing to undo it if the first half
+  only partly arrived; a duplicate is a server-side copy no provider offers.
+  A cut that ghosts the entries and then cannot complete is worse than one
+  that never starts.
+- `RefuseWriteHere`'s message said a drive could be browsed and not changed.
+  That stopped being true when uploads landed: it now names what a drive *can*
+  do - files copied to and from it, renamed, deleted, folders created - so the
+  refusal points somewhere instead of just closing the door.
+- **Assistant sessions must now say where the code ended up.** `AGENTS.md`'s
+  *Reporting back* rules asked every reply that reports work to end with
+  `## Next Task` and `## Other recommendations`, and neither of those says
+  whether the work reached anyone. A session could write a feature, commit it,
+  push it and describe it in detail while never mentioning that no pull
+  request had been opened - and "done and pushed" reads as delivered, so a
+  reader had no way to tell. That happened: three commits over two replies,
+  1130 lines, and the omission only surfaced because the user asked.
+  A third block, `## Delivery`, now comes first and answers three questions in
+  order of danger. **Is anything still uncommitted?** - these sessions run in
+  a container that is reclaimed when the session ends, so an edit that was
+  never committed is not pending, it is gone, and a reply describing it as
+  written reports a delivery that never existed; a reply reporting finished
+  work may not end with a tracked file uncommitted unless it says so in as
+  many words. **How much, and is it pushed?** - files and +/- lines from
+  `git diff --shortstat`, the branch and SHA, or that the commits are still
+  local. **Is it a pull request?** - its number and state, or the words "no
+  pull request". The numbers come from `git status --short` and
+  `git diff --shortstat` run before the block is written, not from memory:
+  the block exists to catch the gap between what the assistant believes it
+  delivered and what the repository holds. Required whenever any code was
+  written, including when the answer is unwelcome. `CLAUDE.md` carries the
+  short form.
+- **And it is checked rather than remembered.** Every other rule in
+  `AGENTS.md` that mattered got a script; this one governs what an assistant
+  writes rather than what lands in the tree, so it gets a Claude Code hook
+  instead. `.claude/settings.json` runs `.claude/hooks/check-delivery.sh` on
+  `Stop`: a turn that would end with an uncommitted tracked file or an
+  unpushed commit is blocked once, with the paths and commits listed. It
+  refuses silence rather than unfinished work - stopping again after the
+  message is allowed, so the assistant can commit, push, or say plainly what
+  it is leaving behind. The same script runs on `SessionStart --brief`,
+  restating the rule and reporting anything a previous session left behind.
+  `.claude/settings.json` and `.claude/hooks/` are now **committed** -
+  `.gitignore` excluded all of `.claude/`, and a cloud session clones this
+  repository fresh, so a hook that is not in the repository does not exist for
+  the next chat; personal session state stays ignored. The settings also
+  pre-approve the read-only git commands the rule requires (`status`, `diff`,
+  `log`, `rev-parse`, `fetch`, ...) and the repository's guard scripts, so
+  measuring the answer is never what stops someone from giving it.
+
 #### 2026-09-24 *0.9.50*
 - **Spreadsheet: the fill handle fills.** The small square at the corner of
   the selection was drawn but dragging it did nothing. Dragging it down, up,
