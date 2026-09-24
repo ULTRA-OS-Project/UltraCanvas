@@ -2,8 +2,8 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
-// Version: 1.2.0
-// Last Modified: 2026-09-18
+// Version: 1.3.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -308,6 +308,9 @@ void ArtCreatorWindow::BuildMenuBar() {
             M::ActionWithShortcut("Group", "Ctrl+G", [this]() { CmdGroup(); }),
             M::ActionWithShortcut("Ungroup", "Ctrl+U", [this]() { CmdUngroup(); }),
             M::Separator(),
+            M::Action("Mirror Horizontally", [this]() { CmdMirror(true); }),
+            M::Action("Mirror Vertically", [this]() { CmdMirror(false); }),
+            M::Separator(),
             M::Header("Align to selection"),
             M::Action("Left Edges", [this]() { CmdAlign(AlignMode::Left, false); }),
             M::Action("Horizontal Centres", [this]() { CmdAlign(AlignMode::HorizontalCenter, false); }),
@@ -408,6 +411,9 @@ void ArtCreatorWindow::BuildToolbar() {
     toolbar->AddButton("ac-tb-ungroup", "", IconPath("ungroup.svg"), [this]() { CmdUngroup(); })->SetTooltip("Ungroup (Ctrl+U)");
     toolbar->AddButton("ac-tb-front", "", IconPath("to-front.svg"), [this]() { CmdReorder(ZOrderMove::ToFront); })->SetTooltip("Bring to front (Ctrl+F)");
     toolbar->AddButton("ac-tb-back", "", IconPath("to-back.svg"), [this]() { CmdReorder(ZOrderMove::ToBack); })->SetTooltip("Send to back (Ctrl+B)");
+    toolbar->AddSeparator("ac-tb-s4");
+    toolbar->AddButton("ac-tb-mirror-h", "", IconPath("mirror-h.svg"), [this]() { CmdMirror(true); })->SetTooltip("Mirror horizontally");
+    toolbar->AddButton("ac-tb-mirror-v", "", IconPath("mirror-v.svg"), [this]() { CmdMirror(false); })->SetTooltip("Mirror vertically");
     window->AddChild(toolbar);
 }
 
@@ -996,6 +1002,21 @@ void ArtCreatorWindow::CmdUngroup() {
     if (selection->Empty()) return;
     std::vector<std::string> ids;
     history.Record("Ungroup", [&]() { for (auto& e : UngroupElements(selection->Elements())) ids.push_back(e->Id); });
+    Reselect(ids);
+}
+
+// Flips the selection about the centre of its bounds: left-right for
+// horizontal, top-bottom for vertical. A scale of -1 on one axis through
+// the editing layer, so it composes into each element's Transform like any
+// other and the bounds stay where they were.
+void ArtCreatorWindow::CmdMirror(bool horizontal) {
+    if (selection->Empty()) return;
+    auto ids = selection->Ids();
+    const Rect2Dd b = selection->Bounds();
+    const Point2Dd pivot{b.x + b.width / 2.0, b.y + b.height / 2.0};
+    history.Record(horizontal ? "Mirror Horizontally" : "Mirror Vertically", [&]() {
+        ScaleElements(selection->Elements(), horizontal ? -1.0 : 1.0, horizontal ? 1.0 : -1.0, pivot);
+    });
     Reselect(ids);
 }
 
