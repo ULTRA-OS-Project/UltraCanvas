@@ -420,6 +420,10 @@ private:
         std::atomic<size_t> matches{0};
         std::atomic<size_t> foldersScanned{0};
         std::atomic<size_t> filesRead{0};      // content search: files opened
+        // Hidden folders the walk did not enter because the display does not
+        // show hidden files, and the first few of their names (under mutex).
+        std::atomic<size_t> hiddenFoldersSkipped{0};
+        std::vector<std::string> hiddenFolderNames;
     };
     // The walk itself: an explicit folder stack (no recursive iterator, whose
     // errors are awkward to contain), symlinks and junctions never entered so
@@ -427,7 +431,8 @@ private:
     void SubfolderSearchWorkerMain(std::shared_ptr<SubfolderSearchState> state,
                                    std::shared_ptr<std::atomic<bool>> alive,
                                    std::string root, std::string needle,
-                                   bool inContents, uint64_t generation);
+                                   bool inContents, bool includeHidden,
+                                   uint64_t generation);
     // Moves what the worker has found onto the display (UI thread), refreshes
     // the status line and, when the walk is done, retires the worker.
     void DrainSubfolderSearch(std::shared_ptr<SubfolderSearchState> state,

@@ -2292,10 +2292,16 @@ void UltraFilerWindow::RunSearch(const std::string& query, bool inContents) {
     UpdateScanButton();
     UpdateStatusBar();
 
+    // The search sees what the display shows: with hidden files listed it
+    // enters hidden folders too (AppData, .config), otherwise it leaves them
+    // out - and says so when it is done, rather than finding nothing silently.
+    const bool includeHidden = filer->GetShowHiddenFiles();
     auto state = searchState;
     auto alive = probeAlive;
-    searchWorker = std::thread([this, state, alive, root, needle, inContents, generation]() {
-        SubfolderSearchWorkerMain(state, alive, root, needle, inContents, generation);
+    searchWorker = std::thread([this, state, alive, root, needle, inContents,
+                                includeHidden, generation]() {
+        SubfolderSearchWorkerMain(state, alive, root, needle, inContents,
+                                  includeHidden, generation);
     });
 }
 
@@ -2324,7 +2330,7 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
         std::shared_ptr<SubfolderSearchState> state,
         std::shared_ptr<std::atomic<bool>> alive,
         std::string root, std::string needle, bool inContents,
-        uint64_t generation) {
+        bool includeHidden, uint64_t generation) {
     // Hands the batch collected so far to the UI thread. Only one is ever in
     // flight: a walk over a fast local tree finds matches far quicker than the
     // display can absorb them, and every posted batch costs a stat per path
@@ -2383,9 +2389,6 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
             for (; it != end; it.increment(ec)) {
                 if (ec || state->cancelled.load()) break;
                 const fs::path p = it->path();
-                // Consistent with the folder tree: hidden entries are neither
-                // reported nor entered.
-                if (IsHiddenFileSystemEntry(p)) continue;
                 std::error_code dec;
                 // A symlink is never followed — and on Windows a directory
                 // junction is one, which is what kept the old recursive walk
@@ -2393,6 +2396,20 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
                 const bool link = it->is_symlink(dec) && !dec;
                 dec.clear();
                 const bool isDir = !link && it->is_directory(dec) && !dec;
+                // Consistent with the display: hidden entries are neither
+                // reported nor entered unless it shows hidden files. A hidden
+                // folder left out is counted, so the end of the search can say
+                // where it did not look (AppData holds half of what a Windows
+                // profile keeps).
+                if (!includeHidden && IsHiddenFileSystemEntry(p)) {
+                    if (isDir) {
+                        if (state->hiddenFoldersSkipped.fetch_add(1) < 3) {
+                            std::lock_guard<std::mutex> lk(state->mutex);
+                            state->hiddenFolderNames.push_back(p.filename().string());
+                        }
+                    }
+                    continue;
+                }
 
                 if (isDir && dir.depth < kMaxSearchDepth)
                     stack.push_back({p, dir.depth + 1});
@@ -2508,6 +2525,33 @@ void UltraFilerWindow::DrainSubfolderSearch(
     }
     if (done && truncated)
         searchStatus += " (stopped at " + std::to_string(kMaxSearchResults) + ")";
+
+    // Hidden folders the walk left out, because the display hides hidden
+    // files: said in the status line, and - when nothing was found - in the
+    // middle of the display, where "No entries" alone read as "not there".
+    const size_t hiddenSkipped = state->hiddenFoldersSkipped.load();
+    if (done && hiddenSkipped > 0) {
+        std::string names;
+        {
+            std::lock_guard<std::mutex> lk(state->mutex);
+            for (size_t i = 0; i < state->hiddenFolderNames.size(); ++i)
+                names += (i ? ", " : "") + state->hiddenFolderNames[i];
+        }
+        if (hiddenSkipped > state->hiddenFolderNames.size()) names += ", ...";
+        const std::string skipped = std::to_string(hiddenSkipped) +
+                (hiddenSkipped == 1 ? " hidden folder was" : " hidden folders were") +
+                " not searched (" + names + ")";
+        searchStatus += " - " + skipped;
+        if (matches == 0 && searchTab && searchTab->filer)
+            searchTab->filer->SetFileListEmptyMessage(
+                    "No match for \"" + searchQueryText + "\".\n" + skipped + ".\n"
+                    "Turn on Hidden files (context menu > Display) or Settings >\n"
+                    "Display > Files > Show hidden files to search them too.");
+    } else if (done && matches == 0 && searchTab && searchTab->filer) {
+        searchTab->filer->SetFileListEmptyMessage(
+                "No match for \"" + searchQueryText + "\" in " + std::to_string(folders) +
+                (folders == 1 ? " folder." : " folders."));
+    }
 
     if (done) {
         // The worker is on its way out (it posted this batch as its last act).

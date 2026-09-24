@@ -583,6 +583,11 @@ namespace UltraCanvas {
         // to let the context menu open an entry's containing folder.
         void ShowFileList(const std::vector<std::string>& paths);
         bool IsShowingFileList() const { return fileListMode; }
+        // What an empty file list says in the middle of the display instead of
+        // "No entries" - a search can say what it looked through and what it
+        // left out. Lines are separated by '\n'. ShowFileList() resets it, so
+        // set it after the list it describes; "" restores "No entries".
+        void SetFileListEmptyMessage(const std::string& message);
 
         // Adds paths to the file list already on display, stat-ing only the
         // new ones and leaving the scroll position and the selection alone —
@@ -1506,6 +1511,7 @@ namespace UltraCanvas {
         std::function<void()> onFilterEmptyAction;
         std::shared_ptr<UltraCanvasButton> filterEmptyButton;
         bool showHiddenFiles = false;
+        std::string fileListEmptyMessage;   // SetFileListEmptyMessage
         // Hidden-items notice (SetHiddenItemsNotice): when the host
         // wants the strip at all, how many entries the last scan left out,
         // and the "Show hidden files" button of the strip - another real

@@ -2243,9 +2243,16 @@ namespace UltraCanvas {
         if (onPathChanged) onPathChanged(currentPath);
     }
 
+    void UltraCanvasFilerWidget::SetFileListEmptyMessage(const std::string& message) {
+        if (fileListEmptyMessage == message) return;
+        fileListEmptyMessage = message;
+        RequestRedraw();
+    }
+
     void UltraCanvasFilerWidget::ShowFileList(const std::vector<std::string>& paths) {
         fileListMode = true;
         fileListPaths = paths;
+        fileListEmptyMessage.clear();
         CancelScrollAnimations();
         scrollOffsetX = scrollOffsetY = 0;
         CancelRename();
@@ -8909,7 +8916,9 @@ namespace UltraCanvas {
                 DrawEmptyState(ctx, bounds, listingFailureNotice);
             } else {
                 DrawEmptyState(ctx, bounds,
-                               fileListMode ? "No entries" : "Folder is empty!");
+                               !fileListMode ? std::string("Folder is empty!")
+                               : fileListEmptyMessage.empty() ? std::string("No entries")
+                                                              : fileListEmptyMessage);
             }
             DrawSelectionInfoBar(ctx, bounds);
             ctx->PopState();
@@ -9179,8 +9188,19 @@ namespace UltraCanvas {
 
         const int iconEdge = 44;
         const int gap = 10;
-        Size2Di ts = ctx->GetTextLineDimensions(message);
-        const int blockHeight = iconEdge + gap + ts.height;
+        // One centred line per '\n'-separated part of the message.
+        std::vector<std::string> lines;
+        for (size_t start = 0;;) {
+            const size_t nl = message.find('\n', start);
+            lines.push_back(message.substr(start, nl == std::string::npos
+                                                  ? std::string::npos : nl - start));
+            if (nl == std::string::npos) break;
+            start = nl + 1;
+        }
+        Size2Di ts = ctx->GetTextLineDimensions(message.empty() ? std::string(" ") : lines.front());
+        const int lineHeight = ts.height + 4;
+        const int textHeight = ts.height + lineHeight * static_cast<int>(lines.size() - 1);
+        const int blockHeight = iconEdge + gap + textHeight;
         if (area.height < blockHeight + 8) {
             // Too flat for the stacked layout - the centered text alone.
             ctx->DrawTextInRect(message, Rect2Dd(area));
@@ -9209,8 +9229,12 @@ namespace UltraCanvas {
         ctx->FillCircle(Point2Dd(cx, baseY - h * 0.16), 2.0);
         ctx->PopState();
 
-        ctx->DrawText(message,
-                      Point2Dd(cx - ts.width / 2.0, top + iconEdge + gap));
+        int y = top + iconEdge + gap;
+        for (const std::string& line : lines) {
+            const int width = ctx->GetTextLineDimensions(line).width;
+            ctx->DrawText(line, Point2Dd(cx - width / 2.0, y));
+            y += lineHeight;
+        }
     }
 
     namespace {

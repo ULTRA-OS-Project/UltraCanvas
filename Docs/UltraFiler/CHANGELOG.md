@@ -9,6 +9,23 @@
   - The folder tree's **Delete** used its own "Delete X and everything in it?"
     box and always deleted for good; it now opens the same confirmation, with
     the trash choice and the preview of what the folder holds.
+- **Scan sub folder found nothing inside hidden folders, and did not say
+  so.** Searching "UltraFiler" from `C:\Users\<name>` came back with "No
+  entries", although `AppData\Roaming\UltraFiler` is right there: `AppData`
+  is a hidden folder, and the walk skipped every hidden entry and never went
+  into it. (The same happens under `.config` on Linux.) The search matches
+  folders as well as files; it was the hidden folder on the way that hid the
+  result.
+  - The search now follows the display's **Show hidden files** setting
+    (Settings > Display > Files, or the context menu's *Display > Hidden
+    files*): with hidden files shown, hidden folders are searched and hidden
+    matches listed.
+  - With them hidden, the walk still leaves them out, as Explorer does, but
+    says so. The status line ends with *1 hidden folder was not searched
+    (AppData)*. When nothing was found, the middle of the display says the
+    same and where to turn hidden files on, instead of a bare "No entries". A
+    search with no match and nothing left out says *No match for "X" in N
+    folders.*
 - **An archive extracted only in part says which entries it skipped.**
   Extraction now refuses entries that would land outside the destination
   folder (see the UltraCanvas changelog). The status line used to say only

@@ -72,7 +72,10 @@ icon (a vector-drawn warning triangle, so no icon assets are required) with the
 message below it, vertically centered in the folder display. A folder without
 content shows **"Folder is empty!"**; an empty [file list](#file-list-search-results)
 — the UltraFiler's History and Favorites tabs before anything was recorded or
-pinned, a search without matches — shows **"No entries"**. A listing emptied by
+pinned, a search without matches — shows **"No entries"**, or what the host
+set with `SetFileListEmptyMessage()` (lines separated by `\n`, each centred;
+`ShowFileList()` resets it). UltraFiler uses it to say which hidden folders a
+search left out. A listing emptied by
 the [name filter](#name-filter-filter-as-you-type) shows **"No matches for
 "…""** — with the host's escalation button centered under it when one is set
 via `SetFilterEmptyAction()`. A widget that never had a folder set keeps the
