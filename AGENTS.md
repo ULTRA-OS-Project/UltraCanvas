@@ -399,6 +399,15 @@ now" must find it without reading the report.
      exists, say its state too (open / merged / CI red / waiting on review),
      because an open PR that is failing is not delivered either.
 
+   **This one is checked, not remembered.** `.claude/settings.json` (committed,
+   so every clone has it) runs `.claude/hooks/check-delivery.sh` on `Stop`: a
+   turn that would end with an uncommitted tracked file or an unpushed commit
+   is blocked once, with the offending paths and commits listed. Stopping
+   again is allowed — the check refuses silence, not unfinished work — so
+   commit and push, or write the block and say what you are leaving behind.
+   The same script runs on `SessionStart` with `--brief`, which restates the
+   rule and reports anything a previous session left behind.
+
    Write it even when the answer is unwelcome — *"3 commits, 20 files,
    +1130/−85, pushed to `claude/…`, **no pull request**"* and *"the parser
    change is written but **not committed**"* are exactly the lines that must
