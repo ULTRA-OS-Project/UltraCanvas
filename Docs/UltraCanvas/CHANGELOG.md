@@ -1,3 +1,161 @@
+#### 2026-09-24 *0.9.52*
+- **"Namensänderung" was drawn as "Namens•nderung".** Two ways a name that
+  is not UTF-8 reached the file display, and both are closed:
+  - *Archives.* A ZIP entry without the UTF-8 flag is named in the DOS code
+    page of the machine that made it - IBM437 by the ZIP specification, and
+    what Windows Explorer, WinZip and older 7-Zip write, so "ä" is the byte
+    0x84. libarchive passes those bytes on untouched on Linux, so the
+    VirtualFS listing showed U+FFFD and `ExtractAll` created a folder whose
+    name was not UTF-8 at all. The libarchive provider now reads every entry
+    name through one helper: libarchive's own UTF-8 conversion when it has
+    one, the stored bytes when they already are UTF-8 (Info-ZIP on Linux and
+    macOS write those unflagged), and otherwise IBM437 for ZIP and
+    Windows-1252 for the other formats. Extraction writes that UTF-8 name to
+    disk.
+  - *The locale.* libarchive converts names through the C library, so in the
+    "C" locale (a test runner, a service, a session without `LANG`) every
+    non-ASCII name - Thai, Russian, Chinese, flagged UTF-8 or not - came
+    back empty and `archive_read_next_header` answered `ARCHIVE_WARN`, which
+    every loop in the provider took for the end of the archive. The provider
+    now pins `LC_CTYPE` to UTF-8 for its thread while it reads, and a warning
+    no longer ends a walk.
+  - *Names already on disk.* A file named in a legacy code page (an old
+    Latin-1 tool, an unzip that did not re-encode) is shown decoded by
+    `UltraCanvasFilerWidget::DisplayNameOf` instead of as U+FFFD. The new
+    `RepairLegacyEncodedName` / `IsWellFormedUtf8` in `UltraCanvasTextUtils.h`
+    pick Windows-1252 or IBM437, whichever makes letters of the stray bytes,
+    and leave UTF-8 - including decomposed (NFD) names - untouched. The entry
+    keeps its real bytes for every file operation. The rename field opens on
+    the decoded name, and an edited name is written as UTF-8.
+  - New tests: `VirtualFSNameEncodingTest` (a hand-built ZIP with an IBM437
+    "Namensänderung/Grüße.txt" and UTF-8 Thai, Russian and Chinese entries,
+    listed, read and extracted in the "C" and a UTF-8 locale) and
+    `FilerNameEncodingTest` (the repair, `DisplayNameOf`, caption wrapping of
+    Thai / Cyrillic / CJK names, and a real folder scan).
+- **The delete confirmation lists what is about to go, with icons.** Deleting
+  a folder showed a wrapping grid of 64-pixel tiles for its first ten entries.
+  Only image files got a picture there: a folder, a DLL or a certificate was
+  an empty square over a name cut at eleven bytes, and several selected items
+  were not shown at all. The dialog now has an `UltraCanvasListView` in the
+  Details view's form:
+  - Columns: icon and name, size, modified. The icon is the display's own
+    (`DrawEntryIcon`, via a small list delegate), so every row gets the glyph
+    or host icon the file display gives that entry. Sizes and dates are
+    formatted as in the Details view.
+  - Several items selected: the list is those items, with a caption that
+    counts folders and files and adds up the files' size. One folder: the
+    list is its contents, folders first and then by name (only the rows
+    shown are stat-ed), with *Folder "X" contains N items (first 40 shown)*.
+    A single file gets no list. At most 40 rows, ten visible, with a
+    scrollbar; each row's tooltip is the full path.
+- **Delete asks "Move to the Trash" or "Delete permanently".** Every delete
+  in the Filer widget used to be permanent - there was no trash at all, and
+  Shift+Del did exactly what Del did. The confirmation now carries the choice
+  as two radio buttons, and the line under the question follows it ("It can
+  be restored from the Trash." / "This cannot be undone."). Del opens it on
+  the trash, Shift+Del on the permanent delete, as in Explorer; the context
+  menu gains **Delete Permanently** (Shift+Del) beside **Delete** (Del).
+  - New `UltraCanvasTrash.h`: `MoveToTrash`, `TrashAvailable`,
+    `TrashDisplayName`. Windows recycles through `SHFileOperationW` with
+    `FOF_ALLOWUNDO`, and `FOF_WANTNUKEWARNING` makes the shell ask before an
+    item the Recycle Bin cannot hold is destroyed. macOS uses
+    `NSFileManager trashItemAtURL`, so Finder's Put Back works. Linux and the
+    BSDs follow the freedesktop.org Trash specification 1.0: the home trash
+    for files on the home drive, the drive's own `.Trash/$uid` or
+    `.Trash-$uid` for a USB stick or second partition (never a copy across
+    drives), names claimed with `O_EXCL` on the `.trashinfo`, and one
+    `rename` per item. The trash itself, anything in it and a folder holding
+    it are refused. Android and WebAssembly have none (`TrashAvailable()`
+    false).
+  - `UltraCanvasFilerWidget`: `FilerDeleteMode { MoveToTrash, Permanently }`;
+    `DeleteSelection(preferred)`, `DeleteEntries(victims, preferred)`,
+    `DeletePaths(paths, onDone, mode)` (default still Permanently: its caller
+    confirmed), new `ConfirmDeletePaths` (the dialog for paths the display is
+    not showing) and `CanMoveToTrash`. A trash move is one step per entry and
+    asks nothing about write-protected entries; an entry the trash refuses
+    stops at a "Cannot Move to the Trash" problem dialog and is never
+    deleted for good instead. Where the trash cannot take the entries
+    (inside an archive, on a remote drive, no trash on the platform) the
+    trash option is greyed out and the dialog says why.
+  - The confirmation's folder preview cut names at 11 bytes, which split a
+    Thai, Cyrillic or CJK character; it now cuts at 12 characters, and the
+    names in the dialog are shown decoded when they are not UTF-8.
+  - New test: `TrashTest` (the freedesktop backend against a private
+    `XDG_DATA_HOME`: files, folders, links, UTF-8 names, name collisions,
+    refusals, and a second drive's `.Trash-$uid` when `/dev/shm` is one).
+- **`UltraCanvasFilerWidget::SetFileListEmptyMessage()`**: what an empty file
+  list says in the middle of the display, instead of "No entries". A search
+  can now explain an empty result: what it looked through, and what it left
+  out. `ShowFileList()` resets it, so History and Favorites keep their "No
+  entries". The empty-display notice (`DrawEmptyState`) draws a message of
+  several `\n`-separated lines, each centred; before, it drew one line,
+  however long.
+- **3D models on a comma-decimal desktop: FBX and DirectX .x did not load,
+  PLY and DXF came out wrong.** Six model readers still parsed numbers with
+  `atof` / `strtod`, which follow `LC_NUMERIC`. The Linux backend calls
+  `setlocale(LC_ALL, "")` for keyboard input, so on a German, French or
+  Italian desktop the '.' in "1.5" was not a decimal point. The Filer's 3D
+  thumbnails and detail view, like every other viewer, showed the text FBX
+  and the .x samples as nothing at all, and the PLY and DXF samples with
+  their geometry scrambled. The same defect was fixed for OBJ and X3D in
+  0.9.42; the six readers it did not reach are fixed here:
+  - PLY (`AsciiTokens`), DXF 3D (`Tag::Number`), COLLADA (`ReadFloatChild`)
+    and STEP (`UltraCanvasStepFile`) read through `TryParseFloat`; the FBX
+    and DirectX .x tokenizers through `ParseFloatClassic`, which for .x
+    also bounds the scan by the buffer instead of letting `strtod` run past
+    the end of a truncated file.
+  - The STEP converter's two `snprintf` calls only build in-memory lookup
+    keys, so they are marked `locale-ok` rather than changed.
+  - `scripts/locale_numbers_baseline.txt` loses the seven entries.
+  - New test `ModelLocaleDecimalTest` loads every text-based sample in
+    `media/3D` (PLY, DXF, COLLADA, FBX, STEP, .x, OBJ, X3D, VRML) in "C" and
+    in a comma-decimal locale, and requires the same mesh vertex for vertex.
+    Against the old readers it fails six checks: FBX and .x fail to load,
+    PLY and DXF differ. The standalone model tests link
+    `UltraCanvasTextUtils.cpp` for the helpers.
+- **Extracting an archive could write files outside the destination ("zip
+  slip").** `VirtualFSLibArchiveProvider::ExtractAll` joined every entry path
+  to the destination as it was and set none of libarchive's secure-extract
+  flags, so an entry named `../../.bashrc` landed outside the folder the user
+  picked, and an archive that first extracted `link -> /etc` could then write
+  `link/passwd` through it. UltraFiler's Extract reaches this with any archive
+  the user unpacks.
+  - Every entry path is checked before it is joined: an absolute name (and on
+    Windows a drive letter or a UNC path) or any `..` component is refused.
+    The entry is skipped, the rest of the archive still extracts, and the
+    refused names are listed in `lastError`; the result is `InvalidPath`
+    instead of `Success`.
+  - libarchive's own guards run behind that check:
+    `ARCHIVE_EXTRACT_SECURE_NODOTDOT` and `ARCHIVE_EXTRACT_SECURE_SYMLINKS`
+    (no write through a symbolic link on disk). `SECURE_NOABSOLUTEPATHS`
+    cannot apply, because the path handed over is always the absolute
+    destination plus the entry. The destination's own symbolic links (macOS
+    `/tmp` → `/private/tmp`) are resolved first, so only links the archive
+    put there count.
+  - Hard links: the target stayed relative to the archive root and resolved
+    against the process's working directory. It is now held to the same rule
+    and prefixed with the destination like every other path.
+  - `ARCHIVE_WARN` from `archive_write_header` (an owner that could not be
+    restored) no longer aborts the whole extraction, and an entry libarchive
+    refuses (`ARCHIVE_FAILED`) is skipped and reported, not the end of the
+    walk; the result is then `WriteError`.
+  - The skipped entries reach the user. `VirtualFSManager::ExtractAll`,
+    `VirtualFS_ExtractAll` and `UCVFSBridge::ExtractArchive` take an optional
+    `std::string* outError` with the provider's own account: a heading line
+    ending in ':' per kind of problem, then one entry per line, with the
+    destination prefix trimmed from libarchive's reasons. It is an
+    out-parameter rather than a shared "last error" because extractions run on
+    worker threads. `UltraCanvasFilerWidget` shows it as an **Extraction
+    Incomplete** dialog that lists the entries, and puts one sentence in the
+    status line; the bare "Extraction failed for X" is left only for an
+    archive that could not be extracted at all, and now carries the reason.
+  - New test `VirtualFSExtractSafetyTest`: a hostile ZIP (`../escape.txt`,
+    an absolute name, `a/../../escape2.txt`, a link out followed by a file
+    through it) and a tar with a good and a climbing hard link, extracted from
+    another working directory, plus a destination reached through a symbolic
+    link. The hand-written ZIP builder is shared with
+    `VirtualFSNameEncodingTest` as `Tests/VirtualFSTestZip.h`.
+
 #### 2026-09-24 *0.9.51*
 - **A file could be put onto a drive but never taken off one.** `CloudService`
   had `Upload` and no `Download`, although every provider - FTP, WebDAV,
