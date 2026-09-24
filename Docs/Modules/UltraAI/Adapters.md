@@ -33,6 +33,7 @@ and friends report what this build actually has.
 | `anthropic` | `ITextLLM` | cloud |
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud or OpenAI-compatible server |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud |
+| `elevenlabs` | `ITextToSpeech` | cloud, direct or through a hosted relay |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local server |
 | `comfyui` | `IImageGen`, `IVideoGen` | local server |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process |
@@ -164,6 +165,106 @@ Compatibility is not identity — verify the specific fields you rely on.
 
 **Not covered.** Music generation: MiniMax closed that API to new accounts
 in August 2026.
+
+---
+
+## `elevenlabs` — ElevenLabs speech
+
+Header: `UltraAIElevenLabs.h`. Cloud provider; a credential is required.
+Default base URL `https://api.elevenlabs.io`.
+
+The adapter serves two deployments with the same code:
+
+| Deployment | `baseUrl` | Credential | `auth_scheme` |
+|---|---|---|---|
+| **Hosted** — ULTRA runs a relay that holds the ElevenLabs key, checks the user's plan and meters usage | the relay's URL | the user's session token | `"bearer"` |
+| **Bring your own key** | empty (ElevenLabs) or a data-residency host | the user's key, vault reference `ai.elevenlabs.api_key` | `"xi-api-key"` (default) |
+
+The relay forwards ElevenLabs' own wire format unchanged, so nothing in the
+adapter differs between the two except where it connects and which header
+carries the credential. The relay itself is not part of this repository.
+
+```cpp
+// Bring your own key.
+TextToSpeechConfig cfg;
+cfg.providerId     = "elevenlabs";
+cfg.apiKeyVaultRef = "ai.elevenlabs.api_key";
+
+// Hosted service instead:
+//   cfg.baseUrl = "<relay URL>";
+//   cfg.apiKey  = sessionToken;
+//   cfg.providerOptions["auth_scheme"] = std::string("bearer");
+
+auto tts = CreateTextToSpeech(cfg);
+
+for (const VoiceInfo& voice : tts->ListVoices("de")) {
+    std::cout << voice.id << "  " << voice.displayName << '\n';
+}
+
+SpeakRequest req;
+req.text     = "Der Kessel kocht.";
+req.voiceId  = "JBFqnCBsd6RMkjVDRZzb";
+req.language = "de-DE";                   // -> language_code "de"
+req.options["stability"] = 0.5;           // -> voice_settings.stability
+
+StreamHandle handle = tts->SpeakStream(req, [](const TtsStreamEvent& ev) {
+    if (ev.kind == TtsStreamEventKind::AudioChunk) Play(ev.audioChunk);
+});
+```
+
+```
+POST /v1/text-to-speech/{voice_id}?output_format=...                         one-shot, raw audio
+POST /v1/text-to-speech/{voice_id}/stream/with-timestamps?output_format=...  streamed, NDJSON
+GET  /v1/voices                                                              ListVoices
+POST /v1/voices/add                                                          CloneVoice (multipart)
+```
+
+Streaming uses the `with-timestamps` variant on purpose: each line is a
+JSON object carrying base64 audio, so an error body (`{"detail": ...}`)
+cannot be mistaken for audio even though the HTTP status is only known when
+the stream ends. It runs over the transport seam's `ByteStream`.
+
+| `SpeakRequest` | API field |
+|---|---|
+| `voiceId` (or option `default_voice_id`) | path segment |
+| `model` (or `defaultModel`, else `eleven_multilingual_v2`) | `model_id` |
+| `language` | `language_code` (primary subtag) |
+| `speed` (when not 1.0) | `voice_settings.speed` |
+| `format`, `sampleRateHz` | `output_format` query: `mp3_44100_128`, `mp3_22050_32`, `pcm_<rate>` (8000–48000, default 24000) |
+
+**Option keys** (provider options or per request; never sent as body
+fields):
+
+| Key | Type | Meaning |
+|---|---|---|
+| `auth_scheme` | string | `"xi-api-key"` (default) or `"bearer"` for a relay; provider options only |
+| `default_voice_id` | string | voice used when `SpeakRequest::voiceId` is empty |
+| `output_format` | string | ElevenLabs format verbatim (`ulaw_8000`, `mp3_44100_192`, ...), overriding the mapping above |
+| `enable_logging` | bool | `false` requests zero-retention mode (enterprise accounts) |
+| `stability`, `similarity_boost`, `style` | double | `voice_settings` fields |
+| `use_speaker_boost` | bool | `voice_settings.use_speaker_boost` |
+
+Any other option is passed through as a top-level body field (`seed`,
+`previous_text`, `next_text`, `apply_text_normalization`, ...).
+
+**Usage.** `SpeakResponse::usage.units` is the character cost from
+ElevenLabs' `character-cost` response header, falling back to the
+character count of the text. `durationSec` is filled for PCM output only.
+
+**Errors.** ElevenLabs' `detail.status` refines the HTTP mapping and is kept
+in `Error::providerCode`: `quota_exceeded` → `QuotaExceeded` (ElevenLabs
+sends it with HTTP 401), `invalid_api_key` / `missing_permissions` →
+`AuthenticationFailed`, `too_many_concurrent_requests` / `system_busy` →
+`RateLimited`, `voice_not_found` → `InvalidRequest`. 422 validation errors
+report their first message.
+
+**Limits.** SSML is rejected (inline `<break time="1s" />` tags are plain
+text to ElevenLabs and pass through). Wav, Flac, Opus and Ogg are rejected
+unless `output_format` names an ElevenLabs format. `style`, `pitch` and
+`volume` have no equivalent and are ignored. `CloneVoice()` takes inline
+sample bytes only; URL samples are rejected rather than downloaded.
+Speech-to-text and the WebSocket input-streaming endpoint are not
+implemented yet.
 
 ---
 
