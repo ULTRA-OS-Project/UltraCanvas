@@ -19,6 +19,14 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasUtils.h"
 
+// ULTRAAI_APP_VERSION comes from the build alone: CMake reads the first line
+// of Docs/UltraAI/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes
+// it as a compile definition. No fallback here, so a build that lost it
+// fails instead of reporting a wrong number.
+#ifndef ULTRAAI_APP_VERSION
+#error "ULTRAAI_APP_VERSION is not defined: build through CMake, which reads it from Docs/UltraAI/CHANGELOG.md"
+#endif
+
 #ifdef __linux__
 #include <X11/Xlib.h>
 #include <csignal>
@@ -57,7 +65,7 @@ int main(int argc, char* argv[]) {
         std::string a = argv[i];
         if (a == "-h" || a == "--help")    { PrintUsage(argv[0]); return 0; }
         if (a == "-v" || a == "--version") {
-            std::cout << "UltraAI app 0.1.0\n"; return 0;
+            std::cout << "UltraAI app " << ULTRAAI_APP_VERSION << "\n"; return 0;
         }
     }
 

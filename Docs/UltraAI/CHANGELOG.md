@@ -1,3 +1,11 @@
+#### 2026-09-24 *0.1.5*
+- **The dashboard app reports this changelog's version.** `UltraAIApp`'s
+  `ULTRAAI_APP_VERSION` was a literal `"0.1.0"` in `CMakeLists.txt`, and
+  `--version` printed its own literal `0.1.0`; both now come from the first
+  line of this file through `cmake/UltraCanvasVersion.cmake`, as for the
+  other applications. `Apps/UltraAIApp/main.cpp` fails at compile time if
+  the definition is missing instead of falling back to a number.
+
 #### 2026-09-24 *0.1.4*
 - **ElevenLabs text-to-speech.** A new `elevenlabs` adapter
   (`UltraAI/adapters/elevenlabs/`, `ULTRAAI_ADAPTER_ELEVENLABS`, on by
