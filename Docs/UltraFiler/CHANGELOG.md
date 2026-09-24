@@ -1,3 +1,46 @@
+#### 2026-09-24 *1.51.0*
+- **Delete moves to the Trash now, and asks which it should be.** The delete
+  confirmation offers **Move to the Trash** and **Delete permanently** as two
+  radio buttons; Del opens it on the trash, Shift+Del on the permanent delete,
+  as in Explorer. (The framework side - the trash itself and the dialog - is
+  in the UltraCanvas changelog.)
+  - The toolbar's delete button asked "Delete X?" in a box of its own and then
+    the widget asked again. It now opens the widget's confirmation directly.
+  - The folder tree's **Delete** used its own "Delete X and everything in it?"
+    box and always deleted for good; it now opens the same confirmation, with
+    the trash choice and the preview of what the folder holds.
+- **An open Settings window follows the file display's context menu.** The
+  menu's *Display > Thumbnails*, *Detail view*, *File extensions*, *File
+  icons* and *Folder previews* write straight into the settings, but the
+  Settings pages read them only once, when the window was built. A
+  Settings window left open kept showing, for example, *Bitmaps* ticked on
+  the Detail view page after a click in the menu had switched the detail
+  pane off for every JPG and PNG (`display.detailview.kinds.off = bitmaps`
+  in config.ini). The window now re-reads those settings whenever the menu
+  changes one: the kind and format ticks of both pages, the extension and
+  badge choices, the file-icon choice and the folder-previews box.
+- **Scan sub folder found nothing inside hidden folders, and did not say
+  so.** Searching "UltraFiler" from `C:\Users\<name>` came back with "No
+  entries", although `AppData\Roaming\UltraFiler` is right there: `AppData`
+  is a hidden folder, and the walk skipped every hidden entry and never went
+  into it. (The same happens under `.config` on Linux.) The search matches
+  folders as well as files; it was the hidden folder on the way that hid the
+  result.
+  - The search now follows the display's **Show hidden files** setting
+    (Settings > Display > Files, or the context menu's *Display > Hidden
+    files*): with hidden files shown, hidden folders are searched and hidden
+    matches listed.
+  - With them hidden, the walk still leaves them out, as Explorer does, but
+    says so. The status line ends with *1 hidden folder was not searched
+    (AppData)*. When nothing was found, the middle of the display says the
+    same and where to turn hidden files on, instead of a bare "No entries". A
+    search with no match and nothing left out says *No match for "X" in N
+    folders.*
+- **An archive extracted only in part says which entries it skipped.**
+  Extraction now refuses entries that would land outside the destination
+  folder (see the UltraCanvas changelog). The status line used to say only
+  "Extraction failed for X", even though everything else had been unpacked.
+  An **Extraction Incomplete** dialog now lists every skipped entry and why.
 #### 2026-09-24 *1.50.0*
 - **Files can be taken off a drive now, and the status line counts them down.**
   1.49.0 gave every job on a drive a line in the status strip and a progress

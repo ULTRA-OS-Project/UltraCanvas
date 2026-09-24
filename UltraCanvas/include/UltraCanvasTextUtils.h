@@ -1,6 +1,7 @@
 // include/UltraCanvasTextUtils.h
 // Standalone text utilities: trimming, case folding, splitting, and the
-// RFC 4648 Base64 / Base32 codecs.
+// RFC 4648 Base64 / Base32 codecs, and the repair of file names written in a
+// legacy code page.
 //
 // This header is part of UltraCanvasUtils — UltraCanvasUtils.h includes it, so
 // existing callers need no change — but it is kept in its own file with no
@@ -173,5 +174,31 @@ std::string Base32Encode(const uint8_t* data, size_t size, bool pad = true);
 // be either case, and ASCII spaces and tabs are ignored so a key can be
 // entered in readable groups. Padding is optional.
 bool Base32Decode(const std::string& input, std::vector<uint8_t>& out);
+
+// ---------------------------------------------------------------------------
+// Legacy-encoded file names
+// ---------------------------------------------------------------------------
+// UltraCanvas text is UTF-8, but a file name is whatever bytes the program
+// that made it wrote. Two legacy encodings account for nearly every name that
+// is not UTF-8:
+//   * Windows-1252 / ISO-8859-1 — names written by older Linux tools, Samba or
+//     FAT mounts without iocharset=utf8 ("Namens\xE4nderung");
+//   * IBM437 / 850 — names out of a ZIP made on Windows and unpacked by a tool
+//     that did not re-encode them (ä = 0x84, ü = 0x81, ß = 0xE1).
+// Drawn as they are, each such byte becomes U+FFFD and "Namensänderung" reads
+// "Namens\uFFFDnderung".
+
+// True when `s` is well-formed UTF-8 (no stray continuation bytes, overlong
+// forms, surrogates or code points past U+10FFFF).
+bool IsWellFormedUtf8(const std::string& s);
+
+// `name` as UTF-8 text for display. Well-formed UTF-8 — Thai, Cyrillic, CJK,
+// anything — is returned unchanged. Otherwise the valid UTF-8 runs are kept
+// and every other byte is read in the legacy code page above that makes more
+// of those bytes letters inside a word (Windows-1252 on a tie, so a lone
+// "\x96" stays an en dash), so both "Namens\xE4nderung"
+// and "Namens\x84nderung" come back as "Namensänderung". For display only:
+// the file is still reached by its real bytes.
+std::string RepairLegacyEncodedName(const std::string& name);
 
 } // namespace UltraCanvas

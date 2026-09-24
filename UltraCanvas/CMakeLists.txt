@@ -522,6 +522,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
+        # Move to the Recycle Bin / Trash. Platform backend under
+        # OS/<Platform>/; Android and WebAssembly get the fallback in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTrash.cpp
         # "Delete as administrator": the UAC relaunch behind a permission
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
@@ -1664,6 +1667,11 @@ endif()
 # app can leave the "in use" display out entirely where nothing can answer.
 if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+endif()
+# The trash: the same arrangement for UltraCanvasTrash. PUBLIC so an app can
+# leave "Move to Trash" out where there is none.
+if(ULTRACANVAS_HAS_NATIVE_TRASH)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_TRASH)
 endif()
 # Native volume monitoring: the same arrangement for UltraCanvasVolumeMonitor.
 # PUBLIC so an app can tell a device notification from the polling fallback.

@@ -287,6 +287,14 @@ if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
 endif()
 
+# Which platforms have a trash UltraCanvasTrash can move files into: the
+# Recycle Bin (Windows), the Finder's Trash (macOS) and the freedesktop.org
+# trash (Linux, the BSDs). Android and WebAssembly have none; there the core
+# file compiles a fallback that always fails, and TrashAvailable() is false.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_TRASH ON)
+endif()
+
 # Same decision, same reasons, for the volume monitor (UltraCanvasVolumeMonitor:
 # WM_DEVICECHANGE / poll() on /proc/self/mountinfo / NSWorkspace mount
 # notifications). macOS is included here where it is absent above, because a

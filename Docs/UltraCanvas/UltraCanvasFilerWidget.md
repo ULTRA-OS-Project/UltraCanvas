@@ -72,7 +72,10 @@ icon (a vector-drawn warning triangle, so no icon assets are required) with the
 message below it, vertically centered in the folder display. A folder without
 content shows **"Folder is empty!"**; an empty [file list](#file-list-search-results)
 — the UltraFiler's History and Favorites tabs before anything was recorded or
-pinned, a search without matches — shows **"No entries"**. A listing emptied by
+pinned, a search without matches — shows **"No entries"**, or what the host
+set with `SetFileListEmptyMessage()` (lines separated by `\n`, each centred;
+`ShowFileList()` resets it). UltraFiler uses it to say which hidden folders a
+search left out. A listing emptied by
 the [name filter](#name-filter-filter-as-you-type) shows **"No matches for
 "…""** — with the host's escalation button centered under it when one is set
 via `SetFilterEmptyAction()`. A widget that never had a folder set keeps the
@@ -327,7 +330,7 @@ Open with      >  clicking the entry opens the selection with the OS default
 ──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 ──────────         displays; the label is configurable)
-Copy / Cut / Paste / Delete / Duplicate / Rename
+Copy / Cut / Paste / Delete / Delete Permanently / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
 ──────────
@@ -1263,6 +1266,24 @@ rule, including a desktop launcher's own `Name=`
 where the home folder is shown as *Home* — what the folder tree's row and the
 folder tab call it too — instead of the account the folder is named after.
 
+### Names in every script, and names that are not UTF-8
+
+Names are UTF-8 throughout: German umlauts, Thai, Cyrillic, CJK and emoji are
+listed, drawn, wrapped under a tile, ellipsized in a column and renamed as
+whole characters (a caption never breaks inside a multibyte character).
+
+A file name on disk, though, is whatever bytes the program that made it
+wrote, and some are not UTF-8: an old Latin-1 tool writes "Namensänderung" as
+`Namens\xE4nderung`, and a ZIP made on Windows and unpacked by a tool that did
+not re-encode it leaves `Namens\x84nderung` (IBM437). Drawn as they were, each
+such byte became U+FFFD — "Namens•nderung". `DisplayNameOf` now shows such a
+name decoded (`RepairLegacyEncodedName` in `UltraCanvasTextUtils.h` picks
+Windows-1252 or IBM437, whichever makes letters of the stray bytes), while
+`FilerEntry::name` / `path` keep the real bytes, so opening, copying and
+deleting the file still work. The rename field opens on the decoded name, and
+an edited name is written as UTF-8. Archives the widget unpacks through
+VirtualFS already come out with UTF-8 names (see the VirtualFS README).
+
 ## File type colours
 
 Every colour the display gives an entry — the band across the foot of its
@@ -1497,9 +1518,14 @@ filer->Paste();               // into the current folder, with the conflict
                               // text becomes a new file
 filer->PasteFilesInto(folder, paths, cut, onDone);  // same paste machinery
                               // aimed at any folder (see below)
-filer->DeleteSelection();     // gated by confirmDelete when set
-filer->DeletePaths(paths, onDone);   // delete without asking again - for a
-                              // host that ran its own confirmation
+filer->DeleteSelection();     // asks: Move to Trash (chosen) / Delete permanently
+filer->DeleteSelection(FilerDeleteMode::Permanently);  // asks, opened on
+                              // "Delete permanently" (what Shift+Del does)
+filer->ConfirmDeletePaths(paths, onDone);  // the same dialog for paths the
+                              // display is not showing (a folder-tree delete)
+filer->DeletePaths(paths, onDone, FilerDeleteMode::MoveToTrash);  // no
+                              // question - for a host that ran its own
+                              // confirmation (default mode: Permanently)
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
@@ -1510,6 +1536,43 @@ filer->ExtractSelection();           // into sibling folders; a taken folder
 filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Delete: to the Trash, or permanently
+
+**Del** and **Shift+Del** open the same confirmation, `Delete "X"?`, with the
+choice as two radio buttons: **Move to the Trash** (*Recycle Bin* on Windows)
+and **Delete permanently**. Del opens it on the trash, Shift+Del on the
+permanent delete — the keys Explorer gives the two — and the line under the
+question follows the choice: *It can be restored from the Trash.* or *This
+cannot be undone.* The context menu has both, **Delete** (Del) and **Delete
+Permanently** (Shift+Del).
+
+The trash is `UltraCanvasTrash` (`MoveToTrash`): the Recycle Bin through the
+shell, the Finder's Trash through NSFileManager (so *Put Back* works), and the
+freedesktop.org trash on Linux and the BSDs — the drive's own
+`.Trash-$uid` for a file on a USB stick, never a copy into the home folder.
+Moving to the trash is one move per entry, so a folder of any size goes at
+once, and a write-protected entry is not asked about (moving it does not
+write to it). An entry the trash refuses stops at the problem dialog below
+(*Cannot Move to the Trash*); it is **never** deleted for good instead.
+
+Under the choice the dialog lists **what is about to go**, in an
+`UltraCanvasListView` with the Details view's columns - the entry's icon (the
+display's own, through `DrawEntryIcon`, so type glyphs and host icons alike)
+and name, size, modified - at most 40 rows, ten at a time with a scrollbar.
+Several items selected: the list is those items, under a caption that counts
+the folders and files and adds up the files' size. One folder: the list is
+what the folder holds, folders first and then by name, under *Folder "X"
+contains 147 items (first 40 shown)*. A single file gets no list - the
+question already names it.
+
+Where the trash cannot take the entries — no trash on this platform (Android,
+WebAssembly), entries inside an archive, entries on a remote drive — the
+trash option is greyed out, the dialog opens on **Delete permanently**, and
+the line says why. `CanMoveToTrash(victims)` answers the same question for a
+host. A host `confirmDelete` veto replaces the dialog and so has no choice to
+offer: the delete then goes the way `DeleteSelection` was asked for, as far as
+the trash can take the entries.
 
 ### Progress window (copy / move / delete)
 
@@ -1785,6 +1848,19 @@ Cancel stops the backend at its next progress callback. A cancelled **pack**
 deletes the half-written archive (nobody wants that in the listing); a cancelled
 **unpack** keeps what it already wrote, because those are real files, and stops
 the remaining archives of a multi-archive run.
+
+An archive that is **extracted only in part** - entries VirtualFS refused
+because they would have been written outside the destination (`../x`, an
+absolute path, a hard link climbing out), or entries it could not write (a
+file through a symbolic link the archive created) - opens an **Extraction
+Incomplete** dialog: *Not everything in "Download.zip" was extracted. The rest
+of the archive was unpacked.*, then each kind of problem with the entries it
+held back, one per line. The status line (`onError`) gets one sentence saying
+the archive was extracted only in part. An archive that could not be extracted
+at all still reports `Extraction failed for <archive>` there, now followed by
+the reason. The text comes from `UCVFSBridge::ExtractArchive`'s `outError`
+parameter, not the bridge's shared `GetLastError()`, because extractions run on
+worker threads.
 
 ## Clipboard interop with other programs
 

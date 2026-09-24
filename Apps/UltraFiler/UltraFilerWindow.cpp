@@ -1189,6 +1189,9 @@ void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
     settings.folderPreviews = source->AreFolderPreviewsEnabled();
     settings.Save();
     ApplySettings();
+    // An open Settings window shows the change too, instead of the tick it
+    // had when it was built.
+    UltraFilerSettingsDialog::SyncWithSettings();
 }
 
 bool UltraFilerWindow::CanShowInDetailView(const FilerEntry& entry) const {
@@ -2292,10 +2295,16 @@ void UltraFilerWindow::RunSearch(const std::string& query, bool inContents) {
     UpdateScanButton();
     UpdateStatusBar();
 
+    // The search sees what the display shows: with hidden files listed it
+    // enters hidden folders too (AppData, .config), otherwise it leaves them
+    // out - and says so when it is done, rather than finding nothing silently.
+    const bool includeHidden = filer->GetShowHiddenFiles();
     auto state = searchState;
     auto alive = probeAlive;
-    searchWorker = std::thread([this, state, alive, root, needle, inContents, generation]() {
-        SubfolderSearchWorkerMain(state, alive, root, needle, inContents, generation);
+    searchWorker = std::thread([this, state, alive, root, needle, inContents,
+                                includeHidden, generation]() {
+        SubfolderSearchWorkerMain(state, alive, root, needle, inContents,
+                                  includeHidden, generation);
     });
 }
 
@@ -2324,7 +2333,7 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
         std::shared_ptr<SubfolderSearchState> state,
         std::shared_ptr<std::atomic<bool>> alive,
         std::string root, std::string needle, bool inContents,
-        uint64_t generation) {
+        bool includeHidden, uint64_t generation) {
     // Hands the batch collected so far to the UI thread. Only one is ever in
     // flight: a walk over a fast local tree finds matches far quicker than the
     // display can absorb them, and every posted batch costs a stat per path
@@ -2383,9 +2392,6 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
             for (; it != end; it.increment(ec)) {
                 if (ec || state->cancelled.load()) break;
                 const fs::path p = it->path();
-                // Consistent with the folder tree: hidden entries are neither
-                // reported nor entered.
-                if (IsHiddenFileSystemEntry(p)) continue;
                 std::error_code dec;
                 // A symlink is never followed — and on Windows a directory
                 // junction is one, which is what kept the old recursive walk
@@ -2393,6 +2399,20 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
                 const bool link = it->is_symlink(dec) && !dec;
                 dec.clear();
                 const bool isDir = !link && it->is_directory(dec) && !dec;
+                // Consistent with the display: hidden entries are neither
+                // reported nor entered unless it shows hidden files. A hidden
+                // folder left out is counted, so the end of the search can say
+                // where it did not look (AppData holds half of what a Windows
+                // profile keeps).
+                if (!includeHidden && IsHiddenFileSystemEntry(p)) {
+                    if (isDir) {
+                        if (state->hiddenFoldersSkipped.fetch_add(1) < 3) {
+                            std::lock_guard<std::mutex> lk(state->mutex);
+                            state->hiddenFolderNames.push_back(p.filename().string());
+                        }
+                    }
+                    continue;
+                }
 
                 if (isDir && dir.depth < kMaxSearchDepth)
                     stack.push_back({p, dir.depth + 1});
@@ -2508,6 +2528,33 @@ void UltraFilerWindow::DrainSubfolderSearch(
     }
     if (done && truncated)
         searchStatus += " (stopped at " + std::to_string(kMaxSearchResults) + ")";
+
+    // Hidden folders the walk left out, because the display hides hidden
+    // files: said in the status line, and - when nothing was found - in the
+    // middle of the display, where "No entries" alone read as "not there".
+    const size_t hiddenSkipped = state->hiddenFoldersSkipped.load();
+    if (done && hiddenSkipped > 0) {
+        std::string names;
+        {
+            std::lock_guard<std::mutex> lk(state->mutex);
+            for (size_t i = 0; i < state->hiddenFolderNames.size(); ++i)
+                names += (i ? ", " : "") + state->hiddenFolderNames[i];
+        }
+        if (hiddenSkipped > state->hiddenFolderNames.size()) names += ", ...";
+        const std::string skipped = std::to_string(hiddenSkipped) +
+                (hiddenSkipped == 1 ? " hidden folder was" : " hidden folders were") +
+                " not searched (" + names + ")";
+        searchStatus += " - " + skipped;
+        if (matches == 0 && searchTab && searchTab->filer)
+            searchTab->filer->SetFileListEmptyMessage(
+                    "No match for \"" + searchQueryText + "\".\n" + skipped + ".\n"
+                    "Turn on Hidden files (context menu > Display) or Settings >\n"
+                    "Display > Files > Show hidden files to search them too.");
+    } else if (done && matches == 0 && searchTab && searchTab->filer) {
+        searchTab->filer->SetFileListEmptyMessage(
+                "No match for \"" + searchQueryText + "\" in " + std::to_string(folders) +
+                (folders == 1 ? " folder." : " folders."));
+    }
 
     if (done) {
         // The worker is on its way out (it posted this batch as its last act).
@@ -2671,15 +2718,11 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     row->AddChild(MakeToolButton("ufl-delete", "", "delete.svg", 30,
             [this]() {
         ShowBrowsingView();
-        if (!filer) return;
-        auto sel = filer->GetSelectedEntries();
-        if (sel.empty()) return;
-        const std::string message = sel.size() == 1
-                ? "Delete \"" + sel.front().name + "\"?"
-                : "Delete " + std::to_string(sel.size()) + " items?";
-        UltraCanvasAlert::Confirm(message, "Delete",
-                [this](bool confirmed) { if (confirmed && filer) filer->DeleteSelection(); },
-                window.get());
+        if (!filer || filer->GetSelectedEntries().empty()) return;
+        // The widget's own confirmation asks - with the Move to Trash /
+        // Delete permanently choice. A confirmation of this window's in
+        // front of it asked the same question twice.
+        filer->DeleteSelection(FilerDeleteMode::MoveToTrash);
     }));
 
     auto sep2 = std::make_shared<UltraCanvasLabel>("ufl-sep2", 0, 0, 9, 24);
@@ -3905,36 +3948,30 @@ void UltraFilerWindow::PasteIntoFolder(const std::string& folder) {
 }
 
 void UltraFilerWindow::ConfirmDeleteTreeFolder(const std::string& path) {
-    std::string name = fs::path(path).filename().string();
-    if (name.empty()) name = path;
-    UltraCanvasAlert::Confirm(
-            "Delete \"" + name + "\" and everything in it?", "Delete",
-            [this, path](bool confirmed) {
-        if (!confirmed) return;
-        if (!filer) return;
-        // The filer widget runs the delete, so a folder that takes a while to
-        // empty gets its progress window - and its "cannot delete" dialog -
-        // exactly like a delete started in the view. The confirmation above
-        // is this window's own, so the widget is told not to ask again.
-        const std::string parent = fs::path(path).parent_path().string();
-        filer->DeletePaths({path}, [this, path, parent](bool changed) {
-            if (!changed) return;
-            // Take the folder out of the tree, its pins, and the bookkeeping
-            // of scanned nodes (it may be recreated and scanned again later).
-            DropTreeSubtree(path);
-            RefreshPinnedTreeNodes();
-            // Tabs that were inside the deleted folder move to its parent;
-            // tabs showing the parent re-list it without the deleted entry.
-            for (FilerTabState* state : FolderDisplayStates()) {
-                if (!state->filer) continue;
-                const std::string shown = state->filer->GetPath();
-                if (IsPathInside(shown, path)) state->filer->SetPath(parent);
-                else if (shown == parent) state->filer->Refresh();
-            }
-            RecordFolderInHistory(parent);
-            UpdateStatusBar();
-        });
-    }, window.get());
+    if (!filer) return;
+    // The filer widget asks and runs the delete, so the tree offers the same
+    // Move to Trash / Delete permanently choice (and the preview of what the
+    // folder holds) as a delete in the view, and a folder that takes a while
+    // to empty gets its progress window - and its "cannot delete" dialog -
+    // exactly like one started there.
+    const std::string parent = fs::path(path).parent_path().string();
+    filer->ConfirmDeletePaths({path}, [this, path, parent](bool changed) {
+        if (!changed) return;
+        // Take the folder out of the tree, its pins, and the bookkeeping of
+        // scanned nodes (it may be recreated and scanned again later).
+        DropTreeSubtree(path);
+        RefreshPinnedTreeNodes();
+        // Tabs that were inside the deleted folder move to its parent; tabs
+        // showing the parent re-list it without the deleted entry.
+        for (FilerTabState* state : FolderDisplayStates()) {
+            if (!state->filer) continue;
+            const std::string shown = state->filer->GetPath();
+            if (IsPathInside(shown, path)) state->filer->SetPath(parent);
+            else if (shown == parent) state->filer->Refresh();
+        }
+        RecordFolderInHistory(parent);
+        UpdateStatusBar();
+    });
 }
 
 // ===== TABS =====

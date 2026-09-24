@@ -379,6 +379,20 @@ the backing implementation can be replaced without affecting callers.
   the host wired the helper. See
   `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
 
+- **UltraCanvasTrash** (`UltraCanvasTrash.h`) — moves files and folders into
+  the desktop's trash, from where the system's own file manager restores them.
+  `MoveToTrash(path, error)`, `TrashAvailable()`, `TrashDisplayName()`
+  ("Recycle Bin" / "Trash"). Backends: `OS/MSWindows/UltraCanvasWindowsTrash.cpp`
+  (SHFileOperationW + FOF_ALLOWUNDO, the shell asks before an item the Bin
+  cannot hold is destroyed), `OS/MacOS/UltraCanvasMacOSTrash.mm`
+  (NSFileManager trashItemAtURL, Finder's Put Back), and
+  `OS/Linux/UltraCanvasLinuxTrash.cpp` (freedesktop.org Trash 1.0: home trash,
+  or the drive's own `.Trash/$uid` / `.Trash-$uid` - never a cross-drive copy).
+  Android and WebAssembly get the failing fallback in `core/UltraCanvasTrash.cpp`
+  (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
+  confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
+  its own copy in its headless engine, which does not link UltraCanvas.)
+
 - **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
   shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
   points at, the icon it is drawn with, and the command line it starts. Byte

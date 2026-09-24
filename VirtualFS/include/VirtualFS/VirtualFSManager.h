@@ -363,13 +363,19 @@ public:
      * @param destDirectory Destination directory
      * @param options Extract options
      * @param progressCallback Progress callback
+     * @param outError Optional: on failure, what went wrong in the provider's
+     *        words - for a partial extraction, a heading line ending in ':'
+     *        per kind of problem, then one entry per line. Empty on success.
+     *        An out-parameter rather than a "last error", because extractions
+     *        run on worker threads side by side.
      * @return Success or error
      */
     VirtualFSResult ExtractAll(
         const std::string& archivePath,
         const std::string& destDirectory,
         const VirtualFSExtractOptions& options = VirtualFSExtractOptions::Default(),
-        VirtualFSProgressCallback progressCallback = nullptr);
+        VirtualFSProgressCallback progressCallback = nullptr,
+        std::string* outError = nullptr);
     
     /**
      * @brief Extracts filtered entries

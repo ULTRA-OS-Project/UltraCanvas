@@ -22,6 +22,7 @@
 // Author: UltraCanvas Framework
 
 #include "Models/COLLADA/UltraCanvasColladaConverter.h"
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat
 
 #include "tinyxml2.h"
 
@@ -282,7 +283,11 @@ private:
         if (!parent) return fallback;
         const XMLElement* value = parent->FirstChildElement("float");
         if (!value || !value->GetText()) return fallback;
-        return static_cast<float>(std::atof(value->GetText()));
+        // Dot-decimal by the format, whatever the desktop's locale: atof read
+        // "0.5" as 0 on a German system. Unreadable text keeps the fallback.
+        float result = fallback;
+        TryParseFloat(value->GetText(), result);
+        return result;
     }
 
     void ReadEffects(const XMLElement* library) {

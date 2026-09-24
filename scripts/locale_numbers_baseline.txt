@@ -30,13 +30,6 @@ UltraCanvas/Plugins/Charts/UltraCanvasPopulationChart.cpp::locale-parse::strtod
 UltraCanvas/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp::locale-parse::strtof
 UltraCanvas/Plugins/Documents/Word/UltraCanvasWordFormatInternal.h::locale-parse::strtof
 UltraCanvas/Plugins/LaTeX/UltraCanvasMathParser.cpp::locale-parse::strtof
-UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp::locale-parse::atof
-UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp::locale-parse::atof
-UltraCanvas/Plugins/Models/FBX/UltraCanvasFbxFile.cpp::locale-parse::strtod
-UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp::locale-parse::strtod
-UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp::locale-write::printf
-UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp::locale-parse::atof
-UltraCanvas/Plugins/Models/XFile/UltraCanvasXFile.cpp::locale-parse::strtod
 UltraCanvas/Plugins/Vector/EPS/UltraCanvasEPSPlugin.cpp::locale-parse::strtod
 UltraCanvas/Plugins/Vector/UltraCanvasDWGDecoder.cpp::locale-write::printf
 UltraCanvas/Plugins/Vector/UltraCanvasDXFConverter.cpp::locale-write::printf
