@@ -579,15 +579,23 @@ static void TestDatenDateien() {
     }
     Check(onlyVerified, "no unverified UStVA Kennzahl is shipped");
 
-    // Validity: the shipped set is valid in 2026 and not before.
-    int gueltig2026 = 0, gueltig2025 = 0;
+    // Validity: the shipped set starts with the first fiscal year booked in
+    // this program, 01.04.2025, and not a day earlier. It used to start on
+    // 01.01.2026, which left nine of twelve periods of a 2025/2026 fiscal year
+    // without a single usable tax key.
+    int gueltig2026 = 0, gueltigImJahr = 0, gueltigDavor = 0;
     for (const Steuerschluessel& key : schluessel) {
         if (key.GueltigAm(Date(2026, 6, 15))) ++gueltig2026;
-        if (key.GueltigAm(Date(2025, 6, 15))) ++gueltig2025;
+        if (key.GueltigAm(Date(2025, 4, 1)))  ++gueltigImJahr;
+        if (key.GueltigAm(Date(2025, 3, 31))) ++gueltigDavor;
     }
     CheckInt(gueltig2026, static_cast<int64_t>(schluessel.size()),
              "every shipped key is valid in 2026");
-    CheckInt(gueltig2025, 0, "and none of them claims to be valid in 2025");
+    CheckInt(gueltigImJahr, static_cast<int64_t>(schluessel.size()),
+             "and from the first day of a fiscal year beginning 01.04.2025");
+    CheckInt(gueltigDavor, 0,
+             "but not the day before - a key claiming to be valid in March 2025 "
+             "would be making a statement nobody checked");
 }
 
 // ---- 5b. Online confirmation (VIES / BZSt) ---------------------------------
@@ -989,8 +997,10 @@ static void TestStore() {
         Check(store.SteuerschluesselByKey(mandant.id, "USt19", Date(2026, 6, 1), ust19),
               "USt19 is valid in June 2026");
         CheckInt(ust19.satzPromille, 190, "at 19 %");
-        Check(!store.SteuerschluesselByKey(mandant.id, "USt19", Date(2025, 6, 1), ust19),
-              "and not in 2025, where a different rate may have applied");
+        Check(store.SteuerschluesselByKey(mandant.id, "USt19", Date(2025, 6, 1), ust19),
+              "and in June 2025, inside a fiscal year that began 01.04.2025");
+        Check(!store.SteuerschluesselByKey(mandant.id, "USt19", Date(2025, 3, 31), ust19),
+              "but not the day before the keys begin");
         CheckInt(static_cast<int64_t>(
                      store.SteuerschluesselListe(mandant.id, Date(2025, 1, 1)).size()),
                  0, "no key claims validity before its start date");

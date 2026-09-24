@@ -1,4 +1,16 @@
-# UltraFIBU - Steuerschluessel (Startbestand, gueltig ab 2026-01-01)
+# UltraFIBU - Steuerschluessel (Startbestand, gueltig ab 2025-04-01)
+#
+# GUELTIG_VON steht fuer alle Schluessel auf 2025-04-01, dem Beginn des ersten
+# Geschaeftsjahres, das mit diesem Programm gebucht wird. Vorher stand hier
+# 2026-01-01, und ein Geschaeftsjahr 01.04.2025-31.03.2026 war damit in neun von
+# zwoelf Perioden nicht buchbar ("Steuerschluessel USt19 ist zum 15.06.2025
+# nicht gueltig").
+#
+# Das Datum ist eine Entscheidung fuer diese Buchhaltung, keine Aussage darueber,
+# seit wann ein Schluessel steuerrechtlich gilt. 19 % und 7 % gelten seit
+# 01.01.2007 (mit den Corona-Saetzen 16/5 % vom 01.07.2020 bis 31.12.2020), OSS
+# erst seit 01.07.2021. Wer frueheres Material nachbucht, braucht je Schluessel
+# den eigenen Stichtag - und fuer das zweite Halbjahr 2020 eigene Schluessel.
 #
 # Semikolon-getrennt, UTF-8. Spalten:
 #   schluessel;bezeichnung;art;satz_promille;land;vorsteuer;datev_bu;kz_bemessung;kz_steuer;konto_umsatz;konto_steuer;gueltig_von;gueltig_bis
@@ -39,19 +51,19 @@
 # Quelle geprueft werden. Solange sie leer sind, verweigert die Voranmeldung
 # die Datei und nennt den Schluessel, statt zu wenig zu erklaeren.
 schluessel;bezeichnung;art;satz_promille;land;vorsteuer;datev_bu;kz_bemessung;kz_steuer;konto_umsatz;konto_steuer;gueltig_von;gueltig_bis
-USt19;Umsatzsteuer 19 %;inland;190;DE;0;;81;;8400;1776;2026-01-01;
-USt7;Umsatzsteuer 7 %;inland;70;DE;0;;86;;8300;1771;2026-01-01;
-USt0;Umsatzsteuerfrei 0 %;inland;0;DE;0;;87;;8100;;2026-01-01;
-VSt19;Vorsteuer 19 %;inland;190;DE;1;;;66;;1576;2026-01-01;
-VSt7;Vorsteuer 7 %;inland;70;DE;1;;;66;;1571;2026-01-01;
-IGL;Innergemeinschaftliche Lieferung (steuerfrei, § 4 Nr. 1b UStG);ig-lieferung;0;;0;;41;;8125;;2026-01-01;
-IGE19;Innergemeinschaftlicher Erwerb 19 %;ig-erwerb;190;;0;;;;;1789;2026-01-01;
-IGE7;Innergemeinschaftlicher Erwerb 7 %;ig-erwerb;70;;0;;;;;1789;2026-01-01;
-EURC;Sonstige Leistung an EU-Unternehmer, Reverse Charge (§ 3a Abs. 2 UStG);eu-sonstige-leistung;0;;0;;;;8336;;2026-01-01;
-RC13b;Leistungsempfaenger schuldet die Steuer, Eingang (§ 13b UStG);reverse-charge-13b;190;;1;;;;;1787;2026-01-01;
-RC13bAus;Leistungsempfaenger schuldet die Steuer, Ausgang (§ 13b UStG);reverse-charge-13b;0;DE;0;;;;8337;;2026-01-01;
-Ausfuhr;Ausfuhrlieferung Drittland (steuerfrei, § 4 Nr. 1a UStG);drittland;0;;0;;;;8120;;2026-01-01;
-Drittland0;Drittland-Eingangsbeleg, keine abziehbare Vorsteuer;drittland;0;;1;;;;;;2026-01-01;
-NichtStb;Nicht steuerbarer Umsatz (Leistungsort nicht im Inland);nicht-steuerbar;0;;0;;45;;;;2026-01-01;
-OSS;Im EU-Zielland steuerpflichtig (One-Stop-Shop);oss;0;;0;;45;;8338;;2026-01-01;
-KU19;Kleinunternehmer, keine Umsatzsteuer (§ 19 UStG);kleinunternehmer;0;DE;0;;;;8100;;2026-01-01;
+USt19;Umsatzsteuer 19 %;inland;190;DE;0;;81;;8400;1776;2025-04-01;
+USt7;Umsatzsteuer 7 %;inland;70;DE;0;;86;;8300;1771;2025-04-01;
+USt0;Umsatzsteuerfrei 0 %;inland;0;DE;0;;87;;8100;;2025-04-01;
+VSt19;Vorsteuer 19 %;inland;190;DE;1;;;66;;1576;2025-04-01;
+VSt7;Vorsteuer 7 %;inland;70;DE;1;;;66;;1571;2025-04-01;
+IGL;Innergemeinschaftliche Lieferung (steuerfrei, § 4 Nr. 1b UStG);ig-lieferung;0;;0;;41;;8125;;2025-04-01;
+IGE19;Innergemeinschaftlicher Erwerb 19 %;ig-erwerb;190;;0;;;;;1789;2025-04-01;
+IGE7;Innergemeinschaftlicher Erwerb 7 %;ig-erwerb;70;;0;;;;;1789;2025-04-01;
+EURC;Sonstige Leistung an EU-Unternehmer, Reverse Charge (§ 3a Abs. 2 UStG);eu-sonstige-leistung;0;;0;;;;8336;;2025-04-01;
+RC13b;Leistungsempfaenger schuldet die Steuer, Eingang (§ 13b UStG);reverse-charge-13b;190;;1;;;;;1787;2025-04-01;
+RC13bAus;Leistungsempfaenger schuldet die Steuer, Ausgang (§ 13b UStG);reverse-charge-13b;0;DE;0;;;;8337;;2025-04-01;
+Ausfuhr;Ausfuhrlieferung Drittland (steuerfrei, § 4 Nr. 1a UStG);drittland;0;;0;;;;8120;;2025-04-01;
+Drittland0;Drittland-Eingangsbeleg, keine abziehbare Vorsteuer;drittland;0;;1;;;;;;2025-04-01;
+NichtStb;Nicht steuerbarer Umsatz (Leistungsort nicht im Inland);nicht-steuerbar;0;;0;;45;;;;2025-04-01;
+OSS;Im EU-Zielland steuerpflichtig (One-Stop-Shop);oss;0;;0;;45;;8338;;2025-04-01;
+KU19;Kleinunternehmer, keine Umsatzsteuer (§ 19 UStG);kleinunternehmer;0;DE;0;;;;8100;;2025-04-01;

@@ -1,3 +1,16 @@
+#### 2026-09-24 *0.22.0*
+- **Die Steuerschluessel gelten ab 01.04.2025 statt ab 01.01.2026.** Ein
+  Geschaeftsjahr 01.04.2025-31.03.2026 war damit in neun von zwoelf Perioden
+  nicht buchbar: `beleg-neu ... --datum 15.06.2025` scheiterte mit "Der
+  Steuerschluessel USt19 ist zum 15.06.2025 nicht gueltig". Das Datum ist eine
+  Entscheidung fuer diese Buchhaltung, keine steuerrechtliche Aussage; der
+  Dateikopf von `data/Steuerschluessel.csv` nennt die tatsaechlichen Stichtage
+  (19/7 % seit 2007, Corona-Saetze 2020, OSS seit 07/2021).
+  - Die beiden Pruefungen, die "nicht gueltig in 2025" festschrieben, pruefen
+    jetzt die Kante selbst: gueltig am 01.04.2025, nicht am 31.03.2025. Die
+    Begruendung der einen ("where a different rate may have applied") war
+    ausserdem falsch -- 2025 galten 19 %.
+
 #### 2026-09-22 *0.21.0*
 - **SKR03 und SKR04 vollstaendig, aus den DATEV-Kontenrahmen-PDFs.** Bisher
   lagen 74 Konten als "Startbestand" vor und SKR04 fehlte ganz -- `--skr SKR04`
