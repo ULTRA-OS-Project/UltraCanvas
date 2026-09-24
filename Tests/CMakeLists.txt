@@ -922,6 +922,7 @@ add_executable(ModelPLYTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
 )
 target_include_directories(ModelPLYTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -997,6 +998,7 @@ add_executable(ModelStepTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
 )
 target_include_directories(ModelStepTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -1127,6 +1129,7 @@ add_executable(ModelDXFTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasCADPalette.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
 )
 target_include_directories(ModelDXFTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -1163,6 +1166,7 @@ if(TEST_TINYXML2_FOUND)
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+        ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat
     )
     target_include_directories(ModelColladaTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
@@ -1239,6 +1243,7 @@ add_executable(ModelXFileTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
 )
 target_include_directories(ModelXFileTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -1342,6 +1347,7 @@ if(ZLIB_FOUND)
         ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
         ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
         ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+        ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
     )
     target_include_directories(ModelFbxTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
@@ -1393,6 +1399,7 @@ set(MODEL_DISPATCH_SOURCES
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasCADPalette.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
 )
 set(MODEL_DISPATCH_DEFINES "")
 set(MODEL_DISPATCH_INCLUDES "")
@@ -1519,6 +1526,36 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelPreviewSeamTest")
+
+# ===== MODEL LOCALE DECIMAL TEST =====
+# Every text-based 3D sample reads vertex for vertex the same in a
+# comma-decimal locale as in "C" - the defect that put German desktops' PLY,
+# DXF, COLLADA, FBX, STEP and .x models on a whole-number grid. Same sources
+# as the seam test above, its own main().
+set(MODEL_LOCALE_SOURCES ${MODEL_PREVIEW_SOURCES})
+list(REMOVE_ITEM MODEL_LOCALE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelPreviewSeamTest.cpp)
+list(APPEND MODEL_LOCALE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelLocaleDecimalTest.cpp)
+message(STATUS "  Building ModelLocaleDecimalTest...")
+add_executable(ModelLocaleDecimalTest ${MODEL_LOCALE_SOURCES})
+target_include_directories(ModelLocaleDecimalTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+    ${MODEL_DISPATCH_INCLUDES}
+)
+target_compile_definitions(ModelLocaleDecimalTest PRIVATE ${MODEL_DISPATCH_DEFINES})
+target_link_libraries(ModelLocaleDecimalTest PRIVATE ${MODEL_DISPATCH_LIBS})
+target_compile_features(ModelLocaleDecimalTest PRIVATE cxx_std_20)
+set_target_properties(ModelLocaleDecimalTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelLocaleDecimalTest
+    COMMAND ModelLocaleDecimalTest "${ULTRACANVAS_ROOT}/media/3D"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelLocaleDecimalTest")
 
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the
