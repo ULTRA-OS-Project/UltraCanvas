@@ -1376,7 +1376,9 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
     target_compile_features(UltraAIApp PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraAIApp PRIVATE
-        ULTRAAI_APP_VERSION="0.1.0"
+        # UltraAI versions itself: Docs/UltraAI/CHANGELOG.md is the single
+        # source of this number (cmake/UltraCanvasVersion.cmake).
+        ULTRAAI_APP_VERSION="${ULTRAAI_VERSION}"
         UCAPP_ICON_PATH="media/appicon/UltraAI.png"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
