@@ -49462,6 +49462,8 @@ bool IsHeaderSortEnabled() const;
 void SetHeaderSortEnabled(bool enabled);
 int  GetHeaderSortColumn() const;      // -1 unless the current selection was header-sorted
 bool GetHeaderSortAscending() const;
+bool IsSortFormulaWarningEnabled() const;   // OK/Cancel warning before sorting formulas
+void SetSortFormulaWarningEnabled(bool enabled);
 ```
 
 ### File Operations
@@ -49953,7 +49955,16 @@ grid->SetHeaderSortEnabled(false);                     // no header buttons
 Formulas inside a sorted block move as they are: their references are not
 rewritten, so a row formula such as `=D3/C3` keeps pointing at row 3 after
 it moves. Formulas that cover the whole block (a `SUM(C2:C8)` in the totals
-row) are unaffected.
+row) are unaffected as long as they sit outside it.
+
+So when the block holds formulas, the header button asks first: an OK/Cancel
+warning names the block and how many formula cells it contains, and explains
+that they will keep their references. OK sorts, Cancel leaves the block as it
+is. In the demo, select `A2:E10` (the months *and* the totals row) to see it.
+Turn the warning off with `SetSortFormulaWarningEnabled(false)`.
+`SortSelectionByColumn` itself never asks — code that calls it has decided —
+and `SpreadsheetSheet::CountFormulaCells(range)` gives the count if you want
+to warn in your own way.
 
 ## Best Practices
 

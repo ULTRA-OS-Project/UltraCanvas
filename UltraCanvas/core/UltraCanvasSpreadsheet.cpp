@@ -8,6 +8,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasModalDialog.h"
 #include <algorithm>
 #include <cmath>
 
@@ -241,6 +242,38 @@ void UltraCanvasSpreadsheet::RenderColumnHeaders(IRenderContext* ctx) {
 
         x += colWidth;
     }
+}
+
+void UltraCanvasSpreadsheet::RequestHeaderSort(int column, SortOrder order) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return;
+    const CellRange range = GetSelection();
+    const int formulas = sortFormulaWarningEnabled_ ? sheet->CountFormulaCells(range) : 0;
+    if (formulas == 0) {
+        SortSelectionByColumn(column, order);
+        return;
+    }
+
+    const std::string message =
+        "The selected block " + range.ToString() + " contains " + std::to_string(formulas) +
+        (formulas == 1 ? " formula cell." : " formula cells.") +
+        "\n\nSorting moves formulas with their rows but does not rewrite their cell "
+        "references: a formula such as =D3/C3 keeps pointing at row 3 after its row "
+        "has moved, and may then calculate from the wrong row.\n\n"
+        "Click OK to sort anyway, or Cancel to leave the block as it is.";
+
+    // The dialog may outlive this element, so the callback holds it weakly,
+    // and it sorts only if the same block is still selected on OK.
+    std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
+    UltraCanvasDialogManager::ShowMessage(message, "Sort selection", DialogType::Warning,
+        DialogButtons::OKCancel,
+        [weakSelf, range, column, order](DialogResult result) {
+            if (result != DialogResult::OK) return;
+            auto self = std::static_pointer_cast<UltraCanvasSpreadsheet>(weakSelf.lock());
+            if (!self || !(self->GetSelection() == range)) return;
+            self->SortSelectionByColumn(column, order);
+        },
+        GetWindow());
 }
 
 Rect2Di UltraCanvasSpreadsheet::GetHeaderSortButtonRect(int colX, int colWidth) const {
@@ -937,7 +970,8 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
             // again turns the order round.
             if (IsEditing()) StopEditing(true);
             const bool ascending = !(GetHeaderSortColumn() == hit.col && headerSortAscending_);
-            SortSelectionByColumn(hit.col, ascending ? SortOrder::Ascending : SortOrder::Descending);
+            mouseDown_ = false;   // the warning dialog may take the button release
+            RequestHeaderSort(hit.col, ascending ? SortOrder::Ascending : SortOrder::Descending);
             break;
         }
         

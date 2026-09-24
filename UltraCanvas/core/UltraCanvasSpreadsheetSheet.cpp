@@ -449,6 +449,14 @@ void SpreadsheetSheet::Sort(const CellRange& range, const std::vector<SortCriter
     NotifyRangeChange(range);
 }
 
+int SpreadsheetSheet::CountFormulaCells(const CellRange& range) const {
+    int count = 0;
+    for (const auto& [key, cell] : cells_) {
+        if (cell && cell->HasFormula() && range.Contains(key.first, key.second)) ++count;
+    }
+    return count;
+}
+
 void SpreadsheetSheet::SortByColumn(const CellRange& range, int column, SortOrder order) {
     SortCriteria crit;
     crit.column = column;

@@ -343,6 +343,9 @@ public:
     
     void Sort(const CellRange& range, const std::vector<SortCriteria>& criteria);
     void SortByColumn(const CellRange& range, int column, SortOrder order = SortOrder::Ascending);
+    // Formula cells inside the range. Sort moves them without rewriting their
+    // references, so callers use this to warn before sorting such a range.
+    int CountFormulaCells(const CellRange& range) const;
     
     // ===== CONDITIONAL FORMATTING =====
     

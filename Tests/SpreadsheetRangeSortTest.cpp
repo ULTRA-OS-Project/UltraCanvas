@@ -117,6 +117,21 @@ static void TestSortByTextColumn() {
     CheckOutsideUntouched(sheet);
 }
 
+// The header sort warns before moving formulas; CountFormulaCells is what it
+// asks. Only cells inside the range count.
+static void TestCountFormulaCells() {
+    SpreadsheetSheet sheet("Report");
+    Seed(sheet);
+    const CellRange block(1, 0, 4, 2);                    // A2:C5
+    CHECK_EQ(sheet.CountFormulaCells(block), 0);
+
+    sheet.GetCell(2, 2)->SetFormula("=B3*2");             // C3, inside
+    sheet.GetCell(5, 2)->SetFormula("=SUM(C2:C5)");       // C6, totals row, outside
+    CHECK_EQ(sheet.CountFormulaCells(block), 1);
+    CHECK_EQ(sheet.CountFormulaCells(CellRange(1, 0, 5, 2)), 2);
+    CHECK_EQ(sheet.CountFormulaCells(CellRange(1, 0, 4, 1)), 0);   // A2:B5
+}
+
 // A single selected column sorts on its own; its neighbours do not move.
 static void TestSortSingleColumn() {
     SpreadsheetSheet sheet("Report");
@@ -135,6 +150,7 @@ int main() {
     TestSortByClickedColumn();
     TestSortByTextColumn();
     TestSortSingleColumn();
+    TestCountFormulaCells();
 
     if (failures == 0) {
         std::cout << "SpreadsheetRangeSortTest: all checks passed\n";

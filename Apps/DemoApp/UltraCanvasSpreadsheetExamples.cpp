@@ -192,7 +192,10 @@ namespace UltraCanvas {
         // its column headers. Only the selected rows are reordered, by the
         // clicked column, and the other selected columns move with them - so
         // select A2:E8 to sort the months and leave the header and totals rows
-        // where they are. Ctrl+Z undoes a sort.
+        // where they are. Ctrl+Z undoes a sort. Select A2:E10 instead and the
+        // block takes in the SUM formulas of the totals row, so the grid asks
+        // first (OK/Cancel): formulas move with their rows but keep their
+        // references.
         UltraCanvasLabel* statusRaw = status.get();
         sheet->onSelectionSorted = [statusRaw](const CellRange& range, int column, SortOrder order) {
             statusRaw->SetText("Sorted " + range.ToString() + " by column " +

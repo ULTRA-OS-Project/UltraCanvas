@@ -168,6 +168,7 @@ private:
     CellRange headerSortRange_;
     int headerSortColumn_ = -1;
     bool headerSortAscending_ = true;
+    bool sortFormulaWarningEnabled_ = true;
     // Set by a file load: columns the document did not size are fitted to their
     // content on the next render, when a render context exists to measure text
     // with. Doing it at load time would have to guess the font metrics.
@@ -403,6 +404,11 @@ public:
     // button, or -1 when the selection has not been sorted that way.
     int  GetHeaderSortColumn() const;
     bool GetHeaderSortAscending() const { return headerSortAscending_; }
+    // A header sort of a block that holds formulas first asks, in an
+    // OK/Cancel warning, whether to go ahead: the formulas move with their
+    // rows but keep their references. On by default.
+    bool IsSortFormulaWarningEnabled() const { return sortFormulaWarningEnabled_; }
+    void SetSortFormulaWarningEnabled(bool enabled) { sortFormulaWarningEnabled_ = enabled; }
     void SetAutoFilter();
     void RemoveAutoFilter();
     void ApplyFilter(int column, const ColumnFilter& filter);
@@ -524,6 +530,9 @@ private:
     Rect2Di GetHeaderSortButtonRect(int colX, int colWidth) const;
     void RenderHeaderSortButton(IRenderContext* ctx, const Rect2Di& button, bool sorted,
                                 bool ascending, const Color& color);
+    // A header sort button was clicked: sorts, after the formula warning
+    // when the block holds formulas.
+    void RequestHeaderSort(int column, SortOrder order);
     
     void BeginUndoGroup(UndoActionType type, const std::string& description);
     void RecordCellChange(int row, int col);
