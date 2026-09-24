@@ -4,6 +4,7 @@
 
 #include "NewVaultDialog.h"
 #include "BrandHeader.h"
+#include "PasswordAdvice.h"
 #include "Theme.h"
 
 #include "UltraCrypt/UltraCryptCore.h"
@@ -84,7 +85,11 @@ void NewVaultDialog::CreateNewVaultDialog() {
     strengthMeter_ = CreateBarStrengthMeter("nv-strength", margin, y, fieldWidth, 18);
     strengthMeter_->LinkToInput(passwordInput_.get());
     AddChild(strengthMeter_);
-    y += 28;
+    y += 24;
+
+    // Why the bar is short, rule by rule. Also advice only: Create never
+    // checks these (PasswordAdvice.h).
+    y = AddPasswordAdvice(*this, "nv", margin, y, fieldWidth, passwordInput_.get());
 
     auto confirmCaption = std::make_shared<UltraCanvasLabel>(
         "nv-confirm-lbl", margin, y, fieldWidth, 18, "Confirm master password");

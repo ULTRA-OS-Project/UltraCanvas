@@ -1,8 +1,9 @@
 // Apps/UltraAuthenticator/ChangePasswordDialog.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChangePasswordDialog.h"
+#include "PasswordAdvice.h"
 #include "Theme.h"
 
 #include "UltraCanvasButton.h"
@@ -75,6 +76,13 @@ void ChangePasswordDialog::CreateChangePasswordDialog() {
         *field.target = CreatePasswordInput(field.id, margin, y, fieldWidth, 28);
         AddChild(*field.target);
         y += 38;
+
+        // The same safe-password checklist as the new-vault screen, under the
+        // new password only. Advice: Change never requires it.
+        if (field.target == &nextInput_) {
+            y -= 4;
+            y = AddPasswordAdvice(*this, "cpw", margin, y, fieldWidth, nextInput_.get());
+        }
     }
 
     errorLabel_ = std::make_shared<UltraCanvasLabel>(

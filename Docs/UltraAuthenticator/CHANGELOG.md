@@ -3,6 +3,17 @@
   and the lock screen now open with the UltraAuthenticator logo, centred, and
   the name "UltraAuthenticator" in small type beneath it (`BrandHeader.h`), so
   the first password prompt is recognisably this app's.
+  The lock screen is also the sign-in popup that appears after 5 minutes
+  without input (or on minimise, or the Lock button), so it carries the logo
+  in every case.
+- **The password screens say what makes a password safe.** Under the new
+  password on the first-launch screen and in *Change master password*, a
+  checklist ticks off as it is typed: 12 or more characters, an uppercase
+  letter, a lowercase letter, a number, a symbol (`PasswordAdvice.h`, built
+  from the catalogue's `UltraCanvasPasswordRuleLegend`). It is advice only:
+  Create and Change never check it, an unmet rule is a grey circle rather
+  than a red cross, and the heading says "recommended, not required" - a
+  long passphrase of plain words is a good password that fails half of them.
 - **Smaller fine print.** The explanation under "Choose a master password"
   and the lock screen's reason line are set in the small size (11 pt), so
   they read as notes under the title rather than competing with it.

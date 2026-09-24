@@ -14,7 +14,9 @@
 //
 // It is the first thing a new user sees, so it opens with the app's logo and
 // name (BrandHeader.h). Both password fields carry the framework's eye button,
-// so what was typed can be checked before it becomes the password.
+// so what was typed can be checked before it becomes the password. Under the
+// meter, a checklist of what makes a safe password ticks off as it is typed —
+// recommendations only; Create never requires them (PasswordAdvice.h).
 //
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -23,6 +25,7 @@
 #define NEWVAULTDIALOG_H
 
 #include "BrandHeader.h"
+#include "PasswordAdvice.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -68,7 +71,7 @@ private:
     bool quitting_ = false;
 
     static constexpr long kDialogWidth  = 460;
-    static constexpr long kDialogHeight = 416 + kBrandHeaderHeight;
+    static constexpr long kDialogHeight = 412 + kBrandHeaderHeight + kPasswordAdviceHeight;
 };
 
 } // namespace Authenticator
