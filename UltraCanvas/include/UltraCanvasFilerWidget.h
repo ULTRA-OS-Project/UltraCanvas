@@ -2842,6 +2842,19 @@ namespace UltraCanvas {
         // displayed folder is not where the change landed).
         void NotifyFolderModified(const std::string& folderPath = "");
         void ReportError(const std::string& message);
+        // An extraction of `archivePath` that did not succeed. `detail` is
+        // UCVFSBridge::ExtractArchive's outError: when it lists entries (the
+        // archive was extracted only in part - entries refused as unsafe,
+        // entries that could not be written) a dialog names them, one per
+        // line, and the status line says the extraction was incomplete;
+        // any other failure goes to the status line as before, with the
+        // reason appended.
+        void ReportExtractionProblem(const std::string& archivePath,
+                                     const std::string& detail);
+        // Whether an ExtractArchive outError describes a partial extraction
+        // (a heading line ending in ':' followed by entries) rather than an
+        // archive that could not be extracted at all.
+        static bool IsPartialExtraction(const std::string& detail);
         std::string UniqueChildPath(const std::string& baseName) const;
 
         // ===== COPY / MOVE / DELETE WORKER =====

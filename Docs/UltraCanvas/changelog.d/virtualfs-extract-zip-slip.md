@@ -24,6 +24,16 @@
     restored) no longer aborts the whole extraction, and an entry libarchive
     refuses (`ARCHIVE_FAILED`) is skipped and reported, not the end of the
     walk; the result is then `WriteError`.
+  - The skipped entries reach the user. `VirtualFSManager::ExtractAll`,
+    `VirtualFS_ExtractAll` and `UCVFSBridge::ExtractArchive` take an optional
+    `std::string* outError` with the provider's own account: a heading line
+    ending in ':' per kind of problem, then one entry per line, with the
+    destination prefix trimmed from libarchive's reasons. It is an
+    out-parameter rather than a shared "last error" because extractions run on
+    worker threads. `UltraCanvasFilerWidget` shows it as an **Extraction
+    Incomplete** dialog that lists the entries, and puts one sentence in the
+    status line; the bare "Extraction failed for X" is left only for an
+    archive that could not be extracted at all, and now carries the reason.
   - New test `VirtualFSExtractSafetyTest`: a hostile ZIP (`../escape.txt`,
     an absolute name, `a/../../escape2.txt`, a link out followed by a file
     through it) and a tar with a good and a climbing hard link, extracted from

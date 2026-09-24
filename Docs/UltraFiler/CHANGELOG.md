@@ -9,6 +9,11 @@
   - The folder tree's **Delete** used its own "Delete X and everything in it?"
     box and always deleted for good; it now opens the same confirmation, with
     the trash choice and the preview of what the folder holds.
+- **An archive extracted only in part says which entries it skipped.**
+  Extraction now refuses entries that would land outside the destination
+  folder (see the UltraCanvas changelog). The status line used to say only
+  "Extraction failed for X", even though everything else had been unpacked.
+  An **Extraction Incomplete** dialog now lists every skipped entry and why.
 #### 2026-09-24 *1.50.0*
 - **Files can be taken off a drive now, and the status line counts them down.**
   1.49.0 gave every job on a drive a line in the status strip and a progress

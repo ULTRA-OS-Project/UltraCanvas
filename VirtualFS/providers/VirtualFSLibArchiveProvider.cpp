@@ -1019,8 +1019,13 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
         // ARCHIVE_FATAL ends it.
         const int r = archive_write_header(ext, entry);
         if (r == ARCHIVE_FAILED || r == ARCHIVE_RETRY) {
-            const char* why = archive_error_string(ext);
-            failed.push_back(currentPath + (why ? std::string(": ") + why : std::string()));
+            // libarchive names the full disk path; the destination part of it
+            // is the same for every entry and only buries the name.
+            std::string why = archive_error_string(ext) ? archive_error_string(ext) : "";
+            const std::string prefix = dest + "/";
+            for (size_t at = why.find(prefix); at != std::string::npos; at = why.find(prefix, at))
+                why.erase(at, prefix.size());
+            failed.push_back(currentPath + (why.empty() ? std::string() : ": " + why));
             archive_read_data_skip(a);
             continue;
         }
@@ -1054,14 +1059,16 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     archive_write_free(ext);
     
     // Everything else was extracted; the caller still hears that the archive
-    // was not, all of it, and which entries were held back.
+    // was not, all of it, and which entries were held back. One heading line
+    // per kind, ending in ':', then one entry per line - a file manager shows
+    // it as a list, a log reads it as it is.
     if (result == VirtualFSResult::Success && (!refused.empty() || !failed.empty())) {
         auto listOf = [](const std::vector<std::string>& names) {
             std::string list;
-            for (size_t i = 0; i < names.size() && i < 10; ++i)
-                list += (i ? "; " : "") + ("\"" + names[i] + "\"");
-            if (names.size() > 10)
-                list += " and " + std::to_string(names.size() - 10) + " more";
+            const size_t shown = std::min<size_t>(names.size(), 20);
+            for (size_t i = 0; i < shown; ++i) list += "\n" + names[i];
+            if (names.size() > shown)
+                list += "\n... and " + std::to_string(names.size() - shown) + " more";
             return list;
         };
         auto entries = [](size_t n) {
@@ -1070,11 +1077,11 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
         std::string message;
         if (!refused.empty())
             message = "Skipped " + entries(refused.size()) +
-                      " that would have been written outside the destination: " +
-                      listOf(refused) + ".";
+                      " that would have been written outside the destination:" +
+                      listOf(refused);
         if (!failed.empty())
-            message += (message.empty() ? "" : " ") + std::string("Could not extract ") +
-                       entries(failed.size()) + ": " + listOf(failed) + ".";
+            message += (message.empty() ? "" : "\n") + std::string("Could not extract ") +
+                       entries(failed.size()) + ":" + listOf(failed);
         pImpl->lastError = message;
         result = failed.empty() ? VirtualFSResult::InvalidPath : VirtualFSResult::WriteError;
     }

@@ -21383,6 +21383,19 @@ deletes the half-written archive (nobody wants that in the listing); a cancelled
 **unpack** keeps what it already wrote, because those are real files, and stops
 the remaining archives of a multi-archive run.
 
+An archive that is **extracted only in part** - entries VirtualFS refused
+because they would have been written outside the destination (`../x`, an
+absolute path, a hard link climbing out), or entries it could not write (a
+file through a symbolic link the archive created) - opens an **Extraction
+Incomplete** dialog: *Not everything in "Download.zip" was extracted. The rest
+of the archive was unpacked.*, then each kind of problem with the entries it
+held back, one per line. The status line (`onError`) gets one sentence saying
+the archive was extracted only in part. An archive that could not be extracted
+at all still reports `Extraction failed for <archive>` there, now followed by
+the reason. The text comes from `UCVFSBridge::ExtractArchive`'s `outError`
+parameter, not the bridge's shared `GetLastError()`, because extractions run on
+worker threads.
+
 ## Clipboard interop with other programs
 
 Copy and Cut place the selection on the **system clipboard** in the standard

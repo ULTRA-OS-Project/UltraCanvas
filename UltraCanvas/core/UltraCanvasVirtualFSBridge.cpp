@@ -721,9 +721,12 @@ bool UltraCanvasVirtualFSBridge::ListArchiveContents(
 bool UltraCanvasVirtualFSBridge::ExtractArchive(
     const std::string& archivePath,
     const std::string& destDirectory,
-    UCVFSProgressCallback progressCallback) {
+    UCVFSProgressCallback progressCallback,
+    std::string* outError) {
     
+    if (outError) outError->clear();
     if (!initialized && !Initialize()) {
+        if (outError) *outError = GetLastError();
         return false;
     }
     
@@ -738,13 +741,18 @@ bool UltraCanvasVirtualFSBridge::ExtractArchive(
         };
     }
     
+    std::string detail;
     auto result = VirtualFS::VirtualFS_ExtractAll(
         archivePath, destDirectory,
         VirtualFS::VirtualFSExtractOptions::Default(),
-        vfsCallback);
+        vfsCallback, &detail);
     
     if (result != VirtualFS::VirtualFSResult::Success) {
-        SetError(VirtualFS::VirtualFS_GetErrorMessage(result));
+        // The provider's own account (which entries were skipped, and why)
+        // says more than the result code's generic text.
+        if (detail.empty()) detail = VirtualFS::VirtualFS_GetErrorMessage(result);
+        SetError(detail);
+        if (outError) *outError = detail;
         return false;
     }
     

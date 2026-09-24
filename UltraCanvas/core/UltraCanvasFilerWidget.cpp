@@ -7191,19 +7191,23 @@ namespace UltraCanvas {
         UCVFSBridge::Initialize();
         const std::string archivePath = e.path;
         const std::string archiveName = e.name;
+        // Written by the worker, read by the completion callback once the job
+        // is over: what went wrong, in the extractor's words.
+        auto detail = std::make_shared<std::string>();
         StartArchiveJob("Extracting", "Unpacking \"" + archiveName + "\"",
                         destDir, /*packing=*/false,
-                        [archivePath, destDir](const ArchiveProgressReporter& report) {
+                        [archivePath, destDir, detail](const ArchiveProgressReporter& report) {
             return UCVFSBridge::ExtractArchive(archivePath, destDir,
                     [&report](uint64_t done, uint64_t total,
                               const std::string& file) {
                 return report(done, total, file);
-            });
+            }, detail.get());
         },
-                        [this, archivePath](bool ok, bool cancelled) {
+                        [this, archivePath, detail](bool ok, bool cancelled) {
             if (!pendingExtract) return;
-            if (ok) pendingExtract->changed = true;
-            else if (!cancelled) ReportError("Extraction failed for " + archivePath);
+            // A partial extraction still put files into the folder.
+            if (ok || IsPartialExtraction(*detail)) pendingExtract->changed = true;
+            if (!ok && !cancelled) ReportExtractionProblem(archivePath, *detail);
             ++pendingExtract->next;
             // Cancelling stops the whole queue, not just this archive.
             if (cancelled) FinishPendingExtract();
@@ -7537,16 +7541,17 @@ namespace UltraCanvas {
                   std::to_string(index + 1) + " of " + std::to_string(jobs.size()) + ")"
                 : "Unpacking \"" + fs::path(src).filename().string() + "\"";
         UCVFSBridge::Initialize();
+        auto detail = std::make_shared<std::string>();   // see ExtractCurrentAndAdvance
         StartArchiveJob("Extracting", caption, dest, /*packing=*/false,
-                        [src, dest](const ArchiveProgressReporter& report) {
+                        [src, dest, detail](const ArchiveProgressReporter& report) {
             return UCVFSBridge::ExtractArchive(src, dest,
                     [&report](uint64_t done, uint64_t total,
                               const std::string& file) {
                 return report(done, total, file);
-            });
+            }, detail.get());
         },
-                        [this, jobs, index, notifyFolder, src](bool ok, bool cancelled) mutable {
-            if (!ok && !cancelled) ReportError("Extraction failed for " + src);
+                        [this, jobs, index, notifyFolder, src, detail](bool ok, bool cancelled) mutable {
+            if (!ok && !cancelled) ReportExtractionProblem(src, *detail);
             // Cancelling stops the whole run, not just the archive in flight.
             if (cancelled) {
                 Refresh();
@@ -8081,6 +8086,55 @@ namespace UltraCanvas {
         if (auto* win = GetWindow()) win->HideBusyPointer();
         if (onError) onError(message);
         else std::cerr << "UltraCanvasFilerWidget: " << message << std::endl;
+    }
+
+    bool UltraCanvasFilerWidget::IsPartialExtraction(const std::string& detail) {
+        return detail.find(":\n") != std::string::npos;
+    }
+
+    void UltraCanvasFilerWidget::ReportExtractionProblem(const std::string& archivePath,
+                                                         const std::string& detail) {
+        const std::string name = RepairLegacyEncodedName(
+                fs::path(archivePath).filename().string());
+        if (!IsPartialExtraction(detail)) {
+            ReportError("Extraction failed for " + archivePath +
+                        (detail.empty() ? std::string() : ": " + detail));
+            return;
+        }
+        // One line for the status bar, and the list where it can be read.
+        ReportError("\"" + name + "\" was extracted only in part - some entries were skipped");
+
+        // The extractor's text: a heading per kind of problem, ending in ':',
+        // then one entry per line. Headings become paragraphs of their own,
+        // entries the lines under them; entry names are shown decoded.
+        std::string details;
+        size_t start = 0;
+        while (start <= detail.size()) {
+            size_t end = detail.find('\n', start);
+            if (end == std::string::npos) end = detail.size();
+            const std::string line = detail.substr(start, end - start);
+            start = end + 1;
+            if (line.empty()) continue;
+            if (line.back() == ':') {
+                if (!details.empty()) details += "\n\n";
+                details += line;
+            } else {
+                details += "\n" + RepairLegacyEncodedName(line);
+            }
+        }
+
+        DialogConfig cfg;
+        cfg.title = "Extraction Incomplete";
+        cfg.dialogType = DialogType::Warning;
+        cfg.message = "Not everything in \"" + name + "\" was extracted. "
+                      "The rest of the archive was unpacked.";
+        cfg.details = details;
+        cfg.buttons = DialogButtons::OK;
+        cfg.width = 600;
+        cfg.height = 340;
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        if (dialog) UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
+        else        ReportError(cfg.message + " " + details);
     }
 
     // ===== LAYOUT =====
