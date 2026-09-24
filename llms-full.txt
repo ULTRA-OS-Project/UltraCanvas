@@ -21100,6 +21100,16 @@ once, and a write-protected entry is not asked about (moving it does not
 write to it). An entry the trash refuses stops at the problem dialog below
 (*Cannot Move to the Trash*); it is **never** deleted for good instead.
 
+Under the choice the dialog lists **what is about to go**, in an
+`UltraCanvasListView` with the Details view's columns - the entry's icon (the
+display's own, through `DrawEntryIcon`, so type glyphs and host icons alike)
+and name, size, modified - at most 40 rows, ten at a time with a scrollbar.
+Several items selected: the list is those items, under a caption that counts
+the folders and files and adds up the files' size. One folder: the list is
+what the folder holds, folders first and then by name, under *Folder "X"
+contains 147 items (first 40 shown)*. A single file gets no list - the
+question already names it.
+
 Where the trash cannot take the entries — no trash on this platform (Android,
 WebAssembly), entries inside an archive, entries on a remote drive — the
 trash option is greyed out, the dialog opens on **Delete permanently**, and

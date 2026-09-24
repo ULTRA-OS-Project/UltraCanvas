@@ -3340,9 +3340,10 @@ namespace UltraCanvas {
         // confirmDelete veto is installed): "Move to Trash" / "Delete
         // permanently" as two radio buttons opened on `preferred`, the
         // warning line following the choice. Deletes on confirm; `onDone`
-        // hears false on cancel. When a folder is among the victims, a
-        // preview of its first entries (with thumbnails) is shown so the user
-        // sees what is about to go.
+        // hears false on cancel. Under the choice a scrolling list (icon,
+        // name, size, modified; at most 40 rows) shows what is about to go:
+        // the selected items when there are several, the folder's contents
+        // when one folder is deleted.
         void ShowDeleteConfirmation(const std::vector<FilerEntry>& victims,
                                     FilerDeleteMode preferred = FilerDeleteMode::MoveToTrash,
                                     std::function<void(bool changed)> onDone = nullptr);

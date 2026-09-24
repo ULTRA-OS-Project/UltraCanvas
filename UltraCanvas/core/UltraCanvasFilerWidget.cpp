@@ -84,6 +84,9 @@
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasRadio.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasListModel.h"
+#include "UltraCanvasListDelegate.h"
 #include "UltraCanvasProgressDialog.h"
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasSwitch.h"
@@ -6045,13 +6048,123 @@ namespace UltraCanvas {
         }
     }
 
+    namespace {
+        // At most this many rows in the delete confirmation's list.
+        constexpr size_t kDeletePreviewRows = 40;
+
+        // The delete confirmation's list delegate: the default one, with the
+        // file display's own icon for the entry drawn in front of the name.
+        class FilerDeletePreviewDelegate : public UltraCanvasDefaultListDelegate {
+        public:
+            std::vector<FilerEntry> entries;
+            std::function<void(IRenderContext*, const FilerEntry&, const Rect2Di&)> drawIcon;
+
+            void RenderItem(IRenderContext* ctx, const IListModel* listModel,
+                            int row, int column,
+                            const ListItemStyleOption& option) override {
+                if (column != 0 || row < 0 || row >= static_cast<int>(entries.size()) ||
+                    !drawIcon) {
+                    UltraCanvasDefaultListDelegate::RenderItem(ctx, listModel, row, column, option);
+                    return;
+                }
+                constexpr int kIcon = 16, kGap = 6, kPad = 4;
+                const Rect2Di icon(option.columnX + kPad,
+                                   option.rect.y + (option.rect.height - kIcon) / 2,
+                                   kIcon, kIcon);
+                ctx->PushState();
+                drawIcon(ctx, entries[static_cast<size_t>(row)], icon);
+                ctx->PopState();
+                ListItemStyleOption shifted = option;
+                shifted.columnX += kPad + kIcon + kGap - 6;   // the default pads by 6
+                shifted.columnWidth -= kPad + kIcon + kGap - 6;
+                UltraCanvasDefaultListDelegate::RenderItem(ctx, listModel, row, column, shifted);
+            }
+        };
+    }
+
     void UltraCanvasFilerWidget::ShowDeleteConfirmation(
             const std::vector<FilerEntry>& victims, FilerDeleteMode preferred,
             std::function<void(bool changed)> onDone) {
-        size_t folderCount = 0;
-        for (const FilerEntry& e : victims) {
-            if (e.isDirectory) ++folderCount;
+        // ===== WHAT IS ABOUT TO GO =====
+        // A list of it - icon, name, size, modified - under the choice: the
+        // selected items when there are several, what the folder holds when
+        // one folder is deleted (folders first, then by name, as the display
+        // sorts). A single file needs none: the question already names it.
+        std::vector<FilerEntry> listed;
+        size_t listedTotal = 0;
+        std::string listCaption;
+        if (victims.size() > 1) {
+            listedTotal = victims.size();
+            size_t folders = 0;
+            uint64_t bytes = 0;
+            for (const FilerEntry& e : victims) {
+                if (e.isDirectory) ++folders;
+                else bytes += e.size;
+            }
+            const size_t files = victims.size() - folders;
+            listCaption = std::to_string(victims.size()) + " items: ";
+            if (folders) listCaption += std::to_string(folders) +
+                                        (folders == 1 ? " folder" : " folders");
+            if (folders && files) listCaption += ", ";
+            if (files) listCaption += std::to_string(files) + (files == 1 ? " file" : " files") +
+                                      " (" + FormatSize(bytes) + ")";
+            listed.assign(victims.begin(), victims.begin() +
+                          static_cast<std::ptrdiff_t>(std::min(victims.size(), kDeletePreviewRows)));
+        } else if (victims.front().isDirectory) {
+            const FilerEntry& folder = victims.front();
+            std::error_code ec;
+            if (fs::is_directory(folder.path, ec)) {
+                // Every name first (the listing's own file type is cached, so
+                // this costs no stat per entry), then only the rows shown are
+                // stat-ed in full.
+                std::vector<std::pair<bool, std::string>> names;
+                for (fs::directory_iterator it(folder.path, ec), end; !ec && it != end;
+                     it.increment(ec)) {
+                    std::error_code dec;
+                    names.emplace_back(it->is_directory(dec), it->path().string());
+                }
+                std::sort(names.begin(), names.end(), [](const auto& a, const auto& b) {
+                    if (a.first != b.first) return a.first;   // folders first
+                    return a.second < b.second;
+                });
+                listedTotal = names.size();
+                for (const auto& [isDir, path] : names) {
+                    if (listed.size() >= kDeletePreviewRows) break;
+                    FilerEntry e;
+                    if (StatEntryForPath(path, e)) listed.push_back(std::move(e));
+                }
+            }
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+            else {
+                // A folder inside an archive: what VirtualFS knows of it.
+                const auto inner = VirtualFS::VirtualFS_ListDirectory(folder.path);
+                listedTotal = inner.size();
+                for (const VirtualFS::VirtualFSEntry& v : inner) {
+                    if (listed.size() >= kDeletePreviewRows) break;
+                    FilerEntry e;
+                    e.name = v.name;
+                    e.path = folder.path + "/" + v.name;
+                    e.isDirectory = v.IsDirectory();
+                    e.size = e.isDirectory ? 0 : v.size;
+                    e.extension = e.isDirectory ? "" : LowerExtension(e.name);
+                    ApplyEntryTypeInfo(e);
+                    listed.push_back(std::move(e));
+                }
+            }
+#endif
+            listCaption = "Folder \"" + RepairLegacyEncodedName(folder.name) + "\" contains " +
+                          std::to_string(listedTotal) + (listedTotal == 1 ? " item" : " items");
+            if (listedTotal == 0) listCaption = "Folder \"" +
+                    RepairLegacyEncodedName(folder.name) + "\" is empty.";
         }
+        if (listedTotal > listed.size())
+            listCaption += " (first " + std::to_string(listed.size()) + " shown)";
+        // Ten rows show at once; the rest scroll.
+        constexpr int kPreviewRowHeight = 22;
+        constexpr int kPreviewHeaderHeight = 24;
+        const int visibleRows = static_cast<int>(std::min<size_t>(listed.size(), 10));
+        const int listHeight = listed.empty() ? 0
+                : kPreviewHeaderHeight + visibleRows * kPreviewRowHeight + 2;
 
         // The trash / permanent choice. Where the trash cannot take these
         // entries only the permanent delete is offered, and the details line
@@ -6086,10 +6199,9 @@ namespace UltraCanvas {
                 : "Delete " + std::to_string(victims.size()) + " items?";
         cfg.details = detailsFor(startInTrash);
         cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
-        cfg.width = 480;
-        // Room for the two choices, and more when a folder preview
-        // (thumbnail grid) is shown.
-        cfg.height = folderCount > 0 ? 500 : 260;
+        // Room for the two choices, and for the list and its caption.
+        cfg.width = listed.empty() ? 480 : 600;
+        cfg.height = 260 + (listCaption.empty() ? 0 : 24) + (listed.empty() ? 0 : listHeight + 8);
 
         const FilerDeleteMode startMode = startInTrash ? FilerDeleteMode::MoveToTrash
                                                        : FilerDeleteMode::Permanently;
@@ -6129,109 +6241,54 @@ namespace UltraCanvas {
         choiceBox->AddChild(permanently);
         dialog->AddDialogElement(choiceBox);
 
-        // When a folder is being deleted, preview the first entries inside it
-        // (with thumbnails) so the user sees what the folder holds.
-        const FilerEntry* previewFolder = nullptr;
-        for (const FilerEntry& e : victims) {
-            if (e.isDirectory) { previewFolder = &e; break; }
-        }
-        if (previewFolder) {
-            // realPath stays empty for entries inside archives - no
-            // thumbnail can be decoded from those, only name and type.
-            struct PreviewItem {
-                std::string name;
-                std::string realPath;
-                bool isDir = false;
-            };
-            std::error_code ec;
-            std::vector<PreviewItem> inner;
-            size_t totalInner = 0;
-            if (fs::is_directory(previewFolder->path, ec)) {
-                for (fs::directory_iterator it(previewFolder->path, ec), end;
-                     it != end; it.increment(ec)) {
-                    if (ec) break;
-                    if (inner.size() < 10) {
-                        std::error_code e2;
-                        inner.push_back({it->path().filename().string(),
-                                         it->path().string(),
-                                         it->is_directory(e2)});
-                    }
-                    ++totalInner;
-                }
-            }
-#ifdef ULTRACANVAS_HAS_VIRTUALFS
-            else {
-                for (const VirtualFS::VirtualFSEntry& v
-                     : VirtualFS::VirtualFS_ListDirectory(previewFolder->path)) {
-                    if (inner.size() < 10) {
-                        inner.push_back({v.name, "", v.IsDirectory()});
-                    }
-                    ++totalInner;
-                }
-            }
-#endif
-
+        if (!listCaption.empty()) {
             auto caption = std::make_shared<UltraCanvasLabel>(
                     "FilerDelPreviewCap", 0, 0, 0, 18);
-            caption->SetText("Folder \"" + RepairLegacyEncodedName(previewFolder->name) + "\" contains "
-                             + std::to_string(totalInner) + " item(s)"
-                             + (totalInner > inner.size()
-                                    ? "  ·  showing first "
-                                          + std::to_string(inner.size())
-                                    : ""));
+            caption->SetText(listCaption);
             caption->SetFontSize(11);
             caption->SetTextColor(Color(90, 90, 96, 255));
             caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
             dialog->AddDialogElement(caption);
-
-            // A wrapping row of small thumbnail tiles.
-            auto grid = std::make_shared<UltraCanvasContainer>("FilerDelPreviewGrid");
-            grid->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
-                        .SetFlexGap(6)
-                        .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-            grid->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-            const int tile = 64;
-            int idx = 0;
-            for (const PreviewItem& pi : inner) {
-                const std::string& name = pi.name;
-
-                auto cell = std::make_shared<UltraCanvasContainer>(
-                        "FilerDelCell" + std::to_string(idx));
-                cell->layout.SetFlexColumn().SetFlexGap(2)
-                            .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-                cell->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-
-                auto thumb = CreateImageElement(
-                        "FilerDelThumb" + std::to_string(idx), 0, 0, tile, tile);
-                thumb->SetFitMode(ImageFitMode::Contain);
-                if (!pi.isDir && !pi.realPath.empty() &&
-                    ImagePipelineLoadsExtension(
-                            LowerExtension(fs::path(pi.realPath).filename().string())))
-                    thumb->LoadFromFile(pi.realPath);
-                thumb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                cell->AddChild(thumb);
-
-                auto lbl = std::make_shared<UltraCanvasLabel>(
-                        "FilerDelName" + std::to_string(idx), 0, 0, tile, 14);
-                // Twelve characters, not bytes: a byte cut would split a
-                // Thai, Cyrillic or CJK character and draw it as U+FFFD.
-                const std::string display = RepairLegacyEncodedName(name);
-                const std::vector<size_t> cuts = TextWrapping::Utf8Boundaries(display);
-                const std::string shown = cuts.size() - 1 > 12
-                        ? display.substr(0, cuts[11]) + "…" : display;
-                lbl->SetText(shown);
-                lbl->SetFontSize(9);
-                lbl->SetTextColor(Color(80, 80, 86, 255));
-                lbl->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-                lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                cell->AddChild(lbl);
-
-                grid->AddChild(cell);
-                ++idx;
+        }
+        if (!listed.empty()) {
+            // Name (with the display's own icon for the entry), size, date -
+            // the columns of the Details view, formatted the same way.
+            auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
+            model->AddColumn(ListColumnDef("Name", 270));
+            model->AddColumn(ListColumnDef("Size", 80, TextAlignment::Right));
+            model->AddColumn(ListColumnDef("Modified", 130));
+            for (const FilerEntry& e : listed) {
+                MultiColumnListItem item({RepairLegacyEncodedName(e.name),
+                                          e.isDirectory ? std::string() : FormatSize(e.size),
+                                          FormatTime(e.modifiedTime)});
+                item.tooltip = RepairLegacyEncodedName(e.path);
+                model->AddItem(item);
             }
-            dialog->AddDialogElement(grid);
+
+            auto list = std::make_shared<UltraCanvasListView>(
+                    "FilerDelPreviewList", 0, 0, 0, listHeight);
+            ListViewStyle listStyle;
+            listStyle.showHeader = true;
+            listStyle.headerHeight = kPreviewHeaderHeight;
+            listStyle.headerFontSize = 10;
+            listStyle.rowHeight = kPreviewRowHeight;
+            listStyle.alternateRowColors = true;
+            list->SetStyle(listStyle);
+            // The icon column draws through DrawEntryIcon, so every row wears
+            // the icon the display gives that entry - type glyph or the host's
+            // icon - where the old thumbnail grid drew a picture for image
+            // files and nothing at all for everything else.
+            auto delegate = std::make_shared<FilerDeletePreviewDelegate>();
+            delegate->entries = listed;
+            delegate->drawIcon = [this](IRenderContext* ctx, const FilerEntry& e,
+                                        const Rect2Di& r) { DrawEntryIcon(ctx, e, r); };
+            delegate->SetFontSize(11);
+            delegate->SetRowHeight(kPreviewRowHeight);
+            list->SetModel(model);
+            list->SetDelegate(delegate);
+            list->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            dialog->AddDialogElement(list);
         }
 
         auto self = this;
