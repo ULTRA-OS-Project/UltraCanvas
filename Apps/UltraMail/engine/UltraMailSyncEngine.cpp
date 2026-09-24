@@ -149,6 +149,23 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
                                      const UltraNetMailOptions& options,
                                      bool fetchBodies,
                                      const std::function<void(const MessageEnvelope&)>& onMessageStored) {
+    // Detect a server-side renumber: if the folder's UIDVALIDITY changed, every
+    // cached UID is stale (and the new UIDs may be lower than our stored max, so
+    // an incremental fetch would miss mail). Discard the folder's cache so the
+    // fetch below restarts from UID 0. Best-effort: a backend that cannot report
+    // STATUS just keeps the incremental behaviour.
+    UltraNetMailboxStatus status;
+    if (mailbox_.GetMailboxStatus(serverUrl, folder, status, options) &&
+        status.uidValidity != 0) {
+        int64_t stored = 0;
+        store_.GetFolderUidValidity(accountId, folder, stored);
+        if (stored != 0 && stored != static_cast<int64_t>(status.uidValidity))
+            store_.ClearFolderMessages(accountId, folder);   // drop stale cached UIDs
+        store_.SetFolderUidState(accountId, folder,
+                                 static_cast<int64_t>(status.uidValidity),
+                                 static_cast<int64_t>(status.uidNext));
+    }
+
     int64_t sinceUid = 0;
     store_.GetMaxUid(accountId, folder, sinceUid);
 

@@ -37,6 +37,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasLabel.h"
 
 #include <chrono>
 #include <cstdint>
@@ -141,6 +142,8 @@ private:
     // present) and re-read the store. Only the selected account, so Reload never
     // fetches — or opens a settings dialog for — an account not in view.
     void HandleReload();
+    // Set the bottom status-line text (UI thread). Empty resets to "Ready".
+    void SetStatus(const std::string& text);
     static std::string SlugFromEmail(const std::string& email);
     static std::string LocalPart(const std::string& email);
 
@@ -325,6 +328,12 @@ private:
     // configured) and shown once the first account exists.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> accountView_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    reloadButton_;
+    // A one-line status at the bottom of the account view saying what the app is
+    // doing ("Checking <account>…", "Receiving messages… (N)", "Up to date").
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
+    // Cumulative messages streamed in during the current run of syncs (for the
+    // "Receiving messages… (N)" status); reset when the last sync ends.
+    int                                                statusReceived_ = 0;
     std::string     selectedAccount_;   // the account the mail view shows
     int             syncsInFlight_ = 0;
     StartPage       startPage_;

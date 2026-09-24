@@ -60,8 +60,11 @@ public:
         out = folders;
         return UltraNetResult::Ok();
     }
+    uint32_t uidValidity = 0;   // 0 = "STATUS unsupported" (skips the renumber check)
     UltraNetResult GetMailboxStatus(const std::string&, const std::string&,
-                                    UltraNetMailboxStatus&, const UltraNetMailOptions&) override {
+                                    UltraNetMailboxStatus& out, const UltraNetMailOptions&) override {
+        out = UltraNetMailboxStatus{};
+        out.uidValidity = uidValidity;
         return UltraNetResult::Ok();
     }
     UltraNetResult FetchEnvelopes(const std::string&, const std::string& folder,
@@ -440,4 +443,32 @@ TEST(reconcile_flags_never_expunges_on_empty_enumeration) {
     REQUIRE(HasUid(fx.store, 1));
     REQUIRE(HasUid(fx.store, 2));
     REQUIRE(HasUid(fx.store, 3));
+}
+
+TEST(sync_messages_resets_the_folder_when_uidvalidity_changes) {
+    Fixture fx("uidvalidity");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+
+    // First sync under UIDVALIDITY 100: the seeded uid1/2/3 land and the folder
+    // records validity 100.
+    fx.fake.uidValidity = 100;
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(HasUid(fx.store, 1));
+    REQUIRE(HasUid(fx.store, 3));
+
+    // The server renumbers the mailbox (new UIDVALIDITY) and the same messages
+    // come back under fresh, LOWER uids — an incremental fetch keyed on the old
+    // max uid would miss them. The engine must drop the stale cache and refetch.
+    fx.fake.uidValidity = 200;
+    fx.fake.envelopes["INBOX"] = {
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None),
+        Env(11, "Ann <ann@x.com>",      {"erika@example.com"}, "Re: thanks",   UltraNetMailFlags::Seen),
+    };
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(!HasUid(fx.store, 1));            // stale uids discarded
+    REQUIRE(!HasUid(fx.store, 3));
+    REQUIRE(HasUid(fx.store, 10));            // refetched from UID 0
+    REQUIRE(HasUid(fx.store, 11));
 }

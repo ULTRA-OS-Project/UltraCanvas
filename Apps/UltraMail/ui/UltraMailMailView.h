@@ -135,8 +135,29 @@ private:
     // `markTopRead` marks the auto-selected top message read (a reading-pane
     // folder switch, where showing it counts as reading it); a background
     // rebuild passes false so newly-arrived mail is not silently marked read.
+    // Refreshing the folder already on screen reconciles the rows in place
+    // (DiffListFromStore); a folder/account switch or an empty list rebuilds.
     void RebuildList(bool markTopRead = false);
+    void FullRebuild(bool markTopRead);
+    // Reconcile the visible rows to the store's current state (post-sync) without
+    // a clear+rebuild: insert new messages, remove deleted ones, update changed
+    // read state — keeping selection and scroll. Falls back to FullRebuild on a
+    // near-total turnover (e.g. a UIDVALIDITY renumber).
+    void DiffListFromStore(bool markTopRead);
     void AddMessageRow(const MessageEnvelope& m, const std::set<int64_t>& waitingUids);
+    // Build one row's model item + parallel state (shared by rebuild / insert).
+    void BuildMessageRow(const MessageEnvelope& m, const std::set<int64_t>& waitingUids,
+                         UltraCanvas::MultiColumnListItem& outItem,
+                         MailRowState& outState, SenderBadge& outBadge) const;
+    // In-place row mutation (model + messages_/rowStates_/rowBadges_/security_):
+    void InsertMessageRowAt(int row, const MessageEnvelope& m,
+                            const std::set<int64_t>& waitingUids);
+    void RemoveRowByUid(int64_t uid);
+    void UpdateRowFlags(int row, uint32_t newFlags);
+    // Re-draw one row's cell-0 text (sender + ●/↩ glyphs) from its current state.
+    void RefreshRowText(int row);
+    // The row a message with `date` belongs at in the date-DESC list.
+    int SortedInsertPos(int64_t date) const;
     // Clear the unread ● and dim one row in place (keeps the ↩ waiting glyph).
     void MarkRowRead(int row);
     // The badge for one message, from the address book, the brand registry and
@@ -173,6 +194,16 @@ private:
     // True while RebuildList drives a programmatic row selection, so the
     // selection-changed callback does not mark that auto-selected row read.
     bool                         suppressAutoRead_ = false;
+    // The message currently shown in the preview, so a rebuild (after a sync)
+    // can restore the selection instead of jumping to the newest row. Tracked by
+    // identity because row indices change across a rebuild; uids are per-folder,
+    // so the folder is kept too (a match only counts within the same folder).
+    int64_t                      selectedUid_ = -1;
+    std::string                  selectedFolder_;
+    // The account/folder the rows currently represent, so RebuildList can tell a
+    // same-folder refresh (reconcile in place) from a switch (full rebuild).
+    std::string                  loadedAccount_;
+    std::string                  loadedFolder_;
 
     // Folder-tree node id -> (accountId, folderName).
     std::map<std::string, std::pair<std::string, std::string>> folderNodeId_;

@@ -55,6 +55,15 @@ public:
     UltraDbResult ListFolders(const std::string& accountId,
                               std::vector<Folder>& out) const;
 
+    // The stored IMAP UIDVALIDITY for a folder (0 when unknown / never synced) —
+    // the basis for detecting a server-side mailbox renumber.
+    UltraDbResult GetFolderUidValidity(const std::string& accountId,
+                                       const std::string& folder, int64_t& out) const;
+    // Persist the folder's UIDVALIDITY / UIDNEXT after a sync, without disturbing
+    // its role/selectable (a targeted update, unlike UpsertFolder).
+    UltraDbResult SetFolderUidState(const std::string& accountId, const std::string& folder,
+                                    int64_t uidValidity, int64_t uidNext);
+
     // ---- Messages ----------------------------------------------------------
     // Insert or update an envelope. The store computes and caches whether the
     // message is eligible for "needs answer" (addressed to the account owner,
@@ -97,6 +106,11 @@ public:
     // message list does not filter deleted rows, so it must actually be removed.
     UltraDbResult RemoveMessage(const std::string& accountId, const std::string& folder,
                                 int64_t uid);
+
+    // Drop every message (and its scan verdict) for a folder — used when the
+    // server renumbered the mailbox (UIDVALIDITY changed), so the stale cached
+    // UIDs are discarded before a fresh fetch from UID 0.
+    UltraDbResult ClearFolderMessages(const std::string& accountId, const std::string& folder);
 
     // ---- Sender security verdicts -----------------------------------------
     // The content scan's verdict for one message, kept in its own table so an

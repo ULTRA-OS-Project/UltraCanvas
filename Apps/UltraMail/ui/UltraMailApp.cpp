@@ -58,6 +58,16 @@ constexpr int   kActionIcon    = 12;
 std::string IconPath(const std::string& name) {
     return UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/icons/" + name);
 }
+
+// A readable folder name for the status line: "Inbox" for INBOX, otherwise the
+// leaf of the IMAP path decoded from modified UTF-7 (the same "&...-" encoding
+// the folder tree decodes for display) into UTF-8.
+std::string FriendlyFolderName(const std::string& folder) {
+    if (folder == "INBOX") return "Inbox";
+    std::size_t slash = folder.find_last_of('/');
+    const std::string leaf = slash == std::string::npos ? folder : folder.substr(slash + 1);
+    return UltraNet_ImapUtf7Decode(leaf);
+}
 } // namespace
 
 std::string UltraMailApp::LocalPart(const std::string& email) {
@@ -367,7 +377,18 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // Apply the remembered reading-pane choice (default on; a rebuild only when off).
     mailView_.SetReadingPane(prefs_.showReadingPane);
 
+    // ----- Status line: what the app is currently doing -----
+    statusLabel_ = Theme::MakeLine("umStatus", "Ready", Theme::kToolbarHeight * 0.75f,
+                                   Theme::kSizeSecondary, Theme::kTextSecondary);
+    accountView_->AddChild(statusLabel_);
+    statusLabel_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
     return accountView_;
+}
+
+void UltraMailApp::SetStatus(const std::string& text) {
+    if (statusLabel_) statusLabel_->SetText(text.empty() ? "Ready" : text);
 }
 
 void UltraMailApp::ResizeViews(float width, float height) {
@@ -1001,6 +1022,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
 
     auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
     if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Reloading…");
+    SetStatus("Opening " + FriendlyFolderName(folder) + "…");
     auto progressBuf = std::make_shared<std::vector<MessageEnvelope>>();
     svc->SyncFolderInBackground(accountId, folder, serverUrl, opts,
         [this, accountId, username, provider](UltraNetMailOptions& o) {
@@ -1014,11 +1036,14 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                 // open can retry once the throttle window passes. (Harmless no-op
                 // for callers that never set it, e.g. HandleReload.)
                 folderSyncInFlight_.erase(accountId + "\n" + folder);
-                if (--syncsInFlight_ <= 0) {
+                const bool last = (--syncsInFlight_ <= 0);
+                if (last) {
                     syncsInFlight_ = 0;
+                    statusReceived_ = 0;
                     if (reloadButton_) reloadButton_->SetText("Reload");
                 }
                 if (!outcome) {
+                    SetStatus("Could not reach the server");
                     if (!syncErrorReported_) {
                         syncErrorReported_ = true;
                         AlertError(window_ ? window_.get() : nullptr,
@@ -1028,6 +1053,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                     return;
                 }
                 syncErrorReported_ = false;
+                if (last) SetStatus("Up to date");
                 Refresh();   // re-query the store; the open folder now shows its mail
             });
         },
@@ -1040,6 +1066,8 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
             auto batch = std::make_shared<std::vector<MessageEnvelope>>();
             batch->swap(*progressBuf);
             app->PostToUIThread([this, accountId, batch]() {
+                statusReceived_ += static_cast<int>(batch->size());
+                SetStatus("Receiving messages… (" + std::to_string(statusReceived_) + ")");
                 if (accountId == selectedAccount_) mailView_.AppendMessages(accountId, *batch);
             });
         });
@@ -1111,6 +1139,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
         const std::string aid = acc.accountId;
         if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Reloading…");
+        SetStatus("Checking " + who + "…");
         // onDone keeps `svc` alive until the worker thread finishes; it marshals
         // the follow-up work back to the UI thread.
         // The outcome carries the reason a sync failed (bad password, untrusted
@@ -1139,11 +1168,14 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) return;
             app->PostToUIThread([this, aid, who, provider, userInitiated, outcome, credCode]() {
-                if (--syncsInFlight_ <= 0) {
+                const bool last = (--syncsInFlight_ <= 0);
+                if (last) {
                     syncsInFlight_ = 0;
+                    statusReceived_ = 0;
                     if (reloadButton_) reloadButton_->SetText("Reload");
                 }
                 if (!outcome) {
+                    SetStatus("Could not reach the server");
                     // A dead OAuth sign-in offers Retry → re-sign-in (which
                     // re-syncs the account), but only when the user asked — a
                     // background timer must never pop a dialog.
@@ -1161,6 +1193,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                     return;
                 }
                 syncErrorReported_ = false;   // recovered: arm the next report
+                if (last) SetStatus("Up to date");
                 CollectContacts(aid, "INBOX");
                 Refresh();   // authoritative, correctly date-sorted final list
             });
@@ -1185,6 +1218,8 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             std::fprintf(stderr, "[UMSTREAM] flush batch=%zu aid=%s selected=%s\n",
                          batch->size(), aid.c_str(), selectedAccount_.c_str());
             app->PostToUIThread([this, aid, batch]() {
+                statusReceived_ += static_cast<int>(batch->size());
+                SetStatus("Receiving messages… (" + std::to_string(statusReceived_) + ")");
                 if (aid == selectedAccount_) mailView_.AppendMessages(aid, *batch);
             });
             // The trailing partial batch (< 20) is left for the final Refresh(),
