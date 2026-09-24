@@ -135,6 +135,10 @@ namespace {
     struct DialogState {
         std::shared_ptr<UltraCanvasWindow>    window;
         bool                                  closed = false;
+        // Set while SyncControlsFromSettings pushes the settings onto the
+        // controls: the change handlers that fires write the same values
+        // back, and must not save or re-apply them once more.
+        bool                                  syncing = false;
         std::shared_ptr<UltraCanvasTreeView>  tree;
         std::shared_ptr<UltraCanvasContainer> pageArea;
         std::map<std::string, std::shared_ptr<UltraCanvasContainer>> pages;
@@ -266,6 +270,7 @@ namespace {
     UltraFilerSettingsDialog::CacheHooks g_cacheHooks;
 
     void ApplyAndSave(DialogState* d) {
+        if (d->syncing) return;   // SyncControlsFromSettings: nothing changed
         if (d->onChanged) d->onChanged();
         if (d->settings) d->settings->Save();
     }
@@ -2416,6 +2421,36 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
     if (!state->window) return;
     g_dialog = state;   // keeps the widgets alive
     if (pageId) SelectPage(state.get(), pageId);
+}
+
+namespace {
+    // The settings a file display's own context menu can change while this
+    // window is open (Display > Thumbnails / Detail view / File extensions /
+    // File icons / Folder previews - everything the host adopts through
+    // onDisplayFormatsChanged), pushed back onto the controls. The pages read
+    // the settings once, when they are built, so without this an open window
+    // went on showing the tick a menu click had just taken away.
+    void SyncControlsFromSettings(DialogState* d) {
+        if (!d || !d->settings) return;
+        d->syncing = true;
+        RefreshFormatPage(d, FilerPreviewTarget::Thumbnails);
+        RefreshFormatPage(d, FilerPreviewTarget::DetailView);
+        if (d->extensionsInNamesBox)
+            d->extensionsInNamesBox->SetChecked(d->settings->showFileExtensions);
+        if (d->folderPreviewsBox)
+            d->folderPreviewsBox->SetChecked(d->settings->folderPreviews);
+        for (const auto& [badge, radio] : d->badgeRadios)
+            if (badge == d->settings->extensionBadge) d->extensionBadgeGroup.SelectButton(radio);
+        for (const auto& [style, radio] : d->fileIconRadios)
+            if (style == d->settings->fileIconStyle) d->fileIconGroup.SelectButton(radio);
+        d->syncing = false;
+        if (d->window) d->window->RequestRedraw();
+    }
+}   // namespace
+
+void UltraFilerSettingsDialog::SyncWithSettings() {
+    if (g_dialog && g_dialog->window && !g_dialog->closed)
+        SyncControlsFromSettings(g_dialog.get());
 }
 
 void UltraFilerSettingsDialog::SetCacheHooks(CacheHooks hooks) {

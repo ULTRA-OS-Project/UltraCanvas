@@ -9,6 +9,16 @@
   - The folder tree's **Delete** used its own "Delete X and everything in it?"
     box and always deleted for good; it now opens the same confirmation, with
     the trash choice and the preview of what the folder holds.
+- **An open Settings window follows the file display's context menu.** The
+  menu's *Display > Thumbnails*, *Detail view*, *File extensions*, *File
+  icons* and *Folder previews* write straight into the settings, but the
+  Settings pages read them only once, when the window was built. A
+  Settings window left open kept showing, for example, *Bitmaps* ticked on
+  the Detail view page after a click in the menu had switched the detail
+  pane off for every JPG and PNG (`display.detailview.kinds.off = bitmaps`
+  in config.ini). The window now re-reads those settings whenever the menu
+  changes one: the kind and format ticks of both pages, the extension and
+  badge choices, the file-icon choice and the folder-previews box.
 - **Scan sub folder found nothing inside hidden folders, and did not say
   so.** Searching "UltraFiler" from `C:\Users\<name>` came back with "No
   entries", although `AppData\Roaming\UltraFiler` is right there: `AppData`

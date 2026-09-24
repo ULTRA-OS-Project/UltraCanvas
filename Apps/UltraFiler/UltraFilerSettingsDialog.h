@@ -58,6 +58,14 @@ public:
                      std::function<void()> onClearFolderViews = {},
                      Page initialPage = Page::Default);
 
+    // Re-reads into an open settings window the settings a file display's
+    // own context menu can change (Display > Thumbnails / Detail view / File
+    // extensions / File icons / Folder previews), so its checkboxes and
+    // radios never show a state the menu has since changed. The host calls
+    // it after adopting such a change; with no window open it does nothing
+    // (a window opened later reads the settings as they are).
+    static void SyncWithSettings();
+
     // Releases the retained settings-dialog widget tree. Call during app
     // shutdown so it is torn down while the application is still alive, rather
     // than at static-destruction time when the Application singleton is gone.

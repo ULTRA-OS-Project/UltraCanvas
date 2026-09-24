@@ -1189,6 +1189,9 @@ void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
     settings.folderPreviews = source->AreFolderPreviewsEnabled();
     settings.Save();
     ApplySettings();
+    // An open Settings window shows the change too, instead of the tick it
+    // had when it was built.
+    UltraFilerSettingsDialog::SyncWithSettings();
 }
 
 bool UltraFilerWindow::CanShowInDetailView(const FilerEntry& entry) const {
