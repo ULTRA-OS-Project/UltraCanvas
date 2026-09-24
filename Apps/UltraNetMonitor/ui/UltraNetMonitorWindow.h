@@ -22,7 +22,7 @@
 // queries share, so the single SQLite connection is never used from two
 // threads at once. The name and event sources themselves are started by
 // main.cpp before the window opens; the window only reports them.
-// Version: 0.7.0
+// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

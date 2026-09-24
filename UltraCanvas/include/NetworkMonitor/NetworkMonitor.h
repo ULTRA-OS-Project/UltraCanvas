@@ -17,7 +17,7 @@
 // correlation is a later phase - see Docs/Modules/NetworkMonitor/README.md
 // for what is built and what is not.
 //
-// Version: 0.7.0
+// Version: 0.9.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

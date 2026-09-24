@@ -1,3 +1,118 @@
+#### 2026-09-23 *0.9.48*
+- **New: `UltraCanvasMessageCenter` — the desktop message centre as one element**
+  (`UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`,
+  target `UltraMessageCenter`, `Docs/UltraCanvas/UltraCanvasMessageCenter.md`;
+  UltraMessage proposal §11). Every chat, mail and system notification on the
+  UltraMessage feed in one view, built from catalogue elements only: an
+  `UltraCanvasSegmentedControl` for *All / Chats / Mail / System*,
+  `UltraCanvasChip` filters (unread, one per service), an
+  `UltraCanvasTextInput` search, an `UltraCanvasTreeView` of sources
+  (conversations, mail accounts, applications with unread counts), an
+  `UltraCanvasListView` of rows (unread mark, who, what, time) and a detail
+  pane whose `UltraCanvasButton`s mark read / unread, dismiss, open, and
+  invoke a notification's own actions. `Connect()` reads the journal and
+  subscribes to the feed; it posts `feed.read`, `feed.dismissed`,
+  `system.notification.dismissed` and `system.notification.action` back so
+  sources and adapters stay in step. A chat or mail row mirrored from a
+  notification stands in for it; a replacing message takes its row.
+  `Ingest()` feeds rows without a bus; `onOpen`, `onUnreadCountChanged`,
+  `onSelectionChanged`, `onError`; `MessageCenterStyle` hides the sources,
+  detail, search or filters for a compact embedding. Catalogue row added.
+- **DemoApp: Message Centre page** (Extended functionality) hosting a private
+  broker with an in-memory journal, seeded chats, mails and notifications,
+  and a *Post another* button that adds live traffic.
+- **Tests:** `UltraMessageCenterTests` (in-tree, headless): the translation
+  of feed messages into rows, sections / sources / filters / search, the
+  mirror and replace rules, and the element on a private bus receiving live
+  messages, reading the journal and answering with `feed.read`,
+  `system.notification.action` and the dismissals.
+
+#### 2026-09-23 *0.9.47*
+- **A gauge's `LinearBar` can say "busy, total unknown".** `SetIndeterminate`
+  drops the value entirely and slides a block along the track - a download
+  whose server sent no length, a queue still being counted - where before the
+  only honest option was to leave the bar at zero, which reads as progress
+  that is stuck, or to hide it and say nothing. It animates on a timer the
+  gauge owns, started and stopped with the flag and torn down with the element:
+  a caller reporting bytes has nothing to report while the total is unknown, so
+  a bar driven by those reports would freeze whenever a chunk was in flight.
+  LinearBar only; other modes ignore it.
+- **A gauge's `LinearBar` fits the box it is given.** It is the framework's
+  progress bar - "Horizontal or vertical bar (e.g. download progress)" - but it
+  was sized only as a dashboard gauge: a caption over a 28 px bar with the
+  value spelled out underneath, which needs some 114 px of height before any of
+  it fits. In anything shorter it laid out for the height it wanted rather than
+  the height it was given and drew its bar and its value outside the element,
+  which is what kept it out of the one place a progress bar is most wanted - a
+  status line, a list row, a panel footer, all of them twenty-odd pixels tall.
+  Below the height its caption and value line need it now drops both, drops its
+  side padding, and is simply the bar across the whole element. A gauge with the
+  room to be a dashboard gauge is unchanged, pixel for pixel.
+- **`UltraCanvasGaugeDiagramElement` is in the element catalogue.** It was not,
+  so `Docs/UltraCanvas/UltraCanvasUIElements.md` - the file every assistant and
+  contributor is told to consult before building UI - offered a progress
+  *dialog* and nothing else, and the gauge was findable only by already knowing
+  its name. That is exactly how a second progress bar gets written.
+- **An FTP transfer reports its bytes.** `UltraNet_FtpUpload` and
+  `UltraNet_FtpDownload` set up libcurl without a progress callback, so a file
+  moving to or from a server was silent from first byte to last and nothing
+  above them could draw a progress bar however much it wanted to. Both install
+  one now, feeding the module's existing global transfer callbacks
+  (`UltraNet_SetTransferCallbacks`) - the same bag every HTTP request already
+  reports through, so a caller sets it once and hears about every transfer
+  whatever the protocol. Listings and the one-shot verbs are left alone: they
+  move too little for anyone to watch.
+
+#### 2026-09-23 *0.9.46*
+- **UltraCanvasFilerWidget: files dropped onto a remote folder are uploaded.**
+  A new optional hook, `remoteUpload`, receives the paths dropped onto a
+  remote folder shown in the widget (from another program, or from another
+  display of the same window); the host puts them onto the drive and
+  refreshes. Without it the drop went through the local paste path and was
+  refused as "not a writable folder". Dragging a remote display's own
+  entries onto one of its folder tiles is refused with a message that says
+  so, instead of "not a folder". Used by UltraFiler 1.47.0.
+
+#### 2026-09-23 *0.9.45*
+- **Connection events carry the loopback chain.** `NetworkConnectionEvent`
+  gains `loopbackRole`, `localPeer` and `forProcesses`, as on
+  `NetworkConnection`: the registry fills them from the socket table it
+  already attributes from (decoded by `NetworkMonitor_ListConnections`),
+  remembers them with the process so a Closed carries what its Opened
+  had, and the snapshot differ fills them from its own table and keeps
+  a closing connection's chain from the read that still saw the peer's
+  socket owned (`chainDecoded` says a source did). A tuple the table
+  lacks - a connection younger than the table, as often as not - makes
+  the registry read the table again, at most every 20 ms, which also
+  attributes conntrack's NEW events better. The store records them with each
+  event (schema version 5, migrated in place), its text filter matches
+  the peer and the `for` list, and the events CSV gains `loopback_role`,
+  `local_peer` and `for`. NetworkMonitor 0.9.
+
+#### 2026-09-23 *0.9.44*
+- **The activity store keeps loopback chains.** A recorded flow carries
+  the chain its sightings decoded - `RecordedFlow::loopbackRole`,
+  `localPeer` and `forProcesses`, the same as on `NetworkConnection` - so
+  "what did the mail client fetch on Tuesday" has an answer although the
+  mail server only ever saw the antivirus proxy. A sighting with a chain
+  replaces the recorded one; a sighting without (the mirror socket
+  already gone) keeps it. The daily totals keep the last `for` their
+  flows carried (`DailyProcessTotal::forProcesses`), the text filter
+  matches the peer and the `for` list on both, and the flows CSV gains
+  `loopback_role`, `local_peer` and `for`. Schema version 4, migrated in
+  place; a file from an earlier version reads back with no chain, as
+  before. NetworkMonitor 0.8.
+
+#### 2026-09-23 *0.9.43*
+- **The dependency tables now list libudev.** IODeviceManager's Linux
+  hot-plug watcher links libudev when the configure step finds it, and without
+  it `StartMonitoring()` returns `BackendUnavailable`. Nothing said so outside
+  `UltraCanvas/CMakeLists.txt`. `Docs/Dependencies.md` and the DemoApp's
+  in-app copy (`UltraCanvasDependenciesExamples.cpp`) gain a *Hot-plug
+  watching* row: libudev (optional) on Linux, no watcher yet on macOS or
+  Windows. libudev is also added to the library-links table (LGPL 2.1, part of
+  systemd). Its effect on DeviceExplorer is documented in that app's own docs.
+
 #### 2026-09-23 *0.9.42*
 - **The callback-cycle check now runs in CI, and the rule is written down.**
   `scripts/check_callback_cycles.py` shipped in 0.9.32 with nothing calling

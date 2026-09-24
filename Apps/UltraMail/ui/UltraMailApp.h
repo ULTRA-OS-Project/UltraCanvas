@@ -38,7 +38,10 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
 
+#include <chrono>
+#include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -115,9 +118,12 @@ private:
     // Browser sign-in for an OAuth2 provider ("google"): opens the consent page,
     // waits (with a cancellable dialog) for the redirect on a worker thread,
     // stores the tokens in the vault — which must be open — and runs the first
-    // sync. Failures are reported with the provider's reason.
+    // sync. Failures are reported with the provider's reason. `onReauthed`, when
+    // given, runs after a successful sign-in (used to retry the action that hit
+    // an expired sign-in).
     void StartOAuthSignIn(const std::string& accountId, const std::string& email,
-                          const std::string& providerId);
+                          const std::string& providerId,
+                          std::function<void()> onReauthed = nullptr);
     // Warn that "Sign in with <provider>" cannot run because no OAuth client id
     // is configured, naming oauth.ini / the env var that would supply it.
     void ReportMissingOAuthClient(const std::string& providerId);
@@ -178,12 +184,32 @@ private:
     void HandleDeleteMessage(const MessageEnvelope& env);
     void HandleJunkMessage(const MessageEnvelope& env);
     void HandleMarkUnread(const MessageEnvelope& env);
+    // Opening a message marks it read: updates the local store and the list row
+    // immediately (optimistic), then pushes \Seen to the server in the
+    // background when the vault is already open (a passive click never prompts
+    // for the master password, and staying offline is fine — the next folder
+    // reconcile agrees the server later).
+    void HandleMarkRead(const MessageEnvelope& env);
     // Run one IMAP mailbox op on a worker (credentials resolved off the UI
     // thread), then Refresh() on success or alert `actionName` on failure.
     void RunMailboxAction(const std::string& accountId,
                           std::function<SyncOutcome(SyncEngine&, const std::string& serverUrl,
                                                     const UltraNetMailOptions&)> op,
                           const std::string& actionName);
+    // Like RunMailboxAction, but for a passive, best-effort op: it does not
+    // Refresh() on success (so the list selection is not bounced to the top) and
+    // it stays silent on failure. Used by mark-read-on-open.
+    void RunMailboxActionQuiet(const std::string& accountId,
+                               std::function<SyncOutcome(SyncEngine&, const std::string& serverUrl,
+                                                         const UltraNetMailOptions&)> op);
+    // When a mailbox/sync op failed because an OAuth account's stored sign-in is
+    // dead (the refresh token was expired or revoked — Google's invalid_grant),
+    // show a "sign in again" prompt whose Retry re-runs the browser consent and
+    // then `onReauthed`, and return true. Returns false for any other failure so
+    // the caller shows its normal error. `provider` is "" for password accounts.
+    bool MaybeOfferReauth(const std::string& accountId, UltraNetResultCode code,
+                          const std::string& provider,
+                          std::function<void()> onReauthed);
     // The name of the account's folder with the given special-use role, or "".
     std::string FolderWithRole(const std::string& accountId, FolderRole role) const;
     // Open the raw .eml source of a message in a read-only window.
@@ -271,10 +297,19 @@ private:
     // in preferences.ini under the data directory.
     Preferences prefs_;
     std::string prefsPath_;
-    // (accountId + "\n" + folder) that have been lazily fetched (or already had
-    // messages) this session, so opening a folder does not re-hit the server on
-    // every click.
-    std::set<std::string> lazilySynced_;
+    // Per-folder resync bookkeeping, keyed by (accountId + "\n" + folder).
+    // Opening a folder always refreshes it from the server, but throttled: a
+    // repeat open within kFolderResyncSec of the last one is skipped, and a
+    // folder already being fetched is not fetched again.
+    std::map<std::string, int64_t> folderSyncedAt_;      // key -> monotonic seconds
+    std::set<std::string>          folderSyncInFlight_;  // key currently fetching
+    // Do not re-hit the server for a folder opened again within this window.
+    static constexpr int64_t kFolderResyncSec = 15;
+    // Seconds on a steady clock (wall-clock jumps must not affect the throttle).
+    static int64_t NowMonotonicSec() {
+        return std::chrono::duration_cast<std::chrono::seconds>(
+                   std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
 
     std::string dataDir_;
     std::string cacheDir_;

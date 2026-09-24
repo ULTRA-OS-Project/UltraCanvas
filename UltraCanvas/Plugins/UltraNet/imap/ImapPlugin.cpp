@@ -32,6 +32,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -454,6 +455,46 @@ public:
         CURLcode rc = curl_easy_perform(h.get());
         if (rc != CURLE_OK)
             return UltraNetResult::Error(MapCurlError(rc), curl_easy_strerror(rc));
+        return UltraNetResult::Ok();
+    }
+
+    UltraNetResult FetchAllFlags(
+        const std::string& serverUrl, const std::string& folder,
+        const std::function<void(uint32_t uid, UltraNetMailFlags flags, bool flagsKnown)>& onFlags,
+        const UltraNetMailOptions& options) override {
+        std::string base; bool tls = false;
+        if (!ParseServerBase(serverUrl, base, tls))
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
+        const std::string mbUrl = base + EncodeMailboxPath(folder);
+
+        // One reused connection for the whole pass (like FetchEnvelopes).
+        CurlHandle h = NewHandle();
+        if (!h)
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
+        ApplyCommonOptions(h.get(), options, tls);
+
+        // The authoritative live-UID set comes from SEARCH, the same primitive
+        // FetchEnvelopes uses successfully — NOT from parsing a bulk FLAGS fetch,
+        // which can come back empty and would make the caller expunge everything.
+        // A failed search returns an error so the caller skips its expunge pass.
+        std::string searchBody;
+        UltraNetResult sr = PerformOn(h.get(), mbUrl, "UID SEARCH ALL", searchBody);
+        if (!sr) return sr;
+        std::vector<uint32_t> uids = ParseSearchUids(searchBody);
+
+        // Flags are best-effort: one bulk fetch, but a UID missing from the parsed
+        // map is reported flagsKnown=false so the caller never rewrites its flags
+        // on an unread guess. Its existence (for deletion detection) still stands.
+        std::unordered_map<uint32_t, UltraNetMailFlags> fm;
+        std::string flagsBody;
+        if (PerformOn(h.get(), mbUrl, "UID FETCH 1:* (FLAGS)", flagsBody))
+            for (const auto& pr : ParseAllFlags(flagsBody)) fm[pr.first] = pr.second;
+
+        for (uint32_t uid : uids) {
+            auto it = fm.find(uid);
+            onFlags(uid, it != fm.end() ? it->second : UltraNetMailFlags::None,
+                    /*flagsKnown=*/it != fm.end());
+        }
         return UltraNetResult::Ok();
     }
 
