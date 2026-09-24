@@ -55,8 +55,8 @@
 // folder tree down the left of that display; the display clicked last is
 // the one the toolbars, the status bar and the preview act on. The right-hand
 // display and the switch itself are remembered in the settings.
-// Version: 1.21.0
-// Last Modified: 2026-09-19
+// Version: 1.22.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -2176,6 +2176,15 @@ void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
                                   std::string& error) {
         return UploadToRemoteFolder(folder, files, error) > 0;
     };
+    // And the way back: a drive's entries dropped on a local folder shown in
+    // the display are fetched into it, with the same accounting on the status
+    // bar. Without this the drag that most obviously means "copy this off the
+    // server" reached std::filesystem with an ultracloud:// path.
+    widget->remoteDownload = [this](const std::string& folder,
+                                    const std::vector<std::string>& files,
+                                    std::string& error) {
+        return DownloadToLocalFolder(folder, files, error) > 0;
+    };
 
     // The three changes a drive can take. Each is queued and answered at once;
     // what the server said arrives through onOperationFinished.
@@ -2994,12 +3003,19 @@ void UltraFilerWindow::BuildFolderTree() {
     // dropped from the cache, so refreshing it refetches from the server.
     remoteDrives->onOperationFinished = [this](const std::string& folderPath,
                                                const std::string& message) {
-        RefreshRemoteFolderDisplays(folderPath);
-        // The folder was dropped from the cache when the change finished, so
-        // this queues the refetch that brings the tree's rows back in line -
-        // a folder created, renamed or deleted on the drive. The rows are not
-        // touched until that answer arrives.
-        LoadRemoteTreeChildren(folderPath, /*listingReady=*/false);
+        if (IsRemoteFilerPath(folderPath)) {
+            RefreshRemoteFolderDisplays(folderPath);
+            // The folder was dropped from the cache when the change finished,
+            // so this queues the refetch that brings the tree's rows back in
+            // line - a folder created, renamed or deleted on the drive. The
+            // rows are not touched until that answer arrives.
+            LoadRemoteTreeChildren(folderPath, /*listingReady=*/false);
+        } else if (!folderPath.empty()) {
+            // A download: nothing on the drive moved, a folder on this disk
+            // gained a file. Same refresh a paste into it would get, so the
+            // tree, every display of that folder and the History all see it.
+            HandleFolderModified(folderPath);
+        }
         if (message.empty()) {
             lastRemoteOperationError.clear();
             return;
@@ -3115,11 +3131,30 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
     std::error_code ec;
     if (!fs::is_directory(dest, ec) || ec) return false;
 
+    // Entries dragged off a drive onto a local folder row: those come DOWN,
+    // and none of the local move machinery below applies to them - it would
+    // ask std::filesystem about a path no disk has. A drag can carry both
+    // kinds at once (two panes, a selection in each), so each half is dealt
+    // with on its own.
+    std::vector<std::string> localFiles;
+    {
+        std::vector<std::string> remoteFiles;
+        for (const std::string& f : files) {
+            if (IsRemoteFilerPath(f)) remoteFiles.push_back(f);
+            else                      localFiles.push_back(f);
+        }
+        if (!remoteFiles.empty()) {
+            std::string why;
+            DownloadToLocalFolder(dest, remoteFiles, why);
+        }
+        if (localFiles.empty()) return true;
+    }
+
     // Skip sources that would be a no-op or a copy of a folder into itself: the
     // target itself, a folder already living in the target, or a folder that
     // contains the target (dropping it into its own subtree).
     std::vector<std::string> sources;
-    for (const std::string& f : files) {
+    for (const std::string& f : localFiles) {
         if (IsInvalidMoveInto(f, dest)) continue;
         sources.push_back(f);
     }
@@ -3171,6 +3206,55 @@ int UltraFilerWindow::UploadToRemoteFolder(const std::string& folder,
         // soon as the first upload starts: what was NOT sent would
         // otherwise be on screen for a fraction of a second. Shown again
         // by UpdateStatusBar once the drive falls idle.
+        remoteDropNote = skipped > 0 ? line : std::string();
+    }
+    return queued;
+}
+
+int UltraFilerWindow::DownloadToLocalFolder(const std::string& folder,
+                                            const std::vector<std::string>& files,
+                                            std::string& firstRefusal) {
+    firstRefusal.clear();
+    if (!remoteDrives || files.empty()) return 0;
+    int queued = 0, skipped = 0;
+    // The name a collision forced, worth saying only when there is one file
+    // to say it about: "Downloading 5 files ... as something else" answers
+    // nothing, and the folder shows the rest for itself.
+    std::string renamedTo;
+    for (const std::string& f : files) {
+        std::string why, savedAs;
+        if (!remoteDrives->Download(f, folder, savedAs, why)) {
+            ++skipped;
+            if (firstRefusal.empty()) firstRefusal = why;
+            continue;
+        }
+        ++queued;
+        const std::string landed = fs::path(savedAs).filename().string();
+        if (queued == 1 && landed != RemoteFilerName(f)) renamedTo = landed;
+    }
+    if (statusLabel) {
+        // Where they are landing, as the user knows it: the folder's own name,
+        // and the whole path only when it has none (a drive root).
+        std::string where = fs::path(folder).filename().string();
+        if (where.empty()) where = folder;
+        std::string line;
+        if (queued > 0) {
+            line = "Downloading " + std::to_string(queued) +
+                   (queued == 1 ? " file" : " files") + " to " + where + "...";
+            // A file of that name was already there, so the copy landed
+            // beside it. Said now rather than left to be noticed later.
+            if (queued == 1 && !renamedTo.empty())
+                line += "  saving as \"" + renamedTo + "\"";
+        }
+        if (skipped > 0)
+            line += (line.empty() ? "" : "  ") + std::to_string(skipped) +
+                    (skipped == 1 ? " item not downloaded: "
+                                  : " items not downloaded: ") +
+                    firstRefusal;
+        statusLabel->SetText(line);
+        // Same reason as the upload side: the activity line takes the strip
+        // over as soon as the first transfer starts, so what was NOT fetched
+        // is held until the drive falls idle again.
         remoteDropNote = skipped > 0 ? line : std::string();
     }
     return queued;
@@ -5276,6 +5360,24 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
                 text += " - " +
                         FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
                         " sent";
+            } else {
+                text += "...";
+            }
+            break;
+        }
+        case RemoteActivity::Kind::Downloading: {
+            text = "Downloading " + (quoted.empty() ? "a file" : quoted);
+            if (remoteActivity.bytesTotal > 0) {
+                text += " - " +
+                        FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
+                        " of " +
+                        FormatFileSize(static_cast<size_t>(remoteActivity.bytesTotal));
+            } else if (remoteActivity.bytesDone > 0) {
+                // A server that never said how big the file is: what has come
+                // down is still worth showing, and is all there is to show.
+                text += " - " +
+                        FormatFileSize(static_cast<size_t>(remoteActivity.bytesDone)) +
+                        " received";
             } else {
                 text += "...";
             }

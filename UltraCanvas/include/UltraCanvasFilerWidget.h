@@ -87,8 +87,8 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.31.0
-// Last Modified: 2026-09-17
+// Version: 1.33.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1214,6 +1214,22 @@ namespace UltraCanvas {
         // unpack into their own subfolder of the named folder.
         void OpenExtractDialog();
         static bool ClipboardHasContent();
+        // The name a "Keep both" paste would give `baseName` in `folder`: the
+        // name itself when nothing is there, else the first free "name (2)",
+        // "name (3)" ... with the extension kept on the end. Public and
+        // static because a host that writes into a folder without going
+        // through the widget - UltraFiler saving a file it downloaded from a
+        // drive - needs the same answer, and a second implementation of it
+        // would be a second set of rules about what "(2)" means.
+        // `alsoTaken`, when given, is asked about each candidate as well as
+        // the disk, and a true answer walks on to the next one. That is for a
+        // caller with files already promised but not yet written - a queue of
+        // downloads, say: they are not on the disk, so without this the whole
+        // queue would be told the same name is free and the last one to land
+        // would be the only one kept.
+        static std::string UniquePathIn(
+                const std::string& folder, const std::string& baseName,
+                const std::function<bool(const std::string&)>& alsoTaken = {});
 
         // "New >" document kinds (replaces the default seven). The getter
         // lets a host mirror the submenu elsewhere — UltraFiler's command-bar
@@ -1359,6 +1375,19 @@ namespace UltraCanvas {
         std::function<bool(const std::string& folderPath,
                            const std::vector<std::string>& localFiles,
                            std::string& error)> remoteUpload;
+        // Takes files off a drive: the remote files `remoteFiles` are fetched
+        // into the local folder `folderPath` under their own names, one
+        // request each. The mirror of remoteUpload in every respect - the
+        // host queues the work and refreshes when the server has answered,
+        // true means at least one was accepted, and `error` carries the first
+        // refusal even then (a folder, which is not one transfer; a local
+        // path, which is already here). Entries dragged off a drive onto a
+        // local folder shown in this widget go through this; left unset, such
+        // a drop is refused with a message rather than reaching
+        // std::filesystem with an ultracloud:// path it cannot open.
+        std::function<bool(const std::string& folderPath,
+                           const std::vector<std::string>& remoteFiles,
+                           std::string& error)> remoteDownload;
 
         // Extra info column provider (e.g. plays a media header to report the
         // duration). Called once per entry at scan time; empty result keeps the
@@ -2731,7 +2760,17 @@ namespace UltraCanvas {
         // The remote counterpart: the paths go to the host's remoteUpload,
         // which puts them onto the drive the shown folder is on. Nothing is
         // copied locally; what arrives is shown by the host's refresh.
+        // Does any of these live on a drive rather than on this computer?
+        // Asked before a path is handed to std::filesystem, to another
+        // application, or to the system clipboard - none of which can do
+        // anything with an ultracloud:// path.
+        bool AnyRemotePath(const std::vector<std::string>& paths) const;
         void UploadDroppedFiles(const std::vector<std::string>& paths);
+        // The other direction: remote paths dropped on a LOCAL folder go to
+        // the host's remoteDownload, which fetches them into it. Nothing is
+        // copied here either; what arrives is shown by the host's refresh.
+        void DownloadDroppedFiles(const std::vector<std::string>& paths,
+                                  const std::string& destDir);
         // Commit / abandon the inline rename. `restoreFocus` gives the
         // keyboard focus back to the widget after the editor is removed —
         // the Enter / Escape / programmatic paths want that; the focus-loss
@@ -2771,9 +2810,6 @@ namespace UltraCanvas {
         void NotifyFolderModified(const std::string& folderPath = "");
         void ReportError(const std::string& message);
         std::string UniqueChildPath(const std::string& baseName) const;
-        // Same, but in an arbitrary folder (drop target of a drag).
-        static std::string UniquePathIn(const std::string& folder,
-                                        const std::string& baseName);
 
         // ===== COPY / MOVE / DELETE WORKER =====
         // Copying, moving and deleting run on a worker thread, and a progress

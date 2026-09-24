@@ -93,7 +93,9 @@ before adding cross-module code.
 
 ## Build UI out of UltraCanvas elements
 
-The framework ships ~60 UI elements. New UI is assembled from them; it is not
+The framework ships ~60 UI elements in `UltraCanvas/include/`, plus ~70 more
+under `UltraCanvas/include/Plugins/` — charts, diagrams, gauges, codes and
+document views, in the same library. New UI is assembled from them; it is not
 painted from scratch. This is the single most-repeated mistake in this
 repository, so the rule is a prohibition rather than a lookup:
 
@@ -112,8 +114,11 @@ end, and it stopped answering the keyboard entirely as soon as another element
 took the focus.
 
 **[`Docs/UltraCanvas/UltraCanvasUIElements.md`](Docs/UltraCanvas/UltraCanvasUIElements.md)
-is the catalogue** — every element, what it is for, and its defining header.
-Start there; the per-component docs only help once you know the name. The ones
+is the catalogue** — every element, what it is for, and its defining header,
+including the ones under `Plugins/`. Start there; the per-component docs only
+help once you know the name. Searching `include/` alone is how a second
+progress bar came to be written in 2026-09 while
+`UltraCanvasGaugeDiagramElement` sat in `include/Plugins/Diagrams/`. The ones
 reinvented most often:
 
 | You need | Element |
@@ -127,6 +132,8 @@ reinvented most often:
 | Show an image / any media file | `UltraCanvasImageElement`, `UltraCanvasMediaViewer` |
 | Scrolling, panes, tabs, toolbars | `UltraCanvasContainer`, `UltraCanvasSplitPane`, `UltraCanvasTabbedContainer`, `UltraCanvasToolbar` |
 | Menus, modal dialogs, tooltips | `UltraCanvasMenu`, `UltraCanvasModalDialog`, `UltraCanvasTooltipManager` |
+| **A progress bar, or any gauge** | `UltraCanvasGaugeDiagramElement` in `GaugeMode::LinearBar` — `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
+| A chart, a diagram, a QR code or a barcode | one of the ~70 plugin elements — see the catalogue's *Charts, diagrams and codes* section |
 
 Two exceptions only: a **self-rendered view** may paint its own *content*
 (`UltraCanvasFilerWidget`, `UltraCanvasAlbum`, charts) — but it still adds real
@@ -137,7 +144,10 @@ naturally owns its buffer and caret. Declare any other exception in the source:
 // ui-reuse-exempt: <why this one paints directly>
 ```
 
-`scripts/check_ui_reuse.py` enforces this and runs in CI.
+`scripts/check_ui_reuse.py` enforces this and runs in CI, and
+`scripts/check_element_catalogue.py` enforces the other half of it: an element
+that exists but is not on that page cannot be reused, because nobody can find
+it.
 `scripts/ui_reuse_baseline.txt` — which records pre-existing offenders — is
 empty, and the intent is that it stays empty. Do not add to it to silence a
 finding.
@@ -316,10 +326,14 @@ number anywhere else, and never introduce a new literal copy of one:
 1. Match the style of the file you are editing; PascalCase everywhere.
 2. **Before painting any UI, check whether the element already exists** — the
    catalogue is
-   [`Docs/UltraCanvas/UltraCanvasUIElements.md`](Docs/UltraCanvas/UltraCanvasUIElements.md).
-   Writing `DrawText` / `FillRoundedRectangle` plus a private buffer, caret or
-   `hovered` flag to make a control is a defect, not a shortcut. Run
-   `python3 scripts/check_ui_reuse.py` before pushing; CI runs it too.
+   [`Docs/UltraCanvas/UltraCanvasUIElements.md`](Docs/UltraCanvas/UltraCanvasUIElements.md),
+   and it covers `include/Plugins/` as well as `include/`: searching one
+   directory is how a second progress bar got written while the gauge sat in
+   the other. Writing `DrawText` / `FillRoundedRectangle` plus a private
+   buffer, caret or `hovered` flag to make a control is a defect, not a
+   shortcut. Run `python3 scripts/check_ui_reuse.py` before pushing; CI runs
+   it too. Adding an element? Add its row to the catalogue in the same change
+   — `python3 scripts/check_element_catalogue.py` fails without it.
    Wiring a callback on that element? It must not capture a `shared_ptr` to
    the element or to a container above it — capture it raw. Run
    `python3 scripts/check_callback_cycles.py`; CI runs that too.
@@ -341,11 +355,14 @@ number anywhere else, and never introduce a new literal copy of one:
 ## Reporting back (AI sessions)
 
 Finish every reply that reports work — the end of a task, a check-in, a
-status update — with these two blocks, in this order, after the prose that
+status update — with these three blocks, in this order, after the prose that
 says what happened. They are headings, not prose: a reader scanning for "what
 now" must find it without reading the report.
 
 ```markdown
+## Delivery
+...
+
 ## Next Task
 ...
 
@@ -353,7 +370,50 @@ now" must find it without reading the report.
 ...
 ```
 
-1. **`## Next Task`** — what happens next, and who does it. One or two lines:
+1. **`## Delivery`** — where the code actually IS, every time any code was
+   written. **Run `git status --short` and `git diff --shortstat <base>...HEAD`
+   before writing it** and report what they print, not what you remember: the
+   whole point is to catch the gap between what you believe you delivered and
+   what the repository holds.
+
+   Three facts, in this order of danger:
+
+   - **Is anything still uncommitted?** This is the one that loses work.
+     These sessions run in a container that is reclaimed when the session
+     ends, and its clone goes with it: a file edited and not committed is not
+     "pending", it is *gone*, and a reply that describes it as written reads
+     as a delivery that never existed. **Never end a reply reporting finished
+     work while an edit to a tracked file is uncommitted.** Commit it — or,
+     if it is genuinely not ready, say in this block, in as many words, that
+     it is uncommitted and will be lost. A clean `git status` is the normal
+     end state; anything else is stated, never left for the reader to
+     discover.
+   - **How much, and is it pushed?** Files changed and `+added/-removed`
+     lines from `git diff --shortstat`, then the branch name and short SHA —
+     or plainly that the commits are local and unpushed. A commit that never
+     left the container dies with it exactly as an uncommitted edit does.
+   - **Is it a pull request?** The number and link, or the words **no pull
+     request** — never silence. "Pushed" is not "in review": a branch nobody
+     has opened a PR for reaches no reviewer and no `main`, and a reader told
+     a change is "done and pushed" will reasonably assume otherwise. If a PR
+     exists, say its state too (open / merged / CI red / waiting on review),
+     because an open PR that is failing is not delivered either.
+
+   **This one is checked, not remembered.** `.claude/settings.json` (committed,
+   so every clone has it) runs `.claude/hooks/check-delivery.sh` on `Stop`: a
+   turn that would end with an uncommitted tracked file or an unpushed commit
+   is blocked once, with the offending paths and commits listed. Stopping
+   again is allowed — the check refuses silence, not unfinished work — so
+   commit and push, or write the block and say what you are leaving behind.
+   The same script runs on `SessionStart` with `--brief`, which restates the
+   rule and reports anything a previous session left behind.
+
+   Write it even when the answer is unwelcome — *"3 commits, 20 files,
+   +1130/−85, pushed to `claude/…`, **no pull request**"* and *"the parser
+   change is written but **not committed**"* are exactly the lines that must
+   not be left out. Omit the block only for a reply that changed no code at
+   all (a question answered, a file read).
+2. **`## Next Task`** — what happens next, and who does it. One or two lines:
    the next step you intend to take, the thing you are waiting on (a CI run, a
    review, a merge), or the decision you need from the user. When the work is
    finished and nothing follows, write `None — <what was delivered> is
@@ -374,9 +434,12 @@ Two rules about the second block, because it is the one that goes wrong:
   task's scope gets finished or explicitly reported as blocked; it does not
   become a recommendation.
 
-Both blocks describe the repository, not the conversation. "Waiting for the
-test suite" belongs in `Next Task`; "the Alembic reader drops transforms"
-belongs in `Other recommendations` whether or not anyone asked about Alembic.
+`Next Task` and `Other recommendations` describe the repository, not the
+conversation. "Waiting for the test suite" belongs in `Next Task`; "the
+Alembic reader drops transforms" belongs in `Other recommendations` whether or
+not anyone asked about Alembic. `Delivery` is the exception: it describes
+where the work sits right now, and it is the block a reader checks to find out
+whether anything they were told about has actually reached anyone.
 
 ## Branch and pull-request rules (AI sessions)
 
