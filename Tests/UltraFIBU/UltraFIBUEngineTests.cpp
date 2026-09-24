@@ -38,6 +38,7 @@
 #include "UltraFIBUBank.h"
 #include "UltraFIBUBelegArchiv.h"
 #include "UltraFIBUDatev.h"
+#include "UltraFIBUEinrichtung.h"
 #include "UltraFIBURechnungPdf.h"
 #include "UltraFIBUStore.h"
 #include "UltraFIBUTypes.h"
@@ -2657,6 +2658,138 @@ static void TestDatevImport() {
 // not reading it but merging it: `SaveKonto` writes every column, so an import
 // of *names* could wipe the Automatikkonten and switch the tax split back off
 // with nothing to show for it.
+// ===== EINRICHTUNG =====
+//
+// Setting up a new file. What is tested is what fails quietly: a file that
+// appears because a path was mistyped, a half-built file nobody can repair, and
+// above all a setup that writes over a bookkeeping somebody already keeps.
+static void RaeumeEinrichtungAuf(const std::string& pfad) {
+    for (const char* s : { "", "-journal", "-wal", "-shm", ".einrichtung",
+                           ".einrichtung-journal" })
+        std::remove((pfad + s).c_str());
+}
+
+static void TestEinrichtung() {
+    std::printf("Einrichtung (neue Buchhaltung)\n");
+
+    EinrichtungsDaten gut;
+    gut.firma    = "Testfirma GmbH";
+    gut.gjBeginn = Date(2025, 4, 1);
+    gut.skr      = "SKR03";
+
+    // --- what is refused before anything touches the disk ---
+    {
+        CheckText(PruefeEinrichtung(gut), "", "complete data are accepted");
+        EinrichtungsDaten d = gut; d.firma.clear();
+        Check(!PruefeEinrichtung(d).empty(), "a missing company name is refused");
+        d = gut; d.gjBeginn = Date();
+        Check(!PruefeEinrichtung(d).empty(), "and a missing start date");
+        d = gut; d.gjBeginn = Date(2025, 4, 15);
+        Check(PruefeEinrichtung(d).find("Monatsersten") != std::string::npos,
+              "a fiscal year starting mid-month is refused, and the message says why");
+        d = gut; d.skr = "SKR99";
+        Check(!PruefeEinrichtung(d).empty(), "an unknown chart of accounts is refused");
+    }
+
+    // --- opening does not create ---
+    {
+        const std::string pfad = "einrichtung-gibtesnicht.db";
+        RaeumeEinrichtungAuf(pfad);
+        Store store;
+        Check(!store.Open("einr-offen", pfad),
+              "opening a path that does not exist fails");
+        Check(!DateiExistiert(pfad),
+              "and leaves no file behind - SQLite would create one, and the "
+              "migrations then gave it a full empty schema");
+        Check(store.Open("einr-mem", ":memory:").ok, "while :memory: still opens");
+        store.Close();
+    }
+
+    // --- a complete setup ---
+    const std::string pfad = "einrichtung-test.db";
+    RaeumeEinrichtungAuf(pfad);
+    {
+        const EinrichtungsBericht b = RichteBuchhaltungEin(pfad, gut);
+        Check(b.ok, "a new bookkeeping is set up");
+        if (!b.ok) std::printf("    Fehler: %s\n", b.fehler.c_str());
+        Check(DateiExistiert(pfad), "at the path asked for");
+        Check(!DateiExistiert(pfad + ".einrichtung"),
+              "and the temporary file it was built in is gone");
+        CheckText(b.mandant.name, "Testfirma GmbH", "with the company");
+        Check(b.jahr.beginn == Date(2025, 4, 1) && b.jahr.PeriodCount() == 12,
+              "a fiscal year from 01.04.2025 with twelve periods");
+        Check(b.konten > 1000, "the full chart of accounts");
+        CheckInt(b.steuerschluessel, 16, "and the tax keys");
+
+        // Read back through a fresh store: the report is not the file.
+        Store store;
+        Check(store.Open("einr-lesen", pfad).ok, "the file opens afterwards");
+        const std::vector<Mandant> m = store.Mandanten();
+        CheckInt(static_cast<int64_t>(m.size()), 1, "with exactly one company");
+        if (!m.empty()) {
+            std::string nr;
+            Check(store.NextBelegnummer(m[0].id, "rechnung", Date(2025, 6, 15), nr).ok,
+                  "the invoice number range works - its save result used to be "
+                  "discarded, so a failure surfaced only at the first invoice");
+            Check(store.NextBelegnummer(m[0].id, "eingang", Date(2025, 6, 15), nr).ok,
+                  "and so does the range for incoming documents");
+            Steuerschluessel ust;
+            Check(store.SteuerschluesselByKey(m[0].id, "USt19", Date(2025, 6, 15), ust),
+                  "USt19 is valid inside the new fiscal year");
+        }
+        store.Close();
+    }
+
+    // --- never over a bookkeeping ---
+    {
+        EinrichtungsDaten andere = gut;
+        andere.firma = "Eine ganz andere Firma";
+        Check(EnthaeltBuchhaltung(pfad), "the file is recognised as a bookkeeping");
+        const EinrichtungsBericht b = RichteBuchhaltungEin(pfad, andere);
+        Check(!b.ok, "a second setup at the same path is refused");
+        Check(b.fehler.find("nicht überschrieben") != std::string::npos,
+              "and says it will not overwrite");
+        Store store;
+        store.Open("einr-unversehrt", pfad);
+        const std::vector<Mandant> m = store.Mandanten();
+        Check(m.size() == 1 && m[0].name == "Testfirma GmbH",
+              "the existing bookkeeping is untouched");
+        store.Close();
+    }
+    RaeumeEinrichtungAuf(pfad);
+
+    // --- the empty leftover a mistyped path used to produce is replaced ---
+    {
+        const std::string rest = "einrichtung-rest.db";
+        RaeumeEinrichtungAuf(rest);
+        {
+            Store leer;
+            leer.Open("einr-rest", rest, true);   // what opening used to do
+            leer.Close();
+        }
+        Check(DateiExistiert(rest), "an empty leftover file exists");
+        Check(!EnthaeltBuchhaltung(rest), "but holds no bookkeeping");
+        const EinrichtungsBericht b = RichteBuchhaltungEin(rest, gut);
+        Check(b.ok, "so the setup replaces it - refusing would leave the user a "
+                    "file they cannot use and cannot get rid of here");
+        RaeumeEinrichtungAuf(rest);
+    }
+
+    // --- a failure leaves nothing ---
+    {
+        const std::string ungueltig = "gibt/es/nicht/buch.db";
+        const EinrichtungsBericht b = RichteBuchhaltungEin(ungueltig, gut);
+        Check(!b.ok, "a target in a directory that does not exist fails");
+        Check(!DateiExistiert(ungueltig) && !DateiExistiert(ungueltig + ".einrichtung"),
+              "and leaves neither the file nor its temporary copy");
+        EinrichtungsDaten falsch = gut; falsch.skr = "SKR99";
+        const std::string pfad2 = "einrichtung-falsch.db";
+        RaeumeEinrichtungAuf(pfad2);
+        Check(!RichteBuchhaltungEin(pfad2, falsch).ok, "invalid data are refused");
+        Check(!DateiExistiert(pfad2), "before anything is written");
+    }
+}
+
 static void TestKontenbeschriftungen() {
     std::printf("Kontenbeschriftungen (DATEV-Kategorie 20)\n");
 
@@ -5898,6 +6031,7 @@ int main() {
     TestDatev();
     TestDatevImport();
     TestKontenbeschriftungen();
+    TestEinrichtung();
     TestDatevImportInDenBestand();
     TestDatevRundlauf();
     TestBankLesen();

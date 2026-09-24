@@ -77,6 +77,11 @@ struct Akteur {
     bool Darf(Recht recht) const { return RolleHatRecht(rolle, recht); }
 };
 
+// True when a file exists at `pfad`. By stat(), not by reading it: this is asked
+// of database files, which are large and may be open elsewhere, and "can I read
+// all of it" is a different question from "is it there".
+bool DateiExistiert(const std::string& pfad);
+
 class Store {
 public:
     // The schema version Open() migrates to. Bumped with every migration step
@@ -93,7 +98,15 @@ public:
 
     // Local, single-user: one SQLite file. ":memory:" works and is what the
     // tests use.
-    StoreResult Open(const std::string& connectionName, const std::string& databasePath);
+    //
+    // **Opening does not create.** SQLite creates a file it is asked to open,
+    // and the migrations then gave it a full empty schema - so a mistyped path
+    // produced a 300 KB bookkeeping file with no company in it, which the
+    // screens then told the user to set up. A new file is made by
+    // `RichteBuchhaltungEin`, which passes `anlegen`; everything else gets a
+    // plain "not found" for a path that is not there.
+    StoreResult Open(const std::string& connectionName, const std::string& databasePath,
+                     bool anlegen = false);
 
     // Shared server. `credentialsRef` is an UltraVault key ("vault:fibu-rw"),
     // never a literal password. Returns a clear refusal while the PostgreSQL

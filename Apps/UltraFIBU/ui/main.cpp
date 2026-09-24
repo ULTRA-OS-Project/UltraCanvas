@@ -1,13 +1,19 @@
 // Apps/UltraFIBU/ui/main.cpp
 // ultrafibu-ui: the German screens over the UltraFIBU engine.
 //
-// The database is the one argument. It is not created here: setting up a
-// company, its fiscal year and its chart of accounts is `ultrafibu einrichten`,
-// and a bookkeeping file that appears because somebody opened a window by
-// mistake is not a thing that should be possible.
+// The database is the one optional argument. Without it - or with a path that
+// holds no bookkeeping - the start window opens, where one is set up or
+// chosen. This used to print "keine Datei angegeben" and end, which from a
+// double-click on Windows looked exactly like a crash: the console window
+// closed before the sentence could be read.
+//
+// What still holds from the old rule: a bookkeeping file never appears
+// because somebody opened a window. Opening does not create
+// (`Store::Open`); only the setup form does, and only when asked.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUApp.h"
+#include "UltraFIBUStart.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasUtils.h"   // GetResourcesDir, NormalizePath
@@ -30,21 +36,16 @@ int main(int argc, char** argv) {
         }
         if (arg == "--help" || arg == "-h") {
             std::printf("ultrafibu-ui - Buchhaltung (UltraFIBU %s)\n\n"
-                        "Aufruf:  ultrafibu-ui <datei>\n\n"
+                        "Aufruf:  ultrafibu-ui [<datei>]\n\n"
                         "Zeigt Belege, Journal, Summen und Salden und die Partner\n"
-                        "einer bestehenden Buchhaltung. Angelegt wird eine solche\n"
-                        "Datei mit \"ultrafibu einrichten\".\n",
+                        "einer Buchhaltung. Ohne Datei - oder mit einer, die es noch\n"
+                        "nicht gibt - oeffnet sich ein Fenster, in dem eine neue\n"
+                        "angelegt oder eine bestehende gewaehlt wird.\n",
                         ULTRAFIBU_UI_VERSION);
             return EXIT_SUCCESS;
         }
         if (datenbank.empty()) datenbank = arg;
     }
-    if (datenbank.empty()) {
-        std::printf("Fehler: Keine Datei angegeben.\n"
-                    "Aufruf: ultrafibu-ui <datei>\n");
-        return EXIT_FAILURE;
-    }
-
     UltraCanvas::UltraCanvasApplication app;
     if (!app.Initialize("UltraFIBU")) {
         std::printf("Fehler: Die Anwendung konnte nicht gestartet werden "
@@ -60,17 +61,45 @@ int main(int argc, char** argv) {
         UltraCanvas::GetResourcesDir() + "media/appicon/UltraFIBU.png"));
 
     UltraFIBU::FibuApp fibu;
-    std::string fehler;
-    if (!fibu.Initialisieren(datenbank, fehler)) {
-        // Reported on the terminal rather than in a dialog: at this point
-        // there is no window yet, and the usual cause is a wrong path typed on
-        // that same terminal.
-        std::printf("Fehler: %s\n", fehler.c_str());
-        return EXIT_FAILURE;
+    UltraFIBU::StartFenster start;
+
+    // Open a file in the main window. Returns why not, or an empty string.
+    // The main window is built and shown here, before anything closes the
+    // start window: the application ends when it has no window left.
+    auto oeffne = [&fibu](const std::string& pfad) -> std::string {
+        std::string fehler;
+        if (!fibu.Initialisieren(pfad, fehler)) return fehler;
+        fibu.FensterBauen()->Show();
+        return std::string();
+    };
+
+    // Why the start window is needed, if it is. Each case gets its own
+    // sentence: "no file", "no such file" and "a file with nothing in it" call
+    // for different things, and a single "could not open" leaves the user to
+    // work out which.
+    std::string hinweis;
+    if (datenbank.empty()) {
+        hinweis = "Es ist noch keine Buchhaltung geöffnet. Legen Sie eine neue an "
+                  "oder öffnen Sie eine bestehende.";
+    } else if (!UltraFIBU::DateiExistiert(datenbank)) {
+        hinweis = "Die Datei \"" + datenbank + "\" gibt es nicht. Sie lässt sich "
+                  "hier als neue Buchhaltung anlegen.";
+    } else if (!UltraFIBU::EnthaeltBuchhaltung(datenbank)) {
+        hinweis = "In \"" + datenbank + "\" ist noch keine Buchhaltung angelegt. "
+                  "Das lässt sich hier nachholen.";
+    } else {
+        const std::string fehler = oeffne(datenbank);
+        if (fehler.empty()) {
+            app.Run();
+            return EXIT_SUCCESS;
+        }
+        // An existing bookkeeping that would not open - written by a newer
+        // version, for instance. The start window says so and offers another.
+        hinweis = fehler;
     }
 
-    auto fenster = fibu.FensterBauen();
-    fenster->Show();
+    start.onDateiGewaehlt = oeffne;
+    start.Bauen(hinweis, datenbank)->Show();
     app.Run();
     return EXIT_SUCCESS;
 }

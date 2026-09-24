@@ -5,6 +5,8 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUStore.h"
+
+#include <sys/stat.h>
 #include "UltraFIBUUstIdNr.h"
 
 #include <UltraDatabase/UltraDatabaseConnection.h>
@@ -794,7 +796,14 @@ std::string Store::RowLock() const {
     return UltraDb_RowLockSuffix(connection_);
 }
 
-StoreResult Store::Open(const std::string& connectionName, const std::string& databasePath) {
+bool DateiExistiert(const std::string& pfad) {
+    if (pfad.empty()) return false;
+    struct stat st;
+    return ::stat(pfad.c_str(), &st) == 0;
+}
+
+StoreResult Store::Open(const std::string& connectionName, const std::string& databasePath,
+                        bool anlegen) {
     datenbankPfad_ = databasePath;
     // Re-registering a name replaces the pooled entry and drops the physical
     // connection - which for ":memory:" would throw the database away. So it
@@ -806,6 +815,13 @@ StoreResult Store::Open(const std::string& connectionName, const std::string& da
             needsRegistration = false;
     }
     if (needsRegistration) {
+        // Only here, where this store itself registers a SQLite file: a
+        // connection registered beforehand - a PostgreSQL server - names a
+        // database, not a path, and has nothing to be missing on disk.
+        if (!anlegen && databasePath != ":memory:" && !DateiExistiert(databasePath))
+            return StoreResult::Fail(
+                "Die Datei \"" + databasePath + "\" gibt es nicht. Eine neue "
+                "Buchhaltung wird eingerichtet, nicht durch Öffnen angelegt.");
         UltraDbConnectionConfig cfg;
         cfg.name     = connectionName;
         cfg.driver   = "sqlite";

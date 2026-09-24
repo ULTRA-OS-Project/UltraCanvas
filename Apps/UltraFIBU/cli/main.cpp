@@ -17,6 +17,7 @@
 #include "UltraFIBUOss.h"
 #include "UltraFIBUBeleg.h"
 #include "UltraFIBUDatev.h"
+#include "UltraFIBUEinrichtung.h"
 #include "UltraFIBURechnungPdf.h"
 #include "UltraFIBUBuchung.h"
 #include "UltraFIBUGeschaeftsjahr.h"
@@ -274,11 +275,18 @@ Akteur AkteurFor(const Store& store) {
 
 int Einrichten(int argc, char** argv) {
     const std::string datei = Positional(argc, argv, 0);
-    const std::string firma = Option(argc, argv, "--firma");
-    if (datei.empty() || firma.empty()) {
-        std::printf("Fehler: Datei und --firma sind erforderlich.\n");
+    if (datei.empty()) {
+        std::printf("Fehler: Keine Datei angegeben.\n");
         return 2;
     }
+
+    // The same setup the screens run: RichteBuchhaltungEin is the one
+    // definition of what a new bookkeeping file contains. This only turns
+    // options into its input and its report into text.
+    EinrichtungsDaten daten;
+    daten.firma    = Option(argc, argv, "--firma");
+    daten.skr      = Option(argc, argv, "--skr", "SKR03");
+    daten.benutzer = Option(argc, argv, "--benutzer", "admin");
 
     const std::string beginnText = Option(argc, argv, "--gj-beginn");
     if (beginnText.empty()) {
@@ -286,136 +294,55 @@ int Einrichten(int argc, char** argv) {
                     "Monatsersten beginnen, z. B. --gj-beginn 01.04.2026\n");
         return 2;
     }
-    Date beginn;
-    if (!TryParseDateGerman(beginnText, beginn)) {
+    if (!TryParseDateGerman(beginnText, daten.gjBeginn)) {
         std::printf("Fehler: \"%s\" ist kein Datum.\n", beginnText.c_str());
         return 2;
     }
 
-    Store store;
-    if (!OpenStore(store, datei)) return 1;
-    if (!store.Mandanten().empty()) {
-        std::printf("Fehler: In \"%s\" ist bereits ein Mandant angelegt.\n", datei.c_str());
-        return 1;
-    }
-
-    // The first user becomes the administrator: there is nobody to authorise
-    // them, which is the one case the store allows.
-    Benutzer admin;
-    admin.anmeldename = Option(argc, argv, "--benutzer", "admin");
-    admin.anzeigename = admin.anmeldename;
-    Akteur niemand;
-    const StoreResult userSaved = store.SaveBenutzer(admin, niemand);
-    if (!userSaved) { std::printf("Fehler: %s\n", userSaved.fehler.c_str()); return 1; }
-    Akteur akteur;
-    akteur.benutzerId  = admin.id;
-    akteur.anmeldename = admin.anmeldename;
-    akteur.rolle       = admin.rolle;
-
-    Mandant mandant;
-    mandant.name    = firma;
-    mandant.ustIdNr = Option(argc, argv, "--ust-idnr");
-    mandant.ort     = Option(argc, argv, "--ort");
-    mandant.land    = Option(argc, argv, "--land", "DE");
     // The company's own address and tax number are not decoration: without
     // them a printed invoice is deficient under § 14 UStG and its recipient
     // cannot deduct the input tax. They are settable here so a file can be set
     // up complete in one go; "ultrafibu rechnung-pdf" names whatever is still
     // missing.
-    mandant.strasse      = Option(argc, argv, "--strasse");
-    mandant.plz          = Option(argc, argv, "--plz");
-    mandant.steuernummer = Option(argc, argv, "--steuernummer");
-    mandant.finanzamtNummer = Option(argc, argv, "--finanzamt-nr");
-    mandant.telefon      = Option(argc, argv, "--telefon");
-    mandant.email        = Option(argc, argv, "--email");
-    mandant.webseite     = Option(argc, argv, "--web");
-    mandant.iban         = Option(argc, argv, "--iban");
-    mandant.bic          = Option(argc, argv, "--bic");
-    mandant.bank         = Option(argc, argv, "--bank");
-    mandant.rechtsform   = Option(argc, argv, "--rechtsform");
-    // Assigned by the Kanzlei. Without them a DATEV import is refused
-    // there, so they belong in the same setup step as everything else
-    // that has to be right before the first export.
-    mandant.beraternummer   = Option(argc, argv, "--beraternummer");
-    mandant.mandantennummer = Option(argc, argv, "--mandantennummer");
-    const StoreResult mandantSaved = store.SaveMandant(mandant, akteur);
-    if (!mandantSaved) { std::printf("Fehler: %s\n", mandantSaved.fehler.c_str()); return 1; }
+    Mandant& m = daten.stammdaten;
+    m.ustIdNr         = Option(argc, argv, "--ust-idnr");
+    m.strasse         = Option(argc, argv, "--strasse");
+    m.plz             = Option(argc, argv, "--plz");
+    m.ort             = Option(argc, argv, "--ort");
+    m.land            = Option(argc, argv, "--land", "DE");
+    m.steuernummer    = Option(argc, argv, "--steuernummer");
+    m.finanzamtNummer = Option(argc, argv, "--finanzamt-nr");
+    m.telefon         = Option(argc, argv, "--telefon");
+    m.email           = Option(argc, argv, "--email");
+    m.webseite        = Option(argc, argv, "--web");
+    m.iban            = Option(argc, argv, "--iban");
+    m.bic             = Option(argc, argv, "--bic");
+    m.bank            = Option(argc, argv, "--bank");
+    m.rechtsform      = Option(argc, argv, "--rechtsform");
+    // Assigned by the Kanzlei. Without them a DATEV import is refused there,
+    // so they belong in the same setup step as everything else that has to be
+    // right before the first export.
+    m.beraternummer   = Option(argc, argv, "--beraternummer");
+    m.mandantennummer = Option(argc, argv, "--mandantennummer");
 
-    Geschaeftsjahr jahr = MakeGeschaeftsjahr(beginn);
-    jahr.mandantId        = mandant.id;
-    jahr.skr              = Option(argc, argv, "--skr", "SKR03");
-    jahr.sachkontenlaenge = 4;
-    const StoreResult jahrSaved = store.SaveGeschaeftsjahr(jahr, akteur);
-    if (!jahrSaved) { std::printf("Fehler: %s\n", jahrSaved.fehler.c_str()); return 1; }
-
-    // The number ranges a bookkeeping file cannot work without. Allocated from
-    // the database, so two writers can never receive the same invoice number.
-    Nummernkreis rechnungen;
-    rechnungen.mandantId = mandant.id;
-    rechnungen.kreis     = "rechnung";
-    rechnungen.praefix   = "R-{JJJJ}{MM}";
-    rechnungen.stellen   = 3;
-    store.SaveNummernkreis(rechnungen, akteur);
-    Nummernkreis belege;
-    belege.mandantId = mandant.id;
-    belege.kreis     = "beleg";
-    belege.praefix   = "B-";
-    belege.stellen   = 5;
-    store.SaveNummernkreis(belege, akteur);
-    // Incoming documents get their own range. A supplier's invoice carries the
-    // supplier's number; this is our internal one, and mixing it with the
-    // outgoing invoice numbers would make both meaningless.
-    Nummernkreis eingang;
-    eingang.mandantId = mandant.id;
-    eingang.kreis     = "eingang";
-    eingang.praefix   = "E-{JJJJ}";
-    eingang.stellen   = 5;
-    store.SaveNummernkreis(eingang, akteur);
+    const EinrichtungsBericht bericht = RichteBuchhaltungEin(datei, daten);
+    for (const std::string& warnung : bericht.warnungen)
+        std::printf("  Warnung: %s\n", warnung.c_str());
+    if (!bericht.ok) {
+        std::printf("Fehler: %s\n", bericht.fehler.c_str());
+        return 1;
+    }
 
     std::printf("Buchhaltung angelegt: %s\n", datei.c_str());
-    std::printf("  Mandant          %s\n", mandant.name.c_str());
+    std::printf("  Mandant          %s\n", bericht.mandant.name.c_str());
     std::printf("  Geschäftsjahr    %s (%s - %s, %d Perioden)\n",
-                jahr.bezeichnung.c_str(), FormatDateGerman(jahr.beginn).c_str(),
-                FormatDateGerman(jahr.ende).c_str(), jahr.PeriodCount());
-    std::printf("  Benutzer         %s (%s)\n", admin.anmeldename.c_str(),
-                BenutzerRolleLabel(admin.rolle).c_str());
-
-    const std::string skrDatei = jahr.skr + ".csv";
-    const std::string skrPfad  = FindeDatenDatei(skrDatei);
-    if (skrPfad.empty()) {
-        std::printf("  Hinweis: %s wurde nicht gefunden - der Kontenrahmen bleibt leer.\n"
-                    "           ULTRAFIBU_DATA_DIR auf das Datenverzeichnis setzen.\n",
-                    skrDatei.c_str());
-    } else {
-        std::vector<Konto> konten;
-        const LadeErgebnis geladen = LadeKontenrahmen(skrPfad, jahr.skr, konten);
-        for (const std::string& warnung : geladen.warnungen)
-            std::printf("  Warnung: %s\n", warnung.c_str());
-        if (!geladen.ok) {
-            std::printf("  Fehler beim Kontenrahmen: %s\n", geladen.fehler.c_str());
-        } else {
-            int written = 0;
-            const StoreResult imported = store.ImportKonten(mandant.id, konten, akteur, written);
-            if (!imported) std::printf("  Fehler: %s\n", imported.fehler.c_str());
-            else std::printf("  Kontenrahmen     %s, %d Konten\n", jahr.skr.c_str(), written);
-        }
-    }
-
-    const std::string steuerPfad = FindeDatenDatei("Steuerschluessel.csv");
-    if (!steuerPfad.empty()) {
-        std::vector<Steuerschluessel> schluessel;
-        const LadeErgebnis geladen = LadeSteuerschluesselDatei(steuerPfad, schluessel);
-        for (const std::string& warnung : geladen.warnungen)
-            std::printf("  Warnung: %s\n", warnung.c_str());
-        if (geladen.ok) {
-            int written = 0;
-            const StoreResult imported =
-                store.ImportSteuerschluessel(mandant.id, schluessel, akteur, written);
-            if (!imported) std::printf("  Fehler: %s\n", imported.fehler.c_str());
-            else std::printf("  Steuerschlüssel  %d\n", written);
-        }
-    }
-
+                bericht.jahr.bezeichnung.c_str(),
+                FormatDateGerman(bericht.jahr.beginn).c_str(),
+                FormatDateGerman(bericht.jahr.ende).c_str(), bericht.jahr.PeriodCount());
+    std::printf("  Benutzer         %s (%s)\n", bericht.admin.anmeldename.c_str(),
+                BenutzerRolleLabel(bericht.admin.rolle).c_str());
+    std::printf("  Kontenrahmen     %s, %d Konten\n", bericht.jahr.skr.c_str(), bericht.konten);
+    std::printf("  Steuerschlüssel  %d\n", bericht.steuerschluessel);
     std::printf("\nNächster Schritt: ultrafibu partner-neu %s --name \"...\"\n", datei.c_str());
     return 0;
 }

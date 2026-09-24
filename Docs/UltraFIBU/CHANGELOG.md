@@ -1,3 +1,50 @@
+#### 2026-09-24 *0.23.0*
+- **Eine Buchhaltung laesst sich im Programm anlegen.** `ultrafibu-ui` ohne
+  Datei - oder mit einer, die es nicht gibt oder die leer ist - oeffnet ein
+  Startfenster: neue Buchhaltung anlegen (Firma, Beginn des Geschaeftsjahres,
+  SKR03/SKR04) oder eine bestehende oeffnen. Bisher gab das Programm eine
+  Zeile auf der Konsole aus und endete; unter Windows per Doppelklick
+  gestartet schloss sich die Konsole, bevor man sie lesen konnte, und das sah
+  aus wie ein Absturz.
+  - **Im Kalender sind nur Monatserste waehlbar.** Das Geschaeftsjahr kann nur
+    dort beginnen; die Regel steht damit, wo gewaehlt wird, statt hinterher
+    als Fehlermeldung. Das Datum laesst sich auch eintippen (TT.MM.JJJJ), die
+    Woche beginnt montags.
+  - **Das Datum ist nicht vorbelegt.** Eine erste Fassung setzte den naechsten
+    Monatsersten ein - im Test ergab das ein Geschaeftsjahr ab 01.10.2026 fuer
+    eine Firma, deren Jahr am 01.04.2025 beginnt. Ein falscher Beginn legt
+    jede Periode an die falsche Stelle und laesst sich nach der ersten
+    Buchung nicht mehr beheben; das Formular nennt das Datum deshalb als
+    fehlend, bis bewusst eines gewaehlt ist.
+  - **Gefragt wird nur, was zum Anfangen noetig ist.** Anschrift,
+    Steuernummer und Bankverbindung braucht erst die erste gedruckte
+    Rechnung, und `rechnung-pdf` nennt dann genau, was fehlt.
+  - Ein ausgegrauter Knopf steht nie ohne Grund daneben: die Pruefung ist
+    dieselbe, die die Engine beim Anlegen macht.
+- **Oeffnen legt keine Datei mehr an.** SQLite erzeugt eine Datei, die es
+  oeffnen soll, und die Migrationen gaben ihr ein volles leeres Schema. Ein
+  vertippter Pfad ergab so eine 300 KB grosse Buchhaltung ohne Firma, und das
+  Programm forderte dann auf, sie per Kommandozeile einzurichten. Jetzt:
+  "Die Datei ... gibt es nicht. Eine neue Buchhaltung wird eingerichtet,
+  nicht durch Oeffnen angelegt." Die Pruefung greift nur, wo `Store::Open`
+  selbst eine SQLite-Verbindung anlegt; eine PostgreSQL-Verbindung nennt eine
+  Datenbank, keinen Pfad.
+- **Die Einrichtung ist jetzt eine Engine-Funktion** (`RichteBuchhaltungEin`),
+  die CLI und Oberflaeche gemeinsam benutzen. Dabei behoben:
+  - **Alles oder nichts.** Gebaut wird unter einem temporaeren Namen neben
+    dem Ziel und erst am Ende umbenannt. Vorher hinterliess ein Fehler auf
+    halbem Weg eine Datei mit Firma und ohne Konten, die ein zweiter Versuch
+    dann verweigerte ("bereits ein Mandant angelegt") - nicht mehr zu retten.
+  - **Nie ueber eine bestehende Buchhaltung.** Eine Datei mit Firma wird
+    verweigert; eine leere (der Rest eines frueheren vertippten Pfades) wird
+    ersetzt. Ein Mutationstest ohne diesen Schutz schlaegt drei Pruefungen,
+    darunter "the existing bookkeeping is untouched".
+  - **Ein fehlender Kontenrahmen ist ein Fehler, kein Hinweis.** Bisher legte
+    die Einrichtung die Firma trotzdem an und meldete Erfolg - daher der
+    SKR04-Mandant mit null Konten.
+  - **Die Ergebnisse der Nummernkreise werden geprueft.** Sie wurden
+    verworfen; ein Fehler zeigte sich erst bei der ersten Rechnung.
+
 #### 2026-09-24 *0.22.0*
 - **Die Steuerschluessel gelten ab 01.04.2025 statt ab 01.01.2026.** Ein
   Geschaeftsjahr 01.04.2025-31.03.2026 war damit in neun von zwoelf Perioden
