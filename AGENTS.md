@@ -370,23 +370,40 @@ now" must find it without reading the report.
 ...
 ```
 
-1. **`## Delivery`** — where the code actually IS, in three facts, every time
-   any code was written:
-   - **how much**: files changed and `+added/-removed` lines, from
-     `git diff --shortstat` against the base branch — not a prose estimate;
-   - **committed and pushed?** the branch name and short SHA, or plainly that
-     the work is still only in the working tree;
-   - **is it a pull request?** the number and link, or the words **no pull
+1. **`## Delivery`** — where the code actually IS, every time any code was
+   written. **Run `git status --short` and `git diff --shortstat <base>...HEAD`
+   before writing it** and report what they print, not what you remember: the
+   whole point is to catch the gap between what you believe you delivered and
+   what the repository holds.
+
+   Three facts, in this order of danger:
+
+   - **Is anything still uncommitted?** This is the one that loses work.
+     These sessions run in a container that is reclaimed when the session
+     ends, and its clone goes with it: a file edited and not committed is not
+     "pending", it is *gone*, and a reply that describes it as written reads
+     as a delivery that never existed. **Never end a reply reporting finished
+     work while an edit to a tracked file is uncommitted.** Commit it — or,
+     if it is genuinely not ready, say in this block, in as many words, that
+     it is uncommitted and will be lost. A clean `git status` is the normal
+     end state; anything else is stated, never left for the reader to
+     discover.
+   - **How much, and is it pushed?** Files changed and `+added/-removed`
+     lines from `git diff --shortstat`, then the branch name and short SHA —
+     or plainly that the commits are local and unpushed. A commit that never
+     left the container dies with it exactly as an uncommitted edit does.
+   - **Is it a pull request?** The number and link, or the words **no pull
      request** — never silence. "Pushed" is not "in review": a branch nobody
-     has opened a PR for reaches no reviewer and no `main`, and a reader who
-     is told a change is "done and pushed" will reasonably assume otherwise.
-     If a PR exists, say its state too (open / merged / CI red / waiting on
-     review), because an open PR that is failing is not delivered either.
+     has opened a PR for reaches no reviewer and no `main`, and a reader told
+     a change is "done and pushed" will reasonably assume otherwise. If a PR
+     exists, say its state too (open / merged / CI red / waiting on review),
+     because an open PR that is failing is not delivered either.
 
    Write it even when the answer is unwelcome — *"3 commits, 20 files,
-   +1130/−85, pushed to `claude/…`, **no pull request**"* is exactly the line
-   that must not be left out. Omit the block only for a reply that changed no
-   code at all (a question answered, a file read).
+   +1130/−85, pushed to `claude/…`, **no pull request**"* and *"the parser
+   change is written but **not committed**"* are exactly the lines that must
+   not be left out. Omit the block only for a reply that changed no code at
+   all (a question answered, a file read).
 2. **`## Next Task`** — what happens next, and who does it. One or two lines:
    the next step you intend to take, the thing you are waiting on (a CI run, a
    review, a merge), or the decision you need from the user. When the work is
