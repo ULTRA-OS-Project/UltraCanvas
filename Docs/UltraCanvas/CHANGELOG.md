@@ -1,3 +1,38 @@
+#### 2026-09-24 *0.9.50*
+- **Spreadsheet: the fill handle fills.** The small square at the corner of
+  the selection was drawn but dragging it did nothing. Dragging it down, up,
+  right or left now shows a dashed outline of the range and, on release,
+  fills it from the selection: two or more numbers continue as a series
+  (1, 2 → 3, 4, 5), a text ending in a number counts on ("Item 1" →
+  "Item 2"), formulas are copied with their relative references shifted
+  (`=C2*$D$1` → `=C3*$D$1`), and anything else is repeated, formatting
+  included. The fill is one undo step, and every formula is recalculated so
+  totals reading the new cells update.
+  - `SpreadsheetSheet::AutoFill` was a plain copy that nothing called; it now
+    implements the above. New: `UltraCanvasSpreadsheet::AutoFillSelection`
+    and the free function `ShiftFormulaReferences`.
+  - A header sort now recalculates every formula too, so formulas outside
+    the sorted block that read it are up to date.
+  - New `SpreadsheetAutoFillTest`.
+- **Spreadsheet: sort a selected block from its column headers.** Select two
+  or more rows and each column header over the block shows an up/down sort
+  button, like the ListView's sortable headers. Clicking it sorts only the
+  selected rows by that column; the other selected columns move with it, so
+  every row stays together, and the title and totals rows outside the block
+  stay where they are. Clicking the same button again reverses the order, the
+  header shows the direction, and Ctrl+Z undoes the sort.
+  - When the block contains formulas, the button first shows an OK/Cancel
+    warning: sorting moves formulas with their rows but does not rewrite
+    their references, so a row formula can end up reading another row.
+    `SetSortFormulaWarningEnabled(false)` turns it off.
+  - New API: `SortSelectionByColumn(column, order)`,
+    `SetHeaderSortEnabled` / `IsHeaderSortEnabled`, `GetHeaderSortColumn` /
+    `GetHeaderSortAscending`, `SetSortFormulaWarningEnabled`, the
+    `onSelectionSorted` callback, and `SpreadsheetSheet::CountFormulaCells`.
+  - DemoApp: the Spreadsheet page's hint and status line explain and report
+    the header sort.
+  - New `SpreadsheetRangeSortTest` covers the block sort.
+
 #### 2026-09-24 *0.9.49*
 - **New: per-call name servers for UltraNet DNS** (`UltraNetDnsOptions` in
   `UltraNet/UltraNetDns.h`; `UltraNet_DnsResolve` and `UltraNet_DnsResolveAsync`
