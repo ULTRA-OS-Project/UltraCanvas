@@ -1,3 +1,41 @@
+#### 2026-09-24 *0.9.49*
+- **New: per-call name servers for UltraNet DNS** (`UltraNetDnsOptions` in
+  `UltraNet/UltraNetDns.h`; `UltraNet_DnsResolve` and `UltraNet_DnsResolveAsync`
+  each gain an overload that takes one). `options.servers` names the servers
+  a single lookup asks - "9.9.9.9", "9.9.9.9:5353", "[2620:fe::fe]:53" - and
+  `options.timeoutMs` its deadline; a default-constructed value is the
+  process default. Every backend honours it: c-ares runs the lookup on a
+  channel of its own per distinct list (kept for the process, so a channel
+  is never destroyed under an abandoned query, and a list that comes back
+  reuses it), libresolv points a private resolver state at IPv4 servers on
+  the given port, and dnsapi hands DnsQuery an IP4_ARRAY (IPv4, port 53;
+  anything else is `Unsupported`, a new `UltraNetResultCode` appended after
+  `Unknown`). A lookup with servers of its own bypasses the UltraNet cache
+  and the getaddrinfo / getnameinfo paths, so A / AAAA go to the named
+  server too and PTR goes out as the in-addr.arpa / ip6.arpa name. Two pure
+  helpers come with it: `UltraNet_DnsParseServer` (an entry into address
+  and port) and `UltraNet_DnsReverseName`.
+- **The libresolv backends answer A / AAAA, bound their retries by the
+  deadline, and report a timeout as `Timeout`** - `retrans` is the deadline
+  in whole seconds and `retry` one round, instead of the default 5 s x 2
+  tries x every server, and `TRY_AGAIN` maps to `Timeout` rather than
+  `HostNotFound`. dnsapi maps `ERROR_TIMEOUT` the same way. c-ares maps
+  "could not contact DNS servers" to `ConnectionRefused` instead of
+  `Unknown`, and `UltraNet_DnsSetServers` keeps the ports of its entries
+  (`ares_set_servers_ports_csv`; the plain csv call dropped them).
+- **The DNS deadline test is deterministic now.** `dns_resolve_honours_its_
+  deadline` asks a server that never answers - a UDP socket the test opens
+  on the loopback and never reads - through the per-call option, so the
+  only way back is the deadline and the c-ares assertion is `Timeout` again,
+  exactly, offline, on every runner (0.9.33 had loosened it because a local
+  caching resolver answered inside the millisecond). An unroutable address
+  is not as reliable: a sandbox that rejects the packet outright answers
+  "cannot contact" at once. New `Tests/UltraNet/test_dns_servers.cpp`: the
+  entry parser and the reverse name, the validation both entry points apply
+  before any query, a 1.5 s lookup at the silent server (Timeout on c-ares),
+  and PTR through the reverse name; `UltraNetApiStatus` gains a per-call
+  servers probe that proves the option offline the same way.
+
 #### 2026-09-23 *0.9.48*
 - **New: `UltraCanvasMessageCenter` — the desktop message centre as one element**
   (`UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`,

@@ -54,7 +54,7 @@ is purely a libcurl build option.
 | File transfer | FTP, FTPS, SFTP | `UltraNet/UltraNetFtp.h` |
 | Transport | TCP, UDP | `UltraNet/UltraNetSocket.h` |
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
-| Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …) | `UltraNet/UltraNetDns.h` |
+| Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
@@ -143,6 +143,17 @@ UltraNet_WebSocketClose(ws);
 
 std::vector<std::string> mx;
 UltraNet_DnsResolve("example.com", mx, UltraNetDnsType::MX);
+
+// Ask a particular server, for this call only - a resolver you are testing,
+// a split-horizon server, or an unroutable one to prove a deadline. Every
+// backend honours it: c-ares on a channel of its own per list (any address,
+// any port), libresolv and dnsapi with the resolver pointed at IPv4 servers
+// on port 53. Such a lookup never touches the UltraNet cache.
+UltraNetDnsOptions options;
+options.servers   = {"9.9.9.9", "[2620:fe::fe]:53"};
+options.timeoutMs = 2000;
+std::vector<std::string> a;
+UltraNet_DnsResolve("example.com", a, UltraNetDnsType::A, options);
 ```
 
 ```cpp

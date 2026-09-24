@@ -924,7 +924,10 @@ future.
   Google Drive
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
-- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
+- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync` (each also with an
+  `UltraNetDnsOptions` - the name servers to ask for that call only, and the
+  deadline), `UltraNet_DnsReverseLookup`, `UltraNet_DnsClearCache`,
+  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
 - `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
   `UltraNet_UrlDecode`

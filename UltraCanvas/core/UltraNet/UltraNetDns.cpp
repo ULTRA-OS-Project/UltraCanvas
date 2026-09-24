@@ -1,11 +1,15 @@
 // core/UltraNet/UltraNetDns.cpp
-// System-resolver DNS (getaddrinfo / getnameinfo) for A / AAAA / PTR.
-// Other record types (MX / TXT / SRV / NS / CNAME / SOA) return
-// UnsupportedScheme until the c-ares backend lands in Stage 3.
+// The DNS entry points: routing between the c-ares backend (every record
+// type, real async) and the system resolver fallback (getaddrinfo /
+// getnameinfo for A / AAAA / PTR, the platform DNS library for the rest),
+// the process-wide cache, and the per-call options. A lookup that names its
+// own servers (UltraNetDnsOptions::servers) goes to the platform backend on
+// every build - c-ares on its own channel for that list, libresolv / dnsapi
+// with the resolver state pointed at the list - and never touches the cache.
 //
-// Async path: spawn a detached thread that runs the sync resolver. This is
-// fine for typical app workloads; the curl_multi worker is reserved for HTTP.
-// Version: 0.2.0 (Stage 2)
+// Async path without c-ares: a detached thread runs the sync resolver. Fine
+// for typical app workloads; the curl_multi worker is reserved for HTTP.
+// Version: 0.3.0 - per-call name servers (UltraNetDnsOptions)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetDns.h"
@@ -29,7 +33,8 @@ namespace ultranet_dns_platform {
     UltraNetResult ResolveAsyncCares(
         const std::string& hostname,
         UltraNetDnsType type,
-        std::function<void(const std::vector<std::string>&)> onResult);
+        std::function<void(const std::vector<std::string>&)> onResult,
+        const std::vector<std::string>& servers);
     void SetCustomServersCares(const std::vector<std::string>& servers);
 }
 #endif
@@ -102,6 +107,18 @@ void StoreCache(const std::string& key, const std::vector<std::string>& addrs) {
     g_cache[key] = {addrs, std::chrono::steady_clock::now() + kCacheTtl};
 }
 
+// Every entry of a per-call server list must parse; the backends rely on it.
+UltraNetResult ValidateServers(const std::vector<std::string>& servers) {
+    for (const std::string& spec : servers) {
+        std::string address; int port = 0;
+        if (!UltraNet_DnsParseServer(spec, address, port)) {
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                         "not a name server address: " + spec);
+        }
+    }
+    return UltraNetResult::Ok();
+}
+
 const char* DnsTypeName(UltraNetDnsType t) {
     switch (t) {
         case UltraNetDnsType::A:     return "A";
@@ -123,11 +140,37 @@ UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
                                    std::vector<std::string>& outAddresses,
                                    UltraNetDnsType type,
                                    int timeoutMs) {
+    UltraNetDnsOptions options;
+    options.timeoutMs = timeoutMs;
+    return UltraNet_DnsResolve(hostname, outAddresses, type, options);
+}
+
+UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
+                                   std::vector<std::string>& outAddresses,
+                                   UltraNetDnsType type,
+                                   const UltraNetDnsOptions& options) {
     outAddresses.clear();
     if (hostname.empty()) {
         return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
                                      "hostname is empty");
     }
+    const int timeoutMs = options.timeoutMs > 0 ? options.timeoutMs : 5000;
+
+    // ---- A lookup with servers of its own ---------------------------------
+    // Bypasses the cache and the getaddrinfo / getnameinfo paths, which have
+    // no way to name a server: everything goes to the platform backend, PTR
+    // as a query for the reverse name.
+    if (!options.servers.empty()) {
+        if (UltraNetResult v = ValidateServers(options.servers); !v) return v;
+        std::string name = hostname;
+        if (type == UltraNetDnsType::PTR && !UltraNet_DnsReverseName(hostname, name)) {
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                         "not a valid IPv4/IPv6 address");
+        }
+        return ultranet_dns_platform::Resolve(name, type, outAddresses,
+                                              timeoutMs, options.servers);
+    }
+    static const std::vector<std::string> kNoServers;
 
 #ifdef ULTRANET_HAS_CARES
     // c-ares handles every record type uniformly (including PTR — but the
@@ -142,8 +185,7 @@ UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
             return UltraNetResult::Ok();
         }
         UltraNetResult r = ultranet_dns_platform::Resolve(
-            hostname, type, outAddresses,
-            timeoutMs > 0 ? timeoutMs : 5000);
+            hostname, type, outAddresses, timeoutMs, kNoServers);
         if (r) StoreCache(cacheKey, outAddresses);
         return r;
     }
@@ -151,7 +193,7 @@ UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
 
     if (type == UltraNetDnsType::PTR) {
         std::string host;
-        UltraNetResult r = UltraNet_DnsReverseLookup(hostname, host, 5000);
+        UltraNetResult r = UltraNet_DnsReverseLookup(hostname, host, timeoutMs);
         if (r) outAddresses.push_back(host);
         return r;
     }
@@ -163,8 +205,8 @@ UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
         }
         // MX/TXT/SRV/NS/CNAME/SOA: hand off to the platform DNS backend
         // (libresolv on Linux/macOS, dnsapi.dll on Windows).
-        UltraNetResult r =
-            ultranet_dns_platform::Resolve(hostname, type, outAddresses, 5000);
+        UltraNetResult r = ultranet_dns_platform::Resolve(
+            hostname, type, outAddresses, timeoutMs, kNoServers);
         if (r) StoreCache(cacheKey, outAddresses);
         return r;
     }
@@ -209,10 +251,20 @@ UltraNetResult UltraNet_DnsResolveAsync(
     const std::string& hostname,
     UltraNetDnsType type,
     std::function<void(const std::vector<std::string>&)> onResult) {
+    return UltraNet_DnsResolveAsync(hostname, type, std::move(onResult),
+                                    UltraNetDnsOptions{});
+}
+
+UltraNetResult UltraNet_DnsResolveAsync(
+    const std::string& hostname,
+    UltraNetDnsType type,
+    std::function<void(const std::vector<std::string>&)> onResult,
+    const UltraNetDnsOptions& options) {
     if (!onResult) {
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                      "onResult callback is required");
     }
+    if (UltraNetResult v = ValidateServers(options.servers); !v) return v;
 #ifdef ULTRANET_HAS_CARES
     // c-ares gives us real non-blocking async — no thread-per-call.
     // PTR is the one exception: we go through the reverse-lookup path
@@ -220,12 +272,12 @@ UltraNetResult UltraNet_DnsResolveAsync(
     // needs the queried IP as well.
     if (type != UltraNetDnsType::PTR) {
         return ultranet_dns_platform::ResolveAsyncCares(
-            hostname, type, std::move(onResult));
+            hostname, type, std::move(onResult), options.servers);
     }
 #endif
-    std::thread([hostname, type, cb = std::move(onResult)]() {
+    std::thread([hostname, type, options, cb = std::move(onResult)]() {
         std::vector<std::string> addrs;
-        UltraNet_DnsResolve(hostname, addrs, type, 5000);
+        UltraNet_DnsResolve(hostname, addrs, type, options);
         cb(addrs);
     }).detach();
     return UltraNetResult::Ok();
@@ -234,6 +286,8 @@ UltraNetResult UltraNet_DnsResolveAsync(
 UltraNetResult UltraNet_DnsReverseLookup(const std::string& ipAddress,
                                          std::string& outHostname,
                                          int /*timeoutMs*/) {
+    // getnameinfo has no deadline and no server of its own; a caller that
+    // needs either asks for a PTR through UltraNet_DnsResolve with options.
     outHostname.clear();
     if (ipAddress.empty()) {
         return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
@@ -268,6 +322,75 @@ UltraNetResult UltraNet_DnsReverseLookup(const std::string& ipAddress,
     return UltraNetResult::Ok();
 }
 
+bool UltraNet_DnsParseServer(const std::string& spec,
+                             std::string& outAddress, int& outPort) {
+    outAddress.clear();
+    outPort = 0;
+    std::string address, portText;
+    if (!spec.empty() && spec.front() == '[') {
+        // "[v6]" or "[v6]:port"
+        const std::size_t close = spec.find(']');
+        if (close == std::string::npos) return false;
+        address = spec.substr(1, close - 1);
+        if (close + 1 < spec.size()) {
+            if (spec[close + 1] != ':') return false;
+            portText = spec.substr(close + 2);
+            if (portText.empty()) return false;   // "[v6]:" names no port
+        }
+    } else if (spec.find(':') != std::string::npos
+               && spec.find(':') == spec.rfind(':')) {
+        // exactly one colon: "v4:port" (a bare v6 has at least two)
+        address  = spec.substr(0, spec.find(':'));
+        portText = spec.substr(spec.find(':') + 1);
+        if (portText.empty()) return false;   // "9.9.9.9:" names no port
+    } else {
+        address = spec;   // bare v4 or bare v6
+    }
+    if (address.empty()) return false;
+    in_addr  v4{};
+    in6_addr v6{};
+    if (inet_pton(AF_INET, address.c_str(), &v4) != 1
+        && inet_pton(AF_INET6, address.c_str(), &v6) != 1) {
+        return false;
+    }
+    int port = 0;
+    if (!portText.empty()) {
+        if (portText.size() > 5) return false;
+        for (char c : portText) {
+            if (c < '0' || c > '9') return false;
+            port = port * 10 + (c - '0');
+        }
+        if (port < 1 || port > 65535) return false;
+    }
+    outAddress = address;
+    outPort    = port;
+    return true;
+}
+
+bool UltraNet_DnsReverseName(const std::string& ipAddress, std::string& outName) {
+    outName.clear();
+    in_addr v4{};
+    if (inet_pton(AF_INET, ipAddress.c_str(), &v4) == 1) {
+        const unsigned char* b = reinterpret_cast<const unsigned char*>(&v4);
+        outName = std::to_string(b[3]) + '.' + std::to_string(b[2]) + '.'
+                + std::to_string(b[1]) + '.' + std::to_string(b[0]) + ".in-addr.arpa";
+        return true;
+    }
+    in6_addr v6{};
+    if (inet_pton(AF_INET6, ipAddress.c_str(), &v6) == 1) {
+        static const char kHex[] = "0123456789abcdef";
+        const unsigned char* b = reinterpret_cast<const unsigned char*>(&v6);
+        std::string name;
+        for (int i = 15; i >= 0; --i) {
+            name += kHex[b[i] & 0x0f]; name += '.';
+            name += kHex[b[i] >> 4];   name += '.';
+        }
+        outName = name + "ip6.arpa";
+        return true;
+    }
+    return false;
+}
+
 void UltraNet_DnsClearCache() {
     std::lock_guard<std::mutex> lk(g_cacheMutex);
     g_cache.clear();
@@ -279,9 +402,10 @@ void UltraNet_DnsSetServers(const std::vector<std::string>& servers) {
         g_customServers = servers;
     }
 #ifdef ULTRANET_HAS_CARES
-    // c-ares accepts a comma-separated server list at any time; the next
-    // ares_query will use them. Without c-ares this remains a no-op
-    // against the system resolver.
+    // c-ares accepts a comma-separated server list (with ports) at any time;
+    // the next query on the default channel uses them. Without c-ares this
+    // remains a no-op against the system resolver - a lookup that must reach
+    // a given server names it in UltraNetDnsOptions::servers instead.
     ultranet_dns_platform::SetCustomServersCares(servers);
 #endif
 }

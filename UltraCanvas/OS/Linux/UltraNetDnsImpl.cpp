@@ -2,7 +2,7 @@
 // libresolv-backed DNS-record queries for non-A/AAAA types. Uses the modern
 // res_nquery + ns_parserr API so the resolver state can carry custom server
 // lists set via UltraNet_DnsSetServers in the future.
-// Version: 0.3.1 (Stage 3 hardening)
+// Version: 0.4.0 - per-call servers, A / AAAA, the deadline bounds the retries
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "../../core/UltraNet/UltraNetDnsImpl.h"
@@ -50,6 +50,20 @@ bool FormatRr(ns_msg msg, ns_rr rr, UltraNetDnsType type, std::string& out) {
     };
 
     switch (type) {
+        case UltraNetDnsType::A: {
+            if (rdlen != 4) return false;
+            char text[INET_ADDRSTRLEN]{};
+            if (!inet_ntop(AF_INET, rdata, text, sizeof text)) return false;
+            out = text;
+            return true;
+        }
+        case UltraNetDnsType::AAAA: {
+            if (rdlen != 16) return false;
+            char text[INET6_ADDRSTRLEN]{};
+            if (!inet_ntop(AF_INET6, rdata, text, sizeof text)) return false;
+            out = text;
+            return true;
+        }
         case UltraNetDnsType::MX: {
             if (rdlen < 3) return false;
             uint16_t pref = (rdata[0] << 8) | rdata[1];
@@ -115,10 +129,47 @@ bool FormatRr(ns_msg msg, ns_rr rr, UltraNetDnsType type, std::string& out) {
 
 } // namespace
 
+// Point a resolver state at a per-call server list. libresolv's classic
+// nsaddr_list carries IPv4 servers on their own port; the extended IPv6 list
+// is glibc-private, so IPv6 servers are Unsupported here (c-ares takes them).
+// A list longer than MAXNS is cut to its first MAXNS entries.
+UltraNetResult ApplyServers(struct __res_state& state,
+                            const std::vector<std::string>& servers) {
+    int n = 0;
+    for (const std::string& spec : servers) {
+        if (n >= MAXNS) break;
+        std::string address; int port = 0;
+        if (!UltraNet_DnsParseServer(spec, address, port)) {
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                         "not a name server address: " + spec);
+        }
+        sockaddr_in sin{};
+        sin.sin_family = AF_INET;
+        sin.sin_port   = htons(static_cast<uint16_t>(port > 0 ? port : 53));
+        if (inet_pton(AF_INET, address.c_str(), &sin.sin_addr) != 1) {
+            return UltraNetResult::Error(UltraNetResultCode::Unsupported,
+                "the libresolv backend takes IPv4 name servers only: " + spec);
+        }
+        state.nsaddr_list[n++] = sin;
+    }
+    state.nscount = n;
+    return UltraNetResult::Ok();
+}
+
+UltraNetResultCode MapHError(int herr) {
+    switch (herr) {
+        case HOST_NOT_FOUND: return UltraNetResultCode::HostNotFound;
+        case NO_DATA:        return UltraNetResultCode::HostNotFound;
+        case TRY_AGAIN:      return UltraNetResultCode::Timeout;   // no answer in time, or SERVFAIL
+        default:             return UltraNetResultCode::Unknown;
+    }
+}
+
 UltraNetResult Resolve(const std::string& hostname,
                        UltraNetDnsType type,
                        std::vector<std::string>& outRecords,
-                       int /*timeoutMs*/) {
+                       int timeoutMs,
+                       const std::vector<std::string>& servers) {
     outRecords.clear();
 
     struct __res_state state{};
@@ -126,13 +177,26 @@ UltraNetResult Resolve(const std::string& hostname,
         return UltraNetResult::Error(UltraNetResultCode::Unknown,
                                      "res_ninit failed");
     }
+    if (!servers.empty()) {
+        if (UltraNetResult r = ApplyServers(state, servers); !r) {
+            res_nclose(&state);
+            return r;
+        }
+    }
+    // Bound the resolver's own retries by the deadline: one round per server
+    // of at most the deadline (whole seconds, at least one), instead of the
+    // default 5 s x 2 tries x every server.
+    if (timeoutMs > 0) {
+        state.retrans = (timeoutMs + 999) / 1000;
+        state.retry   = 1;
+    }
     unsigned char buf[NS_PACKETSZ * 4];
     int n = res_nquery(&state, hostname.c_str(), ns_c_in,
                        ToNsType(type), buf, sizeof buf);
+    const int herr = h_errno;
     res_nclose(&state);
     if (n < 0) {
-        return UltraNetResult::Error(UltraNetResultCode::HostNotFound,
-                                     hstrerror(h_errno));
+        return UltraNetResult::Error(MapHError(herr), hstrerror(herr));
     }
     ns_msg msg;
     if (ns_initparse(buf, n, &msg) < 0) {

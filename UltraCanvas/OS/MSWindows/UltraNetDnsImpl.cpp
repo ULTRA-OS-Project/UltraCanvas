@@ -1,8 +1,8 @@
 // OS/MSWindows/UltraNetDnsImpl.cpp
 // DnsQuery_A-backed DNS-record queries for non-A/AAAA types on Windows.
 // Linked against dnsapi (via CMake).
-// Version: 0.3.2 (UNICODE/ANSI DNS record fix)
-// Last Modified: 2026-07-05
+// Version: 0.4.0 - per-call servers (IP4_ARRAY), A / AAAA, ERROR_TIMEOUT maps to Timeout
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "../../core/UltraNet/UltraNetDnsImpl.h"
@@ -12,6 +12,8 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <windns.h>
 
@@ -23,6 +25,7 @@
 #include <vector>
 
 #pragma comment(lib, "dnsapi.lib")
+#pragma comment(lib, "ws2_32.lib")
 
 namespace ultranet_dns_platform {
 namespace {
@@ -48,6 +51,22 @@ WORD ToDnsType(UltraNetDnsType t) {
 bool FormatRecord(const DNS_RECORDA* r, UltraNetDnsType type, std::string& out) {
     if (!r) return false;
     switch (type) {
+        case UltraNetDnsType::A: {
+            if (r->wType != DNS_TYPE_A) return false;
+            in_addr a{};
+            a.s_addr = r->Data.A.IpAddress;
+            char text[INET_ADDRSTRLEN]{};
+            if (!inet_ntop(AF_INET, &a, text, sizeof text)) return false;
+            out = text;
+            return true;
+        }
+        case UltraNetDnsType::AAAA: {
+            if (r->wType != DNS_TYPE_AAAA) return false;
+            char text[INET6_ADDRSTRLEN]{};
+            if (!inet_ntop(AF_INET6, &r->Data.AAAA.Ip6Address, text, sizeof text)) return false;
+            out = text;
+            return true;
+        }
         case UltraNetDnsType::MX: {
             if (r->wType != DNS_TYPE_MX) return false;
             std::ostringstream os;
@@ -112,21 +131,66 @@ bool FormatRecord(const DNS_RECORDA* r, UltraNetDnsType type, std::string& out) 
 
 } // namespace
 
+// The per-call server list as DnsQuery takes it: an IP4_ARRAY of IPv4
+// servers on port 53 (the API has no port and no IPv6 form; c-ares takes
+// both). The array is variable-length, so it lives in `storage`.
+UltraNetResult BuildServerArray(const std::vector<std::string>& servers,
+                                std::vector<unsigned char>& storage,
+                                PIP4_ARRAY& outArray) {
+    outArray = nullptr;
+    if (servers.empty()) return UltraNetResult::Ok();
+    storage.assign(sizeof(IP4_ARRAY) + servers.size() * sizeof(IP4_ADDRESS), 0);
+    auto* arr = reinterpret_cast<PIP4_ARRAY>(storage.data());
+    arr->AddrCount = 0;
+    for (const std::string& spec : servers) {
+        std::string address; int port = 0;
+        if (!UltraNet_DnsParseServer(spec, address, port)) {
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                         "not a name server address: " + spec);
+        }
+        in_addr a{};
+        if (inet_pton(AF_INET, address.c_str(), &a) != 1) {
+            return UltraNetResult::Error(UltraNetResultCode::Unsupported,
+                "the dnsapi backend takes IPv4 name servers only: " + spec);
+        }
+        if (port != 0 && port != 53) {
+            return UltraNetResult::Error(UltraNetResultCode::Unsupported,
+                "the dnsapi backend asks name servers on port 53 only: " + spec);
+        }
+        arr->AddrArray[arr->AddrCount++] = a.s_addr;
+    }
+    outArray = arr;
+    return UltraNetResult::Ok();
+}
+
 UltraNetResult Resolve(const std::string& hostname,
                        UltraNetDnsType type,
                        std::vector<std::string>& outRecords,
-                       int /*timeoutMs*/) {
+                       int /*timeoutMs*/,   // DnsQuery has no per-call deadline
+                       const std::vector<std::string>& servers) {
     outRecords.clear();
+    std::vector<unsigned char> serverStorage;
+    PIP4_ARRAY serverArray = nullptr;
+    if (UltraNetResult r = BuildServerArray(servers, serverStorage, serverArray); !r) {
+        return r;
+    }
+    // A named server is asked directly: no resolver cache, no hosts file.
+    const DWORD queryOptions = serverArray
+        ? (DNS_QUERY_STANDARD | DNS_QUERY_BYPASS_CACHE | DNS_QUERY_NO_HOSTS_FILE)
+        : DNS_QUERY_STANDARD;
     PDNS_RECORD records = nullptr;
     DNS_STATUS s = DnsQuery_A(hostname.c_str(),
                               ToDnsType(type),
-                              DNS_QUERY_STANDARD,
-                              nullptr, &records, nullptr);
+                              queryOptions,
+                              serverArray, &records, nullptr);
     if (s != 0 || !records) {
         char buf[64];
         std::snprintf(buf, sizeof buf, "DnsQuery_A failed (status %lu)",
                       static_cast<unsigned long>(s));
-        return UltraNetResult::Error(UltraNetResultCode::HostNotFound, buf);
+        const UltraNetResultCode code =
+            (s == ERROR_TIMEOUT) ? UltraNetResultCode::Timeout
+                                 : UltraNetResultCode::HostNotFound;
+        return UltraNetResult::Error(code, buf);
     }
     for (PDNS_RECORD r = records; r; r = r->pNext) {
         std::string formatted;
