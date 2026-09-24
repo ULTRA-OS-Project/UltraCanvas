@@ -20538,8 +20538,20 @@ filer->remoteDownload = [drives](const std::string& folderPath,
   each; the return value and `error` mean exactly what they do for
   `remoteUpload`. A drop carrying entries from a drive *and* files from this
   computer at once — a selection dragged out of a drive pane and one out of a
-  local pane — is split, each half taking its own route. Left unset, such a drop is refused with a message rather than
-  reaching `std::filesystem` with an `ultracloud://` path it cannot open.
+  local pane — is split, each half taking its own route. Left unset, such a
+  drop is refused with a message rather than reaching `std::filesystem` with
+  an `ultracloud://` path it cannot open.
+
+- **The clipboard uses the same two hooks.** `Paste()` into a remote folder
+  goes to `remoteUpload`; pasting a drive's entries into a local folder goes
+  to `remoteDownload`. Copying a drive's entries puts their *names* on the
+  system clipboard as text and keeps the paths on the widget's own clipboard
+  (static, so shared between panes): another application cannot open an
+  `ultracloud://` path, and for that same reason a drag of them that leaves
+  the window is not handed to the OS — it stays an in-window drag. `Cut` and
+  `Duplicate` refuse on a drive, and are greyed out in the context menu: a
+  move off a drive is a download plus a destructive delete, and a duplicate
+  is a server-side copy no provider offers.
 
 - Each returns `true` when the request was **accepted**, not when it finished;
   `false` with `error` is for what can be refused outright — a drive that

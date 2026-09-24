@@ -87,7 +87,7 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.32.0
+// Version: 1.33.0
 // Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 #pragma once
@@ -2760,6 +2760,11 @@ namespace UltraCanvas {
         // The remote counterpart: the paths go to the host's remoteUpload,
         // which puts them onto the drive the shown folder is on. Nothing is
         // copied locally; what arrives is shown by the host's refresh.
+        // Does any of these live on a drive rather than on this computer?
+        // Asked before a path is handed to std::filesystem, to another
+        // application, or to the system clipboard - none of which can do
+        // anything with an ultracloud:// path.
+        bool AnyRemotePath(const std::vector<std::string>& paths) const;
         void UploadDroppedFiles(const std::vector<std::string>& paths);
         // The other direction: remote paths dropped on a LOCAL folder go to
         // the host's remoteDownload, which fetches them into it. Nothing is

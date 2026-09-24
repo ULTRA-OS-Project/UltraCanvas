@@ -49,7 +49,7 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.32.0
+// Version: 1.33.0
 // Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 
@@ -2976,8 +2976,16 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::RefuseWriteHere(const char* what) {
         if (currentPath.empty() || !isRemotePath || !isRemotePath(currentPath))
             return false;
+        // What a drive CAN do from here is the provider's verb list: upload,
+        // download, rename, delete, create a folder. This is the fallback for
+        // the operations outside it - a duplicate (a server-side copy no
+        // provider offers) and writing a fresh file's bytes - so the message
+        // says which those are rather than claiming a drive is read-only,
+        // which it has not been since uploads landed.
         ReportError(std::string("Cannot ") + what +
-                    " on a remote drive: this build can browse one, not change it.");
+                    " on a drive: there is no single server operation for it. "
+                    "Files can be copied to and from a drive, renamed and "
+                    "deleted, and folders created.");
         return true;
     }
 
@@ -4219,17 +4227,49 @@ namespace UltraCanvas {
         for (const FilerEntry& e : targets) clipboardPaths.push_back(e.path);
         clipboardCut = cut && !clipboardPaths.empty();
         // Mirror to the system clipboard (text/uri-list + cut/copy marker) so
-        // the files can be pasted in other programs.
-        if (!clipboardPaths.empty()) {
-            if (UltraCanvasClipboard* cb = GetClipboard()) {
+        // the files can be pasted in other programs - but only what those
+        // programs can open. An entry on a drive has no file on this computer
+        // yet, and putting its ultracloud:// path on the system clipboard
+        // offers every other application a path it cannot resolve. It stays on
+        // the internal clipboard, which is what a paste in this application
+        // reads, so copying off a drive and pasting into a local folder works
+        // (Paste turns it into a download).
+        if (UltraCanvasClipboard* cb = GetClipboard(); cb && !clipboardPaths.empty()) {
+            if (!AnyRemotePath(clipboardPaths)) {
                 cb->SetFiles(clipboardPaths, clipboardCut);
+            } else {
+                // The names as text instead. Two things have to be true at
+                // once: no other application may be handed a path it cannot
+                // open, and the system clipboard must still be TAKEN - Paste
+                // reads it first, so leaving the previous copy's file list
+                // there would paste those files instead of these. Writing
+                // text does both, and gives another application something it
+                // can actually use.
+                std::string names;
+                for (const FilerEntry& e : targets) {
+                    if (!names.empty()) names += "\n";
+                    names += e.name;
+                }
+                cb->SetText(names);
             }
         }
         RequestRedraw();   // reflect (or clear) the cut ghosting immediately
     }
 
     void UltraCanvasFilerWidget::CopySelection() { SelectionToClipboard(false); }
-    void UltraCanvasFilerWidget::CutSelection()  { SelectionToClipboard(true); }
+    void UltraCanvasFilerWidget::CutSelection()  {
+        // A cut is a move, and moving a file off a drive is a download plus a
+        // delete on the server - two provider verbs, the second destructive,
+        // with nothing to undo it if the first only half arrived. Refused
+        // rather than offered: a cut that ghosts the entries and then cannot
+        // complete is worse than one that never starts. Copy, then delete.
+        if (ShowingRemoteFolder()) {
+            ReportError("Cannot cut from a drive - copy the files, then delete "
+                        "them once they have arrived.");
+            return;
+        }
+        SelectionToClipboard(true);
+    }
 
     // ===== DRAGGING ENTRIES =====
     void UltraCanvasFilerWidget::SetDragEnabled(bool enabled) {
@@ -4294,7 +4334,13 @@ namespace UltraCanvas {
         if (!IsInsideWindow(windowPoint) && !dragNativeRefused) {
             std::vector<std::string> paths = dragPaths;
             EndDragGesture();
-            if (!StartNativeDragOfPaths(paths)) {
+            // Entries that live on a drive have no file on this computer, and
+            // an ultracloud:// path handed to another application is a path
+            // nothing there can open - it would accept the drop and then fail,
+            // or silently paste the text. The gesture is kept as our own drag
+            // instead, which still works everywhere inside this window (a
+            // local folder in the tree, a local pane) and downloads them.
+            if (AnyRemotePath(paths) || !StartNativeDragOfPaths(paths)) {
                 // No native drag available (no window / no implementation on
                 // this platform / refused grab): keep our own drag running so
                 // the gesture is not lost, and stop asking for this gesture.
@@ -4477,6 +4523,14 @@ namespace UltraCanvas {
             return -1;
         }
         return idx;
+    }
+
+    bool UltraCanvasFilerWidget::AnyRemotePath(
+            const std::vector<std::string>& paths) const {
+        if (!isRemotePath) return false;
+        for (const std::string& p : paths)
+            if (isRemotePath(p)) return true;
+        return false;
     }
 
     void UltraCanvasFilerWidget::UploadDroppedFiles(const std::vector<std::string>& paths) {
@@ -4725,11 +4779,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::Paste() {
-        if (RefuseWriteHere("paste")) return;
         // The system clipboard wins: it holds whatever was copied last,
         // whether here (mirrored by SelectionToClipboard) or in another
         // program. The internal clipboard is the fallback when no system
-        // clipboard is available.
+        // clipboard is available - and the only place entries copied off a
+        // drive are kept, since their paths are no use to other programs.
         std::vector<std::string> paths;
         bool cut = false;
         if (UltraCanvasClipboard* cb = GetClipboard()) {
@@ -4741,12 +4795,39 @@ namespace UltraCanvas {
         }
         if (paths.empty()) {
             // No files on either clipboard: paste raw clipboard data (an
-            // image or text copied in another program) as a new file.
+            // image or text copied in another program) as a new file. That
+            // writes with std::filesystem, so a drive cannot take it.
+            if (RefuseWriteHere("paste")) return;
             PasteClipboardDataAsFile();
             return;
         }
 
-        PasteFilesInto(currentPath, std::move(paths), cut,
+        // Pasting INTO a drive is an upload, exactly as dropping the same
+        // files on it is. This used to be refused outright, so the keyboard
+        // could not do what the mouse already did.
+        if (ShowingRemoteFolder()) {
+            if (AnyRemotePath(paths)) {
+                ReportError("Moving or copying within a drive is not supported "
+                            "yet - copy the files to this computer first.");
+                return;
+            }
+            UploadDroppedFiles(paths);
+            return;
+        }
+
+        // Pasting a drive's entries into a local folder is a download. The
+        // paste machinery below would hand std::filesystem an ultracloud://
+        // path no disk has, which is why this used to do nothing at all. A
+        // clipboard can hold both kinds at once, so each half goes its own way.
+        std::vector<std::string> remoteSources, localSources;
+        for (const std::string& p : paths) {
+            if (isRemotePath && isRemotePath(p)) remoteSources.push_back(p);
+            else                                 localSources.push_back(p);
+        }
+        if (!remoteSources.empty()) DownloadDroppedFiles(remoteSources, currentPath);
+        if (localSources.empty()) return;
+
+        PasteFilesInto(currentPath, std::move(localSources), cut,
                        [this, cut](bool changed) {
             // A cut is consumed by its paste, even a partially skipped one.
             if (cut) { clipboardPaths.clear(); clipboardCut = false; }
@@ -13036,10 +13117,16 @@ namespace UltraCanvas {
         }
 
         addAction("Copy", hasSel, [this]() { CopySelection(); }, "Ctrl+C");
-        addAction("Cut", hasSel, [this]() { CutSelection(); }, "Ctrl+X");
+        // Cut and Duplicate are greyed out on a drive rather than offered and
+        // then refused: a move off a drive is a download plus a destructive
+        // delete, and a duplicate is a server-side copy no provider has.
+        // Paste stays live - into a drive it uploads, out of one it downloads.
+        addAction("Cut", hasSel && !ShowingRemoteFolder(),
+                  [this]() { CutSelection(); }, "Ctrl+X");
         addAction("Paste", ClipboardHasContent(), [this]() { Paste(); }, "Ctrl+V");
         addAction("Delete", hasSel, [this]() { DeleteSelection(); }, "Del");
-        addAction("Duplicate", hasSel, [this]() { DuplicateSelection(); }, "Ctrl+D");
+        addAction("Duplicate", hasSel && !ShowingRemoteFolder(),
+                  [this]() { DuplicateSelection(); }, "Ctrl+D");
         {
             size_t renameIdx = singleSel ? selection.front() : 0;
             addAction("Rename", singleSel,
