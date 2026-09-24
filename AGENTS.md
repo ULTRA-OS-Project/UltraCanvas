@@ -355,11 +355,14 @@ number anywhere else, and never introduce a new literal copy of one:
 ## Reporting back (AI sessions)
 
 Finish every reply that reports work — the end of a task, a check-in, a
-status update — with these two blocks, in this order, after the prose that
+status update — with these three blocks, in this order, after the prose that
 says what happened. They are headings, not prose: a reader scanning for "what
 now" must find it without reading the report.
 
 ```markdown
+## Delivery
+...
+
 ## Next Task
 ...
 
@@ -367,7 +370,24 @@ now" must find it without reading the report.
 ...
 ```
 
-1. **`## Next Task`** — what happens next, and who does it. One or two lines:
+1. **`## Delivery`** — where the code actually IS, in three facts, every time
+   any code was written:
+   - **how much**: files changed and `+added/-removed` lines, from
+     `git diff --shortstat` against the base branch — not a prose estimate;
+   - **committed and pushed?** the branch name and short SHA, or plainly that
+     the work is still only in the working tree;
+   - **is it a pull request?** the number and link, or the words **no pull
+     request** — never silence. "Pushed" is not "in review": a branch nobody
+     has opened a PR for reaches no reviewer and no `main`, and a reader who
+     is told a change is "done and pushed" will reasonably assume otherwise.
+     If a PR exists, say its state too (open / merged / CI red / waiting on
+     review), because an open PR that is failing is not delivered either.
+
+   Write it even when the answer is unwelcome — *"3 commits, 20 files,
+   +1130/−85, pushed to `claude/…`, **no pull request**"* is exactly the line
+   that must not be left out. Omit the block only for a reply that changed no
+   code at all (a question answered, a file read).
+2. **`## Next Task`** — what happens next, and who does it. One or two lines:
    the next step you intend to take, the thing you are waiting on (a CI run, a
    review, a merge), or the decision you need from the user. When the work is
    finished and nothing follows, write `None — <what was delivered> is
@@ -388,9 +408,12 @@ Two rules about the second block, because it is the one that goes wrong:
   task's scope gets finished or explicitly reported as blocked; it does not
   become a recommendation.
 
-Both blocks describe the repository, not the conversation. "Waiting for the
-test suite" belongs in `Next Task`; "the Alembic reader drops transforms"
-belongs in `Other recommendations` whether or not anyone asked about Alembic.
+`Next Task` and `Other recommendations` describe the repository, not the
+conversation. "Waiting for the test suite" belongs in `Next Task`; "the
+Alembic reader drops transforms" belongs in `Other recommendations` whether or
+not anyone asked about Alembic. `Delivery` is the exception: it describes
+where the work sits right now, and it is the block a reader checks to find out
+whether anything they were told about has actually reached anyone.
 
 ## Branch and pull-request rules (AI sessions)
 
