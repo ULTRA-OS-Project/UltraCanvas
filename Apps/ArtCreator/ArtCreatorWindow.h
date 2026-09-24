@@ -7,8 +7,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
-// Version: 1.1.0
-// Last Modified: 2026-09-18
+// Version: 1.3.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -104,9 +104,13 @@ private:
     void CmdReorder(VectorEdit::ZOrderMove move);
     void CmdGroup();
     void CmdUngroup();
+    void CmdMirror(bool horizontal);
     void CmdAlign(VectorEdit::AlignMode mode, bool toPage);
     void CmdDistribute(VectorEdit::DistributeMode mode);
     void CmdConvertToPath();
+    void CmdCombine(VectorEdit::CombineOp op);
+    void CmdApplyClipView();
+    void CmdRemoveContainer();
     void CmdRemoveFill();
     void CmdRemoveLine();
     void CmdLineWidth(float width);

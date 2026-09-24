@@ -19,6 +19,8 @@
 #include <ctime>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace UltraCanvas;
 
@@ -36,7 +38,7 @@ constexpr int kSplitterGap  = 8;   // the page shows through between the cards
 
 constexpr int kFolderMinWidth  = 180;
 constexpr int kListMinWidth    = 300;
-constexpr int kPreviewMinWidth = 340;
+constexpr int kPreviewMinWidth = 466;
 
 const char* kFolderNodePrefix  = "f::";
 const char* kAccountNodePrefix  = "acct::";
@@ -336,6 +338,22 @@ void MailView::BuildMessageBox() {
                               const std::string& a) {
         if (onReply) onReply(src, n, a);
     };
+    preview_.onForward = [this](const SourceMessage& src, const std::string& n,
+                                const std::string& a) {
+        if (onForward) onForward(src, n, a);
+    };
+    preview_.onDelete = [this](const MessageEnvelope& e) {
+        if (onDelete) onDelete(e);
+    };
+    preview_.onJunk = [this](const MessageEnvelope& e) {
+        if (onJunk) onJunk(e);
+    };
+    preview_.onMarkUnread = [this](const MessageEnvelope& e) {
+        if (onMarkUnread) onMarkUnread(e);
+    };
+    preview_.onViewSource = [this](const std::string& subject, const std::string& raw) {
+        if (onViewSource) onViewSource(subject, raw);
+    };
     // A body read for the first time is also scanned for the first time: the
     // row's badge stops being "unscanned" the moment the pane knows better.
     preview_.onSecurityScanned = [this](const MessageEnvelope& m, const MessageSecurity& s) {
@@ -562,7 +580,9 @@ void MailView::ShowFolder(const std::string& accountId, const std::string& folde
     curAccount_ = accountId;
     curFolder_  = folder;
     SelectFolderNode(accountId, folder);
-    RebuildList();
+    // A user folder switch: in the reading pane the auto-shown top message is
+    // being read, so mark it read (Gmail/Thunderbird style).
+    RebuildList(/*markTopRead=*/true);
     if (onOpenFolder) onOpenFolder(accountId, folder);
 }
 
@@ -570,11 +590,11 @@ void MailView::Reload() {
     RebuildList();
 }
 
-void MailView::AddMessageRow(const MessageEnvelope& m,
-                             const std::set<int64_t>& waitingUids) {
+void MailView::BuildMessageRow(const MessageEnvelope& m, const std::set<int64_t>& waitingUids,
+                               MultiColumnListItem& outItem, MailRowState& outState,
+                               SenderBadge& outBadge) const {
     const bool isUnread  = (m.flags & Flag_Seen) == 0;
     const bool isWaiting = waitingUids.count(m.uid) > 0;
-    if (isUnread) ++shownUnread_;
 
     // Decode defensively: messages synced before header decoding are still
     // stored raw. Decoding already-decoded text is a no-op.
@@ -586,18 +606,101 @@ void MailView::AddMessageRow(const MessageEnvelope& m,
     // State glyphs in front of the sender: ● unread, ↩ waiting for a reply.
     std::string state = std::string(isUnread ? "\xE2\x97\x8F " : "")
                       + (isWaiting ? "\xE2\x86\xA9 " : "");
-    const SenderBadge badge = BadgeFor(m);
-
-    MultiColumnListItem item({ state + sender, "", subject, FormatListDate(m.date) });
-    item.tooltip = sender + " <" + m.fromAddr + ">"
+    outBadge = BadgeFor(m);
+    outItem = MultiColumnListItem({ state + sender, "", subject, FormatListDate(m.date) });
+    outItem.tooltip = sender + " <" + m.fromAddr + ">"
                  + (isUnread ? " — unread" : "") + (isWaiting ? " — waiting for reply" : "")
                  + "\n" + FormatShortDate(m.date);
     // The badge cell explains itself rather than repeating the row tooltip:
     // what the sender is, and — when the content scan found something — why.
-    item.SetCellTooltip(1, badge.tooltip);
+    outItem.SetCellTooltip(1, outBadge.tooltip);
+    outState = { isUnread, isWaiting };
+}
+
+void MailView::AddMessageRow(const MessageEnvelope& m,
+                             const std::set<int64_t>& waitingUids) {
+    MultiColumnListItem item; MailRowState st; SenderBadge badge;
+    BuildMessageRow(m, waitingUids, item, st, badge);
+    if (st.unread) ++shownUnread_;
     model_->AddItem(item);
-    rowStates_.push_back({ isUnread, isWaiting });
+    rowStates_.push_back(st);
     rowBadges_.push_back(badge);
+}
+
+int MailView::SortedInsertPos(int64_t date) const {
+    // The list is date-DESC (matching the store's ORDER BY date DESC), so a
+    // message belongs before the first row older than it.
+    for (std::size_t i = 0; i < messages_.size(); ++i)
+        if (messages_[i].date < date) return static_cast<int>(i);
+    return static_cast<int>(messages_.size());
+}
+
+void MailView::InsertMessageRowAt(int row, const MessageEnvelope& m,
+                                  const std::set<int64_t>& waitingUids) {
+    if (row < 0) row = 0;
+    if (row > static_cast<int>(messages_.size())) row = static_cast<int>(messages_.size());
+    MultiColumnListItem item; MailRowState st; SenderBadge badge;
+    BuildMessageRow(m, waitingUids, item, st, badge);
+    if (st.unread) ++shownUnread_;
+    messages_.insert(messages_.begin() + row, m);
+    rowStates_.insert(rowStates_.begin() + row, st);
+    rowBadges_.insert(rowBadges_.begin() + row, badge);
+    if (model_) model_->InsertItem(row, item);
+}
+
+void MailView::RemoveRowByUid(int64_t uid) {
+    for (std::size_t row = 0; row < messages_.size(); ++row) {
+        if (messages_[row].uid != uid) continue;
+        if (row < rowStates_.size() && rowStates_[row].unread && shownUnread_ > 0) --shownUnread_;
+        if (model_) model_->RemoveItem(static_cast<int>(row));
+        messages_.erase(messages_.begin() + row);
+        if (row < rowStates_.size()) rowStates_.erase(rowStates_.begin() + row);
+        if (row < rowBadges_.size()) rowBadges_.erase(rowBadges_.begin() + row);
+        security_.erase(uid);
+        return;
+    }
+}
+
+void MailView::RefreshRowText(int row) {
+    if (row < 0 || row >= static_cast<int>(messages_.size()) ||
+        row >= static_cast<int>(rowStates_.size()))
+        return;
+    std::string sender = UltraNet_MimeDecodeHeader(
+        messages_[row].fromName.empty() ? messages_[row].fromAddr : messages_[row].fromName);
+    std::string state = std::string(rowStates_[row].unread ? "\xE2\x97\x8F " : "")
+                      + (rowStates_[row].waiting ? "\xE2\x86\xA9 " : "");
+    if (model_)
+        model_->SetData(ListIndex{row, 0}, ListDataRole::DisplayRole, state + sender);
+}
+
+void MailView::UpdateRowFlags(int row, uint32_t newFlags) {
+    if (row < 0 || row >= static_cast<int>(messages_.size()) ||
+        row >= static_cast<int>(rowStates_.size()))
+        return;
+    const bool wasUnread = rowStates_[row].unread;
+    const bool nowUnread = (newFlags & Flag_Seen) == 0;
+    messages_[row].flags = newFlags;
+    if (wasUnread == nowUnread) return;   // only the read glyph/colour depends on flags
+    rowStates_[row].unread = nowUnread;
+    shownUnread_ += nowUnread ? 1 : -1;
+    if (shownUnread_ < 0) shownUnread_ = 0;
+    RefreshRowText(row);                  // delegate re-colours from rowStates_ on redraw
+}
+
+void MailView::MarkRead(const std::string& accountId, const std::string& folder,
+                        int64_t uid) {
+    if (accountId != curAccount_ || folder != curFolder_) return;
+    for (std::size_t row = 0; row < messages_.size(); ++row) {
+        if (messages_[row].uid != uid) continue;
+        MarkRowRead(static_cast<int>(row));
+        break;
+    }
+}
+
+void MailView::MarkRowRead(int row) {
+    if (row < 0 || row >= static_cast<int>(messages_.size())) return;
+    UpdateRowFlags(row, messages_[row].flags | Flag_Seen);   // drop the ●, dim the row
+    UpdateListTitle();
 }
 
 void MailView::UpdateListTitle() {
@@ -611,8 +714,24 @@ void MailView::UpdateListTitle() {
     listBox_->SetTitle(title);
 }
 
-void MailView::RebuildList() {
+void MailView::RebuildList(bool markTopRead) {
     if (!list_ || !model_) return;
+    // Refreshing the folder already on screen (after a sync) reconciles the rows
+    // in place — no flicker, selection and scroll kept. A folder/account switch,
+    // or a list that was cleared, still does a full clear+build.
+    const bool sameView = store_ && !curAccount_.empty()
+                       && curAccount_ == loadedAccount_ && curFolder_ == loadedFolder_
+                       && !messages_.empty();
+    if (sameView) { DiffListFromStore(markTopRead); return; }
+    FullRebuild(markTopRead);
+}
+
+void MailView::FullRebuild(bool markTopRead) {
+    if (!list_ || !model_) return;
+    // Remember the shown message so a refresh keeps it selected instead of
+    // snapping to the newest row (captured before the vectors are cleared).
+    const int64_t     keepUid    = selectedUid_;
+    const std::string keepFolder = selectedFolder_;
     messages_.clear();
     rowStates_.clear();
     rowBadges_.clear();
@@ -623,6 +742,9 @@ void MailView::RebuildList() {
     preview_.Clear();
 
     if (!store_ || curAccount_.empty()) {
+        selectedUid_ = -1;
+        loadedAccount_.clear();
+        loadedFolder_.clear();
         UpdateListTitle();
         if (!readingPane_) ShowListInPlace();
         return;
@@ -648,10 +770,99 @@ void MailView::RebuildList() {
     // pane is on (Gmail mode waits for a click before hiding the list).
     if (!readingPane_) ShowListInPlace();
     if (!messages_.empty()) {
-        if (auto sel = list_->GetSelection()) sel->Select(0);
-        list_->EnsureRowVisible(0);
-        if (readingPane_) SelectRow(0);
-        else              preview_.Show(messages_[0]);
+        // Keep the previously-shown message selected across a refresh of the same
+        // folder; fall back to the newest row on a folder/account switch (where
+        // the kept uid belonged to a different folder) or if it was expunged.
+        int restore = 0;
+        if (keepUid >= 0 && keepFolder == curFolder_)
+            for (std::size_t i = 0; i < messages_.size(); ++i)
+                if (messages_[i].uid == keepUid) { restore = static_cast<int>(i); break; }
+
+        // Selecting a row fires onSelectionChanged synchronously → SelectRow();
+        // suppress its mark-read so a background rebuild never marks unseen mail
+        // read. The reading-pane preview below then opts in explicitly when this
+        // rebuild was a user folder switch (markTopRead, always restore==0).
+        suppressAutoRead_ = true;
+        if (auto sel = list_->GetSelection()) sel->Select(restore);
+        list_->EnsureRowVisible(restore);
+        suppressAutoRead_ = false;
+        if (readingPane_) SelectRowImpl(restore, /*markRead=*/markTopRead);
+        else              preview_.Show(messages_[static_cast<std::size_t>(restore)]);
+    }
+
+    loadedAccount_ = curAccount_;   // what the rows now represent (for the diff path)
+    loadedFolder_  = curFolder_;
+}
+
+void MailView::DiffListFromStore(bool /*markTopRead*/) {
+    // The store already holds the authoritative post-sync state (SyncMessages
+    // upserted new mail, ReconcileFlags removed deleted UIDs and corrected flags).
+    // Reconcile the visible rows to it in place, keeping selection and scroll.
+    std::vector<MessageEnvelope> fresh;
+    store_->ListMessages(curAccount_, curFolder_, 0, fresh);
+
+    // Refresh the badge inputs (scan verdicts + the needs-answer ↩ set) as the
+    // full rebuild does; existing rows' badges do not change during a sync.
+    curFolderIsJunk_ = CurrentFolderIsJunk();
+    preview_.SetJunkFolder(curFolderIsJunk_);
+    security_.clear();
+    store_->ListSecurity(curAccount_, curFolder_, security_);
+    std::vector<MessageEnvelope> waiting;
+    store_->ListNeedsAnswer(curAccount_, waiting);
+    std::set<int64_t> waitingUids;
+    for (const auto& w : waiting) if (w.folder == curFolder_) waitingUids.insert(w.uid);
+
+    // Measure the turnover; a near-total change (e.g. a UIDVALIDITY renumber) is
+    // cheaper and cleaner as a full rebuild — which is what the user asked for.
+    std::unordered_set<int64_t> freshUids, curUids;
+    freshUids.reserve(fresh.size());
+    curUids.reserve(messages_.size());
+    for (const auto& m : fresh)     freshUids.insert(m.uid);
+    for (const auto& m : messages_) curUids.insert(m.uid);
+    std::size_t removed = 0, added = 0;
+    for (const auto& m : messages_) if (!freshUids.count(m.uid)) ++removed;
+    for (const auto& m : fresh)     if (!curUids.count(m.uid))   ++added;
+    const std::size_t maxN = std::max(messages_.size(), fresh.size());
+    if (maxN == 0 || (removed + added) * 2 > maxN) { FullRebuild(false); return; }
+
+    // 1) Drop rows the server no longer lists (snapshot uids first — we mutate).
+    std::vector<int64_t> curOrder;
+    curOrder.reserve(messages_.size());
+    for (const auto& m : messages_) curOrder.push_back(m.uid);
+    for (int64_t uid : curOrder) if (!freshUids.count(uid)) RemoveRowByUid(uid);
+
+    // 2) Walk the fresh (sorted) list; the surviving rows are a subsequence of it,
+    //    so insert any missing message at the current position and update flags
+    //    on the ones that stayed. This reproduces the store's order exactly.
+    std::size_t pos = 0;
+    for (const auto& f : fresh) {
+        if (pos < messages_.size() && messages_[pos].uid == f.uid) {
+            if (messages_[pos].flags != f.flags) UpdateRowFlags(static_cast<int>(pos), f.flags);
+            ++pos;
+        } else {
+            InsertMessageRowAt(static_cast<int>(pos), f, waitingUids);
+            ++pos;
+        }
+    }
+
+    UpdateListTitle();
+
+    // Keep the selection stable. Inserts above it shift its row index but the
+    // model does not renumber the selection, so re-assert it by uid (suppressing
+    // mark-read — this is a background refresh). If it was deleted, clear the pane.
+    if (selectedUid_ >= 0 && selectedFolder_ == curFolder_) {
+        int selRow = -1;
+        for (std::size_t i = 0; i < messages_.size(); ++i)
+            if (messages_[i].uid == selectedUid_) { selRow = static_cast<int>(i); break; }
+        if (selRow >= 0) {
+            suppressAutoRead_ = true;
+            if (auto sel = list_->GetSelection()) sel->Select(selRow);
+            list_->EnsureRowVisible(selRow);
+            suppressAutoRead_ = false;
+        } else {
+            preview_.Clear();
+            selectedUid_ = -1;
+        }
     }
 }
 
@@ -659,22 +870,33 @@ void MailView::AppendMessages(const std::string& accountId,
                               const std::vector<MessageEnvelope>& batch) {
     if (!list_ || !model_ || batch.empty() || accountId != curAccount_) return;
 
-    // Needs-answer glyphs (↩) are filled in by the final RebuildList; freshly
-    // arrived mail is essentially never already awaiting a reply, so stream with
-    // an empty set to keep the per-row cost off the store. Only rows for the
-    // folder on screen belong in this list (each envelope carries its folder).
+    // Needs-answer glyphs (↩) are filled in by the final refresh; freshly arrived
+    // mail is essentially never already awaiting a reply, so stream with an empty
+    // set to keep the per-row cost off the store. Only rows for the folder on
+    // screen belong in this list (each envelope carries its folder). New mail is
+    // newest → insert at its sorted (date-DESC) position so the list stays ordered
+    // as it streams in (rather than appending and re-sorting at the end).
     static const std::set<int64_t> kNoWaiting;
     bool added = false;
     for (const auto& m : batch) {
         if (m.folder != curFolder_) continue;
-        messages_.push_back(m);
-        AddMessageRow(m, kNoWaiting);
+        bool dup = false;
+        for (const auto& e : messages_) if (e.uid == m.uid) { dup = true; break; }
+        if (dup) continue;
+        InsertMessageRowAt(SortedInsertPos(m.date), m, kNoWaiting);
         added = true;
     }
-    if (added) UpdateListTitle();   // model AddItem already requested the redraw
+    if (added) UpdateListTitle();   // model InsertItem already requested the redraw
 }
 
 void MailView::SelectRow(int row) {
+    // A genuine click / arrow-key selection marks the message read; a
+    // programmatic selection during RebuildList sets suppressAutoRead_ so only
+    // the reading-pane auto-preview (via SelectRowImpl) decides for itself.
+    SelectRowImpl(row, /*markRead=*/!suppressAutoRead_);
+}
+
+void MailView::SelectRowImpl(int row, bool markRead) {
     if (row < 0 || row >= static_cast<int>(messages_.size())) return;
     // Reading pane: pin the list pane to its current width before the preview
     // rebuilds its body, so the weight-based divider does not drift on the
@@ -687,8 +909,17 @@ void MailView::SelectRow(int row) {
             if (listW > 0) innerSplit_->SetPaneFixedSize(0, listW);
         }
     }
-    preview_.Show(messages_[static_cast<std::size_t>(row)]);
+    const MessageEnvelope& m = messages_[static_cast<std::size_t>(row)];
+    // Remember what is shown so a rebuild after a sync can restore this selection
+    // (by uid within the same folder) rather than snapping back to the newest row.
+    selectedUid_    = m.uid;
+    selectedFolder_ = m.folder;
+    preview_.Show(m);
     if (!readingPane_) OpenMessageInPlace();
+    // Opening an unread message reads it: hand the app the envelope so it can
+    // set \Seen locally and on the server. MarkRowRead (driven back through
+    // MarkRead) then updates this very row, so re-selecting it won't re-fire.
+    if (markRead && onMarkRead && (m.flags & Flag_Seen) == 0) onMarkRead(m);
 }
 
 } // namespace UltraMail

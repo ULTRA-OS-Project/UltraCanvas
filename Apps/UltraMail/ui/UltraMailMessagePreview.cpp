@@ -97,6 +97,83 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
                  .SetFlexGap(Theme::kInnerGap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
+    // Actions row above the subject: Reply · Forward · Junk · Delete · More.
+    actions_ = CreateContainer("prevActions", 0, 0, 0, 0);
+    actions_->layout.SetFlexRow()
+                    .SetFlexGap(Theme::kInnerGap)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    if (auto s = actions_->GetContainerStyle(); true) {
+        s.autoShowScrollbars = false;   // chrome row: never fabricate a scrollbar
+        actions_->SetContainerStyle(s);
+    }
+    root_->AddChild(actions_);
+    actions_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    // One styled action button (icon optional, tinted with the text colour).
+    auto makeActionButton = [&](const std::string& id, const std::string& text,
+                                const std::string& icon) {
+        auto b = CreateButton(id, 0, 0, 84, 30, text);
+        Theme::StyleSecondary(b);
+        if (!icon.empty()) {
+            b->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/" + icon));
+            b->SetIconPosition(ButtonIconPosition::Left);
+            b->SetIconSize(14, 14);
+            b->SetIconSpacing(6);
+            b->SetUseIconAsMask(true);
+        }
+        actions_->AddChild(b);
+        b->layoutItem.SetFlexShrink(0);
+        return b;
+    };
+
+    // Reply / Forward resolve the account's own identity for the quoted header.
+    auto selfIdentity = [this](std::string& selfName, std::string& selfAddr) {
+        for (const auto& a : accounts_)
+            if (a.accountId == curAccount_) { selfName = a.displayName; selfAddr = a.email; }
+    };
+
+    auto replyBtn = makeActionButton("prevReply", "Reply", "undo.svg");
+    replyBtn->onClick = [this, selfIdentity]() {
+        if (!onReply || !hasMessage_) return;
+        std::string selfName, selfAddr; selfIdentity(selfName, selfAddr);
+        onReply(current_, selfName, selfAddr);
+    };
+
+    auto forwardBtn = makeActionButton("prevForward", "Forward", "redo.svg");
+    forwardBtn->onClick = [this, selfIdentity]() {
+        if (!onForward || !hasMessage_) return;
+        std::string selfName, selfAddr; selfIdentity(selfName, selfAddr);
+        onForward(current_, selfName, selfAddr);
+    };
+
+    junkBtn_ = makeActionButton("prevJunk", "Junk", "circle-stop.svg");
+    junkBtn_->onClick = [this]() { if (onJunk && hasMessage_) onJunk(curEnv_); };
+
+    auto deleteBtn = makeActionButton("prevDelete", "Delete", "delete.svg");
+    deleteBtn->onClick = [this]() { if (onDelete && hasMessage_) onDelete(curEnv_); };
+
+    // "More" opens a popup menu with the less-frequent actions.
+    auto moreBtn = makeActionButton("prevMore", "More", "");
+    moreMenu_ = std::make_shared<UltraCanvasMenu>("prevMoreMenu", 0, 0, 200, 0);
+    moreMenu_->SetMenuType(MenuType::PopupMenu);
+    moreMenu_->AddItem(MenuItemData::Action("Mark as Unread", [this]() {
+        if (onMarkUnread && hasMessage_) onMarkUnread(curEnv_);
+    }));
+    moreMenu_->AddItem(MenuItemData::Action("View source", [this]() {
+        if (onViewSource && hasMessage_) onViewSource(current_.subject, curRaw_);
+    }));
+    UltraCanvasButton* moreRaw = moreBtn.get();
+    moreBtn->onClick = [this, moreRaw]() {
+        auto* win = moreRaw->GetWindow();
+        if (!win || !moreMenu_) return;
+        // Anchor the menu under the button (window coordinates).
+        Rect2Df b = moreRaw->GetBoundsInWindow();
+        win->AddChild(moreMenu_);
+        moreMenu_->OpenMenu(Point2Di(static_cast<int>(b.x),
+                                     static_cast<int>(b.y + b.height)),
+                            *win, PopupElementSettings());
+    };
+
     // Auto-height, word-wrapping subject: a long subject wraps to the pane
     // width and grows downward instead of overflowing horizontally (which drew
     // a scrollbar and painted over the header row). Never shrink it.
@@ -144,22 +221,6 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     header->AddChild(date_);
     date_->layoutItem.SetFlexShrink(0);
 
-    auto replyBtn = CreateButton("prevReply", 0, 0, 84, 30, "Reply");
-    Theme::StyleSecondary(replyBtn);
-    replyBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/undo.svg"));
-    replyBtn->SetIconPosition(ButtonIconPosition::Left);
-    replyBtn->SetIconSize(14, 14);
-    replyBtn->SetIconSpacing(6);
-    replyBtn->SetUseIconAsMask(true);
-    replyBtn->onClick = [this]() {
-        if (!onReply || !hasMessage_) return;
-        std::string selfName, selfAddr;
-        for (const auto& a : accounts_)
-            if (a.accountId == curAccount_) { selfName = a.displayName; selfAddr = a.email; }
-        onReply(current_, selfName, selfAddr);
-    };
-    header->AddChild(replyBtn);
-    replyBtn->layoutItem.SetFlexShrink(0);
     root_->AddChild(header);
     header->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -192,10 +253,12 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     bodyHost_ = CreateContainer("prevBodyHost", 0, 0, 0, 0);
     bodyHost_->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    // The body host IS the scroll view for a tall message: keep the vertical
-    // scrollbar (auto), but never a horizontal one — HTML reflows to the width,
-    // and when the vertical bar appears it must not fabricate horizontal overflow.
+    // The body host IS the scroll view for a tall message, so it opts into
+    // scrolling (containers do not scroll unless asked): the vertical bar is
+    // auto, but never a horizontal one — HTML reflows to the width, and when
+    // the vertical bar appears it must not fabricate horizontal overflow.
     if (auto s = bodyHost_->GetContainerStyle(); true) {
+        s.autoShowScrollbars = true;
         s.autoShowHorizontalScrollbar = false;
         bodyHost_->SetContainerStyle(s);
     }
@@ -241,9 +304,16 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             // own scrollbars precisely so the host scrolls instead.
             auto scroll = CreateContainer("prevBodyScroll", 0, 0, 0, 0);
             scroll->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            // Keep the vertical auto-scrollbar; also allow a horizontal one so
-            // content that genuinely cannot reflow (fixed-width tables, large
-            // images) can be scrolled to instead of being clipped.
+            // A deliberate scroll view, so it opts in (containers do not
+            // scroll unless asked): the vertical bar for a tall message, and a
+            // horizontal one too, so content that genuinely cannot reflow
+            // (fixed-width tables, large images) can be scrolled to instead of
+            // being clipped.
+            {
+                ContainerStyle scrollStyle = scroll->GetContainerStyle();
+                scrollStyle.autoShowScrollbars = true;
+                scroll->SetContainerStyle(scrollStyle);
+            }
             // Give the body a definite width so it reflows to the pane rather
             // than laying out over-wide (responsive emails fill the pane).
             r.root->size.width = CSSLayout::Dimension::Pct(100.0f);
@@ -315,6 +385,8 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
 void MessagePreview::Clear() {
     hasMessage_ = false;
     current_ = SourceMessage{};
+    curEnv_ = MessageEnvelope{};
+    curRaw_.clear();
     // Empty state: a quiet hint, no header chrome.
     if (subject_) {
         subject_->SetText("Select a message to read it here");
@@ -322,6 +394,7 @@ void MessagePreview::Clear() {
         subject_->SetFontWeight(FontWeight::Normal);
         subject_->SetTextColor(Theme::kTextMuted);
     }
+    if (actions_) actions_->SetVisible(false);
     if (header_)  header_->SetVisible(false);
     if (rule_)    rule_->SetVisible(false);
     if (warning_) warning_->SetVisible(false);
@@ -336,6 +409,7 @@ void MessagePreview::Clear() {
 void MessagePreview::Show(const MessageEnvelope& env) {
     hasMessage_ = true;
     curAccount_ = env.accountId;
+    curEnv_     = env;   // identity for Delete / Junk / Mark-Unread
 
     // Decode RFC 2047 encoded-words for display (idempotent: messages synced
     // before header decoding are still stored raw).
@@ -357,6 +431,9 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         subject_->SetTextColor(Theme::kTextPrimary);
         subject_->SetTooltip(subject);
     }
+    if (actions_) actions_->SetVisible(true);
+    // "Junk" moves a message into the Junk mailbox — pointless when already there.
+    if (junkBtn_) junkBtn_->SetVisible(!junkFolder_);
     if (header_) header_->SetVisible(true);
     if (rule_)   rule_->SetVisible(true);
     if (from_) {
@@ -385,6 +462,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         attachmentStrip_.SetAttachments({});
         current_.body.clear();
         current_.attachments.clear();
+        curRaw_.clear();
     } else if (auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path.string());
                !loaded.success) {
         RenderBody("(this message's body could not be read)\n\n"
@@ -392,8 +470,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         attachmentStrip_.SetAttachments({});
         current_.body.clear();
         current_.attachments.clear();
+        curRaw_.clear();
     } else {
         raw.assign(loaded.bytes.begin(), loaded.bytes.end());
+        curRaw_ = raw;   // kept for "View source"
         ParsedMessage pm = MimeCodec::Parse(raw);
         RenderBody(pm.body, pm.bodyIsHtml);
         attachmentStrip_.SetAttachments(pm.attachments);

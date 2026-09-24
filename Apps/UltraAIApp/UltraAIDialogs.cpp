@@ -85,13 +85,9 @@ bool ReadTextFile(const std::string& path, std::string& outText) {
 bool ProviderNeedsApiKey(const std::string& provider) {
     // Local providers run the model on this machine — llama-cpp in-process,
     // qwen against Ollama/vLLM, comfyui against a ComfyUI the user started —
-    // and take no credential.
-    static const char* kKeyless[] = {"mock", "llama-cpp", "qwen", "comfyui"};
-    if (provider.empty()) return false;
-    for (const char* keyless : kKeyless) {
-        if (provider == keyless) return false;
-    }
-    return true;
+    // and take no credential; neither does the mock.
+    if (provider.empty() || provider == "mock") return false;
+    return !IsLocalProvider(provider);
 }
 
 // Route a typed key into UltraVault (or, in a build without it, straight
@@ -649,7 +645,7 @@ void VideoGenDialog::RunCapability() {
         }
     }
     if (input3_ && !input3_->GetText().empty()) {
-        try { req.durationSec = std::stod(input3_->GetText()); } catch (...) {}
+        try { req.durationSec = std::stod(input3_->GetText()); } catch (...) {}   // locale-ok: the user typed this duration into the dialog
     }
 
     RunOffThread([cfg, req]() -> RunOutcome {
@@ -727,7 +723,7 @@ void MusicGenDialog::RunCapability() {
     req.prompt = input1_ ? input1_->GetText() : "";
     req.mode   = MusicGenMode::Instrumental;
     if (input2_ && !input2_->GetText().empty()) {
-        try { req.durationSec = std::stod(input2_->GetText()); } catch (...) {}
+        try { req.durationSec = std::stod(input2_->GetText()); } catch (...) {}   // locale-ok: the user typed this duration into the dialog
     }
     if (input3_ && !input3_->GetText().empty()) {
         try { req.bpm = std::stoi(input3_->GetText()); } catch (...) {}

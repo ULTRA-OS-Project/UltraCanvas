@@ -231,8 +231,18 @@ client_id     = 00000000-1111-2222-3333-444444444444
 
 The environment works too: `ULTRAMAIL_GOOGLE_CLIENT_ID`,
 `ULTRAMAIL_GOOGLE_CLIENT_SECRET`, `ULTRAMAIL_MICROSOFT_CLIENT_ID` (an
-optional `…_REDIRECT_URI` overrides the provider's default). When no client is
-configured by any of these, the wizard says so.
+optional `…_REDIRECT_URI` overrides the provider's default), as do the shared
+names `ULTRANET_OAUTH_GOOGLE_CLIENT_ID` / `ULTRANET_OAUTH_MICROSOFT_CLIENT_ID`.
+When no client is configured by any of these, the wizard says so.
+
+The lookup is the framework's — UltraNet's OAuth2 app registry
+(`UltraNet/UltraNetOAuth2Apps.h`), one per process — and UltraMail's
+`OAuthApps` is its profile. The same registry serves UltraCloud's "Attach
+cloud link…" sign-ins: a Google client configured for Gmail by any of the
+means above is also the client Google Drive signs in with, and the Microsoft
+one serves OneDrive, as long as the registration's consent screen carries
+those scopes as well (the Google Cloud and Entra steps below; add the Drive
+and `Files.ReadWrite` scopes there if you want that).
 
 ### ⚠️ Google verification is required before Gmail works for the public
 

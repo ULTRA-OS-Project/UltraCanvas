@@ -76,14 +76,16 @@ namespace {
     // 6.9 MB VRML, the 3.9 MB PLY) are read by the same dispatch and are
     // deliberately not listed; see kOmittedNote.
     //
-    // Four of the aircraft exports used to be incomplete, which looked like a
+    // Five of the aircraft exports used to be incomplete, which looked like a
     // reader dropping geometry and was not: both meshes in the source
     // media/3D/Blend/E-45-Aircraft.blend carry a Mirror modifier about X=0,
-    // and the .dae, .x and binary .fbx had been exported without applying
-    // modifiers, so the files held half an aeroplane - while the .ms3d held
-    // only the glass canopy. They were regenerated from that .blend with the
-    // modifier applied (the .fbx by Blender's exporter, the rest by mirroring
-    // the file's own geometry), so every sample now carries the whole model.
+    // and the .dae, .x, .abc and binary .fbx had been exported without
+    // applying modifiers, so the files held half an aeroplane - while the
+    // .ms3d held only the glass canopy. They were regenerated from that
+    // .blend with the modifier applied (the .fbx by Blender's exporter, the
+    // .abc by rewriting its Ogawa archive around the evaluated hull, the rest
+    // by mirroring the file's own geometry), so every sample now carries the
+    // whole model.
     const std::vector<SampleSpec>& Samples() {
         static const std::vector<SampleSpec> kSamples = {
                 {"STEP/Pin.step", "step",
@@ -105,7 +107,9 @@ namespace {
                  "fbx.version, fbx.encoding and fbx.application."},
                 {"Alembic/E-45-Aircraft.abc", "abc",
                  "A sampled cache rather than a scene description: geometry is\n"
-                 "stored per time sample. This reader takes the first sample."},
+                 "stored per time sample. This reader takes the first sample.\n"
+                 "Its matrices are row-vector, the opposite of the document's,\n"
+                 "which is why the canopy sits on the hull rather than in it."},
                 {"COLLADA/E-45-Aircraft.dae", "dae",
                  "XML interchange with a real scene graph and materials, so\n"
                  "the node and material counts below are non-trivial.\n"
@@ -530,7 +534,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
 
     // ===== VIEWER CONTROLS =====
     auto rotateBtn = MakeToolButton("MFRotate", 10, 450, 130, "Auto-rotate: on", nullptr);
-    rotateBtn->onClick = [viewer, rotateBtn, autoRotate]() {
+    rotateBtn->onClick = [viewer, rotateBtn = rotateBtn.get(), autoRotate]() {
         *autoRotate = !*autoRotate;
         viewer->SetAutoRotate(*autoRotate);
         rotateBtn->SetText(*autoRotate ? "Auto-rotate: on" : "Auto-rotate: off");
@@ -539,7 +543,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
 
     auto materialBtn = MakeToolButton("MFMaterial", 150, 450, 130,
                                       "Material: " + ModelColors()[0].first, nullptr);
-    materialBtn->onClick = [viewer, materialBtn, colorIndex]() {
+    materialBtn->onClick = [viewer, materialBtn = materialBtn.get(), colorIndex]() {
         *colorIndex = (*colorIndex + 1) % ModelColors().size();
         viewer->SetModelColor(ModelColors()[*colorIndex].second);
         materialBtn->SetText("Material: " + ModelColors()[*colorIndex].first);

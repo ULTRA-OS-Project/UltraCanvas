@@ -21,12 +21,14 @@
 #include "UltraMailPreferences.h"
 
 #include "UltraMailLocalStore.h"
+#include "UltraMailSyncEngine.h"
 #include "UltraMailMimeCodec.h"
 #include "UltraMailContactStore.h"
 #include "UltraMailSenderIconCache.h"
 #include "UltraMailSenderTrust.h"
 #include "UltraMailOutbox.h"
 #include "UltraMailSyncScheduler.h"
+#include "UltraMailFeedPublisher.h"
 #include "UltraMailCredentialVault.h"
 #include "UltraMailOAuth.h"
 
@@ -35,8 +37,12 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasLabel.h"
 
+#include <chrono>
+#include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -113,9 +119,12 @@ private:
     // Browser sign-in for an OAuth2 provider ("google"): opens the consent page,
     // waits (with a cancellable dialog) for the redirect on a worker thread,
     // stores the tokens in the vault — which must be open — and runs the first
-    // sync. Failures are reported with the provider's reason.
+    // sync. Failures are reported with the provider's reason. `onReauthed`, when
+    // given, runs after a successful sign-in (used to retry the action that hit
+    // an expired sign-in).
     void StartOAuthSignIn(const std::string& accountId, const std::string& email,
-                          const std::string& providerId);
+                          const std::string& providerId,
+                          std::function<void()> onReauthed = nullptr);
     // Warn that "Sign in with <provider>" cannot run because no OAuth client id
     // is configured, naming oauth.ini / the env var that would supply it.
     void ReportMissingOAuthClient(const std::string& providerId);
@@ -133,6 +142,8 @@ private:
     // present) and re-read the store. Only the selected account, so Reload never
     // fetches — or opens a settings dialog for — an account not in view.
     void HandleReload();
+    // Set the bottom status-line text (UI thread). Empty resets to "Ready".
+    void SetStatus(const std::string& text);
     static std::string SlugFromEmail(const std::string& email);
     static std::string LocalPart(const std::string& email);
 
@@ -164,9 +175,48 @@ private:
     void SeedDemoMail();
     // Add an in-memory demo cloud account with a few files (demo only).
     void SeedDemoCloud();
+    void MigrateCloudSecrets();
 
     // Open a compose window for the given draft (new / reply / forward).
     void OpenComposer(const Draft& draft);
+
+    // Message actions from the reading pane, mirrored to the IMAP server on a
+    // background worker and then refreshed. Delete moves to Trash (fallback:
+    // \Deleted flag + local removal); Junk moves to the Junk mailbox; Mark-Unread
+    // clears \Seen. All non-blocking; failures surface an alert.
+    void HandleDeleteMessage(const MessageEnvelope& env);
+    void HandleJunkMessage(const MessageEnvelope& env);
+    void HandleMarkUnread(const MessageEnvelope& env);
+    // Opening a message marks it read: updates the local store and the list row
+    // immediately (optimistic), then pushes \Seen to the server in the
+    // background when the vault is already open (a passive click never prompts
+    // for the master password, and staying offline is fine — the next folder
+    // reconcile agrees the server later).
+    void HandleMarkRead(const MessageEnvelope& env);
+    // Run one IMAP mailbox op on a worker (credentials resolved off the UI
+    // thread), then Refresh() on success or alert `actionName` on failure.
+    void RunMailboxAction(const std::string& accountId,
+                          std::function<SyncOutcome(SyncEngine&, const std::string& serverUrl,
+                                                    const UltraNetMailOptions&)> op,
+                          const std::string& actionName);
+    // Like RunMailboxAction, but for a passive, best-effort op: it does not
+    // Refresh() on success (so the list selection is not bounced to the top) and
+    // it stays silent on failure. Used by mark-read-on-open.
+    void RunMailboxActionQuiet(const std::string& accountId,
+                               std::function<SyncOutcome(SyncEngine&, const std::string& serverUrl,
+                                                         const UltraNetMailOptions&)> op);
+    // When a mailbox/sync op failed because an OAuth account's stored sign-in is
+    // dead (the refresh token was expired or revoked — Google's invalid_grant),
+    // show a "sign in again" prompt whose Retry re-runs the browser consent and
+    // then `onReauthed`, and return true. Returns false for any other failure so
+    // the caller shows its normal error. `provider` is "" for password accounts.
+    bool MaybeOfferReauth(const std::string& accountId, UltraNetResultCode code,
+                          const std::string& provider,
+                          std::function<void()> onReauthed);
+    // The name of the account's folder with the given special-use role, or "".
+    std::string FolderWithRole(const std::string& accountId, FolderRole role) const;
+    // Open the raw .eml source of a message in a read-only window.
+    void OpenSourceViewer(const std::string& subject, const std::string& raw);
     // Attempt to send a draft via the SMTP plug-in; report the outcome.
     void HandleSendDraft(const Draft& draft);
     // Re-flush the outbox after a failed send (the Retry button's action).
@@ -230,9 +280,11 @@ private:
     SenderIconCache senderIcons_;
     OutboxStore outbox_;
     // Cloud storage (UltraCloud): accounts + secrets behind the composer's
-    // "Attach cloud link". Per-app store for now (see the module README).
+    // "Attach cloud link". The secrets live in the mail vault (vault_) under
+    // "cloud.<accountId>.*"; MigrateCloudSecrets() carries the obfuscated
+    // cloud-vault/ files of earlier releases into it once it is unlocked.
     UltraCloud::AccountStore cloudAccounts_;
-    std::unique_ptr<UltraCloud::FileSecretStore> cloudSecrets_;
+    std::unique_ptr<UltraCloud::VaultSecretStore> cloudSecrets_;
     std::unique_ptr<UltraCloud::CloudService> cloud_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
@@ -248,10 +300,19 @@ private:
     // in preferences.ini under the data directory.
     Preferences prefs_;
     std::string prefsPath_;
-    // (accountId + "\n" + folder) that have been lazily fetched (or already had
-    // messages) this session, so opening a folder does not re-hit the server on
-    // every click.
-    std::set<std::string> lazilySynced_;
+    // Per-folder resync bookkeeping, keyed by (accountId + "\n" + folder).
+    // Opening a folder always refreshes it from the server, but throttled: a
+    // repeat open within kFolderResyncSec of the last one is skipped, and a
+    // folder already being fetched is not fetched again.
+    std::map<std::string, int64_t> folderSyncedAt_;      // key -> monotonic seconds
+    std::set<std::string>          folderSyncInFlight_;  // key currently fetching
+    // Do not re-hit the server for a folder opened again within this window.
+    static constexpr int64_t kFolderResyncSec = 15;
+    // Seconds on a steady clock (wall-clock jumps must not affect the throttle).
+    static int64_t NowMonotonicSec() {
+        return std::chrono::duration_cast<std::chrono::seconds>(
+                   std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
 
     std::string dataDir_;
     std::string cacheDir_;
@@ -267,6 +328,12 @@ private:
     // configured) and shown once the first account exists.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> accountView_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    reloadButton_;
+    // A one-line status at the bottom of the account view saying what the app is
+    // doing ("Checking <account>…", "Receiving messages… (N)", "Up to date").
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
+    // Cumulative messages streamed in during the current run of syncs (for the
+    // "Receiving messages… (N)" status); reset when the last sync ends.
+    int                                                statusReceived_ = 0;
     std::string     selectedAccount_;   // the account the mail view shows
     int             syncsInFlight_ = 0;
     StartPage       startPage_;
@@ -275,6 +342,9 @@ private:
     ContactsView    contactsView_;
     ComposeView     composeView_;
     SyncScheduler   scheduler_;
+    // New mail to the desktop feed (UltraMessage mail.message); fed from the
+    // sync workers' progress callbacks.
+    FeedPublisher   feed_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
 };
 

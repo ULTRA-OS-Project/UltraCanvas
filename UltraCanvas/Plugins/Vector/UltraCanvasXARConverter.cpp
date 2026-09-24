@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasXARConverter.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / FormatFloatClassic
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
@@ -26,6 +27,19 @@
 #include <variant>
 
 namespace UltraCanvas {
+
+namespace {
+// The marker attributes XAR carries are dot-decimal, like the format itself.
+// std::atof reads through LC_NUMERIC and returns 0 on anything it cannot
+// read, so a comma-decimal desktop silently truncated every dash length,
+// width profile and stamp matrix it loaded - with no error to say so.
+inline double XarFloat(const std::string& text, double fallback = 0.0) {
+    double value = fallback;
+    TryParseFloat(text, value);
+    return value;
+}
+}  // namespace
+
     namespace VectorConverter {
 
         using namespace VectorStorage;
@@ -306,6 +320,22 @@ namespace UltraCanvas {
                 constexpr uint32_t TextUnderlineOn = 2912;
                 constexpr uint32_t TextUnderlineOff = 2913;
                 constexpr uint32_t ShadowController = 4050;
+                // Phase 5 controllers, as Xara's source writes them.
+                constexpr uint32_t Blend = 105;                  // UINT16 steps, BYTE flags
+                constexpr uint32_t Blender = 106;                // INT32 path index start, end
+                constexpr uint32_t MouldEnvelope = 107;          // INT32 threshold
+                constexpr uint32_t MouldPerspective = 108;
+                constexpr uint32_t MouldGroup = 109;             // empty
+                constexpr uint32_t MouldPath = 110;              // a path record's layout
+                constexpr uint32_t MouldBounds = 4012;           // COORD lo, COORD hi
+                constexpr uint32_t Bevel = 4052;                 // 6 x INT32
+                constexpr uint32_t BevelInk = 4057;              // empty
+                constexpr uint32_t ContourController = 4066;     // INT32 steps, INT32 width, BYTE type, 4 x DOUBLE
+                constexpr uint32_t Contour = 4067;               // empty
+                constexpr uint32_t BlendProfiles = 4072;         // 6 x DOUBLE
+                constexpr uint32_t BlenderAdditional = 4073;     // 4 x INT32, BYTE
+                constexpr uint32_t ClipViewController = 4084;    // empty
+                constexpr uint32_t ClipView = 4085;              // empty
                 constexpr uint32_t LinearFillMultistage = 4075;
                 constexpr uint32_t CircularFillMultistage = 4076;
                 constexpr uint32_t ConicalFillMultistage = 4078;
@@ -349,6 +379,72 @@ namespace UltraCanvas {
             // the model's Scale 1 is that default.
             constexpr float kXaraDefaultArrowSize = 3.0f;
 
+            // A mould shape's four sides (each a LineTo or CurveTo, the last
+            // possibly a ClosePath back to the start) and their start
+            // corners. False unless the path is exactly four-sided.
+            bool MouldSidesOf(const PathData& shape, std::vector<PathCommand>& sides, Point2Dd corners[4]) {
+                sides.clear();
+                Point2Dd cur(0, 0), start(0, 0);
+                std::vector<Point2Dd> starts;
+                for (const auto& c : shape.commands) {
+                    const auto& p = c.Parameters;
+                    switch (c.Type) {
+                        case PathCommandType::MoveTo:
+                            if (p.size() >= 2 && sides.empty()) cur = start = Point2Dd(p[0], p[1]);
+                            break;
+                        case PathCommandType::LineTo:
+                            if (p.size() >= 2 && sides.size() < 4) { starts.push_back(cur); sides.push_back(c); cur = Point2Dd(p[0], p[1]); }
+                            break;
+                        case PathCommandType::CurveTo:
+                            if (p.size() >= 6 && sides.size() < 4) { starts.push_back(cur); sides.push_back(c); cur = Point2Dd(p[4], p[5]); }
+                            break;
+                        case PathCommandType::ClosePath:
+                            if (sides.size() == 3) {
+                                PathCommand l; l.Type = PathCommandType::LineTo;
+                                l.Parameters = {static_cast<float>(start.x), static_cast<float>(start.y)};
+                                starts.push_back(cur); sides.push_back(l); cur = start;
+                            }
+                            break;
+                        default: break;
+                    }
+                }
+                if (sides.size() != 4) return false;
+                for (int i = 0; i < 4; ++i) corners[i] = starts[i];
+                return true;
+            }
+            // The shape rebuilt to start at side `first` (0..3), closed.
+            PathData MouldShapeFrom(const std::vector<PathCommand>& sides, const Point2Dd corners[4], int first) {
+                PathData out;
+                PathCommand m; m.Type = PathCommandType::MoveTo;
+                m.Parameters = {static_cast<float>(corners[first].x), static_cast<float>(corners[first].y)};
+                out.commands.push_back(m);
+                for (int i = 0; i < 4; ++i) out.commands.push_back(sides[(first + i) % 4]);
+                PathCommand z; z.Type = PathCommandType::ClosePath;
+                out.commands.push_back(z);
+                out.Closed = true;
+                return out;
+            }
+            // The model's order starts at the top-left corner (Y down);
+            // Xara's stock mould paths start at the bottom-left corner
+            // (Kernel/moldenv.cpp, MakeValidFrom: corner 0 is nearest
+            // the bounds' lo, its bottom-left, corner 1 the top-left) and
+            // run the same way round, so the two differ by one side.
+            PathData MouldShapeStartingNearest(const PathData& shape, bool topLeft) {
+                std::vector<PathCommand> sides;
+                Point2Dd corners[4];
+                if (!MouldSidesOf(shape, sides, corners)) return shape;
+                double minX = 1e300, minY = 1e300, maxY = -1e300;
+                for (int i = 0; i < 4; ++i) { minX = std::min(minX, corners[i].x); minY = std::min(minY, corners[i].y); maxY = std::max(maxY, corners[i].y); }
+                const Point2Dd target(minX, topLeft ? minY : maxY);
+                int best = 0;
+                double bestD = 1e300;
+                for (int i = 0; i < 4; ++i) {
+                    const double d = std::hypot(corners[i].x - target.x, corners[i].y - target.y);
+                    if (d < bestD) { bestD = d; best = i; }
+                }
+                return MouldShapeFrom(sides, corners, best);
+            }
+
             // The user values this converter writes on objects: what it baked
             // into shapes, so the reader can rebuild the stroke.
             constexpr const char* kLineGalleryKey = "UltraCanvas.LineGallery";
@@ -369,7 +465,7 @@ namespace UltraCanvas {
             double MarkerNumber(const std::map<std::string, std::string>& m, const char* key, double fallback) {
                 auto it = m.find(key);
                 if (it == m.end() || it->second.empty()) return fallback;
-                return std::atof(it->second.c_str());
+                return XarFloat(it->second);
             }
 
         }   // anonymous namespace
@@ -561,14 +657,18 @@ namespace UltraCanvas {
                         case XARNodeType::ContonedBitmap:
                             made = MakeImage(static_cast<const UltraCanvas::XARBitmapNode&>(*n));
                             break;
-                        case XARNodeType::ClipView:
-                            Skip("ClipView (contents kept, clip dropped)");
-                            made = ChildrenAsElement(n);
-                            break;
-                        case XARNodeType::Bevel: Skip("bevel"); made = ChildrenAsElement(n); break;
-                        case XARNodeType::Contour: Skip("contour"); made = ChildrenAsElement(n); break;
-                        case XARNodeType::Blend: Skip("blend"); made = ChildrenAsElement(n); break;
-                        case XARNodeType::Mould: Skip("mould"); made = ChildrenAsElement(n); break;
+                        case XARNodeType::ClipView: made = MakeClipView(n); break;
+                        case XARNodeType::Bevel: made = MakeBevelled(static_cast<const UltraCanvas::XARBevelNode&>(*n)); break;
+                        case XARNodeType::Contour: made = MakeContoured(static_cast<const UltraCanvas::XARContourNode&>(*n)); break;
+                        case XARNodeType::Blend: made = MakeBlend(static_cast<const UltraCanvas::XARBlendNode&>(*n)); break;
+                        case XARNodeType::Mould: made = MakeMould(static_cast<const UltraCanvas::XARMouldNode&>(*n)); break;
+                        case XARNodeType::ClipViewMarker:
+                        case XARNodeType::ContourSteps:
+                        case XARNodeType::Blender:
+                        case XARNodeType::MouldPath:
+                        case XARNodeType::MouldGroup:
+                        case XARNodeType::BevelInk:
+                            return;   // parts of the controllers above, consumed there
                         case XARNodeType::LiveEffect: Skip("live effect"); made = ChildrenAsElement(n); break;
                         case XARNodeType::Brush: Skip("brush"); made = ChildrenAsElement(n); break;
                         case XARNodeType::Text:
@@ -630,12 +730,12 @@ namespace UltraCanvas {
                         }
                         return items;
                     };
-                    for (const auto& d : list("dash")) if (!d.empty()) st.DashArray.push_back(std::atof(d.c_str()));
+                    for (const auto& d : list("dash")) if (!d.empty()) st.DashArray.push_back(XarFloat(d));
                     for (const auto& p : list("profile")) {
                         const size_t colon = p.find(':');
                         if (colon == std::string::npos) continue;
-                        st.WidthProfile.push_back({static_cast<float>(std::atof(p.substr(0, colon).c_str())),
-                                                   static_cast<float>(std::atof(p.substr(colon + 1).c_str()))});
+                        st.WidthProfile.push_back({static_cast<float>(XarFloat(p.substr(0, colon))),
+                                                   static_cast<float>(XarFloat(p.substr(colon + 1)))});
                     }
                     if (MarkerNumber(m, "brush", 0) > 0 && tmp->Children.size() >= 2) {
                         // The stamps group is the last child; its first copy,
@@ -646,9 +746,9 @@ namespace UltraCanvas {
                         if (stamps && !stamps->Children.empty()) copy = std::dynamic_pointer_cast<VectorGroup>(stamps->Children.front());
                         const auto mm = list("stampm");
                         if (copy && mm.size() == 6) {
-                            const Matrix3x3 placement = Matrix3x3::FromValues(std::atof(mm[0].c_str()), std::atof(mm[1].c_str()),
-                                                                              std::atof(mm[2].c_str()), std::atof(mm[3].c_str()),
-                                                                              std::atof(mm[4].c_str()), std::atof(mm[5].c_str()));
+                            const Matrix3x3 placement = Matrix3x3::FromValues(XarFloat(mm[0]), XarFloat(mm[1]),
+                                                                              XarFloat(mm[2]), XarFloat(mm[3]),
+                                                                              XarFloat(mm[4]), XarFloat(mm[5]));
                             stamps->Children.erase(stamps->Children.begin());
                             copy->Parent.reset();
                             copy->Transform = placement.Inverse();
@@ -680,6 +780,131 @@ namespace UltraCanvas {
                 }
 
                 // ----- shapes -----
+                // ----- phase 5 controllers -----
+                std::shared_ptr<VectorElement> ElementOf(const std::vector<UltraCanvas::XARNodePtr>& nodes) {
+                    auto g = std::make_shared<VectorGroup>();
+                    for (const auto& c : nodes) Translate(c, *g);
+                    if (g->Children.empty()) return nullptr;
+                    if (g->Children.size() == 1) {
+                        auto only = g->Children.front();
+                        g->Children.clear();
+                        only->Parent.reset();
+                        return only;
+                    }
+                    return g;
+                }
+                static std::vector<UltraCanvas::XARNodePtr> ChildrenExcept(const UltraCanvas::XARNode& n, UltraCanvas::XARNodeType skip) {
+                    std::vector<UltraCanvas::XARNodePtr> out;
+                    for (const auto& c : n.children) if (c && c->type != skip) out.push_back(c);
+                    return out;
+                }
+
+                std::shared_ptr<VectorElement> MakeClipView(const UltraCanvas::XARNodePtr& n) {
+                    size_t marker = n->children.size();
+                    for (size_t i = 0; i < n->children.size(); ++i)
+                        if (n->children[i] && n->children[i]->type == UltraCanvas::XARNodeType::ClipViewMarker) { marker = i; break; }
+                    const size_t keyholes = marker < n->children.size() ? marker : std::min<size_t>(1, n->children.size());
+                    auto clip = std::make_shared<VectorClipView>();
+                    for (size_t i = 0; i < keyholes; ++i) Translate(n->children[i], *clip);
+                    clip->Keyholes = static_cast<int>(clip->Children.size());
+                    for (size_t i = keyholes; i < n->children.size(); ++i)
+                        if (n->children[i] && n->children[i]->type != UltraCanvas::XARNodeType::ClipViewMarker) Translate(n->children[i], *clip);
+                    if (clip->Keyholes == 0) return ChildrenAsElement(n);
+                    if (n->hasTransparency) ApplyTransparency(n->transparency, clip->Style);
+                    return clip;
+                }
+
+                static ColourBlendKind BlendKindFrom(uint8_t v) {
+                    switch (v) {
+                        case 1: return ColourBlendKind::Rainbow;
+                        case 2: return ColourBlendKind::AltRainbow;
+                        case 3: return ColourBlendKind::Constant;
+                        default: return ColourBlendKind::Fade;
+                    }
+                }
+
+                std::shared_ptr<VectorElement> MakeContoured(const UltraCanvas::XARContourNode& c) {
+                    auto target = ElementOf(ChildrenExcept(c, UltraCanvas::XARNodeType::ContourSteps));
+                    if (!target) return nullptr;
+                    ContourEffect e;
+                    e.Steps = std::max(1, c.steps);
+                    e.Width = static_cast<float>(-Len(c.width));   // Xara: negative is outer
+                    e.Blend = BlendKindFrom(c.colourBlend);
+                    e.InsetPath = c.insetPath;
+                    e.ObjectBias = c.objectBias; e.ObjectGain = c.objectGain;
+                    e.AttributeBias = c.attributeBias; e.AttributeGain = c.attributeGain;
+                    for (const auto& ch : c.children)
+                        if (ch && ch->type == UltraCanvas::XARNodeType::ContourSteps && ch->hasFill) {
+                            e.Colour = ch->fill.startColor;
+                            e.Colour.a = 255;
+                        }
+                    target->Effects.Contour = e;
+                    return target;
+                }
+
+                std::shared_ptr<VectorElement> MakeBlend(const UltraCanvas::XARBlendNode& b) {
+                    auto blend = std::make_shared<VectorBlend>();
+                    for (const auto& ch : ChildrenExcept(b, UltraCanvas::XARNodeType::Blender)) Translate(ch, *blend);
+                    if (blend->Children.empty()) return nullptr;
+                    blend->Steps = std::max(0, b.numSteps);
+                    blend->ColourEffect = BlendKindFrom(b.colourEffect);
+                    blend->OneToOne = b.oneToOne;
+                    blend->Antialiased = b.antialiased;
+                    blend->Tangential = b.tangential;
+                    blend->ObjectBias = b.profiles[0]; blend->ObjectGain = b.profiles[1];
+                    blend->AttributeBias = b.profiles[2]; blend->AttributeGain = b.profiles[3];
+                    if (b.hasTransparency) ApplyTransparency(b.transparency, blend->Style);
+                    return blend;
+                }
+
+                std::shared_ptr<VectorElement> MakeMould(const UltraCanvas::XARMouldNode& m) {
+                    auto mould = std::make_shared<VectorMould>();
+                    mould->Kind = m.isPerspective ? MouldKind::Perspective : MouldKind::Envelope;
+                    mould->Threshold = m.threshold;
+                    bool haveShape = false;
+                    for (const auto& ch : m.children) {
+                        if (!ch) continue;
+                        if (ch->type == UltraCanvas::XARNodeType::MouldPath) {
+                            if (auto p = MakePath(static_cast<const UltraCanvas::XARPathNode&>(*ch))) {
+                                mould->Shape = MouldShapeStartingNearest(p->Path, true);
+                                haveShape = true;
+                            }
+                        } else if (ch->type == UltraCanvas::XARNodeType::MouldGroup) {
+                            const auto& g = static_cast<const UltraCanvas::XARMouldGroupNode&>(*ch);
+                            if (g.hasBounds) {
+                                const Point2Dd lo = Pt(g.boundsLo), hi = Pt(g.boundsHi);   // lo is the bottom-left, Y down
+                                mould->SourceBounds = Rect2Dd(lo.x, hi.y, hi.x - lo.x, lo.y - hi.y);
+                            }
+                            for (const auto& src : g.children) Translate(src, *mould);
+                        }
+                        // The moulded results are regenerated from the sources.
+                    }
+                    if (!haveShape || mould->Children.empty()) {
+                        Skip("mould without a shape or sources (results kept as shapes)");
+                        auto g = std::make_shared<VectorGroup>();
+                        for (const auto& ch : m.children)
+                            if (ch && ch->type != UltraCanvas::XARNodeType::MouldPath && ch->type != UltraCanvas::XARNodeType::MouldGroup)
+                                Translate(ch, *g);
+                        return g->Children.empty() ? nullptr : g;
+                    }
+                    if (m.hasTransparency) ApplyTransparency(m.transparency, mould->Style);
+                    return mould;
+                }
+
+                std::shared_ptr<VectorElement> MakeBevelled(const UltraCanvas::XARBevelNode& b) {
+                    auto target = ElementOf(ChildrenExcept(b, UltraCanvas::XARNodeType::BevelInk));
+                    if (!target) return nullptr;
+                    BevelEffect e;
+                    e.Kind = static_cast<BevelKind>(std::max(0, std::min(BevelKindCount - 1, b.bevelType)));
+                    e.Indent = static_cast<float>(Len(b.indent));
+                    e.LightAngle = static_cast<float>(b.lightAngle);
+                    e.Contrast = std::max(0.0f, std::min(1.0f, b.contrast / 100.0f));
+                    e.Outer = b.outer;
+                    e.Tilt = static_cast<float>(b.tilt);
+                    target->Effects.Bevel = e;
+                    return target;
+                }
+
                 std::shared_ptr<VectorPath> MakePath(const UltraCanvas::XARPathNode& n) {
                     auto path = std::make_shared<VectorPath>();
                     auto map = [&](const Point2Di& mp) {
@@ -1125,6 +1350,7 @@ namespace UltraCanvas {
                     bytes.push_back(static_cast<uint8_t>(v >> 24));
                 }
                 void I32(int32_t v) { U32(static_cast<uint32_t>(v)); }
+                void U16(uint16_t v) { bytes.push_back(static_cast<uint8_t>(v & 0xFF)); bytes.push_back(static_cast<uint8_t>(v >> 8)); }
                 void F64(double v) {
                     uint64_t bits = 0;
                     std::memcpy(&bits, &v, sizeof(bits));
@@ -1360,6 +1586,26 @@ namespace UltraCanvas {
                     // A shadow is a controller group around the object.
                     const bool shadow = effectsOn && e.Effects.Shadow.has_value() && e.Effects.Shadow->Darkness > 0;
                     if (shadow) { EmitShadowController(*e.Effects.Shadow, ctm); Down(); }
+                    // A contour is a controller group holding the (empty)
+                    // node Xara regenerates the steps into - carrying the
+                    // contour colour as its fill - and the object; a bevel
+                    // likewise, its node empty.
+                    const bool contour = effectsOn && e.Effects.Contour.has_value() && e.Effects.Contour->Steps > 0 &&
+                                         std::fabs(e.Effects.Contour->Width) > 1e-3f;
+                    if (contour) {
+                        EmitContourController(*e.Effects.Contour, ctm);
+                        Down();
+                        Rec(XarOut::Contour);
+                        Down();
+                        EmitFlatFill(e.Effects.Contour->Colour);
+                        Up();
+                    }
+                    const bool bevel = effectsOn && e.Effects.Bevel.has_value();
+                    if (bevel) {
+                        EmitBevelController(*e.Effects.Bevel, ctm);
+                        Down();
+                        Rec(XarOut::BevelInk);
+                    }
                     // The line gallery: Xara's own arrowheads are line
                     // attributes; a width profile, a brush or another arrowhead
                     // kind is baked into shapes after the object, and the
@@ -1396,8 +1642,7 @@ namespace UltraCanvas {
                     // A shape left with neither fill nor stroke (its stroke is
                     // baked below) has no record of its own - unless the baked
                     // group needs its outline back.
-                    const bool container = e.Type == VectorElementType::Group || e.Type == VectorElementType::Symbol ||
-                                           e.Type == VectorElementType::Layer || e.Type == VectorElementType::Text ||
+                    const bool container = IsGroupType(e.Type) || e.Type == VectorElementType::Text ||
                                            e.Type == VectorElementType::Image;
                     const bool invisible = !container && !baked && !HasVisibleFill(drawStyle) && !HasVisibleStroke(drawStyle);
 
@@ -1415,6 +1660,15 @@ namespace UltraCanvas {
                             Up();
                             break;
                         }
+                        case VectorElementType::ClipView:
+                            EmitClipView(static_cast<const VectorClipView&>(e), eff, ctm);
+                            break;
+                        case VectorElementType::Blend:
+                            EmitBlend(static_cast<const VectorBlend&>(e), eff, ctm);
+                            break;
+                        case VectorElementType::Mould:
+                            EmitMould(static_cast<const VectorMould&>(e), eff, ctm);
+                            break;
                         case VectorElementType::Layer: {
                             // Nested layers degrade to groups.
                             const auto& g = static_cast<const VectorGroup&>(e);
@@ -1479,10 +1733,188 @@ namespace UltraCanvas {
                         }
                         Up();
                     }
+                    if (bevel) Up();
+                    if (contour) Up();
                     if (shadow) Up();
                 }
 
+                // ===== PHASE 5 CONTAINERS =====
+
+                // TAG_CLIPVIEWCONTROLLER: the keyholes, TAG_CLIPVIEW, the contents.
+                void EmitClipView(const VectorClipView& c, const VectorStyle& eff, const Matrix3x3& ctm) {
+                    Rec(XarOut::ClipViewController);
+                    Down();
+                    for (const auto& k : c.KeyholeShapes()) if (k) EmitElement(*k, eff, ctm);
+                    Rec(XarOut::ClipView);
+                    for (const auto& child : c.Contents()) if (child) EmitElement(*child, eff, ctm);
+                    Up();
+                }
+
+                static uint8_t BlendKindByte(ColourBlendKind k) {
+                    switch (k) {
+                        case ColourBlendKind::Rainbow: return 1;
+                        case ColourBlendKind::AltRainbow: return 2;
+                        case ColourBlendKind::Constant: return 3;
+                        default: return 0;
+                    }
+                }
+
+                // TAG_BLENDPROFILES then TAG_BLEND (NodeBlend::WritePreChildren),
+                // the blended objects with a TAG_BLENDER (and its
+                // TAG_BLENDERADDITIONAL) between each pair; Xara regenerates
+                // the steps.
+                void EmitBlend(const VectorBlend& b, const VectorStyle& eff, const Matrix3x3& ctm) {
+                    XarBody pb;
+                    pb.F64(b.ObjectBias); pb.F64(b.ObjectGain);
+                    pb.F64(b.AttributeBias); pb.F64(b.AttributeGain);
+                    pb.F64(0.0); pb.F64(0.0);
+                    Rec(XarOut::BlendProfiles, pb);
+                    XarBody bb;
+                    bb.U16(static_cast<uint16_t>(std::max(0, std::min(65535, b.Steps))));
+                    const uint8_t flags = static_cast<uint8_t>((b.OneToOne ? 1 : 0) | (b.Antialiased ? 2 : 0) | (b.Tangential ? 4 : 0) |
+                                                               (BlendKindByte(b.ColourEffect) << 4));
+                    bb.U8(flags);
+                    Rec(XarOut::Blend, bb);
+                    Down();
+                    for (size_t i = 0; i < b.Children.size(); ++i) {
+                        if (!b.Children[i]) continue;
+                        EmitElement(*b.Children[i], eff, ctm);
+                        if (i + 1 < b.Children.size() && b.Children[i + 1]) {
+                            XarBody blender;
+                            blender.I32(0); blender.I32(0);
+                            Rec(XarOut::Blender, blender);
+                            Down();
+                            XarBody add;
+                            add.I32(0); add.I32(-1); add.I32(0); add.I32(0); add.U8(0);
+                            Rec(XarOut::BlenderAdditional, add);
+                            Up();
+                        }
+                    }
+                    Up();
+                }
+
+                // TAG_MOULD_ENVELOPE / _PERSPECTIVE, then the shape as a
+                // TAG_MOULD_PATH in Xara's order, the sources under
+                // TAG_MOULD_BOUNDS + TAG_MOULD_GROUP, and the moulded results
+                // as plain shapes (what any reader shows; Xara re-moulds).
+                void EmitMould(const VectorMould& m, const VectorStyle& eff, const Matrix3x3& ctm) {
+                    Point2Dd corners[4];
+                    const Rect2Dd src = m.EffectiveSourceBounds();
+                    if (!m.ShapeCorners(corners) || src.width <= 0 || src.height <= 0) {
+                        Rec(XarOut::Group);
+                        Down();
+                        for (const auto& child : m.Children) if (child) EmitElement(*child, eff, ctm);
+                        Up();
+                        return;
+                    }
+                    XarBody hb;
+                    hb.I32(m.Threshold);
+                    Rec(m.Kind == MouldKind::Perspective ? XarOut::MouldPerspective : XarOut::MouldEnvelope, hb);
+                    Down();
+                    {
+                        XarBody pb;
+                        EncodePath(NormalizePath(MouldShapeStartingNearest(m.Shape, false)), ctm, pb);
+                        Rec(XarOut::MouldPath, pb);
+                    }
+                    {
+                        XarBody bb;
+                        const Rect2Dd r = ctm.Transform(src);
+                        Coord(bb, Point2Dd(r.x, r.y + r.height));   // lo: bottom-left
+                        Coord(bb, Point2Dd(r.x + r.width, r.y));    // hi: top-right
+                        Rec(XarOut::MouldBounds, bb);
+                        Rec(XarOut::MouldGroup);
+                        Down();
+                        for (const auto& child : m.Children) if (child) EmitElement(*child, eff, ctm);
+                        Up();
+                    }
+                    for (const auto& child : m.Children) if (child) EmitMoulded(*child, m, eff, ctm, Matrix3x3::Identity());
+                    Up();
+                }
+
+                // A moulded copy of the element: its outline warped through
+                // the mould as a path with its style; groups recurse; text
+                // and images move to their moulded anchor.
+                void EmitMoulded(const VectorElement& e, const VectorMould& m, const VectorStyle& inherited,
+                                 const Matrix3x3& ctm, const Matrix3x3& parentToMould) {
+                    const Matrix3x3 M = e.Transform.has_value() ? parentToMould * (*e.Transform) : parentToMould;
+                    VectorStyle eff = e.Style;
+                    eff.Inherit(inherited);
+                    if (IsGroupType(e.Type)) {
+                        for (const auto& c : static_cast<const VectorGroup&>(e).Children) if (c) EmitMoulded(*c, m, eff, ctm, M);
+                        return;
+                    }
+                    PathData pd;
+                    if (!BuildOutlinePath(e, pd)) {
+                        const Rect2Dd box = e.GetBoundingBox();
+                        const Point2Dd anchor = M.Transform(Point2Dd(box.x, box.y + box.height));
+                        const Point2Dd moved = m.Warp(anchor);
+                        EmitElement(e, inherited, ctm * Matrix3x3::Translate(moved.x - anchor.x, moved.y - anchor.y) * parentToMould);
+                        return;
+                    }
+                    const Rect2Dd src = m.EffectiveSourceBounds();
+                    const double maxSeg = std::max(0.5, std::min(src.width, src.height) / 40.0);
+                    VectorPath warped;
+                    warped.Style = e.Style;
+                    for (const FlatSubpath& sub : FlattenPathData(pd)) {
+                        std::vector<Point2Dd> pts = sub.Points;
+                        if (pts.empty()) continue;
+                        if (sub.Closed) pts.push_back(pts.front());
+                        for (size_t i = 0; i < pts.size(); ++i) {
+                            const Point2Dd p = M.Transform(pts[i]);
+                            if (i == 0) {
+                                const Point2Dd w = m.Warp(p);
+                                warped.MoveTo(static_cast<float>(w.x), static_cast<float>(w.y));
+                                continue;
+                            }
+                            const Point2Dd prev = M.Transform(pts[i - 1]);
+                            const double len = std::hypot(p.x - prev.x, p.y - prev.y);
+                            const int pieces = std::max(1, static_cast<int>(std::ceil(len / maxSeg)));
+                            for (int k = 1; k <= pieces; ++k) {
+                                const double t = static_cast<double>(k) / pieces;
+                                const Point2Dd w = m.Warp(Point2Dd(prev.x + (p.x - prev.x) * t, prev.y + (p.y - prev.y) * t));
+                                warped.LineTo(static_cast<float>(w.x), static_cast<float>(w.y));
+                            }
+                        }
+                        if (sub.Closed) warped.ClosePath();
+                    }
+                    if (!warped.Path.commands.empty()) EmitElement(warped, inherited, ctm);
+                }
+
                 // ===== EFFECTS =====
+
+                // TAG_CONTOURCONTROLLER (NodeContourController::WritePreChildrenWeb):
+                // INT32 steps, INT32 width in millipoints (negative for an outer
+                // contour), BYTE colour blend type with bit 7 the inset-path
+                // flag, DOUBLE object bias, gain, attribute bias, gain.
+                void EmitContourController(const ContourEffect& c, const Matrix3x3& ctm) {
+                    XarBody b;
+                    b.I32(std::max(1, c.Steps));
+                    b.I32(Mp(-c.Width * AvgScale(ctm)));
+                    b.U8(static_cast<uint8_t>(BlendKindByte(c.Blend) | (c.InsetPath ? 0x80 : 0)));
+                    b.F64(c.ObjectBias); b.F64(c.ObjectGain);
+                    b.F64(c.AttributeBias); b.F64(c.AttributeGain);
+                    Rec(XarOut::ContourController, b);
+                }
+
+                // TAG_BEVEL (NodeBevelController::WritePreChildrenNative): INT32
+                // type, indent (millipoints), light angle (degrees), outer flag,
+                // contrast (percent), tilt (degrees).
+                void EmitBevelController(const BevelEffect& bv, const Matrix3x3& ctm) {
+                    XarBody b;
+                    b.I32(static_cast<int32_t>(bv.Kind));
+                    b.I32(Mp(bv.Indent * AvgScale(ctm)));
+                    b.I32(static_cast<int32_t>(std::lround(bv.LightAngle)));
+                    b.I32(bv.Outer ? 1 : 0);
+                    b.I32(static_cast<int32_t>(std::lround(std::max(0.0f, std::min(1.0f, bv.Contrast)) * 100.0f)));
+                    b.I32(static_cast<int32_t>(std::lround(bv.Tilt)));
+                    Rec(XarOut::Bevel, b);
+                }
+
+                void EmitFlatFill(const Color& c) {
+                    XarBody b;
+                    b.I32(ColourRef(c));
+                    Rec(XarOut::FlatFill, b);
+                }
 
                 // TAG_SHADOWCONTROLLER, the group that holds a shadowed object.
                 // Layout as the XAR plugin reads it (verified there against
@@ -1514,9 +1946,11 @@ namespace UltraCanvas {
                 }
 
                 static std::string Num(double v) {
-                    char buf[48];
-                    std::snprintf(buf, sizeof(buf), "%.6g", v);
-                    return buf;
+                    // snprintf renders through LC_NUMERIC: on a comma-decimal
+                    // desktop this wrote `1,5` into marker attributes whose
+                    // own separator is a comma, so one value became two.
+                    // Every number the writer emits comes through here.
+                    return FormatFloatClassic(v);
                 }
                 static std::string HexColour(const Color& c) {
                     char buf[16];
@@ -1766,17 +2200,9 @@ namespace UltraCanvas {
 
                 // ===== PATHS =====
 
-                void EmitPathRecord(const std::vector<XarPathSeg>& segs, const VectorStyle& style,
-                                    const Matrix3x3& ctm, bool fillable) {
-                    if (segs.empty()) return;
-
-                    bool filled = fillable && HasVisibleFill(style);
-                    bool stroked = HasVisibleStroke(style);
-                    uint32_t tag = filled && stroked ? XarOut::PathFilledStroked
-                                 : filled           ? XarOut::PathFilled
-                                 : stroked          ? XarOut::PathStroked
-                                                    : XarOut::Path;
-
+                // A path record's body: UINT32 count, the verbs (4-byte
+                // aligned), the coordinates.
+                void EncodePath(const std::vector<XarPathSeg>& segs, const Matrix3x3& ctm, XarBody& b) const {
                     std::vector<uint8_t> verbs;
                     std::vector<Point2Dd> coords;
                     for (const auto& s : segs) {
@@ -1799,12 +2225,25 @@ namespace UltraCanvas {
                                 break;
                         }
                     }
-
-                    XarBody b;
                     b.U32(static_cast<uint32_t>(verbs.size()));
                     for (uint8_t v : verbs) b.U8(v);
                     while (b.bytes.size() % 4 != 0) b.U8(0);
                     for (const auto& c : coords) Coord(b, c);
+                }
+
+                void EmitPathRecord(const std::vector<XarPathSeg>& segs, const VectorStyle& style,
+                                    const Matrix3x3& ctm, bool fillable) {
+                    if (segs.empty()) return;
+
+                    bool filled = fillable && HasVisibleFill(style);
+                    bool stroked = HasVisibleStroke(style);
+                    uint32_t tag = filled && stroked ? XarOut::PathFilledStroked
+                                 : filled           ? XarOut::PathFilled
+                                 : stroked          ? XarOut::PathStroked
+                                                    : XarOut::Path;
+
+                    XarBody b;
+                    EncodePath(segs, ctm, b);
                     Rec(tag, b);
                     // Untransformed extents for object-bounding-box gradients.
                     double minX = 1e300, minY = 1e300, maxX = -1e300, maxY = -1e300;

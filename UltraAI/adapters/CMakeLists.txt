@@ -25,6 +25,10 @@ if(ULTRAAI_ADAPTER_MINIMAX)
     add_subdirectory(minimax)
 endif()
 
+if(ULTRAAI_ADAPTER_ELEVENLABS)
+    add_subdirectory(elevenlabs)
+endif()
+
 if(ULTRAAI_ADAPTER_QWEN)
     add_subdirectory(qwen)
 endif()

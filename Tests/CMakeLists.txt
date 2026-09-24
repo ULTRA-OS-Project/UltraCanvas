@@ -219,6 +219,30 @@ add_test(NAME FileLockTest COMMAND FileLockTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FileLockTest")
 
+# ===== TRASH TEST =====
+# MoveToTrash's freedesktop.org backend (Linux, the BSDs), built from its own
+# sources like the file-lock test above and pointed at a private
+# XDG_DATA_HOME, so the user's real trash is never touched. The Windows and
+# macOS backends are single calls into the shell / NSFileManager; a test there
+# would fill the build machine's own Recycle Bin, so it is not built there.
+if(ULTRACANVAS_HAS_NATIVE_TRASH AND UNIX AND NOT APPLE)
+    message(STATUS "  Building TrashTest...")
+    add_executable(TrashTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TrashTest.cpp
+        ${ULTRACANVAS_CORE_DIR}/UltraCanvasTrash.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxTrash.cpp
+    )
+    target_include_directories(TrashTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TrashTest PRIVATE cxx_std_20)
+    target_compile_definitions(TrashTest PRIVATE ULTRACANVAS_HAS_NATIVE_TRASH)
+    set_target_properties(TrashTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TrashTest COMMAND TrashTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TrashTest")
+endif()
+
 # ===== VOLUME MONITOR TEST =====
 # Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
 # built from its own sources, needs no display and does not link UltraCanvas.
@@ -657,6 +681,9 @@ endif()
 message(STATUS "  Building SpreadsheetOdsFormulaTest...")
 add_executable(SpreadsheetOdsFormulaTest
     ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetOdsFormulaTest.cpp
+    # FormulaTokenizer::ReadNumber reads literals with TryParseFloat, which
+    # lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(SpreadsheetOdsFormulaTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -704,6 +731,9 @@ message(STATUS "  Building SpreadsheetColumnSizingTest...")
 add_executable(SpreadsheetColumnSizingTest
     ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetColumnSizingTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    # SpreadsheetLengthToPixels reads lengths with TryParseFloat, which lives
+    # in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(SpreadsheetColumnSizingTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -719,6 +749,56 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: SpreadsheetColumnSizingTest")
+
+# ===== SPREADSHEET RANGE SORT TEST =====
+# Sorting a selected block by one of its columns (the header sort buttons):
+# the block's other columns move with the key column, and nothing outside the
+# block moves. Exercises the real SpreadsheetSheet with no UI stack.
+message(STATUS "  Building SpreadsheetRangeSortTest...")
+add_executable(SpreadsheetRangeSortTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetRangeSortTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetRangeSortTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetRangeSortTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetRangeSortTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetRangeSortTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetRangeSortTest
+    COMMAND SpreadsheetRangeSortTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetRangeSortTest")
+
+# ===== SPREADSHEET AUTO-FILL TEST =====
+# What dragging the fill handle writes: number series, "Item 1" counting on,
+# copied formulas with shifted relative references, repeated patterns.
+# Exercises the real SpreadsheetSheet with no UI stack.
+message(STATUS "  Building SpreadsheetAutoFillTest...")
+add_executable(SpreadsheetAutoFillTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetAutoFillTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+)
+target_include_directories(SpreadsheetAutoFillTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetAutoFillTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetAutoFillTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetAutoFillTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetAutoFillTest
+    COMMAND SpreadsheetAutoFillTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetAutoFillTest")
 
 # ===== LISTVIEW TOOLTIP TEST =====
 # The tooltip text a ListView reads on hover: per-cell tooltips over the
@@ -842,6 +922,7 @@ add_executable(ModelPLYTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
 )
 target_include_directories(ModelPLYTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -862,17 +943,23 @@ message(STATUS "    Test registered: ModelPLYTest")
 # ===== ALEMBIC READER TEST =====
 # The Ogawa container and AbcGeom, against the same E-45 aircraft the 3DS, OBJ,
 # DXF and COLLADA suites read - exported from the same .blend, and like the
-# .dae exported without applying the mirror modifier. The suite pins that
-# difference rather than letting a later change quietly "fix" it, and checks
-# the face winding against the per-corner normals the file itself carries,
-# which is the one decision in an Alembic reader that is invisible until a
-# model renders inside out.
+# .dae exported without applying the mirror modifier. The .abc it reads is the
+# untouched export in Tests/data/3D, not the demo copy under media/3D, which
+# was completed from the .blend; the suite pins that difference rather than
+# letting a later change quietly "fix" it, and checks the face winding against
+# the per-corner normals the file itself carries, which is the one decision in
+# an Alembic reader that is invisible until a model renders inside out. The
+# media root comes second so the same run can also assert that the demo copy
+# is whole.
 message(STATUS "  Building ModelAlembicTest...")
 add_executable(ModelAlembicTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelAlembicTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
+    # The OBJ converter reads its numbers with TryParseFloat, which lives in
+    # UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
@@ -889,7 +976,8 @@ set_target_properties(ModelAlembicTest PROPERTIES
 )
 add_test(
     NAME ModelAlembicTest
-    COMMAND ModelAlembicTest "${ULTRACANVAS_ROOT}/media/3D"
+    COMMAND ModelAlembicTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D"
+                             "${ULTRACANVAS_ROOT}/media/3D"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelAlembicTest")
@@ -910,6 +998,7 @@ add_executable(ModelStepTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
 )
 target_include_directories(ModelStepTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -999,6 +1088,9 @@ add_executable(ModelOBJTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelOBJTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    # The OBJ converter reads its numbers with TryParseFloat, which lives in
+    # UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
@@ -1037,6 +1129,7 @@ add_executable(ModelDXFTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasCADPalette.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
 )
 target_include_directories(ModelDXFTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -1073,6 +1166,7 @@ if(TEST_TINYXML2_FOUND)
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+        ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat
     )
     target_include_directories(ModelColladaTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
@@ -1149,6 +1243,7 @@ add_executable(ModelXFileTest
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
 )
 target_include_directories(ModelXFileTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -1252,6 +1347,7 @@ if(ZLIB_FOUND)
         ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
         ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
         ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+        ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
     )
     target_include_directories(ModelFbxTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
@@ -1303,6 +1399,7 @@ set(MODEL_DISPATCH_SOURCES
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasCADPalette.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / ParseFloatClassic
 )
 set(MODEL_DISPATCH_DEFINES "")
 set(MODEL_DISPATCH_INCLUDES "")
@@ -1429,6 +1526,36 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelPreviewSeamTest")
+
+# ===== MODEL LOCALE DECIMAL TEST =====
+# Every text-based 3D sample reads vertex for vertex the same in a
+# comma-decimal locale as in "C" - the defect that put German desktops' PLY,
+# DXF, COLLADA, FBX, STEP and .x models on a whole-number grid. Same sources
+# as the seam test above, its own main().
+set(MODEL_LOCALE_SOURCES ${MODEL_PREVIEW_SOURCES})
+list(REMOVE_ITEM MODEL_LOCALE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelPreviewSeamTest.cpp)
+list(APPEND MODEL_LOCALE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelLocaleDecimalTest.cpp)
+message(STATUS "  Building ModelLocaleDecimalTest...")
+add_executable(ModelLocaleDecimalTest ${MODEL_LOCALE_SOURCES})
+target_include_directories(ModelLocaleDecimalTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+    ${MODEL_DISPATCH_INCLUDES}
+)
+target_compile_definitions(ModelLocaleDecimalTest PRIVATE ${MODEL_DISPATCH_DEFINES})
+target_link_libraries(ModelLocaleDecimalTest PRIVATE ${MODEL_DISPATCH_LIBS})
+target_compile_features(ModelLocaleDecimalTest PRIVATE cxx_std_20)
+set_target_properties(ModelLocaleDecimalTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelLocaleDecimalTest
+    COMMAND ModelLocaleDecimalTest "${ULTRACANVAS_ROOT}/media/3D"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelLocaleDecimalTest")
 
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the
@@ -1915,6 +2042,84 @@ if(LIBARCHIVE_TEST_FOUND)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: VirtualFSDeleteTest")
+
+    # ===== VIRTUALFS NAME ENCODING TEST =====
+    # ZIP entry names in the DOS code page (no UTF-8 flag, as Windows writes
+    # "Namensänderung") list and extract as UTF-8; Thai / Russian / Chinese
+    # UTF-8 names survive unchanged.
+    message(STATUS "  Building VirtualFSNameEncodingTest...")
+    add_executable(VirtualFSNameEncodingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSNameEncodingTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSNameEncodingTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSNameEncodingTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSNameEncodingTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSNameEncodingTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSNameEncodingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSNameEncodingTest
+        COMMAND VirtualFSNameEncodingTest ${CMAKE_BINARY_DIR}/vfs-name-encoding-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSNameEncodingTest")
+
+    # ===== VIRTUALFS EXTRACT SAFETY TEST =====
+    # ExtractAll writes nothing outside the destination ("zip slip"): "..",
+    # absolute names, writes through a symbolic link and hard links that
+    # climb out are refused; hard links land under the destination.
+    message(STATUS "  Building VirtualFSExtractSafetyTest...")
+    add_executable(VirtualFSExtractSafetyTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSExtractSafetyTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSExtractSafetyTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSExtractSafetyTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSExtractSafetyTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSExtractSafetyTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSExtractSafetyTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSExtractSafetyTest
+        COMMAND VirtualFSExtractSafetyTest ${CMAKE_BINARY_DIR}/vfs-extract-safety-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSExtractSafetyTest")
 else()
     message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
 endif()
@@ -2033,6 +2238,9 @@ message(STATUS "  Building ToneCurveTest...")
 add_executable(ToneCurveTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ToneCurveTest.cpp
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasToneCurve.cpp
+    # Tone-curve presets are read with TryParseFloat, which lives in
+    # UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(ToneCurveTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -2859,6 +3067,30 @@ endif()
 
 message(STATUS "")
 
+# ===== FILER NAME ENCODING TEST =====
+# The file display draws German umlauts, Thai, Russian and Chinese names
+# intact, and a name in a legacy code page (Latin-1, or IBM437 out of a
+# Windows ZIP) decoded instead of as U+FFFD ("Namens•nderung").
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerNameEncodingTest...")
+    add_executable(FilerNameEncodingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerNameEncodingTest.cpp
+    )
+    target_include_directories(FilerNameEncodingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerNameEncodingTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerNameEncodingTest PRIVATE UltraCanvas)
+    set_target_properties(FilerNameEncodingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerNameEncodingTest COMMAND FilerNameEncodingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerNameEncodingTest")
+else()
+    message(STATUS "  FilerNameEncodingTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== FILER SHORTCUT ENTRY TEST =====
 # What the file display makes of a .lnk it lists: type, category, info column
 # and the resolved target on the entry. Builds its own shortcuts (and its own
@@ -3075,6 +3307,31 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FontViewerTest")
 else()
     message(STATUS "  FontViewerTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== VECTOR ELEMENT VIEW TEST =====
+# What UltraCanvasVectorElement has to get right for a drawing to appear on a
+# page: it keeps the box it was built with through its parent's layout, a fit
+# is not clamped to the interactive zoom limits, painting is element-local,
+# a collapsed (non-invertible) transform never reaches the backend, and the
+# host's own event callback is heard. Every one of these was a white tile on
+# the DemoApp's DWG/DXF page.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building VectorElementViewTest...")
+    add_executable(VectorElementViewTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorElementViewTest.cpp
+    )
+    target_include_directories(VectorElementViewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorElementViewTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorElementViewTest PRIVATE UltraCanvas)
+    set_target_properties(VectorElementViewTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorElementViewTest COMMAND VectorElementViewTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorElementViewTest")
+else()
+    message(STATUS "  VectorElementViewTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== OFFSCREEN RENDER TEST =====
@@ -3305,6 +3562,43 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: IODeviceManagerTest")
+
+# DeviceExplorer's model (Apps/DeviceExplorer/ui/DeviceExplorerModel.cpp):
+# grouping, filter and property sections over fake devices registered with
+# the manager. Needs no UI library, so it builds with the same sources as
+# IODeviceManagerTest plus the model.
+message(STATUS "  Building DeviceExplorerModelTest...")
+add_executable(DeviceExplorerModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DeviceExplorerModelTest.cpp
+    ${ULTRACANVAS_ROOT}/Apps/DeviceExplorer/ui/DeviceExplorerModel.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceManager.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceBackends.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceWatcherFallback.cpp
+)
+target_include_directories(DeviceExplorerModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+    ${ULTRACANVAS_ROOT}/Apps/DeviceExplorer/ui
+)
+target_compile_features(DeviceExplorerModelTest PRIVATE cxx_std_20)
+target_link_libraries(DeviceExplorerModelTest PRIVATE Threads::Threads)
+set_target_properties(DeviceExplorerModelTest PROPERTIES
+    OUTPUT_NAME "DeviceExplorerModelTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME DeviceExplorerModelTest
+    COMMAND DeviceExplorerModelTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: DeviceExplorerModelTest")
 
 # ===== IODEVICEMANAGER PRINTER TEST =====
 # Renderer selection and the option resolver, driven by a fake transport and a

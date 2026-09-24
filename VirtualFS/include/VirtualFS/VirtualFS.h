@@ -425,14 +425,18 @@ inline VirtualFSResult VirtualFS_ExtractFile(
  * @param destDirectory Destination
  * @param options Extract options
  * @param progressCallback Progress callback
+ * @param outError Optional: on failure, the provider's own account of it
+ *        (see VirtualFSManager::ExtractAll)
  * @return Success or error
  */
 inline VirtualFSResult VirtualFS_ExtractAll(
     const std::string& archivePath,
     const std::string& destDirectory,
     const VirtualFSExtractOptions& options = VirtualFSExtractOptions::Default(),
-    VirtualFSProgressCallback progressCallback = nullptr) {
-    return VirtualFSManager::Instance().ExtractAll(archivePath, destDirectory, options, progressCallback);
+    VirtualFSProgressCallback progressCallback = nullptr,
+    std::string* outError = nullptr) {
+    return VirtualFSManager::Instance().ExtractAll(archivePath, destDirectory, options,
+                                                   progressCallback, outError);
 }
 
 /**

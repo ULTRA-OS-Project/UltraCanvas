@@ -250,6 +250,31 @@ UltraDbResult LocalStore::ListFolders(const std::string& accountId,
     return UltraDbResult::Ok();
 }
 
+UltraDbResult LocalStore::GetFolderUidValidity(const std::string& accountId,
+                                               const std::string& folder,
+                                               int64_t& out) const {
+    out = 0;
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT uidvalidity FROM folders WHERE account_id=? AND name=?",
+        { accountId, folder }, rs);
+    if (!q) return q;
+    if (!rs.Empty()) out = rs.Row(0)["uidvalidity"].AsInt64();
+    return UltraDbResult::Ok();
+}
+
+UltraDbResult LocalStore::SetFolderUidState(const std::string& accountId,
+                                            const std::string& folder,
+                                            int64_t uidValidity, int64_t uidNext) {
+    // Upsert so a folder that was never LIST-ed still records its UID state.
+    return UltraDb_Exec(connection_,
+        "INSERT INTO folders(account_id, name, uidvalidity, uidnext) "
+        "VALUES(?, ?, ?, ?) "
+        "ON CONFLICT(account_id, name) DO UPDATE SET "
+        "uidvalidity=excluded.uidvalidity, uidnext=excluded.uidnext",
+        { accountId, folder, uidValidity, uidNext });
+}
+
 // ---- Messages --------------------------------------------------------------
 
 UltraDbResult LocalStore::UpsertMessage(const MessageEnvelope& m) {
@@ -359,6 +384,53 @@ UltraDbResult LocalStore::SetFlags(const std::string& accountId,
         "UPDATE messages SET flags=?, needs_answer=? "
         "WHERE account_id=? AND folder=? AND uid=?",
         { updated, needsAnswer ? 1 : 0, accountId, folder, uid });
+}
+
+UltraDbResult LocalStore::ReplaceFlags(const std::string& accountId,
+                                       const std::string& folder, int64_t uid,
+                                       uint32_t flags) {
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT eligible FROM messages "
+        "WHERE account_id=? AND folder=? AND uid=?",
+        { accountId, folder, uid }, rs);
+    if (!q) return q;
+    if (rs.Empty())
+        return UltraDbResult::Error(UltraDbResultCode::NotFound, "message not found");
+
+    bool eligible = rs.Row(0)["eligible"].AsInt64() != 0;
+    bool needsAnswer = eligible && (flags & Flag_Answered) == 0;
+
+    return UltraDb_Exec(connection_,
+        "UPDATE messages SET flags=?, needs_answer=? "
+        "WHERE account_id=? AND folder=? AND uid=?",
+        { flags, needsAnswer ? 1 : 0, accountId, folder, uid });
+}
+
+UltraDbResult LocalStore::RemoveMessage(const std::string& accountId,
+                                        const std::string& folder, int64_t uid) {
+    UltraDbHandle tx = UltraDb_Begin(connection_);
+    if (tx == UltraDbInvalidHandle)
+        return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
+    UltraDb_ExecInTx(tx, "DELETE FROM messages "
+                         "WHERE account_id=? AND folder=? AND uid=?",
+                     { accountId, folder, uid });
+    UltraDb_ExecInTx(tx, "DELETE FROM message_security "
+                         "WHERE account_id=? AND folder=? AND uid=?",
+                     { accountId, folder, uid });
+    return UltraDb_Commit(tx);
+}
+
+UltraDbResult LocalStore::ClearFolderMessages(const std::string& accountId,
+                                              const std::string& folder) {
+    UltraDbHandle tx = UltraDb_Begin(connection_);
+    if (tx == UltraDbInvalidHandle)
+        return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
+    UltraDb_ExecInTx(tx, "DELETE FROM messages WHERE account_id=? AND folder=?",
+                     { accountId, folder });
+    UltraDb_ExecInTx(tx, "DELETE FROM message_security WHERE account_id=? AND folder=?",
+                     { accountId, folder });
+    return UltraDb_Commit(tx);
 }
 
 // ---- Sender security verdicts ----------------------------------------------

@@ -32,6 +32,14 @@ bool UltraSocialApp::Initialize(const std::string& dataDir) {
 
     if (!store_.Open("ultrasocial", dataDir + "/social.db")) return false;
     vault_ = CredentialVault(dataDir + "/vault");
+    // Unlock the vault with the local device key so the user is not prompted
+    // (Thunderbird-style; see UltraVault::DeviceKeyVault). A brand-new vault
+    // is created here, and a 0.1-format one in the same folder is carried
+    // across. Nothing reads or writes a secret while this fails — Store()
+    // reports it, so a sign-in says so instead of losing the token.
+    if (!vault_.TryAutoUnlock())
+        std::fprintf(stderr, "UltraSocial: cannot open the credential vault in %s/vault; "
+                             "account credentials are unavailable\n", dataDir.c_str());
     dataDir_ = dataDir;
 
     store_.ListAccounts(accounts_);

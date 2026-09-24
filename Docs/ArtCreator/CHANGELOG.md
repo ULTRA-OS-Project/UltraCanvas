@@ -1,3 +1,65 @@
+#### 2026-09-22 *0.6.0*
+- **Mirror.** Two toolbar buttons after Send to Back, and *Mirror
+  Horizontally* / *Mirror Vertically* on the Arrange menu, flip the
+  selection about the centre of its bounds: left-right, or top-bottom. It
+  is a scale of -1 on one axis through the editing layer, so it composes
+  into each element's transform like a drag of the selection handles,
+  undoes as one step and keeps the selection where it was. Icons
+  `media/icons/artcreator/mirror-h.svg` and `mirror-v.svg`.
+
+#### 2026-09-21 *0.5.1*
+- **The app icon needs no font.** `media/appicon/ArtCreator.svg` kept the
+  letter as live text in the Salina face, so every renderer without that
+  font (GitHub's PNG export, the build environment, most desktops' icon
+  themes) drew a different "A" from the one in the artwork. The glyph is
+  now an outline path traced from the uploaded 256 px render, which is
+  what `media/appicon/ArtCreator.png` (the window icon, the desktop entry
+  and the Windows `.exe` icon) holds; the four tiles and their colours are
+  unchanged. Rendering the SVG reproduces the PNG to within antialiasing.
+
+#### 2026-09-20 *0.5.0*
+- **One version number, one place.** This changelog's first line is now
+  the only place ArtCreator's version lives: the build reads it
+  (`cmake/UltraCanvasVersion.cmake`) and passes it to the sources as
+  `ARTCREATOR_VERSION`. The `"0.0.0"` fallbacks in `main.cpp` and
+  `ArtCreatorWindow.cpp` are gone; a build without the definition now
+  fails at compile time instead of an About dialog and `--version`
+  reporting 0.0.0.
+- **`--help` and `--version` answer on stdout.** They wrote to the
+  diagnostic stream, which a Release build keeps off unless
+  `ULTRACANVAS_DEBUG_LOG` is set, so a shell saw nothing. Unknown arguments
+  go to stderr.
+
+#### 2026-09-19 *0.3.0*
+- **Depth, phase 5 of the proposal (first slice).** Four tools after
+  Feather in the palette and three commands, on the framework's new
+  containers, effects and polygon booleans (UltraCanvas 0.9.16):
+  - **Contour (C)**: click a shape for a contour; drag right for an
+    outward width, left for an inward one; steps, the colour run (fade,
+    rainbow, alt rainbow, constant) and the colour - from the line or the
+    fill colour - in the options.
+  - **Bevel (J)**: click a shape for a bevel and drag right for a wider
+    rim; Xara's fifteen profiles, the light's angle and tilt, contrast
+    and inner / outer in the options.
+  - **Blend (B)**: drag from one shape to another to blend them; dragging
+    from or onto a blend adds the shape to it; steps and the colour run
+    in the options.
+  - **Mould (M)**: click a shape (or the selection it belongs to) to put
+    it in an envelope or a perspective, then drag the corner squares and
+    an envelope's curve handles; reset the shape or remove the mould.
+  - **Arrange > Combine shapes**: Add, Subtract, Intersect and Slice, as
+    in Xara (the front shape subtracts from or slices the others and is
+    removed; Add and Intersect keep the back shape's style).
+  - **Arrange > Apply ClipView (Ctrl+K)**: the front shape of the
+    selection becomes the keyhole the others show through; **Remove
+    ClipView, Blend or Mould** (and Ungroup) dissolve them again.
+- **XAR carries all of it.** Clip views, contours, blends, moulds and
+  bevels are saved as Xara's own controller records and read back as
+  themselves; a Xara drawing's own ones open as editable objects.
+- Not in this release (the rest of phase 5): text on path and text areas,
+  pages and spreads, the colour gallery with linked shades, symbols, the
+  photo tool, live effects, trace-to-vector, editable brushes.
+
 #### 2026-09-18 *0.2.0*
 - **Xara-class effects, phase 4 of the proposal.** Three additions to the
   palette and one panel, all on the framework's new model fields

@@ -1,13 +1,14 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
-// Version: 1.2.0
-// Last Modified: 2026-08-09
+// Version: 1.3.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 
 #include <stdexcept>
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasModalDialog.h"
 #include <algorithm>
 #include <cmath>
 
@@ -192,6 +193,11 @@ void UltraCanvasSpreadsheet::RenderColumnHeaders(IRenderContext* ctx) {
     
     CellRange visible = GetVisibleRange();
     const auto& selection = sheet->GetSelection();
+
+    // A selected block of rows gets a sort button in each of its column headers.
+    CellRange sortRange;
+    const bool sortable = GetHeaderSortableRange(sortRange);
+    const int sortedColumn = GetHeaderSortColumn();
     
     int x = startX;
     for (int col = visible.start.col; col <= visible.end.col && x < gridBounds_.x + gridBounds_.width; ++col) {
@@ -226,7 +232,86 @@ void UltraCanvasSpreadsheet::RenderColumnHeaders(IRenderContext* ctx) {
         ctx->DrawText(colName, Point2Df(x + (colWidth - textWidth) / 2,
                       headerY + (headerHeight - ctx->GetTextLineHeight(colName)) / 2));
 
+        if (sortable && col >= sortRange.start.col && col <= sortRange.end.col) {
+            Rect2Di button = GetHeaderSortButtonRect(x, colWidth);
+            if (button.width > 0) {
+                RenderHeaderSortButton(ctx, button, col == sortedColumn, headerSortAscending_,
+                                       isSelected ? Colors::White : headerTextColor_);
+            }
+        }
+
         x += colWidth;
+    }
+}
+
+void UltraCanvasSpreadsheet::RequestHeaderSort(int column, SortOrder order) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet) return;
+    const CellRange range = GetSelection();
+    const int formulas = sortFormulaWarningEnabled_ ? sheet->CountFormulaCells(range) : 0;
+    if (formulas == 0) {
+        SortSelectionByColumn(column, order);
+        return;
+    }
+
+    const std::string message =
+        "The selected block " + range.ToString() + " contains " + std::to_string(formulas) +
+        (formulas == 1 ? " formula cell." : " formula cells.") +
+        "\n\nSorting moves formulas with their rows but does not rewrite their cell "
+        "references: a formula such as =D3/C3 keeps pointing at row 3 after its row "
+        "has moved, and may then calculate from the wrong row.\n\n"
+        "Click OK to sort anyway, or Cancel to leave the block as it is.";
+
+    // The dialog may outlive this element, so the callback holds it weakly,
+    // and it sorts only if the same block is still selected on OK.
+    std::weak_ptr<UltraCanvasUIElement> weakSelf = weak_from_this();
+    UltraCanvasDialogManager::ShowMessage(message, "Sort selection", DialogType::Warning,
+        DialogButtons::OKCancel,
+        [weakSelf, range, column, order](DialogResult result) {
+            if (result != DialogResult::OK) return;
+            auto self = std::static_pointer_cast<UltraCanvasSpreadsheet>(weakSelf.lock());
+            if (!self || !(self->GetSelection() == range)) return;
+            self->SortSelectionByColumn(column, order);
+        },
+        GetWindow());
+}
+
+Rect2Di UltraCanvasSpreadsheet::GetHeaderSortButtonRect(int colX, int colWidth) const {
+    const int size = 14;
+    // Leave the column letter room in the middle and keep clear of the
+    // resize grip on the right-hand border.
+    if (colWidth < 2 * size + 16) return Rect2Di(0, 0, 0, 0);
+    const int headerHeight = SpreadsheetLimits::HeaderRowHeight;
+    return Rect2Di(colX + colWidth - size - 6,
+                   static_cast<int>(gridBounds_.y) + (headerHeight - size) / 2, size, size);
+}
+
+// The button is geometry, like the ListView's sort indicator: an outline with
+// both directions offered while the block is unsorted, and a single filled
+// triangle (apex up ascending, apex down descending) once it has been sorted
+// by this column.
+void UltraCanvasSpreadsheet::RenderHeaderSortButton(IRenderContext* ctx, const Rect2Di& button,
+                                                    bool sorted, bool ascending, const Color& color) {
+    ctx->SetStrokePaint(Color(color.r, color.g, color.b, 140));
+    ctx->SetStrokeWidth(1.0f);
+    ctx->DrawRoundedRectangle(Rect2Dd(button.x + 0.5, button.y + 0.5, button.width - 1, button.height - 1), 2.0);
+
+    const double cx = button.x + button.width * 0.5;
+    const double cy = button.y + button.height * 0.5;
+    auto up = [&](double top, double w, double h) {
+        return std::vector<Point2Dd>{ Point2Dd(cx, top), Point2Dd(cx + w / 2, top + h), Point2Dd(cx - w / 2, top + h) };
+    };
+    auto down = [&](double top, double w, double h) {
+        return std::vector<Point2Dd>{ Point2Dd(cx - w / 2, top), Point2Dd(cx + w / 2, top), Point2Dd(cx, top + h) };
+    };
+
+    if (sorted) {
+        ctx->SetFillPaint(color);
+        ctx->FillLinePath(ascending ? up(cy - 2.5, 8, 5) : down(cy - 2.5, 8, 5));
+    } else {
+        ctx->SetFillPaint(Color(color.r, color.g, color.b, 190));
+        ctx->FillLinePath(up(cy - 5, 6, 3.5));
+        ctx->FillLinePath(down(cy + 1.5, 6, 3.5));
     }
 }
 
@@ -773,6 +858,39 @@ void UltraCanvasSpreadsheet::RenderAutoFillHandle(IRenderContext* ctx) {
     int handleSize = 6;
     ctx->SetFillPaint(selectionBorderColor_);
     ctx->FillRectangle(Rect2Df(corner.x - handleSize, corner.y - handleSize, handleSize, handleSize));
+
+    // While the handle is dragged, a dashed outline shows the range the
+    // release will fill.
+    if (editMode_ == SpreadsheetEditMode::AutoFilling && !(autoFillTarget_ == autoFillSource_)) {
+        Point2Di topLeft = CellToScreen(autoFillTarget_.start.row, autoFillTarget_.start.col);
+        Point2Di bottomRight = CellToScreen(autoFillTarget_.end.row + 1, autoFillTarget_.end.col + 1);
+        ctx->SetStrokePaint(selectionBorderColor_);
+        ctx->SetStrokeWidth(1.5f);
+        ctx->SetLineDash(UCDashPattern({ 4.0, 3.0 }));
+        ctx->DrawRectangle(Rect2Df(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y));
+        ctx->SetLineDash(UCDashPattern());
+    }
+}
+
+CellRange UltraCanvasSpreadsheet::AutoFillTargetFor(int row, int col) const {
+    const CellRange& src = autoFillSource_;
+    const int down  = row - src.end.row;
+    const int up    = src.start.row - row;
+    const int right = col - src.end.col;
+    const int left  = src.start.col - col;
+    const int vertical = std::max(down, up);
+    const int horizontal = std::max(right, left);
+    if (vertical <= 0 && horizontal <= 0) return src;   // still over the source
+
+    CellRange target = src;
+    if (vertical >= horizontal) {
+        if (down > 0) target.end.row = std::min(row, SpreadsheetLimits::MaxRows - 1);
+        else          target.start.row = std::max(row, 0);
+    } else {
+        if (right > 0) target.end.col = std::min(col, SpreadsheetLimits::MaxColumns - 1);
+        else           target.start.col = std::max(col, 0);
+    }
+    return target;
 }
 
 // ============================================================================
@@ -819,6 +937,7 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
     // right-click on a multi-cell range formats the whole range), and never
     // starts a drag-selection.
     if (event.button == UCMouseButton::Right) {
+        if (hit.area == HitArea::ColumnSortButton) hit.area = HitArea::ColumnHeader;
         if (hit.area == HitArea::Cell || hit.area == HitArea::ColumnHeader ||
             hit.area == HitArea::RowHeader) {
             if (IsEditing()) StopEditing(true);
@@ -878,6 +997,16 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
             Invalidate();
             break;
         }
+
+        case HitArea::ColumnSortButton: {
+            // Sorts the selection, which stays selected; the same button
+            // again turns the order round.
+            if (IsEditing()) StopEditing(true);
+            const bool ascending = !(GetHeaderSortColumn() == hit.col && headerSortAscending_);
+            mouseDown_ = false;   // the warning dialog may take the button release
+            RequestHeaderSort(hit.col, ascending ? SortOrder::Ascending : SortOrder::Descending);
+            break;
+        }
         
         case HitArea::CornerHeader: {
             if (IsEditing()) StopEditing(true);
@@ -917,7 +1046,11 @@ void UltraCanvasSpreadsheet::HandleMouseDown(const UCEvent& event) {
         }
         
         case HitArea::AutoFillHandle: {
+            if (IsEditing()) StopEditing(true);
+            autoFillSource_ = GetSelection();
+            autoFillTarget_ = autoFillSource_;
             editMode_ = SpreadsheetEditMode::AutoFilling;
+            UltraCanvasApplication::GetInstance()->CaptureMouse(this);
             break;
         }
 
@@ -952,6 +1085,13 @@ void UltraCanvasSpreadsheet::HandleMouseUp(const UCEvent& event) {
     if (editMode_ == SpreadsheetEditMode::Resizing) {
         resizingColumn_ = -1;
         resizingRow_ = -1;
+    }
+
+    if (editMode_ == SpreadsheetEditMode::AutoFilling) {
+        editMode_ = SpreadsheetEditMode::Normal;
+        if (!(autoFillTarget_ == autoFillSource_)) AutoFillSelection(autoFillTarget_);
+        autoFillTarget_ = autoFillSource_;
+        Invalidate();
     }
 
     draggingHScrollbar_ = false;
@@ -995,6 +1135,16 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
                 }
             }
         }
+        else if (editMode_ == SpreadsheetEditMode::AutoFilling) {
+            // ScreenToCell also answers for a pointer beyond the last visible
+            // cell, so the drag keeps tracking outside the grid.
+            CellAddress over = ScreenToCell(event.pointer.x, event.pointer.y);
+            CellRange target = AutoFillTargetFor(over.row, over.col);
+            if (!(target == autoFillTarget_)) {
+                autoFillTarget_ = target;
+                Invalidate();
+            }
+        }
         else if (editMode_ == SpreadsheetEditMode::Resizing) {
             if (resizingColumn_ >= 0) {
                 int delta = event.pointer.x - resizeStartPos_;
@@ -1020,6 +1170,8 @@ void UltraCanvasSpreadsheet::HandleMouseMove(const UCEvent& event) {
         case HitArea::ColumnResizer: SetMouseCursor(UCMouseCursor::SizeWE); break;
         case HitArea::RowResizer:    SetMouseCursor(UCMouseCursor::SizeNS); break;
         case HitArea::FormulaBar:    SetMouseCursor(UCMouseCursor::Text);   break;
+        case HitArea::ColumnSortButton: SetMouseCursor(UCMouseCursor::Hand); break;
+        case HitArea::AutoFillHandle: SetMouseCursor(UCMouseCursor::Cross);  break;
         default:                     SetMouseCursor(UCMouseCursor::Default); break;
     }
 }
@@ -1257,6 +1409,20 @@ UltraCanvasSpreadsheet::HitTestResult UltraCanvasSpreadsheet::HitTest(int x, int
                     break;
                 }
                 if (colX > x) break;
+            }
+
+            // Sort button of a column inside the selected block.
+            CellRange sortRange;
+            if (result.area == HitArea::ColumnHeader && GetHeaderSortableRange(sortRange) &&
+                result.col >= sortRange.start.col && result.col <= sortRange.end.col) {
+                int left = static_cast<int>(gridBounds_.x) + headerWidth;
+                for (int c = sheet->GetScrollColumn(); c < result.col; ++c) {
+                    if (!sheet->IsColumnHidden(c)) left += sheet->GetColumnWidth(c);
+                }
+                Rect2Di button = GetHeaderSortButtonRect(left, sheet->GetColumnWidth(result.col));
+                if (button.width > 0 && button.Contains(x, y)) {
+                    result.area = HitArea::ColumnSortButton;
+                }
             }
         }
         return result;

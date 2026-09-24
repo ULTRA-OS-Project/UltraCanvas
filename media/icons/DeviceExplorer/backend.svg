@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <title>Backend</title>
+  <rect x="1.5" y="2" width="13" height="3.4" rx="0.8" fill="#4a5568"/>
+  <rect x="1.5" y="6.3" width="13" height="3.4" rx="0.8" fill="#5a6b85"/>
+  <rect x="1.5" y="10.6" width="13" height="3.4" rx="0.8" fill="#718096"/>
+  <circle cx="12.3" cy="3.7" r="0.7" fill="#68d391"/>
+  <circle cx="12.3" cy="8" r="0.7" fill="#68d391"/>
+  <circle cx="12.3" cy="12.3" r="0.7" fill="#f6ad55"/>
+</svg>

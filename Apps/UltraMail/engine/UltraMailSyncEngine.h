@@ -28,6 +28,8 @@ struct SyncStats {
     int folders  = 0;   // folders upserted
     int messages = 0;   // envelopes upserted
     int bodies   = 0;   // full bodies fetched + cached
+    int reconciled = 0; // existing messages whose flags were corrected from server
+    int expunged   = 0; // local messages dropped because the server no longer has them
 };
 
 struct SyncOutcome {
@@ -84,6 +86,24 @@ public:
                         int64_t uid, uint32_t ultramailFlag, bool set,
                         const std::string& serverUrl,
                         const UltraNetMailOptions& options);
+
+    // Reconcile the read/deleted state of messages already stored for a folder
+    // with the server (UID FETCH 1:* (FLAGS)): correct flags that were changed on
+    // another client and expunge locally-held messages the server no longer
+    // lists. New UIDs are left to SyncMessages. Non-fatal: if the server flag
+    // list cannot be fetched (unsupported backend or a transient error), nothing
+    // is expunged and the call still reports success.
+    SyncOutcome ReconcileFlags(const std::string& accountId, const std::string& folder,
+                               const std::string& serverUrl,
+                               const UltraNetMailOptions& options);
+
+    // Move a message to another folder on the server (UID MOVE) and drop it from
+    // the local index for the source folder — used by Delete (to Trash) and Junk
+    // (to the Junk mailbox).
+    SyncOutcome MoveMessage(const std::string& accountId, const std::string& srcFolder,
+                            int64_t uid, const std::string& dstFolder,
+                            const std::string& serverUrl,
+                            const UltraNetMailOptions& options);
 
 private:
     LocalStore&             store_;

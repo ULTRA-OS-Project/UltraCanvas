@@ -1,6 +1,6 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+// Version: 1.1.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
 
@@ -8,7 +8,10 @@
 
 #include "UltraCanvasApplication.h"    // PostToUIThread
 
+#include "UltraNet/UltraNetCore.h"   // the transfer callbacks a job reports through
+
 #include <algorithm>
+#include <filesystem>
 
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
@@ -16,9 +19,12 @@
 #include <UltraCloud/UltraCloudProvider.h>
 #include <UltraCloud/UltraCloudSecrets.h>
 #include <UltraCloud/UltraCloudService.h>
+#include <UltraVault/UltraVaultDeviceKeyVault.h>
 #endif
 
 namespace UltraCanvas {
+
+namespace fs = std::filesystem;
 
 // ===== THE ULTRACLOUD SIDE =====
 // Everything that needs the module is in here, so the class itself compiles
@@ -27,16 +33,21 @@ namespace UltraCanvas {
 struct UltraFilerRemoteDrives::Impl {
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
     UltraCloud::AccountStore accounts;
+    // UltraFiler's own vault: ultrafiler.vault + device.key under the config
+    // directory, unlocked without a prompt (UltraVault::DeviceKeyVault). The
+    // secret store writes into it under "cloud.<accountId>.*".
+    UltraVault::DeviceKeyVault vault;
     std::unique_ptr<UltraCloud::ISecretStore> secrets;
     std::unique_ptr<UltraCloud::CloudService> service;
     bool opened = false;
     std::string openError;
 
-    // Opens the account store and the secret store once. The accounts are an
-    // UltraDatabase file beside UltraFiler's settings; the secrets go to
-    // UltraVault where it is built, and to the obfuscated per-app file only
-    // when it is not - which is weaker, and is why it is the fallback rather
-    // than the default.
+    // Opens the account store, the vault and the secret store once. The
+    // accounts are an UltraDatabase file beside UltraFiler's settings; the
+    // secrets are in the vault beside it. Earlier builds kept them in
+    // obfuscated files under remote-drive-secrets/ - or, once UltraVault was
+    // built, in a VaultSecretStore that nothing had ever opened, so they were
+    // never saved at all; the files are carried into the vault here.
     bool Open(std::string& error) {
         if (opened) return true;
         if (!openError.empty()) { error = openError; return false; }
@@ -56,11 +67,17 @@ struct UltraFilerRemoteDrives::Impl {
             error = openError;
             return false;
         }
-#ifdef ULTRACLOUD_USE_ULTRAVAULT
+        vault = UltraVault::DeviceKeyVault(dir + "/vault",
+                                           {"ultrafiler.vault", "files.ultrafiler."});
+        if (!vault.TryAutoUnlock()) {
+            openError = "cannot open the credential vault in " + dir + "/vault";
+            error = openError;
+            return false;
+        }
         secrets = std::make_unique<UltraCloud::VaultSecretStore>();
-#else
-        secrets = std::make_unique<UltraCloud::FileSecretStore>(dir + "/remote-drive-secrets");
-#endif
+        std::vector<UltraCloud::Account> known;
+        accounts.List(known);
+        UltraCloud::MigrateLegacyFileSecrets(dir + "/remote-drive-secrets", known, *secrets);
         service = std::make_unique<UltraCloud::CloudService>(accounts, *secrets);
         opened = true;
         return true;
@@ -128,6 +145,7 @@ bool UltraFilerRemoteDrives::Reload(std::string& error) {
         if (std::shared_ptr<UltraCloud::ICloudProvider> p =
                 UltraCloud::GetProvider(a.providerId)) {
             d.canModify = p->Capabilities().modify;
+            d.canUpload = p->Capabilities().upload;
         }
         drives.push_back(std::move(d));
     }
@@ -216,6 +234,51 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
     return true;
 }
 
+std::string UltraFilerRemoteDrives::ListingStatus(const std::string& path) const {
+    std::string accountId, remotePath;
+    if (!SplitRemoteFilerPath(path, accountId, remotePath)) return {};
+
+    std::lock_guard<std::mutex> lk(mutex_);
+    const auto it = cache_.find(path);
+    if (it == cache_.end() || it->second.state != CacheState::Loading) return {};
+
+    // The server as the user knows it: the drive's name, and its address
+    // when it has one ("Backup NAS (ftp://nas.local)").
+    std::string server = accountId;
+    for (const RemoteDrive& d : drives_) {
+        if (d.accountId != accountId) continue;
+        server = d.displayName.empty() ? d.serverUrl : d.displayName;
+        if (!d.displayName.empty() && !d.serverUrl.empty())
+            server += " (" + d.serverUrl + ")";
+        break;
+    }
+    // The folder as the server sees it; the drive's root is just "/".
+    std::string folder = remotePath;
+    if (folder.empty()) folder = "/";
+
+    if (activeJobPath_ == path) {
+        const auto waited = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - activeJobSince_).count();
+        std::string line = "Connecting to " + server + " and reading " + folder;
+        // A server that answers within a moment needs no clock; one that
+        // does not gets a count, so a stalled connection looks stalled and
+        // not frozen.
+        if (waited >= 2) line += " - " + std::to_string(waited) + " s";
+        return line;
+    }
+
+    // Queued: everything the worker takes before it. A listing already in
+    // flight counts as one, whatever it is.
+    size_t ahead = activeJobPath_.empty() ? 0 : 1;
+    for (const Job& j : queue_) {
+        if (j.path == path && j.isListing) break;
+        ++ahead;
+    }
+    if (ahead == 0) return "Waiting for " + server;
+    return "Waiting for " + server + " - " + std::to_string(ahead) +
+           (ahead == 1 ? " request ahead" : " requests ahead");
+}
+
 bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
                                     const std::string& path,
                                     const std::string& argument,
@@ -232,9 +295,37 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
     }
 
     // A name is a name: one carrying a separator would be a move, which none
-    // of these three do, and which the provider would either refuse or - worse
-    // - carry out somewhere the user did not look.
-    if (operation != RemoteOperation::Delete) {
+    // of these do, and which the provider would either refuse or - worse -
+    // carry out somewhere the user did not look. Upload is the exception,
+    // because its argument is a local path and separators are what it is
+    // made of.
+    if (operation == RemoteOperation::Upload) {
+        std::error_code ec;
+        if (argument.empty()) {
+            error = "no file given";
+            return false;
+        }
+        // Only a regular file. A folder dropped on a drive is a recursive
+        // copy, which this queue cannot report the progress of; saying so is
+        // better than uploading the first file and going quiet.
+        if (std::filesystem::is_directory(argument, ec) && !ec) {
+            error = "a folder cannot be uploaded from here, only files: " +
+                    std::filesystem::path(argument).filename().string();
+            return false;
+        }
+        ec.clear();
+        if (!std::filesystem::is_regular_file(argument, ec) || ec) {
+            error = "not a file: " + argument;
+            return false;
+        }
+    } else if (operation == RemoteOperation::Download) {
+        // The full local path to write, chosen by Download() while it still
+        // had the local filesystem in front of it.
+        if (argument.empty()) {
+            error = "no local file given";
+            return false;
+        }
+    } else if (operation != RemoteOperation::Delete) {
         if (argument.empty()) {
             error = "no name given";
             return false;
@@ -246,8 +337,9 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
         }
     }
     // The drive's own root is not ours to delete or rename; creating inside it
-    // is fine.
-    if (operation != RemoteOperation::MakeDirectory && remotePath == "/") {
+    // - or uploading into it - is fine.
+    if (operation != RemoteOperation::MakeDirectory &&
+        operation != RemoteOperation::Upload && remotePath == "/") {
         error = "this is the drive itself, not something on it";
         return false;
     }
@@ -263,9 +355,19 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
             return false;
         }
         // Asked before the request is queued rather than after the server has
-        // said no: a Nextcloud or Dropbox drive can be browsed and uploaded to
-        // but not changed in place, and the answer is the same every time.
-        if (!drive->canModify) {
+        // said no: the answer is the same every time. The two capabilities are
+        // asked separately because they differ - a Nextcloud or Dropbox drive
+        // can be browsed and uploaded to but not changed in place, so a drive
+        // that refuses a rename still takes a file dropped onto it.
+        if (operation == RemoteOperation::Upload) {
+            if (!drive->canUpload) {
+                error = "this drive does not take uploads";
+                return false;
+            }
+        } else if (operation == RemoteOperation::Download) {
+            // Reading is what a drive is for: every provider implements
+            // Download, and a drive that can be browsed can be copied from.
+        } else if (!drive->canModify) {
             error = "this kind of drive cannot be changed from here";
             return false;
         }
@@ -276,6 +378,163 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
         job.operation = operation;
         job.argument = argument;
         job.isDirectory = isDirectory;
+        queue_.push_back(std::move(job));
+        EnsureWorker();
+    }
+    cond_.notify_one();
+    return true;
+}
+
+bool UltraFilerRemoteDrives::CanUpload(const std::string& path) const {
+    std::string accountId, remotePath;
+    if (!SplitRemoteFilerPath(path, accountId, remotePath)) return false;
+    if (!Available()) return false;
+    std::lock_guard<std::mutex> lk(mutex_);
+    for (const RemoteDrive& d : drives_) {
+        if (d.accountId == accountId) return d.canUpload;
+    }
+    return false;
+}
+
+bool UltraFilerRemoteDrives::Upload(const std::string& remoteFolder,
+                                    const std::string& localFile,
+                                    std::string& error) {
+    std::string accountId, remotePath;
+    if (!SplitRemoteFilerPath(remoteFolder, accountId, remotePath)) {
+        error = "not a remote drive: " + remoteFolder;
+        return false;
+    }
+    if (!Available()) {
+        error = "this build of UltraFiler carries no cloud support";
+        return false;
+    }
+    // A local path on a server is meaningless, and a folder is not one
+    // transfer: the provider verb takes one file.
+    if (localFile.empty() || IsRemoteFilerPath(localFile)) {
+        error = "only local files can be uploaded";
+        return false;
+    }
+    std::error_code ec;
+    if (fs::is_directory(localFile, ec)) {
+        error = "folders cannot be uploaded - drop the files inside it";
+        return false;
+    }
+    if (!fs::is_regular_file(localFile, ec) || ec) {
+        error = "cannot read " + localFile;
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        const RemoteDrive* drive = nullptr;
+        for (const RemoteDrive& d : drives_) {
+            if (d.accountId == accountId) { drive = &d; break; }
+        }
+        if (!drive) {
+            error = "this drive is no longer configured";
+            return false;
+        }
+        if (!drive->canUpload) {
+            error = "this kind of drive cannot take uploads from here";
+            return false;
+        }
+        Job job;
+        job.isListing = false;
+        job.path = remoteFolder;
+        job.operation = RemoteOperation::Upload;
+        job.argument = localFile;
+        job.isDirectory = false;
+        queue_.push_back(std::move(job));
+        EnsureWorker();
+    }
+    cond_.notify_one();
+    return true;
+}
+
+bool UltraFilerRemoteDrives::Download(const std::string& remoteFile,
+                                      const std::string& localFolder,
+                                      std::string& savedAs,
+                                      std::string& error) {
+    savedAs.clear();
+    std::string accountId, remotePath;
+    if (!SplitRemoteFilerPath(remoteFile, accountId, remotePath)) {
+        error = "not a file on a drive: " + remoteFile;
+        return false;
+    }
+    if (!Available()) {
+        error = "this build of UltraFiler carries no cloud support";
+        return false;
+    }
+    const std::string name = RemoteFilerName(remoteFile);
+    if (name.empty() || remotePath == "/") {
+        error = "this is the drive itself, not a file on it";
+        return false;
+    }
+    // Where it is going has to be a folder on this computer: a drive is not a
+    // download target (that is an upload, and a different provider verb), and
+    // a folder that is not there is a failure the user should hear about now
+    // rather than after the round trip.
+    if (localFolder.empty() || IsRemoteFilerPath(localFolder)) {
+        error = "a file from a drive has to be saved somewhere on this computer";
+        return false;
+    }
+    std::error_code ec;
+    if (!fs::is_directory(localFolder, ec) || ec) {
+        error = "not a folder on this computer: " + localFolder;
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        const RemoteDrive* drive = nullptr;
+        for (const RemoteDrive& d : drives_) {
+            if (d.accountId == accountId) { drive = &d; break; }
+        }
+        if (!drive) {
+            error = "this drive is no longer configured";
+            return false;
+        }
+        // A folder is not one transfer, the same way it is not one upload.
+        // The listing the user dragged the entry out of is still cached, so
+        // this costs a lookup rather than a request; an entry that is not in
+        // it (a drive listed and then forgotten) is left to the provider,
+        // which will refuse to read a directory as a file.
+        const std::string parent = RemoteFilerParent(remoteFile);
+        auto it = cache_.find(parent);
+        if (it != cache_.end() && it->second.state == CacheState::Ready) {
+            for (const FilerEntry& e : it->second.entries) {
+                if (e.path != remoteFile) continue;
+                if (e.isDirectory) {
+                    error = "folders cannot be downloaded - open it and take "
+                            "the files inside";
+                    return false;
+                }
+                break;
+            }
+        }
+    }
+
+    // The name is settled here, on the UI thread, where the local folder can
+    // be looked at: the widget's own "Keep both" rule, so a download never
+    // overwrites a file that is already there and the copy is called what a
+    // paste would have called it. The rule is asked about this queue as well
+    // as about the disk - a file promised by a job that has not run yet is
+    // not on the disk, and two of one name queued together would otherwise
+    // both be told the name was free.
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        savedAs = UltraCanvasFilerWidget::UniquePathIn(
+                localFolder, name, [this](const std::string& candidate) {
+            return promisedDownloads_.count(candidate) > 0;
+        });
+        promisedDownloads_.insert(savedAs);
+
+        Job job;
+        job.isListing = false;
+        job.path = remoteFile;
+        job.operation = RemoteOperation::Download;
+        job.argument = savedAs;
+        job.isDirectory = false;
         queue_.push_back(std::move(job));
         EnsureWorker();
     }
@@ -307,6 +566,18 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job) {
             r = impl_->service->MakeDirectory(accountId, parent + "/" + job.argument);
             break;
         }
+        case RemoteOperation::Upload: {
+            // Under the file's own name, in the folder the job names.
+            const std::string parent = remotePath == "/" ? std::string()
+                                                         : remotePath;
+            const std::string name = fs::path(job.argument).filename().string();
+            r = impl_->service->Upload(accountId, job.argument, parent + "/" + name);
+            break;
+        }
+        case RemoteOperation::Download:
+            // The full local path was settled when the job was queued.
+            r = impl_->service->Download(accountId, remotePath, job.argument);
+            break;
     }
 
     std::lock_guard<std::mutex> lk(mutex_);
@@ -355,15 +626,99 @@ void UltraFilerRemoteDrives::EnsureWorker() {
     worker_ = std::thread([this]() { WorkerMain(); });
 }
 
+RemoteActivity::Kind UltraFilerRemoteDrives::ActivityKindFor(const Job& job) {
+    if (job.isListing) return RemoteActivity::Kind::Listing;
+    switch (job.operation) {
+        case RemoteOperation::Delete:        return RemoteActivity::Kind::Deleting;
+        case RemoteOperation::Rename:        return RemoteActivity::Kind::Renaming;
+        case RemoteOperation::MakeDirectory: return RemoteActivity::Kind::MakingDirectory;
+        case RemoteOperation::Upload:        return RemoteActivity::Kind::Uploading;
+        case RemoteOperation::Download:      return RemoteActivity::Kind::Downloading;
+    }
+    return RemoteActivity::Kind::Idle;
+}
+
+void UltraFilerRemoteDrives::ReportActivity(const RemoteActivity& activity,
+                                            bool force) {
+    if (!onActivityChanged) return;
+    // libcurl counts bytes, so a transfer would otherwise post hundreds of
+    // times a second at a UI thread that can only repaint sixty. The first
+    // and last report of a job are forced through: those are the ones that
+    // say what started and that it is over.
+    const auto now = std::chrono::steady_clock::now();
+    if (!force) {
+        const auto since = now - lastActivityPost_;
+        if (since < std::chrono::milliseconds(80)) return;
+    }
+    lastActivityPost_ = now;
+
+    UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    auto alive = alive_;
+    app->PostToUIThread([this, alive, activity]() {
+        if (!alive->load()) return;   // owner destroyed meanwhile
+        if (onActivityChanged) onActivityChanged(activity);
+    });
+}
+
 void UltraFilerRemoteDrives::WorkerMain() {
     for (;;) {
         Job job;
+        std::size_t waiting = 0;
         {
             std::unique_lock<std::mutex> lk(mutex_);
             cond_.wait(lk, [this]() { return shutdown_ || !queue_.empty(); });
             if (shutdown_) return;
             job = std::move(queue_.front());
             queue_.pop_front();
+            waiting = queue_.size();
+            // main's ListingStatus reads these to describe the job the folder
+            // display is waiting on; the activity report below is the other
+            // half of the same story, for the status strip.
+            activeJobPath_ = job.path;
+            activeJobSince_ = std::chrono::steady_clock::now();
+        }
+
+        // What this job is, said before it starts rather than after: the whole
+        // point is to fill the wait, and a report that arrives with the answer
+        // fills nothing.
+        RemoteActivity activity;
+        activity.kind = ActivityKindFor(job);
+        activity.queued = waiting;
+        activity.what = job.isListing
+                ? RemoteFilerName(job.path)   // "" at a drive root: its own name
+                : job.operation == RemoteOperation::Upload
+                        ? std::filesystem::path(job.argument).filename().string()
+                        : job.operation == RemoteOperation::MakeDirectory
+                                ? job.argument
+                                : RemoteFilerName(job.path);
+        ReportActivity(activity, /*force=*/true);
+
+        // A transfer counts its own bytes. UltraNet reports them through the
+        // module's global transfer callbacks, which is why the previous bag is
+        // put back afterwards rather than simply cleared: this process shares
+        // them with every other UltraNet caller, and an upload is no reason to
+        // deafen the rest of the application.
+        UltraNetTransferCallbacks previousCallbacks;
+        const bool watchesBytes = !job.isListing &&
+                                  (job.operation == RemoteOperation::Upload ||
+                                   job.operation == RemoteOperation::Download);
+        if (watchesBytes) {
+            // One counter for either direction: what the status line says
+            // about a transfer is the same either way, and which way it is
+            // going is already in the activity's kind.
+            auto count = [this, activity](int64_t moved, int64_t total) {
+                RemoteActivity moving = activity;
+                moving.bytesDone = moved > 0 ? static_cast<uint64_t>(moved) : 0;
+                // A server that sent no length reports -1; that is the busy
+                // case, not a total of zero bytes to move.
+                moving.bytesTotal = total > 0 ? static_cast<uint64_t>(total) : 0;
+                ReportActivity(moving, /*force=*/false);
+            };
+            UltraNetTransferCallbacks bag;
+            if (job.operation == RemoteOperation::Upload) bag.onUploadProgress = count;
+            else                                          bag.onDownloadProgress = count;
+            previousCallbacks = UltraNet_SetTransferCallbacks(bag);
         }
 
         // An exception leaving a std::thread ends the process, and a provider
@@ -391,21 +746,53 @@ void UltraFilerRemoteDrives::WorkerMain() {
             }
         }
 
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            activeJobPath_.clear();
+        }
+
         // A change that got as far as the server invalidates the folder it
         // touched, so the refresh below refetches instead of repainting what
         // the cache still holds. Done even on failure: a half-applied change
         // is exactly when the cached listing is least trustworthy.
         std::string changedFolder;
         if (!job.isListing) {
-            changedFolder = job.operation == RemoteOperation::MakeDirectory
-                    ? job.path                       // the folder created in
-                    : RemoteFilerParent(job.path);   // the entry's own folder
+            if (job.operation == RemoteOperation::Download) {
+                // A download changes nothing on the drive - the folder that
+                // gained a file is the local one the bytes were written to.
+                // The cache erase below then finds no such key, which is
+                // exactly right: the drive's listing is still good.
+                changedFolder = fs::path(job.argument).parent_path().string();
+            } else {
+                changedFolder = (job.operation == RemoteOperation::MakeDirectory ||
+                                 job.operation == RemoteOperation::Upload)
+                        ? job.path                       // the folder created / uploaded in
+                        : RemoteFilerParent(job.path);   // the entry's own folder
+            }
             if (changedFolder.empty()) changedFolder = job.path;
             std::lock_guard<std::mutex> lk(mutex_);
+            // The name is the disk's business again: written if the transfer
+            // worked, free to be handed out again if it did not.
+            if (job.operation == RemoteOperation::Download)
+                promisedDownloads_.erase(job.argument);
             cache_.erase(changedFolder);
             if (operationError.empty() && !lastOperationError_.empty())
                 operationError = lastOperationError_;
             lastOperationError_.clear();
+        }
+
+        if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
+
+        // Idle only when nothing is left: between two files of one drop the
+        // status line should say what is still coming, not blink back to
+        // nothing and out again.
+        {
+            std::size_t left = 0;
+            {
+                std::lock_guard<std::mutex> lk(mutex_);
+                left = queue_.size();
+            }
+            if (left == 0) ReportActivity(RemoteActivity{}, /*force=*/true);
         }
 
         // Tell the window on the UI thread. Posted rather than called: this is
@@ -467,8 +854,19 @@ void UltraFilerRemoteDrives::FetchListing(const std::string& path) {
             f.name = e.name;
             f.path = MakeRemoteFilerPath(accountId, e.path);
             f.isDirectory = e.isDirectory;
+            // Left unset, this was false for every entry on a drive, so a
+            // ".ssh" there was shown even with hidden files turned off while
+            // the one on this disk was not. The display already filters on it
+            // (and counts what it held back), so the flag was all that was
+            // missing. The rule itself lives next to the path scheme, where
+            // it can be tested without a server.
+            f.isHidden = IsHiddenRemoteFilerName(e.name);
             f.size = e.isDirectory ? 0 : static_cast<uint64_t>(e.size < 0 ? 0 : e.size);
             f.modifiedTime = ParseRemoteFilerTime(e.modified);
+            // The Unix convention, which is what a server lists: a dot-entry
+            // is hidden the way a local one is (Display > Hidden files shows
+            // it), rather than shown on a drive and hidden on a disk.
+            f.isHidden = !e.name.empty() && e.name[0] == '.';
             // The display draws its read-only badge from this, so it has to
             // follow what the drive can actually do: an FTP drive can be
             // changed, a Nextcloud or Dropbox one cannot (yet) and says so on

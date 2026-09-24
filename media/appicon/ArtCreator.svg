@@ -1,14 +1,13 @@
-<?xml version="1.0" standalone="no"?>
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<!--Generator: Xara Designer (www.xara.com), SVG filter version: 6.7.0.0-->
-<svg fill="none" fill-rule="evenodd" stroke="black" stroke-width="0.501" stroke-linejoin="bevel" stroke-miterlimit="10" font-family="Times New Roman" font-size="16" style="font-variant-ligatures:none" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" version="1.1" overflow="visible" width="56.693pt" height="56.693pt" viewBox="255.119 -637.795 56.693 56.693">
- <defs>
-	</defs>
- <g id="Layer 1" transform="scale(1 -1)">
-  <rect x="255.121" y="609.451" width="28.345" height="28.345" fill="#00deed" stroke-linecap="round" stroke-width="0.5" stroke="none" stroke-linejoin="miter"/>
-  <rect x="283.466" y="609.45" width="28.347" height="28.345" fill="#b0fcaf" stroke-linecap="round" stroke-width="0.5" stroke="none" stroke-linejoin="miter"/>
-  <rect x="255.12" y="581.104" width="28.345" height="28.345" fill="#fff057" stroke-linecap="round" stroke-width="0.5" stroke="none" stroke-linejoin="miter"/>
-  <rect x="283.464" y="581.103" width="28.349" height="28.346" fill="#ffabfe" stroke-linecap="round" stroke-width="0.5" stroke="none" stroke-linejoin="miter"/>
-  <text xml:space="preserve" transform="translate(261.152 590.784) scale(1 -1)" kerning="auto" font-size="55.362" font-family="Salina" stroke="none" stroke-width="1.384" stroke-linecap="round" stroke-linejoin="round" fill="#000000"><tspan x="0" y="0">A</tspan></text>
- </g>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ArtCreator application icon: four colour tiles and the letter "A".
+     The glyph is the Salina "A" of the original Xara artwork as outlines,
+     traced from the 256 px render, so no viewer needs the font installed:
+     a renderer without it used to draw the letter in whatever fallback
+     face it had. The four tiles and their colours are the original's. -->
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="256" height="256" viewBox="0 0 256 256">
+  <rect x="0" y="0" width="128" height="128" fill="#00deed"/>
+  <rect x="128" y="0" width="128" height="128" fill="#b0fcaf"/>
+  <rect x="0" y="128" width="128" height="128" fill="#fff057"/>
+  <rect x="128" y="128" width="128" height="128" fill="#ffabfe"/>
+  <path fill="#000000" fill-rule="nonzero" d="M45.27 225.95 C29.99 222.93 20.95 212.37 23.93 201 C25.63 194.53 27.56 192.08 32.77 189.78 C36.74 188.02 39.28 187.76 51.08 187.88 C61.98 187.98 66.03 187.62 70.85 186.12 C86 181.41 96.19 168.26 105.83 141 C110.98 126.42 126.79 74.14 127.63 68.94 C128.53 63.28 126.55 59.41 121.11 56.21 C117.23 53.93 115.39 53.51 109.5 53.57 C93.27 53.74 82 64.29 82 79.32 C82 88.73 85.74 92 96.5 92 C104.37 92 108.23 93.73 110.02 98.05 C114.05 107.77 107.88 119.53 97.11 122.66 C86.05 125.87 71.73 122.26 62.67 113.98 C52.74 104.91 48.42 93.11 49.18 77.18 C49.58 68.78 49.97 67.37 54.29 58.67 C61.98 43.18 73.04 34.07 88.6 30.42 C94.83 28.96 100.27 28.92 144.5 29.95 C171.45 30.59 195.39 31.33 197.71 31.61 C203.16 32.26 207.01 36.5 206.98 41.83 C206.96 46.67 206.57 47.18 198.45 52.75 C192.56 56.78 191.45 58 191.19 60.74 C190.83 64.45 193.49 74.63 201.87 101.66 C205.14 112.2 209.26 127.28 211.02 135.16 C212.79 143.05 214.82 150.62 215.52 152 C217.43 155.71 220.93 158.62 226.18 160.87 C228.75 161.97 231.39 163.86 232.04 165.08 C233.47 167.75 232.83 173.45 230.56 178.23 C228.67 182.22 198.28 210.77 193.04 213.48 C187.49 216.35 181.42 215.1 176.79 210.14 C171.7 204.68 171.75 201.36 177.04 192.93 C187.23 176.7 188.74 169.08 184.75 154 L182.5 145.5 L178 144.82 C175.53 144.45 165.61 144.11 155.98 144.07 L138.45 144 L135.61 151.75 C123.55 184.65 105.44 210.63 88.13 219.85 C76.46 226.07 58.7 228.6 45.27 225.95 Z M167.16 116.13 L173.81 115.5 L171.38 106 C168.19 93.53 162.04 73.72 161.02 72.66 C159.32 70.87 149.49 99.51 147.64 111.68 C147.06 115.46 147.21 115.9 149.25 116.29 C152.47 116.91 159.46 116.85 167.16 116.13 Z"/>
 </svg>

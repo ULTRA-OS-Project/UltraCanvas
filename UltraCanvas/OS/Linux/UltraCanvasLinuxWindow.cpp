@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "UltraCanvasLinuxWindow.h"
 #include "UltraCanvasImage.h"
 #include "../libspecific/Cairo/RenderContextCairo.h"
@@ -369,12 +370,12 @@ namespace UltraCanvas {
     float UltraCanvasLinuxWindow::QueryNativeDeviceScale() const {
         // 1. Explicit desktop/toolkit env overrides (honored as-is, fractional OK).
         if (const char* s = getenv("GDK_SCALE")) {
-            float v = static_cast<float>(atof(s));
-            if (v > 0.0f) return v;
+            float v = 0.0f;
+            if (TryParseFloat(s, v) && v > 0.0f) return v;
         }
         if (const char* s = getenv("QT_SCALE_FACTOR")) {
-            float v = static_cast<float>(atof(s));
-            if (v > 0.0f) return v;
+            float v = 0.0f;
+            if (TryParseFloat(s, v) && v > 0.0f) return v;
         }
 
         auto* app = UltraCanvasApplication::GetInstance();
@@ -388,8 +389,10 @@ namespace UltraCanvas {
                 XrmValue val;
                 float scale = 0.0f;
                 if (XrmGetResource(db, "Xft.dpi", "Xft.Dpi", &type, &val) && val.addr) {
-                    double dpi = atof(val.addr);
-                    if (dpi > 0.0) scale = static_cast<float>(dpi / 96.0);
+                    double dpi = 0.0;
+                    if (TryParseFloat(val.addr, dpi) && dpi > 0.0) {
+                        scale = static_cast<float>(dpi / 96.0);
+                    }
                 }
                 XrmDestroyDatabase(db);
                 if (scale > 0.0f) return scale;

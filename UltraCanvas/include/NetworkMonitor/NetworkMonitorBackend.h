@@ -5,8 +5,8 @@
 // where no backend exists, and a public surface (NetworkMonitor.h) that
 // callers use instead of this. Applications include NetworkMonitor.h.
 //
-// Version: 0.2.0
-// Last Modified: 2026-09-19
+// Version: 0.5.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -44,5 +44,15 @@ public:
 // Provided by the platform backend where one exists; the core file supplies
 // a null-returning definition on every other platform.
 std::unique_ptr<INetworkMonitorBackend> CreateNativeNetworkMonitorBackend();
+
+// The core's side of the name registry (NetworkMonitorNames.cpp): hand an
+// address no snapshot could name to every registered source, and whether
+// any running source reports the asking process. Internal.
+void NetworkMonitor_NoteUnnamedAddress(const std::string& address);
+bool NetworkMonitor_AnySourceReportsProcess();
+
+// The core's side of the event registry (NetworkMonitorEvents.cpp):
+// whether any event source is running (the connectionEvents capability).
+bool NetworkMonitor_AnyEventSourceRunning();
 
 } // namespace UltraCanvas

@@ -700,14 +700,23 @@ VirtualFSResult VirtualFSManager::ExtractAll(
     const std::string& archivePath,
     const std::string& destDirectory,
     const VirtualFSExtractOptions& options,
-    VirtualFSProgressCallback progressCallback) {
+    VirtualFSProgressCallback progressCallback,
+    std::string* outError) {
     
+    if (outError) outError->clear();
     auto provider = GetOrOpenArchive(archivePath);
     if (!provider) {
+        if (outError) *outError = "The archive could not be opened.";
         return VirtualFSResult::ProviderNotFound;
     }
     
-    return provider->ExtractAll(destDirectory, options, progressCallback);
+    const VirtualFSResult result =
+            provider->ExtractAll(destDirectory, options, progressCallback);
+    if (outError && result != VirtualFSResult::Success &&
+        result != VirtualFSResult::Cancelled) {
+        *outError = provider->GetLastError();
+    }
+    return result;
 }
 
 VirtualFSResult VirtualFSManager::ExtractFiltered(

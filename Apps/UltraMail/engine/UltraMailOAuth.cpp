@@ -1,51 +1,16 @@
 // Apps/UltraMail/engine/UltraMailOAuth.cpp
-// Version: 0.2.2 - ProviderNeedsAppPassword / ProviderAcceptsPassword (Microsoft: OAuth2 only)
+// Version: 0.3.0 - OAuthApps is a profile of UltraNet's shared OAuth2 app registry
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOAuth.h"
 
 #include "UltraMailOAuthDefaults.h"   // generated at configure time (build tree)
 
-#include <cctype>
 #include <cstdlib>
 #include <ctime>
-#include <fstream>
-#include <map>
-#include <mutex>
-#include <sstream>
 
 namespace UltraMail {
 
 namespace {
-
-std::mutex& AppsMutex() { static std::mutex m; return m; }
-// Set() registrations win over the INI file, so keep them apart.
-std::map<std::string, OAuthApp>& SetApps()  { static std::map<std::string, OAuthApp> a; return a; }
-std::map<std::string, OAuthApp>& FileApps() { static std::map<std::string, OAuthApp> a; return a; }
-
-std::string EnvName(const std::string& providerId, const char* suffix) {
-    std::string name = "ULTRAMAIL_";
-    for (char c : providerId)
-        name.push_back(std::isalnum(static_cast<unsigned char>(c))
-                           ? static_cast<char>(std::toupper(static_cast<unsigned char>(c))) : '_');
-    return name + suffix;
-}
-
-std::string Env(const std::string& name) {
-    const char* v = std::getenv(name.c_str());
-    return v ? v : "";
-}
-
-std::string Trim(const std::string& s) {
-    std::size_t b = 0, e = s.size();
-    while (b < e && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
-    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) --e;
-    return s.substr(b, e - b);
-}
-
-std::string Lower(std::string s) {
-    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return s;
-}
 
 // Reverse the build-time obfuscation of a baked-in credential (see
 // UltraMailOAuthDefaults.h.in): verbatim when the build stored the values in the
@@ -77,9 +42,21 @@ OAuthApp BuiltInApp(const std::string& providerId) {
 
 // ===== OAuthApps ==============================================================
 
+void OAuthApps::EnsureRegistered() {
+    static const bool once = [] {
+        UltraNet_OAuth2AddAppEnvPrefix("ULTRAMAIL_");
+        // The floor: what this build bakes in. Unconfigured apps are ignored by
+        // the registry, so a dev/CI/test build registers nothing here.
+        for (const char* id : {"google", "microsoft"})
+            UltraNet_OAuth2SetBuiltInApp(id, BuiltInApp(id));
+        return true;
+    }();
+    (void)once;
+}
+
 void OAuthApps::Set(const std::string& providerId, const OAuthApp& app) {
-    std::lock_guard<std::mutex> lock(AppsMutex());
-    SetApps()[providerId] = app;
+    EnsureRegistered();
+    UltraNet_OAuth2SetApp(providerId, app);
 }
 
 std::string OAuthApps::DefaultRedirectUri(const std::string& providerId) {
@@ -88,33 +65,11 @@ std::string OAuthApps::DefaultRedirectUri(const std::string& providerId) {
 }
 
 OAuthApp OAuthApps::Get(const std::string& providerId) {
-    auto withDefault = [&providerId](OAuthApp app) {
-        if (app.redirectUri.empty()) app.redirectUri = DefaultRedirectUri(providerId);
-        return app;
-    };
-    {
-        std::lock_guard<std::mutex> lock(AppsMutex());
-        auto it = SetApps().find(providerId);
-        if (it != SetApps().end() && it->second.IsConfigured()) return withDefault(it->second);
-    }
-    OAuthApp app;
-    app.clientId     = Env(EnvName(providerId, "_CLIENT_ID"));
-    app.clientSecret = Env(EnvName(providerId, "_CLIENT_SECRET"));
-    app.redirectUri  = Env(EnvName(providerId, "_REDIRECT_URI"));
-    if (app.IsConfigured()) return withDefault(app);
-
-    {
-        std::lock_guard<std::mutex> lock(AppsMutex());
-        auto it = FileApps().find(providerId);
-        if (it != FileApps().end() && it->second.IsConfigured()) return withDefault(it->second);
-    }
-    // Lowest priority: the client baked into this build. Reads only compile-time
-    // constants (no shared map), so it runs outside the mutex like the env tier.
-    // Empty in a build configured without credentials, so this changes nothing
-    // there.
-    OAuthApp builtIn = BuiltInApp(providerId);
-    if (builtIn.IsConfigured()) return withDefault(builtIn);
-    return OAuthApp{};
+    EnsureRegistered();
+    OAuthApp app = UltraNet_OAuth2GetApp(providerId);
+    if (!app.IsConfigured()) return OAuthApp{};
+    if (app.redirectUri.empty()) app.redirectUri = DefaultRedirectUri(providerId);
+    return app;
 }
 
 bool OAuthApps::Has(const std::string& providerId) {
@@ -122,46 +77,17 @@ bool OAuthApps::Has(const std::string& providerId) {
 }
 
 int OAuthApps::ParseIni(const std::string& text) {
-    std::map<std::string, OAuthApp> parsed;
-    std::istringstream in(text);
-    std::string line, section;
-    while (std::getline(in, line)) {
-        line = Trim(line);
-        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
-        if (line.front() == '[' && line.back() == ']') {
-            section = Lower(Trim(line.substr(1, line.size() - 2)));
-            continue;
-        }
-        const std::size_t eq = line.find('=');
-        if (eq == std::string::npos || section.empty()) continue;
-        const std::string key   = Lower(Trim(line.substr(0, eq)));
-        const std::string value = Trim(line.substr(eq + 1));
-        OAuthApp& app = parsed[section];
-        if      (key == "client_id")     app.clientId     = value;
-        else if (key == "client_secret") app.clientSecret = value;
-        else if (key == "redirect_uri" && !value.empty()) app.redirectUri = value;
-    }
-    int count = 0;
-    std::lock_guard<std::mutex> lock(AppsMutex());
-    for (auto& [id, app] : parsed) {
-        if (!app.IsConfigured()) continue;
-        FileApps()[id] = app;
-        ++count;
-    }
-    return count;
+    EnsureRegistered();
+    return UltraNet_OAuth2ParseAppsIni(text);
 }
 
 int OAuthApps::LoadFile(const std::string& path) {
-    std::ifstream is(path);
-    if (!is) return 0;
-    std::string text((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
-    return ParseIni(text);
+    EnsureRegistered();
+    return UltraNet_OAuth2LoadAppsFile(path);
 }
 
 void OAuthApps::Clear() {
-    std::lock_guard<std::mutex> lock(AppsMutex());
-    SetApps().clear();
-    FileApps().clear();
+    UltraNet_OAuth2ClearApps();
 }
 
 // ===== Providers ==============================================================
@@ -193,7 +119,8 @@ bool ProviderNeedsAppPassword(const DiscoveryResult& discovery) {
 }
 
 bool ProviderAcceptsPassword(const DiscoveryResult& discovery) {
-    return OAuthProviderFor(discovery) != "microsoft";
+    auto provider = OAuthProviderFor(discovery);
+    return provider != "microsoft" && provider != "google";
 }
 
 UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthApp& app,

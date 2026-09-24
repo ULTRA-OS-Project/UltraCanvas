@@ -61,6 +61,56 @@ StoreResult AccountStore::Open(const std::string& path,
 void AccountStore::Close() {
     vault_.Close();
     path_.clear();
+    throttle_.RecordSuccess();   // a fresh session starts with a clean slate
+}
+
+void AccountStore::Lock() {
+    // Keep path_: that is the whole difference from Close().
+    vault_.Close();
+}
+
+StoreResult AccountStore::Attach(const std::string& path) {
+    if (vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "a vault is already open");
+    }
+    if (!EncryptedFileStore::Exists(path)) {
+        return StoreResult::Error(StoreResultCode::NotFound,
+                                  "no vault at " + path);
+    }
+    path_ = path;
+    throttle_.RecordSuccess();   // a fresh session starts with a clean slate
+    return StoreResult::Ok();
+}
+
+StoreResult AccountStore::Unlock(const UltraCryptSecureBuffer& password,
+                                 int64_t nowUnix) {
+    if (path_.empty()) {
+        return StoreResult::Error(StoreResultCode::NotOpen,
+                                  "no vault has been opened in this session");
+    }
+    if (vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "the vault is not locked");
+    }
+    // The throttle is consulted before the password so that a refused attempt
+    // costs nothing and reveals nothing: the caller learns only that it has to
+    // wait, which it was already told.
+    const uint32_t wait = throttle_.SecondsUntilAllowed(nowUnix);
+    if (wait > 0) {
+        return StoreResult::Error(StoreResultCode::TooManyAttempts,
+                                  "too many attempts — try again in " +
+                                      std::to_string(wait) + " s");
+    }
+    StoreResult opened = vault_.Open(path_, password);
+    if (!opened) {
+        if (opened.code == StoreResultCode::AuthenticationFailed) {
+            throttle_.RecordFailure(nowUnix);
+        }
+        return opened;
+    }
+    throttle_.RecordSuccess();
+    return StoreResult::Ok();
 }
 
 StoreResult AccountStore::AddFromUri(const std::string& otpauthUri,

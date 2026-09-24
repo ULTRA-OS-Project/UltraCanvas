@@ -609,11 +609,27 @@ namespace UltraCanvas {
         }
     }
 
+    namespace {
+        // Set from a signal handler, read by the loop. A lock-free atomic
+        // store is the whole of what the handler does.
+        std::atomic<bool> g_exitRequestedFromSignal{false};
+    }
+
+    void UltraCanvasApplicationBase::RequestExitFromSignal() {
+        g_exitRequestedFromSignal.store(true, std::memory_order_relaxed);
+    }
+
     void UltraCanvasApplicationBase::RunOnce() {
         // Service native events (X11 + wakeup + registered fd watches), then drain
         // the UI event queue, fire timers, run PostToUIThread tasks, and render.
         // Factored out of Run() so a host embedding UltraCanvas under its own event
         // loop (e.g. Ladybird's Core::EventLoop bridge) can drive one iteration.
+        // A signal's exit request is honoured here, on the main thread, where
+        // logging and the exit-request callback are safe.
+        if (g_exitRequestedFromSignal.exchange(false, std::memory_order_relaxed)) {
+            RequestExit();
+            if (!running) return;
+        }
         CollectAndProcessNativeEvents();
         ProcessEvents();
         ProcessTimers();
@@ -1173,12 +1189,12 @@ namespace UltraCanvas {
                 if (targetWindow && GetFocusedWindow() != targetWindow) {
                     // Update focused window + MRU focus history
                     SetFocusedWindowInternal(targetWindow);
-                    debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") gained focus" << std::endl;
+                    //debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") gained focus" << std::endl;
                 }
                 return;
             case UCEventType::WindowBlur:
                 if (targetWindow && targetWindow == GetFocusedWindow()) {
-                    debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") lost focus" << std::endl;
+                    //debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") lost focus" << std::endl;
                     DispatchEventToElement(targetWindow, event);
                     focusedWindow.reset();
                 }
@@ -1337,6 +1353,14 @@ namespace UltraCanvas {
             }
 
             if (event.IsMouseEvent()) {
+                // A press answers the tooltip's question: the element is
+                // being used, not wondered about. Without this a click that
+                // changes the layout underneath the pointer (a button that
+                // docks a pane) left the tooltip floating over the new
+                // content until the mouse moved.
+                if (event.type == UCEventType::MouseDown) {
+                    UltraCanvasTooltipManager::HideTooltipImmediately();
+                }
                 if (hoveredElement && hoveredElement != elementUnderPointer) {
                     if (hoveredElement->GetWindow() == targetWindow && hoveredElement->IsVisible()) {
                         UCEvent leaveEvent = event;

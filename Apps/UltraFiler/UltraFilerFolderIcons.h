@@ -22,6 +22,7 @@
 #include "UltraCanvasImage.h"   // SaveImageFileAsQoi
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -173,7 +174,9 @@ public:
         while (key.size() > 1 && (key.back() == '/' || key.back() == '\\'))
             key.pop_back();
 #if defined(_WIN32) || defined(_WIN64)
-        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+        std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
 #endif
         return key;
     }

@@ -451,7 +451,9 @@ namespace UltraCanvas {
                 // For now, just log it
             };
 
-            domainRow->onUSAIDInfoClick = [mainContainer]() {
+            // Nothing captured: the row is a child of mainContainer, so holding
+            // it here would be a cycle, and the body below needs nothing.
+            domainRow->onUSAIDInfoClick = []() {
                 // Create and show USAID information dialog
 //                auto usaidDialog = std::make_shared<USAIDInfoDialog>();
 //

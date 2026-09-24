@@ -79,14 +79,18 @@ int Reader::ReadXform(const Og::Object& object, int parentNode) {
         if (valuesIndex >= 0) {
             const std::vector<double> values = xform.Doubles(static_cast<size_t>(valuesIndex));
             if (values.size() >= 16) {
-                // Alembic stores the matrix row-major with translation in the
-                // last row; ModelStorage is column-major with translation in
-                // the last column, so this is a transpose, not a copy.
+                // Alembic stores an Imath M44d: row-major, and row-vector, so
+                // the translation is the last *row*. ModelStorage is
+                // column-major and column-vector, so the translation is the
+                // last *column*. Those two disagreements cancel: the logical
+                // transpose the conventions need is, in memory, the sixteen
+                // doubles in the order they already are. Reordering them here
+                // instead lands the translation in the bottom row, where
+                // DecomposeTRS cannot see it - which dropped the offset of
+                // every transform in every Alembic read before this.
                 Matrix4x4 matrix;
-                for (int row = 0; row < 4; ++row)
-                    for (int column = 0; column < 4; ++column)
-                        matrix.m[column * 4 + row] = values[static_cast<size_t>(row) * 4 +
-                                                            static_cast<size_t>(column)];
+                for (int index = 0; index < 16; ++index)
+                    matrix.m[index] = values[static_cast<size_t>(index)];
                 if (!matrix.IsIdentity()) {
                     Vec3d translation, scale;
                     Quatd rotation;

@@ -102,11 +102,12 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── adapters/
-│   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/WebSocket), base64, multipart, job polling, cassettes
+│   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
 │   ├── anthropic/                 # Anthropic Messages API (ITextLLM)
 │   ├── openai/                    # OpenAI Chat Completions + embeddings (also self-hosted compatibles)
 │   ├── minimax/                   # MiniMax / Hailuo video, image and speech
+│   ├── elevenlabs/                # ElevenLabs speech (direct or via a hosted relay)
 │   ├── qwen/                      # Qwen on a local OpenAI-compatible server
 │   ├── comfyui/                   # Local ComfyUI image + video generation
 │   └── llamacpp/                  # Local llama.cpp inference (ITextLLM + IEmbeddings; opt-in)
@@ -180,13 +181,14 @@ cmake -S UltraAI -B build \
 | Shared adapter infrastructure (credentials, error map, retry, transport seam, cassette record/replay) | Complete |
 | Anthropic adapter (`ITextLLM`: chat, streaming, tools, structured output, token counting) | Complete |
 | OpenAI adapter (`ITextLLM` + `IEmbeddings`: Chat Completions, streaming, tools, structured output, embeddings; a custom `baseUrl` serves keyless OpenAI-compatible servers — Ollama, vLLM, llama.cpp server) | Complete |
-| Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > cloud > mock, with constructibility fallback) | Complete |
+| Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > mock, with constructibility fallback; cloud providers only when named or when cloud fallback is allowed via `SetCloudFallbackAllowed` / `ULTRAAI_ALLOW_CLOUD_FALLBACK`) | Complete |
 | llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; opt-in) | Complete (v0.1 — no tool calls yet) |
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
+| ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
-| Unit tests | Complete (11 executables, all passing) |
+| Unit tests | Complete (12 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---

@@ -5,6 +5,7 @@
 // V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasPyramidChart.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
 
 #include <cstdio>
 #include <fstream>
@@ -149,17 +150,19 @@ namespace {
             PyramidLevel level(fields[0], 0.0);
             size_t descriptionField = 1;
             if (fields.size() > 1) {
-                try {
-                    size_t consumed = 0;
-                    double value = std::stod(fields[1], &consumed);
-                    if (consumed == fields[1].size()) {
-                        level.levelValue = value;
-                        level.y = value;
-                        level.value = value;
-                        descriptionField = 2;
-                    }
-                } catch (const std::exception&) {
-                    // Leave the value at zero and read the column as text
+                // The whole field has to be a number, or the column is text:
+                // ParseFloatClassic returning the end pointer says it consumed
+                // all of it, which is what `consumed == size` used to check -
+                // without reading through LC_NUMERIC or throwing on a header.
+                const char* begin = fields[1].data();
+                const char* const end = fields[1].data() + fields[1].size();
+                if (begin != end && *begin == '+') ++begin;   // stod took "+5" too
+                double value = 0.0;
+                if (begin != end && ParseFloatClassic(begin, end, value) == end) {
+                    level.levelValue = value;
+                    level.y = value;
+                    level.value = value;
+                    descriptionField = 2;
                 }
             }
             if (fields.size() > descriptionField) level.description = fields[descriptionField];

@@ -6,11 +6,12 @@
 // UltraNetTransport (UltraAIUltraNetTransport.h), compiled in when the
 // module is built with ULTRAAI_USE_ULTRANET=ON.
 //
-// Three exchange shapes: a blocking request/response, an SSE stream (token
-// streaming), and a WebSocket stream (bidirectional progress channels such
-// as ComfyUI's /ws).
-// Version: 0.2.0
-// Last Modified: 2026-08-24
+// Four exchange shapes: a blocking request/response, an SSE stream (token
+// streaming), a raw byte stream (chunked bodies that are not SSE, such as
+// streamed audio or newline-delimited JSON), and a WebSocket stream
+// (bidirectional progress channels such as ComfyUI's /ws).
+// Version: 0.3.0
+// Last Modified: 2026-09-24
 // Author: UltraAI Module
 #pragma once
 
@@ -66,6 +67,9 @@ struct TransportWsMessage {
 };
 
 using WsMessageCallback = std::function<void(const TransportWsMessage&)>;
+// One piece of a streamed response body, in arrival order. Chunk
+// boundaries are arbitrary: a line or a frame can span several chunks.
+using ByteChunkCallback = std::function<void(const std::string& chunk)>;
 // Terminal callback: error.IsOk() on a clean close.
 using WsCompleteCallback = std::function<void(const Error& error)>;
 
@@ -92,6 +96,24 @@ public:
     virtual CancelFn SseStream(const TransportRequest& request,
                                SseEventCallback onEvent,
                                SseCompleteCallback onComplete) = 0;
+
+    // Streaming raw-body exchange: the response body is handed over as it
+    // arrives instead of being accumulated. onChunk fires once per chunk,
+    // onComplete exactly once afterwards with the same (error, statusCode)
+    // contract as SseStream.
+    //
+    // The HTTP status is only known at completion, so the body of an error
+    // response (>= 400) is delivered through onChunk too — adapters must be
+    // able to recognise a provider error payload among the chunks, which is
+    // why this suits self-describing bodies (newline-delimited JSON) better
+    // than bare audio.
+    //
+    // Not pure: the default runs Request() and delivers the whole body as
+    // one chunk, so every transport (ScriptedTransport, RecordingTransport
+    // and cassette replay included) supports it without streaming natively.
+    virtual CancelFn ByteStream(const TransportRequest& request,
+                                ByteChunkCallback onChunk,
+                                SseCompleteCallback onComplete);
 
     // Streaming WebSocket exchange. `request.url` may use ws://, wss://, or
     // the http(s) form of the same endpoint (implementations upgrade the

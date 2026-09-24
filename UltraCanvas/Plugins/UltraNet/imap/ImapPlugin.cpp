@@ -32,6 +32,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -41,6 +42,30 @@ using namespace ultranet_imap;
 
 using CurlHandle = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>;
 CurlHandle NewHandle() { return CurlHandle(curl_easy_init(), curl_easy_cleanup); }
+
+// Percent-encode a mailbox name for use as the path segment of an IMAP URL.
+// Folder names are the raw wire names (IMAP modified UTF-7, possibly containing
+// spaces, '[', ']', '/', or non-ASCII bytes). libcurl percent-DECODES the URL
+// mailbox path before issuing SELECT, so encoding the whole segment (including
+// '/'->%2F) round-trips to the exact wire name the server expects. Without this
+// such names make libcurl reject the URL with CURLE_URL_MALFORMAT. Only the
+// folder segment is encoded; the "/;UID=...;SECTION=..." suffix stays literal.
+std::string EncodeMailboxPath(const std::string& folder) {
+    return UltraNet_UrlEncode(folder);
+}
+
+// Escape a mailbox name for an IMAP quoted-string ("...") inside a command.
+// RFC 3501 quoted-strings escape only '\' and '"' — this is NOT URL-encoding,
+// because these go on the wire as literal IMAP text, not as a URL.
+std::string QuoteImapMailbox(const std::string& folder) {
+    std::string out;
+    out.reserve(folder.size() + 2);
+    for (char c : folder) {
+        if (c == '\\' || c == '"') out += '\\';
+        out += c;
+    }
+    return out;
+}
 
 std::size_t WriteToString(char* data, std::size_t size, std::size_t nmemb, void* ud) {
     static_cast<std::string*>(ud)->append(data, size * nmemb);
@@ -204,6 +229,10 @@ public:
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
                 "expected imap:// or imaps:// URL with a mailbox path");
 
+        // `mailbox` here is the path segment already parsed out of the caller's
+        // URL by SplitMailboxUrl, so it is URL-derived — do NOT EncodeMailboxPath
+        // it again (that would double-encode). The IMailboxProtocolPlugin methods
+        // above take a raw folder name and encode it themselves.
         std::string searchBody;
         UltraNetResult sr = RunCommand(base + mailbox, "SEARCH ALL", options, tls, searchBody);
         if (!sr) return sr;
@@ -246,7 +275,7 @@ public:
         std::string base; bool tls = false;
         if (!ParseServerBase(serverUrl, base, tls))
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
-        std::string cmd = "STATUS \"" + folder +
+        std::string cmd = "STATUS \"" + QuoteImapMailbox(folder) +
             "\" (MESSAGES RECENT UIDNEXT UIDVALIDITY UNSEEN)";
         std::string body;
         UltraNetResult r = RunCommand(base, cmd, options, tls, body);
@@ -279,7 +308,7 @@ public:
         std::string base; bool tls = false;
         if (!ParseServerBase(serverUrl, base, tls))
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
-        const std::string mbUrl = base + folder;
+        const std::string mbUrl = base + EncodeMailboxPath(folder);
 
         // One handle for the whole pass: the SEARCH and every per-UID header/flags
         // fetch reuse the same authenticated connection instead of reconnecting.
@@ -308,7 +337,7 @@ public:
             // Header fields.
             std::string headerRaw;
             std::ostringstream hurl;
-            hurl << base << folder << "/;UID=" << uid << ";SECTION=HEADER";
+            hurl << base << EncodeMailboxPath(folder) << "/;UID=" << uid << ";SECTION=HEADER";
             if (PerformOn(h.get(), hurl.str(), std::string(), headerRaw))
                 ParseEnvelopeHeaders(headerRaw, env);
 
@@ -332,7 +361,7 @@ public:
         std::string base; bool tls = false;
         if (!ParseServerBase(serverUrl, base, tls))
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
-        std::ostringstream u; u << base << folder << "/;UID=" << uid;
+        std::ostringstream u; u << base << EncodeMailboxPath(folder) << "/;UID=" << uid;
         if (!RunFetch(u.str(), options, tls, outRaw))
             return UltraNetResult::Error(UltraNetResultCode::Unknown, "fetch failed");
         return UltraNetResult::Ok();
@@ -358,8 +387,9 @@ public:
             return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
         ApplyCommonOptions(h.get(), options, tls);   // authenticate once; reuse below
 
+        const std::string mbPath = EncodeMailboxPath(folder);  // constant across UIDs
         for (uint32_t uid : uids) {
-            std::ostringstream u; u << base << folder << "/;UID=" << uid;
+            std::ostringstream u; u << base << mbPath << "/;UID=" << uid;
             std::string raw;
             if (PerformOn(h.get(), u.str(), std::string(), raw) && !raw.empty())
                 onMessage(uid, raw);
@@ -382,7 +412,7 @@ public:
         std::ostringstream cmd;
         cmd << "UID STORE " << uid << ' ' << (set ? '+' : '-') << "FLAGS (" << tokens << ')';
         std::string body;
-        return RunCommand(base + folder, cmd.str(), options, tls, body);
+        return RunCommand(base + EncodeMailboxPath(folder), cmd.str(), options, tls, body);
     }
 
     UltraNetResult MoveMessage(const std::string& serverUrl,
@@ -394,9 +424,9 @@ public:
         if (!ParseServerBase(serverUrl, base, tls))
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
         std::ostringstream cmd;
-        cmd << "UID MOVE " << uid << " \"" << dstFolder << '"';
+        cmd << "UID MOVE " << uid << " \"" << QuoteImapMailbox(dstFolder) << '"';
         std::string body;
-        return RunCommand(base + srcFolder, cmd.str(), options, tls, body);
+        return RunCommand(base + EncodeMailboxPath(srcFolder), cmd.str(), options, tls, body);
     }
 
     UltraNetResult AppendMessage(const std::string& serverUrl,
@@ -413,7 +443,7 @@ public:
         CurlHandle h = NewHandle();
         if (!h)
             return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
-        const std::string url = base + folder;
+        const std::string url = base + EncodeMailboxPath(folder);
         ReadCtx ctx{&rawMessage, 0};
         curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
         curl_easy_setopt(h.get(), CURLOPT_UPLOAD, 1L);
@@ -425,6 +455,46 @@ public:
         CURLcode rc = curl_easy_perform(h.get());
         if (rc != CURLE_OK)
             return UltraNetResult::Error(MapCurlError(rc), curl_easy_strerror(rc));
+        return UltraNetResult::Ok();
+    }
+
+    UltraNetResult FetchAllFlags(
+        const std::string& serverUrl, const std::string& folder,
+        const std::function<void(uint32_t uid, UltraNetMailFlags flags, bool flagsKnown)>& onFlags,
+        const UltraNetMailOptions& options) override {
+        std::string base; bool tls = false;
+        if (!ParseServerBase(serverUrl, base, tls))
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
+        const std::string mbUrl = base + EncodeMailboxPath(folder);
+
+        // One reused connection for the whole pass (like FetchEnvelopes).
+        CurlHandle h = NewHandle();
+        if (!h)
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
+        ApplyCommonOptions(h.get(), options, tls);
+
+        // The authoritative live-UID set comes from SEARCH, the same primitive
+        // FetchEnvelopes uses successfully — NOT from parsing a bulk FLAGS fetch,
+        // which can come back empty and would make the caller expunge everything.
+        // A failed search returns an error so the caller skips its expunge pass.
+        std::string searchBody;
+        UltraNetResult sr = PerformOn(h.get(), mbUrl, "UID SEARCH ALL", searchBody);
+        if (!sr) return sr;
+        std::vector<uint32_t> uids = ParseSearchUids(searchBody);
+
+        // Flags are best-effort: one bulk fetch, but a UID missing from the parsed
+        // map is reported flagsKnown=false so the caller never rewrites its flags
+        // on an unread guess. Its existence (for deletion detection) still stands.
+        std::unordered_map<uint32_t, UltraNetMailFlags> fm;
+        std::string flagsBody;
+        if (PerformOn(h.get(), mbUrl, "UID FETCH 1:* (FLAGS)", flagsBody))
+            for (const auto& pr : ParseAllFlags(flagsBody)) fm[pr.first] = pr.second;
+
+        for (uint32_t uid : uids) {
+            auto it = fm.find(uid);
+            onFlags(uid, it != fm.end() ? it->second : UltraNetMailFlags::None,
+                    /*flagsKnown=*/it != fm.end());
+        }
         return UltraNetResult::Ok();
     }
 

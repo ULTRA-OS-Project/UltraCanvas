@@ -701,7 +701,16 @@ namespace UltraCanvas {
         Bitmap, ContonedBitmap,
         Blend, Mould, Bevel, Contour, Shadow,
         ClipView, Feather, LiveEffect, Brush,
-        Unknown
+        Unknown,
+        // Phase 5: the parts of the controller groups above, as Xara's
+        // tree has them (Kernel/ndclpcnt.cpp, ncntrcnt.cpp, nodeblnd.cpp,
+        // nodemold.cpp, nbevcont.cpp).
+        ClipViewMarker,   // TAG_CLIPVIEW: the children before it are the keyholes
+        ContourSteps,     // TAG_CONTOUR: the node Xara regenerates the steps into
+        Blender,          // TAG_BLENDER: between two blended objects
+        MouldPath,        // TAG_MOULD_PATH: the mould's shape
+        MouldGroup,       // TAG_MOULD_GROUP: the unmoulded sources (invisible)
+        BevelInk          // TAG_BEVELINK: the node Xara regenerates the bevel into
     };
 
     class XARNode {
@@ -935,39 +944,113 @@ namespace UltraCanvas {
         void Render(IRenderContext* ctx, float scale = 1.0f) override;
     };
 
+    // TAG_BEVEL, the controller group around a bevelled object (24 bytes:
+    // INT32 type, indent (mp), light angle (degrees), outer flag,
+    // contrast (0..100), tilt (degrees) - NodeBevelController::
+    // WritePreChildrenNative). Its TAG_BEVELINK child is where Xara
+    // regenerates the bevel; the other children are the object.
     class XARBevelNode : public XARNode {
     public:
-        int32_t indent = 0;
-        float lightAngle = 45.0f;
-        float contrast = 0.5f;
-        Color lightColor = Color(255, 255, 255, 255);
-        Color darkColor = Color(0, 0, 0, 255);
+        int32_t bevelType = 0;                  // XPFP_BEVELTYPE_FLAT .. RUFFLE_3b (0..14)
+        int32_t indent = 0;                     // millipoints
+        int32_t lightAngle = 135;               // degrees
+        bool outer = false;
+        int32_t contrast = 50;                  // percent
+        int32_t tilt = 45;                      // degrees
         XARBevelNode() { type = XARNodeType::Bevel; }
+        void Render(IRenderContext* ctx, float scale = 1.0f) override;
     };
 
+    // TAG_CONTOURCONTROLLER (INT32 steps, INT32 width in millipoints -
+    // negative for an outer contour, BYTE colour blend type with bit 7 the
+    // inset-path flag, then four DOUBLEs: object bias / gain, attribute
+    // bias / gain). Its TAG_CONTOUR child (ContourSteps) is where Xara
+    // regenerates the steps and carries the contour's own fill; the other
+    // children are the object.
     class XARContourNode : public XARNode {
     public:
-        int32_t numContours = 1;
-        int32_t contourWidth = 0;
+        int32_t steps = 1;
+        int32_t width = 0;                      // millipoints, < 0 = outer
+        uint8_t colourBlend = 0;                // 0 fade, 1 rainbow, 2 alt rainbow, 3 none
+        bool insetPath = false;
+        double objectBias = 0, objectGain = 0, attributeBias = 0, attributeGain = 0;
         XARContourNode() { type = XARNodeType::Contour; }
+        void Render(IRenderContext* ctx, float scale = 1.0f) override;
     };
 
+    // TAG_BLEND (UINT16 steps, BYTE flags: bit 0 one-to-one, bit 1
+    // antialiased, bit 2 tangential, bits 4..7 the colour effect),
+    // preceded by TAG_BLENDPROFILES (six DOUBLEs). Its children alternate
+    // blended objects with Blender nodes, which Xara regenerates the
+    // steps into.
     class XARBlendNode : public XARNode {
     public:
         int32_t numSteps = 1;
+        bool oneToOne = false;
+        bool antialiased = true;
+        bool tangential = false;
+        uint8_t colourEffect = 0;               // 0 fade, 1 rainbow, 2 alt rainbow
+        double profiles[6] = {0, 0, 0, 0, 0, 0};
         XARBlendNode() { type = XARNodeType::Blend; }
+        void Render(IRenderContext* ctx, float scale = 1.0f) override;
     };
 
+    // TAG_BLENDER (INT32 path index start / end) and its
+    // TAG_BLENDERADDITIONAL attribute (INT32 blended on curve, blend path
+    // index, object index start / end, BYTE reversed).
+    class XARBlenderNode : public XARNode {
+    public:
+        int32_t pathIndexStart = 0, pathIndexEnd = 0;
+        int32_t blendedOnCurve = 0, blendPathIndex = -1;
+        int32_t objIndexStart = 0, objIndexEnd = 0;
+        bool reversed = false;
+        XARBlenderNode() { type = XARNodeType::Blender; }
+        void Render(IRenderContext*, float = 1.0f) override {}
+    };
+
+    // TAG_MOULD_ENVELOPE / TAG_MOULD_PERSPECTIVE (INT32 threshold). Its
+    // children: the MouldPath (the shape), the MouldGroup (the sources,
+    // with their TAG_MOULD_BOUNDS) and the moulded results.
     class XARMouldNode : public XARNode {
     public:
         bool isPerspective = false;
+        int32_t threshold = 64;
         XARMouldNode() { type = XARNodeType::Mould; }
+        void Render(IRenderContext* ctx, float scale = 1.0f) override;
     };
 
+    // TAG_MOULD_PATH: a path record's layout (absolute coordinates),
+    // never drawn.
+    class XARMouldPathNode : public XARPathNode {
+    public:
+        XARMouldPathNode() { type = XARNodeType::MouldPath; }
+        void Render(IRenderContext*, float = 1.0f) override {}
+    };
+
+    // TAG_MOULD_GROUP with its TAG_MOULD_BOUNDS (two coordinates, the
+    // sources' bounds in millipoints): invisible.
+    class XARMouldGroupNode : public XARNode {
+    public:
+        Point2Di boundsLo, boundsHi;
+        bool hasBounds = false;
+        XARMouldGroupNode() { type = XARNodeType::MouldGroup; }
+        void Render(IRenderContext*, float = 1.0f) override {}
+    };
+
+    // TAG_CLIPVIEWCONTROLLER: the children before its ClipViewMarker
+    // child are the keyhole shapes (not drawn), the rest are drawn
+    // clipped to them.
     class XARClipViewNode : public XARNode {
     public:
         XARClipViewNode() { type = XARNodeType::ClipView; }
         void Render(IRenderContext* ctx, float scale = 1.0f) override;
+    };
+
+    // The empty marker records inside the controllers above.
+    class XARMarkerNode : public XARNode {
+    public:
+        explicit XARMarkerNode(XARNodeType t) { type = t; }
+        void Render(IRenderContext*, float = 1.0f) override {}
     };
 
     class XARFeatherNode : public XARNode {
@@ -1189,8 +1272,17 @@ namespace UltraCanvas {
         void ParseBevelRecord(const XARRecord& record);
         void ParseContourRecord(const XARRecord& record);
         void ParseBlendRecord(const XARRecord& record);
+        void ParseBlendProfilesRecord(const XARRecord& record);
+        void ParseBlenderRecord(const XARRecord& record);
+        void ParseBlenderAdditionalRecord(const XARRecord& record);
         void ParseMouldRecord(const XARRecord& record, bool perspective);
+        void ParseMouldPathRecord(const XARRecord& record);
+        void ParseMouldBoundsRecord(const XARRecord& record);
+        void ParseMouldGroupRecord(const XARRecord& record);
         void ParseClipViewRecord(const XARRecord& record);
+        // The body of a path record (absolute or relative layout) into a
+        // path node; shared by TAG_PATH* and TAG_MOULD_PATH.
+        void ParsePathInto(const XARRecord& record, bool relative, XARPathNode& path);
         void ParseFeatherRecord(const XARRecord& record);
         void ParseLiveEffectRecord(const XARRecord& record);
         void ParseBrushRecord(const XARRecord& record);
@@ -1259,6 +1351,12 @@ namespace UltraCanvas {
         int32_t currentSequenceNumber = 0;
         Rect2Dd pendingObjectBounds;
         bool havePendingBounds = false;
+        // TAG_BLENDPROFILES precedes its TAG_BLEND; TAG_MOULD_BOUNDS
+        // precedes its TAG_MOULD_GROUP.
+        double pendingBlendProfiles[6] = {0, 0, 0, 0, 0, 0};
+        bool havePendingBlendProfiles = false;
+        Point2Di pendingMouldLo, pendingMouldHi;
+        bool havePendingMouldBounds = false;
 
         std::string fileType;
         uint32_t refinementFlags = 0;

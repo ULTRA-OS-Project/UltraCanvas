@@ -30,11 +30,14 @@
 #pragma once
 
 #include "UltraFIBUBank.h"
+#include "UltraFIBUBelegArchiv.h"
 #include "UltraFIBUBeleg.h"
 #include "UltraFIBUBuchung.h"
 #include "UltraFIBUDatev.h"
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNrOnline.h"
+#include "UltraFIBUOss.h"
+#include "UltraFIBUUstva.h"
 
 #include <UltraDatabase/UltraDatabaseCore.h>
 #include <UltraDatabase/UltraDatabaseValue.h>
@@ -79,7 +82,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert that the database matches the
     // code without a literal that has to be chased.
-    static constexpr int kSchemaVersion = 4;
+    static constexpr int kSchemaVersion = 8;
 
     Store() = default;
     ~Store() = default;
@@ -258,6 +261,56 @@ public:
     // missing now, or contents changed.
     bool PruefeBelegDatei(const Beleg& beleg, std::string& fehler) const;
 
+    // ---- Belege aus Dateien -------------------------------------------------
+
+    // Where this database's documents are archived. Derived from the database
+    // path rather than configured, so the two move together.
+    std::string BelegArchivPfad() const;
+
+    struct BelegImportEintrag {
+        std::string dateiname;
+        std::string hash;
+        std::string pfad;
+        bool        ok = false;
+        std::string fehler;
+        int64_t     belegId = 0;      // the draft that was created
+        std::string belegnummer;
+        // True when a document with this file already existed. Dragging the
+        // same folder in twice is the normal way an import button gets used,
+        // so this is an outcome to report rather than an error.
+        bool        schonVorhanden = false;
+        int64_t     vorhandenerBeleg = 0;
+        std::vector<std::string> warnungen;
+    };
+
+    struct BelegImportBericht {
+        bool ok = false;
+        std::string fehler;
+        int gelesen = 0, angelegt = 0, bekannt = 0, abgelehnt = 0;
+        std::vector<BelegImportEintrag> eintraege;
+        std::vector<std::string> warnungen;
+    };
+
+    // Take a stack of PDFs in and make a draft document of each.
+    //
+    // This is what the "Beleg hochladen" button and the drop target both call.
+    // The files are **copied into the archive**, not referenced: a receipt kept
+    // only as a path to somebody's Downloads folder does not survive the ten
+    // years § 147 AO asks for.
+    //
+    // Each document is created as a draft - the amounts and the account still
+    // have to be entered, because nothing here reads what is inside the PDF.
+    // Claiming otherwise would put invented figures in a ledger.
+    BelegImportBericht ImportiereBelegDateien(int64_t mandantId,
+                                              const std::vector<std::string>& pfade,
+                                              BelegArt art, const Date& datum,
+                                              const std::string& kreis,
+                                              const Akteur& akteur);
+
+    // The document already holding this file, if there is one. What makes a
+    // second import of the same receipt a no-op rather than a duplicate.
+    bool BelegMitDateiHash(int64_t mandantId, const std::string& hash, Beleg& out) const;
+
     // ---- Buchen (posting) --------------------------------------------------
 
     // Turn a draft into journal rows: one posting per (account, tax key) group,
@@ -426,6 +479,100 @@ public:
 
     std::vector<BankZuordnung> Zuordnungen(int64_t bankumsatzId) const;
 
+    // ---- Steuermeldungen ----------------------------------------------------
+
+    // Where a return stands. A submitted one is never edited: a correction is a
+    // new *berichtigte* return, the same rule as Storno on a posting and for
+    // the same reason - what was filed has to stay provable afterwards.
+    enum class MeldungStatus { Entwurf, Erzeugt, Eingereicht, Bestaetigt };
+
+    struct Meldung {
+        int64_t       id = 0;
+        int64_t       mandantId = 0;
+        std::string   art;              // "ustva" | "zm" | "oss" | "dfv"
+        int           jahr = 0;
+        std::string   zeitraum;         // "01".."12", "41".."44"
+        MeldungStatus status = MeldungStatus::Entwurf;
+        Money         zahllast;
+        // The figures as filed, so the return can be reproduced exactly even
+        // after the journal has moved on. A recomputation is not evidence of
+        // what was sent; this is.
+        std::string   kennzahlenJson;
+        std::string   datei;
+        std::string   xmlHash;          // SHA-256 of exactly what was written
+        std::string   transferticket;   // what ELSTER gives back on acceptance
+        bool          berichtigt = false;
+        bool          echtfall = false;
+        int64_t       erzeugtAm = 0;
+        int64_t       eingereichtAm = 0;
+        std::string   benutzer;
+    };
+
+    // Pull the journal and the tax keys for a period and compute the return.
+    // Convenience only - the computation itself is a pure function in
+    // UltraFIBUUstva.h and is tested there without a database.
+    UstvaBerechnung BerechneUstvaFuer(int64_t mandantId, int jahr,
+                                      const std::string& zeitraum,
+                                      const UstvaMapping& mapping) const;
+
+    // Record a generated return. Refuses to replace one that has already been
+    // submitted: that is what `berichtigt` is for.
+    StoreResult MeldungEintragen(Meldung& meldung, const Akteur& akteur);
+
+    // Record the Transferticket after a manual upload. This is the step that
+    // turns "we produced a file" into "it was filed", and it is the only
+    // evidence of the latter.
+    StoreResult MeldungQuittung(int64_t meldungId, const std::string& transferticket,
+                                const Date& eingereichtAm, const Akteur& akteur);
+
+    std::vector<Meldung> Meldungen(int64_t mandantId, const std::string& art = "") const;
+    bool MeldungById(int64_t id, Meldung& out) const;
+    // The return already filed for a period, if there is one - what makes a
+    // second one a correction rather than a duplicate.
+    bool MeldungFuerZeitraum(int64_t mandantId, const std::string& art, int jahr,
+                             const std::string& zeitraum, Meldung& out) const;
+
+    // ---- EU-Steuersaetze (One-Stop-Shop) ------------------------------------
+    //
+    // The rates the OSS return checks an invoice against. They live in a table
+    // rather than only in `data/EU-Steuersaetze.csv` because twenty-six member
+    // states change them on their own timetable, and a user must be able to
+    // enter the change the week it is announced rather than wait for a release.
+
+    // Every return already filed, in any Mandant. A member state's VAT rate is
+    // not per-Mandant, so whether a new rate would disturb a filed return is a
+    // question about all of them.
+    std::vector<Meldung> EingereichteMeldungen() const;
+
+    // Every rate, ordered by country, kind and start date.
+    std::vector<EuSteuersatz> EuSteuersaetzeAlle() const;
+
+    // The same, ready for BerechneOss.
+    EuSteuersaetze EuSteuersaetzeGeladen() const;
+
+    // Enter a rate. **This never updates an existing one.** A rate that changed
+    // is a new row with its own `gueltigVon`; the row it supersedes is closed
+    // the day before, keeping its own span. Editing a rate in place would
+    // change what an already-filed return recomputes to, and nothing would
+    // show that it had.
+    //
+    // Refused when:
+    //  - the same country, kind and start date already exist (that is an edit
+    //    wearing a new coat: delete the row or pick the real date),
+    //  - a return that has already been filed covers a period the new row
+    //    would change. Its figures were filed; they are history, not data.
+    StoreResult EuSteuersatzSetzen(EuSteuersatz& satz, const Akteur& akteur);
+
+    // Remove a rate entered by mistake. Refused once a filed return depends on
+    // it, for the same reason.
+    StoreResult EuSteuersatzLoeschen(int64_t id, const Akteur& akteur);
+
+    // Seed the table from the shipped CSV. Adds what is missing and leaves
+    // every existing row alone, so running it again after a rate was edited by
+    // hand does not undo the edit.
+    StoreResult EuSteuersaetzeAusDatei(const std::string& dateipfad, const Akteur& akteur,
+                                       int& outNeu, int& outBekannt);
+
     // ---- Journal -----------------------------------------------------------
 
     // A posting entered directly, without a document - an accrual, an opening
@@ -514,12 +661,19 @@ private:
     // the driver's message.
     StoreResult Exec(const std::string& sql, const UltraDbParams& params,
                      const std::string& wobei) const;
+    // The clause this engine needs to lock a counter row while reading it.
+    // Empty on SQLite, " FOR UPDATE" on PostgreSQL - see
+    // IUltraDbConnection::RowLockSuffix.
+    std::string RowLock() const;
     bool        QueryOne(const std::string& sql, const UltraDbParams& params,
                          UltraDbRow& out) const;
     bool        Query(const std::string& sql, const UltraDbParams& params,
                       UltraDbResultSet& out) const;
 
     std::string connection_;
+    // Kept so the document archive can live beside the database. A database
+    // and its receipts that can be separated will be separated.
+    std::string datenbankPfad_;
 };
 
 } // namespace UltraFIBU

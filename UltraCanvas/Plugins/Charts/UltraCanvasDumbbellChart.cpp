@@ -5,6 +5,7 @@
 // V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasDumbbellChart.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
 
 #include <cstdio>
 #include <fstream>
@@ -43,15 +44,13 @@ namespace UltraCanvas {
 
             // Rows whose value columns do not parse are skipped - this also swallows
             // a header line without needing to special-case it.
-            try {
-                double v1 = std::stod(fields[1]);
-                double v2 = std::stod(fields[2]);
-                std::string lbl1 = fields.size() > 3 && !fields[3].empty() ? fields[3] : "Group 1";
-                std::string lbl2 = fields.size() > 4 && !fields[4].empty() ? fields[4] : "Group 2";
-                dumbbellData.emplace_back(fields[0], v1, v2, lbl1, lbl2);
-            } catch (const std::exception&) {
+            double v1 = 0.0, v2 = 0.0;
+            if (!TryParseFloat(fields[1], v1) || !TryParseFloat(fields[2], v2)) {
                 continue;
             }
+            std::string lbl1 = fields.size() > 3 && !fields[3].empty() ? fields[3] : "Group 1";
+            std::string lbl2 = fields.size() > 4 && !fields[4].empty() ? fields[4] : "Group 2";
+            dumbbellData.emplace_back(fields[0], v1, v2, lbl1, lbl2);
         }
     }
 

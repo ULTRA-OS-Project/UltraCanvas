@@ -1,14 +1,20 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorModels.h
-// The two list models the window shows: one row per connection, and one row
-// per process. Both are plain IListModel implementations over the module's
-// own structs, so UltraCanvasListView renders them and
-// UltraCanvasListSortFilterProxy sorts and filters them; the numeric columns
-// answer SortRole with the number, so "10" sorts after "9".
-// Version: 0.2.0
+// The list models the window shows: one row per connection, per process,
+// per recorded flow, per name the name table knows, and per connection
+// event as it comes. All are plain
+// IListModel implementations over the module's own structs, so
+// UltraCanvasListView renders them and UltraCanvasListSortFilterProxy sorts
+// and filters them; the numeric columns answer SortRole with the number, so
+// "10" sorts after "9". A peer's name shows in a *Host* column, with a
+// trailing "?" when it is a weak one (reverse DNS), never as a fact.
+// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "NetworkMonitor/NetworkMonitor.h"
+#include "NetworkMonitor/NetworkMonitorEvents.h"
+#include "NetworkMonitor/NetworkMonitorNames.h"
+#include "NetworkMonitor/NetworkMonitorStore.h"
 #include "UltraCanvasListModel.h"
 
 #include <vector>
@@ -17,7 +23,7 @@ namespace UltraNetMonitor {
 
 class ConnectionListModel : public UltraCanvas::IListModel {
 public:
-    enum Column { Application = 0, Pid, Protocol, Local, Remote, State, Sent, Received, User, ColumnCount };
+    enum Column { Application = 0, Pid, Protocol, Local, Remote, Host, Via, State, Sent, Received, User, ColumnCount };
 
     int GetRowCount() const override;
     int GetColumnCount() const override;
@@ -38,7 +44,7 @@ private:
 
 class ProcessListModel : public UltraCanvas::IListModel {
 public:
-    enum Column { Application = 0, Pid, Connections, Established, Listening, Remotes, Sent, Received, ColumnCount };
+    enum Column { Application = 0, Pid, Connections, Established, Listening, Remotes, Via, Sent, Received, ColumnCount };
 
     int GetRowCount() const override;
     int GetColumnCount() const override;
@@ -54,5 +60,86 @@ public:
 private:
     std::vector<UltraCanvas::ProcessTrafficSummary> rows_;
 };
+
+// One row per recorded flow, for the History tab.
+class FlowListModel : public UltraCanvas::IListModel {
+public:
+    enum Column { Application = 0, Pid, Protocol, Local, Remote, Host, Via, State, FirstSeen, LastSeen,
+                  Seen, Sent, Received, ColumnCount };
+
+    int GetRowCount() const override;
+    int GetColumnCount() const override;
+    UltraCanvas::ListDataValue GetData(const UltraCanvas::ListIndex& index,
+                                       UltraCanvas::ListDataRole role) const override;
+    bool SetData(const UltraCanvas::ListIndex&, UltraCanvas::ListDataRole,
+                 const UltraCanvas::ListDataValue&) override { return false; }
+    UltraCanvas::ListColumnDef GetColumnDef(int column) const override;
+
+    void Replace(std::vector<UltraCanvas::RecordedFlow> rows);
+    const UltraCanvas::RecordedFlow* At(int row) const;
+
+private:
+    std::vector<UltraCanvas::RecordedFlow> rows_;
+};
+
+// One row per address the name table has a name for, for the Names tab.
+class NameListModel : public UltraCanvas::IListModel {
+public:
+    enum Column { Name = 0, Address, Source, Observed, Expires, Application, ColumnCount };
+
+    int GetRowCount() const override;
+    int GetColumnCount() const override;
+    UltraCanvas::ListDataValue GetData(const UltraCanvas::ListIndex& index,
+                                       UltraCanvas::ListDataRole role) const override;
+    bool SetData(const UltraCanvas::ListIndex&, UltraCanvas::ListDataRole,
+                 const UltraCanvas::ListDataValue&) override { return false; }
+    UltraCanvas::ListColumnDef GetColumnDef(int column) const override;
+
+    void Replace(std::vector<UltraCanvas::NameRecord> rows);
+    const UltraCanvas::NameRecord* At(int row) const;
+
+private:
+    std::vector<UltraCanvas::NameRecord> rows_;
+};
+
+// One row per connection event, newest first: the live ring, or the
+// recorded events over a range - the same struct either way.
+class EventListModel : public UltraCanvas::IListModel {
+public:
+    enum Column { Time = 0, Kind, Application, Pid, Protocol, Local, Remote, Host, Via, Sent, Received, Source, ColumnCount };
+
+    int GetRowCount() const override;
+    int GetColumnCount() const override;
+    UltraCanvas::ListDataValue GetData(const UltraCanvas::ListIndex& index,
+                                       UltraCanvas::ListDataRole role) const override;
+    bool SetData(const UltraCanvas::ListIndex&, UltraCanvas::ListDataRole,
+                 const UltraCanvas::ListDataValue&) override { return false; }
+    UltraCanvas::ListColumnDef GetColumnDef(int column) const override;
+
+    void Replace(std::vector<UltraCanvas::NetworkConnectionEvent> rows);
+    const UltraCanvas::NetworkConnectionEvent* At(int row) const;
+
+private:
+    std::vector<UltraCanvas::NetworkConnectionEvent> rows_;
+};
+
+// The loopback chain of a connection as one cell: "→ AvastSvc (4720)" for
+// a client of a local proxy, "← thunderbird (4120)" for the proxy's side,
+// "for thunderbird (4120)" on the proxy's own outbound connections.
+std::string ViaText(const UltraCanvas::NetworkConnection& connection);
+std::string ViaTooltip(const UltraCanvas::NetworkConnection& connection);
+// The same for a recorded flow, whose chain is what the last sighting
+// that had one decoded.
+std::string ViaText(const UltraCanvas::RecordedFlow& flow);
+std::string ViaTooltip(const UltraCanvas::RecordedFlow& flow);
+// And for an event: the chain the registry decoded when it came.
+std::string ViaText(const UltraCanvas::NetworkConnectionEvent& event);
+std::string ViaTooltip(const UltraCanvas::NetworkConnectionEvent& event);
+
+// "www.example.com" for an observed name, "www.example.com ?" for a weak
+// one, empty for none. Shared by every list that shows a host.
+std::string HostText(const std::string& name, UltraCanvas::NameSource source);
+// The tooltip behind a host cell: which source, and how much to trust it.
+std::string HostTooltip(const std::string& name, UltraCanvas::NameSource source);
 
 } // namespace UltraNetMonitor

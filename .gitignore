@@ -1,5 +1,13 @@
 CMakeFiles/
-.claude/
+# Claude Code. A session's own state (history, local overrides) stays out, but
+# the project settings and their hooks are COMMITTED on purpose: every cloud
+# session clones this repository fresh, so a hook that is not in the
+# repository does not exist for the next chat - which is the whole reason the
+# delivery check is a hook rather than a line in AGENTS.md.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/settings.local.json
 .idea/
 .vscode/
 # A build machine's real UltraMail OAuth credentials (see oauth.local.cmake.example)
@@ -13,6 +21,7 @@ CMakeFiles/
 /dist/
 Apps/Texter/build/
 /1icons/
+/Tests/build/
 
 # Generated binaries
 /UltraCanvasDemo

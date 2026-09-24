@@ -1,18 +1,25 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.cpp
-// Version: 0.2.0
+// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorWindow.h"
 
+#include "UltraNetMonitorPaths.h"
+
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasModalDialog.h"
 
 #include <algorithm>
 #include <chrono>
+#include <ctime>
 #include <variant>
 
-// The app's own version, from the first line of Docs/UltraNetMonitor/CHANGELOG.md
-// through cmake/UltraCanvasVersion.cmake. Independent of the framework's.
+// ULTRANETMONITOR_VERSION comes from the build alone: CMake reads the first line
+// of Docs/UltraNetMonitor/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it
+// as a compile definition. No fallback here, so a build that lost it
+// fails instead of reporting a wrong number.
 #ifndef ULTRANETMONITOR_VERSION
-#define ULTRANETMONITOR_VERSION "0.0-dev"
+#error "ULTRANETMONITOR_VERSION is not defined: build through CMake, which reads it from Docs/UltraNetMonitor/CHANGELOG.md"
 #endif
 
 using namespace UltraCanvas;
@@ -32,21 +39,55 @@ constexpr int   kProcessColumnMin   = 300;
 constexpr unsigned kSnapshotIntervalMs = 1000;
 constexpr unsigned kUiTimerMs          = 200;
 
+// Tab order, as added below.
+constexpr int kLiveTab    = 0;
+constexpr int kHistoryTab = 1;
+constexpr int kNamesTab   = 2;
+constexpr int kEventsTab  = 3;
+constexpr int kEventsShown = 1000;
+
+// The history range dropdown's entries, in seconds.
+const int64_t kRanges[] = { 3600, 24 * 3600, 7 * 24 * 3600, 30 * 24 * 3600 };
+const char* const kRangeLabels[] = { "Last hour", "Last 24 hours", "Last 7 days", "Last 30 days" };
+constexpr int kHistoryLimit = 5000;
+
 // A split pane's panes are plain containers; a list fills one edge to edge.
 // Basis zero and grow one rather than a percentage, so the pane's size is
 // what decides and the list can never hold a size of its own against it.
-void FillPaneWith(const std::shared_ptr<UltraCanvasContainer>& pane,
-                  const std::shared_ptr<UltraCanvasUIElement>& element) {
-    pane->layout.SetFlexColumn()
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    ContainerStyle plainPane;
-    plainPane.autoShowScrollbars = false;
-    pane->SetContainerStyle(plainPane);
-    pane->AddChild(element);
+void FillWith(const std::shared_ptr<UltraCanvasContainer>& container,
+              const std::shared_ptr<UltraCanvasUIElement>& element) {
+    container->AddChild(element);
     element->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     element->layoutItem.SetFlexGrow(1);
     element->layoutItem.SetFlexShrink(1);
     element->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+}
+
+void MakePlainColumn(const std::shared_ptr<UltraCanvasContainer>& container) {
+    container->layout.SetFlexColumn()
+                     .SetFlexGap(kSectionGap)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    ContainerStyle plain;
+    plain.autoShowScrollbars = false;
+    container->SetContainerStyle(plain);
+}
+
+std::shared_ptr<UltraCanvasContainer> MakeToolbar(const std::string& id) {
+    auto bar = CreateContainer(id, 0, 0, 0, 34);
+    bar->layout.SetFlexRow()
+               .SetFlexGap(8)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    bar->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(34));
+    ContainerStyle plainBar;
+    plainBar.autoShowScrollbars = false;
+    bar->SetContainerStyle(plainBar);
+    return bar;
+}
+
+void PinToolbar(const std::shared_ptr<UltraCanvasUIElement>& bar) {
+    bar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    bar->layoutItem.SetFlexGrow(0);
+    bar->layoutItem.SetFlexShrink(0);
 }
 
 // Header clicks sort; the view shows the order but the proxy decides it.
@@ -74,13 +115,25 @@ int PidOfSourceRow(const IListModel& model, int sourceRow, int pidColumn) {
 
 UltraNetMonitorWindow::~UltraNetMonitorWindow() {
     StopWorker();
+    // The sources first: their threads are the other writers of the store.
+    NetworkMonitor_StopEventSources();
+    NetworkMonitor_StopNameSources();
+    if (eventListener_ != 0) NetworkMonitor_RemoveEventListener(eventListener_);
+    if (nameListener_ != 0) NetworkMonitor_RemoveNameListener(nameListener_);
     if (uiTimer_ != 0) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(uiTimer_);
     }
+    std::lock_guard<std::mutex> lock(storeMutex_);
+    if (store_ != NetworkMonitorInvalidStore) {
+        NetworkMonitor_ApplyRetention(store_);
+        NetworkMonitor_CloseStore(store_);
+        store_ = NetworkMonitorInvalidStore;
+    }
 }
 
-bool UltraNetMonitorWindow::Initialize() {
+bool UltraNetMonitorWindow::Initialize(std::vector<std::string> nameNotes) {
     capabilities_ = NetworkMonitor_GetCapabilities();
+    nameNotes_ = std::move(nameNotes);
 
     WindowConfig config;
     config.title  = std::string("UltraNetMonitor ") + ULTRANETMONITOR_VERSION;
@@ -97,48 +150,44 @@ bool UltraNetMonitorWindow::Initialize() {
     subtitleLabel_ = CreateLabel("nmSubtitle", 200, 14, 900, 22, "");
     window_->AddChild(subtitleLabel_);
 
-    // Laid out, not positioned: a flex column of toolbar and split pane,
-    // sized by LayoutForSize so the window's size is the page's size.
+    // Laid out, not positioned: a flex column of toolbar and tabs, sized by
+    // LayoutForSize so the window's size is the page's size.
     page_ = CreateContainer("nmPage", 0, 0, 0, 0);
-    page_->layout.SetFlexColumn()
-                 .SetFlexGap(kSectionGap)
-                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    MakePlainColumn(page_);
     page_->SetPadding(kPagePadding);
-    ContainerStyle plainPage;
-    plainPage.autoShowScrollbars = false;
-    page_->SetContainerStyle(plainPage);
 
     auto toolbar = BuildToolbar();
     page_->AddChild(toolbar);
-    toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    toolbar->layoutItem.SetFlexGrow(0);
-    toolbar->layoutItem.SetFlexShrink(0);
+    PinToolbar(toolbar);
 
-    // Processes left, connections right. A split pane rather than a flex
-    // row: the connection side keeps every pixel a wider window adds, and
-    // the divider is real.
-    split_ = CreateHorizontalSplitPane("nmSplit", 0, 0, 0, 0);
-    split_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
-    SplitPaneStyle splitStyle;
-    splitStyle.splitterThickness = 6;
-    splitStyle.splitterHitMargin = 3;
-    splitStyle.splitterColor     = Color(232, 232, 236);
-    splitStyle.handle.shape      = SplitterHandleShape::RoundedSquare;
-    splitStyle.handle.crossSize  = 9;
-    splitStyle.handle.axisLength = 44;
-    split_->SetSplitPaneStyle(splitStyle);
-    auto processPane    = split_->AddPane(1.0);
-    auto connectionPane = split_->AddPane(2.0);
-    split_->SetPaneFixedSize(0, kProcessColumnWidth);
-    split_->SetPaneMinSize(0, kProcessColumnMin);
-    split_->SetPaneMinSize(1, 360);
-    FillPaneWith(processPane, BuildProcessList());
-    FillPaneWith(connectionPane, BuildConnectionList());
-    page_->AddChild(split_);
-    split_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    split_->layoutItem.SetFlexGrow(1);
-    split_->layoutItem.SetFlexShrink(1);
-    split_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    tabs_ = CreateTabbedContainer("nmTabs", 0, 0, 0, 0);
+    tabs_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    tabs_->AddTab("Live", BuildLivePage());
+    tabs_->AddTab("History", BuildHistoryPage());
+    tabs_->AddTab("Names", BuildNamesPage());
+    tabs_->AddTab("Events", BuildEventsPage());
+    tabs_->SetActiveTab(kLiveTab);
+    tabs_->onTabChange = [this](int, int newTab) {
+        if (newTab == kNamesTab) RefreshNames();
+        if (newTab == kEventsTab) RefreshEvents();
+    };
+    FillWith(page_, tabs_);
+
+    // Every observation a source reports goes to the store while recording.
+    // Runs on the source's thread; the store's mutex is the same one the
+    // worker records under.
+    nameListener_ = NetworkMonitor_AddNameListener([this](const DnsObservation& observation) {
+        if (!recording_.load()) return;
+        std::lock_guard<std::mutex> lock(storeMutex_);
+        if (store_ == NetworkMonitorInvalidStore) return;
+        if (NetworkMonitor_RecordDnsObservation(store_, observation)) ++recordedObservations_;
+    });
+    eventListener_ = NetworkMonitor_AddEventListener([this](const NetworkConnectionEvent& event) {
+        if (!recording_.load()) return;
+        std::lock_guard<std::mutex> lock(storeMutex_);
+        if (store_ == NetworkMonitorInvalidStore) return;
+        if (NetworkMonitor_RecordConnectionEvent(store_, event)) ++recordedEvents_;
+    });
 
     window_->AddChild(page_);
     LayoutForSize(kWindowWidth, kWindowHeight);
@@ -175,14 +224,7 @@ void UltraNetMonitorWindow::LayoutForSize(float width, float height) {
 // ===== CONSTRUCTION =====
 
 std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildToolbar() {
-    auto bar = CreateContainer("nmToolbar", 0, 0, 0, 34);
-    bar->layout.SetFlexRow()
-               .SetFlexGap(8)
-               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    bar->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(34));
-    ContainerStyle plainBar;
-    plainBar.autoShowScrollbars = false;
-    bar->SetContainerStyle(plainBar);
+    auto bar = MakeToolbar("nmToolbar");
 
     filterInput_ = CreateTextInput("nmFilter", 0, 0, 260, 28);
     filterInput_->SetPlaceholder("Filter connections (app, address, state, user)");
@@ -199,6 +241,10 @@ std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildToolbar() {
     pauseButton_->SetOnClick([this]() { SetPaused(!paused_.load()); });
     bar->AddChild(pauseButton_);
 
+    recordButton_ = CreateButton("nmRecord", 0, 0, 130, 28, "Record");
+    recordButton_->SetOnClick([this]() { ToggleRecording(); });
+    bar->AddChild(recordButton_);
+
     statusLabel_ = CreateLabel("nmStatus", 0, 0, 0, 24, "");
     statusLabel_->layoutItem.SetFlexGrow(1);
     statusLabel_->layoutItem.SetFlexShrink(1);
@@ -206,10 +252,85 @@ std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildToolbar() {
     return bar;
 }
 
+std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildLivePage() {
+    // No explicit size: the tabbed container measures its active page with
+    // an exact width and height, so the page must not carry a size of its
+    // own that competes with that.
+    auto live = CreateContainer("nmLivePage", 0, 0, 0, 0);
+    MakePlainColumn(live);
+    live->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+
+    // Processes left, connections right. A split pane rather than a flex
+    // row: the connection side keeps every pixel a wider window adds, and
+    // the divider is real.
+    split_ = CreateHorizontalSplitPane("nmSplit", 0, 0, 0, 0);
+    split_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    SplitPaneStyle splitStyle;
+    splitStyle.splitterThickness = 6;
+    splitStyle.splitterHitMargin = 3;
+    splitStyle.splitterColor     = Color(232, 232, 236);
+    splitStyle.handle.shape      = SplitterHandleShape::RoundedSquare;
+    splitStyle.handle.crossSize  = 9;
+    splitStyle.handle.axisLength = 44;
+    split_->SetSplitPaneStyle(splitStyle);
+    auto processPane    = split_->AddPane(1.0);
+    auto connectionPane = split_->AddPane(2.0);
+    split_->SetPaneFixedSize(0, kProcessColumnWidth);
+    split_->SetPaneMinSize(0, kProcessColumnMin);
+    split_->SetPaneMinSize(1, 360);
+    MakePlainColumn(processPane);
+    MakePlainColumn(connectionPane);
+    FillWith(processPane, BuildProcessList());
+    FillWith(connectionPane, BuildConnectionList());
+    FillWith(live, split_);
+    return live;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildHistoryPage() {
+    auto history = CreateContainer("nmHistoryPage", 0, 0, 0, 0);
+    MakePlainColumn(history);
+    history->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+
+    auto bar = MakeToolbar("nmHistoryBar");
+    rangeDropdown_ = CreateDropdown("nmRange", 0, 0, 160, 28);
+    for (const char* label : kRangeLabels) rangeDropdown_->AddItem(label);
+    rangeDropdown_->SetSelectedIndex(1, /*runNotifications=*/false);
+    rangeDropdown_->onSelectionChanged = [this](int, const DropdownItem&) { RefreshHistory(); };
+    bar->AddChild(rangeDropdown_);
+    rangeDropdown_->layoutItem.SetFlexShrink(0);
+
+    historyFilter_ = CreateTextInput("nmHistoryFilter", 0, 0, 240, 28);
+    historyFilter_->SetPlaceholder("Filter recorded flows");
+    historyFilter_->onTextChanged = [this](const std::string& text) {
+        if (flowProxy_) flowProxy_->SetFilterText(text);
+    };
+    bar->AddChild(historyFilter_);
+
+    refreshButton_ = CreateButton("nmRefresh", 0, 0, 90, 28, "Refresh");
+    refreshButton_->SetOnClick([this]() { RefreshHistory(); });
+    bar->AddChild(refreshButton_);
+
+    purgeButton_ = CreateButton("nmPurge", 0, 0, 120, 28, "Purge…");
+    purgeButton_->SetOnClick([this]() { PurgeHistory(); });
+    bar->AddChild(purgeButton_);
+
+    historyStatus_ = CreateLabel("nmHistoryStatus", 0, 0, 0, 24,
+                                 "Nothing loaded yet — press Refresh, or Record on the toolbar.");
+    historyStatus_->layoutItem.SetFlexGrow(1);
+    historyStatus_->layoutItem.SetFlexShrink(1);
+    bar->AddChild(historyStatus_);
+
+    history->AddChild(bar);
+    PinToolbar(bar);
+    FillWith(history, BuildFlowList());
+    return history;
+}
+
 std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildProcessList() {
     processModel_ = std::make_shared<ProcessListModel>();
     processProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(processModel_);
     for (int column = ProcessListModel::Pid; column < ProcessListModel::ColumnCount; ++column) {
+        if (column == ProcessListModel::Via) continue;   // text
         processProxy_->SetColumnSortKind(column, ListSortKind::Number);
     }
     processView_ = std::make_shared<UltraCanvasListView>("nmProcesses", -1, -1, 400, 300);
@@ -228,6 +349,7 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildProcessList() {
         if (!summary) { SelectProcess(std::nullopt); return; }
         SelectProcess(summary->attributed ? summary->process.pid : 0u);
     };
+    processView_->onContextMenu = [this](int, const UCEvent& event) { ShowProcessMenu(event); };
     return processView_;
 }
 
@@ -245,6 +367,117 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildConnectionList(
     return connectionView_;
 }
 
+std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildFlowList() {
+    flowModel_ = std::make_shared<FlowListModel>();
+    flowProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(flowModel_);
+    for (int column : { static_cast<int>(FlowListModel::Pid), static_cast<int>(FlowListModel::FirstSeen),
+                        static_cast<int>(FlowListModel::LastSeen), static_cast<int>(FlowListModel::Seen),
+                        static_cast<int>(FlowListModel::Sent), static_cast<int>(FlowListModel::Received) }) {
+        flowProxy_->SetColumnSortKind(column, ListSortKind::Number);
+    }
+    flowView_ = std::make_shared<UltraCanvasListView>("nmFlows", -1, -1, 900, 300);
+    flowView_->SetModel(flowProxy_);
+    flowView_->SetShowHeader(true);
+    flowView_->SetShowItemTooltips(true);
+    WireHeaderSorting(flowView_, flowProxy_);
+    return flowView_;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildNamesPage() {
+    auto names = CreateContainer("nmNamesPage", 0, 0, 0, 0);
+    MakePlainColumn(names);
+    names->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+
+    auto bar = MakeToolbar("nmNamesBar");
+    namesFilter_ = CreateTextInput("nmNamesFilter", 0, 0, 260, 28);
+    namesFilter_->SetPlaceholder("Filter names (name, address, source)");
+    namesFilter_->onTextChanged = [this](const std::string& text) {
+        if (nameProxy_) nameProxy_->SetFilterText(text);
+    };
+    bar->AddChild(namesFilter_);
+
+    namesRefreshButton_ = CreateButton("nmNamesRefresh", 0, 0, 90, 28, "Refresh");
+    namesRefreshButton_->SetOnClick([this]() { RefreshNames(); });
+    bar->AddChild(namesRefreshButton_);
+
+    namesStatus_ = CreateLabel("nmNamesStatus", 0, 0, 0, 24, "");
+    namesStatus_->layoutItem.SetFlexGrow(1);
+    namesStatus_->layoutItem.SetFlexShrink(1);
+    bar->AddChild(namesStatus_);
+
+    names->AddChild(bar);
+    PinToolbar(bar);
+    FillWith(names, BuildNameList());
+    return names;
+}
+
+std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildNameList() {
+    nameModel_ = std::make_shared<NameListModel>();
+    nameProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(nameModel_);
+    nameProxy_->SetColumnSortKind(NameListModel::Observed, ListSortKind::Number);
+    nameProxy_->SetColumnSortKind(NameListModel::Expires, ListSortKind::Number);
+    nameView_ = std::make_shared<UltraCanvasListView>("nmNames", -1, -1, 900, 300);
+    nameView_->SetModel(nameProxy_);
+    nameView_->SetShowHeader(true);
+    nameView_->SetShowItemTooltips(true);
+    WireHeaderSorting(nameView_, nameProxy_);
+    return nameView_;
+}
+
+std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildEventsPage() {
+    auto events = CreateContainer("nmEventsPage", 0, 0, 0, 0);
+    MakePlainColumn(events);
+    events->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+
+    auto bar = MakeToolbar("nmEventsBar");
+    eventsFilter_ = CreateTextInput("nmEventsFilter", 0, 0, 260, 28);
+    eventsFilter_->SetPlaceholder("Filter events (app, address, host, kind)");
+    eventsFilter_->onTextChanged = [this](const std::string& text) {
+        if (eventProxy_) eventProxy_->SetFilterText(text);
+    };
+    bar->AddChild(eventsFilter_);
+
+    eventsModeButton_ = CreateButton("nmEventsMode", 0, 0, 120, 28, "Show recorded");
+    eventsModeButton_->SetOnClick([this]() { ToggleEventsRecorded(); });
+    bar->AddChild(eventsModeButton_);
+
+    eventsRefreshButton_ = CreateButton("nmEventsRefresh", 0, 0, 90, 28, "Refresh");
+    eventsRefreshButton_->SetOnClick([this]() { RefreshEvents(); });
+    bar->AddChild(eventsRefreshButton_);
+
+    eventsClearButton_ = CreateButton("nmEventsClear", 0, 0, 90, 28, "Clear");
+    eventsClearButton_->SetOnClick([this]() {
+        NetworkMonitor_ClearRecentEvents();
+        RefreshEvents();
+    });
+    bar->AddChild(eventsClearButton_);
+
+    eventsStatus_ = CreateLabel("nmEventsStatus", 0, 0, 0, 24, "");
+    eventsStatus_->layoutItem.SetFlexGrow(1);
+    eventsStatus_->layoutItem.SetFlexShrink(1);
+    bar->AddChild(eventsStatus_);
+
+    events->AddChild(bar);
+    PinToolbar(bar);
+    FillWith(events, BuildEventList());
+    return events;
+}
+
+std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildEventList() {
+    eventModel_ = std::make_shared<EventListModel>();
+    eventProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(eventModel_);
+    for (int column : { static_cast<int>(EventListModel::Time), static_cast<int>(EventListModel::Pid),
+                        static_cast<int>(EventListModel::Sent), static_cast<int>(EventListModel::Received) }) {
+        eventProxy_->SetColumnSortKind(column, ListSortKind::Number);
+    }
+    eventView_ = std::make_shared<UltraCanvasListView>("nmEvents", -1, -1, 900, 300);
+    eventView_->SetModel(eventProxy_);
+    eventView_->SetShowHeader(true);
+    eventView_->SetShowItemTooltips(true);
+    WireHeaderSorting(eventView_, eventProxy_);
+    return eventView_;
+}
+
 // ===== DATA FLOW =====
 
 void UltraNetMonitorWindow::StartWorker() {
@@ -256,6 +489,19 @@ void UltraNetMonitorWindow::StartWorker() {
             if (!paused_.load()) {
                 std::vector<NetworkConnection> connections;
                 NetworkMonitorResult result = NetworkMonitor_ListConnections(connections);
+                if (result && recording_.load()) {
+                    std::lock_guard<std::mutex> lock(storeMutex_);
+                    if (store_ != NetworkMonitorInvalidStore) {
+                        const NetworkMonitorResult recorded =
+                            NetworkMonitor_RecordSnapshot(store_, connections);
+                        if (recorded) {
+                            ++recordedSnapshots_;
+                            recordError_.clear();
+                        } else {
+                            recordError_ = recorded.message;
+                        }
+                    }
+                }
                 std::lock_guard<std::mutex> lock(pendingMutex_);
                 pendingConnections_ = std::move(connections);
                 pendingResult_ = std::move(result);
@@ -293,6 +539,13 @@ void UltraNetMonitorWindow::ApplyPendingSnapshot() {
         processModel_->Replace(std::move(summaries));
         connectionModel_->Replace(std::move(connections));
         ReapplyProcessSelection();
+        // The Names tab follows the sources while it is in front, every
+        // other snapshot - a name table is cheap to list, not free.
+        ++snapshotsApplied_;
+        if (tabs_ && tabs_->GetActiveTab() == kNamesTab && (snapshotsApplied_ % 2) == 0) RefreshNames();
+        // The live event list follows the ring every snapshot; the
+        // recorded view only on Refresh, since a query is not free.
+        if (tabs_ && tabs_->GetActiveTab() == kEventsTab && !eventsRecorded_) RefreshEvents();
     }
     // Attribution notes ("N processes could not be inspected") move with
     // each snapshot, so the capabilities are re-read here, not once.
@@ -309,6 +562,8 @@ void UltraNetMonitorWindow::RefreshStatus() {
         subtitle += capabilities_.perConnectionBytes ? " · byte counters"
                                                      : " · no byte counters on this backend";
     }
+    subtitle += " · names: " + NameSourcesSummary();
+    subtitle += " · events: " + EventSourcesSummary();
     if (subtitleLabel_) subtitleLabel_->SetText(subtitle);
 
     std::string status;
@@ -326,7 +581,7 @@ void UltraNetMonitorWindow::RefreshStatus() {
         if (paused_.load()) status += " · paused";
         // The first note is the one that changes what the table means.
         for (const auto& note : capabilities_.notes) {
-            if (note.find("could not be inspected") != std::string::npos) {
+            if (note.find("could not be") != std::string::npos) {
                 status += " · " + note;
                 break;
             }
@@ -334,7 +589,123 @@ void UltraNetMonitorWindow::RefreshStatus() {
     } else {
         status = "Reading the socket table…";
     }
+    if (recording_.load()) {
+        std::string error;
+        {
+            std::lock_guard<std::mutex> lock(storeMutex_);
+            error = recordError_;
+        }
+        status += error.empty()
+            ? " · recording (" + std::to_string(recordedSnapshots_.load()) + " snapshots, " +
+              std::to_string(recordedObservations_.load()) + " DNS observations, " +
+              std::to_string(recordedEvents_.load()) + " events)"
+            : " · recording failed: " + error;
+    }
     if (statusLabel_) statusLabel_->SetText(status);
+}
+
+// ===== NAMES =====
+
+std::string UltraNetMonitorWindow::NameSourcesSummary() const {
+    std::vector<NameSourceStatus> sources;
+    NetworkMonitor_ListNameSources(sources);
+    if (sources.empty()) return "no sources";
+    std::string text;
+    for (const auto& source : sources) {
+        if (!text.empty()) text += ", ";
+        text += source.name;
+        if (!source.running) text += " (stopped)";
+        else if (!source.lastError.empty()) text += " (failed)";
+    }
+    return text;
+}
+
+void UltraNetMonitorWindow::RefreshNames() {
+    std::vector<NameRecord> records;
+    NetworkMonitor_ListNames(records);
+    const std::size_t count = records.size();
+    std::size_t observed = 0;
+    for (const auto& record : records) if (NetworkMonitor_NameIsObserved(record.source)) ++observed;
+    nameModel_->Replace(std::move(records));
+
+    std::string text = std::to_string(count) + " addresses named, " + std::to_string(observed) +
+                       " from observed queries";
+    std::vector<NameSourceStatus> sources;
+    NetworkMonitor_ListNameSources(sources);
+    for (const auto& source : sources) {
+        text += " · " + source.name + ": " + std::to_string(source.observations) + " observations";
+        if (!source.lastError.empty()) text += " - " + source.lastError;
+    }
+    for (const auto& note : nameNotes_) text += " · " + note;
+    if (namesStatus_) namesStatus_->SetText(text);
+}
+
+// ===== EVENTS =====
+
+std::string UltraNetMonitorWindow::EventSourcesSummary() const {
+    std::vector<EventSourceStatus> sources;
+    NetworkMonitor_ListEventSources(sources);
+    if (sources.empty()) return "no sources";
+    std::string text;
+    for (const auto& source : sources) {
+        if (!text.empty()) text += ", ";
+        text += source.name;
+        if (!source.running) text += " (stopped)";
+        else if (!source.lastError.empty()) text += " (idle)";
+    }
+    return text;
+}
+
+void UltraNetMonitorWindow::ToggleEventsRecorded() {
+    eventsRecorded_ = !eventsRecorded_;
+    if (eventsModeButton_) eventsModeButton_->SetText(eventsRecorded_ ? "Show live" : "Show recorded");
+    if (eventsClearButton_) eventsClearButton_->SetVisible(!eventsRecorded_);
+    RefreshEvents();
+}
+
+void UltraNetMonitorWindow::RefreshEvents() {
+    std::vector<NetworkConnectionEvent> events;
+    std::string text;
+    if (eventsRecorded_) {
+        std::string error;
+        std::vector<RecordedConnectionEvent> recorded;
+        {
+            std::lock_guard<std::mutex> lock(storeMutex_);
+            if (!EnsureStoreOpen()) {
+                error = storeError_;
+            } else {
+                ActivityQuery query;
+                query.since = NetworkMonitor_Now() - HistoryRangeSeconds();
+                query.limit = kHistoryLimit;
+                const NetworkMonitorResult read = NetworkMonitor_QueryConnectionEvents(store_, query, recorded);
+                if (!read) error = read.message;
+            }
+        }
+        if (!error.empty()) {
+            if (eventsStatus_) eventsStatus_->SetText(error);
+            return;
+        }
+        events.reserve(recorded.size());
+        for (auto& r : recorded) events.push_back(std::move(r.event));
+        text = std::to_string(events.size()) + " recorded events in the History tab's range";
+    } else {
+        NetworkMonitor_RecentEvents(events, kEventsShown);
+        text = std::to_string(events.size()) + " recent events (newest " + std::to_string(kEventsShown) + " kept)";
+    }
+    eventModel_->Replace(std::move(events));
+    std::vector<EventSourceStatus> sources;
+    NetworkMonitor_ListEventSources(sources);
+    for (const auto& source : sources) {
+        text += " · " + source.name + ": " + std::to_string(source.events) + " events";
+        if (!source.lastError.empty()) text += " - " + source.lastError;
+    }
+    for (const auto& note : nameNotes_) {
+        if (note.rfind("Events", 0) == 0 || note.find("conntrack") != std::string::npos ||
+            note.find("kernel network") != std::string::npos) {
+            text += " · " + note;
+        }
+    }
+    if (eventsStatus_) eventsStatus_->SetText(text);
 }
 
 void UltraNetMonitorWindow::SetPaused(bool paused) {
@@ -384,6 +755,198 @@ void UltraNetMonitorWindow::RebuildConnectionFilter() {
     connectionProxy_->SetFilterPredicate([wanted](const IListModel& model, int sourceRow) {
         return PidOfSourceRow(model, sourceRow, ConnectionListModel::Pid) == wanted;
     });
+}
+
+// ===== EXPORT =====
+
+void UltraNetMonitorWindow::ShowProcessMenu(const UCEvent& event) {
+    if (!window_) return;
+    processMenu_ = std::make_shared<UltraCanvasMenu>("nmProcessMenu", 0, 0, 220, 0);
+    processMenu_->SetMenuType(MenuType::PopupMenu);
+    processMenu_->AddItem(MenuItemData::Submenu("Export", {
+        MenuItemData::Action("App list…", [this]() { ExportAppList(false); }),
+        MenuItemData::Action("App list details…", [this]() { ExportAppList(true); }),
+    }));
+    PopupElementSettings settings;
+    processMenu_->OpenMenu(event.pointerWindow, *window_, settings);
+}
+
+void UltraNetMonitorWindow::ExportAppList(bool details) {
+    // The list as shown: the proxy's order, every row (the filter box
+    // narrows connections, never processes).
+    std::vector<ProcessTrafficSummary> summaries;
+    for (int row = 0; row < processProxy_->GetRowCount(); ++row) {
+        if (const ProcessTrafficSummary* s = processModel_->At(processProxy_->MapToSource(row))) {
+            summaries.push_back(*s);
+        }
+    }
+    // The details: every application's connections, grouped in that order.
+    std::vector<NetworkConnection> connections;
+    if (details) {
+        const auto& all = connectionModel_->Rows();
+        for (const auto& s : summaries) {
+            for (const auto& c : all) {
+                const bool belongs = s.attributed ? (c.process && c.process->pid == s.process.pid) : !c.process;
+                if (belongs) connections.push_back(c);
+            }
+        }
+    }
+    if (summaries.empty()) {
+        UltraCanvasDialogManager::ShowInformation("There is nothing to export yet - no snapshot has been taken.",
+                                                  "Export", nullptr, window_.get());
+        return;
+    }
+
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", &local);
+
+    FileDialogOptions options;
+    options.SetTitle(details ? "Export the app list with its connections" : "Export the app list")
+           .SetDefaultFileName(std::string(details ? "UltraNetMonitor-app-details-" : "UltraNetMonitor-apps-") +
+                               stamp + ".csv")
+           .AddFilter("CSV files", "csv")
+           .AddFilter("All files", "*")
+           .SetParentWindow(window_.get());
+    UltraCanvasWindowBase* parent = window_.get();
+    UltraCanvasFileLoader::SaveFileDialog(options,
+        [summaries, connections, details, parent](DialogResult result, const std::string& path) {
+            if (result != DialogResult::OK || path.empty()) return;   // cancelled
+            int64_t rows = 0;
+            const NetworkMonitorResult written = details
+                ? NetworkMonitor_ExportConnectionsCsv(connections, path, &rows)
+                : NetworkMonitor_ExportSummaryCsv(summaries, path, &rows);
+            if (!written) {
+                UltraCanvasDialogManager::ShowError(written.message, "Export failed", nullptr, parent);
+                return;
+            }
+            UltraCanvasDialogManager::ShowInformation(
+                "Wrote " + std::to_string(rows) + (details ? " connections" : " applications") + " to " + path,
+                "Exported", nullptr, parent);
+        });
+}
+
+// ===== THE STORE =====
+
+bool UltraNetMonitorWindow::EnsureStoreOpen() {
+    if (store_ != NetworkMonitorInvalidStore) return true;
+    if (!NetworkMonitor_StoreAvailable()) {
+        storeError_ = "This build has no UltraDatabase, so nothing can be recorded.";
+        return false;
+    }
+    if (storePath_.empty()) storePath_ = DefaultStorePath();
+    if (storePath_.empty()) {
+        storeError_ = "No writable per-user data directory on this system.";
+        return false;
+    }
+    NetworkMonitorStoreOptions options;
+    options.path = storePath_;
+    const NetworkMonitorResult opened = NetworkMonitor_OpenStore(options, store_);
+    if (!opened) {
+        store_ = NetworkMonitorInvalidStore;
+        storeError_ = opened.message;
+        return false;
+    }
+    storeError_.clear();
+    // Whatever an earlier run left behind ages out before anything new lands.
+    NetworkMonitor_ApplyRetention(store_);
+    return true;
+}
+
+void UltraNetMonitorWindow::ToggleRecording() {
+    if (recording_.load()) {
+        recording_ = false;
+        if (recordButton_) recordButton_->SetText("Record");
+        std::lock_guard<std::mutex> lock(storeMutex_);
+        if (store_ != NetworkMonitorInvalidStore) NetworkMonitor_ApplyRetention(store_);
+    } else {
+        std::lock_guard<std::mutex> lock(storeMutex_);
+        if (!EnsureStoreOpen()) {
+            if (historyStatus_) historyStatus_->SetText(storeError_);
+            if (statusLabel_) statusLabel_->SetText("Cannot record: " + storeError_);
+            return;
+        }
+        recordedSnapshots_ = 0;
+        recordedObservations_ = 0;
+        recordedEvents_ = 0;
+        recordError_.clear();
+        recording_ = true;
+        if (recordButton_) recordButton_->SetText("Stop recording");
+    }
+    RefreshStatus();
+}
+
+int64_t UltraNetMonitorWindow::HistoryRangeSeconds() const {
+    const int index = rangeDropdown_ ? rangeDropdown_->GetSelectedIndex() : 1;
+    const int count = static_cast<int>(sizeof kRanges / sizeof kRanges[0]);
+    return kRanges[std::clamp(index, 0, count - 1)];
+}
+
+void UltraNetMonitorWindow::RefreshHistory() {
+    purgeArmed_ = false;
+    if (purgeButton_) purgeButton_->SetText("Purge…");
+    std::vector<RecordedFlow> flows;
+    NetworkMonitorStoreStats stats;
+    std::string error;
+    {
+        std::lock_guard<std::mutex> lock(storeMutex_);
+        if (!EnsureStoreOpen()) {
+            error = storeError_;
+        } else {
+            ActivityQuery query;
+            query.since = NetworkMonitor_Now() - HistoryRangeSeconds();
+            query.limit = kHistoryLimit;
+            const NetworkMonitorResult read = NetworkMonitor_QueryFlows(store_, query, flows);
+            if (!read) error = read.message;
+            NetworkMonitor_StoreStats(store_, stats);
+        }
+    }
+    if (!error.empty()) {
+        if (historyStatus_) historyStatus_->SetText(error);
+        return;
+    }
+    const std::size_t shown = flows.size();
+    flowModel_->Replace(std::move(flows));
+    std::string text = std::to_string(shown) + " flows in range";
+    if (shown >= static_cast<std::size_t>(kHistoryLimit)) text += " (newest " + std::to_string(kHistoryLimit) + ")";
+    text += " · " + std::to_string(stats.flows) + " flows and " +
+            std::to_string(stats.dailyTotals) + " daily totals stored · " + storePath_;
+    if (historyStatus_) historyStatus_->SetText(text);
+}
+
+void UltraNetMonitorWindow::PurgeHistory() {
+    if (!purgeArmed_) {
+        purgeArmed_ = true;
+        if (purgeButton_) purgeButton_->SetText("Confirm purge");
+        if (historyStatus_) historyStatus_->SetText(
+            "Purge deletes everything recorded, irreversibly. Press \"Confirm purge\" to go ahead, "
+            "or Refresh to keep it.");
+        return;
+    }
+    purgeArmed_ = false;
+    if (purgeButton_) purgeButton_->SetText("Purge…");
+    std::string error;
+    {
+        std::lock_guard<std::mutex> lock(storeMutex_);
+        if (!EnsureStoreOpen()) {
+            error = storeError_;
+        } else if (const NetworkMonitorResult purged = NetworkMonitor_Purge(store_); !purged) {
+            error = purged.message;
+        }
+    }
+    if (!error.empty()) {
+        if (historyStatus_) historyStatus_->SetText(error);
+        return;
+    }
+    recordedSnapshots_ = 0;
+    flowModel_->Replace({});
+    if (historyStatus_) historyStatus_->SetText("Purged. Nothing is recorded now.");
 }
 
 } // namespace UltraNetMonitor

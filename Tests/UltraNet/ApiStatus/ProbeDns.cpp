@@ -5,13 +5,16 @@
 // at configure time) and can be checked offline against loopback and
 // /etc/hosts. The remaining record types and custom-server support need a
 // reachable DNS server, so they report IMPLEMENTED unless --network is given.
-// Version: 0.1.0
+// The per-call server probe needs none: a black-hole server proves the option
+// through its deadline.
+// Version: 0.2.0 - per-call servers probe
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ApiStatus.h"
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetDns.h>
+#include <UltraNet/UltraNetSocket.h>
 
 #include <algorithm>
 #include <chrono>
@@ -192,6 +195,54 @@ ULTRANET_PROBE(kArea, UltraNet_DnsClearCache) {
     return Implemented("runs without error and lookups keep working, but the "
                        "in-process cache has no public accessor, so the "
                        "eviction itself cannot be observed from the API");
+}
+
+// Per-call servers need no network to be verified: a UDP socket this process
+// opens on the loopback and never reads is a name server that never answers,
+// so a lookup pointed at it can only come back through its deadline. That is
+// observable offline, in bounded time, on every backend.
+ULTRANET_PROBE_NAMED(kArea, "UltraNet_DnsResolve (per-call servers)", DnsResolveWithServers) {
+    std::string address; int port = 0;
+    PROBE_EXPECT(UltraNet_DnsParseServer("[2620:fe::fe]:53", address, port));
+    PROBE_EXPECT(address == "2620:fe::fe" && port == 53);
+    PROBE_EXPECT(!UltraNet_DnsParseServer("dns.quad9.net", address, port));
+    std::string reverse;
+    PROBE_EXPECT(UltraNet_DnsReverseName("8.8.4.4", reverse) && reverse == "4.4.8.8.in-addr.arpa");
+
+    UltraNetSocketOptions socketOptions;
+    socketOptions.bindAddress = "127.0.0.1";
+    const UltraNetHandle silent = UltraNet_UdpOpen(0, socketOptions);
+    UltraNetEndpoint local;
+    if (silent == UltraNetInvalidHandle || !UltraNet_SocketLocalEndpoint(silent, local)) {
+        return Implemented("cannot open a loopback UDP socket to stand in for a silent server");
+    }
+    const std::string entry = "127.0.0.1:" + std::to_string(local.port);
+
+    UltraNetDnsOptions options;
+    options.servers   = {entry};
+    options.timeoutMs = 1500;
+    std::vector<std::string> out;
+    const auto started = std::chrono::steady_clock::now();
+    const UltraNetResult r = UltraNet_DnsResolve("example.com", out, UltraNetDnsType::A, options);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started);
+    UltraNet_SocketClose(silent);
+    if (r) {
+        return Broken("a lookup pointed at a server that never answers resolved, so the "
+                      "per-call server list was not applied: " + Join(out));
+    }
+    if (kHasCares) {
+        PROBE_EXPECT_MSG(r.code == UltraNetResultCode::Timeout, r.message);
+        PROBE_EXPECT(elapsed.count() < 10000);
+        return Working("a 1.5 s lookup at " + entry + " came back as Timeout after "
+                       + std::to_string(elapsed.count()) + " ms on its own c-ares channel");
+    }
+    if (r.code == UltraNetResultCode::Unsupported) {
+        return Implemented("the system-resolver backend refused the entry: " + r.message);
+    }
+    return Working("a lookup at " + entry + " came back without an answer after "
+                   + std::to_string(elapsed.count()) + " ms (" + r.message + ") through "
+                   + kBackend);
 }
 
 // Declared last in this file on purpose: with c-ares the servers it installs

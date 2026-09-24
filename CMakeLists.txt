@@ -50,8 +50,20 @@ if(UNIX AND NOT APPLE AND NOT ANDROID
             message(STATUS "Skipping ${_uc_candidate} (Clang ${_uc_ver} < ${ULTRACANVAS_MIN_CLANG_MAJOR})")
             continue()
         endif()
-        # Found one new enough; its C++ driver must sit beside it.
-        string(REGEX REPLACE "clang$" "clang++" _uc_cxx_name "${_uc_name}")
+        # Found one new enough; its C++ driver must sit beside it. Keep any
+        # version suffix: "clang" -> "clang++", but also "clang-21" ->
+        # "clang++-21". Anchoring on "clang$" alone silently left the versioned
+        # name untouched, so CMAKE_CXX_COMPILER became the C driver "clang-NN",
+        # which compiles C++ fine but does NOT add -lstdc++ at link time - every
+        # C++ runtime symbol then comes back undefined.
+        #
+        # Done as MATCH + append rather than one REGEX REPLACE with an optional
+        # group and a "\1" back-reference: CMake (3.28 at least) rejects that
+        # replacement outright - "out-of-range escape for regex" - so the
+        # configure failed for anyone with clang installed unless they passed
+        # the compiler explicitly. An unmatched suffix leaves _uc_suffix empty.
+        string(REGEX MATCH "-[0-9]+$" _uc_suffix "${_uc_name}")
+        set(_uc_cxx_name "clang++${_uc_suffix}")
         unset(_uc_candidate_cxx CACHE)
         find_program(_uc_candidate_cxx NAMES ${_uc_cxx_name})
         if(_uc_candidate_cxx)
@@ -88,6 +100,32 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
         "14 - use https://apt.llvm.org), then point the build at it, e.g.\n"
         "         CC=clang-19 CXX=clang++-19 cmake -B build\n"
         "       or configure with -DCMAKE_C_COMPILER=... -DCMAKE_CXX_COMPILER=...")
+endif()
+
+# ---- Debug info: keep the system GNU ld happy with a new Clang ----
+# We deliberately stay on the compiler's default linker (GNU ld) so the build
+# matches CI and Windows. mupdf is linked statically and bundles its own lcms2mt
+# fork; GNU ld (--no-copy-dt-needed-entries by default) resolves those symbols
+# from the static archive, whereas LLD binds them to the system liblcms2 pulled
+# in transitively by libvips - an ABI clash that SIGSEGVs the PDF viewer.
+#
+# The one wrinkle: clang emits DWARF5, which binutils ld < 2.40 (Ubuntu 22.04
+# ships 2.38) mis-parses - "DWARF error: invalid or unhandled FORM value: 0x23"
+# (DW_FORM_rnglistx) - and spams it at link. Drop such old-ld builds to DWARF4;
+# it is a no-op without -g and is read fine by gdb/lldb. Newer ld keeps DWARF5.
+if(UNIX AND NOT APPLE AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Ask the compiler which linker it actually drives (honours its default and any
+    # -fuse-ld), not CMAKE_LINKER - that is just a path CMake happened to find and
+    # is not what clang links with.
+    execute_process(
+        COMMAND ${CMAKE_CXX_COMPILER} -Wl,--version -x c++ /dev/null -o /dev/null
+        OUTPUT_VARIABLE _uc_ld_ver ERROR_QUIET)
+    if(_uc_ld_ver MATCHES "GNU ld[^0-9]*([0-9]+)\\.([0-9]+)"
+       AND "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}" VERSION_LESS "2.40")
+        add_compile_options(-gdwarf-4)
+        message(STATUS "UltraCanvas: emitting DWARF4 (GNU ld "
+                       "${CMAKE_MATCH_1}.${CMAKE_MATCH_2} < 2.40)")
+    endif()
 endif()
 
 message(STATUS "")
@@ -249,6 +287,14 @@ if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
 endif()
 
+# Which platforms have a trash UltraCanvasTrash can move files into: the
+# Recycle Bin (Windows), the Finder's Trash (macOS) and the freedesktop.org
+# trash (Linux, the BSDs). Android and WebAssembly have none; there the core
+# file compiles a fallback that always fails, and TrashAvailable() is false.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_TRASH ON)
+endif()
+
 # Same decision, same reasons, for the volume monitor (UltraCanvasVolumeMonitor:
 # WM_DEVICECHANGE / poll() on /proc/self/mountinfo / NSWorkspace mount
 # notifications). macOS is included here where it is absent above, because a
@@ -364,6 +410,18 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== DEVICEEXPLORER =====
+# Shows the devices connected to this computer - printers, scanners, cameras -
+# as the IODeviceManager module finds them: a tree grouped by category,
+# connection or backend on the left, the selected device's details on the
+# right. A headless --list mode prints the same tree.
+option(BUILD_DEVICEEXPLORER "Build the DeviceExplorer application" ON)
+if(BUILD_DEVICEEXPLORER)
+    message(STATUS "")
+    message(STATUS "── Building DeviceExplorer ──")
+    add_subdirectory(Apps/DeviceExplorer)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -409,6 +467,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasRatingExamples.cpp
             Apps/DemoApp/UltraCanvasStepperExamples.cpp
             Apps/DemoApp/UltraCanvasChipExamples.cpp
+            Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
@@ -572,7 +631,7 @@ if(BUILD_DEMO_APP)
                 ${X11_INCLUDE_DIRS}
                 ${CAIRO_INCLUDE_DIRS}
                 ${PANGO_INCLUDE_DIRS}
-                ${VIPS_INCLUDE_DIRS}
+                ${LIBVIPS_INCLUDE_DIRS}
                 ${PANGOCAIRO_INCLUDE_DIRS}
                 ${FREETYPE_INCLUDE_DIRS}
                 ${TINYXML2_INCLUDE_DIRS}
@@ -586,7 +645,7 @@ if(BUILD_DEMO_APP)
                 ${PANGOCAIRO_LIBRARY_DIRS}
                 ${FREETYPE_LIBRARY_DIRS}
                 ${TINYXML2_LIBRARY_DIRS}
-                ${VIPS_LIBRARY_DIRS}
+                ${LIBVIPS_LIBRARY_DIRS}
         )
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         # Set Homebrew prefix
@@ -602,7 +661,7 @@ if(BUILD_DEMO_APP)
                 ${FREETYPE_INCLUDE_DIRS}
                 ${HARFBUZZ_INCLUDE_DIRS}
                 ${GLIB_INCLUDE_DIRS}
-                ${VIPS_INCLUDE_DIRS}
+                ${LIBVIPS_INCLUDE_DIRS}
                 ${TINYXML2_INCLUDE_DIRS}
                 ${HOMEBREW_PREFIX}/include
                 ${HOMEBREW_PREFIX}/include/pango-1.0
@@ -668,6 +727,12 @@ if(BUILD_DEMO_APP)
         FetchContent_MakeAvailable(fmt)
     endif()
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
+
+    # The message centre page (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp)
+    # needs the element's library; without UltraMessage the page says so.
+    if(TARGET UltraMessageCenter)
+        target_link_libraries(UltraCanvasDemo PRIVATE UltraMessageCenter)
+    endif()
 
     # Link against all plugin libraries
     if(ULTRACANVAS_PLUGIN_TARGETS)
@@ -789,6 +854,23 @@ if(ULTRACANVAS_BUILD_ULTRAWIN_TESTS AND TARGET UltraWin)
     add_subdirectory(Tests/UltraWin)
     message(STATUS "")
     message(STATUS "── UltraWin test suite enabled (target: UltraWinTests) ──")
+endif()
+
+# ===== ULTRAMESSAGE TESTS AND COMMAND LINE =====
+# Headless: the suite hosts an in-process broker on a private bus path and
+# drives it over the real transport, so it runs wherever UltraMessage builds.
+option(ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS "Build the UltraMessage test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS AND TARGET UltraMessage)
+    enable_testing()
+    add_subdirectory(Tests/UltraMessage)
+    message(STATUS "")
+    message(STATUS "── UltraMessage test suite enabled (target: UltraMessageTests) ──")
+endif()
+option(BUILD_ULTRAMSG_CLI "Build the ultramsg command-line tool" ON)
+if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)
+    add_executable(ultramsg Apps/UltraMessageCli/main.cpp)
+    target_compile_features(ultramsg PRIVATE cxx_std_20)
+    target_link_libraries(ultramsg PRIVATE UltraMessage)
 endif()
 
 # ===== ULTRADATABASE TESTS =====
@@ -1280,6 +1362,8 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAIDialogs.cpp
         Apps/UltraAIApp/UltraAIEndpoints.cpp
         Apps/UltraAIApp/UltraAISettingsDialog.cpp
+        Apps/UltraAIApp/UltraAIAppSettings.cpp
+        Apps/UltraAIApp/UltraAISettingsWindow.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
     )
 
@@ -1300,9 +1384,33 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
     target_compile_features(UltraAIApp PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraAIApp PRIVATE
-        ULTRAAI_APP_VERSION="0.1.0"
+        # UltraAI versions itself: Docs/UltraAI/CHANGELOG.md is the single
+        # source of this number (cmake/UltraCanvasVersion.cmake).
+        ULTRAAI_APP_VERSION="${ULTRAAI_VERSION}"
+        UCAPP_ICON_PATH="media/appicon/UltraAI.png"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
+
+    # Embed app icon in .exe (Windows only)
+    ultracanvas_embed_app_icon(UltraAIApp
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraAI.png")
+
+    # The freedesktop shortcut: the application menu entry, and the icon
+    # name it carries resolved through the installed themes.
+    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+        # Exec=UltraAIApp / TryExec=UltraAIApp are resolved against PATH, so
+        # the entry is only true if the binary is installed with it.
+        install(TARGETS UltraAIApp RUNTIME DESTINATION bin)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAIApp/UltraAI.desktop
+                DESTINATION share/applications)
+        # Icon=UltraAI is an icon *name*: it is resolved through the
+        # installed themes, so the files have to land in one.
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraAI.png
+                DESTINATION share/icons/hicolor/256x256/apps)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraAI.svg
+                DESTINATION share/icons/hicolor/scalable/apps)
+        message(STATUS "  UltraAI desktop entry: share/applications/UltraAI.desktop")
+    endif()
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(UltraAIApp PRIVATE)
@@ -1471,6 +1579,7 @@ if (BUILD_TESTS)
     add_executable(UltraAuthenticatorExportTests
         Tests/UltraAuthenticatorExportTests.cpp
         Apps/UltraAuthenticator/AccountStore.cpp
+        Apps/UltraAuthenticator/LockPolicy.cpp
         Apps/UltraAuthenticator/AccountExport.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
         Apps/UltraAuthenticator/otp/UltraOtp.cpp
@@ -1527,6 +1636,7 @@ if (BUILD_TESTS)
     add_executable(UltraAuthenticatorAccountTests
         Tests/UltraAuthenticatorAccountTests.cpp
         Apps/UltraAuthenticator/AccountStore.cpp
+        Apps/UltraAuthenticator/LockPolicy.cpp
         # AccountStore now exports and imports backups, so it needs the export
         # container and the envelope underneath it.
         Apps/UltraAuthenticator/AccountExport.cpp
@@ -1545,6 +1655,24 @@ if (BUILD_TESTS)
     )
     add_test(NAME UltraAuthenticatorAccountTests
              COMMAND UltraAuthenticatorAccountTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Authenticator lock policy and settings file: the unlock back-off
+    # schedule as a pure function of failures and time, and the preferences
+    # round trip with clamping of hand-edited values. No crypto, no UI.
+    add_executable(UltraAuthenticatorLockTests
+        Tests/UltraAuthenticatorLockTests.cpp
+        Apps/UltraAuthenticator/LockPolicy.cpp
+        Apps/UltraAuthenticator/Preferences.cpp
+    )
+    target_include_directories(UltraAuthenticatorLockTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator)
+    target_compile_features(UltraAuthenticatorLockTests PRIVATE cxx_std_20)
+    set_target_properties(UltraAuthenticatorLockTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAuthenticatorLockTests
+             COMMAND UltraAuthenticatorLockTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraVault unit tests: memory-backend CRUD and lifecycle, encrypted-file
@@ -1770,6 +1898,24 @@ if(BUILD_ULTRAPAINT_APP)
 endif()
 if(BUILD_ARTCREATOR_APP)
     add_dependencies(ArtCreator copy_assets)
+endif()
+if(BUILD_ULTRAAI_APP AND TARGET UltraAIApp)
+    # The dashboard reads media/appicon/UltraAI.png from the resources dir,
+    # which is this copy in the build tree.
+    add_dependencies(UltraAIApp copy_assets)
+endif()
+# Same reason: both read their media/appicon/<App>.png from the resources dir,
+# so the asset copy has to exist before the binary is run out of the build tree.
+if(TARGET UltraNetMonitor)
+    add_dependencies(UltraNetMonitor copy_assets)
+endif()
+if(TARGET UltraAuthenticator)
+    add_dependencies(UltraAuthenticator copy_assets)
+endif()
+if(TARGET DeviceExplorer)
+    # Reads media/appicon/DeviceExplorer.png and its tree icons from
+    # media/icons/ in the resources dir.
+    add_dependencies(DeviceExplorer copy_assets)
 endif()
 
 # The LaTeX plugin is a dlopen()ed CMake MODULE - never linked by any app, so

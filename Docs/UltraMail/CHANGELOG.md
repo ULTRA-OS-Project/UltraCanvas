@@ -1,3 +1,34 @@
+#### 2026-09-23 *0.10.3*
+- **`OAuthApps` is a profile of UltraNet's shared OAuth2 app registry**
+  (framework 0.9.34). Same API, same order - `Set()`, `ULTRAMAIL_*` in the
+  environment, `oauth.ini`, the baked-in client - and the same behaviour for
+  the wizard; what changes is where the registration lives: the Google and
+  Microsoft clients UltraMail ships or reads from `oauth.ini` now also serve
+  UltraCloud's Google Drive and OneDrive sign-ins in the composer's "Attach
+  cloud link…" picker, and the shared `ULTRANET_OAUTH_GOOGLE_CLIENT_ID` /
+  `ULTRANET_OAUTH_MICROSOFT_CLIENT_ID` names work beside the `ULTRAMAIL_`
+  ones. `Docs/UltraMail/AccountSetup.md` §3 says what to add to the consent
+  screen for that.
+
+#### 2026-09-20 *0.10.2*
+- **The credential vault is the framework's now.** `UltraMailCredentialVault.cpp`
+  was the only implementation of the device-key vault, and UltraSocial had
+  copied it; the implementation moved to `UltraVault::DeviceKeyVault`
+  (framework 0.9.23) and `UltraMailCredentialVault.h` only names UltraMail's
+  profile — `ultramail.vault` and `device.key` in the account folder, keys
+  `mail.ultramail.<account>`. Nothing on disk changes and no existing vault
+  needs migrating; `CredentialVault`, `OAuthTokens`, `SignInMethod` and
+  `VaultStatus` keep their names in `namespace UltraMail` (the last three are
+  aliases of the framework's types), so the app, EmailCleaner and the tests
+  compile unchanged. `KeyFor` is a member now rather than static.
+- **Cloud account credentials live in the mail vault too.** "Attach cloud
+  link" kept its Nextcloud / Dropbox / Drive tokens in obfuscated files under
+  `cloud-vault/` (UltraCloud's file store, which framework 0.9.23 removes).
+  They are in `ultramail.vault` now, under `cloud.<accountId>.*`, and the old
+  files are carried across and removed the first time the vault is open — at
+  start-up with the device key, or after the one master-password prompt an
+  older vault still needs.
+
 #### 2026-09-19 *0.10.1*
 - **Crowdfunding and creator-support platforms are known senders.** Kickstarter,
   Indiegogo, GoFundMe, Startnext, Crowd Supply, Patreon, Buy Me a Coffee, Ko-fi,

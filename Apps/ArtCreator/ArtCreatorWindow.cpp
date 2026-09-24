@@ -2,8 +2,8 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
-// Version: 1.1.0
-// Last Modified: 2026-09-18
+// Version: 1.3.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -24,8 +24,12 @@
 #include <cstdio>
 #include <filesystem>
 
+// ARTCREATOR_VERSION comes from the build alone: CMake reads the first
+// line of Docs/ArtCreator/CHANGELOG.md (cmake/UltraCanvasVersion.cmake)
+// and passes it as a compile definition. No fallback here, so a build
+// that lost it fails instead of reporting a wrong number.
 #ifndef ARTCREATOR_VERSION
-#define ARTCREATOR_VERSION "0.0.0"
+#error "ARTCREATOR_VERSION is not defined: build ArtCreator through the top-level CMakeLists.txt"
 #endif
 
 namespace fs = std::filesystem;
@@ -82,6 +86,9 @@ namespace {
             case VectorElementType::Path: return "shape";
             case VectorElementType::Text: return "text";
             case VectorElementType::Group: return "group";
+            case VectorElementType::ClipView: return "clip view";
+            case VectorElementType::Blend: return "blend";
+            case VectorElementType::Mould: return "mould";
             case VectorElementType::Image: return "image";
             default: return "object";
         }
@@ -301,6 +308,9 @@ void ArtCreatorWindow::BuildMenuBar() {
             M::ActionWithShortcut("Group", "Ctrl+G", [this]() { CmdGroup(); }),
             M::ActionWithShortcut("Ungroup", "Ctrl+U", [this]() { CmdUngroup(); }),
             M::Separator(),
+            M::Action("Mirror Horizontally", [this]() { CmdMirror(true); }),
+            M::Action("Mirror Vertically", [this]() { CmdMirror(false); }),
+            M::Separator(),
             M::Header("Align to selection"),
             M::Action("Left Edges", [this]() { CmdAlign(AlignMode::Left, false); }),
             M::Action("Horizontal Centres", [this]() { CmdAlign(AlignMode::HorizontalCenter, false); }),
@@ -317,6 +327,15 @@ void ArtCreatorWindow::BuildMenuBar() {
             M::Action("Vertical Centres Evenly", [this]() { CmdDistribute(DistributeMode::VerticalCenters); }),
             M::Action("Equal Horizontal Gaps", [this]() { CmdDistribute(DistributeMode::HorizontalGaps); }),
             M::Action("Equal Vertical Gaps", [this]() { CmdDistribute(DistributeMode::VerticalGaps); }),
+            M::Separator(),
+            M::Header("Combine shapes"),
+            M::Action("Add Shapes", [this]() { CmdCombine(CombineOp::Add); }),
+            M::Action("Subtract Shapes", [this]() { CmdCombine(CombineOp::Subtract); }),
+            M::Action("Intersect Shapes", [this]() { CmdCombine(CombineOp::Intersect); }),
+            M::Action("Slice Shapes", [this]() { CmdCombine(CombineOp::Slice); }),
+            M::Separator(),
+            M::ActionWithShortcut("Apply ClipView", "Ctrl+K", [this]() { CmdApplyClipView(); }),
+            M::Action("Remove ClipView, Blend or Mould", [this]() { CmdRemoveContainer(); }),
             M::Separator(),
             M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+S", [this]() { CmdConvertToPath(); }),
         })
@@ -392,6 +411,9 @@ void ArtCreatorWindow::BuildToolbar() {
     toolbar->AddButton("ac-tb-ungroup", "", IconPath("ungroup.svg"), [this]() { CmdUngroup(); })->SetTooltip("Ungroup (Ctrl+U)");
     toolbar->AddButton("ac-tb-front", "", IconPath("to-front.svg"), [this]() { CmdReorder(ZOrderMove::ToFront); })->SetTooltip("Bring to front (Ctrl+F)");
     toolbar->AddButton("ac-tb-back", "", IconPath("to-back.svg"), [this]() { CmdReorder(ZOrderMove::ToBack); })->SetTooltip("Send to back (Ctrl+B)");
+    toolbar->AddSeparator("ac-tb-s4");
+    toolbar->AddButton("ac-tb-mirror-h", "", IconPath("mirror-h.svg"), [this]() { CmdMirror(true); })->SetTooltip("Mirror horizontally");
+    toolbar->AddButton("ac-tb-mirror-v", "", IconPath("mirror-v.svg"), [this]() { CmdMirror(false); })->SetTooltip("Mirror vertically");
     window->AddChild(toolbar);
 }
 
@@ -983,6 +1005,21 @@ void ArtCreatorWindow::CmdUngroup() {
     Reselect(ids);
 }
 
+// Flips the selection about the centre of its bounds: left-right for
+// horizontal, top-bottom for vertical. A scale of -1 on one axis through
+// the editing layer, so it composes into each element's Transform like any
+// other and the bounds stay where they were.
+void ArtCreatorWindow::CmdMirror(bool horizontal) {
+    if (selection->Empty()) return;
+    auto ids = selection->Ids();
+    const Rect2Dd b = selection->Bounds();
+    const Point2Dd pivot{b.x + b.width / 2.0, b.y + b.height / 2.0};
+    history.Record(horizontal ? "Mirror Horizontally" : "Mirror Vertically", [&]() {
+        ScaleElements(selection->Elements(), horizontal ? -1.0 : 1.0, horizontal ? 1.0 : -1.0, pivot);
+    });
+    Reselect(ids);
+}
+
 void ArtCreatorWindow::CmdAlign(AlignMode mode, bool toPage) {
     if (selection->Empty() || (!toPage && selection->Count() < 2) || !document) return;
     auto ids = selection->Ids();
@@ -1003,6 +1040,54 @@ void ArtCreatorWindow::CmdConvertToPath() {
     if (selection->Empty()) return;
     auto ids = selection->Ids();
     history.Record("Convert to Editable Shapes", [&]() { for (auto& e : selection->Elements()) ConvertToPath(e); });
+    Reselect(ids);
+}
+
+// Xara's Combine Shapes: the result replaces the selection.
+void ArtCreatorWindow::CmdCombine(CombineOp op) {
+    if (selection->Count() < 2) return;
+    static const char* labels[] = { "Add Shapes", "Subtract Shapes", "Intersect Shapes", "Slice Shapes" };
+    std::vector<std::string> ids;
+    history.Record(labels[static_cast<int>(op)], [&]() {
+        for (auto& e : CombineShapes(selection->Elements(), op)) ids.push_back(e->Id);
+    });
+    if (ids.empty() && toolContext.setStatus) toolContext.setStatus("Combine shapes needs two or more shapes with outlines");
+    Reselect(ids);
+}
+
+// The front shape of the selection becomes the keyhole the others show
+// through.
+void ArtCreatorWindow::CmdApplyClipView() {
+    if (selection->Count() < 2) return;
+    std::string id;
+    history.Record("Apply ClipView", [&]() {
+        const auto ordered = SortByDrawingOrder(selection->Elements());
+        auto parent = ParentOf(ordered.back());
+        if (!parent) return;
+        auto clip = std::make_shared<VectorClipView>();
+        clip->Id = GenerateId("clip");
+        clip->Keyholes = 1;
+        std::vector<ElementPtr> members;
+        members.push_back(ordered.back());
+        for (size_t i = 0; i + 1 < ordered.size(); ++i) members.push_back(ordered[i]);
+        const int index = IndexInParent(ordered.front());
+        ArtToolHelpers::WrapInContainer(clip, parent, index, {});
+        int at = 0;
+        for (const auto& m : members) ReparentElement(m, clip, at++);
+        id = clip->Id;
+    });
+    if (!id.empty()) Reselect({id});
+}
+
+void ArtCreatorWindow::CmdRemoveContainer() {
+    if (selection->Empty()) return;
+    std::vector<ElementPtr> containers;
+    for (const auto& e : selection->Elements())
+        if (e && (e->Type == VectorElementType::ClipView || e->Type == VectorElementType::Blend || e->Type == VectorElementType::Mould))
+            containers.push_back(e);
+    if (containers.empty()) { if (toolContext.setStatus) toolContext.setStatus("Select a clip view, blend or mould to remove"); return; }
+    std::vector<std::string> ids;
+    history.Record("Remove Container", [&]() { for (auto& e : UngroupElements(containers)) ids.push_back(e->Id); });
     Reselect(ids);
 }
 

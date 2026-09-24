@@ -665,7 +665,7 @@ nothing, and the tests built on `Supports()` passed anyway.
 
 **Discovery is uniform now, but it was not free.** `_uscan._tcp` is browsed
 through UltraNet's mDNS plugin, which is Avahi on Linux, Bonjour on macOS and
-Win32 DNS-SD on Windows. The Windows branch was a stub until 0.9.14 — a raw
+Win32 DNS-SD on Windows. The Windows branch was a stub until this release — a raw
 `DnsQuery_W` for PTR records, which names the services and cannot say where
 any of them is. That is worth stating precisely, because it looked like
 working discovery: entries came back, and every one was dropped by the
