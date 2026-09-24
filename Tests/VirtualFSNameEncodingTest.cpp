@@ -12,12 +12,13 @@
 // that UTF-8 flagged names (Thai, Russian, Chinese) survive unchanged, and
 // that an unflagged name which already is valid UTF-8 (Info-ZIP on Linux
 // writes those) is not re-decoded into mojibake.
-// Version: 1.0.0
+// Version: 1.0.1
 // Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 
 #include "VirtualFS/VirtualFS.h"
 #include "VirtualFSLibArchiveProvider.h"
+#include "VirtualFSTestZip.h"
 
 #include <algorithm>
 #include <clocale>
@@ -38,80 +39,11 @@ static void Check(bool cond, const std::string& msg) {
     if (!cond) ++failures;
 }
 
-// ===== A MINIMAL STORED ZIP WRITER =====
-// Written by hand rather than through libarchive/miniz: both of those always
-// write UTF-8 names, and the point here is a name in a legacy code page.
+// The archive is written by hand (Tests/VirtualFSTestZip.h): libarchive and
+// miniz always write UTF-8 names, and the point here is a legacy code page.
 namespace {
 
-uint32_t Crc32(const std::string& data) {
-    uint32_t crc = 0xFFFFFFFFu;
-    for (unsigned char c : data) {
-        crc ^= c;
-        for (int k = 0; k < 8; ++k) crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
-    }
-    return ~crc;
-}
-
-void Put16(std::string& out, uint16_t v) {
-    out.push_back(static_cast<char>(v & 0xFF));
-    out.push_back(static_cast<char>(v >> 8));
-}
-
-void Put32(std::string& out, uint32_t v) {
-    Put16(out, static_cast<uint16_t>(v & 0xFFFF));
-    Put16(out, static_cast<uint16_t>(v >> 16));
-}
-
-struct ZipItem {
-    std::string rawName;   // exactly the bytes stored in the header
-    bool utf8Flag;         // general-purpose bit 11
-    std::string data;      // empty for a directory ("name/")
-};
-
-std::string BuildZip(const std::vector<ZipItem>& items) {
-    std::string out, central;
-    for (const ZipItem& it : items) {
-        const uint32_t offset = static_cast<uint32_t>(out.size());
-        const uint32_t crc = Crc32(it.data);
-        const uint16_t flags = it.utf8Flag ? 0x0800 : 0;
-        const uint32_t size = static_cast<uint32_t>(it.data.size());
-        const uint16_t nameLen = static_cast<uint16_t>(it.rawName.size());
-
-        Put32(out, 0x04034b50);            // local file header
-        Put16(out, 20);                    // version needed
-        Put16(out, flags);
-        Put16(out, 0);                     // stored
-        Put16(out, 0); Put16(out, 0x21);   // time, date (1980-01-01)
-        Put32(out, crc); Put32(out, size); Put32(out, size);
-        Put16(out, nameLen); Put16(out, 0);
-        out += it.rawName;
-        out += it.data;
-
-        Put32(central, 0x02014b50);        // central directory header
-        Put16(central, 20);                // made by (MS-DOS)
-        Put16(central, 20);
-        Put16(central, flags);
-        Put16(central, 0);
-        Put16(central, 0); Put16(central, 0x21);
-        Put32(central, crc); Put32(central, size); Put32(central, size);
-        Put16(central, nameLen); Put16(central, 0); Put16(central, 0);
-        Put16(central, 0);                 // disk
-        Put16(central, 0);                 // internal attributes
-        Put32(central, it.rawName.back() == '/' ? 0x10u : 0x20u);  // DOS attrs
-        Put32(central, offset);
-        central += it.rawName;
-    }
-    const uint32_t centralOffset = static_cast<uint32_t>(out.size());
-    out += central;
-    Put32(out, 0x06054b50);                // end of central directory
-    Put16(out, 0); Put16(out, 0);
-    Put16(out, static_cast<uint16_t>(items.size()));
-    Put16(out, static_cast<uint16_t>(items.size()));
-    Put32(out, static_cast<uint32_t>(central.size()));
-    Put32(out, centralOffset);
-    Put16(out, 0);
-    return out;
-}
+using VirtualFSTestZip::BuildZip;
 
 bool HasName(const std::vector<std::string>& names, const std::string& want) {
     return std::find(names.begin(), names.end(), want) != names.end();

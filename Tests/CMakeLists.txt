@@ -2019,6 +2019,7 @@ if(LIBARCHIVE_TEST_FOUND)
         ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
     )
     target_include_directories(VirtualFSNameEncodingTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
         ${ULTRACANVAS_ROOT}/VirtualFS/include
         ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
         ${ULTRACANVAS_ROOT}/VirtualFS/providers
@@ -2043,6 +2044,45 @@ if(LIBARCHIVE_TEST_FOUND)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: VirtualFSNameEncodingTest")
+
+    # ===== VIRTUALFS EXTRACT SAFETY TEST =====
+    # ExtractAll writes nothing outside the destination ("zip slip"): "..",
+    # absolute names, writes through a symbolic link and hard links that
+    # climb out are refused; hard links land under the destination.
+    message(STATUS "  Building VirtualFSExtractSafetyTest...")
+    add_executable(VirtualFSExtractSafetyTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSExtractSafetyTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSExtractSafetyTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSExtractSafetyTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSExtractSafetyTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSExtractSafetyTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSExtractSafetyTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSExtractSafetyTest
+        COMMAND VirtualFSExtractSafetyTest ${CMAKE_BINARY_DIR}/vfs-extract-safety-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSExtractSafetyTest")
 else()
     message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
 endif()

@@ -325,6 +325,13 @@ direct zlib calls throughout the codebase.
   for quick success checks; `VirtualFSResultToString()` for messages.
 * **Paths:** forward slashes only, normalized automatically. Archive
   boundaries detected by extension matching against 40+ known formats.
+* **Extraction stays inside the destination.** `ExtractAll` refuses an
+  entry whose path is absolute or contains `..`, and a hard link whose target
+  does, before joining it to the destination; libarchive's
+  `SECURE_NODOTDOT` / `SECURE_SYMLINKS` guards run behind that, so nothing is
+  written through a symbolic link the archive created. Refused entries are
+  skipped, the rest extracts, and the result is `InvalidPath` with the names
+  in the provider's last error.
 * **Entry names are UTF-8**, in listings, reads and on disk after
   `ExtractAll`, whatever the archive stored and whatever the process locale.
   A ZIP entry without the UTF-8 flag is read as IBM437 (the ZIP
