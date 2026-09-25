@@ -1,3 +1,31 @@
+#### 2026-09-25 *0.24.0*
+- **Ein Programm statt zwei: `ultrafibu`.** Bisher gab es `ultrafibu` fuer die
+  Befehle und `ultrafibu-ui` fuer das Fenster, und welches man gerade vor sich
+  hatte, entschied, ob ein Doppelklick ueberhaupt etwas zeigte. Jetzt gibt es
+  nur noch `ultrafibu`. Mit einem Befehl (`ultrafibu info buch.db`,
+  `ultrafibu einrichten ...`) fuehrt es ihn aus und gibt das Ergebnis aus, wie
+  bisher. Ohne Befehl - ohne Argument oder mit einer Datei - oeffnet es das
+  Fenster. Skripte, die `ultrafibu <Befehl>` aufrufen, laufen unveraendert;
+  wer `ultrafibu-ui buch.db` aufgerufen hat, ruft jetzt `ultrafibu buch.db` auf.
+  - Mehr als ein Argument, oder eines, das mit `-` beginnt, geht immer an die
+    Befehle. Ein vertippter Befehl (`ultrafibu infoo buch.db`) wird deshalb
+    als unbekannter Befehl gemeldet und nicht als Dateiname genommen und mit
+    dem Einrichtungsformular beantwortet. Die Liste der Befehle steht an einer
+    Stelle, die Befehlsauswahl und diese Unterscheidung lesen beide daraus.
+  - `ultrafibu --help` nennt den Fensteraufruf nur dort, wo es ein Fenster
+    gibt.
+  - **Windows:** Das Programm bleibt ein Konsolenprogramm, denn nur so
+    erscheint die Ausgabe eines Befehls in der Eingabeaufforderung, und die
+    Eingabeaufforderung wartet auf das Ende. Per Doppelklick gestartet, schliesst es
+    das Konsolenfenster, das Windows dafuer geoeffnet hat, sobald das Fenster
+    aufgehen kann - aus einer Eingabeaufforderung gestartet, bleibt deren
+    Konsole. Kurz aufblitzen kann das Konsolenfenster beim Doppelklick noch.
+  - Wo die UI-Bibliothek nicht gebaut werden kann (Server, CI ohne Display),
+    heisst das Programm ebenfalls `ultrafibu` und kann dann nur die Befehle.
+    Die Befehle liegen dafuer in einer eigenen Bibliothek (`UltraFIBUCli`).
+  - Linux: Desktop-Eintrag (`Exec=ultrafibu`) und `package-linux.sh` folgen dem
+    neuen Namen.
+
 #### 2026-09-24 *0.23.0*
 - **Eine Buchhaltung laesst sich im Programm anlegen.** `ultrafibu-ui` ohne
   Datei - oder mit einer, die es nicht gibt oder die leer ist - oeffnet ein

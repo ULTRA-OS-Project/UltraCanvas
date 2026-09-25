@@ -43,11 +43,11 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
     || echo "$(uname -m)-linux-gnu")"
 
 # Apps to include (executable target names, output to the build root).
-# `ultrafibu` is the command line and `ultrafibu-ui` the window; both ship,
-# because the bookkeeping engine is usable without a display and the CLI is
-# what a server installation runs.
+# `ultrafibu` is one program: the commands (`ultrafibu info buch.db`) and,
+# given none, the window. Built without the UI library it is the commands
+# alone, which is what a server installation runs.
 APPS=(UltraCanvasDemo UltraCanvasTexter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
-      ultrafibu ultrafibu-ui)
+      ultrafibu)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
