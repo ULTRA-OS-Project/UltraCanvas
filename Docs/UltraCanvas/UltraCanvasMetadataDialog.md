@@ -28,13 +28,48 @@ The reader does the tidying a person would otherwise have to do in their head:
 - The **Image** group is written the way a person says it — `Dimensions:
   640 x 480 px`, `Colour space: sRGB`, `Resolution: 72 dpi`, `Read by:
   jpegload` — instead of the dozen raw fields underneath it.
-- EXIF tag names lose their `exif-ifd0-` prefix, and values lose the encoding
-  libvips appends (`UltraCanvas Cameras (UltraCanvas Cameras, ASCII, 20
-  components, 20 bytes)` → `UltraCanvas Cameras`). Where libvips' own reading of
-  a numeric tag says more than the number, it is kept: `65535 (Uncalibrated)`,
-  `2 (Inch)`.
-- Binary blocks (ICC profiles, the raw EXIF/XMP/IPTC payloads) are reported by
-  size, not dumped.
+- Tags carry names a person reads (`Header::FriendlyTagName`): `Date taken`,
+  `F-number`, `Exposure compensation`, `Camera model`, `Latitude` for EXIF;
+  `Author`, `Caption`, `Country` for IPTC; `Title`, `Keywords`, `Created with`,
+  `Creator contact › Email` for XMP; `Chroma subsampling`, `ICC profile` for
+  the rest. A tag without a name of its own is split into words
+  (`SensingMethod` → `Sensing method`), XMP namespace prefixes dropped.
+- EXIF values are written the
+  way a camera app shows them (`Header::HumanizeExif`,
+  `PixelFX/PixelFXMetadataDecode.h`) instead of libvips' raw string
+  (`28/5 (f/5.6, Rational, 1 components, 8 bytes)`):
+  `FNumber: f/5.6`, `ExposureTime: 1/250 s`, `ApertureValue` and
+  `ShutterSpeedValue` converted from APEX, `FocalLength: 50 mm`,
+  `ISOSpeedRatings: ISO 400`, `ExposureBiasValue: -0.67 EV`,
+  `LensSpecification: 24–70 mm f/2.8`, `DateTimeOriginal: 2026-09-20
+  14:32:11`, `Orientation: Rotated 90° clockwise`, and the meaning of every
+  coded number (`MeteringMode: Pattern`, `ColorSpace: Uncalibrated`). GPS
+  comes as `51° 30′ 0″ N (51.5°)`, `35 m`, `13:32:11 UTC`, `123.4° (true
+  north)`. A `…Ref` or unit field is folded into the value it qualifies
+  (`XResolution: 300 dpi`), unset values (a `0/1` resolution, a zoom ratio of
+  0) and file offsets are left out, and the embedded thumbnail's fields are
+  named `Thumbnail …`.
+- The IPTC and XMP blocks, which libvips keeps as raw bytes, are decoded into
+  one row per tag (`PixelFX/PixelFXMetadataDecode.h`): IPTC by its IIM names
+  (`Keywords`, `By-line`, `City`, `Caption/Abstract`, dates as `2026-09-20`),
+  from bare IIM or a JPEG's Photoshop "8BIM" block, Latin-1 converted to UTF-8;
+  XMP as `prefix:Name` for every property (`dc:title` in its x-default
+  language, `dc:subject` bags joined, structures as `prefix:Struct/prefix:Field`).
+  A block that does not decode is still listed by size.
+- XMP values are tidied: dates as `2026-09-20 14:32:11 +01:00`, `True` /
+  `False` as Yes / No, a rating as `4 of 5` (`Rejected`, `Not rated`).
+- IPTC and XMP that ImageMagick stored in a PNG as a "Raw profile type" text
+  chunk of hex digits are decoded like the native blocks (used only when the
+  file has no native block of that kind).
+- libvips' own fields read as values (`Header::TidyOtherValue`): Progressive
+  and Interlaced as Yes / No, Loop count as `Forever` / `Once` / `3 times`,
+  Frame delays as `100 ms per frame`, a GIF palette as `16 colours`, the
+  background as `RGB 255, 255, 255`. `resolution-unit` is left out (the Image
+  group has the resolution in dpi), and so is `orientation` when EXIF has it.
+- The Image group leaves out a resolution of 25.4 dpi, which is libvips'
+  stand-in (1 pixel per mm) for a file that stores none.
+- Other binary blocks (ICC profiles) are reported by size, not dumped; the raw
+  EXIF block is left out once its tags are listed.
 - Markdown special characters are escaped, so `VIPS_CODING_NONE` does not come
   out italicised with its underscores eaten.
 

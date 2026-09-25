@@ -102,6 +102,26 @@ static std::string HumanSize(uintmax_t bytes) {
     return std::string(buf);
 }
 
+// "95.9866" -> "95.99", "300.0" -> "300".
+static std::string ShortNumber(double v) {
+    char buf[48];
+    snprintf(buf, sizeof(buf), "%.2f", v);
+    std::string s(buf);
+    while (!s.empty() && s.back() == '0') s.pop_back();
+    if (!s.empty() && s.back() == '.') s.pop_back();
+    return s;
+}
+
+// The image's resolution for the Details panel: "300 dpi", "72 x 96 dpi".
+// Empty when the file stores none: libvips then reports 1 pixel per mm,
+// which comes out as 25.4 dpi and describes nothing.
+static std::string ResolutionText(double dpiX, double dpiY) {
+    if (dpiX <= 0 && dpiY <= 0) return "";
+    if (std::fabs(dpiX - 25.4) < 0.001 && std::fabs(dpiY - 25.4) < 0.001) return "";
+    const std::string x = ShortNumber(dpiX), y = ShortNumber(dpiY);
+    return (x == y ? x : x + " x " + y) + " dpi";
+}
+
 // Read a text file into `out`, capped at maxBytes so a huge/binary file can't
 // stall the viewer. Returns false if the file can't be opened.
 static bool ReadTextFile(const std::string& path, std::string& out,
@@ -560,22 +580,6 @@ void UltraCanvasMediaSurface::DrawCurrent(IRenderContext* ctx, const Rect2Df& b)
     Blit(ctx, image, pm, iw, ih, s, cx, cy, rotationQuarters, flipH, flipV, 1.0);
 }
 
-void UltraCanvasMediaSurface::DrawInfoOverlay(IRenderContext* ctx, const Rect2Df& b) {
-    if (infoText.empty()) return;
-    double boxW = std::min(440.0, static_cast<double>(b.width) - 24.0);
-    double boxH = std::min(280.0, static_cast<double>(b.height) - 24.0);
-    if (boxW <= 40 || boxH <= 40) return;
-    Rect2Dd box(b.x + 12, b.y + 12, boxW, boxH);
-    ctx->DrawFilledRectangle(box, Color(0, 0, 0, 190), 1.0f, Color(255, 255, 255, 45), 8.0f);
-    double pad = 14;
-    ctx->SetFontSize(12);
-    ctx->SetTextPaint(Color(235, 235, 240, 255));
-    ctx->SetTextAlignment(TextAlignment::Left);
-    ctx->SetTextWrap(TextWrap::WrapWord);
-    ctx->DrawTextInRect(infoText,
-            Rect2Dd(box.x + pad, box.y + pad, box.width - 2 * pad, box.height - 2 * pad));
-}
-
 void UltraCanvasMediaSurface::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
     if (!IsVisible()) return;
     Rect2Df b = GetLocalBounds();
@@ -647,7 +651,6 @@ void UltraCanvasMediaSurface::Render(IRenderContext* ctx, const Rect2Df& /*dirty
         DrawCurrent(ctx, b);
     }
 
-    if (showInfoPopup) DrawInfoOverlay(ctx, b);
     ctx->PopState();
 }
 
@@ -715,7 +718,6 @@ bool UltraCanvasMediaSurface::OnEvent(const UCEvent& event) {
                 pressButton = event.button;
                 SetFocus(true);
                 if (app) app->CaptureMouse(this);
-                if (showInfoPopup) { showInfoPopup = false; RequestRedraw(); }
                 return true;
             }
             return false;
@@ -973,7 +975,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
             [this](bool on) { if (adjustPanel) adjustPanel->SetVisible(on); });
     toolbar2->AddButton("mv_curves", "Curves", "", [this] { ShowCurvesDialog(); });
     toolbar2->AddButton("mv_save", "Save as", "", [this] { ShowSaveDialog(); });
-    toolbar2->AddButton("mv_info", "Info", "", [this] { if (surface) surface->ToggleInfoPopup(); });
+    toolbar2->AddButton("mv_info", "Info", "", [this] { ToggleDetails(); });
     AddChild(toolbar2);
 
     // ----- ADJUSTMENTS PANEL (hidden until "Adjust" is toggled) -----
@@ -1211,10 +1213,33 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     bottomBar->AddChild(infoLabel);
 
     auto detailsBtn = std::make_shared<UltraCanvasButton>("MV_Details", 0, 0, 72, 20, "Details");
-    detailsBtn->onClick = [this] { if (surface) surface->ToggleInfoPopup(); };
+    detailsBtn->onClick = [this] { ToggleDetails(); };
     detailsBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     bottomBar->AddChild(detailsBtn);
     AddChild(bottomBar);
+
+    // ----- DETAILS PANEL (over the display area) -----
+    // Out of the flex flow (absolute) and above every view; Arrange() fits it
+    // over whichever view is active. Display-only like the text view, so it
+    // never takes the keyboard from the browsing keys; the wheel scrolls it and
+    // HandleViewerKey() gives it Up / Down / PageUp / PageDown while open.
+    {
+        auto dv = std::make_shared<UltraCanvasTextArea>("MV_Details_Panel", 0, 0, 0, 0);
+        dv->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+        dv->SetZIndex(OverlayZOrder::Overlays);
+        dv->ApplyDarkTheme();
+        dv->SetBackgroundColor(Color(22, 22, 28, 255));
+        dv->SetBorders(1.0f, Color(255, 255, 255, 50), 8.0f);
+        dv->SetFontSize(12);
+        dv->SetWordWrap(true);
+        dv->SetShowLineNumbers(false);
+        dv->SetHighlightSyntax(false);
+        dv->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        dv->SetDisplayOnly(true);
+        dv->SetVisible(false);
+        detailsView = dv;
+        AddChild(detailsView);
+    }
 
     (void)w; (void)h;
 }
@@ -2303,7 +2328,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
 
     if (!ucdDetails.empty()) {
         // The UCD container summary was built while loading the file.
-        surface->SetInfoText(ucdDetails);
+        ShowDetailsText(ucdDetails);
         return;
     }
 
@@ -2335,7 +2360,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         }
         if (bv->IsDocumentLoaded())
             bos << "Chapters: " << bv->GetChapterCount() << "\n";
-        surface->SetInfoText(bos.str());
+        ShowDetailsText(bos.str());
         return;
     }
 
@@ -2352,7 +2377,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         if (!dec) dos << "Size: " << HumanSize(dsz) << "\n";
         dos << "Type: PDF document\n";
         if (pv->HasDocument()) dos << "Pages: " << pv->GetPageCount() << "\n";
-        surface->SetInfoText(dos.str());
+        ShowDetailsText(dos.str());
         return;
     }
 #endif
@@ -2380,7 +2405,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         std::transform(ext.begin(), ext.end(), ext.begin(),
                        [](unsigned char c) { return (char)std::toupper(c); });
         mos << "Type: " << typeName << " (" << ext << ")\n";
-        surface->SetInfoText(mos.str());
+        ShowDetailsText(mos.str());
         return;
     }
 
@@ -2407,15 +2432,141 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         os << "Bits/channel: " << fi.bitsPerChannel << "\n";
         if (!fi.colorSpace.empty()) os << "Colour space: " << fi.colorSpace << "\n";
         os << "Alpha: " << (fi.hasAlpha ? "yes" : "no") << "\n";
-        if (fi.dpiX > 0 || fi.dpiY > 0)
-            os << "Resolution: " << fi.dpiX << " x " << fi.dpiY << " dpi\n";
+        const std::string resolution = ResolutionText(fi.dpiX, fi.dpiY);
+        if (!resolution.empty()) os << "Resolution: " << resolution << "\n";
         if (!fi.loader.empty()) os << "Loader: " << fi.loader << "\n";
+    } catch (...) {
+        // Metadata extraction is best-effort.
+    }
+
+    // The file's own metadata blocks (EXIF, IPTC, XMP, ICC, PNG text chunks),
+    // one sub-heading per block. The "Image" group repeats the facts above.
+    try {
+        PixelFX::PFXImage header = PixelFX::PFXImage::FromFile(path);
+        const auto entries = PixelFX::Header::ReadMetadata(header);
+        constexpr size_t kMaxEntries = 400;   // the panel scrolls; this only bounds a runaway file
+        size_t shown = 0, total = 0;
+        std::string group;
+        os << "\n## Metadata\n";
+        for (const auto& e : entries) {
+            if (e.group == "Image") continue;
+            ++total;
+            if (shown >= kMaxEntries) continue;
+            if (e.group != group) {
+                group = e.group;
+                os << "\n### " << group << "\n";
+            }
+            os << e.key << ": " << e.value << "\n";
+            ++shown;
+        }
+        if (total == 0)
+            os << "No embedded metadata (EXIF, IPTC, XMP, ICC profile or text chunks).\n";
+        else if (total > shown)
+            os << "\n" << (total - shown) << " more entries not shown.\n";
     } catch (...) {
         // Metadata extraction is best-effort.
     }
 #endif
 
-    surface->SetInfoText(os.str());
+    ShowDetailsText(os.str());
+}
+
+// ===== DETAILS PANEL =====
+
+namespace {
+// A Markdown table cell must not hold a bare pipe, and the characters Markdown
+// reads as emphasis or links are escaped so a Windows path or an EXIF value
+// like "VIPS_CODING_NONE" is shown as written. Parentheses are left alone:
+// with the brackets escaped they cannot form a link, and the text area does
+// not unescape inside bold, where the tag names are ("Time zone (taken)").
+std::string EscapeDetailsCell(const std::string& text) {
+    static const std::string specials = "\\`*_[]#<>$~=^";
+    std::string out;
+    out.reserve(text.size() + 8);
+    for (char c : text) {
+        if (c == '|') { out += "\\|"; continue; }
+        if (c == '\n' || c == '\r') { out += ' '; continue; }
+        if (specials.find(c) != std::string::npos) out += '\\';
+        out += c;
+    }
+    return out;
+}
+
+// The details builders write "Title\n\nKey: value" lines, the form the text
+// view and a log read well. The panel shows them as Markdown: the title as a
+// heading, each run of "Key: value" lines as a two-column table, "## " /
+// "### " lines as section headings and anything else as a paragraph.
+std::string DetailsToMarkdown(const std::string& plain) {
+    std::istringstream in(plain);
+    std::ostringstream md;
+    std::string line;
+    bool first = true, inTable = false;
+    auto endTable = [&] { if (inTable) { md << "\n"; inTable = false; } };
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (first) {
+            if (line.empty()) continue;
+            md << "## " << EscapeDetailsCell(line) << "\n\n";
+            first = false;
+            continue;
+        }
+        if (line.empty()) { endTable(); continue; }
+        if (line.rfind("## ", 0) == 0 || line.rfind("### ", 0) == 0) {
+            endTable();
+            md << "\n" << line << "\n\n";
+            continue;
+        }
+        const size_t colon = line.find(": ");
+        if (colon != std::string::npos && colon > 0 && colon < 48) {
+            if (!inTable) {
+                md << "| Property | Value |\n| --- | --- |\n";
+                inTable = true;
+            }
+            md << "| **" << EscapeDetailsCell(line.substr(0, colon)) << "** | "
+               << EscapeDetailsCell(line.substr(colon + 2)) << " |\n";
+            continue;
+        }
+        endTable();
+        md << EscapeDetailsCell(line) << "\n\n";
+    }
+    return md.str();
+}
+} // namespace
+
+void UltraCanvasMediaViewer::ShowDetailsText(const std::string& plain) {
+    detailsMarkdown = DetailsToMarkdown(plain);
+    if (!detailsView) return;
+    auto* dv = static_cast<UltraCanvasTextArea*>(detailsView.get());
+    dv->SetText(detailsMarkdown);
+    dv->ScrollTo(0);
+}
+
+bool UltraCanvasMediaViewer::IsDetailsVisible() const {
+    return detailsView && detailsView->IsVisible();
+}
+
+void UltraCanvasMediaViewer::SetDetailsVisible(bool visible) {
+    if (!detailsView || detailsView->IsVisible() == visible) return;
+    if (visible) static_cast<UltraCanvasTextArea*>(detailsView.get())->ScrollTo(0);
+    detailsView->SetVisible(visible);
+    InvalidateLayout();
+    RequestRedraw();
+}
+
+void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
+                                     const CSSLayout::LayoutContext& ctx) {
+    UltraCanvasContainer::Arrange(finalRect, ctx);
+    if (!IsDetailsVisible()) return;
+    // Over the active view, inset a little, and no wider than a table of
+    // tags and values reads comfortably.
+    UltraCanvasUIElement* view = ActiveViewElement();
+    Rect2Df area = view && view->IsVisible() ? view->GetBounds()
+                                             : Rect2Df(0, 0, finalRect.width, finalRect.height);
+    constexpr float kInset = 10.0f, kMaxWidth = 640.0f;
+    float w = std::min(kMaxWidth, area.width - 2 * kInset);
+    float h = area.height - 2 * kInset;
+    if (w < 60.0f || h < 60.0f) return;
+    detailsView->Arrange(Rect2Df(area.x + kInset, area.y + kInset, w, h), ctx);
 }
 
 // ===== SLIDESHOW =====
@@ -2662,6 +2813,20 @@ bool UltraCanvasMediaViewer::HandleFilteredKey(const UCEvent& event) {
 
 bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
     if (event.type != UCEventType::KeyDown) return false;
+
+    // The open Details panel takes Escape and the scrolling keys; Left / Right
+    // keep browsing, and the panel follows the file.
+    if (IsDetailsVisible()) {
+        auto* dv = static_cast<UltraCanvasTextArea*>(detailsView.get());
+        switch (event.virtualKey) {
+            case UCKeys::Escape:   SetDetailsVisible(false); return true;
+            case UCKeys::Up:       dv->ScrollUp(1);          return true;
+            case UCKeys::Down:     dv->ScrollDown(1);        return true;
+            case UCKeys::PageUp:   dv->ScrollUp(10);         return true;
+            case UCKeys::PageDown: dv->ScrollDown(10);       return true;
+            default: break;
+        }
+    }
 
     // File browsing. Alt+Left / Alt+Right browse even while the active view
     // claims the bare arrows for itself (spreadsheet cell movement).

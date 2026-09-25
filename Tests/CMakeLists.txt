@@ -571,6 +571,30 @@ else()
     message(STATUS "  tinyxml2 not found - WordFormatsTest disabled")
 endif()
 
+# ===== PIXELFX METADATA DECODE TEST =====
+# The IPTC-IIM and XMP decoders behind the media viewer's Details panel. Plain
+# C++ and tinyxml2, no libvips, so it builds from the one source file.
+if(TINYXML2_TEST_FOUND)
+    message(STATUS "  Building PixelFXMetadataDecodeTest...")
+    add_executable(PixelFXMetadataDecodeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFXMetadataDecodeTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/PixelFX/PixelFXMetadataDecode.cpp
+    )
+    target_include_directories(PixelFXMetadataDecodeTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${TINYXML2_TEST_INCLUDE_DIRS}
+    )
+    target_link_directories(PixelFXMetadataDecodeTest PRIVATE ${TINYXML2_TEST_LIBRARY_DIRS})
+    target_link_libraries(PixelFXMetadataDecodeTest PRIVATE ${TINYXML2_TEST_LIBRARIES})
+    target_compile_features(PixelFXMetadataDecodeTest PRIVATE cxx_std_20)
+    set_target_properties(PixelFXMetadataDecodeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PixelFXMetadataDecodeTest COMMAND PixelFXMetadataDecodeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PixelFXMetadataDecodeTest")
+endif()
+
 # ===== RICH TEXT EDITOR TEST =====
 # UCRichDocumentEditor — the editing core behind UltraCanvasRichTextEdit:
 # positions, text editing, run splitting/coalescing, character and paragraph
