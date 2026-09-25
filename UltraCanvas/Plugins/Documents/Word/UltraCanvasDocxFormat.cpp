@@ -109,6 +109,7 @@ public:
             if (tag == "w:p") ParseParagraph(elem);
             else if (tag == "w:tbl") ParseTable(elem);
         }
+        LoadSection(body->FirstChildElement("w:sectPr"));
         LoadMetadata();
         return true;
     }
@@ -564,7 +565,24 @@ private:
         std::vector<RichTextRun> runs;
         std::vector<RichDocBlock> trailingImages;
         bool pendingLineBreak = false;
+        // Complex field (w:fldChar begin / w:instrText / separate / end): the
+        // result runs of a PAGE or NUMPAGES field are marked as that field.
+        std::string fieldInstruction;
+        bool inFieldResult = false;
+        RichTextRun::Field field = RichTextRun::Field::None;
     };
+
+    // PAGE -> page number, NUMPAGES / SECTIONPAGES -> page count.
+    static RichTextRun::Field FieldForInstruction(const std::string& instruction) {
+        std::string word;
+        for (char c : instruction) {
+            if (c == ' ' || c == '\t') { if (!word.empty()) break; continue; }
+            word.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+        }
+        if (word == "PAGE") return RichTextRun::Field::PageNumber;
+        if (word == "NUMPAGES" || word == "SECTIONPAGES") return RichTextRun::Field::PageCount;
+        return RichTextRun::Field::None;
+    }
 
     static std::string HighlightColor(const std::string& name) {
         static const std::pair<const char*, const char*> colors[] = {
@@ -670,8 +688,24 @@ private:
         for (auto* child = runElem->FirstChildElement(); child;
              child = child->NextSiblingElement()) {
             std::string tag = child->Name() ? child->Name() : "";
-            if (tag == "w:t") {
+            if (tag == "w:fldChar") {
+                const std::string type = Attr(child, "w:fldCharType");
+                if (type == "begin") {
+                    ctx.fieldInstruction.clear();
+                    ctx.inFieldResult = false;
+                    ctx.field = RichTextRun::Field::None;
+                } else if (type == "separate") {
+                    ctx.field = FieldForInstruction(ctx.fieldInstruction);
+                    ctx.inFieldResult = true;
+                } else if (type == "end") {
+                    ctx.inFieldResult = false;
+                    ctx.field = RichTextRun::Field::None;
+                }
+            } else if (tag == "w:instrText") {
+                if (child->GetText()) ctx.fieldInstruction += child->GetText();
+            } else if (tag == "w:t") {
                 RichTextRun run = props;
+                if (ctx.inFieldResult || ctx.field != RichTextRun::Field::None) run.field = ctx.field;
                 run.text = child->GetText() ? child->GetText() : "";
                 for (size_t at; (at = run.text.find(kKeptSpaceMarker)) != std::string::npos;) {
                     run.text.replace(at, 3, " ");
@@ -750,6 +784,12 @@ private:
                 auto* fallback = child->FirstChildElement("mc:Fallback");
                 if (choice) ParseInlineContainer(choice, linkTarget, ctx);
                 else if (fallback) ParseInlineContainer(fallback, linkTarget, ctx);
+            } else if (tag == "w:fldSimple") {
+                // <w:fldSimple w:instr="PAGE"><w:r><w:t>3</w:t></w:r></w:fldSimple>
+                const RichTextRun::Field saved = ctx.field;
+                ctx.field = FieldForInstruction(Attr(child, "w:instr"));
+                ParseInlineContainer(child, linkTarget, ctx);
+                ctx.field = saved;
             } else if (tag == "w:ins" || tag == "w:smartTag" || tag == "w:sdt"
                        || tag == "w:sdtContent") {
                 // Accepted tracked insertions and content-control wrappers.
@@ -1127,6 +1167,66 @@ private:
                 cell.borderRight = pick(own.right, right >= grid.columnCount - 1 ? borders.right : borders.insideV);
             }
         }
+    }
+
+    // The body's section: page size and margins, and the header and footer
+    // parts it references (w:titlePg gives the first page its own).
+    void LoadSection(tinyxml2::XMLElement* sectPr) {
+        if (!sectPr) return;
+        auto twips = [](tinyxml2::XMLElement* e, const char* name) {
+            return e ? static_cast<float>(e->IntAttribute(name, 0)) / 20.0f : 0.0f;
+        };
+        RichPageSetup& page = doc_->page;
+        auto* size = sectPr->FirstChildElement("w:pgSz");
+        page.widthPt = twips(size, "w:w");
+        page.heightPt = twips(size, "w:h");
+        auto* margins = sectPr->FirstChildElement("w:pgMar");
+        page.marginTopPt = twips(margins, "w:top");
+        page.marginBottomPt = twips(margins, "w:bottom");
+        page.marginLeftPt = twips(margins, "w:left");
+        page.marginRightPt = twips(margins, "w:right");
+        page.headerTopPt = twips(margins, "w:header");
+        page.footerBottomPt = twips(margins, "w:footer");
+        // A negative top/bottom margin means "exactly, whatever the header".
+        page.marginTopPt = std::abs(page.marginTopPt);
+        page.marginBottomPt = std::abs(page.marginBottomPt);
+
+        doc_->firstPageDiffers = sectPr->FirstChildElement("w:titlePg") != nullptr;
+        for (const char* kind : {"w:headerReference", "w:footerReference"}) {
+            const bool header = std::string(kind) == "w:headerReference";
+            for (auto* ref = sectPr->FirstChildElement(kind); ref; ref = ref->NextSiblingElement(kind)) {
+                const std::string type = Attr(ref, "w:type");
+                RichPageFurniture* target = type == "first" ? &doc_->firstPageFurniture
+                                          : (type == "default" || type.empty()) ? &doc_->pageFurniture : nullptr;
+                if (!target) continue;   // even pages: not modelled
+                auto rel = relationships_.find(Attr(ref, "r:id"));
+                if (rel == relationships_.end()) continue;
+                LoadHeaderFooterPart("word/" + rel->second.target, header ? target->header : target->footer);
+            }
+        }
+        if (!doc_->firstPageDiffers) doc_->firstPageFurniture = RichPageFurniture{};
+    }
+
+    // A header or footer part: its paragraphs and tables, read like the body.
+    void LoadHeaderFooterPart(const std::string& partName, std::vector<RichDocBlock>& out) {
+        std::string xml;
+        if (!zip_.ReadEntry(partName, xml)) return;
+        ProtectWhitespaceRuns(xml);
+        tinyxml2::XMLDocument part;
+        if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        auto* root = part.RootElement();
+        if (!root) return;
+        const size_t start = doc_->blocks.size();
+        for (auto* elem = root->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
+            std::string tag = elem->Name() ? elem->Name() : "";
+            if (tag == "w:p") ParseParagraph(elem);
+            else if (tag == "w:tbl") ParseTable(elem);
+        }
+        out.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                   std::make_move_iterator(doc_->blocks.end()));
+        doc_->blocks.resize(start);
+        // An empty paragraph Word keeps in every header is not content.
+        while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
     }
 
     void LoadMetadata() {

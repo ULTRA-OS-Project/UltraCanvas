@@ -234,11 +234,20 @@ public:
         // letter) would inject chrome the reader never displays.
         LoadSettings();
         tinyxml2::XMLElement* masterPage = ResolveMasterPage(stylesRoot, text);
-        auto* headerRegion = masterPage ? masterPage->FirstChildElement("style:header") : nullptr;
-        auto* footerRegion = masterPage ? masterPage->FirstChildElement("style:footer") : nullptr;
-        ParseMasterPageRegion(headerRegion, false);
+        LoadPageSetup(stylesRoot, masterPage);
+        // The first page draws its header and footer from its master; the
+        // pages after it from that master's next-style-name, when it names
+        // another one (a letterhead's first page and its continuation pages).
+        ParseMasterPage(masterPage, doc_->firstPageFurniture);
+        tinyxml2::XMLElement* nextMaster = FollowingMasterPage(stylesRoot, masterPage);
+        if (nextMaster && nextMaster != masterPage) {
+            ParseMasterPage(nextMaster, doc_->pageFurniture);
+            doc_->firstPageDiffers = true;
+        } else {
+            doc_->pageFurniture = doc_->firstPageFurniture;
+            doc_->firstPageFurniture = RichPageFurniture{};
+        }
         ParseBlockContainer(text, 0, "");
-        ParseMasterPageRegion(footerRegion, true);
         LoadMetadata();
         return true;
     }
@@ -820,11 +829,17 @@ private:
                           props, linkTarget);
             } else if (tag == "text:tab") {
                 AppendRun(ctx, "\t", props, linkTarget);
-            } else if (tag == "text:page-number") {
-                // Dynamic page field; the linear model is a single flow, so the
-                // current page is 1. Without this the field renders as an empty
-                // gap ("Seite  / 1") because it carries no static text.
-                AppendRun(ctx, "1", props, linkTarget);
+            } else if (tag == "text:page-number" || tag == "text:page-count") {
+                // Page fields: a paged view fills in each page's number; the
+                // stored text is what text output and a continuous view show
+                // (the count's last value, page 1 - never an empty gap).
+                const bool count = tag == "text:page-count";
+                std::string shown = elem->GetText() ? elem->GetText() : "";
+                if (shown.empty() || !count) shown = "1";
+                AppendRun(ctx, shown, props, linkTarget);
+                if (!ctx.runs.empty()) {
+                    ctx.runs.back().field = count ? RichTextRun::Field::PageCount : RichTextRun::Field::PageNumber;
+                }
             } else if (tag == "text:line-break") {
                 ctx.pendingLineBreak = true;
             } else if (tag == "draw:frame") {
@@ -1323,6 +1338,20 @@ private:
         return "";
     }
 
+    // The master page the pages after `master` use (style:next-style-name).
+    tinyxml2::XMLElement* FollowingMasterPage(tinyxml2::XMLElement* stylesRoot,
+                                              tinyxml2::XMLElement* master) const {
+        if (!stylesRoot || !master) return nullptr;
+        const std::string next = Attr(master, "style:next-style-name");
+        if (next.empty()) return master;
+        auto* masters = stylesRoot->FirstChildElement("office:master-styles");
+        for (auto* page = masters ? masters->FirstChildElement("style:master-page") : nullptr; page;
+             page = page->NextSiblingElement("style:master-page")) {
+            if (next == Attr(page, "style:name")) return page;
+        }
+        return master;
+    }
+
     // Chooses which master page supplies the header/footer for the linear
     // rendering: the one pinned by the body's first paragraph, else "Standard"
     // if it carries content, else the first master page that has any content,
@@ -1352,43 +1381,74 @@ private:
         return standard ? standard : first;
     }
 
-    // Emits a resolved header or footer region (styles.xml) as ordinary blocks,
-    // set off from the body with a horizontal rule. A region that is empty or
-    // explicitly not displayed contributes nothing.
-    void ParseMasterPageRegion(tinyxml2::XMLElement* region, bool afterBody) {
+    // Reads a master page's header or footer region into `out`. A region that
+    // is switched off, or holds nothing visible, leaves `out` empty.
+    void ParseMasterPageRegion(tinyxml2::XMLElement* region, std::vector<RichDocBlock>& out) {
+        out.clear();
         if (!region || std::string(Attr(region, "style:display")) == "false") return;
-
-        size_t start = doc_->blocks.size();
-        if (afterBody) {
-            RichDocBlock rule;
-            rule.type = RichBlockType::HorizontalRule;
-            doc_->blocks.push_back(std::move(rule));
-        }
-        size_t contentStart = doc_->blocks.size();
+        // The block parsers append to the document's body; collect this
+        // region's blocks there and move them out.
+        const size_t start = doc_->blocks.size();
         bool savedFlow = inMainFlow_;
         inMainFlow_ = false;   // header/footer paragraphs never break pages
         ParseBlockContainer(region, 0, "");
         inMainFlow_ = savedFlow;
+        out.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                   std::make_move_iterator(doc_->blocks.end()));
+        doc_->blocks.resize(start);
 
         bool hasContent = false;
-        for (size_t i = contentStart; i < doc_->blocks.size() && !hasContent; ++i) {
-            const RichDocBlock& b = doc_->blocks[i];
-            if (b.type != RichBlockType::Paragraph) {
-                hasContent = true;
-            } else {
-                std::string text = UCRichDocument::ConcatenateRunText(b.runs);
-                hasContent = text.find_first_not_of(" \t\n") != std::string::npos;
-            }
+        for (const RichDocBlock& b : out) {
+            if (b.type != RichBlockType::Paragraph) { hasContent = true; break; }
+            const std::string text = UCRichDocument::ConcatenateRunText(b.runs);
+            if (text.find_first_not_of(" \t\n") != std::string::npos) { hasContent = true; break; }
         }
-        if (!hasContent) {
-            doc_->blocks.resize(start);
-            return;
+        if (!hasContent) out.clear();
+    }
+
+    // A master page's header and footer.
+    void ParseMasterPage(tinyxml2::XMLElement* master, RichPageFurniture& out) {
+        if (!master) return;
+        ParseMasterPageRegion(master->FirstChildElement("style:header"), out.header);
+        ParseMasterPageRegion(master->FirstChildElement("style:footer"), out.footer);
+    }
+
+    // The page the first master page lays the document on: size, margins, and
+    // where the body starts once a header / footer takes its room (ODF puts
+    // them inside the page margins and moves the body away from them).
+    void LoadPageSetup(tinyxml2::XMLElement* stylesRoot, tinyxml2::XMLElement* master) {
+        if (!stylesRoot || !master) return;
+        const std::string layoutName = Attr(master, "style:page-layout-name");
+        auto* automatic = stylesRoot->FirstChildElement("office:automatic-styles");
+        tinyxml2::XMLElement* layout = nullptr;
+        for (auto* l = automatic ? automatic->FirstChildElement("style:page-layout") : nullptr; l;
+             l = l->NextSiblingElement("style:page-layout")) {
+            if (layoutName == Attr(l, "style:name")) { layout = l; break; }
         }
-        if (!afterBody) {
-            RichDocBlock rule;
-            rule.type = RichBlockType::HorizontalRule;
-            doc_->blocks.push_back(std::move(rule));
-        }
+        auto* props = layout ? layout->FirstChildElement("style:page-layout-properties") : nullptr;
+        if (!props) return;
+        RichPageSetup& page = doc_->page;
+        page.widthPt = ParseLengthPt(Attr(props, "fo:page-width"));
+        page.heightPt = ParseLengthPt(Attr(props, "fo:page-height"));
+        const float margin = ParseLengthPt(Attr(props, "fo:margin"));
+        auto side = [&](const char* name) {
+            const char* v = props->Attribute(name);
+            return v ? ParseLengthPt(v) : margin;
+        };
+        page.marginTopPt = page.headerTopPt = side("fo:margin-top");
+        page.marginBottomPt = page.footerBottomPt = side("fo:margin-bottom");
+        page.marginLeftPt = side("fo:margin-left");
+        page.marginRightPt = side("fo:margin-right");
+        // Header / footer room: their minimum height plus the spacing to the
+        // body, when the master page has one.
+        auto room = [&](const char* styleTag, const char* spacingAttr) {
+            auto* hfStyle = layout->FirstChildElement(styleTag);
+            auto* hf = hfStyle ? hfStyle->FirstChildElement("style:header-footer-properties") : nullptr;
+            if (!hf) return 0.0f;
+            return ParseLengthPt(Attr(hf, "fo:min-height")) + ParseLengthPt(Attr(hf, spacingAttr));
+        };
+        if (master->FirstChildElement("style:header")) page.marginTopPt += room("style:header-style", "fo:margin-bottom");
+        if (master->FirstChildElement("style:footer")) page.marginBottomPt += room("style:footer-style", "fo:margin-top");
     }
 
     void LoadMetadata() {

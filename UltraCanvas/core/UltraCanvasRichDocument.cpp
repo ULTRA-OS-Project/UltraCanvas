@@ -648,7 +648,32 @@ std::string UCRichDocument::ConcatenateRunText(const std::vector<RichTextRun>& r
 
 // ===== MARKDOWN SERIALIZER =====
 
+UCRichDocument UCRichDocument::WithFirstPageFurnitureInline() const {
+    UCRichDocument flat = *this;
+    flat.pageFurniture = RichPageFurniture{};
+    flat.firstPageFurniture = RichPageFurniture{};
+    flat.firstPageDiffers = false;
+    const RichPageFurniture& furniture = FurnitureForPage(0);
+    std::vector<RichDocBlock> blocksInline;
+    RichDocBlock rule;
+    rule.type = RichBlockType::HorizontalRule;
+    if (!furniture.header.empty()) {
+        blocksInline.insert(blocksInline.end(), furniture.header.begin(), furniture.header.end());
+        blocksInline.push_back(rule);
+    }
+    blocksInline.insert(blocksInline.end(), blocks.begin(), blocks.end());
+    if (!furniture.footer.empty()) {
+        blocksInline.push_back(rule);
+        blocksInline.insert(blocksInline.end(), furniture.footer.begin(), furniture.footer.end());
+    }
+    flat.blocks = std::move(blocksInline);
+    return flat;
+}
+
 std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& options) const {
+    // Text output has no pages: the first page's header and footer go before
+    // and after the body, set off by rules.
+    if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToMarkdown(options);
     // Write referenced media to disk once, remembering the path per index.
     std::vector<std::string> mediaPaths(media.size());
     if (!options.imageDirectory.empty()) {
@@ -1049,6 +1074,7 @@ const char* AlignCss(RichTextAlign align) {
 } // namespace
 
 std::string UCRichDocument::ToHTML() const {
+    if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToHTML();
     std::ostringstream html;
     int openListLevel = -1;   // -1 = no list open
     std::vector<bool> listOrderedStack;
@@ -1178,6 +1204,7 @@ std::string UCRichDocument::ToHTML() const {
 // ===== PLAIN TEXT SERIALIZER =====
 
 std::string UCRichDocument::ToPlainText() const {
+    if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToPlainText();
     std::ostringstream text;
     bool first = true;
     for (const auto& block : blocks) {

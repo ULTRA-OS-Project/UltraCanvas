@@ -54,6 +54,12 @@ struct RichTextRun {
     float imageHeightPt = 0.0f;
     std::string imageAltText;
 
+    // A field whose text depends on where it is drawn: a header's "Page 3
+    // of 7". `text` holds the value it was last shown with, which is what
+    // plain-text output and a view without pages use.
+    enum class Field { None, PageNumber, PageCount };
+    Field field = Field::None;
+
     static constexpr const char* kObjectReplacement = "\xEF\xBF\xBC";   // U+FFFC
 
     bool IsInlineImage() const { return mediaIndex >= 0; }
@@ -68,7 +74,8 @@ struct RichTextRun {
             && subscript == other.subscript && superscript == other.superscript
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
-            && highlightColor == other.highlightColor;
+            && highlightColor == other.highlightColor
+            && field == Field::None && other.field == Field::None;   // a field stays its own run
     }
 };
 
@@ -366,6 +373,33 @@ struct RichDocumentMetadata {
     std::string modifiedDate;
 };
 
+// ===== PAGES =====
+// The page a document is laid out on, in points. widthPt 0 = the document
+// states no page (Markdown): views lay it out as one continuous column.
+struct RichPageSetup {
+    float widthPt = 0.0f;
+    float heightPt = 0.0f;
+    // Where the body text starts and ends, from the page's edges.
+    float marginTopPt = 0.0f;
+    float marginBottomPt = 0.0f;
+    float marginLeftPt = 0.0f;
+    float marginRightPt = 0.0f;
+    // Where the header starts from the top edge, and the footer ends from
+    // the bottom edge (inside the top / bottom margin).
+    float headerTopPt = 0.0f;
+    float footerBottomPt = 0.0f;
+
+    bool HasPage() const { return widthPt > 0.0f && heightPt > 0.0f; }
+};
+
+// What a page carries besides the body: its header and footer. A letterhead
+// often gives its first page other ones than the pages after it.
+struct RichPageFurniture {
+    std::vector<RichDocBlock> header;
+    std::vector<RichDocBlock> footer;
+    bool IsEmpty() const { return header.empty() && footer.empty(); }
+};
+
 // Options for UCRichDocument::ToMarkdown. When imageDirectory is set, the
 // serializer writes each referenced media entry into that directory and the
 // markdown references the written files (absolute paths), which is what the
@@ -383,6 +417,16 @@ public:
     // Distance between default tab stops (after a paragraph's own stops).
     // 0 = the view's default. ODF: style:tab-stop-distance; Word: defaultTabStop.
     float defaultTabStopPt = 0.0f;
+    RichPageSetup page;
+    // Header and footer of every page, and of the first one when it differs
+    // (firstPageDiffers). Plain-text, Markdown and HTML output write the
+    // first page's header before the body and its footer after it.
+    RichPageFurniture pageFurniture;
+    RichPageFurniture firstPageFurniture;
+    bool firstPageDiffers = false;
+    const RichPageFurniture& FurnitureForPage(int pageIndex) const {
+        return (firstPageDiffers && pageIndex == 0) ? firstPageFurniture : pageFurniture;
+    }
 
     bool IsEmpty() const { return blocks.empty(); }
 
@@ -406,6 +450,9 @@ public:
     std::string ToHTML() const;
 
     std::string ToPlainText() const;
+    // A copy whose body holds the first page's header, a rule, the body, a
+    // rule and the footer - what the text serializers write.
+    UCRichDocument WithFirstPageFurnitureInline() const;
 
     // ===== HELPERS SHARED BY FORMAT READERS/WRITERS =====
     static std::string MimeTypeForImageName(const std::string& fileName);

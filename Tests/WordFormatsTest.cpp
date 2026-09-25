@@ -900,12 +900,15 @@ int main(int argc, char** argv) {
         CHECK_MSG(plain.find("phone +49 123 456") != std::string::npos, plain);
         CHECK(plain.find("Dear applicant,") != std::string::npos);
 
-        // Master-page header renders before the body, footer table after it.
-        CHECK(!letter.blocks.empty());
-        if (!letter.blocks.empty()) {
-            CHECK(UCRichDocument::ConcatenateRunText(letter.blocks.front().runs)
+        // The master page's header and footer are the page's, not the body's:
+        // a paged view draws them on every page, text output writes them
+        // before and after the body.
+        const RichPageFurniture& furniture = letter.FurnitureForPage(0);
+        CHECK(furniture.header.size() == 1 && furniture.footer.size() == 1);
+        if (!furniture.header.empty() && !furniture.footer.empty()) {
+            CHECK(UCRichDocument::ConcatenateRunText(furniture.header.front().runs)
                   == "Example GmbH - Sample Street 1");
-            CHECK(letter.blocks.back().type == RichBlockType::Table);
+            CHECK(furniture.footer.back().type == RichBlockType::Table);
         }
         CHECK_MSG(plain.find("Bank Ltd\nKonto: 12345\tRegister B 7741") != std::string::npos, plain);
         size_t headerPos = plain.find("Example GmbH - Sample Street 1");

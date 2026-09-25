@@ -1254,9 +1254,15 @@ public:
         fcLcb_ = fcLcbCountAt + 2;
         fcLcbCount_ = fcLcbCount;
         const uint32_t ccpText = ReadU32(word_, lw + 2 + 3 * 4);
+        const uint32_t ccpFtn = ReadU32(word_, lw + 2 + 4 * 4);
+        const uint32_t ccpHdd = ReadU32(word_, lw + 2 + 5 * 4);
 
-        std::vector<DocChar> chars;
-        if (!ReadPieces(ccpText, chars, error)) return false;
+        // The main text, then the footnotes, then the header/footer stories -
+        // one run of character positions through the piece table.
+        std::vector<DocChar> allChars;
+        if (!ReadPieces(ccpText + ccpFtn + ccpHdd, allChars, error)) return false;
+        std::vector<DocChar> chars(allChars.begin(),
+                                   allChars.begin() + static_cast<std::ptrdiff_t>(std::min<size_t>(ccpText, allChars.size())));
 
         stylesheet_.Load(table_, FcAt(1), LcbAt(1));
         fonts_ = LoadFontNames(table_, FcAt(15), LcbAt(15));
@@ -1271,7 +1277,76 @@ public:
         }
 
         BuildBlocks(chars);
+        LoadSection();
+        LoadHeaderStories(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
         return true;
+    }
+
+    // The first section's page: size, margins, header/footer distances, and
+    // whether its first page has its own header and footer. Word's defaults
+    // (US Letter, 1.25" / 1" margins) stand in for anything not stated.
+    void LoadSection() {
+        RichPageSetup& page = doc_.page;
+        int xaPage = 12240, yaPage = 15840, left = 1800, right = 1800, top = 1440, bottom = 1440;
+        int headerTop = 720, footerBottom = 720;
+        const uint32_t fc = FcAt(6), lcb = LcbAt(6);   // PlcfSed
+        if (lcb >= 4 + 12 && static_cast<size_t>(fc) + lcb <= table_.size()) {
+            const uint32_t fcSepx = ReadU32(table_, fc + 8 + 2);   // first Sed, after two CPs
+            if (fcSepx != 0xFFFFFFFFu && fcSepx + 2 <= word_.size()) {
+                const size_t size = ReadU16(word_, fcSepx);
+                ForEachSprm(word_, fcSepx + 2, fcSepx + 2 + size, [&](const Sprm& sprm) {
+                    const int value = ReadI16(word_, sprm.operand);
+                    switch (sprm.code) {
+                        case 0xB01F: xaPage = ReadU16(word_, sprm.operand); break;   // sprmSXaPage
+                        case 0xB020: yaPage = ReadU16(word_, sprm.operand); break;   // sprmSYaPage
+                        case 0xB021: left = value; break;                              // sprmSDxaLeft
+                        case 0xB022: right = value; break;                             // sprmSDxaRight
+                        case 0x9023: top = std::abs(value); break;                     // sprmSDyaTop
+                        case 0x9024: bottom = std::abs(value); break;                  // sprmSDyaBottom
+                        case 0xB017: headerTop = value; break;                         // sprmSDyaHdrTop
+                        case 0xB018: footerBottom = value; break;                      // sprmSDyaHdrBottom
+                        case 0x300A: doc_.firstPageDiffers = word_[sprm.operand] != 0; break;   // sprmSFTitlePage
+                        default: break;
+                    }
+                });
+            }
+        }
+        page.widthPt = static_cast<float>(xaPage) / 20.0f;
+        page.heightPt = static_cast<float>(yaPage) / 20.0f;
+        page.marginLeftPt = static_cast<float>(left) / 20.0f;
+        page.marginRightPt = static_cast<float>(right) / 20.0f;
+        page.marginTopPt = static_cast<float>(top) / 20.0f;
+        page.marginBottomPt = static_cast<float>(bottom) / 20.0f;
+        page.headerTopPt = static_cast<float>(headerTop) / 20.0f;
+        page.footerBottomPt = static_cast<float>(footerBottom) / 20.0f;
+    }
+
+    // Header and footer stories of the first section (PlcfHdd): six note
+    // separators, then per section even/odd header, even/odd footer, first
+    // header, first footer. Odd pages' are every page's here.
+    void LoadHeaderStories(const std::vector<DocChar>& allChars, size_t storyStart, uint32_t ccpHdd) {
+        const uint32_t fc = FcAt(11), lcb = LcbAt(11);
+        if (ccpHdd == 0 || lcb < 4 * 13 || static_cast<size_t>(fc) + lcb > table_.size()) return;
+        auto story = [&](size_t index, std::vector<RichDocBlock>& out) {
+            const size_t begin = ReadU32(table_, fc + index * 4);
+            const size_t end = ReadU32(table_, fc + (index + 1) * 4);
+            if (end <= begin || storyStart + end > allChars.size()) return;
+            std::vector<DocChar> text(allChars.begin() + static_cast<std::ptrdiff_t>(storyStart + begin),
+                                      allChars.begin() + static_cast<std::ptrdiff_t>(storyStart + end));
+            // The stories are read with the body's machinery, into their own list.
+            std::vector<RichDocBlock> body = std::move(doc_.blocks);
+            doc_.blocks.clear();
+            BuildBlocks(text);
+            out = std::move(doc_.blocks);
+            doc_.blocks = std::move(body);
+            while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
+        };
+        story(7, doc_.pageFurniture.header);
+        story(9, doc_.pageFurniture.footer);
+        if (doc_.firstPageDiffers) {
+            story(10, doc_.firstPageFurniture.header);
+            story(11, doc_.firstPageFurniture.footer);
+        }
     }
 
 private:
@@ -1295,7 +1370,26 @@ private:
         std::string instruction;
         bool inResult = false;
         std::string link;
+        RichTextRun::Field pageField = RichTextRun::Field::None;   // PAGE / NUMPAGES
     };
+
+    RichTextRun::Field ActivePageField() const {
+        for (auto it = fields_.rbegin(); it != fields_.rend(); ++it) {
+            if (it->inResult && it->pageField != RichTextRun::Field::None) return it->pageField;
+        }
+        return RichTextRun::Field::None;
+    }
+
+    static RichTextRun::Field PageFieldFor(const std::string& instruction) {
+        std::string word;
+        for (char c : instruction) {
+            if (c == ' ') { if (!word.empty()) break; continue; }
+            word.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+        }
+        if (word == "PAGE") return RichTextRun::Field::PageNumber;
+        if (word == "NUMPAGES" || word == "SECTIONPAGES") return RichTextRun::Field::PageCount;
+        return RichTextRun::Field::None;
+    }
     std::vector<Field> fields_;
 
     // The table being assembled.
@@ -1524,6 +1618,7 @@ private:
                 if (!fields_.empty()) {
                     fields_.back().inResult = true;
                     fields_.back().link = HyperlinkTarget(fields_.back().instruction);
+                    fields_.back().pageField = PageFieldFor(fields_.back().instruction);
                 }
                 continue;
             }
@@ -1558,6 +1653,7 @@ private:
             else AppendUtf8(text, ch);
             RichTextRun format = MakeRun(props, heading ? &styleChars : nullptr);
             format.linkTarget = ActiveLink();
+            format.field = ActivePageField();
             AppendText(runs, format, text, lineBreak);
             lineBreak = false;
         }
