@@ -750,8 +750,17 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
     }
 
     if (!bl.markerText.empty()) {
+        // The number or bullet matches the item's own text: an 11 pt list
+        // must not carry 14 pt numbers.
+        FontStyle markerFont = style.baseFont;
+        for (const RichTextRun& run : block.runs) {
+            if (run.IsInlineImage()) continue;
+            if (run.fontSizePt > 0.0f) markerFont.fontSize = run.fontSizePt;
+            if (!run.fontFamily.empty()) markerFont.fontFamily = run.fontFamily;
+            break;
+        }
         ctx->PushState();
-        ctx->SetFontStyle(style.baseFont);
+        ctx->SetFontStyle(markerFont);
         ctx->SetTextPaint(style.listMarkerColor);
         ctx->DrawText(bl.markerText, Point2Dd(originX + bl.markerLeft, originY));
         ctx->PopState();

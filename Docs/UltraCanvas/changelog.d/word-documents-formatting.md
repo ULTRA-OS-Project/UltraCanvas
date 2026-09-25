@@ -26,6 +26,8 @@
   reader now keeps them and applies ODF's white-space rules itself.
 - **ODT: tables of contents and other indexes show their text** (the
   generated `text:index-body`), instead of being skipped.
+- **`UltraCanvasRichTextEdit`: list numbers and bullets take the item's
+  text size and font.** An 11 pt list was drawn with 14 pt numbers.
 - **DemoApp: the OpenDocument page uses the WYSIWYG element.** Documents used
   to go through Markdown into a TextArea, which lost fonts, sizes, colours,
   alignment, list numbers and table layout. They now go straight to a
