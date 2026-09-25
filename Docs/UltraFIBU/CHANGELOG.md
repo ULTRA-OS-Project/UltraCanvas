@@ -1,3 +1,91 @@
+#### 2026-09-25 *0.24.0*
+- **Ein Programm statt zwei: `ultrafibu`.** Bisher gab es `ultrafibu` fuer die
+  Befehle und `ultrafibu-ui` fuer das Fenster, und welches man gerade vor sich
+  hatte, entschied, ob ein Doppelklick ueberhaupt etwas zeigte. Jetzt gibt es
+  nur noch `ultrafibu`. Mit einem Befehl (`ultrafibu info buch.db`,
+  `ultrafibu einrichten ...`) fuehrt es ihn aus und gibt das Ergebnis aus, wie
+  bisher. Ohne Befehl - ohne Argument oder mit einer Datei - oeffnet es das
+  Fenster. Skripte, die `ultrafibu <Befehl>` aufrufen, laufen unveraendert;
+  wer `ultrafibu-ui buch.db` aufgerufen hat, ruft jetzt `ultrafibu buch.db` auf.
+  - Mehr als ein Argument, oder eines, das mit `-` beginnt, geht immer an die
+    Befehle. Ein vertippter Befehl (`ultrafibu infoo buch.db`) wird deshalb
+    als unbekannter Befehl gemeldet und nicht als Dateiname genommen und mit
+    dem Einrichtungsformular beantwortet. Die Liste der Befehle steht an einer
+    Stelle, die Befehlsauswahl und diese Unterscheidung lesen beide daraus.
+  - `ultrafibu --help` nennt den Fensteraufruf nur dort, wo es ein Fenster
+    gibt.
+  - **Windows:** Das Programm bleibt ein Konsolenprogramm, denn nur so
+    erscheint die Ausgabe eines Befehls in der Eingabeaufforderung, und die
+    Eingabeaufforderung wartet auf das Ende. Per Doppelklick gestartet, schliesst es
+    das Konsolenfenster, das Windows dafuer geoeffnet hat, sobald das Fenster
+    aufgehen kann - aus einer Eingabeaufforderung gestartet, bleibt deren
+    Konsole. Kurz aufblitzen kann das Konsolenfenster beim Doppelklick noch.
+  - Wo die UI-Bibliothek nicht gebaut werden kann (Server, CI ohne Display),
+    heisst das Programm ebenfalls `ultrafibu` und kann dann nur die Befehle.
+    Die Befehle liegen dafuer in einer eigenen Bibliothek (`UltraFIBUCli`).
+  - Linux: Desktop-Eintrag (`Exec=ultrafibu`) und `package-linux.sh` folgen dem
+    neuen Namen.
+
+#### 2026-09-24 *0.23.0*
+- **Eine Buchhaltung laesst sich im Programm anlegen.** `ultrafibu-ui` ohne
+  Datei - oder mit einer, die es nicht gibt oder die leer ist - oeffnet ein
+  Startfenster: neue Buchhaltung anlegen (Firma, Beginn des Geschaeftsjahres,
+  SKR03/SKR04) oder eine bestehende oeffnen. Bisher gab das Programm eine
+  Zeile auf der Konsole aus und endete; unter Windows per Doppelklick
+  gestartet schloss sich die Konsole, bevor man sie lesen konnte, und das sah
+  aus wie ein Absturz.
+  - **Im Kalender sind nur Monatserste waehlbar.** Das Geschaeftsjahr kann nur
+    dort beginnen; die Regel steht damit, wo gewaehlt wird, statt hinterher
+    als Fehlermeldung. Das Datum laesst sich auch eintippen (TT.MM.JJJJ), die
+    Woche beginnt montags.
+  - **Das Datum ist nicht vorbelegt.** Eine erste Fassung setzte den naechsten
+    Monatsersten ein - im Test ergab das ein Geschaeftsjahr ab 01.10.2026 fuer
+    eine Firma, deren Jahr am 01.04.2025 beginnt. Ein falscher Beginn legt
+    jede Periode an die falsche Stelle und laesst sich nach der ersten
+    Buchung nicht mehr beheben; das Formular nennt das Datum deshalb als
+    fehlend, bis bewusst eines gewaehlt ist.
+  - **Gefragt wird nur, was zum Anfangen noetig ist.** Anschrift,
+    Steuernummer und Bankverbindung braucht erst die erste gedruckte
+    Rechnung, und `rechnung-pdf` nennt dann genau, was fehlt.
+  - Ein ausgegrauter Knopf steht nie ohne Grund daneben: die Pruefung ist
+    dieselbe, die die Engine beim Anlegen macht.
+- **Oeffnen legt keine Datei mehr an.** SQLite erzeugt eine Datei, die es
+  oeffnen soll, und die Migrationen gaben ihr ein volles leeres Schema. Ein
+  vertippter Pfad ergab so eine 300 KB grosse Buchhaltung ohne Firma, und das
+  Programm forderte dann auf, sie per Kommandozeile einzurichten. Jetzt:
+  "Die Datei ... gibt es nicht. Eine neue Buchhaltung wird eingerichtet,
+  nicht durch Oeffnen angelegt." Die Pruefung greift nur, wo `Store::Open`
+  selbst eine SQLite-Verbindung anlegt; eine PostgreSQL-Verbindung nennt eine
+  Datenbank, keinen Pfad.
+- **Die Einrichtung ist jetzt eine Engine-Funktion** (`RichteBuchhaltungEin`),
+  die CLI und Oberflaeche gemeinsam benutzen. Dabei behoben:
+  - **Alles oder nichts.** Gebaut wird unter einem temporaeren Namen neben
+    dem Ziel und erst am Ende umbenannt. Vorher hinterliess ein Fehler auf
+    halbem Weg eine Datei mit Firma und ohne Konten, die ein zweiter Versuch
+    dann verweigerte ("bereits ein Mandant angelegt") - nicht mehr zu retten.
+  - **Nie ueber eine bestehende Buchhaltung.** Eine Datei mit Firma wird
+    verweigert; eine leere (der Rest eines frueheren vertippten Pfades) wird
+    ersetzt. Ein Mutationstest ohne diesen Schutz schlaegt drei Pruefungen,
+    darunter "the existing bookkeeping is untouched".
+  - **Ein fehlender Kontenrahmen ist ein Fehler, kein Hinweis.** Bisher legte
+    die Einrichtung die Firma trotzdem an und meldete Erfolg - daher der
+    SKR04-Mandant mit null Konten.
+  - **Die Ergebnisse der Nummernkreise werden geprueft.** Sie wurden
+    verworfen; ein Fehler zeigte sich erst bei der ersten Rechnung.
+
+#### 2026-09-24 *0.22.0*
+- **Die Steuerschluessel gelten ab 01.04.2025 statt ab 01.01.2026.** Ein
+  Geschaeftsjahr 01.04.2025-31.03.2026 war damit in neun von zwoelf Perioden
+  nicht buchbar: `beleg-neu ... --datum 15.06.2025` scheiterte mit "Der
+  Steuerschluessel USt19 ist zum 15.06.2025 nicht gueltig". Das Datum ist eine
+  Entscheidung fuer diese Buchhaltung, keine steuerrechtliche Aussage; der
+  Dateikopf von `data/Steuerschluessel.csv` nennt die tatsaechlichen Stichtage
+  (19/7 % seit 2007, Corona-Saetze 2020, OSS seit 07/2021).
+  - Die beiden Pruefungen, die "nicht gueltig in 2025" festschrieben, pruefen
+    jetzt die Kante selbst: gueltig am 01.04.2025, nicht am 31.03.2025. Die
+    Begruendung der einen ("where a different rate may have applied") war
+    ausserdem falsch -- 2025 galten 19 %.
+
 #### 2026-09-22 *0.21.0*
 - **SKR03 und SKR04 vollstaendig, aus den DATEV-Kontenrahmen-PDFs.** Bisher
   lagen 74 Konten als "Startbestand" vor und SKR04 fehlte ganz -- `--skr SKR04`

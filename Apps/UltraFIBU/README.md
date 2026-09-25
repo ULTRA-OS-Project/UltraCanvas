@@ -18,10 +18,10 @@ European VAT numbers, and a German user interface.
 | Path | What it is |
 |---|---|
 | `engine/` | The headless engine — no UI, no SQL outside the store, unit-tested (`UltraFIBUEngine`) |
-| `cli/` | `ultrafibu`, the command line over that engine |
+| `cli/` | The commands over that engine (`UltraFIBUCli`), and `ultrafibu` without a window for where no UI can be built |
 | `report/` | The printed invoice (`UltraFIBUReport`) — builds a VectorDocument for the framework's PDF writer |
 | `data/` | The chart of accounts, the tax keys and the DATEV column definitions, as data files |
-| `ui/` | The German screens (`ultrafibu-ui`) — Belege, Journal, Summen und Salden, Partner |
+| `ui/` | `ultrafibu` itself: the German screens — Belege, Journal, Summen und Salden, Partner — and, given a command, the commands |
 | `../../Tests/UltraFIBU/` | The engine test suite |
 
 ## Build
@@ -120,8 +120,14 @@ binary.
 ### The screens
 
 ```bash
-ultrafibu-ui buch.db
+ultrafibu buch.db      # or just `ultrafibu`, or a double-click
 ```
+
+One program does both: `ultrafibu` with a command runs it and prints, as in
+the examples above; with nothing, or with a file, it opens the window. Without
+a file - or with one that holds no bookkeeping yet - the window starts with a
+form that sets one up or opens an existing one. Where the UI library cannot be
+built, `ultrafibu` is the commands alone.
 
 Four tabs over the same file the CLI writes: **Belege**, **Journal**, **Summen
 und Salden** and **Partner**. Each is a table you can sort by clicking a column

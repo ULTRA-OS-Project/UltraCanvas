@@ -1708,6 +1708,15 @@ namespace UltraCanvas {
         else
             py = globalPos.y - popupH;              // above
 
+        // Kept inside the window vertically as it already was horizontally. A
+        // calendar that fits neither below nor above the field used to be
+        // placed at a negative y, which cut off its header - the month name
+        // and the arrows to change it - so no other month could be reached.
+        // Pinned to the top instead, the navigation stays usable even when the
+        // grid covers the field.
+        if (py + popupH > windowHeight) py = windowHeight - popupH;
+        if (py < 0.0f) py = 0.0f;
+
         float px = globalPos.x;
         if (px + popupW > windowWidth) px = std::max(0.0f, windowWidth - popupW);
 

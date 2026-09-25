@@ -7,9 +7,9 @@
 # lookup lands on it. The window and taskbar icon come from the same PNG by a
 # different route — ui/main.cpp hands it to SetDefaultWindowIcon.
 #
-# No MimeType= and no field code in Exec, deliberately. ultrafibu-ui takes a
-# bookkeeping file as its argument, but it does not create one: setting up a
-# company, its fiscal year and its chart of accounts is `ultrafibu einrichten`.
+# No MimeType= and no field code in Exec, deliberately. ultrafibu opens a
+# bookkeeping file given as its argument, and without one shows the form that
+# sets one up or picks one.
 # Claiming a file association would route double-clicked files to a program
 # that refuses them, and a .db extension is not UltraFIBU's to claim in any
 # case — it belongs to SQLite and to everything else built on it.
@@ -22,8 +22,8 @@ Name=UltraFIBU
 GenericName=Buchhaltung
 Comment=Deutsche Buchhaltung mit DATEV-Import und -Export, Umsatzsteuer-Voranmeldung und One-Stop-Shop
 Comment[en]=German bookkeeping with DATEV import and export, VAT returns and One-Stop-Shop
-Exec=ultrafibu-ui
-TryExec=ultrafibu-ui
+Exec=ultrafibu
+TryExec=ultrafibu
 Icon=UltraFIBU
 Terminal=false
 StartupNotify=true
