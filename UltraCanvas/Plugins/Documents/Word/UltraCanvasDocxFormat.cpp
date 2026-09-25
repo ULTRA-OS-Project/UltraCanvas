@@ -13,7 +13,9 @@
 
 #include "tinyxml2.h"
 
+#include <cmath>
 #include <map>
+#include <set>
 #include <sstream>
 
 namespace UltraCanvas {
@@ -77,6 +79,13 @@ private:
     std::map<std::string, std::string> styleNames_;        // styleId -> display name
     std::map<std::string, std::string> numIdToAbstract_;
     std::map<std::string, std::map<int, bool>> abstractNumOrdered_;   // abstractId -> ilvl -> ordered
+    std::map<std::string, std::map<int, int>> abstractNumStart_;      // abstractId -> ilvl -> w:start
+    // numId -> ilvl -> w:startOverride, applied when that numId is first used
+    std::map<std::string, std::map<int, int>> numStartOverride_;
+    std::set<std::string> numIdsSeen_;
+    // Word counts per abstract list: every paragraph of that list advances
+    // one counter per level, whatever paragraphs sit between them.
+    RichListNumbering numbering_;
     std::map<std::string, int> mediaByTarget_;              // package path -> media index
     bool pendingPageBreak_ = false;
 
@@ -159,6 +168,9 @@ private:
                 auto* numFmt = lvl->FirstChildElement("w:numFmt");
                 std::string fmt = numFmt ? Attr(numFmt, "w:val") : "";
                 abstractNumOrdered_[abstractId][ilvl] = (fmt != "bullet" && !fmt.empty());
+                if (auto* start = lvl->FirstChildElement("w:start")) {
+                    abstractNumStart_[abstractId][ilvl] = std::max(1, start->IntAttribute("w:val", 1));
+                }
             }
         }
         for (auto* num = root->FirstChildElement("w:num"); num;
@@ -166,6 +178,13 @@ private:
             auto* abstractRef = num->FirstChildElement("w:abstractNumId");
             if (abstractRef) {
                 numIdToAbstract_[Attr(num, "w:numId")] = Attr(abstractRef, "w:val");
+            }
+            for (auto* lvlOverride = num->FirstChildElement("w:lvlOverride"); lvlOverride;
+                 lvlOverride = lvlOverride->NextSiblingElement("w:lvlOverride")) {
+                if (auto* start = lvlOverride->FirstChildElement("w:startOverride")) {
+                    numStartOverride_[Attr(num, "w:numId")][lvlOverride->IntAttribute("w:ilvl", 0)] =
+                        std::max(1, start->IntAttribute("w:val", 1));
+                }
             }
         }
     }
@@ -376,6 +395,7 @@ private:
     }
 
     void ParseParagraph(tinyxml2::XMLElement* p) {
+        int listNumber = 0;   // the number an ordered list item carries
         RichDocBlock block;
         block.type = RichBlockType::Paragraph;
         bool hasBottomBorder = false;
@@ -415,13 +435,35 @@ private:
                     block.type = RichBlockType::ListItem;
                     block.listLevel = ilvl ? std::atoi(Attr(ilvl, "w:val")) : 0;
                     block.orderedList = false;
-                    auto abstractIt = numIdToAbstract_.find(Attr(numId, "w:val"));
+                    const std::string numIdValue = Attr(numId, "w:val");
+                    auto abstractIt = numIdToAbstract_.find(numIdValue);
                     if (abstractIt != numIdToAbstract_.end()) {
                         auto levels = abstractNumOrdered_.find(abstractIt->second);
                         if (levels != abstractNumOrdered_.end()) {
                             auto lvlIt = levels->second.find(block.listLevel);
                             if (lvlIt != levels->second.end()) block.orderedList = lvlIt->second;
                         }
+                    }
+                    if (block.orderedList) {
+                        const std::string listKey = abstractIt != numIdToAbstract_.end()
+                                ? abstractIt->second : "num-" + numIdValue;
+                        // A numId with a start override restarts the list the
+                        // first time it is used ("restart numbering" in Word).
+                        if (numIdsSeen_.insert(numIdValue).second) {
+                            auto overrides = numStartOverride_.find(numIdValue);
+                            if (overrides != numStartOverride_.end()) {
+                                for (const auto& [level, start] : overrides->second) {
+                                    numbering_.Restart(listKey, level, start);
+                                }
+                            }
+                        }
+                        int startAt = 1;
+                        auto starts = abstractNumStart_.find(listKey);
+                        if (starts != abstractNumStart_.end()) {
+                            auto it = starts->second.find(block.listLevel);
+                            if (it != starts->second.end()) startAt = it->second;
+                        }
+                        listNumber = numbering_.Next(listKey, block.listLevel, startAt);
                     }
                 }
             }
@@ -451,6 +493,9 @@ private:
         bool imageOnly = block.runs.empty() && !ctx.trailingImages.empty();
         if (!imageOnly && !emptyParagraph) {
             doc_->blocks.push_back(std::move(block));
+            if (listNumber > 0) {
+                RichListNumbering::Apply(doc_->blocks, doc_->blocks.size() - 1, listNumber);
+            }
         } else if (emptyParagraph && !pendingPageBreak_) {
             doc_->blocks.push_back(std::move(block));   // keep intentional blank lines
         }
@@ -465,6 +510,18 @@ private:
         }
     }
 
+    static RichTextAlign ParagraphAlignment(tinyxml2::XMLElement* p) {
+        auto* pPr = p->FirstChildElement("w:pPr");
+        auto* jc = pPr ? pPr->FirstChildElement("w:jc") : nullptr;
+        if (!jc) return RichTextAlign::Default;
+        std::string v = Attr(jc, "w:val");
+        if (v == "center") return RichTextAlign::Center;
+        if (v == "right" || v == "end") return RichTextAlign::Right;
+        if (v == "both" || v == "distribute") return RichTextAlign::Justify;
+        if (v == "left" || v == "start") return RichTextAlign::Left;
+        return RichTextAlign::Default;
+    }
+
     void ParseTable(tinyxml2::XMLElement* tbl) {
         RichDocBlock block;
         block.type = RichBlockType::Table;
@@ -477,6 +534,17 @@ private:
         // where that cell lives, keyed by the grid column it occupies.
         struct OpenMerge { size_t rowIndex; size_t cellIndex; };
         std::map<size_t, OpenMerge> openMerge;
+
+        // Column proportions (twips) from the table grid.
+        if (auto* grid = tbl->FirstChildElement("w:tblGrid")) {
+            for (auto* col = grid->FirstChildElement("w:gridCol"); col;
+                 col = col->NextSiblingElement("w:gridCol")) {
+                block.tableColumnWidths.push_back(static_cast<float>(col->IntAttribute("w:w", 0)));
+            }
+            for (float w : block.tableColumnWidths) {
+                if (w <= 0) { block.tableColumnWidths.clear(); break; }
+            }
+        }
 
         for (auto* tr = tbl->FirstChildElement("w:tr"); tr;
              tr = tr->NextSiblingElement("w:tr")) {
@@ -525,6 +593,9 @@ private:
                 for (auto* p = tc->FirstChildElement("w:p"); p;
                      p = p->NextSiblingElement("w:p")) {
                     if (!firstParagraph) ctx.pendingLineBreak = true;
+                    // Alignment is a paragraph property; the cell takes its
+                    // first paragraph's.
+                    if (firstParagraph) cell.align = ParagraphAlignment(p);
                     firstParagraph = false;
                     ParseInlineContainer(p, "", ctx);
                 }
@@ -800,6 +871,16 @@ private:
             << "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>";
     }
 
+    static const char* JustificationFor(RichTextAlign align) {
+        switch (align) {
+            case RichTextAlign::Center: return "center";
+            case RichTextAlign::Right: return "right";
+            case RichTextAlign::Justify: return "both";
+            case RichTextAlign::Left: return "left";
+            default: return nullptr;
+        }
+    }
+
     void WriteTable(std::ostringstream& xml, const RichDocBlock& block) {
         size_t columnCount = 0;
         for (const auto& row : block.tableRows) {
@@ -817,7 +898,19 @@ private:
                "<w:insideH w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
                "<w:insideV w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
                "</w:tblBorders></w:tblPr><w:tblGrid>";
-        for (size_t c = 0; c < columnCount; ++c) xml << "<w:gridCol/>";
+        // Known proportions become twips across a 9000-twip (6.25in) table.
+        const std::vector<float>& widths = block.tableColumnWidths;
+        float totalWidth = 0.0f;
+        for (float w : widths) totalWidth += std::max(0.0f, w);
+        const bool widthsKnown = widths.size() == columnCount && totalWidth > 0.0f;
+        for (size_t c = 0; c < columnCount; ++c) {
+            if (widthsKnown) {
+                const long twips = std::max(1L, std::lround(9000.0f * widths[c] / totalWidth));
+                xml << "<w:gridCol w:w=\"" << std::to_string(twips) << "\"/>";
+            } else {
+                xml << "<w:gridCol/>";
+            }
+        }
         xml << "</w:tblGrid>\n";
         // Walk the grid, not the cell list: a row-spanning cell is written once
         // with <w:vMerge w:val="restart"/>, and every grid position it covers
@@ -856,6 +949,9 @@ private:
                     xml << "<w:vMerge w:val=\"restart\"/>";
                 }
                 xml << "</w:tcPr><w:p>";
+                if (const char* jc = JustificationFor(cell.align)) {
+                    xml << "<w:pPr><w:jc w:val=\"" << jc << "\"/></w:pPr>";
+                }
                 std::vector<RichTextRun> runs = cell.runs;
                 if (row.header) {
                     for (auto& run : runs) run.bold = true;

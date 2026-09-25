@@ -100,10 +100,10 @@ bool UCWordDocumentIO::Load(const std::string& filePath, UCRichDocument& outDocu
         case WordDocumentFormat::Docx:
             return LoadDocx(filePath, outDocument, outError);
         case WordDocumentFormat::LegacyDoc: {
-            // Text-only extraction; the binary format's rich formatting is
-            // not parsed (and never written — export goes to .docx).
+            // Read-only: the binary format is never written (export goes
+            // to .docx or .odt).
             std::string extractError;
-            if (LoadDocText(filePath, outDocument, extractError)) {
+            if (LoadDoc(filePath, outDocument, extractError)) {
                 return true;
             }
             outError = "Could not read this legacy Word 97-2003 (.doc) file ("

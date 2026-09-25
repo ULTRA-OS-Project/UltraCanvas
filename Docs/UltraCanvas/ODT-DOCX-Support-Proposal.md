@@ -22,11 +22,14 @@ Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
 >   loader.
 > - Texter opens `.odt`/`.docx` as editable Markdown and saves back to
 >   either format.
-> - Legacy `.doc` text-only import — CFB container + WordDocument piece
->   table (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`), with
->   CP1252/UTF-16 pieces, field-instruction stripping and table-mark
->   handling. Export to `.doc` stays unsupported by design (save as
->   `.docx`).
+> - Legacy `.doc` import **with formatting** (since 2026-09) — CFB
+>   container, piece table, CHPX/PAPX FKPs, stylesheet and list tables
+>   (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`): headings,
+>   character formatting, alignment, bullet/numbered lists, tables with
+>   column widths and cell alignment, hyperlinks and PNG/JPEG pictures.
+>   Export to `.doc` stays unsupported by design (save as `.docx`).
+>   What each format carries and what is still missing is tracked in
+>   [WordProcessingFeatureCoverage.md](WordProcessingFeatureCoverage.md).
 > - Round-trip tests: `Tests/WordFormatsTest.cpp` + a real Word 97 fixture
 >   (`Tests/fixtures/legacy-word97.doc`); also validated against
 >   LibreOffice Writer/Calc in both directions.
@@ -332,6 +335,12 @@ items belong in the same work stream because they share `UCZipPackage`:
 
 Writing a full Word 97 binary parser is not proportionate to demand.
 Recommended tiering:
+
+> **Superseded (2026-09):** the text-only tier below shipped first; the
+> reader now also parses the formatting (FKPs, stylesheet, lists, tables).
+> Real letters opened as unstyled lines with their table flattened to tabs,
+> which is what made the formatted reader worth its size. See
+> [WordProcessingFeatureCoverage.md](WordProcessingFeatureCoverage.md).
 
 - **Import, text-only (recommended):** a compact CFB (Compound File Binary)
   reader + `WordDocument` stream piece-table walk extracts the full text,

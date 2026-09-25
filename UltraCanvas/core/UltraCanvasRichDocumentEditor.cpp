@@ -2082,6 +2082,12 @@ bool UCRichDocumentEditor::InsertTableColumn(int blockIndex, int gridColumn, boo
             }
             if (!grew) InsertFreshCellAt(table, r, newColumn);
         }
+        // The new column takes the width of the one it was inserted beside,
+        // so the document's own column proportions survive the edit.
+        std::vector<float>& widths = table.tableColumnWidths;
+        if (static_cast<int>(widths.size()) == grid.columnCount) {
+            widths.insert(widths.begin() + newColumn, widths[static_cast<size_t>(gridColumn)]);
+        }
 
         if (caret.blockIndex == blockIndex && caret.InCell()) {
             // The caret's cell may have gained an index if a fresh cell landed
@@ -2131,6 +2137,10 @@ bool UCRichDocumentEditor::DeleteTableColumn(int blockIndex, int gridColumn) {
             if (std::find(target.begin(), target.end(), id) == target.end()) {
                 target.push_back(id);
             }
+        }
+        std::vector<float>& widths = table.tableColumnWidths;
+        if (static_cast<int>(widths.size()) == grid.columnCount) {
+            widths.erase(widths.begin() + gridColumn);
         }
         for (const auto& [r, cellIndex] : narrowing) {
             RichTableCell& cell = table.tableRows[static_cast<size_t>(r)]

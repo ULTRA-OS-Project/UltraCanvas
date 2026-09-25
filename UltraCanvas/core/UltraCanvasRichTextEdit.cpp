@@ -51,20 +51,11 @@ TextAlignment ToTextAlignment(RichTextAlign align) {
     }
 }
 
-// Ordinal of a list item among its siblings at the same level, so numbering
-// restarts after a paragraph and after a deeper sublist closes.
+// Ordinal of a list item among its siblings at the same level - the model's
+// one definition, so the view draws the number the document reader meant.
 int OrderedItemNumber(const UCRichDocumentEditor& editor, int blockIndex) {
-    const RichDocBlock& block = editor.GetBlock(blockIndex);
-    int number = 1;
-    for (int i = blockIndex - 1; i >= 0; i--) {
-        const RichDocBlock& previous = editor.GetBlock(i);
-        if (previous.type != RichBlockType::ListItem) break;
-        if (previous.listLevel < block.listLevel) break;
-        if (previous.listLevel > block.listLevel) continue;
-        if (previous.orderedList != block.orderedList) break;
-        number++;
-    }
-    return number;
+    return RichDocOrderedItemNumber(editor.GetDocument()->blocks,
+                                    static_cast<size_t>(blockIndex));
 }
 
 } // namespace
@@ -405,6 +396,27 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                 break;
             }
             float columnWidth = std::max(24.0f, (visibleArea.width - indent) / static_cast<float>(columnCount));
+            // Column geometry: the document's own relative widths when it has
+            // one per grid column (a narrow date column beside a wide text
+            // one), otherwise equal shares - scaled to the text column either
+            // way. A width list that no longer matches the grid (a column
+            // inserted since) falls back to equal shares.
+            std::vector<float> columnLeft(columnCount + 1, 0.0f);
+            {
+                const std::vector<float>& widths = block.tableColumnWidths;
+                float total = 0.0f;
+                bool usable = widths.size() == columnCount;
+                for (float w : widths) {
+                    if (!(w > 0.0f)) usable = false;
+                    total += w;
+                }
+                const float available = std::max(24.0f * static_cast<float>(columnCount),
+                                                 visibleArea.width - indent);
+                for (size_t c = 0; c < columnCount; c++) {
+                    float share = usable ? available * widths[c] / total : columnWidth;
+                    columnLeft[c + 1] = columnLeft[c] + std::max(24.0f, share);
+                }
+            }
 
             // A cell's position is its GRID column, which is not its index in
             // the row once anything spans: a row-spanning cell above occupies a
@@ -445,17 +457,19 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                                                     static_cast<int>(columnCount - gridColumn));
                     const int rowSpan = std::min(std::max(1, modelCell.rowSpan),
                                                  static_cast<int>(block.tableRows.size() - r));
-                    const float cellWidth = columnWidth * static_cast<float>(columnSpan);
+                    const float cellWidth = columnLeft[gridColumn + static_cast<size_t>(columnSpan)]
+                                          - columnLeft[gridColumn];
 
                     RichDocBlock cellBlock;
                     cellBlock.type = RichBlockType::Paragraph;
+                    cellBlock.align = modelCell.align;
                     auto cell = std::make_unique<BlockLayout>();
                     cell->layout = MakeRunsLayout(ctx, cellBlock, modelCell.runs,
                                                   cellWidth - 8.0f, nullptr, blockIndex,
                                                   &cell->inlineImages);
                     ApplySelectionAttributes(cell->layout.get(), blockIndex,
                                              static_cast<int>(r), static_cast<int>(cellIndex));
-                    cell->bounds = Rect2Df(indent + static_cast<float>(gridColumn) * columnWidth, y,
+                    cell->bounds = Rect2Df(indent + columnLeft[gridColumn], y,
                                            cellWidth,
                                            static_cast<float>(cell->layout->GetLayoutHeight()));
                     // A cell spanning rows must not force this row to its full
@@ -495,7 +509,7 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                 cell.bounds.height = std::max(cell.bounds.height, bottom - cell.bounds.y);
             }
 
-            bl.bounds.width = columnWidth * static_cast<float>(columnCount);
+            bl.bounds.width = columnLeft[columnCount];
             bl.bounds.height = y;
             break;
         }

@@ -689,7 +689,11 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
                 if (!previousIsListItem) blockSeparator();
                 else first = false;
                 md << std::string(static_cast<size_t>(std::max(0, block.listLevel)) * 2, ' ')
-                   << (block.orderedList ? "1. " : "- ")
+                   // A list that starts at N (or runs on past an interruption)
+                   // spells N on its item: Markdown starts a list at its first
+                   // number and counts on from there.
+                   << (!block.orderedList ? std::string("- ")
+                       : std::to_string(block.listStartNumber > 0 ? block.listStartNumber : 1) + ". ")
                    << RunsToMarkdown(block.runs, false, &mediaPaths) << "\n";
                 break;
             }
@@ -1055,7 +1059,14 @@ std::string UCRichDocument::ToHTML() const {
                     listOrderedStack.push_back(block.orderedList);
                     ++openListLevel;
                 }
-                html << "<li>" << RunsToHtml(block.runs, &media) << "</li>\n";
+                // <li value> carries a number the item holds itself, which
+                // also keeps a list running on after an interruption.
+                if (block.orderedList && block.listStartNumber > 0) {
+                    html << "<li value=\"" << block.listStartNumber << "\">";
+                } else {
+                    html << "<li>";
+                }
+                html << RunsToHtml(block.runs, &media) << "</li>\n";
                 break;
             }
             case RichBlockType::CodeBlock:
@@ -1074,6 +1085,9 @@ std::string UCRichDocument::ToHTML() const {
                         html << "<" << tag;
                         if (cell.columnSpan > 1) html << " colspan=\"" << cell.columnSpan << "\"";
                         if (cell.rowSpan > 1) html << " rowspan=\"" << cell.rowSpan << "\"";
+                        if (const char* alignCss = AlignCss(cell.align)) {
+                            html << " style=\"text-align:" << alignCss << "\"";
+                        }
                         html << ">" << RunsToHtml(cell.runs, &media) << "</" << tag << ">";
                     }
                     html << "</tr>\n";
@@ -1147,6 +1161,69 @@ std::string UCRichDocument::ToPlainText() const {
         }
     }
     return text.str();
+}
+
+// ===== LIST NUMBERING =====
+
+int RichDocOrderedItemNumber(const std::vector<RichDocBlock>& blocks, size_t index) {
+    if (index >= blocks.size()) return 0;
+    const RichDocBlock& block = blocks[index];
+    if (block.type != RichBlockType::ListItem || !block.orderedList) return 0;
+    if (block.listStartNumber > 0) return block.listStartNumber;
+    int number = 1;
+    for (size_t i = index; i-- > 0;) {
+        const RichDocBlock& previous = blocks[i];
+        if (previous.type != RichBlockType::ListItem) break;
+        if (previous.listLevel < block.listLevel) break;
+        if (previous.listLevel > block.listLevel) continue;
+        if (previous.orderedList != block.orderedList) break;
+        if (previous.listStartNumber > 0) return previous.listStartNumber + number;
+        number++;
+    }
+    return number;
+}
+
+std::vector<RichListNumbering::Counter>& RichListNumbering::LevelsOf(const std::string& listKey) {
+    for (auto& entry : lists_) {
+        if (entry.first == listKey) return entry.second;
+    }
+    lists_.emplace_back(listKey, std::vector<Counter>(10));
+    return lists_.back().second;
+}
+
+int RichListNumbering::Next(const std::string& listKey, int level, int startAt) {
+    std::vector<Counter>& levels = LevelsOf(listKey);
+    const size_t l = static_cast<size_t>(std::clamp(level, 0, static_cast<int>(levels.size()) - 1));
+    Counter& counter = levels[l];
+    if (counter.restartAt > 0) {
+        counter.value = counter.restartAt;
+        counter.restartAt = 0;
+    } else if (!counter.started) {
+        counter.value = startAt;
+    } else {
+        counter.value++;
+    }
+    counter.started = true;
+    // A deeper level begins again under this item.
+    for (size_t deeper = l + 1; deeper < levels.size(); deeper++) {
+        levels[deeper].started = false;
+        levels[deeper].restartAt = 0;
+    }
+    return counter.value;
+}
+
+void RichListNumbering::Restart(const std::string& listKey, int level, int number) {
+    std::vector<Counter>& levels = LevelsOf(listKey);
+    const size_t l = static_cast<size_t>(std::clamp(level, 0, static_cast<int>(levels.size()) - 1));
+    levels[l].restartAt = number;
+}
+
+void RichListNumbering::Apply(std::vector<RichDocBlock>& blocks, size_t index, int number) {
+    if (index >= blocks.size() || number <= 0) return;
+    RichDocBlock& block = blocks[index];
+    if (block.type != RichBlockType::ListItem || !block.orderedList) return;
+    block.listStartNumber = 0;
+    if (RichDocOrderedItemNumber(blocks, index) != number) block.listStartNumber = number;
 }
 
 } // namespace UltraCanvas

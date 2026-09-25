@@ -4,8 +4,8 @@
 // Markdown/HTML/plain-text serializers consume it, so no format is ever
 // coupled directly to a UI element. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md.
 // The model is deliberately UI-free: only std types, no framework headers.
-// Version: 1.1.0
-// Last Modified: 2026-09-09
+// Version: 1.2.0
+// Last Modified: 2026-09-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -95,6 +95,9 @@ struct RichTableCell {
     std::vector<RichTextRun> runs;
     int columnSpan = 1;
     int rowSpan = 1;
+    // Horizontal alignment of the cell's text: a column of amounts is
+    // right-aligned, a date column centred. Default = the table's left.
+    RichTextAlign align = RichTextAlign::Default;
 };
 
 struct RichTableRow {
@@ -108,9 +111,19 @@ struct RichDocBlock {
     int headingLevel = 0;               // Heading: 1..6
     bool orderedList = false;           // ListItem
     int listLevel = 0;                  // ListItem: 0-based nesting depth
+    // Ordered ListItem: > 0 = the item carries this number, and the siblings
+    // after it count on from it. 0 = count from the previous sibling (or 1).
+    // Word processors keep one list's numbering running across paragraphs
+    // placed between its items ("1. ... <note> 2. ..."), which the model's
+    // flat block list cannot see on its own; readers set this on the first
+    // item after such an interruption, and on a list that starts at N.
+    int listStartNumber = 0;
     RichTextAlign align = RichTextAlign::Default;
     std::string codeLanguage;           // CodeBlock fence language hint
     std::vector<RichTableRow> tableRows;
+    // Table: relative column widths (any unit - points as read), one per grid
+    // column. Empty = equal columns. A renderer scales them to its width.
+    std::vector<float> tableColumnWidths;
     int mediaIndex = -1;                // Image
     std::string imageAltText;           // Image
     float imageWidthPt = 0.0f;          // Image: 0 = unknown
@@ -154,6 +167,36 @@ private:
 // past the last row, a zero span) still produces a consistent grid rather than
 // reading out of bounds.
 RichTableGrid BuildTableGrid(const RichDocBlock& table);
+
+// The number an ordered ListItem at `index` displays: its own
+// listStartNumber when it has one, else one more than the previous sibling at
+// its level, counting back until a paragraph, a shallower item or a switch
+// between ordered and bullet ends the list. 0 for anything that is not an
+// ordered list item. The one definition renderers and readers share, so what
+// a reader intends and what the view draws cannot disagree.
+int RichDocOrderedItemNumber(const std::vector<RichDocBlock>& blocks, size_t index);
+
+// Word-processor list numbering, as ODT, DOCX and DOC define it: one counter
+// per list and nesting level. An item advances its level and restarts every
+// deeper level, so a sublist begins again at its start value under each new
+// parent item, while items of the same list keep counting across whatever
+// paragraphs sit between them.
+class RichListNumbering {
+public:
+    // Number of the next item of list `listKey` at `level` (0-based) whose
+    // level starts at `startAt`.
+    int Next(const std::string& listKey, int level, int startAt = 1);
+    // Makes the next item of that list and level take `number`.
+    void Restart(const std::string& listKey, int level, int number);
+    // Stores `number` on the ordered item at `index` when the renderer's own
+    // count (RichDocOrderedItemNumber) would show something else.
+    static void Apply(std::vector<RichDocBlock>& blocks, size_t index, int number);
+
+private:
+    struct Counter { int value = 0; bool started = false; int restartAt = 0; };
+    std::vector<std::pair<std::string, std::vector<Counter>>> lists_;
+    std::vector<Counter>& LevelsOf(const std::string& listKey);
+};
 
 struct RichDocumentMetadata {
     std::string title;

@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -54,6 +55,117 @@ static std::string TmpPath(const std::string& name) { return gTmpDir + "/" + nam
 static void WriteFile(const std::string& path, const void* data, size_t size) {
     std::ofstream out(path, std::ios::binary);
     out.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));
+}
+
+// Finds the first block whose text contains `needle` (nullptr if none).
+static const RichDocBlock* FindBlock(const UCRichDocument& d, const std::string& needle,
+                                     size_t* index = nullptr) {
+    for (size_t i = 0; i < d.blocks.size(); ++i) {
+        if (UCRichDocument::ConcatenateRunText(d.blocks[i].runs).find(needle) != std::string::npos) {
+            if (index) *index = i;
+            return &d.blocks[i];
+        }
+    }
+    return nullptr;
+}
+
+// Finds the run whose text is exactly `text` in block `b`.
+static const RichTextRun* FindRun(const RichDocBlock* b, const std::string& text) {
+    if (!b) return nullptr;
+    for (const auto& run : b->runs) {
+        if (run.text == text) return &run;
+    }
+    return nullptr;
+}
+
+static std::string Lower(std::string s) {
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+// Tests/fixtures/word97-formatting.{fodt,odt,doc} are one document: the .fodt
+// is the hand-written source, the .odt and .doc are LibreOffice's saves of it
+// (soffice --convert-to odt / "doc:MS Word 97"). Every reader has to recover
+// the same structure from them.
+static void CheckFormattingFixture(const UCRichDocument& d, const std::string& label) {
+    CHECK_MSG(!d.blocks.empty() && d.blocks[0].type == RichBlockType::Heading
+              && d.blocks[0].headingLevel == 1, label);
+
+    const RichDocBlock* styled = FindBlock(d, "Plain");
+    CHECK_MSG(styled != nullptr, label);
+    if (styled) {
+        // Spaces between two styled spans are real spaces.
+        CHECK_MSG(UCRichDocument::ConcatenateRunText(styled->runs)
+                      == "Plain bold red under struck E=mc2 big link text.", label);
+        const RichTextRun* run = FindRun(styled, "bold");
+        CHECK_MSG(run && run->bold, label + ": bold");
+        run = FindRun(styled, "red");
+        CHECK_MSG(run && Lower(run->color) == "#c00000", label + ": colour");
+        run = FindRun(styled, "under");
+        CHECK_MSG(run && run->underline, label + ": underline");
+        run = FindRun(styled, "struck");
+        CHECK_MSG(run && run->strikethrough, label + ": strike");
+        run = FindRun(styled, "2");
+        CHECK_MSG(run && run->superscript, label + ": superscript");
+        run = FindRun(styled, "big");
+        CHECK_MSG(run && run->fontSizePt == 16.0f, label + ": size");
+        run = FindRun(styled, "link text");
+        CHECK_MSG(run && run->linkTarget == "https://example.org/doc", label + ": link");
+    }
+
+    const RichDocBlock* centred = FindBlock(d, "Centred line");
+    CHECK_MSG(centred && centred->align == RichTextAlign::Center, label + ": alignment");
+
+    const RichDocBlock* nested = FindBlock(d, "bullet A.1");
+    CHECK_MSG(nested && nested->type == RichBlockType::ListItem && !nested->orderedList
+              && nested->listLevel == 1, label + ": nested bullet");
+
+    // Numbering runs on across the interrupting paragraph, and a list can
+    // start at 5.
+    auto numberOf = [&](const std::string& text) {
+        size_t index = 0;
+        return FindBlock(d, text, &index) ? RichDocOrderedItemNumber(d.blocks, index) : -1;
+    };
+    CHECK_MSG(numberOf("step one") == 1, label + ": step one");
+    CHECK_MSG(numberOf("step two") == 2, label + ": step two");
+    CHECK_MSG(numberOf("step three") == 3, label + ": numbering continues");
+    CHECK_MSG(numberOf("item five") == 5, label + ": start value");
+    CHECK_MSG(numberOf("item six") == 6, label + ": after start value");
+
+    const RichDocBlock* table = nullptr;
+    for (const auto& b : d.blocks) {
+        if (b.type == RichBlockType::Table) { table = &b; break; }
+    }
+    CHECK_MSG(table && table->tableRows.size() == 3, label + ": table");
+    if (table && table->tableRows.size() == 3) {
+        CHECK_MSG(table->tableRows[0].header, label + ": header row");
+        CHECK_MSG(table->tableRows[0].cells[0].align == RichTextAlign::Center, label + ": header centred");
+        CHECK_MSG(table->tableRows[1].cells[1].align == RichTextAlign::Right, label + ": amount right");
+        CHECK_MSG(UCRichDocument::ConcatenateRunText(table->tableRows[1].cells[1].runs) == "1,000.00",
+                  label);
+        CHECK_MSG(table->tableColumnWidths.size() == 2, label + ": column widths");
+        if (table->tableColumnWidths.size() == 2) {
+            const float ratio = table->tableColumnWidths[1] / table->tableColumnWidths[0];
+            CHECK_MSG(ratio > 2.9f && ratio < 3.1f, label + ": 1.5in : 4.5in");
+        }
+    }
+
+    const RichDocBlock* picture = FindBlock(d, "Picture:");
+    bool inlinePicture = false;
+    if (picture) {
+        for (const auto& run : picture->runs) {
+            if (run.IsInlineImage() && run.mediaIndex >= 0
+                && run.mediaIndex < static_cast<int>(d.media.size())
+                && d.media[static_cast<size_t>(run.mediaIndex)].mimeType == "image/png") {
+                inlinePicture = true;
+            }
+        }
+    }
+    CHECK_MSG(inlinePicture, label + ": inline PNG picture");
+
+    size_t afterBreak = 0;
+    CHECK_MSG(FindBlock(d, "After the page break.", &afterBreak) && afterBreak > 0
+              && d.blocks[afterBreak - 1].type == RichBlockType::PageBreak, label + ": page break");
 }
 
 static UCRichDocument BuildSampleDocument() {
@@ -227,7 +339,7 @@ int main(int argc, char** argv) {
         CHECK(!err.empty());
     }
 
-    // ===== 5b. Legacy .doc text extraction (real Word 97 fixture) =====
+    // ===== 5b. Legacy .doc import (real Word 97 fixture) =====
 #ifdef WORDTEST_FIXTURE_DIR
     {
         std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/legacy-word97.doc";
@@ -250,6 +362,72 @@ int main(int argc, char** argv) {
         }
     }
 #endif
+
+    // ===== 5c. Formatted import: the same document as .odt and as .doc =====
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        for (const char* name : {"word97-formatting.odt", "word97-formatting.doc"}) {
+            const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
+            UCRichDocument imported;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(fixture, imported, err), err);
+            CheckFormattingFixture(imported, name);
+
+            // What was read survives a save: list numbers, cell alignment and
+            // column widths go back out through both writers.
+            for (const char* ext : {".odt", ".docx"}) {
+                const std::string saved = TmpPath(std::string("resaved-") + name + ext);
+                CHECK_MSG(UCWordDocumentIO::Save(saved, imported, err), err);
+                UCRichDocument back;
+                CHECK_MSG(UCWordDocumentIO::Load(saved, back, err), err);
+                const std::string label = std::string(name) + " -> " + ext;
+                const RichDocBlock* table = nullptr;
+                for (const auto& b : back.blocks) {
+                    if (b.type == RichBlockType::Table) { table = &b; break; }
+                }
+                CHECK_MSG(table && table->tableRows.size() == 3
+                          && table->tableRows[1].cells[1].align == RichTextAlign::Right, label);
+                CHECK_MSG(table && table->tableColumnWidths.size() == 2
+                          && table->tableColumnWidths[1] > 2.9f * table->tableColumnWidths[0], label);
+                if (std::string(ext) == ".odt") {
+                    size_t index = 0;
+                    CHECK_MSG(FindBlock(back, "step three", &index)
+                              && RichDocOrderedItemNumber(back.blocks, index) == 3, label);
+                    CHECK_MSG(FindBlock(back, "item five", &index)
+                              && RichDocOrderedItemNumber(back.blocks, index) == 5, label);
+                }
+            }
+        }
+    }
+#endif
+
+    // ===== 5d. List numbering: per list and level =====
+    {
+        RichListNumbering numbering;
+        CHECK(numbering.Next("a", 0) == 1);
+        CHECK(numbering.Next("a", 0) == 2);
+        CHECK(numbering.Next("a", 1) == 1);
+        CHECK(numbering.Next("a", 1) == 2);
+        CHECK(numbering.Next("b", 0, 7) == 7);     // another list, its own start
+        CHECK(numbering.Next("a", 0) == 3);         // "a" ran on past "b"
+        CHECK(numbering.Next("a", 1) == 1);         // a sublist restarts under a new parent
+        numbering.Restart("a", 0, 10);
+        CHECK(numbering.Next("a", 0) == 10);
+
+        // Apply stores a number only where the renderer's count differs.
+        std::vector<RichDocBlock> blocks(3);
+        for (auto& b : blocks) { b.type = RichBlockType::ListItem; b.orderedList = true; }
+        blocks[1].type = RichBlockType::Paragraph;
+        blocks[1].orderedList = false;
+        RichListNumbering::Apply(blocks, 0, 1);
+        RichListNumbering::Apply(blocks, 2, 2);
+        CHECK(blocks[0].listStartNumber == 0);
+        CHECK(blocks[2].listStartNumber == 2);
+        CHECK(RichDocOrderedItemNumber(blocks, 2) == 2);
+        UCRichDocument numbered;
+        numbered.blocks = blocks;
+        CHECK(numbered.ToMarkdown().find("2. ") != std::string::npos);
+    }
 
     // ===== 6. Markdown emission and re-parse =====
     {
@@ -682,6 +860,41 @@ int main(int argc, char** argv) {
         // paragraph — none from the text-box contact line.
         CHECK_MSG(breaks == 1, std::to_string(breaks));
         CHECK_MSG(breakBeforeContactTwo == 0, "no page break splits the contact block");
+    }
+
+    // ===== 11d. A table of contents shows the text it was built into =====
+    {
+        std::string contentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-content "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "office:version=\"1.2\">"
+            "<office:body><office:text>"
+            "<text:table-of-content text:name=\"TOC\">"
+            "<text:table-of-content-source><text:index-title-template>Contents"
+            "</text:index-title-template></text:table-of-content-source>"
+            "<text:index-body>"
+            "<text:index-title><text:p>Contents</text:p></text:index-title>"
+            "<text:p>Introduction\t1</text:p><text:p>Results\t4</text:p>"
+            "</text:index-body></text:table-of-content>"
+            "<text:h text:outline-level=\"1\">Introduction</text:h>"
+            "</office:text></office:body></office:document-content>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("toc.odt")));
+            zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.text"), false);
+            zip.AddEntry("content.xml", contentXml);
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument tocDoc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("toc.odt"), tocDoc, err), err);
+        const std::string plain = tocDoc.ToPlainText();
+        CHECK_MSG(plain.find("Contents") != std::string::npos, plain);
+        CHECK_MSG(plain.find("Results") != std::string::npos, plain);
+        // The source template is not content.
+        CHECK_MSG(plain.find("Contents") == plain.rfind("Contents"), plain);
     }
 
     // ===== 12. Table cells preserve non-paragraph block content =====

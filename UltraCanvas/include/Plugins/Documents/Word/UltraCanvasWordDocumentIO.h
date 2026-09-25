@@ -2,14 +2,14 @@
 // Readers/writers between word-processing file formats and UCRichDocument:
 //   .odt  — OpenDocument Text (ODF package)            read + write
 //   .docx — Word 2007+ (OOXML/OPC package)             read + write
-//   .doc  — legacy Word 97-2003 (OLE2/CFB binary)      text-only import
+//   .doc  — legacy Word 97-2003 (OLE2/CFB binary)      read (with formatting)
 //   .tex  — LaTeX document subset (article class)      read only
 // Format detection is signature-based (ZIP magic + mimetype /
 // [Content_Types].xml probe, CFB magic, \documentclass head) so renamed
 // files are classified correctly. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md
 // and Docs/UltraCanvas/UltraCanvasLaTeXDocumentReader.md.
-// Version: 1.1.0
-// Last Modified: 2026-09-09
+// Version: 1.2.0
+// Last Modified: 2026-09-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -36,17 +36,23 @@ WordDocumentFormat WordDocumentFormatFromExtension(const std::string& extension)
 class UCWordDocumentIO {
 public:
     // Auto-detects the format and loads. Returns false with a user-facing
-    // reason in outError. Legacy .doc goes through the text-only extractor;
-    // if that fails the error suggests converting to .docx.
+    // reason in outError. When a legacy .doc cannot be read, the error
+    // suggests converting it to .docx.
     static bool Load(const std::string& filePath, UCRichDocument& outDocument,
                      std::string& outError);
     static bool LoadOdt(const std::string& filePath, UCRichDocument& outDocument,
                         std::string& outError);
     static bool LoadDocx(const std::string& filePath, UCRichDocument& outDocument,
                          std::string& outError);
-    // Word 97-2003 binary: extracts the main body text as plain paragraphs
-    // (CFB container + WordDocument piece table). Formatting is not parsed —
-    // there is deliberately no .doc writer; save as .docx instead.
+    // Word 97-2003 binary (CFB container, piece table, FKPs, stylesheet,
+    // list tables): headings, character formatting, alignment, bullet and
+    // numbered lists, tables, hyperlinks and PNG/JPEG pictures. Headers,
+    // footers, footnotes and floating drawings are not read. There is
+    // deliberately no .doc writer; save as .docx or .odt instead.
+    static bool LoadDoc(const std::string& filePath, UCRichDocument& outDocument,
+                        std::string& outError);
+    // Former name of LoadDoc, from when the import was text-only.
+    [[deprecated("use LoadDoc")]]
     static bool LoadDocText(const std::string& filePath, UCRichDocument& outDocument,
                             std::string& outError);
     // LaTeX (.tex): the article document subset — sections, lists, tables,

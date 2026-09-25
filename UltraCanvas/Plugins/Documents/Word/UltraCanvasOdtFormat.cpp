@@ -17,6 +17,7 @@
 #include "tinyxml2.h"
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 #include <cstring>
 #include <map>
@@ -94,6 +95,31 @@ bool IsMonospaceFamily(const std::string& family) {
         || lower.find("mono") != std::string::npos;
 }
 
+// Stands in for whitespace between two tags so the XML parser keeps it as a
+// text node. U+E000 is private use: it never occurs in a document's text.
+constexpr const char* kKeptWhitespace = "\xEE\x80\x80";
+
+// Replaces every whitespace-only stretch between '>' and '<' with one
+// kKeptWhitespace marker. Between block elements the marker is ignored (only
+// elements are read there); inside a paragraph it is the space ODF says it
+// is (see AppendXmlText).
+void ProtectInterElementWhitespace(std::string& xml) {
+    std::string out;
+    out.reserve(xml.size());
+    size_t i = 0;
+    while (i < xml.size()) {
+        out.push_back(xml[i]);
+        if (xml[i++] != '>') continue;
+        size_t j = i;
+        while (j < xml.size() && (xml[j] == ' ' || xml[j] == '\t' || xml[j] == '\n' || xml[j] == '\r')) ++j;
+        if (j > i && j < xml.size() && xml[j] == '<') {
+            out += kKeptWhitespace;
+            i = j;
+        }
+    }
+    xml.swap(out);
+}
+
 class OdtReader {
 public:
     bool Load(const std::string& filePath, UCRichDocument& doc, std::string& error) {
@@ -115,8 +141,9 @@ public:
         std::string stylesXml;
         tinyxml2::XMLDocument stylesDoc;
         tinyxml2::XMLElement* stylesRoot = nullptr;
-        if (zip_.ReadEntry("styles.xml", stylesXml)
-            && stylesDoc.Parse(stylesXml.c_str()) == tinyxml2::XML_SUCCESS) {
+        bool haveStyles = zip_.ReadEntry("styles.xml", stylesXml);
+        if (haveStyles) ProtectInterElementWhitespace(stylesXml);   // header/footer text
+        if (haveStyles && stylesDoc.Parse(stylesXml.c_str()) == tinyxml2::XML_SUCCESS) {
             stylesRoot = stylesDoc.FirstChildElement("office:document-styles");
             if (stylesRoot) {
                 CollectStyles(stylesRoot->FirstChildElement("office:styles"));
@@ -126,6 +153,9 @@ public:
             }
         }
 
+        // Whitespace-only text between two spans ("<span>bold</span> <span>")
+        // is a real space, but tinyxml2 drops whitespace-only text nodes.
+        ProtectInterElementWhitespace(contentXml);
         tinyxml2::XMLDocument contentDoc;
         if (contentDoc.Parse(contentXml.c_str()) != tinyxml2::XML_SUCCESS) {
             error = "The document content is not valid XML: " + filePath;
@@ -177,6 +207,18 @@ private:
     std::map<std::string, OdtTextProps> styles_;
     // list style name -> (level -> ordered?)
     std::map<std::string, std::map<int, bool>> listStyles_;
+    // list style name -> (level -> text:start-value of a numbered level)
+    std::map<std::string, std::map<int, int>> listStartValues_;
+    // table-column style name -> column width in points
+    std::map<std::string, float> columnWidths_;
+    // Numbering runs per LIST, not per text:list element: a list that
+    // continues another (text:continue-numbering / text:continue-list)
+    // shares its counters, which is how "1. <note> 2." keeps counting.
+    RichListNumbering numbering_;
+    std::string currentListKey_;                               // top-level list being read
+    std::map<std::string, std::string> lastListKeyForStyle_;   // list style -> its latest list
+    std::map<std::string, std::string> listKeyForXmlId_;       // xml:id -> list
+    int listCount_ = 0;
 
     static const char* Attr(const tinyxml2::XMLElement* e, const char* name) {
         const char* v = e->Attribute(name);
@@ -222,6 +264,13 @@ private:
                 props.pageBreakBefore = std::string(Attr(pp, "fo:break-before")) == "page";
             }
             std::string name = Attr(style, "style:name");
+            if (auto* cp = style->FirstChildElement("style:table-column-properties")) {
+                // Absolute width wins; a relative "1234*" width is still a
+                // valid proportion among the table's columns.
+                float width = ParseLengthPt(Attr(cp, "style:column-width"));
+                if (width <= 0) width = ParseLengthPt(Attr(cp, "style:rel-column-width"));
+                if (width > 0 && !name.empty()) columnWidths_[name] = width;
+            }
             props.headingLevel = HeadingLevelFromStyleName(name);
             if (props.headingLevel == 0) {
                 props.headingLevel = HeadingLevelFromStyleName(Attr(style, "style:display-name"));
@@ -242,6 +291,8 @@ private:
                 int levelNum = level->IntAttribute("text:level", 1);
                 if (tag == "text:list-level-style-number") {
                     listStyles_[name][levelNum] = true;
+                    listStartValues_[name][levelNum] =
+                        std::max(1, level->IntAttribute("text:start-value", 1));
                 } else if (tag == "text:list-level-style-bullet"
                            || tag == "text:list-level-style-image") {
                     listStyles_[name][levelNum] = false;
@@ -297,12 +348,43 @@ private:
         // content is emitted right after the paragraph itself.
         std::vector<tinyxml2::XMLElement*> textBoxes;
         bool pendingLineBreak = false;
+        bool endsInCollapsibleSpace = false;   // last text ended in XML whitespace
     };
+
+    // ODF white-space handling (ODF 1.3 part 3, 6.1.2) for character data
+    // straight from the XML: tabs, CRs and newlines count as spaces, a run of
+    // them is one space, and none opens a paragraph (or a line of a cell).
+    // Spaces that must survive are spelled <text:s/>, which does not come
+    // through here.
+    void AppendXmlText(InlineContext& ctx, const std::string& raw, const OdtTextProps& props,
+                       const std::string& linkTarget) {
+        std::string text;
+        text.reserve(raw.size());
+        bool space = ctx.endsInCollapsibleSpace || ctx.runs.empty() || ctx.pendingLineBreak;
+        for (size_t i = 0; i < raw.size(); ++i) {
+            char c = raw[i];
+            if (raw.compare(i, 3, kKeptWhitespace) == 0) {
+                i += 2;
+                c = ' ';
+            }
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                if (!space) text.push_back(' ');
+                space = true;
+            } else {
+                text.push_back(c);
+                space = false;
+            }
+        }
+        if (text.empty()) return;
+        AppendRun(ctx, text, props, linkTarget);
+        ctx.endsInCollapsibleSpace = text.back() == ' ';
+    }
 
     void AppendRun(InlineContext& ctx, const std::string& text, const OdtTextProps& props,
                    const std::string& linkTarget) {
         if (text.empty()) return;
         if (props.hidden == 1) return;   // hidden text must not render
+        ctx.endsInCollapsibleSpace = false;
         RichTextRun run;
         run.text = text;
         run.linkTarget = linkTarget;
@@ -395,7 +477,7 @@ private:
                           const std::string& linkTarget, InlineContext& ctx) {
         for (auto* node = parent->FirstChild(); node; node = node->NextSibling()) {
             if (auto* textNode = node->ToText()) {
-                AppendRun(ctx, textNode->Value() ? textNode->Value() : "", props, linkTarget);
+                AppendXmlText(ctx, textNode->Value() ? textNode->Value() : "", props, linkTarget);
                 continue;
             }
             auto* elem = node->ToElement();
@@ -531,15 +613,53 @@ private:
         std::string ownStyle = Attr(list, "text:style-name");
         if (!ownStyle.empty()) listStyleName = ownStyle;
         bool ordered = false;
+        int startValue = 1;
         auto styleIt = listStyles_.find(listStyleName);
         if (styleIt != listStyles_.end()) {
             auto levelIt = styleIt->second.find(level + 1);   // text:level is 1-based
             if (levelIt != styleIt->second.end()) ordered = levelIt->second;
         }
+        auto startIt = listStartValues_.find(listStyleName);
+        if (startIt != listStartValues_.end()) {
+            auto levelIt = startIt->second.find(level + 1);
+            if (levelIt != startIt->second.end()) startValue = levelIt->second;
+        }
+
+        // Which list this element belongs to. A top-level text:list starts a
+        // new one unless it says it continues an earlier list; a nested one
+        // is a level of the list around it.
+        const std::string savedListKey = currentListKey_;
+        if (level == 0 || currentListKey_.empty()) {
+            std::string continues = Attr(list, "text:continue-list");
+            auto byId = listKeyForXmlId_.find(continues);
+            auto byStyle = lastListKeyForStyle_.find(listStyleName);
+            if (!continues.empty() && byId != listKeyForXmlId_.end()) {
+                currentListKey_ = byId->second;
+            } else if (std::string(Attr(list, "text:continue-numbering")) == "true"
+                       && byStyle != lastListKeyForStyle_.end()) {
+                currentListKey_ = byStyle->second;
+            } else {
+                currentListKey_ = "odt-list-" + std::to_string(++listCount_);
+            }
+            lastListKeyForStyle_[listStyleName] = currentListKey_;
+            std::string xmlId = Attr(list, "xml:id");
+            if (!xmlId.empty()) listKeyForXmlId_[xmlId] = currentListKey_;
+        }
+
         for (auto* item = list->FirstChildElement(); item;
              item = item->NextSiblingElement()) {
             std::string tag = item->Name() ? item->Name() : "";
             if (tag != "text:list-item" && tag != "text:list-header") continue;
+            // A list header carries no number; an item may set its own.
+            int number = 0;
+            if (ordered && tag == "text:list-item") {
+                if (item->Attribute("text:start-value")) {
+                    numbering_.Restart(currentListKey_, level,
+                                       std::max(1, item->IntAttribute("text:start-value", 1)));
+                }
+                number = numbering_.Next(currentListKey_, level, startValue);
+            }
+            bool numbered = false;   // only the item's first paragraph shows the number
             for (auto* child = item->FirstChildElement(); child;
                  child = child->NextSiblingElement()) {
                 std::string childTag = child->Name() ? child->Name() : "";
@@ -550,10 +670,16 @@ private:
                     block.type = RichBlockType::ListItem;
                     block.orderedList = ordered;
                     block.listLevel = level;
+                    size_t index = doc_->blocks.size();
                     EmitParagraphBlock(child, std::move(block));
+                    if (number > 0 && !numbered && index < doc_->blocks.size()) {
+                        RichListNumbering::Apply(doc_->blocks, index, number);
+                        numbered = true;
+                    }
                 }
             }
         }
+        currentListKey_ = savedListKey;
     }
 
     // Flattens every block inside a table cell (paragraphs, headings, list
@@ -574,6 +700,27 @@ private:
         }
     }
 
+    // First text:p / text:h anywhere inside `container`, depth-first.
+    static tinyxml2::XMLElement* FirstParagraphIn(tinyxml2::XMLElement* container) {
+        for (auto* elem = container->FirstChildElement(); elem;
+             elem = elem->NextSiblingElement()) {
+            std::string tag = elem->Name() ? elem->Name() : "";
+            if (tag == "text:p" || tag == "text:h") return elem;
+            if (auto* found = FirstParagraphIn(elem)) return found;
+        }
+        return nullptr;
+    }
+
+    // Appends one table:table-column's width (repeated as often as the column
+    // says). False when its style carries no width.
+    bool AppendColumnWidths(tinyxml2::XMLElement* column, std::vector<float>& widths) const {
+        int repeat = std::clamp(column->IntAttribute("table:number-columns-repeated", 1), 1, 1024);
+        auto it = columnWidths_.find(Attr(column, "table:style-name"));
+        float width = it != columnWidths_.end() ? it->second : 0.0f;
+        for (int i = 0; i < repeat; ++i) widths.push_back(width);
+        return width > 0;
+    }
+
     void ParseTable(tinyxml2::XMLElement* table) {
         RichDocBlock block;
         block.type = RichBlockType::Table;
@@ -589,6 +736,11 @@ private:
                 RichTableCell cell;
                 cell.columnSpan = cellElem->IntAttribute("table:number-columns-spanned", 1);
                 cell.rowSpan = cellElem->IntAttribute("table:number-rows-spanned", 1);
+                // Alignment is a paragraph property in ODF; the cell takes its
+                // first paragraph's (a right-aligned amount, a centred date).
+                if (auto* firstParagraph = FirstParagraphIn(cellElem)) {
+                    cell.align = ResolveStyle(Attr(firstParagraph, "text:style-name")).align;
+                }
                 InlineContext ctx;
                 // A cell holds block content (paragraphs, headings, lists,
                 // even nested tables). The flat cell model keeps only runs, so
@@ -610,6 +762,23 @@ private:
             }
             block.tableRows.push_back(std::move(row));
         };
+
+        // Column proportions from the column styles; any column without a
+        // known width drops the list (equal columns) rather than guessing.
+        bool widthsKnown = true;
+        for (auto* column = table->FirstChildElement(); column;
+             column = column->NextSiblingElement()) {
+            std::string tag = column->Name() ? column->Name() : "";
+            if (tag == "table:table-columns" || tag == "table:table-header-columns") {
+                for (auto* inner = column->FirstChildElement("table:table-column"); inner;
+                     inner = inner->NextSiblingElement("table:table-column")) {
+                    widthsKnown = AppendColumnWidths(inner, block.tableColumnWidths) && widthsKnown;
+                }
+            } else if (tag == "table:table-column") {
+                widthsKnown = AppendColumnWidths(column, block.tableColumnWidths) && widthsKnown;
+            }
+        }
+        if (!widthsKnown) block.tableColumnWidths.clear();
 
         if (auto* headerRows = table->FirstChildElement("table:table-header-rows")) {
             for (auto* rowElem = headerRows->FirstChildElement("table:table-row"); rowElem;
@@ -694,8 +863,20 @@ private:
                 // Grouped drawing shapes (e.g. a logo frame grouped with a
                 // caption): recurse so the nested frames/text boxes render.
                 ParseBlockContainer(elem, listLevel, listStyleName);
+            } else if (tag == "text:table-of-content" || tag == "text:illustration-index"
+                       || tag == "text:table-index" || tag == "text:object-index"
+                       || tag == "text:user-index" || tag == "text:alphabetical-index"
+                       || tag == "text:bibliography") {
+                // An index is stored twice: how to build it (the *-source
+                // element) and the text it was last built into (index-body).
+                // The body is what the document shows.
+                if (auto* indexBody = elem->FirstChildElement("text:index-body")) {
+                    ParseBlockContainer(indexBody, listLevel, listStyleName);
+                }
+            } else if (tag == "text:index-title") {
+                ParseBlockContainer(elem, listLevel, listStyleName);
             }
-            // Everything else (TOC, sequence declarations, forms) is skipped.
+            // Everything else (sequence declarations, forms) is skipped.
         }
     }
 
@@ -706,6 +887,7 @@ private:
         for (auto* child = node->FirstChild(); child; child = child->NextSibling()) {
             if (auto* textNode = child->ToText()) {
                 std::string v = textNode->Value() ? textNode->Value() : "";
+                for (size_t at; (at = v.find(kKeptWhitespace)) != std::string::npos;) v.erase(at, 3);
                 if (v.find_first_not_of(" \t\r\n") != std::string::npos) return true;
                 continue;
             }
@@ -888,6 +1070,7 @@ private:
     UCZipPackageWriter zip_;
     const UCRichDocument* doc_ = nullptr;
     std::vector<RichTextRun> textStyles_;   // formatting tuples for T1..Tn
+    std::string columnStyles_;              // automatic table-column styles
 
     std::string PictureHref(size_t mediaIndex) const {
         const RichDocMedia& m = doc_->media[mediaIndex];
@@ -994,7 +1177,11 @@ private:
             case RichBlockType::CodeBlock: return "PCode";
             default: break;
         }
-        switch (block.align) {
+        return AlignedStyle(block.align);
+    }
+
+    static const char* AlignedStyle(RichTextAlign align) {
+        switch (align) {
             case RichTextAlign::Center: return "PCenter";
             case RichTextAlign::Right: return "PRight";
             case RichTextAlign::Justify: return "PJustify";
@@ -1042,8 +1229,24 @@ private:
             columnCount = std::max(columnCount, width);
         }
         if (columnCount == 0) return;
-        xml << "<table:table table:name=\"Table" << tableNumber << "\">\n"
-            << "<table:table-column table:number-columns-repeated=\"" << columnCount << "\"/>\n";
+        xml << "<table:table table:name=\"Table" << tableNumber << "\">\n";
+        // Known proportions become relative column widths ("1234*"), each in
+        // an automatic column style; otherwise the columns share equally.
+        const std::vector<float>& widths = block.tableColumnWidths;
+        float totalWidth = 0.0f;
+        for (float w : widths) totalWidth += std::max(0.0f, w);
+        if (widths.size() == columnCount && totalWidth > 0.0f) {
+            for (size_t c = 0; c < columnCount; ++c) {
+                const std::string name = "Table" + std::to_string(tableNumber) + ".C" + std::to_string(c + 1);
+                const long relative = std::max(1L, std::lround(10000.0f * widths[c] / totalWidth));
+                columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"table-column\">"
+                                 "<style:table-column-properties style:rel-column-width=\""
+                               + std::to_string(relative) + "*\"/></style:style>\n";
+                xml << "<table:table-column table:style-name=\"" << name << "\"/>\n";
+            }
+        } else {
+            xml << "<table:table-column table:number-columns-repeated=\"" << columnCount << "\"/>\n";
+        }
         // Walk the grid rather than the cell list: a cell spanning rows covers
         // grid columns in the rows below it, and those columns carry a
         // <table:covered-table-cell/> instead of a cell of their own. Tracking
@@ -1074,7 +1277,7 @@ private:
                 if (rowSpan > 1) {
                     xml << " table:number-rows-spanned=\"" << rowSpan << "\"";
                 }
-                xml << "><text:p text:style-name=\"Standard\">";
+                xml << "><text:p text:style-name=\"" << AlignedStyle(cell.align) << "\">";
                 WriteRuns(xml, cell.runs);
                 xml << "</text:p></table:table-cell>";
                 for (int s = 1; s < columnSpan; ++s) {
@@ -1117,7 +1320,13 @@ private:
             if (item.listLevel == level) {
                 if (item.orderedList != ordered) break;
                 if (itemOpen) xml << "</text:list-item>\n";
-                xml << "<text:list-item><text:p text:style-name=\"Standard\">";
+                xml << "<text:list-item";
+                // A number the item carries (a list starting at N, or running
+                // on past an interruption) is the item's start value.
+                if (item.orderedList && item.listStartNumber > 0) {
+                    xml << " text:start-value=\"" << std::to_string(item.listStartNumber) << "\"";
+                }
+                xml << "><text:p text:style-name=\"Standard\">";
                 WriteRuns(xml, item.runs);
                 xml << "</text:p>";
                 itemOpen = true;
@@ -1241,6 +1450,7 @@ private:
             xml << "/></style:style>\n";
         }
 
+        xml << columnStyles_;
         xml << "<style:style style:name=\"PCenter\" style:family=\"paragraph\" "
                "style:parent-style-name=\"Standard\">"
                "<style:paragraph-properties fo:text-align=\"center\"/></style:style>\n"
