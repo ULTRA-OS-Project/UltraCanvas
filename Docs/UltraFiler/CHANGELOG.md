@@ -1,3 +1,13 @@
+#### 2026-09-25 *1.53.0*
+- **Find text: Match case and file patterns.** *Extras > Find text* opens a
+  dialog of its own instead of the one-line prompt: besides the text it asks
+  **In files named** - patterns such as `*.cpp; *.h` (`*`, `?`; separated by
+  `;`, `,` or blanks; empty for every file), checked before a file is opened,
+  so a narrowed search reads only the files it names - and **Match case**,
+  which compares the text byte for byte. The dialog opens with the previous
+  search's entries, and the status line names the patterns and the case
+  option along with the text.
+
 #### 2026-09-24 *1.52.0*
 - **Every source-text type shows its miniature page, and has its own switch.**
   Swift, SQL, Rust, Ruby, PHP, Lua, Kotlin, Java, Go, C#, CSS, Pascal and the
