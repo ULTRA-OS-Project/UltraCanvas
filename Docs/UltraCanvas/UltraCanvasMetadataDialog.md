@@ -56,6 +56,18 @@ The reader does the tidying a person would otherwise have to do in their head:
   XMP as `prefix:Name` for every property (`dc:title` in its x-default
   language, `dc:subject` bags joined, structures as `prefix:Struct/prefix:Field`).
   A block that does not decode is still listed by size.
+- XMP values are tidied: dates as `2026-09-20 14:32:11 +01:00`, `True` /
+  `False` as Yes / No, a rating as `4 of 5` (`Rejected`, `Not rated`).
+- IPTC and XMP that ImageMagick stored in a PNG as a "Raw profile type" text
+  chunk of hex digits are decoded like the native blocks (used only when the
+  file has no native block of that kind).
+- libvips' own fields read as values (`Header::TidyOtherValue`): Progressive
+  and Interlaced as Yes / No, Loop count as `Forever` / `Once` / `3 times`,
+  Frame delays as `100 ms per frame`, a GIF palette as `16 colours`, the
+  background as `RGB 255, 255, 255`. `resolution-unit` is left out (the Image
+  group has the resolution in dpi), and so is `orientation` when EXIF has it.
+- The Image group leaves out a resolution of 25.4 dpi, which is libvips'
+  stand-in (1 pixel per mm) for a file that stores none.
 - Other binary blocks (ICC profiles) are reported by size, not dumped; the raw
   EXIF block is left out once its tags are listed.
 - Markdown special characters are escaped, so `VIPS_CODING_NONE` does not come

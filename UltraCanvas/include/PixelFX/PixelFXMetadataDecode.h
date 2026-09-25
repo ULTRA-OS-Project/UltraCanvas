@@ -6,7 +6,7 @@
 // formatting (HumanizeExif), which turns libvips' raw rationals and codes into
 // what a person reads.
 // Plain C++ and tinyxml2 - no libvips - so it can be tested on its own.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 #pragma once
@@ -35,8 +35,10 @@ namespace Header {
     // XMP packet (RDF/XML). Every property of every rdf:Description, as
     // "prefix:Name" - written as an attribute or as an element, simple,
     // language alternative (x-default first), or rdf:Seq / rdf:Bag. Fields of
-    // a structure are named "prefix:Struct/prefix:Field". Returns nothing for
-    // a packet that is not well-formed XML.
+    // a structure are named "prefix:Struct/prefix:Field". Values are tidied:
+    // ISO dates as "2026-09-20 14:32:11 +01:00", True / False as Yes / No, a
+    // rating as "4 of 5". Returns nothing for a packet that is not well-formed
+    // XML.
     std::vector<DecodedTag> DecodeXMP(const void* data, std::size_t length);
 
     // ===== EXIF =====
@@ -61,6 +63,22 @@ namespace Header {
     // thumbnail's fields are named "Thumbnail ...". Values are capped at 512
     // bytes like the other decoders.
     std::vector<DecodedTag> HumanizeExif(const std::vector<ExifField>& fields);
+
+    // ===== OTHER FIELDS =====
+    // ImageMagick keeps profiles a PNG has no chunk for (IPTC, XMP, the
+    // Photoshop "8BIM" block) in a text chunk named "Raw profile type <name>"
+    // whose text is "\n<name>\n<length>\n<hex digits>". Returns the profile
+    // name and its bytes; false when the text is not in that form or the hex
+    // does not add up to the stated length.
+    bool DecodeRawProfile(const std::string& text, std::string& name, std::string& bytes);
+
+    // The fields libvips adds of its own ("jpeg-multiscan", "loop", "delay",
+    // "gif-palette", "orientation", ...) written for a person: flags as
+    // Yes / No, the loop count as "Forever" or "3 times", frame delays in ms,
+    // a palette by its size. Returns false for a field that repeats what the
+    // panel already shows: "resolution-unit" (the Image group has the
+    // resolution in dpi) and "orientation" when the file has EXIF.
+    bool TidyOtherValue(const std::string& field, std::string& value, bool hasExif);
 
     // ===== DISPLAY NAMES =====
     // The name a person reads for a metadata key, by group ("EXIF", "IPTC",

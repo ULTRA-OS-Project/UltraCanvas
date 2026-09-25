@@ -7,8 +7,9 @@
 // sequences, structures, resources - plus input that is truncated or not
 // XML at all, which must give nothing rather than crash. And the EXIF value
 // formatting (HumanizeExif), fed the strings libvips 8.15 actually produces,
-// and the display names (FriendlyTagName).
-// Version: 1.2.0
+// the display names (FriendlyTagName), XMP value tidying, ImageMagick's PNG
+// raw profiles and libvips' own fields (TidyOtherValue).
+// Version: 1.3.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 
@@ -20,11 +21,13 @@
 
 using PixelFX::Header::DecodedTag;
 using PixelFX::Header::DecodeIPTC;
+using PixelFX::Header::DecodeRawProfile;
 using PixelFX::Header::DecodeXMP;
 using PixelFX::Header::ExifField;
 using PixelFX::Header::FriendlyTagName;
 using PixelFX::Header::HumanizeExif;
 using PixelFX::Header::SplitExifString;
+using PixelFX::Header::TidyOtherValue;
 
 namespace {
 
@@ -195,7 +198,7 @@ void TestXmp() {
     packet += std::string(64, ' ');   // writers pad the packet
     packet.push_back('\0');
     auto tags = Xmp(packet);
-    CheckValue(tags, "xmp:Rating", "4");
+    CheckValue(tags, "xmp:Rating", "4 of 5");
     CheckValue(tags, "xmp:CreatorTool", "UltraPaint 2.1");
     CheckValue(tags, "photoshop:City", "London");
     CheckValue(tags, "dc:title", "Sunset test");
@@ -204,7 +207,7 @@ void TestXmp() {
     CheckValue(tags, "xmpRights:WebStatement", "https://example.org/licence");
     CheckValue(tags, "Iptc4xmpCore:CreatorContactInfo/Iptc4xmpCore:CiAdrCity", "London");
     CheckValue(tags, "Iptc4xmpCore:CreatorContactInfo/Iptc4xmpCore:CiEmailWork", "studio@example.org");
-    CheckValue(tags, "exif:Flash/exif:Fired", "False");
+    CheckValue(tags, "exif:Flash/exif:Fired", "No");
     Check(ValueOf(tags, "rdf:about") == "<missing>", "RDF syntax attributes are not listed");
     Check(ValueOf(tags, "xmlns:dc") == "<missing>", "namespace declarations are not listed");
 }
@@ -221,7 +224,7 @@ void TestXmpStructArrays() {
     // Each item is a structure, so there is no joined "xmpMM:History" row.
     CheckValue(tags, "xmpMM:History", "<missing>");
     CheckValue(tags, "xmpMM:History[1]/stEvt:action", "created");
-    CheckValue(tags, "xmpMM:History[1]/stEvt:when", "2026-09-20T14:32:11");
+    CheckValue(tags, "xmpMM:History[1]/stEvt:when", "2026-09-20 14:32:11");
     CheckValue(tags, "xmpMM:History[2]/stEvt:action", "saved");
 }
 
@@ -416,6 +419,85 @@ void TestFriendlyNames() {
     CheckName("EXIF", "", "");
 }
 
+
+// ===== XMP VALUES, RAW PROFILES, LIBVIPS FIELDS =====
+
+std::string XmpValue(const std::string& name, const std::string& value) {
+    const std::string packet =
+        "<rdf:RDF xmlns:rdf=\"r\"><rdf:Description xmlns:xmp=\"x\" xmp:" + name + "=\"" + value + "\"/></rdf:RDF>";
+    return ValueOf(Xmp(packet), "xmp:" + name);
+}
+
+void TestXmpValues() {
+    std::cout << "\nXMP values:\n";
+    Check(XmpValue("CreateDate", "2026-09-20T14:32:11+01:00") == "2026-09-20 14:32:11 +01:00", "date with offset");
+    Check(XmpValue("CreateDate", "2026-09-20T14:32:11.25Z") == "2026-09-20 14:32:11 UTC", "UTC date, fraction dropped");
+    Check(XmpValue("CreateDate", "2026-09-20T14:32") == "2026-09-20 14:32", "date without seconds");
+    Check(XmpValue("CreateDate", "2026-09-20T14:32:11+0100") == "2026-09-20 14:32:11 +01:00", "offset without colon");
+    Check(XmpValue("CreateDate", "2026-09-20") == "2026-09-20", "a date alone is left as it is");
+    Check(XmpValue("Label", "2026-09-20Tea time") == "2026-09-20Tea time", "text that starts like a date is left alone");
+    Check(XmpValue("Rating", "5") == "5 of 5", "rating");
+    Check(XmpValue("Rating", "0") == "Not rated", "rating 0");
+    Check(XmpValue("Rating", "-1") == "Rejected", "rating -1");
+    Check(XmpValue("Marked", "True") == "Yes", "True -> Yes");
+}
+
+std::string RawProfileText(const std::string& name, const std::string& bytes) {
+    static const char* hex = "0123456789abcdef";
+    std::string text = "\n" + name + "\n";
+    std::string length = std::to_string(bytes.size());
+    text += std::string(8 - length.size(), ' ') + length + "\n";
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(bytes[i]);
+        text.push_back(hex[c >> 4]);
+        text.push_back(hex[c & 15]);
+        if (i % 36 == 35) text.push_back('\n');
+    }
+    return text + "\n";
+}
+
+void TestRawProfiles() {
+    std::cout << "\nPNG raw profiles (ImageMagick):\n";
+    const std::string iim = SampleIim();
+    std::string name, bytes;
+    Check(DecodeRawProfile(RawProfileText("iptc", iim), name, bytes) && name == "iptc" && bytes == iim,
+          "iptc profile decodes to its bytes");
+    auto tags = Iptc(bytes);
+    CheckValue(tags, "Keywords", "holiday, river, London");
+
+    std::string lying = RawProfileText("xmp", "abc");
+    lying.replace(lying.find("3\n"), 1, "9");
+    Check(!DecodeRawProfile(lying, name, bytes), "a length the hex does not reach is refused");
+    Check(!DecodeRawProfile("\nxmp\n   4\n12zz", name, bytes), "non-hex digits are refused");
+    Check(!DecodeRawProfile("plain comment", name, bytes), "an ordinary comment is not a profile");
+}
+
+std::string Tidied(const std::string& field, std::string value, bool hasExif = true, bool* kept = nullptr) {
+    const bool k = TidyOtherValue(field, value, hasExif);
+    if (kept) *kept = k;
+    return k ? value : "<dropped>";
+}
+
+void TestOtherFields() {
+    std::cout << "\nlibvips' own fields:\n";
+    Check(Tidied("jpeg-multiscan", "0") == "No", "progressive 0 -> No");
+    Check(Tidied("interlaced", "1") == "Yes", "interlaced 1 -> Yes");
+    Check(Tidied("loop", "0") == "Forever", "loop 0 -> Forever");
+    Check(Tidied("loop", "1") == "Once", "loop 1 -> Once");
+    Check(Tidied("loop", "3") == "3 times", "loop 3 -> 3 times");
+    Check(Tidied("delay", "100 100 100") == "100 ms per frame", "equal delays");
+    Check(Tidied("delay", "40 100 60") == "40\xE2\x80\x93" "100 ms per frame", "varying delays");
+    Check(Tidied("delay", "0 ") == "0 ms", "one frame");
+    Check(Tidied("gif-palette", "-8484711 -9072721 -9922353 ") == "3 colours", "palette by size");
+    Check(Tidied("background", "255 255 255 ") == "RGB 255, 255, 255", "background colour");
+    Check(Tidied("page-height", "480") == "480 px", "page height");
+    Check(Tidied("resolution-unit", "in") == "<dropped>", "resolution unit is left out");
+    Check(Tidied("orientation", "6", true) == "<dropped>", "orientation is left out when EXIF has it");
+    Check(Tidied("orientation", "6", false) == "Rotated 90\xC2\xB0 clockwise", "orientation without EXIF");
+    Check(Tidied("jpeg-chroma-subsample", "4:4:4") == "4:4:4", "other fields unchanged");
+    Check(Tidied("delay", "a b") == "a b", "unexpected delays left as they are");
+}
+
 } // namespace
 
 int main() {
@@ -434,6 +516,9 @@ int main() {
     TestExifGps();
     TestExifLeftOut();
     TestFriendlyNames();
+    TestXmpValues();
+    TestRawProfiles();
+    TestOtherFields();
 
     std::cout << "\n";
     if (g_failures == 0) {

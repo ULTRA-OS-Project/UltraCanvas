@@ -1187,7 +1187,10 @@ namespace PixelFX {
                 // libvips keeps resolution in pixels per millimetre.
                 const double xres = vips_image_get_xres(im) * 25.4;
                 const double yres = vips_image_get_yres(im) * 25.4;
-                if (xres > 0.01) {
+                // 1 pixel per mm (25.4 dpi) is what libvips reports when the
+                // file stores no resolution at all.
+                const bool unset = std::fabs(xres - 25.4) < 0.001 && std::fabs(yres - 25.4) < 0.001;
+                if (xres > 0.01 && !unset) {
                     add("Resolution", std::fabs(xres - yres) < 0.01
                             ? TrimZeros(xres) + " dpi"
                             : TrimZeros(xres) + " x " + TrimZeros(yres) + " dpi");
@@ -1217,6 +1220,10 @@ namespace PixelFX {
 
             const std::vector<std::string> fields = GetFields(image);
             std::vector<ExifField> exifFields;
+            // IPTC / XMP found in ImageMagick's PNG "Raw profile type" text
+            // chunks. Used only when the file has no native block of the kind.
+            std::vector<DecodedTag> rawIptc, rawXmp;
+            bool nativeIptc = false, nativeXmp = false;
             const bool hasExifTags = std::any_of(fields.begin(), fields.end(), [](const std::string& f) {
                 return f.rfind("exif-ifd", 0) == 0;
             });
@@ -1247,7 +1254,30 @@ namespace PixelFX {
                         for (const auto& tag : tags) {
                             entries.push_back(MetadataEntry{iptc ? "IPTC" : "XMP", tag.first, tag.second});
                         }
+                        if (!tags.empty()) (iptc ? nativeIptc : nativeXmp) = true;
                         if (!tags.empty()) continue;
+                    }
+                }
+                // ImageMagick writes IPTC / XMP / 8BIM into a PNG as a text
+                // chunk of hex digits; decode it instead of showing the hex.
+                if (field.rfind("png-comment-", 0) == 0 &&
+                    field.find("-Raw profile type ") != std::string::npos) {
+                    const char* text = nullptr;
+                    std::string name, bytes;
+                    if (vips_image_get_string(im, field.c_str(), &text) == 0 && text &&
+                        DecodeRawProfile(text, name, bytes)) {
+                        if (name == "iptc" || name == "8bim") {
+                            auto tags = DecodeIPTC(bytes.data(), bytes.size());
+                            if (rawIptc.empty()) rawIptc = std::move(tags);   // iptc and 8bim carry the same
+                            continue;
+                        }
+                        if (name == "xmp") {
+                            rawXmp = DecodeXMP(bytes.data(), bytes.size());
+                            continue;
+                        }
+                        entries.push_back(MetadataEntry{"Other", name + " profile",
+                                                        std::to_string(bytes.size()) + " bytes"});
+                        continue;
                     }
                 }
                 MetadataEntry entry;
@@ -1255,11 +1285,21 @@ namespace PixelFX {
                 entry.key = MetadataKeyOf(field);
                 entry.value = MetadataValueOf(im, field);
                 if (entry.value.empty()) continue;
+                // libvips' own fields: flags as Yes / No, the loop count, frame
+                // delays, a palette by size; and the ones that repeat EXIF or
+                // the Image group are left out.
+                if (entry.group == "Other" && !TidyOtherValue(field, entry.value, hasExifTags)) continue;
                 entries.push_back(std::move(entry));
             }
 
             for (const auto& tag : HumanizeExif(exifFields)) {
                 entries.push_back(MetadataEntry{"EXIF", tag.first, tag.second});
+            }
+            if (!nativeIptc) {
+                for (const auto& tag : rawIptc) entries.push_back(MetadataEntry{"IPTC", tag.first, tag.second});
+            }
+            if (!nativeXmp) {
+                for (const auto& tag : rawXmp) entries.push_back(MetadataEntry{"XMP", tag.first, tag.second});
             }
 
             // Tag names as a person reads them ("Date taken", not

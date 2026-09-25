@@ -102,6 +102,26 @@ static std::string HumanSize(uintmax_t bytes) {
     return std::string(buf);
 }
 
+// "95.9866" -> "95.99", "300.0" -> "300".
+static std::string ShortNumber(double v) {
+    char buf[48];
+    snprintf(buf, sizeof(buf), "%.2f", v);
+    std::string s(buf);
+    while (!s.empty() && s.back() == '0') s.pop_back();
+    if (!s.empty() && s.back() == '.') s.pop_back();
+    return s;
+}
+
+// The image's resolution for the Details panel: "300 dpi", "72 x 96 dpi".
+// Empty when the file stores none: libvips then reports 1 pixel per mm,
+// which comes out as 25.4 dpi and describes nothing.
+static std::string ResolutionText(double dpiX, double dpiY) {
+    if (dpiX <= 0 && dpiY <= 0) return "";
+    if (std::fabs(dpiX - 25.4) < 0.001 && std::fabs(dpiY - 25.4) < 0.001) return "";
+    const std::string x = ShortNumber(dpiX), y = ShortNumber(dpiY);
+    return (x == y ? x : x + " x " + y) + " dpi";
+}
+
 // Read a text file into `out`, capped at maxBytes so a huge/binary file can't
 // stall the viewer. Returns false if the file can't be opened.
 static bool ReadTextFile(const std::string& path, std::string& out,
@@ -2412,8 +2432,8 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         os << "Bits/channel: " << fi.bitsPerChannel << "\n";
         if (!fi.colorSpace.empty()) os << "Colour space: " << fi.colorSpace << "\n";
         os << "Alpha: " << (fi.hasAlpha ? "yes" : "no") << "\n";
-        if (fi.dpiX > 0 || fi.dpiY > 0)
-            os << "Resolution: " << fi.dpiX << " x " << fi.dpiY << " dpi\n";
+        const std::string resolution = ResolutionText(fi.dpiX, fi.dpiY);
+        if (!resolution.empty()) os << "Resolution: " << resolution << "\n";
         if (!fi.loader.empty()) os << "Loader: " << fi.loader << "\n";
     } catch (...) {
         // Metadata extraction is best-effort.

@@ -1,12 +1,13 @@
 // PixelFXMetadataDecode.cpp
 // IPTC-IIM and XMP decoding, EXIF value formatting and display names, for
 // PixelFX::Header::ReadMetadata(). See PixelFX/PixelFXMetadataDecode.h.
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFXMetadataDecode.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -357,6 +358,53 @@ namespace {
         return nullptr;
     }
 
+    // ===== XMP VALUES =====
+
+    // ISO 8601 as XMP writes it: "2026-09-20T14:32:11.25+01:00" ->
+    // "2026-09-20 14:32:11 +01:00"; "Z" -> " UTC". Anything else is returned
+    // unchanged, so a value that merely starts like a date is left alone.
+    std::string FormatIsoDate(const std::string& v) {
+        if (v.size() < 16 || v[10] != 'T' || !AllDigits(v, 0, 4) || v[4] != '-' || !AllDigits(v, 5, 2) ||
+            v[7] != '-' || !AllDigits(v, 8, 2) || !AllDigits(v, 11, 2) || v[13] != ':' || !AllDigits(v, 14, 2)) {
+            return v;
+        }
+        std::string out = v.substr(0, 10) + " " + v.substr(11, 5);
+        std::size_t pos = 16;
+        if (pos + 3 <= v.size() && v[pos] == ':' && AllDigits(v, pos + 1, 2)) {
+            out += v.substr(pos, 3);
+            pos += 3;
+            if (pos < v.size() && v[pos] == '.') {   // fractions of a second: not shown
+                ++pos;
+                while (pos < v.size() && std::isdigit(static_cast<unsigned char>(v[pos]))) ++pos;
+            }
+        }
+        if (pos == v.size()) return out;
+        if (v[pos] == 'Z' && pos + 1 == v.size()) return out + " UTC";
+        if ((v[pos] == '+' || v[pos] == '-') && AllDigits(v, pos + 1, 2)) {
+            if (pos + 6 == v.size() && v[pos + 3] == ':' && AllDigits(v, pos + 4, 2)) return out + " " + v.substr(pos);
+            if (pos + 5 == v.size() && AllDigits(v, pos + 3, 2))
+                return out + " " + v.substr(pos, 3) + ":" + v.substr(pos + 3, 2);
+        }
+        return v;
+    }
+
+    std::string FormatXmpValue(const std::string& key, const std::string& value) {
+        const std::size_t slash = key.rfind('/');
+        const std::string last = slash == std::string::npos ? key : key.substr(slash + 1);
+        const std::size_t colon = last.find(':');
+        const std::string local = colon == std::string::npos ? last : last.substr(colon + 1);
+
+        if (local == "Rating") {
+            if (value == "-1") return "Rejected";
+            if (value == "0") return "Not rated";
+            if (value.size() == 1 && value[0] >= '1' && value[0] <= '5') return value + " of 5";
+            return value;
+        }
+        if (value == "True" || value == "true") return "Yes";
+        if (value == "False" || value == "false") return "No";
+        return FormatIsoDate(value);
+    }
+
 } // namespace
 
 std::vector<DecodedTag> DecodeIPTC(const void* data, std::size_t length) {
@@ -406,7 +454,9 @@ std::vector<DecodedTag> DecodeXMP(const void* data, std::size_t length) {
          desc = desc->NextSiblingElement("rdf:Description")) {
         DecodeXmpStruct(desc, "", out, 0);
     }
-    return out.Take();
+    std::vector<DecodedTag> tags = out.Take();
+    for (auto& tag : tags) tag.second = FormatXmpValue(tag.first, tag.second);
+    return tags;
 }
 
 // ===== EXIF =====
@@ -725,6 +775,124 @@ std::vector<DecodedTag> HumanizeExif(const std::vector<ExifField>& fields) {
     return out.Take();
 }
 
+// ===== OTHER FIELDS =====
+
+bool DecodeRawProfile(const std::string& text, std::string& name, std::string& bytes) {
+    name.clear();
+    bytes.clear();
+    // "\n<name>\n<length>\n<hex...>", the length right-aligned in 8 columns.
+    std::size_t pos = 0;
+    while (pos < text.size() && (text[pos] == '\n' || text[pos] == '\r')) ++pos;
+    const std::size_t nameEnd = text.find('\n', pos);
+    if (nameEnd == std::string::npos) return false;
+    name = Trim(text.substr(pos, nameEnd - pos));
+    const std::size_t lengthEnd = text.find('\n', nameEnd + 1);
+    if (name.empty() || lengthEnd == std::string::npos) return false;
+    const std::string lengthText = Trim(text.substr(nameEnd + 1, lengthEnd - nameEnd - 1));
+    if (lengthText.empty() || lengthText.size() > 9 || !AllDigits(lengthText, 0, lengthText.size())) return false;
+    const std::size_t length = std::stoul(lengthText);
+
+    auto nibble = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    bytes.reserve(length);
+    int high = -1;
+    for (std::size_t i = lengthEnd + 1; i < text.size() && bytes.size() < length; ++i) {
+        const int n = nibble(text[i]);
+        if (n < 0) {
+            if (std::isspace(static_cast<unsigned char>(text[i]))) continue;
+            return false;
+        }
+        if (high < 0) { high = n; continue; }
+        bytes.push_back(static_cast<char>((high << 4) | n));
+        high = -1;
+    }
+    return bytes.size() == length;
+}
+
+bool TidyOtherValue(const std::string& field, std::string& value, bool hasExif) {
+    if (field == "resolution-unit") return false;   // the Image group has the resolution in dpi
+    if (field == "orientation") {
+        if (hasExif) return false;                    // EXIF's Orientation row says it
+        const char* text = value.size() == 1 ? OrientationText(value[0] - '0') : nullptr;
+        if (text) value = text;
+        return true;
+    }
+    if (field == "jpeg-multiscan" || field == "interlaced" || field == "heif-primary-is-default") {
+        if (value == "1") value = "Yes";
+        else if (value == "0") value = "No";
+        return true;
+    }
+    if (field == "loop" || field == "gif-loop") {
+        // libvips: how many times the animation plays, 0 for ever.
+        if (value == "0") value = "Forever";
+        else if (value == "1") value = "Once";
+        else if (IsInteger(value)) value += " times";
+        return true;
+    }
+    if (field == "delay") {
+        // One delay per frame, in milliseconds.
+        std::vector<long> delays;
+        std::size_t pos = 0;
+        while (pos < value.size()) {
+            while (pos < value.size() && value[pos] == ' ') ++pos;
+            std::size_t end = value.find(' ', pos);
+            if (end == std::string::npos) end = value.size();
+            const std::string token = value.substr(pos, end - pos);
+            pos = end;
+            if (token.empty()) continue;
+            if (!IsInteger(token) || token.size() > 9) return true;   // not what we expect: leave it
+            delays.push_back(std::stol(token));
+        }
+        if (delays.empty()) return true;
+        long lo = delays[0], hi = delays[0];
+        for (long d : delays) { lo = std::min(lo, d); hi = std::max(hi, d); }
+        if (lo == hi) {
+            value = std::to_string(lo) + " ms" + (delays.size() > 1 ? " per frame" : "");
+        } else {
+            value = std::to_string(lo) + "\xE2\x80\x93" + std::to_string(hi) + " ms per frame";
+        }
+        return true;
+    }
+    if (field == "gif-palette") {
+        std::size_t colours = 0;
+        bool inToken = false;
+        for (char c : value) {
+            const bool space = c == ' ';
+            if (!space && !inToken) ++colours;
+            inToken = !space;
+        }
+        value = std::to_string(colours) + (colours == 1 ? " colour" : " colours");
+        return true;
+    }
+    if (field == "page-height") {
+        if (IsInteger(value)) value += " px";
+        return true;
+    }
+    if (field == "background") {
+        // "255 255 255 " -> "RGB 255, 255, 255"
+        std::string numbers = Trim(value), out;
+        std::size_t count = 0, pos = 0;
+        while (pos < numbers.size()) {
+            std::size_t end = numbers.find(' ', pos);
+            if (end == std::string::npos) end = numbers.size();
+            const std::string token = numbers.substr(pos, end - pos);
+            pos = end + 1;
+            if (token.empty()) continue;
+            if (!LooksNumeric(token)) return true;
+            out += (count++ ? ", " : "") + token;
+        }
+        if (count == 3) value = "RGB " + out;
+        else if (count == 1) value = "Grey " + out;
+        else if (count) value = out;
+        return true;
+    }
+    return true;
+}
+
 // ===== DISPLAY NAMES =====
 
 namespace {
@@ -834,7 +1002,8 @@ namespace {
             {"interlaced", "Interlaced"}, {"palette", "Palette"}, {"bits-per-sample", "Bits per sample"},
             {"gif-loop", "Loop count"}, {"gif-palette", "GIF palette"}, {"loop", "Loop count"},
             {"delay", "Frame delays"}, {"n-pages", "Pages"}, {"page-height", "Page height"},
-            {"orientation", "Orientation"}, {"background", "Background"},
+            {"orientation", "Orientation"}, {"background", "Background colour"},
+            {"photoshop-data", "Photoshop block"}, {"heif-primary-is-default", "Primary is default"},
         };
         return names;
     }
