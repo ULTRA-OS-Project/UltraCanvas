@@ -1,3 +1,12 @@
+#### 2026-09-25 *1.49*
+- **The markdown side toolbar is 40 px wide again, with its separators
+  centred.** It had grown to half the window: the framework's toolbar builder
+  kept an 800 px minimum width on every vertical toolbar (fixed in the
+  framework, see `Docs/UltraCanvas/changelog.d/toolbar-builder-thickness.md`).
+  Showing the toolbar also switched its layout from a flex column to block
+  layout, which put the separators at the left edge while the buttons stayed
+  centred. It stays a flex column now.
+
 #### 2026-09-21 *1.48*
 - **The 1.47 entry below said neither of the two things it meant.** Two
   branches wrote a 1.47 entry at the same time - the table editing work and the
