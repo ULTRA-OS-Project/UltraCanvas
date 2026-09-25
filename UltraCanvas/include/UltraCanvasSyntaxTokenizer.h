@@ -85,6 +85,9 @@ namespace UltraCanvas {
         bool isCaseSensitive = true;
         // Assembly-specific
         bool isAssembly = false;
+        // CSS is scanned structurally (selectors, declarations, at-rules) by
+        // TokenizeCssLine instead of the keyword/operator tables above.
+        bool isCss = false;
     };
 
 // ===== SYNTAX HIGHLIGHTER CLASS =====
@@ -116,6 +119,11 @@ namespace UltraCanvas {
         bool SetLanguageByFilename(const std::string &filename);
 
         std::vector<std::string> GetSupportedLanguages() const;
+        // Every registered language with the file extensions it claims, as
+        // registered (case included). What a file manager needs to know which
+        // extensions are source text - the one list of them in the framework.
+        std::vector<std::pair<std::string, std::vector<std::string>>>
+        GetLanguageExtensions() const;
         std::string GetCurrentProgrammingLanguage() const;
 
         // Style management
@@ -160,6 +168,10 @@ namespace UltraCanvas {
         std::pair<size_t, TokenType> ParseWordInLine(const std::string &text, size_t pos) const;
         std::pair<size_t, TokenType> ParseOperator(const std::string &text, size_t pos) const;
         std::pair<size_t, TokenType> ParseOperatorInLine(const std::string& line, size_t pos) const;
+
+        // CSS: a line classified by where it sits - selector, property,
+        // value or at-rule prelude - not by keyword lists.
+        std::vector<Token> TokenizeCssLine(const std::string &line) const;
 
         bool IsWordCharacter(char c) const;
 
@@ -369,6 +381,15 @@ namespace UltraCanvas {
         for (const auto &[name, rules]: languagesRules) {
             result.push_back(name);
         }
+        return result;
+    }
+
+    inline std::vector<std::pair<std::string, std::vector<std::string>>>
+    SyntaxTokenizer::GetLanguageExtensions() const {
+        std::vector<std::pair<std::string, std::vector<std::string>>> result;
+        result.reserve(languagesRules.size());
+        for (const auto &[name, rules]: languagesRules)
+            result.emplace_back(rules.name.empty() ? name : rules.name, rules.fileExtensions);
         return result;
     }
 
@@ -2196,56 +2217,17 @@ namespace UltraCanvas {
     }
 
 // ===== CSS LANGUAGE RULES =====
+    // CSS words are classified by position, not by lists: a name before ':' in
+    // a block is a property, a name in a selector is a tag, and so on. See
+    // SyntaxTokenizer::TokenizeCssLine.
     inline SyntaxTokenizationRules CreateCssRules() {
         SyntaxTokenizationRules rules;
         rules.name = "CSS";
         rules.fileExtensions = {"css"};
-
-        rules.keywords = {
-                "color", "background", "background-color", "background-image", "background-repeat",
-                "background-position", "background-size", "background-attachment", "border",
-                "border-color", "border-style", "border-width", "border-radius", "margin",
-                "padding", "width", "height", "min-width", "max-width", "min-height",
-                "max-height", "position", "top", "bottom", "left", "right", "float",
-                "clear", "display", "visibility", "overflow", "overflow-x", "overflow-y",
-                "z-index", "opacity", "font", "font-family", "font-size", "font-weight",
-                "font-style", "font-variant", "line-height", "text-align", "text-decoration",
-                "text-transform", "text-indent", "letter-spacing", "word-spacing",
-                "white-space", "vertical-align", "list-style", "list-style-type",
-                "list-style-position", "list-style-image", "cursor", "outline",
-                "box-shadow", "text-shadow", "transform", "transition", "animation"
-        };
-
-        rules.types = {
-                "auto", "inherit", "initial", "unset", "none", "normal", "bold", "italic",
-                "underline", "overline", "line-through", "uppercase", "lowercase",
-                "capitalize", "left", "right", "center", "justify", "top", "middle",
-                "bottom", "absolute", "relative", "fixed", "static", "sticky", "block",
-                "inline", "inline-block", "flex", "grid", "table", "table-cell",
-                "table-row", "hidden", "visible", "scroll", "clip", "ellipsis"
-        };
-
-        rules.builtins = {
-                "px", "em", "rem", "vh", "vw", "vmin", "vmax", "%", "pt", "pc", "in",
-                "cm", "mm", "ex", "ch", "deg", "rad", "grad", "turn", "s", "ms", "Hz",
-                "kHz", "dpi", "dpcm", "dppx", "fr"
-        };
-
-        rules.constants = {
-                "transparent", "currentColor", "red", "green", "blue", "yellow", "orange",
-                "purple", "pink", "brown", "black", "white", "gray", "grey", "silver",
-                "maroon", "navy", "aqua", "lime", "fuchsia", "olive", "teal"
-        };
-
-        rules.operators = {
-                "{", "}", "(", ")", "[", "]", ":", ";", ",", ".", "#", "+", ">", "~",
-                "*", "=", "^", "$", "|", "~", "/", "-", "!"
-        };
-
-        rules.singleLineComments = {"//"};
+        rules.isCss = true;
         rules.multiLineComments = {{"/*", "*/"}};
         rules.stringDelimiters = {'"', '\''};
-
+        rules.isCaseSensitive = false;
         return rules;
     }
 

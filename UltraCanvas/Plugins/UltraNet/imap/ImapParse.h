@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ultranet_imap {
@@ -93,6 +94,31 @@ inline UltraNetMailFlags ParseFetchFlags(const std::string& fetchLine) {
     std::size_t close = fetchLine.find(')', open);
     if (close == std::string::npos) return UltraNetMailFlags::None;
     return ImapStringToFlags(fetchLine.substr(open + 1, close - open - 1));
+}
+
+// Parse a whole "UID FETCH 1:* (FLAGS)" response into (uid, flags) pairs. Each
+// data line looks like '* 12 FETCH (UID 100 FLAGS (\Seen \Flagged))'. A line
+// without a UID token is skipped (there is nothing to reconcile it against).
+inline std::vector<std::pair<uint32_t, UltraNetMailFlags>>
+ParseAllFlags(const std::string& body) {
+    std::vector<std::pair<uint32_t, UltraNetMailFlags>> out;
+    std::istringstream is(body);
+    std::string line;
+    while (std::getline(is, line)) {
+        std::string low = Lower(line);
+        if (low.find("fetch") == std::string::npos) continue;
+        // The UID token: "UID <n>" (case-insensitive), independent of the FLAGS
+        // group (Gmail returns them in either order).
+        std::size_t up = low.find("uid");
+        if (up == std::string::npos) continue;
+        std::size_t np = up + 3;
+        while (np < line.size() && (line[np] == ' ' || line[np] == '\t')) ++np;
+        char* end = nullptr;
+        long uid = std::strtol(line.c_str() + np, &end, 10);
+        if (end == line.c_str() + np || uid <= 0) continue;
+        out.emplace_back(static_cast<uint32_t>(uid), ParseFetchFlags(line));
+    }
+    return out;
 }
 
 // ---- LIST ------------------------------------------------------------------

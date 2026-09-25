@@ -522,6 +522,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
+        # Move to the Recycle Bin / Trash. Platform backend under
+        # OS/<Platform>/; Android and WebAssembly get the fallback in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTrash.cpp
         # "Delete as administrator": the UAC relaunch behind a permission
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
@@ -1665,6 +1668,11 @@ endif()
 if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
 endif()
+# The trash: the same arrangement for UltraCanvasTrash. PUBLIC so an app can
+# leave "Move to Trash" out where there is none.
+if(ULTRACANVAS_HAS_NATIVE_TRASH)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_TRASH)
+endif()
 # Native volume monitoring: the same arrangement for UltraCanvasVolumeMonitor.
 # PUBLIC so an app can tell a device notification from the polling fallback.
 if(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
@@ -2130,15 +2138,21 @@ set(_uc_networkmonitor_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorStore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDns.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorNames.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDnsProxy.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDnsProxy.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorEvents.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorConntrack.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # The socket table, and nf_conntrack's netlink events as an event source.
     list(APPEND _uc_networkmonitor_sources
-        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitorEvents.cpp)
 elseif(WIN32)
-    # The socket tables, and the DNS client's ETW events as a name source.
+    # The socket tables, the DNS client's ETW events as a name source, and
+    # the kernel network ETW events as an event source.
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp)
 elseif(APPLE)
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp)
@@ -2260,6 +2274,7 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetUrl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetMime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2Apps.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetWebSocket.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetFtp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSocket.cpp
@@ -2816,6 +2831,27 @@ elseif(ULTRACANVAS_ENABLE_ULTRAMESSAGE)
     message(STATUS "  [−] UltraMessage - DISABLED (needs UltraDatabase)")
 else()
     message(STATUS "  [−] UltraMessage - DISABLED")
+endif()
+
+# ===== BUILD ULTRAMESSAGECENTER (the desktop message centre element) =====
+# UltraCanvasMessageCenter (include/Plugins/UltraMessage/) is the feed's first
+# UI consumer: one composite element built from catalogue elements on top of
+# UltraMessage. It links both the widget library and the headless module, so
+# it is its own target rather than part of either.
+if(TARGET UltraMessage)
+    add_library(UltraMessageCenter STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp)
+    set_target_properties(UltraMessageCenter PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultramessagecenter")
+    target_compile_features(UltraMessageCenter PUBLIC cxx_std_20)
+    target_include_directories(UltraMessageCenter
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas>)
+    target_link_libraries(UltraMessageCenter PUBLIC ${ULTRACANVAS_LIB_NAME} UltraMessage)
+    target_compile_definitions(UltraMessageCenter PUBLIC ULTRACANVAS_HAS_MESSAGECENTER=1)
+    message(STATUS "  [✓] UltraMessageCenter - ENABLED")
 endif()
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====

@@ -214,7 +214,7 @@ namespace {
             fullscreenWindow->AddChild(viewer);
 
             auto rotateBtn = MakeToolButton("STLFsRotate", 10, 10, 130, "Auto-rotate: on", nullptr);
-            rotateBtn->onClick = [this, viewer, rotateBtn]() {
+            rotateBtn->onClick = [this, viewer, rotateBtn = rotateBtn.get()]() {
                 autoRotate = !autoRotate;
                 viewer->SetAutoRotate(autoRotate);
                 rotateBtn->SetText(autoRotate ? "Auto-rotate: on" : "Auto-rotate: off");
@@ -224,7 +224,7 @@ namespace {
 
             auto materialBtn = MakeToolButton("STLFsMaterial", 150, 10, 140,
                                               "Material: " + ModelColors()[colorIndex].first, nullptr);
-            materialBtn->onClick = [this, viewer, materialBtn]() {
+            materialBtn->onClick = [this, viewer, materialBtn = materialBtn.get()]() {
                 colorIndex = (colorIndex + 1) % ModelColors().size();
                 viewer->SetModelColor(ModelColors()[colorIndex].second);
                 materialBtn->SetText("Material: " + ModelColors()[colorIndex].first);
@@ -358,7 +358,7 @@ namespace {
 
         // ===== VIEWER CONTROLS =====
         auto rotateBtn = MakeToolButton("STLRotate", 10, 450, 130, "Auto-rotate: on", nullptr);
-        rotateBtn->onClick = [viewer, rotateBtn, autoRotate]() {
+        rotateBtn->onClick = [viewer, rotateBtn = rotateBtn.get(), autoRotate]() {
             *autoRotate = !*autoRotate;
             viewer->SetAutoRotate(*autoRotate);
             rotateBtn->SetText(*autoRotate ? "Auto-rotate: on" : "Auto-rotate: off");
@@ -367,7 +367,7 @@ namespace {
 
         auto materialBtn = MakeToolButton("STLMaterial", 150, 450, 130,
                                           "Material: " + ModelColors()[0].first, nullptr);
-        materialBtn->onClick = [viewer, materialBtn, colorIndex]() {
+        materialBtn->onClick = [viewer, materialBtn = materialBtn.get(), colorIndex]() {
             *colorIndex = (*colorIndex + 1) % ModelColors().size();
             viewer->SetModelColor(ModelColors()[*colorIndex].second);
             materialBtn->SetText("Material: " + ModelColors()[*colorIndex].first);

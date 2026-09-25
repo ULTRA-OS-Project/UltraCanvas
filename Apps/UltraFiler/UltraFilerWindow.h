@@ -73,8 +73,8 @@
 // Whichever display was clicked last is the active one: the toolbars, the
 // search field, the status bar and the preview pane act on it, exactly as
 // they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
-// Version: 1.18.0
-// Last Modified: 2026-09-19
+// Version: 1.19.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -101,6 +101,8 @@
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
 #include "UltraFilerRemoteDrives.h"
+
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"   // the transfer bar
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerVolumeSpace.h"
@@ -293,12 +295,43 @@ private:
     void RefreshRemoteDriveNodes();
     // Adds one drive row. Unlike AddTreeFolderNode this queues no subfolder
     // probe: that probe reads the local filesystem, which has nothing to say
-    // about a path on a server.
+    // about a path on a server. The row's expand button comes from the
+    // placeholder below instead, and its subfolders from the drive's listing.
     void AddTreeRemoteDriveNode(const RemoteDrive& drive);
+    // Adds one folder row inside a remote drive. The remote counterpart of
+    // AddTreeFolderNode: same shape, but the expand button is offered up
+    // front rather than probed for, because probing a remote folder means
+    // listing it over the network.
+    void AddTreeRemoteFolderNode(const std::string& parentId,
+                                 const std::string& path,
+                                 const std::string& label);
+    // Gives a remote row the "..." placeholder child that draws its expand
+    // button. Does nothing for a row that already holds children, or whose
+    // real children are already in.
+    void AddRemoteTreePlaceholder(const std::string& path);
+    // Fills a remote folder's row with the subfolders its listing holds.
+    //
+    // Never waits on a server: it reads the drives' cache, and a miss only
+    // queues the fetch. That is what `listingReady` is for - a cache miss and
+    // a folder that really holds no subfolders both come back as an empty
+    // listing, and only the caller knows which it is. onListingArrived passes
+    // true (the answer is in, and an empty one is the truth, so rows that are
+    // gone leave and the expand button goes with them); an expand passes
+    // false (keep the button and wait for the fetch this call just queued).
+    void LoadRemoteTreeChildren(const std::string& path, bool listingReady);
     // Gives one filer widget the hooks that let it show a remote folder and
     // change what is on it (UltraCanvasFilerWidget::isRemotePath,
     // remoteListing, remoteDelete, remoteRename, remoteMakeDirectory).
     void WireRemoteDriveHooks(UltraCanvasFilerWidget* widget);
+    // What the status line says about a drive that is busy - "Opening \"Videos\"
+    // - receiving folder data...", "Uploading \"clip.mp4\" - 3.2 MB of 8.0 MB".
+    // Empty while the drives are idle, which is when the status line goes back
+    // to describing the folder in front of the user.
+    std::string DescribeRemoteActivity() const;
+    // Puts the progress bar in step with `remoteActivity`: a percentage during
+    // a transfer whose size the server gave, the gauge's indeterminate slide
+    // during one it did not, and hidden the rest of the time.
+    void UpdateRemoteProgressBar();
     // Refreshes whatever display is showing `folderPath`. Used both when a
     // queued listing arrives and after a change to the drive.
     void RefreshRemoteFolderDisplays(const std::string& folderPath);
@@ -387,6 +420,10 @@ private:
         std::atomic<size_t> matches{0};
         std::atomic<size_t> foldersScanned{0};
         std::atomic<size_t> filesRead{0};      // content search: files opened
+        // Hidden folders the walk did not enter because the display does not
+        // show hidden files, and the first few of their names (under mutex).
+        std::atomic<size_t> hiddenFoldersSkipped{0};
+        std::vector<std::string> hiddenFolderNames;
     };
     // The walk itself: an explicit folder stack (no recursive iterator, whose
     // errors are awkward to contain), symlinks and junctions never entered so
@@ -394,7 +431,8 @@ private:
     void SubfolderSearchWorkerMain(std::shared_ptr<SubfolderSearchState> state,
                                    std::shared_ptr<std::atomic<bool>> alive,
                                    std::string root, std::string needle,
-                                   bool inContents, uint64_t generation);
+                                   bool inContents, bool includeHidden,
+                                   uint64_t generation);
     // Moves what the worker has found onto the display (UI thread), refreshes
     // the status line and, when the walk is done, retires the worker.
     void DrainSubfolderSearch(std::shared_ptr<SubfolderSearchState> state,
@@ -575,6 +613,26 @@ private:
     // `DropFilesOnTreeNode` pins onto the Pinned section or moves the files into
     // a folder node, returning whether it handled the drop.
     bool IsTreeDropTarget(const TreeNode* node) const;
+    // Queues the upload of `files` into the remote folder `folder`, one request
+    // per file, and puts what happened on the status bar: how many are on
+    // their way to which drive, and how many were left out (a folder, a
+    // remote entry) with the first reason. Returns the number queued; the
+    // reason for what was left out comes back in `firstRefusal`. Used by a
+    // drop on a remote row of the tree and by a drop onto a remote folder in
+    // a display (the widget's remoteUpload hook).
+    int UploadToRemoteFolder(const std::string& folder,
+                             const std::vector<std::string>& files,
+                             std::string& firstRefusal);
+    // The mirror of it: queues the download of the remote `files` into the
+    // local folder `folder`, one request per file, and puts what happened on
+    // the status bar. Returns the number queued, with the first reason for
+    // what was left out (a folder, a path that is already local, a drive that
+    // is gone) in `firstRefusal`. Used by a drop of a drive's entries on a
+    // local row of the tree and by the same drop in a display (the widget's
+    // remoteDownload hook).
+    int DownloadToLocalFolder(const std::string& folder,
+                              const std::vector<std::string>& files,
+                              std::string& firstRefusal);
     bool DropFilesOnTreeNode(TreeNode* target,
                              const std::vector<std::string>& files);
     // The tree's context menu (Copy / Delete / Paste / Pin / Unpin) at the
@@ -786,7 +844,22 @@ private:
     std::shared_ptr<UltraCanvasContainer>       searchBox;    // field + in-field button
     std::shared_ptr<UltraCanvasTextInput>       searchInput;
     std::shared_ptr<UltraCanvasButton>          scanButton;   // "Scan sub folder" / "Stop"
+    // The status strip: the line of text, and the bar that appears beside it
+    // while a transfer to a drive is running.
+    std::shared_ptr<UltraCanvasContainer>       statusRow;
     std::shared_ptr<UltraCanvasLabel>           statusLabel;
+    // The transfer bar: an UltraCanvasGaugeDiagramElement in LinearBar mode,
+    // which is the framework's progress bar. Short enough that the gauge
+    // drops its caption and value line and is simply the bar.
+    std::shared_ptr<UltraCanvasGaugeDiagramElement> statusProgress;
+    // What the drives last said they were doing. Idle most of the time; the
+    // status line and the bar are drawn from it.
+    RemoteActivity remoteActivity;
+    // What a drop could not transfer - onto a drive or off one - held on the
+    // status line until the next drop or the next folder: the activity line
+    // owns the strip while the files that did go are going, so this would
+    // otherwise show for a fraction of a second and vanish.
+    std::string remoteDropNote;
     std::shared_ptr<UltraCanvasButton>          backButton;
     std::shared_ptr<UltraCanvasButton>          forwardButton;
     std::shared_ptr<UltraCanvasButton>          upButton;
@@ -809,6 +882,12 @@ private:
     SplitSide activeSplitSide = SplitSide::Left;   // the pane the toolbars act on
     bool treeDockShown = false;            // the tree is docked in a pane
     SplitSide treeDockSide = SplitSide::Left;      // ... in this one
+    // What docking the tree took from the other display and from the rest
+    // of the split (the preview pane), so undocking gives back exactly that
+    // - not the tree's full width, which the other display may not have had
+    // to give.
+    int treeDockTakenFromOther = 0;
+    int treeDockTakenFromRest = 0;
     // The tree pane's width while it is out of the split, so it comes back
     // as wide as the user had it. Starts at the start-up width.
     int treePaneWidth = 280;

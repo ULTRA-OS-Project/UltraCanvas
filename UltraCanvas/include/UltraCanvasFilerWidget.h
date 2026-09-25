@@ -87,8 +87,8 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.31.0
-// Last Modified: 2026-09-17
+// Version: 1.33.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -352,6 +352,18 @@ namespace UltraCanvas {
         AlwaysConfirm
     };
 
+    // ===== WHAT A DELETE DOES =====
+    // The choice the delete confirmation offers as two radio buttons, and the
+    // one it opens on: Del opens on MoveToTrash, Shift+Del on Permanently -
+    // the keys Windows Explorer gives the two. Where the trash cannot take the
+    // victims (UltraCanvasTrash is missing on this platform, the entries are
+    // inside an archive or on a remote drive) the dialog offers Permanently
+    // only, and says why.
+    enum class FilerDeleteMode {
+        MoveToTrash,   // into the Recycle Bin / Trash, restorable from there
+        Permanently    // removed from the disk; cannot be undone
+    };
+
     // ===== THE HIDDEN-ITEMS NOTICE =====
     // When the strip along the foot of the display says what the listing is
     // leaving out. A display that drops entries without a word is how a user
@@ -571,6 +583,11 @@ namespace UltraCanvas {
         // to let the context menu open an entry's containing folder.
         void ShowFileList(const std::vector<std::string>& paths);
         bool IsShowingFileList() const { return fileListMode; }
+        // What an empty file list says in the middle of the display instead of
+        // "No entries" - a search can say what it looked through and what it
+        // left out. Lines are separated by '\n'. ShowFileList() resets it, so
+        // set it after the list it describes; "" restores "No entries".
+        void SetFileListEmptyMessage(const std::string& message);
 
         // Adds paths to the file list already on display, stat-ing only the
         // new ones and leaving the scroll position and the selection alone —
@@ -1180,15 +1197,33 @@ namespace UltraCanvas {
         void PasteFilesInto(std::string folder, std::vector<std::string> paths,
                             bool cut,
                             std::function<void(bool changed)> onDone = nullptr);
-        void DeleteSelection();    // gated by confirmDelete when set
+        // Asks (the built-in confirmation, or confirmDelete when set) and
+        // deletes the selection. `preferred` is the choice the dialog opens
+        // on - Del passes MoveToTrash, Shift+Del Permanently - and what a
+        // confirmDelete host gets when the trash can take the entries.
+        void DeleteSelection(FilerDeleteMode preferred = FilerDeleteMode::MoveToTrash);
         // Delete `paths` with no confirmation of the widget's own - the caller
-        // has already asked. They go through the same worker, progress window
-        // and problem dialogs as a delete started in the view, which is the
-        // point: UltraFiler's folder-tree delete used a bare remove_all and
-        // froze the window for as long as it took. `onDone` is told whether
-        // anything was removed.
+        // has already asked, and chose `mode`. They go through the same worker,
+        // progress window and problem dialogs as a delete started in the view,
+        // which is the point: UltraFiler's folder-tree delete used a bare
+        // remove_all and froze the window for as long as it took. `onDone` is
+        // told whether anything was removed. With MoveToTrash, an entry the
+        // trash refuses stops at the problem dialog; it is never deleted for
+        // good instead.
         void DeletePaths(std::vector<std::string> paths,
-                         std::function<void(bool changed)> onDone = nullptr);
+                         std::function<void(bool changed)> onDone = nullptr,
+                         FilerDeleteMode mode = FilerDeleteMode::Permanently);
+        // The same, behind the widget's own confirmation dialog (the trash /
+        // permanent choice, the folder preview) - for a host command that
+        // deletes paths the display is not showing, such as UltraFiler's
+        // folder-tree "Delete". `onDone` hears false when the user cancels.
+        void ConfirmDeletePaths(std::vector<std::string> paths,
+                                std::function<void(bool changed)> onDone = nullptr,
+                                FilerDeleteMode preferred = FilerDeleteMode::MoveToTrash);
+        // Whether the trash can take every one of `victims`: this platform has
+        // one (TrashAvailable) and each entry is a real file here - not inside
+        // an archive, not on a remote drive.
+        bool CanMoveToTrash(const std::vector<FilerEntry>& victims) const;
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
         // What a delete that wipes out the whole selection leaves selected.
@@ -1214,6 +1249,22 @@ namespace UltraCanvas {
         // unpack into their own subfolder of the named folder.
         void OpenExtractDialog();
         static bool ClipboardHasContent();
+        // The name a "Keep both" paste would give `baseName` in `folder`: the
+        // name itself when nothing is there, else the first free "name (2)",
+        // "name (3)" ... with the extension kept on the end. Public and
+        // static because a host that writes into a folder without going
+        // through the widget - UltraFiler saving a file it downloaded from a
+        // drive - needs the same answer, and a second implementation of it
+        // would be a second set of rules about what "(2)" means.
+        // `alsoTaken`, when given, is asked about each candidate as well as
+        // the disk, and a true answer walks on to the next one. That is for a
+        // caller with files already promised but not yet written - a queue of
+        // downloads, say: they are not on the disk, so without this the whole
+        // queue would be told the same name is free and the last one to land
+        // would be the only one kept.
+        static std::string UniquePathIn(
+                const std::string& folder, const std::string& baseName,
+                const std::function<bool(const std::string&)>& alsoTaken = {});
 
         // "New >" document kinds (replaces the default seven). The getter
         // lets a host mirror the submenu elsewhere — UltraFiler's command-bar
@@ -1289,7 +1340,9 @@ namespace UltraCanvas {
         // application can persist the widths and restore them later.
         std::function<void()> onColumnWidthsChanged;
 
-        // Optional veto for DeleteSelection: return false to abort.
+        // Optional veto for DeleteSelection: return false to abort. It replaces
+        // the built-in dialog, so the delete then goes the way DeleteSelection
+        // was asked for (to the trash when it can take the entries).
         std::function<bool(const std::vector<FilerEntry>&)> confirmDelete;
 
         // ---- Remote drives (an FTP or a cloud account carried as a drive) --
@@ -1318,6 +1371,16 @@ namespace UltraCanvas {
         // freezes the window for as long as the server takes.
         std::function<bool(const std::string& path, std::vector<FilerEntry>& out,
                            std::string& error)> remoteListing;
+        // What is going on while the remote listing is still on its way: a
+        // line such as "Connecting to ftp.example.org" or "Waiting for 2
+        // requests ahead". Asked after remoteListing answered "nothing yet"
+        // (true with an empty listing), and again on every tick while the
+        // waiting notice is shown, so the text can follow the fetch. A
+        // non-empty answer shows the listing as loading - a progress ring
+        // over the text - instead of as an empty folder; an empty answer means
+        // the folder really is empty. Left unset, a folder being fetched shows
+        // as empty until the host's Refresh(), as it did before.
+        std::function<std::string(const std::string& path)> remoteListingStatus;
 
         // ---- Changing a remote drive ---------------------------------------
         // Unlike remoteListing these do not answer with the result. The host
@@ -1338,6 +1401,30 @@ namespace UltraCanvas {
                            std::string& error)> remoteRename;
         std::function<bool(const std::string& folderPath, const std::string& name,
                            std::string& error)> remoteMakeDirectory;
+        // Puts local files onto the drive: `localFiles` are uploaded into the
+        // remote folder `folderPath` under their own names, one request each.
+        // Return true when at least one was accepted; `error` carries the
+        // first refusal even then (a folder, which is not one transfer; a
+        // remote entry, which has no local file to send; a drive that cannot
+        // take uploads), so the widget can say what was left out. Files
+        // dropped onto a remote folder shown in this widget go through this;
+        // left unset, such a drop is refused with a message.
+        std::function<bool(const std::string& folderPath,
+                           const std::vector<std::string>& localFiles,
+                           std::string& error)> remoteUpload;
+        // Takes files off a drive: the remote files `remoteFiles` are fetched
+        // into the local folder `folderPath` under their own names, one
+        // request each. The mirror of remoteUpload in every respect - the
+        // host queues the work and refreshes when the server has answered,
+        // true means at least one was accepted, and `error` carries the first
+        // refusal even then (a folder, which is not one transfer; a local
+        // path, which is already here). Entries dragged off a drive onto a
+        // local folder shown in this widget go through this; left unset, such
+        // a drop is refused with a message rather than reaching
+        // std::filesystem with an ultracloud:// path it cannot open.
+        std::function<bool(const std::string& folderPath,
+                           const std::vector<std::string>& remoteFiles,
+                           std::string& error)> remoteDownload;
 
         // Extra info column provider (e.g. plays a media header to report the
         // duration). Called once per entry at scan time; empty result keeps the
@@ -1424,6 +1511,7 @@ namespace UltraCanvas {
         std::function<void()> onFilterEmptyAction;
         std::shared_ptr<UltraCanvasButton> filterEmptyButton;
         bool showHiddenFiles = false;
+        std::string fileListEmptyMessage;   // SetFileListEmptyMessage
         // Hidden-items notice (SetHiddenItemsNotice): when the host
         // wants the strip at all, how many entries the last scan left out,
         // and the "Show hidden files" button of the strip - another real
@@ -1669,6 +1757,20 @@ namespace UltraCanvas {
         // open" — a double-click cancels the pending rename.
         int pendingRenameIndex = -1;
         TimerId pendingRenameTimer = InvalidTimerId;
+
+        // The folder being fetched from a remote drive (see remoteListingStatus):
+        // what the host says is happening, shown with a progress ring in place
+        // of the empty-folder notice; the ring turns on the timer below, which
+        // also re-asks the host so the words follow the fetch. Empty when
+        // nothing is being waited for.
+        std::string listingPendingStatus;
+        TimerId listingPendingTimer = InvalidTimerId;
+        std::chrono::steady_clock::time_point listingPendingSince{};
+        // Why the last scan of the current folder produced nothing: a remote
+        // listing the host refused (an unreachable server, a rejected login).
+        // Painted where "Folder is empty!" would otherwise go, since that
+        // folder is not known to be empty at all.
+        std::string listingFailureNotice;
 
         // ===== DRAGGING ENTRIES (in-widget drag + native OS drag out) =====
         // A left press on an item arms the gesture and captures the mouse, so
@@ -2378,6 +2480,17 @@ namespace UltraCanvas {
                                  const std::string& message);
         // "Nothing to show" notice for an empty folder / file list: an
         // attention icon above the message, vertically centered in the view.
+        // The waiting notice of a remote folder still being fetched: a turning
+        // progress ring, "Loading folder", and under it the host's status
+        // line (listingPendingStatus). Drawn where the empty-folder notice
+        // goes, in the same layout.
+        void DrawLoadingState(IRenderContext* ctx, const Rect2Di& bounds);
+        // Keeps the ring turning and the status line current while the
+        // notice is up: a periodic timer that re-asks remoteListingStatus and
+        // repaints. Stopped as soon as the listing arrives or the folder
+        // changes, and in the destructor.
+        void StartListingPendingTicks();
+        void StopListingPendingTicks();
         void DrawEmptyState(IRenderContext* ctx, const Rect2Di& bounds,
                             const std::string& message);
         // ===== NAME FILTER (helpers) =====
@@ -2615,7 +2728,8 @@ namespace UltraCanvas {
         std::vector<FilerEntry> SelectionOrEntry(size_t entryIndex) const;
         // Delete an explicit set (confirmDelete / the built-in dialog still
         // gate it). DeleteSelection() is this over the selected entries.
-        void DeleteEntries(const std::vector<FilerEntry>& victims);
+        void DeleteEntries(const std::vector<FilerEntry>& victims,
+                           FilerDeleteMode preferred = FilerDeleteMode::MoveToTrash);
         // Entry that should inherit the selection once `victims` are gone:
         // the first survivor after them, else the last one before them.
         // Empty when the folder holds nothing else.
@@ -2682,6 +2796,20 @@ namespace UltraCanvas {
         // Files dropped onto the widget from other applications / windows are
         // copied into the current folder (sources already there are skipped).
         void AcceptDroppedFiles(const std::vector<std::string>& paths);
+        // The remote counterpart: the paths go to the host's remoteUpload,
+        // which puts them onto the drive the shown folder is on. Nothing is
+        // copied locally; what arrives is shown by the host's refresh.
+        // Does any of these live on a drive rather than on this computer?
+        // Asked before a path is handed to std::filesystem, to another
+        // application, or to the system clipboard - none of which can do
+        // anything with an ultracloud:// path.
+        bool AnyRemotePath(const std::vector<std::string>& paths) const;
+        void UploadDroppedFiles(const std::vector<std::string>& paths);
+        // The other direction: remote paths dropped on a LOCAL folder go to
+        // the host's remoteDownload, which fetches them into it. Nothing is
+        // copied here either; what arrives is shown by the host's refresh.
+        void DownloadDroppedFiles(const std::vector<std::string>& paths,
+                                  const std::string& destDir);
         // Commit / abandon the inline rename. `restoreFocus` gives the
         // keyboard focus back to the widget after the editor is removed —
         // the Enter / Escape / programmatic paths want that; the focus-loss
@@ -2720,10 +2848,20 @@ namespace UltraCanvas {
         // displayed folder is not where the change landed).
         void NotifyFolderModified(const std::string& folderPath = "");
         void ReportError(const std::string& message);
+        // An extraction of `archivePath` that did not succeed. `detail` is
+        // UCVFSBridge::ExtractArchive's outError: when it lists entries (the
+        // archive was extracted only in part - entries refused as unsafe,
+        // entries that could not be written) a dialog names them, one per
+        // line, and the status line says the extraction was incomplete;
+        // any other failure goes to the status line as before, with the
+        // reason appended.
+        void ReportExtractionProblem(const std::string& archivePath,
+                                     const std::string& detail);
+        // Whether an ExtractArchive outError describes a partial extraction
+        // (a heading line ending in ':' followed by entries) rather than an
+        // archive that could not be extracted at all.
+        static bool IsPartialExtraction(const std::string& detail);
         std::string UniqueChildPath(const std::string& baseName) const;
-        // Same, but in an arbitrary folder (drop target of a drag).
-        static std::string UniquePathIn(const std::string& folder,
-                                        const std::string& baseName);
 
         // ===== COPY / MOVE / DELETE WORKER =====
         // Copying, moving and deleting run on a worker thread, and a progress
@@ -2984,6 +3122,8 @@ namespace UltraCanvas {
             std::string stopReason;
             // Runs when the queue is done, if the caller asked to be told.
             std::function<void(bool changed)> onDone;
+            // Each entry goes to the trash instead of being removed.
+            bool toTrash = false;
         };
         std::unique_ptr<PendingDelete> pendingDelete;
 
@@ -3197,13 +3337,24 @@ namespace UltraCanvas {
         // ===== DELETE CONFIRMATION =====
         // Actually removes the given entries from disk (no confirmation).
         // `onDone` is told, when the queue is through, whether anything went.
+        // `mode` MoveToTrash sends each real-filesystem entry to the trash;
+        // entries inside an archive are always removed from it.
         void PerformDeletion(const std::vector<FilerEntry>& victims,
-                             std::function<void(bool changed)> onDone = nullptr);
+                             std::function<void(bool changed)> onDone = nullptr,
+                             FilerDeleteMode mode = FilerDeleteMode::Permanently);
         // Shows the built-in modal confirmation dialog (used when no
-        // confirmDelete veto is installed). Deletes on confirm. When a folder is
-        // among the victims, a preview of its first entries (with thumbnails) is
-        // shown so the user sees what is about to be lost.
-        void ShowDeleteConfirmation(const std::vector<FilerEntry>& victims);
+        // confirmDelete veto is installed): "Move to Trash" / "Delete
+        // permanently" as two radio buttons opened on `preferred`, the
+        // warning line following the choice. Deletes on confirm; `onDone`
+        // hears false on cancel. Under the choice a scrolling list (icon,
+        // name, size, modified; at most 40 rows) shows what is about to go:
+        // the selected items when there are several, the folder's contents
+        // when one folder is deleted.
+        void ShowDeleteConfirmation(const std::vector<FilerEntry>& victims,
+                                    FilerDeleteMode preferred = FilerDeleteMode::MoveToTrash,
+                                    std::function<void(bool changed)> onDone = nullptr);
+        // DeletePaths' entries: what the filesystem says about each path.
+        std::vector<FilerEntry> EntriesForPaths(const std::vector<std::string>& paths) const;
     };
 
     // ===== FACTORY =====

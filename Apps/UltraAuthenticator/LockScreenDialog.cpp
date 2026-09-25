@@ -1,8 +1,9 @@
 // Apps/UltraAuthenticator/LockScreenDialog.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "LockScreenDialog.h"
+#include "BrandHeader.h"
 #include "Theme.h"
 
 #include "UltraCrypt/UltraCryptCore.h"
@@ -19,7 +20,7 @@ void WipeString(std::string& s) {
 
 } // namespace
 
-void LockScreenDialog::CreateLockScreenDialog(const std::string& reason) {
+void LockScreenDialog::CreateLockScreenDialog(const std::string& message) {
     DialogConfig cfg;
     cfg.title         = "UltraAuthenticator — locked";
     cfg.width         = kDialogWidth;
@@ -41,7 +42,7 @@ void LockScreenDialog::CreateLockScreenDialog(const std::string& reason) {
 
     const long margin     = Theme::kMargin;
     const long fieldWidth = kDialogWidth - 2 * margin;
-    long y = margin;
+    long y = AddBrandHeader(*this, "lock", kDialogWidth, margin);
 
     auto title = std::make_shared<UltraCanvasLabel>(
         "lock-title", margin, y, fieldWidth, 24, "Locked");
@@ -52,8 +53,8 @@ void LockScreenDialog::CreateLockScreenDialog(const std::string& reason) {
 
     reasonLabel_ = std::make_shared<UltraCanvasLabel>(
         "lock-reason", margin, y, fieldWidth, 36,
-        reason + " Enter your master password to show the codes again.");
-    reasonLabel_->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+        message);
+    reasonLabel_->SetFont(Theme::kUiFont, Theme::kSizeSmall);
     reasonLabel_->SetTextColor(Theme::kTextSecondary);
     reasonLabel_->SetWrap(TextWrap::WrapWord);
     AddChild(reasonLabel_);

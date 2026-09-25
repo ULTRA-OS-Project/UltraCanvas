@@ -18,6 +18,7 @@
 // Author: UltraCanvas Framework
 
 #include "Models/OBJ/UltraCanvasOBJConverter.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
 
 #include <algorithm>
 #include <cctype>
@@ -27,9 +28,29 @@
 #include <limits>
 #include <map>
 #include <sstream>
+#include <locale>
 #include <unordered_map>
 
 namespace UltraCanvas {
+
+// OBJ and MTL are dot-decimal by specification, like every model format.
+// std::strtof / std::strtod read through LC_NUMERIC, so on a comma-decimal
+// desktop - and the Linux backend calls setlocale(LC_ALL, "") for XIM - every
+// vertex `1.5` was read as 1 and the model came in mangled, with nothing
+// anywhere to report it. These read the way the format is written; a token
+// that is not a number stays 0, exactly as strtof's null-endptr form did.
+inline float ObjFloat(const std::string& text) {
+    float value = 0.0f;
+    TryParseFloat(text, value);
+    return value;
+}
+
+inline double ObjDouble(const std::string& text) {
+    double value = 0.0;
+    TryParseFloat(text, value);
+    return value;
+}
+
 namespace ModelConverter {
 
 using namespace ModelStorage;
@@ -112,13 +133,13 @@ std::string ParseMapLine(const std::string& arguments, TextureRef& ref) {
                  option == "-imfchan") values = 1;
 
         if (option == "-s" && i + 2 < tokens.size()) {
-            ref.ScaleU = std::strtof(tokens[i + 1].c_str(), nullptr);
-            ref.ScaleV = std::strtof(tokens[i + 2].c_str(), nullptr);
+            ref.ScaleU = ObjFloat(tokens[i + 1]);
+            ref.ScaleV = ObjFloat(tokens[i + 2]);
         } else if (option == "-o" && i + 2 < tokens.size()) {
-            ref.OffsetU = std::strtof(tokens[i + 1].c_str(), nullptr);
-            ref.OffsetV = std::strtof(tokens[i + 2].c_str(), nullptr);
+            ref.OffsetU = ObjFloat(tokens[i + 1]);
+            ref.OffsetV = ObjFloat(tokens[i + 2]);
         } else if (option == "-bm" && i + 1 < tokens.size()) {
-            ref.Scale = std::strtof(tokens[i + 1].c_str(), nullptr);
+            ref.Scale = ObjFloat(tokens[i + 1]);
         }
         i += 1 + values;
     }
@@ -198,15 +219,15 @@ private:
     void ReadPosition(const std::string& arguments) {
         const std::vector<std::string> parts = SplitWhitespace(arguments);
         if (parts.size() < 3) return;
-        positions_.emplace_back(std::strtod(parts[0].c_str(), nullptr),
-                                std::strtod(parts[1].c_str(), nullptr),
-                                std::strtod(parts[2].c_str(), nullptr));
+        positions_.emplace_back(ObjDouble(parts[0]),
+                                ObjDouble(parts[1]),
+                                ObjDouble(parts[2]));
         // The widespread extension "v x y z r g b": a per-vertex colour, which
         // scanners and Blender both emit. A 4th value alone is the rational w.
         if (parts.size() >= 6) {
-            colors_.push_back(Vec3f(std::strtof(parts[3].c_str(), nullptr),
-                                    std::strtof(parts[4].c_str(), nullptr),
-                                    std::strtof(parts[5].c_str(), nullptr)));
+            colors_.push_back(Vec3f(ObjFloat(parts[3]),
+                                    ObjFloat(parts[4]),
+                                    ObjFloat(parts[5])));
         } else if (!colors_.empty()) {
             colors_.push_back(Vec3f(1.0f, 1.0f, 1.0f));
         }
@@ -215,16 +236,16 @@ private:
     void ReadTexCoord(const std::string& arguments) {
         const std::vector<std::string> parts = SplitWhitespace(arguments);
         if (parts.empty()) return;
-        texcoords_.push_back(std::strtof(parts[0].c_str(), nullptr));
-        texcoords_.push_back(parts.size() > 1 ? std::strtof(parts[1].c_str(), nullptr) : 0.0f);
+        texcoords_.push_back(ObjFloat(parts[0]));
+        texcoords_.push_back(parts.size() > 1 ? ObjFloat(parts[1]) : 0.0f);
     }
 
     void ReadNormal(const std::string& arguments) {
         const std::vector<std::string> parts = SplitWhitespace(arguments);
         if (parts.size() < 3) return;
-        normals_.push_back(Vec3f(std::strtof(parts[0].c_str(), nullptr),
-                                 std::strtof(parts[1].c_str(), nullptr),
-                                 std::strtof(parts[2].c_str(), nullptr)));
+        normals_.push_back(Vec3f(ObjFloat(parts[0]),
+                                 ObjFloat(parts[1]),
+                                 ObjFloat(parts[2])));
     }
 
     Corner ParseCorner(const std::string& token) {
@@ -496,7 +517,7 @@ private:
                                                                 : Trim(trimmed.substr(space + 1));
             const std::vector<std::string> parts = SplitWhitespace(rest);
             auto number = [&parts](size_t i) {
-                return i < parts.size() ? std::strtof(parts[i].c_str(), nullptr) : 0.0f;
+                return i < parts.size() ? ObjFloat(parts[i]) : 0.0f;
             };
             auto color = [&]() { return Vec3f(number(0), number(1), number(2)); };
 
@@ -623,14 +644,24 @@ private:
 class ScopedPrecision {
 public:
     ScopedPrecision(std::ostream& stream, NumericPrecision precision, bool forDouble)
-            : stream_(stream), previous_(stream.precision()) {
+            : stream_(stream), previous_(stream.precision()),
+              previousLocale_(stream.getloc()) {
+        // Shaping a model file's numbers means the decimal point too, and
+        // before the Compact early-out below: without this the writer emitted
+        // `v 1,5 0 2` on a comma-decimal desktop, which every other OBJ reader
+        // takes as a different vertex - OBJ separates components with spaces,
+        // so the comma silently changes what the line means.
+        stream_.imbue(std::locale::classic());
         if (precision == NumericPrecision::Compact) return;
         // max_digits10: the shortest digit count that guarantees
         // value -> text -> value returns the identical value.
         stream_.precision(forDouble ? std::numeric_limits<double>::max_digits10
                                     : std::numeric_limits<float>::max_digits10);
     }
-    ~ScopedPrecision() { stream_.precision(previous_); }
+    ~ScopedPrecision() {
+        stream_.precision(previous_);
+        stream_.imbue(previousLocale_);
+    }
 
     ScopedPrecision(const ScopedPrecision&) = delete;
     ScopedPrecision& operator=(const ScopedPrecision&) = delete;
@@ -638,6 +669,7 @@ public:
 private:
     std::ostream& stream_;
     std::streamsize previous_;
+    std::locale previousLocale_;
 };
 
 void WriteGeometry(const ModelDocument& document, std::ostream& out,

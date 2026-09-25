@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <title>Camera</title>
+  <path d="M5.2 3 L10.8 3 L11.8 4.6 L14 4.6 A1 1 0 0 1 15 5.6 L15 12.5 A1 1 0 0 1 14 13.5 L2 13.5 A1 1 0 0 1 1 12.5 L1 5.6 A1 1 0 0 1 2 4.6 L4.2 4.6 Z" fill="#4a5568"/>
+  <circle cx="8" cy="9" r="3.3" fill="#e2e8f0"/>
+  <circle cx="8" cy="9" r="2.1" fill="#3182ce"/>
+  <circle cx="12.8" cy="6.4" r="0.7" fill="#f6ad55"/>
+</svg>

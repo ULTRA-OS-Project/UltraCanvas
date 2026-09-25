@@ -1,3 +1,43 @@
+#### 2026-09-24 *0.2.2*
+- **The start screens show the app's logo.** The first-launch password screen
+  and the lock screen now open with the UltraAuthenticator logo, centred, and
+  the name "UltraAuthenticator" in small type beneath it (`BrandHeader.h`), so
+  the first password prompt is recognisably this app's.
+  The lock screen is also the sign-in popup that appears after 5 minutes
+  without input (or on minimise, or the Lock button), so it carries the logo
+  in every case.
+- **The password screens say what makes a password safe.** Under the new
+  password on the first-launch screen and in *Change master password*, a
+  checklist ticks off as it is typed: 12 or more characters, an uppercase
+  letter, a lowercase letter, a number, a symbol (`PasswordAdvice.h`, built
+  from the catalogue's `UltraCanvasPasswordRuleLegend`). It is advice only:
+  Create and Change never check it, an unmet rule is a grey circle rather
+  than a red cross, and the heading says "recommended, not required" - a
+  long passphrase of plain words is a good password that fails half of them.
+- **Smaller fine print.** The explanation under "Choose a master password"
+  and the lock screen's reason line are set in the small size (11 pt), so
+  they read as notes under the title rather than competing with it.
+- **Password fields have an eye button.** Every master-password, backup
+  passphrase and setup-key field can now show what was typed, through the
+  framework's password reveal button — which is now on by default for every
+  password input (framework changelog, TextInput 1.6.0).
+
+#### 2026-09-23 *0.2.1*
+- **The launch unlock is the lock screen.** Opening an existing vault used a
+  separate password prompt that quit the app on a wrong password — a typo
+  cost a restart, and a guesser paid nothing more than that. The window now
+  comes up locked over the attached vault (`AccountStore::Attach`) and the
+  same `LockScreenDialog` as after an idle or minimise lock unlocks it, with
+  the same back-off: three wrong passwords are free, then the wait doubles.
+  Nothing about the accounts is rendered before the password, as before.
+- **A new vault asks for its password twice.** The first-launch prompt was
+  the framework's one-line input dialog, which took the password once - so a
+  typo there silently became the master password, the one that cannot be
+  recovered, and the user found out at the next launch. `NewVaultDialog`
+  now has a confirmation field that must match, a strength meter that
+  follows the first field as it is typed (advice, not a gate), and Quit as
+  the only other way out.
+
 #### 2026-09-22 *0.2.0*
 - **The vault locks itself.** A new **Lock** button, a lock after a period
   without input to the window (Settings → *Lock after no input for*, default

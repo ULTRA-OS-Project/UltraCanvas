@@ -1,7 +1,7 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
-// Version: 1.2.0
-// Last Modified: 2026-08-09
+// Version: 1.3.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -94,6 +94,8 @@ public:
     // your own menu; when it is unset the built-in cell-formatting menu opens
     // (see SetFormatMenuEnabled).
     std::function<void(int, int, int, int)> onCellContextMenu;
+    // A header sort button reordered the selection: (range, column, order).
+    std::function<void(const CellRange&, int, SortOrder)> onSelectionSorted;
     
 private:
     std::vector<std::unique_ptr<SpreadsheetSheet>> sheets_;
@@ -157,6 +159,21 @@ private:
     // The built-in formatting context menu, created lazily on first use.
     std::shared_ptr<UltraCanvasMenu> formatMenu_;
     bool formatMenuEnabled_ = true;
+
+    // Header sort buttons (see SetHeaderSortEnabled). The last header sort is
+    // remembered by sheet, range and column so its header can show the
+    // direction for as long as that same range stays selected.
+    bool headerSortEnabled_ = true;
+    std::string headerSortSheet_;
+    CellRange headerSortRange_;
+    int headerSortColumn_ = -1;
+    bool headerSortAscending_ = true;
+    bool sortFormulaWarningEnabled_ = true;
+
+    // Fill-handle drag: the selection it started from and the range the
+    // pointer currently extends it to (drawn as a dashed outline).
+    CellRange autoFillSource_;
+    CellRange autoFillTarget_;
     // Set by a file load: columns the document did not size are fitted to their
     // content on the next render, when a render context exists to measure text
     // with. Doing it at load time would have to guess the font metrics.
@@ -377,6 +394,35 @@ public:
     void SortSelection(const std::vector<SortCriteria>& criteria);
     void SortSelectionAscending();
     void SortSelectionDescending();
+    // Sort the selected block by one of its columns. Only the selected rows
+    // move, and every selected column moves with them, so each row of the
+    // block stays together; cells outside the selection are not touched.
+    void SortSelectionByColumn(int column, SortOrder order);
+
+    // ===== AUTO-FILL =====
+    // Fill `destination` - the selection extended down, up, right or left -
+    // from the selection, as dragging the fill handle does: number series
+    // continue, "Item 1" counts on, formulas shift their relative references,
+    // anything else repeats (see SpreadsheetSheet::AutoFill). One undo step;
+    // the destination is selected afterwards. False when the destination is
+    // not such an extension or overlaps merged cells.
+    bool AutoFillSelection(const CellRange& destination);
+
+    // Header sort buttons: while a block of two or more rows is selected, the
+    // header of every column in it shows a small up/down button. Clicking it
+    // sorts the block by that column (see SortSelectionByColumn); clicking the
+    // same button again reverses the order. On by default.
+    bool IsHeaderSortEnabled() const { return headerSortEnabled_; }
+    void SetHeaderSortEnabled(bool enabled);
+    // The column the current selection was last sorted by through its header
+    // button, or -1 when the selection has not been sorted that way.
+    int  GetHeaderSortColumn() const;
+    bool GetHeaderSortAscending() const { return headerSortAscending_; }
+    // A header sort of a block that holds formulas first asks, in an
+    // OK/Cancel warning, whether to go ahead: the formulas move with their
+    // rows but keep their references. On by default.
+    bool IsSortFormulaWarningEnabled() const { return sortFormulaWarningEnabled_; }
+    void SetSortFormulaWarningEnabled(bool enabled) { sortFormulaWarningEnabled_ = enabled; }
     void SetAutoFilter();
     void RemoveAutoFilter();
     void ApplyFilter(int column, const ColumnFilter& filter);
@@ -486,9 +532,24 @@ private:
     
     enum class HitArea { None, FormulaBar, ColumnHeader, RowHeader, CornerHeader, 
                          Cell, ColumnResizer, RowResizer, SheetTab, 
-                         HorizontalScrollbar, VerticalScrollbar, AutoFillHandle };
+                         HorizontalScrollbar, VerticalScrollbar, AutoFillHandle,
+                         ColumnSortButton };
     struct HitTestResult { HitArea area = HitArea::None; int row = -1; int col = -1; int tabIndex = -1; };
     HitTestResult HitTest(int x, int y) const;
+
+    // Header sort buttons: the block they sort (false when the selection is
+    // not one), and where a column's button sits in its header cell (an empty
+    // rect when the column is too narrow to carry one).
+    bool GetHeaderSortableRange(CellRange& range) const;
+    Rect2Di GetHeaderSortButtonRect(int colX, int colWidth) const;
+    void RenderHeaderSortButton(IRenderContext* ctx, const Rect2Di& button, bool sorted,
+                                bool ascending, const Color& color);
+    // A header sort button was clicked: sorts, after the formula warning
+    // when the block holds formulas.
+    void RequestHeaderSort(int column, SortOrder order);
+    // The fill-handle drag's destination for a pointer over (row, col): the
+    // source extended along the axis the pointer has moved furthest out on.
+    CellRange AutoFillTargetFor(int row, int col) const;
     
     void BeginUndoGroup(UndoActionType type, const std::string& description);
     void RecordCellChange(int row, int col);

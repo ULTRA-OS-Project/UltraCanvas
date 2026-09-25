@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "ZWaveProtocol.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <filesystem>
 #include <iostream>
 #include <sstream>
@@ -338,7 +339,7 @@ bool ZWaveProtocol::SendCommand(const std::string& deviceId, const std::string& 
         float temp = 21.0f;
         uint8_t setpointType = 1;
         if (params.count("temperature")) {
-            temp = std::stof(params.at("temperature"));
+            UltraCanvas::TryParseFloat(params.at("temperature"), temp);
         }
         if (params.count("type")) {
             setpointType = static_cast<uint8_t>(std::stoi(params.at("type")));
@@ -1187,10 +1188,13 @@ std::vector<ZWaveScene> ZWaveProtocol::GetScenes() const {
     std::vector<ZWaveScene> scenes;
     
 #ifdef ULTRACANVAS_WITH_ZWAVE
-    uint8_t numScenes = OpenZWave::Manager::Get()->GetNumScenes();
-    uint8_t* sceneIds = new uint8_t[numScenes];
-    OpenZWave::Manager::Get()->GetAllScenes(&sceneIds);
-    
+    // GetAllScenes allocates the array itself and hands it back through the
+    // out-parameter — which is why its contract asks the caller to delete[]
+    // it. Passing a buffer of our own would simply be overwritten and lost.
+    uint8_t* sceneIds = nullptr;
+    uint8_t numScenes = OpenZWave::Manager::Get()->GetAllScenes(&sceneIds);
+    if (sceneIds == nullptr) return scenes;
+
     for (uint8_t i = 0; i < numScenes; i++) {
         ZWaveScene scene;
         scene.SceneId = sceneIds[i];
@@ -1698,7 +1702,7 @@ ZWaveValue ZWaveProtocol::ConvertValue(const OpenZWave::ValueID& valueId) const 
             {
                 std::string decStr;
                 mgr->GetValueAsString(valueId, &decStr);
-                value.DecimalValue = std::stof(decStr);
+                UltraCanvas::TryParseFloat(decStr, value.DecimalValue);
             }
             break;
             

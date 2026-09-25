@@ -5,6 +5,8 @@
 // Author: UltraCanvas Framework
 
 #include "MatterProtocol.h"
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic - locale-independent, non-throwing
+#include <charconv>
 #include <chrono>
 #include <sstream>
 #include <iomanip>
@@ -416,14 +418,34 @@ public:
     // device checks the type against its schema and refuses a mismatch,
     // which is reported as a failed write — it cannot silently take a wrong
     // one.
+    //
+    // Read with from_chars and ParseFloatClassic rather than std::stoll /
+    // std::stod. Those two consult LC_NUMERIC — and the Linux backend calls
+    // setlocale(LC_ALL, "") for XIM — so on a comma-decimal desktop
+    // std::stod("1.5") stops at the point and yields 1, silently writing a
+    // different value than the caller asked for. They also throw on input the
+    // character guards below still let through - std::stoll("--"), or a
+    // number too large for int64_t - which would unwind out of the SDK's
+    // write path. Neither replacement throws: text that is not a number
+    // after all falls through to the string encoding, where the device's
+    // schema check reports it as a failed write. The float parse has to
+    // consume the whole string too, so "1e" goes as text rather than as the
+    // 1 that std::stod quietly made of it.
     template <typename Encoder>
     static CHIP_ERROR EncodeTextValue(Encoder&& encode, const std::string& text) {
         if (text == "true" || text == "false") return encode(text == "true");
         if (!text.empty() && text.find_first_not_of("-0123456789") == std::string::npos) {
-            return encode(static_cast<int64_t>(std::stoll(text)));
+            int64_t whole = 0;
+            const char* const end = text.data() + text.size();
+            const auto parsed = std::from_chars(text.data(), end, whole);
+            if (parsed.ec == std::errc{} && parsed.ptr == end) return encode(whole);
         }
         if (!text.empty() && text.find_first_not_of("-0123456789.eE") == std::string::npos) {
-            return encode(std::stod(text));
+            double number = 0;
+            const char* const end = text.data() + text.size();
+            if (UltraCanvas::ParseFloatClassic(text.data(), end, number) == end) {
+                return encode(number);
+            }
         }
         return encode(chip::CharSpan(text.data(), text.size()));
     }
@@ -839,6 +861,9 @@ public:
 #endif
     }
 
+    // `temp` is whole degrees Celsius. The attribute is hundredths, so the
+    // conversion lives here and callers deal in degrees - which is also why
+    // the facade cannot express a half-degree setpoint today.
     bool SendThermostatCommand(uint64_t nodeId, uint16_t endpoint, int16_t temp) {
         // OccupiedHeatingSetpoint (0x0012), in hundredths of a degree.
         return WriteAttribute(nodeId, endpoint, MatterClusters::Thermostat, 0x0012,
@@ -1390,6 +1415,46 @@ bool MatterProtocol::InterviewDevice(const std::string& deviceId) {
 
 // ===== COMMANDS =====
 
+namespace {
+
+// Reads an integer command parameter into `out`, leaving the caller's
+// default in place when the parameter is absent.
+//
+// std::stoi did this before, and threw on anything that was not a number -
+// std::invalid_argument for "on", std::out_of_range for a long run of
+// digits - with no catch anywhere in this file, so one mistyped parameter
+// unwound out of SendCommand and through whatever called it. Casting its
+// result straight into a uint8_t was the other half: level=999 reached the
+// device as 231 instead of being refused, and colorTemp=0 reached a
+// division by zero. from_chars neither throws nor consults the locale, and
+// the range is checked here, before the value is narrowed.
+bool ReadIntParam(const std::map<std::string, std::string>& params,
+                  const std::string& name, long minimum, long maximum,
+                  long& out, std::string& outError) {
+    const auto it = params.find(name);
+    if (it == params.end()) return true;
+
+    const std::string& text = it->second;
+    long value = 0;
+    const char* const end = text.data() + text.size();
+    const auto parsed = std::from_chars(text.data(), end, value);
+    if (parsed.ec != std::errc{} || parsed.ptr != end) {
+        outError = "parameter \"" + name + "\" is not a whole number: \"" + text + "\"";
+        return false;
+    }
+    if (value < minimum || value > maximum) {
+        outError = "parameter \"" + name + "\" is out of range [" +
+                   std::to_string(minimum) + ", " + std::to_string(maximum) +
+                   "]: " + text;
+        return false;
+    }
+    out = value;
+    return true;
+}
+
+} // namespace
+
+
 bool MatterProtocol::SendCommand(const std::string& deviceId,
                                   const std::string& command,
                                   const std::map<std::string, std::string>& params) {
@@ -1404,10 +1469,17 @@ bool MatterProtocol::SendCommand(const std::string& deviceId,
         nodeId = it->second.NodeId;
     }
     
-    uint16_t endpoint = 1;
-    if (params.count("endpoint")) {
-        endpoint = static_cast<uint16_t>(std::stoi(params.at("endpoint")));
+    // Every numeric parameter below goes through ReadIntParam, so a bad one
+    // is reported and the command refused rather than throwing out of here
+    // or reaching the device as a truncated value.
+    std::string paramError;
+
+    long endpointValue = 1;
+    if (!ReadIntParam(params, "endpoint", 0, 0xFFFF, endpointValue, paramError)) {
+        ReportError(-302, paramError);
+        return false;
     }
+    const uint16_t endpoint = static_cast<uint16_t>(endpointValue);
     
     Log(3, "Sending command to " + deviceId + ": " + command);
     
@@ -1421,42 +1493,59 @@ bool MatterProtocol::SendCommand(const std::string& deviceId,
         return sdkWrapper->SendOnOffCommand(nodeId, endpoint, 2);
     }
     else if (command == "setLevel" || command == "setBrightness") {
-        uint8_t level = 254;
-        uint16_t transitionTime = 10;
-        
-        if (params.count("level")) level = static_cast<uint8_t>(std::stoi(params.at("level")));
-        if (params.count("brightness")) {
-            int brightness = std::stoi(params.at("brightness"));
-            level = static_cast<uint8_t>((brightness * 254) / 100);
+        long level = 254;            // Level Control runs 0..254; 255 is reserved
+        long transitionTime = 10;
+        long brightness = -1;        // percent, and it wins over `level` as before
+
+        if (!ReadIntParam(params, "level", 0, 254, level, paramError) ||
+            !ReadIntParam(params, "brightness", 0, 100, brightness, paramError) ||
+            !ReadIntParam(params, "transition", 0, 0xFFFF, transitionTime, paramError)) {
+            ReportError(-302, paramError);
+            return false;
         }
-        if (params.count("transition")) transitionTime = static_cast<uint16_t>(std::stoi(params.at("transition")));
-        
-        return sdkWrapper->SendLevelCommand(nodeId, endpoint, level, transitionTime);
+        if (brightness >= 0) level = (brightness * 254) / 100;
+
+        return sdkWrapper->SendLevelCommand(nodeId, endpoint,
+                                            static_cast<uint8_t>(level),
+                                            static_cast<uint16_t>(transitionTime));
     }
     else if (command == "setColor") {
-        uint16_t hue = 0;
-        uint8_t saturation = 254;
-        uint16_t transitionTime = 10;
-        
-        if (params.count("hue")) {
-            int h = std::stoi(params.at("hue"));
-            hue = static_cast<uint16_t>((h * 254) / 360);
+        long hue = 0;
+        long saturation = 254;
+        const uint16_t transitionTime = 10;
+        long hueDegrees = -1;
+
+        if (!ReadIntParam(params, "hue", 0, 360, hueDegrees, paramError) ||
+            !ReadIntParam(params, "saturation", 0, 254, saturation, paramError)) {
+            ReportError(-302, paramError);
+            return false;
         }
-        if (params.count("saturation")) saturation = static_cast<uint8_t>(std::stoi(params.at("saturation")));
-        
-        return sdkWrapper->SendColorCommand(nodeId, endpoint, hue, saturation, transitionTime);
+        if (hueDegrees >= 0) hue = (hueDegrees * 254) / 360;
+
+        return sdkWrapper->SendColorCommand(nodeId, endpoint, static_cast<uint16_t>(hue),
+                                            static_cast<uint8_t>(saturation), transitionTime);
     }
     else if (command == "setColorTemp") {
-        uint16_t colorTemp = 370;
-        uint16_t transitionTime = 10;
-        
-        if (params.count("colorTemp")) {
-            int kelvin = std::stoi(params.at("colorTemp"));
-            colorTemp = static_cast<uint16_t>(1000000 / kelvin);
+        long colorTemp = 370;
+        const uint16_t transitionTime = 10;
+        // Kelvin reaches the device as mireds, 1000000 / K, so the accepted
+        // range is the one that lands in the uint16 mireds field. It also
+        // keeps K = 0 - a plain division by zero before - out of the
+        // conversion. `mireds` still wins when both are given.
+        long kelvin = 0;
+        long mireds = -1;
+
+        if (!ReadIntParam(params, "colorTemp", 16, 1000000, kelvin, paramError) ||
+            !ReadIntParam(params, "mireds", 1, 0xFFFF, mireds, paramError)) {
+            ReportError(-302, paramError);
+            return false;
         }
-        if (params.count("mireds")) colorTemp = static_cast<uint16_t>(std::stoi(params.at("mireds")));
-        
-        return sdkWrapper->SendColorTempCommand(nodeId, endpoint, colorTemp, transitionTime);
+        if (kelvin > 0) colorTemp = 1000000 / kelvin;
+        if (mireds >= 0) colorTemp = mireds;
+
+        return sdkWrapper->SendColorTempCommand(nodeId, endpoint,
+                                                static_cast<uint16_t>(colorTemp),
+                                                transitionTime);
     }
     else if (command == "lock") {
         return sdkWrapper->SendDoorLockCommand(nodeId, endpoint, 0);
@@ -1474,14 +1563,27 @@ bool MatterProtocol::SendCommand(const std::string& deviceId,
         return sdkWrapper->SendWindowCoveringCommand(nodeId, endpoint, 2);
     }
     else if (command == "setPosition") {
-        uint8_t position = 50;
-        if (params.count("position")) position = static_cast<uint8_t>(std::stoi(params.at("position")));
-        return sdkWrapper->SendWindowCoveringCommand(nodeId, endpoint, 5, position);
+        long position = 50;          // percent open
+        if (!ReadIntParam(params, "position", 0, 100, position, paramError)) {
+            ReportError(-302, paramError);
+            return false;
+        }
+        return sdkWrapper->SendWindowCoveringCommand(nodeId, endpoint, 5,
+                                                     static_cast<uint8_t>(position));
     }
     else if (command == "setTargetTemp") {
-        int16_t temp = 21;
-        if (params.count("temperature")) temp = static_cast<int16_t>(std::stoi(params.at("temperature")));
-        return sdkWrapper->SendThermostatCommand(nodeId, endpoint, temp);
+        // Whole degrees Celsius: SendThermostatCommand multiplies by 100 for
+        // OccupiedHeatingSetpoint, which the spec defines in hundredths and
+        // carries in an int16. So the range that survives the conversion is
+        // +/-327 degrees, not the int16 range of this parameter - 1000 would
+        // have become 100000 hundredths and overflowed the attribute.
+        long temp = 21;
+        if (!ReadIntParam(params, "temperature", -327, 327, temp, paramError)) {
+            ReportError(-302, paramError);
+            return false;
+        }
+        return sdkWrapper->SendThermostatCommand(nodeId, endpoint,
+                                                 static_cast<int16_t>(temp));
     }
     
     Log(3, "Unknown command: " + command);

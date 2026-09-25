@@ -379,6 +379,20 @@ the backing implementation can be replaced without affecting callers.
   the host wired the helper. See
   `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
 
+- **UltraCanvasTrash** (`UltraCanvasTrash.h`) — moves files and folders into
+  the desktop's trash, from where the system's own file manager restores them.
+  `MoveToTrash(path, error)`, `TrashAvailable()`, `TrashDisplayName()`
+  ("Recycle Bin" / "Trash"). Backends: `OS/MSWindows/UltraCanvasWindowsTrash.cpp`
+  (SHFileOperationW + FOF_ALLOWUNDO, the shell asks before an item the Bin
+  cannot hold is destroyed), `OS/MacOS/UltraCanvasMacOSTrash.mm`
+  (NSFileManager trashItemAtURL, Finder's Put Back), and
+  `OS/Linux/UltraCanvasLinuxTrash.cpp` (freedesktop.org Trash 1.0: home trash,
+  or the drive's own `.Trash/$uid` / `.Trash-$uid` - never a cross-drive copy).
+  Android and WebAssembly get the failing fallback in `core/UltraCanvasTrash.cpp`
+  (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
+  confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
+  its own copy in its headless engine, which does not link UltraCanvas.)
+
 - **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
   shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
   points at, the icon it is drawn with, and the command line it starts. Byte
@@ -676,9 +690,15 @@ the backing implementation can be replaced without affecting callers.
     `UnregisterDevice`, `GetDevices` / `GetDeviceInfos` / `GetDeviceById` /
     `GetDevice(category, index)` / `GetDeviceCount`,
     `SetDeviceChangeCallback` for hot-plug.
+  - Its user interface is the **DeviceExplorer** application
+    (`Apps/DeviceExplorer`, `Docs/DeviceExplorer/README.md`): the registered
+    devices as a tree grouped by category, connection or backend, with the
+    selected device's `IODeviceInfo` on the right. Read-only; its
+    `DeviceExplorerModel` (snapshot, grouping, property sections) has no UI
+    dependency and is what `--list` and `Tests/DeviceExplorerModelTest` use.
   - `IODevice` — the base every category derives from (`ScannerDevice`,
     `CameraDevice`, `PrinterDevice`): identity, `Connect` / `Disconnect` /
-    `IsConnected` / `GetState`, `GetLastError`. Lifecycle is non-virtual
+    `IsConnected` / `GetState`, `GetLastDeviceError`. Lifecycle is non-virtual
     public, virtual protected: backends implement `DoConnect` / `DoDisconnect`
     and the base owns the state machine, the error slot and the locking.
   - Backends attach as **enumerators**, one per (category, backend) pair, not
@@ -904,9 +924,24 @@ future.
   `UltraNet_OAuth2WaitForCallback`, `UltraNet_OAuth2ExchangeCode`,
   `UltraNet_OAuth2Refresh`, `UltraNet_OAuth2ParseTokenResponse`,
   `UltraNet_OAuth2AuthorizeInteractive`
+- `UltraNet_OAuth2SetApp`, `UltraNet_OAuth2SetBuiltInApp`,
+  `UltraNet_OAuth2AddAppEnvPrefix`, `UltraNet_OAuth2AppEnvPrefixes`,
+  `UltraNet_OAuth2AppEnvName`, `UltraNet_OAuth2SetAppAlias`,
+  `UltraNet_OAuth2ParseAppsIni`, `UltraNet_OAuth2LoadAppsFile`,
+  `UltraNet_OAuth2GetApp`, `UltraNet_OAuth2HasApp`, `UltraNet_OAuth2ClearApps` —
+  the one OAuth2 *app registry* of a process (`UltraNetOAuth2Apps.h`): the
+  client id, secret and redirect URI an application signs in as, per
+  provider, looked up as Set() > environment (`ULTRANET_OAUTH_<PROVIDER>_…`
+  plus the prefixes modules add) > INI file > baked-in default, then the
+  alias chain. UltraMail's `OAuthApps` and UltraCloud's `SetOAuthApp` family
+  are profiles of it, so a Google client registered once serves Gmail and
+  Google Drive
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
-- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
+- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync` (each also with an
+  `UltraNetDnsOptions` - the name servers to ask for that call only, and the
+  deadline), `UltraNet_DnsReverseLookup`, `UltraNet_DnsClearCache`,
+  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
 - `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
   `UltraNet_UrlDecode`
@@ -1288,8 +1323,10 @@ provider carried as a drive implements); v0.2 ships Nextcloud / ownCloud
 (WebDAV + OCS share API, password and expiry on links), generic WebDAV (links
 through a public web-folder URL), Dropbox, OneDrive and Google Drive (OAuth2 +
 PKCE through the system browser via UltraNet, tokens refreshed automatically;
-the OAuth client id is configuration, `SetOAuthApp` or
-`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), FTP / FTPS / SFTP over UltraNet's FTP
+the OAuth client id is configuration in UltraNet's shared app registry —
+`SetOAuthApp`, `ULTRACLOUD_<PROVIDER>_CLIENT_ID`, or the client UltraMail
+registered, since `googledrive` falls back to `google` and `onedrive` to
+`microsoft`), FTP / FTPS / SFTP over UltraNet's FTP
 surface (the one provider that can also delete and rename, so a file manager
 can carry an FTP server as a drive; no share links, and SFTP authenticates
 with a password only), and an in-memory demo provider. Providers
@@ -1474,13 +1511,16 @@ the Linux `freedesktop-notifications` adapter
 `windows-notification-listener` adapter (`UltraCanvas/OS/MSWindows/UltraMessage/`,
 C++/WinRT `UserNotificationListener`: polls the Action Center, read-only),
 the shared chat / mail mirrors with category guessing from the application's
-identity, and UltraMail publishing new mail as `mail.message`
-(`Apps/UltraMail/engine/UltraMailFeedPublisher`). Tests in
-`Tests/UltraMessage` (34 cases, in-tree and standalone, the adapter ones on a
-private D-Bus session). Not yet: the `AddFdWatch` event-loop path (a reader
-thread serves every endpoint), an FTS5 index (text search is a LIKE),
-automatic reconnection after the hosting broker exits, the macOS and
-Telegram adapters and the `UltraCanvasMessageCenter` element. See
+identity, UltraMail publishing new mail as `mail.message`
+(`Apps/UltraMail/engine/UltraMailFeedPublisher`), and the desktop message
+centre as one element (`UltraCanvasMessageCenter`, target `UltraMessageCenter`,
+`UltraCanvas/include/Plugins/UltraMessage/`: sections, sources, filters,
+search, detail and actions on the feed; `Docs/UltraCanvas/UltraCanvasMessageCenter.md`,
+a DemoApp page). Tests in `Tests/UltraMessage` (34 cases, in-tree and
+standalone, the adapter ones on a private D-Bus session; 5 for the element
+in-tree). Not yet: the `AddFdWatch` event-loop path (a reader thread serves
+every endpoint), an FTS5 index (text search is a LIKE), automatic reconnection
+after the hosting broker exits, and the macOS and Telegram adapters. See
 `Docs/Modules/UltraMessage/README.md`.
 
 ---
@@ -1559,7 +1599,7 @@ process's traffic; NetworkMonitor observes other processes' sockets, which is
 an OS question, and has no dependency on UltraNet. It observes and records;
 it never blocks, filters or modifies traffic, and never terminates TLS.
 
-**Implementation status:** Phase 2 (platforms, persistence, names). Linux — netlink `sock_diag`
+**Implementation status:** Phase 2 complete (platforms, persistence, names, events). Linux — netlink `sock_diag`
 with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
 `/proc/<pid>/fd` walk for attribution; Windows — IP Helper
 (`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
@@ -1567,9 +1607,11 @@ macOS — libproc, per process. All polling. Persistence: the activity store
 over UltraDatabase (flows, daily roll-up, retention, CSV export, DNS
 observations). Domain names: the name-source plug-in point with the local
 DNS proxy, reverse DNS (weak, labelled) and, on Windows elevated, the DNS
-client's ETW events with the asking PID. Connection events (ETW, eBPF) and
-file-transfer correlation are still to come. Where there is no backend the
-module reports `NotSupported`.
+client's ETW events with the asking PID. Connection events: the event-source
+plug-in point with the snapshot differ everywhere, `nf_conntrack` on Linux
+(root, tracker active) and the kernel network ETW provider on Windows
+(elevated), recorded beside the flows. File-transfer correlation is still to
+come. Where there is no backend the module reports `NotSupported`.
 
 - Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
   `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,
@@ -1579,7 +1621,9 @@ module reports `NotSupported`.
 - `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
   `NetworkMonitor_FormatEndpoint`, `NetworkMonitor_NameSourceName`,
-  `NetworkMonitor_NameIsObserved`
+  `NetworkMonitor_NameIsObserved`, `NetworkMonitor_ExportSummaryCsv`,
+  `NetworkMonitor_ExportConnectionsCsv`, `NetworkMonitor_DecodeLoopback`,
+  `NetworkMonitor_LoopbackRoleName`; `LoopbackRole`
 - Names (`NetworkMonitorNames.h`): `INameSource`,
   `NetworkMonitor_RegisterNameSource`, `NetworkMonitor_ListNameSources`,
   `NetworkMonitor_StopNameSources`, `NetworkMonitor_WaitForNames`,
@@ -1590,21 +1634,34 @@ module reports `NotSupported`.
   `NetworkMonitor_CreateSystemDnsSource`, `NetworkMonitor_SystemResolver`;
   types `DnsProxyOptions`, `ReverseDnsOptions`, `NameSourceStatus`,
   `NameRecord`
+- Events (`NetworkMonitorEvents.h`): `IConnectionEventSource`,
+  `NetworkMonitor_RegisterEventSource`, `NetworkMonitor_ListEventSources`,
+  `NetworkMonitor_StopEventSources`, `NetworkMonitor_AddEventListener`,
+  `NetworkMonitor_RemoveEventListener`, `NetworkMonitor_RecentEvents`,
+  `NetworkMonitor_ClearRecentEvents`, `NetworkMonitor_ReportEvent`,
+  `NetworkMonitor_CreateSnapshotDiffEventSource`,
+  `NetworkMonitor_CreateSystemEventSource`, `NetworkMonitor_EventKindName`,
+  `NetworkMonitor_NowMs`; types `NetworkConnectionEvent`, `NetworkEventKind`,
+  `SnapshotDiffOptions`, `EventSourceStatus`
 - The activity store (`NetworkMonitorStore.h`, over UltraDatabase):
   `NetworkMonitor_StoreAvailable`, `NetworkMonitor_Now`,
   `NetworkMonitor_OpenStore`, `NetworkMonitor_CloseStore`,
   `NetworkMonitor_RecordSnapshot`, `NetworkMonitor_QueryFlows`,
   `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RecordDnsObservation`,
-  `NetworkMonitor_QueryDnsObservations`, `NetworkMonitor_RollUp`,
+  `NetworkMonitor_QueryDnsObservations`, `NetworkMonitor_RecordConnectionEvent`,
+  `NetworkMonitor_QueryConnectionEvents`, `NetworkMonitor_ExportEventsCsv`,
+  `NetworkMonitor_RollUp`,
   `NetworkMonitor_ApplyRetention`, `NetworkMonitor_Purge`,
   `NetworkMonitor_StoreStats`, `NetworkMonitor_ExportFlowsCsv`; types
   `NetworkMonitorStoreOptions`, `RecordedFlow`, `DailyProcessTotal`,
-  `RecordedDnsObservation`, `ActivityQuery`, `NetworkMonitorStoreStats`
+  `RecordedDnsObservation`, `RecordedConnectionEvent`, `ActivityQuery`,
+  `NetworkMonitorStoreStats`
 - Internal: `INetworkMonitorBackend`, `CreateNativeNetworkMonitorBackend`
   (`NetworkMonitorBackend.h`); `NetworkMonitorProcfs::{DecodeAddress,
   StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`);
   `NetworkMonitorDns::{Parse, ToObservation, BuildQuery, BuildResponse,
-  NormalizeName}` (`NetworkMonitorDns.h`)
+  NormalizeName}` (`NetworkMonitorDns.h`); `NetworkMonitorConntrack::Parse`
+  (`NetworkMonitorConntrack.h`)
 
 Rules: every blocking call returns `NetworkMonitorResult`; `std::optional`
 for anything a backend may not report, so "0" and "not reported" are never

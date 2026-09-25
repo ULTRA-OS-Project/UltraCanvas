@@ -285,7 +285,7 @@ namespace UltraCanvas {
         donut->SetCenterKPI("$1.2M", "Total revenue");
         donut->SetLabelPosition(LabelPosition::Outside);
         donut->SetLabelContent(LabelContent::NamePercentage);
-        donut->onSliceClick = [donut](size_t index) {
+        donut->onSliceClick = [donut = donut.get()](size_t index) {
             // Pop the clicked slice out and reset the others.
             donut->ClearAllSliceExplosions();
             donut->SetSliceExplosion(index, 0.08f);

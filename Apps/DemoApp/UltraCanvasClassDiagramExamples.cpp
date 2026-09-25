@@ -459,7 +459,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
 
     // Report what the user clicked, which is what makes per-row hit testing
     // visible in the demo.
-    diagram->onMemberClick = [diagram, status](const std::string& classifierId,
+    diagram->onMemberClick = [diagram = diagram.get(), status](const std::string& classifierId,
                                                UMLMemberKind kind, size_t index) {
         const UMLClassifier* classifier = diagram->Model().GetClassifier(classifierId);
         if (!classifier || !status) return;
@@ -469,7 +469,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
         status->SetText("Member: " + classifier->name + "::" + members[index].name +
                         "   (" + (kind == UMLMemberKind::Operation ? "operation" : "attribute") + ")");
     };
-    diagram->onClassClick = [diagram, status](const std::string& classifierId) {
+    diagram->onClassClick = [diagram = diagram.get(), status](const std::string& classifierId) {
         const UMLClassifier* classifier = diagram->Model().GetClassifier(classifierId);
         if (!classifier || !status) return;
         status->SetText(std::string("Class: ") + classifier->name + "   (" +
@@ -477,7 +477,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
                         std::to_string(classifier->attributes.size()) + " attributes, " +
                         std::to_string(classifier->operations.size()) + " operations)");
     };
-    diagram->onRelationshipClick = [diagram, status](const std::string& relationshipId) {
+    diagram->onRelationshipClick = [diagram = diagram.get(), status](const std::string& relationshipId) {
         const UMLRelationship* relationship = diagram->Model().GetRelationship(relationshipId);
         if (!relationship || !status) return;
         const UMLClassifier* source = diagram->Model().GetClassifier(relationship->source.classifierId);

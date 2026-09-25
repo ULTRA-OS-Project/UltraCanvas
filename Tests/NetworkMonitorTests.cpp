@@ -7,17 +7,21 @@
 // where the backend collects them. Where there is no backend, the check is
 // that the module says so rather than returning an empty table. Then the
 // activity store on an in-memory database, the DNS wire format from
-// fixture bytes, the name table's precedence rules, and the local DNS
-// proxy end to end against a fake upstream resolver on loopback.
+// fixture bytes, the name table's precedence rules, the local DNS proxy
+// end to end against a fake upstream resolver on loopback, the conntrack
+// message parser from captured bytes, the event registry's attribution,
+// and the snapshot differ against sockets this test opens.
 //
 // Self-contained: no test framework, no UI stack, links only NetworkMonitor.
 //
-// Version: 0.4.0
-// Last Modified: 2026-09-22
+// Version: 0.6.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitor.h"
 #include "NetworkMonitor/NetworkMonitorAddress.h"
+#include "NetworkMonitor/NetworkMonitorConntrack.h"
 #include "NetworkMonitor/NetworkMonitorDns.h"
+#include "NetworkMonitor/NetworkMonitorEvents.h"
 #include "NetworkMonitor/NetworkMonitorNames.h"
 #include "NetworkMonitor/NetworkMonitorProcfs.h"
 #include "NetworkMonitor/NetworkMonitorStore.h"
@@ -567,7 +571,8 @@ static void TestStore() {
         bool header = false;
         bool isoTime = false;
         while (std::getline(file, line)) {
-            if (lines == 0) header = line.rfind("first_seen,last_seen,", 0) == 0;
+            if (lines == 0) header = line.rfind("first_seen,last_seen,", 0) == 0 &&
+                                     line.find(",user,loopback_role,local_peer,for,bytes_sent,") != std::string::npos;
             if (line.find("T") != std::string::npos && line.find("Z,") != std::string::npos) isoTime = true;
             ++lines;
         }
@@ -1180,17 +1185,631 @@ static void TestStoreNames() {
     CHECK(reopened, ("the version-1 file opens: " + reopened.message).c_str());
     if (reopened) {
         CHECK(NetworkMonitor_QueryFlows(migrated, ActivityQuery(), flows) && flows.size() == 1 &&
-              flows[0].remoteName.empty() && flows[0].nameSource == NameSource::None,
-              "its old flow reads back without a name");
+              flows[0].remoteName.empty() && flows[0].nameSource == NameSource::None &&
+              flows[0].loopbackRole == LoopbackRole::None && flows[0].localPeer.empty() &&
+              flows[0].forProcesses.empty(),
+              "its old flow reads back without a name or a chain");
         snapshot[0].remoteName = "www.example.com";
         snapshot[0].nameSource = NameSource::DnsProxy;
+        NetworkConnectionEvent migratedEvent;
+        migratedEvent.localAddress = "10.0.0.1";
+        migratedEvent.remoteAddress = "93.184.216.34";
+        migratedEvent.remotePort = 443;
         CHECK(NetworkMonitor_RecordSnapshot(migrated, snapshot, t0 + 5) &&
               NetworkMonitor_RecordDnsObservation(migrated, observation) &&
-              NetworkMonitor_StoreStats(migrated, stats) && stats.dnsObservations == 2,
-              "and the migrated file records names and observations");
+              NetworkMonitor_RecordConnectionEvent(migrated, migratedEvent) &&
+              NetworkMonitor_StoreStats(migrated, stats) && stats.dnsObservations == 2 && stats.connectionEvents == 1,
+              "and the migrated file records names, observations and events");
         NetworkMonitor_CloseStore(migrated);
     }
     std::filesystem::remove(v1);
+#endif
+}
+
+// =============================================================================
+// Events
+
+static std::vector<unsigned char> FromHex(const char* hex) {
+    std::vector<unsigned char> out;
+    for (std::size_t i = 0; hex[i] && hex[i + 1]; i += 2) {
+        out.push_back(static_cast<unsigned char>(std::stoi(std::string(hex + i, 2), nullptr, 16)));
+    }
+    return out;
+}
+
+static void TestConntrackParse() {
+    std::printf("conntrack messages\n");
+    using namespace NetworkMonitorConntrack;
+    // Captured from a Linux 6.18 kernel with nf_conntrack_acct on: a NEW
+    // for a TCP connection, and the DESTROY of a loopback connection that
+    // moved 1000 bytes one way and 300 the other.
+    const auto created = FromHex(
+        "c400000000010006000000000000000002000000340001801400018008000100a04f680a08000200c00002021c00028005"
+        "000100060000000600020001bb000006000300c60c0000340002801400018008000100c000020208000200a04f680a1c00"
+        "0280050001000600000006000200c60c00000600030001bb000008000c00be2b633b08000300000000080800070000000"
+        "12c300004802c000180050001000300000005000200000000000500030000000000060004000a000000060005000a000000");
+    const auto destroyed = FromHex(
+        "d4000000020100000000000000000000020000003400018014000180080001007f000001080002007f0000011c000280"
+        "05000100060000000600020081f0000006000300afbd00003400028014000180080001007f000001080002007f000001"
+        "1c000280050001000600000006000200afbd00000600030081f0000008000c00040a079c080003000000020e1c000980"
+        "0c00010000000000000000060c00020000000000000005281c000a800c00010000000000000000040c00020000000000"
+        "00000204100004800c0001800500010008000000");
+    Flow flow;
+    CHECK(Parse(created.data(), created.size(), flow) && flow.message == Message::New,
+          "a NEW with CREATE|EXCL parses as a new connection");
+    CHECK(flow.transport == NetworkTransport::Tcp && flow.protocol == 6 && flow.family == NetworkAddressFamily::IPv4,
+          "TCP over IPv4");
+    CHECK(flow.sourceAddress == "160.79.104.10" && flow.sourcePort == 443 &&
+          flow.destinationAddress == "192.0.2.2" && flow.destinationPort == 50700,
+          "with the original-direction tuple");
+    CHECK(!flow.bytesOriginal && !flow.bytesReply, "and no counters yet");
+
+    CHECK(Parse(destroyed.data(), destroyed.size(), flow) && flow.message == Message::Destroy,
+          "a DESTROY parses");
+    CHECK(flow.sourceAddress == "127.0.0.1" && flow.sourcePort == 33264 &&
+          flow.destinationAddress == "127.0.0.1" && flow.destinationPort == 44989,
+          "with its tuple");
+    CHECK(flow.bytesOriginal && *flow.bytesOriginal == 1320 && flow.bytesReply && *flow.bytesReply == 516,
+          "and the bytes each direction moved");
+
+    std::vector<unsigned char> update = created;
+    update[6] = 0; update[7] = 0;   // no CREATE|EXCL: an UPDATE
+    CHECK(Parse(update.data(), update.size(), flow) && flow.message == Message::Update,
+          "the same message without the flags is an update");
+    std::vector<unsigned char> other = created;
+    other[5] = 2;   // another nfnetlink subsystem
+    CHECK(!Parse(other.data(), other.size(), flow), "another subsystem's message is refused");
+    CHECK(!Parse(created.data(), 40, flow), "a message cut short is refused");
+    CHECK(!Parse(created.data(), 10, flow), "a message shorter than its headers is refused");
+}
+
+static void TestEventRegistry() {
+    std::printf("Event registry\n");
+    NetworkMonitor_ClearRecentEvents();
+    std::vector<NetworkConnectionEvent> heard;
+    std::mutex heardMutex;
+    const EventListenerId listener = NetworkMonitor_AddEventListener([&](const NetworkConnectionEvent& e) {
+        std::lock_guard<std::mutex> lock(heardMutex);
+        heard.push_back(e);
+    });
+
+    NetworkConnectionEvent e;
+    e.kind = NetworkEventKind::Opened;
+    e.localAddress = "203.0.113.9";
+    e.localPort = 40000;
+    e.remoteAddress = "198.51.100.7";
+    e.remotePort = 443;
+    e.sourceName = "test";
+    ProcessIdentity process;
+    process.pid = 4242;
+    process.displayName = "curl";
+    e.process = process;
+    NetworkMonitor_ReportEvent(e);
+    std::vector<NetworkConnectionEvent> recent;
+    NetworkMonitor_RecentEvents(recent);
+    CHECK(recent.size() == 1 && recent[0].observedAtMs > 0 && recent[0].process && recent[0].process->pid == 4242,
+          "a reported event is in the ring, stamped, with its process kept");
+    CHECK(heard.size() == 1 && heard[0].remoteAddress == "198.51.100.7", "and the listener heard it");
+    CHECK(std::string(NetworkMonitor_EventKindName(NetworkEventKind::Accepted)) == "accepted", "event kinds have names");
+
+    // Names come from the name table.
+    DnsObservation observation;
+    observation.queryName = "api.example.com";
+    observation.addresses = { "198.51.100.7" };
+    observation.source = NameSource::DnsProxy;
+    NetworkMonitor_ObserveName(observation);
+    NetworkMonitor_ReportEvent(e);
+    NetworkMonitor_RecentEvents(recent);
+    CHECK(recent.size() == 2 && recent[0].remoteName == "api.example.com" && recent[0].nameSource == NameSource::DnsProxy,
+          "an event's peer is named from the table, newest first");
+    NetworkMonitor_ClearNames();
+
+    // Attribution from the socket table, in either orientation.
+    if (NetworkMonitor_IsAvailable() && SocketsUp()) {
+        const SocketHandle server = ::socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in local{};
+        local.sin_family = AF_INET;
+        local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        ::bind(server, reinterpret_cast<sockaddr*>(&local), sizeof local);
+        ::listen(server, 1);
+        SockLen length = sizeof local;
+        ::getsockname(server, reinterpret_cast<sockaddr*>(&local), &length);
+        const uint16_t serverPort = ntohs(local.sin_port);
+        const SocketHandle client = ::socket(AF_INET, SOCK_STREAM, 0);
+        ::connect(client, reinterpret_cast<sockaddr*>(&local), sizeof local);
+        const SocketHandle accepted = ::accept(server, nullptr, nullptr);
+        sockaddr_in clientSide{};
+        length = sizeof clientSide;
+        ::getsockname(client, reinterpret_cast<sockaddr*>(&clientSide), &length);
+        const uint16_t clientPort = ntohs(clientSide.sin_port);
+
+        // The tuple the way conntrack would give it for a connection that
+        // came *to* the listener: source = the client side. The registry
+        // re-reads its table for a tuple it lacks, at most every 20 ms.
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        NetworkConnectionEvent bare;
+        bare.kind = NetworkEventKind::Opened;
+        bare.localAddress = "127.0.0.1";
+        bare.localPort = clientPort;
+        bare.remoteAddress = "127.0.0.1";
+        bare.remotePort = serverPort;
+        bare.sourceName = "test";
+        NetworkMonitor_ReportEvent(bare);
+        NetworkMonitor_RecentEvents(recent, 1);
+        const bool attributed = !recent.empty() && recent[0].process && recent[0].process->pid == OwnPid();
+        CHECK(attributed, "a bare tuple is attributed from the socket table");
+        // Both ends are ours here, so either orientation matches first;
+        // what matters is that the process is right and the kind sound.
+        CHECK(!recent.empty() && (recent[0].kind == NetworkEventKind::Opened || recent[0].kind == NetworkEventKind::Accepted),
+              "and reads as opened or accepted");
+        // Both ends are ours, so the chain names this process on the
+        // other end, with the role of whichever socket matched.
+        const std::string self = attributed ? recent[0].process->Label() : std::string();
+        CHECK(!recent.empty() && recent[0].chainDecoded && recent[0].loopbackRole != LoopbackRole::None &&
+              recent[0].localPeer == self,
+              "and the loopback chain names the process on the other end");
+        const LoopbackRole openedRole = recent.empty() ? LoopbackRole::None : recent[0].loopbackRole;
+
+        NetworkConnectionEvent closing = bare;
+        closing.kind = NetworkEventKind::Closed;
+        CloseSocket(client);
+        CloseSocket(accepted);
+        NetworkMonitor_ReportEvent(closing);
+        NetworkMonitor_RecentEvents(recent, 1);
+        CHECK(!recent.empty() && recent[0].kind == NetworkEventKind::Closed && recent[0].process &&
+              recent[0].process->pid == OwnPid(),
+              "its Closed is attributed from memory, though the socket is gone");
+        CHECK(!recent.empty() && recent[0].chainDecoded && recent[0].loopbackRole == openedRole &&
+              recent[0].localPeer == self,
+              "and carries the chain its Opened had");
+        CloseSocket(server);
+    }
+    NetworkMonitor_RemoveEventListener(listener);
+    NetworkMonitor_ReportEvent(e);
+    CHECK(heard.size() == 4 || heard.size() == 2, "a removed listener hears nothing more");
+    NetworkMonitor_ClearRecentEvents();
+    NetworkMonitor_RecentEvents(recent);
+    CHECK(recent.empty(), "the ring clears");
+}
+
+static void TestSnapshotDiff() {
+    std::printf("Snapshot differ\n");
+    if (!NetworkMonitor_IsAvailable() || !SocketsUp()) {
+        auto none = NetworkMonitor_CreateSnapshotDiffEventSource(SnapshotDiffOptions());
+        CHECK(none->Start([](const NetworkConnectionEvent&) {}).code == NetworkMonitorResultCode::NotSupported,
+              "without a socket table the differ says so");
+        return;
+    }
+    NetworkMonitor_ClearRecentEvents();
+    SnapshotDiffOptions options;
+    options.intervalMs = 100;
+    CHECK(NetworkMonitor_RegisterEventSource(NetworkMonitor_CreateSnapshotDiffEventSource(options)),
+          "the differ starts through the registry");
+    CHECK(NetworkMonitor_GetCapabilities().connectionEvents, "and the capabilities say events are on");
+    std::this_thread::sleep_for(std::chrono::milliseconds(350));   // the seed snapshot
+
+    const SocketHandle server = ::socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in local{};
+    local.sin_family = AF_INET;
+    local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ::bind(server, reinterpret_cast<sockaddr*>(&local), sizeof local);
+    ::listen(server, 1);
+    SockLen length = sizeof local;
+    ::getsockname(server, reinterpret_cast<sockaddr*>(&local), &length);
+    const uint16_t serverPort = ntohs(local.sin_port);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));   // the listener is in a snapshot
+    const SocketHandle client = ::socket(AF_INET, SOCK_STREAM, 0);
+    ::connect(client, reinterpret_cast<sockaddr*>(&local), sizeof local);
+    const SocketHandle accepted = ::accept(server, nullptr, nullptr);
+
+    auto waitFor = [&](NetworkEventKind kind, int tries) -> bool {
+        for (int i = 0; i < tries; ++i) {
+            std::vector<NetworkConnectionEvent> recent;
+            NetworkMonitor_RecentEvents(recent);
+            for (const auto& r : recent) {
+                if (r.kind == kind && r.transport == NetworkTransport::Tcp && r.process &&
+                    r.process->pid == OwnPid() &&
+                    (r.localPort == serverPort || r.remotePort == serverPort)) {
+                    return true;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        return false;
+    };
+    CHECK(waitFor(NetworkEventKind::Opened, 40), "the client side appears as opened, attributed to this PID");
+    CHECK(waitFor(NetworkEventKind::Accepted, 40), "the server side appears as accepted, since the port was listening");
+    CloseSocket(client);
+    CloseSocket(accepted);
+    CHECK(waitFor(NetworkEventKind::Closed, 60), "and closing them is reported");
+    CloseSocket(server);
+
+    std::vector<EventSourceStatus> sources;
+    NetworkMonitor_ListEventSources(sources);
+    CHECK(sources.size() == 1 && sources[0].running && sources[0].events >= 3 && sources[0].lastError.empty(),
+          "the registry lists the differ running and counting");
+    NetworkMonitor_StopEventSources();
+    NetworkMonitor_ListEventSources(sources);
+    CHECK(sources.empty() && !NetworkMonitor_GetCapabilities().connectionEvents, "stopping empties the registry");
+    NetworkMonitor_ClearRecentEvents();
+}
+
+static void TestSystemEventSource() {
+    std::printf("System event source\n");
+    auto source = NetworkMonitor_CreateSystemEventSource();
+    if (!source) {
+        std::printf("  skipped: no system event source on this platform\n");
+        return;
+    }
+    CHECK(!source->IsRunning() && !source->Name().empty(), "the platform's source is created stopped");
+    const NetworkMonitorResult started = source->Start([](const NetworkConnectionEvent&) {});
+    if (!started) {
+        CHECK(started.code == NetworkMonitorResultCode::PermissionDenied ||
+              started.code == NetworkMonitorResultCode::NotSupported ||
+              started.code == NetworkMonitorResultCode::IoError,
+              ("it refuses with a reason: " + started.message).c_str());
+        return;
+    }
+    CHECK(source->IsRunning(), "it starts here");
+    std::printf("  note: %s\n", source->LastError().empty() ? "healthy" : source->LastError().c_str());
+    source->Stop();
+    CHECK(!source->IsRunning(), "and stops");
+}
+
+static void TestStoreEvents() {
+    std::printf("Events in the store\n");
+    if (!NetworkMonitor_StoreAvailable()) { std::printf("  skipped: no UltraDatabase in this build\n"); return; }
+    NetworkMonitorStoreHandle store = NetworkMonitorInvalidStore;
+    NetworkMonitorStoreOptions options;
+    options.path = ":memory:";
+    options.retentionDays = 7;
+    CHECK(NetworkMonitor_OpenStore(options, store), "an in-memory store opens");
+
+    const int64_t t0 = 1'800'000'000;
+    NetworkConnectionEvent e;
+    e.kind = NetworkEventKind::Opened;
+    e.localAddress = "10.0.0.5";
+    e.localPort = 50000;
+    e.remoteAddress = "93.184.216.34";
+    e.remotePort = 443;
+    e.remoteName = "www.example.com";
+    e.nameSource = NameSource::DnsProxy;
+    e.observedAtMs = t0 * 1000 + 250;
+    e.sourceName = "test";
+    ProcessIdentity process;
+    process.pid = 100;
+    process.displayName = "firefox";
+    process.executablePath = "/usr/lib/firefox/firefox";
+    process.userName = "me";
+    e.process = process;
+    CHECK(NetworkMonitor_RecordConnectionEvent(store, e), "an opened event records");
+    e.kind = NetworkEventKind::Closed;
+    e.observedAtMs = t0 * 1000 + 900;
+    e.bytesSent = 1234;
+    e.bytesReceived = 56789;
+    CHECK(NetworkMonitor_RecordConnectionEvent(store, e), "its closed records with counters");
+    NetworkConnectionEvent loop;
+    loop.kind = NetworkEventKind::Accepted;
+    loop.localAddress = "127.0.0.1";
+    loop.localPort = 22;
+    loop.remoteAddress = "127.0.0.1";
+    loop.remotePort = 40000;
+    loop.observedAtMs = (t0 + 5) * 1000;
+    loop.loopbackRole = LoopbackRole::Server;
+    loop.localPeer = "ssh (4321)";
+    CHECK(NetworkMonitor_RecordConnectionEvent(store, loop), "an unattributed loopback event records");
+
+    std::vector<RecordedConnectionEvent> events;
+    CHECK(NetworkMonitor_QueryConnectionEvents(store, ActivityQuery(), events) && events.size() == 3 &&
+          events[0].event.kind == NetworkEventKind::Accepted && events[2].event.kind == NetworkEventKind::Opened,
+          "they read back newest first");
+    CHECK(events[1].event.bytesSent && *events[1].event.bytesSent == 1234 && events[1].event.remoteName == "www.example.com" &&
+          events[1].event.process && events[1].event.process->pid == 100 && events[1].event.observedAtMs == t0 * 1000 + 900,
+          "with counters, name, process and the millisecond");
+    CHECK(!events[0].event.process && !events[0].event.bytesSent, "and absent stays absent");
+    CHECK(events[0].event.loopbackRole == LoopbackRole::Server && events[0].event.localPeer == "ssh (4321)" &&
+          events[0].event.chainDecoded && events[2].event.loopbackRole == LoopbackRole::None &&
+          events[2].event.localPeer.empty() && events[2].event.forProcesses.empty(),
+          "the loopback chain reads back where an event had one, and stays empty where not");
+    ActivityQuery byPeer;
+    byPeer.text = "ssh (43";
+    CHECK(NetworkMonitor_QueryConnectionEvents(store, byPeer, events) && events.size() == 1 &&
+          events[0].event.kind == NetworkEventKind::Accepted, "the text filter matches the loopback peer");
+    ActivityQuery noLoopback;
+    noLoopback.includeLoopback = false;
+    CHECK(NetworkMonitor_QueryConnectionEvents(store, noLoopback, events) && events.size() == 2, "loopback filtered out");
+    ActivityQuery byText;
+    byText.text = "example";
+    CHECK(NetworkMonitor_QueryConnectionEvents(store, byText, events) && events.size() == 2, "the text filter matches the name");
+    ActivityQuery byPid;
+    byPid.pid = 100;
+    CHECK(NetworkMonitor_QueryConnectionEvents(store, byPid, events) && events.size() == 2, "and by PID");
+    ActivityQuery since;
+    since.since = t0 + 1;
+    CHECK(NetworkMonitor_QueryConnectionEvents(store, since, events) && events.size() == 1, "since applies to the event's second");
+    ActivityQuery limited;
+    limited.limit = 1;
+    CHECK(NetworkMonitor_QueryConnectionEvents(store, limited, events) && events.size() == 1, "the limit holds");
+
+    NetworkMonitorStoreStats stats;
+    CHECK(NetworkMonitor_StoreStats(store, stats) && stats.connectionEvents == 3, "the stats count them");
+    const std::filesystem::path csv = std::filesystem::temp_directory_path() / "networkmonitor-events.csv";
+    int64_t written = 0;
+    CHECK(NetworkMonitor_ExportEventsCsv(store, ActivityQuery(), csv.string(), &written) && written == 3, "the CSV exports");
+    {
+        std::ifstream file(csv);
+        std::string header, line;
+        std::getline(file, header);
+        std::getline(file, line);
+        CHECK(header.rfind("observed_at,milliseconds,kind,", 0) == 0 && line.find(",accepted,TCP,") != std::string::npos,
+              "with the kind and the millisecond as columns");
+        CHECK(header.find(",user,loopback_role,local_peer,for,bytes_sent,") != std::string::npos &&
+              line.find(",server,ssh (4321),,,,") != std::string::npos,
+              "and the chain columns after the user");
+        std::filesystem::remove(csv);
+    }
+    CHECK(NetworkMonitor_ApplyRetention(store, t0 + 8LL * 86400) && NetworkMonitor_StoreStats(store, stats) &&
+          stats.connectionEvents == 0, "events older than the window are dropped");
+    CHECK(NetworkMonitor_RecordConnectionEvent(store, e) && NetworkMonitor_Purge(store) &&
+          NetworkMonitor_StoreStats(store, stats) && stats.connectionEvents == 0, "and purge takes the rest");
+    CHECK(NetworkMonitor_CloseStore(store), "the store closes");
+}
+
+// =============================================================================
+// Snapshot CSV
+
+static void TestSnapshotCsv() {
+    std::printf("Snapshot CSV\n");
+    std::vector<NetworkConnection> fixture;
+    fixture.push_back(MakeConnection(100, "firefox", "93.184.216.34", NetworkConnectionState::Established));
+    fixture[0].bytesSent = 1000; fixture[0].bytesReceived = 5000;
+    fixture[0].remoteName = "www.example.com"; fixture[0].nameSource = NameSource::DnsProxy;
+    fixture.push_back(MakeConnection(100, "firefox", "203.0.113.7", NetworkConnectionState::Established));
+    fixture[1].remoteName = "a203.deploy, static"; fixture[1].nameSource = NameSource::ReverseDns;
+    fixture.push_back(MakeConnection(200, "sshd", "0.0.0.0", NetworkConnectionState::Listening));
+    fixture[2].localPort = 22; fixture[2].remotePort = 0;
+    fixture.push_back(MakeConnection(0, "", "9.9.9.9", NetworkConnectionState::Established));
+    fixture[3].ownerUid = 1000;
+    const auto summaries = NetworkMonitor_SummarizeByProcess(fixture);
+
+    const std::filesystem::path apps = std::filesystem::temp_directory_path() / "networkmonitor-apps.csv";
+    int64_t rows = 0;
+    CHECK(NetworkMonitor_ExportSummaryCsv(summaries, apps.string(), &rows) && rows == 3,
+          "the roll-up exports one row per application");
+    {
+        std::ifstream file(apps);
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(file, line)) { if (!line.empty() && line.back() == '\r') line.pop_back(); lines.push_back(line); }
+        CHECK(lines.size() == 4 && lines[0] == "application,pid,executable,user,attributed,connections,established,"
+              "listening,peers,peer_addresses,hosts,via,serves,bytes_sent,bytes_received", "with the header");
+        CHECK(lines.size() > 1 && lines[1].rfind("firefox,100,", 0) == 0 &&
+              lines[1].find(",yes,2,2,0,2,203.0.113.7;93.184.216.34,\"a203.deploy, static;www.example.com\",") != std::string::npos,
+              "the busiest first, peers and hosts semicolon-joined and quoted when a comma is inside");
+        CHECK(lines.size() > 1 && (lines[1].find(",,,1000,5000") != std::string::npos || lines[1].find(",,,,") != std::string::npos),
+              "byte totals present only when every connection had them");
+        bool orphan = false;
+        for (const auto& l : lines) if (l.rfind("(unattributed),,", 0) == 0 && l.find(",no,") != std::string::npos) orphan = true;
+        CHECK(orphan, "the unattributed group is a row without a PID");
+        std::filesystem::remove(apps);
+    }
+
+    const std::filesystem::path conns = std::filesystem::temp_directory_path() / "networkmonitor-conns.csv";
+    CHECK(NetworkMonitor_ExportConnectionsCsv(fixture, conns.string(), &rows) && rows == 4,
+          "the connections export one row each");
+    {
+        std::ifstream file(conns);
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(file, line)) { if (!line.empty() && line.back() == '\r') line.pop_back(); lines.push_back(line); }
+        CHECK(lines.size() == 5 && lines[0].rfind("application,pid,executable,user,transport,family,local,remote,"
+              "remote_name,name_source,state,", 0) == 0, "with the header");
+        CHECK(lines.size() > 1 && lines[1].find("firefox,100,") == 0 &&
+              lines[1].find(",93.184.216.34:443,www.example.com,DNS proxy,ESTABLISHED,,,,1000,5000") != std::string::npos,
+              "a named connection carries the name, its source and its counters");
+        CHECK(lines.size() > 3 && lines[3].find(",*,,,LISTEN,,,,,") != std::string::npos,
+              "a listener's peer is * and absent counters are empty, never zero");
+        CHECK(lines.size() > 4 && lines[4].rfind("(unattributed),,,uid 1000,", 0) == 0,
+              "an unattributed socket shows its owning UID");
+        std::filesystem::remove(conns);
+    }
+    CHECK(!NetworkMonitor_ExportSummaryCsv(summaries, "/nonexistent-dir/x.csv"),
+          "a path that cannot be written is refused");
+}
+
+// =============================================================================
+// Loopback chains
+
+static void TestLoopbackDecode() {
+    std::printf("Loopback chains\n");
+    // A mail client (pid 1) talks to an antivirus proxy (pid 2) on
+    // 127.0.0.1:12993; the proxy talks to the mail server for it. An
+    // unrelated app (pid 3) talks to the internet directly.
+    std::vector<NetworkConnection> table;
+    NetworkConnection client = MakeConnection(1, "thunderbird", "127.0.0.1", NetworkConnectionState::Established);
+    client.localAddress = "127.0.0.1"; client.localPort = 57547; client.remotePort = 12993;
+    NetworkConnection listener = MakeConnection(2, "AvastSvc", "0.0.0.0", NetworkConnectionState::Listening);
+    listener.localAddress = "127.0.0.1"; listener.localPort = 12993; listener.remotePort = 0;
+    NetworkConnection accepted = MakeConnection(2, "AvastSvc", "127.0.0.1", NetworkConnectionState::Established);
+    accepted.localAddress = "127.0.0.1"; accepted.localPort = 12993; accepted.remotePort = 57547;
+    NetworkConnection outbound = MakeConnection(2, "AvastSvc", "95.217.106.38", NetworkConnectionState::Established);
+    outbound.localPort = 57616; outbound.remotePort = 993; outbound.remoteName = "mail.example.net";
+    NetworkConnection direct = MakeConnection(3, "firefox", "93.184.216.34", NetworkConnectionState::Established);
+    // A dual-stack proxy reports its IPv4 client as ::ffff:127.0.0.1.
+    NetworkConnection client6 = MakeConnection(1, "thunderbird", "127.0.0.1", NetworkConnectionState::Established);
+    client6.localAddress = "127.0.0.1"; client6.localPort = 57613; client6.remotePort = 12995;
+    NetworkConnection accepted6 = MakeConnection(2, "AvastSvc", "::ffff:127.0.0.1", NetworkConnectionState::Established);
+    accepted6.family = NetworkAddressFamily::IPv6; accepted6.localAddress = "::ffff:127.0.0.1";
+    accepted6.localPort = 12995; accepted6.remotePort = 57613;
+    NetworkConnection listener6 = MakeConnection(2, "AvastSvc", "::", NetworkConnectionState::Listening);
+    listener6.family = NetworkAddressFamily::IPv6; listener6.localAddress = "::"; listener6.localPort = 12995; listener6.remotePort = 0;
+    table = { client, listener, accepted, outbound, direct, client6, accepted6, listener6 };
+
+    NetworkMonitor_DecodeLoopback(table);
+    CHECK(table[0].loopbackRole == LoopbackRole::Client && table[0].localPeer && table[0].localPeer->pid == 2,
+          "the client's connection points at the proxy");
+    CHECK(table[2].loopbackRole == LoopbackRole::Server && table[2].localPeer && table[2].localPeer->pid == 1,
+          "the proxy's accepted socket points back at the client");
+    CHECK(table[1].loopbackRole == LoopbackRole::None && !table[1].localPeer, "the listener itself is not a chain");
+    CHECK(table[3].loopbackRole == LoopbackRole::None && table[3].forProcesses.size() == 1 &&
+          table[3].forProcesses[0] == "thunderbird (1)",
+          "the proxy's outbound connection is marked as for the client it serves");
+    CHECK(table[4].forProcesses.empty() && !table[4].localPeer, "an application with no proxy carries nothing");
+    CHECK(table[5].loopbackRole == LoopbackRole::Client && table[5].localPeer && table[5].localPeer->pid == 2 &&
+          table[6].loopbackRole == LoopbackRole::Server && table[6].localPeer && table[6].localPeer->pid == 1,
+          "an IPv4-mapped peer pairs with its plain IPv4 mirror");
+    CHECK(std::string(NetworkMonitor_LoopbackRoleName(LoopbackRole::Server)) == "server" &&
+          std::string(NetworkMonitor_LoopbackRoleName(LoopbackRole::None)).empty(), "roles have names");
+
+    const auto groups = NetworkMonitor_SummarizeByProcess(table);
+    const ProcessTrafficSummary* proxy = nullptr;
+    const ProcessTrafficSummary* mail = nullptr;
+    for (const auto& g : groups) { if (g.process.pid == 2) proxy = &g; if (g.process.pid == 1) mail = &g; }
+    CHECK(proxy && proxy->servesProcesses.size() == 1 && proxy->servesProcesses[0] == "thunderbird (1)" &&
+          proxy->viaProcesses.empty(), "the roll-up says whom the proxy serves");
+    CHECK(mail && mail->viaProcesses.size() == 1 && mail->viaProcesses[0] == "AvastSvc (2)" &&
+          mail->servesProcesses.empty(), "and what the client goes through");
+
+    // The CSVs carry the chain.
+    const std::filesystem::path conns = std::filesystem::temp_directory_path() / "networkmonitor-via.csv";
+    int64_t rows = 0;
+    CHECK(NetworkMonitor_ExportConnectionsCsv(table, conns.string(), &rows) && rows == 8, "the connections export");
+    {
+        std::ifstream file(conns);
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(file, line)) { if (!line.empty() && line.back() == '\r') line.pop_back(); lines.push_back(line); }
+        CHECK(lines.size() == 9 && lines[0].find(",state,loopback_role,local_peer,for,") != std::string::npos,
+              "with the chain columns in the header");
+        CHECK(lines.size() > 1 && lines[1].find(",ESTABLISHED,client,AvastSvc (2),,") != std::string::npos,
+              "the client's row names the proxy");
+        CHECK(lines.size() > 4 && lines[4].find(",mail.example.net,none,ESTABLISHED,,,thunderbird (1),") != std::string::npos,
+              "the proxy's outbound row says whom it is for");
+        std::filesystem::remove(conns);
+    }
+    const std::filesystem::path apps = std::filesystem::temp_directory_path() / "networkmonitor-via-apps.csv";
+    CHECK(NetworkMonitor_ExportSummaryCsv(groups, apps.string(), &rows) && rows == 3, "the roll-up exports");
+    {
+        std::ifstream file(apps);
+        std::string header, first;
+        std::getline(file, header);
+        bool found = false;
+        std::string line;
+        while (std::getline(file, line)) if (line.rfind("AvastSvc,2,", 0) == 0 && line.find(",,thunderbird (1),") != std::string::npos) found = true;
+        CHECK(header.find(",hosts,via,serves,") != std::string::npos && found, "with via and serves columns");
+        std::filesystem::remove(apps);
+    }
+}
+
+// =============================================================================
+// Loopback chains in the store
+
+static void TestStoreChains() {
+    std::printf("Loopback chains in the store\n");
+#ifdef ULTRACANVAS_HAS_DATABASE
+    NetworkMonitorStoreOptions options;
+    options.path = ":memory:";
+    NetworkMonitorStoreHandle store = NetworkMonitorInvalidStore;
+    if (!NetworkMonitor_OpenStore(options, store)) { std::printf("  skipped: no store\n"); return; }
+
+    // The fixture of TestLoopbackDecode: a mail client behind a proxy.
+    NetworkConnection client = MakeConnection(1, "thunderbird", "127.0.0.1", NetworkConnectionState::Established);
+    client.localAddress = "127.0.0.1"; client.localPort = 57547; client.remotePort = 12993;
+    NetworkConnection listener = MakeConnection(2, "AvastSvc", "0.0.0.0", NetworkConnectionState::Listening);
+    listener.localAddress = "127.0.0.1"; listener.localPort = 12993; listener.remotePort = 0;
+    NetworkConnection accepted = MakeConnection(2, "AvastSvc", "127.0.0.1", NetworkConnectionState::Established);
+    accepted.localAddress = "127.0.0.1"; accepted.localPort = 12993; accepted.remotePort = 57547;
+    NetworkConnection outbound = MakeConnection(2, "AvastSvc", "95.217.106.38", NetworkConnectionState::Established);
+    outbound.localPort = 57616; outbound.remotePort = 993; outbound.remoteName = "mail.example.net";
+    outbound.nameSource = NameSource::DnsProxy; outbound.bytesSent = 100; outbound.bytesReceived = 900;
+    NetworkConnection direct = MakeConnection(3, "firefox", "93.184.216.34", NetworkConnectionState::Established);
+    std::vector<NetworkConnection> table = { client, listener, accepted, outbound, direct };
+    NetworkMonitor_DecodeLoopback(table);
+
+    const int64_t t0 = 1'800'000'000;
+    CHECK(NetworkMonitor_RecordSnapshot(store, table, t0), "a decoded snapshot records");
+
+    std::vector<RecordedFlow> flows;
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows.size() == 5, "five flows read back");
+    const RecordedFlow* clientFlow = nullptr;
+    const RecordedFlow* acceptedFlow = nullptr;
+    const RecordedFlow* outboundFlow = nullptr;
+    const RecordedFlow* directFlow = nullptr;
+    for (const auto& f : flows) {
+        if (f.process && f.process->pid == 1) clientFlow = &f;
+        if (f.process && f.process->pid == 2 && f.remotePort == 57547) acceptedFlow = &f;
+        if (f.process && f.process->pid == 2 && f.remotePort == 993) outboundFlow = &f;
+        if (f.process && f.process->pid == 3) directFlow = &f;
+    }
+    CHECK(clientFlow && clientFlow->loopbackRole == LoopbackRole::Client && clientFlow->localPeer == "AvastSvc (2)",
+          "the client's flow records the proxy it went through");
+    CHECK(acceptedFlow && acceptedFlow->loopbackRole == LoopbackRole::Server &&
+          acceptedFlow->localPeer == "thunderbird (1)", "the proxy's accepted flow records its client");
+    CHECK(outboundFlow && outboundFlow->loopbackRole == LoopbackRole::None && outboundFlow->localPeer.empty() &&
+          outboundFlow->forProcesses.size() == 1 && outboundFlow->forProcesses[0] == "thunderbird (1)",
+          "the proxy's outbound flow records whom it was for");
+    CHECK(directFlow && directFlow->loopbackRole == LoopbackRole::None && directFlow->forProcesses.empty(),
+          "a direct flow carries no chain");
+
+    // A later sighting without the chain (the client's socket already
+    // gone, so nothing to pair) keeps what was recorded; one with a
+    // different chain replaces it.
+    std::vector<NetworkConnection> later = { outbound };
+    later[0].bytesSent = 200;
+    CHECK(NetworkMonitor_RecordSnapshot(store, later, t0 + 1), "a bare sighting records");
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows.size() == 5, "and extends the flow");
+    for (const auto& f : flows) if (f.process && f.process->pid == 2 && f.remotePort == 993) outboundFlow = &f;
+    CHECK(outboundFlow && outboundFlow->snapshots == 2 && outboundFlow->bytesSent && *outboundFlow->bytesSent == 200 &&
+          outboundFlow->forProcesses.size() == 1 && outboundFlow->forProcesses[0] == "thunderbird (1)",
+          "a sighting without the chain keeps the recorded one");
+    later[0].forProcesses = { "evolution (4)", "thunderbird (1)" };
+    CHECK(NetworkMonitor_RecordSnapshot(store, later, t0 + 2), "a sighting with a wider chain records");
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows), "the flows read back");
+    for (const auto& f : flows) if (f.process && f.process->pid == 2 && f.remotePort == 993) outboundFlow = &f;
+    CHECK(outboundFlow && outboundFlow->forProcesses.size() == 2 && outboundFlow->forProcesses[0] == "evolution (4)" &&
+          outboundFlow->forProcesses[1] == "thunderbird (1)", "and replaces it, the list intact");
+
+    // The text filter finds the proxy's flows by the client's name.
+    ActivityQuery byClient;
+    byClient.text = "thunderbird";
+    CHECK(NetworkMonitor_QueryFlows(store, byClient, flows) && flows.size() == 3,
+          "\"thunderbird\" finds the client's flow, the proxy's accepted flow and its outbound flow");
+    ActivityQuery byOther;
+    byOther.text = "evolution";
+    CHECK(NetworkMonitor_QueryFlows(store, byOther, flows) && flows.size() == 1 && flows[0].remotePort == 993,
+          "and a name only the \"for\" list has finds the outbound flow alone");
+
+    // The CSV carries the chain.
+    const std::filesystem::path csv = std::filesystem::temp_directory_path() / "networkmonitor-chains.csv";
+    int64_t written = 0;
+    CHECK(NetworkMonitor_ExportFlowsCsv(store, byOther, csv.string(), &written) && written == 1, "the flow exports");
+    {
+        std::ifstream file(csv);
+        std::string header, row;
+        std::getline(file, header);
+        std::getline(file, row);
+        if (!row.empty() && row.back() == '\r') row.pop_back();
+        CHECK(row.find(",AvastSvc,2,,,,,evolution (4);thunderbird (1),200,900") != std::string::npos,
+              "with the role, the peer and the \"for\" list after the user");
+        std::filesystem::remove(csv);
+    }
+
+    // The roll-up keeps the last "for" the flows carried.
+    int64_t rolled = 0;
+    CHECK(NetworkMonitor_RollUp(store, t0 + 100, &rolled) && rolled == 5, "the flows roll up");
+    std::vector<DailyProcessTotal> totals;
+    CHECK(NetworkMonitor_QueryDailyTotals(store, ActivityQuery(), totals), "the totals read back");
+    const DailyProcessTotal* proxyDay = nullptr;
+    for (const auto& t : totals) if (t.processName == "AvastSvc" && t.remoteAddress == "95.217.106.38") proxyDay = &t;
+    CHECK(proxyDay && proxyDay->forProcesses.size() == 2 && proxyDay->forProcesses[1] == "thunderbird (1)",
+          "the proxy's daily total says whom its traffic was for");
+    ActivityQuery totalsByClient;
+    totalsByClient.text = "evolution";
+    CHECK(NetworkMonitor_QueryDailyTotals(store, totalsByClient, totals) && totals.size() == 1,
+          "and the totals' text filter finds it");
+    NetworkMonitor_CloseStore(store);
+#else
+    std::printf("  skipped: no UltraDatabase in this build\n");
 #endif
 }
 
@@ -1209,6 +1828,14 @@ int main() {
     TestReverseDns();
     TestDnsProxy();
     TestStoreNames();
+    TestConntrackParse();
+    TestEventRegistry();
+    TestSnapshotDiff();
+    TestSystemEventSource();
+    TestStoreEvents();
+    TestSnapshotCsv();
+    TestLoopbackDecode();
+    TestStoreChains();
     std::printf("=== %s ===\n", g_failures == 0 ? "all tests passed" : "FAILURES");
     return g_failures == 0 ? 0 : 1;
 }

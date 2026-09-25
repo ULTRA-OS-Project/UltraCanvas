@@ -271,7 +271,13 @@ UltraNet directly: production wiring injects `UltraNetTransport`
 (a completed HTTP exchange with status ≥ 400 comes back as a response to
 map, not a transport error), and unit tests inject `ScriptedTransport`
 with scripted responses and SSE event scripts — CI never contacts a live
-provider. In-tree framework builds enable `ULTRAAI_USE_ULTRANET`
+provider. Chunked bodies that are not Server-Sent Events (newline-delimited
+JSON, streamed audio) go through `ITransport::ByteStream`, which
+`UltraNetTransport` backs with UltraNet's `onDataChunk`; transports without
+native streaming inherit a default that delivers the whole body as one
+chunk. The HTTP status is only known when such a stream completes, so an
+error body arrives through the chunks too — prefer a self-describing format
+(ElevenLabs' `stream/with-timestamps` NDJSON rather than bare audio). In-tree framework builds enable `ULTRAAI_USE_ULTRANET`
 automatically when the `UltraNet` target exists (cache-first, so an
 explicit `-DULTRAAI_USE_ULTRANET=OFF` still wins).
 

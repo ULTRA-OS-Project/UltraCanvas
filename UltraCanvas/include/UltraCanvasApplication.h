@@ -354,6 +354,13 @@ namespace UltraCanvas {
         bool Initialize(const std::string& app);
         bool RequestExit();
         virtual void Exit();
+        // The one call a signal handler may make. RequestExit() logs and runs
+        // the exit-request callback, neither of which is async-signal-safe;
+        // this only sets a lock-free flag that the next loop iteration
+        // (RunOnce) turns into a RequestExit() on the main thread, so main
+        // returns and the application's own destructors run in order.
+        // Static: a handler has no instance to reach safely.
+        static void RequestExitFromSignal();
 
         bool IsInitialized() const { return initialized; }
         bool IsRunning() const { return running; }

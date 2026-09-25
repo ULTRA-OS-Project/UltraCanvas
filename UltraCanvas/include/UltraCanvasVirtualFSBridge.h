@@ -463,12 +463,18 @@ public:
      * @param archivePath Path to archive
      * @param destDirectory Destination directory
      * @param progressCallback Progress callback (optional)
+     * @param outError Optional: on failure, what went wrong. When the archive
+     *        was extracted only in part (entries refused as unsafe, entries
+     *        that could not be written) it is a heading line ending in ':'
+     *        per kind, then one entry per line. Prefer it to GetLastError()
+     *        from a worker thread: that one is shared by every caller.
      * @return true on success
      */
     static bool ExtractArchive(
         const std::string& archivePath,
         const std::string& destDirectory,
-        UCVFSProgressCallback progressCallback = nullptr);
+        UCVFSProgressCallback progressCallback = nullptr,
+        std::string* outError = nullptr);
     
     /**
      * @brief Creates a new archive from files

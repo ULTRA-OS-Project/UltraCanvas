@@ -12,6 +12,7 @@
 // Author: UltraCanvas Framework
 
 #include "Models/XFile/UltraCanvasXFile.h"
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat
 
 #include <algorithm>
 #include <cctype>
@@ -144,10 +145,15 @@ private:
         }
 
         if (c == '-' || c == '+' || c == '.' || std::isdigit(static_cast<unsigned char>(c))) {
+            // Dot-decimal by the format: strtod followed the desktop's locale.
+            // Bounded by the buffer, too - the data is not a C string, and
+            // strtod could scan past the end of a truncated file.
             const char* begin = reinterpret_cast<const char*>(data_ + position_);
-            char* end = nullptr;
-            const double value = std::strtod(begin, &end);
-            if (end == begin) { ++position_; return {Kind::Punct, std::string(1, c), 0.0}; }
+            const char* last = reinterpret_cast<const char*>(data_ + size_);
+            const char* digits = (*begin == '+') ? begin + 1 : begin;
+            double value = 0.0;
+            const char* end = ParseFloatClassic(digits, last, value);
+            if (end == digits) { ++position_; return {Kind::Punct, std::string(1, c), 0.0}; }
             position_ += static_cast<size_t>(end - begin);
             return {Kind::Number, {}, value};
         }

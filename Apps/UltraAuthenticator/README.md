@@ -28,6 +28,7 @@ Changelog and version:
 | `Preferences.*` | The three user settings and the `settings.ini` file beside the vault they live in; every value clamped on load |
 | `AuthenticatorWindow.*` | The main window: the scrolling card list, the 1 Hz refresh timer that also drives the auto-lock, the two button rows |
 | `LockScreenDialog.*` | What covers the window once the vault is locked: master password or Quit, nothing else |
+| `NewVaultDialog.*` | First launch: the master password typed twice, with a strength meter; Create or Quit |
 | `SettingsDialog.*` | Idle timeout, lock on minimise, hide codes |
 | `AddAccountDialog.*` | Manual entry — issuer, account name, Base32 key, masked while typing |
 | `ScanAccountDialog.*` | Camera enrolment: preview, poll, decode, hand the URI to the same parser manual entry uses |
@@ -35,6 +36,8 @@ Changelog and version:
 | `RevealSecretDialog.*` | Shows one account's setup key, so it can be enrolled elsewhere |
 | `ChangePasswordDialog.*` | Re-derives the vault key from a new master password |
 | `BackupDialog.*` | Both directions of the encrypted backup — export and restore |
+| `BrandHeader.h` | The centred logo and small app name at the top of the new-vault and lock screens |
+| `PasswordAdvice.h` | The optional "safe password" checklist under a new master password; never a gate |
 | `Theme.h` | One place for the colours, type sizes and metrics, so the window and the dialogs cannot drift apart |
 | `main.cpp` | The unlock gate, the vault path, and the `--vault` / `--help` / `--version` command line |
 | `UltraAuthenticator.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/UltraAuthenticator.png` / `.svg`, the PNG rendered from the SVG) in the `hicolor` icon theme, which is how the application menu and UltraFiler find the app and its icon |
@@ -77,7 +80,13 @@ length:
 
 The master password is asked for at launch, as a modal gate: nothing about the
 accounts, not even how many there are, is rendered before it is accepted.
-There is no "skip" and no "remember me".
+There is no "skip" and no "remember me". The gate is `LockScreenDialog` over a
+window that starts locked — `AccountStore::Attach` binds the store to the
+file without opening it — so the first unlock is the same throttled
+`AccountStore::Unlock` as every later one (see *Locking*). A new vault goes
+through `NewVaultDialog` instead: the password is typed twice and the two must
+match, with a strength meter under the first field, because a typo in the one
+password that cannot be recovered would otherwise become it.
 
 ## Getting an account in
 

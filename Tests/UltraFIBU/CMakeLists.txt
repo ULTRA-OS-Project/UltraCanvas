@@ -42,6 +42,9 @@ set(ULTRAFIBU_TEST_SOURCES
     # suite has to run where that cannot be built.
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/report/UltraFIBURechnungPdf.cpp
     ${CMAKE_SOURCE_DIR}/UltraCanvas/core/DataFormats/UltraCanvasVectorStorage.cpp
+    # VectorStorage reads and writes its numbers dot-decimal through
+    # TryParseFloat / ParseFloatClassic / FormatFloatClassic, which live here.
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/core/UltraCanvasTextUtils.cpp
     ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp
     ${CMAKE_SOURCE_DIR}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
     ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson/yyjson.c

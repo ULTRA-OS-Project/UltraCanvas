@@ -20,7 +20,7 @@ namespace {
 // Wires the shared status read-out every tab uses.
 void AttachStatus(const std::shared_ptr<UltraCanvasMindMap>& map,
                   const std::shared_ptr<UltraCanvasLabel>& status) {
-    map->onTopicClick = [map, status](const std::string& id) {
+    map->onTopicClick = [map = map.get(), status](const std::string& id) {
         const MindMapTopic* topic = map->GetTopic(id);
         if (!topic) return;
         std::ostringstream out;
@@ -29,7 +29,7 @@ void AttachStatus(const std::shared_ptr<UltraCanvasMindMap>& map,
         if (descendants > 0) out << "  ·  " << descendants << " descendants";
         status->SetText(out.str());
     };
-    map->onCollapseChanged = [map, status](const std::string& id, bool collapsed) {
+    map->onCollapseChanged = [map = map.get(), status](const std::string& id, bool collapsed) {
         const MindMapTopic* topic = map->GetTopic(id);
         status->SetText(std::string(collapsed ? "Collapsed " : "Expanded ") +
                         (topic ? "\"" + topic->text + "\"" : id));
