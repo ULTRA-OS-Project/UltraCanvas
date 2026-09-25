@@ -88,6 +88,40 @@ static std::string Lower(std::string s) {
 
 static bool Near(float a, float b) { return std::abs(a - b) < 0.6f; }
 
+static const RichTableCell* FindCell(const UCRichDocument& d, const std::string& text,
+                                     const RichDocBlock** tableOut = nullptr) {
+    for (const auto& b : d.blocks) {
+        for (const auto& row : b.tableRows) {
+            for (const auto& cell : row.cells) {
+                if (UCRichDocument::ConcatenateRunText(cell.runs) == text) {
+                    if (tableOut) *tableOut = &b;
+                    return &cell;
+                }
+            }
+        }
+    }
+    return nullptr;
+}
+
+// Cell borders and fills of the fixture's tables.
+static void CheckCellFrames(const UCRichDocument& d, const std::string& label) {
+    const RichDocBlock* table = nullptr;
+    const RichTableCell* header = FindCell(d, "Date", &table);
+    CHECK_MSG(table && table->tableBordersFromDocument, label + ": borders come from the document");
+    auto lower = [](std::string v) { for (char& c : v) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return v; };
+    CHECK_MSG(header && lower(header->backgroundColor) == "#ddeeff", label + ": header fill");
+    CHECK_MSG(header && Near(header->borderTop.widthPt, 0.5f) && Near(header->borderLeft.widthPt, 0.5f)
+              && (header->borderTop.color.empty() || header->borderTop.color == "#000000"), label + ": grid line");
+    const RichTableCell* thick = FindCell(d, "250.50");
+    CHECK_MSG(thick && Near(thick->borderBottom.widthPt, 2.0f) && lower(thick->borderBottom.color) == "#0000ff"
+              && Near(thick->borderRight.widthPt, 0.5f), label + ": thick blue bottom line");
+    CHECK_MSG(thick && thick->backgroundColor.empty(), label + ": no fill");
+    const RichTableCell* layout = FindCell(d, "layout left");
+    CHECK_MSG(layout && !layout->borderTop.IsVisible() && !layout->borderBottom.IsVisible()
+              && !layout->borderLeft.IsVisible() && !layout->borderRight.IsVisible(),
+              label + ": borderless layout table");
+}
+
 // Paragraph geometry and symbol fonts of the fixture (and of what the
 // writers make of it).
 static void CheckGeometry(const UCRichDocument& d, const std::string& label) {
@@ -178,8 +212,10 @@ static void CheckFormattingFixture(const UCRichDocument& d, const std::string& l
     for (const auto& b : d.blocks) {
         if (b.type == RichBlockType::Table) { table = &b; break; }
     }
-    CHECK_MSG(table && table->tableRows.size() == 3, label + ": table");
-    if (table && table->tableRows.size() == 3) {
+    // Word 97 has no separator between two adjacent tables, so the .doc (like
+    // Word itself) shows the layout table as further rows of this one.
+    CHECK_MSG(table && table->tableRows.size() >= 3, label + ": table");
+    if (table && table->tableRows.size() >= 3) {
         CHECK_MSG(table->tableRows[0].header, label + ": header row");
         CHECK_MSG(table->tableRows[0].cells[0].align == RichTextAlign::Center, label + ": header centred");
         CHECK_MSG(table->tableRows[1].cells[1].align == RichTextAlign::Right, label + ": amount right");
@@ -210,6 +246,7 @@ static void CheckFormattingFixture(const UCRichDocument& d, const std::string& l
               && d.blocks[afterBreak - 1].type == RichBlockType::PageBreak, label + ": page break");
 
     CheckGeometry(d, label);
+    CheckCellFrames(d, label);
 }
 
 static UCRichDocument BuildSampleDocument() {
@@ -429,8 +466,9 @@ int main(int argc, char** argv) {
                 for (const auto& b : back.blocks) {
                     if (b.type == RichBlockType::Table) { table = &b; break; }
                 }
-                CHECK_MSG(table && table->tableRows.size() == 3
+                CHECK_MSG(table && table->tableRows.size() >= 3
                           && table->tableRows[1].cells[1].align == RichTextAlign::Right, label);
+                CheckCellFrames(back, label);
                 CHECK_MSG(table && table->tableColumnWidths.size() == 2
                           && table->tableColumnWidths[1] > 2.9f * table->tableColumnWidths[0], label);
                 CheckGeometry(back, label);
@@ -500,6 +538,35 @@ int main(int argc, char** argv) {
             const RichDocBlock& second = geometryDoc->blocks[1];
             CHECK(second.leftIndentPt == 36.0f && second.spaceAfterPt == 6.0f
                   && second.tabStops.size() == 1);
+        }
+    }
+
+    // ===== 5g. Rows and columns added to a framed table look like it =====
+    {
+        auto framedDoc = std::make_shared<UCRichDocument>();
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        table.tableBordersFromDocument = true;
+        table.tableRows.resize(1);
+        RichTableCell cell;
+        cell.borderTop.widthPt = cell.borderBottom.widthPt = 1.0f;
+        cell.borderLeft.widthPt = cell.borderRight.widthPt = 1.0f;
+        cell.borderBottom.color = "#FF0000";
+        cell.backgroundColor = "#EEEEEE";
+        table.tableRows[0].cells = {cell, cell};
+        framedDoc->blocks.push_back(table);
+        UCRichDocumentEditor editor;
+        editor.SetDocument(framedDoc);
+        CHECK(editor.InsertTableRow(0, 0, true));
+        CHECK(editor.InsertTableColumn(0, 1, true));
+        const RichDocBlock& grown = framedDoc->blocks[0];
+        CHECK(grown.tableRows.size() == 2);
+        for (const auto& row : grown.tableRows) {
+            CHECK(row.cells.size() == 3);
+            for (const auto& added : row.cells) {
+                CHECK(added.borderBottom.color == "#FF0000" && added.backgroundColor == "#EEEEEE"
+                      && added.borderLeft.IsVisible());
+            }
         }
     }
 

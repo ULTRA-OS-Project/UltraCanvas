@@ -243,6 +243,8 @@ private:
     std::map<std::string, std::map<int, int>> listStartValues_;
     // table-column style name -> column width in points
     std::map<std::string, float> columnWidths_;
+    std::map<std::string, RichTableCell> cellStyles_;          // table-cell style -> borders, fill
+    std::vector<std::string> columnDefaultCellStyles_;         // of the table being read
     std::map<std::string, std::string> fontFamilies_;          // font-face name -> family
     bool tabsRelativeToIndent_ = true;                         // Writer's default
     // Numbering runs per LIST, not per text:list element: a list that
@@ -278,6 +280,47 @@ private:
             std::string name = Attr(face, "style:name");
             if (!name.empty() && !family.empty()) fontFamilies_[name] = family;
         }
+    }
+
+    // An ODF border: "0.5pt solid #000000", "0.06pt double #c0c0c0", "none".
+    static RichBorder ParseBorder(const std::string& value) {
+        RichBorder border;
+        std::istringstream tokens(value);
+        std::string token;
+        bool none = false;
+        float width = -1.0f;
+        while (tokens >> token) {
+            const std::string lower = WordFormatInternal::ToLower(token);
+            if (lower == "none" || lower == "hidden") none = true;
+            else if (!lower.empty() && lower[0] == '#') border.color = token;
+            else if (lower == "thin") width = 0.75f;
+            else if (lower == "medium") width = 1.5f;
+            else if (lower == "thick") width = 3.0f;
+            else if (!lower.empty() && (std::isdigit(static_cast<unsigned char>(lower[0])) || lower[0] == '.')) {
+                width = ParseLengthPt(token);
+            }
+            // solid, double, dotted, dashed, ...: drawn as a solid line.
+        }
+        if (!none) border.widthPt = width >= 0.0f ? width : (value.empty() ? 0.0f : 0.75f);
+        if (border.widthPt <= 0.0f) border = RichBorder{};
+        return border;
+    }
+
+    // Borders and background of a table-cell style. Unset sides stay empty.
+    static RichTableCell ReadCellFormat(tinyxml2::XMLElement* props) {
+        RichTableCell format;
+        const std::string all = Attr(props, "fo:border");
+        auto side = [&](const char* name) {
+            const char* v = props->Attribute(name);
+            return ParseBorder(v ? std::string(v) : all);
+        };
+        format.borderTop = side("fo:border-top");
+        format.borderBottom = side("fo:border-bottom");
+        format.borderLeft = side("fo:border-left");
+        format.borderRight = side("fo:border-right");
+        std::string background = Attr(props, "fo:background-color");
+        if (!background.empty() && background != "transparent") format.backgroundColor = background;
+        return format;
     }
 
     // Lengths in a paragraph-properties element; "" leaves a field unset.
@@ -409,6 +452,9 @@ private:
                 props.pageBreakBefore = std::string(Attr(pp, "fo:break-before")) == "page";
             }
             std::string name = Attr(style, "style:name");
+            if (auto* cellProps = style->FirstChildElement("style:table-cell-properties")) {
+                if (!name.empty()) cellStyles_[name] = ReadCellFormat(cellProps);
+            }
             if (auto* cp = style->FirstChildElement("style:table-column-properties")) {
                 // Absolute width wins; a relative "1234*" width is still a
                 // valid proportion among the table's columns.
@@ -859,8 +905,12 @@ private:
 
     // Appends one table:table-column's width (repeated as often as the column
     // says). False when its style carries no width.
-    bool AppendColumnWidths(tinyxml2::XMLElement* column, std::vector<float>& widths) const {
+    bool AppendColumnWidths(tinyxml2::XMLElement* column, std::vector<float>& widths) {
         int repeat = std::clamp(column->IntAttribute("table:number-columns-repeated", 1), 1, 1024);
+        // A column may name the cell style its cells use when they name none.
+        for (int i = 0; i < repeat; ++i) {
+            columnDefaultCellStyles_.push_back(Attr(column, "table:default-cell-style-name"));
+        }
         auto it = columnWidths_.find(Attr(column, "table:style-name"));
         float width = it != columnWidths_.end() ? it->second : 0.0f;
         for (int i = 0; i < repeat; ++i) widths.push_back(width);
@@ -874,12 +924,24 @@ private:
         auto parseRow = [&](tinyxml2::XMLElement* rowElem, bool header) {
             RichTableRow row;
             row.header = header;
+            size_t gridColumn = 0;
             for (auto* cellElem = rowElem->FirstChildElement(); cellElem;
                  cellElem = cellElem->NextSiblingElement()) {
                 std::string tag = cellElem->Name() ? cellElem->Name() : "";
+                const size_t column = gridColumn;
+                gridColumn += static_cast<size_t>(
+                    std::clamp(cellElem->IntAttribute("table:number-columns-repeated", 1), 1, 1024));
                 if (tag == "table:covered-table-cell") continue;
                 if (tag != "table:table-cell") continue;
                 RichTableCell cell;
+                {
+                    std::string cellStyle = Attr(cellElem, "table:style-name");
+                    if (cellStyle.empty() && column < columnDefaultCellStyles_.size()) {
+                        cellStyle = columnDefaultCellStyles_[column];
+                    }
+                    auto format = cellStyles_.find(cellStyle);
+                    if (format != cellStyles_.end()) cell.CopyCellFormat(format->second);
+                }
                 cell.columnSpan = cellElem->IntAttribute("table:number-columns-spanned", 1);
                 cell.rowSpan = cellElem->IntAttribute("table:number-rows-spanned", 1);
                 // Alignment is a paragraph property in ODF; the cell takes its
@@ -908,6 +970,12 @@ private:
             }
             block.tableRows.push_back(std::move(row));
         };
+
+        // The document says how its cells are framed; a cell with no border
+        // style really has no lines (layout tables).
+        block.tableBordersFromDocument = true;
+        const std::vector<std::string> savedDefaults = std::move(columnDefaultCellStyles_);
+        columnDefaultCellStyles_.clear();
 
         // Column proportions from the column styles; any column without a
         // known width drops the list (equal columns) rather than guessing.
@@ -950,6 +1018,7 @@ private:
             }
             if (hasText) break;
         }
+        columnDefaultCellStyles_ = savedDefaults;
         if (!block.tableRows.empty() && hasText) doc_->blocks.push_back(std::move(block));
     }
 
@@ -1218,6 +1287,8 @@ private:
     std::vector<RichTextRun> textStyles_;   // formatting tuples for T1..Tn
     std::string columnStyles_;              // automatic table-column styles
     std::string geometryStyles_;            // automatic paragraph styles with geometry
+    std::string cellStyles_;                // automatic table-cell styles (frames, fills)
+    std::map<std::string, std::string> cellStyleNames_;       // properties -> style name
     std::map<std::string, std::string> geometryStyleNames_;   // properties -> style name
 
     std::string PictureHref(size_t mediaIndex) const {
@@ -1378,6 +1449,38 @@ private:
         return name;
     }
 
+    static std::string BorderValue(const RichBorder& border) {
+        if (!border.IsVisible()) return "none";
+        return Pt(border.widthPt) + " solid " + (border.color.empty() ? std::string("#000000") : border.color);
+    }
+
+    // The automatic table-cell style for a cell's frame and fill, shared by
+    // every cell that looks the same. A table without document borders gets
+    // the thin grid the view draws for it.
+    std::string CellStyleFor(const RichTableCell& cell, bool fromDocument) {
+        std::ostringstream props;
+        if (!fromDocument) {
+            props << " fo:border=\"0.50pt solid #000000\"";
+        } else {
+            props << " fo:border-top=\"" << BorderValue(cell.borderTop) << "\""
+                  << " fo:border-bottom=\"" << BorderValue(cell.borderBottom) << "\""
+                  << " fo:border-left=\"" << BorderValue(cell.borderLeft) << "\""
+                  << " fo:border-right=\"" << BorderValue(cell.borderRight) << "\"";
+            if (!cell.backgroundColor.empty()) {
+                props << " fo:background-color=\"" << EscapeXml(cell.backgroundColor) << "\"";
+            }
+        }
+        props << " fo:padding=\"0.05cm\"";
+        const std::string key = props.str();
+        auto it = cellStyleNames_.find(key);
+        if (it != cellStyleNames_.end()) return it->second;
+        const std::string name = "Cell" + std::to_string(cellStyleNames_.size() + 1);
+        cellStyleNames_[key] = name;
+        cellStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"table-cell\">"
+                       "<style:table-cell-properties" + key + "/></style:style>\n";
+        return name;
+    }
+
     static const char* AlignValue(RichTextAlign align) {
         switch (align) {
             case RichTextAlign::Center: return "center";
@@ -1478,7 +1581,8 @@ private:
                 const int columnSpan = std::max(1, cell.columnSpan);
                 const int rowSpan = std::max(1, cell.rowSpan);
 
-                xml << "<table:table-cell office:value-type=\"string\"";
+                xml << "<table:table-cell table:style-name=\""
+                    << CellStyleFor(cell, block.tableBordersFromDocument) << "\" office:value-type=\"string\"";
                 if (columnSpan > 1) {
                     xml << " table:number-columns-spanned=\"" << columnSpan << "\"";
                 }
@@ -1658,7 +1762,7 @@ private:
             xml << "/></style:style>\n";
         }
 
-        xml << columnStyles_ << geometryStyles_;
+        xml << columnStyles_ << cellStyles_ << geometryStyles_;
         xml << "<style:style style:name=\"PCenter\" style:family=\"paragraph\" "
                "style:parent-style-name=\"Standard\">"
                "<style:paragraph-properties fo:text-align=\"center\"/></style:style>\n"

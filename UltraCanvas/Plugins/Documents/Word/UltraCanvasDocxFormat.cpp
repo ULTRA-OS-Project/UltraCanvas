@@ -129,6 +129,59 @@ private:
     };
     static constexpr float kUnset = -1.0e9f;
 
+    // ===== TABLE BORDERS =====
+    // A table's six border positions; a side not stated stays unset so a
+    // table's own borders can override its style's side by side.
+    struct BorderSpec { bool set = false; RichBorder border; };
+    struct TableBorders { BorderSpec top, left, bottom, right, insideH, insideV; };
+    struct TableStyle { std::string basedOn; TableBorders borders; };
+
+    // w:top/w:bottom/w:left(w:start)/w:right(w:end)/w:insideH/w:insideV:
+    // w:val "nil"/"none" = no line, w:sz in eighths of a point.
+    static BorderSpec ReadBorder(tinyxml2::XMLElement* e) {
+        BorderSpec spec;
+        if (!e) return spec;
+        spec.set = true;
+        const std::string val = Attr(e, "w:val");
+        if (val == "nil" || val == "none" || val.empty()) return spec;
+        spec.border.widthPt = std::max(0.25f, static_cast<float>(e->IntAttribute("w:sz", 4)) / 8.0f);
+        const std::string color = Attr(e, "w:color");
+        if (color.size() == 6 && color != "auto") spec.border.color = "#" + color;
+        return spec;
+    }
+
+    static void ReadTableBorders(tinyxml2::XMLElement* borders, TableBorders& out) {
+        auto take = [&](BorderSpec& target, const char* a, const char* b) {
+            BorderSpec spec = ReadBorder(borders->FirstChildElement(a));
+            if (!spec.set && b) spec = ReadBorder(borders->FirstChildElement(b));
+            if (spec.set) target = spec;
+        };
+        take(out.top, "w:top", nullptr);
+        take(out.bottom, "w:bottom", nullptr);
+        take(out.left, "w:left", "w:start");
+        take(out.right, "w:right", "w:end");
+        take(out.insideH, "w:insideH", nullptr);
+        take(out.insideV, "w:insideV", nullptr);
+    }
+
+    static void OverlayBorders(TableBorders& base, const TableBorders& over) {
+        for (auto [target, source] : {std::pair{&base.top, &over.top}, std::pair{&base.left, &over.left},
+                                      std::pair{&base.bottom, &over.bottom}, std::pair{&base.right, &over.right},
+                                      std::pair{&base.insideH, &over.insideH},
+                                      std::pair{&base.insideV, &over.insideV}}) {
+            if (source->set) *target = *source;
+        }
+    }
+
+    TableBorders TableStyleBorders(const std::string& styleId, int depth = 0) const {
+        auto it = tableStyles_.find(styleId);
+        if (it == tableStyles_.end() || depth > 16) return TableBorders{};
+        TableBorders borders = it->second.basedOn.empty() ? TableBorders{}
+                                                           : TableStyleBorders(it->second.basedOn, depth + 1);
+        OverlayBorders(borders, it->second.borders);
+        return borders;
+    }
+
     UCZipPackageReader zip_;
     UCRichDocument* doc_ = nullptr;
     tinyxml2::XMLDocument docXml_;
@@ -137,6 +190,8 @@ private:
     std::map<std::string, StyleGeometry> styleGeometry_;   // paragraph styleId -> geometry
     Geometry defaultGeometry_;                             // w:docDefaults/w:pPrDefault
     std::string defaultParagraphStyle_;                    // applies when a paragraph names none
+    std::map<std::string, TableStyle> tableStyles_;        // table styleId -> borders
+    std::string defaultTableStyle_;
     std::map<std::string, std::string> numIdToAbstract_;
     std::map<std::string, std::map<int, bool>> abstractNumOrdered_;   // abstractId -> ilvl -> ordered
     std::map<std::string, std::map<int, int>> abstractNumStart_;      // abstractId -> ilvl -> w:start
@@ -215,6 +270,17 @@ private:
             std::string id = Attr(style, "w:styleId");
             auto* name = style->FirstChildElement("w:name");
             if (!id.empty() && name) styleNames_[id] = Attr(name, "w:val");
+            if (!id.empty() && std::string(Attr(style, "w:type")) == "table") {
+                TableStyle tableStyle;
+                if (auto* basedOn = style->FirstChildElement("w:basedOn")) tableStyle.basedOn = Attr(basedOn, "w:val");
+                auto* tblPr = style->FirstChildElement("w:tblPr");
+                if (auto* borders = tblPr ? tblPr->FirstChildElement("w:tblBorders") : nullptr) {
+                    ReadTableBorders(borders, tableStyle.borders);
+                }
+                tableStyles_[id] = tableStyle;
+                if (std::string(Attr(style, "w:default")) == "1") defaultTableStyle_ = id;
+                continue;
+            }
             if (id.empty() || std::string(Attr(style, "w:type")) != "paragraph") continue;
             StyleGeometry entry;
             if (auto* basedOn = style->FirstChildElement("w:basedOn")) entry.basedOn = Attr(basedOn, "w:val");
@@ -731,6 +797,7 @@ private:
         // where that cell lives, keyed by the grid column it occupies.
         struct OpenMerge { size_t rowIndex; size_t cellIndex; };
         std::map<size_t, OpenMerge> openMerge;
+        std::map<std::pair<size_t, size_t>, TableBorders> cellBorders;   // (row, cell) -> w:tcBorders
 
         // Column proportions (twips) from the table grid.
         if (auto* grid = tbl->FirstChildElement("w:tblGrid")) {
@@ -785,6 +852,17 @@ private:
 
                 RichTableCell cell;
                 cell.columnSpan = columnSpan;
+                if (auto* tcPr = tc->FirstChildElement("w:tcPr")) {
+                    if (auto* borders = tcPr->FirstChildElement("w:tcBorders")) {
+                        TableBorders own;
+                        ReadTableBorders(borders, own);
+                        cellBorders[{rowIndex, row.cells.size()}] = own;
+                    }
+                    if (auto* shd = tcPr->FirstChildElement("w:shd")) {
+                        const std::string fill = Attr(shd, "w:fill");
+                        if (fill.size() == 6 && fill != "auto") cell.backgroundColor = "#" + fill;
+                    }
+                }
                 InlineContext ctx;
                 bool firstParagraph = true;
                 for (auto* p = tc->FirstChildElement("w:p"); p;
@@ -808,7 +886,47 @@ private:
             }
             block.tableRows.push_back(std::move(row));
         }
+        ResolveCellBorders(tbl, block, cellBorders);
         if (!block.tableRows.empty()) doc_->blocks.push_back(std::move(block));
+    }
+
+    // Each cell's four sides: its own w:tcBorders where stated, else the
+    // table's borders (w:tblBorders over the table style's) - the outer ones
+    // on the table's edge, insideH/insideV between cells.
+    void ResolveCellBorders(tinyxml2::XMLElement* tbl, RichDocBlock& table,
+                            const std::map<std::pair<size_t, size_t>, TableBorders>& cellBorders) const {
+        table.tableBordersFromDocument = true;
+        auto* tblPr = tbl->FirstChildElement("w:tblPr");
+        std::string styleId = defaultTableStyle_;
+        if (auto* tblStyle = tblPr ? tblPr->FirstChildElement("w:tblStyle") : nullptr) {
+            styleId = Attr(tblStyle, "w:val");
+        }
+        TableBorders borders = TableStyleBorders(styleId);
+        if (auto* own = tblPr ? tblPr->FirstChildElement("w:tblBorders") : nullptr) {
+            TableBorders direct;
+            ReadTableBorders(own, direct);
+            OverlayBorders(borders, direct);
+        }
+        const RichTableGrid grid = BuildTableGrid(table);
+        for (size_t r = 0; r < table.tableRows.size(); ++r) {
+            for (size_t c = 0; c < table.tableRows[r].cells.size(); ++c) {
+                RichTableCell& cell = table.tableRows[r].cells[c];
+                int top = 0, left = 0;
+                if (!grid.OriginOf(static_cast<int>(r), static_cast<int>(c), top, left)) continue;
+                const int bottom = top + std::max(1, cell.rowSpan) - 1;
+                const int right = left + std::max(1, cell.columnSpan) - 1;
+                auto pick = [](const BorderSpec& own, const BorderSpec& table) {
+                    return own.set ? own.border : table.border;
+                };
+                auto it = cellBorders.find({r, c});
+                const TableBorders none;
+                const TableBorders& own = it != cellBorders.end() ? it->second : none;
+                cell.borderTop = pick(own.top, top == 0 ? borders.top : borders.insideH);
+                cell.borderBottom = pick(own.bottom, bottom >= grid.rowCount - 1 ? borders.bottom : borders.insideH);
+                cell.borderLeft = pick(own.left, left == 0 ? borders.left : borders.insideV);
+                cell.borderRight = pick(own.right, right >= grid.columnCount - 1 ? borders.right : borders.insideV);
+            }
+        }
     }
 
     void LoadMetadata() {
@@ -1111,6 +1229,30 @@ private:
             << "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>";
     }
 
+    // w:tcBorders then w:shd, in the order CT_TcPr requires (after vMerge).
+    static void WriteCellFrame(std::ostringstream& xml, const RichTableCell& cell) {
+        xml << "<w:tcBorders>";
+        auto side = [&](const char* name, const RichBorder& border) {
+            if (!border.IsVisible()) {
+                xml << "<w:" << name << " w:val=\"nil\"/>";
+                return;
+            }
+            const long eighths = std::max(2L, std::lround(border.widthPt * 8.0f));
+            const std::string color = border.color.size() == 7 ? border.color.substr(1) : "auto";
+            xml << "<w:" << name << " w:val=\"single\" w:sz=\"" << std::to_string(eighths)
+                << "\" w:space=\"0\" w:color=\"" << EscapeXml(color) << "\"/>";
+        };
+        side("top", cell.borderTop);
+        side("left", cell.borderLeft);
+        side("bottom", cell.borderBottom);
+        side("right", cell.borderRight);
+        xml << "</w:tcBorders>";
+        if (cell.backgroundColor.size() == 7) {
+            xml << "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\""
+                << EscapeXml(cell.backgroundColor.substr(1)) << "\"/>";
+        }
+    }
+
     static const char* JustificationFor(RichTextAlign align) {
         switch (align) {
             case RichTextAlign::Center: return "center";
@@ -1128,16 +1270,16 @@ private:
             for (const auto& cell : row.cells) width += std::max(1, cell.columnSpan);
             columnCount = std::max(columnCount, width);
         }
+        // A document's own frames go on the cells (w:tcBorders); the table
+        // then has no borders of its own. Otherwise the usual thin grid.
+        const char* tableLine = block.tableBordersFromDocument
+                ? "w:val=\"nil\"/>" : "w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>";
         xml << "<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/>"
-               "<w:tblW w:w=\"0\" w:type=\"auto\"/>"
-               "<w:tblBorders>"
-               "<w:top w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "<w:left w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "<w:bottom w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "<w:right w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "<w:insideH w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "<w:insideV w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "</w:tblBorders></w:tblPr><w:tblGrid>";
+               "<w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders>";
+        for (const char* side : {"top", "left", "bottom", "right", "insideH", "insideV"}) {
+            xml << "<w:" << side << " " << tableLine;
+        }
+        xml << "</w:tblBorders></w:tblPr><w:tblGrid>";
         // Known proportions become twips across a 9000-twip (6.25in) table.
         const std::vector<float>& widths = block.tableColumnWidths;
         float totalWidth = 0.0f;
@@ -1188,6 +1330,7 @@ private:
                 if (rowSpan > 1) {
                     xml << "<w:vMerge w:val=\"restart\"/>";
                 }
+                if (block.tableBordersFromDocument) WriteCellFrame(xml, cell);
                 xml << "</w:tcPr><w:p>";
                 if (const char* jc = JustificationFor(cell.align)) {
                     xml << "<w:pPr><w:jc w:val=\"" << jc << "\"/></w:pPr>";

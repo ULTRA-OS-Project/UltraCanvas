@@ -43728,6 +43728,15 @@ out:
   text column's edge, then every `UCRichDocument::defaultTabStopPt` (or
   `style.defaultTabStop` when the document states none).
 
+- **Table frames:** a table read from a document
+  (`RichDocBlock::tableBordersFromDocument`) is drawn with its cells' own
+  borders (`RichTableCell::borderTop` … `borderRight`, width and colour) and
+  `backgroundColor`, and its rows abut so the lines are continuous. A side with
+  no border draws nothing when read-only, and a faint `style.tableGuideColor`
+  guide when editable. Tables from Markdown or built in the editor keep the
+  `style.tableBorderColor` grid. Rows and columns inserted into a framed table
+  copy their neighbour's frame and fill.
+
 Lengths are points, drawn at one unit per point, the same scale as run font
 sizes, so indents and tab stops stay in proportion to the text. Enter gives the
 new paragraph the geometry of the one it was split from.
@@ -43751,9 +43760,8 @@ Honest limits of this first version — none of them silently misbehave:
   selection model holds a range inside one container, and widening it is a
   piece of work in its own right — rendering, hit testing and copying all
   change with it.
-- **Table borders and cell backgrounds are not drawn from the document.**
-  Every cell gets the style's light border, so a borderless layout table in a
-  letterhead shows a grid.
+- **Border line styles draw solid.** A double, dotted or dashed cell border
+  from a document is drawn as a solid line of its width.
 - **Line spacing is proportional only.** An exact or "at least" line height
   from a document is ignored.
 - **Images are not resized interactively** (insert and delete work).
@@ -60801,7 +60809,8 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Column and row spans | yes | yes | *partial* | yes | yes | DOC: merged cells (`fVertMerge`/`fHorzMerge`) are not read yet. |
 | Column widths (relative) | yes | yes | yes | yes | yes | Scaled to the view width (2026-09). |
 | Cell text alignment | yes | yes | yes | yes | yes | From the cell's first paragraph (2026-09). |
-| Cell borders, background, vertical alignment, padding | no | no | no | no | *partial* | The view draws every cell with a light border. Borderless layout tables look wrong because of it. |
+| Cell borders (width, colour per side) and background | yes | yes | yes | yes | yes | 2026-09. ODT cell styles (and a column's default cell style); DOCX table style → `w:tblBorders` → `w:tcBorders`, `w:shd`; DOC `TC80` borders, table borders, `sprmTSetBrc`, cell shading. A borderless document table draws no lines (editable view: faint guides only). Line styles (double, dotted…) draw solid. Tables from Markdown or the editor keep the view's grid. |
+| Cell vertical alignment, padding | no | no | no | no | no | |
 | Table width and position | no | no | no | no | no | |
 | Several paragraphs in a cell | *partial* | *partial* | *partial* | *partial* | yes | Kept as line breaks; lists and headings inside a cell lose their structure. |
 | Nested tables | *partial* | no | *partial* | no | no | Flattened into the outer cell's text. |
@@ -60845,37 +60854,35 @@ View = `UltraCanvasRichTextEdit` draws it.
   block, contact lines, the address table, the date, the body, the signature
   image and the bank footer), but the layout is not. The sender block and
   address are frames placed on the page, which cannot be represented yet, so
-  they appear one after another in reading order, and the address table shows
-  the grid lines of a borderless layout table. Since the paragraph-geometry
-  work the footer's three tab-aligned columns line up as in the original, and
-  the Webdings telephone, fax, mobile and e-mail icons draw as ☎ 🖨 📱 ✉.
+  they appear one after another in reading order. The footer's three
+  tab-aligned columns line up as in the original, the Webdings telephone, fax,
+  mobile and e-mail icons draw as ☎ 🖨 📱 ✉, and the borderless address and
+  date tables no longer show grid lines.
 
 ## Roadmap, in priority order
 
 Ordered by how many ordinary documents each item fixes, not by how hard it is.
 
 Done in 2026-09: paragraph geometry (indents, spacing, proportional line
-spacing), tab stops with the default interval, and symbol-font mapping.
+spacing), tab stops with the default interval, symbol-font mapping, and table
+cell borders and backgrounds.
 
-1. **Cell borders and backgrounds.** Stop drawing a grid by default. Read
-   `fo:border*`/`w:tcBorders`/`TC80.brc*` and `fo:background-color`/`w:shd`.
-   Letterheads use borderless tables for layout.
-2. **Number formats and multi-level numbering.** Keep the level's format
+1. **Number formats and multi-level numbering.** Keep the level's format
    (`style:num-format`, `w:numFmt`, `nfc`) and prefix/suffix, and draw
    `a)`, `iv.`, `1.2.`
-3. **Highlight and character background**, and exact / at-least line
-   heights.
-4. **Page model: size, margins, headers and footers** as page furniture
+2. **Highlight and character background**, exact / at-least line heights,
+   and paragraph borders (a rule above an address block).
+3. **Page model: size, margins, headers and footers** as page furniture
    rather than blocks, then pagination in the view (page boxes on a grey
    desk, like Writer's print layout).
-5. **Positioned frames and floating pictures** (anchor, x/y, wrap). This
-   depends on 4 and is the only way a letterhead can look like the original.
-6. **Footnotes and endnotes** as real notes, **DOCX headers and footers**,
+4. **Positioned frames and floating pictures** (anchor, x/y, wrap). This
+   depends on 3 and is the only way a letterhead can look like the original.
+5. **Footnotes and endnotes** as real notes, **DOCX headers and footers**,
    and **DOC merged cells, headers, footers and footnotes** (the text for
    these lies after the main text in the piece table: `ccpFtn`, `ccpHdd`).
-7. Comments, tracked changes, shapes, charts: read-only display first.
+6. Comments, tracked changes, shapes, charts: read-only display first.
 
-Items 1–3 are self-contained (a model field, three readers, the view and the
+Items 1–2 are self-contained (a model field, three readers, the view and the
 two writers each), and each can be checked against a LibreOffice-generated
 fixture the way `Tests/fixtures/word97-formatting.*` is.
 

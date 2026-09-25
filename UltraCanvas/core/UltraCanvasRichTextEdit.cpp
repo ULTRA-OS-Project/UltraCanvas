@@ -503,6 +503,9 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
             struct PendingSpan { size_t cellIndex; size_t lastRow; };
             std::vector<PendingSpan> pendingSpans;
             std::vector<float> rowTop(block.tableRows.size(), 0.0f);
+            // The view's own grid leaves a gap between rows; a document's
+            // borders are continuous lines, so its rows abut.
+            const float rowGap = block.tableBordersFromDocument ? 0.0f : 4.0f;
             std::vector<float> rowBottom(block.tableRows.size(), 0.0f);
 
             float y = 0.0f;
@@ -545,6 +548,9 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                     cell->bounds = Rect2Df(indent + columnLeft[gridColumn], y,
                                            cellWidth,
                                            static_cast<float>(cell->layout->GetLayoutHeight()));
+                    // Text sits 2 px below the cell's top; a document's frame
+                    // needs the same room below it, since the rows abut.
+                    if (block.tableBordersFromDocument) cell->bounds.height += 4.0f;
                     // A cell spanning rows must not force this row to its full
                     // height; it stretches over the rows below instead.
                     if (rowSpan == 1) rowHeight = std::max(rowHeight, cell->bounds.height);
@@ -570,8 +576,8 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                     }
                     if (!spans) bl.cells[i]->bounds.height = rowHeight;
                 }
-                y += rowHeight + 4.0f;
-                rowBottom[r] = y - 4.0f;
+                y += rowHeight + rowGap;
+                rowBottom[r] = y - rowGap;
             }
 
             // Now that every row has a height, stretch the row-spanning cells
@@ -801,7 +807,19 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
                 if (!cell || !cell->layout) continue;
                 Rect2Dd cellRect(originX + cell->bounds.x, originY + cell->bounds.y,
                                  cell->bounds.width, cell->bounds.height);
-                ctx->DrawFilledRectangle(cellRect, Colors::Transparent, 1.0f, style.tableBorderColor);
+                const RichTableCell* modelCell = nullptr;
+                if (i < bl.cellRows.size() && i < bl.cellColumns.size()) {
+                    const size_t r = static_cast<size_t>(bl.cellRows[i]);
+                    const size_t c = static_cast<size_t>(bl.cellColumns[i]);
+                    if (r < block.tableRows.size() && c < block.tableRows[r].cells.size()) {
+                        modelCell = &block.tableRows[r].cells[c];
+                    }
+                }
+                if (block.tableBordersFromDocument && modelCell) {
+                    DrawDocumentCellFrame(ctx, *modelCell, cellRect);
+                } else {
+                    ctx->DrawFilledRectangle(cellRect, Colors::Transparent, 1.0f, style.tableBorderColor);
+                }
                 ctx->SetCurrentPaint(style.textColor);
                 ctx->DrawTextLayout(*cell->layout, Point2Dd(cellRect.x + 4.0, cellRect.y + 2.0));
                 DrawInlineImages(ctx, *cell, static_cast<float>(cellRect.x + 4.0),
@@ -844,6 +862,37 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
         ctx->DrawTextLayout(*bl.layout, Point2Dd(textX, originY));
         DrawInlineImages(ctx, bl, static_cast<float>(textX), static_cast<float>(originY));
     }
+}
+
+// A cell of a table whose borders come from a document: its fill, then each
+// side it has a line on, at the line's width and colour. Where a side has
+// none, an editable view draws a faint guide so the cell can still be seen
+// (Writer's "table boundaries"); a read-only view draws nothing there.
+void UltraCanvasRichTextEdit::DrawDocumentCellFrame(IRenderContext* ctx, const RichTableCell& cell,
+                                                   const Rect2Dd& rect) const {
+    if (!cell.backgroundColor.empty()) {
+        ctx->DrawFilledRectangle(rect, ParseHexColor(cell.backgroundColor, Colors::Transparent),
+                                 0.0f, Colors::Transparent);
+    }
+    const double left = rect.x, top = rect.y;
+    const double right = rect.x + rect.width, bottom = rect.y + rect.height;
+    auto side = [&](const RichBorder& border, const Point2Dd& from, const Point2Dd& to) {
+        if (border.IsVisible()) {
+            ctx->PushState();
+            ctx->SetStrokeWidth(std::max(1.0, static_cast<double>(border.widthPt)));
+            ctx->DrawLine(from, to, ParseHexColor(border.color, style.textColor));
+            ctx->PopState();
+        } else if (!readOnly) {
+            ctx->PushState();
+            ctx->SetStrokeWidth(1.0);
+            ctx->DrawLine(from, to, style.tableGuideColor);
+            ctx->PopState();
+        }
+    };
+    side(cell.borderTop, Point2Dd(left, top), Point2Dd(right, top));
+    side(cell.borderBottom, Point2Dd(left, bottom), Point2Dd(right, bottom));
+    side(cell.borderLeft, Point2Dd(left, top), Point2Dd(left, bottom));
+    side(cell.borderRight, Point2Dd(right, top), Point2Dd(right, bottom));
 }
 
 void UltraCanvasRichTextEdit::DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex,

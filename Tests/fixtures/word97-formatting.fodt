@@ -26,6 +26,9 @@
  <style:style style:name="Tbl" style:family="table"><style:table-properties style:width="6in" table:align="left"/></style:style>
  <style:style style:name="Tbl.A" style:family="table-column"><style:table-column-properties style:column-width="1.5in"/></style:style>
  <style:style style:name="Tbl.B" style:family="table-column"><style:table-column-properties style:column-width="4.5in"/></style:style>
+ <style:style style:name="CHead" style:family="table-cell"><style:table-cell-properties fo:background-color="#ddeeff" fo:border="0.5pt solid #000000"/></style:style>
+ <style:style style:name="CBody" style:family="table-cell"><style:table-cell-properties fo:border="0.5pt solid #000000"/></style:style>
+ <style:style style:name="CThick" style:family="table-cell"><style:table-cell-properties fo:border-top="0.5pt solid #000000" fo:border-left="0.5pt solid #000000" fo:border-right="0.5pt solid #000000" fo:border-bottom="2pt solid #0000ff"/></style:style>
 </office:automatic-styles>
 <office:body><office:text>
  <text:h text:style-name="Heading_20_1" text:outline-level="1">Fixture Heading</text:h>
@@ -37,9 +40,12 @@
  <text:list text:continue-numbering="true" text:style-name="Numbers"><text:list-item><text:p text:style-name="Standard">step three</text:p></text:list-item></text:list>
  <text:list text:style-name="FromFive"><text:list-item><text:p text:style-name="Standard">item five</text:p></text:list-item><text:list-item><text:p text:style-name="Standard">item six</text:p></text:list-item></text:list>
  <table:table table:name="T1" table:style-name="Tbl"><table:table-column table:style-name="Tbl.A"/><table:table-column table:style-name="Tbl.B"/>
-  <table:table-header-rows><table:table-row><table:table-cell><text:p text:style-name="PCenter">Date</text:p></table:table-cell><table:table-cell><text:p text:style-name="PCenter">Amount</text:p></table:table-cell></table:table-row></table:table-header-rows>
-  <table:table-row><table:table-cell><text:p text:style-name="Standard">1.1.2026</text:p></table:table-cell><table:table-cell><text:p text:style-name="PRight">1,000.00</text:p></table:table-cell></table:table-row>
-  <table:table-row><table:table-cell><text:p text:style-name="Standard">2.2.2026</text:p></table:table-cell><table:table-cell><text:p text:style-name="PRight">250.50</text:p></table:table-cell></table:table-row>
+  <table:table-header-rows><table:table-row><table:table-cell table:style-name="CHead"><text:p text:style-name="PCenter">Date</text:p></table:table-cell><table:table-cell table:style-name="CHead"><text:p text:style-name="PCenter">Amount</text:p></table:table-cell></table:table-row></table:table-header-rows>
+  <table:table-row><table:table-cell table:style-name="CBody"><text:p text:style-name="Standard">1.1.2026</text:p></table:table-cell><table:table-cell table:style-name="CBody"><text:p text:style-name="PRight">1,000.00</text:p></table:table-cell></table:table-row>
+  <table:table-row><table:table-cell table:style-name="CBody"><text:p text:style-name="Standard">2.2.2026</text:p></table:table-cell><table:table-cell table:style-name="CThick"><text:p text:style-name="PRight">250.50</text:p></table:table-cell></table:table-row>
+ </table:table>
+ <table:table table:name="Layout"><table:table-column table:number-columns-repeated="2"/>
+  <table:table-row><table:table-cell><text:p text:style-name="Standard">layout left</text:p></table:table-cell><table:table-cell><text:p text:style-name="Standard">layout right</text:p></table:table-cell></table:table-row>
  </table:table>
  <text:p text:style-name="Standard">Picture: <draw:frame draw:name="pic" text:anchor-type="as-char" svg:width="0.5in" svg:height="0.25in"><draw:image><office:binary-data>iVBORw0KGgoAAAANSUhEUgAAACgAAAAUCAIAAABwJOjsAAAAJElEQVR4nGM4ISc3IIhh1OJRi0ctHrV41OJRi0ctHrV45FgMAFLhLK5mrmiuAAAAAElFTkSuQmCC</office:binary-data></draw:image></draw:frame> inline.</text:p>
  <text:p text:style-name="PIndent">Indented paragraph with spacing and one and a half line height.</text:p>

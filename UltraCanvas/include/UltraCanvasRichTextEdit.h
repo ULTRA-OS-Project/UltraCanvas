@@ -60,7 +60,8 @@ struct RichTextEditStyle {
     Color ruleColor = Color(200, 200, 200);
     Color pageBreakColor = Color(170, 170, 170);
     Color listMarkerColor = Color(80, 80, 80);
-    Color tableBorderColor = Color(200, 200, 200);
+    Color tableBorderColor = Color(200, 200, 200);   // grid of tables without document borders
+    Color tableGuideColor = Color(225, 225, 225);    // borderless document cells, editable view only
     Color imagePlaceholderColor = Color(150, 150, 150);
     Color borderColor = Color(170, 170, 170);
 
@@ -329,6 +330,7 @@ private:
     void ApplyParagraphGeometry(ITextLayout* layout, const RichDocBlock& block,
                                 const std::string& text, float originX, float wrapWidth) const;
     float GapAfterBlock(int index) const;
+    void DrawDocumentCellFrame(IRenderContext* ctx, const RichTableCell& cell, const Rect2Dd& rect) const;
     void ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                             const std::vector<RichTextRun>& runs,
                             std::vector<RichTextHitRect>* outHits, int blockIndex,

@@ -426,6 +426,15 @@ out:
   text column's edge, then every `UCRichDocument::defaultTabStopPt` (or
   `style.defaultTabStop` when the document states none).
 
+- **Table frames:** a table read from a document
+  (`RichDocBlock::tableBordersFromDocument`) is drawn with its cells' own
+  borders (`RichTableCell::borderTop` … `borderRight`, width and colour) and
+  `backgroundColor`, and its rows abut so the lines are continuous. A side with
+  no border draws nothing when read-only, and a faint `style.tableGuideColor`
+  guide when editable. Tables from Markdown or built in the editor keep the
+  `style.tableBorderColor` grid. Rows and columns inserted into a framed table
+  copy their neighbour's frame and fill.
+
 Lengths are points, drawn at one unit per point, the same scale as run font
 sizes, so indents and tab stops stay in proportion to the text. Enter gives the
 new paragraph the geometry of the one it was split from.
@@ -449,9 +458,8 @@ Honest limits of this first version — none of them silently misbehave:
   selection model holds a range inside one container, and widening it is a
   piece of work in its own right — rendering, hit testing and copying all
   change with it.
-- **Table borders and cell backgrounds are not drawn from the document.**
-  Every cell gets the style's light border, so a borderless layout table in a
-  letterhead shows a grid.
+- **Border line styles draw solid.** A double, dotted or dashed cell border
+  from a document is drawn as a solid line of its width.
 - **Line spacing is proportional only.** An exact or "at least" line height
   from a document is ignored.
 - **Images are not resized interactively** (insert and delete work).

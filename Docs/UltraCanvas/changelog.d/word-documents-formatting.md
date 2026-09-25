@@ -62,3 +62,15 @@
   ODT reader had.
 - `ITextLayout::SetTabs` (Cairo) now invalidates the measured extents, so a
   layout measured before its tabs were set is re-measured.
+- **Table borders and cell backgrounds.** Each cell carries its frame (width
+  and colour per side) and fill (`RichTableCell::borderTop` …,
+  `backgroundColor`), read from ODT cell styles, DOCX table styles, table and
+  cell borders and shading, and DOC cell and table borders and shading.
+  `UltraCanvasRichTextEdit` draws a document's table as the document frames it
+  (`RichDocBlock::tableBordersFromDocument`), so a letterhead's borderless
+  layout tables no longer show a grid. An editable view shows faint guides
+  instead, as Writer does. Both writers save the frames, and LibreOffice reads
+  them back identically. Tables written without document frames (from
+  Markdown) now get a thin grid in ODT as they already did in DOCX, and HTML
+  output carries the frames as CSS. Rows and columns added in the editor copy
+  their neighbour's frame.

@@ -1850,6 +1850,23 @@ RichTableCell FreshCell() {
     return RichTableCell{};
 }
 
+// An empty cell formatted like the cell covering (row, gridColumn), if any:
+// a row or column added to a table with a document's borders gets the same
+// frame and fill as its neighbours instead of a gap in the lines.
+RichTableCell FreshCellLike(const RichDocBlock& table, int row, int gridColumn) {
+    RichTableCell cell = FreshCell();
+    const RichTableGrid grid = BuildTableGrid(table);
+    if (grid.rowCount == 0 || grid.columnCount == 0) return cell;
+    row = std::clamp(row, 0, grid.rowCount - 1);
+    gridColumn = std::clamp(gridColumn, 0, grid.columnCount - 1);
+    int ownerRow = 0, ownerCell = 0;
+    if (grid.CellAt(row, gridColumn, ownerRow, ownerCell)) {
+        cell.CopyCellFormat(table.tableRows[static_cast<size_t>(ownerRow)]
+                                .cells[static_cast<size_t>(ownerCell)]);
+    }
+    return cell;
+}
+
 // Index in `row`'s cell vector at which a cell starting at `gridColumn`
 // belongs: after every cell of that row whose own column is to its left.
 int CellInsertIndexForColumn(const RichTableGrid& grid, int row, int gridColumn) {
@@ -1868,7 +1885,9 @@ void InsertFreshCellAt(RichDocBlock& table, int row, int gridColumn) {
     RichTableRow& modelRow = table.tableRows[static_cast<size_t>(row)];
     const int at = std::min(CellInsertIndexForColumn(grid, row, gridColumn),
                             static_cast<int>(modelRow.cells.size()));
-    modelRow.cells.insert(modelRow.cells.begin() + at, FreshCell());
+    // Formatted like its left neighbour (or the right one at the left edge).
+    RichTableCell cell = FreshCellLike(table, row, gridColumn > 0 ? gridColumn - 1 : gridColumn + 1);
+    modelRow.cells.insert(modelRow.cells.begin() + at, std::move(cell));
 }
 
 } // namespace
@@ -1968,7 +1987,8 @@ bool UCRichDocumentEditor::InsertTableRow(int blockIndex, int row, bool below) {
         // The new row supplies cells only for the columns no span covers.
         RichTableRow fresh;
         for (int c = 0; c < grid.columnCount; ++c) {
-            if (!coveredColumn[static_cast<size_t>(c)]) fresh.cells.push_back(FreshCell());
+            // Formatted like the cell of the row it was inserted next to.
+            if (!coveredColumn[static_cast<size_t>(c)]) fresh.cells.push_back(FreshCellLike(table, row, c));
         }
         table.tableRows.insert(table.tableRows.begin() + newRow, std::move(fresh));
 

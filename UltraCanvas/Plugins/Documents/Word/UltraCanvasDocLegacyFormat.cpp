@@ -290,6 +290,12 @@ constexpr uint16_t kSprmPOutLvl = 0x2640;
 constexpr uint16_t kSprmPFPageBreakBefore = 0x2407;
 constexpr uint16_t kSprmTDefTable = 0xD608;
 constexpr uint16_t kSprmTTableHeader = 0x3404;
+constexpr uint16_t kSprmTTableBorders80 = 0xD605;
+constexpr uint16_t kSprmTTableBorders = 0xD613;
+constexpr uint16_t kSprmTDefTableShd80 = 0xD609;
+constexpr uint16_t kSprmTDefTableShd = 0xD612;
+constexpr uint16_t kSprmTSetBrc80 = 0xD620;
+constexpr uint16_t kSprmTSetBrc = 0xD62F;
 constexpr uint16_t kSprmPChgTabs = 0xC615;
 constexpr uint16_t kSprmPChgTabsPapx = 0xC60D;
 constexpr uint16_t kSprmPDxaRight80 = 0x840E;
@@ -390,7 +396,53 @@ struct DocParaProps {
     float lineSpacing = 0.0f;     // multiple of single; 0 = single / exact height
     struct Tab { int position = 0; int kind = 0; };   // kind: jc 0 left 1 centre 2 right 3 decimal
     std::vector<Tab> tabs;
+    // Table row (the row-ending paragraph): per-cell borders and fill, and
+    // the table-wide borders cells fall back to. A side with widthPt < 0 is
+    // not stated by the cell.
+    struct CellFormat {
+        RichBorder top{-1.0f, ""}, left{-1.0f, ""}, bottom{-1.0f, ""}, right{-1.0f, ""};
+        std::string background;
+    };
+    std::vector<CellFormat> cellFormats;
+    bool hasTableBorders = false;
+    RichBorder tableBorders[6];   // top, left, bottom, right, insideH, insideV
 };
+
+// Word's 16-colour palette index as "#RRGGBB" (declared below).
+std::string IcoColor(uint8_t ico);
+
+// Brc80 (4 bytes): line width in eighths of a point, line type, palette
+// colour. 0xFFFFFFFF is "no border"; a zero type draws nothing.
+RichBorder ReadBrc80(const std::vector<uint8_t>& data, size_t at) {
+    RichBorder border;
+    if (ReadU32(data, at) == 0xFFFFFFFFu) return border;
+    const uint8_t width = data[at], type = data[at + 1], ico = data[at + 2];
+    if (type == 0 || type == 0xFF) return border;
+    border.widthPt = std::max(0.25f, static_cast<float>(width) / 8.0f);
+    border.color = IcoColor(ico);
+    return border;
+}
+
+// Brc (8 bytes): COLORREF, width in eighths of a point, line type, flags.
+RichBorder ReadBrc(const std::vector<uint8_t>& data, size_t at) {
+    RichBorder border;
+    const uint8_t width = data[at + 4], type = data[at + 5];
+    if (type == 0 || type == 0xFF) return border;
+    border.widthPt = std::max(0.25f, static_cast<float>(width) / 8.0f);
+    if (data[at + 3] != 0xFF) {                       // 0xFF000000 = automatic
+        static const char* digits = "0123456789ABCDEF";
+        border.color = "#";
+        for (int i = 0; i < 3; ++i) {
+            border.color.push_back(digits[data[at + i] >> 4]);
+            border.color.push_back(digits[data[at + i] & 15]);
+        }
+    }
+    return border;
+}
+
+// A cell side stated as "none" in TC80 is indistinguishable from "not
+// stated" in older files, so a zero Brc80 lets the table borders through.
+bool Brc80IsZero(const std::vector<uint8_t>& data, size_t at) { return ReadU32(data, at) == 0; }
 
 // Tab changes (sprmPChgTabsPapx / sprmPChgTabs): positions to delete, then
 // stops to add. sprmPChgTabs also carries a tolerance per deletion.
@@ -529,15 +581,85 @@ void ApplyParaSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
                 break;
             case kSprmTTableHeader: props.headerRow = b != 0; break;
             case kSprmTDefTable: {
-                // cb (2) | itcMac (1) | rgdxaCenter[itcMac + 1] (2 each) | ...
+                // cb (2) | itcMac (1) | rgdxaCenter[itcMac + 1] (2 each) |
+                // rgTc80[itcMac] (20 each: flags, width, then four Brc80
+                // top, left, bottom, right)
                 size_t at = sprm.operand + 2;
                 if (at >= data.size()) break;
+                const size_t end = sprm.operand + sprm.operandSize;
                 int columns = data[at];
                 props.cellEdges.clear();
                 for (int i = 0; i <= columns; ++i) {
                     size_t edge = at + 1 + static_cast<size_t>(i) * 2;
-                    if (edge + 2 > sprm.operand + sprm.operandSize) break;
+                    if (edge + 2 > end) break;
                     props.cellEdges.push_back(ReadI16(data, edge));
+                }
+                props.cellFormats.assign(static_cast<size_t>(columns), DocParaProps::CellFormat{});
+                const size_t tcs = at + 1 + static_cast<size_t>(columns + 1) * 2;
+                for (int i = 0; i < columns; ++i) {
+                    const size_t tc = tcs + static_cast<size_t>(i) * 20;
+                    if (tc + 20 > end) break;
+                    auto& format = props.cellFormats[static_cast<size_t>(i)];
+                    RichBorder* sides[4] = {&format.top, &format.left, &format.bottom, &format.right};
+                    for (int b = 0; b < 4; ++b) {
+                        const size_t brc = tc + 4 + static_cast<size_t>(b) * 4;
+                        if (!Brc80IsZero(data, brc)) *sides[b] = ReadBrc80(data, brc);
+                    }
+                }
+                break;
+            }
+            case kSprmTTableBorders80:
+            case kSprmTTableBorders: {
+                const size_t size = sprm.code == kSprmTTableBorders ? 8 : 4;
+                if (sprm.operandSize < 1 + 6 * size) break;
+                props.hasTableBorders = true;
+                for (size_t i = 0; i < 6; ++i) {
+                    const size_t brc = sprm.operand + 1 + i * size;
+                    props.tableBorders[i] = size == 8 ? ReadBrc(data, brc) : ReadBrc80(data, brc);
+                }
+                break;
+            }
+            case kSprmTSetBrc80:
+            case kSprmTSetBrc: {
+                // cb | itcFirst | itcLim | sides (1 top, 2 left, 4 bottom, 8 right) | Brc
+                const size_t size = sprm.code == kSprmTSetBrc ? 8 : 4;
+                if (sprm.operandSize < 4 + size) break;
+                const size_t first = data[sprm.operand + 1], limit = data[sprm.operand + 2];
+                const uint8_t sides = data[sprm.operand + 3];
+                const size_t brc = sprm.operand + 4;
+                const RichBorder border = size == 8 ? ReadBrc(data, brc) : ReadBrc80(data, brc);
+                for (size_t i = first; i < limit && i < props.cellFormats.size(); ++i) {
+                    auto& format = props.cellFormats[i];
+                    if (sides & 1) format.top = border;
+                    if (sides & 2) format.left = border;
+                    if (sides & 4) format.bottom = border;
+                    if (sides & 8) format.right = border;
+                }
+                break;
+            }
+            case kSprmTDefTableShd80: {
+                // Shd80 per cell: icoFore (5 bits), icoBack (5 bits), pattern.
+                const size_t count = (sprm.operandSize - 1) / 2;
+                for (size_t i = 0; i < count && i < props.cellFormats.size(); ++i) {
+                    const uint16_t shd = ReadU16(data, sprm.operand + 1 + i * 2);
+                    const uint8_t back = (shd >> 5) & 0x1F;
+                    if (back != 0) props.cellFormats[i].background = IcoColor(back);
+                }
+                break;
+            }
+            case kSprmTDefTableShd: {
+                // SHD per cell: cvFore, cvBack (COLORREF), pattern.
+                const size_t count = (sprm.operandSize - 1) / 10;
+                for (size_t i = 0; i < count && i < props.cellFormats.size(); ++i) {
+                    const size_t back = sprm.operand + 1 + i * 10 + 4;
+                    if (data[back + 3] == 0xFF) continue;        // automatic = none
+                    static const char* digits = "0123456789ABCDEF";
+                    std::string color = "#";
+                    for (int k = 0; k < 3; ++k) {
+                        color.push_back(digits[data[back + k] >> 4]);
+                        color.push_back(digits[data[back + k] & 15]);
+                    }
+                    props.cellFormats[i].background = color;
                 }
                 break;
             }
@@ -683,6 +805,8 @@ private:
         // A table row's layout belongs to the row, never to a style.
         pap.rowEnd = false;
         pap.cellEdges.clear();
+        pap.cellFormats.clear();
+        pap.hasTableBorders = false;
         style.chp = chp;
         style.pap = pap;
         style.resolved = true;
@@ -1030,6 +1154,8 @@ private:
     RichTableRow row_;
     RichTableCell cell_;
     bool cellHasParagraph_ = false;
+    struct RowBorders { bool present = false; RichBorder sides[6]; };
+    std::vector<RowBorders> rowTableBorders_;   // per row of the table being built
 
     uint32_t FcAt(size_t index) const {
         return index < fcLcbCount_ ? ReadU32(word_, fcLcb_ + index * 8) : 0;
@@ -1457,8 +1583,52 @@ private:
                     static_cast<float>(std::max(1, pap.cellEdges[c + 1] - pap.cellEdges[c])));
             }
         }
-        if (!row_.cells.empty()) tableBlock_.tableRows.push_back(std::move(row_));
+        // Borders and fill: what each cell states now; the sides it leaves
+        // open are settled against the table borders once the table is
+        // complete, when it is known which cells lie on its edge.
+        for (size_t c = 0; c < row_.cells.size(); ++c) {
+            RichTableCell& cell = row_.cells[c];
+            const DocParaProps::CellFormat format =
+                c < pap.cellFormats.size() ? pap.cellFormats[c] : DocParaProps::CellFormat{};
+            cell.borderTop = format.top;
+            cell.borderLeft = format.left;
+            cell.borderBottom = format.bottom;
+            cell.borderRight = format.right;
+            cell.backgroundColor = format.background;
+        }
+        if (!row_.cells.empty()) {
+            tableBlock_.tableRows.push_back(std::move(row_));
+            RowBorders borders;
+            borders.present = pap.hasTableBorders;
+            for (int i = 0; i < 6; ++i) borders.sides[i] = pap.tableBorders[i];
+            rowTableBorders_.push_back(borders);
+        }
         row_ = RichTableRow{};
+    }
+
+    // A side a cell did not state takes the table's border for its position:
+    // top/bottom/left/right on the table's edge, insideH/insideV within.
+    void ResolveTableBorders() {
+        tableBlock_.tableBordersFromDocument = true;
+        const RichTableGrid grid = BuildTableGrid(tableBlock_);
+        for (size_t r = 0; r < tableBlock_.tableRows.size(); ++r) {
+            const RowBorders borders = r < rowTableBorders_.size() ? rowTableBorders_[r] : RowBorders{};
+            for (size_t c = 0; c < tableBlock_.tableRows[r].cells.size(); ++c) {
+                RichTableCell& cell = tableBlock_.tableRows[r].cells[c];
+                int top = 0, left = 0;
+                grid.OriginOf(static_cast<int>(r), static_cast<int>(c), top, left);
+                const bool lastRow = top + std::max(1, cell.rowSpan) - 1 >= grid.rowCount - 1;
+                const bool lastColumn = left + std::max(1, cell.columnSpan) - 1 >= grid.columnCount - 1;
+                auto settle = [&](RichBorder& side, int outer, int inner, bool onEdge) {
+                    if (side.widthPt >= 0.0f) return;
+                    side = borders.present ? borders.sides[onEdge ? outer : inner] : RichBorder{};
+                };
+                settle(cell.borderTop, 0, 4, top == 0);
+                settle(cell.borderLeft, 1, 5, left == 0);
+                settle(cell.borderBottom, 2, 4, lastRow);
+                settle(cell.borderRight, 3, 5, lastColumn);
+            }
+        }
     }
 
     void CloseTable() {
@@ -1467,6 +1637,7 @@ private:
             DocParaProps none;
             FinishRow(none);
         }
+        ResolveTableBorders();
         // Widths only hold when every row has the same number of cells.
         size_t columns = tableBlock_.tableColumnWidths.size();
         for (const auto& row : tableBlock_.tableRows) {
@@ -1475,6 +1646,7 @@ private:
         if (!tableBlock_.tableRows.empty()) doc_.blocks.push_back(std::move(tableBlock_));
         tableOpen_ = false;
         tableBlock_ = RichDocBlock{};
+        rowTableBorders_.clear();
     }
 };
 

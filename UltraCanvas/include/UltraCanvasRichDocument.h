@@ -108,6 +108,16 @@ struct RichTabStop {
     RichTabKind kind = RichTabKind::Left;
 };
 
+// One side of a table cell's frame. widthPt 0 = no line.
+struct RichBorder {
+    float widthPt = 0.0f;
+    std::string color;              // "#RRGGBB"; empty = automatic (black)
+    bool IsVisible() const { return widthPt > 0.0f; }
+    bool operator==(const RichBorder& other) const {
+        return widthPt == other.widthPt && color == other.color;
+    }
+};
+
 struct RichTableCell {
     std::vector<RichTextRun> runs;
     int columnSpan = 1;
@@ -115,6 +125,20 @@ struct RichTableCell {
     // Horizontal alignment of the cell's text: a column of amounts is
     // right-aligned, a date column centred. Default = the table's left.
     RichTextAlign align = RichTextAlign::Default;
+    // The cell's frame and fill, as the document drew them. Only used when
+    // the table's RichDocBlock::tableBordersFromDocument is set.
+    RichBorder borderTop, borderBottom, borderLeft, borderRight;
+    std::string backgroundColor;    // "#RRGGBB"; empty = none
+
+    // Copies borders and background (a new cell next to this one looks
+    // like it).
+    void CopyCellFormat(const RichTableCell& from) {
+        borderTop = from.borderTop;
+        borderBottom = from.borderBottom;
+        borderLeft = from.borderLeft;
+        borderRight = from.borderRight;
+        backgroundColor = from.backgroundColor;
+    }
 };
 
 struct RichTableRow {
@@ -176,6 +200,11 @@ struct RichDocBlock {
     // Table: relative column widths (any unit - points as read), one per grid
     // column. Empty = equal columns. A renderer scales them to its width.
     std::vector<float> tableColumnWidths;
+    // Table: true when the cells' borders and backgrounds come from a
+    // document (ODT/DOCX/DOC), so a cell without borders really has none - a
+    // layout table in a letterhead. false (Markdown, a table built in the
+    // editor): the view draws its own grid.
+    bool tableBordersFromDocument = false;
     int mediaIndex = -1;                // Image
     std::string imageAltText;           // Image
     float imageWidthPt = 0.0f;          // Image: 0 = unknown

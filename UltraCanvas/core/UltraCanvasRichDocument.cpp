@@ -9,6 +9,7 @@
 #include "UltraCanvasRichDocument.h"
 
 #include <algorithm>
+#include <locale>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -1014,6 +1015,27 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
     return out;
 }
 
+// border-* and background-color declarations for a cell's document frame.
+// Numbers go out dot-decimal whatever the process locale.
+std::string CellFrameCss(const RichTableCell& cell) {
+    std::ostringstream css;
+    css.imbue(std::locale::classic());
+    auto side = [&](const char* name, const RichBorder& border) {
+        css << "border-" << name << ":";
+        if (border.IsVisible()) {
+            css << border.widthPt << "pt solid " << (border.color.empty() ? "#000000" : border.color) << ";";
+        } else {
+            css << "none;";
+        }
+    };
+    side("top", cell.borderTop);
+    side("bottom", cell.borderBottom);
+    side("left", cell.borderLeft);
+    side("right", cell.borderRight);
+    if (!cell.backgroundColor.empty()) css << "background-color:" << cell.backgroundColor << ";";
+    return css.str();
+}
+
 const char* AlignCss(RichTextAlign align) {
     switch (align) {
         case RichTextAlign::Center: return "center";
@@ -1077,7 +1099,10 @@ std::string UCRichDocument::ToHTML() const {
                 html << "<blockquote><p>" << RunsToHtml(block.runs, &media) << "</p></blockquote>\n";
                 break;
             case RichBlockType::Table: {
-                html << "<table border=\"1\">\n";
+                // A document's own frames become CSS on the cells; otherwise
+                // the plain bordered table.
+                html << (block.tableBordersFromDocument
+                             ? "<table style=\"border-collapse:collapse\">\n" : "<table border=\"1\">\n");
                 for (const auto& row : block.tableRows) {
                     const char* tag = row.header ? "th" : "td";
                     html << "<tr>";
@@ -1085,9 +1110,10 @@ std::string UCRichDocument::ToHTML() const {
                         html << "<" << tag;
                         if (cell.columnSpan > 1) html << " colspan=\"" << cell.columnSpan << "\"";
                         if (cell.rowSpan > 1) html << " rowspan=\"" << cell.rowSpan << "\"";
-                        if (const char* alignCss = AlignCss(cell.align)) {
-                            html << " style=\"text-align:" << alignCss << "\"";
-                        }
+                        std::string css;
+                        if (const char* alignCss = AlignCss(cell.align)) css += std::string("text-align:") + alignCss + ";";
+                        if (block.tableBordersFromDocument) css += CellFrameCss(cell);
+                        if (!css.empty()) html << " style=\"" << EscapeHtml(css) << "\"";
                         html << ">" << RunsToHtml(cell.runs, &media) << "</" << tag << ">";
                     }
                     html << "</tr>\n";
