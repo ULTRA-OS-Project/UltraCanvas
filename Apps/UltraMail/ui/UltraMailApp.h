@@ -125,6 +125,12 @@ private:
     void StartOAuthSignIn(const std::string& accountId, const std::string& email,
                           const std::string& providerId,
                           std::function<void()> onReauthed = nullptr);
+    // The out-of-band variant (Yahoo): opens the browser, prompts for the code
+    // the provider shows, then exchanges it. Used by StartOAuthSignIn when the
+    // provider's redirect is "oob".
+    void StartOAuthOobSignIn(const std::string& accountId, const std::string& email,
+                             const std::string& providerId,
+                             std::function<void()> onReauthed);
     // Warn that "Sign in with <provider>" cannot run because no OAuth client id
     // is configured, naming oauth.ini / the env var that would supply it.
     void ReportMissingOAuthClient(const std::string& providerId);

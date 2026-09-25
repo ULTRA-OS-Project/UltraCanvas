@@ -38,7 +38,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
 )
 
 # ── Built-in OAuth client credentials (compiled-in fallback) ─────────────────
-# The Google / Microsoft OAuth *client* a shipped build signs in as, baked into
+# The Google / Yahoo / Microsoft OAuth *client* a shipped build signs in as, baked into
 # the binary as the lowest-priority fallback (Set() / env / oauth.ini override
 # it — see OAuthApps::Get). Empty by default, so a plain dev/CI/test build bakes
 # in nothing and behaves exactly as before. To ship a preconfigured build,
@@ -47,6 +47,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
 # Docs/UltraMail/AccountSetup.md and cmake/oauth.local.cmake.example.
 set(ULTRAMAIL_GOOGLE_CLIENT_ID     "" CACHE STRING "Baked-in Google OAuth client id")
 set(ULTRAMAIL_GOOGLE_CLIENT_SECRET "" CACHE STRING "Baked-in Google OAuth client secret")
+set(ULTRAMAIL_YAHOO_CLIENT_ID     "" CACHE STRING "Baked-in Yahoo OAuth client id")
 set(ULTRAMAIL_MICROSOFT_CLIENT_ID  "" CACHE STRING "Baked-in Microsoft OAuth client id")
 option(ULTRAMAIL_OAUTH_OBFUSCATE "XOR-obfuscate baked-in OAuth credentials" ON)
 # High-bit key so ASCII credentials never XOR to a NUL (which truncates a C
@@ -64,7 +65,8 @@ endif()
 set(_um_oauth_tmpl "${CMAKE_CURRENT_SOURCE_DIR}/engine/UltraMailOAuthDefaults.h.in")
 set(_um_oauth_hdr  "${CMAKE_CURRENT_BINARY_DIR}/generated/UltraMailOAuthDefaults.h")
 set(_um_oauth_have OFF)
-if(ULTRAMAIL_GOOGLE_CLIENT_ID OR ULTRAMAIL_GOOGLE_CLIENT_SECRET OR ULTRAMAIL_MICROSOFT_CLIENT_ID)
+if(ULTRAMAIL_GOOGLE_CLIENT_ID OR ULTRAMAIL_GOOGLE_CLIENT_SECRET
+   OR ULTRAMAIL_YAHOO_CLIENT_ID OR ULTRAMAIL_MICROSOFT_CLIENT_ID)
     set(_um_oauth_have ON)
 endif()
 
@@ -83,6 +85,7 @@ if(_um_oauth_have AND ULTRAMAIL_OAUTH_OBFUSCATE)
         COMMAND ${CMAKE_COMMAND} -E env
                 "UM_GOOGLE_ID=${ULTRAMAIL_GOOGLE_CLIENT_ID}"
                 "UM_GOOGLE_SECRET=${ULTRAMAIL_GOOGLE_CLIENT_SECRET}"
+                "UM_YAHOO_ID=${ULTRAMAIL_YAHOO_CLIENT_ID}"
                 "UM_MICROSOFT_ID=${ULTRAMAIL_MICROSOFT_CLIENT_ID}"
                 "${ULTRAMAIL_PYTHON3}" "${_um_oauth_gen}"
                 --template "${_um_oauth_tmpl}"
@@ -100,11 +103,13 @@ else()
     if(_um_oauth_have)
         set(UM_GOOGLE_ID_C     "\"${ULTRAMAIL_GOOGLE_CLIENT_ID}\"")
         set(UM_GOOGLE_SECRET_C "\"${ULTRAMAIL_GOOGLE_CLIENT_SECRET}\"")
+        set(UM_YAHOO_ID_C     "\"${ULTRAMAIL_YAHOO_CLIENT_ID}\"")
         set(UM_MICROSOFT_ID_C  "\"${ULTRAMAIL_MICROSOFT_CLIENT_ID}\"")
         message(STATUS "  [✓] UltraMail OAuth client - BAKED IN (plain)")
     else()
         set(UM_GOOGLE_ID_C     "\"\"")
         set(UM_GOOGLE_SECRET_C "\"\"")
+        set(UM_YAHOO_ID_C     "\"\"")
         set(UM_MICROSOFT_ID_C  "\"\"")
     endif()
     set(UM_OBFUSCATED "0")
@@ -188,6 +193,7 @@ set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailComposeWindow.cpp
     ui/UltraMailPassphraseDialog.cpp
     ui/UltraMailWaitDialog.cpp
+    ui/UltraMailOAuthCodeDialog.cpp
     ui/UltraMailServerSettingsDialog.cpp
 )
 

@@ -46,11 +46,15 @@ TEST(oauth_provider_is_google_for_gmail_and_microsoft_for_outlook) {
                std::string("microsoft"));
     REQUIRE_EQ(OAuthProviderFor(AutoDiscovery::FromPresets("erika@hotmail.com")),
                std::string("microsoft"));
-    // Yahoo uses app passwords.
-    REQUIRE(OAuthProviderFor(AutoDiscovery::FromPresets("erika@yahoo.de")).empty());
+    // Yahoo now signs in with OAuth2 (app passwords deprecated).
+    REQUIRE_EQ(OAuthProviderFor(AutoDiscovery::FromPresets("erika@yahoo.de")),
+               std::string("yahoo"));
+    REQUIRE_EQ(OAuthProviderFor(AutoDiscovery::FromPresets("erika@ymail.com")),
+               std::string("yahoo"));
     REQUIRE(OAuthProviderFor(DiscoveryResult{}).empty());
     REQUIRE_EQ(OAuthProviderDisplayName("google"), std::string("Google"));
     REQUIRE_EQ(OAuthProviderDisplayName("microsoft"), std::string("Microsoft"));
+    REQUIRE_EQ(OAuthProviderDisplayName("yahoo"), std::string("Yahoo"));
 }
 
 TEST(app_password_needed_at_yahoo_icloud_and_oauth_providers) {
@@ -68,7 +72,8 @@ TEST(app_password_needed_at_yahoo_icloud_and_oauth_providers) {
     REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@outlook.com")));
     REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@hotmail.com")));
     REQUIRE(ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@gmail.com")));
-    REQUIRE(ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@yahoo.com")));
+    // Yahoo deprecated app passwords: OAuth-only, no typed password.
+    REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@yahoo.com")));
     REQUIRE(ProviderAcceptsPassword(DiscoveryResult{}));
 }
 
@@ -111,6 +116,44 @@ TEST(oauth_google_config_requests_offline_mail_scope) {
     REQUIRE(cfg.extraAuthParams.count("login_hint") == 0);
     REQUIRE_EQ(OAuthConfigFor("google", TestApp(), "erika@gmail.com").extraAuthParams.at("login_hint"),
                std::string("erika@gmail.com"));
+}
+
+TEST(oauth_yahoo_config_is_public_client_over_out_of_band) {
+    OAuthApp app; app.clientId = "dj0yJmk9consumerkey";   // public client, no secret
+    UltraNetOAuth2Config cfg = OAuthConfigFor("yahoo", app, "erika@yahoo.com");
+    REQUIRE_EQ(cfg.authorizationEndpoint,
+               std::string("https://api.login.yahoo.com/oauth2/request_auth"));
+    REQUIRE_EQ(cfg.tokenEndpoint,
+               std::string("https://api.login.yahoo.com/oauth2/get_token"));
+    REQUIRE(cfg.clientSecret.empty());
+    REQUIRE(cfg.usePkce);
+    // No scope param: Yahoo returns invalid_scope for one and grants the app's
+    // configured API permissions instead.
+    REQUIRE(cfg.scopes.empty());
+    REQUIRE_EQ(cfg.extraAuthParams.at("login_hint"), std::string("erika@yahoo.com"));
+    // Yahoo forces https redirects the loopback listener can't serve, so the
+    // out-of-band flow (the user pastes a code) is used instead.
+    REQUIRE_EQ(cfg.redirectUri, std::string("oob"));
+    REQUIRE_EQ(OAuthApps::DefaultRedirectUri("yahoo"), std::string("oob"));
+}
+
+TEST(oauth_yahoo_begin_oob_builds_a_pasteable_consent_url) {
+    // Set() outranks the baked-in floor, so this is independent of whether the
+    // test build baked in a Yahoo client.
+    OAuthApp app; app.clientId = "dj0yJmk9consumerkey";
+    OAuthApps::Set("yahoo", app);
+
+    MailOAuth oauth;
+    std::string url, verifier;
+    UltraNetResult r = oauth.BeginOob("yahoo", "erika@yahoo.com", url, verifier);
+    REQUIRE(r);
+    REQUIRE(!verifier.empty());                                    // PKCE is on
+    REQUIRE(url.find("api.login.yahoo.com/oauth2/request_auth") != std::string::npos);
+    REQUIRE(url.find("redirect_uri=oob") != std::string::npos);
+    REQUIRE(url.find("client_id=dj0yJmk9consumerkey") != std::string::npos);
+    REQUIRE(url.find("code_challenge=") != std::string::npos);     // the PKCE challenge
+
+    OAuthApps::Clear();
 }
 
 // ---- app registration sources ---------------------------------------------

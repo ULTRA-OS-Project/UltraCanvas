@@ -18,6 +18,7 @@
 #include "UltraMailOAuth.h"
 #include "UltraMailLoginCheck.h"
 #include "UltraMailWaitDialog.h"
+#include "UltraMailOAuthCodeDialog.h"
 
 #include <UltraCloud/UltraCloudMemory.h>
 
@@ -1977,6 +1978,14 @@ bool UltraMailApp::MaybeOfferReauth(const std::string& accountId, UltraNetResult
 void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::string& email,
                                     const std::string& providerId,
                                     std::function<void()> onReauthed) {
+    // Out-of-band providers (Yahoo) can't redirect to a loopback listener, so
+    // they take a separate flow: open the browser, then prompt for the code the
+    // provider shows rather than waiting on a socket.
+    if (OAuthApps::Get(providerId).redirectUri == "oob") {
+        StartOAuthOobSignIn(accountId, email, providerId, std::move(onReauthed));
+        return;
+    }
+
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
     const std::string providerName = OAuthProviderDisplayName(providerId);
 
@@ -2020,6 +2029,57 @@ void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::str
             if (onReauthed) onReauthed();
         });
     }).detach();
+}
+
+void UltraMailApp::StartOAuthOobSignIn(const std::string& accountId, const std::string& email,
+                                       const std::string& providerId,
+                                       std::function<void()> onReauthed) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    const std::string providerName = OAuthProviderDisplayName(providerId);
+
+    // Build the consent URL (cheap: PKCE + string work, no network) and open it.
+    std::string consentUrl, codeVerifier;
+    UltraNetResult began = oauth_.BeginOob(providerId, email, consentUrl, codeVerifier);
+    if (!began) {
+        AlertError(parent, "Signing in to " + providerName + " for " + email
+                           + " could not be started.",
+                   FriendlyMessage(began) + " Add the account again to retry.");
+        return;
+    }
+    UltraCanvas::OpenURL(consentUrl);
+
+    // Prompt for the code the provider showed; the exchange runs on submit.
+    OAuthCodeDialog::Show(parent, providerName, email,
+        [this, accountId, email, providerId, providerName, parent, codeVerifier,
+         onReauthed](const std::string& code) {
+            std::thread([this, accountId, email, providerId, providerName, parent, code,
+                         codeVerifier, onReauthed]() {
+                OAuthTokens tokens;
+                UltraNetResult r = oauth_.CompleteOob(providerId, code, codeVerifier, tokens);
+
+                auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+                if (!app) return;
+                app->PostToUIThread([this, accountId, email, providerName, parent, r, tokens,
+                                     onReauthed]() {
+                    if (!r) {
+                        AlertError(parent, "Signing in to " + providerName + " for " + email
+                                           + " did not succeed, so its mail cannot be fetched.",
+                                   FriendlyMessage(r) + " Add the account again to retry.");
+                        return;
+                    }
+                    if (!vault_.StoreOAuthTokens(accountId, tokens)) {
+                        AlertWarning(parent, "Signed in to " + providerName + ", but the sign-in "
+                                             "could not be saved to the credential vault.",
+                                     "Check that " + vault_.VaultPath() + " is writable, then "
+                                     "add the account again.");
+                        return;
+                    }
+                    StartBackgroundSync();
+                    SyncAccount(accountId);
+                    if (onReauthed) onReauthed();
+                });
+            }).detach();
+        });
 }
 
 } // namespace UltraMail

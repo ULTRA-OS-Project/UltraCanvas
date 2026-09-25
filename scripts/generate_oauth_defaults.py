@@ -9,7 +9,7 @@ UltraMailOAuth.h). CMake invokes this only when at least one credential is
 non-empty and obfuscation is on; the empty/plain cases go through configure_file.
 
 Credentials are read from the environment (UM_GOOGLE_ID, UM_GOOGLE_SECRET,
-UM_MICROSOFT_ID) so they never appear in a process listing.
+UM_YAHOO_ID, UM_MICROSOFT_ID) so they never appear in a process listing.
 """
 import argparse
 import os
@@ -59,6 +59,7 @@ def main() -> int:
     subs = {
         "@UM_GOOGLE_ID_C@":     c_literal(os.environ.get("UM_GOOGLE_ID", ""), key),
         "@UM_GOOGLE_SECRET_C@": c_literal(os.environ.get("UM_GOOGLE_SECRET", ""), key),
+        "@UM_YAHOO_ID_C@":      c_literal(os.environ.get("UM_YAHOO_ID", ""), key),
         "@UM_MICROSOFT_ID_C@":  c_literal(os.environ.get("UM_MICROSOFT_ID", ""), key),
         "@UM_OBFUSCATED@":      "1" if key else "0",
         "@UM_XOR_KEY@":         str(key),

@@ -1,7 +1,7 @@
 # cmake/oauth.local.cmake.example
 #
 # Bake the OAuth client UltraMail signs in as into the build, so end users get
-# working Gmail / Outlook browser sign-in with no oauth.ini and no env vars.
+# working Gmail / Outlook / Yahoo browser sign-in with no oauth.ini and no env vars.
 #
 # HOW TO USE
 #   1. Copy this file to cmake/oauth.local.cmake (that name is gitignored).
@@ -21,6 +21,12 @@
 
 set(ULTRAMAIL_GOOGLE_CLIENT_ID     "xxx.apps.googleusercontent.com" CACHE STRING "" FORCE)
 set(ULTRAMAIL_GOOGLE_CLIENT_SECRET "GOCSPX-xxx-xxxx"           CACHE STRING "" FORCE)
+
+# Yahoo is a public (installed) client — the Client ID (Consumer Key) only, no
+# secret. Yahoo forces https redirect URIs, so UltraMail signs in out-of-band:
+# the consent page shows a code the user pastes into the app (no redirect URI to
+# register). The Consumer Key looks like "dj0yJmk9...".
+#set(ULTRAMAIL_YAHOO_CLIENT_ID      "dj0yJmk9xxxxxxxx"                          CACHE STRING "" FORCE)
 
 # Microsoft is a public client — client id only, no secret.
 #set(ULTRAMAIL_MICROSOFT_CLIENT_ID  "00000000-1111-2222-3333-444444444444"      CACHE STRING "" FORCE)

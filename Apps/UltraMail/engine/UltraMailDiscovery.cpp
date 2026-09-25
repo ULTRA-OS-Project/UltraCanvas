@@ -139,7 +139,7 @@ DiscoveryResult AutoDiscovery::FromPresets(const std::string& email) {
                           "smtp.office365.com", 587, MailSecurity::StartTls, /*oauth=*/true);
     if (is({"yahoo.com", "yahoo.de", "ymail.com"}))
         return MakePreset("Yahoo", email, "imap.mail.yahoo.com", 993,
-                          "smtp.mail.yahoo.com", 465, MailSecurity::SslTls, false);
+                          "smtp.mail.yahoo.com", 465, MailSecurity::SslTls, /*oauth=*/true);
     if (is({"icloud.com", "me.com", "mac.com"}))
         return MakePreset("iCloud", email, "imap.mail.me.com", 993,
                           "smtp.mail.me.com", 587, MailSecurity::StartTls, false);

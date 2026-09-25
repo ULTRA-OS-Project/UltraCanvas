@@ -32,6 +32,8 @@ OAuthApp BuiltInApp(const std::string& providerId) {
     if (providerId == "google") {
         app.clientId     = Deobf(defaults::kGoogleClientId);
         app.clientSecret = Deobf(defaults::kGoogleClientSecret);
+    } else if (providerId == "yahoo") {
+        app.clientId     = Deobf(defaults::kYahooClientId);      // public client, no secret
     } else if (providerId == "microsoft") {
         app.clientId     = Deobf(defaults::kMicrosoftClientId);  // public client, no secret
     }
@@ -47,7 +49,7 @@ void OAuthApps::EnsureRegistered() {
         UltraNet_OAuth2AddAppEnvPrefix("ULTRAMAIL_");
         // The floor: what this build bakes in. Unconfigured apps are ignored by
         // the registry, so a dev/CI/test build registers nothing here.
-        for (const char* id : {"google", "microsoft"})
+        for (const char* id : {"google", "yahoo", "microsoft"})
             UltraNet_OAuth2SetBuiltInApp(id, BuiltInApp(id));
         return true;
     }();
@@ -60,6 +62,10 @@ void OAuthApps::Set(const std::string& providerId, const OAuthApp& app) {
 }
 
 std::string OAuthApps::DefaultRedirectUri(const std::string& providerId) {
+    // Yahoo forces https redirect URIs, which the loopback listener cannot serve
+    // (it speaks plain HTTP). Yahoo's documented answer for a desktop client is
+    // the out-of-band flow: the consent page shows a code the user pastes back.
+    if (providerId == "yahoo")     return "oob";
     if (providerId == "microsoft") return "http://127.0.0.1:0/";
     return "http://127.0.0.1:0/callback";
 }
@@ -103,12 +109,15 @@ std::string OAuthProviderFor(const DiscoveryResult& discovery) {
         return "google";
     if (discovery.imap.host == "outlook.office365.com" || discovery.displayName == "Outlook")
         return "microsoft";
+    if (discovery.imap.host == "imap.mail.yahoo.com" || discovery.displayName == "Yahoo")
+        return "yahoo";
     return "";
 }
 
 std::string OAuthProviderDisplayName(const std::string& providerId) {
     if (providerId == "google")    return "Google";
     if (providerId == "microsoft") return "Microsoft";
+    if (providerId == "yahoo")     return "Yahoo";
     return providerId;
 }
 
@@ -120,7 +129,9 @@ bool ProviderNeedsAppPassword(const DiscoveryResult& discovery) {
 
 bool ProviderAcceptsPassword(const DiscoveryResult& discovery) {
     auto provider = OAuthProviderFor(discovery);
-    return provider != "microsoft" && provider != "google";
+    // Yahoo deprecated app passwords: browser OAuth sign-in is the only way in,
+    // as with Microsoft and Google.
+    return provider != "microsoft" && provider != "google" && provider != "yahoo";
 }
 
 UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthApp& app,
@@ -163,6 +174,21 @@ UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthAp
         // form body, not as HTTP Basic.
         cfg.secretInBody = true;
     }
+    if (providerId == "yahoo") {
+        cfg.authorizationEndpoint = "https://api.login.yahoo.com/oauth2/request_auth";
+        cfg.tokenEndpoint         = "https://api.login.yahoo.com/oauth2/get_token";
+        // No scope parameter: Yahoo rejects OAuth2 scope strings on the auth
+        // request (a "mail-w"-style value comes back error=invalid_scope) and
+        // instead grants whatever API Permissions are enabled on the app, so
+        // Mail (read/write) must be ticked in the Yahoo console. scopes stays
+        // empty → BuildAuthUrl omits the scope param entirely.
+        //
+        // Public (installed) client: no secret, so PKCE is the whole security
+        // story. redirectUri is "oob" (filled from the app above): Yahoo forces
+        // https redirects, which the loopback listener cannot serve, so the
+        // consent page shows a code the user pastes back instead.
+        cfg.usePkce = true;
+    }
     return cfg;
 }
 
@@ -203,6 +229,46 @@ UltraNetResult MailOAuth::SignIn(const std::string& providerId, const std::strin
             "no OAuth client id is configured for " + OAuthProviderDisplayName(providerId));
     UltraNetOAuth2Token token;
     UltraNetResult r = hooks_.authorize(OAuthConfigFor(providerId, app, email), openUrl, token);
+    if (!r) return r;
+    if (!token.IsValid())
+        return UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,
+                                     "the sign-in returned no access token");
+    out = FromToken(token, now);
+    return UltraNetResult::Ok();
+}
+
+UltraNetResult MailOAuth::BeginOob(const std::string& providerId, const std::string& email,
+                                   std::string& consentUrlOut, std::string& codeVerifierOut) {
+    consentUrlOut.clear();
+    codeVerifierOut.clear();
+    const OAuthApp app = OAuthApps::Get(providerId);
+    if (!app.IsConfigured())
+        return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+            "no OAuth client id is configured for " + OAuthProviderDisplayName(providerId));
+    const UltraNetOAuth2Config cfg = OAuthConfigFor(providerId, app, email);
+    UltraNetOAuth2Pkce pkce;
+    if (cfg.usePkce) pkce = UltraNet_OAuth2GeneratePkce();
+    // No state to verify: an oob code is pasted by the user, not returned on a
+    // redirect we listen for, so there is no redirect to protect against CSRF.
+    consentUrlOut   = UltraNet_OAuth2BuildAuthUrl(cfg, pkce, std::string());
+    codeVerifierOut = pkce.codeVerifier;
+    return UltraNetResult::Ok();
+}
+
+UltraNetResult MailOAuth::CompleteOob(const std::string& providerId, const std::string& code,
+                                      const std::string& codeVerifier, OAuthTokens& out,
+                                      int64_t now) {
+    if (now <= 0) now = static_cast<int64_t>(std::time(nullptr));
+    if (code.empty())
+        return UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,
+                                     "no authorization code was entered");
+    const OAuthApp app = OAuthApps::Get(providerId);
+    if (!app.IsConfigured())
+        return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+            "no OAuth client id is configured for " + OAuthProviderDisplayName(providerId));
+    UltraNetOAuth2Token token;
+    UltraNetResult r = UltraNet_OAuth2ExchangeCode(OAuthConfigFor(providerId, app), code,
+                                                   codeVerifier, token);
     if (!r) return r;
     if (!token.IsValid())
         return UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,

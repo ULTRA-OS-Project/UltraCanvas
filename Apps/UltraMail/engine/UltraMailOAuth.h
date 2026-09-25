@@ -1,14 +1,14 @@
 // Apps/UltraMail/engine/UltraMailOAuth.h
 // OAuth2 sign-in for mail providers that reject the account password over
-// IMAP/SMTP (Gmail, Outlook / Microsoft 365). Built on UltraNet's OAuth2 client (authorization code +
-// PKCE, loopback redirect): the browser shows the provider's consent page,
+// IMAP/SMTP (Gmail, Outlook / Microsoft 365, Yahoo). Built on UltraNet's OAuth2 client (authorization code +
+// PKCE, loopback redirect — or out-of-band for Yahoo): the browser shows the provider's consent page,
 // the tokens land in the credential vault, and every IMAP/SMTP session signs
 // in with a fresh bearer token (XOAUTH2) — refreshed through the provider
 // when the previous one has expired.
 //
 // Two pieces of configuration:
 //   * the provider table (endpoints + scopes) — built in, keyed by a short
-//     provider id ("google", "microsoft");
+//     provider id ("google", "microsoft", "yahoo");
 //   * the OAuth *app* UltraMail signs in as (client id, optional secret,
 //     loopback redirect URI). That registration belongs to whoever ships the
 //     app. A shipped build bakes it in (compiled as a build-time default — see
@@ -43,7 +43,7 @@ using OAuthApp = UltraNetOAuth2App;
 // UltraMail's profile of the process-wide registry in UltraNet
 // (<UltraNet/UltraNetOAuth2Apps.h>): the same Set() > environment > INI file >
 // baked-in order, with "ULTRAMAIL_" as the environment prefix
-// (ULTRAMAIL_GOOGLE_CLIENT_ID, ULTRAMAIL_MICROSOFT_CLIENT_ID, ...) beside the
+// (ULTRAMAIL_GOOGLE_CLIENT_ID, ULTRAMAIL_YAHOO_CLIENT_ID, ULTRAMAIL_MICROSOFT_CLIENT_ID, ...) beside the
 // shared ULTRANET_OAUTH_ one, the build's baked-in client registered as the
 // floor, and an empty redirect URI filled with the provider's default. The
 // registry is shared, so a Google client configured here also serves
@@ -75,17 +75,19 @@ public:
     static void EnsureRegistered();
 };
 
-// The provider id UltraMail can sign in to with OAuth2 for a discovered
-// account ("google" for Gmail, "microsoft" for Outlook / Microsoft 365), or ""
-// when the account uses a password.
+// The provider id UltraMail can sign in to with OAuth2 for a discovered account
+// ("google" for Gmail, "microsoft" for Outlook / Microsoft 365, "yahoo" for
+// Yahoo Mail), or "" when the account uses a password.
 std::string OAuthProviderFor(const DiscoveryResult& discovery);
-// "Google" / "Microsoft"; the id itself when unknown.
+// "Google" / "Microsoft" / "Yahoo"; the id itself when unknown.
 std::string OAuthProviderDisplayName(const std::string& providerId);
 
 // True when the provider rejects the normal account password over IMAP/SMTP
 // and a password sign-in needs an *app password* generated in the account's
-// security settings: Yahoo and iCloud (which offer no OAuth2 to mail apps),
-// and the OAuth2 providers when a password is typed instead of signing in.
+// security settings: iCloud (which offers no OAuth2 to mail apps), and the
+// OAuth2 providers when a password is typed instead of signing in. (Yahoo also
+// rejects the normal password, but is caught by the OAuth2 flag above now that
+// it offers OAuth2 — it no longer takes app passwords at all.)
 bool ProviderNeedsAppPassword(const DiscoveryResult& discovery);
 
 // False when the provider takes no password of any kind over IMAP/SMTP any
@@ -120,6 +122,18 @@ public:
     UltraNetResult SignIn(const std::string& providerId, const std::string& email,
                           const std::function<void(const std::string& url)>& openUrl,
                           OAuthTokens& out, int64_t now = 0);
+
+    // Out-of-band sign-in, in two steps, for providers whose redirect is "oob"
+    // (Yahoo): the loopback capture can't be used, so the user copies a code
+    // from the consent page. BeginOob builds the consent URL and returns the
+    // PKCE verifier to carry to step two; the caller opens the URL and collects
+    // the pasted code. CompleteOob exchanges that code for tokens. Splitting the
+    // flow lets the UI prompt for the code between the two calls.
+    UltraNetResult BeginOob(const std::string& providerId, const std::string& email,
+                            std::string& consentUrlOut, std::string& codeVerifierOut);
+    UltraNetResult CompleteOob(const std::string& providerId, const std::string& code,
+                               const std::string& codeVerifier, OAuthTokens& out,
+                               int64_t now = 0);
 
     // Make sure `tokens` carries a usable access token, refreshing through the
     // provider when it has expired. `refreshed` is set when the set changed and

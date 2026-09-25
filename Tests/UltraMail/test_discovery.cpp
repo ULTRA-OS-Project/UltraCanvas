@@ -72,6 +72,14 @@ TEST(presets_outlook_and_gmx) {
     REQUIRE_EQ(g.imap.host, std::string("imap.gmx.net"));
 }
 
+TEST(presets_yahoo_uses_oauth) {
+    DiscoveryResult r = AutoDiscovery::FromPresets("someone@yahoo.com");
+    REQUIRE(r.found);
+    REQUIRE_EQ(r.imap.host, std::string("imap.mail.yahoo.com"));
+    REQUIRE_EQ(r.smtp.host, std::string("smtp.mail.yahoo.com"));
+    REQUIRE(r.imap.oauth);   // Yahoo deprecated app passwords: XOAUTH2 now
+}
+
 TEST(presets_unknown_domain_not_found) {
     DiscoveryResult r = AutoDiscovery::FromPresets("me@some-random-company.example");
     REQUIRE(!r.found);

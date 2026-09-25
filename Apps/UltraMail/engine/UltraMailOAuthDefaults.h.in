@@ -17,10 +17,12 @@
 namespace UltraMail {
 namespace defaults {
 
-// Client id / secret per provider. Microsoft is a public client, so it carries
-// no secret. Empty => this build has no baked-in client for that provider.
+// Client id / secret per provider. Microsoft and Yahoo are public clients, so
+// they carry no secret. Empty => this build has no baked-in client for that
+// provider.
 inline constexpr const char* kGoogleClientId     = @UM_GOOGLE_ID_C@;
 inline constexpr const char* kGoogleClientSecret = @UM_GOOGLE_SECRET_C@;
+inline constexpr const char* kYahooClientId      = @UM_YAHOO_ID_C@;
 inline constexpr const char* kMicrosoftClientId  = @UM_MICROSOFT_ID_C@;
 
 // 1 => the strings above are XOR-obfuscated against kXorKey and must be passed
