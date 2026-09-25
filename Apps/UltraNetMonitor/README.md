@@ -67,8 +67,10 @@ client's own events, the one source that knows which process asked.
 
 The *Events* tab lists connections as they open and close, newest first,
 with the time to the millisecond, the application, both endpoints, the
-host and — on a closed event — the bytes moved where the source counts
-them. Two sources: the snapshot differ (`--no-diff`, `--diff-interval
+host, the loopback chain in a *Via* column (the proxy a connection went
+to, the client a proxy accepted, or whom a proxy's own connection was
+for — kept on the closed event though the socket is gone) and — on a
+closed event — the bytes moved where the source counts them. Two sources: the snapshot differ (`--no-diff`, `--diff-interval
 <ms>`) reports what appeared and went between two reads of the socket
 table and misses anything shorter than its interval; the platform's own
 source does not — on Linux the kernel's connection tracker, which needs
@@ -83,10 +85,14 @@ the store holds over the History tab's range.
 Support/UltraNetMonitor/activity.db` or `$XDG_DATA_HOME/UltraNetMonitor/activity.db`
 — and every DNS observation and connection event the sources report
 beside them — and the *History* tab shows what was recorded over the last hour, day, week or
-month, one row per flow with the host it was seen under. Flows older than
-30 days are rolled up into daily totals per application and peer; those
-age out after a year. *Purge…* asks twice. The store never leaves the
-machine.
+month, one row per flow with the host it was seen under and, in its
+*Via* column, the loopback chain the flow was last seen with: the proxy a
+client's flow went through, or whom a proxy's flow was for — so the
+mail server's history names the mail client although only the antivirus
+proxy ever talked to it. A search for the client's name finds those rows
+too. Flows older than 30 days are rolled up into daily totals per
+application and peer, which keep the last *for*; those age out after a
+year. *Purge…* asks twice. The store never leaves the machine.
 
 ## Command line
 

@@ -544,12 +544,16 @@ Password fields mask what the user types, so they need a way to read it back.
 ### In-field eye button
 
 ```cpp
+// Every password field has the eye icon at its right by default.
 auto passwordInput = CreatePasswordInput("password", 10, 10, 300, 30);
-passwordInput->SetShowPasswordToggle(true);   // eye icon at the right of the field
 
-// or in one step:
-auto revealable = CreateRevealablePasswordInput("password", 10, 10, 300, 30);
+// A field that must never show its text can switch it off:
+passwordInput->SetShowPasswordToggle(false);
 ```
+
+`showPasswordToggle` defaults to `true` (since TextInput 1.6.0), for the
+builder as well. `CreateRevealablePasswordInput()` is kept and is now the same
+as `CreatePasswordInput()`.
 
 The button is only painted for fields in password mode (`TextInputType::Password`),
 so it is safe to switch on before the input type is set. It sits to the left of the
@@ -632,7 +636,7 @@ auto textInput = TextInputBuilder()
     .AddValidationRule(ValidationRule::Email())
     .AddValidationRule(ValidationRule::Required())
     .SetMaxLength(100)
-    .ShowPasswordToggle()   // eye button; only painted for password-type fields
+    .ShowPasswordToggle()   // eye button (the default); only painted for password-type fields
     .Build();
 ```
 

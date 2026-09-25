@@ -8,7 +8,7 @@
 // Without UltraDatabase in the build (ULTRACANVAS_HAS_DATABASE undefined)
 // this file compiles to stubs that report NotSupported.
 //
-// Version: 0.6.0
+// Version: 0.8.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitorStore.h"
@@ -92,10 +92,12 @@ namespace {
 // Version 1: a flow row is one connection across consecutive snapshots;
 // processes are deduplicated so a busy browser is one row, not thousands.
 // Version 2 adds the peer's name to flows and daily totals, and the DNS
-// observations table. Version 3 adds the connection events table. Each
-// version is one migration step, applied in order by UltraDb_Migrate, so
-// an older file opens and gains what it lacks.
-constexpr int kSchemaVersion = 3;
+// observations table. Version 3 adds the connection events table. Version
+// 4 adds the loopback chain to flows (role, local peer, whom the flow was
+// for) and the last "for" to daily totals; version 5 the same chain to
+// connection events. Each version is one migration step, applied in order
+// by UltraDb_Migrate, so an older file opens and gains what it lacks.
+constexpr int kSchemaVersion = 5;
 const char* const kSchemaV1 =
     "CREATE TABLE IF NOT EXISTS processes ("
     "  id INTEGER PRIMARY KEY,"
@@ -173,6 +175,15 @@ const char* const kSchemaV3 =
     "  bytes_received INTEGER,"
     "  source TEXT NOT NULL DEFAULT '');"
     "CREATE INDEX IF NOT EXISTS events_observed_at ON connection_events(observed_at_ms);";
+const char* const kSchemaV4 =
+    "ALTER TABLE flows ADD COLUMN loopback_role INTEGER NOT NULL DEFAULT 0;"
+    "ALTER TABLE flows ADD COLUMN local_peer TEXT NOT NULL DEFAULT '';"
+    "ALTER TABLE flows ADD COLUMN for_processes TEXT NOT NULL DEFAULT '';"
+    "ALTER TABLE daily_totals ADD COLUMN for_processes TEXT NOT NULL DEFAULT '';";
+const char* const kSchemaV5 =
+    "ALTER TABLE connection_events ADD COLUMN loopback_role INTEGER NOT NULL DEFAULT 0;"
+    "ALTER TABLE connection_events ADD COLUMN local_peer TEXT NOT NULL DEFAULT '';"
+    "ALTER TABLE connection_events ADD COLUMN for_processes TEXT NOT NULL DEFAULT '';";
 
 struct StoreState {
     std::string connection;
@@ -241,7 +252,8 @@ UltraDbValue ProcessRowFor(StoreState& state, UltraDbHandle tx,
 std::string FlowSelect() {
     return "SELECT f.id, f.transport, f.family, f.local_address, f.local_port, f.remote_address,"
            " f.remote_port, f.state, f.first_seen, f.last_seen, f.snapshots, f.bytes_sent,"
-           " f.bytes_received, p.pid, p.name, p.executable, p.user, f.remote_name, f.name_source"
+           " f.bytes_received, p.pid, p.name, p.executable, p.user, f.remote_name, f.name_source,"
+           " f.loopback_role, f.local_peer, f.for_processes"
            " FROM flows f LEFT JOIN processes p ON p.id = f.process_id WHERE 1 = 1";
 }
 
@@ -254,14 +266,37 @@ void AppendFlowFilters(const ActivityQuery& query, std::string& sql, UltraDbPara
     if (!query.text.empty()) {
         const std::string pattern = "%" + query.text + "%";
         sql += " AND (f.local_address LIKE ? OR f.remote_address LIKE ? OR f.remote_name LIKE ?"
-               " OR p.name LIKE ? OR p.executable LIKE ?)";
-        for (int i = 0; i < 5; ++i) params.push_back(pattern);
+               " OR p.name LIKE ? OR p.executable LIKE ? OR f.local_peer LIKE ? OR f.for_processes LIKE ?)";
+        for (int i = 0; i < 7; ++i) params.push_back(pattern);
     }
     if (!query.includeListening) {
         sql += " AND f.state <> ? AND f.state <> ?";
         params.push_back(static_cast<int>(NetworkConnectionState::Listening));
         params.push_back(static_cast<int>(NetworkConnectionState::Unconnected));
     }
+}
+
+// The list columns: distinct labels joined with ';', the way the CSVs
+// join them, and split back on read.
+std::string JoinList(const std::vector<std::string>& items) {
+    std::string text;
+    for (const auto& item : items) {
+        if (!text.empty()) text += ';';
+        text += item;
+    }
+    return text;
+}
+
+std::vector<std::string> SplitList(const std::string& text) {
+    std::vector<std::string> items;
+    std::size_t start = 0;
+    while (start < text.size()) {
+        std::size_t end = text.find(';', start);
+        if (end == std::string::npos) end = text.size();
+        if (end > start) items.push_back(text.substr(start, end - start));
+        start = end + 1;
+    }
+    return items;
 }
 
 RecordedFlow FlowFrom(const UltraDbRow& row) {
@@ -289,6 +324,9 @@ RecordedFlow FlowFrom(const UltraDbRow& row) {
     }
     flow.remoteName = row[17].AsString();
     flow.nameSource = static_cast<NameSource>(row[18].AsInt());
+    flow.loopbackRole = static_cast<LoopbackRole>(row[19].AsInt());
+    flow.localPeer = row[20].AsString();
+    flow.forProcesses = SplitList(row[21].AsString());
     return flow;
 }
 
@@ -352,6 +390,8 @@ NetworkMonitorResult NetworkMonitor_OpenStore(const NetworkMonitorStoreOptions& 
         { 1, "NetworkMonitor activity store", kSchemaV1 },
         { 2, "NetworkMonitor names", kSchemaV2 },
         { 3, "NetworkMonitor connection events", kSchemaV3 },
+        { 4, "NetworkMonitor loopback chains", kSchemaV4 },
+        { 5, "NetworkMonitor loopback chains on events", kSchemaV5 },
     };
     if (UltraDbResult migrated = UltraDb_Migrate(state->connection, steps); !migrated) {
         UltraDb_CloseConnection(state->connection);
@@ -407,7 +447,8 @@ NetworkMonitorResult NetworkMonitor_RecordSnapshot(NetworkMonitorStoreHandle sto
         UltraDbResultSet recent;
         step = UltraDb_QueryInTx(
             tx,
-            "SELECT id, last_seen, remote_name, name_source FROM flows WHERE transport = ? AND family = ? AND local_address = ?"
+            "SELECT id, last_seen, remote_name, name_source, loopback_role, local_peer, for_processes"
+            " FROM flows WHERE transport = ? AND family = ? AND local_address = ?"
             " AND local_port = ? AND remote_address = ? AND remote_port = ? AND inode = ?"
             " AND process_id IS ? ORDER BY last_seen DESC LIMIT 1",
             { static_cast<int>(c.transport), static_cast<int>(c.family), c.localAddress,
@@ -421,25 +462,36 @@ NetworkMonitorResult NetworkMonitor_RecordSnapshot(NetworkMonitorStoreHandle sto
             NameSource source;
             MergeName(recent.Row(0)[2].AsString(), static_cast<NameSource>(recent.Row(0)[3].AsInt()),
                       c.remoteName, c.nameSource, name, source);
+            // The chain as this sighting decoded it; a sighting that saw
+            // none (the mirror socket gone already) keeps the recorded one.
+            const int role = c.loopbackRole != LoopbackRole::None ? static_cast<int>(c.loopbackRole)
+                                                                   : recent.Row(0)[4].AsInt();
+            const std::string peer = c.localPeer ? c.localPeer->Label() : recent.Row(0)[5].AsString();
+            const std::string forProcesses = !c.forProcesses.empty() ? JoinList(c.forProcesses)
+                                                                     : recent.Row(0)[6].AsString();
             step = UltraDb_ExecInTx(
                 tx,
                 "UPDATE flows SET last_seen = ?, state = ?, snapshots = snapshots + 1,"
-                " bytes_sent = ?, bytes_received = ?, remote_name = ?, name_source = ? WHERE id = ?",
+                " bytes_sent = ?, bytes_received = ?, remote_name = ?, name_source = ?,"
+                " loopback_role = ?, local_peer = ?, for_processes = ? WHERE id = ?",
                 { observedAt, static_cast<int>(c.state), OptionalBytes(c.bytesSent),
                   OptionalBytes(c.bytesReceived), name, static_cast<int>(source),
-                  recent.Row(0)[0].AsInt64() });
+                  role, peer, forProcesses, recent.Row(0)[0].AsInt64() });
         } else {
             step = UltraDb_ExecInTx(
                 tx,
                 "INSERT INTO flows(transport, family, local_address, local_port, remote_address,"
                 " remote_port, state, inode, process_id, first_seen, last_seen, snapshots,"
-                " bytes_sent, bytes_received, remote_name, name_source)"
-                " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)",
+                " bytes_sent, bytes_received, remote_name, name_source, loopback_role, local_peer,"
+                " for_processes)"
+                " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)",
                 { static_cast<int>(c.transport), static_cast<int>(c.family), c.localAddress,
                   static_cast<int>(c.localPort), c.remoteAddress, static_cast<int>(c.remotePort),
                   static_cast<int>(c.state), static_cast<int64_t>(c.socketInode), processRow,
                   observedAt, observedAt, OptionalBytes(c.bytesSent), OptionalBytes(c.bytesReceived),
-                  c.remoteName, static_cast<int>(c.remoteName.empty() ? NameSource::None : c.nameSource) });
+                  c.remoteName, static_cast<int>(c.remoteName.empty() ? NameSource::None : c.nameSource),
+                  static_cast<int>(c.loopbackRole), c.localPeer ? c.localPeer->Label() : std::string(),
+                  JoinList(c.forProcesses) });
         }
         if (!step) { failure = Storage("recording the flow", step); break; }
     }
@@ -493,15 +545,16 @@ NetworkMonitorResult NetworkMonitor_QueryDailyTotals(NetworkMonitorStoreHandle s
     std::lock_guard<std::mutex> lock(state->mutex);
 
     std::string sql = "SELECT day, process_name, executable, remote_address, flows, counted_flows,"
-                      " bytes_sent, bytes_received, remote_name FROM daily_totals WHERE 1 = 1";
+                      " bytes_sent, bytes_received, remote_name, for_processes FROM daily_totals WHERE 1 = 1";
     UltraDbParams params;
     if (query.since) { sql += " AND day >= ?"; params.push_back(*query.since - (*query.since % 86400)); }
     if (query.until) { sql += " AND day <= ?"; params.push_back(*query.until); }
     if (!query.processName.empty()) { sql += " AND process_name = ?"; params.push_back(query.processName); }
     if (!query.text.empty()) {
         const std::string pattern = "%" + query.text + "%";
-        sql += " AND (process_name LIKE ? OR executable LIKE ? OR remote_address LIKE ? OR remote_name LIKE ?)";
-        for (int i = 0; i < 4; ++i) params.push_back(pattern);
+        sql += " AND (process_name LIKE ? OR executable LIKE ? OR remote_address LIKE ? OR remote_name LIKE ?"
+               " OR for_processes LIKE ?)";
+        for (int i = 0; i < 5; ++i) params.push_back(pattern);
     }
     sql += " ORDER BY day DESC, flows DESC";
     if (query.limit > 0) { sql += " LIMIT ?"; params.push_back(query.limit); }
@@ -521,6 +574,7 @@ NetworkMonitorResult NetworkMonitor_QueryDailyTotals(NetworkMonitorStoreHandle s
         total.bytesSent = static_cast<uint64_t>(row[6].AsInt64());
         total.bytesReceived = static_cast<uint64_t>(row[7].AsInt64());
         total.remoteName = row[8].AsString();
+        total.forProcesses = SplitList(row[9].AsString());
         out.push_back(std::move(total));
     }
     return NetworkMonitorResult::Ok();
@@ -542,19 +596,20 @@ NetworkMonitorResult NetworkMonitor_RollUp(NetworkMonitorStoreHandle store, int6
     UltraDbResult step = UltraDb_ExecInTx(
         tx,
         "INSERT INTO daily_totals(day, process_name, executable, remote_address, flows,"
-        " counted_flows, bytes_sent, bytes_received, remote_name)"
+        " counted_flows, bytes_sent, bytes_received, remote_name, for_processes)"
         " SELECT (f.first_seen / 86400) * 86400, COALESCE(p.name, '(unattributed)'),"
         "  COALESCE(p.executable, ''), f.remote_address, COUNT(*),"
         "  SUM(CASE WHEN f.bytes_sent IS NOT NULL THEN 1 ELSE 0 END),"
         "  COALESCE(SUM(f.bytes_sent), 0), COALESCE(SUM(f.bytes_received), 0),"
-        "  COALESCE(MAX(f.remote_name), '')"
+        "  COALESCE(MAX(f.remote_name), ''), COALESCE(MAX(f.for_processes), '')"
         " FROM flows f LEFT JOIN processes p ON p.id = f.process_id"
         " WHERE f.last_seen < ? GROUP BY 1, 2, 3, 4"
         " ON CONFLICT(day, process_name, executable, remote_address) DO UPDATE SET"
         "  flows = flows + excluded.flows, counted_flows = counted_flows + excluded.counted_flows,"
         "  bytes_sent = bytes_sent + excluded.bytes_sent,"
         "  bytes_received = bytes_received + excluded.bytes_received,"
-        "  remote_name = CASE WHEN excluded.remote_name <> '' THEN excluded.remote_name ELSE remote_name END",
+        "  remote_name = CASE WHEN excluded.remote_name <> '' THEN excluded.remote_name ELSE remote_name END,"
+        "  for_processes = CASE WHEN excluded.for_processes <> '' THEN excluded.for_processes ELSE for_processes END",
         { olderThan });
     if (!step) { UltraDb_Rollback(tx); return Storage("rolling flows up", step); }
 
@@ -608,7 +663,8 @@ NetworkMonitorResult NetworkMonitor_RecordConnectionEvent(NetworkMonitorStoreHan
         state->connection,
         "INSERT INTO connection_events(observed_at_ms, kind, transport, family, local_address, local_port,"
         " remote_address, remote_port, remote_name, name_source, pid, process_name, executable, user,"
-        " bytes_sent, bytes_received, source) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " bytes_sent, bytes_received, source, loopback_role, local_peer, for_processes)"
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         { observedAtMs, static_cast<int>(event.kind), static_cast<int>(event.transport),
           static_cast<int>(event.family), event.localAddress, static_cast<int>(event.localPort),
           event.remoteAddress, static_cast<int>(event.remotePort), event.remoteName,
@@ -617,7 +673,8 @@ NetworkMonitorResult NetworkMonitor_RecordConnectionEvent(NetworkMonitorStoreHan
           event.process ? event.process->displayName : std::string(),
           event.process ? event.process->executablePath : std::string(),
           event.process ? event.process->userName : std::string(),
-          OptionalBytes(event.bytesSent), OptionalBytes(event.bytesReceived), event.sourceName });
+          OptionalBytes(event.bytesSent), OptionalBytes(event.bytesReceived), event.sourceName,
+          static_cast<int>(event.loopbackRole), event.localPeer, JoinList(event.forProcesses) });
     if (!step) return Storage("recording the connection event", step);
     return NetworkMonitorResult::Ok();
 }
@@ -631,7 +688,8 @@ NetworkMonitorResult NetworkMonitor_QueryConnectionEvents(NetworkMonitorStoreHan
     std::lock_guard<std::mutex> lock(state->mutex);
     std::string sql = "SELECT id, observed_at_ms, kind, transport, family, local_address, local_port,"
                       " remote_address, remote_port, remote_name, name_source, pid, process_name, executable,"
-                      " user, bytes_sent, bytes_received, source FROM connection_events WHERE 1 = 1";
+                      " user, bytes_sent, bytes_received, source, loopback_role, local_peer, for_processes"
+                      " FROM connection_events WHERE 1 = 1";
     UltraDbParams params;
     if (query.since) { sql += " AND observed_at_ms >= ?"; params.push_back(*query.since * 1000); }
     if (query.until) { sql += " AND observed_at_ms <= ?"; params.push_back(*query.until * 1000 + 999); }
@@ -640,8 +698,8 @@ NetworkMonitorResult NetworkMonitor_QueryConnectionEvents(NetworkMonitorStoreHan
     if (!query.text.empty()) {
         const std::string pattern = "%" + query.text + "%";
         sql += " AND (local_address LIKE ? OR remote_address LIKE ? OR remote_name LIKE ?"
-               " OR process_name LIKE ? OR executable LIKE ?)";
-        for (int i = 0; i < 5; ++i) params.push_back(pattern);
+               " OR process_name LIKE ? OR executable LIKE ? OR local_peer LIKE ? OR for_processes LIKE ?)";
+        for (int i = 0; i < 7; ++i) params.push_back(pattern);
     }
     sql += " ORDER BY observed_at_ms DESC, id DESC";
     if (query.includeLoopback && query.limit > 0) { sql += " LIMIT ?"; params.push_back(query.limit); }
@@ -674,6 +732,10 @@ NetworkMonitorResult NetworkMonitor_QueryConnectionEvents(NetworkMonitorStoreHan
         e.bytesSent = BytesFrom(row[15]);
         e.bytesReceived = BytesFrom(row[16]);
         e.sourceName = row[17].AsString();
+        e.loopbackRole = static_cast<LoopbackRole>(row[18].AsInt());
+        e.localPeer = row[19].AsString();
+        e.forProcesses = SplitList(row[20].AsString());
+        e.chainDecoded = true;
         if (!query.includeLoopback && e.IsLoopback()) continue;
         out.push_back(std::move(record));
         if (query.limit > 0 && static_cast<int>(out.size()) >= query.limit) break;
@@ -693,7 +755,7 @@ NetworkMonitorResult NetworkMonitor_ExportEventsCsv(NetworkMonitorStoreHandle st
         return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError, "Could not write " + path);
     }
     file << "observed_at,milliseconds,kind,transport,family,local,remote,remote_name,name_source,"
-            "application,pid,executable,user,bytes_sent,bytes_received,source\r\n";
+            "application,pid,executable,user,loopback_role,local_peer,for,bytes_sent,bytes_received,source\r\n";
     for (const auto& r : events) {
         const NetworkConnectionEvent& e = r.event;
         file << IsoUtc(e.observedAtMs / 1000) << ',' << (e.observedAtMs % 1000) << ','
@@ -706,6 +768,8 @@ NetworkMonitorResult NetworkMonitor_ExportEventsCsv(NetworkMonitorStoreHandle st
              << (e.process ? std::to_string(e.process->pid) : std::string()) << ','
              << CsvField(e.process ? e.process->executablePath : std::string()) << ','
              << CsvField(e.process ? e.process->userName : std::string()) << ','
+             << NetworkMonitor_LoopbackRoleName(e.loopbackRole) << ','
+             << CsvField(e.localPeer) << ',' << CsvField(JoinList(e.forProcesses)) << ','
              << (e.bytesSent ? std::to_string(*e.bytesSent) : std::string()) << ','
              << (e.bytesReceived ? std::to_string(*e.bytesReceived) : std::string()) << ','
              << CsvField(e.sourceName) << "\r\n";
@@ -847,7 +911,7 @@ NetworkMonitorResult NetworkMonitor_ExportFlowsCsv(NetworkMonitorStoreHandle sto
                                            "Could not write " + path);
     }
     file << "first_seen,last_seen,snapshots,transport,family,local,remote,remote_name,name_source,state,"
-            "application,pid,executable,user,bytes_sent,bytes_received\r\n";
+            "application,pid,executable,user,loopback_role,local_peer,for,bytes_sent,bytes_received\r\n";
     for (const auto& f : flows) {
         file << IsoUtc(f.firstSeen) << ',' << IsoUtc(f.lastSeen) << ',' << f.snapshots << ','
              << NetworkMonitor_TransportName(f.transport) << ','
@@ -860,6 +924,8 @@ NetworkMonitorResult NetworkMonitor_ExportFlowsCsv(NetworkMonitorStoreHandle sto
              << (f.process ? std::to_string(f.process->pid) : std::string()) << ','
              << CsvField(f.process ? f.process->executablePath : std::string()) << ','
              << CsvField(f.process ? f.process->userName : std::string()) << ','
+             << NetworkMonitor_LoopbackRoleName(f.loopbackRole) << ','
+             << CsvField(f.localPeer) << ',' << CsvField(JoinList(f.forProcesses)) << ','
              << (f.bytesSent ? std::to_string(*f.bytesSent) : std::string()) << ','
              << (f.bytesReceived ? std::to_string(*f.bytesReceived) : std::string()) << "\r\n";
     }

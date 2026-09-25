@@ -314,8 +314,9 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   text, the patterns and the case option and counts the files found and
   read, and the field's *Stop* button ends it. Without *Match case* the
   comparison ignores the case of ASCII letters; other characters match
-  exactly (UTF-8 bytes). Hidden entries, links, binary files (a NUL byte in
-  the first 8 KB) and files over 64 MB are skipped. Local folders only — the
+  exactly (UTF-8 bytes). Links, binary files (a NUL byte in the first 8 KB)
+  and files over 64 MB are skipped, and so are hidden entries unless the
+  display shows hidden files. Local folders only — the
   item is disabled on a remote drive and in the History, Favorites and
   Computer views.
 - **Extras > Open prompt** (in the file context menu's Extras submenu):

@@ -39,6 +39,9 @@
 #ifdef ULTRAAI_HAS_QWEN_ADAPTER
 #include "UltraAIQwen.h"
 #endif
+#ifdef ULTRAAI_HAS_ELEVENLABS_ADAPTER
+#include "UltraAIElevenLabs.h"
+#endif
 #ifdef ULTRAAI_HAS_MINIMAX_ADAPTER
 #include "UltraAIMiniMax.h"
 #endif
@@ -104,7 +107,10 @@ std::unique_ptr<Interface> Create(Registry<Interface, Config>& r,
     }
     if (err->code == ErrorCode::None) {
         err->code    = ErrorCode::ModelNotFound;
-        err->message = "No provider registered";
+        err->message = registered.empty()
+            ? "No provider registered"
+            : std::string("No local provider for ") + r.capabilityName +
+              "; name a provider, set a default, or allow cloud fallback";
     }
     return nullptr;
 }
@@ -208,6 +214,14 @@ Registry<ITextToSpeech, TextToSpeechConfig>& TtsReg() {
                 r.providers["minimax"] = [](const TextToSpeechConfig& cfg,
                                             Error* err) {
                     return CreateMiniMaxTextToSpeech(cfg, err);
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_ELEVENLABS_ADAPTER
+            if (!r.providers.count("elevenlabs")) {
+                r.providers["elevenlabs"] = [](const TextToSpeechConfig& cfg,
+                                               Error* err) {
+                    return CreateElevenLabsTextToSpeech(cfg, err);
                 };
             }
 #endif

@@ -1159,7 +1159,7 @@ bool Reader::FindColourUnder(int id, Vec3f& out, int depth) const {
 
 int Reader::MaterialFor(const Vec3f& colour, const std::string& name) {
     char key[64];
-    std::snprintf(key, sizeof(key), "%.6f|%.6f|%.6f", colour.x, colour.y, colour.z);
+    std::snprintf(key, sizeof(key), "%.6f|%.6f|%.6f", colour.x, colour.y, colour.z);   // locale-ok: an in-memory lookup key, never written to a file
     auto cached = materialForColour_.find(key);
     if (cached != materialForColour_.end()) return cached->second;
 
@@ -1955,7 +1955,7 @@ void StepConverter::FacetMeshesIntoBrep(ModelDocument& document, const Conversio
         auto vertexFor = [&](const Vec3d& raw) {
             const Vec3d point = world.TransformPoint(raw);
             char key[96];
-            std::snprintf(key, sizeof(key), "%.9g|%.9g|%.9g", point.x, point.y, point.z);
+            std::snprintf(key, sizeof(key), "%.9g|%.9g|%.9g", point.x, point.y, point.z);   // locale-ok: an in-memory lookup key, never written to a file
             auto found = vertexForPosition.find(key);
             if (found != vertexForPosition.end()) return found->second;
             const int index = brep.AddVertex(point);

@@ -16,11 +16,13 @@
 // AccountStore, not here. This dialog asks how long it must wait, greys the
 // button and counts down, but if it did not, the store would still refuse.
 //
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 #ifndef LOCKSCREENDIALOG_H
 #define LOCKSCREENDIALOG_H
+
+#include "BrandHeader.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -81,7 +83,7 @@ private:
     uint32_t lastWaitShown_ = 0;
 
     static constexpr long kDialogWidth  = 440;
-    static constexpr long kDialogHeight = 300;
+    static constexpr long kDialogHeight = 300 + kBrandHeaderHeight;
 };
 
 } // namespace Authenticator

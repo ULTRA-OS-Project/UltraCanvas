@@ -1,10 +1,12 @@
 // UltraAI/adapters/_shared/src/ScriptedTransport.cpp
-// Implementation of TransportResponse::GetHeader and ScriptedTransport.
-// Version: 0.2.0
-// Last Modified: 2026-08-24
+// Implementation of TransportResponse::GetHeader, the default
+// ITransport::ByteStream, and ScriptedTransport.
+// Version: 0.3.0
+// Last Modified: 2026-09-24
 // Author: UltraAI Module
 
 #include "UltraAITransport.h"
+#include "UltraAIHttpError.h"
 
 #include <algorithm>
 #include <cctype>
@@ -26,6 +28,23 @@ std::string TransportResponse::GetHeader(const std::string& name) const {
         if (EqualsIgnoreCase(kv.first, name)) return kv.second;
     }
     return {};
+}
+
+CancelFn ITransport::ByteStream(const TransportRequest& request,
+                                ByteChunkCallback onChunk,
+                                SseCompleteCallback onComplete) {
+    Error transportError;
+    TransportResponse resp = Request(request, &transportError);
+    if (!transportError.IsOk()) {
+        if (onComplete) onComplete(transportError, 0);
+        return [] {};
+    }
+    if (onChunk && !resp.body.empty()) onChunk(resp.body);
+    if (onComplete) {
+        onComplete(MapHttpStatus(resp.statusCode, resp.body.substr(0, 200)),
+                   resp.statusCode);
+    }
+    return [] {};
 }
 
 void ScriptedTransport::ScriptResponse(TransportResponse response) {

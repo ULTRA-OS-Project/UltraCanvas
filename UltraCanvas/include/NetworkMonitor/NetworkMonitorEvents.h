@@ -20,9 +20,13 @@
 //     none without a Network Extension; the differ covers it.
 // The registry names each event's peer from the name table and, for a
 // source that reports no process, attributes it from the socket table on a
-// best-effort basis.
+// best-effort basis. From the same table it decodes the loopback chain
+// (NetworkMonitor_DecodeLoopback): an event on a local proxy's socket says
+// which application is on the other end, and a proxy's outbound event
+// whom it is for; a Closed gets what its Opened had, though the socket
+// is gone.
 //
-// Version: 0.5.0
+// Version: 0.8.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -63,6 +67,16 @@ struct NetworkConnectionEvent {
     // Filled by the registry from the name table (NetworkMonitorNames.h).
     std::string            remoteName;
     NameSource             nameSource = NameSource::None;
+    // The loopback chain, as on NetworkConnection: the role and the
+    // process on the other end of a loopback connection, and on a proxy's
+    // outbound connection whom it is for. A source whose events come
+    // from a decoded table fills them and sets chainDecoded; for any
+    // other the registry decodes from the socket table, and remembers the
+    // chain so the Closed carries it too.
+    LoopbackRole             loopbackRole = LoopbackRole::None;
+    std::string              localPeer;        // "AvastSvc (4720)", or empty
+    std::vector<std::string> forProcesses;     // "thunderbird (4120)", distinct
+    bool                     chainDecoded = false;
 
     bool IsLoopback() const;
     std::string LocalEndpoint() const;

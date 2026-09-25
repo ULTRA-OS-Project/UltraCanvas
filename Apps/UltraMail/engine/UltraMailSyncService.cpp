@@ -61,6 +61,15 @@ void SyncService::SyncFolderInBackground(const std::string& accountId, const std
             ? engine_.SyncMessages(accountId, folder, serverUrl, opts,
                                    /*fetchBodies=*/true, onProgress)
             : SyncOutcome::Fail(prepared.message);
+        // Once the new mail is in, reconcile read/deleted state for the messages
+        // we already had — this is what surfaces changes made on another client
+        // (e.g. Gmail's web UI). It is non-fatal, so it never turns a successful
+        // fetch into a failure.
+        if (result.ok) {
+            SyncOutcome rec = engine_.ReconcileFlags(accountId, folder, serverUrl, opts);
+            result.stats.reconciled = rec.stats.reconciled;
+            result.stats.expunged   = rec.stats.expunged;
+        }
         if (onDone) onDone(result);
     }).detach();
 }

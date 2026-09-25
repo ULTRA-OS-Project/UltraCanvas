@@ -54,6 +54,13 @@ struct SheetFindOptions {
     bool searchByRows = true;  // false = by columns
 };
 
+// Shift the A1 references in a formula's text by rows/columns, the way a
+// copied formula moves: "=B2*$C$1+SUM(D2:D4)" shifted one row down gives
+// "=B3*$C$1+SUM(D3:D5)". $-anchored parts stay put, text inside "quotes" and
+// function names (LOG10) are left alone, and a reference pushed off the top or
+// left edge of the sheet becomes #REF!.
+std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int colDelta);
+
 // ============================================================================
 // SPREADSHEET SHEET CLASS
 // ============================================================================
@@ -343,6 +350,9 @@ public:
     
     void Sort(const CellRange& range, const std::vector<SortCriteria>& criteria);
     void SortByColumn(const CellRange& range, int column, SortOrder order = SortOrder::Ascending);
+    // Formula cells inside the range. Sort moves them without rewriting their
+    // references, so callers use this to warn before sorting such a range.
+    int CountFormulaCells(const CellRange& range) const;
     
     // ===== CONDITIONAL FORMATTING =====
     
@@ -431,7 +441,16 @@ public:
     
     // ===== FILL OPERATIONS =====
     
-    // Auto-fill (extend series)
+    // Auto-fill, as the fill handle does it. `destination` is `source`
+    // extended down, up, right or left; the source cells stay as they are and
+    // every new cell is filled from the source cell in the same column (or row)
+    // position, repeating the source pattern:
+    //  - two or more numbers in that line continue as a linear series
+    //    (1, 2 -> 3, 4, 5; 10, 20 -> 30, 40), keeping each cell's value type;
+    //  - a single text ending in a number counts on ("Item 1" -> "Item 2");
+    //  - a formula is copied with its relative references shifted by the
+    //    distance it moved ($-anchored parts stay), like a copy and paste;
+    //  - anything else is copied as it is. Formatting comes with the value.
     void AutoFill(const CellRange& source, const CellRange& destination);
     
     // Fill with value

@@ -265,7 +265,7 @@ namespace UltraCanvas {
         editBufferFresh = false;
         if (!editBuffer.empty()) {
             try {
-                double parsed = std::stod(editBuffer);
+                double parsed = std::stod(editBuffer);   // locale-ok: the user typed this into the spinner
                 ApplyValue(parsed, false);
             } catch (...) {
                 // Unparseable input reverts to the previous value.

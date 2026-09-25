@@ -287,6 +287,14 @@ if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
 endif()
 
+# Which platforms have a trash UltraCanvasTrash can move files into: the
+# Recycle Bin (Windows), the Finder's Trash (macOS) and the freedesktop.org
+# trash (Linux, the BSDs). Android and WebAssembly have none; there the core
+# file compiles a fallback that always fails, and TrashAvailable() is false.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_TRASH ON)
+endif()
+
 # Same decision, same reasons, for the volume monitor (UltraCanvasVolumeMonitor:
 # WM_DEVICECHANGE / poll() on /proc/self/mountinfo / NSWorkspace mount
 # notifications). macOS is included here where it is absent above, because a
@@ -459,6 +467,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasRatingExamples.cpp
             Apps/DemoApp/UltraCanvasStepperExamples.cpp
             Apps/DemoApp/UltraCanvasChipExamples.cpp
+            Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
@@ -718,6 +727,12 @@ if(BUILD_DEMO_APP)
         FetchContent_MakeAvailable(fmt)
     endif()
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
+
+    # The message centre page (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp)
+    # needs the element's library; without UltraMessage the page says so.
+    if(TARGET UltraMessageCenter)
+        target_link_libraries(UltraCanvasDemo PRIVATE UltraMessageCenter)
+    endif()
 
     # Link against all plugin libraries
     if(ULTRACANVAS_PLUGIN_TARGETS)
@@ -1348,6 +1363,8 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAIDialogs.cpp
         Apps/UltraAIApp/UltraAIEndpoints.cpp
         Apps/UltraAIApp/UltraAISettingsDialog.cpp
+        Apps/UltraAIApp/UltraAIAppSettings.cpp
+        Apps/UltraAIApp/UltraAISettingsWindow.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
     )
 
@@ -1368,7 +1385,9 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
     target_compile_features(UltraAIApp PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraAIApp PRIVATE
-        ULTRAAI_APP_VERSION="0.1.0"
+        # UltraAI versions itself: Docs/UltraAI/CHANGELOG.md is the single
+        # source of this number (cmake/UltraCanvasVersion.cmake).
+        ULTRAAI_APP_VERSION="${ULTRAAI_VERSION}"
         UCAPP_ICON_PATH="media/appicon/UltraAI.png"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )

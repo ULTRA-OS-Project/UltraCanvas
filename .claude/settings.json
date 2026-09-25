@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-delivery.sh\" --brief",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-delivery.sh\"",
+            "timeout": 20,
+            "statusMessage": "Checking the work is committed and pushed..."
+          }
+        ]
+      }
+    ]
+  },
+
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git branch --list:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git fetch:*)",
+      "Bash(python3 scripts/check_changelog.py:*)",
+      "Bash(python3 scripts/check_ui_reuse.py:*)",
+      "Bash(python3 scripts/check_callback_cycles.py:*)",
+      "Bash(python3 scripts/check_locale_numbers.py:*)",
+      "Bash(python3 scripts/check_element_catalogue.py:*)",
+      "Bash(python3 scripts/check_publication.py:*)",
+      "Bash(python3 scripts/generate_llms_txt.py:*)"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+# Element classes deliberately absent from
+# Docs/UltraCanvas/UltraCanvasUIElements.md, with the reason.
+#
+# The catalogue answers "which element do I reach for?". These are not answers
+# to that question: a base class to derive from, a format decoder that works
+# behind a catalogued facade, or an implementation of a catalogued interface.
+# Listing them would make the catalogue longer and less useful.
+#
+# Do NOT add an element here to silence the check. If a caller could ever want
+# it, it belongs in a table - that is the whole point of the file.
+# Format: <ClassName>  # why it is not catalogued
+
+UltraCanvasUIElement          # the root base class every element derives from
+UltraCanvasLabeledToggleBase  # base class: UltraCanvasCheckbox / Radio / Switch derive from it
+UltraCanvasWindowBase         # a window, not an element placed in one
+UltraCanvasTemplate           # the skeleton new elements are copied from
+UltraCanvasMediaSurface       # internal surface of UltraCanvasMediaViewer, which is catalogued
+UltraCanvasLaTeXViewImpl      # on-demand module implementation of UltraCanvasLaTeXView

@@ -861,6 +861,9 @@ public:
 #endif
     }
 
+    // `temp` is whole degrees Celsius. The attribute is hundredths, so the
+    // conversion lives here and callers deal in degrees - which is also why
+    // the facade cannot express a half-degree setpoint today.
     bool SendThermostatCommand(uint64_t nodeId, uint16_t endpoint, int16_t temp) {
         // OccupiedHeatingSetpoint (0x0012), in hundredths of a degree.
         return WriteAttribute(nodeId, endpoint, MatterClusters::Thermostat, 0x0012,
@@ -1569,8 +1572,13 @@ bool MatterProtocol::SendCommand(const std::string& deviceId,
                                                      static_cast<uint8_t>(position));
     }
     else if (command == "setTargetTemp") {
+        // Whole degrees Celsius: SendThermostatCommand multiplies by 100 for
+        // OccupiedHeatingSetpoint, which the spec defines in hundredths and
+        // carries in an int16. So the range that survives the conversion is
+        // +/-327 degrees, not the int16 range of this parameter - 1000 would
+        // have become 100000 hundredths and overflowed the attribute.
         long temp = 21;
-        if (!ReadIntParam(params, "temperature", -32768, 32767, temp, paramError)) {
+        if (!ReadIntParam(params, "temperature", -327, 327, temp, paramError)) {
             ReportError(-302, paramError);
             return false;
         }

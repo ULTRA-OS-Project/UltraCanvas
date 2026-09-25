@@ -522,6 +522,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
+        # Move to the Recycle Bin / Trash. Platform backend under
+        # OS/<Platform>/; Android and WebAssembly get the fallback in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTrash.cpp
         # "Delete as administrator": the UAC relaunch behind a permission
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
@@ -1664,6 +1667,11 @@ endif()
 # app can leave the "in use" display out entirely where nothing can answer.
 if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+endif()
+# The trash: the same arrangement for UltraCanvasTrash. PUBLIC so an app can
+# leave "Move to Trash" out where there is none.
+if(ULTRACANVAS_HAS_NATIVE_TRASH)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_TRASH)
 endif()
 # Native volume monitoring: the same arrangement for UltraCanvasVolumeMonitor.
 # PUBLIC so an app can tell a device notification from the polling fallback.
@@ -2823,6 +2831,27 @@ elseif(ULTRACANVAS_ENABLE_ULTRAMESSAGE)
     message(STATUS "  [−] UltraMessage - DISABLED (needs UltraDatabase)")
 else()
     message(STATUS "  [−] UltraMessage - DISABLED")
+endif()
+
+# ===== BUILD ULTRAMESSAGECENTER (the desktop message centre element) =====
+# UltraCanvasMessageCenter (include/Plugins/UltraMessage/) is the feed's first
+# UI consumer: one composite element built from catalogue elements on top of
+# UltraMessage. It links both the widget library and the headless module, so
+# it is its own target rather than part of either.
+if(TARGET UltraMessage)
+    add_library(UltraMessageCenter STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp)
+    set_target_properties(UltraMessageCenter PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultramessagecenter")
+    target_compile_features(UltraMessageCenter PUBLIC cxx_std_20)
+    target_include_directories(UltraMessageCenter
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas>)
+    target_link_libraries(UltraMessageCenter PUBLIC ${ULTRACANVAS_LIB_NAME} UltraMessage)
+    target_compile_definitions(UltraMessageCenter PUBLIC ULTRACANVAS_HAS_MESSAGECENTER=1)
+    message(STATUS "  [✓] UltraMessageCenter - ENABLED")
 endif()
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
