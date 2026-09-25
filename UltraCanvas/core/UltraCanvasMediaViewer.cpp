@@ -1804,7 +1804,11 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
             } else {
                 ta->SetEditingMode(TextAreaEditingMode::PlainText);
                 static SyntaxTokenizer tk;
-                if (!ext.empty() && tk.SetLanguageByExtension(ext)) {
+                // A shared extension (.cls, .m) is settled by the text: a
+                // LaTeX .cls is not coloured as VBA.
+                const std::string sniffed = SyntaxTokenizer::LanguageFromContent(ext, content);
+                if (sniffed.empty() ? (!ext.empty() && tk.SetLanguageByExtension(ext))
+                                    : tk.SetLanguage(sniffed)) {
                     ta->SetHighlightSyntax(true);
                     ta->SetProgrammingLanguage(tk.GetCurrentProgrammingLanguage());
                 } else {

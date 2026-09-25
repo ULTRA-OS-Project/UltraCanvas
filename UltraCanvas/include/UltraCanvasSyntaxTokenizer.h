@@ -119,6 +119,20 @@ namespace UltraCanvas {
         // Case-insensitive. Returns false if no language claims this filename.
         bool SetLanguageByFilename(const std::string &filename);
 
+        // Back to plain text: no language, nothing highlighted.
+        void ClearLanguage() { currentRules = nullptr; }
+
+        // Some extensions are shared by two languages: .cls is a VBA class
+        // module or a LaTeX class, .m MATLAB or Objective-C. The file's first
+        // lines tell them apart - the first line that could only be one of
+        // the two decides. Returns that language's name, or "" when the
+        // extension is not a shared one or the text does not say (the
+        // extension's own language then applies). The name can be a
+        // language the highlighter has no rules for ("LaTeX",
+        // "Objective-C"): such text is plain text here.
+        static std::string LanguageFromContent(const std::string &extension,
+                                               const std::string &text);
+
         std::vector<std::string> GetSupportedLanguages() const;
         // Every registered language with the file extensions it claims, as
         // registered (case included). What a file manager needs to know which
@@ -409,6 +423,57 @@ namespace UltraCanvas {
         for (const auto &[name, rules]: languagesRules)
             result.emplace_back(rules.name.empty() ? name : rules.name, rules.fileExtensions);
         return result;
+    }
+
+    inline std::string SyntaxTokenizer::LanguageFromContent(const std::string &extension,
+                                                            const std::string &text) {
+        std::string ext = extension;
+        if (!ext.empty() && ext.front() == '.') ext.erase(0, 1);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (ext != "cls" && ext != "m") return "";
+
+        auto startsWith = [](const std::string &line, const char *prefix) {
+            return line.compare(0, std::char_traits<char>::length(prefix), prefix) == 0;
+        };
+        // Only the head of the file: the first decisive line is near the top.
+        const size_t limit = std::min<size_t>(text.size(), 8192);
+        size_t pos = 0;
+        while (pos < limit) {
+            size_t end = text.find('\n', pos);
+            if (end == std::string::npos || end > limit) end = limit;
+            std::string line = text.substr(pos, end - pos);
+            pos = end + 1;
+            const size_t first = line.find_first_not_of(" \t\r\xEF\xBB\xBF");
+            if (first == std::string::npos) continue;
+            line.erase(0, first);
+            std::string lower = line;
+            std::transform(lower.begin(), lower.end(), lower.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+            if (ext == "cls") {
+                // An exported VBA class module opens with its VERSION /
+                // BEGIN block and Attribute VB_ lines; LaTeX lines are
+                // commands and % comments, which VBA never starts a line with.
+                if (startsWith(lower, "version ") || startsWith(lower, "attribute vb_") ||
+                    startsWith(lower, "option ") || startsWith(lower, "'"))
+                    return "VBA";
+                if (startsWith(line, "\\") || startsWith(line, "%"))
+                    return "LaTeX";
+            } else {
+                // MATLAB comments with %, and has no preprocessor, no @
+                // directives and no // or /* comments.
+                if (startsWith(line, "%") || startsWith(lower, "function ") ||
+                    startsWith(lower, "function[") || startsWith(lower, "classdef "))
+                    return "MATLAB";
+                if (startsWith(line, "#") || startsWith(line, "@interface") ||
+                    startsWith(line, "@implementation") || startsWith(line, "@protocol") ||
+                    startsWith(line, "@class") || startsWith(line, "@import") ||
+                    startsWith(line, "//") || startsWith(line, "/*"))
+                    return "Objective-C";
+            }
+        }
+        return "";
     }
 
     inline std::string SyntaxTokenizer::GetCurrentProgrammingLanguage() const {

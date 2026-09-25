@@ -2973,6 +2973,44 @@ namespace UltraCanvas {
         e.info = cached.info;
     }
 
+    namespace {
+        // .cls is a VBA class module or a LaTeX class, .m MATLAB or
+        // Objective-C: the extension alone names the language wrong for one
+        // of each pair. The file's head settles it, read once per path and
+        // size / modification time.
+        struct SharedExtensionCacheEntry {
+            uint64_t size = 0;
+            std::time_t modifiedTime = 0;
+            std::string language;
+        };
+        std::string SharedExtensionLanguage(const FilerEntry& e) {
+            static std::mutex mutex;
+            static std::unordered_map<std::string, SharedExtensionCacheEntry> cache;
+            {
+                std::lock_guard<std::mutex> lk(mutex);
+                auto it = cache.find(e.path);
+                if (it != cache.end() && it->second.size == e.size &&
+                    it->second.modifiedTime == e.modifiedTime)
+                    return it->second.language;
+            }
+            SharedExtensionCacheEntry entry;
+            entry.size = e.size;
+            entry.modifiedTime = e.modifiedTime;
+            // Only a local file: a remote or archive path is not opened here.
+            std::ifstream f(PathFromUtf8(e.path), std::ios::binary);
+            if (f) {
+                std::string head(8192, '\0');
+                f.read(head.data(), static_cast<std::streamsize>(head.size()));
+                head.resize(static_cast<size_t>(f.gcount()));
+                entry.language = SyntaxTokenizer::LanguageFromContent(e.extension, head);
+            }
+            std::lock_guard<std::mutex> lk(mutex);
+            if (cache.size() >= 2048) cache.clear();
+            cache[e.path] = entry;
+            return entry.language;
+        }
+    }
+
     void UltraCanvasFilerWidget::DecorateEntry(FilerEntry& e) const {
         e.effectiveSize = e.size;
         // A shortcut takes its type, category and info column from the file
@@ -2981,6 +3019,13 @@ namespace UltraCanvas {
         // override) then applies to the entry as resolved.
         ResolveShortcutEntry(e);
         ResolveBundleEntry(e);
+        if (!e.isDirectory && e.category == FilerFileCategory::Text &&
+            (e.extension == "cls" || e.extension == "m") &&
+            !(isRemotePath && isRemotePath(e.path))) {
+            const std::string language = SharedExtensionLanguage(e);
+            if (!language.empty())
+                e.typeName = language + " " + CategoryNoun(e.category);
+        }
 
         std::string attr;
         if (e.isDirectory) attr += 'D';

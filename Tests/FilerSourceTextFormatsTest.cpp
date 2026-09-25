@@ -12,12 +12,15 @@
 // Text, that the table and the registered plugins still win (.svg stays a
 // vector graphic), and that a scanned source file gets the Text category and
 // its language's name. R, Scala, MATLAB and VBA, switched on in the
-// highlighter since, are Text too - but .bas stays BASIC, not VBA.
-// Version: 1.1.0
+// highlighter since, are Text too - but .bas stays BASIC, not VBA. The shared
+// extensions .cls (VBA or LaTeX) and .m (MATLAB or Objective-C) are named after
+// what the file's first lines say it is.
+// Version: 1.2.0
 // Last Modified: 2026-09-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
+#include "UltraCanvasSyntaxTokenizer.h"
 
 #include <filesystem>
 #include <fstream>
@@ -86,6 +89,12 @@ int main() {
     std::ofstream(dir / "Module1.bas") << "10 PRINT \"HI\"\n";
     std::ofstream(dir / "Report.vba") << "Sub Main()\nEnd Sub\n";
     std::ofstream(dir / "solve.m") << "x = A \\ b;\n";
+    // Shared extensions: the file's first lines name the language.
+    std::ofstream(dir / "thesis.cls") << "\\NeedsTeXFormat{LaTeX2e}\n\\ProvidesClass{thesis}\n";
+    std::ofstream(dir / "Invoice.cls") << "VERSION 1.0 CLASS\nBEGIN\n  MultiUse = -1\nEND\n"
+                                          "Attribute VB_Name = \"Invoice\"\n";
+    std::ofstream(dir / "AppDelegate.m") << "#import \"AppDelegate.h\"\n\n@implementation AppDelegate\n@end\n";
+    std::ofstream(dir / "fit.m") << "% Fit a line\nfunction p = fit(x, y)\n";
     UltraCanvasFilerWidget filer("source-text-filer", 0, 0, 400, 300);
     filer.SetPath(dir.string());
     for (const FilerEntry& e : filer.GetEntries()) {
@@ -108,8 +117,32 @@ int main() {
         if (e.name == "solve.m")
             Check(e.category == FilerFileCategory::Text && e.typeName == "MATLAB Text",
                   "solve.m is MATLAB Text -> \"" + e.typeName + "\"");
+        const std::map<std::string, std::string> shared = {
+            {"thesis.cls", "LaTeX Text"}, {"Invoice.cls", "VBA Text"},
+            {"AppDelegate.m", "Objective-C Text"}, {"fit.m", "MATLAB Text"}};
+        if (auto it = shared.find(e.name); it != shared.end())
+            Check(e.category == FilerFileCategory::Text && e.typeName == it->second,
+                  e.name + " reads as " + it->second + " -> \"" + e.typeName + "\"");
     }
-    Check(filer.GetEntries().size() == 6, "all six files listed");
+    Check(filer.GetEntries().size() == 10, "all ten files listed");
+
+    std::cout << "\n-- SyntaxTokenizer::LanguageFromContent --\n";
+    struct Sniff { const char* ext; const char* text; const char* want; };
+    for (const Sniff& t : std::initializer_list<Sniff>{
+             {"cls", "% My class\n\\LoadClass{article}\n", "LaTeX"},
+             {"cls", "\xEF\xBB\xBF\\ProvidesClass{x}\n", "LaTeX"},
+             {"CLS", "Option Explicit\nPrivate m As Long\n", "VBA"},
+             {"cls", "\n\n", ""},
+             {".m", "\n  % comment\nx = 1;\n", "MATLAB"},
+             {"m", "// main.m\n#include <stdio.h>\n", "Objective-C"},
+             {"m", "@interface Foo : NSObject\n@end\n", "Objective-C"},
+             {"m", "x = 1;\n", ""},
+             {"vba", "\\ProvidesClass{x}\n", ""},
+             {"r", "#import\n", ""}}) {
+        const std::string got = SyntaxTokenizer::LanguageFromContent(t.ext, t.text);
+        Check(got == t.want, std::string(".") + t.ext + " -> \"" + got + "\" (want \"" +
+                             t.want + "\")");
+    }
     fs::remove_all(dir, ec);
 
     std::cout << "\n" << (g_failures ? "FAILED" : "ALL PASSED") << " (" << g_failures
