@@ -1,7 +1,7 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
-// Version: 1.4.0
-// Last Modified: 2026-09-13
+// Version: 1.4.1
+// Last Modified: 2026-09-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbar.h"
@@ -73,6 +73,15 @@ namespace UltraCanvas {
         }
         boxConstraints = limits;
         InvalidateLayout();
+    }
+
+    void UltraCanvasToolbar::SetThickness(float px) {
+        if (toolbarOrientation == ToolbarOrientation::Vertical) {
+            size.width = CSSLayout::Dimension::Px(px);
+        } else {
+            size.height = CSSLayout::Dimension::Px(px);
+        }
+        AdoptThicknessAsMinimum();
     }
 
     void UltraCanvasToolbar::SetOrientation(ToolbarOrientation orient) {
@@ -488,7 +497,23 @@ namespace UltraCanvas {
 
     UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::SetOrientation(ToolbarOrientation orient) {
         toolbar->SetOrientation(orient);
+        ApplyThickness();
         return *this;
+    }
+
+    void UltraCanvasToolbarBuilder::ApplyThickness() {
+        // The builder makes every toolbar 800 x 48 before it knows the shape.
+        // Turned vertical, that 800 px width would stay behind as the floor
+        // (which gave Texter's side toolbar half the window). SetBounds in
+        // SetDimensions sets no size either, so the floor would never be
+        // replaced. Either call sets the thickness again from the numbers the
+        // host passed, or the default 48 when it passed none.
+        const bool vertical = toolbar->GetOrientation() == ToolbarOrientation::Vertical;
+        int thickness = 48;
+        if (dimensionsSet) {
+            thickness = vertical ? requestedWidth : requestedHeight;
+        }
+        toolbar->SetThickness(static_cast<float>(thickness));
     }
 
     UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::SetToolbarPosition(ToolbarPosition pos) {
@@ -524,6 +549,10 @@ namespace UltraCanvas {
             // Zero origin: in-flow size hint; the parent/HBox controls placement (Texter, presets).
             toolbar->SetBounds(Rect2Di(x, y, width, height));
         }
+        dimensionsSet = true;
+        requestedWidth = width;
+        requestedHeight = height;
+        ApplyThickness();
         return *this;
     }
 

@@ -15,8 +15,13 @@
 // No UI stack: the children are plain sized elements, so this is the layout
 // engine and the toolbar's own box, with no render context needed to measure
 // text.
-// Version: 1.0.0
-// Last Modified: 2026-09-13
+//
+// A second bug, in the builder: it makes every toolbar 800 x 48 before it
+// knows the shape, so a toolbar turned vertical kept the 800 px width as its
+// floor, and SetDimensions() never replaced it. Texter's markdown side bar
+// asked for 40 px and got 800, half the window.
+// Version: 1.1.0
+// Last Modified: 2026-09-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbar.h"
@@ -123,6 +128,56 @@ void TestVerticalTooNarrow() {
                   std::to_string(palette->finalBounds.height) + " px)");
 }
 
+void TestBuilderVerticalTakesItsWidth() {
+    std::printf("A vertical toolbar from the builder, given a width\n");
+
+    // Texter's markdown toolbar, as it is built.
+    auto side = UltraCanvasToolbarBuilder("side")
+            .SetOrientation(ToolbarOrientation::Vertical)
+            .SetAppearance(ToolbarAppearance::Flat())
+            .SetDimensions(0, 0, 40, 400)
+            .Build();
+    auto a = Item("a", 32, 32), b = Item("b", 32, 32);
+    side->AddChild(a);
+    side->AddChild(b);
+    LayOut(side, 1600, 700);
+
+    const float width = side->finalBounds.width;
+    Check(width >= 32.0f && width <= 48.0f,
+          "it is as wide as it was asked or its items need, not the builder's "
+          "800 px default (got " + std::to_string(width) + " px)");
+
+    // Same numbers, the calls the other way round.
+    auto other = UltraCanvasToolbarBuilder("side-2")
+            .SetDimensions(0, 0, 40, 400)
+            .SetOrientation(ToolbarOrientation::Vertical)
+            .Build();
+    auto c = Item("c", 32, 32);
+    other->AddChild(c);
+    LayOut(other, 1600, 700);
+    Check(other->finalBounds.width <= 48.0f,
+          "and so it is when the dimensions come before the orientation (got " +
+                  std::to_string(other->finalBounds.width) + " px)");
+}
+
+void TestBuilderHorizontalTakesItsHeight() {
+    std::printf("A horizontal toolbar from the builder, given a thin height\n");
+
+    // A status bar: 24 px asked for, 10 px items - 10 + 5 + 5 padding + 1 + 1
+    // border = 22 px of content, so the 24 px floor is what decides.
+    auto status = UltraCanvasToolbarBuilder("status")
+            .SetOrientation(ToolbarOrientation::Horizontal)
+            .SetDimensions(0, 0, 1024, 24)
+            .Build();
+    auto a = Item("a", 60, 10);
+    status->AddChild(a);
+    LayOut(status, 1024, 300);
+
+    Check(std::fabs(status->finalBounds.height - 24.0f) < 0.01f,
+          "it is the height it was given, not the builder's default 48 px (got " +
+                  std::to_string(status->finalBounds.height) + " px)");
+}
+
 } // namespace
 
 int main() {
@@ -130,6 +185,8 @@ int main() {
     TestHorizontalTooShort();
     TestHorizontalGenerous();
     TestVerticalTooNarrow();
+    TestBuilderVerticalTakesItsWidth();
+    TestBuilderHorizontalTakesItsHeight();
     std::printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "ALL PASSED",
                 g_failures, g_failures == 1 ? "" : "s");
     return g_failures ? 1 : 0;

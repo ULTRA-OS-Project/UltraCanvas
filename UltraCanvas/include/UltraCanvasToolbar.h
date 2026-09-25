@@ -6,8 +6,8 @@
 // toolbar grows past it when its buttons need the room. Hosts therefore
 // cannot clip their own icons by guessing a number that was right before the
 // button metrics changed.
-// Version: 1.4.0
-// Last Modified: 2026-09-13
+// Version: 1.4.1
+// Last Modified: 2026-09-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -245,6 +245,11 @@ namespace UltraCanvas {
         void SetOverflowMode(ToolbarOverflowMode mode);
         void SetVisibility(ToolbarVisibility vis);
         void SetDragMode(ToolbarDragMode mode);
+        // The toolbar's thickness - height when horizontal, width when
+        // vertical - as a floor, replacing any floor set before. This is what
+        // a later size request means: SetOrientation() alone keeps whatever
+        // the constructor's width or height was as the floor.
+        void SetThickness(float px);
 
         ToolbarOrientation GetOrientation() const { return toolbarOrientation; }
         ToolbarPosition GetPosition() const { return toolbarPosition; }
@@ -341,6 +346,13 @@ namespace UltraCanvas {
     class UltraCanvasToolbarBuilder {
     private:
         std::shared_ptr<UltraCanvasToolbar> toolbar;
+        // Width and height from SetDimensions(), if it was called. The toolbar's
+        // thickness is taken from these again whenever the orientation or the
+        // dimensions change, so the order of the two calls does not matter.
+        bool dimensionsSet = false;
+        int requestedWidth = 0;
+        int requestedHeight = 0;
+        void ApplyThickness();
 
     public:
         UltraCanvasToolbarBuilder(const std::string& identifier);

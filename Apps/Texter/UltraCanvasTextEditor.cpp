@@ -3081,8 +3081,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (auto btn = markdownToolbar->GetWidget("md-table")) {
             btn->SetDisabled(false);
         }
+        // Shown means Flex, not Block: the toolbar lays its buttons out as a
+        // centred flex column, and Block put the separators at the left edge.
         markdownToolbar->layout.display =
-                show ? CSSLayout::DisplayType::Block : CSSLayout::DisplayType::NoDisplay;
+                show ? CSSLayout::DisplayType::Flex : CSSLayout::DisplayType::NoDisplay;
         if (!show && headingSubToolbar) {
             headingSubToolbar->SetVisible(false);
         }
