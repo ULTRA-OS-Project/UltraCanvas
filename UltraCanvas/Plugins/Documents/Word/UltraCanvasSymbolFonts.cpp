@@ -52,6 +52,12 @@ const uint32_t* TableFor(const std::string& family) {
 // Decodes one UTF-8 sequence at text[i]; advances i. Invalid bytes decode as
 // themselves so nothing is lost.
 uint32_t NextCodepoint(const std::string& text, size_t& i) {
+    return DecodeUtf8(text, i);
+}
+
+} // namespace
+
+uint32_t DecodeUtf8(const std::string& text, size_t& i) {
     const auto byte = [&](size_t at) { return static_cast<uint8_t>(text[at]); };
     uint8_t lead = byte(i);
     size_t length = lead < 0x80 ? 1 : (lead >> 5) == 0x6 ? 2 : (lead >> 4) == 0xE ? 3
@@ -64,6 +70,8 @@ uint32_t NextCodepoint(const std::string& text, size_t& i) {
     i += length;
     return cp;
 }
+
+namespace {
 
 void MapRuns(std::vector<RichTextRun>& runs) {
     for (RichTextRun& run : runs) {

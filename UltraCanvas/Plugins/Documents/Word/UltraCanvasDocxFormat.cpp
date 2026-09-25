@@ -195,6 +195,12 @@ private:
     std::map<std::string, std::string> numIdToAbstract_;
     std::map<std::string, std::map<int, bool>> abstractNumOrdered_;   // abstractId -> ilvl -> ordered
     std::map<std::string, std::map<int, int>> abstractNumStart_;      // abstractId -> ilvl -> w:start
+    struct LevelLabel {
+        RichNumberFormat format = RichNumberFormat::Decimal;
+        std::string numberTemplate;
+        std::string bulletText;
+    };
+    std::map<std::string, std::map<int, LevelLabel>> abstractLabels_;   // abstractId -> ilvl -> label
     // numId -> ilvl -> w:startOverride, applied when that numId is first used
     std::map<std::string, std::map<int, int>> numStartOverride_;
     std::set<std::string> numIdsSeen_;
@@ -415,6 +421,32 @@ private:
                 auto* numFmt = lvl->FirstChildElement("w:numFmt");
                 std::string fmt = numFmt ? Attr(numFmt, "w:val") : "";
                 abstractNumOrdered_[abstractId][ilvl] = (fmt != "bullet" && !fmt.empty());
+                LevelLabel& label = abstractLabels_[abstractId][ilvl];
+                auto* lvlText = lvl->FirstChildElement("w:lvlText");
+                const std::string text = lvlText ? Attr(lvlText, "w:val") : "";
+                if (fmt == "bullet") {
+                    // The bullet, mapped when its font is a symbol font.
+                    auto* rPr = lvl->FirstChildElement("w:rPr");
+                    auto* fonts = rPr ? rPr->FirstChildElement("w:rFonts") : nullptr;
+                    const std::string font = fonts ? Attr(fonts, "w:ascii") : "";
+                    label.bulletText = text;
+                    if (!font.empty() && !text.empty()) {
+                        size_t at = 0;
+                        const uint32_t cp = WordFormatInternal::DecodeUtf8(text, at);
+                        if (uint32_t unicode = WordFormatInternal::SymbolFontCharToUnicode(font, cp)) {
+                            label.bulletText.clear();
+                            WordFormatInternal::AppendUtf8(label.bulletText, unicode);
+                        }
+                    }
+                } else {
+                    label.format = fmt == "lowerLetter" ? RichNumberFormat::LowerLetter
+                                 : fmt == "upperLetter" ? RichNumberFormat::UpperLetter
+                                 : fmt == "lowerRoman" ? RichNumberFormat::LowerRoman
+                                 : fmt == "upperRoman" ? RichNumberFormat::UpperRoman
+                                 : fmt == "decimalZero" ? RichNumberFormat::DecimalZero
+                                 : fmt == "none" ? RichNumberFormat::NoNumber : RichNumberFormat::Decimal;
+                    label.numberTemplate = text;   // Word's own "%1.%2." notation
+                }
                 if (auto* start = lvl->FirstChildElement("w:start")) {
                     abstractNumStart_[abstractId][ilvl] = std::max(1, start->IntAttribute("w:val", 1));
                 }
@@ -705,6 +737,17 @@ private:
                         if (levels != abstractNumOrdered_.end()) {
                             auto lvlIt = levels->second.find(block.listLevel);
                             if (lvlIt != levels->second.end()) block.orderedList = lvlIt->second;
+                        }
+                    }
+                    if (abstractIt != numIdToAbstract_.end()) {
+                        auto labels = abstractLabels_.find(abstractIt->second);
+                        if (labels != abstractLabels_.end()) {
+                            auto label = labels->second.find(block.listLevel);
+                            if (label != labels->second.end()) {
+                                block.numberFormat = label->second.format;
+                                block.numberTemplate = label->second.numberTemplate;
+                                block.bulletText = label->second.bulletText;
+                            }
                         }
                     }
                     if (block.orderedList) {
@@ -1000,6 +1043,8 @@ private:
     int inlineDrawingId_ = 100000;
     std::vector<std::string> hyperlinks_;   // index -> URL; rel id = rIdLink{index+1}
     bool usesLists_ = false;
+    std::vector<std::string> listDefinitions_;   // w:abstractNum per list run
+    int currentListNumId_ = 1;
 
     std::string MediaPartName(size_t mediaIndex) const {
         const RichDocMedia& m = doc_->media[mediaIndex];
@@ -1147,8 +1192,8 @@ private:
         } else if (block.type == RichBlockType::ListItem) {
             usesLists_ = true;
             pPr << "<w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\""
-                << std::max(0, block.listLevel) << "\"/><w:numId w:val=\""
-                << (block.orderedList ? 2 : 1) << "\"/></w:numPr>";
+                << std::clamp(block.listLevel, 0, 8) << "\"/><w:numId w:val=\""
+                << currentListNumId_ << "\"/></w:numPr>";
         } else if (block.type == RichBlockType::HorizontalRule) {
             pPr << "<w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" "
                    "w:color=\"808080\"/></w:pBdr>";
@@ -1352,7 +1397,13 @@ private:
     std::string BuildDocumentXml() {
         std::ostringstream body;
         int drawingId = 0;
-        for (const auto& block : doc_->blocks) {
+        for (size_t index = 0; index < doc_->blocks.size(); ++index) {
+            const RichDocBlock& block = doc_->blocks[index];
+            // A run of list items is one Word list - until an item needs a
+            // level definition of its own (see StartsNewList).
+            if (block.type == RichBlockType::ListItem && WordFormatInternal::StartsNewList(doc_->blocks, index)) {
+                currentListNumId_ = AddListDefinition(index);
+            }
             switch (block.type) {
                 case RichBlockType::Table:
                     WriteTable(body, block);
@@ -1526,30 +1577,62 @@ private:
         return xml.str();
     }
 
-    static std::string BuildNumberingXml() {
-        std::ostringstream xml;
-        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-            << "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">\n"
-            << "<w:abstractNum w:abstractNumId=\"0\">\n";
-        for (int level = 0; level < 9; ++level) {
-            xml << "<w:lvl w:ilvl=\"" << level << "\"><w:start w:val=\"1\"/>"
-                << "<w:numFmt w:val=\"bullet\"/><w:lvlText w:val=\"\xE2\x80\xA2\"/>"
-                << "<w:lvlJc w:val=\"left\"/><w:pPr><w:ind w:left=\""
-                << 720 * (level + 1) << "\" w:hanging=\"360\"/></w:pPr>"
-                << "<w:rPr><w:rFonts w:ascii=\"Symbol\" w:hAnsi=\"Symbol\" w:hint=\"default\"/>"
-                << "</w:rPr></w:lvl>\n";
+    // One Word list per run of list items: its own abstract numbering with
+    // each level's label taken from the first item at that level, so separate
+    // lists count separately and "a)" / "1.2." / custom bullets survive.
+    static const char* WordNumFmt(RichNumberFormat format) {
+        switch (format) {
+            case RichNumberFormat::LowerLetter: return "lowerLetter";
+            case RichNumberFormat::UpperLetter: return "upperLetter";
+            case RichNumberFormat::LowerRoman: return "lowerRoman";
+            case RichNumberFormat::UpperRoman: return "upperRoman";
+            case RichNumberFormat::DecimalZero: return "decimalZero";
+            case RichNumberFormat::NoNumber: return "none";
+            default: return "decimal";
         }
-        xml << "</w:abstractNum>\n<w:abstractNum w:abstractNumId=\"1\">\n";
+    }
+
+    int AddListDefinition(size_t begin) {
+        const RichDocBlock* byLevel[9] = {};
+        for (size_t j = begin; j < doc_->blocks.size() && doc_->blocks[j].type == RichBlockType::ListItem; ++j) {
+            if (j > begin && WordFormatInternal::StartsNewList(doc_->blocks, j)) break;
+            const int l = std::clamp(doc_->blocks[j].listLevel, 0, 8);
+            if (!byLevel[l]) byLevel[l] = &doc_->blocks[j];
+        }
+        const int id = static_cast<int>(listDefinitions_.size());
+        std::ostringstream xml;
+        xml << "<w:abstractNum w:abstractNumId=\"" << id << "\">\n";
         for (int level = 0; level < 9; ++level) {
-            xml << "<w:lvl w:ilvl=\"" << level << "\"><w:start w:val=\"1\"/>"
-                << "<w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%" << (level + 1)
-                << ".\"/><w:lvlJc w:val=\"left\"/><w:pPr><w:ind w:left=\""
+            const RichDocBlock* item = byLevel[level];
+            const bool ordered = item && item->orderedList;
+            const int start = ordered && item->listStartNumber > 0 ? item->listStartNumber : 1;
+            xml << "<w:lvl w:ilvl=\"" << level << "\"><w:start w:val=\"" << start << "\"/>";
+            if (ordered) {
+                const std::string text = item->numberTemplate.empty()
+                        ? "%" + std::to_string(level + 1) + "." : item->numberTemplate;
+                xml << "<w:numFmt w:val=\"" << WordNumFmt(item->numberFormat) << "\"/>"
+                    << "<w:lvlText w:val=\"" << EscapeXml(text) << "\"/>";
+            } else {
+                const std::string bullet = item && !item->bulletText.empty() ? item->bulletText : "\xE2\x80\xA2";
+                xml << "<w:numFmt w:val=\"bullet\"/><w:lvlText w:val=\"" << EscapeXml(bullet) << "\"/>";
+            }
+            xml << "<w:lvlJc w:val=\"left\"/><w:pPr><w:ind w:left=\""
                 << 720 * (level + 1) << "\" w:hanging=\"360\"/></w:pPr></w:lvl>\n";
         }
-        xml << "</w:abstractNum>\n"
-            << "<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>\n"
-            << "<w:num w:numId=\"2\"><w:abstractNumId w:val=\"1\"/></w:num>\n"
-            << "</w:numbering>\n";
+        xml << "</w:abstractNum>\n";
+        listDefinitions_.push_back(xml.str());
+        return id + 1;   // numId: 1-based
+    }
+
+    std::string BuildNumberingXml() const {
+        std::ostringstream xml;
+        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+            << "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">\n";
+        for (const std::string& definition : listDefinitions_) xml << definition;
+        for (size_t i = 0; i < listDefinitions_.size(); ++i) {
+            xml << "<w:num w:numId=\"" << (i + 1) << "\"><w:abstractNumId w:val=\"" << i << "\"/></w:num>\n";
+        }
+        xml << "</w:numbering>\n";
         return xml.str();
     }
 

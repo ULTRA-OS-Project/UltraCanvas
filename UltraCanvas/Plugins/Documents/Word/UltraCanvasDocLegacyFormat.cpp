@@ -22,6 +22,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasWordFormatInternal.h"
 
 #include <algorithm>
 #include <cctype>
@@ -819,7 +820,23 @@ private:
 struct DocListLevel {
     bool ordered = false;
     int startAt = 1;
+    RichNumberFormat format = RichNumberFormat::Decimal;
+    std::string numberTemplate;   // Word's "%1.%2." notation
+    std::string bulletText;       // UTF-8, before symbol-font mapping
+    int bulletFont = -1;          // font index of the bullet's character run
 };
+
+RichNumberFormat NumberFormatFromNfc(uint8_t nfc) {
+    switch (nfc) {
+        case 1: return RichNumberFormat::UpperRoman;
+        case 2: return RichNumberFormat::LowerRoman;
+        case 3: return RichNumberFormat::UpperLetter;
+        case 4: return RichNumberFormat::LowerLetter;
+        case 22: return RichNumberFormat::DecimalZero;
+        case 0xFF: return RichNumberFormat::NoNumber;
+        default: return RichNumberFormat::Decimal;
+    }
+}
 
 struct DocList {
     int32_t lsid = 0;
@@ -847,10 +864,26 @@ public:
                     level.startAt = std::max(1, static_cast<int>(ReadU32(table, lvl)));
                     const uint8_t nfc = table[lvl + 4];
                     level.ordered = nfc != 23 && nfc != 0xFF;   // 23 bullet, 255 none
+                    level.format = NumberFormatFromNfc(nfc);
                     const size_t chpx = table[lvl + 24];
                     const size_t papx = table[lvl + 25];
+                    // The bullet's font, from the level's character properties.
+                    const size_t chpxAt = lvl + 28 + papx;
+                    ForEachSprm(table, chpxAt, chpxAt + chpx, [&](const Sprm& sprm) {
+                        if (sprm.code == kSprmCRgFtc0) level.bulletFont = ReadU16(table, sprm.operand);
+                    });
                     size_t text = lvl + 28 + papx + chpx;
                     const size_t textLength = ReadU16(table, text);
+                    // Number text: characters 0..8 stand for level 1..9's
+                    // number, everything else is literal.
+                    std::string spelled;
+                    for (size_t c = 0; c < textLength && text + 4 + c * 2 <= table.size(); ++c) {
+                        const uint16_t ch = ReadU16(table, text + 2 + c * 2);
+                        if (ch < 9) spelled += "%" + std::to_string(ch + 1);
+                        else AppendUtf8(spelled, ch);
+                    }
+                    if (level.ordered) level.numberTemplate = spelled;
+                    else if (nfc == 23) level.bulletText = spelled;
                     lvl = text + 2 + textLength * 2;
                     list.levels.push_back(level);
                 }
@@ -1457,6 +1490,21 @@ private:
                 block.type = RichBlockType::ListItem;
                 block.listLevel = pap.ilvl;
                 block.orderedList = level.ordered;
+                if (level.ordered) {
+                    block.numberFormat = level.format;
+                    block.numberTemplate = level.numberTemplate;
+                } else {
+                    block.bulletText = level.bulletText;
+                    // A symbol-font bullet (Symbol U+F0B7, Wingdings "§") is
+                    // the character that font draws there.
+                    const std::string font = FontName(level.bulletFont);
+                    size_t at = 0;
+                    const uint32_t cp = level.bulletText.empty() ? 0 : WordFormatInternal::DecodeUtf8(level.bulletText, at);
+                    if (const uint32_t unicode = WordFormatInternal::SymbolFontCharToUnicode(font, cp)) {
+                        block.bulletText.clear();
+                        AppendUtf8(block.bulletText, unicode);
+                    }
+                }
                 if (level.ordered) listNumber = NextListNumber(pap.ilfo, lsid, pap.ilvl, level.startAt);
             }
         }

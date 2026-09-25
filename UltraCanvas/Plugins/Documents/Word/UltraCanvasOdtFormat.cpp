@@ -239,6 +239,13 @@ private:
     std::map<std::string, OdtTextProps> styles_;
     // list style name -> (level -> ordered?)
     std::map<std::string, std::map<int, bool>> listStyles_;
+    // list style name -> (level -> how its label reads)
+    struct ListLevelLabel {
+        RichNumberFormat format = RichNumberFormat::Decimal;
+        std::string numberTemplate;
+        std::string bulletText;
+    };
+    std::map<std::string, std::map<int, ListLevelLabel>> listLabels_;
     // list style name -> (level -> text:start-value of a numbered level)
     std::map<std::string, std::map<int, int>> listStartValues_;
     // table-column style name -> column width in points
@@ -480,16 +487,51 @@ private:
                  level = level->NextSiblingElement()) {
                 std::string tag = level->Name() ? level->Name() : "";
                 int levelNum = level->IntAttribute("text:level", 1);
+                ListLevelLabel& label = listLabels_[name][levelNum];
                 if (tag == "text:list-level-style-number") {
                     listStyles_[name][levelNum] = true;
                     listStartValues_[name][levelNum] =
                         std::max(1, level->IntAttribute("text:start-value", 1));
+                    // "a)" / "1.2." / "(iv)": the format, the levels shown and
+                    // the text around them, as a Word-style template.
+                    label.format = NumberFormatFromOdf(Attr(level, "style:num-format"));
+                    const int shown = std::clamp(level->IntAttribute("text:display-levels", 1), 1, levelNum);
+                    std::string templ = Attr(level, "style:num-prefix");
+                    for (int k = levelNum - shown + 1; k <= levelNum; ++k) {
+                        templ += "%" + std::to_string(std::clamp(k, 1, 9));
+                        if (k < levelNum) templ += ".";
+                    }
+                    templ += Attr(level, "style:num-suffix");
+                    label.numberTemplate = templ;
                 } else if (tag == "text:list-level-style-bullet"
                            || tag == "text:list-level-style-image") {
                     listStyles_[name][levelNum] = false;
+                    label.bulletText = Attr(level, "text:bullet-char");
+                    // A bullet from a symbol font (Wingdings "§", Symbol "·")
+                    // is the character that font draws there.
+                    auto* textProps = level->FirstChildElement("style:text-properties");
+                    const std::string font = textProps
+                            ? FamilyForFontName(Attr(textProps, "style:font-name")) : "";
+                    if (!font.empty() && !label.bulletText.empty()) {
+                        size_t at = 0;
+                        const uint32_t cp = WordFormatInternal::DecodeUtf8(label.bulletText, at);
+                        if (uint32_t unicode = WordFormatInternal::SymbolFontCharToUnicode(font, cp)) {
+                            label.bulletText.clear();
+                            WordFormatInternal::AppendUtf8(label.bulletText, unicode);
+                        }
+                    }
                 }
             }
         }
+    }
+
+    static RichNumberFormat NumberFormatFromOdf(const std::string& format) {
+        if (format == "a") return RichNumberFormat::LowerLetter;
+        if (format == "A") return RichNumberFormat::UpperLetter;
+        if (format == "i") return RichNumberFormat::LowerRoman;
+        if (format == "I") return RichNumberFormat::UpperRoman;
+        if (format.empty()) return RichNumberFormat::NoNumber;
+        return RichNumberFormat::Decimal;
     }
 
     OdtTextProps ResolveStyle(const std::string& name, int depth = 0) const {
@@ -862,6 +904,7 @@ private:
                     block.type = RichBlockType::ListItem;
                     block.orderedList = ordered;
                     block.listLevel = level;
+                    ApplyListLabel(block, listStyleName, level + 1);
                     size_t index = doc_->blocks.size();
                     EmitParagraphBlock(child, std::move(block));
                     if (number > 0 && !numbered && index < doc_->blocks.size()) {
@@ -889,6 +932,19 @@ private:
                        || tag == "table:table-header-rows" || tag == "text:section") {
                 CollectCellRuns(elem, ctx);   // descend to reach the paragraphs
             }
+        }
+    }
+
+    void ApplyListLabel(RichDocBlock& block, const std::string& listStyleName, int odfLevel) const {
+        auto style = listLabels_.find(listStyleName);
+        if (style == listLabels_.end()) return;
+        auto level = style->second.find(odfLevel);
+        if (level == style->second.end()) return;
+        if (block.orderedList) {
+            block.numberFormat = level->second.format;
+            block.numberTemplate = level->second.numberTemplate;
+        } else {
+            block.bulletText = level->second.bulletText;
         }
     }
 
@@ -1288,6 +1344,8 @@ private:
     std::string columnStyles_;              // automatic table-column styles
     std::string geometryStyles_;            // automatic paragraph styles with geometry
     std::string cellStyles_;                // automatic table-cell styles (frames, fills)
+    std::string listStyles_;                // automatic list styles with the document's labels
+    int customListStyleCount_ = 0;
     std::map<std::string, std::string> cellStyleNames_;       // properties -> style name
     std::map<std::string, std::string> geometryStyleNames_;   // properties -> style name
 
@@ -1615,7 +1673,83 @@ private:
     // (with nested sub-lists). Stops at a shallower item or when the
     // ordered/unordered kind flips at this level — the caller then starts a
     // new list. Returns the index of the first unconsumed block.
-    size_t WriteListRun(std::ostringstream& xml, size_t begin, size_t end, int level) {
+    // An ODF number level from a Word-style template: "(%1)" -> prefix "(",
+    // suffix ")"; "%1.%2." -> display-levels 2, suffix ".". A template that
+    // is not prefix + consecutive levels ending at this one + suffix keeps
+    // only its own number.
+    static void TemplateToOdf(const std::string& templ, int ownLevel, std::string& prefix,
+                              std::string& suffix, int& displayLevels) {
+        prefix.clear();
+        suffix = ".";
+        displayLevels = 1;
+        if (templ.empty()) return;
+        const size_t first = templ.find('%');
+        const size_t own = templ.rfind("%" + std::to_string(ownLevel));
+        if (first == std::string::npos || own == std::string::npos || own < first) return;
+        const int firstLevel = templ[first + 1] - '0';
+        if (firstLevel < 1 || firstLevel > ownLevel) return;
+        prefix = templ.substr(0, first);
+        suffix = templ.substr(own + 2);
+        displayLevels = ownLevel - firstLevel + 1;
+    }
+
+    static const char* OdfNumFormat(RichNumberFormat format) {
+        switch (format) {
+            case RichNumberFormat::LowerLetter: return "a";
+            case RichNumberFormat::UpperLetter: return "A";
+            case RichNumberFormat::LowerRoman: return "i";
+            case RichNumberFormat::UpperRoman: return "I";
+            case RichNumberFormat::NoNumber: return "";
+            default: return "1";
+        }
+    }
+
+    // A list style for the list starting at `begin` when its items carry the
+    // document's own labels or bullets; "" when the plain LNum/LBullet do.
+    // Each level takes the label of the first item at that level.
+    std::string CustomListStyleFor(size_t begin, size_t end, int level) {
+        const RichDocBlock* byLevel[10] = {};
+        bool custom = false;
+        for (size_t j = begin; j < end; ++j) {
+            const RichDocBlock& item = doc_->blocks[j];
+            if (item.type != RichBlockType::ListItem || item.listLevel < level) break;
+            if (j > begin && WordFormatInternal::StartsNewList(doc_->blocks, j)) break;
+            const int l = std::clamp(item.listLevel, 0, 9);
+            if (!byLevel[l]) byLevel[l] = &item;
+            custom = custom || !item.numberTemplate.empty() || !item.bulletText.empty()
+                     || (item.orderedList && item.numberFormat != RichNumberFormat::Decimal);
+        }
+        if (!custom) return "";
+        const std::string name = "LDoc" + std::to_string(++customListStyleCount_);
+        std::ostringstream xml;
+        xml << "<text:list-style style:name=\"" << name << "\">\n";
+        for (int l = 0; l < 10; ++l) {
+            const RichDocBlock* item = byLevel[l];
+            const std::string props = "<style:list-level-properties text:space-before=\""
+                                    + Pt(18.0f * static_cast<float>(l)) + "\" text:min-label-width=\"18.00pt\"/>";
+            if (item && item->orderedList) {
+                std::string prefix, suffix;
+                int shown = 1;
+                TemplateToOdf(item->numberTemplate, l + 1, prefix, suffix, shown);
+                xml << "<text:list-level-style-number text:level=\"" << (l + 1) << "\" style:num-format=\""
+                    << OdfNumFormat(item->numberFormat) << "\"";
+                if (!prefix.empty()) xml << " style:num-prefix=\"" << EscapeXml(prefix) << "\"";
+                if (!suffix.empty()) xml << " style:num-suffix=\"" << EscapeXml(suffix) << "\"";
+                if (shown > 1) xml << " text:display-levels=\"" << shown << "\"";
+                xml << ">" << props << "</text:list-level-style-number>\n";
+            } else {
+                const std::string bullet = item && !item->bulletText.empty() ? item->bulletText : "\xE2\x80\xA2";
+                xml << "<text:list-level-style-bullet text:level=\"" << (l + 1) << "\" text:bullet-char=\""
+                    << EscapeXml(bullet) << "\">" << props << "</text:list-level-style-bullet>\n";
+            }
+        }
+        xml << "</text:list-style>\n";
+        listStyles_ += xml.str();
+        return name;
+    }
+
+    size_t WriteListRun(std::ostringstream& xml, size_t begin, size_t end, int level,
+                        std::string customStyle = "", bool topLevel = true) {
         bool ordered = doc_->blocks[begin].orderedList;
         for (size_t j = begin; j < end; ++j) {
             if (doc_->blocks[j].listLevel <= level) {
@@ -1623,7 +1757,9 @@ private:
                 break;
             }
         }
-        xml << "<text:list text:style-name=\"" << (ordered ? "LNum" : "LBullet") << "\">\n";
+        if (topLevel) customStyle = CustomListStyleFor(begin, end, level);
+        xml << "<text:list text:style-name=\""
+            << (!customStyle.empty() ? customStyle : (ordered ? "LNum" : "LBullet")) << "\">\n";
         size_t i = begin;
         bool itemOpen = false;
         while (i < end) {
@@ -1631,6 +1767,8 @@ private:
             if (item.listLevel < level) break;
             if (item.listLevel == level) {
                 if (item.orderedList != ordered) break;
+                // An item that needs its own level definition starts a new list.
+                if (i != begin && WordFormatInternal::StartsNewList(doc_->blocks, i)) break;
                 if (itemOpen) xml << "</text:list-item>\n";
                 xml << "<text:list-item";
                 // A number the item carries (a list starting at N, or running
@@ -1649,7 +1787,7 @@ private:
                     xml << "<text:list-item>";
                     itemOpen = true;
                 }
-                i = WriteListRun(xml, i, end, level + 1);
+                i = WriteListRun(xml, i, end, level + 1, customStyle, false);
             }
         }
         if (itemOpen) xml << "</text:list-item>\n";
@@ -1806,7 +1944,7 @@ private:
                 << "\" style:num-format=\"1\" style:num-suffix=\".\">" << levelProperties(level)
                 << "</text:list-level-style-number>\n";
         }
-        xml << "</text:list-style>\n"
+        xml << "</text:list-style>\n" << listStyles_
             << "</office:automatic-styles>\n"
             << "<office:body>\n<office:text>\n"
             << body.str()

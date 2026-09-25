@@ -103,6 +103,30 @@ static const RichTableCell* FindCell(const UCRichDocument& d, const std::string&
     return nullptr;
 }
 
+// Number formats, multi-level labels and document bullets.
+static void CheckListLabels(const UCRichDocument& d, const std::string& label) {
+    auto labelOf = [&](const std::string& text) {
+        size_t index = 0;
+        return FindBlock(d, text, &index) ? RichDocListLabel(d.blocks, index) : std::string("<missing>");
+    };
+    CHECK_MSG(labelOf("outline one") == "1.", label + ": " + labelOf("outline one"));
+    CHECK_MSG(labelOf("outline one one") == "1.1.", label + ": " + labelOf("outline one one"));
+    CHECK_MSG(labelOf("outline one two") == "1.2.", label + ": " + labelOf("outline one two"));
+    CHECK_MSG(labelOf("outline letter a") == "a)", label + ": " + labelOf("outline letter a"));
+    CHECK_MSG(labelOf("outline letter b") == "b)", label + ": " + labelOf("outline letter b"));
+    CHECK_MSG(labelOf("outline two") == "2.", label + ": " + labelOf("outline two"));
+    CHECK_MSG(labelOf("roman one") == "(I)", label + ": " + labelOf("roman one"));
+    CHECK_MSG(labelOf("roman four") == "(IV)", label + ": " + labelOf("roman four"));
+    CHECK_MSG(labelOf("step three") == "3.", label + ": " + labelOf("step three"));
+    const RichDocBlock* square = FindBlock(d, "square item");
+    CHECK_MSG(square && square->bulletText == "\xE2\x96\xAA", label + ": Wingdings bullet is a small square");
+    // LibreOffice writes the en dash bullet to Word formats as a Symbol-font
+    // minus, which is what comes back from those.
+    const RichDocBlock* dash = FindBlock(d, "dash item");
+    CHECK_MSG(dash && (dash->bulletText == "\xE2\x80\x93" || dash->bulletText == "\xE2\x88\x92"),
+              label + ": dash bullet");
+}
+
 // Cell borders and fills of the fixture's tables.
 static void CheckCellFrames(const UCRichDocument& d, const std::string& label) {
     const RichDocBlock* table = nullptr;
@@ -247,6 +271,7 @@ static void CheckFormattingFixture(const UCRichDocument& d, const std::string& l
 
     CheckGeometry(d, label);
     CheckCellFrames(d, label);
+    CheckListLabels(d, label);
 }
 
 static UCRichDocument BuildSampleDocument() {
@@ -469,6 +494,7 @@ int main(int argc, char** argv) {
                 CHECK_MSG(table && table->tableRows.size() >= 3
                           && table->tableRows[1].cells[1].align == RichTextAlign::Right, label);
                 CheckCellFrames(back, label);
+                CheckListLabels(back, label);
                 CHECK_MSG(table && table->tableColumnWidths.size() == 2
                           && table->tableColumnWidths[1] > 2.9f * table->tableColumnWidths[0], label);
                 CheckGeometry(back, label);
@@ -568,6 +594,52 @@ int main(int argc, char** argv) {
                       && added.borderLeft.IsVisible());
             }
         }
+    }
+
+    // ===== 5h. List labels: formats, templates, editing =====
+    {
+        CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");
+        CHECK(FormatListNumber(1994, RichNumberFormat::UpperRoman) == "MCMXCIV");
+        CHECK(FormatListNumber(28, RichNumberFormat::LowerLetter) == "bb");
+        CHECK(FormatListNumber(3, RichNumberFormat::UpperLetter) == "C");
+        CHECK(FormatListNumber(7, RichNumberFormat::DecimalZero) == "07");
+        CHECK(FormatListNumber(12, RichNumberFormat::DecimalZero) == "12");
+        CHECK(FormatListNumber(5, RichNumberFormat::NoNumber).empty());
+
+        auto item = [](int level, RichNumberFormat format, const std::string& templ) {
+            RichDocBlock b;
+            b.type = RichBlockType::ListItem;
+            b.orderedList = true;
+            b.listLevel = level;
+            b.numberFormat = format;
+            b.numberTemplate = templ;
+            RichTextRun run;
+            run.text = "x";
+            b.runs.push_back(run);
+            return b;
+        };
+        auto listDoc = std::make_shared<UCRichDocument>();
+        listDoc->blocks = {item(0, RichNumberFormat::UpperRoman, "%1."),
+                           item(1, RichNumberFormat::LowerLetter, "%1.%2)"),
+                           item(1, RichNumberFormat::LowerLetter, "%1.%2)"),
+                           item(0, RichNumberFormat::UpperRoman, "%1.")};
+        CHECK(RichDocListLabel(listDoc->blocks, 0) == "I.");
+        CHECK(RichDocListLabel(listDoc->blocks, 2) == "I.b)");
+        CHECK(RichDocListLabel(listDoc->blocks, 3) == "II.");
+        CHECK(RichDocListLabel(listDoc->blocks, 1).find("a)") != std::string::npos);
+
+        // Enter continues the label format; indenting takes the new level's.
+        UCRichDocumentEditor editor;
+        editor.SetDocument(listDoc);
+        editor.SetCaret(RichDocPosition(3, 1));
+        editor.SplitBlock();
+        CHECK(listDoc->blocks.size() == 5 && listDoc->blocks[4].numberFormat == RichNumberFormat::UpperRoman
+              && listDoc->blocks[4].numberTemplate == "%1.");
+        editor.SetCaret(RichDocPosition(4, 0));
+        editor.IndentList();
+        CHECK(listDoc->blocks[4].listLevel == 1 && listDoc->blocks[4].numberFormat == RichNumberFormat::LowerLetter
+              && listDoc->blocks[4].numberTemplate == "%1.%2)");
+        CHECK(RichDocListLabel(listDoc->blocks, 4) == "II.a)");
     }
 
     // ===== 5d. List numbering: per list and level =====

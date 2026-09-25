@@ -1077,7 +1077,16 @@ std::string UCRichDocument::ToHTML() const {
                     closeListsTo(block.listLevel - 1);
                 }
                 while (openListLevel < block.listLevel) {
-                    html << (block.orderedList ? "<ol>\n" : "<ul>\n");
+                    if (!block.orderedList) {
+                        html << "<ul>\n";
+                    } else {
+                        // HTML spells letters and Roman numerals itself.
+                        const char* type = block.numberFormat == RichNumberFormat::LowerLetter ? "a"
+                                         : block.numberFormat == RichNumberFormat::UpperLetter ? "A"
+                                         : block.numberFormat == RichNumberFormat::LowerRoman ? "i"
+                                         : block.numberFormat == RichNumberFormat::UpperRoman ? "I" : nullptr;
+                        html << (type ? std::string("<ol type=\"") + type + "\">\n" : std::string("<ol>\n"));
+                    }
                     listOrderedStack.push_back(block.orderedList);
                     ++openListLevel;
                 }
@@ -1207,6 +1216,76 @@ int RichDocOrderedItemNumber(const std::vector<RichDocBlock>& blocks, size_t ind
         number++;
     }
     return number;
+}
+
+std::string FormatListNumber(int number, RichNumberFormat format) {
+    switch (format) {
+        case RichNumberFormat::NoNumber:
+            return "";
+        case RichNumberFormat::DecimalZero:
+            return (number >= 0 && number < 10 ? "0" : "") + std::to_string(number);
+        case RichNumberFormat::LowerLetter:
+        case RichNumberFormat::UpperLetter: {
+            // Word and Writer repeat the letter past z: y, z, aa, bb, ...
+            if (number < 1) return std::to_string(number);
+            const char base = format == RichNumberFormat::LowerLetter ? 'a' : 'A';
+            return std::string(static_cast<size_t>((number - 1) / 26 + 1),
+                               static_cast<char>(base + (number - 1) % 26));
+        }
+        case RichNumberFormat::LowerRoman:
+        case RichNumberFormat::UpperRoman: {
+            if (number < 1 || number > 3999) return std::to_string(number);
+            static const std::pair<int, const char*> numerals[] = {
+                {1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"}, {100, "C"}, {90, "XC"},
+                {50, "L"}, {40, "XL"}, {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}};
+            std::string out;
+            for (const auto& [value, text] : numerals) {
+                while (number >= value) { out += text; number -= value; }
+            }
+            if (format == RichNumberFormat::LowerRoman) {
+                for (char& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+            return out;
+        }
+        case RichNumberFormat::Decimal:
+        default:
+            return std::to_string(number);
+    }
+}
+
+std::string RichDocListLabel(const std::vector<RichDocBlock>& blocks, size_t index) {
+    if (index >= blocks.size()) return "";
+    const RichDocBlock& block = blocks[index];
+    if (block.type != RichBlockType::ListItem || !block.orderedList) return "";
+    const std::string templ = block.numberTemplate.empty()
+            ? "%" + std::to_string(std::clamp(block.listLevel, 0, 8) + 1) + "."
+            : block.numberTemplate;
+    // The number of level `level` as seen from this item.
+    auto levelNumber = [&](int level) -> std::string {
+        if (level == block.listLevel) {
+            return FormatListNumber(RichDocOrderedItemNumber(blocks, index), block.numberFormat);
+        }
+        for (size_t i = index; i-- > 0;) {
+            const RichDocBlock& previous = blocks[i];
+            if (previous.type != RichBlockType::ListItem) break;
+            if (previous.listLevel == level) {
+                return previous.orderedList
+                        ? FormatListNumber(RichDocOrderedItemNumber(blocks, i), previous.numberFormat) : "";
+            }
+            if (previous.listLevel < level) break;
+        }
+        return "1";
+    };
+    std::string label;
+    for (size_t i = 0; i < templ.size(); ++i) {
+        if (templ[i] == '%' && i + 1 < templ.size() && templ[i + 1] >= '1' && templ[i + 1] <= '9') {
+            label += levelNumber(templ[i + 1] - '1');
+            ++i;
+        } else {
+            label.push_back(templ[i]);
+        }
+    }
+    return label;
 }
 
 std::vector<RichListNumbering::Counter>& RichListNumbering::LevelsOf(const std::string& listKey) {

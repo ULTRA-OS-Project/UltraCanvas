@@ -330,6 +330,8 @@ private:
     void ApplyParagraphGeometry(ITextLayout* layout, const RichDocBlock& block,
                                 const std::string& text, float originX, float wrapWidth) const;
     float GapAfterBlock(int index) const;
+    FontStyle MarkerFontFor(const RichDocBlock& block) const;
+    float WidestSiblingLabel(IRenderContext* ctx, int blockIndex) const;
     void DrawDocumentCellFrame(IRenderContext* ctx, const RichTableCell& cell, const Rect2Dd& rect) const;
     void ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                             const std::vector<RichTextRun>& runs,

@@ -426,6 +426,12 @@ out:
   text column's edge, then every `UCRichDocument::defaultTabStopPt` (or
   `style.defaultTabStop` when the document states none).
 
+- **List labels:** an ordered item draws `RichDocListLabel()` - its
+  `numberFormat` (1, 01, a, A, i, I) inside its `numberTemplate` (`"%1.%2)"`
+  gives "1.2)") - and an unordered one its `bulletText`, else
+  `style.bulletCharacters`. A level's text starts after its widest label, so
+  "(iii)" and "(iv)" line up. Enter keeps the label format; indenting or
+  outdenting an item takes the format of that level in the same list.
 - **Table frames:** a table read from a document
   (`RichDocBlock::tableBordersFromDocument`) is drawn with its cells' own
   borders (`RichTableCell::borderTop` … `borderRight`, width and colour) and

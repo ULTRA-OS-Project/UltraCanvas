@@ -7,6 +7,10 @@
  <style:style style:name="Heading_20_1" style:display-name="Heading 1" style:family="paragraph" style:parent-style-name="Standard" style:default-outline-level="1"><style:text-properties fo:font-size="18pt" fo:font-weight="bold"/></style:style>
  <text:list-style style:name="Bullets"><text:list-level-style-bullet text:level="1" text:bullet-char="•"/><text:list-level-style-bullet text:level="2" text:bullet-char="◦"/></text:list-style>
  <text:list-style style:name="Numbers"><text:list-level-style-number text:level="1" style:num-format="1" style:num-suffix="."/><text:list-level-style-number text:level="2" style:num-format="a" style:num-suffix=")"/></text:list-style>
+ <text:list-style style:name="MultiLevel"><text:list-level-style-number text:level="1" style:num-format="1" style:num-suffix="."/><text:list-level-style-number text:level="2" style:num-format="1" text:display-levels="2" style:num-suffix="."/><text:list-level-style-number text:level="3" style:num-format="a" style:num-suffix=")"/></text:list-style>
+ <text:list-style style:name="Roman"><text:list-level-style-number text:level="1" style:num-format="I" style:num-prefix="(" style:num-suffix=")"/></text:list-style>
+ <text:list-style style:name="Dash"><text:list-level-style-bullet text:level="1" text:bullet-char="–"/></text:list-style>
+ <text:list-style style:name="WingBullet"><text:list-level-style-bullet text:level="1" text:bullet-char="§"><style:text-properties style:font-name="Wingdings"/></text:list-level-style-bullet></text:list-style>
  <text:list-style style:name="FromFive"><text:list-level-style-number text:level="1" style:num-format="1" style:num-suffix="." text:start-value="5"/></text:list-style>
 </office:styles>
 <office:automatic-styles>
@@ -39,6 +43,10 @@
  <text:p text:style-name="Standard">An interrupting note.</text:p>
  <text:list text:continue-numbering="true" text:style-name="Numbers"><text:list-item><text:p text:style-name="Standard">step three</text:p></text:list-item></text:list>
  <text:list text:style-name="FromFive"><text:list-item><text:p text:style-name="Standard">item five</text:p></text:list-item><text:list-item><text:p text:style-name="Standard">item six</text:p></text:list-item></text:list>
+ <text:list text:style-name="MultiLevel"><text:list-item><text:p text:style-name="Standard">outline one</text:p><text:list><text:list-item><text:p text:style-name="Standard">outline one one</text:p></text:list-item><text:list-item><text:p text:style-name="Standard">outline one two</text:p><text:list><text:list-item><text:p text:style-name="Standard">outline letter a</text:p></text:list-item><text:list-item><text:p text:style-name="Standard">outline letter b</text:p></text:list-item></text:list></text:list-item></text:list></text:list-item><text:list-item><text:p text:style-name="Standard">outline two</text:p></text:list-item></text:list>
+ <text:list text:style-name="Roman"><text:list-item><text:p text:style-name="Standard">roman one</text:p></text:list-item><text:list-item><text:p text:style-name="Standard">roman two</text:p></text:list-item><text:list-item><text:p text:style-name="Standard">roman three</text:p></text:list-item><text:list-item><text:p text:style-name="Standard">roman four</text:p></text:list-item></text:list>
+ <text:list text:style-name="Dash"><text:list-item><text:p text:style-name="Standard">dash item</text:p></text:list-item></text:list>
+ <text:list text:style-name="WingBullet"><text:list-item><text:p text:style-name="Standard">square item</text:p></text:list-item></text:list>
  <table:table table:name="T1" table:style-name="Tbl"><table:table-column table:style-name="Tbl.A"/><table:table-column table:style-name="Tbl.B"/>
   <table:table-header-rows><table:table-row><table:table-cell table:style-name="CHead"><text:p text:style-name="PCenter">Date</text:p></table:table-cell><table:table-cell table:style-name="CHead"><text:p text:style-name="PCenter">Amount</text:p></table:table-cell></table:table-row></table:table-header-rows>
   <table:table-row><table:table-cell table:style-name="CBody"><text:p text:style-name="Standard">1.1.2026</text:p></table:table-cell><table:table-cell table:style-name="CBody"><text:p text:style-name="PRight">1,000.00</text:p></table:table-cell></table:table-row>

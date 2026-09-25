@@ -51,13 +51,6 @@ TextAlignment ToTextAlignment(RichTextAlign align) {
     }
 }
 
-// Ordinal of a list item among its siblings at the same level - the model's
-// one definition, so the view draws the number the document reader meant.
-int OrderedItemNumber(const UCRichDocumentEditor& editor, int blockIndex) {
-    return RichDocOrderedItemNumber(editor.GetDocument()->blocks,
-                                    static_cast<size_t>(blockIndex));
-}
-
 } // namespace
 
 // ===== CONSTRUCTION =====
@@ -175,6 +168,61 @@ float UltraCanvasRichTextEdit::BlockIndentFor(const RichDocBlock& block) const {
         default:
             return 0.0f;
     }
+}
+
+// The number or bullet matches the item's own text: an 11 pt list must not
+// carry 14 pt numbers.
+FontStyle UltraCanvasRichTextEdit::MarkerFontFor(const RichDocBlock& block) const {
+    FontStyle font = style.baseFont;
+    for (const RichTextRun& run : block.runs) {
+        if (run.IsInlineImage()) continue;
+        if (run.fontSizePt > 0.0f) font.fontSize = run.fontSizePt;
+        if (!run.fontFamily.empty()) font.fontFamily = run.fontFamily;
+        break;
+    }
+    return font;
+}
+
+// Width of the widest label among the ordered items of `blockIndex`'s list
+// level - the siblings before and after it in the same list, up to a
+// shallower item or the end of the list. Bounded, so a very long list costs
+// no more than a few hundred measurements.
+float UltraCanvasRichTextEdit::WidestSiblingLabel(IRenderContext* ctx, int blockIndex) const {
+    const std::vector<RichDocBlock>& blocks = editor.GetDocument()->blocks;
+    const RichDocBlock& block = blocks[static_cast<size_t>(blockIndex)];
+    float widest = 0.0f;
+    auto measure = [&](size_t i) {
+        const RichDocBlock& sibling = blocks[i];
+        ctx->PushState();
+        ctx->SetFontStyle(MarkerFontFor(sibling));
+        widest = std::max(widest, static_cast<float>(ctx->GetTextLineWidth(RichDocListLabel(blocks, i))));
+        ctx->PopState();
+    };
+    // A sibling with another label format belongs to another list.
+    auto sameList = [&](const RichDocBlock& other) {
+        return other.numberFormat == block.numberFormat && other.numberTemplate == block.numberTemplate;
+    };
+    const size_t limit = 200;
+    size_t seen = 0;
+    for (size_t i = static_cast<size_t>(blockIndex) + 1; i-- > 0 && seen < limit;) {
+        const RichDocBlock& other = blocks[i];
+        if (other.type != RichBlockType::ListItem || other.listLevel < block.listLevel) break;
+        if (other.listLevel == block.listLevel && other.orderedList) {
+            if (!sameList(other)) break;
+            measure(i);
+            ++seen;
+        }
+    }
+    for (size_t i = static_cast<size_t>(blockIndex) + 1; i < blocks.size() && seen < 2 * limit; ++i) {
+        const RichDocBlock& other = blocks[i];
+        if (other.type != RichBlockType::ListItem || other.listLevel < block.listLevel) break;
+        if (other.listLevel == block.listLevel && other.orderedList) {
+            if (!sameList(other)) break;
+            measure(i);
+            ++seen;
+        }
+    }
+    return widest;
 }
 
 // Space between block `index` and the one after it: the document's stated
@@ -413,8 +461,17 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
     bl.image.reset();
 
     float indent = BlockIndentFor(block);
-    bl.textLeft = indent;
     bl.markerLeft = std::max(0.0f, indent - style.listIndent * 0.8f);
+    if (block.type == RichBlockType::ListItem && block.orderedList) {
+        // A level's text starts after its widest label, as in a word
+        // processor: "(III)" and "1.2.10." need more room than "1.", and
+        // every item of the level lines up behind the widest one.
+        const float labels = WidestSiblingLabel(ctx, blockIndex);
+        const float needed = style.listIndent * static_cast<float>(block.listLevel) + labels
+                           + std::max(4.0f, static_cast<float>(MarkerFontFor(block).fontSize) * 0.4f);
+        indent = std::max(indent, needed);
+    }
+    bl.textLeft = indent;
     float wrapWidth = std::max(1.0f, visibleArea.width - indent);
     if (block.type != RichBlockType::ListItem) {
         // A hanging indent puts the first line left of the others: the layout
@@ -600,10 +657,17 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
             bl.bounds.width = static_cast<float>(bl.layout->GetLayoutWidth());
             bl.bounds.height = static_cast<float>(bl.layout->GetLayoutHeight()) + style.paragraphLeading;
             if (block.type == RichBlockType::ListItem) {
-                bl.markerText = block.orderedList
-                        ? std::to_string(OrderedItemNumber(editor, blockIndex)) + "."
-                        : style.bulletCharacters[static_cast<size_t>(
-                              std::min<int>(block.listLevel, static_cast<int>(style.bulletCharacters.size()) - 1))];
+                // The document's own label ("b)", "1.2.", "(iv)") or bullet
+                // when it has one; the view's otherwise.
+                if (block.orderedList) {
+                    bl.markerText = RichDocListLabel(editor.GetDocument()->blocks,
+                                                     static_cast<size_t>(blockIndex));
+                } else if (!block.bulletText.empty()) {
+                    bl.markerText = block.bulletText;
+                } else {
+                    bl.markerText = style.bulletCharacters[static_cast<size_t>(
+                        std::min<int>(block.listLevel, static_cast<int>(style.bulletCharacters.size()) - 1))];
+                }
             }
             break;
         }
@@ -841,19 +905,19 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
     }
 
     if (!bl.markerText.empty()) {
-        // The number or bullet matches the item's own text: an 11 pt list
-        // must not carry 14 pt numbers.
-        FontStyle markerFont = style.baseFont;
-        for (const RichTextRun& run : block.runs) {
-            if (run.IsInlineImage()) continue;
-            if (run.fontSizePt > 0.0f) markerFont.fontSize = run.fontSizePt;
-            if (!run.fontFamily.empty()) markerFont.fontFamily = run.fontFamily;
-            break;
-        }
+        const FontStyle markerFont = MarkerFontFor(block);
         ctx->PushState();
         ctx->SetFontStyle(markerFont);
         ctx->SetTextPaint(style.listMarkerColor);
-        ctx->DrawText(bl.markerText, Point2Dd(originX + bl.markerLeft, originY));
+        // At the usual marker position, unless the label is too wide to fit
+        // before the text there ("1.2.3.", "(viii)"): then it moves left to
+        // end a small gap before the text, but never past the column edge.
+        const double width = static_cast<double>(ctx->GetTextLineWidth(bl.markerText));
+        const double gap = std::max(4.0, markerFont.fontSize * 0.4);
+        const double markerX = std::max(static_cast<double>(originX),
+                                        std::min(static_cast<double>(originX + bl.markerLeft),
+                                                 static_cast<double>(originX + bl.textLeft) - gap - width));
+        ctx->DrawText(bl.markerText, Point2Dd(markerX, originY));
         ctx->PopState();
     }
 

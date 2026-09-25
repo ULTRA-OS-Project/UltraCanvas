@@ -43728,6 +43728,12 @@ out:
   text column's edge, then every `UCRichDocument::defaultTabStopPt` (or
   `style.defaultTabStop` when the document states none).
 
+- **List labels:** an ordered item draws `RichDocListLabel()` - its
+  `numberFormat` (1, 01, a, A, i, I) inside its `numberTemplate` (`"%1.%2)"`
+  gives "1.2)") - and an unordered one its `bulletText`, else
+  `style.bulletCharacters`. A level's text starts after its widest label, so
+  "(iii)" and "(iv)" line up. Enter keeps the label format; indenting or
+  outdenting an item takes the format of that level in the same list.
 - **Table frames:** a table read from a document
   (`RichDocBlock::tableBordersFromDocument`) is drawn with its cells' own
   borders (`RichTableCell::borderTop` … `borderRight`, width and colour) and
@@ -60796,9 +60802,9 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Bullet and numbered lists, nesting | yes | yes | yes | yes | yes | |
 | Numbering that continues across interruptions | yes | yes | yes | yes | yes | `listStartNumber` + `RichListNumbering` (2026-09). |
 | Start values, restarts | yes | yes | yes | yes | yes | ODT `text:start-value`, DOCX `w:start`/`w:startOverride`, DOC `iStartAt`/LFO overrides. |
-| Number formats (a, i, A, I), prefix/suffix | no | no | no | no | no | The view always draws `N.`. |
-| Multi-level numbers ("1.2.3") | no | no | no | no | no | |
-| Custom bullet characters / picture bullets | no | no | no | no | no | The view uses its own • ◦ ▪. |
+| Number formats (1, 01, a, A, i, I, none), prefix/suffix | yes | yes | yes | yes | yes | 2026-09. `RichDocBlock::numberFormat` + `numberTemplate` in Word's `%1.%2)` notation; ODT `num-format`/`num-prefix`/`num-suffix`, DOCX `w:numFmt`/`w:lvlText`, DOC `nfc` + number text. Markdown output stays decimal. |
+| Multi-level numbers ("1.2.3") | yes | yes | yes | yes | yes | 2026-09. ODT `text:display-levels`; Word templates directly. `RichDocListLabel()` builds the label; the view lines a level's text up behind its widest label. |
+| Custom bullet characters | yes | yes | yes | yes | yes | 2026-09. `bulletText`; bullets in a symbol font (Symbol U+F0B7, Wingdings "§") are mapped to Unicode. Picture bullets are not read. |
 | Numbered headings (outline numbering) | no | no | no | no | no | |
 
 ### Tables
@@ -60864,25 +60870,23 @@ View = `UltraCanvasRichTextEdit` draws it.
 Ordered by how many ordinary documents each item fixes, not by how hard it is.
 
 Done in 2026-09: paragraph geometry (indents, spacing, proportional line
-spacing), tab stops with the default interval, symbol-font mapping, and table
-cell borders and backgrounds.
+spacing), tab stops with the default interval, symbol-font mapping, table
+cell borders and backgrounds, and list number formats, multi-level labels
+and document bullets.
 
-1. **Number formats and multi-level numbering.** Keep the level's format
-   (`style:num-format`, `w:numFmt`, `nfc`) and prefix/suffix, and draw
-   `a)`, `iv.`, `1.2.`
-2. **Highlight and character background**, exact / at-least line heights,
+1. **Highlight and character background**, exact / at-least line heights,
    and paragraph borders (a rule above an address block).
-3. **Page model: size, margins, headers and footers** as page furniture
+2. **Page model: size, margins, headers and footers** as page furniture
    rather than blocks, then pagination in the view (page boxes on a grey
    desk, like Writer's print layout).
-4. **Positioned frames and floating pictures** (anchor, x/y, wrap). This
-   depends on 3 and is the only way a letterhead can look like the original.
-5. **Footnotes and endnotes** as real notes, **DOCX headers and footers**,
+3. **Positioned frames and floating pictures** (anchor, x/y, wrap). This
+   depends on 2 and is the only way a letterhead can look like the original.
+4. **Footnotes and endnotes** as real notes, **DOCX headers and footers**,
    and **DOC merged cells, headers, footers and footnotes** (the text for
    these lies after the main text in the piece table: `ccpFtn`, `ccpHdd`).
-6. Comments, tracked changes, shapes, charts: read-only display first.
+5. Comments, tracked changes, shapes, charts: read-only display first.
 
-Items 1–2 are self-contained (a model field, three readers, the view and the
+Item 1 is self-contained (a model field, three readers, the view and the
 two writers each), and each can be checked against a LibreOffice-generated
 fixture the way `Tests/fixtures/word97-formatting.*` is.
 

@@ -19,6 +19,27 @@ namespace UltraCanvas {
 
 namespace {
 
+// A list item that moved to another level (or changed between bullets and
+// numbers) takes that level's label format from the same list - the nearest
+// item of that level and kind above it, else below it - so "a)" items stay
+// "a)" when one more joins them. With no such item the view's default applies.
+void AdoptListLevelFormat(std::vector<RichDocBlock>& blocks, size_t index) {
+    RichDocBlock& item = blocks[index];
+    auto matches = [&](const RichDocBlock& other) {
+        return other.listLevel == item.listLevel && other.orderedList == item.orderedList;
+    };
+    const RichDocBlock* model = nullptr;
+    for (size_t i = index; i-- > 0 && blocks[i].type == RichBlockType::ListItem;) {
+        if (matches(blocks[i])) { model = &blocks[i]; break; }
+    }
+    for (size_t i = index + 1; !model && i < blocks.size() && blocks[i].type == RichBlockType::ListItem; ++i) {
+        if (matches(blocks[i])) model = &blocks[i];
+    }
+    item.numberFormat = model ? model->numberFormat : RichNumberFormat::Decimal;
+    item.numberTemplate = model ? model->numberTemplate : std::string();
+    item.bulletText = model ? model->bulletText : std::string();
+}
+
 bool IsContinuationByte(unsigned char c) { return (c & 0xC0) == 0x80; }
 
 // Word characters for double-click and Ctrl+Arrow. Every byte above ASCII
@@ -1198,6 +1219,7 @@ void UCRichDocumentEditor::SplitBlockInternal() {
     if (block.type == RichBlockType::ListItem && RunsText(block.runs).empty()) {
         if (block.listLevel > 0) {
             block.listLevel--;
+            AdoptListLevelFormat(doc->blocks, static_cast<size_t>(caret.blockIndex));
         } else {
             block.type = RichBlockType::Paragraph;
             block.orderedList = false;
@@ -1218,6 +1240,9 @@ void UCRichDocumentEditor::SplitBlockInternal() {
             next.type = RichBlockType::ListItem;
             next.orderedList = block.orderedList;
             next.listLevel = block.listLevel;
+            next.numberFormat = block.numberFormat;
+            next.numberTemplate = block.numberTemplate;
+            next.bulletText = block.bulletText;
             break;
         case RichBlockType::BlockQuote:
             next.type = RichBlockType::BlockQuote;
@@ -1693,6 +1718,7 @@ void UCRichDocumentEditor::SetListStyle(bool ordered) {
             }
             block.type = RichBlockType::ListItem;
             block.orderedList = ordered;
+            AdoptListLevelFormat(doc->blocks, static_cast<size_t>(b));
         }
     }
     NotifyChanged();
@@ -1738,6 +1764,7 @@ void UCRichDocumentEditor::IndentList() {
             RichDocBlock& block = doc->blocks[b];
             if (block.type == RichBlockType::ListItem && block.listLevel < 8) {
                 block.listLevel++;
+                AdoptListLevelFormat(doc->blocks, static_cast<size_t>(b));
             }
         }
     }
@@ -1760,6 +1787,7 @@ void UCRichDocumentEditor::OutdentList() {
             if (block.type != RichBlockType::ListItem) continue;
             if (block.listLevel > 0) {
                 block.listLevel--;
+                AdoptListLevelFormat(doc->blocks, static_cast<size_t>(b));
             } else {
                 block.type = RichBlockType::Paragraph;
                 block.orderedList = false;

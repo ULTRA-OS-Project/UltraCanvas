@@ -78,6 +78,20 @@ struct RichDocMedia {
     std::vector<uint8_t> data;
 };
 
+// How an ordered list level spells its number.
+enum class RichNumberFormat {
+    Decimal,        // 1 2 3
+    DecimalZero,    // 01 02 ... 10
+    LowerLetter,    // a b ... z aa
+    UpperLetter,    // A B ... Z AA
+    LowerRoman,     // i ii iii iv
+    UpperRoman,     // I II III IV
+    NoNumber        // the level shows no number of its own (not "None": X11 defines that)
+};
+
+// `number` spelled in `format` ("iv", "AB", "07"; "" for None).
+std::string FormatListNumber(int number, RichNumberFormat format);
+
 enum class RichBlockType {
     Paragraph,
     Heading,        // headingLevel 1..6
@@ -159,6 +173,16 @@ struct RichDocBlock {
     // flat block list cannot see on its own; readers set this on the first
     // item after such an interruption, and on a list that starts at N.
     int listStartNumber = 0;
+    // Ordered ListItem: how the label reads. numberTemplate uses Word's
+    // notation: %1..%9 stand for the number of list level 1..9 (level 1 =
+    // listLevel 0), each in that level's numberFormat, around literal text -
+    // "%1.%2." gives "2.3.", "(%1)" gives "(4)". Empty = "%<level>." with this
+    // item's own number only, the view's default.
+    RichNumberFormat numberFormat = RichNumberFormat::Decimal;
+    std::string numberTemplate;
+    // Unordered ListItem: the document's bullet (UTF-8, e.g. "–", "✓"). Empty
+    // = the view's bullet for the level.
+    std::string bulletText;
 
     // Paragraph geometry (Paragraph, Heading, BlockQuote, CodeBlock; list
     // items keep the view's own list indentation and use only the spacing).
@@ -256,6 +280,12 @@ RichTableGrid BuildTableGrid(const RichDocBlock& table);
 // ordered list item. The one definition renderers and readers share, so what
 // a reader intends and what the view draws cannot disagree.
 int RichDocOrderedItemNumber(const std::vector<RichDocBlock>& blocks, size_t index);
+
+// The label an ordered ListItem at `index` displays ("3.", "b)", "1.2.",
+// "iv."), built from its numberTemplate with each level's current number.
+// An ancestor level's number is that of the nearest item of that level above
+// (1 when the list has none). "" for anything that is not an ordered item.
+std::string RichDocListLabel(const std::vector<RichDocBlock>& blocks, size_t index);
 
 // Word-processor list numbering, as ODT, DOCX and DOC define it: one counter
 // per list and nesting level. An item advances its level and restarts every

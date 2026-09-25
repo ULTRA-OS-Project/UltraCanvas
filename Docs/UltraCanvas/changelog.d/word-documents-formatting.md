@@ -74,3 +74,16 @@
   Markdown) now get a thin grid in ODT as they already did in DOCX, and HTML
   output carries the frames as CSS. Rows and columns added in the editor copy
   their neighbour's frame.
+- **List number formats, multi-level labels and document bullets.** Ordered
+  items carry a number format (1, 01, a, A, i, I, none) and a label template
+  in Word's `%1.%2)` notation (`RichDocBlock::numberFormat`,
+  `numberTemplate`); unordered items carry the document's bullet
+  (`bulletText`). The ODT, DOCX and DOC readers fill them, with symbol-font
+  bullets mapped to Unicode. `FormatListNumber()` and `RichDocListLabel()`
+  spell the label ("iv.", "b)", "1.2.") and `UltraCanvasRichTextEdit` draws
+  it, lining a level's text up behind its widest label. Both writers save the
+  labels, and LibreOffice reads them back identically; HTML output sets
+  `<ol type>`. Enter keeps an item's label format, and indenting takes the
+  format of the new level. The DOCX writer now gives each list its own Word
+  numbering. Before, all numbered lists in a document shared one list, so
+  Word kept counting from one list into the next.
