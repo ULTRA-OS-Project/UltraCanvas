@@ -51827,6 +51827,35 @@ style.tokenStyles.keywordStyle = customKeywordStyle;
 textArea->SetStyle(style);
 ```
 
+### CSS Highlighting
+CSS (`.css`, language name `"CSS"`) is not highlighted from keyword lists: a
+word's colour depends on where it sits, so `color` is a property before a `:`
+inside a block and a value after one. The token types it produces, and the
+`tokenStyles` slot each one is drawn with:
+
+| Where | Examples | Token type / style |
+|---|---|---|
+| Selector | `div`, `li`, `from` | `Keyword` |
+| Selector | `.nav-link`, `[type=search]` attribute | `Identifier` |
+| Selector | `#main` | `Constant` |
+| Selector | `:hover`, `::before`, `:not` | `Builtin` |
+| Selector | `,` `>` `+` `~` `*` | `Operator` |
+| Block | `margin`, `-webkit-appearance`, `--bs-gutter-x` (property) | `Keyword` |
+| Value | `none`, `flex`, `border-box` | `Constant` |
+| Value | `var(`, `calc(`, `rgba(`, `url(` | `Function` |
+| Value | `--bs-border-width` inside `var()` | `Identifier` |
+| Value | `1.5rem`, `-.25rem`, `50%`, `#d3d4d5` | `Number` |
+| Value | `"..."`, `url(unquoted)` | `String` |
+| Anywhere | `@media`, `@font-face`, `!important` | `Preprocessor` |
+| Anywhere | `/* ... */` | `Comment` |
+
+Minified CSS — a whole stylesheet on one line — is scanned exactly. The text
+area highlights one line at a time, so a line in a multi-line file that
+opens no block of its own starts from a guess: a `{` on it makes it a
+selector, a `;` or `}` makes it a declaration, and otherwise a `:` without a
+trailing `,` does. The middle lines of a `/* ... */` comment are recognised by
+their leading `*` or closing `*/`.
+
 ### Multiple Selection Support
 While the current implementation supports single selection, the architecture allows for future multi-cursor editing:
 

@@ -2937,6 +2937,30 @@ endif()
 
 message(STATUS "")
 
+# ===== CSS SYNTAX HIGHLIGHT TEST =====
+# CSS highlighting in the text area (and the Filer preview): selectors,
+# properties, values and at-rules each get their own token type, and a
+# line's tokens always cover it byte for byte.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building CssSyntaxHighlightTest...")
+    add_executable(CssSyntaxHighlightTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CssSyntaxHighlightTest.cpp
+    )
+    target_include_directories(CssSyntaxHighlightTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CssSyntaxHighlightTest PRIVATE cxx_std_20)
+    target_link_libraries(CssSyntaxHighlightTest PRIVATE UltraCanvas)
+    set_target_properties(CssSyntaxHighlightTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CssSyntaxHighlightTest COMMAND CssSyntaxHighlightTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CssSyntaxHighlightTest")
+else()
+    message(STATUS "  CssSyntaxHighlightTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== FILER FOLDER PREVIEW TEST =====
 # Display > Folder previews: the geometry of the cards that peek out of a
 # folder icon (UltraCanvasFilerWidget::FolderPreviewCardRects) - at most two,

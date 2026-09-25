@@ -7,6 +7,7 @@
 #include "UltraCanvasSyntaxTokenizer.h"
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <sstream>
 
 namespace UltraCanvas {
@@ -25,6 +26,22 @@ namespace UltraCanvas {
         std::vector<Token> tokens;
 
         if (!currentRules || text.empty()) {
+            return tokens;
+        }
+
+        if (currentRules->isCss) {
+            // Line by line, as the text area highlights it.
+            size_t start = 0;
+            while (start <= text.length()) {
+                size_t end = text.find('\n', start);
+                std::string line = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                auto lineTokens = TokenizeCssLine(line);
+                tokens.insert(tokens.end(), lineTokens.begin(), lineTokens.end());
+                if (end == std::string::npos) break;
+                tokens.push_back({TokenType::Newline, "\n", 1});
+                start = end + 1;
+            }
             return tokens;
         }
 
@@ -209,6 +226,10 @@ namespace UltraCanvas {
 
         if (!currentRules || line.empty()) {
             return tokens;
+        }
+
+        if (currentRules->isCss) {
+            return TokenizeCssLine(line);
         }
 
         size_t position = 0;
@@ -839,6 +860,382 @@ namespace UltraCanvas {
         }
 
         return {endPos, TokenType::Preprocessor};
+    }
+
+// ===== CSS =====
+// CSS has almost no reserved words: "color" is a property before a ':' in a
+// block, a value after one, and could be a class name in a selector. So a CSS
+// line is scanned by where each word sits:
+//   selector      tag -> Keyword, .class -> Identifier, #id -> Constant,
+//                 :hover / ::before -> Builtin, combinators -> Operator
+//   declaration   property -> Keyword, value word -> Constant,
+//                 var( calc( url( -> Function, --custom -> Identifier,
+//                 1.5rem 50% #fff -> Number, !important -> Preprocessor
+//   at-rule       @media -> Preprocessor, (feature: value) as a declaration
+// Strings and url(...) are String, /* */ is Comment.
+//
+// The text area highlights one line at a time with no state from the line
+// above, so a line that does not open a block itself starts from a guess
+// (GuessCssLineContext). Minified CSS - one long line - is scanned exactly.
+    namespace {
+        enum class CssContext { Selector, Declaration, AtPrelude };
+
+        bool IsCssNameChar(unsigned char c) {
+            return std::isalnum(c) || c == '-' || c == '_' || c >= 0x80;
+        }
+
+        bool IsCssNameStartAt(const std::string& s, size_t i) {
+            if (i >= s.size()) return false;
+            unsigned char c = s[i];
+            if (std::isalpha(c) || c == '_' || c >= 0x80) return true;
+            if (c == '\\' && i + 1 < s.size()) return true;
+            if (c == '-' && i + 1 < s.size()) {
+                unsigned char n = s[i + 1];
+                return std::isalpha(n) || n == '_' || n == '-' || n >= 0x80 || n == '\\';
+            }
+            return false;
+        }
+
+        size_t ScanCssName(const std::string& s, size_t i) {
+            while (i < s.size()) {
+                if (s[i] == '\\' && i + 1 < s.size()) { i += 2; continue; }
+                if (!IsCssNameChar(static_cast<unsigned char>(s[i]))) break;
+                ++i;
+            }
+            return i;
+        }
+
+        size_t SkipCssSpaces(const std::string& s, size_t i) {
+            while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) ++i;
+            return i;
+        }
+
+        // End of the string opened at i (past the closing quote, or the line end).
+        size_t ScanCssString(const std::string& s, size_t i) {
+            char quote = s[i++];
+            while (i < s.size()) {
+                if (s[i] == '\\' && i + 1 < s.size()) { i += 2; continue; }
+                if (s[i++] == quote) break;
+            }
+            return i;
+        }
+
+        // A number with its unit: 12px, -.25rem, 1.5e3, 50%, 2n.
+        size_t ScanCssNumber(const std::string& s, size_t i) {
+            if (s[i] == '+' || s[i] == '-') ++i;
+            while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i]))) ++i;
+            if (i + 1 < s.size() && s[i] == '.' && std::isdigit(static_cast<unsigned char>(s[i + 1]))) {
+                ++i;
+                while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i]))) ++i;
+            }
+            if (i < s.size() && (s[i] == 'e' || s[i] == 'E')) {
+                size_t j = i + 1;
+                if (j < s.size() && (s[j] == '+' || s[j] == '-')) ++j;
+                if (j < s.size() && std::isdigit(static_cast<unsigned char>(s[j]))) {
+                    i = j;
+                    while (i < s.size() && std::isdigit(static_cast<unsigned char>(s[i]))) ++i;
+                }
+            }
+            if (i < s.size() && s[i] == '%') return i + 1;
+            if (IsCssNameStartAt(s, i)) return ScanCssName(s, i);
+            return i;
+        }
+
+        bool StartsCssNumber(const std::string& s, size_t i) {
+            auto digit = [&](size_t k) { return k < s.size() && std::isdigit(static_cast<unsigned char>(s[k])); };
+            if (digit(i)) return true;
+            if (s[i] == '.' && digit(i + 1)) return true;
+            if ((s[i] == '+' || s[i] == '-') && (digit(i + 1) || (i + 1 < s.size() && s[i + 1] == '.' && digit(i + 2)))) {
+                // A sign belongs to the number unless it follows a word or a
+                // closing bracket: "2n+1" and "a-1" are not "+1" / "-1".
+                if (i == 0) return true;
+                unsigned char prev = s[i - 1];
+                return !(IsCssNameChar(prev) || prev == ')' || prev == ']' || prev == '%');
+            }
+            return false;
+        }
+
+        bool EqualsNoCase(const std::string& a, const char* b) {
+            size_t n = std::strlen(b);
+            if (a.size() != n) return false;
+            for (size_t i = 0; i < n; ++i)
+                if (std::tolower(static_cast<unsigned char>(a[i])) != b[i]) return false;
+            return true;
+        }
+
+        // At-rules whose block holds declarations; the others (@media,
+        // @supports, @keyframes, @layer, ...) hold rules with selectors.
+        bool CssAtRuleHoldsDeclarations(const std::string& name) {
+            static const char* names[] = {
+                "font-face", "page", "property", "counter-style", "font-palette-values",
+                "viewport", "-ms-viewport", "font-feature-values", "position-try",
+                "view-transition", "top-left", "top-center", "top-right", "bottom-left",
+                "bottom-center", "bottom-right", "left-top", "left-middle", "left-bottom",
+                "right-top", "right-middle", "right-bottom"
+            };
+            for (const char* n : names)
+                if (EqualsNoCase(name, n)) return true;
+            return false;
+        }
+
+        // Where a line starts when nothing before it is known: the first
+        // brace or semicolon on it tells ("a {" is a selector, "color: red;"
+        // and a lone "}" are inside a block); a line with neither is a
+        // declaration if it has a ':' and does not end in ',' (a selector list).
+        CssContext GuessCssLineContext(const std::string& line) {
+            bool hasColon = false;
+            for (size_t i = 0; i < line.size(); ++i) {
+                char c = line[i];
+                if (c == '"' || c == '\'') { i = ScanCssString(line, i) - 1; continue; }
+                if (c == '/' && i + 1 < line.size() && line[i + 1] == '*') {
+                    size_t end = line.find("*/", i + 2);
+                    if (end == std::string::npos) break;
+                    i = end + 1;
+                    continue;
+                }
+                if (c == '{') return CssContext::Selector;
+                if (c == '}' || c == ';') return CssContext::Declaration;
+                if (c == ':') hasColon = true;
+            }
+            size_t last = line.find_last_not_of(" \t\r");
+            if (last != std::string::npos && line[last] == ',') return CssContext::Selector;
+            return hasColon ? CssContext::Declaration : CssContext::Selector;
+        }
+    }
+
+    std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeCssLine(const std::string& line) const {
+        std::vector<Token> tokens;
+        auto emit = [&](TokenType type, size_t from, size_t to) {
+            if (to > from) tokens.push_back({type, line.substr(from, to - from), to - from});
+        };
+
+        size_t pos = 0;
+
+        // The tail of a comment opened on an earlier line: "... */" with no
+        // "/*" before it, or a " * text" line of a comment block.
+        size_t close = line.find("*/");
+        size_t open = line.find("/*");
+        size_t quote = line.find_first_of("\"'");
+        if (close != std::string::npos && (open == std::string::npos || open > close) &&
+            (quote == std::string::npos || quote > close)) {
+            emit(TokenType::Comment, 0, close + 2);
+            pos = close + 2;
+        } else {
+            size_t first = line.find_first_not_of(" \t");
+            if (first != std::string::npos && line[first] == '*' &&
+                (first + 1 == line.size() || line[first + 1] == ' ' || line[first + 1] == '\t') &&
+                line.find('{') == std::string::npos) {
+                emit(TokenType::Comment, 0, line.size());
+                return tokens;
+            }
+        }
+
+        CssContext ctx = GuessCssLineContext(line.substr(pos));
+        CssContext preludeParent = CssContext::Selector;
+        std::string atName;
+        std::vector<CssContext> stack;
+        bool expectProperty = (ctx == CssContext::Declaration);
+        int attrDepth = 0;           // inside [attr=value] of a selector
+        bool attrAfterOperator = false;
+
+        while (pos < line.size()) {
+            const size_t start = pos;
+            const char c = line[pos];
+
+            if (std::isspace(static_cast<unsigned char>(c))) {
+                pos = SkipCssSpaces(line, pos);
+                emit(TokenType::Whitespace, start, pos);
+                continue;
+            }
+
+            if (c == '/' && pos + 1 < line.size() && line[pos + 1] == '*') {
+                size_t end = line.find("*/", pos + 2);
+                pos = (end == std::string::npos) ? line.size() : end + 2;
+                emit(TokenType::Comment, start, pos);
+                continue;
+            }
+
+            if (c == '"' || c == '\'') {
+                pos = ScanCssString(line, pos);
+                emit(TokenType::String, start, pos);
+                continue;
+            }
+
+            if (c == '@' && IsCssNameStartAt(line, pos + 1)) {
+                pos = ScanCssName(line, pos + 1);
+                atName = line.substr(start + 1, pos - start - 1);
+                emit(TokenType::Preprocessor, start, pos);
+                if (ctx != CssContext::AtPrelude) preludeParent = ctx;
+                ctx = CssContext::AtPrelude;
+                continue;
+            }
+
+            if (c == '{') {
+                emit(TokenType::Punctuation, start, ++pos);
+                if (ctx == CssContext::AtPrelude) {
+                    stack.push_back(preludeParent);
+                    ctx = CssAtRuleHoldsDeclarations(atName) ? CssContext::Declaration : CssContext::Selector;
+                } else {
+                    stack.push_back(ctx);
+                    ctx = CssContext::Declaration;
+                }
+                expectProperty = (ctx == CssContext::Declaration);
+                attrDepth = 0;
+                continue;
+            }
+
+            if (c == '}') {
+                emit(TokenType::Punctuation, start, ++pos);
+                if (stack.empty()) {
+                    ctx = CssContext::Selector;
+                } else {
+                    ctx = stack.back();
+                    stack.pop_back();
+                }
+                expectProperty = (ctx == CssContext::Declaration);
+                continue;
+            }
+
+            if (c == ';') {
+                emit(TokenType::Punctuation, start, ++pos);
+                if (ctx == CssContext::AtPrelude) ctx = preludeParent;   // @import ...;
+                expectProperty = (ctx == CssContext::Declaration);
+                continue;
+            }
+
+            if (ctx == CssContext::Selector) {
+                if (c == ':') {
+                    // :hover, ::before, :not( - the colons go with the name.
+                    size_t nameAt = pos + 1;
+                    if (nameAt < line.size() && line[nameAt] == ':') ++nameAt;
+                    if (IsCssNameStartAt(line, nameAt)) {
+                        pos = ScanCssName(line, nameAt);
+                        emit(TokenType::Builtin, start, pos);
+                    } else {
+                        pos = nameAt;
+                        emit(TokenType::Punctuation, start, pos);
+                    }
+                    continue;
+                }
+                if (c == '[') { ++attrDepth; attrAfterOperator = false; emit(TokenType::Punctuation, start, ++pos); continue; }
+                if (c == ']') { if (attrDepth > 0) --attrDepth; emit(TokenType::Punctuation, start, ++pos); continue; }
+                if (attrDepth > 0) {
+                    if (IsCssNameStartAt(line, pos)) {
+                        pos = ScanCssName(line, pos);
+                        emit(attrAfterOperator ? TokenType::String : TokenType::Identifier, start, pos);
+                        continue;
+                    }
+                    if (c == '=' || ((c == '~' || c == '|' || c == '^' || c == '$' || c == '*') &&
+                                     pos + 1 < line.size() && line[pos + 1] == '=')) {
+                        pos += (c == '=') ? 1 : 2;
+                        attrAfterOperator = true;
+                        emit(TokenType::Operator, start, pos);
+                        continue;
+                    }
+                }
+                if (c == '.' && IsCssNameStartAt(line, pos + 1)) {
+                    pos = ScanCssName(line, pos + 1);
+                    emit(TokenType::Identifier, start, pos);
+                    continue;
+                }
+                if (c == '#' && pos + 1 < line.size() && (IsCssNameChar(static_cast<unsigned char>(line[pos + 1])) || line[pos + 1] == '\\')) {
+                    pos = ScanCssName(line, pos + 1);
+                    emit(TokenType::Constant, start, pos);
+                    continue;
+                }
+                if (StartsCssNumber(line, pos)) {          // keyframe 50%, nth-child(2n)
+                    pos = ScanCssNumber(line, pos);
+                    emit(TokenType::Number, start, pos);
+                    continue;
+                }
+                if (IsCssNameStartAt(line, pos)) {
+                    pos = ScanCssName(line, pos);
+                    // No selector word is followed by '(' - this is a value
+                    // (a multi-line value guessed as a selector).
+                    bool call = pos < line.size() && line[pos] == '(';
+                    emit(call ? TokenType::Function : TokenType::Keyword, start, pos);
+                    continue;
+                }
+                if (c == ',' || c == '>' || c == '+' || c == '~' || c == '*' || c == '&' || c == '|') {
+                    emit(TokenType::Operator, start, ++pos);
+                    continue;
+                }
+            } else {
+                // Declaration or at-rule prelude: property: value.
+                if (c == ':') {
+                    expectProperty = false;
+                    emit(TokenType::Punctuation, start, ++pos);
+                    continue;
+                }
+                if (c == '!' ) {
+                    size_t nameAt = SkipCssSpaces(line, pos + 1);
+                    if (IsCssNameStartAt(line, nameAt)) {
+                        pos = ScanCssName(line, nameAt);
+                        emit(TokenType::Preprocessor, start, pos);   // !important
+                        continue;
+                    }
+                }
+                if (c == '#' && pos + 1 < line.size() && IsCssNameChar(static_cast<unsigned char>(line[pos + 1]))) {
+                    pos = ScanCssName(line, pos + 1);
+                    emit(TokenType::Number, start, pos);             // #fff, #d3d4d5
+                    continue;
+                }
+                if (StartsCssNumber(line, pos)) {
+                    pos = ScanCssNumber(line, pos);
+                    emit(TokenType::Number, start, pos);
+                    continue;
+                }
+                if (IsCssNameStartAt(line, pos)) {
+                    pos = ScanCssName(line, pos);
+                    const std::string word = line.substr(start, pos - start);
+                    const size_t after = SkipCssSpaces(line, pos);
+                    const bool call = pos < line.size() && line[pos] == '(';
+                    const bool beforeColon = after < line.size() && line[after] == ':';
+
+                    if (call) {
+                        emit(TokenType::Function, start, pos);
+                        emit(TokenType::Punctuation, pos, pos + 1);
+                        pos += 1;
+                        if (EqualsNoCase(word, "url")) {
+                            // url(unquoted) is one string up to ')'.
+                            size_t body = SkipCssSpaces(line, pos);
+                            emit(TokenType::Whitespace, pos, body);
+                            pos = body;
+                            if (pos < line.size() && line[pos] != '"' && line[pos] != '\'') {
+                                size_t end = pos;
+                                while (end < line.size() && line[end] != ')') {
+                                    if (line[end] == '\\' && end + 1 < line.size()) ++end;
+                                    ++end;
+                                }
+                                emit(TokenType::String, pos, end);
+                                pos = end;
+                            }
+                        }
+                        continue;
+                    }
+                    if (ctx == CssContext::Declaration && expectProperty && beforeColon) {
+                        emit(TokenType::Keyword, start, pos);        // property, --custom-property
+                    } else if (ctx == CssContext::AtPrelude && beforeColon) {
+                        emit(TokenType::Keyword, start, pos);        // (min-width: ...)
+                    } else if (word.size() > 2 && word[0] == '-' && word[1] == '-') {
+                        emit(TokenType::Identifier, start, pos);     // var(--name)
+                    } else {
+                        emit(TokenType::Constant, start, pos);       // none, flex, screen, and
+                    }
+                    continue;
+                }
+                if (c == ',' || c == '/' || c == '*' || c == '+' || c == '-' || c == '=' || c == '<' || c == '>') {
+                    emit(TokenType::Operator, start, ++pos);
+                    continue;
+                }
+            }
+
+            int bytes = Utf8CharBytes(static_cast<unsigned char>(c));
+            pos = std::min(line.size(), pos + bytes);
+            emit(TokenType::Punctuation, start, pos);
+        }
+
+        return tokens;
     }
 
 } // namespace UltraCanvas
