@@ -243,6 +243,14 @@ namespace UltraCanvas {
 
     SyntaxTokenizationRules CreateElixirRules();
 
+    SyntaxTokenizationRules CreateRRules();
+
+    SyntaxTokenizationRules CreateScalaRules();
+
+    SyntaxTokenizationRules CreateMatlabRules();
+
+    SyntaxTokenizationRules CreateVbaRules();
+
     SyntaxTokenizationRules CreateHtmlRules();
 
     // Data / markup formats
@@ -322,10 +330,10 @@ namespace UltraCanvas {
         RegisterLanguage(CreateMarkdownRules());
 
         // Additional languagesRules from the top 20 list
-//        RegisterLanguage(CreateRRules());
-//        RegisterLanguage(CreateScalaRules());
-//        RegisterLanguage(CreateMatlabRules());
-//        RegisterLanguage(CreateVbaRules());
+        RegisterLanguage(CreateRRules());
+        RegisterLanguage(CreateScalaRules());
+        RegisterLanguage(CreateMatlabRules());
+        RegisterLanguage(CreateVbaRules());
         RegisterLanguage(CreateShellScriptRules());
 
         // Assembly languagesRules
@@ -546,7 +554,7 @@ namespace UltraCanvas {
     inline SyntaxTokenizationRules CreateScalaRules() {
         SyntaxTokenizationRules rules;
         rules.name = "Scala";
-        rules.fileExtensions = {"scala", "sc"};
+        rules.fileExtensions = {"scala", "sc", "sbt"};
 
         rules.keywords = {
                 "abstract", "case", "catch", "class", "def", "do", "else", "extends",
@@ -600,7 +608,7 @@ namespace UltraCanvas {
     inline SyntaxTokenizationRules CreateMatlabRules() {
         SyntaxTokenizationRules rules;
         rules.name = "MATLAB";
-        rules.fileExtensions = {"m", "mlx", "mat"};
+        rules.fileExtensions = {"m"};   // .mlx is a ZIP, .mat binary data
 
         rules.keywords = {
                 "break", "case", "catch", "classdef", "continue", "else", "elseif", "end",
@@ -646,7 +654,7 @@ namespace UltraCanvas {
     inline SyntaxTokenizationRules CreateVbaRules() {
         SyntaxTokenizationRules rules;
         rules.name = "VBA";
-        rules.fileExtensions = {"vba", "bas", "cls", "frm"};
+        rules.fileExtensions = {"vba", "cls", "frm"};   // .bas stays BASIC
         rules.isCaseSensitive = false;
 
         rules.keywords = {

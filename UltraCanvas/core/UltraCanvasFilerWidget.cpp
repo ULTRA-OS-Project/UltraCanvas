@@ -620,8 +620,9 @@ namespace UltraCanvas {
         // Kotlin, the assemblers, ...), with that language's name. Without it
         // those files were "Other": no miniature page of their text on the
         // tile, and no switch for them under Display > Thumbnails > Text.
-        // Binary files that ride along in a language's list stay out: MATLAB's
-        // .mat data and .mlx live scripts (a ZIP), and gzip-compressed .svgz.
+        // Binary files that ride along in a language's list stay out:
+        // gzip-compressed .svgz, and - should a language list them again -
+        // MATLAB's .mat data and .mlx live scripts (a ZIP).
         const std::map<std::string, std::string>& SourceTextExtensions() {
             static const std::map<std::string, std::string> map = [] {
                 static const std::set<std::string> binary = {"mat", "mlx", "svgz"};
