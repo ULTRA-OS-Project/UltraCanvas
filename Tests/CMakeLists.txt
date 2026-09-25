@@ -3193,8 +3193,11 @@ if(TARGET UltraCanvas)
     target_include_directories(FilerNameEncodingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(FilerNameEncodingTest PRIVATE cxx_std_20)
     target_link_libraries(FilerNameEncodingTest PRIVATE UltraCanvas)
+    # Exported symbols, so the crash backtrace this test prints can name the
+    # frames in the test itself, not just the ones in libUltraCanvas.
     set_target_properties(FilerNameEncodingTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        ENABLE_EXPORTS ON
     )
     add_test(NAME FilerNameEncodingTest COMMAND FilerNameEncodingTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
