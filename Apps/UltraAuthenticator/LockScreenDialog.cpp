@@ -1,8 +1,9 @@
 // Apps/UltraAuthenticator/LockScreenDialog.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "LockScreenDialog.h"
+#include "BrandHeader.h"
 #include "Theme.h"
 
 #include "UltraCrypt/UltraCryptCore.h"
@@ -41,7 +42,7 @@ void LockScreenDialog::CreateLockScreenDialog(const std::string& message) {
 
     const long margin     = Theme::kMargin;
     const long fieldWidth = kDialogWidth - 2 * margin;
-    long y = margin;
+    long y = AddBrandHeader(*this, "lock", kDialogWidth, margin);
 
     auto title = std::make_shared<UltraCanvasLabel>(
         "lock-title", margin, y, fieldWidth, 24, "Locked");
@@ -53,7 +54,7 @@ void LockScreenDialog::CreateLockScreenDialog(const std::string& message) {
     reasonLabel_ = std::make_shared<UltraCanvasLabel>(
         "lock-reason", margin, y, fieldWidth, 36,
         message);
-    reasonLabel_->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+    reasonLabel_->SetFont(Theme::kUiFont, Theme::kSizeSmall);
     reasonLabel_->SetTextColor(Theme::kTextSecondary);
     reasonLabel_->SetWrap(TextWrap::WrapWord);
     AddChild(reasonLabel_);

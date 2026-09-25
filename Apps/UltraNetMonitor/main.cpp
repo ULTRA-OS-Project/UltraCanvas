@@ -18,7 +18,7 @@
 // Connection events come from the event sources: the snapshot differ
 // unless --no-diff, and the platform's own (nf_conntrack as root on
 // Linux, the kernel network ETW provider elevated on Windows).
-// Version: 0.7.0
+// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 // Before the window header: on Linux that one reaches X11, whose `None`
@@ -240,6 +240,18 @@ struct NameSourcesScope {
     }
 };
 
+// The loopback chain in one column: "-> proxy", "<- client" or "for app".
+std::string ViaColumn(LoopbackRole role, const std::string& peer, const std::vector<std::string>& forProcesses) {
+    if (!peer.empty()) {
+        return std::string(role == LoopbackRole::Client ? "-> " : role == LoopbackRole::Server ? "<- " : "") + peer;
+    }
+    if (!forProcesses.empty()) {
+        return "for " + forProcesses.front() +
+               (forProcesses.size() > 1 ? ", +" + std::to_string(forProcesses.size() - 1) : "");
+    }
+    return std::string();
+}
+
 std::string HostColumn(const std::string& name, NameSource source) {
     if (name.empty()) return std::string();
     return NetworkMonitor_NameIsObserved(source) ? name : name + " ?";
@@ -344,13 +356,8 @@ int RunHeadless(bool byApp, const NetworkMonitorOptions& options, bool resolve, 
                 : std::string("(unattributed)");
             const std::string user = c.process ? c.process->userName
                 : (c.ownerUid ? "uid " + std::to_string(*c.ownerUid) : std::string());
-            std::string via;
-            if (c.localPeer) {
-                via = std::string(c.loopbackRole == LoopbackRole::Client ? "-> " :
-                                  c.loopbackRole == LoopbackRole::Server ? "<- " : "") + c.localPeer->Label();
-            } else if (!c.forProcesses.empty()) {
-                via = "for " + c.forProcesses.front() + (c.forProcesses.size() > 1 ? ", +" + std::to_string(c.forProcesses.size() - 1) : "");
-            }
+            const std::string via = ViaColumn(c.loopbackRole, c.localPeer ? c.localPeer->Label() : std::string(),
+                                              c.forProcesses);
             std::printf("%-4s%-2s %-42s %-42s %-11s %9s %9s %-20.20s %-12.12s %-24.24s %s\n",
                         NetworkMonitor_TransportName(c.transport),
                         c.family == NetworkAddressFamily::IPv6 ? "6" : "",
@@ -382,11 +389,12 @@ std::string EventLine(const NetworkConnectionEvent& e) {
         : std::string("(unattributed)");
     const std::string bytes = e.kind == NetworkEventKind::Closed
         ? ByteText(e.bytesSent) + " / " + ByteText(e.bytesReceived) : std::string();
-    std::snprintf(line, sizeof line, "%s.%03d %-8s %-4s%-2s %-28s %-28s %-22.22s %-18s %s",
+    std::snprintf(line, sizeof line, "%s.%03d %-8s %-4s%-2s %-28s %-28s %-22.22s %-18s %-14s %s",
                   stamp, static_cast<int>(e.observedAtMs % 1000), NetworkMonitor_EventKindName(e.kind),
                   NetworkMonitor_TransportName(e.transport), e.family == NetworkAddressFamily::IPv6 ? "6" : "",
                   e.LocalEndpoint().c_str(), e.RemoteEndpoint().c_str(), app.c_str(),
-                  HostColumn(e.remoteName, e.nameSource).c_str(), bytes.c_str());
+                  HostColumn(e.remoteName, e.nameSource).c_str(), bytes.c_str(),
+                  ViaColumn(e.loopbackRole, e.localPeer, e.forProcesses).c_str());
     return line;
 }
 
@@ -401,8 +409,8 @@ int RunEvents(int seconds) {
         std::printf("%s: %s%s\n", source.name.c_str(), source.running ? "running" : "stopped",
                     source.lastError.empty() ? "" : (" - " + source.lastError).c_str());
     }
-    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %s\n",
-                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV");
+    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %-14s %s\n",
+                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV", "VIA");
     std::mutex printMutex;
     const EventListenerId listener = NetworkMonitor_AddEventListener([&printMutex](const NetworkConnectionEvent& e) {
         std::lock_guard<std::mutex> lock(printMutex);
@@ -571,23 +579,24 @@ int RunHistory(const std::string& path, const ActivityQuery& query, const std::s
         std::printf("Could not read the store: %s\n", read.message.c_str());
         return EXIT_FAILURE;
     }
-    std::printf("%-19s %-19s %4s %-6s %-30s %-30s %-11s %9s %9s %-22s %s\n",
+    std::printf("%-19s %-19s %4s %-6s %-30s %-30s %-11s %9s %9s %-22s %-24s %s\n",
                 "FIRST SEEN", "LAST SEEN", "SEEN", "PROTO", "LOCAL", "REMOTE", "STATE", "SENT", "RECV",
-                "APPLICATION", "HOST");
+                "APPLICATION", "HOST", "VIA");
     for (const auto& f : flows) {
         const bool unbound = f.lastState == NetworkConnectionState::Listening ||
                              f.lastState == NetworkConnectionState::Unconnected;
         const std::string app = f.process
             ? f.process->displayName + " (" + std::to_string(f.process->pid) + ")"
             : std::string("(unattributed)");
-        std::printf("%-19s %-19s %4d %-4s%-2s %-30s %-30s %-11s %9s %9s %-22.22s %s\n",
+        std::printf("%-19s %-19s %4d %-4s%-2s %-30s %-30s %-11s %9s %9s %-22.22s %-24.24s %s\n",
                     LocalTime(f.firstSeen).c_str(), LocalTime(f.lastSeen).c_str(), f.snapshots,
                     NetworkMonitor_TransportName(f.transport),
                     f.family == NetworkAddressFamily::IPv6 ? "6" : "",
                     f.LocalEndpoint().c_str(), unbound ? "*" : f.RemoteEndpoint().c_str(),
                     NetworkMonitor_StateName(f.lastState),
                     ByteText(f.bytesSent).c_str(), ByteText(f.bytesReceived).c_str(), app.c_str(),
-                    HostColumn(f.remoteName, f.nameSource).c_str());
+                    HostColumn(f.remoteName, f.nameSource).c_str(),
+                    ViaColumn(f.loopbackRole, f.localPeer, f.forProcesses).c_str());
     }
     std::printf("\n%zu flows from %s\n", flows.size(), session.path.c_str());
     return EXIT_SUCCESS;
@@ -633,8 +642,8 @@ int RunEventsHistory(const std::string& path, const ActivityQuery& query, const 
         std::printf("Could not read the store: %s\n", read.message.c_str());
         return EXIT_FAILURE;
     }
-    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %s\n",
-                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV");
+    std::printf("%-12s %-8s %-6s %-28s %-28s %-22s %-18s %-14s %s\n",
+                "TIME", "EVENT", "PROTO", "LOCAL", "REMOTE", "APPLICATION", "HOST", "SENT / RECV", "VIA");
     for (const auto& r : events) std::printf("%s\n", EventLine(r.event).c_str());
     std::printf("\n%zu events from %s\n", events.size(), session.path.c_str());
     return EXIT_SUCCESS;
@@ -649,14 +658,15 @@ int RunTotals(const std::string& path, const ActivityQuery& query) {
         std::printf("Could not read the store: %s\n", read.message.c_str());
         return EXIT_FAILURE;
     }
-    std::printf("%-10s %-24s %-40s %6s %7s %9s %9s %s\n",
-                "DAY (UTC)", "APPLICATION", "PEER", "FLOWS", "COUNTED", "SENT", "RECV", "HOST");
+    std::printf("%-10s %-24s %-40s %6s %7s %9s %9s %-30s %s\n",
+                "DAY (UTC)", "APPLICATION", "PEER", "FLOWS", "COUNTED", "SENT", "RECV", "HOST", "FOR");
     for (const auto& t : totals) {
-        std::printf("%-10s %-24.24s %-40.40s %6d %7d %9s %9s %s\n",
+        std::printf("%-10s %-24.24s %-40.40s %6d %7d %9s %9s %-30.30s %s\n",
                     LocalDay(t.day).c_str(), t.processName.c_str(), t.remoteAddress.c_str(),
                     t.flows, t.countedFlows,
                     UltraCanvasHardwareInfo::FormatBytes(t.bytesSent).c_str(),
-                    UltraCanvasHardwareInfo::FormatBytes(t.bytesReceived).c_str(), t.remoteName.c_str());
+                    UltraCanvasHardwareInfo::FormatBytes(t.bytesReceived).c_str(), t.remoteName.c_str(),
+                    ViaColumn(LoopbackRole{}, std::string(), t.forProcesses).c_str());
     }
     std::printf("\n%zu daily totals from %s (flows still within the retention window are not "
                 "rolled up yet - see --history)\n", totals.size(), session.path.c_str());

@@ -1,12 +1,13 @@
 # UltraMessage — The Message Channel
 
-**Status:** Phase 1 implemented (channel and journal); Phase 2 started —
+**Status:** Phase 1 implemented (channel and journal); Phase 2 in progress —
 adapter framework, the Linux `freedesktop-notifications` adapter, the
-`windows-notification-listener` adapter and UltraMail publishing to the
-feed. The rest of Phases 2–4 is in the proposal.
-**Version:** 0.2.1
+`windows-notification-listener` adapter, UltraMail publishing to the feed and
+the `UltraCanvasMessageCenter` element. The rest of Phases 2–4 is in the
+proposal.
+**Version:** 0.2.2
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-09-20
+**Last Modified:** 2026-09-23
 
 UltraMessage is the message channel of the ULTRA OS stack: one API through
 which applications send structured messages to each other, receive what other
@@ -47,7 +48,8 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | `windows-notification-listener` adapter (C++/WinRT) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp` |
 | UltraMail → `mail.message` | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
-| Tests (34 cases; the adapter ones on a private D-Bus session) | `Tests/UltraMessage/` |
+| `UltraCanvasMessageCenter` element (target `UltraMessageCenter`) | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp` |
+| Tests (34 cases; the adapter ones on a private D-Bus session; 5 more for the element in-tree) | `Tests/UltraMessage/` |
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
@@ -262,6 +264,21 @@ at most 100 per account per ten minutes so an initial sync never floods the
 feed. Built with the engine wherever `UltraMessage` is (`ULTRAMAIL_HAVE_ULTRAMESSAGE`);
 without it the publisher compiles to a no-op.
 
+### 3.7 The message centre element
+
+`UltraCanvasMessageCenter` (`include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`,
+target `UltraMessageCenter`, [its doc](../../UltraCanvas/UltraCanvasMessageCenter.md))
+is the feed's first UI consumer (proposal §11): one composite element with the
+sections *All / Chats / Mail / System*, service and unread filter chips, search,
+a tree of sources (conversations, mail accounts, applications), the rows, and
+a detail pane whose buttons mark read, dismiss, open, and invoke a
+notification's own actions. It queries the journal on `Connect()`, subscribes
+to the three feed topics plus `system.notification.dismissed`, `feed.read` and
+`feed.dismissed`, and posts `feed.read`, `feed.dismissed`,
+`system.notification.dismissed` and `system.notification.action` back. A
+mirrored chat or mail row stands in for the notification it came from. The
+DemoApp's *Message Centre* page hosts it on a private bus with seeded traffic.
+
 ## 4. The C++ layer
 
 `UltraMessage::Endpoint` (`Connect`, `Subscribe`, `Post`, `PostRecorded`,
@@ -347,9 +364,9 @@ in-tree build uses.
   host the broker permanently, which removes the case there.
 - **FTS5** for text search.
 - **The spool** for attachments over 1 MiB (a file path is passed instead).
-- **The other Phase 2 adapters** (Apple Mail, Telegram) and the
-  `UltraCanvasMessageCenter` element; the adapter framework,
-  `freedesktop-notifications`, `windows-notification-listener` and UltraMail
-  publishing are built (§3.6).
+- **The other Phase 2 adapters** (Apple Mail, Telegram); the adapter
+  framework, `freedesktop-notifications`, `windows-notification-listener`,
+  UltraMail publishing and the `UltraCanvasMessageCenter` element are built
+  (§3.6, §3.7).
 - **Commands** (Phase 3: `RegisterCommand` / `ListCommands` / `Invoke`,
   manifests, consent) — the `app.command.*` topics are reserved for them.

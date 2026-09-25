@@ -82,6 +82,18 @@ if(TARGET UltraAI_AdapterMiniMax)
     add_test(NAME ultraai.minimax_adapter COMMAND ultraai_test_minimax_adapter)
 endif()
 
+if(TARGET UltraAI_AdapterElevenLabs)
+    add_executable(ultraai_test_elevenlabs_adapter test_elevenlabs_adapter.cpp)
+    target_link_libraries(ultraai_test_elevenlabs_adapter PRIVATE
+        UltraAI_Core UltraAI_AdapterElevenLabs)
+    # The test inspects recorded request bodies with the same vendored
+    # nlohmann/json the adapter serializes with.
+    target_include_directories(ultraai_test_elevenlabs_adapter PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/third_party")
+    target_compile_features(ultraai_test_elevenlabs_adapter PRIVATE cxx_std_20)
+    add_test(NAME ultraai.elevenlabs_adapter COMMAND ultraai_test_elevenlabs_adapter)
+endif()
+
 if(TARGET UltraAI_AdapterQwen)
     add_executable(ultraai_test_qwen_adapter test_qwen_adapter.cpp)
     target_link_libraries(ultraai_test_qwen_adapter PRIVATE

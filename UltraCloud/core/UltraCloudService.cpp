@@ -1,6 +1,6 @@
 // UltraCloud/core/UltraCloudService.cpp
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.3.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudService.h>
 #include <UltraCloud/UltraCloudWebDav.h>   // NormalizePath
@@ -144,6 +144,23 @@ Result CloudService::CreateShareLink(const std::string& accountId, const std::st
     return p->CreateShareLink(a, c, NormalizePath(remotePath), options, out);
 }
 
+Result CloudService::Download(const std::string& accountId, const std::string& remotePath,
+                              const std::string& localPath) {
+    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
+    Result r = Resolve(accountId, a, c, p);
+    if (!r) return r;
+    if (localPath.empty())
+        return Result::Error(ResultCode::InvalidArgument, "no local file given");
+    // The folder has to exist before the provider opens the file in it: every
+    // provider but FTP writes with an ofstream, which fails with nothing more
+    // useful than "cannot write" when the directory is missing.
+    std::error_code ec;
+    const std::filesystem::path parent = std::filesystem::path(localPath).parent_path();
+    if (!parent.empty() && !std::filesystem::is_directory(parent, ec))
+        return Result::Error(ResultCode::IoError,
+                             "no such folder: " + parent.string());
+    return p->Download(a, c, NormalizePath(remotePath), localPath);
+}
 Result CloudService::UploadAndShare(const std::string& accountId, const std::string& localPath,
                                     const std::string& remoteFolder,
                                     const ShareLinkOptions& options, ShareLink& out,

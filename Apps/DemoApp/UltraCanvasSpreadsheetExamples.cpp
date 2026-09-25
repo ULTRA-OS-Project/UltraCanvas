@@ -4,9 +4,10 @@
 // UltraCanvasFileLoader, column widths taken from the imported document (and
 // auto-fitted to the content when the document carries none), and the cell
 // formatting menu - alignment, number-format presets, colours and column/row
-// sizing - on the "Format" button and on a right-click in the grid.
-// Version: 1.0.0
-// Last Modified: 2026-05-30
+// sizing - on the "Format" button and on a right-click in the grid - and the
+// header sort buttons that reorder just the selected block of rows.
+// Version: 1.1.0
+// Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -159,8 +160,8 @@ namespace UltraCanvas {
         // Both load paths report the same two facts, so they are built once.
         auto describeGrid = [](const UltraCanvasSpreadsheet* grid) {
             return DescribeColumnWidths(grid) +
-                   "  ·  right-click a cell (or use Format Cells) for alignment, "
-                   "number formats and colours";
+                   "  ·  select rows and click a header's sort button  ·  right-click "
+                   "(or Format Cells) for formats and colours";
         };
 
         // ===== SPREADSHEET ELEMENT =====
@@ -180,10 +181,29 @@ namespace UltraCanvas {
             // file-versus-auto-fit split would be misleading here.
             SeedSampleData(sheet.get());
             status->SetText("Loaded: (sample data)");
-            hint->SetText("Right-click a cell (or use Format Cells) for alignment, "
-                          "number formats and colours");
+            hint->SetText("Select some rows and click a column header's sort button to "
+                          "sort just that block  ·  right-click (or Format Cells) for "
+                          "alignment, number formats and colours");
         }
         root->AddChild(sheet);
+
+        // ===== HEADER SORT =====
+        // Selecting a block of two or more rows puts a sort button in each of
+        // its column headers. Only the selected rows are reordered, by the
+        // clicked column, and the other selected columns move with them - so
+        // select A2:E8 to sort the months and leave the header and totals rows
+        // where they are. Ctrl+Z undoes a sort. Select A2:E10 instead and the
+        // block takes in the SUM formulas of the totals row, so the grid asks
+        // first (OK/Cancel): formulas move with their rows but keep their
+        // references.
+        UltraCanvasLabel* statusRaw = status.get();
+        sheet->onSelectionSorted = [statusRaw](const CellRange& range, int column, SortOrder order) {
+            statusRaw->SetText("Sorted " + range.ToString() + " by column " +
+                               CellAddress::ColumnToLetter(column) +
+                               (order == SortOrder::Ascending ? " (ascending)" : " (descending)") +
+                               " - click again to reverse");
+            statusRaw->RequestRedraw();
+        };
 
         // ===== OPEN -> FileLoader -> LoadFromFile =====
         // Capture shared_ptrs so the grid/label stay valid for the async callback;

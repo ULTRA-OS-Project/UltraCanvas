@@ -689,7 +689,7 @@ namespace UltraCanvas {
             }
 
             case FocusIn: {
-                debugOutput << "focus xwindow=" << xEvent.xany.window << std::endl;
+                //debugOutput << "focus xwindow=" << xEvent.xany.window << std::endl;
                 event.type = UCEventType::WindowFocus;
                 
                 // Set XIC focus when window gains focus
@@ -703,7 +703,7 @@ namespace UltraCanvas {
             }
 
             case FocusOut: {
-                debugOutput << "blur xwindow=" << xEvent.xany.window << std::endl;
+                //debugOutput << "blur xwindow=" << xEvent.xany.window << std::endl;
                 event.type = UCEventType::WindowBlur;
                 
                 // Unset XIC focus when window loses focus

@@ -20,6 +20,7 @@
 // Author: UltraCanvas Framework
 
 #include "Models/DXF/UltraCanvasDXFModelConverter.h"
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat
 #include "DataFormats/UltraCanvasCADPalette.h"
 
 #include <algorithm>
@@ -42,7 +43,13 @@ struct Tag {
     int Code = 0;
     std::string Value;
 
-    double Number() const { return std::atof(Value.c_str()); }
+    // Dot-decimal by the format: atof followed the desktop's locale, and on a
+    // comma-decimal one read every "12.5" as 12.
+    double Number() const {
+        double value = 0.0;
+        TryParseFloat(Value, value);
+        return value;
+    }
     int Integer() const { return std::atoi(Value.c_str()); }
 };
 

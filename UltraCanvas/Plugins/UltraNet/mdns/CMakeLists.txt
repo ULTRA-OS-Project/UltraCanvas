@@ -2,7 +2,8 @@
 # mDNS / DNS-SD service discovery. Per-platform backend:
 #   Linux   - Avahi (libavahi-client)
 #   macOS   - Bonjour (system framework, no extra lib needed)
-#   Windows - DnsServiceBrowse via dnsapi.dll (system)
+#   Windows - DnsServiceBrowse / DnsServiceResolve, bound at run time from
+#             dnsapi.dll so the module still loads on pre-1703 Windows
 # Self-disables when its platform backend isn't available.
 
 cmake_minimum_required(VERSION 3.16)
@@ -37,7 +38,7 @@ if(NOT MDNS_BACKEND_OK)
     return()
 endif()
 
-add_library(UltraNetMdnsPlugin MODULE MdnsPlugin.cpp)
+add_library(UltraNetMdnsPlugin MODULE MdnsPlugin.cpp MdnsNames.cpp)
 
 set_target_properties(UltraNetMdnsPlugin PROPERTIES
     OUTPUT_NAME "ultranet_mdns"

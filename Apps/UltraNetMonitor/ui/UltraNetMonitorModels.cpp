@@ -1,5 +1,5 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorModels.cpp
-// Version: 0.7.0
+// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorModels.h"
 
@@ -89,34 +89,65 @@ std::string ProcessTooltip(const std::optional<ProcessIdentity>& process) {
 
 } // namespace
 
-std::string ViaText(const NetworkConnection& c) {
-    if (c.localPeer) {
-        const std::string peer = c.localPeer->Label();
-        if (c.loopbackRole == LoopbackRole::Client) return "\u2192 " + peer;
-        if (c.loopbackRole == LoopbackRole::Server) return "\u2190 " + peer;
+namespace {
+
+std::string ChainText(LoopbackRole role, const std::string& peer, const std::vector<std::string>& forProcesses) {
+    if (!peer.empty()) {
+        if (role == LoopbackRole::Client) return "\u2192 " + peer;
+        if (role == LoopbackRole::Server) return "\u2190 " + peer;
         return peer;
     }
-    if (!c.forProcesses.empty()) return "for " + Join(c.forProcesses, 3, ", ");
+    if (!forProcesses.empty()) return "for " + Join(forProcesses, 3, ", ");
     return std::string();
 }
 
-std::string ViaTooltip(const NetworkConnection& c) {
-    if (c.localPeer) {
-        if (c.loopbackRole == LoopbackRole::Client) {
-            return "This connection goes to " + c.localPeer->Label() + " on this machine - a local "
+std::string ChainTooltip(LoopbackRole role, const std::string& peer, const std::vector<std::string>& forProcesses,
+                         bool recorded) {
+    const char* thisConnection = recorded ? "This flow went" : "This connection goes";
+    if (!peer.empty()) {
+        if (role == LoopbackRole::Client) {
+            return std::string(thisConnection) + " to " + peer + " on this machine - a local "
                    "proxy or service that talks to the network on this application's behalf.";
         }
-        if (c.loopbackRole == LoopbackRole::Server) {
-            return "This is a connection " + c.localPeer->Label() + " made to this process over "
+        if (role == LoopbackRole::Server) {
+            return "This is a connection " + peer + " made to this process over "
                    "loopback; this process serves it.";
         }
     }
-    if (!c.forProcesses.empty()) {
-        return "Inferred: this process serves the listed applications over loopback, so its "
-               "outbound traffic is on their behalf. The table cannot tell which client caused "
-               "this particular connection.";
+    if (!forProcesses.empty()) {
+        std::string text = "Inferred: this process serves the listed applications over loopback, so its "
+                           "outbound traffic is on their behalf. The table cannot tell which client caused "
+                           "this particular connection.";
+        if (recorded) text += "\nAs decoded by the last snapshot that saw the chain.";
+        return text;
     }
     return std::string();
+}
+
+} // namespace
+
+std::string ViaText(const NetworkConnection& c) {
+    return ChainText(c.loopbackRole, c.localPeer ? c.localPeer->Label() : std::string(), c.forProcesses);
+}
+
+std::string ViaTooltip(const NetworkConnection& c) {
+    return ChainTooltip(c.loopbackRole, c.localPeer ? c.localPeer->Label() : std::string(), c.forProcesses, false);
+}
+
+std::string ViaText(const RecordedFlow& f) {
+    return ChainText(f.loopbackRole, f.localPeer, f.forProcesses);
+}
+
+std::string ViaTooltip(const RecordedFlow& f) {
+    return ChainTooltip(f.loopbackRole, f.localPeer, f.forProcesses, true);
+}
+
+std::string ViaText(const NetworkConnectionEvent& e) {
+    return ChainText(e.loopbackRole, e.localPeer, e.forProcesses);
+}
+
+std::string ViaTooltip(const NetworkConnectionEvent& e) {
+    return ChainTooltip(e.loopbackRole, e.localPeer, e.forProcesses, e.kind == NetworkEventKind::Closed);
 }
 
 std::string HostText(const std::string& name, NameSource source) {
@@ -330,6 +361,7 @@ ListDataValue FlowListModel::GetData(const ListIndex& index, ListDataRole role) 
                 case Local:       return f->LocalEndpoint();
                 case Remote:      return unbound ? std::string("*") : f->RemoteEndpoint();
                 case Host:        return HostText(f->remoteName, f->nameSource);
+                case Via:         return ViaText(*f);
                 case State:       return std::string(NetworkMonitor_StateName(f->lastState));
                 case FirstSeen:   return LocalTime(f->firstSeen);
                 case LastSeen:    return LocalTime(f->lastSeen);
@@ -351,6 +383,7 @@ ListDataValue FlowListModel::GetData(const ListIndex& index, ListDataRole role) 
         case ListDataRole::ToolTipRole:
             if (index.column == Application || index.column == Pid) return ProcessTooltip(f->process);
             if (index.column == Host && !unbound) return HostTooltip(f->remoteName, f->nameSource);
+            if (index.column == Via) return ViaTooltip(*f);
             return {};
         default:
             return {};
@@ -366,6 +399,8 @@ ListColumnDef FlowListModel::GetColumnDef(int column) const {
         case Remote:      return ListColumnDef("Remote", 160);
         case Host:        return ListColumnDef("Host", 170, TextAlignment::Left,
                                                "The peer's domain name as recorded; a trailing ? marks a weak name");
+        case Via:         return ListColumnDef("Via", 150, TextAlignment::Left,
+                                               "The local proxy this flow went through, or whom a proxy's flow was for");
         case State:       return ListColumnDef("Last state", 100);
         case FirstSeen:   return ListColumnDef("First seen", 140);
         case LastSeen:    return ListColumnDef("Last seen", 140);
@@ -407,6 +442,7 @@ ListDataValue EventListModel::GetData(const ListIndex& index, ListDataRole role)
                 case Local:       return e->LocalEndpoint();
                 case Remote:      return e->RemoteEndpoint();
                 case Host:        return HostText(e->remoteName, e->nameSource);
+                case Via:         return ViaText(*e);
                 case Sent:        return e->kind == NetworkEventKind::Closed ? ByteText(e->bytesSent) : std::string();
                 case Received:    return e->kind == NetworkEventKind::Closed ? ByteText(e->bytesReceived) : std::string();
                 case Source:      return e->sourceName;
@@ -429,6 +465,7 @@ ListDataValue EventListModel::GetData(const ListIndex& index, ListDataRole role)
                 return e->process->executablePath.empty() ? std::string() : e->process->executablePath;
             }
             if (index.column == Host) return HostTooltip(e->remoteName, e->nameSource);
+            if (index.column == Via) return ViaTooltip(*e);
             if (index.column == Kind) {
                 switch (e->kind) {
                     case NetworkEventKind::Opened:   return "This machine initiated the connection (or the source cannot tell)";
@@ -453,6 +490,8 @@ ListColumnDef EventListModel::GetColumnDef(int column) const {
         case Remote:      return ListColumnDef("Remote", 160);
         case Host:        return ListColumnDef("Host", 170, TextAlignment::Left,
                                                "The peer's domain name; a trailing ? marks a weak name");
+        case Via:         return ListColumnDef("Via", 150, TextAlignment::Left,
+                                               "The local proxy this connection went through, or whom a proxy's connection was for");
         case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right,
                                                "On a closed event: the bytes the connection moved, where the source counts");
         case Received:    return ListColumnDef("Received", 80, TextAlignment::Right);

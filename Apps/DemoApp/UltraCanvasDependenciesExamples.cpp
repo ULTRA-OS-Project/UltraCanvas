@@ -174,6 +174,7 @@ namespace UltraCanvas {
         // --- IODeviceManager ---
         {"SANE",              "http://www.sane-project.org/",                                      "https://gitlab.com/sane-project/backends",                      "GPL 2"},
         {"V4L2",              "https://docs.kernel.org/userspace-api/media/v4l/v4l2.html",         "https://git.linuxtv.org/v4l-utils.git",                         ""},
+        {"libudev",           "https://systemd.io/",                                               "https://github.com/systemd/systemd",                            "LGPL 2.1"},
         {"CUPS",              "https://openprinting.github.io/cups/",                              "https://github.com/OpenPrinting/cups",                          "Apache 2"},
         {"ICA",               "https://developer.apple.com/documentation/imagecapturecore",        "",                                                              ""},
         {"WIA",               "https://learn.microsoft.com/en-us/windows/win32/wia/-wia-startpage","",                                                              ""},
@@ -652,6 +653,7 @@ namespace UltraCanvas {
 
         header("IODeviceManager module");
         dep("Scanners / cameras / print", "SANE (GPL 2)\nV4L2\nCUPS (Apache 2)", "ICA\nAVFoundation", "WIA\nTWAIN\nMedia Foundation");
+        dep("Hot-plug watching", "libudev (LGPL 2.1) (optional)", "– (no watcher yet)", "– (no watcher yet)");
 
         header("PixelFX module");
         dep("Image effects", "libvips (LGPL 2.1)", "libvips (LGPL 2.1)", "libvips (LGPL 2.1)");

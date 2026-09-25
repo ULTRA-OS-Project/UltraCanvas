@@ -1,0 +1,52 @@
+name: Element catalogue
+
+# Keeps Docs/UltraCanvas/UltraCanvasUIElements.md complete. That page answers
+# the question that comes before every piece of new UI - "does an element for
+# this already exist?" - and is only worth reading if nothing is missing from
+# it. It listed the elements in UltraCanvas/include/ and pointed at
+# UltraCanvas/Plugins/ with one sentence, so in 2026-09 a second progress bar
+# was written from scratch while UltraCanvasGaugeDiagramElement, the
+# framework's progress bar, sat uncatalogued in include/Plugins/Diagrams/.
+# Deliberate omissions (base classes, decoders behind a catalogued facade)
+# live in scripts/element_catalogue_exempt.txt with their reason.
+
+# Trigger policy matches ui-reuse.yml: `pull_request` covers feature branches,
+# so listing them under `push` too would run this check twice per commit.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'UltraCanvas/include/**'
+      - 'UltraCanvas/Plugins/**'
+      - 'UltraCanvas/dialogs/**'
+      - 'Docs/UltraCanvas/UltraCanvasUIElements.md'
+      - 'scripts/check_element_catalogue.py'
+      - 'scripts/element_catalogue_exempt.txt'
+      - '.github/workflows/element-catalogue.yml'
+  pull_request:
+    # `branches` filters the BASE branch, so stacked pull requests based on
+    # another claude/** branch are covered too - see the note in ui-reuse.yml.
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'UltraCanvas/include/**'
+      - 'UltraCanvas/Plugins/**'
+      - 'UltraCanvas/dialogs/**'
+      - 'Docs/UltraCanvas/UltraCanvasUIElements.md'
+      - 'scripts/check_element_catalogue.py'
+      - 'scripts/element_catalogue_exempt.txt'
+      - '.github/workflows/element-catalogue.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check every element is in the catalogue
+        run: python3 scripts/check_element_catalogue.py --strict

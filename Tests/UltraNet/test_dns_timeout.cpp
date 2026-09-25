@@ -10,12 +10,13 @@
 // the shared channel. A resolve is therefore never called directly here:
 // it runs on a thread of its own under a watchdog, so a regression fails the
 // suite instead of hanging it.
-// Version: 0.1.1 - a resolver that answers inside the deadline is not a miss
+// Version: 0.2.0 - the deadline test asks a black-hole server, per call
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetDns.h>
+#include <UltraNet/UltraNetSocket.h>
 
 #include <chrono>
 #include <condition_variable>
@@ -80,28 +81,69 @@ bool HasDnsConnectivity() {
 
 const char* kUnresolvable = "ultranet-deadline.invalid";
 
+// A name server that never answers: a UDP socket on the loopback that this
+// process owns and never reads. The kernel accepts every query and nothing
+// replies, so the deadline is the only way back - on every runner, offline.
+// Naming it per call is what makes the deadline test deterministic: a local
+// caching resolver that knows .invalid answered inside the millisecond on the
+// macOS runners, and that answer was not a missed deadline.
+struct SilentServer {
+    UltraNetHandle socket = UltraNetInvalidHandle;
+    std::string    entry;   // "127.0.0.1:<port>"
+
+    SilentServer() {
+        UltraNetSocketOptions options;
+        options.bindAddress = "127.0.0.1";
+        socket = UltraNet_UdpOpen(0, options);
+        UltraNetEndpoint local;
+        if (socket != UltraNetInvalidHandle && UltraNet_SocketLocalEndpoint(socket, local)) {
+            entry = "127.0.0.1:" + std::to_string(local.port);
+        }
+    }
+    ~SilentServer() { if (socket != UltraNetInvalidHandle) UltraNet_SocketClose(socket); }
+    bool Ok() const { return !entry.empty(); }
+};
+
+std::optional<Outcome> ResolveWithinVia(const std::string& host, const std::string& server,
+                                        int timeoutMs, std::chrono::milliseconds budget) {
+    auto slot = std::make_shared<std::promise<Outcome>>();
+    std::future<Outcome> answer = slot->get_future();
+    std::thread([host, server, timeoutMs, slot]() {
+        UltraNetDnsOptions options;
+        options.servers   = {server};
+        options.timeoutMs = timeoutMs;
+        std::vector<std::string> addresses;
+        const UltraNetResult r =
+            UltraNet_DnsResolve(host, addresses, UltraNetDnsType::A, options);
+        slot->set_value(Outcome{bool(r), r.code, addresses.size()});
+    }).detach();
+    if (answer.wait_for(budget) != std::future_status::ready) return std::nullopt;
+    return answer.get();
+}
+
 } // namespace
 
 // A deadline the lookup cannot possibly meet: one millisecond, against a
-// name in a TLD reserved never to resolve.
+// server that never answers.
 TEST(dns_resolve_honours_its_deadline) {
     UltraNet_Initialize();
+    SilentServer silent;
+    if (!silent.Ok()) SKIP("cannot open a loopback UDP socket");
     for (int i = 0; i < 8; ++i) {
         const std::string host = std::to_string(i) + "." + kUnresolvable;
-        const auto outcome = ResolveWithin(host, 1, 30s);
+        const auto outcome = ResolveWithinVia(host, silent.entry, 1, 30s);
         if (!outcome) BAIL_OUT("UltraNet_DnsResolve never returned from a 1 ms deadline");
         REQUIRE(!outcome->ok);
 #ifdef ULTRANET_HAS_CARES
-        // Only the c-ares backend honours the deadline; the getaddrinfo
-        // fallback takes as long as the system resolver does and reports
-        // whatever it found out. Honouring it means one of two things: the
-        // lookup was still open at the deadline and came back as Timeout, or
-        // the resolver answered inside the millisecond - a local caching
-        // resolver knows .invalid and says NXDOMAIN at once, which is what the
-        // macOS runners do - and that answer, HostNotFound, is not a missed
-        // deadline. Any other code, and any hang, still fails.
+        // The c-ares backend honours the caller's deadline exactly: nothing
+        // can answer from a black hole, so the only way back is Timeout.
+        REQUIRE_EQ(outcome->code, UltraNetResultCode::Timeout);
+#else
+        // libresolv asks the port it was given, rounds the deadline up to a
+        // whole second and reports TRY_AGAIN as Timeout; dnsapi asks port 53
+        // only and refuses the entry. Nothing resolved, and the call came back.
         REQUIRE(outcome->code == UltraNetResultCode::Timeout
-                || outcome->code == UltraNetResultCode::HostNotFound);
+                || outcome->code == UltraNetResultCode::Unsupported);
 #endif
     }
 }

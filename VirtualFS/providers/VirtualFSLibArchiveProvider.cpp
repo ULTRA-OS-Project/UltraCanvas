@@ -1,7 +1,7 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
 // libarchive-based provider implementation
-// Version: 1.1.0
-// Last Modified: 2026-08-23
+// Version: 1.3.0
+// Last Modified: 2026-09-24
 // Author: ULTRA OS Framework
 
 #include "VirtualFSLibArchiveProvider.h"
@@ -18,11 +18,267 @@
 #include <ctime>
 #include <sstream>
 
+#if !defined(_WIN32)
+#include <langinfo.h>
+#include <locale.h>
+#if defined(__APPLE__)
+#include <xlocale.h>
+#endif
+#endif
+
 #ifdef VIRTUALFS_HAS_MINIZ
 #include "miniz.h"
 #endif
 
 namespace VirtualFS {
+
+// ============================================================================
+// ENTRY NAME ENCODING
+// ============================================================================
+// Everything above this provider expects UTF-8 names. libarchive does not
+// guarantee them:
+//   * a ZIP entry without the "language encoding" flag (general-purpose bit
+//     11) is named in the DOS code page of the machine that made it - IBM437
+//     by the specification, and what Windows Explorer, WinZip and older 7-Zip
+//     write for "Namensänderung" (ä = 0x84). On POSIX libarchive passes those
+//     bytes on as they are, so the listing drew "Namens\uFFFDnderung" and
+//     ExtractAll created a folder whose name was not UTF-8 at all;
+//   * converting a name to UTF-8 goes through the C library's LC_CTYPE, so in
+//     the "C" locale every non-ASCII name - Thai, Russian, Chinese, flagged
+//     UTF-8 or not - came back empty, and archive_read_next_header answered
+//     ARCHIVE_WARN, which ended every listing loop below early.
+// EntryPathUtf8 is the one place a name is read, Utf8LocaleScope pins LC_CTYPE
+// to UTF-8 for this thread while libarchive runs, and NextHeader treats a
+// warning as the entry it is.
+// (UltraCanvasTextUtils has the same code page tables for file names already
+// on disk; VirtualFS is a standalone module and cannot link it.)
+namespace {
+
+// Length of the well-formed UTF-8 sequence at s[i], or 0.
+size_t Utf8SequenceAt(const char* s, size_t n, size_t i) {
+    const auto byte = [s](size_t k) { return static_cast<unsigned char>(s[k]); };
+    const unsigned char lead = byte(i);
+    if (lead < 0x80) return 1;
+    size_t len = 0;
+    if (lead >= 0xC2 && lead <= 0xDF)      len = 2;
+    else if (lead >= 0xE0 && lead <= 0xEF) len = 3;
+    else if (lead >= 0xF0 && lead <= 0xF4) len = 4;
+    else return 0;
+    if (i + len > n) return 0;
+    for (size_t k = 1; k < len; ++k) {
+        if ((byte(i + k) & 0xC0) != 0x80) return 0;
+    }
+    const unsigned char second = byte(i + 1);
+    if (lead == 0xE0 && second < 0xA0) return 0;
+    if (lead == 0xED && second > 0x9F) return 0;
+    if (lead == 0xF0 && second < 0x90) return 0;
+    if (lead == 0xF4 && second > 0x8F) return 0;
+    return len;
+}
+
+bool IsWellFormedUtf8(const char* s) {
+    const size_t n = std::strlen(s);
+    for (size_t i = 0; i < n;) {
+        const size_t len = Utf8SequenceAt(s, n, i);
+        if (len == 0) return false;
+        i += len;
+    }
+    return true;
+}
+
+// IBM437, bytes 0x80..0xFF.
+const uint16_t kCp437High[128] = {
+    0x00C7, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7,
+    0x00EA, 0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5,
+    0x00C9, 0x00E6, 0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9,
+    0x00FF, 0x00D6, 0x00DC, 0x00A2, 0x00A3, 0x00A5, 0x20A7, 0x0192,
+    0x00E1, 0x00ED, 0x00F3, 0x00FA, 0x00F1, 0x00D1, 0x00AA, 0x00BA,
+    0x00BF, 0x2310, 0x00AC, 0x00BD, 0x00BC, 0x00A1, 0x00AB, 0x00BB,
+    0x2591, 0x2592, 0x2593, 0x2502, 0x2524, 0x2561, 0x2562, 0x2556,
+    0x2555, 0x2563, 0x2551, 0x2557, 0x255D, 0x255C, 0x255B, 0x2510,
+    0x2514, 0x2534, 0x252C, 0x251C, 0x2500, 0x253C, 0x255E, 0x255F,
+    0x255A, 0x2554, 0x2569, 0x2566, 0x2560, 0x2550, 0x256C, 0x2567,
+    0x2568, 0x2564, 0x2565, 0x2559, 0x2558, 0x2552, 0x2553, 0x256B,
+    0x256A, 0x2518, 0x250C, 0x2588, 0x2584, 0x258C, 0x2590, 0x2580,
+    0x03B1, 0x00DF, 0x0393, 0x03C0, 0x03A3, 0x03C3, 0x00B5, 0x03C4,
+    0x03A6, 0x0398, 0x03A9, 0x03B4, 0x221E, 0x03C6, 0x03B5, 0x2229,
+    0x2261, 0x00B1, 0x2265, 0x2264, 0x2320, 0x2321, 0x00F7, 0x2248,
+    0x00B0, 0x2219, 0x00B7, 0x221A, 0x207F, 0x00B2, 0x25A0, 0x00A0,
+};
+
+// Windows-1252, bytes 0x80..0x9F (0xA0..0xFF are ISO-8859-1 = Unicode).
+const uint16_t kCp1252C1[32] = {
+    0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+    0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
+    0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+    0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
+};
+
+// A name that is not UTF-8, read in the code page its format implies: IBM437
+// for ZIP (the specification's default), Windows-1252 for everything else
+// (tar and cpio carry raw bytes, and Latin-1 is what non-UTF-8 ones are).
+// Valid UTF-8 runs inside it are kept as they are.
+std::string LegacyNameToUtf8(const char* raw, bool zip) {
+    const size_t n = std::strlen(raw);
+    std::string out;
+    out.reserve(n + n / 2);
+    for (size_t i = 0; i < n;) {
+        const size_t len = Utf8SequenceAt(raw, n, i);
+        if (len > 0) {
+            out.append(raw + i, len);
+            i += len;
+            continue;
+        }
+        const unsigned char c = static_cast<unsigned char>(raw[i++]);
+        const uint32_t cp = zip ? kCp437High[c - 0x80]
+                          : (c < 0xA0 ? kCp1252C1[c - 0x80] : c);
+        if (cp < 0x800) {
+            out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else {
+            out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        }
+    }
+    return out;
+}
+
+// A name libarchive offers in two forms, as UTF-8.
+std::string NameUtf8(struct archive* a, const char* utf8, const char* raw) {
+    // libarchive's own conversion knows the entry's declared charset (the
+    // ZIP UTF-8 flag, pax hdrcharset, the OEM code page on Windows).
+    if (utf8 && IsWellFormedUtf8(utf8)) return utf8;
+    if (!raw) return utf8 ? utf8 : "";
+    // Unflagged names that already are UTF-8 (Info-ZIP on Linux, macOS
+    // Archive Utility) are kept: decoding them again would be mojibake.
+    if (IsWellFormedUtf8(raw)) return raw;
+    const bool zip = (archive_format(a) & ARCHIVE_FORMAT_BASE_MASK) == ARCHIVE_FORMAT_ZIP;
+    return LegacyNameToUtf8(raw, zip);
+}
+
+// The UTF-8 path of the entry archive_read_next_header just returned.
+std::string EntryPathUtf8(struct archive* a, struct archive_entry* entry) {
+    return NameUtf8(a, archive_entry_pathname_utf8(entry), archive_entry_pathname(entry));
+}
+
+// The UTF-8 target of a hard-link entry ("" for any other entry).
+std::string HardlinkUtf8(struct archive* a, struct archive_entry* entry) {
+    const char* raw = archive_entry_hardlink(entry);
+    const char* utf8 = archive_entry_hardlink_utf8(entry);
+    if (!raw && !utf8) return {};
+    return NameUtf8(a, utf8, raw);
+}
+
+// Where ExtractAll writes the entry: `utf8Path` as the file name on disk,
+// whatever the process locale. POSIX file names are bytes and UTF-8 is their
+// convention; on Windows libarchive writes through the wide API.
+void SetEntryDiskPath(struct archive_entry* entry, const std::string& utf8Path) {
+#if defined(_WIN32)
+    archive_entry_update_pathname_utf8(entry, utf8Path.c_str());
+#else
+    archive_entry_copy_pathname(entry, utf8Path.c_str());
+#endif
+}
+
+// Where ExtractAll's hard link points: `utf8Path`, the same way as above.
+void SetEntryDiskHardlink(struct archive_entry* entry, const std::string& utf8Path) {
+#if defined(_WIN32)
+    archive_entry_update_hardlink_utf8(entry, utf8Path.c_str());
+#else
+    archive_entry_copy_hardlink(entry, utf8Path.c_str());
+#endif
+}
+
+// ============================================================================
+// EXTRACTION SAFETY
+// ============================================================================
+// ExtractAll writes each entry to `destination + "/" + <entry path>`. An
+// archive decides those paths, so a crafted one could name "../../.bashrc"
+// or "/etc/cron.d/x" and write outside the folder the user chose (the "zip
+// slip"). Every path - and every hard-link target - is therefore checked here
+// before it is joined to the destination, and libarchive's own guards run
+// behind this check (see ExtractAll), so neither has to be right alone.
+
+enum class EntryPathVerdict {
+    Safe,     // `out` is a relative path below the destination
+    Empty,    // nothing left ("./", ""): the destination itself
+    Unsafe    // absolute, or climbing with ".."
+};
+
+// `path` as a relative path under the destination: "." and empty components
+// dropped, '/' between the rest. Unsafe when it is absolute (a leading
+// separator; on Windows also a drive letter "C:" or a UNC "\\server") or has a
+// ".." component anywhere. "a/../b" would stay inside, but no archiver writes
+// that, and refusing every ".." is what libarchive's SECURE_NODOTDOT does too.
+// On Windows a backslash separates components as well; on POSIX it is an
+// ordinary file-name character, and "..\x" there is one harmless name.
+EntryPathVerdict SanitizeEntryPath(const std::string& path, std::string& out) {
+    out.clear();
+    if (path.empty()) return EntryPathVerdict::Empty;
+#if defined(_WIN32)
+    const char* separators = "/\\";
+    if (path[0] == '\\' || (path.size() >= 2 && path[1] == ':')) return EntryPathVerdict::Unsafe;
+#else
+    const char* separators = "/";
+#endif
+    if (path[0] == '/') return EntryPathVerdict::Unsafe;
+    size_t start = 0;
+    while (start <= path.size()) {
+        size_t end = path.find_first_of(separators, start);
+        if (end == std::string::npos) end = path.size();
+        const std::string part = path.substr(start, end - start);
+        start = end + 1;
+        if (part.empty() || part == ".") continue;
+        if (part == "..") return EntryPathVerdict::Unsafe;
+        if (!out.empty()) out += '/';
+        out += part;
+    }
+    return out.empty() ? EntryPathVerdict::Empty : EntryPathVerdict::Safe;
+}
+
+// ARCHIVE_WARN from archive_read_next_header still delivers the entry (it
+// reports, for example, a name that did not convert to the locale charset);
+// only EOF and the errors end the walk.
+bool NextHeader(struct archive* a, struct archive_entry** entry) {
+    const int r = archive_read_next_header(a, entry);
+    return r == ARCHIVE_OK || r == ARCHIVE_WARN;
+}
+
+// Pins this thread's LC_CTYPE to UTF-8 for the scope when the process runs in
+// a locale that is not (the "C" locale of a test runner, a service, a desktop
+// session without LANG). libarchive converts names through the C library, so
+// in such a locale it cannot produce any non-ASCII name. Windows has no
+// per-thread locale for this and converts through code pages instead.
+#if !defined(_WIN32)
+class Utf8LocaleScope {
+public:
+    Utf8LocaleScope() {
+        const char* codeset = nl_langinfo(CODESET);
+        if (codeset && std::strcmp(codeset, "UTF-8") == 0) return;
+        static const locale_t utf8Locale = [] {
+            for (const char* name : {"C.UTF-8", "C.utf8", "en_US.UTF-8", "UTF-8"}) {
+                locale_t loc = newlocale(LC_CTYPE_MASK, name, static_cast<locale_t>(0));
+                if (loc) return loc;
+            }
+            return static_cast<locale_t>(0);
+        }();
+        if (utf8Locale) previous = uselocale(utf8Locale);
+    }
+    ~Utf8LocaleScope() {
+        if (previous) uselocale(previous);
+    }
+    Utf8LocaleScope(const Utf8LocaleScope&) = delete;
+    Utf8LocaleScope& operator=(const Utf8LocaleScope&) = delete;
+
+private:
+    locale_t previous = static_cast<locale_t>(0);
+};
+#else
+struct Utf8LocaleScope {};
+#endif
+
+}  // namespace
 
 // ============================================================================
 // IMPLEMENTATION DETAILS
@@ -323,6 +579,7 @@ void VirtualFSLibArchiveProvider::BuildEntryCache() {
     
     if (!pImpl->isOpen) return;
     
+    Utf8LocaleScope utf8Names;   // see ENTRY NAME ENCODING
     pImpl->readArchive = pImpl->NewReadHandle();
     if (!pImpl->readArchive) {
         return;
@@ -340,7 +597,7 @@ void VirtualFSLibArchiveProvider::BuildEntryCache() {
     } handleGuard{pImpl.get()};
     
     struct archive_entry* entry;
-    while (archive_read_next_header(pImpl->readArchive, &entry) == ARCHIVE_OK) {
+    while (NextHeader(pImpl->readArchive, &entry)) {
         VirtualFSEntry vfsEntry = ConvertArchiveEntry(entry);
 
         std::string normalizedPath = NormalizeInternalPath(vfsEntry.path);
@@ -413,11 +670,8 @@ VirtualFSEntry VirtualFSLibArchiveProvider::ConvertArchiveEntry(void* archiveEnt
     struct archive_entry* entry = static_cast<struct archive_entry*>(archiveEntryPtr);
     VirtualFSEntry vfsEntry;
     
-    const char* pathname = archive_entry_pathname_utf8(entry);
-    if (!pathname) pathname = archive_entry_pathname(entry);
-    
-    if (pathname) {
-        vfsEntry.path = pathname;
+    vfsEntry.path = EntryPathUtf8(pImpl->readArchive, entry);
+    if (!vfsEntry.path.empty()) {
         
         size_t lastSlash = vfsEntry.path.rfind('/');
         if (lastSlash != std::string::npos && lastSlash < vfsEntry.path.length() - 1) {
@@ -556,6 +810,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::ReadFile(
         return VirtualFSResult::InvalidArgument;
     }
     
+    Utf8LocaleScope utf8Names;   // see ENTRY NAME ENCODING
     struct archive* a = pImpl->NewReadHandle();
     if (!a) {
         return VirtualFSResult::ReadError;
@@ -564,11 +819,8 @@ VirtualFSResult VirtualFSLibArchiveProvider::ReadFile(
     struct archive_entry* entry;
     VirtualFSResult result = VirtualFSResult::NotFound;
     
-    while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
-        const char* pathname = archive_entry_pathname_utf8(entry);
-        if (!pathname) pathname = archive_entry_pathname(entry);
-        
-        std::string entryPath = NormalizeInternalPath(pathname ? pathname : "");
+    while (NextHeader(a, &entry)) {
+        std::string entryPath = NormalizeInternalPath(EntryPathUtf8(a, entry));
         
         if (entryPath == normalizedPath) {
             int64_t entrySize = archive_entry_size(entry);
@@ -673,15 +925,35 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     
     if (!pImpl->isOpen) return VirtualFSResult::ArchiveNotOpen;
     
-    std::filesystem::create_directories(destDirectory);
+    std::error_code ec;
+    std::filesystem::create_directories(destDirectory, ec);
+    // The destination with its own symbolic links resolved (macOS /tmp is
+    // /private/tmp, a BSD /home is often /usr/home): SECURE_SYMLINKS below
+    // refuses any path that runs through a link, and must only ever find the
+    // ones the archive itself put there.
+    std::string dest = destDirectory;
+    {
+        const std::filesystem::path canonical =
+                std::filesystem::weakly_canonical(std::filesystem::path(destDirectory), ec);
+        if (!ec && !canonical.empty()) dest = canonical.string();
+        while (dest.size() > 1 && (dest.back() == '/' || dest.back() == '\\')) dest.pop_back();
+    }
     
+    Utf8LocaleScope utf8Names;   // see ENTRY NAME ENCODING
     struct archive* a = pImpl->NewReadHandle();
     if (!a) {
         return VirtualFSResult::ReadError;
     }
     struct archive* ext = archive_write_disk_new();
     
-    int flags = ARCHIVE_EXTRACT_TIME;
+    // libarchive's guards, behind SanitizeEntryPath (see EXTRACTION SAFETY):
+    // no ".." in a path, and no write through a symbolic link on disk - which
+    // is what stops an archive that first extracts "link -> /etc" and then
+    // "link/passwd". SECURE_NOABSOLUTEPATHS cannot be set: every path handed
+    // over is the absolute destination plus the entry, so absolute entry
+    // names are refused by SanitizeEntryPath instead.
+    int flags = ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_SECURE_NODOTDOT |
+                ARCHIVE_EXTRACT_SECURE_SYMLINKS;
     if (options.preservePermissions) flags |= ARCHIVE_EXTRACT_PERM;
     if (options.overwriteExisting) flags |= ARCHIVE_EXTRACT_UNLINK;
     
@@ -694,11 +966,14 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     
     struct archive_entry* entry;
     VirtualFSResult result = VirtualFSResult::Success;
+    // Entries held back - refused as unsafe here, or refused by libarchive
+    // (a write through a symbolic link, a permission it lacks): skipped, the
+    // rest still extracted, and named in lastError once the walk is through.
+    std::vector<std::string> refused;
+    std::vector<std::string> failed;
     
-    while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
-        const char* currentPath = archive_entry_pathname(entry);
-        std::string newPath = destDirectory + "/" + currentPath;
-        archive_entry_set_pathname(entry, newPath.c_str());
+    while (NextHeader(a, &entry)) {
+        const std::string currentPath = EntryPathUtf8(a, entry);
         
         if (progressCallback) {
             progress.currentFile = currentPath;
@@ -711,9 +986,52 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
             }
         }
         
-        int r = archive_write_header(ext, entry);
-        if (r != ARCHIVE_OK) {
-            pImpl->lastError = archive_error_string(ext);
+        std::string relative;
+        const EntryPathVerdict verdict = SanitizeEntryPath(currentPath, relative);
+        if (verdict == EntryPathVerdict::Empty) {   // "./": the destination itself
+            archive_read_data_skip(a);
+            continue;
+        }
+        if (verdict == EntryPathVerdict::Unsafe) {
+            refused.push_back(currentPath);
+            archive_read_data_skip(a);
+            continue;
+        }
+        // A hard link names another entry of the archive: it lives under the
+        // destination too, not under the process's working directory, and is
+        // held to the same rule as a path.
+        const std::string linkTarget = HardlinkUtf8(a, entry);
+        if (!linkTarget.empty()) {
+            std::string relativeTarget;
+            if (SanitizeEntryPath(linkTarget, relativeTarget) != EntryPathVerdict::Safe) {
+                refused.push_back(currentPath + " (hard link to " + linkTarget + ")");
+                archive_read_data_skip(a);
+                continue;
+            }
+            SetEntryDiskHardlink(entry, dest + "/" + relativeTarget);
+        }
+        SetEntryDiskPath(entry, dest + "/" + relative);
+        
+        // ARCHIVE_WARN: written, with something minor lost (an owner that
+        // could not be restored). ARCHIVE_FAILED: this entry was refused -
+        // SECURE_SYMLINKS answers a write through a link that way, and so
+        // does a folder it may not write to - and the walk goes on. Only
+        // ARCHIVE_FATAL ends it.
+        const int r = archive_write_header(ext, entry);
+        if (r == ARCHIVE_FAILED || r == ARCHIVE_RETRY) {
+            // libarchive names the full disk path; the destination part of it
+            // is the same for every entry and only buries the name.
+            std::string why = archive_error_string(ext) ? archive_error_string(ext) : "";
+            const std::string prefix = dest + "/";
+            for (size_t at = why.find(prefix); at != std::string::npos; at = why.find(prefix, at))
+                why.erase(at, prefix.size());
+            failed.push_back(currentPath + (why.empty() ? std::string() : ": " + why));
+            archive_read_data_skip(a);
+            continue;
+        }
+        if (r < ARCHIVE_WARN) {
+            const char* why = archive_error_string(ext);
+            pImpl->lastError = why ? why : "Failed to write " + currentPath;
             result = VirtualFSResult::WriteError;
             break;
         }
@@ -740,6 +1058,33 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     archive_read_free(a);
     archive_write_free(ext);
     
+    // Everything else was extracted; the caller still hears that the archive
+    // was not, all of it, and which entries were held back. One heading line
+    // per kind, ending in ':', then one entry per line - a file manager shows
+    // it as a list, a log reads it as it is.
+    if (result == VirtualFSResult::Success && (!refused.empty() || !failed.empty())) {
+        auto listOf = [](const std::vector<std::string>& names) {
+            std::string list;
+            const size_t shown = std::min<size_t>(names.size(), 20);
+            for (size_t i = 0; i < shown; ++i) list += "\n" + names[i];
+            if (names.size() > shown)
+                list += "\n... and " + std::to_string(names.size() - shown) + " more";
+            return list;
+        };
+        auto entries = [](size_t n) {
+            return std::to_string(n) + (n == 1 ? " entry" : " entries");
+        };
+        std::string message;
+        if (!refused.empty())
+            message = "Skipped " + entries(refused.size()) +
+                      " that would have been written outside the destination:" +
+                      listOf(refused);
+        if (!failed.empty())
+            message += (message.empty() ? "" : "\n") + std::string("Could not extract ") +
+                       entries(failed.size()) + ":" + listOf(failed);
+        pImpl->lastError = message;
+        result = failed.empty() ? VirtualFSResult::InvalidPath : VirtualFSResult::WriteError;
+    }
     return result;
 }
 
@@ -1175,6 +1520,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesGeneric(
         return VirtualFSResult::NotSupported;
     }
 
+    Utf8LocaleScope utf8Names;   // see ENTRY NAME ENCODING
     struct archive* in = pImpl->NewReadHandle();
     if (!in) {
         return VirtualFSResult::ReadError;
@@ -1208,10 +1554,8 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesGeneric(
     struct archive_entry* entry;
     VirtualFSResult result = VirtualFSResult::Success;
 
-    while (archive_read_next_header(in, &entry) == ARCHIVE_OK) {
-        const char* pathname = archive_entry_pathname_utf8(entry);
-        if (!pathname) pathname = archive_entry_pathname(entry);
-        std::string entryPath = NormalizeInternalPath(pathname ? pathname : "");
+    while (NextHeader(in, &entry)) {
+        std::string entryPath = NormalizeInternalPath(EntryPathUtf8(in, entry));
 
         if (progressCallback) {
             progress.currentFile = entryPath;
@@ -1292,6 +1636,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesGeneric(
 bool VirtualFSLibArchiveProvider::Validate() {
     if (!pImpl->isOpen) return false;
     
+    Utf8LocaleScope utf8Names;   // see ENTRY NAME ENCODING
     struct archive* a = pImpl->NewReadHandle();
     if (!a) {
         return false;
@@ -1300,7 +1645,7 @@ bool VirtualFSLibArchiveProvider::Validate() {
     struct archive_entry* entry;
     bool valid = true;
     
-    while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
+    while (NextHeader(a, &entry)) {
         if (archive_read_data_skip(a) != ARCHIVE_OK) {
             valid = false;
             break;
@@ -1314,6 +1659,7 @@ bool VirtualFSLibArchiveProvider::Validate() {
 VirtualFSResult VirtualFSLibArchiveProvider::Test(VirtualFSProgressCallback progressCallback) {
     if (!pImpl->isOpen) return VirtualFSResult::ArchiveNotOpen;
     
+    Utf8LocaleScope utf8Names;   // see ENTRY NAME ENCODING
     struct archive* a = pImpl->NewReadHandle();
     if (!a) {
         return VirtualFSResult::ReadError;
@@ -1325,9 +1671,9 @@ VirtualFSResult VirtualFSLibArchiveProvider::Test(VirtualFSProgressCallback prog
     struct archive_entry* entry;
     VirtualFSResult result = VirtualFSResult::Success;
     
-    while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
+    while (NextHeader(a, &entry)) {
         if (progressCallback) {
-            progress.currentFile = archive_entry_pathname(entry);
+            progress.currentFile = EntryPathUtf8(a, entry);
             progress.filesProcessed++;
             progress.UpdatePercent();
             

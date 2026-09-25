@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "KNXProtocol.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -997,7 +998,7 @@ bool KNXProtocol::SendCommand(const std::string& deviceId, const std::string& co
     else if (command == "setTemperature" || command == "setTargetTemp") {
         float temp = 21.0f;
         if (params.count("temperature")) {
-            temp = std::stof(params.at("temperature"));
+            UltraCanvas::TryParseFloat(params.at("temperature"), temp);
         }
         return SetTemperature(address, temp);
     }

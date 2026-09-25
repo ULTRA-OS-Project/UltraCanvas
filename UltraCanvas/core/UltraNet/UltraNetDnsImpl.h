@@ -15,7 +15,15 @@
 //   NS    "ns1.example.com"
 //   CNAME "canonical.example.com"
 //   SOA   "ns1.example.com hostmaster.example.com 2024010101 7200 ..."
-// Version: 0.3.1 (Stage 3 hardening)
+//   A     "93.184.216.34"                 (the platform backends answer these
+//   AAAA  "2606:2800:220:1:248:1893:25c8:1946"  too, for a lookup that names
+//                                          its servers and cannot use getaddrinfo)
+//
+// `servers` is the per-call list from UltraNetDnsOptions, already validated by
+// UltraNet_DnsParseServer: empty means the backend's own configuration. The
+// libresolv and dnsapi backends take IPv4 servers on port 53 and report
+// Unsupported for anything else; c-ares takes any entry.
+// Version: 0.4.0 - per-call servers, timeouts bound the platform backends
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -30,6 +38,7 @@ namespace ultranet_dns_platform {
     UltraNetResult Resolve(const std::string& hostname,
                            UltraNetDnsType type,
                            std::vector<std::string>& outRecords,
-                           int timeoutMs);
+                           int timeoutMs,
+                           const std::vector<std::string>& servers);
 
 } // namespace ultranet_dns_platform

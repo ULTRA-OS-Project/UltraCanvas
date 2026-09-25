@@ -551,6 +551,20 @@ the backing implementation can be replaced without affecting callers.
   the host wired the helper. See
   `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
 
+- **UltraCanvasTrash** (`UltraCanvasTrash.h`) — moves files and folders into
+  the desktop's trash, from where the system's own file manager restores them.
+  `MoveToTrash(path, error)`, `TrashAvailable()`, `TrashDisplayName()`
+  ("Recycle Bin" / "Trash"). Backends: `OS/MSWindows/UltraCanvasWindowsTrash.cpp`
+  (SHFileOperationW + FOF_ALLOWUNDO, the shell asks before an item the Bin
+  cannot hold is destroyed), `OS/MacOS/UltraCanvasMacOSTrash.mm`
+  (NSFileManager trashItemAtURL, Finder's Put Back), and
+  `OS/Linux/UltraCanvasLinuxTrash.cpp` (freedesktop.org Trash 1.0: home trash,
+  or the drive's own `.Trash/$uid` / `.Trash-$uid` - never a cross-drive copy).
+  Android and WebAssembly get the failing fallback in `core/UltraCanvasTrash.cpp`
+  (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
+  confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
+  its own copy in its headless engine, which does not link UltraCanvas.)
+
 - **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
   shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
   points at, the icon it is drawn with, and the command line it starts. Byte
@@ -856,7 +870,7 @@ the backing implementation can be replaced without affecting callers.
     dependency and is what `--list` and `Tests/DeviceExplorerModelTest` use.
   - `IODevice` — the base every category derives from (`ScannerDevice`,
     `CameraDevice`, `PrinterDevice`): identity, `Connect` / `Disconnect` /
-    `IsConnected` / `GetState`, `GetLastError`. Lifecycle is non-virtual
+    `IsConnected` / `GetState`, `GetLastDeviceError`. Lifecycle is non-virtual
     public, virtual protected: backends implement `DoConnect` / `DoDisconnect`
     and the base owns the state machine, the error slot and the locking.
   - Backends attach as **enumerators**, one per (category, backend) pair, not
@@ -1096,7 +1110,10 @@ future.
   Google Drive
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
-- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
+- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync` (each also with an
+  `UltraNetDnsOptions` - the name servers to ask for that call only, and the
+  deadline), `UltraNet_DnsReverseLookup`, `UltraNet_DnsClearCache`,
+  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
 - `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
   `UltraNet_UrlDecode`
@@ -1666,13 +1683,16 @@ the Linux `freedesktop-notifications` adapter
 `windows-notification-listener` adapter (`UltraCanvas/OS/MSWindows/UltraMessage/`,
 C++/WinRT `UserNotificationListener`: polls the Action Center, read-only),
 the shared chat / mail mirrors with category guessing from the application's
-identity, and UltraMail publishing new mail as `mail.message`
-(`Apps/UltraMail/engine/UltraMailFeedPublisher`). Tests in
-`Tests/UltraMessage` (34 cases, in-tree and standalone, the adapter ones on a
-private D-Bus session). Not yet: the `AddFdWatch` event-loop path (a reader
-thread serves every endpoint), an FTS5 index (text search is a LIKE),
-automatic reconnection after the hosting broker exits, the macOS and
-Telegram adapters and the `UltraCanvasMessageCenter` element. See
+identity, UltraMail publishing new mail as `mail.message`
+(`Apps/UltraMail/engine/UltraMailFeedPublisher`), and the desktop message
+centre as one element (`UltraCanvasMessageCenter`, target `UltraMessageCenter`,
+`UltraCanvas/include/Plugins/UltraMessage/`: sections, sources, filters,
+search, detail and actions on the feed; `Docs/UltraCanvas/UltraCanvasMessageCenter.md`,
+a DemoApp page). Tests in `Tests/UltraMessage` (34 cases, in-tree and
+standalone, the adapter ones on a private D-Bus session; 5 for the element
+in-tree). Not yet: the `AddFdWatch` event-loop path (a reader thread serves
+every endpoint), an FTS5 index (text search is a LIKE), automatic reconnection
+after the hosting broker exits, and the macOS and Telegram adapters. See
 `Docs/Modules/UltraMessage/README.md`.
 
 ---
@@ -2481,6 +2501,7 @@ their *License* is likewise marked **—** (OS component).
 | librevenge | [sourceforge.net/p/libwpd](https://sourceforge.net/p/libwpd/wiki/librevenge/) | [sourceforge.net/p/libwpd/librevenge](https://sourceforge.net/p/libwpd/librevenge/) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libsndfile | [libsndfile.github.io](https://libsndfile.github.io/libsndfile/) | [github.com/libsndfile/libsndfile](https://github.com/libsndfile/libsndfile) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libtiff | [simplesystems.org/libtiff](http://www.simplesystems.org/libtiff/) | [gitlab.com/libtiff/libtiff](https://gitlab.com/libtiff/libtiff) | [libtiff](https://spdx.org/licenses/libtiff.html) |
+| libudev (systemd) | [systemd.io](https://systemd.io/) | [github.com/systemd/systemd](https://github.com/systemd/systemd) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libvips | [libvips.org](https://www.libvips.org/) | [github.com/libvips/libvips](https://github.com/libvips/libvips) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libvorbis | [xiph.org/vorbis](https://xiph.org/vorbis/) | [github.com/xiph/vorbis](https://github.com/xiph/vorbis) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libwebp | [developers.google.com/speed/webp](https://developers.google.com/speed/webp) | [chromium.googlesource.com/webm/libwebp](https://chromium.googlesource.com/webm/libwebp/) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -2638,6 +2659,18 @@ for the full search order.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Scanners / cameras / print (native OS) | SANE, V4L2, CUPS | ICA, AVFoundation | WIA, TWAIN, Media Foundation |
+| Hot-plug watching | libudev (optional) | – (no watcher yet) | – (no watcher yet) |
+
+Hot-plug watching is what lets `IODeviceManager::StartMonitoring()` notice a
+device being plugged in or removed without the application rescanning.
+UltraCanvas' configure step looks for libudev with `pkg-config` (Debian/Ubuntu
+package `libudev-dev`, Fedora `systemd-devel`) and prints either
+`udev: <version> - hot-plug watching ENABLED` or
+`[-] udev - not found (no hot-plug watching on this build)`. Without it the
+module still builds, and `StartMonitoring()` returns `BackendUnavailable`. That
+reaches DeviceExplorer too: without libudev its tree only changes when the user
+presses **Rescan**. macOS and Windows have no watcher yet, so the same applies
+there whatever is installed.
 
 ### PixelFX module
 
@@ -19586,7 +19619,10 @@ icon (a vector-drawn warning triangle, so no icon assets are required) with the
 message below it, vertically centered in the folder display. A folder without
 content shows **"Folder is empty!"**; an empty [file list](#file-list-search-results)
 — the UltraFiler's History and Favorites tabs before anything was recorded or
-pinned, a search without matches — shows **"No entries"**. A listing emptied by
+pinned, a search without matches — shows **"No entries"**, or what the host
+set with `SetFileListEmptyMessage()` (lines separated by `\n`, each centred;
+`ShowFileList()` resets it). UltraFiler uses it to say which hidden folders a
+search left out. A listing emptied by
 the [name filter](#name-filter-filter-as-you-type) shows **"No matches for
 "…""** — with the host's escalation button centered under it when one is set
 via `SetFilterEmptyAction()`. A widget that never had a folder set keeps the
@@ -19841,7 +19877,7 @@ Open with      >  clicking the entry opens the selection with the OS default
 ──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 ──────────         displays; the label is configurable)
-Copy / Cut / Paste / Delete / Duplicate / Rename
+Copy / Cut / Paste / Delete / Delete Permanently / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
 ──────────
@@ -19988,7 +20024,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
-| `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
+| `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, the assemblers, ...; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
 | `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
@@ -20484,8 +20520,8 @@ as soon as the listing arrives, the folder changes or the widget is
 destroyed.
 ### Changing a remote folder
 
-Three more hooks let the host carry out the changes that act on the drive
-itself. Unlike `remoteListing` they do not answer with the result: the host
+Four more hooks let the host carry out the changes that act on the drive
+itself, and a fifth takes files back off it. Unlike `remoteListing` they do not answer with the result: the host
 queues the work and refreshes the display once the server has replied, so a
 slow drive never holds the UI thread.
 
@@ -20498,7 +20534,44 @@ filer->remoteRename = [drives](const std::string& path,
 filer->remoteMakeDirectory = [drives](const std::string& folderPath,
                                       const std::string& name,
                                       std::string& error) { … };
+filer->remoteUpload = [drives](const std::string& folderPath,
+                               const std::vector<std::string>& localFiles,
+                               std::string& error) { … };
+filer->remoteDownload = [drives](const std::string& folderPath,
+                                 const std::vector<std::string>& remoteFiles,
+                                 std::string& error) { … };
 ```
+
+- `remoteUpload` is what a **drop onto a remote folder** shown in the widget
+  goes through: the dropped paths are handed over for the host to put onto
+  the drive under their own names, one request each. Return `true` when at
+  least one was accepted; fill `error` with the first refusal even then (a
+  folder, a remote entry, a drive that cannot take uploads) so the widget
+  can say what was left out. Left unset, the drop is refused with a message.
+  Dragging the widget's own entries onto one of its folder tiles is still
+  refused on a remote drive — a move within a drive is not a provider verb.
+
+- `remoteDownload` is its mirror: what a **drop of a drive's entries onto a
+  local folder** goes through, so a file can be dragged off a server the same
+  way one is dragged onto it. The host is handed the local folder and the
+  remote paths and fetches them into it under their own names, one request
+  each; the return value and `error` mean exactly what they do for
+  `remoteUpload`. A drop carrying entries from a drive *and* files from this
+  computer at once — a selection dragged out of a drive pane and one out of a
+  local pane — is split, each half taking its own route. Left unset, such a
+  drop is refused with a message rather than reaching `std::filesystem` with
+  an `ultracloud://` path it cannot open.
+
+- **The clipboard uses the same two hooks.** `Paste()` into a remote folder
+  goes to `remoteUpload`; pasting a drive's entries into a local folder goes
+  to `remoteDownload`. Copying a drive's entries puts their *names* on the
+  system clipboard as text and keeps the paths on the widget's own clipboard
+  (static, so shared between panes): another application cannot open an
+  `ultracloud://` path, and for that same reason a drag of them that leaves
+  the window is not handed to the OS — it stays an in-window drag. `Cut` and
+  `Duplicate` refuse on a drive, and are greyed out in the context menu: a
+  move off a drive is a download plus a destructive delete, and a duplicate
+  is a server-side copy no provider offers.
 
 - Each returns `true` when the request was **accepted**, not when it finished;
   `false` with `error` is for what can be refused outright — a drive that
@@ -20740,6 +20813,24 @@ rule, including a desktop launcher's own `Name=`
 where the home folder is shown as *Home* — what the folder tree's row and the
 folder tab call it too — instead of the account the folder is named after.
 
+### Names in every script, and names that are not UTF-8
+
+Names are UTF-8 throughout: German umlauts, Thai, Cyrillic, CJK and emoji are
+listed, drawn, wrapped under a tile, ellipsized in a column and renamed as
+whole characters (a caption never breaks inside a multibyte character).
+
+A file name on disk, though, is whatever bytes the program that made it
+wrote, and some are not UTF-8: an old Latin-1 tool writes "Namensänderung" as
+`Namens\xE4nderung`, and a ZIP made on Windows and unpacked by a tool that did
+not re-encode it leaves `Namens\x84nderung` (IBM437). Drawn as they were, each
+such byte became U+FFFD — "Namens•nderung". `DisplayNameOf` now shows such a
+name decoded (`RepairLegacyEncodedName` in `UltraCanvasTextUtils.h` picks
+Windows-1252 or IBM437, whichever makes letters of the stray bytes), while
+`FilerEntry::name` / `path` keep the real bytes, so opening, copying and
+deleting the file still work. The rename field opens on the decoded name, and
+an edited name is written as UTF-8. Archives the widget unpacks through
+VirtualFS already come out with UTF-8 names (see the VirtualFS README).
+
 ## File type colours
 
 Every colour the display gives an entry — the band across the foot of its
@@ -20974,9 +21065,14 @@ filer->Paste();               // into the current folder, with the conflict
                               // text becomes a new file
 filer->PasteFilesInto(folder, paths, cut, onDone);  // same paste machinery
                               // aimed at any folder (see below)
-filer->DeleteSelection();     // gated by confirmDelete when set
-filer->DeletePaths(paths, onDone);   // delete without asking again - for a
-                              // host that ran its own confirmation
+filer->DeleteSelection();     // asks: Move to Trash (chosen) / Delete permanently
+filer->DeleteSelection(FilerDeleteMode::Permanently);  // asks, opened on
+                              // "Delete permanently" (what Shift+Del does)
+filer->ConfirmDeletePaths(paths, onDone);  // the same dialog for paths the
+                              // display is not showing (a folder-tree delete)
+filer->DeletePaths(paths, onDone, FilerDeleteMode::MoveToTrash);  // no
+                              // question - for a host that ran its own
+                              // confirmation (default mode: Permanently)
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
@@ -20987,6 +21083,43 @@ filer->ExtractSelection();           // into sibling folders; a taken folder
 filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Delete: to the Trash, or permanently
+
+**Del** and **Shift+Del** open the same confirmation, `Delete "X"?`, with the
+choice as two radio buttons: **Move to the Trash** (*Recycle Bin* on Windows)
+and **Delete permanently**. Del opens it on the trash, Shift+Del on the
+permanent delete — the keys Explorer gives the two — and the line under the
+question follows the choice: *It can be restored from the Trash.* or *This
+cannot be undone.* The context menu has both, **Delete** (Del) and **Delete
+Permanently** (Shift+Del).
+
+The trash is `UltraCanvasTrash` (`MoveToTrash`): the Recycle Bin through the
+shell, the Finder's Trash through NSFileManager (so *Put Back* works), and the
+freedesktop.org trash on Linux and the BSDs — the drive's own
+`.Trash-$uid` for a file on a USB stick, never a copy into the home folder.
+Moving to the trash is one move per entry, so a folder of any size goes at
+once, and a write-protected entry is not asked about (moving it does not
+write to it). An entry the trash refuses stops at the problem dialog below
+(*Cannot Move to the Trash*); it is **never** deleted for good instead.
+
+Under the choice the dialog lists **what is about to go**, in an
+`UltraCanvasListView` with the Details view's columns - the entry's icon (the
+display's own, through `DrawEntryIcon`, so type glyphs and host icons alike)
+and name, size, modified - at most 40 rows, ten at a time with a scrollbar.
+Several items selected: the list is those items, under a caption that counts
+the folders and files and adds up the files' size. One folder: the list is
+what the folder holds, folders first and then by name, under *Folder "X"
+contains 147 items (first 40 shown)*. A single file gets no list - the
+question already names it.
+
+Where the trash cannot take the entries — no trash on this platform (Android,
+WebAssembly), entries inside an archive, entries on a remote drive — the
+trash option is greyed out, the dialog opens on **Delete permanently**, and
+the line says why. `CanMoveToTrash(victims)` answers the same question for a
+host. A host `confirmDelete` veto replaces the dialog and so has no choice to
+offer: the delete then goes the way `DeleteSelection` was asked for, as far as
+the trash can take the entries.
 
 ### Progress window (copy / move / delete)
 
@@ -21262,6 +21395,19 @@ Cancel stops the backend at its next progress callback. A cancelled **pack**
 deletes the half-written archive (nobody wants that in the listing); a cancelled
 **unpack** keeps what it already wrote, because those are real files, and stops
 the remaining archives of a multi-archive run.
+
+An archive that is **extracted only in part** - entries VirtualFS refused
+because they would have been written outside the destination (`../x`, an
+absolute path, a hard link climbing out), or entries it could not write (a
+file through a symbolic link the archive created) - opens an **Extraction
+Incomplete** dialog: *Not everything in "Download.zip" was extracted. The rest
+of the archive was unpacked.*, then each kind of problem with the entries it
+held back, one per line. The status line (`onError`) gets one sentence saying
+the archive was extracted only in part. An archive that could not be extracted
+at all still reports `Extraction failed for <archive>` there, now followed by
+the reason. The text comes from `UCVFSBridge::ExtractArchive`'s `outError`
+parameter, not the bridge's shared `GetLastError()`, because extractions run on
+worker threads.
 
 ## Clipboard interop with other programs
 
@@ -24785,6 +24931,38 @@ bar->SetLowLevelLimit(10.0);
 bar->SetWarningColor(Color(230, 55, 45, 255));
 ```
 
+#### Busy, when nobody knows the total
+
+A download whose server sent no length, a queue still being counted: there is
+no value to draw, and a bar left at zero reads as progress that is stuck.
+
+```cpp
+bar->SetIndeterminate(true);    // slides a block along the track
+bar->SetIndeterminate(false);   // back to the value it was last given
+```
+
+The block animates on a timer the gauge owns, running only while the flag is
+on. That is deliberate: a caller reporting bytes has nothing to report when
+the total is unknown, so a bar driven by those reports would freeze whenever a
+chunk was in flight. No value text is drawn in this state — there is no value,
+and the caller's own label is where "3.2 MB sent" belongs.
+
+LinearBar only; other modes ignore the flag.
+
+#### It fits the box it is given
+
+A LinearBar is normally a dashboard gauge: a caption over a 28 px bar with the
+value underneath, which wants some 114 px of height. Given less than that it
+drops the caption, the value line and its side padding, and draws the bar
+across the whole element — which is what makes it the progress bar of a status
+line or a list row:
+
+```cpp
+auto strip = CreateGaugeDiagramElement("transfer", 0, 0, 160, 8);
+strip->SetMode(GaugeMode::LinearBar);
+strip->SetTitle("");    // the label beside it is the caption
+strip->SetUnit("");
+```
 ### 7. Vertical LED VU Meter
 
 ```cpp
@@ -33929,6 +34107,152 @@ UltraCanvasMenu is not thread-safe. All menu operations should be performed on t
 - Voice control integration
 - Custom item renderers
 - Menu recording/replay for testing
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMessageCenter.md
+==============================================================================
+
+# UltraCanvasMessageCenter — The Desktop Message Centre
+
+**Status:** Phase 2 of UltraMessage (first UI consumer of the feed)
+**Version:** 0.1.0
+**Author:** UltraCanvas Framework / ULTRA OS
+**Last Modified:** 2026-09-23
+
+`UltraCanvasMessageCenter` is the desktop message centre as one composite
+element: every chat message, mail and system notification on the UltraMessage
+feed (`Masterfile_modules.md` §13, `Docs/Modules/UltraMessage/README.md`) in
+one structured view, for any application to embed — the ULTRA OS desktop,
+UltraMail's toolbox, the DemoApp page. It is built from catalogue elements
+only and it is a client of the bus and nothing else: it never talks to a
+messenger or a mail server.
+
+**File location:** `include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`,
+`Plugins/UltraMessage/UltraCanvasMessageCenter.cpp`
+**Library target:** `UltraMessageCenter` (links the UltraCanvas library and
+`UltraMessage`; built whenever UltraMessage is)
+**Demo:** `Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp` (Extended
+functionality › Message Centre)
+**Tests:** `Tests/UltraMessage/test_messagecenter.cpp` (target
+`UltraMessageCenterTests`, in-tree)
+
+---
+
+## 1. What it shows
+
+```
+┌ All | Chats | Mail | System ──── (3) ──────── [Search messages] [Refresh] ┐
+│ [Unread] [telegram] [mail] [org.ultraos.filer]                              │
+├───────────────┬──────────────────────────────────┬─────────────────────────┤
+│ Sources       │ ● Ada Lovelace            09:12  │ Ada Lovelace            │
+│  All messages │   engine review at 9?            │ Ada Lovelace · telegram │
+│  Chats (2)    │ ● Konrad Zuse             Mon    │   · 09:12 · via Demo    │
+│   Ada (1)     │   Z3 relay order                 │                         │
+│   Engine (1)  │   Downloads               21.09. │ Are we still on for the │
+│  Mail (1)     │   Download finished — archive…   │ engine review at 9?     │
+│   erika@…     │                                  │                         │
+│  System       │                                  │ [Open] [Mark unread]    │
+│   Downloads   │                                  │ [Dismiss]               │
+└───────────────┴──────────────────────────────────┴─────────────────────────┘
+ Connected to /run/user/1000/ultramessage/bus.sock
+```
+
+| Part | Element | What it does |
+|---|---|---|
+| Sections | `UltraCanvasSegmentedControl` | *All / Chats / Mail / System*: the three feed topics, or all of them |
+| Unread count | `UltraCanvasBadge` | every unread row, whatever the filters |
+| Search | `UltraCanvasTextInput` | matches sender, title, snippet, body and source, case-insensitively |
+| Filters | `UltraCanvasChip` | *Unread*, and one chip per service seen (`telegram`, `mail`, an application id) |
+| Sources | `UltraCanvasTreeView` | *All messages*, then each section with its sources: conversations, mail accounts, applications, with unread counts |
+| Rows | `UltraCanvasListView` | newest first; unread mark (red when urgent), who, what, time — the row delegate paints the two lines |
+| Detail | `UltraCanvasLabel` ×3 + `UltraCanvasButton` | title, source · service · time · via, the text; *Open*, *Mark read / unread*, *Dismiss*, and one button per notification action |
+| Status | `UltraCanvasLabel` | the bus it is on, or why it is not |
+
+A row is one of:
+
+| Topic | Who (first line) | What (second line) | Source |
+|---|---|---|---|
+| `messaging.message` | the sender (`· group` for a group chat) | the text's first line | the conversation (`<service>:<conversationId>`) |
+| `mail.message` | the sender | the subject | the account |
+| `system.notification` | the application | summary — body | the application |
+
+A chat or mail row an adapter *mirrored* from a notification (its body has
+`mirrorOf`) replaces the notification's own row, so a Telegram toast is listed
+once, as a chat; dismissing it also closes the toast. A message that
+`replaces` another takes its row.
+
+## 2. Quick start
+
+```cpp
+#include "Plugins/UltraMessage/UltraCanvasMessageCenter.h"
+using namespace UltraCanvas;
+
+auto center = CreateMessageCenter("messages", 0, 0, 0, 0);
+window->AddChild(center);
+center->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+center->onOpen = [](const MessageCenterEntry& e) {
+    // "Open" or a double-click: e.section says Chats / Mail / System,
+    // e.message is the journaled UltraMsgMessage — launch UltraMail, focus
+    // the messenger, ... The element marks the row read first.
+};
+center->onUnreadCountChanged = [](int unread) { /* the dock badge */ };
+
+center->Connect();   // the per-user bus; hosts the broker when none runs
+```
+
+`Connect()` opens an endpoint (`org.ultraos.messagecenter`), reads the last
+`GetHistoryLimit()` rows of the three feed topics from the journal and
+subscribes to `messaging.message`, `mail.message`, `system.notification`,
+`system.notification.dismissed`, `feed.read` and `feed.dismissed`. It installs
+the UltraCanvas UI dispatcher (`UltraMsg_UseUltraCanvasApplication`) when none
+is installed yet, so deliveries arrive on the UI thread; a program without an
+application (a test) pumps `UltraMsg_ProcessPending` itself. A private bus for
+a demo or a test is `DefaultConnectOptions()` with `busPath` and
+`journalPath = ":memory:"` set.
+
+## 3. API
+
+| Call | Purpose |
+|---|---|
+| `Connect(options)`, `Disconnect()`, `IsConnected()`, `GetEndpoint()` | the bus; `DefaultConnectOptions()` is the starting point |
+| `Refresh()`, `SetHistoryLimit(n)` | re-read the journal (default 500 rows) |
+| `SetSection(s)`, `SetSource(key)`, `SetServiceFilter(service)`, `SetUnreadOnly(b)`, `SetSearchText(t)` | what is shown; the controls call these, a host may too |
+| `GetUnreadCount()`, `GetVisibleCount()`, `GetEntries()`, `GetSelectedEntry()` | state |
+| `Ingest(message)`, `RemoveEntry(id)`, `Clear()` | rows without a bus (a host feeding its own, tests) |
+| `MarkRead(id, read)`, `Dismiss(id)`, `InvokeAction(id, actionId)`, `Open(id)` | what the buttons do |
+| `onOpen`, `onSelectionChanged`, `onUnreadCountChanged`, `onError` | callbacks |
+| `SetStyle(MessageCenterStyle)` | colours, sizes, and `showSources` / `showDetail` / `showSearch` / `showFilters` for a compact embedding |
+| `GetListView()`, `GetSourcesTree()`, `GetSectionControl()`, `GetSearchInput()`, `GetDetailPane()`, `GetStatusLabel()` | the parts, for a host that restyles them |
+| `BuildEntry(message, out)`, `SectionForTopic(topic)`, `FormatTime(ms, nowMs)` | the translation, static, for tests |
+
+What the element posts back, so sources and other feeds stay in step:
+
+| The user | Journal | Bus |
+|---|---|---|
+| selects or reads a row | `UltraMsg_MarkRead` | `feed.read {messageId}` |
+| marks it unread | `UltraMsg_MarkUnread` | — |
+| dismisses a row | `UltraMsg_Dismiss` | `feed.dismissed {messageId}`; for a notification (or a mirror of one) also `system.notification.dismissed {notificationId}`, which the adapter turns into `NotificationClosed` |
+| presses a notification's button | marks read | `system.notification.action {notificationId, actionId}` |
+| opens a row | marks read | `onOpen`, else the notification's first action |
+
+Selecting a row marks it read, as a mail client does; *Mark unread* undoes it.
+
+## 4. Threading and cost
+
+Deliveries run on the UI thread. `Refresh`, `MarkRead`, `Dismiss` and the
+posts are short blocking round trips to the local broker (a Unix socket or
+named pipe on the same machine); they are called from the UI thread. Every
+row is kept in memory; with the default history of 500 rows that is trivial,
+and the ListView virtualises what it paints.
+
+## 5. Rules kept
+
+No control is painted by hand: the only direct drawing is the ListView row
+delegate, which is the view's licence (`UltraCanvasUIElements.md` § *The two
+legitimate exceptions*). Everything around it — segments, chips, the search
+field, the tree, the labels, every button — is a catalogue element with its
+keyboard, focus and theming behaviour.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMetadataDialog.md
@@ -49140,6 +49464,8 @@ FILE: Docs/UltraCanvas/UltraCanvasSpreadsheetExamples.md
 - **Column Widths From the Document**: Widths and row heights stored in an imported `.ods` / `.xlsx` are applied to the grid; any column the file does not size is auto-fitted to its content, measured with the font actually in use (see [Column widths](#column-widths))
 - **Cell Formatting Menu**: Alignment, number-format presets with live samples, font style and size, text/background colour, and column/row sizing — on a right-click in the grid, or from your own toolbar button (see [Cell formatting menu](#cell-formatting-menu))
 - **Data Tools**: Sorting, auto-filter, find/replace, named ranges, and data validation
+- **Fill Handle**: Drag the small square at the selection's bottom-right corner down, up, right or left to fill: number series continue, "Item 1" counts on, formulas shift their references (see [Fill handle](#fill-handle))
+- **Header Sort Buttons**: Select a block of rows and each of its column headers shows an up/down button; clicking one sorts only that block by that column, with the block's other columns moving along (see [Sorting a selection from the header](#sorting-a-selection-from-the-header))
 - **Clipboard & Undo**: Cut/Copy/Paste (including Paste Special) and multi-level Undo/Redo
 - **File I/O**: Load/Save OpenDocument (`.ods`) and CSV/TSV, with auto-detection or explicit import/export options
 - **Bundled Demo File + Open Flow**: On entry the demo opens the bundled `media/docs/spreadsheet.ods` document (a monthly sales / chargeback report with live `SUM` totals), falling back to a formatted sample sheet if the file is missing, and provides "Open Spreadsheet File…", "Import CSV…", and "Save…" buttons driven by `UltraCanvasFileLoader`
@@ -49300,6 +49626,35 @@ bool IsAutoCalculateEnabled() const;
 void SetAutoCalculate(bool enabled);
 ```
 
+### Sorting
+
+```cpp
+void SortSelection(const std::vector<SortCriteria>& criteria);
+void SortSelectionAscending();                 // by the selection's first column
+void SortSelectionDescending();
+void SortSelectionByColumn(int column, SortOrder order);   // by any column of the selection
+
+// Header sort buttons (on by default)
+bool IsHeaderSortEnabled() const;
+void SetHeaderSortEnabled(bool enabled);
+int  GetHeaderSortColumn() const;      // -1 unless the current selection was header-sorted
+bool GetHeaderSortAscending() const;
+bool IsSortFormulaWarningEnabled() const;   // OK/Cancel warning before sorting formulas
+void SetSortFormulaWarningEnabled(bool enabled);
+```
+
+### Auto-Fill
+
+```cpp
+// Fill the selection's extension, as the fill handle does. False when the
+// destination does not grow the selection along one axis, or hits merged cells.
+bool AutoFillSelection(const CellRange& destination);
+
+// Sheet level (UltraCanvasSpreadsheetSheet.h)
+void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destination);
+std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int colDelta);
+```
+
 ### File Operations
 
 ```cpp
@@ -49346,6 +49701,7 @@ std::function<void(int)>      onSheetChange;       // active sheet index
 std::function<void(const std::string&)> onFormulaError;
 std::function<void()>         onStructureChange;
 std::function<void(const std::string&)> onStatusChange;
+std::function<void(const CellRange&, int, SortOrder)> onSelectionSorted;  // header sort: (range, column, order)
 ```
 
 ### SpreadsheetCell
@@ -49745,6 +50101,83 @@ Rebuild the items each time the menu opens (`PopulateSpreadsheetFormatMenu`)
 so the ticks and radio marks reflect the cell that was just clicked.
 `SpreadsheetNumberFormatPresets()` returns the preset list on its own — label,
 `NumberFormat` and sample — if you want to drive a dropdown or a dialog with it.
+
+## Fill handle
+
+The small square at the bottom-right corner of the selection is the fill
+handle (the pointer turns into a crosshair over it). Drag it down, up, right
+or left: a dashed outline shows the range the release will fill, following
+whichever direction the pointer has moved furthest from the selection. On
+release the new cells are filled from the selection, repeating its pattern:
+
+| Selection holds | The new cells get |
+|---|---|
+| two or more numbers in a column (or row) | the series continued: `1, 2` → `3, 4, 5`; `10, 20` → `30, 40`; also backwards when dragged up or left |
+| one text ending in a number | the number counted on: `Item 1` → `Item 2`, `Item 3` |
+| a formula | the formula with its relative references shifted by the distance moved: `=C2*$D$1` one row down is `=C3*$D$1` |
+| anything else (one number, plain text) | a copy |
+
+Formatting comes along with each value. The filled range is selected
+afterwards, the fill is one undo step (Ctrl+Z), and every formula is
+recalculated, so totals that read the filled cells update. A drag that would
+cover merged cells does nothing.
+
+From code, select the source and call `AutoFillSelection(destination)`; the
+sheet-level `SpreadsheetSheet::AutoFill` does the same without selection or
+undo, and `ShiftFormulaReferences` shifts a formula's text on its own.
+
+## Sorting a selection from the header
+
+Select a block of two or more rows — say `A2:E8`, the months of the demo's
+sales report without its title and totals rows — and every column header over
+the block shows a small button with an up and a down triangle. Clicking one:
+
+- sorts **only the selected rows**, by the column whose button was clicked,
+  ascending (numbers by value, text case-insensitively, empty cells last);
+- moves the **other selected columns with it**, so each row of the block stays
+  together — sort by Sales and the month, the refunds and the percentage of
+  each row travel with its sales figure;
+- leaves **everything outside the block alone**: the title row above, the
+  totals row below and the columns beside it do not move.
+
+The clicked button then shows a single filled triangle (apex up ascending,
+apex down descending), and clicking it again reverses the order. The block
+stays selected, so you can sort it by another column straight away. The
+direction is shown for as long as that block remains the selection. A sort is
+one undo step (Ctrl+Z).
+
+The buttons appear only for a single rectangular selection of two rows or
+more. Whole-column and whole-row selections get none (sorting a full column
+would take its title along and run over the entire sheet), a block that
+overlaps merged cells gets none (moving rows would tear the merge apart), and
+a column narrower than about 44 px has no room for one.
+
+```cpp
+grid->onSelectionSorted = [statusLabel](const CellRange& range, int column, SortOrder order) {
+    statusLabel->SetText("Sorted " + range.ToString() + " by column " +
+                         CellAddress::ColumnToLetter(column));
+};
+
+// The same sort without the button:
+grid->Select(CellRange(1, 0, 7, 4));                  // A2:E8
+grid->SortSelectionByColumn(2, SortOrder::Descending); // by column C
+
+grid->SetHeaderSortEnabled(false);                     // no header buttons
+```
+
+Formulas inside a sorted block move as they are: their references are not
+rewritten, so a row formula such as `=D3/C3` keeps pointing at row 3 after
+it moves. Formulas that cover the whole block (a `SUM(C2:C8)` in the totals
+row) are unaffected as long as they sit outside it.
+
+So when the block holds formulas, the header button asks first: an OK/Cancel
+warning names the block and how many formula cells it contains, and explains
+that they will keep their references. OK sorts, Cancel leaves the block as it
+is. In the demo, select `A2:E10` (the months *and* the totals row) to see it.
+Turn the warning off with `SetSortFormulaWarningEnabled(false)`.
+`SortSelectionByColumn` itself never asks — code that calls it has decided —
+and `SpreadsheetSheet::CountFormulaCells(range)` gives the count if you want
+to warn in your own way.
 
 ## Best Practices
 
@@ -51452,6 +51885,35 @@ style.tokenStyles.keywordStyle = customKeywordStyle;
 textArea->SetStyle(style);
 ```
 
+### CSS Highlighting
+CSS (`.css`, language name `"CSS"`) is not highlighted from keyword lists: a
+word's colour depends on where it sits, so `color` is a property before a `:`
+inside a block and a value after one. The token types it produces, and the
+`tokenStyles` slot each one is drawn with:
+
+| Where | Examples | Token type / style |
+|---|---|---|
+| Selector | `div`, `li`, `from` | `Keyword` |
+| Selector | `.nav-link`, `[type=search]` attribute | `Identifier` |
+| Selector | `#main` | `Constant` |
+| Selector | `:hover`, `::before`, `:not` | `Builtin` |
+| Selector | `,` `>` `+` `~` `*` | `Operator` |
+| Block | `margin`, `-webkit-appearance`, `--bs-gutter-x` (property) | `Keyword` |
+| Value | `none`, `flex`, `border-box` | `Constant` |
+| Value | `var(`, `calc(`, `rgba(`, `url(` | `Function` |
+| Value | `--bs-border-width` inside `var()` | `Identifier` |
+| Value | `1.5rem`, `-.25rem`, `50%`, `#d3d4d5` | `Number` |
+| Value | `"..."`, `url(unquoted)` | `String` |
+| Anywhere | `@media`, `@font-face`, `!important` | `Preprocessor` |
+| Anywhere | `/* ... */` | `Comment` |
+
+Minified CSS — a whole stylesheet on one line — is scanned exactly. The text
+area highlights one line at a time, so a line in a multi-line file that
+opens no block of its own starts from a guess: a `{` on it makes it a
+selector, a `;` or `}` makes it a declaration, and otherwise a `:` without a
+trailing `,` does. The middle lines of a `/* ... */` comment are recognised by
+their leading `*` or closing `*/`.
+
 ### Multiple Selection Support
 While the current implementation supports single selection, the architecture allows for future multi-cursor editing:
 
@@ -52238,12 +52700,16 @@ Password fields mask what the user types, so they need a way to read it back.
 ### In-field eye button
 
 ```cpp
+// Every password field has the eye icon at its right by default.
 auto passwordInput = CreatePasswordInput("password", 10, 10, 300, 30);
-passwordInput->SetShowPasswordToggle(true);   // eye icon at the right of the field
 
-// or in one step:
-auto revealable = CreateRevealablePasswordInput("password", 10, 10, 300, 30);
+// A field that must never show its text can switch it off:
+passwordInput->SetShowPasswordToggle(false);
 ```
+
+`showPasswordToggle` defaults to `true` (since TextInput 1.6.0), for the
+builder as well. `CreateRevealablePasswordInput()` is kept and is now the same
+as `CreatePasswordInput()`.
 
 The button is only painted for fields in password mode (`TextInputType::Password`),
 so it is safe to switch on before the input type is set. It sits to the left of the
@@ -52326,7 +52792,7 @@ auto textInput = TextInputBuilder()
     .AddValidationRule(ValidationRule::Email())
     .AddValidationRule(ValidationRule::Required())
     .SetMaxLength(100)
-    .ShowPasswordToggle()   // eye button; only painted for password-type fields
+    .ShowPasswordToggle()   // eye button (the default); only painted for password-type fields
     .Build();
 ```
 
@@ -55434,8 +55900,10 @@ Every other document here describes **one** component. This one answers the
 question that comes first: *does an element for this already exist?* Read it
 before you draw anything.
 
-The framework ships around sixty UI elements. New UI is assembled from them; it
-is not painted from scratch.
+The framework ships around sixty UI elements in `UltraCanvas/include/`, and
+about seventy more under `UltraCanvas/include/Plugins/` — charts, diagrams,
+gauges, codes and document views, all built into the same library. **Both are
+listed here.** New UI is assembled from them; it is not painted from scratch.
 
 > **If it takes input, shows a picture, or presents a value, it is an element.**
 > Never build one out of `ctx->DrawText` / `FillRoundedRectangle` plus a private
@@ -55481,8 +55949,8 @@ click-to-position, drag selection, Home/End/arrows, Delete, cut/copy/paste,
 undo/redo, placeholder, max length, validation state, horizontal scrolling and
 multi-byte text. Reproducing even half of that by hand is a week of bugs.
 
-Password fields also get a reveal control: `SetShowPasswordToggle(true)` paints
-an eye button inside the field, and `SetPasswordRevealed()` drives the same state
+Password fields also get a reveal control: an eye button inside the field, on
+by default (`SetShowPasswordToggle(false)` removes it), and `SetPasswordRevealed()` drives the same state
 from an external "Show password" checkbox. See
 [UltraCanvasTextInputExamples.md](UltraCanvasTextInputExamples.md).
 
@@ -55558,6 +56026,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree; sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
 | System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
+| The desktop message centre: every chat, mail and notification on the UltraMessage feed, with sources, filters, search and the notification's actions ([doc](UltraCanvasMessageCenter.md)) | `UltraCanvasMessageCenter` | `Plugins/UltraMessage/UltraCanvasMessageCenter.h` |
 
 ## Pickers, dialogs and feedback
 
@@ -55568,7 +56037,9 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
+| A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
@@ -55579,8 +56050,91 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
 | Startup splash (logo, version, "GUI by" attribution, timeout) | `UltraCanvasSplashScreen` | `UltraCanvasSplashScreen.h` |
 
-Charts, diagrams and document views live under `UltraCanvas/Plugins/` with their
-own docs — check there before drawing a graph by hand as well.
+## Charts, diagrams and codes — the plugin elements
+
+These live under `UltraCanvas/include/Plugins/` and are built into the same
+library; an application includes the header and adds the element like any
+other. They were missing from this page for a long time, which is exactly the
+trap it exists to close: a progress bar was written from scratch in 2026-09
+because `GaugeMode::LinearBar` was not listed here, and nothing else on this
+page suggested that the answer was a *gauge*. **Search this section before
+drawing a graph, a diagram, a gauge or a code by hand.**
+
+Each takes its data through setters and renders itself; most have a
+`Create<Name>(…)` factory beside the class. Several have a doc of their own —
+`grep -l <Class> Docs/UltraCanvas/*.md`.
+
+### Charts — `Plugins/Charts/`
+
+| You need | Element | Header |
+|---|---|---|
+| Line, bar, scatter, area — the four basics | `UltraCanvasLineChartElement`, `UltraCanvasBarChartElement`, `UltraCanvasScatterPlotElement`, `UltraCanvasAreaChartElement` | `Plugins/Charts/UltraCanvasSpecificChartElements.h` |
+| Parts of a whole: pie, donut, 3D pie | `UltraCanvasPieChartElement` | `Plugins/Charts/UltraCanvasPieChart.h` |
+| Parts of a whole, nested: sunburst, treemap, layered proportional areas | `UltraCanvasSunburstChart`, `UltraCanvasTreeMapElement`, `UltraCanvasNestedAreaChart` | `Plugins/Charts/UltraCanvasSunburstChart.h`, `Plugins/Diagrams/UltraCanvasTreeMapElement.h`, `Plugins/Charts/UltraCanvasNestedAreaChart.h` |
+| Three variables at once (x, y, size): XY bubbles, packed bubbles, bubble matrix | `UltraCanvasBubbleChartElement` | `Plugins/Charts/UltraCanvasBubbleChart.h` |
+| A staged process that shrinks step by step | `UltraCanvasFunnelChart` | `Plugins/Charts/UltraCanvasFunnelChart.h` |
+| A static hierarchy whose levels are parts of a whole | `UltraCanvasPyramidChart` | `Plugins/Charts/UltraCanvasPyramidChart.h` |
+| A running total built from ups and downs | `UltraCanvasWaterfallChartElement` | `Plugins/Charts/UltraCanvasWaterfallChart.h` |
+| Two paired values per category (before / after) | `UltraCanvasDumbbellChart` | `Plugins/Charts/UltraCanvasDumbbellChart.h` |
+| Values either side of a centre: likert scales, demographics | `UltraCanvasDivergingBarChart`, `UltraCanvasPopulationChart` | `Plugins/Charts/UltraCanvasDivergingBarChart.h`, `Plugins/Charts/UltraCanvasPopulationChart.h` |
+| 100% stacked columns of *different widths* (Marimekko / mosaic) | `UltraCanvasMekkoChartElement` | `Plugins/Charts/UltraCanvasMekkoChart.h` |
+| Many measures per item: radar, or parallel coordinates | `UltraCanvasRadarChartElement`, `UltraCanvasParallelCoordinateChartElement` | `Plugins/Charts/UltraCanvasRadarChartElement.h`, `Plugins/Charts/UltraCanvasParallelCoordinateChart.h` |
+| Angle / radius space: polar series, radial bars, activity rings, ringed infographic | `UltraCanvasPolarChart`, `UltraCanvasRadialBarChart`, `UltraCanvasCircularProgressChart`, `UltraCanvasCircularInfoGraphic` | matching `Plugins/Charts/*.h` |
+| A matrix of values as colour: heatmap, hexbin, contribution calendar | `UltraCanvasHeatmapChartElement`, `UltraCanvasHexbinChartElement`, `UltraCanvasCalendarHeatmapElement` | `Plugins/Charts/UltraCanvasHeatmapChart.h`, `Plugins/Charts/UltraCanvasHexbinChart.h`, `Plugins/Charts/UltraCanvasCalendarHeatmap.h` |
+| The spread of individual points (strip / jitter plot, with box or violin overlay) | `UltraCanvasJitterPlotElement` | `Plugins/Charts/UltraCanvasJitterPlotElement.h` |
+| A scalar field: isolines and filled bands, or a shaded 3D height field | `UltraCanvasContourChartElement`, `UltraCanvasContourSurface3DElement` (`UltraCanvasContourSurfaceGLElement` for depth-tested GL) | `Plugins/Charts/UltraCanvasContourChart.h`, `Plugins/Charts/UltraCanvasContourSurface3D.h`, `Plugins/Charts/UltraCanvasContourSurfaceGL.h` |
+| An (x, y, z) point cloud in an orbitable axes box | `UltraCanvasScatterPlot3DElement` | `Plugins/Charts/UltraCanvasScatterPlot3D.h` |
+| Audio as time × frequency (STFT) | `UltraCanvasSpectrogramElement` | `Plugins/Charts/UltraCanvasSpectrogram.h` |
+| OHLC candlesticks with volume | `UltraCanvasFinancialChartElement` | `Plugins/Charts/UltraCanvasFinancialChart.h` |
+| A two-axis strategic grid: SWOT, BCG, Eisenhower, risk / priority | `UltraCanvasQuadrantChart` | `Plugins/Charts/UltraCanvasQuadrantChart.h` |
+| Flows between categories arranged on a circle | `UltraCanvasChordChart` | `Plugins/Charts/UltraCanvasChordChart.h` |
+| A project schedule: task table, dependencies, milestones, critical path | `UltraCanvasGanttChartElement` | `Plugins/Charts/UltraCanvasGanttChart.h` |
+| A Kanban board, and the cumulative flow diagram over its history | `UltraCanvasKanbanBoardElement`, `UltraCanvasCumulativeFlowChartElement` | `Plugins/Charts/UltraCanvasKanbanBoard.h`, `Plugins/Charts/UltraCanvasCumulativeFlowChart.h` |
+| Milestones and spans on a real date axis | `UltraCanvasTimelineChart` | `Plugins/Charts/UltraCanvasTimelineChart.h` |
+| **A chart type that does not exist yet** — derive, do not paint | `UltraCanvasChartEngineElement` (three-phase engine; implement phase 2) or `UltraCanvasChartElementBase` | `Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`, `Plugins/Charts/UltraCanvasChartElementBase.h` |
+
+### Diagrams — `Plugins/Diagrams/`
+
+| You need | Element | Header |
+|---|---|---|
+| Boxes and arrows: a flow chart (with a shape palette for editing) | `UltraCanvasFlowChart`, `UltraCanvasFlowChartPalette` | `Plugins/Diagrams/UltraCanvasFlowChart.h`, `Plugins/Diagrams/UltraCanvasFlowChartPalette.h` |
+| Blocks in 3D isometric | `UltraCanvasBlockDiagram` | `Plugins/Diagrams/UltraCanvasBlockDiagram.h` |
+| A graph / network, or a node editor whose nodes are panels with typed sockets | `UltraCanvasNodeDiagram`, `UltraCanvasCompositorDiagram` | `Plugins/Diagrams/UltraCanvasNodeDiagram.h`, `Plugins/Diagrams/UltraCanvasCompositorDiagram.h` |
+| UML: classes, or a sequence | `UltraCanvasClassDiagram`, `UltraCanvasSequenceDiagram` | `Plugins/Diagrams/UltraCanvasClassDiagram.h`, `Plugins/Diagrams/UltraCanvasSequenceDiagram.h` |
+| A database schema (Chen, Chen min-max/ISO, Crow's Foot) | `UltraCanvasERDiagram` | `Plugins/Diagrams/UltraCanvasERDiagram.h` |
+| SysML requirements with traceability and coverage | `UltraCanvasRequirementDiagram` | `Plugins/Diagrams/UltraCanvasRequirementDiagram.h` |
+| A PERT network | `UltraCanvasPertChart` | `Plugins/Diagrams/UltraCanvasPertChart.h` |
+| A mind map | `UltraCanvasMindMap` | `Plugins/Diagrams/UltraCanvasMindMap.h` |
+| A tree: clustering / phylogenetic, or a Gource-style radial filesystem | `UltraCanvasDendrogram`, `UltraCanvasGourceTree` | `Plugins/Diagrams/UltraCanvasDendrogram.h`, `Plugins/Diagrams/UltraCanvasGourceTree.h` |
+| A repository history as lanes or git-flow swimlanes | `UltraCanvasGitGraph` | `Plugins/Diagrams/UltraCanvasGitGraph.h` |
+| Flow volumes splitting and merging | `UltraCanvasSankeyDiagram` | `Plugins/Diagrams/UltraCanvasSankey.h` |
+| Nodes on a baseline joined by arcs | `UltraCanvasArcDiagram` | `Plugins/Diagrams/UltraCanvasArcDiagram.h` |
+| Area-proportional rooms and their adjacencies (space planning) | `UltraCanvasAdjacencyDiagram` | `Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h` |
+| Two item sets crossed in an L or T, cells marked from a scale | `UltraCanvasMatrixDiagram` | `Plugins/Diagrams/UltraCanvasMatrixDiagram.h` |
+| Set overlap and containment (Venn / Euler) | `UltraCanvasVennDiagramElement` | `Plugins/Diagrams/UltraCanvasVennDiagram.h` |
+| Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
+| Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
+| The four-panel SWOT infographic | `UltraCanvasSWOTDiagram` | `Plugins/Diagrams/UltraCanvasSWOTDiagram.h` |
+| Cause and effect (Ishikawa / fishbone) | `UltraCanvasFishboneDiagram` | `Plugins/Diagrams/UltraCanvasFishboneDiagram.h` |
+| A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
+| A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |
+| A bit-accurate map of a protocol data unit | `UltraCanvasPacketDiagram` | `Plugins/Diagrams/UltraCanvasPacketDiagram.h` |
+| A gauge, **and the framework's progress bar** | `UltraCanvasGaugeDiagramElement` — see *Pickers, dialogs and feedback* above | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
+
+### Codes and documents
+
+| You need | Element | Header |
+|---|---|---|
+| A QR code | `UltraCanvasQRCode` | `Plugins/QRCode/UltraCanvasQRCode.h` |
+| A 1D barcode (EAN, UPC, Code 39/128, ITF, Codabar …) with its human-readable line | `UltraCanvasBarcodeElement` ([doc](UltraCanvasBarcodeElement.md)) | `Plugins/Barcode/UltraCanvasBarcodeElement.h` |
+| A PDF on its own, with thumbnail strip, zoom and search-hit overlay (`UltraCanvasMediaViewer` embeds this for `.pdf`) | `UltraCanvasPDFView` | `Plugins/Documents/UltraCanvasPDFView.h` |
+| Markdown rendered as a standalone display (`UltraCanvasTextArea`'s Markdown mode is the editable route) | `UltraCanvasMarkdownDisplay` | `Plugins/Text/UltraCanvasMarkdown.h` |
+
+The vector format plugins (`UltraCanvasSVGElement`, `UltraCanvasCDRElement`,
+`UltraCanvasEPSElement`, `UltraCanvasXARElement`) are **not** in these tables on
+purpose: they are decoders behind `UltraCanvasVectorElement` and
+`UltraCanvasImageElement`, which are what an application reaches for. Same for
+the LaTeX and STL elements, listed under *Text, images and media* above.
 
 ## Creating them
 
@@ -55639,10 +56193,19 @@ finding. A genuine exception is declared in the source instead, with a reason:
 
 ## When the element does not exist
 
-Add it under `UltraCanvas/{include,core}` with a doc in `Docs/UltraCanvas/`, a
+Add it under `UltraCanvas/{include,core}` — or `UltraCanvas/include/Plugins/`
+for a chart, diagram or document view — with a doc in `Docs/UltraCanvas/`, a
 row in the tables above, and a changelog entry. A one-off painted into a single
 dialog helps one screen; an element helps every caller and gets the keyboard,
 focus and theming behaviour right once.
+
+**The row is not optional.** `scripts/check_element_catalogue.py` fails when an
+element in the tree is not named on this page, because a page with holes in it
+is worse than no page: it is read as a complete answer to "does this already
+exist?", and a hole reads as "no". A class that genuinely is not something a
+caller reaches for — a base to derive from, a format decoder behind one of the
+elements above — goes in `scripts/element_catalogue_exempt.txt` with its
+reason.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasUMLModel.md
@@ -61405,14 +61968,25 @@ empty and so drops every entry. The parser uses `std::find` on the vector.
 This is not hypothetical: the first version did exactly that, collected
 nothing, and the tests built on `Supports()` passed anyway.
 
-**Discovery is the one part that is not uniform.** `_uscan._tcp` is browsed
-through UltraNet's mDNS plugin, which is complete on Linux (Avahi) and macOS
-(Bonjour) and a stub on Windows — a raw `DnsQuery_W` for PTR records that
-returns no host, port or TXT. So on Windows a scanner is named outright,
-through `ULTRACANVAS_ESCL_SCANNERS`, which is also how any scanner on another
-subnet is reached, since mDNS does not cross routers. The gap is recorded in
-`Gaps.md`; closing it would serve IPP driverless printing too, which needs the
-same discovery.
+**Discovery is uniform now, but it was not free.** `_uscan._tcp` is browsed
+through UltraNet's mDNS plugin, which is Avahi on Linux, Bonjour on macOS and
+Win32 DNS-SD on Windows. The Windows branch was a stub until this release — a raw
+`DnsQuery_W` for PTR records, which names the services and cannot say where
+any of them is. That is worth stating precisely, because it looked like
+working discovery: entries came back, and every one was dropped by the
+consumer for having no host.
+
+Browsing is only half of DNS-SD. A browse answers *what is out there*; a
+separate resolve answers *where*, and only the second one produces something
+a caller can connect to. Avahi and Bonjour make that a callback pair and hand
+back the instance, type, domain, host, port and TXT already parsed. Win32
+gives `DnsServiceBrowse` and `DnsServiceResolve` and hands back one escaped
+wire name, so the backend does the parsing: see
+`Plugins/UltraNet/mdns/MdnsNames.h`, which holds that arithmetic with no
+platform in it so `Tests/MdnsNamesTest` can drive it anywhere.
+
+Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
+reach one on another subnet, since mDNS does not cross routers.
 
 ---
 
@@ -61556,7 +62130,8 @@ backend now exist; the other four protocols do not.
 | TWAIN (Windows) | ❌ |
 | ICA (macOS) | ❌ |
 | **eSCL / AirScan driverless network scanning** | ✅ one backend for Linux, macOS and Windows, because eSCL is plain HTTP and XML. Reads `ScannerCapabilities`, posts a `ScanJobs` document, collects pages from `NextDocument` and cancels with `DELETE`. Lives in `core/`, not under `OS/`, and sits alongside SANE rather than replacing it. |
-| eSCL: discovery on Windows | ❌ the scanning works there, but `Plugins/UltraNet/mdns`'s Windows browse is a stub — a raw `DnsQuery_W` for PTR records that returns no host, port or TXT. Until that is finished, a Windows scanner is reached by naming it in `ULTRACANVAS_ESCL_SCANNERS`. Finishing it (`DnsServiceBrowse`) would also serve IPP driverless printing, which needs the same discovery. |
+| eSCL: discovery on Windows | ✅ `Plugins/UltraNet/mdns` browses with `DnsServiceBrowse` and resolves each instance with `DnsServiceResolve`, so a Windows browse now yields host, port and TXT like the Avahi and Bonjour backends. The entry points are bound at run time, so on Windows older than 10 1703 the module still loads and falls back to the PTR-only query — names without addresses, which a caller skips. **Not yet run on Windows**: the name arithmetic is tested (`Tests/MdnsNamesTest`) and the translation unit compiles and links against `dnsapi`, but nobody has browsed a real network with it. Naming a scanner in `ULTRACANVAS_ESCL_SCANNERS` remains the way to reach one on another subnet. |
+| mDNS: `dn` differs between backends | ❌ Avahi and the Windows backend put the *unescaped* instance in `dn`; Bonjour passes through the escaped `fullname` it is given. Only cosmetic today — eSCL uses `dn` as a display fallback — but two platforms disagreeing about the same field will eventually catch someone. `Mdns::SplitInstanceName` is what macOS would use to match. |
 | eSCL: PDF pages | ❌ JPEG and PNG are decoded; a scanner asked for `application/pdf` would need the PDF plugin to rasterise it. The backend asks for an image format it can decode rather than accepting one it cannot. |
 | eSCL: HTTPS with a self-signed certificate | ❌ `_uscans._tcp` is browsed and an `https://` base URL is built, but scanners generally present self-signed certificates and nothing yet opts into accepting them. |
 | Multi-page ADF, capability detection | ✅ |
@@ -61918,7 +62493,7 @@ FILE: Docs/Modules/NetworkMonitor/README.md
 # NetworkMonitor — System-Wide Network Activity
 
 **Status:** Phase 1 and Phase 2 implemented (Linux, Windows, macOS; persistence; domain names; connection events); throughput charts and Phase 3 in the proposal.
-**Version:** 0.7.0
+**Version:** 0.9.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-09-23
 
@@ -62050,7 +62625,9 @@ client caused one particular outbound connection — and a UI labels it
 so. `ProcessTrafficSummary` carries the same at process level
 (`viaProcesses`, `servesProcesses`), and `NetworkMonitor_ListConnections`
 decodes every snapshot before its filters, so a connection kept without
-its loopback mirror still carries what the mirror told.
+its loopback mirror still carries what the mirror told. The activity
+store records the chain with each flow (below), so the question keeps its
+answer after the sockets are gone.
 
 ## Connection events
 
@@ -62066,7 +62643,13 @@ peer from the name table and, for a source that knows only the tuple,
 attributes the event from a socket table it refreshes a few times a
 second — in either orientation, so a tuple whose source is the remote side
 becomes an *Accepted* on the listener's process — and remembers the match
-so the *Closed* that follows is attributed though the socket is gone.
+so the *Closed* that follows is attributed though the socket is gone. From
+the same table, already decoded, it fills the event's loopback chain
+(`loopbackRole`, `localPeer`, `forProcesses`, as on `NetworkConnection`):
+an event on a local proxy's socket says which application is on the other
+end, a proxy's outbound event whom it is for, and a *Closed* gets what
+its *Opened* had. A source whose events come from a decoded table — the
+differ — fills them itself and sets `chainDecoded`.
 
 ```cpp
 #include "NetworkMonitor/NetworkMonitorEvents.h"
@@ -62210,7 +62793,7 @@ NetworkMonitor_CloseStore(store);
 | `NetworkMonitor_StoreAvailable()` | Whether this build has UltraDatabase; without it every call below reports `NotSupported` |
 | `NetworkMonitor_OpenStore` / `CloseStore` | Registers a named SQLite connection and migrates the schema (versioned; a newer file is refused, not damaged) |
 | `NetworkMonitor_RecordSnapshot` | Every connection either extends the flow it continues or starts a new one; processes are deduplicated and cached |
-| `NetworkMonitor_QueryFlows` | Filters: `since`, `until`, `pid`, `processName`, `text` (substring over addresses, name, executable), `includeListening`, `includeLoopback`, `limit`; newest first |
+| `NetworkMonitor_QueryFlows` | Filters: `since`, `until`, `pid`, `processName`, `text` (substring over addresses, name, executable, the loopback peer and whom a flow was for), `includeListening`, `includeLoopback`, `limit`; newest first |
 | `NetworkMonitor_QueryDailyTotals` | The rolled-up totals, newest day first |
 | `NetworkMonitor_RecordDnsObservation` / `QueryDnsObservations` | Every observation a name source reported, one row per address, with the asking process where known; the same filters, on `observedAt` |
 | `NetworkMonitor_RecordConnectionEvent` / `QueryConnectionEvents` / `ExportEventsCsv` | Every connection event a source reported, with its millisecond, process, name and counters; the same filters |
@@ -62235,8 +62818,20 @@ counted flows, not as zero bytes.
 replaces a weak one, never the reverse, and a sighting without a name
 keeps the one recorded. The daily total remembers the last name its flows
 carried. The text filter and the CSV (`remote_name`, `name_source`)
-include it. Events are one row each with their millisecond. Schema
-version 3; a file written by an earlier version migrates in place on open.
+include it. Events are one row each with their millisecond.
+
+**Chains.** A flow keeps the loopback chain its sightings decoded
+(`loopbackRole`, `localPeer`, `forProcesses`, the same as on
+`NetworkConnection`): a sighting that carries a chain replaces the
+recorded one, a sighting without one — the mirror socket already gone —
+keeps it. So the proxy's flow to the mail server says `for thunderbird
+(4120)` on Tuesday's history although the client's own socket lasted a
+second. The daily total remembers the last `for` its flows carried. The
+text filter matches the peer and the `for` list, so a search for the
+client finds the proxy's flows too, and the CSV carries `loopback_role`,
+`local_peer` and `for`. Recorded events carry the same three, filter and
+export the same way. Schema version 5; a file written by an earlier
+version migrates in place on open.
 
 **Threads.** One mutex per store: a recording thread, the name sources'
 threads and a reading thread never share the single SQLite connection at
@@ -63456,6 +64051,7 @@ and friends report what this build actually has.
 | `anthropic` | `ITextLLM` | cloud |
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud or OpenAI-compatible server |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud |
+| `elevenlabs` | `ITextToSpeech` | cloud, direct or through a hosted relay |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local server |
 | `comfyui` | `IImageGen`, `IVideoGen` | local server |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process |
@@ -63587,6 +64183,106 @@ Compatibility is not identity — verify the specific fields you rely on.
 
 **Not covered.** Music generation: MiniMax closed that API to new accounts
 in August 2026.
+
+---
+
+## `elevenlabs` — ElevenLabs speech
+
+Header: `UltraAIElevenLabs.h`. Cloud provider; a credential is required.
+Default base URL `https://api.elevenlabs.io`.
+
+The adapter serves two deployments with the same code:
+
+| Deployment | `baseUrl` | Credential | `auth_scheme` |
+|---|---|---|---|
+| **Hosted** — ULTRA runs a relay that holds the ElevenLabs key, checks the user's plan and meters usage | the relay's URL | the user's session token | `"bearer"` |
+| **Bring your own key** | empty (ElevenLabs) or a data-residency host | the user's key, vault reference `ai.elevenlabs.api_key` | `"xi-api-key"` (default) |
+
+The relay forwards ElevenLabs' own wire format unchanged, so nothing in the
+adapter differs between the two except where it connects and which header
+carries the credential. The relay itself is not part of this repository.
+
+```cpp
+// Bring your own key.
+TextToSpeechConfig cfg;
+cfg.providerId     = "elevenlabs";
+cfg.apiKeyVaultRef = "ai.elevenlabs.api_key";
+
+// Hosted service instead:
+//   cfg.baseUrl = "<relay URL>";
+//   cfg.apiKey  = sessionToken;
+//   cfg.providerOptions["auth_scheme"] = std::string("bearer");
+
+auto tts = CreateTextToSpeech(cfg);
+
+for (const VoiceInfo& voice : tts->ListVoices("de")) {
+    std::cout << voice.id << "  " << voice.displayName << '\n';
+}
+
+SpeakRequest req;
+req.text     = "Der Kessel kocht.";
+req.voiceId  = "JBFqnCBsd6RMkjVDRZzb";
+req.language = "de-DE";                   // -> language_code "de"
+req.options["stability"] = 0.5;           // -> voice_settings.stability
+
+StreamHandle handle = tts->SpeakStream(req, [](const TtsStreamEvent& ev) {
+    if (ev.kind == TtsStreamEventKind::AudioChunk) Play(ev.audioChunk);
+});
+```
+
+```
+POST /v1/text-to-speech/{voice_id}?output_format=...                         one-shot, raw audio
+POST /v1/text-to-speech/{voice_id}/stream/with-timestamps?output_format=...  streamed, NDJSON
+GET  /v1/voices                                                              ListVoices
+POST /v1/voices/add                                                          CloneVoice (multipart)
+```
+
+Streaming uses the `with-timestamps` variant on purpose: each line is a
+JSON object carrying base64 audio, so an error body (`{"detail": ...}`)
+cannot be mistaken for audio even though the HTTP status is only known when
+the stream ends. It runs over the transport seam's `ByteStream`.
+
+| `SpeakRequest` | API field |
+|---|---|
+| `voiceId` (or option `default_voice_id`) | path segment |
+| `model` (or `defaultModel`, else `eleven_multilingual_v2`) | `model_id` |
+| `language` | `language_code` (primary subtag) |
+| `speed` (when not 1.0) | `voice_settings.speed` |
+| `format`, `sampleRateHz` | `output_format` query: `mp3_44100_128`, `mp3_22050_32`, `pcm_<rate>` (8000–48000, default 24000) |
+
+**Option keys** (provider options or per request; never sent as body
+fields):
+
+| Key | Type | Meaning |
+|---|---|---|
+| `auth_scheme` | string | `"xi-api-key"` (default) or `"bearer"` for a relay; provider options only |
+| `default_voice_id` | string | voice used when `SpeakRequest::voiceId` is empty |
+| `output_format` | string | ElevenLabs format verbatim (`ulaw_8000`, `mp3_44100_192`, ...), overriding the mapping above |
+| `enable_logging` | bool | `false` requests zero-retention mode (enterprise accounts) |
+| `stability`, `similarity_boost`, `style` | double | `voice_settings` fields |
+| `use_speaker_boost` | bool | `voice_settings.use_speaker_boost` |
+
+Any other option is passed through as a top-level body field (`seed`,
+`previous_text`, `next_text`, `apply_text_normalization`, ...).
+
+**Usage.** `SpeakResponse::usage.units` is the character cost from
+ElevenLabs' `character-cost` response header, falling back to the
+character count of the text. `durationSec` is filled for PCM output only.
+
+**Errors.** ElevenLabs' `detail.status` refines the HTTP mapping and is kept
+in `Error::providerCode`: `quota_exceeded` → `QuotaExceeded` (ElevenLabs
+sends it with HTTP 401), `invalid_api_key` / `missing_permissions` →
+`AuthenticationFailed`, `too_many_concurrent_requests` / `system_busy` →
+`RateLimited`, `voice_not_found` → `InvalidRequest`. 422 validation errors
+report their first message.
+
+**Limits.** SSML is rejected (inline `<break time="1s" />` tags are plain
+text to ElevenLabs and pass through). Wav, Flac, Opus and Ogg are rejected
+unless `output_format` names an ElevenLabs format. `style`, `pitch` and
+`volume` have no equivalent and are ignored. `CloneVoice()` takes inline
+sample bytes only; URL samples are rejected rather than downloaded.
+Speech-to-text and the WebSocket input-streaming endpoint are not
+implemented yet.
 
 ---
 
@@ -63874,6 +64570,7 @@ tests run without any network or external model.
 | `anthropic` | `ITextLLM` | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
+| `elevenlabs` | `ITextToSpeech` | cloud (ElevenLabs), directly or through a hosted relay via `baseUrl` | `ULTRAAI_ADAPTER_ELEVENLABS` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process | `ULTRAAI_ADAPTER_LLAMACPP` (OFF — vendors the engine) |
@@ -64006,7 +64703,7 @@ cmake -S UltraAI -B build \
 | Shared adapter infrastructure (credentials, error map, retry, transport seam, cassette record/replay) | Complete |
 | Anthropic adapter (`ITextLLM`: chat, streaming, tools, structured output, token counting) | Complete |
 | OpenAI adapter (`ITextLLM` + `IEmbeddings`: Chat Completions, streaming, tools, structured output, embeddings; a custom `baseUrl` serves keyless OpenAI-compatible servers — Ollama, vLLM, llama.cpp server) | Complete |
-| Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > cloud > mock, with constructibility fallback) | Complete |
+| Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > mock, with constructibility fallback; cloud providers only when named or when cloud fallback is allowed via `SetCloudFallbackAllowed` / `ULTRAAI_ALLOW_CLOUD_FALLBACK`) | Complete |
 | llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; opt-in) | Complete (v0.1 — no tool calls yet) |
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
@@ -64108,7 +64805,7 @@ What already existed and stays where it is:
   app (UltraMail, UltraFiler, UltraSocial)
         │  ShowAddAccountDialog / ShowCloudLinkPicker      UltraCloudUI
         ▼
-  CloudService ──────────── AddAccount / List / Upload / CreateShareLink / UploadAndShare
+  CloudService ──────────── AddAccount / List / Upload / Download / CreateShareLink / UploadAndShare
     ├── AccountStore        the account list + default      (UltraDatabase, SQLite)
     ├── ISecretStore        passwords / tokens by accountId
     │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password"), the app's own vault
@@ -64276,7 +64973,7 @@ providers.
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
-| `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
+| `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, Download, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
@@ -65662,13 +66359,14 @@ FILE: Docs/Modules/UltraMessage/README.md
 
 # UltraMessage — The Message Channel
 
-**Status:** Phase 1 implemented (channel and journal); Phase 2 started —
+**Status:** Phase 1 implemented (channel and journal); Phase 2 in progress —
 adapter framework, the Linux `freedesktop-notifications` adapter, the
-`windows-notification-listener` adapter and UltraMail publishing to the
-feed. The rest of Phases 2–4 is in the proposal.
-**Version:** 0.2.1
+`windows-notification-listener` adapter, UltraMail publishing to the feed and
+the `UltraCanvasMessageCenter` element. The rest of Phases 2–4 is in the
+proposal.
+**Version:** 0.2.2
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-09-20
+**Last Modified:** 2026-09-23
 
 UltraMessage is the message channel of the ULTRA OS stack: one API through
 which applications send structured messages to each other, receive what other
@@ -65709,7 +66407,8 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | `windows-notification-listener` adapter (C++/WinRT) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp` |
 | UltraMail → `mail.message` | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
-| Tests (34 cases; the adapter ones on a private D-Bus session) | `Tests/UltraMessage/` |
+| `UltraCanvasMessageCenter` element (target `UltraMessageCenter`) | `UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`, `UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp` |
+| Tests (34 cases; the adapter ones on a private D-Bus session; 5 more for the element in-tree) | `Tests/UltraMessage/` |
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
@@ -65924,6 +66623,21 @@ at most 100 per account per ten minutes so an initial sync never floods the
 feed. Built with the engine wherever `UltraMessage` is (`ULTRAMAIL_HAVE_ULTRAMESSAGE`);
 without it the publisher compiles to a no-op.
 
+### 3.7 The message centre element
+
+`UltraCanvasMessageCenter` (`include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`,
+target `UltraMessageCenter`, [its doc](../../UltraCanvas/UltraCanvasMessageCenter.md))
+is the feed's first UI consumer (proposal §11): one composite element with the
+sections *All / Chats / Mail / System*, service and unread filter chips, search,
+a tree of sources (conversations, mail accounts, applications), the rows, and
+a detail pane whose buttons mark read, dismiss, open, and invoke a
+notification's own actions. It queries the journal on `Connect()`, subscribes
+to the three feed topics plus `system.notification.dismissed`, `feed.read` and
+`feed.dismissed`, and posts `feed.read`, `feed.dismissed`,
+`system.notification.dismissed` and `system.notification.action` back. A
+mirrored chat or mail row stands in for the notification it came from. The
+DemoApp's *Message Centre* page hosts it on a private bus with seeded traffic.
+
 ## 4. The C++ layer
 
 `UltraMessage::Endpoint` (`Connect`, `Subscribe`, `Post`, `PostRecorded`,
@@ -66009,10 +66723,10 @@ in-tree build uses.
   host the broker permanently, which removes the case there.
 - **FTS5** for text search.
 - **The spool** for attachments over 1 MiB (a file path is passed instead).
-- **The other Phase 2 adapters** (Apple Mail, Telegram) and the
-  `UltraCanvasMessageCenter` element; the adapter framework,
-  `freedesktop-notifications`, `windows-notification-listener` and UltraMail
-  publishing are built (§3.6).
+- **The other Phase 2 adapters** (Apple Mail, Telegram); the adapter
+  framework, `freedesktop-notifications`, `windows-notification-listener`,
+  UltraMail publishing and the `UltraCanvasMessageCenter` element are built
+  (§3.6, §3.7).
 - **Commands** (Phase 3: `RegisterCommand` / `ListCommands` / `Invoke`,
   manifests, consent) — the `app.command.*` topics are reserved for them.
 
@@ -66103,7 +66817,9 @@ the surface.
   certificate. That also makes the trust-store entries checkable *in both
   directions*: the same handshake must fail against the default trust store
   and succeed once the probe's own certificate is trusted.
-* **DNS** — numeric addresses and `localhost` resolve without a network;
+* **DNS** — the per-call server option is proven offline against the
+  TEST-NET-1 black hole, which can only answer through the deadline;
+  numeric addresses and `localhost` resolve without a network;
   record types beyond A/AAAA/PTR need `--network`.
 * **URL / MIME / SSE parser / plugin registry** — pure code, always verified.
 * **FTP** — the one area with no offline peer. The probes still establish
@@ -66430,7 +67146,7 @@ is purely a libcurl build option.
 | File transfer | FTP, FTPS, SFTP | `UltraNet/UltraNetFtp.h` |
 | Transport | TCP, UDP | `UltraNet/UltraNetSocket.h` |
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
-| Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …) | `UltraNet/UltraNetDns.h` |
+| Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse | `UltraNet/UltraNetCookies.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
@@ -66519,6 +67235,17 @@ UltraNet_WebSocketClose(ws);
 
 std::vector<std::string> mx;
 UltraNet_DnsResolve("example.com", mx, UltraNetDnsType::MX);
+
+// Ask a particular server, for this call only - a resolver you are testing,
+// a split-horizon server, or an unroutable one to prove a deadline. Every
+// backend honours it: c-ares on a channel of its own per list (any address,
+// any port), libresolv and dnsapi with the resolver pointed at IPv4 servers
+// on port 53. Such a lookup never touches the UltraNet cache.
+UltraNetDnsOptions options;
+options.servers   = {"9.9.9.9", "[2620:fe::fe]:53"};
+options.timeoutMs = 2000;
+std::vector<std::string> a;
+UltraNet_DnsResolve("example.com", a, UltraNetDnsType::A, options);
 ```
 
 ```cpp
@@ -68387,6 +69114,21 @@ direct zlib calls throughout the codebase.
   for quick success checks; `VirtualFSResultToString()` for messages.
 * **Paths:** forward slashes only, normalized automatically. Archive
   boundaries detected by extension matching against 40+ known formats.
+* **Extraction stays inside the destination.** `ExtractAll` refuses an
+  entry whose path is absolute or contains `..`, and a hard link whose target
+  does, before joining it to the destination; libarchive's
+  `SECURE_NODOTDOT` / `SECURE_SYMLINKS` guards run behind that, so nothing is
+  written through a symbolic link the archive created. Refused entries are
+  skipped, the rest extracts, and the result is `InvalidPath` with the names
+  in the provider's last error.
+* **Entry names are UTF-8**, in listings, reads and on disk after
+  `ExtractAll`, whatever the archive stored and whatever the process locale.
+  A ZIP entry without the UTF-8 flag is read as IBM437 (the ZIP
+  specification's default, and what Windows Explorer writes: "Namensänderung"
+  arrives as `Namens\x84nderung`), unless its bytes already are valid UTF-8
+  (Info-ZIP on Linux, macOS); other formats fall back to Windows-1252. The
+  libarchive provider pins `LC_CTYPE` to UTF-8 for the calling thread while it
+  reads, so Thai, Russian or Chinese names do not vanish in the "C" locale.
 * **Passwords:** set via `VirtualFS_SetPasswordCallback()` — the
   callback is invoked when an encrypted archive is encountered.
 * **Threading:** extraction/creation callbacks run on the calling
@@ -69412,11 +70154,26 @@ the filter shows), and whether changes are being watched for.
 
 The first scan starts when the window opens and runs on a worker thread —
 SANE and CUPS can each take seconds to answer, and the window never waits for
-them. After it, DeviceExplorer turns on IODeviceManager's hot-plug watcher:
-where the platform has one (udev on Linux), a device plugged in or removed
-appears or disappears by itself, and the selection stays on the device you
-were looking at. Where there is no watcher, the status text says
-*press Rescan after plugging in*.
+them. After it, DeviceExplorer turns on IODeviceManager's hot-plug watcher.
+While the watcher runs, a device plugged in or removed appears or disappears by
+itself, and the selection stays on the device you were looking at.
+
+**Whether there is a watcher depends on the platform and on how UltraCanvas was
+built:**
+
+| Platform | Hot-plug watching |
+|---|---|
+| Linux | Only when the framework was built with **libudev** (`libudev-dev` on Debian/Ubuntu, `systemd-devel` on Fedora). Configuring UltraCanvas prints `udev: <version> - hot-plug watching ENABLED` when it found it, `[-] udev - not found (no hot-plug watching on this build)` when it did not. |
+| macOS, Windows | Not yet — IODeviceManager has no watcher there. |
+
+The computer node shows which case you are in: *Hot-plug monitoring* reads
+*On* or *Off*, and with it off the status text says *press Rescan after
+plugging in*. Nothing else changes — every device is still found, it just
+takes a **Rescan** to see one that arrived or left after the last scan.
+
+Even with udev, the watcher reacts to what the kernel sees: USB, video and
+sound devices arriving or leaving. A network printer or eSCL scanner that comes
+online is not a kernel event, so it still needs a **Rescan**.
 
 ## What it can find
 
@@ -69479,4 +70236,5 @@ workstation  (3 devices, grouped by Category)
 | No category at all under the computer | The build carries no device backend (the computer node says so). Rebuild with CUPS / SANE development packages installed. |
 | *Scanners (0)* although a scanner is connected | SANE has no driver for it, or the user may not access the USB device (udev rule / `scanner` group). `scanimage -L` should list it first. |
 | *Cameras (0)* on Linux | No `/dev/video*` node the user can open — check membership of the `video` group. |
-| A device stays after it was unplugged | No hot-plug watcher on this platform; press **Rescan**. |
+| A device stays after it was unplugged, or a new one does not appear | No hot-plug watcher: on Linux the framework was built without libudev (install `libudev-dev` and reconfigure), on macOS and Windows there is none yet. Press **Rescan**. |
+| A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |

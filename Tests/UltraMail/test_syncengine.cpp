@@ -60,8 +60,11 @@ public:
         out = folders;
         return UltraNetResult::Ok();
     }
+    uint32_t uidValidity = 0;   // 0 = "STATUS unsupported" (skips the renumber check)
     UltraNetResult GetMailboxStatus(const std::string&, const std::string&,
-                                    UltraNetMailboxStatus&, const UltraNetMailOptions&) override {
+                                    UltraNetMailboxStatus& out, const UltraNetMailOptions&) override {
+        out = UltraNetMailboxStatus{};
+        out.uidValidity = uidValidity;
         return UltraNetResult::Ok();
     }
     UltraNetResult FetchEnvelopes(const std::string&, const std::string& folder,
@@ -109,6 +112,25 @@ public:
     }
     UltraNetResult AppendMessage(const std::string&, const std::string&, const std::string&,
                                  UltraNetMailFlags, const UltraNetMailOptions&) override {
+        return UltraNetResult::Ok();
+    }
+    // Server-side (uid -> flags) per folder the reconcile reads; the presence of
+    // a uid here is the "live" set (drives deletion detection), and its flags are
+    // reported flagsKnown=true. When `fetchAllFlagsFails` is set the call errors
+    // so the reconcile must skip its expunge pass rather than treat "no data" as
+    // "the folder is empty"; a folder with an empty list is a successful but empty
+    // enumeration (also must not expunge while locals exist).
+    std::map<std::string, std::vector<std::pair<uint32_t, UltraNetMailFlags>>> serverFlags;
+    bool fetchAllFlagsFails = false;
+    UltraNetResult FetchAllFlags(
+        const std::string&, const std::string& folder,
+        const std::function<void(uint32_t, UltraNetMailFlags, bool)>& onFlags,
+        const UltraNetMailOptions&) override {
+        if (fetchAllFlagsFails)
+            return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed, "boom");
+        auto it = serverFlags.find(folder);
+        if (it != serverFlags.end())
+            for (const auto& pr : it->second) onFlags(pr.first, pr.second, /*flagsKnown=*/true);
         return UltraNetResult::Ok();
     }
 };
@@ -343,4 +365,110 @@ TEST(set_flag_updates_server_and_local) {
     REQUIRE(UltraNetHasFlag(fx.fake.flagCalls[0].flags, UltraNetMailFlags::Answered));
 
     REQUIRE_EQ(NeedsFor(fx.store), 0);
+}
+
+// Reading a message's stored flags by uid (0 when the row is gone).
+static uint32_t FlagsFor(LocalStore& s, int64_t uid) {
+    std::vector<MessageEnvelope> msgs;
+    s.ListMessages("erika", "INBOX", 0, msgs);
+    for (const auto& m : msgs) if (m.uid == uid) return m.flags;
+    return 0;
+}
+static bool HasUid(LocalStore& s, int64_t uid) {
+    std::vector<MessageEnvelope> msgs;
+    s.ListMessages("erika", "INBOX", 0, msgs);
+    for (const auto& m : msgs) if (m.uid == uid) return true;
+    return false;
+}
+
+TEST(reconcile_flags_updates_read_state_and_expunges) {
+    Fixture fx("reconcile");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    // Seeded: uid1 unread, uid2 answered, uid3 seen — all three present.
+    REQUIRE(!(FlagsFor(fx.store, 1) & Flag_Seen));
+    REQUIRE(HasUid(fx.store, 3));
+    REQUIRE_EQ(UnreadFor(fx.store), 2);       // uid1 + uid2 unseen
+
+    // Another client read uid1 and deleted uid3; uid2 is unchanged.
+    fx.fake.serverFlags["INBOX"] = {
+        { 1u, UltraNetMailFlags::Seen },
+        { 2u, UltraNetMailFlags::Answered },
+    };
+    SyncOutcome r = engine.ReconcileFlags("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.reconciled, 1);        // uid1 flipped to Seen
+    REQUIRE_EQ(r.stats.expunged, 1);          // uid3 removed
+    REQUIRE(FlagsFor(fx.store, 1) & Flag_Seen);
+    REQUIRE(!HasUid(fx.store, 3));
+    // uid1 is now read and uid3 is gone; uid2 (answered but never seen) is the
+    // one message still unread.
+    REQUIRE_EQ(UnreadFor(fx.store), 1);
+}
+
+TEST(reconcile_flags_never_expunges_when_the_server_fetch_fails) {
+    Fixture fx("reconcile-fail");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+
+    // A failed flag fetch must be a no-op, not "the folder is empty" — otherwise
+    // a transient network error would delete every locally-held message.
+    fx.fake.fetchAllFlagsFails = true;
+    SyncOutcome r = engine.ReconcileFlags("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(r.ok);                            // non-fatal
+    REQUIRE_EQ(r.stats.expunged, 0);
+    REQUIRE(HasUid(fx.store, 1));
+    REQUIRE(HasUid(fx.store, 2));
+    REQUIRE(HasUid(fx.store, 3));
+}
+
+TEST(reconcile_flags_never_expunges_on_empty_enumeration) {
+    Fixture fx("reconcile-empty");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+
+    // The regression that wiped the cache: a SUCCESSFUL fetch that reports no
+    // UIDs (an empty/uncaptured server response) must not be read as "the folder
+    // is empty" while we still hold messages — it must delete nothing.
+    fx.fake.serverFlags["INBOX"] = {};        // success, but enumerates nothing
+    SyncOutcome r = engine.ReconcileFlags("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.expunged, 0);
+    REQUIRE(HasUid(fx.store, 1));
+    REQUIRE(HasUid(fx.store, 2));
+    REQUIRE(HasUid(fx.store, 3));
+}
+
+TEST(sync_messages_resets_the_folder_when_uidvalidity_changes) {
+    Fixture fx("uidvalidity");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+
+    // First sync under UIDVALIDITY 100: the seeded uid1/2/3 land and the folder
+    // records validity 100.
+    fx.fake.uidValidity = 100;
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(HasUid(fx.store, 1));
+    REQUIRE(HasUid(fx.store, 3));
+
+    // The server renumbers the mailbox (new UIDVALIDITY) and the same messages
+    // come back under fresh, LOWER uids — an incremental fetch keyed on the old
+    // max uid would miss them. The engine must drop the stale cache and refetch.
+    fx.fake.uidValidity = 200;
+    fx.fake.envelopes["INBOX"] = {
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None),
+        Env(11, "Ann <ann@x.com>",      {"erika@example.com"}, "Re: thanks",   UltraNetMailFlags::Seen),
+    };
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(!HasUid(fx.store, 1));            // stale uids discarded
+    REQUIRE(!HasUid(fx.store, 3));
+    REQUIRE(HasUid(fx.store, 10));            // refetched from UID 0
+    REQUIRE(HasUid(fx.store, 11));
 }

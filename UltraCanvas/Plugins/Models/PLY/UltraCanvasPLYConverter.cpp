@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "Models/PLY/UltraCanvasPLYConverter.h"
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat
 
 #include <algorithm>
 #include <cctype>
@@ -144,7 +145,11 @@ public:
         const size_t start = at_;
         while (at_ < size_ && !std::isspace(static_cast<unsigned char>(data_[at_]))) ++at_;
         const std::string token(reinterpret_cast<const char*>(data_ + start), at_ - start);
-        out = std::strtod(token.c_str(), nullptr);
+        // Dot-decimal by the format: strtod followed the desktop's locale, so
+        // on a comma-decimal system "1.5" was read as 1 and every model came
+        // out on a whole-number grid.
+        out = 0.0;
+        TryParseFloat(token, out);
         return true;
     }
 

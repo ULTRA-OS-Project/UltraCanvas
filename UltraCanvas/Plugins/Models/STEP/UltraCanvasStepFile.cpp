@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "Models/STEP/UltraCanvasStepFile.h"
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat
 
 #include <algorithm>
 #include <cctype>
@@ -277,7 +278,9 @@ private:
                 break;
             }
             const std::string number = text_.substr(start, at_ - start);
-            value.Number = std::atof(number.c_str());
+            // Dot-decimal by ISO 10303-21, whatever the desktop's locale.
+            value.Number = 0.0;
+            TryParseFloat(number, value.Number);
             if (real) {
                 value.Type = ValueType::Real;
             } else {

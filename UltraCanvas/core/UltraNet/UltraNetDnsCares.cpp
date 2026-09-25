@@ -9,7 +9,12 @@
 // thread; ares_query / ares_gethostbyname are callable from any thread,
 // callbacks fire on c-ares's worker. Sync entry points block the caller
 // on a condition variable; async entry points return immediately.
-// Version: 0.1.0
+//
+// A lookup that names its own servers (UltraNetDnsOptions::servers) runs on
+// a channel of its own, one per distinct list, kept for the life of the
+// process like the default one: a channel is never destroyed while a query
+// may still be in flight on it, and a list that is used again reuses it.
+// Version: 0.2.0 - one channel per per-call server list; ports honoured
 // Author: UltraCanvas Framework / ULTRA OS
 
 #ifdef ULTRANET_HAS_CARES
@@ -26,6 +31,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -55,30 +61,78 @@ namespace ultranet_dns_platform {
 namespace {
 
 // =====================================================================
-// Channel singleton (ARES_OPT_EVENT_THREAD)
+// Channels (ARES_OPT_EVENT_THREAD). The default one serves every lookup
+// that names no servers; a lookup with servers of its own gets the channel
+// for that exact list, created on first use and kept.
 // =====================================================================
+std::string JoinServers(const std::vector<std::string>& servers) {
+    std::string csv;
+    for (std::size_t i = 0; i < servers.size(); ++i) {
+        if (i) csv += ',';
+        csv += servers[i];
+    }
+    return csv;
+}
+
 struct Channel {
     ares_channel_t* handle = nullptr;
     bool valid = false;
+    std::string failure;   // why `valid` is false, for the error message
 
-    Channel() {
-        if (ares_library_init(ARES_LIB_INIT_ALL) != ARES_SUCCESS) return;
+    // `serversCsv` empty = the system configuration; otherwise the list the
+    // channel asks, "ip[:port]" entries joined with commas, as
+    // ares_set_servers_ports_csv reads them.
+    explicit Channel(const std::string& serversCsv = std::string()) {
+        if (ares_library_init(ARES_LIB_INIT_ALL) != ARES_SUCCESS) {
+            failure = "c-ares library init failed";
+            return;
+        }
         ares_options opts{};
         int mask = ARES_OPT_EVENT_THREAD;
         opts.evsys = ARES_EVSYS_DEFAULT;
-        if (ares_init_options(&handle, &opts, mask) == ARES_SUCCESS) {
-            valid = true;
+        if (ares_init_options(&handle, &opts, mask) != ARES_SUCCESS) {
+            failure = "c-ares channel not initialised";
+            return;
         }
+        if (!serversCsv.empty()) {
+            const int rc = ares_set_servers_ports_csv(handle, serversCsv.c_str());
+            if (rc != ARES_SUCCESS) {
+                failure = std::string("c-ares rejected the server list: ")
+                        + ares_strerror(rc);
+                return;
+            }
+        }
+        valid = true;
     }
     ~Channel() {
         if (handle) ares_destroy(handle);
         ares_library_cleanup();
     }
+    Channel(const Channel&) = delete;
+    Channel& operator=(const Channel&) = delete;
 };
 
 Channel& Chan() {
     static Channel c;
     return c;
+}
+
+// The channel for a per-call server list. Channels are leaked on purpose:
+// destroying one while a query may still be in flight on it (an abandoned
+// timeout, an async caller) is exactly the hazard the default channel
+// avoids by living for the process, and a list that comes back reuses its
+// channel instead of paying ares_init_options and a new event thread.
+Channel& ChanFor(const std::vector<std::string>& servers) {
+    if (servers.empty()) return Chan();
+    static std::mutex mu;
+    static std::map<std::string, std::unique_ptr<Channel>> channels;
+    const std::string key = JoinServers(servers);
+    std::lock_guard<std::mutex> lk(mu);
+    auto it = channels.find(key);
+    if (it == channels.end()) {
+        it = channels.emplace(key, std::make_unique<Channel>(key)).first;
+    }
+    return *it->second;
 }
 
 // =====================================================================
@@ -277,7 +331,9 @@ UltraNetResultCode MapAresStatus(int s) {
         case ARES_ENOMEM:         return UltraNetResultCode::InsufficientMemory;
         case ARES_ECANCELLED:     return UltraNetResultCode::Cancelled;
         case ARES_EBADNAME:       return UltraNetResultCode::InvalidUrl;
-        case ARES_EREFUSED:       return UltraNetResultCode::ConnectionRefused;
+        case ARES_EREFUSED:       return UltraNetResultCode::ConnectionRefused;  // the server said REFUSED
+        case ARES_ECONNREFUSED:   return UltraNetResultCode::ConnectionRefused;  // no server could be contacted
+        case ARES_ESERVFAIL:      return UltraNetResultCode::Unknown;
         default:                  return UltraNetResultCode::Unknown;
     }
 }
@@ -310,12 +366,12 @@ void Issue(Channel& ch, const PendingPtr& p, const std::string& host,
 UltraNetResult Resolve(const std::string& hostname,
                        UltraNetDnsType type,
                        std::vector<std::string>& outRecords,
-                       int timeoutMs) {
+                       int timeoutMs,
+                       const std::vector<std::string>& servers) {
     outRecords.clear();
-    Channel& ch = Chan();
+    Channel& ch = ChanFor(servers);
     if (!ch.valid) {
-        return UltraNetResult::Error(UltraNetResultCode::Unknown,
-                                     "c-ares channel not initialised");
+        return UltraNetResult::Error(UltraNetResultCode::Unknown, ch.failure);
     }
 
     auto p = std::make_shared<Pending>();
@@ -353,15 +409,15 @@ UltraNetResult Resolve(const std::string& hostname,
 UltraNetResult ResolveAsyncCares(
     const std::string& hostname,
     UltraNetDnsType type,
-    std::function<void(const std::vector<std::string>&)> onResult) {
+    std::function<void(const std::vector<std::string>&)> onResult,
+    const std::vector<std::string>& servers) {
     if (!onResult) {
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                      "onResult callback is required");
     }
-    Channel& ch = Chan();
+    Channel& ch = ChanFor(servers);
     if (!ch.valid) {
-        return UltraNetResult::Error(UltraNetResultCode::Unknown,
-                                     "c-ares channel not initialised");
+        return UltraNetResult::Error(UltraNetResultCode::Unknown, ch.failure);
     }
     auto p = std::make_shared<Pending>();
     p->asyncCb = std::move(onResult);
@@ -373,12 +429,9 @@ void SetCustomServersCares(const std::vector<std::string>& servers) {
     Channel& ch = Chan();
     if (!ch.valid) return;
     if (servers.empty()) return;
-    std::string csv;
-    for (std::size_t i = 0; i < servers.size(); ++i) {
-        if (i) csv += ',';
-        csv += servers[i];
-    }
-    ares_set_servers_csv(ch.handle, csv.c_str());
+    // The ports variant: "ip:port" and "[v6]:port" entries keep their port
+    // (ares_set_servers_csv would silently drop it).
+    ares_set_servers_ports_csv(ch.handle, JoinServers(servers).c_str());
 }
 
 } // namespace ultranet_dns_platform

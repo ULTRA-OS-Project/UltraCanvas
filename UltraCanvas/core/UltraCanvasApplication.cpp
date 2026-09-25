@@ -1189,12 +1189,12 @@ namespace UltraCanvas {
                 if (targetWindow && GetFocusedWindow() != targetWindow) {
                     // Update focused window + MRU focus history
                     SetFocusedWindowInternal(targetWindow);
-                    debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") gained focus" << std::endl;
+                    //debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") gained focus" << std::endl;
                 }
                 return;
             case UCEventType::WindowBlur:
                 if (targetWindow && targetWindow == GetFocusedWindow()) {
-                    debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") lost focus" << std::endl;
+                    //debugOutput << "UltraCanvasBaseApplication: Window " << targetWindow << " (native=" << targetWindow->GetNativeHandle() << ") lost focus" << std::endl;
                     DispatchEventToElement(targetWindow, event);
                     focusedWindow.reset();
                 }

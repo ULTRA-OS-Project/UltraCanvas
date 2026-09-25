@@ -252,6 +252,10 @@ here so the boundary is on the record.
   Model checkpoints carry their own licenses and are likewise never shipped.
 - **MiniMax / Hailuo API** (`ULTRAAI_ADAPTER_MINIMAX`) — https://platform.minimax.io,
   a hosted service used under the user's own account and terms.
+- **ElevenLabs API** (`ULTRAAI_ADAPTER_ELEVENLABS`) — https://elevenlabs.io,
+  a hosted service used under the user's own account and terms, or under
+  the operator's account when a hosted relay fronts it. No ElevenLabs code
+  or SDK is linked; the adapter speaks the HTTP API only.
 - **Ollama, vLLM, llama.cpp server, LM Studio** (`ULTRAAI_ADAPTER_QWEN`) —
   local OpenAI-compatible servers the user installs and runs. The adapter
   speaks the HTTP API only.

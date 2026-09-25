@@ -18,6 +18,7 @@
 // Author: UltraCanvas Framework
 
 #include "Models/FBX/UltraCanvasFbxFile.h"
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat
 
 #include <cctype>
 #include <cstdlib>
@@ -444,11 +445,16 @@ private:
                 else
                     break;
             }
-            const std::string text(data_ + position_, end - position_);
-            char* stopped = nullptr;
-            const double value = std::strtod(text.c_str(), &stopped);
-            if (stopped != text.c_str()) {
-                position_ += static_cast<size_t>(stopped - text.c_str());
+            // Dot-decimal by the format: strtod followed the desktop's locale
+            // and stopped at the '.' of "1.5" on a comma-decimal system.
+            // ParseFloatClassic takes no leading '+', so it is stepped over.
+            const char* first = reinterpret_cast<const char*>(data_) + position_;
+            const char* last = reinterpret_cast<const char*>(data_) + end;
+            const char* digits = (first != last && *first == '+') ? first + 1 : first;
+            double value = 0.0;
+            const char* stopped = ParseFloatClassic(digits, last, value);
+            if (stopped != digits) {
+                position_ += static_cast<size_t>(stopped - first);
                 return {Kind::Number, {}, value};
             }
         }

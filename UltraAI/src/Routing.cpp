@@ -1,7 +1,7 @@
 // UltraAI/src/Routing.cpp
 // Implementation of the default-provider routing policy.
-// Version: 0.1.0
-// Last Modified: 2026-08-21
+// Version: 0.2.0
+// Last Modified: 2026-09-24
 // Author: UltraAI Module
 
 #include "UltraAIRouting.h"
@@ -18,6 +18,7 @@ namespace {
 
 std::mutex g_mutex;
 std::map<std::string, std::string> g_defaults;
+bool g_cloudFallback = false;
 
 bool Contains(const std::vector<std::string>& registered,
               const std::string& id) {
@@ -40,6 +41,16 @@ std::vector<std::string> KnownLocalProviders(const std::string& capability) {
     return {};
 }
 
+bool EnvCloudFallback() {
+    const char* value = std::getenv("ULTRAAI_ALLOW_CLOUD_FALLBACK");
+    if (!value) return false;
+    std::string v;
+    for (const char* c = value; *c; ++c) {
+        v += static_cast<char>(std::tolower(static_cast<unsigned char>(*c)));
+    }
+    return v == "1" || v == "true" || v == "yes" || v == "on";
+}
+
 std::string EnvDefault(const std::string& capability) {
     std::string name = "ULTRAAI_DEFAULT_";
     for (char c : capability) {
@@ -50,6 +61,28 @@ std::string EnvDefault(const std::string& capability) {
 }
 
 } // namespace
+
+void SetCloudFallbackAllowed(bool allowed) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_cloudFallback = allowed;
+}
+
+bool IsCloudFallbackAllowed() {
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (g_cloudFallback) return true;
+    }
+    return EnvCloudFallback();
+}
+
+bool IsLocalProvider(const std::string& providerId) {
+    static const char* kLocal[] = {"llama-cpp", "qwen", "whisper-cpp", "piper",
+                                   "comfyui", "stable-diffusion-cpp"};
+    for (const char* id : kLocal) {
+        if (providerId == id) return true;
+    }
+    return false;
+}
 
 void SetDefaultProvider(const std::string& capability,
                         const std::string& providerId) {
@@ -92,16 +125,23 @@ std::vector<std::string> ResolveProviderOrder(
         Contains(registered, fromEnv)) {
         append(fromEnv);
     }
-    // 3. Local-first.
+    // 3. Local-first: the capability's known local providers in preference
+    // order, then any other local provider, sorted.
     for (const std::string& local : KnownLocalProviders(capability)) {
         if (Contains(registered, local)) append(local);
     }
-    // 4. Remaining non-mock providers, in sorted order; 5. mock last.
     std::vector<std::string> sorted = registered;
     std::sort(sorted.begin(), sorted.end());
     for (const std::string& id : sorted) {
-        if (id != "mock") append(id);
+        if (IsLocalProvider(id)) append(id);
     }
+    // 4. Cloud providers — only when the fallback is allowed.
+    if (IsCloudFallbackAllowed()) {
+        for (const std::string& id : sorted) {
+            if (id != "mock" && !IsLocalProvider(id)) append(id);
+        }
+    }
+    // 5. The mock last.
     if (Contains(registered, "mock")) append("mock");
     return order;
 }

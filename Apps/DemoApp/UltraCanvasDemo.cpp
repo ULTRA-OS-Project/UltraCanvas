@@ -810,6 +810,17 @@ namespace UltraCanvas {
                 .AddVariant("textarea", "Line Numbers Display")
                 .AddVariant("textarea", "Theme Support");
 
+        extendedBuilder.AddItem("messagecenter", "Message Centre",
+                                "The UltraMessage feed in one element: chats, mail and notifications with sources, filters, search and actions",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateMessageCenterExamples(); },
+                                "DemoApp/UltraCanvasMessageCenterExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasMessageCenter.md")
+                .AddVariant("messagecenter", "All / Chats / Mail / System")
+                .AddVariant("messagecenter", "Sources tree and service chips")
+                .AddVariant("messagecenter", "Detail pane with actions")
+                .AddVariant("messagecenter", "Live: post a sample message");
+
         extendedBuilder.AddItem("treeview", "Tree View", "Hierarchical data display with icons",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateTreeViewExamples(); },

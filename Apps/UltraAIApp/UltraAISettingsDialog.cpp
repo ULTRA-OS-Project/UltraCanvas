@@ -76,7 +76,7 @@ std::shared_ptr<UltraCanvasContainer> FieldColumn(
 
 void UltraAISettingsDialog::CreateSettingsDialog(const std::string& selectEndpointId) {
     DialogConfig cfg;
-    cfg.title      = "UltraAI — Settings";
+    cfg.title      = "UltraAI — Endpoints";
     cfg.width      = kW;
     cfg.height     = kH;
     cfg.dialogType = DialogType::Custom;        // drop the icon/message chrome

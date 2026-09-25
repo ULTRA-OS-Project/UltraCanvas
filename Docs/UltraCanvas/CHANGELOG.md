@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.42*
+#### 2026-09-25 *0.9.57*
 - **Media viewer Details panel: image metadata, scrollable, laid out as
   Markdown.** `UltraCanvasMediaViewer::UpdateDetailedInfo` listed only the
   header facts (size, dimensions, channels, colour space, dpi, loader) and
@@ -76,6 +76,743 @@
   which showed as `Time zone \(taken\)` because `UltraCanvasTextArea` does
   not unescape inside bold. Tests: `Tests/PixelFXMetadataDecodeTest.cpp`
   gains the names, including the word splitting.
+- **The last raw metadata values are tidied.** XMP dates read
+  `2026-09-20 14:32:11 +01:00` (a `Z` as `UTC`), `True` / `False` read Yes /
+  No, and a rating reads `4 of 5` (`Not rated`, `Rejected`). IPTC, XMP and
+  the Photoshop "8BIM" block that ImageMagick stores in a PNG as a "Raw
+  profile type" text chunk of hex digits are decoded
+  (`Header::DecodeRawProfile`) instead of shown as hex. libvips' own fields
+  read as values (`Header::TidyOtherValue`): Progressive / Interlaced Yes /
+  No, Loop count `Forever` / `Once` / `3 times`, Frame delays `100 ms per
+  frame`, a GIF palette `16 colours`, the background `RGB 255, 255, 255`;
+  `resolution-unit` is left out, and `orientation` when EXIF has it. A
+  resolution of 25.4 dpi - libvips' stand-in when the file stores none - is
+  left out of the Image group and the Details panel, and the panel writes
+  `300 dpi` instead of `300 x 300 dpi` and rounds `95.9866` to `95.99`.
+  Tests: `Tests/PixelFXMetadataDecodeTest.cpp` gains XMP values, raw
+  profiles and libvips' fields.
+
+#### 2026-09-25 *0.9.56*
+- **CSS is highlighted by structure, not by a word list.** The text area — and
+  with it the Filer / media-viewer preview of a `.css` file — coloured CSS
+  with the generic tokenizer, which split `background-color` at the hyphen,
+  knew a few dozen property names, took the `//` in `url(http://…)` for a
+  comment that swallowed the rest of the line, and could not tell a selector
+  from a declaration. A dedicated CSS scanner now colours tags, `.classes`,
+  `#ids` and `:pseudo`s in selectors; properties (including `--custom` and
+  `-vendor-` ones) before the `:`; values, `var()`/`calc()`/`url()` calls,
+  numbers with their units, `#hex` colours and `!important` after it; and
+  `@media`/`@font-face` preludes. A minified stylesheet on one line is scanned
+  exactly; in a multi-line file each line starts from a guess based on its own
+  braces and semicolons. The unused CSS keyword tables and the invalid `//`
+  comment were removed from the CSS rules.
+
+#### 2026-09-25 *0.9.55*
+- **Password fields show the eye button by default.** `UltraCanvasTextInput`
+  (1.6.0) now starts with `showPasswordToggle = true`, and so does
+  `TextInputBuilder`: every field in password mode — `CreatePasswordInput()`,
+  `SetInputType(TextInputType::Password)` and the framework's own password
+  input dialog — carries the in-field "view hidden text" button, where before
+  each caller had to ask for it and most did not. A masked field with no way
+  to read it back turned every typo into a blind retry. Plain fields are
+  unaffected, since the button is only painted in password mode; a field that
+  must never show its text still calls `SetShowPasswordToggle(false)`.
+  `CreateRevealablePasswordInput()` is kept and is now the same as
+  `CreatePasswordInput()`.
+
+#### 2026-09-25 *0.9.54*
+- **Every source-text type is a Text format of the file display.** The
+  Filer's extension table named 19 text types. Swift, Rust, SQL, Go, Kotlin,
+  Java, PHP, Lua, Ruby, C#, CSS, Pascal, the assemblers and the rest of the
+  syntax highlighter's languages were "Other": a blank sheet instead of the
+  miniature page of their text, and no switch for them under Display >
+  Thumbnails.
+  - `SyntaxTokenizer::GetLanguageExtensions()` (new) lists every registered
+    language with the extensions it claims. The highlighter is the one list
+    of source-text extensions in the framework.
+  - `UltraCanvasFilerWidget` classifies an extension that neither its table
+    nor a registered plugin claims as Text when the highlighter knows it, and
+    names its type after the language ("Swift Text").
+    `GetPreviewableFormats()` lists each one under Text, so a settings page
+    offers a switch per type. Binary members of a language's list (MATLAB
+    `.mat` / `.mlx`, gzip `.svgz`) are left out; a binary file under a text
+    extension still previews safely, since the reader stops at the first NUL.
+  - New test `FilerSourceTextFormatsTest`.
+
+#### 2026-09-25 *0.9.53*
+- **mDNS discovery works on Windows.** `Plugins/UltraNet/mdns` browsed with a
+  raw `DnsQuery_W` for PTR records and stopped there. That names the services
+  on the network and cannot say where any of them is, which is worse than it
+  sounds: entries came back, every one of them without a host, and every one
+  was dropped by the caller. Discovery looked implemented and found nothing.
+  eSCL scanners were auto-discoverable on Linux and macOS and not on Windows.
+- **Browsing is half of DNS-SD; the other half is resolving.** A browse
+  answers what is out there, a resolve answers where it is, and only the
+  second produces something a caller can connect to. The backend now does
+  both - `DnsServiceBrowse` then `DnsServiceResolve` per instance - and fills
+  in `host`, `port`, `ip` and the TXT keys exactly as the Avahi and Bonjour
+  backends do.
+- **The entry points are bound with `GetProcAddress`, not imported.** They
+  arrived in Windows 10 1703. Importing them would stop the module loading at
+  all on anything older and take the whole plug-in down with it, so an older
+  Windows keeps the PTR-only query instead: names without addresses, which a
+  caller skips. Verified rather than assumed - the linked DLL's import table
+  lists only `DnsQuery_W` and `DnsFree` from `dnsapi`.
+- **The name arithmetic moved somewhere it can be tested**
+  (`Plugins/UltraNet/mdns/MdnsNames.{h,cpp}`). Avahi and Bonjour hand back the
+  instance, type and domain already separated; Win32 hands back one escaped
+  wire name, and splitting that on `.` works until a device is called
+  "Lab.Scanner". The splitting, the RFC 1035 unescaping (`\.`, `\\`, `\032`),
+  the TXT formatting and the RFC 5952 address formatting live in a
+  translation unit with no platform in it.
+- **The escaped name is what goes back to the resolver.** Unescaping first and
+  re-joining asks about a different name - one label deeper - that no service
+  answers to. `Mdns::ResolveNameFor` exists to say so in one place, and the
+  test asserts the two forms differ.
+- A valueless TXT key is kept distinct from a key set to an empty value:
+  DNS-SD uses the first as a boolean flag, Windows reports it as a null value,
+  and `key` and `key=` are not the same record.
+- `Tests/MdnsNamesTest`: 46 assertions, none needing Windows or a network.
+- **Not yet run on Windows.** The translation unit compiles and links under
+  CI's own defines and the tested half passes everywhere, but nobody has
+  browsed a real network with it. Recorded in `Gaps.md` with the second thing
+  found on the way: Bonjour puts the *escaped* instance in `dn` where the
+  other two backends put the unescaped one.
+
+#### 2026-09-24 *0.9.52*
+- **"Namensänderung" was drawn as "Namens•nderung".** Two ways a name that
+  is not UTF-8 reached the file display, and both are closed:
+  - *Archives.* A ZIP entry without the UTF-8 flag is named in the DOS code
+    page of the machine that made it - IBM437 by the ZIP specification, and
+    what Windows Explorer, WinZip and older 7-Zip write, so "ä" is the byte
+    0x84. libarchive passes those bytes on untouched on Linux, so the
+    VirtualFS listing showed U+FFFD and `ExtractAll` created a folder whose
+    name was not UTF-8 at all. The libarchive provider now reads every entry
+    name through one helper: libarchive's own UTF-8 conversion when it has
+    one, the stored bytes when they already are UTF-8 (Info-ZIP on Linux and
+    macOS write those unflagged), and otherwise IBM437 for ZIP and
+    Windows-1252 for the other formats. Extraction writes that UTF-8 name to
+    disk.
+  - *The locale.* libarchive converts names through the C library, so in the
+    "C" locale (a test runner, a service, a session without `LANG`) every
+    non-ASCII name - Thai, Russian, Chinese, flagged UTF-8 or not - came
+    back empty and `archive_read_next_header` answered `ARCHIVE_WARN`, which
+    every loop in the provider took for the end of the archive. The provider
+    now pins `LC_CTYPE` to UTF-8 for its thread while it reads, and a warning
+    no longer ends a walk.
+  - *Names already on disk.* A file named in a legacy code page (an old
+    Latin-1 tool, an unzip that did not re-encode) is shown decoded by
+    `UltraCanvasFilerWidget::DisplayNameOf` instead of as U+FFFD. The new
+    `RepairLegacyEncodedName` / `IsWellFormedUtf8` in `UltraCanvasTextUtils.h`
+    pick Windows-1252 or IBM437, whichever makes letters of the stray bytes,
+    and leave UTF-8 - including decomposed (NFD) names - untouched. The entry
+    keeps its real bytes for every file operation. The rename field opens on
+    the decoded name, and an edited name is written as UTF-8.
+  - New tests: `VirtualFSNameEncodingTest` (a hand-built ZIP with an IBM437
+    "Namensänderung/Grüße.txt" and UTF-8 Thai, Russian and Chinese entries,
+    listed, read and extracted in the "C" and a UTF-8 locale) and
+    `FilerNameEncodingTest` (the repair, `DisplayNameOf`, caption wrapping of
+    Thai / Cyrillic / CJK names, and a real folder scan).
+- **The delete confirmation lists what is about to go, with icons.** Deleting
+  a folder showed a wrapping grid of 64-pixel tiles for its first ten entries.
+  Only image files got a picture there: a folder, a DLL or a certificate was
+  an empty square over a name cut at eleven bytes, and several selected items
+  were not shown at all. The dialog now has an `UltraCanvasListView` in the
+  Details view's form:
+  - Columns: icon and name, size, modified. The icon is the display's own
+    (`DrawEntryIcon`, via a small list delegate), so every row gets the glyph
+    or host icon the file display gives that entry. Sizes and dates are
+    formatted as in the Details view.
+  - Several items selected: the list is those items, with a caption that
+    counts folders and files and adds up the files' size. One folder: the
+    list is its contents, folders first and then by name (only the rows
+    shown are stat-ed), with *Folder "X" contains N items (first 40 shown)*.
+    A single file gets no list. At most 40 rows, ten visible, with a
+    scrollbar; each row's tooltip is the full path.
+- **Delete asks "Move to the Trash" or "Delete permanently".** Every delete
+  in the Filer widget used to be permanent - there was no trash at all, and
+  Shift+Del did exactly what Del did. The confirmation now carries the choice
+  as two radio buttons, and the line under the question follows it ("It can
+  be restored from the Trash." / "This cannot be undone."). Del opens it on
+  the trash, Shift+Del on the permanent delete, as in Explorer; the context
+  menu gains **Delete Permanently** (Shift+Del) beside **Delete** (Del).
+  - New `UltraCanvasTrash.h`: `MoveToTrash`, `TrashAvailable`,
+    `TrashDisplayName`. Windows recycles through `SHFileOperationW` with
+    `FOF_ALLOWUNDO`, and `FOF_WANTNUKEWARNING` makes the shell ask before an
+    item the Recycle Bin cannot hold is destroyed. macOS uses
+    `NSFileManager trashItemAtURL`, so Finder's Put Back works. Linux and the
+    BSDs follow the freedesktop.org Trash specification 1.0: the home trash
+    for files on the home drive, the drive's own `.Trash/$uid` or
+    `.Trash-$uid` for a USB stick or second partition (never a copy across
+    drives), names claimed with `O_EXCL` on the `.trashinfo`, and one
+    `rename` per item. The trash itself, anything in it and a folder holding
+    it are refused. Android and WebAssembly have none (`TrashAvailable()`
+    false).
+  - `UltraCanvasFilerWidget`: `FilerDeleteMode { MoveToTrash, Permanently }`;
+    `DeleteSelection(preferred)`, `DeleteEntries(victims, preferred)`,
+    `DeletePaths(paths, onDone, mode)` (default still Permanently: its caller
+    confirmed), new `ConfirmDeletePaths` (the dialog for paths the display is
+    not showing) and `CanMoveToTrash`. A trash move is one step per entry and
+    asks nothing about write-protected entries; an entry the trash refuses
+    stops at a "Cannot Move to the Trash" problem dialog and is never
+    deleted for good instead. Where the trash cannot take the entries
+    (inside an archive, on a remote drive, no trash on the platform) the
+    trash option is greyed out and the dialog says why.
+  - The confirmation's folder preview cut names at 11 bytes, which split a
+    Thai, Cyrillic or CJK character; it now cuts at 12 characters, and the
+    names in the dialog are shown decoded when they are not UTF-8.
+  - New test: `TrashTest` (the freedesktop backend against a private
+    `XDG_DATA_HOME`: files, folders, links, UTF-8 names, name collisions,
+    refusals, and a second drive's `.Trash-$uid` when `/dev/shm` is one).
+- **`UltraCanvasFilerWidget::SetFileListEmptyMessage()`**: what an empty file
+  list says in the middle of the display, instead of "No entries". A search
+  can now explain an empty result: what it looked through, and what it left
+  out. `ShowFileList()` resets it, so History and Favorites keep their "No
+  entries". The empty-display notice (`DrawEmptyState`) draws a message of
+  several `\n`-separated lines, each centred; before, it drew one line,
+  however long.
+- **3D models on a comma-decimal desktop: FBX and DirectX .x did not load,
+  PLY and DXF came out wrong.** Six model readers still parsed numbers with
+  `atof` / `strtod`, which follow `LC_NUMERIC`. The Linux backend calls
+  `setlocale(LC_ALL, "")` for keyboard input, so on a German, French or
+  Italian desktop the '.' in "1.5" was not a decimal point. The Filer's 3D
+  thumbnails and detail view, like every other viewer, showed the text FBX
+  and the .x samples as nothing at all, and the PLY and DXF samples with
+  their geometry scrambled. The same defect was fixed for OBJ and X3D in
+  0.9.42; the six readers it did not reach are fixed here:
+  - PLY (`AsciiTokens`), DXF 3D (`Tag::Number`), COLLADA (`ReadFloatChild`)
+    and STEP (`UltraCanvasStepFile`) read through `TryParseFloat`; the FBX
+    and DirectX .x tokenizers through `ParseFloatClassic`, which for .x
+    also bounds the scan by the buffer instead of letting `strtod` run past
+    the end of a truncated file.
+  - The STEP converter's two `snprintf` calls only build in-memory lookup
+    keys, so they are marked `locale-ok` rather than changed.
+  - `scripts/locale_numbers_baseline.txt` loses the seven entries.
+  - New test `ModelLocaleDecimalTest` loads every text-based sample in
+    `media/3D` (PLY, DXF, COLLADA, FBX, STEP, .x, OBJ, X3D, VRML) in "C" and
+    in a comma-decimal locale, and requires the same mesh vertex for vertex.
+    Against the old readers it fails six checks: FBX and .x fail to load,
+    PLY and DXF differ. The standalone model tests link
+    `UltraCanvasTextUtils.cpp` for the helpers.
+- **Extracting an archive could write files outside the destination ("zip
+  slip").** `VirtualFSLibArchiveProvider::ExtractAll` joined every entry path
+  to the destination as it was and set none of libarchive's secure-extract
+  flags, so an entry named `../../.bashrc` landed outside the folder the user
+  picked, and an archive that first extracted `link -> /etc` could then write
+  `link/passwd` through it. UltraFiler's Extract reaches this with any archive
+  the user unpacks.
+  - Every entry path is checked before it is joined: an absolute name (and on
+    Windows a drive letter or a UNC path) or any `..` component is refused.
+    The entry is skipped, the rest of the archive still extracts, and the
+    refused names are listed in `lastError`; the result is `InvalidPath`
+    instead of `Success`.
+  - libarchive's own guards run behind that check:
+    `ARCHIVE_EXTRACT_SECURE_NODOTDOT` and `ARCHIVE_EXTRACT_SECURE_SYMLINKS`
+    (no write through a symbolic link on disk). `SECURE_NOABSOLUTEPATHS`
+    cannot apply, because the path handed over is always the absolute
+    destination plus the entry. The destination's own symbolic links (macOS
+    `/tmp` → `/private/tmp`) are resolved first, so only links the archive
+    put there count.
+  - Hard links: the target stayed relative to the archive root and resolved
+    against the process's working directory. It is now held to the same rule
+    and prefixed with the destination like every other path.
+  - `ARCHIVE_WARN` from `archive_write_header` (an owner that could not be
+    restored) no longer aborts the whole extraction, and an entry libarchive
+    refuses (`ARCHIVE_FAILED`) is skipped and reported, not the end of the
+    walk; the result is then `WriteError`.
+  - The skipped entries reach the user. `VirtualFSManager::ExtractAll`,
+    `VirtualFS_ExtractAll` and `UCVFSBridge::ExtractArchive` take an optional
+    `std::string* outError` with the provider's own account: a heading line
+    ending in ':' per kind of problem, then one entry per line, with the
+    destination prefix trimmed from libarchive's reasons. It is an
+    out-parameter rather than a shared "last error" because extractions run on
+    worker threads. `UltraCanvasFilerWidget` shows it as an **Extraction
+    Incomplete** dialog that lists the entries, and puts one sentence in the
+    status line; the bare "Extraction failed for X" is left only for an
+    archive that could not be extracted at all, and now carries the reason.
+  - New test `VirtualFSExtractSafetyTest`: a hostile ZIP (`../escape.txt`,
+    an absolute name, `a/../../escape2.txt`, a link out followed by a file
+    through it) and a tar with a good and a climbing hard link, extracted from
+    another working directory, plus a destination reached through a symbolic
+    link. The hand-written ZIP builder is shared with
+    `VirtualFSNameEncodingTest` as `Tests/VirtualFSTestZip.h`.
+
+#### 2026-09-24 *0.9.51*
+- **A file could be put onto a drive but never taken off one.** `CloudService`
+  had `Upload` and no `Download`, although every provider - FTP, WebDAV,
+  Nextcloud, Dropbox, OneDrive, Google Drive - has implemented `Download`
+  since the module was written. The facade simply never exposed it, so the
+  only way bytes moved was outwards, and the FTP transfer progress added in
+  the last release reported a direction nothing could ask for. `Download` now
+  sits beside `Upload`: it takes the full local path to write, because the
+  caller is the one who knows what the file should be called and a provider
+  inventing the name could not see a collision it was about to cause, and it
+  checks that the destination folder exists first - every provider but FTP
+  writes with an `ofstream`, which fails with nothing more useful than
+  "cannot write" when the directory is missing.
+- **Dragging a file off a drive onto a local folder now copies it down.**
+  `UltraCanvasFilerWidget` gained `remoteDownload`, the exact mirror of
+  `remoteUpload`: the host is handed the remote paths and the local folder,
+  queues the transfers and refreshes when the server has answered. Before
+  this, the widget passed those entries to the local paste machinery, which
+  handed `std::filesystem` an `ultracloud://` path no disk has - so the drag
+  that most obviously means "copy this off the server" did nothing at all.
+  A drop that carries entries from a drive *and* files from this disk at once
+  - a selection dragged out of a drive pane and one out of a local pane - is
+  split, and each half done its own way.
+- **`UltraCanvasFilerWidget::UniquePathIn` is public.** It answers what a
+  "Keep both" paste would call a file in a given folder ("name (2)", with the
+  extension kept on the end). A host that writes into a folder without going
+  through the widget - saving a file fetched off a drive - needs the same
+  answer, and a second implementation of it would be a second set of rules
+  about what "(2)" means.
+- **The element catalogue was missing seventy elements, and now cannot be
+  again.** `Docs/UltraCanvas/UltraCanvasUIElements.md` answers the question
+  that comes before every piece of new UI - *does an element for this already
+  exist?* - and it listed only the ~60 elements in `UltraCanvas/include/`. The
+  ~70 under `include/Plugins/` got one sentence: "charts, diagrams and
+  document views live under `UltraCanvas/Plugins/` with their own docs". That
+  is not an answer to anyone searching the page for what they need: in
+  2026-09 a second progress bar was written from scratch for UltraFiler's
+  status strip because `UltraCanvasGaugeDiagramElement` - the framework's
+  progress bar, in `GaugeMode::LinearBar` - was in
+  `include/Plugins/Diagrams/` and in no table. The duplicate was found and
+  deleted, and the gauge got a row; the audit behind this entry shows it was
+  three of seventy-five.
+  - **Every plugin element is now catalogued**, in three tables under
+    *Charts, diagrams and codes*: 34 chart elements (from line/bar/scatter/area
+    through contour surfaces, spectrograms, Gantt and Kanban to the engine you
+    derive a new chart type from), 26 diagram elements (flow, node and
+    compositor graphs, UML, ER, SysML, mind map, Sankey, Venn, word cloud,
+    packet layout and the rest) and the codes and document views -
+    `UltraCanvasQRCode`, `UltraCanvasBarcodeElement`, `UltraCanvasPDFView`,
+    `UltraCanvasMarkdownDisplay`. Each row says what the element is FOR,
+    because the reader knows the need and not the name.
+  - The vector format decoders (`UltraCanvasSVGElement`,
+    `UltraCanvasCDRElement`, `UltraCanvasEPSElement`, `UltraCanvasXARElement`)
+    are named in a closing note rather than given rows: they work behind
+    `UltraCanvasVectorElement` and `UltraCanvasImageElement`, which are what a
+    caller reaches for. Saying so is worth more than silence.
+  - `UltraCanvasNewDocumentDialog`, missing from the dialogs table, turned up
+    in the same audit and was added.
+- **`scripts/check_element_catalogue.py` keeps it complete.** An element in
+  the tree that is not named on that page fails the check - the moment the
+  author is best placed to write the one row that saves the next reader a
+  week. A page with holes in it is worse than no page: it is read as a
+  complete answer to "does this already exist?", and a hole reads as "no".
+  Deliberate omissions (a base class, a decoder behind a catalogued facade, a
+  platform implementation) go in `scripts/element_catalogue_exempt.txt` with
+  their reason; there are six. Runs in CI as `element-catalogue.yml`.
+- **A drive's entries could be dragged out of the window and copied to the
+  system clipboard, and neither gave the receiver anything it could open.**
+  A path on a drive is `ultracloud://<account>/<path>`: it names a file on a
+  server, not a file on this computer. `UpdateItemDrag` handed those straight
+  to `StartNativeDragOfPaths` when the pointer left the window, and
+  `EntriesToClipboard` mirrored them to the system clipboard as a
+  `text/uri-list`, so another application would accept the drop or the paste
+  and then fail on a path nothing there can resolve.
+  - **The native drag is refused for them.** The gesture is not lost: it
+    carries on as the widget's own in-window drag, which is where it can
+    actually do something - dropped on a local folder it downloads.
+  - **A copy puts the entry NAMES on the system clipboard as text**, rather
+    than paths or nothing at all. The clipboard still has to be *taken* - a
+    paste reads the system clipboard before the internal one, so leaving the
+    previous copy's file list in place would paste those files instead of
+    these - and text takes it while giving another application something
+    usable. The paths stay on the widget's internal clipboard, which is
+    shared between panes, so copy in a drive pane and paste in a local one
+    works.
+- **Ctrl+V now does on the keyboard what a drop already did with the mouse.**
+  `Paste` began with `RefuseWriteHere`, so pasting files INTO a drive was
+  refused outright although dropping the same files on it uploaded them, and
+  pasting a drive's entries into a local folder handed `std::filesystem` a
+  path no disk has and did nothing at all. Into a drive is now an upload
+  (through `remoteUpload`), out of one is a download (through
+  `remoteDownload`), and a clipboard holding both kinds is split with each
+  half taking its own route. Only the two genuinely unsupported cases still
+  refuse: a paste from one place on a drive to another (no provider has a
+  server-side copy) and pasting raw clipboard data - an image, text - as a new
+  file on a drive.
+- **Cut and Duplicate are greyed out on a drive** instead of being offered and
+  then refused. A cut is a move, and moving a file off a drive is a download
+  followed by a destructive delete with nothing to undo it if the first half
+  only partly arrived; a duplicate is a server-side copy no provider offers.
+  A cut that ghosts the entries and then cannot complete is worse than one
+  that never starts.
+- `RefuseWriteHere`'s message said a drive could be browsed and not changed.
+  That stopped being true when uploads landed: it now names what a drive *can*
+  do - files copied to and from it, renamed, deleted, folders created - so the
+  refusal points somewhere instead of just closing the door.
+- **Assistant sessions must now say where the code ended up.** `AGENTS.md`'s
+  *Reporting back* rules asked every reply that reports work to end with
+  `## Next Task` and `## Other recommendations`, and neither of those says
+  whether the work reached anyone. A session could write a feature, commit it,
+  push it and describe it in detail while never mentioning that no pull
+  request had been opened - and "done and pushed" reads as delivered, so a
+  reader had no way to tell. That happened: three commits over two replies,
+  1130 lines, and the omission only surfaced because the user asked.
+  A third block, `## Delivery`, now comes first and answers three questions in
+  order of danger. **Is anything still uncommitted?** - these sessions run in
+  a container that is reclaimed when the session ends, so an edit that was
+  never committed is not pending, it is gone, and a reply describing it as
+  written reports a delivery that never existed; a reply reporting finished
+  work may not end with a tracked file uncommitted unless it says so in as
+  many words. **How much, and is it pushed?** - files and +/- lines from
+  `git diff --shortstat`, the branch and SHA, or that the commits are still
+  local. **Is it a pull request?** - its number and state, or the words "no
+  pull request". The numbers come from `git status --short` and
+  `git diff --shortstat` run before the block is written, not from memory:
+  the block exists to catch the gap between what the assistant believes it
+  delivered and what the repository holds. Required whenever any code was
+  written, including when the answer is unwelcome. `CLAUDE.md` carries the
+  short form.
+- **And it is checked rather than remembered.** Every other rule in
+  `AGENTS.md` that mattered got a script; this one governs what an assistant
+  writes rather than what lands in the tree, so it gets a Claude Code hook
+  instead. `.claude/settings.json` runs `.claude/hooks/check-delivery.sh` on
+  `Stop`: a turn that would end with an uncommitted tracked file or an
+  unpushed commit is blocked once, with the paths and commits listed. It
+  refuses silence rather than unfinished work - stopping again after the
+  message is allowed, so the assistant can commit, push, or say plainly what
+  it is leaving behind. The same script runs on `SessionStart --brief`,
+  restating the rule and reporting anything a previous session left behind.
+  `.claude/settings.json` and `.claude/hooks/` are now **committed** -
+  `.gitignore` excluded all of `.claude/`, and a cloud session clones this
+  repository fresh, so a hook that is not in the repository does not exist for
+  the next chat; personal session state stays ignored. The settings also
+  pre-approve the read-only git commands the rule requires (`status`, `diff`,
+  `log`, `rev-parse`, `fetch`, ...) and the repository's guard scripts, so
+  measuring the answer is never what stops someone from giving it.
+
+#### 2026-09-24 *0.9.50*
+- **Spreadsheet: the fill handle fills.** The small square at the corner of
+  the selection was drawn but dragging it did nothing. Dragging it down, up,
+  right or left now shows a dashed outline of the range and, on release,
+  fills it from the selection: two or more numbers continue as a series
+  (1, 2 → 3, 4, 5), a text ending in a number counts on ("Item 1" →
+  "Item 2"), formulas are copied with their relative references shifted
+  (`=C2*$D$1` → `=C3*$D$1`), and anything else is repeated, formatting
+  included. The fill is one undo step, and every formula is recalculated so
+  totals reading the new cells update.
+  - `SpreadsheetSheet::AutoFill` was a plain copy that nothing called; it now
+    implements the above. New: `UltraCanvasSpreadsheet::AutoFillSelection`
+    and the free function `ShiftFormulaReferences`.
+  - A header sort now recalculates every formula too, so formulas outside
+    the sorted block that read it are up to date.
+  - New `SpreadsheetAutoFillTest`.
+- **Spreadsheet: sort a selected block from its column headers.** Select two
+  or more rows and each column header over the block shows an up/down sort
+  button, like the ListView's sortable headers. Clicking it sorts only the
+  selected rows by that column; the other selected columns move with it, so
+  every row stays together, and the title and totals rows outside the block
+  stay where they are. Clicking the same button again reverses the order, the
+  header shows the direction, and Ctrl+Z undoes the sort.
+  - When the block contains formulas, the button first shows an OK/Cancel
+    warning: sorting moves formulas with their rows but does not rewrite
+    their references, so a row formula can end up reading another row.
+    `SetSortFormulaWarningEnabled(false)` turns it off.
+  - New API: `SortSelectionByColumn(column, order)`,
+    `SetHeaderSortEnabled` / `IsHeaderSortEnabled`, `GetHeaderSortColumn` /
+    `GetHeaderSortAscending`, `SetSortFormulaWarningEnabled`, the
+    `onSelectionSorted` callback, and `SpreadsheetSheet::CountFormulaCells`.
+  - DemoApp: the Spreadsheet page's hint and status line explain and report
+    the header sort.
+  - New `SpreadsheetRangeSortTest` covers the block sort.
+
+#### 2026-09-24 *0.9.49*
+- **New: per-call name servers for UltraNet DNS** (`UltraNetDnsOptions` in
+  `UltraNet/UltraNetDns.h`; `UltraNet_DnsResolve` and `UltraNet_DnsResolveAsync`
+  each gain an overload that takes one). `options.servers` names the servers
+  a single lookup asks - "9.9.9.9", "9.9.9.9:5353", "[2620:fe::fe]:53" - and
+  `options.timeoutMs` its deadline; a default-constructed value is the
+  process default. Every backend honours it: c-ares runs the lookup on a
+  channel of its own per distinct list (kept for the process, so a channel
+  is never destroyed under an abandoned query, and a list that comes back
+  reuses it), libresolv points a private resolver state at IPv4 servers on
+  the given port, and dnsapi hands DnsQuery an IP4_ARRAY (IPv4, port 53;
+  anything else is `Unsupported`, a new `UltraNetResultCode` appended after
+  `Unknown`). A lookup with servers of its own bypasses the UltraNet cache
+  and the getaddrinfo / getnameinfo paths, so A / AAAA go to the named
+  server too and PTR goes out as the in-addr.arpa / ip6.arpa name. Two pure
+  helpers come with it: `UltraNet_DnsParseServer` (an entry into address
+  and port) and `UltraNet_DnsReverseName`.
+- **The libresolv backends answer A / AAAA, bound their retries by the
+  deadline, and report a timeout as `Timeout`** - `retrans` is the deadline
+  in whole seconds and `retry` one round, instead of the default 5 s x 2
+  tries x every server, and `TRY_AGAIN` maps to `Timeout` rather than
+  `HostNotFound`. dnsapi maps `ERROR_TIMEOUT` the same way. c-ares maps
+  "could not contact DNS servers" to `ConnectionRefused` instead of
+  `Unknown`, and `UltraNet_DnsSetServers` keeps the ports of its entries
+  (`ares_set_servers_ports_csv`; the plain csv call dropped them).
+- **The DNS deadline test is deterministic now.** `dns_resolve_honours_its_
+  deadline` asks a server that never answers - a UDP socket the test opens
+  on the loopback and never reads - through the per-call option, so the
+  only way back is the deadline and the c-ares assertion is `Timeout` again,
+  exactly, offline, on every runner (0.9.33 had loosened it because a local
+  caching resolver answered inside the millisecond). An unroutable address
+  is not as reliable: a sandbox that rejects the packet outright answers
+  "cannot contact" at once. New `Tests/UltraNet/test_dns_servers.cpp`: the
+  entry parser and the reverse name, the validation both entry points apply
+  before any query, a 1.5 s lookup at the silent server (Timeout on c-ares),
+  and PTR through the reverse name; `UltraNetApiStatus` gains a per-call
+  servers probe that proves the option offline the same way.
+
+#### 2026-09-23 *0.9.48*
+- **New: `UltraCanvasMessageCenter` — the desktop message centre as one element**
+  (`UltraCanvas/include/Plugins/UltraMessage/UltraCanvasMessageCenter.h`,
+  target `UltraMessageCenter`, `Docs/UltraCanvas/UltraCanvasMessageCenter.md`;
+  UltraMessage proposal §11). Every chat, mail and system notification on the
+  UltraMessage feed in one view, built from catalogue elements only: an
+  `UltraCanvasSegmentedControl` for *All / Chats / Mail / System*,
+  `UltraCanvasChip` filters (unread, one per service), an
+  `UltraCanvasTextInput` search, an `UltraCanvasTreeView` of sources
+  (conversations, mail accounts, applications with unread counts), an
+  `UltraCanvasListView` of rows (unread mark, who, what, time) and a detail
+  pane whose `UltraCanvasButton`s mark read / unread, dismiss, open, and
+  invoke a notification's own actions. `Connect()` reads the journal and
+  subscribes to the feed; it posts `feed.read`, `feed.dismissed`,
+  `system.notification.dismissed` and `system.notification.action` back so
+  sources and adapters stay in step. A chat or mail row mirrored from a
+  notification stands in for it; a replacing message takes its row.
+  `Ingest()` feeds rows without a bus; `onOpen`, `onUnreadCountChanged`,
+  `onSelectionChanged`, `onError`; `MessageCenterStyle` hides the sources,
+  detail, search or filters for a compact embedding. Catalogue row added.
+- **DemoApp: Message Centre page** (Extended functionality) hosting a private
+  broker with an in-memory journal, seeded chats, mails and notifications,
+  and a *Post another* button that adds live traffic.
+- **Tests:** `UltraMessageCenterTests` (in-tree, headless): the translation
+  of feed messages into rows, sections / sources / filters / search, the
+  mirror and replace rules, and the element on a private bus receiving live
+  messages, reading the journal and answering with `feed.read`,
+  `system.notification.action` and the dismissals.
+
+#### 2026-09-23 *0.9.47*
+- **A gauge's `LinearBar` can say "busy, total unknown".** `SetIndeterminate`
+  drops the value entirely and slides a block along the track - a download
+  whose server sent no length, a queue still being counted - where before the
+  only honest option was to leave the bar at zero, which reads as progress
+  that is stuck, or to hide it and say nothing. It animates on a timer the
+  gauge owns, started and stopped with the flag and torn down with the element:
+  a caller reporting bytes has nothing to report while the total is unknown, so
+  a bar driven by those reports would freeze whenever a chunk was in flight.
+  LinearBar only; other modes ignore it.
+- **A gauge's `LinearBar` fits the box it is given.** It is the framework's
+  progress bar - "Horizontal or vertical bar (e.g. download progress)" - but it
+  was sized only as a dashboard gauge: a caption over a 28 px bar with the
+  value spelled out underneath, which needs some 114 px of height before any of
+  it fits. In anything shorter it laid out for the height it wanted rather than
+  the height it was given and drew its bar and its value outside the element,
+  which is what kept it out of the one place a progress bar is most wanted - a
+  status line, a list row, a panel footer, all of them twenty-odd pixels tall.
+  Below the height its caption and value line need it now drops both, drops its
+  side padding, and is simply the bar across the whole element. A gauge with the
+  room to be a dashboard gauge is unchanged, pixel for pixel.
+- **`UltraCanvasGaugeDiagramElement` is in the element catalogue.** It was not,
+  so `Docs/UltraCanvas/UltraCanvasUIElements.md` - the file every assistant and
+  contributor is told to consult before building UI - offered a progress
+  *dialog* and nothing else, and the gauge was findable only by already knowing
+  its name. That is exactly how a second progress bar gets written.
+- **An FTP transfer reports its bytes.** `UltraNet_FtpUpload` and
+  `UltraNet_FtpDownload` set up libcurl without a progress callback, so a file
+  moving to or from a server was silent from first byte to last and nothing
+  above them could draw a progress bar however much it wanted to. Both install
+  one now, feeding the module's existing global transfer callbacks
+  (`UltraNet_SetTransferCallbacks`) - the same bag every HTTP request already
+  reports through, so a caller sets it once and hears about every transfer
+  whatever the protocol. Listings and the one-shot verbs are left alone: they
+  move too little for anyone to watch.
+
+#### 2026-09-23 *0.9.46*
+- **UltraCanvasFilerWidget: files dropped onto a remote folder are uploaded.**
+  A new optional hook, `remoteUpload`, receives the paths dropped onto a
+  remote folder shown in the widget (from another program, or from another
+  display of the same window); the host puts them onto the drive and
+  refreshes. Without it the drop went through the local paste path and was
+  refused as "not a writable folder". Dragging a remote display's own
+  entries onto one of its folder tiles is refused with a message that says
+  so, instead of "not a folder". Used by UltraFiler 1.47.0.
+
+#### 2026-09-23 *0.9.45*
+- **Connection events carry the loopback chain.** `NetworkConnectionEvent`
+  gains `loopbackRole`, `localPeer` and `forProcesses`, as on
+  `NetworkConnection`: the registry fills them from the socket table it
+  already attributes from (decoded by `NetworkMonitor_ListConnections`),
+  remembers them with the process so a Closed carries what its Opened
+  had, and the snapshot differ fills them from its own table and keeps
+  a closing connection's chain from the read that still saw the peer's
+  socket owned (`chainDecoded` says a source did). A tuple the table
+  lacks - a connection younger than the table, as often as not - makes
+  the registry read the table again, at most every 20 ms, which also
+  attributes conntrack's NEW events better. The store records them with each
+  event (schema version 5, migrated in place), its text filter matches
+  the peer and the `for` list, and the events CSV gains `loopback_role`,
+  `local_peer` and `for`. NetworkMonitor 0.9.
+
+#### 2026-09-23 *0.9.44*
+- **The activity store keeps loopback chains.** A recorded flow carries
+  the chain its sightings decoded - `RecordedFlow::loopbackRole`,
+  `localPeer` and `forProcesses`, the same as on `NetworkConnection` - so
+  "what did the mail client fetch on Tuesday" has an answer although the
+  mail server only ever saw the antivirus proxy. A sighting with a chain
+  replaces the recorded one; a sighting without (the mirror socket
+  already gone) keeps it. The daily totals keep the last `for` their
+  flows carried (`DailyProcessTotal::forProcesses`), the text filter
+  matches the peer and the `for` list on both, and the flows CSV gains
+  `loopback_role`, `local_peer` and `for`. Schema version 4, migrated in
+  place; a file from an earlier version reads back with no chain, as
+  before. NetworkMonitor 0.8.
+
+#### 2026-09-23 *0.9.43*
+- **The dependency tables now list libudev.** IODeviceManager's Linux
+  hot-plug watcher links libudev when the configure step finds it, and without
+  it `StartMonitoring()` returns `BackendUnavailable`. Nothing said so outside
+  `UltraCanvas/CMakeLists.txt`. `Docs/Dependencies.md` and the DemoApp's
+  in-app copy (`UltraCanvasDependenciesExamples.cpp`) gain a *Hot-plug
+  watching* row: libudev (optional) on Linux, no watcher yet on macOS or
+  Windows. libudev is also added to the library-links table (LGPL 2.1, part of
+  systemd). Its effect on DeviceExplorer is documented in that app's own docs.
+
+#### 2026-09-23 *0.9.42*
+- **The callback-cycle check now runs in CI, and the rule is written down.**
+  `scripts/check_callback_cycles.py` shipped in 0.9.32 with nothing calling
+  it, which is the same blind spot as a test no pipeline builds.
+  `.github/workflows/callback-cycles.yml` runs it with `--strict` on every
+  pull request that touches the roots it scans — `UltraCanvas/core`,
+  `UltraCanvas/include`, `UltraCanvas/dialogs`, `Apps`, `SmartHome` — plus
+  the script and the workflow itself. Triggers, path filters and the
+  concurrency group mirror `ui-reuse.yml` exactly, including the base-branch
+  list that covers stacked pull requests (`main` and `claude/**`): #455 once
+  reached 1059 changed lines with no job running because that list said
+  `main` alone.
+  - **`AGENTS.md` states the rule** beside "Build UI out of UltraCanvas
+    elements", where the next author is already reading, and in the house
+    rules beside the line about running the UI check before pushing. A
+    callback stored on a widget must not capture a `shared_ptr` to that
+    widget or to a container above it; capture the back-reference raw. The
+    entry says which captures are ownership rather than a cycle, so the rule
+    cannot be read as "never capture anything".
+  - Verified by reintroducing one of the 53 cycles that 0.9.32 removed:
+    the workflow's exact command reports it and exits 1, and exits 0 again
+    once reverted. On a clean tree it takes about five seconds over 1173
+    files, so it costs a CI slot, not a CI budget.
+- **The framework's version number is assigned on `main` now, not on the
+  branch.** Line 1 of this file *is* the version — cmake reads it and every
+  `project(VERSION …)`, compile definition and packaging script follows — so
+  every branch wanted to write that one line, and two open at once always
+  collided. On 2026-09-23 one branch was renumbered five times in a morning
+  (0.9.23 → 0.9.27 → 0.9.28 → 0.9.29 → 0.9.31), each renumber throwing away a
+  six-platform CI matrix, and 0.9.29 was consumed and lost in the churn.
+  - **A branch now writes `Docs/UltraCanvas/changelog.d/<change>.md`** — just
+    the bullets, no header, no number. Two branches adding two files cannot
+    conflict, and there is nothing to renumber when `main` moves.
+  - **`.github/workflows/changelog-fold.yml`** folds whatever is pending into
+    this file under the next patch version once it lands on `main`, and
+    deletes the entries. `scripts/fold_changelog.py` does the same locally
+    (`--check` to look without touching anything, `--version` for a release
+    that must carry a chosen number).
+  - **`build.yml` gained a `gate` job.** The merge commit still has the entry
+    pending, so its line 1 is the *previous* release; building the release
+    there would package new code under an already-published number. The gate
+    skips the release build for that one commit and lets the fold commit —
+    which carries the right number — produce the artifacts. Pull requests are
+    never gated.
+  - **`check_changelog.py` refuses a `####` header inside a pending entry**,
+    since a number chosen on a branch is the collision the directory exists to
+    end, and would otherwise be folded in verbatim as a second header. A
+    hand-cut hotfix that must carry a specific number can still be written
+    straight into this file as a top entry, held to the same rules as before.
+  - `AGENTS.md` documents the flow where the old "pick the next number"
+    instruction used to be. Application changelogs are unchanged: one product
+    to a file, little contention.
+- **The locale-decimal defect, swept through the file formats.** `AGENTS.md`
+  has warned since the CSS and SVG fixes that the remaining `std::stof` /
+  `atof` / `snprintf("%f")` call sites are the same defect waiting to be
+  reported. A census found 195, not the ~110 estimated — but most are chart
+  labels and other text shown to a person, where following the reader's locale
+  is *correct*. What was actually broken is every place a number crosses into
+  a file format or a wire protocol, and those are fixed here.
+  - **`UltraCanvas::FormatFloatClassic`** joins `ParseFloatClassic` in
+    `UltraCanvasTextUtils.h`, promoting the helper the SVG converter had kept
+    to itself. `std::to_string(1.5)` renders as `1,500000` under de_DE and
+    `snprintf("%.6g")` as `1,5`; this formats as "%.6g" does with the decimal
+    point pinned to '.'.
+  - **Three writers were corrupting documents, not just misreading them.**
+    `SerializeColor` wrote `rgba(255,0,0,0,500000)` — the alpha's comma is the
+    channel separator, so the colour read back as a five-argument function.
+    `SerializePathData` wrote `M 1,5 2`, which reads back as the point (1, 5):
+    the exact defect fixed in the SVG converter and left here. The ODS formula
+    writer emitted literals through an unimbued stream, and a comma there
+    splits one argument into two.
+  - **~40 readers now parse dot-decimal**: the CDR transform matrices and dash
+    patterns (11 sites), the chart CSV loaders, the JSON readers in the
+    compositor and node diagrams, the ODF/OOXML attribute readers, tone
+    curves, templates, `rgba()` alpha, the spreadsheet formula tokenizer and
+    metrics, and the Z-Wave and KNX `temperature` parameters. Most of them
+    also **stopped throwing**: `std::stof` threw on malformed input in readers
+    whose job is to survive a damaged file, and several had no `catch` at all.
+  - **The CSV importer was undoing its own work.** It normalises the user's
+    chosen decimal separator to '.' and then called `std::stod`, which read
+    that back through `LC_NUMERIC` — so on a comma-decimal desktop a column of
+    `1.5` imported as 1.
+  - **Left alone deliberately**: text a person typed in their own locale — the
+    numeric text input, the spinner, the colour picker, spreadsheet cell entry
+    and filter values — and every label rendered for display. `AGENTS.md`
+    draws that line and it is the right one.
+  - **`scripts/check_locale_numbers.py` now enforces the rule**, and found
+    what the sweep above missed — including a `std::strtod` in the vector
+    storage arrowhead parser that the sweep's own grep had excluded, because
+    its lookbehind rejected the `:` in `std::strtod`. A checker does not get
+    tired at site 40.
+    - It reports a locale-dependent read anywhere, and a locale-dependent
+      write in a file that writes a format (Storage / Writer / Export /
+      FileIO / Serializer / Converter, or anything under `DataFormats/` or
+      `Vector/`), including a stream that is never imbued.
+    - The stream rule skips any file that mentions `std::locale::classic`
+      at all. The first version flagged the SVG converter — whose streams are
+      correct, because every number goes through its own imbued `Num()` — so
+      it was pointing at the reference implementation of the fix.
+    - Text a person typed or reads says so at the site with
+      `// locale-ok: <why>`, and eleven such sites now do. They never reach
+      the baseline; `scripts/locale_numbers_baseline.txt` is debt — 100
+      format and protocol sites the sweep did not reach (the OBJ, XAR, X3D,
+      STEP and PDF converters, the LaTeX reader, the Linux hardware probe
+      reading `/proc`, the xlsx reader) — and it should trend to empty.
+    - `.github/workflows/locale-numbers.yml` runs it `--strict`, so a new one
+      fails the build. Verified in both directions: adding a `std::stof`
+      fails the gate, removing it passes.
+    - **The OBJ and XAR converters are fixed rather than baselined** — 29 of
+      the 100 sites, and the two where a misread number is a wrong drawing or
+      a wrong model. OBJ's 17 `strtof`/`strtod` reads became dot-decimal, and
+      its `ScopedPrecision` — the guard that shapes every number the OBJ and
+      MTL writers emit — now pins the decimal point as well as the digit
+      count, *before* its compact-precision early-out. Without that it wrote
+      `v 1,5 0 2`, which every other OBJ reader takes as a different vertex,
+      since OBJ separates components with spaces. XAR's ten `atof` reads
+      (dash lengths, width profiles, stamp matrices) became dot-decimal, and
+      its writer's `Num()` — the one place every number it emits passes
+      through — uses `FormatFloatClassic`. The baseline is down to 34 keys.
+    - **X3D as well, where the reader failed hardest.** On a comma-decimal
+      desktop its `ParseNumbers` read *nothing at all* from
+      `point="1.5 0.25 -2.75"` — the `.` is that locale's digit-group
+      separator, so the very first token failed and the extraction stopped
+      there, and every coordinate, transform, colour and key frame in the
+      file came back empty rather than merely wrong. Both encodings share
+      those parsers, so `.x3d` and `.x3dv` alike. Every number now passes
+      through one of two stream types that carry the format's own locale,
+      and the writer's `ScopedPrecision` pins the decimal point beside the
+      digit count exactly as OBJ's now does. That last one also matters for
+      whole numbers: `coordIndex` wrote the index 123456 as `123.456`,
+      because digit grouping is the same locale's business. The baseline is
+      down to 31 keys, 68 sites.
+- **Matter thermostat setpoints: the units were right, the range was not.**
+  `SendThermostatCommand` takes whole degrees and multiplies by 100 for
+  `OccupiedHeatingSetpoint`, which the spec carries in hundredths in an int16
+  — so the conversion was correct all along. But the parameter guard accepted
+  the full int16 range, and `temperature=1000` became 100000 hundredths, which
+  overflows the attribute. It is bounded to ±327 now, the range that survives
+  the conversion, and both sides say which unit they are in. The facade still
+  cannot express a half-degree setpoint; that is an API limit, noted where the
+  conversion happens.
 
 #### 2026-09-23 *0.9.41*
 - **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not

@@ -1,3 +1,12 @@
+#### 2026-09-22 *0.6.0*
+- **Mirror.** Two toolbar buttons after Send to Back, and *Mirror
+  Horizontally* / *Mirror Vertically* on the Arrange menu, flip the
+  selection about the centre of its bounds: left-right, or top-bottom. It
+  is a scale of -1 on one axis through the editing layer, so it composes
+  into each element's transform like a drag of the selection handles,
+  undoes as one step and keeps the selection where it was. Icons
+  `media/icons/artcreator/mirror-h.svg` and `mirror-v.svg`.
+
 #### 2026-09-21 *0.5.1*
 - **The app icon needs no font.** `media/appicon/ArtCreator.svg` kept the
   letter as live text in the Salina face, so every renderer without that

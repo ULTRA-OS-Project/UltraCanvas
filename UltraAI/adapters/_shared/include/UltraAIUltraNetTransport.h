@@ -3,8 +3,8 @@
 // UltraNet_SseStreamAsync). Only available when the UltraAI module is
 // built with ULTRAAI_USE_ULTRANET=ON and the UltraNet target is visible;
 // the header guards itself so including it unconditionally is safe.
-// Version: 0.2.0
-// Last Modified: 2026-08-24
+// Version: 0.3.0
+// Last Modified: 2026-09-24
 // Author: UltraAI Module
 #pragma once
 
@@ -26,6 +26,12 @@ public:
     CancelFn SseStream(const TransportRequest& request,
                        SseEventCallback onEvent,
                        SseCompleteCallback onComplete) override;
+
+    // Backed by UltraNet_HttpRequestAsync with an onDataChunk sink, so
+    // chunks fire on the curl_multi worker thread as libcurl receives them.
+    CancelFn ByteStream(const TransportRequest& request,
+                        ByteChunkCallback onChunk,
+                        SseCompleteCallback onComplete) override;
 
     // Backed by UltraNet_WebSocketConnect. http(s) URLs are upgraded to
     // ws(s) automatically. UltraNet dispatches WebSocket events through one

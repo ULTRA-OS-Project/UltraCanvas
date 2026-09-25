@@ -6,6 +6,7 @@
 
 #include "UltraCanvasSpreadsheetSheet.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <climits>
 #include <set>
@@ -347,7 +348,7 @@ void SpreadsheetSheet::RefreshFilter() {
                     double cellVal = cell ? cell->GetNumber() : 0.0;
                     double cmpVal = 0.0;
                     if (!filter.values.empty()) {
-                        try { cmpVal = std::stod(filter.values.front()); } catch (...) { cmpVal = 0.0; }
+                        try { cmpVal = std::stod(filter.values.front()); } catch (...) { cmpVal = 0.0; }   // locale-ok: compares against what the user typed into the filter
                     }
                     if (filter.op == FilterOperator::GreaterThan) match = cellVal > cmpVal;
                     else if (filter.op == FilterOperator::LessThan) match = cellVal < cmpVal;
@@ -449,6 +450,14 @@ void SpreadsheetSheet::Sort(const CellRange& range, const std::vector<SortCriter
     NotifyRangeChange(range);
 }
 
+int SpreadsheetSheet::CountFormulaCells(const CellRange& range) const {
+    int count = 0;
+    for (const auto& [key, cell] : cells_) {
+        if (cell && cell->HasFormula() && range.Contains(key.first, key.second)) ++count;
+    }
+    return count;
+}
+
 void SpreadsheetSheet::SortByColumn(const CellRange& range, int column, SortOrder order) {
     SortCriteria crit;
     crit.column = column;
@@ -491,7 +500,7 @@ std::optional<CellStyle> SpreadsheetSheet::GetConditionalStyle(int row, int col)
             double value = cell ? cell->GetNumber() : 0.0;
 
             auto parseNum = [](const std::string& s) -> double {
-                try { return std::stod(s); } catch (...) { return 0.0; }
+                try { return std::stod(s); } catch (...) { return 0.0; }   // locale-ok: compares against what the user typed into the filter
             };
 
             switch (rule.type) {
@@ -606,7 +615,7 @@ bool SpreadsheetSheet::ValidateCell(int row, int col, std::string* errorMessage)
     double value = cell->GetNumber();
 
     auto parseNum = [](const std::string& s) -> double {
-        try { return std::stod(s); } catch (...) { return 0.0; }
+        try { return std::stod(s); } catch (...) { return 0.0; }   // locale-ok: compares against what the user typed into the filter
     };
 
     bool valid = true;
@@ -841,27 +850,153 @@ void SpreadsheetSheet::PasteCells(const CellAddress& destination,
 // FILL OPERATIONS
 // ============================================================================
 
+// Shifts every A1 reference outside string literals. A reference is up to
+// three letters then digits, each optionally $-anchored, standing on its own:
+// not glued to a longer name and not a function call (LOG10( ).
+std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int colDelta) {
+    auto isWordChar = [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.';
+    };
+    std::string out;
+    out.reserve(formula.size() + 8);
+    const size_t n = formula.size();
+    size_t i = 0;
+    bool inString = false;
+    while (i < n) {
+        const char c = formula[i];
+        if (c == '"') { inString = !inString; out += c; ++i; continue; }
+        if (inString || (i > 0 && isWordChar(formula[i - 1]))) { out += c; ++i; continue; }
+
+        // Try to read [$]LETTERS[$]DIGITS starting here.
+        size_t p = i;
+        const bool colAbs = (p < n && formula[p] == '$');
+        if (colAbs) ++p;
+        const size_t lettersStart = p;
+        while (p < n && std::isalpha(static_cast<unsigned char>(formula[p])) && p - lettersStart < 4) ++p;
+        const size_t letterCount = p - lettersStart;
+        const bool rowAbs = (p < n && formula[p] == '$');
+        if (rowAbs) ++p;
+        const size_t digitsStart = p;
+        while (p < n && std::isdigit(static_cast<unsigned char>(formula[p]))) ++p;
+        const size_t digitCount = p - digitsStart;
+
+        const bool isRef = letterCount >= 1 && letterCount <= 3 && digitCount >= 1 && digitCount <= 7 &&
+                           !(p < n && (isWordChar(formula[p]) || formula[p] == '(' || formula[p] == '$'));
+        if (!isRef) {
+            if (!isWordChar(c) && c != '$') { out += c; ++i; continue; }
+            // Copy the whole word so its tail is not mistaken for a reference.
+            size_t end = i + 1;
+            while (end < n && isWordChar(formula[end])) ++end;
+            out.append(formula, i, end - i);
+            i = end;
+            continue;
+        }
+
+        std::string letters = formula.substr(lettersStart, letterCount);
+        for (auto& ch : letters) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+        int col = CellAddress::LetterToColumn(letters);
+        int row = std::stoi(formula.substr(digitsStart, digitCount)) - 1;
+        if (!colAbs) col += colDelta;
+        if (!rowAbs) row += rowDelta;
+        if (col < 0 || row < 0) {
+            out += "#REF!";
+        } else {
+            if (colAbs) out += '$';
+            out += CellAddress::ColumnToLetter(col);
+            if (rowAbs) out += '$';
+            out += std::to_string(row + 1);
+        }
+        i = p;
+    }
+    return out;
+}
+
+namespace {
+
+// "Item 7" -> ("Item ", 7). False when the text does not end in digits.
+bool SplitTrailingNumber(const std::string& text, std::string& prefix, long long& number) {
+    size_t end = text.size();
+    size_t start = end;
+    while (start > 0 && std::isdigit(static_cast<unsigned char>(text[start - 1]))) --start;
+    if (start == end || end - start > 15) return false;
+    prefix = text.substr(0, start);
+    number = std::stoll(text.substr(start));
+    return true;
+}
+
+} // namespace
+
 void SpreadsheetSheet::AutoFill(const CellRange& source, const CellRange& destination) {
-    // Simple copy-fill: repeat the source pattern across the destination.
-    int srcRows = source.RowCount();
-    int srcCols = source.ColCount();
+    const int srcRows = source.RowCount();
+    const int srcCols = source.ColCount();
     if (srcRows <= 0 || srcCols <= 0) return;
 
-    for (int row = destination.start.row; row <= destination.end.row; ++row) {
-        for (int col = destination.start.col; col <= destination.end.col; ++col) {
-            if (source.Contains(row, col)) continue;  // Don't overwrite source.
+    // Filling runs along columns when the destination keeps the source's
+    // columns (dragged down or up), along rows otherwise.
+    const bool vertical = destination.start.col == source.start.col &&
+                          destination.end.col == source.end.col;
+    const int lines = vertical ? srcCols : srcRows;      // columns (or rows) filled
+    const int length = vertical ? srcRows : srcCols;     // source cells per line
 
-            int sr = source.start.row + ((row - destination.start.row) % srcRows);
-            int sc = source.start.col + ((col - destination.start.col) % srcCols);
+    for (int line = 0; line < lines; ++line) {
+        auto sourceAt = [&](int index) -> const SpreadsheetCell* {
+            return vertical ? GetCellIfExists(source.start.row + index, source.start.col + line)
+                            : GetCellIfExists(source.start.row + line, source.start.col + index);
+        };
 
-            if (auto* src = GetCellIfExists(sr, sc)) {
-                SpreadsheetCell& target = GetOrCreateCell(row, col);
-                SpreadsheetCell copy = src->Clone();
-                copy.SetPosition(row, col);
-                target = copy;
-            } else {
-                DeleteCell(row, col);
+        // A line of two or more plain numbers continues as a linear series.
+        bool series = length >= 2;
+        for (int k = 0; k < length && series; ++k) {
+            const SpreadsheetCell* cell = sourceAt(k);
+            series = cell && !cell->HasFormula() && cell->IsNumeric();
+        }
+        double first = 0, step = 0;
+        if (series) {
+            first = sourceAt(0)->GetNumber();
+            step = (sourceAt(length - 1)->GetNumber() - first) / (length - 1);
+        }
+
+        // A single text ending in a number counts on from it.
+        std::string textPrefix;
+        long long textNumber = 0;
+        bool counting = false;
+        if (length == 1) {
+            const SpreadsheetCell* cell = sourceAt(0);
+            counting = cell && !cell->HasFormula() && cell->GetValueType() == CellValueType::Text &&
+                       SplitTrailingNumber(cell->GetText(), textPrefix, textNumber);
+        }
+
+        const int from = vertical ? destination.start.row : destination.start.col;
+        const int to = vertical ? destination.end.row : destination.end.col;
+        const int origin = vertical ? source.start.row : source.start.col;
+        for (int pos = from; pos <= to; ++pos) {
+            const int row = vertical ? pos : source.start.row + line;
+            const int col = vertical ? source.start.col + line : pos;
+            if (source.Contains(row, col)) continue;   // the source stays as it is
+
+            const int offset = pos - origin;                         // may be negative
+            const int index = ((offset % length) + length) % length;
+            const SpreadsheetCell* src = sourceAt(index);
+            if (!src) { DeleteCell(row, col); continue; }
+
+            SpreadsheetCell copy = src->Clone();
+            copy.SetPosition(row, col);
+            if (src->HasFormula()) {
+                const int moved = offset - index;
+                copy.SetFormula(ShiftFormulaReferences(src->GetFormulaText(),
+                                                       vertical ? moved : 0, vertical ? 0 : moved));
+            } else if (series) {
+                const double value = first + step * offset;
+                if (src->GetValueType() == CellValueType::Currency) {
+                    copy.SetValue(CellValueVariant(CurrencyValue(value, src->GetCurrency().currencyCode)),
+                                  CellValueType::Currency);
+                } else {
+                    copy.SetValue(CellValueVariant(value), src->GetValueType());
+                }
+            } else if (counting) {
+                copy.SetText(textPrefix + std::to_string(std::max(0LL, textNumber + offset)));
             }
+            GetOrCreateCell(row, col) = copy;
         }
     }
 

@@ -11,11 +11,13 @@
 // person now at the keyboard does, and a walk-up attacker who could silently
 // re-key the vault would lock the owner out of their own second factors.
 //
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 #ifndef CHANGEPASSWORDDIALOG_H
 #define CHANGEPASSWORDDIALOG_H
+
+#include "PasswordAdvice.h"
 
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
@@ -50,7 +52,7 @@ private:
     std::shared_ptr<UltraCanvasLabel>     errorLabel_;
 
     static constexpr long kDialogWidth  = 440;
-    static constexpr long kDialogHeight = 390;
+    static constexpr long kDialogHeight = 386 + kPasswordAdviceHeight;
 };
 
 } // namespace Authenticator

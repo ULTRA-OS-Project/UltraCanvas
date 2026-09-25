@@ -287,13 +287,13 @@ namespace UltraCanvas {
                     pendingShow = false;
                     visible = true;
                     targetWindow->RequestWindowComposition();
-                    debugOutput << "Tooltip shown" << std::endl;
+                    //debugOutput << "Tooltip shown" << std::endl;
                 });
         } else {
             targetWindow->RequestWindowComposition();
         }
 
-        debugOutput << "Tooltip requested. Text: " << currentText << std::endl;
+        //debugOutput << "Tooltip requested. Text: " << currentText << std::endl;
     }
 
     void UltraCanvasTooltipManager::UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string &text,
@@ -325,11 +325,11 @@ namespace UltraCanvas {
                         targetWindow->RequestWindowComposition();
                     }
                     renderCtx.reset();
-                    debugOutput << "Tooltip hidden" << std::endl;
+                    //debugOutput << "Tooltip hidden" << std::endl;
                 });
         }
 
-        debugOutput << "Tooltip hide requested" << std::endl;
+        //debugOutput << "Tooltip hide requested" << std::endl;
     }
 
     void UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const TooltipContent& content,
