@@ -127,6 +127,31 @@ static void CheckListLabels(const UCRichDocument& d, const std::string& label) {
               label + ": dash bullet");
 }
 
+// Highlight, fixed line heights and paragraph frames.
+static void CheckHighlightAndFrames(const UCRichDocument& d, const std::string& label) {
+    const RichDocBlock* marked = FindBlock(d, "marked");
+    const RichTextRun* run = FindRun(marked, "marked");
+    CHECK_MSG(run && Lower(run->highlightColor) == "#ffff00", label + ": highlight");
+    const RichTextRun* plain = FindRun(marked, " word.");
+    CHECK_MSG(plain && plain->highlightColor.empty(), label + ": no highlight after it");
+
+    const RichDocBlock* fixed = FindBlock(d, "fixed height line");
+    CHECK_MSG(fixed && Near(fixed->lineHeightPt, 20.0f) && !fixed->lineHeightAtLeast, label + ": exact line height");
+    const RichDocBlock* atLeast = FindBlock(d, "at least height line");
+    CHECK_MSG(atLeast && Near(atLeast->lineHeightPt, 18.0f) && atLeast->lineHeightAtLeast,
+              label + ": at-least line height");
+
+    const RichDocBlock* boxOne = FindBlock(d, "boxed one");
+    const RichDocBlock* boxTwo = FindBlock(d, "boxed two");
+    CHECK_MSG(boxOne && Near(boxOne->paragraphBorderTop.widthPt, 0.5f) && Near(boxOne->paragraphBorderLeft.widthPt, 0.5f)
+              && Lower(boxOne->paragraphBackground) == "#eeeeee", label + ": boxed paragraph");
+    CHECK_MSG(boxOne && boxTwo && boxOne->SameParagraphFrame(*boxTwo), label + ": one box");
+    const RichDocBlock* ruled = FindBlock(d, "ruled paragraph");
+    CHECK_MSG(ruled && Near(ruled->paragraphBorderTop.widthPt, 1.0f) && Lower(ruled->paragraphBorderTop.color) == "#808080"
+              && !ruled->paragraphBorderBottom.IsVisible() && ruled->paragraphBackground.empty(),
+              label + ": rule above");
+}
+
 // Cell borders and fills of the fixture's tables.
 static void CheckCellFrames(const UCRichDocument& d, const std::string& label) {
     const RichDocBlock* table = nullptr;
@@ -272,6 +297,7 @@ static void CheckFormattingFixture(const UCRichDocument& d, const std::string& l
     CheckGeometry(d, label);
     CheckCellFrames(d, label);
     CheckListLabels(d, label);
+    CheckHighlightAndFrames(d, label);
 }
 
 static UCRichDocument BuildSampleDocument() {

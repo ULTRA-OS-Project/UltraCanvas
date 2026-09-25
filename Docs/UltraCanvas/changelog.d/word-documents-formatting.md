@@ -87,3 +87,16 @@
   format of the new level. The DOCX writer now gives each list its own Word
   numbering. Before, all numbered lists in a document shared one list, so
   Word kept counting from one list into the next.
+- **Highlight, fixed line heights, paragraph borders and backgrounds.** Runs
+  carry a highlight colour (`RichTextRun::highlightColor`); paragraphs carry
+  an exact or at-least line height (`lineHeightPt`, `lineHeightAtLeast`) and
+  a frame and fill (`paragraphBorderTop` …, `paragraphBackground`). The ODT,
+  DOCX and DOC readers fill them, through style inheritance.
+  `UltraCanvasRichTextEdit` draws them, joining consecutive paragraphs with
+  the same frame into one box and adding the frame's room to the paragraph's
+  space. Both writers save them, and LibreOffice reads them back identically.
+  HTML output carries them as CSS. A paragraph frame inside a table cell
+  fills in the sides the cell has none on, so a letterhead's rule under the
+  sender line shows.
+- **DOCX writer: run properties in schema order.** `w:u` and `w:vertAlign`
+  came before `w:color` and `w:sz`, which Word's schema does not allow.

@@ -432,6 +432,11 @@ out:
   `style.bulletCharacters`. A level's text starts after its widest label, so
   "(iii)" and "(iv)" line up. Enter keeps the label format; indenting or
   outdenting an item takes the format of that level in the same list.
+- **Highlight, line heights, paragraph frames:** a run's `highlightColor` is
+  drawn behind its text. `lineHeightPt` sets each line's height, exactly or
+  as a minimum (`lineHeightAtLeast`). A paragraph's frame and fill are drawn
+  3 pt outside its text, and that room is added to the space around it;
+  consecutive paragraphs with the same frame form one box.
 - **Table frames:** a table read from a document
   (`RichDocBlock::tableBordersFromDocument`) is drawn with its cells' own
   borders (`RichTableCell::borderTop` … `borderRight`, width and colour) and
@@ -466,8 +471,9 @@ Honest limits of this first version — none of them silently misbehave:
   change with it.
 - **Border line styles draw solid.** A double, dotted or dashed cell border
   from a document is drawn as a solid line of its width.
-- **Line spacing is proportional only.** An exact or "at least" line height
-  from a document is ignored.
+- **Tables always span the text column.** A document table's own width and
+  position are not read yet, so a narrow table is drawn full width, with
+  its column proportions kept.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the

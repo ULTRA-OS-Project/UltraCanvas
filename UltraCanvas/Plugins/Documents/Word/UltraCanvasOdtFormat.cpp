@@ -64,6 +64,12 @@ struct OdtTextProps {
     float marginTop = kUnsetLength;
     float marginBottom = kUnsetLength;
     float lineSpacing = kUnsetLength;               // proportional line height, 1 = single
+    float lineHeightPt = kUnsetLength;              // fixed line height
+    bool lineHeightAtLeast = false;
+    bool hasFrame = false;                          // borders/background stated (as a group)
+    RichBorder frame[4];                            // top, bottom, left, right
+    std::string paragraphBackground;
+    std::string highlight;                          // text background; "" = inherit
     bool hasTabStops = false;                       // an empty style:tab-stops clears inherited ones
     std::vector<RichTabStop> tabStops;              // positions as written (see tabsRelativeToIndent_)
 
@@ -77,6 +83,16 @@ struct OdtTextProps {
         inherit(marginTop, parent.marginTop);
         inherit(marginBottom, parent.marginBottom);
         inherit(lineSpacing, parent.lineSpacing);
+        if (std::isnan(lineHeightPt)) {
+            lineHeightPt = parent.lineHeightPt;
+            lineHeightAtLeast = parent.lineHeightAtLeast;
+        }
+        if (!hasFrame && parent.hasFrame) {
+            hasFrame = true;
+            for (int i = 0; i < 4; ++i) frame[i] = parent.frame[i];
+            paragraphBackground = parent.paragraphBackground;
+        }
+        if (highlight.empty()) highlight = parent.highlight;
         if (!hasTabStops) {
             hasTabStops = parent.hasTabStops;
             tabStops = parent.tabStops;
@@ -344,6 +360,28 @@ private:
         // Only a proportional line height maps onto the model's multiple; a
         // fixed "0.5cm" or style:line-height-at-least is left to the view.
         std::string lineHeight = Attr(pp, "fo:line-height");
+        const std::string atLeast = Attr(pp, "style:line-height-at-least");
+        if (!atLeast.empty()) {
+            props.lineHeightPt = ParseLengthPt(atLeast);
+            props.lineHeightAtLeast = true;
+        } else if (!lineHeight.empty() && lineHeight.back() != '%' && lineHeight != "normal") {
+            props.lineHeightPt = ParseLengthPt(lineHeight);   // "0.6cm": exactly this
+            props.lineHeightAtLeast = false;
+        }
+        // Frame and fill. Any of them stated replaces the inherited set.
+        const std::string all = Attr(pp, "fo:border");
+        const char* sides[4] = {"fo:border-top", "fo:border-bottom", "fo:border-left", "fo:border-right"};
+        const std::string background = Attr(pp, "fo:background-color");
+        bool anyBorder = !all.empty();
+        for (const char* side : sides) anyBorder = anyBorder || pp->Attribute(side);
+        if (anyBorder || !background.empty()) {
+            props.hasFrame = true;
+            for (int i = 0; i < 4; ++i) {
+                const char* v = pp->Attribute(sides[i]);
+                props.frame[i] = ParseBorder(v ? std::string(v) : all);
+            }
+            props.paragraphBackground = background == "transparent" ? "" : background;
+        }
         if (!lineHeight.empty() && lineHeight.back() == '%') {
             float percent = 0.0f;
             if (TryParseFloat(lineHeight.substr(0, lineHeight.size() - 1), percent) && percent > 0) {
@@ -406,6 +444,18 @@ private:
         block.spaceBeforePt = value(props.marginTop);
         block.spaceAfterPt = value(props.marginBottom);
         block.lineSpacing = std::isnan(props.lineSpacing) ? 0.0f : props.lineSpacing;
+        if (!std::isnan(props.lineHeightPt) && props.lineHeightPt > 0.0f) {
+            block.lineHeightPt = props.lineHeightPt;
+            block.lineHeightAtLeast = props.lineHeightAtLeast;
+            block.lineSpacing = 0.0f;
+        }
+        if (props.hasFrame) {
+            block.paragraphBorderTop = props.frame[0];
+            block.paragraphBorderBottom = props.frame[1];
+            block.paragraphBorderLeft = props.frame[2];
+            block.paragraphBorderRight = props.frame[3];
+            block.paragraphBackground = props.paragraphBackground;
+        }
         block.tabStops = props.tabStops;
         if (tabsRelativeToIndent_) {
             for (RichTabStop& tab : block.tabStops) tab.positionPt += block.leftIndentPt;
@@ -446,6 +496,9 @@ private:
                 props.fontFamily = FamilyForFontName(Attr(tp, "style:font-name"));
                 if (props.fontFamily.empty()) props.fontFamily = Attr(tp, "fo:font-family");
                 props.fontSizePt = ParseLengthPt(Attr(tp, "fo:font-size"));
+                // A character background is a highlight; "transparent" says
+                // explicitly that there is none.
+                props.highlight = Attr(tp, "fo:background-color");
             }
             if (auto* pp = style->FirstChildElement("style:paragraph-properties")) {
                 std::string align = Attr(pp, "fo:text-align");
@@ -556,6 +609,7 @@ private:
         if (props.fontSizePt > 0) run.fontSizePt = props.fontSizePt;
         // A monospace family is the inline-code signal in the model.
         if (IsMonospaceFamily(props.fontFamily)) run.code = true;
+        if (!props.highlight.empty() && props.highlight != "transparent") run.highlightColor = props.highlight;
     }
 
     int LoadPicture(const std::string& href) {
@@ -1003,7 +1057,18 @@ private:
                 // Alignment is a paragraph property in ODF; the cell takes its
                 // first paragraph's (a right-aligned amount, a centred date).
                 if (auto* firstParagraph = FirstParagraphIn(cellElem)) {
-                    cell.align = ResolveStyle(Attr(firstParagraph, "text:style-name")).align;
+                    const OdtTextProps paragraph = ResolveStyle(Attr(firstParagraph, "text:style-name"));
+                    cell.align = paragraph.align;
+                    // A cell holds text, not paragraphs: a frame on its
+                    // paragraph (a letterhead's sender line with a rule
+                    // under it) becomes the cell's where the cell has none.
+                    if (paragraph.hasFrame) {
+                        RichBorder* sides[4] = {&cell.borderTop, &cell.borderBottom, &cell.borderLeft, &cell.borderRight};
+                        for (int i = 0; i < 4; ++i) {
+                            if (!sides[i]->IsVisible() && paragraph.frame[i].IsVisible()) *sides[i] = paragraph.frame[i];
+                        }
+                        if (cell.backgroundColor.empty()) cell.backgroundColor = paragraph.paragraphBackground;
+                    }
                 }
                 InlineContext ctx;
                 // A cell holds block content (paragraphs, headings, lists,
@@ -1476,8 +1541,21 @@ private:
         if (block.firstLineIndentPt != 0.0f) props << " fo:text-indent=\"" << Pt(block.firstLineIndentPt) << "\"";
         if (block.spaceBeforePt >= 0.0f) props << " fo:margin-top=\"" << Pt(block.spaceBeforePt) << "\"";
         if (block.spaceAfterPt >= 0.0f) props << " fo:margin-bottom=\"" << Pt(block.spaceAfterPt) << "\"";
-        if (block.lineSpacing > 0.0f) {
+        if (block.lineHeightPt > 0.0f) {
+            props << (block.lineHeightAtLeast ? " style:line-height-at-least=\"" : " fo:line-height=\"")
+                  << Pt(block.lineHeightPt) << "\"";
+        } else if (block.lineSpacing > 0.0f) {
             props << " fo:line-height=\"" << std::to_string(std::lround(block.lineSpacing * 100.0f)) << "%\"";
+        }
+        if (block.HasParagraphFrame()) {
+            props << " fo:border-top=\"" << BorderValue(block.paragraphBorderTop) << "\""
+                  << " fo:border-bottom=\"" << BorderValue(block.paragraphBorderBottom) << "\""
+                  << " fo:border-left=\"" << BorderValue(block.paragraphBorderLeft) << "\""
+                  << " fo:border-right=\"" << BorderValue(block.paragraphBorderRight) << "\""
+                  << " fo:padding=\"0.05cm\"";
+            if (!block.paragraphBackground.empty()) {
+                props << " fo:background-color=\"" << EscapeXml(block.paragraphBackground) << "\"";
+            }
         }
         std::ostringstream tabs;
         if (!block.tabStops.empty()) {
@@ -1896,6 +1974,7 @@ private:
             else if (!t.fontFamily.empty())
                 xml << " fo:font-family=\"" << EscapeXml(t.fontFamily) << "\"";
             if (!t.color.empty()) xml << " fo:color=\"" << EscapeXml(t.color) << "\"";
+            if (!t.highlightColor.empty()) xml << " fo:background-color=\"" << EscapeXml(t.highlightColor) << "\"";
             if (t.fontSizePt > 0) xml << " fo:font-size=\"" << t.fontSizePt << "pt\"";
             xml << "/></style:style>\n";
         }

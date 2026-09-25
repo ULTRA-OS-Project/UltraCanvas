@@ -119,6 +119,11 @@ private:
     struct Geometry {
         float left = kUnset, right = kUnset, firstLine = kUnset;
         float before = kUnset, after = kUnset, lineSpacing = kUnset;
+        float lineHeight = kUnset;          // exact / at-least, points
+        bool lineHeightAtLeast = false;
+        bool hasFrame = false;              // w:pBdr or w:shd stated
+        RichBorder frame[4];                // top, bottom, left, right
+        std::string background;
         // Tab changes in order: a stop to add, or (clear) one to remove.
         struct TabChange { RichTabStop stop; bool clear = false; };
         std::vector<TabChange> tabs;
@@ -335,6 +340,29 @@ private:
             const std::string rule = Attr(spacing, "w:lineRule");
             if (spacing->Attribute("w:line") && (rule.empty() || rule == "auto")) {
                 g.lineSpacing = static_cast<float>(spacing->IntAttribute("w:line", 240)) / 240.0f;
+                g.lineHeight = 0.0f;
+            } else if (spacing->Attribute("w:line") && (rule == "exact" || rule == "atLeast")) {
+                g.lineHeight = static_cast<float>(spacing->IntAttribute("w:line", 240)) / 20.0f;
+                g.lineHeightAtLeast = rule == "atLeast";
+                g.lineSpacing = 0.0f;
+            }
+        }
+        auto* pBdr = pPr->FirstChildElement("w:pBdr");
+        auto* shd = pPr->FirstChildElement("w:shd");
+        if (pBdr || shd) {
+            g.hasFrame = true;
+            if (pBdr) {
+                const char* names[4] = {"w:top", "w:bottom", "w:left", "w:right"};
+                const char* alternates[4] = {nullptr, nullptr, "w:start", "w:end"};
+                for (int i = 0; i < 4; ++i) {
+                    BorderSpec spec = ReadBorder(pBdr->FirstChildElement(names[i]));
+                    if (!spec.set && alternates[i]) spec = ReadBorder(pBdr->FirstChildElement(alternates[i]));
+                    g.frame[i] = spec.border;
+                }
+            }
+            if (shd) {
+                const std::string fill = Attr(shd, "w:fill");
+                if (fill.size() == 6 && fill != "auto") g.background = "#" + fill;
             }
         }
         if (auto* tabs = pPr->FirstChildElement("w:tabs")) {
@@ -361,6 +389,15 @@ private:
         take(base.before, over.before);
         take(base.after, over.after);
         take(base.lineSpacing, over.lineSpacing);
+        if (over.lineHeight != kUnset) {
+            base.lineHeight = over.lineHeight;
+            base.lineHeightAtLeast = over.lineHeightAtLeast;
+        }
+        if (over.hasFrame) {
+            base.hasFrame = true;
+            for (int i = 0; i < 4; ++i) base.frame[i] = over.frame[i];
+            base.background = over.background;
+        }
         base.tabs.insert(base.tabs.end(), over.tabs.begin(), over.tabs.end());
     }
 
@@ -391,6 +428,17 @@ private:
         block.spaceBeforePt = value(g.before);
         block.spaceAfterPt = value(g.after);
         block.lineSpacing = g.lineSpacing == kUnset ? 0.0f : g.lineSpacing;
+        if (g.lineHeight != kUnset && g.lineHeight > 0.0f) {
+            block.lineHeightPt = g.lineHeight;
+            block.lineHeightAtLeast = g.lineHeightAtLeast;
+        }
+        if (g.hasFrame) {
+            block.paragraphBorderTop = g.frame[0];
+            block.paragraphBorderBottom = g.frame[1];
+            block.paragraphBorderLeft = g.frame[2];
+            block.paragraphBorderRight = g.frame[3];
+            block.paragraphBackground = g.background;
+        }
         block.tabStops.clear();
         for (const auto& change : g.tabs) {
             auto& stops = block.tabStops;
@@ -517,6 +565,19 @@ private:
         bool pendingLineBreak = false;
     };
 
+    static std::string HighlightColor(const std::string& name) {
+        static const std::pair<const char*, const char*> colors[] = {
+            {"yellow", "#FFFF00"}, {"green", "#00FF00"}, {"cyan", "#00FFFF"}, {"magenta", "#FF00FF"},
+            {"blue", "#0000FF"}, {"red", "#FF0000"}, {"darkBlue", "#000080"}, {"darkCyan", "#008080"},
+            {"darkGreen", "#008000"}, {"darkMagenta", "#800080"}, {"darkRed", "#800000"},
+            {"darkYellow", "#808000"}, {"darkGray", "#808080"}, {"lightGray", "#C0C0C0"},
+            {"black", "#000000"}, {"white", "#FFFFFF"}};
+        for (const auto& [key, hex] : colors) {
+            if (name == key) return hex;
+        }
+        return "";
+    }
+
     void ParseRunProperties(tinyxml2::XMLElement* rPr, RichTextRun& run) const {
         if (!rPr) return;
         run.bold = ToggleOn(rPr, "w:b");
@@ -534,6 +595,15 @@ private:
         }
         if (auto* sz = rPr->FirstChildElement("w:sz")) {
             run.fontSizePt = sz->FloatAttribute("w:val", 0.0f) / 2.0f;   // half-points
+        }
+        // A highlighter colour (one of Word's named ones), or character
+        // shading, which may be any colour.
+        if (auto* highlight = rPr->FirstChildElement("w:highlight")) {
+            run.highlightColor = HighlightColor(Attr(highlight, "w:val"));
+        }
+        if (auto* shd = rPr->FirstChildElement("w:shd"); shd && run.highlightColor.empty()) {
+            const std::string fill = Attr(shd, "w:fill");
+            if (fill.size() == 6 && fill != "auto") run.highlightColor = "#" + fill;
         }
         if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
             run.fontFamily = Attr(fonts, "w:ascii");
@@ -841,6 +911,7 @@ private:
         struct OpenMerge { size_t rowIndex; size_t cellIndex; };
         std::map<size_t, OpenMerge> openMerge;
         std::map<std::pair<size_t, size_t>, TableBorders> cellBorders;   // (row, cell) -> w:tcBorders
+        std::map<std::pair<size_t, size_t>, RichDocBlock> paragraphFrames; // (row, cell) -> first paragraph
 
         // Column proportions (twips) from the table grid.
         if (auto* grid = tbl->FirstChildElement("w:tblGrid")) {
@@ -912,8 +983,13 @@ private:
                      p = p->NextSiblingElement("w:p")) {
                     if (!firstParagraph) ctx.pendingLineBreak = true;
                     // Alignment is a paragraph property; the cell takes its
-                    // first paragraph's.
-                    if (firstParagraph) cell.align = ParagraphAlignment(p);
+                    // first paragraph's, and its frame where the cell has none.
+                    if (firstParagraph) {
+                        cell.align = ParagraphAlignment(p);
+                        RichDocBlock paragraph;
+                        ApplyGeometry(paragraph, p->FirstChildElement("w:pPr"));
+                        if (paragraph.HasParagraphFrame()) paragraphFrames[{rowIndex, row.cells.size()}] = paragraph;
+                    }
                     firstParagraph = false;
                     ParseInlineContainer(p, "", ctx);
                 }
@@ -930,6 +1006,20 @@ private:
             block.tableRows.push_back(std::move(row));
         }
         ResolveCellBorders(tbl, block, cellBorders);
+        // A cell holds text, not paragraphs: its paragraph's frame fills in
+        // the sides the cell leaves open.
+        for (const auto& [position, paragraph] : paragraphFrames) {
+            if (position.first >= block.tableRows.size()
+                || position.second >= block.tableRows[position.first].cells.size()) continue;
+            RichTableCell& cell = block.tableRows[position.first].cells[position.second];
+            const RichBorder* from[4] = {&paragraph.paragraphBorderTop, &paragraph.paragraphBorderBottom,
+                                         &paragraph.paragraphBorderLeft, &paragraph.paragraphBorderRight};
+            RichBorder* to[4] = {&cell.borderTop, &cell.borderBottom, &cell.borderLeft, &cell.borderRight};
+            for (int i = 0; i < 4; ++i) {
+                if (!to[i]->IsVisible() && from[i]->IsVisible()) *to[i] = *from[i];
+            }
+            if (cell.backgroundColor.empty()) cell.backgroundColor = paragraph.paragraphBackground;
+        }
         if (!block.tableRows.empty()) doc_->blocks.push_back(std::move(block));
     }
 
@@ -1065,7 +1155,7 @@ private:
         bool hasProps = run.bold || run.italic || run.underline || run.strikethrough
                         || run.code || run.subscript || run.superscript
                         || !run.color.empty() || !run.fontFamily.empty()
-                        || run.fontSizePt > 0 || asHyperlink;
+                        || run.fontSizePt > 0 || !run.highlightColor.empty() || asHyperlink;
         if (!hasProps) return;
         xml << "<w:rPr>";
         if (run.code) {
@@ -1074,12 +1164,11 @@ private:
             xml << "<w:rFonts w:ascii=\"" << EscapeXml(run.fontFamily)
                 << "\" w:hAnsi=\"" << EscapeXml(run.fontFamily) << "\"/>";
         }
+        // In the order CT_RPr requires: b, i, strike, color, sz, u, shd,
+        // vertAlign (Word rejects a run whose properties are out of order).
         if (run.bold) xml << "<w:b/>";
         if (run.italic) xml << "<w:i/>";
         if (run.strikethrough) xml << "<w:strike/>";
-        if (run.underline || asHyperlink) xml << "<w:u w:val=\"single\"/>";
-        if (run.superscript) xml << "<w:vertAlign w:val=\"superscript\"/>";
-        if (run.subscript) xml << "<w:vertAlign w:val=\"subscript\"/>";
         if (!run.color.empty()) {
             std::string hex = run.color;
             if (!hex.empty() && hex[0] == '#') hex = hex.substr(1);
@@ -1091,6 +1180,15 @@ private:
             xml << "<w:sz w:val=\"" << static_cast<int>(run.fontSizePt * 2 + 0.5f) << "\"/>"
                 << "<w:szCs w:val=\"" << static_cast<int>(run.fontSizePt * 2 + 0.5f) << "\"/>";
         }
+        if (run.underline || asHyperlink) xml << "<w:u w:val=\"single\"/>";
+        // Any highlight colour, as character shading (w:highlight knows only
+        // sixteen named colours).
+        if (run.highlightColor.size() == 7) {
+            xml << "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\""
+                << EscapeXml(run.highlightColor.substr(1)) << "\"/>";
+        }
+        if (run.superscript) xml << "<w:vertAlign w:val=\"superscript\"/>";
+        if (run.subscript) xml << "<w:vertAlign w:val=\"subscript\"/>";
         xml << "</w:rPr>";
     }
 
@@ -1148,6 +1246,28 @@ private:
     // w:tabs, w:spacing, w:ind - in the order CT_PPrBase requires them
     // (after w:pBdr, before w:jc).
     static void WriteGeometry(std::ostringstream& pPr, const RichDocBlock& block) {
+        if (block.HasParagraphFrame()) {
+            auto side = [&](const char* name, const RichBorder& border) {
+                if (!border.IsVisible()) return;
+                const long eighths = std::max(2L, std::lround(border.widthPt * 8.0f));
+                const std::string color = border.color.size() == 7 ? border.color.substr(1) : "auto";
+                pPr << "<w:" << name << " w:val=\"single\" w:sz=\"" << std::to_string(eighths)
+                    << "\" w:space=\"4\" w:color=\"" << EscapeXml(color) << "\"/>";
+            };
+            if (block.paragraphBorderTop.IsVisible() || block.paragraphBorderBottom.IsVisible()
+                || block.paragraphBorderLeft.IsVisible() || block.paragraphBorderRight.IsVisible()) {
+                pPr << "<w:pBdr>";
+                side("top", block.paragraphBorderTop);
+                side("left", block.paragraphBorderLeft);
+                side("bottom", block.paragraphBorderBottom);
+                side("right", block.paragraphBorderRight);
+                pPr << "</w:pBdr>";
+            }
+            if (block.paragraphBackground.size() == 7) {
+                pPr << "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\""
+                    << EscapeXml(block.paragraphBackground.substr(1)) << "\"/>";
+            }
+        }
         if (!block.tabStops.empty()) {
             pPr << "<w:tabs>";
             for (const RichTabStop& stop : block.tabStops) {
@@ -1158,11 +1278,15 @@ private:
             }
             pPr << "</w:tabs>";
         }
-        if (block.spaceBeforePt >= 0.0f || block.spaceAfterPt >= 0.0f || block.lineSpacing > 0.0f) {
+        if (block.spaceBeforePt >= 0.0f || block.spaceAfterPt >= 0.0f || block.lineSpacing > 0.0f
+            || block.lineHeightPt > 0.0f) {
             pPr << "<w:spacing";
             if (block.spaceBeforePt >= 0.0f) pPr << " w:before=\"" << Twips(block.spaceBeforePt) << "\"";
             if (block.spaceAfterPt >= 0.0f) pPr << " w:after=\"" << Twips(block.spaceAfterPt) << "\"";
-            if (block.lineSpacing > 0.0f) {
+            if (block.lineHeightPt > 0.0f) {
+                pPr << " w:line=\"" << Twips(block.lineHeightPt) << "\" w:lineRule=\""
+                    << (block.lineHeightAtLeast ? "atLeast" : "exact") << "\"";
+            } else if (block.lineSpacing > 0.0f) {
                 pPr << " w:line=\"" << std::to_string(std::lround(block.lineSpacing * 240.0f))
                     << "\" w:lineRule=\"auto\"";
             }

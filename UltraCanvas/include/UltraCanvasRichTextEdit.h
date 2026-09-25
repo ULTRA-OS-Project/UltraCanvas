@@ -333,6 +333,8 @@ private:
     FontStyle MarkerFontFor(const RichDocBlock& block) const;
     float WidestSiblingLabel(IRenderContext* ctx, int blockIndex) const;
     void DrawDocumentCellFrame(IRenderContext* ctx, const RichTableCell& cell, const Rect2Dd& rect) const;
+    void DrawParagraphFrame(IRenderContext* ctx, int blockIndex, const BlockLayout& bl,
+                            float originX, float originY) const;
     void ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                             const std::vector<RichTextRun>& runs,
                             std::vector<RichTextHitRect>* outHits, int blockIndex,

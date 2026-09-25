@@ -1004,6 +1004,7 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
         if (run.superscript) body = "<sup>" + body + "</sup>";
         std::string style;
         if (!run.color.empty()) style += "color:" + run.color + ";";
+        if (!run.highlightColor.empty()) style += "background-color:" + run.highlightColor + ";";
         if (!run.fontFamily.empty()) style += "font-family:'" + run.fontFamily + "';";
         if (run.fontSizePt > 0) style += "font-size:" + std::to_string(run.fontSizePt) + "pt;";
         if (!style.empty()) body = "<span style=\"" + style + "\">" + body + "</span>";
@@ -1151,8 +1152,19 @@ std::string UCRichDocument::ToHTML() const {
                 break;
             case RichBlockType::Paragraph:
             default: {
-                const char* alignCss = AlignCss(block.align);
-                if (alignCss) html << "<p style=\"text-align:" << alignCss << "\">";
+                std::string css;
+                if (const char* alignCss = AlignCss(block.align)) css += std::string("text-align:") + alignCss + ";";
+                if (block.HasParagraphFrame()) {
+                    // Same declarations as a cell frame.
+                    RichTableCell frame;
+                    frame.borderTop = block.paragraphBorderTop;
+                    frame.borderBottom = block.paragraphBorderBottom;
+                    frame.borderLeft = block.paragraphBorderLeft;
+                    frame.borderRight = block.paragraphBorderRight;
+                    frame.backgroundColor = block.paragraphBackground;
+                    css += CellFrameCss(frame);
+                }
+                if (!css.empty()) html << "<p style=\"" << EscapeHtml(css) << "\">";
                 else html << "<p>";
                 html << RunsToHtml(block.runs, &media) << "</p>\n";
                 break;

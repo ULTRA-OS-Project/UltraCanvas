@@ -20,6 +20,11 @@
  <style:style style:name="PHanging" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties fo:margin-left="0.5in" fo:text-indent="-0.5in"/></style:style>
  <style:style style:name="PTabs" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties><style:tab-stops><style:tab-stop style:position="1in"/><style:tab-stop style:position="3in" style:type="center"/><style:tab-stop style:position="5in" style:type="right"/><style:tab-stop style:position="6in" style:type="char" style:char="."/></style:tab-stops></style:paragraph-properties></style:style>
  <style:style style:name="TWing" style:family="text"><style:text-properties style:font-name="Wingdings"/></style:style>
+ <style:style style:name="PFixed" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties fo:line-height="20pt"/></style:style>
+ <style:style style:name="PAtLeast" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties style:line-height-at-least="18pt"/></style:style>
+ <style:style style:name="PBox" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties fo:border="0.5pt solid #000000" fo:padding="0.05in" fo:background-color="#eeeeee"/></style:style>
+ <style:style style:name="PRuled" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties fo:border-top="1pt solid #808080" fo:border-bottom="none" fo:border-left="none" fo:border-right="none" fo:padding="0.03in"/></style:style>
+ <style:style style:name="THigh" style:family="text"><style:text-properties fo:background-color="#ffff00"/></style:style>
  <style:style style:name="PBreak" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties fo:break-before="page"/></style:style>
  <style:style style:name="TBold" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>
  <style:style style:name="TRed" style:family="text"><style:text-properties fo:color="#c00000"/></style:style>
@@ -60,5 +65,11 @@
  <text:p text:style-name="PHanging">Hanging:<text:tab/>indent</text:p>
  <text:p text:style-name="PTabs"><text:tab/>left<text:tab/>centre<text:tab/>right<text:tab/>12.50</text:p>
  <text:p text:style-name="Standard"><text:span text:style-name="TWing">(*</text:span> symbols</text:p>
+ <text:p text:style-name="Standard">A <text:span text:style-name="THigh">marked</text:span> word.</text:p>
+ <text:p text:style-name="PFixed">fixed height line</text:p>
+ <text:p text:style-name="PAtLeast">at least height line</text:p>
+ <text:p text:style-name="PBox">boxed one</text:p>
+ <text:p text:style-name="PBox">boxed two</text:p>
+ <text:p text:style-name="PRuled">ruled paragraph</text:p>
  <text:p text:style-name="PBreak">After the page break.</text:p>
 </office:text></office:body></office:document>

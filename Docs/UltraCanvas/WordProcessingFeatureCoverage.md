@@ -45,7 +45,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Font family, size, colour | yes | yes | yes | yes | yes | |
 | Hyperlinks | yes | yes | yes | yes | yes | DOC: from `HYPERLINK` fields. |
 | Hidden text | yes | *partial* | yes | — | — | Dropped on import, as Writer does when hidden text is not shown. |
-| Highlight / character background | no | no | no | no | no | `fo:background-color`, `w:highlight`, `sprmCHighlight`. |
+| Highlight / character background | yes | yes | yes | yes | yes | 2026-09. `RichTextRun::highlightColor`, from `fo:background-color`, `w:highlight` (named colours) or `w:shd`, and `sprmCHighlight` or character shading. Saved as ODF `fo:background-color` and DOCX character shading (any colour). |
 | Small caps, all caps, letter spacing | no | no | no | no | no | |
 | Symbol fonts (Wingdings 1–3, Webdings, Symbol) | yes | yes | yes | yes | yes | Mapped to Unicode on import (☎ ✉ ✓ α ≥ …), and the symbol font is dropped, so they draw without the font installed. A few pictographs that few fonts contain get a common equivalent: 🕿 → ☎, 🖁 → 📱, 🖆 → ✉ (2026-09). DOCX `w:sym` and DOC `sprmCSymbol` included. |
 | Spaces between differently formatted words | yes | yes | yes | yes | yes | ODT and DOCX lost a lone space between two styled runs (tinyxml2 drops whitespace-only text); fixed 2026-09. |
@@ -61,9 +61,9 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Line breaks, page breaks | yes | yes | yes | yes | *partial* | The view draws a page break as a dashed rule; it does not paginate. |
 | Indents (left, right, first line, hanging) | yes | yes | yes | yes | yes | 2026-09. Styles, style inheritance (DOCX `w:basedOn`, `w:docDefaults`) and direct formatting. List items keep the view's own list indentation. |
 | Spacing above / below | yes | yes | yes | yes | yes | 2026-09. Stated spacing is added (after + before), as Word and Writer do; blocks that state none (Markdown) keep the view's block spacing. |
-| Line spacing | *partial* | *partial* | *partial* | *partial* | yes | Proportional (single, 1.5, double, 115 %) only. Exact and "at least" heights are ignored. |
+| Line spacing | yes | yes | yes | yes | yes | Proportional (`lineSpacing`), and since 2026-09 exact or at-least heights (`lineHeightPt`, `lineHeightAtLeast`): ODF `fo:line-height="14pt"` / `style:line-height-at-least`, Word `w:lineRule="exact"`/`"atLeast"`, DOC `LSPD`. |
 | Tab stops (left/centre/right/decimal) and default tab interval | yes | yes | yes | yes | yes | 2026-09. Positions count from the text margin; ODT's indent-relative positions are converted (`TabsRelativeToIndent`). Bar tabs are skipped. |
-| Borders, padding, background | *partial* | *partial* | no | no | no | Only "empty paragraph with a bottom border" → horizontal rule. |
+| Paragraph borders and background | yes | yes | yes | yes | yes | 2026-09. `paragraphBorderTop` … `paragraphBackground` from ODF `fo:border*`/`fo:background-color`, `w:pBdr`/`w:shd`, DOC `sprmPBrc*`/`sprmPShd*`. Consecutive paragraphs with the same frame form one box. In a table cell the paragraph's frame fills in the sides the cell has none on (a letterhead's rule under the sender line). An empty paragraph with only a bottom border is still read as a horizontal rule. Padding is fixed at 3 pt. |
 | Drop caps, keep-with-next, widows/orphans | no | no | no | no | n/a | Pagination features; they only matter once the view paginates. |
 
 ### Lists
@@ -140,13 +140,14 @@ View = `UltraCanvasRichTextEdit` draws it.
 
 Ordered by how many ordinary documents each item fixes, not by how hard it is.
 
-Done in 2026-09: paragraph geometry (indents, spacing, proportional line
-spacing), tab stops with the default interval, symbol-font mapping, table
-cell borders and backgrounds, and list number formats, multi-level labels
-and document bullets.
+Done in 2026-09: paragraph geometry (indents, spacing, line spacing and
+fixed line heights), tab stops with the default interval, symbol-font
+mapping, table cell borders and backgrounds, list number formats,
+multi-level labels and document bullets, highlight, and paragraph borders
+and backgrounds.
 
-1. **Highlight and character background**, exact / at-least line heights,
-   and paragraph borders (a rule above an address block).
+1. **Table width and position** (a narrow table stays narrow), and cell
+   vertical alignment and padding.
 2. **Page model: size, margins, headers and footers** as page furniture
    rather than blocks, then pagination in the view (page boxes on a grey
    desk, like Writer's print layout).

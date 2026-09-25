@@ -276,6 +276,19 @@ constexpr uint16_t kSprmCRgFtc0 = 0x4A4F;
 constexpr uint16_t kSprmCCv = 0x6870;
 constexpr uint16_t kSprmCPicLocation = 0x6A03;
 constexpr uint16_t kSprmCSymbol = 0x6A09;
+constexpr uint16_t kSprmCHighlight = 0x2A0C;
+constexpr uint16_t kSprmCShd80 = 0x4866;
+constexpr uint16_t kSprmCShd = 0xCA71;
+constexpr uint16_t kSprmPBrcTop80 = 0x6424;
+constexpr uint16_t kSprmPBrcLeft80 = 0x6425;
+constexpr uint16_t kSprmPBrcBottom80 = 0x6426;
+constexpr uint16_t kSprmPBrcRight80 = 0x6427;
+constexpr uint16_t kSprmPBrcTop = 0xC64E;
+constexpr uint16_t kSprmPBrcLeft = 0xC64F;
+constexpr uint16_t kSprmPBrcBottom = 0xC650;
+constexpr uint16_t kSprmPBrcRight = 0xC651;
+constexpr uint16_t kSprmPShd80 = 0x442D;
+constexpr uint16_t kSprmPShd = 0xC64D;
 constexpr uint16_t kSprmCFData = 0x0806;
 constexpr uint16_t kSprmCFOle2 = 0x080A;
 constexpr uint16_t kSprmCFSpec = 0x0855;
@@ -374,6 +387,7 @@ struct DocCharProps {
     // its font are here.
     int symbolFont = -1;
     uint16_t symbolChar = 0;
+    std::string highlight;        // highlighter or character shading, "#RRGGBB"
 };
 
 struct DocParaProps {
@@ -395,6 +409,10 @@ struct DocParaProps {
     int spaceBefore = 0;
     int spaceAfter = 0;
     float lineSpacing = 0.0f;     // multiple of single; 0 = single / exact height
+    float lineHeightPt = 0.0f;    // exact / at-least height; 0 = none
+    bool lineHeightAtLeast = false;
+    RichBorder frame[4];          // top, bottom, left, right
+    std::string background;
     struct Tab { int position = 0; int kind = 0; };   // kind: jc 0 left 1 centre 2 right 3 decimal
     std::vector<Tab> tabs;
     // Table row (the row-ending paragraph): per-cell borders and fill, and
@@ -444,6 +462,30 @@ RichBorder ReadBrc(const std::vector<uint8_t>& data, size_t at) {
 // A cell side stated as "none" in TC80 is indistinguishable from "not
 // stated" in older files, so a zero Brc80 lets the table borders through.
 bool Brc80IsZero(const std::vector<uint8_t>& data, size_t at) { return ReadU32(data, at) == 0; }
+
+std::string ColorRef(const std::vector<uint8_t>& data, size_t at) {
+    if (at + 4 > data.size() || data[at + 3] == 0xFF) return "";      // automatic
+    static const char* digits = "0123456789ABCDEF";
+    std::string color = "#";
+    for (int i = 0; i < 3; ++i) {
+        color.push_back(digits[data[at + i] >> 4]);
+        color.push_back(digits[data[at + i] & 15]);
+    }
+    return color;
+}
+
+// Shading: SHD80 (palette colours, 2 bytes) or SHD (COLORREFs, 10 bytes).
+// A solid pattern (1) shows the foreground colour, anything else the
+// background - a close enough reading of patterned shading.
+std::string Shd80Color(uint16_t shd) {
+    const uint8_t fore = shd & 0x1F, back = (shd >> 5) & 0x1F, pattern = (shd >> 10) & 0x3F;
+    return IcoColor(pattern == 1 ? fore : back);
+}
+std::string ShdColor(const std::vector<uint8_t>& data, size_t at) {
+    if (at + 10 > data.size()) return "";
+    const uint16_t pattern = ReadU16(data, at + 8);
+    return ColorRef(data, pattern == 1 ? at : at + 4);
+}
 
 // Tab changes (sprmPChgTabsPapx / sprmPChgTabs): positions to delete, then
 // stops to add. sprmPChgTabs also carries a tolerance per deletion.
@@ -532,6 +574,13 @@ void ApplyCharSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
                 props.color = (flags == 0xFF) ? "" : HexColor(r, g, bl);   // 0xFF = automatic
                 break;
             }
+            case kSprmCHighlight: props.highlight = IcoColor(b); break;
+            case kSprmCShd80:
+                if (props.highlight.empty()) props.highlight = Shd80Color(ReadU16(data, sprm.operand));
+                break;
+            case kSprmCShd:
+                if (props.highlight.empty()) props.highlight = ShdColor(data, sprm.operand + 1);
+                break;
             case kSprmCSymbol:
                 props.symbolFont = ReadU16(data, sprm.operand);
                 props.symbolChar = ReadU16(data, sprm.operand + 2);
@@ -568,12 +617,25 @@ void ApplyParaSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
             case kSprmPDyaBefore: props.spaceBefore = ReadU16(data, sprm.operand); break;
             case kSprmPDyaAfter: props.spaceAfter = ReadU16(data, sprm.operand); break;
             case kSprmPDyaLine: {
-                // LSPD: dyaLine, then fMultLinespace (240 = single when multiple).
+                // LSPD: dyaLine, then fMultLinespace (240 = single when
+                // multiple). Not multiple: > 0 is "at least", < 0 "exactly".
                 const int line = ReadI16(data, sprm.operand);
                 const bool multiple = ReadU16(data, sprm.operand + 2) != 0;
                 props.lineSpacing = (multiple && line > 0) ? static_cast<float>(line) / 240.0f : 0.0f;
+                props.lineHeightPt = (!multiple && line != 0) ? static_cast<float>(std::abs(line)) / 20.0f : 0.0f;
+                props.lineHeightAtLeast = !multiple && line > 0;
                 break;
             }
+            case kSprmPBrcTop80: props.frame[0] = ReadBrc80(data, sprm.operand); break;
+            case kSprmPBrcBottom80: props.frame[1] = ReadBrc80(data, sprm.operand); break;
+            case kSprmPBrcLeft80: props.frame[2] = ReadBrc80(data, sprm.operand); break;
+            case kSprmPBrcRight80: props.frame[3] = ReadBrc80(data, sprm.operand); break;
+            case kSprmPBrcTop: props.frame[0] = ReadBrc(data, sprm.operand + 1); break;
+            case kSprmPBrcBottom: props.frame[1] = ReadBrc(data, sprm.operand + 1); break;
+            case kSprmPBrcLeft: props.frame[2] = ReadBrc(data, sprm.operand + 1); break;
+            case kSprmPBrcRight: props.frame[3] = ReadBrc(data, sprm.operand + 1); break;
+            case kSprmPShd80: props.background = Shd80Color(ReadU16(data, sprm.operand)); break;
+            case kSprmPShd: props.background = ShdColor(data, sprm.operand + 1); break;
             case kSprmPChgTabsPapx:
                 ApplyTabChanges(data, sprm.operand, sprm.operandSize, false, props);
                 break;
@@ -1302,6 +1364,7 @@ private:
             run.fontFamily = FontName(props.fontIndex);
         }
         run.code = IsMonospaceFont(run.fontFamily);
+        if (!props.highlight.empty() && props.highlight != base.highlight) run.highlightColor = props.highlight;
         return run;
     }
 
@@ -1449,7 +1512,16 @@ private:
             // closes it. Nested tables flatten into their outer cell.
             if (!tableOpen_) OpenTable();
             if (cellHasParagraph_ && !runs.empty()) runs.front().lineBreakBefore = true;
-            if (!cellHasParagraph_) cell_.align = AlignFor(pap.jc);
+            if (!cellHasParagraph_) {
+                cell_.align = AlignFor(pap.jc);
+                // A cell holds text, not paragraphs: its first paragraph's
+                // frame stands in where the cell itself has none.
+                cell_.borderTop = pap.frame[0];
+                cell_.borderBottom = pap.frame[1];
+                cell_.borderLeft = pap.frame[2];
+                cell_.borderRight = pap.frame[3];
+                cell_.backgroundColor = pap.background;
+            }
             for (auto& run : runs) cell_.runs.push_back(std::move(run));
             cellHasParagraph_ = true;
             if (mark == 0x07 && pap.tableDepth <= 1) {
@@ -1580,6 +1652,13 @@ private:
         block.spaceBeforePt = static_cast<float>(pap.spaceBefore) / 20.0f;
         block.spaceAfterPt = static_cast<float>(pap.spaceAfter) / 20.0f;
         block.lineSpacing = pap.lineSpacing;
+        block.lineHeightPt = pap.lineHeightPt;
+        block.lineHeightAtLeast = pap.lineHeightAtLeast;
+        block.paragraphBorderTop = pap.frame[0];
+        block.paragraphBorderBottom = pap.frame[1];
+        block.paragraphBorderLeft = pap.frame[2];
+        block.paragraphBorderRight = pap.frame[3];
+        block.paragraphBackground = pap.background;
         // Word counts tab positions from the text margin, as the model does.
         for (const auto& tab : pap.tabs) {
             RichTabStop stop;
@@ -1638,11 +1717,16 @@ private:
             RichTableCell& cell = row_.cells[c];
             const DocParaProps::CellFormat format =
                 c < pap.cellFormats.size() ? pap.cellFormats[c] : DocParaProps::CellFormat{};
-            cell.borderTop = format.top;
-            cell.borderLeft = format.left;
-            cell.borderBottom = format.bottom;
-            cell.borderRight = format.right;
-            cell.backgroundColor = format.background;
+            // The cell's own frame wins; a side it leaves open keeps what its
+            // paragraph drew there.
+            auto take = [](RichBorder& side, const RichBorder& own) {
+                if (own.IsVisible() || !side.IsVisible()) side = own;
+            };
+            take(cell.borderTop, format.top);
+            take(cell.borderLeft, format.left);
+            take(cell.borderBottom, format.bottom);
+            take(cell.borderRight, format.right);
+            if (!format.background.empty() || cell.backgroundColor.empty()) cell.backgroundColor = format.background;
         }
         if (!row_.cells.empty()) {
             tableBlock_.tableRows.push_back(std::move(row_));

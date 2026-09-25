@@ -26,6 +26,10 @@ std::string UltraCanvasRichTextEdit::internalClipboardText;
 
 namespace {
 
+// Room between a paragraph's text and its frame (and what the frame adds to
+// the space around the paragraph).
+constexpr float kParagraphFramePadding = 3.0f;
+
 Color ParseHexColor(const std::string& hex, const Color& fallback) {
     if (hex.size() != 7 || hex[0] != '#') return fallback;
     auto digit = [](char c) -> int {
@@ -233,8 +237,22 @@ float UltraCanvasRichTextEdit::GapAfterBlock(int index) const {
     if (index < 0 || index + 1 >= count) return 0.0f;
     const RichDocBlock& block = editor.GetBlock(index);
     const RichDocBlock& next = editor.GetBlock(index + 1);
-    if (block.spaceAfterPt < 0.0f && next.spaceBeforePt < 0.0f) return style.blockSpacing;
-    return std::max(0.0f, block.spaceAfterPt) + std::max(0.0f, next.spaceBeforePt);
+    float gap = (block.spaceAfterPt < 0.0f && next.spaceBeforePt < 0.0f)
+            ? style.blockSpacing
+            : std::max(0.0f, block.spaceAfterPt) + std::max(0.0f, next.spaceBeforePt);
+    // A paragraph frame takes room of its own, as in a word processor: its
+    // padding and line width below the last paragraph of a box and above the
+    // first. Paragraphs within one box keep their plain spacing.
+    const bool oneBox = block.HasParagraphFrame() && next.HasParagraphFrame() && block.SameParagraphFrame(next);
+    if (!oneBox) {
+        if (block.HasParagraphFrame()) {
+            gap += kParagraphFramePadding + std::max(0.0f, block.paragraphBorderBottom.widthPt);
+        }
+        if (next.HasParagraphFrame()) {
+            gap += kParagraphFramePadding + std::max(0.0f, next.paragraphBorderTop.widthPt);
+        }
+    }
+    return gap;
 }
 
 // First-line indent, line spacing and tab stops of a paragraph's layout.
@@ -247,6 +265,23 @@ void UltraCanvasRichTextEdit::ApplyParagraphGeometry(ITextLayout* layout, const 
         layout->SetIndent(static_cast<int>(std::lround(block.firstLineIndentPt)));
     }
     if (block.lineSpacing > 0.0f) layout->SetLineSpacing(block.lineSpacing);
+    if (block.lineHeightPt > 0.0f && !text.empty()) {
+        // "Exactly" is the height as given; "at least" never squeezes the
+        // text below its natural line height.
+        float height = block.lineHeightPt;
+        if (block.lineHeightAtLeast) {
+            float fontSize = static_cast<float>(style.baseFont.fontSize);
+            for (const RichTextRun& run : block.runs) {
+                if (run.fontSizePt > 0.0f) fontSize = std::max(fontSize, run.fontSizePt);
+            }
+            height = std::max(height, fontSize * 1.2f);
+        }
+        auto attribute = TextAttributeFactory::CreateAbsoluteLineHeight(height);
+        if (attribute) {
+            attribute->SetRange(0, static_cast<int>(text.size()));
+            layout->InsertAttribute(std::move(attribute));
+        }
+    }
     if (text.find('\t') == std::string::npos) return;
 
     std::vector<UCLayoutTabPos> tabs;
@@ -371,6 +406,9 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         if (run.fontSizePt > 0.0f)   add(TextAttributeFactory::CreateFontSize(run.fontSizePt));
         if (!run.color.empty()) {
             add(TextAttributeFactory::CreateForeground(ParseHexColor(run.color, style.textColor)));
+        }
+        if (!run.highlightColor.empty()) {
+            add(TextAttributeFactory::CreateBackground(ParseHexColor(run.highlightColor, Colors::Transparent)));
         }
         if (!run.linkTarget.empty()) {
             add(TextAttributeFactory::CreateForeground(style.linkColor));
@@ -896,6 +934,8 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
             break;
     }
 
+    if (block.HasParagraphFrame()) DrawParagraphFrame(ctx, blockIndex, bl, originX, originY);
+
     if (block.type == RichBlockType::BlockQuote) {
         ctx->DrawFilledRectangle(Rect2Dd(originX, originY, 3.0, bl.bounds.height),
                                  style.quoteBarColor, 0.0f, Colors::Transparent);
@@ -957,6 +997,44 @@ void UltraCanvasRichTextEdit::DrawDocumentCellFrame(IRenderContext* ctx, const R
     side(cell.borderBottom, Point2Dd(left, bottom), Point2Dd(right, bottom));
     side(cell.borderLeft, Point2Dd(left, top), Point2Dd(left, bottom));
     side(cell.borderRight, Point2Dd(right, top), Point2Dd(right, bottom));
+}
+
+// A paragraph's frame and fill, just outside its text. A run of paragraphs
+// with the same frame is one box: the fill closes the gaps between them, and
+// only the first draws the top line and only the last the bottom one.
+void UltraCanvasRichTextEdit::DrawParagraphFrame(IRenderContext* ctx, int blockIndex, const BlockLayout& bl,
+                                                 float originX, float originY) const {
+    const RichDocBlock& block = editor.GetBlock(blockIndex);
+    const int count = editor.GetBlockCount();
+    const bool withPrevious = blockIndex > 0 && editor.GetBlock(blockIndex - 1).HasParagraphFrame()
+                              && editor.GetBlock(blockIndex - 1).SameParagraphFrame(block);
+    const bool withNext = blockIndex + 1 < count && editor.GetBlock(blockIndex + 1).HasParagraphFrame()
+                          && editor.GetBlock(blockIndex + 1).SameParagraphFrame(block);
+    const float padding = kParagraphFramePadding;
+    const double left = originX + std::max(0.0f, block.leftIndentPt) - padding;
+    const double right = originX + visibleArea.width - std::max(0.0f, block.rightIndentPt);
+    // Grouped paragraphs meet halfway across the gap between them.
+    const float gapBelow = GapAfterBlock(blockIndex);
+    const float gapAbove = blockIndex > 0 ? GapAfterBlock(blockIndex - 1) : 0.0f;
+    const double top = originY - (withPrevious ? gapAbove * 0.5f : padding);
+    const double bottom = originY + bl.bounds.height + (withNext ? gapBelow * 0.5f : padding);
+
+    if (!block.paragraphBackground.empty()) {
+        ctx->DrawFilledRectangle(Rect2Dd(left, top, right - left, bottom - top),
+                                 ParseHexColor(block.paragraphBackground, Colors::Transparent),
+                                 0.0f, Colors::Transparent);
+    }
+    auto line = [&](const RichBorder& border, const Point2Dd& from, const Point2Dd& to) {
+        if (!border.IsVisible()) return;
+        ctx->PushState();
+        ctx->SetStrokeWidth(std::max(1.0, static_cast<double>(border.widthPt)));
+        ctx->DrawLine(from, to, ParseHexColor(border.color, style.textColor));
+        ctx->PopState();
+    };
+    if (!withPrevious) line(block.paragraphBorderTop, Point2Dd(left, top), Point2Dd(right, top));
+    if (!withNext) line(block.paragraphBorderBottom, Point2Dd(left, bottom), Point2Dd(right, bottom));
+    line(block.paragraphBorderLeft, Point2Dd(left, top), Point2Dd(left, bottom));
+    line(block.paragraphBorderRight, Point2Dd(right, top), Point2Dd(right, bottom));
 }
 
 void UltraCanvasRichTextEdit::DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex,

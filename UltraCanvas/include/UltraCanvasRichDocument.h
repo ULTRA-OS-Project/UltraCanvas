@@ -38,6 +38,7 @@ struct RichTextRun {
     std::string fontFamily;         // empty = inherit
     float fontSizePt = 0.0f;        // 0 = inherit
     std::string color;              // "#RRGGBB" or empty = inherit
+    std::string highlightColor;     // background behind the text, "#RRGGBB"; empty = none
     bool lineBreakBefore = false;   // hard line break precedes this run (within the same paragraph)
 
     // ===== INLINE IMAGE =====
@@ -66,7 +67,8 @@ struct RichTextRun {
             && strikethrough == other.strikethrough && code == other.code
             && subscript == other.subscript && superscript == other.superscript
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
-            && fontSizePt == other.fontSizePt && color == other.color;
+            && fontSizePt == other.fontSizePt && color == other.color
+            && highlightColor == other.highlightColor;
     }
 };
 
@@ -198,6 +200,14 @@ struct RichDocBlock {
     // Line spacing as a multiple of single spacing (1.5 = one and a half
     // lines). 0 = single / not stated.
     float lineSpacing = 0.0f;
+    // A fixed line height in points instead (Word "exactly" / "at least",
+    // ODF fo:line-height="14pt" / style:line-height-at-least). 0 = not set.
+    float lineHeightPt = 0.0f;
+    bool lineHeightAtLeast = false;     // true: lines are at least this tall
+    // Paragraph frame and fill. Consecutive paragraphs with the same frame
+    // form one box, as in Word and Writer (no line between them).
+    RichBorder paragraphBorderTop, paragraphBorderBottom, paragraphBorderLeft, paragraphBorderRight;
+    std::string paragraphBackground;    // "#RRGGBB"; empty = none
     // Explicit tab stops, sorted by position. Beyond the last one, tabs fall
     // on UCRichDocument::defaultTabStopPt.
     std::vector<RichTabStop> tabStops;
@@ -205,10 +215,23 @@ struct RichDocBlock {
     bool HasParagraphGeometry() const {
         return leftIndentPt != 0.0f || rightIndentPt != 0.0f || firstLineIndentPt != 0.0f
             || spaceBeforePt >= 0.0f || spaceAfterPt >= 0.0f || lineSpacing > 0.0f
-            || !tabStops.empty();
+            || lineHeightPt > 0.0f || HasParagraphFrame() || !tabStops.empty();
     }
-    // Copies indents, spacing, line spacing and tab stops - what a paragraph
-    // split in two (Enter) gives the new half.
+    bool HasParagraphFrame() const {
+        return paragraphBorderTop.IsVisible() || paragraphBorderBottom.IsVisible()
+            || paragraphBorderLeft.IsVisible() || paragraphBorderRight.IsVisible()
+            || !paragraphBackground.empty();
+    }
+    bool SameParagraphFrame(const RichDocBlock& other) const {
+        return paragraphBorderTop == other.paragraphBorderTop
+            && paragraphBorderBottom == other.paragraphBorderBottom
+            && paragraphBorderLeft == other.paragraphBorderLeft
+            && paragraphBorderRight == other.paragraphBorderRight
+            && paragraphBackground == other.paragraphBackground
+            && leftIndentPt == other.leftIndentPt && rightIndentPt == other.rightIndentPt;
+    }
+    // Copies indents, spacing, line spacing, frame and tab stops - what a
+    // paragraph split in two (Enter) gives the new half.
     void CopyParagraphGeometry(const RichDocBlock& from) {
         leftIndentPt = from.leftIndentPt;
         rightIndentPt = from.rightIndentPt;
@@ -216,6 +239,13 @@ struct RichDocBlock {
         spaceBeforePt = from.spaceBeforePt;
         spaceAfterPt = from.spaceAfterPt;
         lineSpacing = from.lineSpacing;
+        lineHeightPt = from.lineHeightPt;
+        lineHeightAtLeast = from.lineHeightAtLeast;
+        paragraphBorderTop = from.paragraphBorderTop;
+        paragraphBorderBottom = from.paragraphBorderBottom;
+        paragraphBorderLeft = from.paragraphBorderLeft;
+        paragraphBorderRight = from.paragraphBorderRight;
+        paragraphBackground = from.paragraphBackground;
         tabStops = from.tabStops;
     }
     RichTextAlign align = RichTextAlign::Default;
