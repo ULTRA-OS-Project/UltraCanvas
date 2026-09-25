@@ -51849,12 +51849,35 @@ inside a block and a value after one. The token types it produces, and the
 | Anywhere | `@media`, `@font-face`, `!important` | `Preprocessor` |
 | Anywhere | `/* ... */` | `Comment` |
 
-Minified CSS — a whole stylesheet on one line — is scanned exactly. The text
-area highlights one line at a time, so a line in a multi-line file that
-opens no block of its own starts from a guess: a `{` on it makes it a
-selector, a `;` or `}` makes it a declaration, and otherwise a `:` without a
-trailing `,` does. The middle lines of a `/* ... */` comment are recognised by
-their leading `*` or closing `*/`.
+Each line continues from where the line above left the rules — inside a
+selector list, a declaration block or an at-rule prelude, and how many blocks
+are open — so a multi-line stylesheet, and a minified one the text area splits
+into 8000-character segments, is classified the same as if it were scanned in
+one go. (Called without a state, `TokenizeLine(line)` still infers the start
+of a line from its own braces and semicolons.)
+
+### Constructs Spanning Lines
+The text area highlights one line at a time, carrying a `SyntaxLineState`
+from each line to the next: a block comment still open (`/* */`, `(* *)`,
+`<!-- -->`, … — whichever the language defines), and, across the segments of a
+line split for length, a string or line comment cut at the split. Each cached
+line layout remembers the state it was built from, so an edit that opens or
+closes a comment recolours every line below it on the next frame.
+
+```cpp
+SyntaxTokenizer tk;
+tk.SetLanguage("C++");
+SyntaxLineState state;                       // the first line starts empty
+for (const std::string& line : lines) {
+    auto tokens = tk.TokenizeLine(line, state);  // updates state
+    state = state.AtLineBreak();             // strings / line comments end here
+}
+```
+
+Strings do not continue across a real line break, so C's `\`-continued
+strings and Python's triple-quoted strings are still coloured on their first
+line only. Fenced code blocks in Markdown mode are highlighted line by line
+without state.
 
 ### Multiple Selection Support
 While the current implementation supports single selection, the architecture allows for future multi-cursor editing:

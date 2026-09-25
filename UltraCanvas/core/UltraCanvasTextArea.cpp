@@ -100,6 +100,7 @@ namespace UltraCanvas {
 
         // Syntax highlighting colors
         style.tokenStyles.keywordStyle.color = {0, 0, 255, 255};
+        style.tokenStyles.typeStyle.color = {0x26, 0x7f, 0x99, 255};
         style.tokenStyles.functionStyle.color = {128, 0, 128, 255};
         style.tokenStyles.stringStyle.color = {0, 128, 0, 255};
         style.tokenStyles.characterStyle.color = {0, 128, 0, 255};
@@ -2350,6 +2351,7 @@ namespace UltraCanvas {
     const TokenStyle& UltraCanvasTextArea::GetStyleForTokenType(TokenType type) const {
         switch (type) {
             case TokenType::Keyword: return style.tokenStyles.keywordStyle;
+            case TokenType::Type: return style.tokenStyles.typeStyle;
             case TokenType::Function: return style.tokenStyles.functionStyle;
             case TokenType::String: return style.tokenStyles.stringStyle;
             case TokenType::Character: return style.tokenStyles.characterStyle;
@@ -2578,6 +2580,7 @@ namespace UltraCanvas {
         style.lineNumbersColor = {160, 160, 160, 255};  // Match tab title brightness
 
         style.tokenStyles.keywordStyle.color = {0x4c, 0xbb, 0xc9, 255};
+        style.tokenStyles.typeStyle.color = {0x4e, 0xc9, 0xb0, 255};
         style.tokenStyles.functionStyle.color = {0xdc, 0xd6, 0xa2, 255};
         style.tokenStyles.stringStyle.color = {0xce, 0x91, 0x78, 255};
         style.tokenStyles.characterStyle.color = {0xce, 0x91, 0x78, 255};
@@ -2610,6 +2613,7 @@ namespace UltraCanvas {
 
         // Syntax highlighting colors
         style.tokenStyles.keywordStyle.color = {0, 0, 255, 255};
+        style.tokenStyles.typeStyle.color = {0x26, 0x7f, 0x99, 255};
         style.tokenStyles.functionStyle.color = {128, 0, 128, 255};
         style.tokenStyles.stringStyle.color = {0, 128, 0, 255};
         style.tokenStyles.characterStyle.color = {0, 128, 0, 255};
@@ -3326,7 +3330,15 @@ namespace UltraCanvas {
         };
         int prevLogicalLineNumber = 0;
         int currentLogicalLineNumber = 1;
+        const bool carrySyntaxState = style.highlightSyntax && syntaxTokenizer &&
+                                      editingMode == TextAreaEditingMode::PlainText;
         for(int i = 0; i < (int)lines.size(); i++) {
+            // A line highlighted from what the line above used to leave open
+            // (an edit opened or closed a /* comment */ further up) is stale.
+            if (lineLayouts[i] && carrySyntaxState &&
+                lineLayouts[i]->syntaxEntry != SyntaxStateBefore(i)) {
+                lineLayouts[i].reset();
+            }
             if (!lineLayouts[i]) {
                 lineLayouts[i] = MakeLineLayout(ctx, i);
             }
@@ -3408,7 +3420,10 @@ namespace UltraCanvas {
         }
 
         if (style.highlightSyntax && syntaxTokenizer) {
-            auto tokens = syntaxTokenizer->TokenizeLine(txt);  // txt is already content-only
+            SyntaxLineState state = SyntaxStateBefore(lineIndex);
+            ll->syntaxEntry = state;
+            auto tokens = syntaxTokenizer->TokenizeLine(txt, state);  // txt is already content-only
+            ll->syntaxExit = state;
 
             int currentByte = 0;
             for (const auto& token : tokens) {
@@ -3443,6 +3458,15 @@ namespace UltraCanvas {
         ll->bounds.width = ll->layout->GetLayoutWidth();
         ll->bounds.height = ll->layout->GetLayoutHeight();
         return ll;
+    }
+
+    SyntaxLineState UltraCanvasTextArea::SyntaxStateBefore(int lineIndex) const {
+        int prev = lineIndex - 1;
+        if (prev < 0 || prev >= static_cast<int>(lineLayouts.size()) || !lineLayouts[prev]) {
+            return {};
+        }
+        const SyntaxLineState& exit = lineLayouts[prev]->syntaxExit;
+        return LineHasNewline(prev) ? exit.AtLineBreak() : exit;
     }
 
     std::unique_ptr<LineLayoutBase> UltraCanvasTextArea::MakeLineLayout(IRenderContext* ctx, int lineIndex) {

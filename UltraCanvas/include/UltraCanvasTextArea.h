@@ -13,6 +13,7 @@
 #include "UltraCanvasInlineMath.h"
 #include "UltraCanvasSpellChecker.h"
 #include "UltraCanvasSmoothScroll.h"
+#include "UltraCanvasSyntaxLineState.h"
 #include <algorithm>
 #include <string>
 #include <string_view>
@@ -379,6 +380,11 @@ namespace UltraCanvas {
         // single offset. The first entry's sourceCp is the block-prefix codepoint count.
         std::vector<CpRun> cpMap;
         int logicalLineNumber = 0;
+        // Syntax highlighting: what the line above left open when this layout
+        // was built, and what this line leaves open for the next. A layout
+        // whose entry no longer matches the line above is rebuilt.
+        SyntaxLineState syntaxEntry;
+        SyntaxLineState syntaxExit;
         virtual ~LineLayoutBase() {};
     };
 
@@ -909,6 +915,10 @@ namespace UltraCanvas {
         std::unique_ptr<LineLayoutBase> MakeLineLayout(IRenderContext* ctx, int lineIndex);
         // parse the plain line text and setup line layout
         std::unique_ptr<LineLayoutBase> MakePlainLineLayout(IRenderContext* ctx, int lineIndex);
+        // The syntax state line `lineIndex` starts in: what the cached layout
+        // of the line above left open, less a string or line comment when a
+        // real line break (not a length split) separates them.
+        SyntaxLineState SyntaxStateBefore(int lineIndex) const;
 
         // MakeLineLayout dispatches here for MarkdownHybrid lines. Inspects lineLayouts[lineIndex-1]
         // for state like open fenced-code-block and returns the appropriate derived LineLayoutBase.
