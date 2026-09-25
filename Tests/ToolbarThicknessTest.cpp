@@ -163,12 +163,13 @@ void TestBuilderVerticalTakesItsWidth() {
 void TestBuilderHorizontalTakesItsHeight() {
     std::printf("A horizontal toolbar from the builder, given a thin height\n");
 
-    // A status bar: 24 px asked for, 16 px items.
+    // A status bar: 24 px asked for, 10 px items - 10 + 5 + 5 padding + 1 + 1
+    // border = 22 px of content, so the 24 px floor is what decides.
     auto status = UltraCanvasToolbarBuilder("status")
             .SetOrientation(ToolbarOrientation::Horizontal)
             .SetDimensions(0, 0, 1024, 24)
             .Build();
-    auto a = Item("a", 60, 16);
+    auto a = Item("a", 60, 10);
     status->AddChild(a);
     LayOut(status, 1024, 300);
 
