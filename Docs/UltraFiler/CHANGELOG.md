@@ -1,3 +1,10 @@
+#### 2026-09-25 *1.54.0*
+- **R, Scala, MATLAB and VBA files show their text too.** Their languages
+  were written into the syntax highlighter but switched off, so `.r`,
+  `.rmd`, `.scala`, `.sc`, `.sbt`, `.m`, `.vba`, `.cls` and `.frm` files
+  still drew the blank sheet. The highlighter now has them switched on,
+  so each of them shows its miniature page, gets a switch under Text, and
+  is named after its language ("MATLAB Text"). `.bas` stays BASIC.
 #### 2026-09-25 *1.53.0*
 - **Find text: Match case and file patterns.** *Extras > Find text* opens a
   dialog of its own instead of the one-line prompt: besides the text it asks
@@ -17,12 +24,6 @@
   syntax highlighter knows, so all of them show their text. **Settings >
   Display > Thumbnails > Text** lists each one as a checkbox, so single types
   can be switched back to the plain icon.
-  - **R, Scala, MATLAB and VBA files show their text too.** Their languages
-    were written into the syntax highlighter but switched off, so `.r`,
-    `.rmd`, `.scala`, `.sc`, `.sbt`, `.m`, `.vba`, `.cls` and `.frm` files
-    still drew the blank sheet. The highlighter now has them switched on,
-    so each of them shows its miniature page, gets a switch under Text, and
-    is named after its language ("MATLAB Text"). `.bas` stays BASIC.
   - **The Thumbnails and Detail view settings pages could not be scrolled.**
     Since containers stopped scrolling unless asked (framework 0.9.x, the same
     day as 1.45.0), those two pages were cut off at the window's foot with no
