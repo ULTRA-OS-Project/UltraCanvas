@@ -274,6 +274,7 @@ constexpr uint16_t kSprmCHps = 0x4A43;
 constexpr uint16_t kSprmCRgFtc0 = 0x4A4F;
 constexpr uint16_t kSprmCCv = 0x6870;
 constexpr uint16_t kSprmCPicLocation = 0x6A03;
+constexpr uint16_t kSprmCSymbol = 0x6A09;
 constexpr uint16_t kSprmCFData = 0x0806;
 constexpr uint16_t kSprmCFOle2 = 0x080A;
 constexpr uint16_t kSprmCFSpec = 0x0855;
@@ -290,6 +291,16 @@ constexpr uint16_t kSprmPFPageBreakBefore = 0x2407;
 constexpr uint16_t kSprmTDefTable = 0xD608;
 constexpr uint16_t kSprmTTableHeader = 0x3404;
 constexpr uint16_t kSprmPChgTabs = 0xC615;
+constexpr uint16_t kSprmPChgTabsPapx = 0xC60D;
+constexpr uint16_t kSprmPDxaRight80 = 0x840E;
+constexpr uint16_t kSprmPDxaLeft80 = 0x840F;
+constexpr uint16_t kSprmPDxaLeft1_80 = 0x8411;
+constexpr uint16_t kSprmPDxaRight = 0x845D;
+constexpr uint16_t kSprmPDxaLeft = 0x845E;
+constexpr uint16_t kSprmPDxaLeft1 = 0x8460;
+constexpr uint16_t kSprmPDyaBefore = 0xA413;
+constexpr uint16_t kSprmPDyaAfter = 0xA414;
+constexpr uint16_t kSprmPDyaLine = 0x6412;
 
 struct Sprm {
     uint16_t code = 0;
@@ -352,6 +363,10 @@ struct DocCharProps {
     int fontIndex = -1;           // into the font table
     std::string color;            // "#RRGGBB"; empty = automatic
     int32_t picLocation = -1;     // picture data offset in the Data stream
+    // Insert > Symbol: the text holds a placeholder, the real character and
+    // its font are here.
+    int symbolFont = -1;
+    uint16_t symbolChar = 0;
 };
 
 struct DocParaProps {
@@ -366,7 +381,52 @@ struct DocParaProps {
     bool pageBreakBefore = false;
     bool headerRow = false;
     std::vector<int> cellEdges;   // twips, one more than the row's cells
+    // Geometry, in twips (1/20 pt). Word's defaults are all zero.
+    int leftIndent = 0;
+    int rightIndent = 0;
+    int firstLineIndent = 0;
+    int spaceBefore = 0;
+    int spaceAfter = 0;
+    float lineSpacing = 0.0f;     // multiple of single; 0 = single / exact height
+    struct Tab { int position = 0; int kind = 0; };   // kind: jc 0 left 1 centre 2 right 3 decimal
+    std::vector<Tab> tabs;
 };
+
+// Tab changes (sprmPChgTabsPapx / sprmPChgTabs): positions to delete, then
+// stops to add. sprmPChgTabs also carries a tolerance per deletion.
+void ApplyTabChanges(const std::vector<uint8_t>& data, size_t operand, size_t size,
+                     bool withTolerance, DocParaProps& props) {
+    const size_t end = operand + size;
+    size_t at = operand + 1;                 // skips the length byte
+    if (at >= end) return;
+    const size_t deletions = data[at++];
+    std::vector<int> deleted, tolerance;
+    for (size_t i = 0; i < deletions && at + 2 <= end; ++i, at += 2) deleted.push_back(ReadI16(data, at));
+    if (withTolerance) {
+        for (size_t i = 0; i < deletions && at + 2 <= end; ++i, at += 2) tolerance.push_back(ReadI16(data, at));
+    }
+    for (size_t i = 0; i < deleted.size(); ++i) {
+        const int slack = i < tolerance.size() ? std::abs(tolerance[i]) : 0;
+        props.tabs.erase(std::remove_if(props.tabs.begin(), props.tabs.end(),
+                                        [&](const DocParaProps::Tab& t) {
+                                            return std::abs(t.position - deleted[i]) <= slack;
+                                        }),
+                         props.tabs.end());
+    }
+    if (at >= end) return;
+    const size_t additions = data[at++];
+    const size_t kinds = at + additions * 2;
+    for (size_t i = 0; i < additions && kinds + i < end; ++i) {
+        DocParaProps::Tab tab;
+        tab.position = ReadI16(data, at + i * 2);
+        tab.kind = data[kinds + i] & 0x07;
+        if (tab.kind == 4) continue;         // a bar tab draws a line; it is not a stop
+        props.tabs.erase(std::remove_if(props.tabs.begin(), props.tabs.end(),
+                                        [&](const DocParaProps::Tab& t) { return t.position == tab.position; }),
+                         props.tabs.end());
+        props.tabs.push_back(tab);
+    }
+}
 
 // Word's 16-entry colour palette (sprmCIco), 0 = automatic.
 std::string IcoColor(uint8_t ico) {
@@ -419,6 +479,10 @@ void ApplyCharSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
                 props.color = (flags == 0xFF) ? "" : HexColor(r, g, bl);   // 0xFF = automatic
                 break;
             }
+            case kSprmCSymbol:
+                props.symbolFont = ReadU16(data, sprm.operand);
+                props.symbolChar = ReadU16(data, sprm.operand + 2);
+                break;
             case kSprmCPicLocation:
                 props.picLocation = static_cast<int32_t>(ReadU32(data, sprm.operand));
                 break;
@@ -442,6 +506,27 @@ void ApplyParaSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
             case kSprmPItap: props.tableDepth = static_cast<int>(ReadU32(data, sprm.operand)); break;
             case kSprmPOutLvl: props.outlineLevel = b; break;
             case kSprmPFPageBreakBefore: props.pageBreakBefore = b != 0; break;
+            case kSprmPDxaLeft:
+            case kSprmPDxaLeft80: props.leftIndent = ReadI16(data, sprm.operand); break;
+            case kSprmPDxaRight:
+            case kSprmPDxaRight80: props.rightIndent = ReadI16(data, sprm.operand); break;
+            case kSprmPDxaLeft1:
+            case kSprmPDxaLeft1_80: props.firstLineIndent = ReadI16(data, sprm.operand); break;
+            case kSprmPDyaBefore: props.spaceBefore = ReadU16(data, sprm.operand); break;
+            case kSprmPDyaAfter: props.spaceAfter = ReadU16(data, sprm.operand); break;
+            case kSprmPDyaLine: {
+                // LSPD: dyaLine, then fMultLinespace (240 = single when multiple).
+                const int line = ReadI16(data, sprm.operand);
+                const bool multiple = ReadU16(data, sprm.operand + 2) != 0;
+                props.lineSpacing = (multiple && line > 0) ? static_cast<float>(line) / 240.0f : 0.0f;
+                break;
+            }
+            case kSprmPChgTabsPapx:
+                ApplyTabChanges(data, sprm.operand, sprm.operandSize, false, props);
+                break;
+            case kSprmPChgTabs:
+                ApplyTabChanges(data, sprm.operand, sprm.operandSize, true, props);
+                break;
             case kSprmTTableHeader: props.headerRow = b != 0; break;
             case kSprmTDefTable: {
                 // cb (2) | itcMac (1) | rgdxaCenter[itcMac + 1] (2 each) | ...
@@ -904,6 +989,12 @@ public:
         chpx_ = LoadFkps(word_, table_, FcAt(12), LcbAt(12), false);
         papx_ = LoadFkps(word_, table_, FcAt(13), LcbAt(13), true);
         lists_.Load(table_, FcAt(73), LcbAt(73), FcAt(74), LcbAt(74));
+        // Document properties: dxaTab, the default tab width, at offset 10.
+        const uint32_t fcDop = FcAt(31), lcbDop = LcbAt(31);
+        if (lcbDop >= 12 && static_cast<size_t>(fcDop) + lcbDop <= table_.size()) {
+            const int dxaTab = ReadU16(table_, fcDop + 10);
+            if (dxaTab > 0) doc_.defaultTabStopPt = static_cast<float>(dxaTab) / 20.0f;
+        }
 
         BuildBlocks(chars);
         return true;
@@ -1172,6 +1263,17 @@ private:
                 continue;
             }
             std::string text;
+            if (props.special && props.symbolChar != 0) {
+                // The symbol-font mapping after import turns it into Unicode.
+                RichTextRun format = MakeRun(props, heading ? &styleChars : nullptr);
+                format.fontFamily = FontName(props.symbolFont);
+                format.code = false;
+                format.linkTarget = ActiveLink();
+                AppendUtf8(text, props.symbolChar);
+                AppendText(runs, format, text, lineBreak);
+                lineBreak = false;
+                continue;
+            }
             if (ch == 0x09) text = "\t";
             else if (ch == 0x1E) text = "-";            // non-breaking hyphen
             else if (ch == 0x1F) continue;              // optional hyphen
@@ -1209,6 +1311,7 @@ private:
         RichDocBlock block;
         block.type = RichBlockType::Paragraph;
         block.align = AlignFor(pap.jc);
+        ApplyGeometry(block, pap);
         block.runs = std::move(runs);
         int listNumber = 0;
         if (heading) {
@@ -1294,6 +1397,25 @@ private:
         run.imageHeightPt = heightPt > 0 ? heightPt : 0;
         run.lineBreakBefore = lineBreak;
         runs.push_back(std::move(run));
+    }
+
+    static void ApplyGeometry(RichDocBlock& block, const DocParaProps& pap) {
+        block.leftIndentPt = static_cast<float>(pap.leftIndent) / 20.0f;
+        block.rightIndentPt = static_cast<float>(pap.rightIndent) / 20.0f;
+        block.firstLineIndentPt = static_cast<float>(pap.firstLineIndent) / 20.0f;
+        block.spaceBeforePt = static_cast<float>(pap.spaceBefore) / 20.0f;
+        block.spaceAfterPt = static_cast<float>(pap.spaceAfter) / 20.0f;
+        block.lineSpacing = pap.lineSpacing;
+        // Word counts tab positions from the text margin, as the model does.
+        for (const auto& tab : pap.tabs) {
+            RichTabStop stop;
+            stop.positionPt = static_cast<float>(tab.position) / 20.0f;
+            stop.kind = tab.kind == 1 ? RichTabKind::Center : tab.kind == 2 ? RichTabKind::Right
+                      : tab.kind == 3 ? RichTabKind::Decimal : RichTabKind::Left;
+            block.tabStops.push_back(stop);
+        }
+        std::sort(block.tabStops.begin(), block.tabStops.end(),
+                  [](const RichTabStop& a, const RichTabStop& b) { return a.positionPt < b.positionPt; });
     }
 
     static bool IsQuoteStyle(const std::string& name) {

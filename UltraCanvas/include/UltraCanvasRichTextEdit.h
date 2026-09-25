@@ -79,7 +79,8 @@ struct RichTextEditStyle {
     float listIndent = 24.0f;         // per nesting level
     float quoteIndent = 16.0f;
     float codeIndent = 12.0f;
-    float blockSpacing = 6.0f;        // between blocks
+    float blockSpacing = 6.0f;        // between blocks that state no spacing of their own
+    float defaultTabStop = 36.0f;     // tab interval when the document states none
     float paragraphLeading = 0.0f;    // extra leading inside a paragraph
     float scrollbarWidth = 15.0f;
     bool drawBorder = true;
@@ -323,7 +324,11 @@ private:
                                                 float wrapWidth,
                                                 std::vector<RichTextHitRect>* outHits,
                                                 int blockIndex,
-                                                std::vector<BlockLayout::InlineImage>* outInlineImages = nullptr) const;
+                                                std::vector<BlockLayout::InlineImage>* outInlineImages = nullptr,
+                                                float paragraphOriginX = -1.0f) const;
+    void ApplyParagraphGeometry(ITextLayout* layout, const RichDocBlock& block,
+                                const std::string& text, float originX, float wrapWidth) const;
+    float GapAfterBlock(int index) const;
     void ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                             const std::vector<RichTextRun>& runs,
                             std::vector<RichTextHitRect>* outHits, int blockIndex,

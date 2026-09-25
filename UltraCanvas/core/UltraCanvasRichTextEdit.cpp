@@ -158,16 +158,79 @@ void UltraCanvasRichTextEdit::RecalculateVisibleArea() {
 }
 
 float UltraCanvasRichTextEdit::BlockIndentFor(const RichDocBlock& block) const {
+    // A document's own left indent adds to the view's indent for the block's
+    // kind. List items keep the view's list indentation only (see the model).
+    const float documentIndent = std::max(0.0f, block.leftIndentPt);
     switch (block.type) {
         case RichBlockType::ListItem:
             return style.listIndent * static_cast<float>(block.listLevel + 1);
         case RichBlockType::BlockQuote:
-            return style.quoteIndent;
+            return style.quoteIndent + documentIndent;
         case RichBlockType::CodeBlock:
-            return style.codeIndent;
+            return style.codeIndent + documentIndent;
+        case RichBlockType::Paragraph:
+        case RichBlockType::Heading:
+        case RichBlockType::MathBlock:
+            return documentIndent;
         default:
             return 0.0f;
     }
+}
+
+// Space between block `index` and the one after it: the document's stated
+// spacing (after + before, added as word processors do) when either states
+// any, otherwise the view's block spacing.
+float UltraCanvasRichTextEdit::GapAfterBlock(int index) const {
+    const int count = editor.GetBlockCount();
+    if (index < 0 || index + 1 >= count) return 0.0f;
+    const RichDocBlock& block = editor.GetBlock(index);
+    const RichDocBlock& next = editor.GetBlock(index + 1);
+    if (block.spaceAfterPt < 0.0f && next.spaceBeforePt < 0.0f) return style.blockSpacing;
+    return std::max(0.0f, block.spaceAfterPt) + std::max(0.0f, next.spaceBeforePt);
+}
+
+// First-line indent, line spacing and tab stops of a paragraph's layout.
+// `originX` is where the layout's left edge sits in the text column, which
+// is what the column-relative tab positions are converted against.
+void UltraCanvasRichTextEdit::ApplyParagraphGeometry(ITextLayout* layout, const RichDocBlock& block,
+                                                     const std::string& text, float originX,
+                                                     float wrapWidth) const {
+    if (block.type != RichBlockType::ListItem && block.firstLineIndentPt != 0.0f) {
+        layout->SetIndent(static_cast<int>(std::lround(block.firstLineIndentPt)));
+    }
+    if (block.lineSpacing > 0.0f) layout->SetLineSpacing(block.lineSpacing);
+    if (text.find('\t') == std::string::npos) return;
+
+    std::vector<UCLayoutTabPos> tabs;
+    float last = 0.0f;
+    for (const RichTabStop& stop : block.tabStops) {
+        const float x = stop.positionPt - originX;
+        if (x <= 0.0f) continue;
+        UCLayoutTabPos tab;
+        tab.xPos = static_cast<int>(std::lround(x));
+        tab.align = stop.kind == RichTabKind::Center ? UCLayoutTabAlignment::TabCenter
+                  : stop.kind == RichTabKind::Right ? UCLayoutTabAlignment::TabRight
+                  : stop.kind == RichTabKind::Decimal ? UCLayoutTabAlignment::TabDecimal
+                  : UCLayoutTabAlignment::TabLeft;
+        tabs.push_back(tab);
+        last = std::max(last, stop.positionPt);
+    }
+    // Past the explicit stops, tabs fall on the document's default interval,
+    // counted from the column edge like the stops themselves.
+    const UCRichDocument* document = editor.GetDocument().get();
+    const float interval = (document && document->defaultTabStopPt > 0.0f)
+                         ? document->defaultTabStopPt : style.defaultTabStop;
+    if (interval > 1.0f) {
+        const float limit = originX + std::max(wrapWidth, 0.0f) + interval;
+        float x = (std::floor(last / interval) + 1.0f) * interval;
+        for (int guard = 0; x < limit && guard < 256; x += interval, ++guard) {
+            if (x - originX <= 0.0f) continue;
+            UCLayoutTabPos tab;
+            tab.xPos = static_cast<int>(std::lround(x - originX));
+            tabs.push_back(tab);
+        }
+    }
+    if (!tabs.empty()) layout->SetTabs(tabs);
 }
 
 FontStyle UltraCanvasRichTextEdit::FontForBlock(const RichDocBlock& block) const {
@@ -319,7 +382,7 @@ void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int 
 std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
         IRenderContext* ctx, const RichDocBlock& block, const std::vector<RichTextRun>& runs,
         float wrapWidth, std::vector<RichTextHitRect>* outHits, int blockIndex,
-        std::vector<BlockLayout::InlineImage>* outInlineImages) const {
+        std::vector<BlockLayout::InlineImage>* outInlineImages, float paragraphOriginX) const {
     std::string text = UCRichDocumentEditor::RunsText(runs);
     auto layout = ctx->CreateTextLayout(text, false);
     layout->SetFontStyle(FontForBlock(block));
@@ -329,6 +392,9 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     }
     if (block.align != RichTextAlign::Default) {
         layout->SetAlignment(ToTextAlignment(block.align));
+    }
+    if (paragraphOriginX >= 0.0f) {
+        ApplyParagraphGeometry(layout.get(), block, text, paragraphOriginX, wrapWidth);
     }
     ApplyRunAttributes(layout.get(), block, runs, outHits, blockIndex, outInlineImages);
     return layout;
@@ -350,6 +416,13 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
     bl.textLeft = indent;
     bl.markerLeft = std::max(0.0f, indent - style.listIndent * 0.8f);
     float wrapWidth = std::max(1.0f, visibleArea.width - indent);
+    if (block.type != RichBlockType::ListItem) {
+        // A hanging indent puts the first line left of the others: the layout
+        // starts there, and its (negative) indent moves the rest back in.
+        const float hang = std::min(0.0f, block.firstLineIndentPt);
+        bl.textLeft = std::max(0.0f, indent + hang);
+        wrapWidth = std::max(1.0f, visibleArea.width - bl.textLeft - std::max(0.0f, block.rightIndentPt));
+    }
 
     switch (block.type) {
         case RichBlockType::HorizontalRule:
@@ -516,7 +589,7 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
 
         default: {
             bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth, &bl.hitRects, blockIndex,
-                                       &bl.inlineImages);
+                                       &bl.inlineImages, bl.textLeft);
             ApplySelectionAttributes(bl.layout.get(), blockIndex);
             bl.bounds.width = static_cast<float>(bl.layout->GetLayoutWidth());
             bl.bounds.height = static_cast<float>(bl.layout->GetLayoutHeight()) + style.paragraphLeading;
@@ -589,13 +662,13 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
             bl.bounds.width = visibleArea.width;
             bl.bounds.height = static_cast<float>(style.baseFont.fontSize)
                              * (block.type == RichBlockType::Heading ? 2.0f : 1.4f);
-            bl.textLeft = BlockIndentFor(block);
+            bl.textLeft = std::max(0.0f, BlockIndentFor(block) + std::min(0.0f, block.firstLineIndentPt));
         }
         bl.bounds.x = bl.textLeft;
         bl.bounds.y = y;
-        y += bl.bounds.height + style.blockSpacing;
+        y += bl.bounds.height + GapAfterBlock(i);
     }
-    contentHeight = std::max(0.0f, y - style.blockSpacing);
+    contentHeight = std::max(0.0f, y);
     layoutsDirty = false;
 
     float maxScroll = std::max(0.0f, contentHeight - visibleArea.height);
@@ -887,7 +960,11 @@ RichDocPosition UltraCanvasRichTextEdit::PositionFromPoint(const Point2Df& local
     int blockIndex = static_cast<int>(blockLayouts.size()) - 1;
     for (int i = 0; i < static_cast<int>(blockLayouts.size()); i++) {
         const BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
-        if (contentY < bl.bounds.y + bl.bounds.height + style.blockSpacing * 0.5f) {
+        // The gap below a block belongs half to it, half to the next one.
+        const float bottom = bl.bounds.y + bl.bounds.height;
+        const float nextTop = i + 1 < static_cast<int>(blockLayouts.size())
+                ? blockLayouts[static_cast<size_t>(i + 1)].bounds.y : bottom;
+        if (contentY < (bottom + nextTop) * 0.5f || contentY < bottom) {
             blockIndex = i;
             break;
         }

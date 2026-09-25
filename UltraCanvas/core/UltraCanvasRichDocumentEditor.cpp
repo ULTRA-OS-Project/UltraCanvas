@@ -1231,6 +1231,10 @@ void UCRichDocumentEditor::SplitBlockInternal() {
             next.type = RichBlockType::Paragraph;
             break;
     }
+    // The second half of a paragraph is laid out like the first: same
+    // indents, spacing and tab stops. Not so after a heading, whose
+    // continuation is body text.
+    if (next.type == block.type) next.CopyParagraphGeometry(block);
     next.runs = std::move(tailRuns);
     doc->blocks.insert(doc->blocks.begin() + caret.blockIndex + 1, next);
     caret = RichDocPosition(caret.blockIndex + 1, 0);

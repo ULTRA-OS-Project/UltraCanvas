@@ -70,6 +70,11 @@ public:
                         std::string& outError);
     static bool SaveDocx(const std::string& filePath, const UCRichDocument& document,
                          std::string& outError);
+
+private:
+    // Load's format dispatch, before the shared post-processing.
+    static bool LoadByFormat(const std::string& filePath, UCRichDocument& outDocument,
+                             std::string& outError);
 };
 
 } // namespace UltraCanvas

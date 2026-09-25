@@ -183,6 +183,21 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
 
 ---
 
+## dingbat-to-unicode (symbol-font character tables)
+
+- **Used by:** the Word document readers' symbol-font mapping
+  (`UltraCanvas/Plugins/Documents/Word/UltraCanvasSymbolFonts.cpp`), which
+  turns text set in Symbol, Wingdings 1–3 and Webdings into Unicode.
+- **Upstream:** https://github.com/mwilliamson/dingbat-to-unicode (npm
+  package version 1.0.2).
+- **What is included:** only its character tables, converted to C arrays in
+  `UltraCanvas/Plugins/Documents/Word/UltraCanvasSymbolFontTable.inc` by
+  `scripts/generate_symbol_font_map.py`. No code.
+- **License:** BSD 2-Clause — Copyright (c) 2021, Michael Williamson. The
+  notice is reproduced at the top of the generated table.
+
+---
+
 ## AAC decoders (optional, and copyleft — read before enabling)
 
 - **Used by:** `UltraCanvas/libspecific/Audio/AudioCodecsAAC.cpp`, to decode

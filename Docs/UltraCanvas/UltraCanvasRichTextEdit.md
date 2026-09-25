@@ -409,6 +409,27 @@ that is what "inherit" means in `UCRichDocument`, and it is why a document
 authored elsewhere adopts the host application's typography until the user
 overrides it.
 
+## Paragraph layout from documents
+
+A block read from `.odt`, `.docx` or `.doc` carries its paragraph geometry
+(see `RichDocBlock` in `UltraCanvasRichDocument.h`), and the element lays it
+out:
+
+- **Indents:** `leftIndentPt` / `rightIndentPt` narrow the text column;
+  `firstLineIndentPt` moves the first line, and when negative gives a hanging
+  indent. List items keep `style.listIndent` instead.
+- **Spacing:** when either neighbour states spacing, the gap between two blocks
+  is `spaceAfterPt + spaceBeforePt`. Otherwise it is `style.blockSpacing`, so a
+  document built from Markdown looks as before.
+- **Line spacing:** `lineSpacing` (1.5 = one and a half lines).
+- **Tab stops:** `tabStops` (left, centre, right, decimal) measured from the
+  text column's edge, then every `UCRichDocument::defaultTabStopPt` (or
+  `style.defaultTabStop` when the document states none).
+
+Lengths are points, drawn at one unit per point, the same scale as run font
+sizes, so indents and tab stops stay in proportion to the text. Enter gives the
+new paragraph the geometry of the one it was split from.
+
 ## Read-only rendering
 
 ```cpp
@@ -428,9 +449,11 @@ Honest limits of this first version — none of them silently misbehave:
   selection model holds a range inside one container, and widening it is a
   piece of work in its own right — rendering, hit testing and copying all
   change with it.
-- **Column widths are uniform.** The grid divides the available width evenly;
-  a column width stored in a `.docx` or `.odt` is preserved on save but not
-  honoured on screen.
+- **Table borders and cell backgrounds are not drawn from the document.**
+  Every cell gets the style's light border, so a borderless layout table in a
+  letterhead shows a grid.
+- **Line spacing is proportional only.** An exact or "at least" line height
+  from a document is ignored.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the

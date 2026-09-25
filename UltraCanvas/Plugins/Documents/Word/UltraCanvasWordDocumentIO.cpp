@@ -94,6 +94,15 @@ WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath) {
 bool UCWordDocumentIO::Load(const std::string& filePath, UCRichDocument& outDocument,
                             std::string& outError) {
     outError.clear();
+    if (!LoadByFormat(filePath, outDocument, outError)) return false;
+    // Every format can carry text in a Windows symbol font; the model holds
+    // what it depicts instead, so it draws without that font installed.
+    WordFormatInternal::MapSymbolFontRuns(outDocument);
+    return true;
+}
+
+bool UCWordDocumentIO::LoadByFormat(const std::string& filePath, UCRichDocument& outDocument,
+                                    std::string& outError) {
     switch (DetectWordDocumentFormat(filePath)) {
         case WordDocumentFormat::Odt:
             return LoadOdt(filePath, outDocument, outError);

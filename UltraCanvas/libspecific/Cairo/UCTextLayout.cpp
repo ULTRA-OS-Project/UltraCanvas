@@ -774,6 +774,7 @@ namespace UltraCanvas {
                 pango_layout_set_tabs(layout, tabArray);
                 pango_tab_array_free(tabArray);
             }
+            extentsDirty = true;   // tab positions move text: re-measure
         }
     }
 

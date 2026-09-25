@@ -14,6 +14,7 @@
 #include "tinyxml2.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <map>
 #include <set>
 #include <sstream>
@@ -35,6 +36,44 @@ struct DocxRelationship {
     bool external = false;
 };
 
+// A run of nothing but spaces - <w:t xml:space="preserve"> </w:t>, the space
+// between two differently formatted words - is text, but tinyxml2 drops
+// whitespace-only text. Each such space is swapped for a private-use marker
+// before parsing and turned back into a space when the run is read. Without
+// xml:space="preserve" Word ignores the whitespace too, so that is left alone.
+constexpr const char* kKeptSpaceMarker = "\xEE\x80\x81";   // U+E001
+
+void ProtectWhitespaceRuns(std::string& xml) {
+    std::string out;
+    out.reserve(xml.size());
+    size_t pos = 0;
+    while (true) {
+        size_t open = xml.find("<w:t", pos);
+        if (open == std::string::npos) break;
+        const char after = open + 4 < xml.size() ? xml[open + 4] : '\0';
+        size_t close = xml.find('>', open);
+        if ((after != '>' && after != ' ') || close == std::string::npos || xml[close - 1] == '/') {
+            out.append(xml, pos, open + 4 - pos);
+            pos = open + 4;
+            continue;
+        }
+        size_t text = close + 1;
+        size_t end = text;
+        while (end < xml.size() && (xml[end] == ' ' || xml[end] == '\t' || xml[end] == '\n' || xml[end] == '\r')) ++end;
+        out.append(xml, pos, text - pos);
+        const bool preserve =
+            xml.substr(open, close - open).find("xml:space=\"preserve\"") != std::string::npos;
+        if (end > text && preserve && xml.compare(end, 6, "</w:t>") == 0) {
+            for (size_t i = text; i < end; ++i) out += kKeptSpaceMarker;
+        } else {
+            out.append(xml, text, end - text);
+        }
+        pos = end;
+    }
+    out.append(xml, pos, std::string::npos);
+    xml.swap(out);
+}
+
 class DocxReader {
 public:
     bool Load(const std::string& filePath, UCRichDocument& doc, std::string& error) {
@@ -50,8 +89,10 @@ public:
         }
         LoadRelationships();
         LoadStyles();
+        LoadSettings();
         LoadNumbering();
 
+        ProtectWhitespaceRuns(documentXml);
         if (docXml_.Parse(documentXml.c_str()) != tinyxml2::XML_SUCCESS) {
             error = "The Word document content is not valid XML: " + filePath;
             return false;
@@ -72,11 +113,30 @@ public:
     }
 
 private:
+    // ===== PARAGRAPH GEOMETRY =====
+    // Word measures in twips (1/20 pt); tab positions count from the page's
+    // text margin, which is exactly the model's convention.
+    struct Geometry {
+        float left = kUnset, right = kUnset, firstLine = kUnset;
+        float before = kUnset, after = kUnset, lineSpacing = kUnset;
+        // Tab changes in order: a stop to add, or (clear) one to remove.
+        struct TabChange { RichTabStop stop; bool clear = false; };
+        std::vector<TabChange> tabs;
+    };
+    struct StyleGeometry {
+        std::string basedOn;
+        Geometry geometry;
+    };
+    static constexpr float kUnset = -1.0e9f;
+
     UCZipPackageReader zip_;
     UCRichDocument* doc_ = nullptr;
     tinyxml2::XMLDocument docXml_;
     std::map<std::string, DocxRelationship> relationships_;
     std::map<std::string, std::string> styleNames_;        // styleId -> display name
+    std::map<std::string, StyleGeometry> styleGeometry_;   // paragraph styleId -> geometry
+    Geometry defaultGeometry_;                             // w:docDefaults/w:pPrDefault
+    std::string defaultParagraphStyle_;                    // applies when a paragraph names none
     std::map<std::string, std::string> numIdToAbstract_;
     std::map<std::string, std::map<int, bool>> abstractNumOrdered_;   // abstractId -> ilvl -> ordered
     std::map<std::string, std::map<int, int>> abstractNumStart_;      // abstractId -> ilvl -> w:start
@@ -144,12 +204,133 @@ private:
         if (styles.Parse(stylesXml.c_str()) != tinyxml2::XML_SUCCESS) return;
         auto* root = styles.FirstChildElement("w:styles");
         if (!root) return;
+        if (auto* defaults = root->FirstChildElement("w:docDefaults")) {
+            auto* pPrDefault = defaults->FirstChildElement("w:pPrDefault");
+            if (auto* pPr = pPrDefault ? pPrDefault->FirstChildElement("w:pPr") : nullptr) {
+                ReadGeometry(pPr, defaultGeometry_);
+            }
+        }
         for (auto* style = root->FirstChildElement("w:style"); style;
              style = style->NextSiblingElement("w:style")) {
             std::string id = Attr(style, "w:styleId");
             auto* name = style->FirstChildElement("w:name");
             if (!id.empty() && name) styleNames_[id] = Attr(name, "w:val");
+            if (id.empty() || std::string(Attr(style, "w:type")) != "paragraph") continue;
+            StyleGeometry entry;
+            if (auto* basedOn = style->FirstChildElement("w:basedOn")) entry.basedOn = Attr(basedOn, "w:val");
+            if (auto* pPr = style->FirstChildElement("w:pPr")) ReadGeometry(pPr, entry.geometry);
+            styleGeometry_[id] = entry;
+            if (std::string(Attr(style, "w:default")) == "1" || std::string(Attr(style, "w:default")) == "true") {
+                defaultParagraphStyle_ = id;
+            }
         }
+    }
+
+    // word/settings.xml: the distance between default tab stops.
+    void LoadSettings() {
+        std::string settingsXml;
+        if (!zip_.ReadEntry("word/settings.xml", settingsXml)) return;
+        tinyxml2::XMLDocument settings;
+        if (settings.Parse(settingsXml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        auto* root = settings.FirstChildElement("w:settings");
+        auto* tab = root ? root->FirstChildElement("w:defaultTabStop") : nullptr;
+        if (tab) {
+            const int twips = tab->IntAttribute("w:val", 0);
+            if (twips > 0) doc_->defaultTabStopPt = static_cast<float>(twips) / 20.0f;
+        }
+    }
+
+
+    static void ReadGeometry(tinyxml2::XMLElement* pPr, Geometry& g) {
+        auto twips = [](tinyxml2::XMLElement* e, const char* name, float& out) {
+            if (e && e->Attribute(name)) out = static_cast<float>(e->IntAttribute(name, 0)) / 20.0f;
+        };
+        if (auto* ind = pPr->FirstChildElement("w:ind")) {
+            twips(ind, "w:start", g.left);
+            twips(ind, "w:left", g.left);
+            twips(ind, "w:end", g.right);
+            twips(ind, "w:right", g.right);
+            twips(ind, "w:firstLine", g.firstLine);
+            if (ind->Attribute("w:hanging")) {
+                g.firstLine = -static_cast<float>(ind->IntAttribute("w:hanging", 0)) / 20.0f;
+            }
+        }
+        if (auto* spacing = pPr->FirstChildElement("w:spacing")) {
+            twips(spacing, "w:before", g.before);
+            twips(spacing, "w:after", g.after);
+            // Only "auto" spacing is proportional (240 = single); exact and
+            // at-least heights are left to the view.
+            const std::string rule = Attr(spacing, "w:lineRule");
+            if (spacing->Attribute("w:line") && (rule.empty() || rule == "auto")) {
+                g.lineSpacing = static_cast<float>(spacing->IntAttribute("w:line", 240)) / 240.0f;
+            }
+        }
+        if (auto* tabs = pPr->FirstChildElement("w:tabs")) {
+            for (auto* tab = tabs->FirstChildElement("w:tab"); tab;
+                 tab = tab->NextSiblingElement("w:tab")) {
+                Geometry::TabChange change;
+                change.stop.positionPt = static_cast<float>(tab->IntAttribute("w:pos", 0)) / 20.0f;
+                const std::string val = Attr(tab, "w:val");
+                change.clear = val == "clear";
+                change.stop.kind = (val == "center") ? RichTabKind::Center
+                                 : (val == "right" || val == "end") ? RichTabKind::Right
+                                 : (val == "decimal") ? RichTabKind::Decimal : RichTabKind::Left;
+                if (val == "bar") continue;   // a vertical line, not a stop
+                g.tabs.push_back(change);
+            }
+        }
+    }
+
+    static void Overlay(Geometry& base, const Geometry& over) {
+        auto take = [](float& value, float overValue) { if (overValue != kUnset) value = overValue; };
+        take(base.left, over.left);
+        take(base.right, over.right);
+        take(base.firstLine, over.firstLine);
+        take(base.before, over.before);
+        take(base.after, over.after);
+        take(base.lineSpacing, over.lineSpacing);
+        base.tabs.insert(base.tabs.end(), over.tabs.begin(), over.tabs.end());
+    }
+
+    Geometry StyleChainGeometry(const std::string& styleId, int depth = 0) const {
+        auto it = styleGeometry_.find(styleId);
+        if (it == styleGeometry_.end() || depth > 16) return defaultGeometry_;
+        Geometry g = it->second.basedOn.empty() ? defaultGeometry_
+                                                : StyleChainGeometry(it->second.basedOn, depth + 1);
+        Overlay(g, it->second.geometry);
+        return g;
+    }
+
+    void ApplyGeometry(RichDocBlock& block, tinyxml2::XMLElement* pPr) const {
+        std::string styleId = defaultParagraphStyle_;
+        auto* pStyle = pPr ? pPr->FirstChildElement("w:pStyle") : nullptr;
+        if (pStyle) styleId = Attr(pStyle, "w:val");
+        Geometry g = StyleChainGeometry(styleId);
+        if (pPr) {
+            Geometry direct;
+            ReadGeometry(pPr, direct);
+            Overlay(g, direct);
+        }
+        auto value = [](float v) { return v == kUnset ? 0.0f : v; };
+        block.leftIndentPt = value(g.left);
+        block.rightIndentPt = value(g.right);
+        block.firstLineIndentPt = value(g.firstLine);
+        // Word's built-in default spacing is zero; unstated means zero.
+        block.spaceBeforePt = value(g.before);
+        block.spaceAfterPt = value(g.after);
+        block.lineSpacing = g.lineSpacing == kUnset ? 0.0f : g.lineSpacing;
+        block.tabStops.clear();
+        for (const auto& change : g.tabs) {
+            auto& stops = block.tabStops;
+            stops.erase(std::remove_if(stops.begin(), stops.end(),
+                                       [&](const RichTabStop& t) {
+                                           return std::abs(t.positionPt - change.stop.positionPt) < 0.5f;
+                                       }),
+                        stops.end());
+            if (!change.clear) stops.push_back(change.stop);
+        }
+        std::sort(block.tabStops.begin(), block.tabStops.end(),
+                  [](const RichTabStop& a, const RichTabStop& b) { return a.positionPt < b.positionPt; });
     }
 
     void LoadNumbering() {
@@ -323,6 +504,9 @@ private:
             if (tag == "w:t") {
                 RichTextRun run = props;
                 run.text = child->GetText() ? child->GetText() : "";
+                for (size_t at; (at = run.text.find(kKeptSpaceMarker)) != std::string::npos;) {
+                    run.text.replace(at, 3, " ");
+                }
                 run.lineBreakBefore = ctx.pendingLineBreak;
                 ctx.pendingLineBreak = false;
                 if (!run.text.empty()) ctx.runs.push_back(std::move(run));
@@ -337,6 +521,18 @@ private:
                 run.lineBreakBefore = ctx.pendingLineBreak;
                 ctx.pendingLineBreak = false;
                 ctx.runs.push_back(std::move(run));
+            } else if (tag == "w:sym") {
+                // Insert > Symbol: a character code in a named (usually
+                // symbol) font; the import's symbol-font pass maps it.
+                RichTextRun run = props;
+                run.fontFamily = Attr(child, "w:font");
+                const unsigned long code = std::strtoul(Attr(child, "w:char"), nullptr, 16);
+                if (code > 0 && code < 0x110000) {
+                    WordFormatInternal::AppendUtf8(run.text, static_cast<uint32_t>(code));
+                    run.lineBreakBefore = ctx.pendingLineBreak;
+                    ctx.pendingLineBreak = false;
+                    ctx.runs.push_back(std::move(run));
+                }
             } else if (tag == "w:noBreakHyphen") {
                 RichTextRun run = props;
                 run.text = "-";
@@ -400,6 +596,7 @@ private:
         block.type = RichBlockType::Paragraph;
         bool hasBottomBorder = false;
 
+        ApplyGeometry(block, p->FirstChildElement("w:pPr"));
         if (auto* pPr = p->FirstChildElement("w:pPr")) {
             if (auto* pBdr = pPr->FirstChildElement("w:pBdr")) {
                 hasBottomBorder = pBdr->FirstChildElement("w:bottom") != nullptr;
@@ -658,6 +855,10 @@ public:
             error = "Failed to write list definitions: " + zip_.GetLastError();
             return false;
         }
+        if (HasSettings() && !zip_.AddEntry("word/settings.xml", BuildSettingsXml())) {
+            error = "Failed to write document settings: " + zip_.GetLastError();
+            return false;
+        }
         for (size_t i = 0; i < doc.media.size(); ++i) {
             if (!zip_.AddEntry(MediaPartName(i), doc.media[i].data.data(),
                                doc.media[i].data.size())) {
@@ -777,6 +978,44 @@ private:
         }
     }
 
+    static std::string Twips(float points) {
+        return std::to_string(std::lround(points * 20.0f));
+    }
+
+    // w:tabs, w:spacing, w:ind - in the order CT_PPrBase requires them
+    // (after w:pBdr, before w:jc).
+    static void WriteGeometry(std::ostringstream& pPr, const RichDocBlock& block) {
+        if (!block.tabStops.empty()) {
+            pPr << "<w:tabs>";
+            for (const RichTabStop& stop : block.tabStops) {
+                const char* kind = stop.kind == RichTabKind::Center ? "center"
+                                 : stop.kind == RichTabKind::Right ? "right"
+                                 : stop.kind == RichTabKind::Decimal ? "decimal" : "left";
+                pPr << "<w:tab w:val=\"" << kind << "\" w:pos=\"" << Twips(stop.positionPt) << "\"/>";
+            }
+            pPr << "</w:tabs>";
+        }
+        if (block.spaceBeforePt >= 0.0f || block.spaceAfterPt >= 0.0f || block.lineSpacing > 0.0f) {
+            pPr << "<w:spacing";
+            if (block.spaceBeforePt >= 0.0f) pPr << " w:before=\"" << Twips(block.spaceBeforePt) << "\"";
+            if (block.spaceAfterPt >= 0.0f) pPr << " w:after=\"" << Twips(block.spaceAfterPt) << "\"";
+            if (block.lineSpacing > 0.0f) {
+                pPr << " w:line=\"" << std::to_string(std::lround(block.lineSpacing * 240.0f))
+                    << "\" w:lineRule=\"auto\"";
+            }
+            pPr << "/>";
+        }
+        // List items take their indent from the numbering definition.
+        if (block.type != RichBlockType::ListItem
+            && (block.leftIndentPt != 0.0f || block.rightIndentPt != 0.0f || block.firstLineIndentPt != 0.0f)) {
+            pPr << "<w:ind w:left=\"" << Twips(block.leftIndentPt) << "\" w:right=\""
+                << Twips(block.rightIndentPt) << "\"";
+            if (block.firstLineIndentPt > 0.0f) pPr << " w:firstLine=\"" << Twips(block.firstLineIndentPt) << "\"";
+            if (block.firstLineIndentPt < 0.0f) pPr << " w:hanging=\"" << Twips(-block.firstLineIndentPt) << "\"";
+            pPr << "/>";
+        }
+    }
+
     void WriteParagraph(std::ostringstream& xml, const RichDocBlock& block) {
         xml << "<w:p>";
         std::ostringstream pPr;
@@ -796,6 +1035,7 @@ private:
             pPr << "<w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" "
                    "w:color=\"808080\"/></w:pBdr>";
         }
+        WriteGeometry(pPr, block);
         if (const char* jc = JcValue(block.align)) {
             pPr << "<w:jc w:val=\"" << jc << "\"/>";
         }
@@ -1031,6 +1271,11 @@ private:
                    "ContentType=\"application/vnd.openxmlformats-officedocument."
                    "wordprocessingml.numbering+xml\"/>\n";
         }
+        if (HasSettings()) {
+            xml << "<Override PartName=\"/word/settings.xml\" "
+                   "ContentType=\"application/vnd.openxmlformats-officedocument."
+                   "wordprocessingml.settings+xml\"/>\n";
+        }
         xml << "<Override PartName=\"/docProps/core.xml\" "
                "ContentType=\"application/vnd.openxmlformats-package."
                "core-properties+xml\"/>\n"
@@ -1039,6 +1284,16 @@ private:
                "extended-properties+xml\"/>\n"
             << "</Types>\n";
         return xml.str();
+    }
+
+    // word/settings.xml carries only the default tab interval, so it is
+    // written only when the document states one.
+    bool HasSettings() const { return doc_->defaultTabStopPt > 0.0f; }
+
+    std::string BuildSettingsXml() const {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+               "<w:settings xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+               "<w:defaultTabStop w:val=\"" + Twips(doc_->defaultTabStopPt) + "\"/></w:settings>\n";
     }
 
     static std::string BuildRootRelsXml() {
@@ -1067,6 +1322,11 @@ private:
             xml << "<Relationship Id=\"rIdNumbering\" "
                    "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering\" "
                    "Target=\"numbering.xml\"/>\n";
+        }
+        if (HasSettings()) {
+            xml << "<Relationship Id=\"rIdSettings\" "
+                   "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings\" "
+                   "Target=\"settings.xml\"/>\n";
         }
         for (size_t i = 0; i < doc_->media.size(); ++i) {
             std::string target = MediaPartName(i).substr(5);   // strip "word/"

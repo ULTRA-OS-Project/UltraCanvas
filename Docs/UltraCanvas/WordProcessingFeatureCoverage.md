@@ -47,7 +47,8 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Hidden text | yes | *partial* | yes | — | — | Dropped on import, as Writer does when hidden text is not shown. |
 | Highlight / character background | no | no | no | no | no | `fo:background-color`, `w:highlight`, `sprmCHighlight`. |
 | Small caps, all caps, letter spacing | no | no | no | no | no | |
-| Symbol fonts (Wingdings, Webdings, Symbol) | *partial* | *partial* | *partial* | yes | *partial* | The characters come through; without that font installed they draw as the wrong glyphs. They should be mapped to Unicode (☎ ✉ • …) on import. |
+| Symbol fonts (Wingdings 1–3, Webdings, Symbol) | yes | yes | yes | yes | yes | Mapped to Unicode on import (☎ ✉ ✓ α ≥ …), and the symbol font is dropped, so they draw without the font installed. A few pictographs that few fonts contain get a common equivalent: 🕿 → ☎, 🖁 → 📱, 🖆 → ✉ (2026-09). DOCX `w:sym` and DOC `sprmCSymbol` included. |
+| Spaces between differently formatted words | yes | yes | yes | yes | yes | ODT and DOCX lost a lone space between two styled runs (tinyxml2 drops whitespace-only text); fixed 2026-09. |
 
 ### Paragraphs
 
@@ -58,9 +59,10 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Paragraph style → character formatting | yes | *partial* | yes | yes | yes | A "Standard + bold 14pt" title arrives as bold 14pt runs. |
 | Block quote, preformatted | yes | yes | yes | yes | yes | By style name / monospace style font. |
 | Line breaks, page breaks | yes | yes | yes | yes | *partial* | The view draws a page break as a dashed rule; it does not paginate. |
-| Indents (left, right, first line) | no | no | no | no | no | Most visible remaining gap for letters and contracts. |
-| Spacing above / below, line spacing | no | no | no | no | no | The view uses a fixed block spacing. |
-| Tab stops (left/centre/right/decimal) | no | no | no | no | no | Tab-aligned columns (footers, signature lines, price lists) collapse. |
+| Indents (left, right, first line, hanging) | yes | yes | yes | yes | yes | 2026-09. Styles, style inheritance (DOCX `w:basedOn`, `w:docDefaults`) and direct formatting. List items keep the view's own list indentation. |
+| Spacing above / below | yes | yes | yes | yes | yes | 2026-09. Stated spacing is added (after + before), as Word and Writer do; blocks that state none (Markdown) keep the view's block spacing. |
+| Line spacing | *partial* | *partial* | *partial* | *partial* | yes | Proportional (single, 1.5, double, 115 %) only. Exact and "at least" heights are ignored. |
+| Tab stops (left/centre/right/decimal) and default tab interval | yes | yes | yes | yes | yes | 2026-09. Positions count from the text margin; ODT's indent-relative positions are converted (`TabsRelativeToIndent`). Bar tabs are skipped. |
 | Borders, padding, background | *partial* | *partial* | no | no | no | Only "empty paragraph with a bottom border" → horizontal rule. |
 | Drop caps, keep-with-next, widows/orphans | no | no | no | no | n/a | Pagination features; they only matter once the view paginates. |
 
@@ -127,58 +129,54 @@ View = `UltraCanvasRichTextEdit` draws it.
 - **A business letter on a letterhead, as `.odt`**: everything is imported (logo, sender
   block, contact lines, the address table, the date, the body, the signature
   image and the bank footer), but the layout is not. The sender block and
-  address are frames placed on the page, and the footer's three columns are
-  tab stops. Neither can be represented yet, so they appear one after another
-  in reading order, and the address table shows the grid lines of a
-  borderless layout table.
+  address are frames placed on the page, which cannot be represented yet, so
+  they appear one after another in reading order, and the address table shows
+  the grid lines of a borderless layout table. Since the paragraph-geometry
+  work the footer's three tab-aligned columns line up as in the original, and
+  the Webdings telephone, fax, mobile and e-mail icons draw as ☎ 🖨 📱 ✉.
 
 ## Roadmap, in priority order
 
 Ordered by how many ordinary documents each item fixes, not by how hard it is.
 
-1. **Paragraph geometry: indents, spacing above and below, line height.**
-   Model: `leftIndentPt`, `rightIndentPt`, `firstLineIndentPt`,
-   `spaceBeforePt`, `spaceAfterPt`, `lineHeight` on `RichDocBlock`. All three
-   readers already see these properties (`fo:margin-*`, `w:ind`/`w:spacing`,
-   `sprmPDxaLeft`/`sprmPDyaBefore`); the view needs them in `BlockIndentFor`
-   and in block spacing.
-2. **Tab stops.** Model: a list of `{positionPt, kind}` per block. The view
-   lays tab-separated segments out at the stops. This fixes letterhead
-   footers, signature lines and price lists.
-3. **Cell borders and backgrounds.** Stop drawing a grid by default. Read
+Done in 2026-09: paragraph geometry (indents, spacing, proportional line
+spacing), tab stops with the default interval, and symbol-font mapping.
+
+1. **Cell borders and backgrounds.** Stop drawing a grid by default. Read
    `fo:border*`/`w:tcBorders`/`TC80.brc*` and `fo:background-color`/`w:shd`.
    Letterheads use borderless tables for layout.
-4. **Number formats and multi-level numbering.** Keep the level's format
+2. **Number formats and multi-level numbering.** Keep the level's format
    (`style:num-format`, `w:numFmt`, `nfc`) and prefix/suffix, and draw
    `a)`, `iv.`, `1.2.`
-5. **Highlight and character background**, and **symbol-font mapping** to
-   Unicode.
-6. **Page model: size, margins, headers and footers** as page furniture
+3. **Highlight and character background**, and exact / at-least line
+   heights.
+4. **Page model: size, margins, headers and footers** as page furniture
    rather than blocks, then pagination in the view (page boxes on a grey
    desk, like Writer's print layout).
-7. **Positioned frames and floating pictures** (anchor, x/y, wrap). This
-   depends on 6 and is the only way a letterhead can look like the original.
-8. **Footnotes and endnotes** as real notes, **DOCX headers and footers**,
+5. **Positioned frames and floating pictures** (anchor, x/y, wrap). This
+   depends on 4 and is the only way a letterhead can look like the original.
+6. **Footnotes and endnotes** as real notes, **DOCX headers and footers**,
    and **DOC merged cells, headers, footers and footnotes** (the text for
    these lies after the main text in the piece table: `ccpFtn`, `ccpHdd`).
-9. Comments, tracked changes, shapes, charts: read-only display first.
+7. Comments, tracked changes, shapes, charts: read-only display first.
 
-Items 1–4 are self-contained (a model field, three readers, the view and the
+Items 1–3 are self-contained (a model field, three readers, the view and the
 two writers each), and each can be checked against a LibreOffice-generated
 fixture the way `Tests/fixtures/word97-formatting.*` is.
 
 ## Testing approach
 
 `Tests/fixtures/word97-formatting.fodt` is a hand-written flat ODT.
-`word97-formatting.odt` and `word97-formatting.doc` are LibreOffice's saves of
-it:
+`word97-formatting.odt`, `word97-formatting.doc` and `word97-formatting.docx`
+are LibreOffice's saves of it:
 
 ```bash
 soffice --headless --convert-to odt word97-formatting.fodt
 soffice --headless --convert-to "doc:MS Word 97" word97-formatting.fodt
+soffice --headless --convert-to docx word97-formatting.fodt
 ```
 
-`WordFormatsTest` checks that both readers recover the same structure and
+`WordFormatsTest` checks that all three readers recover the same structure and
 that it survives a save to `.odt` and `.docx`. To cover a new feature, add it
 to the `.fodt`, regenerate both files and extend `CheckFormattingFixture`.
 Never commit a real person's document as a fixture.

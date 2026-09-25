@@ -91,6 +91,23 @@ enum class RichBlockType {
     MathBlock       // display formula; runs hold the LaTeX source lines (lineBreakBefore)
 };
 
+// ===== PARAGRAPH GEOMETRY =====
+// Lengths are in points, the unit the formats use (ODF cm/in, Word twips) and
+// the one run font sizes use, so a view keeps indents and tab stops in
+// proportion to the text however it scales.
+
+enum class RichTabKind {
+    Left,       // text starts at the stop
+    Center,     // text is centred on the stop
+    Right,      // text ends at the stop
+    Decimal     // the decimal separator sits on the stop (amounts in a column)
+};
+
+struct RichTabStop {
+    float positionPt = 0.0f;   // from the text column's left edge (not the indent)
+    RichTabKind kind = RichTabKind::Left;
+};
+
 struct RichTableCell {
     std::vector<RichTextRun> runs;
     int columnSpan = 1;
@@ -118,6 +135,41 @@ struct RichDocBlock {
     // flat block list cannot see on its own; readers set this on the first
     // item after such an interruption, and on a list that starts at N.
     int listStartNumber = 0;
+
+    // Paragraph geometry (Paragraph, Heading, BlockQuote, CodeBlock; list
+    // items keep the view's own list indentation and use only the spacing).
+    // Indents are from the text column's edges; firstLineIndentPt is relative
+    // to leftIndentPt and negative for a hanging indent.
+    float leftIndentPt = 0.0f;
+    float rightIndentPt = 0.0f;
+    float firstLineIndentPt = 0.0f;
+    // Space above / below the paragraph. < 0 = not stated: the view uses its
+    // own block spacing. Stated spacing is added, as Word and Writer do.
+    float spaceBeforePt = -1.0f;
+    float spaceAfterPt = -1.0f;
+    // Line spacing as a multiple of single spacing (1.5 = one and a half
+    // lines). 0 = single / not stated.
+    float lineSpacing = 0.0f;
+    // Explicit tab stops, sorted by position. Beyond the last one, tabs fall
+    // on UCRichDocument::defaultTabStopPt.
+    std::vector<RichTabStop> tabStops;
+
+    bool HasParagraphGeometry() const {
+        return leftIndentPt != 0.0f || rightIndentPt != 0.0f || firstLineIndentPt != 0.0f
+            || spaceBeforePt >= 0.0f || spaceAfterPt >= 0.0f || lineSpacing > 0.0f
+            || !tabStops.empty();
+    }
+    // Copies indents, spacing, line spacing and tab stops - what a paragraph
+    // split in two (Enter) gives the new half.
+    void CopyParagraphGeometry(const RichDocBlock& from) {
+        leftIndentPt = from.leftIndentPt;
+        rightIndentPt = from.rightIndentPt;
+        firstLineIndentPt = from.firstLineIndentPt;
+        spaceBeforePt = from.spaceBeforePt;
+        spaceAfterPt = from.spaceAfterPt;
+        lineSpacing = from.lineSpacing;
+        tabStops = from.tabStops;
+    }
     RichTextAlign align = RichTextAlign::Default;
     std::string codeLanguage;           // CodeBlock fence language hint
     std::vector<RichTableRow> tableRows;
@@ -220,6 +272,9 @@ public:
     RichDocumentMetadata metadata;
     std::vector<RichDocBlock> blocks;
     std::vector<RichDocMedia> media;
+    // Distance between default tab stops (after a paragraph's own stops).
+    // 0 = the view's default. ODF: style:tab-stop-distance; Word: defaultTabStop.
+    float defaultTabStopPt = 0.0f;
 
     bool IsEmpty() const { return blocks.empty(); }
 

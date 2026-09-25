@@ -37,3 +37,28 @@
   Writer, and orders the remaining gaps: paragraph indents and spacing, tab
   stops, cell borders, number formats, then page layout and positioned
   frames.
+- **Paragraph indents, spacing and tab stops.** The model gains left, right and
+  first-line (or hanging) indents, space above and below, proportional line
+  spacing, tab stops (left, centre, right, decimal) and a document default tab
+  interval (`RichDocBlock::leftIndentPt` … `tabStops`,
+  `UCRichDocument::defaultTabStopPt`). The ODT, DOCX and DOC readers read them
+  from styles (with inheritance) and direct formatting. `UltraCanvasRichTextEdit`
+  lays them out: a hanging indent, tab-aligned columns and each document's own
+  paragraph spacing instead of a fixed gap. Both writers save them, and
+  LibreOffice reads the saved files back with the same values. Enter carries
+  the paragraph's geometry into the new paragraph.
+- **Symbol fonts become Unicode.** Text in Symbol, Wingdings 1–3 or Webdings,
+  whether stored as the font code, as U+F000 + code, as DOCX `w:sym` or as a
+  DOC `sprmCSymbol`, is mapped to the character it shows (☎ ✉ ✓ α ≥ …). The
+  symbol font is then dropped, so the characters draw correctly where that
+  font is not installed. A letterhead's Webdings phone and e-mail icons
+  showed as boxes or stray letters. The table is generated from
+  dingbat-to-unicode (BSD-2-Clause) by `scripts/generate_symbol_font_map.py`.
+- **ODT: font names resolve to their family.** A run said "Liberation Sans1" or
+  "StarSymbol1" (the font-face declaration's key) rather than the font's
+  family.
+- **DOCX: a lone space between two styled runs is no longer lost**
+  (`<w:t xml:space="preserve"> </w:t>`, dropped by tinyxml2), the same bug the
+  ODT reader had.
+- `ITextLayout::SetTabs` (Cairo) now invalidates the measured extents, so a
+  layout measured before its tabs were set is re-measured.

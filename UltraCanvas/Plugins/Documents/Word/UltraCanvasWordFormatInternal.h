@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <string>
 
 #include "UltraCanvasRichDocument.h"
@@ -98,6 +99,17 @@ inline bool ParagraphIsOneInlineImage(const std::vector<RichTextRun>& runs,
     outImage.imageAltText = picture->imageAltText;
     return true;
 }
+
+// ===== SYMBOL FONTS (UltraCanvasSymbolFonts.cpp) =====
+// Unicode for `codepoint` set in `fontFamily` when that is one of the Windows
+// symbol fonts (Symbol, Wingdings, Wingdings 2/3, Webdings); accepts the bare
+// font code and the U+F000 + code form. 0 = not a symbol font, or unmapped.
+uint32_t SymbolFontCharToUnicode(const std::string& fontFamily, uint32_t codepoint);
+// Rewrites every run set in a symbol font (body and table cells) as the
+// Unicode characters it depicts, and drops the symbol font from the run.
+void MapSymbolFontRuns(UCRichDocument& document);
+// Appends `codepoint` to `out` as UTF-8.
+void AppendUtf8(std::string& out, uint32_t codepoint);
 
 } // namespace WordFormatInternal
 } // namespace UltraCanvas

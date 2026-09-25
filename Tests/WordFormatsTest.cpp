@@ -10,14 +10,17 @@
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasRichDocumentEditor.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasWordFormatInternal.h"
 
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -83,7 +86,46 @@ static std::string Lower(std::string s) {
     return s;
 }
 
-// Tests/fixtures/word97-formatting.{fodt,odt,doc} are one document: the .fodt
+static bool Near(float a, float b) { return std::abs(a - b) < 0.6f; }
+
+// Paragraph geometry and symbol fonts of the fixture (and of what the
+// writers make of it).
+static void CheckGeometry(const UCRichDocument& d, const std::string& label) {
+    CHECK_MSG(Near(d.defaultTabStopPt, 36.0f), label + ": default tab 0.5in");
+
+    const RichDocBlock* indented = FindBlock(d, "Indented paragraph");
+    CHECK_MSG(indented && Near(indented->leftIndentPt, 72.0f) && Near(indented->rightIndentPt, 36.0f)
+              && Near(indented->firstLineIndentPt, 18.0f), label + ": indents");
+    CHECK_MSG(indented && Near(indented->spaceBeforePt, 12.0f) && Near(indented->spaceAfterPt, 6.0f),
+              label + ": spacing");
+    CHECK_MSG(indented && std::abs(indented->lineSpacing - 1.5f) < 0.01f, label + ": line spacing");
+
+    const RichDocBlock* hanging = FindBlock(d, "Hanging:");
+    CHECK_MSG(hanging && Near(hanging->leftIndentPt, 36.0f) && Near(hanging->firstLineIndentPt, -36.0f),
+              label + ": hanging indent");
+
+    const RichDocBlock* tabbed = FindBlock(d, "centre");
+    CHECK_MSG(tabbed && tabbed->tabStops.size() == 4, label + ": tab stops");
+    if (tabbed && tabbed->tabStops.size() == 4) {
+        const RichTabKind kinds[4] = {RichTabKind::Left, RichTabKind::Center, RichTabKind::Right,
+                                      RichTabKind::Decimal};
+        const float positions[4] = {72.0f, 216.0f, 360.0f, 432.0f};
+        for (size_t i = 0; i < 4; ++i) {
+            CHECK_MSG(tabbed->tabStops[i].kind == kinds[i] && Near(tabbed->tabStops[i].positionPt, positions[i]),
+                      label + ": tab " + std::to_string(i));
+        }
+    }
+
+    // Wingdings "(*" is a telephone and an envelope; the symbol font is gone.
+    const RichDocBlock* symbols = FindBlock(d, "symbols");
+    CHECK_MSG(symbols && UCRichDocument::ConcatenateRunText(symbols->runs).rfind("\xE2\x98\x8E\xE2\x9C\x89", 0) == 0,
+              label + ": Wingdings mapped to Unicode");
+    if (symbols) {
+        for (const auto& run : symbols->runs) CHECK_MSG(Lower(run.fontFamily) != "wingdings", label);
+    }
+}
+
+// Tests/fixtures/word97-formatting.{fodt,odt,doc,docx} are one document: the .fodt
 // is the hand-written source, the .odt and .doc are LibreOffice's saves of it
 // (soffice --convert-to odt / "doc:MS Word 97"). Every reader has to recover
 // the same structure from them.
@@ -166,6 +208,8 @@ static void CheckFormattingFixture(const UCRichDocument& d, const std::string& l
     size_t afterBreak = 0;
     CHECK_MSG(FindBlock(d, "After the page break.", &afterBreak) && afterBreak > 0
               && d.blocks[afterBreak - 1].type == RichBlockType::PageBreak, label + ": page break");
+
+    CheckGeometry(d, label);
 }
 
 static UCRichDocument BuildSampleDocument() {
@@ -366,7 +410,7 @@ int main(int argc, char** argv) {
     // ===== 5c. Formatted import: the same document as .odt and as .doc =====
 #ifdef WORDTEST_FIXTURE_DIR
     {
-        for (const char* name : {"word97-formatting.odt", "word97-formatting.doc"}) {
+        for (const char* name : {"word97-formatting.odt", "word97-formatting.doc", "word97-formatting.docx"}) {
             const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
             UCRichDocument imported;
             std::string err;
@@ -389,6 +433,7 @@ int main(int argc, char** argv) {
                           && table->tableRows[1].cells[1].align == RichTextAlign::Right, label);
                 CHECK_MSG(table && table->tableColumnWidths.size() == 2
                           && table->tableColumnWidths[1] > 2.9f * table->tableColumnWidths[0], label);
+                CheckGeometry(back, label);
                 if (std::string(ext) == ".odt") {
                     size_t index = 0;
                     CHECK_MSG(FindBlock(back, "step three", &index)
@@ -400,6 +445,63 @@ int main(int argc, char** argv) {
         }
     }
 #endif
+
+    // ===== 5e. Symbol fonts: the three encodings of one character =====
+    {
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Wingdings", 0x28) == 0x260E);    // telephone
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Wingdings", 0xF028) == 0x260E);  // U+F000 + code
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Wingdings", 0xFC) == 0x2713);    // check mark
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Webdings", 0xF09C) == 0x2709);   // e-mail
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Webdings", 0xCA) == 0x1F5A8);    // printer
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Symbol", 0x61) == 0x03B1);       // alpha
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("SYMBOL", 0xB3) == 0x2265);       // >=
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Arial", 0x28) == 0);             // not a symbol font
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Symbola", 0x61) == 0);
+
+        UCRichDocument symbolDoc;
+        RichDocBlock paragraph;
+        RichTextRun run;
+        run.text = "(";
+        run.fontFamily = "Wingdings";
+        paragraph.runs.push_back(run);
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        table.tableRows.resize(1);
+        RichTableCell cell;
+        RichTextRun alpha;
+        alpha.text = "a";
+        alpha.fontFamily = "Symbol";
+        cell.runs.push_back(alpha);
+        table.tableRows[0].cells.push_back(cell);
+        symbolDoc.blocks = {paragraph, table};
+        WordFormatInternal::MapSymbolFontRuns(symbolDoc);
+        CHECK(symbolDoc.blocks[0].runs[0].text == "\xE2\x98\x8E");
+        CHECK(symbolDoc.blocks[0].runs[0].fontFamily.empty());
+        CHECK(symbolDoc.blocks[1].tableRows[0].cells[0].runs[0].text == "\xCE\xB1");
+    }
+
+    // ===== 5f. Enter keeps the paragraph's geometry =====
+    {
+        auto geometryDoc = std::make_shared<UCRichDocument>();
+        RichDocBlock paragraph;
+        RichTextRun run;
+        run.text = "first second";
+        paragraph.runs.push_back(run);
+        paragraph.leftIndentPt = 36.0f;
+        paragraph.spaceAfterPt = 6.0f;
+        paragraph.tabStops.push_back(RichTabStop{100.0f, RichTabKind::Right});
+        geometryDoc->blocks.push_back(paragraph);
+        UCRichDocumentEditor editor;
+        editor.SetDocument(geometryDoc);
+        editor.SetCaret(RichDocPosition(0, 5));
+        editor.SplitBlock();
+        CHECK(geometryDoc->blocks.size() == 2);
+        if (geometryDoc->blocks.size() == 2) {
+            const RichDocBlock& second = geometryDoc->blocks[1];
+            CHECK(second.leftIndentPt == 36.0f && second.spaceAfterPt == 6.0f
+                  && second.tabStops.size() == 1);
+        }
+    }
 
     // ===== 5d. List numbering: per list and level =====
     {
