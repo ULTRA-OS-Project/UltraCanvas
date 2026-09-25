@@ -2393,8 +2393,8 @@ int UCRichDocumentEditor::InsertInlineImage(const std::string& name,
     picture.imageAltText = altText;
     int width = 0, height = 0;
     if (UCRichDocument::SniffImagePixelSize(data, width, height)) {
-        picture.imageWidthPt = static_cast<float>(width);
-        picture.imageHeightPt = static_cast<float>(height);
+        picture.imageWidthPt = static_cast<float>(width) * 72.0f / 96.0f;    // a pixel at 96 DPI
+        picture.imageHeightPt = static_cast<float>(height) * 72.0f / 96.0f;
     }
 
     RichDocRange selection = GetSelectionRange();
@@ -2435,8 +2435,8 @@ int UCRichDocumentEditor::InsertImage(const std::string& name, const std::string
         image.imageAltText = altText;
         int width = 0, height = 0;
         if (UCRichDocument::SniffImagePixelSize(data, width, height)) {
-            image.imageWidthPt = static_cast<float>(width);
-            image.imageHeightPt = static_cast<float>(height);
+            image.imageWidthPt = static_cast<float>(width) * 72.0f / 96.0f;      // a pixel at 96 DPI
+            image.imageHeightPt = static_cast<float>(height) * 72.0f / 96.0f;
         }
 
         RichDocBlock& current = doc->blocks[caret.blockIndex];

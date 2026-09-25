@@ -1370,14 +1370,14 @@ private:
         std::string instruction;
         bool inResult = false;
         std::string link;
-        RichTextRun::Field pageField = RichTextRun::Field::None;   // PAGE / NUMPAGES
+        RichTextRun::Field pageField = RichTextRun::Field::Plain;   // PAGE / NUMPAGES
     };
 
     RichTextRun::Field ActivePageField() const {
         for (auto it = fields_.rbegin(); it != fields_.rend(); ++it) {
-            if (it->inResult && it->pageField != RichTextRun::Field::None) return it->pageField;
+            if (it->inResult && it->pageField != RichTextRun::Field::Plain) return it->pageField;
         }
-        return RichTextRun::Field::None;
+        return RichTextRun::Field::Plain;
     }
 
     static RichTextRun::Field PageFieldFor(const std::string& instruction) {
@@ -1388,7 +1388,7 @@ private:
         }
         if (word == "PAGE") return RichTextRun::Field::PageNumber;
         if (word == "NUMPAGES" || word == "SECTIONPAGES") return RichTextRun::Field::PageCount;
-        return RichTextRun::Field::None;
+        return RichTextRun::Field::Plain;
     }
     std::vector<Field> fields_;
 
@@ -1695,6 +1695,14 @@ private:
         block.align = AlignFor(pap.jc);
         ApplyGeometry(block, pap);
         block.runs = std::move(runs);
+        // The paragraph mark's size and font: what an empty paragraph's line
+        // is measured with, and the style's otherwise.
+        {
+            const DocCharProps markChars = hasMark ? CharProps(markFc, styleChars) : styleChars;
+            const DocCharProps& source = block.runs.empty() ? markChars : styleChars;
+            if (source.halfPoints > 0) block.paragraphFontSizePt = static_cast<float>(source.halfPoints) / 2.0f;
+            block.paragraphFontFamily = FontName(source.fontIndex);
+        }
         int listNumber = 0;
         if (heading) {
             block.type = RichBlockType::Heading;

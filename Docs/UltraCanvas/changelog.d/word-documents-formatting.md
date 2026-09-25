@@ -116,3 +116,33 @@
 - **`UltraCanvasRichTextEdit`: the caret and clicks in a table cell line up
   with its text.** Text was drawn 4 px right and 2 px down from the cell's
   corner, but the caret and hit testing used the corner itself.
+- **Page layout: page size, margins, headers, footers and page numbers.**
+  `UCRichDocument::page` (`RichPageSetup`) holds the page size, margins and
+  header/footer distances; `pageFurniture` and `firstPageFurniture` hold the
+  headers and footers, with another pair for the first page
+  (`firstPageDiffers`); `RichTextRun::field` marks page number and page count
+  fields. The ODT, DOCX and DOC readers fill them, and both writers save them
+  (ODF page layout and master page with `style:header-first`, DOCX `w:sectPr`
+  with header and footer parts and `w:titlePg`); LibreOffice reads the saved
+  files back with the same pages, headers and fields. Headers and footers no
+  longer end up in the body text. Markdown, HTML, plain text and the Filer
+  preview show the first page's header and footer around the body.
+- **`UltraCanvasRichTextEdit::SetPageView`: pages like Writer's print
+  layout.** The document's pages are drawn on a desk with their headers and
+  footers, page numbers filled in per page, and the text column is the
+  page's, so a table sized for the page fills it. Blocks move to the next
+  page whole; a page break starts one. The DemoApp's OpenDocument page uses
+  it. Outside page view the first page's header and footer sit above and
+  below the body.
+- **Paragraph font for empty lines.** `RichDocBlock::paragraphFontSizePt` and
+  `paragraphFontFamily` carry the paragraph style's font, or the paragraph
+  mark's for an empty paragraph, from all three readers; both writers save
+  them. `UltraCanvasRichTextEdit` measures blank lines and text without a size
+  of its own with them. DOCX text now takes its paragraph style's size and
+  font (and `w:docDefaults`), in table cells too. Table rows are as tall as
+  their text, not at least the view's default line.
+- **`UltraCanvasRichTextEdit`: picture sizes are points.** Pictures from
+  documents were drawn at one pixel per point, a quarter too small; they now
+  use the 96/72 scale of the text. Pictures inserted in the editor are stored
+  at their pixel size in points (a pixel at 96 DPI).
+- **Symbol fonts in headers and footers** are mapped to Unicode too.

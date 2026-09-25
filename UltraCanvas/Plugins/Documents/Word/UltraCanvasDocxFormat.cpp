@@ -129,6 +129,9 @@ private:
         // Tab changes in order: a stop to add, or (clear) one to remove.
         struct TabChange { RichTabStop stop; bool clear = false; };
         std::vector<TabChange> tabs;
+        // The style's character size and font (w:rPr beside its w:pPr).
+        float fontSize = kUnset;
+        std::string fontFamily;
     };
     struct StyleGeometry {
         std::string basedOn;
@@ -277,6 +280,8 @@ private:
             if (auto* pPr = pPrDefault ? pPrDefault->FirstChildElement("w:pPr") : nullptr) {
                 ReadGeometry(pPr, defaultGeometry_);
             }
+            auto* rPrDefault = defaults->FirstChildElement("w:rPrDefault");
+            ReadStyleFont(rPrDefault ? rPrDefault->FirstChildElement("w:rPr") : nullptr, defaultGeometry_);
         }
         for (auto* style = root->FirstChildElement("w:style"); style;
              style = style->NextSiblingElement("w:style")) {
@@ -298,6 +303,7 @@ private:
             StyleGeometry entry;
             if (auto* basedOn = style->FirstChildElement("w:basedOn")) entry.basedOn = Attr(basedOn, "w:val");
             if (auto* pPr = style->FirstChildElement("w:pPr")) ReadGeometry(pPr, entry.geometry);
+            ReadStyleFont(style->FirstChildElement("w:rPr"), entry.geometry);
             styleGeometry_[id] = entry;
             if (std::string(Attr(style, "w:default")) == "1" || std::string(Attr(style, "w:default")) == "true") {
                 defaultParagraphStyle_ = id;
@@ -401,6 +407,17 @@ private:
             base.background = over.background;
         }
         base.tabs.insert(base.tabs.end(), over.tabs.begin(), over.tabs.end());
+        take(base.fontSize, over.fontSize);
+        if (!over.fontFamily.empty()) base.fontFamily = over.fontFamily;
+    }
+
+    static void ReadStyleFont(tinyxml2::XMLElement* rPr, Geometry& g) {
+        if (!rPr) return;
+        if (auto* sz = rPr->FirstChildElement("w:sz")) g.fontSize = sz->FloatAttribute("w:val", 0.0f) / 2.0f;
+        if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
+            const std::string family = Attr(fonts, "w:ascii");
+            if (!family.empty()) g.fontFamily = family;
+        }
     }
 
     Geometry StyleChainGeometry(const std::string& styleId, int depth = 0) const {
@@ -453,6 +470,19 @@ private:
         }
         std::sort(block.tabStops.begin(), block.tabStops.end(),
                   [](const RichTabStop& a, const RichTabStop& b) { return a.positionPt < b.positionPt; });
+        // The style's size and font, which runs without their own take.
+        block.paragraphFontSizePt = g.fontSize != kUnset ? g.fontSize : 0.0f;
+        block.paragraphFontFamily = g.fontFamily;
+    }
+
+    // An empty paragraph's line is as tall as its paragraph mark's font
+    // (w:pPr/w:rPr), which is what Word measures it with.
+    static void ApplyParagraphMark(RichDocBlock& block, tinyxml2::XMLElement* pPr) {
+        if (!block.runs.empty() || !pPr) return;
+        Geometry mark;
+        ReadStyleFont(pPr->FirstChildElement("w:rPr"), mark);
+        if (mark.fontSize != kUnset && mark.fontSize > 0.0f) block.paragraphFontSizePt = mark.fontSize;
+        if (!mark.fontFamily.empty()) block.paragraphFontFamily = mark.fontFamily;
     }
 
     void LoadNumbering() {
@@ -569,7 +599,7 @@ private:
         // result runs of a PAGE or NUMPAGES field are marked as that field.
         std::string fieldInstruction;
         bool inFieldResult = false;
-        RichTextRun::Field field = RichTextRun::Field::None;
+        RichTextRun::Field field = RichTextRun::Field::Plain;
     };
 
     // PAGE -> page number, NUMPAGES / SECTIONPAGES -> page count.
@@ -581,7 +611,7 @@ private:
         }
         if (word == "PAGE") return RichTextRun::Field::PageNumber;
         if (word == "NUMPAGES" || word == "SECTIONPAGES") return RichTextRun::Field::PageCount;
-        return RichTextRun::Field::None;
+        return RichTextRun::Field::Plain;
     }
 
     static std::string HighlightColor(const std::string& name) {
@@ -693,19 +723,19 @@ private:
                 if (type == "begin") {
                     ctx.fieldInstruction.clear();
                     ctx.inFieldResult = false;
-                    ctx.field = RichTextRun::Field::None;
+                    ctx.field = RichTextRun::Field::Plain;
                 } else if (type == "separate") {
                     ctx.field = FieldForInstruction(ctx.fieldInstruction);
                     ctx.inFieldResult = true;
                 } else if (type == "end") {
                     ctx.inFieldResult = false;
-                    ctx.field = RichTextRun::Field::None;
+                    ctx.field = RichTextRun::Field::Plain;
                 }
             } else if (tag == "w:instrText") {
                 if (child->GetText()) ctx.fieldInstruction += child->GetText();
             } else if (tag == "w:t") {
                 RichTextRun run = props;
-                if (ctx.inFieldResult || ctx.field != RichTextRun::Field::None) run.field = ctx.field;
+                if (ctx.inFieldResult || ctx.field != RichTextRun::Field::Plain) run.field = ctx.field;
                 run.text = child->GetText() ? child->GetText() : "";
                 for (size_t at; (at = run.text.find(kKeptSpaceMarker)) != std::string::npos;) {
                     run.text.replace(at, 3, " ");
@@ -889,6 +919,7 @@ private:
         InlineContext ctx;
         ParseInlineContainer(p, "", ctx);
         block.runs = std::move(ctx.runs);
+        ApplyParagraphMark(block, p->FirstChildElement("w:pPr"));
 
         // An empty paragraph carrying only a bottom border is the
         // horizontal-rule idiom.
@@ -1052,7 +1083,17 @@ private:
                         if (paragraph.HasParagraphFrame()) paragraphFrames[{rowIndex, row.cells.size()}] = paragraph;
                     }
                     firstParagraph = false;
+                    const size_t runsBefore = ctx.runs.size();
                     ParseInlineContainer(p, "", ctx);
+                    // A cell keeps runs, not paragraphs: text without a size
+                    // or font of its own takes its paragraph style's here.
+                    RichDocBlock styled;
+                    ApplyGeometry(styled, p->FirstChildElement("w:pPr"));
+                    for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                        RichTextRun& run = ctx.runs[r];
+                        if (run.fontSizePt <= 0.0f) run.fontSizePt = styled.paragraphFontSizePt;
+                        if (run.fontFamily.empty()) run.fontFamily = styled.paragraphFontFamily;
+                    }
                 }
                 cell.runs = std::move(ctx.runs);
 
@@ -1277,6 +1318,13 @@ public:
             error = "Failed to write document settings: " + zip_.GetLastError();
             return false;
         }
+        for (const FurniturePart& part : furnitureParts_) {
+            if (!zip_.AddEntry("word/" + part.name, part.xml)
+                || !zip_.AddEntry("word/_rels/" + part.name + ".rels", BuildPartRelsXml())) {
+                error = "Failed to write a header or footer: " + zip_.GetLastError();
+                return false;
+            }
+        }
         for (size_t i = 0; i < doc.media.size(); ++i) {
             if (!zip_.AddEntry(MediaPartName(i), doc.media[i].data.data(),
                                doc.media[i].data.size())) {
@@ -1298,6 +1346,8 @@ private:
     // count from a high base so they cannot collide with the block images,
     // which number from 1.
     int inlineDrawingId_ = 100000;
+    int drawingId_ = 0;
+    const std::vector<RichDocBlock>* blocks_ = nullptr;   // the blocks being written (body or furniture)
     std::vector<std::string> hyperlinks_;   // index -> URL; rel id = rIdLink{index+1}
     bool usesLists_ = false;
     std::vector<std::string> listDefinitions_;   // w:abstractNum per list run
@@ -1381,6 +1431,17 @@ private:
             if (isLink) {
                 xml << "<w:hyperlink r:id=\"rIdLink"
                     << (HyperlinkRelIndex(run.linkTarget) + 1) << "\">";
+            }
+            if (run.field != RichTextRun::Field::Plain) {
+                // A page number or count: a simple field showing its last value.
+                xml << "<w:fldSimple w:instr=\""
+                    << (run.field == RichTextRun::Field::PageNumber ? " PAGE " : " NUMPAGES ")
+                    << "\"><w:r>";
+                WriteRunProperties(xml, run, false);
+                WriteRunText(xml, run.text);
+                xml << "</w:r></w:fldSimple>";
+                if (isLink) xml << "</w:hyperlink>";
+                continue;
             }
             xml << "<w:r>";
             if (run.IsInlineImage()) {
@@ -1493,6 +1554,19 @@ private:
         if (const char* jc = JcValue(block.align)) {
             pPr << "<w:jc w:val=\"" << jc << "\"/>";
         }
+        // The paragraph mark carries the paragraph's font, which is what
+        // an empty paragraph is measured with.
+        if (block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
+            pPr << "<w:rPr>";
+            if (!block.paragraphFontFamily.empty()) {
+                pPr << "<w:rFonts w:ascii=\"" << EscapeXml(block.paragraphFontFamily) << "\" w:hAnsi=\""
+                    << EscapeXml(block.paragraphFontFamily) << "\"/>";
+            }
+            if (block.paragraphFontSizePt > 0.0f) {
+                pPr << "<w:sz w:val=\"" << std::lround(block.paragraphFontSizePt * 2.0f) << "\"/>";
+            }
+            pPr << "</w:rPr>";
+        }
         std::string pPrStr = pPr.str();
         if (!pPrStr.empty()) xml << "<w:pPr>" << pPrStr << "</w:pPr>";
 
@@ -1502,6 +1576,15 @@ private:
             run.text = UCRichDocument::ConcatenateRunText(block.runs);
             run.code = true;
             WriteRuns(xml, {run});
+        } else if (block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
+            // Word's runs take their size from the style, not the paragraph,
+            // so text without its own size or font carries the paragraph's.
+            std::vector<RichTextRun> runs = block.runs;
+            for (RichTextRun& run : runs) {
+                if (run.fontSizePt <= 0.0f) run.fontSizePt = block.paragraphFontSizePt;
+                if (run.fontFamily.empty() && !run.code) run.fontFamily = block.paragraphFontFamily;
+            }
+            WriteRuns(xml, runs);
         } else {
             WriteRuns(xml, block.runs);
         }
@@ -1715,14 +1798,16 @@ private:
             << "<w:p/>\n";
     }
 
-    std::string BuildDocumentXml() {
+    // The blocks as WordprocessingML paragraphs and tables.
+    std::string WriteBlocks(const std::vector<RichDocBlock>& blocks) {
+        const std::vector<RichDocBlock>* savedBlocks = blocks_;
+        blocks_ = &blocks;
         std::ostringstream body;
-        int drawingId = 0;
-        for (size_t index = 0; index < doc_->blocks.size(); ++index) {
-            const RichDocBlock& block = doc_->blocks[index];
+        for (size_t index = 0; index < blocks.size(); ++index) {
+            const RichDocBlock& block = blocks[index];
             // A run of list items is one Word list - until an item needs a
             // level definition of its own (see StartsNewList).
-            if (block.type == RichBlockType::ListItem && WordFormatInternal::StartsNewList(doc_->blocks, index)) {
+            if (block.type == RichBlockType::ListItem && WordFormatInternal::StartsNewList(blocks, index)) {
                 currentListNumId_ = AddListDefinition(index);
             }
             switch (block.type) {
@@ -1730,7 +1815,7 @@ private:
                     WriteTable(body, block);
                     break;
                 case RichBlockType::Image:
-                    WriteImage(body, block, ++drawingId);
+                    WriteImage(body, block, ++drawingId_);
                     break;
                 case RichBlockType::PageBreak:
                     body << "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\n";
@@ -1746,16 +1831,72 @@ private:
                     break;
             }
         }
+        blocks_ = savedBlocks;
+        return body.str();
+    }
+
+    static constexpr const char* kPartNamespaces =
+        "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" "
+        "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+        "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\"";
+
+    // The headers and footers as their own parts, referenced from sectPr.
+    struct FurniturePart { std::string name; std::string kind; std::string type; std::string xml; };
+    std::vector<FurniturePart> furnitureParts_;
+
+    std::string SectionPropertiesXml() {
+        const UCRichDocument& doc = *doc_;
+        std::ostringstream refs;
+        auto part = [&](const std::vector<RichDocBlock>& blocks, const char* kind, const char* type) {
+            if (blocks.empty()) return;
+            FurniturePart p;
+            p.kind = kind;
+            p.type = type;
+            p.name = std::string(kind) + std::to_string(furnitureParts_.size() + 1) + ".xml";
+            const char* root = std::string(kind) == "header" ? "w:hdr" : "w:ftr";
+            p.xml = std::string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<")
+                  + root + " " + kPartNamespaces + ">" + WriteBlocks(blocks) + "</" + root + ">\n";
+            refs << "<w:" << kind << "Reference w:type=\"" << type << "\" r:id=\"rIdPart"
+                 << (furnitureParts_.size() + 1) << "\"/>";
+            furnitureParts_.push_back(std::move(p));
+        };
+        part(doc.pageFurniture.header, "header", "default");
+        if (doc.firstPageDiffers) part(doc.firstPageFurniture.header, "header", "first");
+        part(doc.pageFurniture.footer, "footer", "default");
+        if (doc.firstPageDiffers) part(doc.firstPageFurniture.footer, "footer", "first");
+
+        // Word's defaults (A4, 2 cm margins) where the document states no page.
+        const RichPageSetup& page = doc.page;
+        auto twips = [](float pt) { return std::lround(pt * 20.0f); };
+        const bool hasPage = page.HasPage();
+        std::ostringstream xml;
+        xml << "<w:sectPr>" << refs.str();
+        xml << "<w:pgSz w:w=\"" << (hasPage ? twips(page.widthPt) : 11906)
+            << "\" w:h=\"" << (hasPage ? twips(page.heightPt) : 16838) << "\""
+            << (hasPage && page.widthPt > page.heightPt ? " w:orient=\"landscape\"" : "") << "/>";
+        const float headerTop = page.headerTopPt > 0.0f ? page.headerTopPt : 35.45f;
+        const float footerBottom = page.footerBottomPt > 0.0f ? page.footerBottomPt : 35.45f;
+        xml << "<w:pgMar w:top=\"" << (hasPage ? twips(page.marginTopPt) : 1134)
+            << "\" w:right=\"" << (hasPage ? twips(page.marginRightPt) : 1134)
+            << "\" w:bottom=\"" << (hasPage ? twips(page.marginBottomPt) : 1134)
+            << "\" w:left=\"" << (hasPage ? twips(page.marginLeftPt) : 1134)
+            << "\" w:header=\"" << twips(headerTop) << "\" w:footer=\"" << twips(footerBottom)
+            << "\" w:gutter=\"0\"/>";
+        if (doc.firstPageDiffers) xml << "<w:titlePg/>";
+        xml << "</w:sectPr>";
+        return xml.str();
+    }
+
+    std::string BuildDocumentXml() {
+        const std::string body = WriteBlocks(doc_->blocks);
+        const std::string sectPr = SectionPropertiesXml();
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<w:document "
             << "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" "
             << "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
             << "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\">"
-            << "<w:body>\n" << body.str()
-            << "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/>"
-               "<w:pgMar w:top=\"1134\" w:right=\"1134\" w:bottom=\"1134\" w:left=\"1134\" "
-               "w:header=\"709\" w:footer=\"709\" w:gutter=\"0\"/></w:sectPr>"
+            << "<w:body>\n" << body << sectPr
             << "</w:body></w:document>\n";
         return xml.str();
     }
@@ -1785,6 +1926,11 @@ private:
             xml << "<Override PartName=\"/word/numbering.xml\" "
                    "ContentType=\"application/vnd.openxmlformats-officedocument."
                    "wordprocessingml.numbering+xml\"/>\n";
+        }
+        for (const FurniturePart& part : furnitureParts_) {
+            xml << "<Override PartName=\"/word/" << part.name << "\" "
+                   "ContentType=\"application/vnd.openxmlformats-officedocument."
+                   "wordprocessingml." << part.kind << "+xml\"/>\n";
         }
         if (HasSettings()) {
             xml << "<Override PartName=\"/word/settings.xml\" "
@@ -1843,6 +1989,25 @@ private:
                    "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings\" "
                    "Target=\"settings.xml\"/>\n";
         }
+        for (size_t i = 0; i < furnitureParts_.size(); ++i) {
+            xml << "<Relationship Id=\"rIdPart" << (i + 1)
+                << "\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                << furnitureParts_[i].kind << "\" Target=\"" << furnitureParts_[i].name << "\"/>\n";
+        }
+        xml << MediaAndLinkRelationships() << "</Relationships>\n";
+        return xml.str();
+    }
+
+    // A header or footer part refers to pictures and links by the same ids
+    // the body does, so its relationships repeat the body's.
+    std::string BuildPartRelsXml() const {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+               "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+             + MediaAndLinkRelationships() + "</Relationships>\n";
+    }
+
+    std::string MediaAndLinkRelationships() const {
+        std::ostringstream xml;
         for (size_t i = 0; i < doc_->media.size(); ++i) {
             std::string target = MediaPartName(i).substr(5);   // strip "word/"
             xml << "<Relationship Id=\"rIdImg" << (i + 1)
@@ -1855,7 +2020,6 @@ private:
                 << "Target=\"" << EscapeXml(hyperlinks_[i])
                 << "\" TargetMode=\"External\"/>\n";
         }
-        xml << "</Relationships>\n";
         return xml.str();
     }
 
@@ -1915,10 +2079,10 @@ private:
 
     int AddListDefinition(size_t begin) {
         const RichDocBlock* byLevel[9] = {};
-        for (size_t j = begin; j < doc_->blocks.size() && doc_->blocks[j].type == RichBlockType::ListItem; ++j) {
-            if (j > begin && WordFormatInternal::StartsNewList(doc_->blocks, j)) break;
-            const int l = std::clamp(doc_->blocks[j].listLevel, 0, 8);
-            if (!byLevel[l]) byLevel[l] = &doc_->blocks[j];
+        for (size_t j = begin; j < (*blocks_).size() && (*blocks_)[j].type == RichBlockType::ListItem; ++j) {
+            if (j > begin && WordFormatInternal::StartsNewList((*blocks_), j)) break;
+            const int l = std::clamp((*blocks_)[j].listLevel, 0, 8);
+            if (!byLevel[l]) byLevel[l] = &(*blocks_)[j];
         }
         const int id = static_cast<int>(listDefinitions_.size());
         std::ostringstream xml;

@@ -42,7 +42,16 @@
  <style:style style:name="CHead" style:family="table-cell"><style:table-cell-properties fo:background-color="#ddeeff" fo:border="0.5pt solid #000000"/></style:style>
  <style:style style:name="CBody" style:family="table-cell"><style:table-cell-properties fo:border="0.5pt solid #000000"/></style:style>
  <style:style style:name="CThick" style:family="table-cell"><style:table-cell-properties fo:border-top="0.5pt solid #000000" fo:border-left="0.5pt solid #000000" fo:border-right="0.5pt solid #000000" fo:border-bottom="2pt solid #0000ff"/></style:style>
+ <style:page-layout style:name="PageLayout"><style:page-layout-properties fo:page-width="8.5in" fo:page-height="11in" style:print-orientation="portrait" fo:margin-top="0.5in" fo:margin-bottom="0.4in" fo:margin-left="1.2in" fo:margin-right="0.9in"/><style:header-style><style:header-footer-properties fo:min-height="0.3in" fo:margin-bottom="0.2in" style:dynamic-spacing="false"/></style:header-style><style:footer-style><style:header-footer-properties fo:min-height="0.3in" fo:margin-top="0.1in" style:dynamic-spacing="false"/></style:footer-style></style:page-layout>
 </office:automatic-styles>
+<office:master-styles>
+ <style:master-page style:name="Standard" style:page-layout-name="PageLayout">
+  <style:header><text:p text:style-name="Standard">Fixture header page <text:page-number text:select-page="current">1</text:page-number> of <text:page-count>2</text:page-count></text:p></style:header>
+  <style:header-first><text:p text:style-name="Standard">First page header</text:p></style:header-first>
+  <style:footer><text:p text:style-name="Standard">Fixture footer</text:p></style:footer>
+  <style:footer-first><text:p text:style-name="Standard">First page footer</text:p></style:footer-first>
+ </style:master-page>
+</office:master-styles>
 <office:body><office:text>
  <text:h text:style-name="Heading_20_1" text:outline-level="1">Fixture Heading</text:h>
  <text:p text:style-name="Standard">Plain <text:span text:style-name="TBold">bold</text:span> <text:span text:style-name="TRed">red</text:span> <text:span text:style-name="TUnder">under</text:span> <text:span text:style-name="TStrike">struck</text:span> E=mc<text:span text:style-name="TSup">2</text:span> <text:span text:style-name="TBig">big</text:span> <text:a xlink:type="simple" xlink:href="https://example.org/doc">link text</text:a>.</text:p>

@@ -465,6 +465,39 @@ editor->SetReadOnly(true);       // no caret, no keys; still selectable and scro
 
 This is the shortest path to a faithful `.odt`/`.docx` preview pane.
 
+## Page view
+
+```cpp
+RichTextEditStyle style = editor->GetStyle();
+style.padding = 0.0f;            // the pages bring their own margins
+editor->SetStyle(style);
+editor->SetPageView(true);       // like Writer's print layout
+int pages = editor->GetPageCount();
+```
+
+Page view draws the document's pages (`UCRichDocument::page`: size,
+margins, header and footer distances - A4 with 2 cm margins when the
+document states none) on a desk (`style.deskColor`), centred, `style.pageGap`
+apart. The text column is the page's, between its side margins, so a table
+sized for the page's column fills it. Blocks go onto pages in order: one
+that does not fit in what is left of a page moves whole to the next, and a
+page break starts one. The space between two blocks is dropped at the top
+of a page.
+
+Each page carries its header and footer (`UCRichDocument::FurnitureForPage`:
+`firstPageFurniture` on page one when `firstPageDiffers`, `pageFurniture`
+otherwise), with page number and page count fields
+(`RichTextRun::field`) filled in for that page. The body starts below the
+top margin, or below the header when the header is taller than the margin
+leaves room for; the footer likewise.
+
+An editable page view marks the corners of each page's text area
+(`style.pageMarginGuideColor`) and shows page breaks as dashed rules; a
+read-only one shows neither.
+
+Outside page view the text fills the element, and a document's first-page
+header and footer are drawn above and below the body.
+
 ## What is not implemented yet
 
 Honest limits of this first version — none of them silently misbehave:
@@ -478,9 +511,13 @@ Honest limits of this first version — none of them silently misbehave:
   change with it.
 - **Border line styles draw solid.** A double, dotted or dashed cell border
   from a document is drawn as a solid line of its width.
-- **The text column is the element's width, not a page's.** A document table
-  or tab stop sized for a 16 cm page column sits in whatever width the element
-  has; there is no page model yet.
+- **Page view moves whole blocks.** A paragraph or table is not split across
+  pages (no widow/orphan control, no repeated table header rows), and a block
+  taller than a page runs past its bottom margin.
+- **Headers and footers are shown, not edited.** The caret never enters
+  them; page number fields in the body keep the number they were saved with.
+- **No zoom and no horizontal scrolling.** A page wider than the element is
+  cut at the right.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the

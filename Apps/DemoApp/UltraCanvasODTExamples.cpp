@@ -4,9 +4,11 @@
 // UltraCanvasFileLoader::LoadTextDocument into a UCRichDocument, displayed by
 // the WYSIWYG UltraCanvasRichTextEdit in read-only mode - so fonts, sizes,
 // colours, alignment, list numbering and table layout show as the document
-// has them, not as Markdown can spell them. A standard sample document is
-// loaded from media/docs/document.odt on entry.
-// Version: 1.2.0
+// has them, not as Markdown can spell them. The view is in page view: the
+// document's own page size, margins, headers and footers, like Writer's
+// print layout. A standard sample document is loaded from
+// media/docs/document.odt on entry.
+// Version: 1.3.0
 // Last Modified: 2026-09-25
 // Author: UltraCanvas Framework
 
@@ -62,12 +64,12 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateODTExamples() {
-        // The document view holds a full DIN A4 page (210 x 297 mm) at the
-        // conventional 96 DPI screen resolution, so an entire letter-style
-        // document is on display at once. The page is taller than the demo
-        // window; the surrounding display area scrolls.
-        const int kPageWidth  = 794;    // 210 mm at 96 DPI
-        const int kPageHeight = 1123;   // 297 mm at 96 DPI
+        // The document view shows the document's pages on a desk, each at
+        // 96 DPI: a whole DIN A4 page (794 x 1123 px) plus the desk around
+        // it, so a letter is on display at once. Further pages scroll inside
+        // the view.
+        const int kPageWidth  = 794 + 2 * 24;   // A4 at 96 DPI, and desk at the sides
+        const int kPageHeight = 1123 + 2 * 16;  // and above and below
         const int kWidth   = 1020;
         const int kViewTop = 92;
         const int kHeight  = kViewTop + kPageHeight + 16;
@@ -100,15 +102,16 @@ namespace UltraCanvas {
         // Markdown in between, so run fonts, sizes and colours, paragraph
         // alignment, list numbers that run on past an interruption, table
         // column widths and cell alignment all display. Read-only: this page
-        // is a viewer (the WYSIWYG Editor page edits). Sized and centred as
-        // one full DIN A4 page.
+        // is a viewer (the WYSIWYG Editor page edits). Page view lays the
+        // text out in the document's own page and margins, with its headers
+        // and footers.
         auto view = CreateRichTextEdit("odtView", kViewLeft, kViewTop, kPageWidth, kPageHeight);
         RichTextEditStyle pageStyle = view->GetStyle();
-        pageStyle.backgroundColor = Colors::White;
-        // Page margins approximating a printed letter (~10 mm at 96 DPI).
-        pageStyle.padding = 38.0f;
+        pageStyle.padding = 0.0f;              // the pages bring their own margins
+        pageStyle.deskColor = Color(235, 236, 239, 255);
         view->SetStyle(pageStyle);
         view->SetReadOnly(true);
+        view->SetPageView(true);
         root->AddChild(view);
 
         // ===== STANDARD SAMPLE DOCUMENT =====

@@ -56,9 +56,10 @@ View = `UltraCanvasRichTextEdit` draws it.
 |---|---|---|---|---|---|---|
 | Headings 1–6 | yes | yes | yes | yes | yes | DOC: built-in Heading styles and outline level. |
 | Alignment (left/centre/right/justify) | yes | yes | yes | yes | yes | |
-| Paragraph style → character formatting | yes | *partial* | yes | yes | yes | A "Standard + bold 14pt" title arrives as bold 14pt runs. |
+| Paragraph style → character formatting | yes | *partial* | yes | yes | yes | A "Standard + bold 14pt" title arrives as bold 14pt runs. DOCX: the style's size and font (and `w:docDefaults`) reach text without its own (2026-09); bold and colour from a style do not yet. |
+| Paragraph font (empty lines) | yes | yes | yes | yes | yes | 2026-09. `RichDocBlock::paragraphFontSizePt` / `paragraphFontFamily`: the style's font, or the paragraph mark's for an empty paragraph, so blank lines are as tall as in Writer. A contract's blank lines drew at the view's 12 pt instead of 11 pt and pushed its last line onto a second page. |
 | Block quote, preformatted | yes | yes | yes | yes | yes | By style name / monospace style font. |
-| Line breaks, page breaks | yes | yes | yes | yes | *partial* | The view draws a page break as a dashed rule; it does not paginate. |
+| Line breaks, page breaks | yes | yes | yes | yes | yes | In page view a page break starts a new page (2026-09); the continuous view draws it as a dashed rule. |
 | Indents (left, right, first line, hanging) | yes | yes | yes | yes | yes | 2026-09. Styles, style inheritance (DOCX `w:basedOn`, `w:docDefaults`) and direct formatting. List items keep the view's own list indentation. |
 | Spacing above / below | yes | yes | yes | yes | yes | 2026-09. Stated spacing is added (after + before), as Word and Writer do; blocks that state none (Markdown) keep the view's block spacing. |
 | Line spacing | yes | yes | yes | yes | yes | Proportional (`lineSpacing`), and since 2026-09 exact or at-least heights (`lineHeightPt`, `lineHeightAtLeast`): ODF `fo:line-height="14pt"` / `style:line-height-at-least`, Word `w:lineRule="exact"`/`"atLeast"`, DOC `LSPD`. |
@@ -108,9 +109,10 @@ View = `UltraCanvasRichTextEdit` draws it.
 
 | Feature | ODT | DOCX | DOC | Model | View | Note |
 |---|---|---|---|---|---|---|
-| Page size, margins, orientation | no | no | no | no | no | The view is one continuous column. |
-| Headers and footers | *partial* | no | no | *partial* | *partial* | ODT: the first page's header and footer are emitted before and after the body. |
-| Page numbers, dates and other fields | *partial* | *partial* | *partial* | — | — | Their last displayed value is kept as text. |
+| Page size, margins, orientation | yes | yes | yes | yes | yes | 2026-09. `UCRichDocument::page` (`RichPageSetup`): size, margins and header/footer distances, from the ODF page layout, DOCX `w:sectPr` and the DOC section (SEP). Page view draws the pages and uses the page's text column. Both writers save it. Only the first section's page is read. |
+| Headers and footers | yes | yes | yes | yes | yes | 2026-09. `pageFurniture` and `firstPageFurniture` (another first page: ODF `style:header-first` or a first master page with a next style, DOCX `w:titlePg`, DOC first-page stories). Drawn on every page in page view, and above and below the body otherwise. Both writers save them. Even/odd headers are not read. |
+| Page number and page count fields | yes | yes | yes | yes | yes | 2026-09. `RichTextRun::field`: ODF `text:page-number` / `text:page-count`, DOCX `PAGE` / `NUMPAGES` / `SECTIONPAGES` (complex and simple fields), DOC field codes. Page view fills in each page's numbers in headers and footers. |
+| Dates and other fields | *partial* | *partial* | *partial* | — | — | Their last displayed value is kept as text. |
 | Footnotes / endnotes | *partial* | no | no | no | no | ODT: placed inline in parentheses. |
 | Table of contents and indexes | yes | no | *partial* | — | — | ODT: the generated text (`text:index-body`) is read (2026-09). DOCX TOCs are fields inside `w:sdt`. DOC shows the field result. |
 | Sections, multiple columns | *partial* | no | no | no | no | Hidden sections are dropped; columns are flattened. |
@@ -127,6 +129,9 @@ View = `UltraCanvasRichTextEdit` draws it.
   imports with the same structure as LibreOffice's own ODT conversion of it:
   the title, the bullets, numbers 1–5 running on past the gaps, and the table
   with its header row, alignment and widths.
+  In page view (2026-09) it fills one A4 page with the original's margins,
+  its table spans the page's text column, and it ends on page one, as in
+  Writer.
 - **A business letter on a letterhead, as `.odt`**: everything is imported (logo, sender
   block, contact lines, the address table, the date, the body, the signature
   image and the bank footer), but the layout is not. The sender block and
@@ -134,7 +139,12 @@ View = `UltraCanvasRichTextEdit` draws it.
   they appear one after another in reading order. The footer's three
   tab-aligned columns line up as in the original, the Webdings telephone, fax,
   mobile and e-mail icons draw as ☎ 🖨 📱 ✉, and the borderless address and
-  date tables no longer show grid lines.
+  date tables no longer show grid lines. In page view (2026-09) the bank
+  footer sits at the foot of page one only, and the following pages carry
+  the "Seite N / M" header with their own numbers. Because the sender block
+  still flows in the text instead of standing beside the address, the
+  signature's last two lines move to a second page; Writer fits the letter
+  on one.
 
 ## Roadmap, in priority order
 
@@ -144,22 +154,47 @@ Done in 2026-09: paragraph geometry (indents, spacing, line spacing and
 fixed line heights), tab stops with the default interval, symbol-font
 mapping, table cell borders and backgrounds, list number formats,
 multi-level labels and document bullets, highlight, paragraph borders and
-backgrounds, and table width, position, cell padding and vertical alignment.
+backgrounds, table width, position, cell padding and vertical alignment,
+and the page model: page size, margins, headers, footers, page number
+fields and page view.
 
-1. **Page model: size, margins, headers and footers** as page furniture
-   rather than blocks, then pagination in the view (page boxes on a grey
-   desk, like Writer's print layout). Until then the view's text column is
-   its own width, not the page's, so a document table sized for a 16 cm text
-   column sits in a wider one.
-2. **Positioned frames and floating pictures** (anchor, x/y, wrap). This
-   depends on 1 and is the only way a letterhead can look like the original.
-3. **Footnotes and endnotes** as real notes, **DOCX headers and footers**,
-   and **DOC merged cells, headers, footers and footnotes** (the text for
-   these lies after the main text in the piece table: `ccpFtn`, `ccpHdd`).
+1. **Positioned frames and floating pictures** (anchor, x/y, wrap). Page
+   view gives them a page to stand on; this is the only way a letterhead can
+   look like the original.
+2. **Pagination inside blocks**: split long paragraphs and tables across
+   pages (with widow/orphan control and repeated table header rows).
+3. **Footnotes and endnotes** as real notes, and **DOC merged cells and
+   footnotes** (the footnote text lies after the main text in the piece
+   table: `ccpFtn`).
 4. Comments, tracked changes, shapes, charts: read-only display first.
 
 Each can be checked against a LibreOffice-generated fixture the way
 `Tests/fixtures/word97-formatting.*` is.
+
+## What the WYSIWYG element does not support yet
+
+Found while checking real documents against Writer. Each is something the
+model or a reader can already carry, or that a document needs, but
+`UltraCanvasRichTextEdit` does not draw or edit:
+
+- **Blocks are not split across pages.** A paragraph or table that does not
+  fit moves whole to the next page, leaving the rest of the page empty; a
+  block taller than a page runs past its bottom margin. No widow/orphan
+  control, no keep-with-next, no repeated table header rows.
+- **Headers and footers cannot be edited**, only shown. The caret never
+  enters them.
+- **Page number fields in the body** show the number they were saved with;
+  only headers and footers are numbered per page.
+- **No zoom and no horizontal scrolling.** A page wider than the element is
+  cut at the right; the page is drawn at 96 DPI.
+- **One page setup per document.** Sections with their own size, margins or
+  orientation, and even/odd headers, are not modelled.
+- **Positioned frames and floating pictures** are drawn in reading order,
+  not at their place on the page.
+- **Border line styles** (double, dotted, dashed) are drawn solid.
+- **Picture bullets** and **numbered headings** (chapter numbering) are not
+  drawn.
+- **Merged cells in DOC** are not read (the model and view support them).
 
 ## Testing approach
 

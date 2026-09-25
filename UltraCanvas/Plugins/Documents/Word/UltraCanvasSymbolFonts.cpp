@@ -121,11 +121,20 @@ uint32_t SymbolFontCharToUnicode(const std::string& fontFamily, uint32_t codepoi
 }
 
 void MapSymbolFontRuns(UCRichDocument& document) {
-    for (RichDocBlock& block : document.blocks) {
-        MapRuns(block.runs);
-        for (RichTableRow& row : block.tableRows) {
-            for (RichTableCell& cell : row.cells) MapRuns(cell.runs);
+    auto mapBlocks = [](std::vector<RichDocBlock>& blocks) {
+        for (RichDocBlock& block : blocks) {
+            MapRuns(block.runs);
+            for (RichTableRow& row : block.tableRows) {
+                for (RichTableCell& cell : row.cells) MapRuns(cell.runs);
+            }
+            // Text of its own never draws in a symbol font either.
+            if (TableFor(block.paragraphFontFamily)) block.paragraphFontFamily.clear();
         }
+    };
+    mapBlocks(document.blocks);
+    for (RichPageFurniture* furniture : {&document.pageFurniture, &document.firstPageFurniture}) {
+        mapBlocks(furniture->header);
+        mapBlocks(furniture->footer);
     }
 }
 

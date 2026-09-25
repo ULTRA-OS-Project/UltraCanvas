@@ -131,8 +131,9 @@ inline bool StartsNewList(const std::vector<RichDocBlock>& blocks, size_t index)
 // symbol fonts (Symbol, Wingdings, Wingdings 2/3, Webdings); accepts the bare
 // font code and the U+F000 + code form. 0 = not a symbol font, or unmapped.
 uint32_t SymbolFontCharToUnicode(const std::string& fontFamily, uint32_t codepoint);
-// Rewrites every run set in a symbol font (body and table cells) as the
-// Unicode characters it depicts, and drops the symbol font from the run.
+// Rewrites every run set in a symbol font (body, table cells, headers and
+// footers) as the Unicode characters it depicts, and drops the symbol font
+// from the run.
 void MapSymbolFontRuns(UCRichDocument& document);
 // Decodes the UTF-8 sequence at text[at] and advances `at` past it.
 uint32_t DecodeUtf8(const std::string& text, size_t& at);

@@ -57,8 +57,8 @@ struct RichTextRun {
     // A field whose text depends on where it is drawn: a header's "Page 3
     // of 7". `text` holds the value it was last shown with, which is what
     // plain-text output and a view without pages use.
-    enum class Field { None, PageNumber, PageCount };
-    Field field = Field::None;
+    enum class Field { Plain, PageNumber, PageCount };
+    Field field = Field::Plain;
 
     static constexpr const char* kObjectReplacement = "\xEF\xBF\xBC";   // U+FFFC
 
@@ -75,7 +75,7 @@ struct RichTextRun {
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
             && highlightColor == other.highlightColor
-            && field == Field::None && other.field == Field::None;   // a field stays its own run
+            && field == Field::Plain && other.field == Field::Plain;   // a field stays its own run
     }
 };
 
@@ -222,6 +222,11 @@ struct RichDocBlock {
     // ODF fo:line-height="14pt" / style:line-height-at-least). 0 = not set.
     float lineHeightPt = 0.0f;
     bool lineHeightAtLeast = false;     // true: lines are at least this tall
+    // The paragraph's own character size and font (its style's, or Word's
+    // paragraph mark): what text without a size of its own takes, and what
+    // an empty paragraph's line is measured with. 0 / empty = the view's.
+    float paragraphFontSizePt = 0.0f;
+    std::string paragraphFontFamily;
     // Paragraph frame and fill. Consecutive paragraphs with the same frame
     // form one box, as in Word and Writer (no line between them).
     RichBorder paragraphBorderTop, paragraphBorderBottom, paragraphBorderLeft, paragraphBorderRight;
@@ -259,6 +264,8 @@ struct RichDocBlock {
         lineSpacing = from.lineSpacing;
         lineHeightPt = from.lineHeightPt;
         lineHeightAtLeast = from.lineHeightAtLeast;
+        paragraphFontSizePt = from.paragraphFontSizePt;
+        paragraphFontFamily = from.paragraphFontFamily;
         paragraphBorderTop = from.paragraphBorderTop;
         paragraphBorderBottom = from.paragraphBorderBottom;
         paragraphBorderLeft = from.paragraphBorderLeft;

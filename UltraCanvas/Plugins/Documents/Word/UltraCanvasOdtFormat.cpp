@@ -240,7 +240,17 @@ public:
         // another one (a letterhead's first page and its continuation pages).
         ParseMasterPage(masterPage, doc_->firstPageFurniture);
         tinyxml2::XMLElement* nextMaster = FollowingMasterPage(stylesRoot, masterPage);
-        if (nextMaster && nextMaster != masterPage) {
+        auto* headerFirst = masterPage ? masterPage->FirstChildElement("style:header-first") : nullptr;
+        auto* footerFirst = masterPage ? masterPage->FirstChildElement("style:footer-first") : nullptr;
+        if (headerFirst || footerFirst) {
+            // ODF 1.3: one master page with its own first-page header and
+            // footer ("Same content on first page" off in Writer).
+            doc_->pageFurniture = doc_->firstPageFurniture;
+            doc_->firstPageFurniture = RichPageFurniture{};
+            ParseMasterPageRegion(headerFirst, doc_->firstPageFurniture.header);
+            ParseMasterPageRegion(footerFirst, doc_->firstPageFurniture.footer);
+            doc_->firstPageDiffers = true;
+        } else if (nextMaster && nextMaster != masterPage) {
             ParseMasterPage(nextMaster, doc_->pageFurniture);
             doc_->firstPageDiffers = true;
         } else {
@@ -897,6 +907,10 @@ private:
             || block.type == RichBlockType::CodeBlock) {
             runBase = OdtTextProps{};
         }
+        if (block.type == RichBlockType::Paragraph || block.type == RichBlockType::ListItem) {
+            block.paragraphFontSizePt = paraProps.fontSizePt;
+            block.paragraphFontFamily = paraProps.fontFamily;
+        }
 
         InlineContext ctx;
         ParseInlineNodes(elem, runBase, "", ctx);
@@ -1439,13 +1453,15 @@ private:
         page.marginBottomPt = page.footerBottomPt = side("fo:margin-bottom");
         page.marginLeftPt = side("fo:margin-left");
         page.marginRightPt = side("fo:margin-right");
-        // Header / footer room: their minimum height plus the spacing to the
-        // body, when the master page has one.
+        // Header / footer room, when the master page has one: its minimum
+        // height, which (as Writer reads it) includes the spacing to the
+        // body. A header taller than that pushes the body down further;
+        // the view measures it.
         auto room = [&](const char* styleTag, const char* spacingAttr) {
             auto* hfStyle = layout->FirstChildElement(styleTag);
             auto* hf = hfStyle ? hfStyle->FirstChildElement("style:header-footer-properties") : nullptr;
             if (!hf) return 0.0f;
-            return ParseLengthPt(Attr(hf, "fo:min-height")) + ParseLengthPt(Attr(hf, spacingAttr));
+            return std::max(ParseLengthPt(Attr(hf, "fo:min-height")), ParseLengthPt(Attr(hf, spacingAttr)));
         };
         if (master->FirstChildElement("style:header")) page.marginTopPt += room("style:header-style", "fo:margin-bottom");
         if (master->FirstChildElement("style:footer")) page.marginBottomPt += room("style:footer-style", "fo:margin-top");
@@ -1484,9 +1500,13 @@ public:
         }
         // ODF requires the mimetype entry first and uncompressed.
         static const char* kMimeType = "application/vnd.oasis.opendocument.text";
+        // Body and page furniture first: writing them collects the automatic
+        // styles that content.xml and styles.xml each declare.
+        const std::string body = WriteBlocks(doc.blocks);
+        const std::string masterStyles = BuildMasterStyles();
         if (!zip_.AddEntry("mimetype", std::string(kMimeType), false)
-            || !zip_.AddEntry("content.xml", BuildContentXml())
-            || !zip_.AddEntry("styles.xml", BuildStylesXml())
+            || !zip_.AddEntry("content.xml", BuildContentXml(body))
+            || !zip_.AddEntry("styles.xml", BuildStylesXml(masterStyles))
             || !zip_.AddEntry("meta.xml", BuildMetaXml())
             || !zip_.AddEntry("META-INF/manifest.xml", BuildManifestXml())) {
             error = "Failed to write document package: " + zip_.GetLastError();
@@ -1509,6 +1529,9 @@ public:
 private:
     UCZipPackageWriter zip_;
     const UCRichDocument* doc_ = nullptr;
+    const std::vector<RichDocBlock>* blocks_ = nullptr;   // the blocks being written (body or furniture)
+    int tableCount_ = 0;
+    std::string pageLayout_;                // style:page-layout for the master page
     std::vector<RichTextRun> textStyles_;   // formatting tuples for T1..Tn
     std::string columnStyles_;              // automatic table-column styles
     std::string geometryStyles_;            // automatic paragraph styles with geometry
@@ -1606,6 +1629,11 @@ private:
             }
             std::string styleName = TextStyleNameFor(run);
             std::string body = OdtText(run.text);
+            if (run.field == RichTextRun::Field::PageNumber) {
+                body = "<text:page-number text:select-page=\"current\">" + body + "</text:page-number>";
+            } else if (run.field == RichTextRun::Field::PageCount) {
+                body = "<text:page-count>" + body + "</text:page-count>";
+            }
             if (!styleName.empty()) {
                 body = "<text:span text:style-name=\"" + styleName + "\">" + body + "</text:span>";
             }
@@ -1623,7 +1651,9 @@ private:
             case RichBlockType::CodeBlock: return "PCode";
             default: break;
         }
-        if (block.HasParagraphGeometry()) return GeometryStyleFor(block);
+        if (block.HasParagraphGeometry() || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
+            return GeometryStyleFor(block);
+        }
         return AlignedStyle(block.align);
     }
 
@@ -1677,7 +1707,11 @@ private:
             }
             tabs << "</style:tab-stops>";
         }
-        const std::string key = props.str() + tabs.str();
+        std::ostringstream font;
+        if (block.paragraphFontSizePt > 0.0f) font << " fo:font-size=\"" << Pt(block.paragraphFontSizePt) << "\"";
+        if (!block.paragraphFontFamily.empty()) font << " fo:font-family=\"" << EscapeXml(block.paragraphFontFamily) << "\"";
+        const std::string textProps = font.str().empty() ? "" : "<style:text-properties" + font.str() + "/>";
+        const std::string key = props.str() + tabs.str() + textProps;
         auto it = geometryStyleNames_.find(key);
         if (it != geometryStyleNames_.end()) return it->second;
         const std::string name = "PG" + std::to_string(geometryStyleNames_.size() + 1);
@@ -1685,7 +1719,7 @@ private:
         geometryStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\" "
                            "style:parent-style-name=\"Standard\"><style:paragraph-properties"
                          + props.str() + (tabs.str().empty() ? "/>" : ">" + tabs.str() + "</style:paragraph-properties>")
-                         + "</style:style>\n";
+                         + textProps + "</style:style>\n";
         return name;
     }
 
@@ -1919,9 +1953,9 @@ private:
         const RichDocBlock* byLevel[10] = {};
         bool custom = false;
         for (size_t j = begin; j < end; ++j) {
-            const RichDocBlock& item = doc_->blocks[j];
+            const RichDocBlock& item = (*blocks_)[j];
             if (item.type != RichBlockType::ListItem || item.listLevel < level) break;
-            if (j > begin && WordFormatInternal::StartsNewList(doc_->blocks, j)) break;
+            if (j > begin && WordFormatInternal::StartsNewList((*blocks_), j)) break;
             const int l = std::clamp(item.listLevel, 0, 9);
             if (!byLevel[l]) byLevel[l] = &item;
             custom = custom || !item.numberTemplate.empty() || !item.bulletText.empty()
@@ -1958,10 +1992,10 @@ private:
 
     size_t WriteListRun(std::ostringstream& xml, size_t begin, size_t end, int level,
                         std::string customStyle = "", bool topLevel = true) {
-        bool ordered = doc_->blocks[begin].orderedList;
+        bool ordered = (*blocks_)[begin].orderedList;
         for (size_t j = begin; j < end; ++j) {
-            if (doc_->blocks[j].listLevel <= level) {
-                ordered = doc_->blocks[j].orderedList;
+            if ((*blocks_)[j].listLevel <= level) {
+                ordered = (*blocks_)[j].orderedList;
                 break;
             }
         }
@@ -1971,12 +2005,12 @@ private:
         size_t i = begin;
         bool itemOpen = false;
         while (i < end) {
-            const RichDocBlock& item = doc_->blocks[i];
+            const RichDocBlock& item = (*blocks_)[i];
             if (item.listLevel < level) break;
             if (item.listLevel == level) {
                 if (item.orderedList != ordered) break;
                 // An item that needs its own level definition starts a new list.
-                if (i != begin && WordFormatInternal::StartsNewList(doc_->blocks, i)) break;
+                if (i != begin && WordFormatInternal::StartsNewList((*blocks_), i)) break;
                 if (itemOpen) xml << "</text:list-item>\n";
                 xml << "<text:list-item";
                 // A number the item carries (a list starting at N, or running
@@ -2003,12 +2037,14 @@ private:
         return i;
     }
 
-    std::string BuildContentXml() {
+    // The blocks as ODF text elements.
+    std::string WriteBlocks(const std::vector<RichDocBlock>& blocks) {
+        const std::vector<RichDocBlock>* savedBlocks = blocks_;
+        blocks_ = &blocks;
         std::ostringstream body;
-        int tableNumber = 0;
         size_t i = 0;
-        while (i < doc_->blocks.size()) {
-            const RichDocBlock& block = doc_->blocks[i];
+        while (i < blocks.size()) {
+            const RichDocBlock& block = blocks[i];
             switch (block.type) {
                 case RichBlockType::Heading:
                     body << "<text:h text:style-name=\"Heading_20_"
@@ -2021,13 +2057,13 @@ private:
                     break;
                 case RichBlockType::ListItem: {
                     size_t end = i;
-                    while (end < doc_->blocks.size()
-                           && doc_->blocks[end].type == RichBlockType::ListItem) {
+                    while (end < blocks.size()
+                           && blocks[end].type == RichBlockType::ListItem) {
                         ++end;
                     }
                     size_t pos = i;
                     while (pos < end) {
-                        pos = WriteListRun(body, pos, end, doc_->blocks[pos].listLevel);
+                        pos = WriteListRun(body, pos, end, blocks[pos].listLevel);
                     }
                     i = end;
                     break;
@@ -2044,7 +2080,7 @@ private:
                     break;
                 }
                 case RichBlockType::Table:
-                    WriteTable(body, block, ++tableNumber);
+                    WriteTable(body, block, ++tableCount_);
                     ++i;
                     break;
                 case RichBlockType::Image:
@@ -2073,9 +2109,11 @@ private:
                     break;
             }
         }
+        blocks_ = savedBlocks;
+        return body.str();
+    }
 
-        // The body is generated first so textStyles_ is complete for the
-        // automatic-styles section.
+    std::string BuildContentXml(const std::string& body) const {
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
             << "<office:document-content "
@@ -2087,9 +2125,21 @@ private:
             << "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
             << "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
             << "xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
-            << "office:version=\"1.2\">\n"
-            << "<office:automatic-styles>\n";
+            << "office:version=\"1.3\">\n"
+            << "<office:automatic-styles>\n"
+            << AutomaticStylesXml()
+            << "</office:automatic-styles>\n"
+            << "<office:body>\n<office:text>\n"
+            << body
+            << "</office:text>\n</office:body>\n</office:document-content>\n";
+        return xml.str();
+    }
 
+    // The automatic styles the written blocks use. content.xml and
+    // styles.xml each declare them, since the body's and the headers' and
+    // footers' styles resolve in their own file.
+    std::string AutomaticStylesXml() const {
+        std::ostringstream xml;
         for (size_t s = 0; s < textStyles_.size(); ++s) {
             const RichTextRun& t = textStyles_[s];
             xml << "<style:style style:name=\"T" << (s + 1)
@@ -2153,15 +2203,62 @@ private:
                 << "\" style:num-format=\"1\" style:num-suffix=\".\">" << levelProperties(level)
                 << "</text:list-level-style-number>\n";
         }
-        xml << "</text:list-style>\n" << listStyles_
-            << "</office:automatic-styles>\n"
-            << "<office:body>\n<office:text>\n"
-            << body.str()
-            << "</office:text>\n</office:body>\n</office:document-content>\n";
+        xml << "</text:list-style>\n" << listStyles_;
         return xml.str();
     }
 
-    std::string BuildStylesXml() const {
+    // The page layout and the master page with its headers and footers. The
+    // model's top margin is where the body starts; ODF's is where the
+    // header starts, the header's height and spacing following it.
+    std::string BuildMasterStyles() {
+        const UCRichDocument& doc = *doc_;
+        const RichPageFurniture& later = doc.pageFurniture;
+        const RichPageFurniture& first = doc.firstPageDiffers ? doc.firstPageFurniture : doc.pageFurniture;
+        const bool hasHeader = !later.header.empty() || !first.header.empty();
+        const bool hasFooter = !later.footer.empty() || !first.footer.empty();
+        const RichPageSetup& page = doc.page;
+        if (!page.HasPage() && !hasHeader && !hasFooter) return "";
+
+        std::ostringstream props;
+        std::ostringstream headerStyle;
+        std::ostringstream footerStyle;
+        if (page.HasPage()) {
+            props << " fo:page-width=\"" << Pt(page.widthPt) << "\" fo:page-height=\"" << Pt(page.heightPt) << "\""
+                  << " style:print-orientation=\"" << (page.widthPt > page.heightPt ? "landscape" : "portrait") << "\""
+                  << " fo:margin-left=\"" << Pt(page.marginLeftPt) << "\" fo:margin-right=\"" << Pt(page.marginRightPt) << "\"";
+        }
+        // A header's room is the space between where it starts and where the
+        // body does: its minimum height, spacing to the body included.
+        auto room = [](float margin, float edge, std::ostringstream& out, const char* tag, const char* spacingAttr) {
+            const float start = (edge > 0.0f && edge < margin) ? edge : margin * 0.5f;
+            const float total = std::max(0.0f, margin - start);
+            const float spacing = std::min(7.0f, total * 0.5f);
+            out << "<style:" << tag << "><style:header-footer-properties fo:min-height=\"" << Pt(total)
+                << "\" " << spacingAttr << "=\"" << Pt(spacing) << "\" style:dynamic-spacing=\"false\"/></style:" << tag << ">";
+            return start;
+        };
+        float top = page.marginTopPt, bottom = page.marginBottomPt;
+        if (hasHeader) top = room(page.marginTopPt, page.headerTopPt, headerStyle, "header-style", "fo:margin-bottom");
+        if (hasFooter) bottom = room(page.marginBottomPt, page.footerBottomPt, footerStyle, "footer-style", "fo:margin-top");
+        if (page.HasPage()) props << " fo:margin-top=\"" << Pt(top) << "\" fo:margin-bottom=\"" << Pt(bottom) << "\"";
+        pageLayout_ = "<style:page-layout style:name=\"PL1\"><style:page-layout-properties" + props.str() + "/>"
+                    + headerStyle.str() + footerStyle.str() + "</style:page-layout>\n";
+
+        std::ostringstream xml;
+        xml << "<office:master-styles>\n<style:master-page style:name=\"Standard\" style:page-layout-name=\"PL1\">";
+        if (hasHeader) {
+            xml << "<style:header>" << WriteBlocks(later.header) << "</style:header>";
+            if (doc.firstPageDiffers) xml << "<style:header-first>" << WriteBlocks(first.header) << "</style:header-first>";
+        }
+        if (hasFooter) {
+            xml << "<style:footer>" << WriteBlocks(later.footer) << "</style:footer>";
+            if (doc.firstPageDiffers) xml << "<style:footer-first>" << WriteBlocks(first.footer) << "</style:footer-first>";
+        }
+        xml << "</style:master-page>\n</office:master-styles>\n";
+        return xml.str();
+    }
+
+    std::string BuildStylesXml(const std::string& masterStyles) const {
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
             << "<office:document-styles "
@@ -2169,7 +2266,11 @@ private:
             << "xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\" "
             << "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
             << "xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\" "
-            << "office:version=\"1.2\">\n<office:styles>\n";
+            << "xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" "
+            << "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
+            << "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
+            << "xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
+            << "office:version=\"1.3\">\n<office:styles>\n";
         if (doc_->defaultTabStopPt > 0.0f) {
             xml << "<style:default-style style:family=\"paragraph\"><style:paragraph-properties "
                    "style:tab-stop-distance=\"" << Pt(doc_->defaultTabStopPt) << "\"/></style:default-style>\n";
@@ -2189,7 +2290,12 @@ private:
                 << "<style:text-properties fo:font-weight=\"bold\" fo:font-size=\""
                 << headingSizesPt[level - 1] << "pt\"/></style:style>\n";
         }
-        xml << "</office:styles>\n</office:document-styles>\n";
+        xml << "</office:styles>\n";
+        if (!masterStyles.empty()) {
+            xml << "<office:automatic-styles>\n" << AutomaticStylesXml() << pageLayout_
+                << "</office:automatic-styles>\n" << masterStyles;
+        }
+        xml << "</office:document-styles>\n";
         return xml.str();
     }
 
@@ -2199,7 +2305,7 @@ private:
             << "<office:document-meta "
             << "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
             << "xmlns:meta=\"urn:oasis:names:tc:opendocument:xmlns:meta:1.0\" "
-            << "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" office:version=\"1.2\">\n"
+            << "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" office:version=\"1.3\">\n"
             << "<office:meta>\n"
             << "<meta:generator>UltraCanvas</meta:generator>\n";
         if (!doc_->metadata.title.empty()) {
@@ -2221,7 +2327,7 @@ private:
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
             << "<manifest:manifest "
             << "xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" "
-            << "manifest:version=\"1.2\">\n"
+            << "manifest:version=\"1.3\">\n"
             << "<manifest:file-entry manifest:full-path=\"/\" "
                "manifest:media-type=\"application/vnd.oasis.opendocument.text\"/>\n"
             << "<manifest:file-entry manifest:full-path=\"content.xml\" "

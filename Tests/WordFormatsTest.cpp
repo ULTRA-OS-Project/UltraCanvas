@@ -141,6 +141,40 @@ static void CheckTablePlacement(const UCRichDocument& d, const std::string& labe
     CHECK_MSG(wide && Near(wide->tableWidthPt, 432.0f), label + ": 6in table");
 }
 
+// The page: US Letter with its own margins, a header with page number and
+// count fields, a footer, and another header and footer on the first page.
+// ODF's body top is the header's start plus its minimum height; Word's is
+// where LibreOffice put it on export, below the header's actual text.
+static void CheckPageLayout(const UCRichDocument& d, const std::string& label) {
+    const RichPageSetup& page = d.page;
+    CHECK_MSG(Near(page.widthPt, 612.0f) && Near(page.heightPt, 792.0f), label + ": page size");
+    CHECK_MSG(Near(page.marginLeftPt, 86.4f) && Near(page.marginRightPt, 64.8f), label + ": side margins");
+    CHECK_MSG(page.marginTopPt > 55.0f && page.marginTopPt < 74.0f && Near(page.headerTopPt, 36.0f),
+              label + ": top margin and header distance");
+    CHECK_MSG(page.marginBottomPt > 48.0f && page.marginBottomPt < 60.0f && Near(page.footerBottomPt, 28.8f),
+              label + ": bottom margin and footer distance");
+    CHECK_MSG(d.firstPageDiffers, label + ": first page differs");
+    auto text = [](const std::vector<RichDocBlock>& blocks) {
+        std::string all;
+        for (const RichDocBlock& b : blocks) all += UCRichDocument::ConcatenateRunText(b.runs);
+        return all;
+    };
+    CHECK_MSG(text(d.firstPageFurniture.header) == "First page header", label + ": first page header");
+    CHECK_MSG(text(d.firstPageFurniture.footer) == "First page footer", label + ": first page footer");
+    CHECK_MSG(text(d.pageFurniture.footer) == "Fixture footer", label + ": footer");
+    bool pageNumber = false, pageCount = false;
+    for (const RichDocBlock& b : d.pageFurniture.header) {
+        for (const RichTextRun& run : b.runs) {
+            pageNumber = pageNumber || run.field == RichTextRun::Field::PageNumber;
+            pageCount = pageCount || run.field == RichTextRun::Field::PageCount;
+        }
+    }
+    CHECK_MSG(text(d.pageFurniture.header).rfind("Fixture header page ", 0) == 0 && pageNumber && pageCount,
+              label + ": header with page fields");
+    CHECK_MSG(&d.FurnitureForPage(0) == &d.firstPageFurniture && &d.FurnitureForPage(1) == &d.pageFurniture,
+              label + ": furniture per page");
+}
+
 // Highlight, fixed line heights and paragraph frames.
 static void CheckHighlightAndFrames(const UCRichDocument& d, const std::string& label) {
     const RichDocBlock* marked = FindBlock(d, "marked");
@@ -313,6 +347,7 @@ static void CheckFormattingFixture(const UCRichDocument& d, const std::string& l
     CheckListLabels(d, label);
     CheckHighlightAndFrames(d, label);
     CheckTablePlacement(d, label);
+    CheckPageLayout(d, label);
 }
 
 static UCRichDocument BuildSampleDocument() {
@@ -539,6 +574,16 @@ int main(int argc, char** argv) {
                 CHECK_MSG(table && table->tableColumnWidths.size() == 2
                           && table->tableColumnWidths[1] > 2.9f * table->tableColumnWidths[0], label);
                 CheckGeometry(back, label);
+                CheckPageLayout(back, label);
+                // What an empty paragraph is measured with survives too.
+                size_t sized = 0;
+                for (size_t b = 0; b < imported.blocks.size(); ++b) {
+                    if (imported.blocks[b].type == RichBlockType::Paragraph
+                        && imported.blocks[b].paragraphFontSizePt > 0.0f) { sized = b; break; }
+                }
+                CHECK_MSG(sized > 0 && sized < back.blocks.size()
+                          && Near(back.blocks[sized].paragraphFontSizePt, imported.blocks[sized].paragraphFontSizePt),
+                          label + ": paragraph font size");
                 if (std::string(ext) == ".odt") {
                     size_t index = 0;
                     CHECK_MSG(FindBlock(back, "step three", &index)
