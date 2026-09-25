@@ -61877,14 +61877,25 @@ empty and so drops every entry. The parser uses `std::find` on the vector.
 This is not hypothetical: the first version did exactly that, collected
 nothing, and the tests built on `Supports()` passed anyway.
 
-**Discovery is the one part that is not uniform.** `_uscan._tcp` is browsed
-through UltraNet's mDNS plugin, which is complete on Linux (Avahi) and macOS
-(Bonjour) and a stub on Windows — a raw `DnsQuery_W` for PTR records that
-returns no host, port or TXT. So on Windows a scanner is named outright,
-through `ULTRACANVAS_ESCL_SCANNERS`, which is also how any scanner on another
-subnet is reached, since mDNS does not cross routers. The gap is recorded in
-`Gaps.md`; closing it would serve IPP driverless printing too, which needs the
-same discovery.
+**Discovery is uniform now, but it was not free.** `_uscan._tcp` is browsed
+through UltraNet's mDNS plugin, which is Avahi on Linux, Bonjour on macOS and
+Win32 DNS-SD on Windows. The Windows branch was a stub until this release — a raw
+`DnsQuery_W` for PTR records, which names the services and cannot say where
+any of them is. That is worth stating precisely, because it looked like
+working discovery: entries came back, and every one was dropped by the
+consumer for having no host.
+
+Browsing is only half of DNS-SD. A browse answers *what is out there*; a
+separate resolve answers *where*, and only the second one produces something
+a caller can connect to. Avahi and Bonjour make that a callback pair and hand
+back the instance, type, domain, host, port and TXT already parsed. Win32
+gives `DnsServiceBrowse` and `DnsServiceResolve` and hands back one escaped
+wire name, so the backend does the parsing: see
+`Plugins/UltraNet/mdns/MdnsNames.h`, which holds that arithmetic with no
+platform in it so `Tests/MdnsNamesTest` can drive it anywhere.
+
+Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
+reach one on another subnet, since mDNS does not cross routers.
 
 ---
 
@@ -62028,7 +62039,8 @@ backend now exist; the other four protocols do not.
 | TWAIN (Windows) | ❌ |
 | ICA (macOS) | ❌ |
 | **eSCL / AirScan driverless network scanning** | ✅ one backend for Linux, macOS and Windows, because eSCL is plain HTTP and XML. Reads `ScannerCapabilities`, posts a `ScanJobs` document, collects pages from `NextDocument` and cancels with `DELETE`. Lives in `core/`, not under `OS/`, and sits alongside SANE rather than replacing it. |
-| eSCL: discovery on Windows | ❌ the scanning works there, but `Plugins/UltraNet/mdns`'s Windows browse is a stub — a raw `DnsQuery_W` for PTR records that returns no host, port or TXT. Until that is finished, a Windows scanner is reached by naming it in `ULTRACANVAS_ESCL_SCANNERS`. Finishing it (`DnsServiceBrowse`) would also serve IPP driverless printing, which needs the same discovery. |
+| eSCL: discovery on Windows | ✅ `Plugins/UltraNet/mdns` browses with `DnsServiceBrowse` and resolves each instance with `DnsServiceResolve`, so a Windows browse now yields host, port and TXT like the Avahi and Bonjour backends. The entry points are bound at run time, so on Windows older than 10 1703 the module still loads and falls back to the PTR-only query — names without addresses, which a caller skips. **Not yet run on Windows**: the name arithmetic is tested (`Tests/MdnsNamesTest`) and the translation unit compiles and links against `dnsapi`, but nobody has browsed a real network with it. Naming a scanner in `ULTRACANVAS_ESCL_SCANNERS` remains the way to reach one on another subnet. |
+| mDNS: `dn` differs between backends | ❌ Avahi and the Windows backend put the *unescaped* instance in `dn`; Bonjour passes through the escaped `fullname` it is given. Only cosmetic today — eSCL uses `dn` as a display fallback — but two platforms disagreeing about the same field will eventually catch someone. `Mdns::SplitInstanceName` is what macOS would use to match. |
 | eSCL: PDF pages | ❌ JPEG and PNG are decoded; a scanner asked for `application/pdf` would need the PDF plugin to rasterise it. The backend asks for an image format it can decode rather than accepting one it cannot. |
 | eSCL: HTTPS with a self-signed certificate | ❌ `_uscans._tcp` is browsed and an `https://` base URL is built, but scanners generally present self-signed certificates and nothing yet opts into accepting them. |
 | Multi-page ADF, capability detection | ✅ |
