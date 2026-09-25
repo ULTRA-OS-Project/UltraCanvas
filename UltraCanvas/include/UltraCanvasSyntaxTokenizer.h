@@ -6,6 +6,7 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasSyntaxLineState.h"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -136,7 +137,14 @@ namespace UltraCanvas {
 
         // Tokenization
         std::vector<Token> Tokenize(const std::string &text) const;
+        // One line on its own: a line inside a block comment that neither
+        // opens nor closes it on this line is not seen as comment.
         std::vector<Token> TokenizeLine(const std::string &line, int lineNumber = 0) const;
+        // One line of a sequence: `state` is what the line above left open
+        // (default-constructed for the first line) and is updated to what
+        // this line leaves open. Pass state.AtLineBreak() to the next line
+        // when a real line break separates them.
+        std::vector<Token> TokenizeLine(const std::string &line, SyntaxLineState &state) const;
 
     private:
         // Tokenization helpers
@@ -171,7 +179,9 @@ namespace UltraCanvas {
 
         // CSS: a line classified by where it sits - selector, property,
         // value or at-rule prelude - not by keyword lists.
-        std::vector<Token> TokenizeCssLine(const std::string &line) const;
+        // `guess`: no state from the line above, so where the line starts
+        // (inside a block, a comment) is inferred from the line itself.
+        std::vector<Token> TokenizeCssLine(const std::string &line, SyntaxLineState &state, bool guess) const;
 
         bool IsWordCharacter(char c) const;
 
@@ -2219,7 +2229,8 @@ namespace UltraCanvas {
 // ===== CSS LANGUAGE RULES =====
     // CSS words are classified by position, not by lists: a name before ':' in
     // a block is a property, a name in a selector is a tag, and so on. See
-    // SyntaxTokenizer::TokenizeCssLine.
+    // SyntaxTokenizer::TokenizeCssLine; the position carries across lines in
+    // SyntaxLineState.
     inline SyntaxTokenizationRules CreateCssRules() {
         SyntaxTokenizationRules rules;
         rules.name = "CSS";

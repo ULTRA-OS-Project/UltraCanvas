@@ -31,12 +31,14 @@ namespace UltraCanvas {
 
         if (currentRules->isCss) {
             // Line by line, as the text area highlights it.
+            SyntaxLineState state;
             size_t start = 0;
             while (start <= text.length()) {
                 size_t end = text.find('\n', start);
                 std::string line = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
                 if (!line.empty() && line.back() == '\r') line.pop_back();
-                auto lineTokens = TokenizeCssLine(line);
+                auto lineTokens = TokenizeCssLine(line, state, false);
+                state = state.AtLineBreak();
                 tokens.insert(tokens.end(), lineTokens.begin(), lineTokens.end());
                 if (end == std::string::npos) break;
                 tokens.push_back({TokenType::Newline, "\n", 1});
@@ -220,8 +222,34 @@ namespace UltraCanvas {
         return tokens;
     }
 
-// Tokenize a single line
-    std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeLine(const std::string& line, int lineNumber) const {
+// End of a string whose opening quote is just before `from`: past the
+// closing quote, or the line end with `closed` false.
+    static size_t FindStringEnd(const std::string& line, size_t from, char delimiter,
+                                bool escapes, bool& closed) {
+        size_t i = from;
+        while (i < line.length()) {
+            if (escapes && line[i] == '\\' && i + 1 < line.length()) { i += 2; continue; }
+            if (line[i] == delimiter) { closed = true; return i + 1; }
+            i++;
+        }
+        closed = false;
+        return line.length();
+    }
+
+// Tokenize a single line with no knowledge of the lines around it
+    std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeLine(const std::string& line, int /*lineNumber*/) const {
+        if (!currentRules || line.empty()) {
+            return {};
+        }
+        SyntaxLineState state;
+        if (currentRules->isCss) {
+            return TokenizeCssLine(line, state, true);
+        }
+        return TokenizeLine(line, state);
+    }
+
+// Tokenize one line of a sequence, continuing what the line above left open
+    std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeLine(const std::string& line, SyntaxLineState& state) const {
         std::vector<Token> tokens;
 
         if (!currentRules || line.empty()) {
@@ -229,12 +257,39 @@ namespace UltraCanvas {
         }
 
         if (currentRules->isCss) {
-            return TokenizeCssLine(line);
+            return TokenizeCssLine(line, state, false);
         }
 
         size_t position = 0;
         int currentColumn = 0;
         std::string whitespacePrefix = "";
+
+        // What the line above left open: a block comment, or - in the next
+        // segment of a line split for length - a line comment or a string.
+        if (state.blockComment >= 0 &&
+            state.blockComment < static_cast<int>(currentRules->multiLineComments.size())) {
+            const std::string& endDelim = currentRules->multiLineComments[state.blockComment].second;
+            size_t endPos = line.find(endDelim);
+            if (endPos == std::string::npos) {
+                tokens.push_back({TokenType::Comment, line, line.length()});
+                return tokens;
+            }
+            position = endPos + endDelim.length();
+            tokens.push_back({TokenType::Comment, line.substr(0, position), position});
+        }
+        state.blockComment = -1;
+        if (state.lineComment) {
+            tokens.push_back({TokenType::Comment, line, line.length()});
+            return tokens;
+        }
+        if (state.openString) {
+            bool closed = false;
+            size_t end = FindStringEnd(line, 0, state.openString, currentRules->hasEscapeSequences, closed);
+            tokens.push_back({TokenType::String, line.substr(0, end), end});
+            if (!closed) return tokens;
+            position = end;
+            state.openString = 0;
+        }
 
         while (position < line.length()) {
             // Skip whitespace
@@ -267,12 +322,14 @@ namespace UltraCanvas {
                     token.length = line.length() - position;
                     token.text = line.substr(position);
                     tokens.push_back(token);
+                    state.lineComment = true;
                     return tokens; // Rest of line is comment
                 }
             }
 
             // Try to match multi-line comment starts
-            for (const auto& [startDelim, endDelim] : currentRules->multiLineComments) {
+            for (size_t k = 0; k < currentRules->multiLineComments.size(); ++k) {
+                const auto& [startDelim, endDelim] = currentRules->multiLineComments[k];
                 if (line.substr(position, startDelim.length()) == startDelim) {
                     // Find the end delimiter on the same line
                     size_t endPos = line.find(endDelim, position + startDelim.length());
@@ -292,6 +349,7 @@ namespace UltraCanvas {
                         token.length = line.length() - position;
                         token.text = line.substr(position);
                         tokens.push_back(token);
+                        state.blockComment = static_cast<int8_t>(k);
                         return tokens;
                     }
                 }
@@ -301,17 +359,21 @@ namespace UltraCanvas {
 
             // Try to match strings
             if (IsStringDelimiter(line[position])) {
-                auto stringResult = ParseStringInLine(line, position, line[position]);
-                if (stringResult.first > position) {
-                    token.type = TokenType::String;
-                    token.length = stringResult.first - position;
-                    token.text = line.substr(position, token.length);
-                    tokens.push_back(token);
-
-                    currentColumn += token.length;
-                    position = stringResult.first;
-                    continue;
+                bool closed = false;
+                size_t end = FindStringEnd(line, position + 1, line[position],
+                                           currentRules->hasEscapeSequences, closed);
+                token.type = TokenType::String;
+                token.length = end - position;
+                token.text = line.substr(position, token.length);
+                tokens.push_back(token);
+                if (!closed) {
+                    state.openString = line[position];
+                    return tokens;
                 }
+
+                currentColumn += token.length;
+                position = end;
+                continue;
             }
 
             // Try to match character literals
@@ -874,9 +936,10 @@ namespace UltraCanvas {
 //   at-rule       @media -> Preprocessor, (feature: value) as a declaration
 // Strings and url(...) are String, /* */ is Comment.
 //
-// The text area highlights one line at a time with no state from the line
-// above, so a line that does not open a block itself starts from a guess
-// (GuessCssLineContext). Minified CSS - one long line - is scanned exactly.
+// The text area highlights one line at a time and hands each line the
+// SyntaxLineState the line above ended in: the context, the open blocks, an
+// open comment or string. Only TokenizeLine(line) without a state starts a
+// line from a guess (GuessCssLineContext).
     namespace {
         enum class CssContext { Selector, Declaration, AtPrelude };
 
@@ -1003,7 +1066,8 @@ namespace UltraCanvas {
         }
     }
 
-    std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeCssLine(const std::string& line) const {
+    std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeCssLine(const std::string& line,
+                                                                      SyntaxLineState& state, bool guess) const {
         std::vector<Token> tokens;
         auto emit = [&](TokenType type, size_t from, size_t to) {
             if (to > from) tokens.push_back({type, line.substr(from, to - from), to - from});
@@ -1011,30 +1075,77 @@ namespace UltraCanvas {
 
         size_t pos = 0;
 
-        // The tail of a comment opened on an earlier line: "... */" with no
-        // "/*" before it, or a " * text" line of a comment block.
-        size_t close = line.find("*/");
-        size_t open = line.find("/*");
-        size_t quote = line.find_first_of("\"'");
-        if (close != std::string::npos && (open == std::string::npos || open > close) &&
-            (quote == std::string::npos || quote > close)) {
-            emit(TokenType::Comment, 0, close + 2);
-            pos = close + 2;
+        if (!guess) {
+            // Continue what the line above left open.
+            if (state.blockComment >= 0) {
+                size_t end = line.find("*/");
+                if (end == std::string::npos) {
+                    emit(TokenType::Comment, 0, line.size());
+                    return tokens;
+                }
+                pos = end + 2;
+                emit(TokenType::Comment, 0, pos);
+                state.blockComment = -1;
+            } else if (state.openString) {
+                bool closed = false;
+                size_t end = FindStringEnd(line, 0, state.openString, true, closed);
+                emit(TokenType::String, 0, end);
+                if (!closed) return tokens;
+                pos = end;
+                state.openString = 0;
+            }
         } else {
-            size_t first = line.find_first_not_of(" \t");
-            if (first != std::string::npos && line[first] == '*' &&
-                (first + 1 == line.size() || line[first + 1] == ' ' || line[first + 1] == '\t') &&
-                line.find('{') == std::string::npos) {
-                emit(TokenType::Comment, 0, line.size());
-                return tokens;
+            // The tail of a comment opened on an earlier line: "... */" with no
+            // "/*" before it, or a " * text" line of a comment block.
+            size_t close = line.find("*/");
+            size_t open = line.find("/*");
+            size_t quote = line.find_first_of("\"'");
+            if (close != std::string::npos && (open == std::string::npos || open > close) &&
+                (quote == std::string::npos || quote > close)) {
+                emit(TokenType::Comment, 0, close + 2);
+                pos = close + 2;
+            } else {
+                size_t first = line.find_first_not_of(" \t");
+                if (first != std::string::npos && line[first] == '*' &&
+                    (first + 1 == line.size() || line[first + 1] == ' ' || line[first + 1] == '\t') &&
+                    line.find('{') == std::string::npos) {
+                    emit(TokenType::Comment, 0, line.size());
+                    return tokens;
+                }
             }
         }
 
-        CssContext ctx = GuessCssLineContext(line.substr(pos));
-        CssContext preludeParent = CssContext::Selector;
-        std::string atName;
+        CssContext ctx;
+        CssContext preludeParent;
+        bool atHoldsDeclarations;
         std::vector<CssContext> stack;
-        bool expectProperty = (ctx == CssContext::Declaration);
+        bool expectProperty;
+        if (guess) {
+            ctx = GuessCssLineContext(line.substr(pos));
+            preludeParent = CssContext::Selector;
+            atHoldsDeclarations = false;
+            expectProperty = (ctx == CssContext::Declaration);
+        } else {
+            ctx = static_cast<CssContext>(state.cssContext);
+            preludeParent = static_cast<CssContext>(state.cssPreludeParent);
+            atHoldsDeclarations = state.cssAtHoldsDeclarations;
+            expectProperty = state.cssExpectProperty;
+            for (int d = 0; d < state.cssDepth; ++d) {
+                bool decl = d < 32 && (state.cssStack >> d) & 1u;
+                stack.push_back(decl ? CssContext::Declaration : CssContext::Selector);
+            }
+        }
+        // Hand the context at the end of the line to the next one.
+        auto saveState = [&]() {
+            state.cssContext = static_cast<uint8_t>(ctx);
+            state.cssPreludeParent = static_cast<uint8_t>(preludeParent);
+            state.cssAtHoldsDeclarations = atHoldsDeclarations;
+            state.cssExpectProperty = expectProperty;
+            state.cssDepth = static_cast<uint8_t>(std::min<size_t>(stack.size(), 255));
+            state.cssStack = 0;
+            for (size_t d = 0; d < stack.size() && d < 32; ++d)
+                if (stack[d] == CssContext::Declaration) state.cssStack |= (1u << d);
+        };
         int attrDepth = 0;           // inside [attr=value] of a selector
         bool attrAfterOperator = false;
 
@@ -1052,18 +1163,21 @@ namespace UltraCanvas {
                 size_t end = line.find("*/", pos + 2);
                 pos = (end == std::string::npos) ? line.size() : end + 2;
                 emit(TokenType::Comment, start, pos);
+                if (end == std::string::npos) state.blockComment = 0;
                 continue;
             }
 
             if (c == '"' || c == '\'') {
-                pos = ScanCssString(line, pos);
+                bool closed = false;
+                pos = FindStringEnd(line, pos + 1, c, true, closed);
                 emit(TokenType::String, start, pos);
+                if (!closed) state.openString = c;
                 continue;
             }
 
             if (c == '@' && IsCssNameStartAt(line, pos + 1)) {
                 pos = ScanCssName(line, pos + 1);
-                atName = line.substr(start + 1, pos - start - 1);
+                atHoldsDeclarations = CssAtRuleHoldsDeclarations(line.substr(start + 1, pos - start - 1));
                 emit(TokenType::Preprocessor, start, pos);
                 if (ctx != CssContext::AtPrelude) preludeParent = ctx;
                 ctx = CssContext::AtPrelude;
@@ -1074,7 +1188,7 @@ namespace UltraCanvas {
                 emit(TokenType::Punctuation, start, ++pos);
                 if (ctx == CssContext::AtPrelude) {
                     stack.push_back(preludeParent);
-                    ctx = CssAtRuleHoldsDeclarations(atName) ? CssContext::Declaration : CssContext::Selector;
+                    ctx = atHoldsDeclarations ? CssContext::Declaration : CssContext::Selector;
                 } else {
                     stack.push_back(ctx);
                     ctx = CssContext::Declaration;
@@ -1151,7 +1265,7 @@ namespace UltraCanvas {
                 if (IsCssNameStartAt(line, pos)) {
                     pos = ScanCssName(line, pos);
                     // No selector word is followed by '(' - this is a value
-                    // (a multi-line value guessed as a selector).
+                    // (a value on a line guessed as a selector).
                     bool call = pos < line.size() && line[pos] == '(';
                     emit(call ? TokenType::Function : TokenType::Keyword, start, pos);
                     continue;
@@ -1235,6 +1349,7 @@ namespace UltraCanvas {
             emit(TokenType::Punctuation, start, pos);
         }
 
+        saveState();
         return tokens;
     }
 

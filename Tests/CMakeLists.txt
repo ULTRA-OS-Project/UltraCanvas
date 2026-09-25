@@ -2961,6 +2961,52 @@ endif()
 
 message(STATUS "")
 
+# ===== SYNTAX LINE STATE TEST =====
+# Highlighting that carries state from line to line: block comments, strings
+# and comments cut at a segment split, CSS rule context.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SyntaxLineStateTest...")
+    add_executable(SyntaxLineStateTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SyntaxLineStateTest.cpp
+    )
+    target_include_directories(SyntaxLineStateTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SyntaxLineStateTest PRIVATE cxx_std_20)
+    target_link_libraries(SyntaxLineStateTest PRIVATE UltraCanvas)
+    set_target_properties(SyntaxLineStateTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SyntaxLineStateTest COMMAND SyntaxLineStateTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SyntaxLineStateTest")
+else()
+    message(STATUS "  SyntaxLineStateTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== TEXTAREA SYNTAX STATE TEST =====
+# The same in a real text area, read back from the window: an edit that opens
+# or closes a block comment recolours the lines below it. Skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextAreaSyntaxStateTest...")
+    add_executable(TextAreaSyntaxStateTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextAreaSyntaxStateTest.cpp
+    )
+    target_include_directories(TextAreaSyntaxStateTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextAreaSyntaxStateTest PRIVATE cxx_std_20)
+    target_link_libraries(TextAreaSyntaxStateTest PRIVATE UltraCanvas)
+    set_target_properties(TextAreaSyntaxStateTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextAreaSyntaxStateTest COMMAND TextAreaSyntaxStateTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextAreaSyntaxStateTest")
+else()
+    message(STATUS "  TextAreaSyntaxStateTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== FILER FOLDER PREVIEW TEST =====
 # Display > Folder previews: the geometry of the cards that peek out of a
 # folder icon (UltraCanvasFilerWidget::FolderPreviewCardRects) - at most two,
