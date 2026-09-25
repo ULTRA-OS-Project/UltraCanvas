@@ -339,9 +339,16 @@ namespace {
                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         parts.page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
         if (scrolls) {
-            // Vertically only: the vertical bar narrows the viewport, which
-            // would otherwise fabricate a horizontal overflow of its own width.
+            // A scroll view has to opt in - containers do not scroll unless
+            // asked (autoShowScrollbars defaults off since 0.9.x). Without
+            // this the Thumbnails and Detail view pages were cut off at the
+            // window's foot with no scrollbar and no wheel scrolling, so
+            // every kind below Vector graphics (3D, PDF, Text, ...) could
+            // not be reached. Vertically only: the vertical bar narrows the
+            // viewport, which would otherwise fabricate a horizontal overflow
+            // of its own width.
             ContainerStyle cs;
+            cs.autoShowScrollbars = true;
             cs.autoShowHorizontalScrollbar = false;
             parts.page->SetContainerStyle(cs);
         }

@@ -116,6 +116,11 @@ namespace UltraCanvas {
         bool SetLanguageByFilename(const std::string &filename);
 
         std::vector<std::string> GetSupportedLanguages() const;
+        // Every registered language with the file extensions it claims, as
+        // registered (case included). What a file manager needs to know which
+        // extensions are source text - the one list of them in the framework.
+        std::vector<std::pair<std::string, std::vector<std::string>>>
+        GetLanguageExtensions() const;
         std::string GetCurrentProgrammingLanguage() const;
 
         // Style management
@@ -369,6 +374,15 @@ namespace UltraCanvas {
         for (const auto &[name, rules]: languagesRules) {
             result.push_back(name);
         }
+        return result;
+    }
+
+    inline std::vector<std::pair<std::string, std::vector<std::string>>>
+    SyntaxTokenizer::GetLanguageExtensions() const {
+        std::vector<std::pair<std::string, std::vector<std::string>>> result;
+        result.reserve(languagesRules.size());
+        for (const auto &[name, rules]: languagesRules)
+            result.emplace_back(rules.name.empty() ? name : rules.name, rules.fileExtensions);
         return result;
     }
 

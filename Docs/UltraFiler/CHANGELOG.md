@@ -1,3 +1,18 @@
+#### 2026-09-24 *1.52.0*
+- **Every source-text type shows its miniature page, and has its own switch.**
+  Swift, SQL, Rust, Ruby, PHP, Lua, Kotlin, Java, Go, C#, CSS, Pascal and the
+  assembler files (asm, arm, 68k, ...) drew a blank sheet on their thumbnail
+  tile, while cpp, py, js and yaml showed the first lines of their text. The
+  file display only knew 19 text types. It now takes every extension the
+  syntax highlighter knows, so all of them show their text. **Settings >
+  Display > Thumbnails > Text** lists each one as a checkbox, so single types
+  can be switched back to the plain icon.
+  - **The Thumbnails and Detail view settings pages could not be scrolled.**
+    Since containers stopped scrolling unless asked (framework 0.9.x, the same
+    day as 1.45.0), those two pages were cut off at the window's foot with no
+    scrollbar and no wheel scrolling. Every kind below Vector graphics - 3D,
+    PDF, Text, Docs, Spreadsheets, Videos, Audio, Fonts - could not be reached.
+    The pages opt in to scrolling again.
 #### 2026-09-24 *1.51.0*
 - **Delete moves to the Trash now, and asks which it should be.** The delete
   confirmation offers **Move to the Trash** and **Delete permanently** as two
