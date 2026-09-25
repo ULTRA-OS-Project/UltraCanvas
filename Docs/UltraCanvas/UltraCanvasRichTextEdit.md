@@ -437,6 +437,12 @@ out:
   as a minimum (`lineHeightAtLeast`). A paragraph's frame and fill are drawn
   3 pt outside its text, and that room is added to the space around it;
   consecutive paragraphs with the same frame form one box.
+- **Table size and cells:** a document table takes its own width
+  (`tableWidthPt`, or `tableWidthPercent` of the column, never more than the
+  column) and place (`tableAlign`, `tableIndentPt`). A cell's text sits inside
+  its `padding*Pt` (default 4 px at the sides, 2 px above) and at the cell's
+  top, middle or bottom (`verticalAlign`); drawing, caret and clicks all use
+  the same text origin.
 - **Table frames:** a table read from a document
   (`RichDocBlock::tableBordersFromDocument`) is drawn with its cells' own
   borders (`RichTableCell::borderTop` … `borderRight`, width and colour) and
@@ -446,8 +452,9 @@ out:
   `style.tableBorderColor` grid. Rows and columns inserted into a framed table
   copy their neighbour's frame and fill.
 
-Lengths are points, drawn at one unit per point, the same scale as run font
-sizes, so indents and tab stops stay in proportion to the text. Enter gives the
+Lengths are points and are drawn at 96/72 pixels per point - the scale run
+font sizes get from Pango at the 96 DPI every context is pinned to - so
+indents, tab stops, spacing and table widths stay in proportion to the text. Enter gives the
 new paragraph the geometry of the one it was split from.
 
 ## Read-only rendering
@@ -471,9 +478,9 @@ Honest limits of this first version — none of them silently misbehave:
   change with it.
 - **Border line styles draw solid.** A double, dotted or dashed cell border
   from a document is drawn as a solid line of its width.
-- **Tables always span the text column.** A document table's own width and
-  position are not read yet, so a narrow table is drawn full width, with
-  its column proportions kept.
+- **The text column is the element's width, not a page's.** A document table
+  or tab stop sized for a 16 cm page column sits in whatever width the element
+  has; there is no page model yet.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the

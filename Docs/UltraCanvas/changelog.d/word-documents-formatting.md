@@ -100,3 +100,19 @@
   sender line shows.
 - **DOCX writer: run properties in schema order.** `w:u` and `w:vertAlign`
   came before `w:color` and `w:sz`, which Word's schema does not allow.
+- **Table width and position, cell padding and vertical alignment.** Tables
+  carry their width (points or percent), alignment and indent
+  (`RichDocBlock::tableWidthPt`, `tableWidthPercent`, `tableAlign`,
+  `tableIndentPt`); cells carry padding and vertical alignment
+  (`RichTableCell::padding*Pt`, `verticalAlign`). The ODT, DOCX and DOC
+  readers fill them, `UltraCanvasRichTextEdit` lays them out, and both writers
+  save them; LibreOffice reads them back identically. A letterhead's address
+  table and its rule are as narrow as in the original.
+- **`UltraCanvasRichTextEdit`: document lengths are scaled like the text.**
+  Font sizes reach Pango as points at 96 DPI, but indents, tab stops, spacing,
+  line heights, border widths and table sizes were drawn at one pixel per
+  point, a quarter too small beside the text. They now use the same 96/72
+  scale.
+- **`UltraCanvasRichTextEdit`: the caret and clicks in a table cell line up
+  with its text.** Text was drawn 4 px right and 2 px down from the cell's
+  corner, but the caret and hit testing used the corner itself.

@@ -267,6 +267,13 @@ private:
     // table-column style name -> column width in points
     std::map<std::string, float> columnWidths_;
     std::map<std::string, RichTableCell> cellStyles_;          // table-cell style -> borders, fill
+    struct TablePlacement {
+        float widthPt = 0.0f;
+        float widthPercent = 0.0f;
+        RichTextAlign align = RichTextAlign::Left;
+        float indentPt = 0.0f;
+    };
+    std::map<std::string, TablePlacement> tablePlacements_;    // table style -> width, position
     std::vector<std::string> columnDefaultCellStyles_;         // of the table being read
     std::map<std::string, std::string> fontFamilies_;          // font-face name -> family
     bool tabsRelativeToIndent_ = true;                         // Writer's default
@@ -343,6 +350,20 @@ private:
         format.borderRight = side("fo:border-right");
         std::string background = Attr(props, "fo:background-color");
         if (!background.empty() && background != "transparent") format.backgroundColor = background;
+        const std::string vertical = Attr(props, "style:vertical-align");
+        format.verticalAlign = vertical == "middle" ? RichVerticalAlign::Middle
+                             : vertical == "bottom" ? RichVerticalAlign::Bottom : RichVerticalAlign::Top;
+        // Padding: one value for all sides, or per side.
+        const char* allPadding = props->Attribute("fo:padding");
+        auto padding = [&](const char* name) {
+            const char* v = props->Attribute(name);
+            if (!v) v = allPadding;
+            return v ? ParseLengthPt(v) : -1.0f;
+        };
+        format.paddingTopPt = padding("fo:padding-top");
+        format.paddingBottomPt = padding("fo:padding-bottom");
+        format.paddingLeftPt = padding("fo:padding-left");
+        format.paddingRightPt = padding("fo:padding-right");
         return format;
     }
 
@@ -512,6 +533,22 @@ private:
                 props.pageBreakBefore = std::string(Attr(pp, "fo:break-before")) == "page";
             }
             std::string name = Attr(style, "style:name");
+            if (auto* tableProps = style->FirstChildElement("style:table-properties")) {
+                // Width (absolute, or relative "50%") and placement. "margins"
+                // means the width follows from the margins; the stated width
+                // and left margin then give the same box.
+                TablePlacement placement;
+                placement.widthPt = ParseLengthPt(Attr(tableProps, "style:width"));
+                const std::string relative = Attr(tableProps, "style:rel-width");
+                if (!relative.empty() && relative.back() == '%') {
+                    TryParseFloat(relative.substr(0, relative.size() - 1), placement.widthPercent);
+                }
+                const std::string align = Attr(tableProps, "table:align");
+                placement.align = align == "center" ? RichTextAlign::Center
+                                : align == "right" ? RichTextAlign::Right : RichTextAlign::Left;
+                placement.indentPt = ParseLengthPt(Attr(tableProps, "fo:margin-left"));
+                if (!name.empty()) tablePlacements_[name] = placement;
+            }
             if (auto* cellProps = style->FirstChildElement("style:table-cell-properties")) {
                 if (!name.empty()) cellStyles_[name] = ReadCellFormat(cellProps);
             }
@@ -1095,6 +1132,13 @@ private:
         // The document says how its cells are framed; a cell with no border
         // style really has no lines (layout tables).
         block.tableBordersFromDocument = true;
+        auto placement = tablePlacements_.find(Attr(table, "table:style-name"));
+        if (placement != tablePlacements_.end()) {
+            block.tableWidthPt = placement->second.widthPt;
+            block.tableWidthPercent = placement->second.widthPercent;
+            block.tableAlign = placement->second.align;
+            block.tableIndentPt = placement->second.indentPt;
+        }
         const std::vector<std::string> savedDefaults = std::move(columnDefaultCellStyles_);
         columnDefaultCellStyles_.clear();
 
@@ -1605,8 +1649,17 @@ private:
             if (!cell.backgroundColor.empty()) {
                 props << " fo:background-color=\"" << EscapeXml(cell.backgroundColor) << "\"";
             }
+            if (cell.verticalAlign != RichVerticalAlign::Top) {
+                props << " style:vertical-align=\""
+                      << (cell.verticalAlign == RichVerticalAlign::Middle ? "middle" : "bottom") << "\"";
+            }
         }
-        props << " fo:padding=\"0.05cm\"";
+        // The cell's own padding where it has one, else a small default.
+        const float paddings[4] = {cell.paddingTopPt, cell.paddingBottomPt, cell.paddingLeftPt, cell.paddingRightPt};
+        const char* paddingNames[4] = {"fo:padding-top", "fo:padding-bottom", "fo:padding-left", "fo:padding-right"};
+        for (int i = 0; i < 4; ++i) {
+            props << " " << paddingNames[i] << "=\"" << (paddings[i] >= 0.0f ? Pt(paddings[i]) : std::string("0.05cm")) << "\"";
+        }
         const std::string key = props.str();
         auto it = cellStyleNames_.find(key);
         if (it != cellStyleNames_.end()) return it->second;
@@ -1676,7 +1729,24 @@ private:
             columnCount = std::max(columnCount, width);
         }
         if (columnCount == 0) return;
-        xml << "<table:table table:name=\"Table" << tableNumber << "\">\n";
+        xml << "<table:table table:name=\"Table" << tableNumber << "\"";
+        // Width and placement, when the table has its own.
+        if (block.tableWidthPt > 0.0f || block.tableWidthPercent > 0.0f) {
+            const std::string name = "Table" + std::to_string(tableNumber);
+            std::ostringstream props;
+            if (block.tableWidthPt > 0.0f) props << " style:width=\"" << Pt(block.tableWidthPt) << "\"";
+            else props << " style:rel-width=\"" << std::to_string(std::lround(block.tableWidthPercent)) << "%\"";
+            const char* align = block.tableAlign == RichTextAlign::Center ? "center"
+                              : block.tableAlign == RichTextAlign::Right ? "right" : "left";
+            props << " table:align=\"" << align << "\"";
+            if (block.tableIndentPt > 0.0f && std::string(align) == "left") {
+                props << " fo:margin-left=\"" << Pt(block.tableIndentPt) << "\"";
+            }
+            columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"table\">"
+                             "<style:table-properties" + props.str() + "/></style:style>\n";
+            xml << " table:style-name=\"" << name << "\"";
+        }
+        xml << ">\n";
         // Known proportions become relative column widths ("1234*"), each in
         // an automatic column style; otherwise the columns share equally.
         const std::vector<float>& widths = block.tableColumnWidths;

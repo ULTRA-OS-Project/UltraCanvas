@@ -10,6 +10,7 @@
 #include "UltraCanvasMathToLatex.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasTextUtils.h"
 
 #include "tinyxml2.h"
 
@@ -912,6 +913,11 @@ private:
         std::map<size_t, OpenMerge> openMerge;
         std::map<std::pair<size_t, size_t>, TableBorders> cellBorders;   // (row, cell) -> w:tcBorders
         std::map<std::pair<size_t, size_t>, RichDocBlock> paragraphFrames; // (row, cell) -> first paragraph
+        // Word's default cell margins (0.19 cm at the sides), then the table's.
+        float tableMargins[4] = {0.0f, 0.0f, 5.4f, 5.4f};
+        if (auto* tblPr = tbl->FirstChildElement("w:tblPr")) {
+            ReadCellMargins(tblPr->FirstChildElement("w:tblCellMar"), tableMargins);
+        }
 
         // Column proportions (twips) from the table grid.
         if (auto* grid = tbl->FirstChildElement("w:tblGrid")) {
@@ -966,6 +972,21 @@ private:
 
                 RichTableCell cell;
                 cell.columnSpan = columnSpan;
+                {
+                    // Word's cell margins: the table's, then the cell's own.
+                    float margins[4] = {tableMargins[0], tableMargins[1], tableMargins[2], tableMargins[3]};
+                    auto* tcPr = tc->FirstChildElement("w:tcPr");
+                    ReadCellMargins(tcPr ? tcPr->FirstChildElement("w:tcMar") : nullptr, margins);
+                    cell.paddingTopPt = margins[0];
+                    cell.paddingBottomPt = margins[1];
+                    cell.paddingLeftPt = margins[2];
+                    cell.paddingRightPt = margins[3];
+                    if (auto* vAlign = tcPr ? tcPr->FirstChildElement("w:vAlign") : nullptr) {
+                        const std::string v = Attr(vAlign, "w:val");
+                        cell.verticalAlign = v == "center" ? RichVerticalAlign::Middle
+                                           : v == "bottom" ? RichVerticalAlign::Bottom : RichVerticalAlign::Top;
+                    }
+                }
                 if (auto* tcPr = tc->FirstChildElement("w:tcPr")) {
                     if (auto* borders = tcPr->FirstChildElement("w:tcBorders")) {
                         TableBorders own;
@@ -1006,6 +1027,7 @@ private:
             block.tableRows.push_back(std::move(row));
         }
         ResolveCellBorders(tbl, block, cellBorders);
+        ReadTablePlacement(tbl, block);
         // A cell holds text, not paragraphs: its paragraph's frame fills in
         // the sides the cell leaves open.
         for (const auto& [position, paragraph] : paragraphFrames) {
@@ -1026,6 +1048,51 @@ private:
     // Each cell's four sides: its own w:tcBorders where stated, else the
     // table's borders (w:tblBorders over the table style's) - the outer ones
     // on the table's edge, insideH/insideV between cells.
+    // Cell margins: w:top/w:bottom/w:left(w:start)/w:right(w:end), twips.
+    static void ReadCellMargins(tinyxml2::XMLElement* margins, float out[4]) {
+        if (!margins) return;
+        const char* names[4] = {"w:top", "w:bottom", "w:left", "w:right"};
+        const char* alternates[4] = {nullptr, nullptr, "w:start", "w:end"};
+        for (int i = 0; i < 4; ++i) {
+            auto* e = margins->FirstChildElement(names[i]);
+            if (!e && alternates[i]) e = margins->FirstChildElement(alternates[i]);
+            if (e && (std::string(Attr(e, "w:type")) == "dxa" || !e->Attribute("w:type"))) {
+                out[i] = static_cast<float>(e->IntAttribute("w:w", 0)) / 20.0f;
+            }
+        }
+    }
+
+    // Width (w:tblW), alignment (w:jc) and indent (w:tblInd) of a table. An
+    // "auto" width is the sum of its grid columns, which is what Word draws.
+    void ReadTablePlacement(tinyxml2::XMLElement* tbl, RichDocBlock& table) const {
+        auto* tblPr = tbl->FirstChildElement("w:tblPr");
+        if (auto* width = tblPr ? tblPr->FirstChildElement("w:tblW") : nullptr) {
+            const std::string type = Attr(width, "w:type");
+            const std::string value = Attr(width, "w:w");
+            if (type == "dxa") {
+                table.tableWidthPt = static_cast<float>(width->IntAttribute("w:w", 0)) / 20.0f;
+            } else if (type == "pct") {
+                float percent = 0.0f;
+                if (!value.empty() && value.back() == '%') TryParseFloat(value.substr(0, value.size() - 1), percent);
+                else percent = static_cast<float>(width->IntAttribute("w:w", 0)) / 50.0f;   // fiftieths
+                table.tableWidthPercent = percent;
+            }
+        }
+        if (table.tableWidthPt <= 0.0f && table.tableWidthPercent <= 0.0f) {
+            float twips = 0.0f;
+            for (float w : table.tableColumnWidths) twips += w;
+            table.tableWidthPt = twips / 20.0f;
+        }
+        if (auto* jc = tblPr ? tblPr->FirstChildElement("w:jc") : nullptr) {
+            const std::string v = Attr(jc, "w:val");
+            table.tableAlign = v == "center" ? RichTextAlign::Center
+                             : (v == "right" || v == "end") ? RichTextAlign::Right : RichTextAlign::Left;
+        }
+        if (auto* indent = tblPr ? tblPr->FirstChildElement("w:tblInd") : nullptr) {
+            table.tableIndentPt = static_cast<float>(indent->IntAttribute("w:w", 0)) / 20.0f;
+        }
+    }
+
     void ResolveCellBorders(tinyxml2::XMLElement* tbl, RichDocBlock& table,
                             const std::map<std::pair<size_t, size_t>, TableBorders>& cellBorders) const {
         table.tableBordersFromDocument = true;
@@ -1420,6 +1487,23 @@ private:
             xml << "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\""
                 << EscapeXml(cell.backgroundColor.substr(1)) << "\"/>";
         }
+        // Then w:tcMar and w:vAlign, still in CT_TcPr order.
+        const float paddings[4] = {cell.paddingTopPt, cell.paddingLeftPt, cell.paddingBottomPt, cell.paddingRightPt};
+        const char* names[4] = {"top", "left", "bottom", "right"};
+        bool anyPadding = false;
+        for (float p : paddings) anyPadding = anyPadding || p >= 0.0f;
+        if (anyPadding) {
+            xml << "<w:tcMar>";
+            for (int i = 0; i < 4; ++i) {
+                if (paddings[i] >= 0.0f) {
+                    xml << "<w:" << names[i] << " w:w=\"" << Twips(paddings[i]) << "\" w:type=\"dxa\"/>";
+                }
+            }
+            xml << "</w:tcMar>";
+        }
+        if (cell.verticalAlign != RichVerticalAlign::Top) {
+            xml << "<w:vAlign w:val=\"" << (cell.verticalAlign == RichVerticalAlign::Middle ? "center" : "bottom") << "\"/>";
+        }
     }
 
     static const char* JustificationFor(RichTextAlign align) {
@@ -1443,20 +1527,33 @@ private:
         // then has no borders of its own. Otherwise the usual thin grid.
         const char* tableLine = block.tableBordersFromDocument
                 ? "w:val=\"nil\"/>" : "w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>";
-        xml << "<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/>"
-               "<w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders>";
+        // CT_TblPr order: tblStyle, tblW, jc, tblInd, tblBorders.
+        xml << "<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/>";
+        if (block.tableWidthPt > 0.0f) {
+            xml << "<w:tblW w:w=\"" << Twips(block.tableWidthPt) << "\" w:type=\"dxa\"/>";
+        } else if (block.tableWidthPercent > 0.0f) {
+            xml << "<w:tblW w:w=\"" << std::to_string(std::lround(block.tableWidthPercent * 50.0f)) << "\" w:type=\"pct\"/>";
+        } else {
+            xml << "<w:tblW w:w=\"0\" w:type=\"auto\"/>";
+        }
+        if (block.tableAlign == RichTextAlign::Center) xml << "<w:jc w:val=\"center\"/>";
+        else if (block.tableAlign == RichTextAlign::Right) xml << "<w:jc w:val=\"right\"/>";
+        if (block.tableIndentPt > 0.0f) xml << "<w:tblInd w:w=\"" << Twips(block.tableIndentPt) << "\" w:type=\"dxa\"/>";
+        xml << "<w:tblBorders>";
         for (const char* side : {"top", "left", "bottom", "right", "insideH", "insideV"}) {
             xml << "<w:" << side << " " << tableLine;
         }
         xml << "</w:tblBorders></w:tblPr><w:tblGrid>";
-        // Known proportions become twips across a 9000-twip (6.25in) table.
+        // Known proportions become twips across the table's width (9000 twips,
+        // 6.25in, when it has none of its own).
         const std::vector<float>& widths = block.tableColumnWidths;
         float totalWidth = 0.0f;
         for (float w : widths) totalWidth += std::max(0.0f, w);
         const bool widthsKnown = widths.size() == columnCount && totalWidth > 0.0f;
         for (size_t c = 0; c < columnCount; ++c) {
             if (widthsKnown) {
-                const long twips = std::max(1L, std::lround(9000.0f * widths[c] / totalWidth));
+                const float tableTwips = block.tableWidthPt > 0.0f ? block.tableWidthPt * 20.0f : 9000.0f;
+                const long twips = std::max(1L, std::lround(tableTwips * widths[c] / totalWidth));
                 xml << "<w:gridCol w:w=\"" << std::to_string(twips) << "\"/>";
             } else {
                 xml << "<w:gridCol/>";

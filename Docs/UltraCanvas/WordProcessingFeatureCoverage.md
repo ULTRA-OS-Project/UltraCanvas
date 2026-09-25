@@ -87,8 +87,8 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Column widths (relative) | yes | yes | yes | yes | yes | Scaled to the view width (2026-09). |
 | Cell text alignment | yes | yes | yes | yes | yes | From the cell's first paragraph (2026-09). |
 | Cell borders (width, colour per side) and background | yes | yes | yes | yes | yes | 2026-09. ODT cell styles (and a column's default cell style); DOCX table style → `w:tblBorders` → `w:tcBorders`, `w:shd`; DOC `TC80` borders, table borders, `sprmTSetBrc`, cell shading. A borderless document table draws no lines (editable view: faint guides only). Line styles (double, dotted…) draw solid. Tables from Markdown or the editor keep the view's grid. |
-| Cell vertical alignment, padding | no | no | no | no | no | |
-| Table width and position | no | no | no | no | no | |
+| Cell vertical alignment, padding | yes | yes | yes | yes | yes | 2026-09. `RichTableCell::verticalAlign`, `padding*Pt`: ODF `style:vertical-align`, `fo:padding*`; Word `w:vAlign`, `w:tblCellMar`/`w:tcMar` (default 5.4 pt at the sides); DOC cell flags, `sprmTVertAlign`, `sprmTCellPadding(Default)`, half the cell gap. |
+| Table width and position | yes | yes | yes | yes | yes | 2026-09. `tableWidthPt` / `tableWidthPercent`, `tableAlign`, `tableIndentPt`: ODF `style:width`/`style:rel-width`, `table:align`, `fo:margin-left`; Word `w:tblW` (else the grid's total), `w:jc`, `w:tblInd`; DOC cell edges and `sprmTJc`. Never wider than the view's column. |
 | Several paragraphs in a cell | *partial* | *partial* | *partial* | *partial* | yes | Kept as line breaks; lists and headings inside a cell lose their structure. |
 | Nested tables | *partial* | no | *partial* | no | no | Flattened into the outer cell's text. |
 
@@ -143,24 +143,23 @@ Ordered by how many ordinary documents each item fixes, not by how hard it is.
 Done in 2026-09: paragraph geometry (indents, spacing, line spacing and
 fixed line heights), tab stops with the default interval, symbol-font
 mapping, table cell borders and backgrounds, list number formats,
-multi-level labels and document bullets, highlight, and paragraph borders
-and backgrounds.
+multi-level labels and document bullets, highlight, paragraph borders and
+backgrounds, and table width, position, cell padding and vertical alignment.
 
-1. **Table width and position** (a narrow table stays narrow), and cell
-   vertical alignment and padding.
-2. **Page model: size, margins, headers and footers** as page furniture
+1. **Page model: size, margins, headers and footers** as page furniture
    rather than blocks, then pagination in the view (page boxes on a grey
-   desk, like Writer's print layout).
-3. **Positioned frames and floating pictures** (anchor, x/y, wrap). This
-   depends on 2 and is the only way a letterhead can look like the original.
-4. **Footnotes and endnotes** as real notes, **DOCX headers and footers**,
+   desk, like Writer's print layout). Until then the view's text column is
+   its own width, not the page's, so a document table sized for a 16 cm text
+   column sits in a wider one.
+2. **Positioned frames and floating pictures** (anchor, x/y, wrap). This
+   depends on 1 and is the only way a letterhead can look like the original.
+3. **Footnotes and endnotes** as real notes, **DOCX headers and footers**,
    and **DOC merged cells, headers, footers and footnotes** (the text for
    these lies after the main text in the piece table: `ccpFtn`, `ccpHdd`).
-5. Comments, tracked changes, shapes, charts: read-only display first.
+4. Comments, tracked changes, shapes, charts: read-only display first.
 
-Item 1 is self-contained (a model field, three readers, the view and the
-two writers each), and each can be checked against a LibreOffice-generated
-fixture the way `Tests/fixtures/word97-formatting.*` is.
+Each can be checked against a LibreOffice-generated fixture the way
+`Tests/fixtures/word97-formatting.*` is.
 
 ## Testing approach
 

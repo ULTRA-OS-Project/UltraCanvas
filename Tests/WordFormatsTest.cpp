@@ -127,6 +127,20 @@ static void CheckListLabels(const UCRichDocument& d, const std::string& label) {
               label + ": dash bullet");
 }
 
+// The narrow table: 3in wide, centred; a vertically centred, padded cell.
+static void CheckTablePlacement(const UCRichDocument& d, const std::string& label) {
+    const RichDocBlock* narrow = nullptr;
+    const RichTableCell* middle = FindCell(d, "middle cell", &narrow);
+    CHECK_MSG(narrow && Near(narrow->tableWidthPt, 216.0f) && narrow->tableAlign == RichTextAlign::Center,
+              label + ": narrow centred table");
+    CHECK_MSG(middle && middle->verticalAlign == RichVerticalAlign::Middle, label + ": vertically centred cell");
+    CHECK_MSG(middle && Near(middle->paddingTopPt, 7.2f) && Near(middle->paddingLeftPt, 7.2f)
+              && Near(middle->paddingBottomPt, 7.2f) && Near(middle->paddingRightPt, 7.2f), label + ": cell padding");
+    const RichDocBlock* wide = nullptr;
+    FindCell(d, "Date", &wide);
+    CHECK_MSG(wide && Near(wide->tableWidthPt, 432.0f), label + ": 6in table");
+}
+
 // Highlight, fixed line heights and paragraph frames.
 static void CheckHighlightAndFrames(const UCRichDocument& d, const std::string& label) {
     const RichDocBlock* marked = FindBlock(d, "marked");
@@ -298,6 +312,7 @@ static void CheckFormattingFixture(const UCRichDocument& d, const std::string& l
     CheckCellFrames(d, label);
     CheckListLabels(d, label);
     CheckHighlightAndFrames(d, label);
+    CheckTablePlacement(d, label);
 }
 
 static UCRichDocument BuildSampleDocument() {

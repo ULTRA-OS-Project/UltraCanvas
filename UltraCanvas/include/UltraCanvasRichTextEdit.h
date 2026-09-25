@@ -301,6 +301,12 @@ private:
         std::vector<std::unique_ptr<BlockLayout>> cells;
         std::vector<int> cellColumns;
         std::vector<int> cellRows;
+        // Table cells: where the text sits inside `bounds` (padding plus
+        // vertical alignment) - used alike by drawing, caret and hit testing.
+        float textTop = 0.0f;
+        float textHeight = 0.0f;
+        float textBottomPad = 0.0f;
+        RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
         std::shared_ptr<UCImage> image;           // image blocks
         // Pictures sitting inside this block's text. The layout reserves a box
         // for each (a CreateShape attribute over its U+FFFC placeholder) and

@@ -310,6 +310,12 @@ constexpr uint16_t kSprmTDefTableShd80 = 0xD609;
 constexpr uint16_t kSprmTDefTableShd = 0xD612;
 constexpr uint16_t kSprmTSetBrc80 = 0xD620;
 constexpr uint16_t kSprmTSetBrc = 0xD62F;
+constexpr uint16_t kSprmTJc90 = 0x5400;
+constexpr uint16_t kSprmTJc = 0x548A;
+constexpr uint16_t kSprmTDxaGapHalf = 0x9602;
+constexpr uint16_t kSprmTCellPadding = 0xD632;
+constexpr uint16_t kSprmTCellPaddingDefault = 0xD634;
+constexpr uint16_t kSprmTVertAlign = 0xD62C;
 constexpr uint16_t kSprmPChgTabs = 0xC615;
 constexpr uint16_t kSprmPChgTabsPapx = 0xC60D;
 constexpr uint16_t kSprmPDxaRight80 = 0x840E;
@@ -421,7 +427,12 @@ struct DocParaProps {
     struct CellFormat {
         RichBorder top{-1.0f, ""}, left{-1.0f, ""}, bottom{-1.0f, ""}, right{-1.0f, ""};
         std::string background;
+        RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
+        float padding[4] = {-1.0f, -1.0f, -1.0f, -1.0f};   // top, left, bottom, right (points)
     };
+    int tableJc = 0;              // 0 left, 1 centre, 2 right
+    int gapHalf = -1;             // twips; half the room between two cells' text
+    float defaultPadding[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
     std::vector<CellFormat> cellFormats;
     bool hasTableBorders = false;
     RichBorder tableBorders[6];   // top, left, bottom, right, insideH, insideV
@@ -663,6 +674,10 @@ void ApplyParaSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
                     const size_t tc = tcs + static_cast<size_t>(i) * 20;
                     if (tc + 20 > end) break;
                     auto& format = props.cellFormats[static_cast<size_t>(i)];
+                    const uint16_t tcgrf = ReadU16(data, tc);
+                    const int vertical = (tcgrf >> 7) & 3;
+                    format.verticalAlign = vertical == 1 ? RichVerticalAlign::Middle
+                                         : vertical == 2 ? RichVerticalAlign::Bottom : RichVerticalAlign::Top;
                     RichBorder* sides[4] = {&format.top, &format.left, &format.bottom, &format.right};
                     for (int b = 0; b < 4; ++b) {
                         const size_t brc = tc + 4 + static_cast<size_t>(b) * 4;
@@ -697,6 +712,44 @@ void ApplyParaSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
                     if (sides & 2) format.left = border;
                     if (sides & 4) format.bottom = border;
                     if (sides & 8) format.right = border;
+                }
+                break;
+            }
+            case kSprmTJc90:
+            case kSprmTJc: props.tableJc = ReadU16(data, sprm.operand); break;
+            case kSprmTDxaGapHalf: props.gapHalf = ReadI16(data, sprm.operand); break;
+            case kSprmTVertAlign: {
+                // cb | itcFirst | itcLim | vertAlign
+                if (sprm.operandSize < 4) break;
+                const size_t first = data[sprm.operand + 1], limit = data[sprm.operand + 2];
+                const uint8_t vertical = data[sprm.operand + 3];
+                for (size_t i = first; i < limit && i < props.cellFormats.size(); ++i) {
+                    props.cellFormats[i].verticalAlign = vertical == 1 ? RichVerticalAlign::Middle
+                                                       : vertical == 2 ? RichVerticalAlign::Bottom
+                                                       : RichVerticalAlign::Top;
+                }
+                break;
+            }
+            case kSprmTCellPadding:
+            case kSprmTCellPaddingDefault: {
+                // cb | itcFirst | itcLim | sides (1 top, 2 left, 4 bottom, 8
+                // right) | ftsWidth (3 = twips) | wWidth
+                if (sprm.operandSize < 7) break;
+                const size_t first = data[sprm.operand + 1], limit = data[sprm.operand + 2];
+                const uint8_t sides = data[sprm.operand + 3];
+                if (data[sprm.operand + 4] != 3) break;
+                const float points = static_cast<float>(ReadU16(data, sprm.operand + 5)) / 20.0f;
+                auto apply = [&](float padding[4]) {
+                    for (int side = 0; side < 4; ++side) {
+                        if (sides & (1 << side)) padding[side] = points;
+                    }
+                };
+                if (sprm.code == kSprmTCellPaddingDefault) {
+                    apply(props.defaultPadding);
+                } else {
+                    for (size_t i = first; i < limit && i < props.cellFormats.size(); ++i) {
+                        apply(props.cellFormats[i].padding);
+                    }
                 }
                 break;
             }
@@ -870,6 +923,8 @@ private:
         pap.cellEdges.clear();
         pap.cellFormats.clear();
         pap.hasTableBorders = false;
+        pap.tableJc = 0;
+        pap.gapHalf = -1;
         style.chp = chp;
         style.pap = pap;
         style.resolved = true;
@@ -1703,6 +1758,17 @@ private:
             cellHasParagraph_ = false;
         }
         row_.header = pap.headerRow;
+        // Width, position and alignment come from the first row that states
+        // them, like the column widths.
+        if (tableBlock_.tableWidthPt <= 0.0f && pap.cellEdges.size() >= 2) {
+            tableBlock_.tableWidthPt = static_cast<float>(pap.cellEdges.back() - pap.cellEdges.front()) / 20.0f;
+            // The first edge is left of the text by the cell margin, so
+            // add that back to line the table's text up with the margin.
+            const int margin = std::max(0, pap.gapHalf);
+            tableBlock_.tableIndentPt = std::max(0.0f, static_cast<float>(pap.cellEdges.front() + margin) / 20.0f);
+            tableBlock_.tableAlign = pap.tableJc == 1 ? RichTextAlign::Center
+                                   : pap.tableJc == 2 ? RichTextAlign::Right : RichTextAlign::Left;
+        }
         // Column widths come from the first row that states its cell edges.
         if (tableBlock_.tableColumnWidths.empty() && pap.cellEdges.size() == row_.cells.size() + 1) {
             for (size_t c = 0; c + 1 < pap.cellEdges.size(); ++c) {
@@ -1727,6 +1793,17 @@ private:
             take(cell.borderBottom, format.bottom);
             take(cell.borderRight, format.right);
             if (!format.background.empty() || cell.backgroundColor.empty()) cell.backgroundColor = format.background;
+            cell.verticalAlign = format.verticalAlign;
+            // Padding: the cell's, else the row default, else half the gap
+            // between cells at the sides (Word's classic cell margin).
+            float* targets[4] = {&cell.paddingTopPt, &cell.paddingLeftPt, &cell.paddingBottomPt, &cell.paddingRightPt};
+            for (int side = 0; side < 4; ++side) {
+                float value = format.padding[side] >= 0.0f ? format.padding[side] : pap.defaultPadding[side];
+                if (value < 0.0f && (side == 1 || side == 3) && pap.gapHalf >= 0) {
+                    value = static_cast<float>(pap.gapHalf) / 20.0f;
+                }
+                *targets[side] = value;
+            }
         }
         if (!row_.cells.empty()) {
             tableBlock_.tableRows.push_back(std::move(row_));

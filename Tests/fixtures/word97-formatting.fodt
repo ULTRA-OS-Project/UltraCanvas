@@ -25,6 +25,10 @@
  <style:style style:name="PBox" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties fo:border="0.5pt solid #000000" fo:padding="0.05in" fo:background-color="#eeeeee"/></style:style>
  <style:style style:name="PRuled" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties fo:border-top="1pt solid #808080" fo:border-bottom="none" fo:border-left="none" fo:border-right="none" fo:padding="0.03in"/></style:style>
  <style:style style:name="THigh" style:family="text"><style:text-properties fo:background-color="#ffff00"/></style:style>
+ <style:style style:name="TNarrow" style:family="table"><style:table-properties style:width="3in" table:align="center"/></style:style>
+ <style:style style:name="TNarrow.A" style:family="table-column"><style:table-column-properties style:column-width="1.5in"/></style:style>
+ <style:style style:name="CMid" style:family="table-cell"><style:table-cell-properties style:vertical-align="middle" fo:padding="0.1in" fo:border="0.5pt solid #000000"/></style:style>
+ <style:style style:name="CTall" style:family="table-cell"><style:table-cell-properties fo:padding="0.02in" fo:border="0.5pt solid #000000"/></style:style>
  <style:style style:name="PBreak" style:family="paragraph" style:parent-style-name="Standard"><style:paragraph-properties fo:break-before="page"/></style:style>
  <style:style style:name="TBold" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>
  <style:style style:name="TRed" style:family="text"><style:text-properties fo:color="#c00000"/></style:style>
@@ -59,6 +63,10 @@
  </table:table>
  <table:table table:name="Layout"><table:table-column table:number-columns-repeated="2"/>
   <table:table-row><table:table-cell><text:p text:style-name="Standard">layout left</text:p></table:table-cell><table:table-cell><text:p text:style-name="Standard">layout right</text:p></table:table-cell></table:table-row>
+ </table:table>
+ <text:p text:style-name="Standard">Before the narrow table.</text:p>
+ <table:table table:name="Narrow" table:style-name="TNarrow"><table:table-column table:style-name="TNarrow.A" table:number-columns-repeated="2"/>
+  <table:table-row><table:table-cell table:style-name="CMid"><text:p text:style-name="Standard">middle cell</text:p></table:table-cell><table:table-cell table:style-name="CTall"><text:p text:style-name="Standard">tall one</text:p><text:p text:style-name="Standard">tall two</text:p><text:p text:style-name="Standard">tall three</text:p></table:table-cell></table:table-row>
  </table:table>
  <text:p text:style-name="Standard">Picture: <draw:frame draw:name="pic" text:anchor-type="as-char" svg:width="0.5in" svg:height="0.25in"><draw:image><office:binary-data>iVBORw0KGgoAAAANSUhEUgAAACgAAAAUCAIAAABwJOjsAAAAJElEQVR4nGM4ISc3IIhh1OJRi0ctHrV41OJRi0ctHrV45FgMAFLhLK5mrmiuAAAAAElFTkSuQmCC</office:binary-data></draw:image></draw:frame> inline.</text:p>
  <text:p text:style-name="PIndent">Indented paragraph with spacing and one and a half line height.</text:p>

@@ -124,6 +124,8 @@ struct RichTabStop {
     RichTabKind kind = RichTabKind::Left;
 };
 
+enum class RichVerticalAlign { Top, Middle, Bottom };
+
 // One side of a table cell's frame. widthPt 0 = no line.
 struct RichBorder {
     float widthPt = 0.0f;
@@ -145,6 +147,10 @@ struct RichTableCell {
     // the table's RichDocBlock::tableBordersFromDocument is set.
     RichBorder borderTop, borderBottom, borderLeft, borderRight;
     std::string backgroundColor;    // "#RRGGBB"; empty = none
+    // Where the text sits in a cell taller than it, and the room between the
+    // text and the cell's edges (points; < 0 = the view's default).
+    RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
+    float paddingTopPt = -1.0f, paddingBottomPt = -1.0f, paddingLeftPt = -1.0f, paddingRightPt = -1.0f;
 
     // Copies borders and background (a new cell next to this one looks
     // like it).
@@ -154,6 +160,11 @@ struct RichTableCell {
         borderLeft = from.borderLeft;
         borderRight = from.borderRight;
         backgroundColor = from.backgroundColor;
+        verticalAlign = from.verticalAlign;
+        paddingTopPt = from.paddingTopPt;
+        paddingBottomPt = from.paddingBottomPt;
+        paddingLeftPt = from.paddingLeftPt;
+        paddingRightPt = from.paddingRightPt;
     }
 };
 
@@ -259,6 +270,14 @@ struct RichDocBlock {
     // layout table in a letterhead. false (Markdown, a table built in the
     // editor): the view draws its own grid.
     bool tableBordersFromDocument = false;
+    // Table: its width and where it sits in the text column. tableWidthPt
+    // > 0 = that many points; else tableWidthPercent > 0 = that share of the
+    // column; else the whole column. A table narrower than the column is
+    // placed by tableAlign (Default/Left: tableIndentPt from the left edge).
+    float tableWidthPt = 0.0f;
+    float tableWidthPercent = 0.0f;
+    RichTextAlign tableAlign = RichTextAlign::Default;
+    float tableIndentPt = 0.0f;
     int mediaIndex = -1;                // Image
     std::string imageAltText;           // Image
     float imageWidthPt = 0.0f;          // Image: 0 = unknown
