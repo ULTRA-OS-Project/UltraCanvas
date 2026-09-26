@@ -751,6 +751,10 @@ private:
     bool warnedCss = false;
     // Maps viewBox units onto the page (identity when they coincide).
     Matrix3x3 viewBoxMatrix = Matrix3x3::Identity();
+    // SVG images inside SVG images: how deep this reader is, and how many it
+    // has read (for unique definition prefixes).
+    int depth = 0;
+    int nestedCount = 0;
     // Elements that say stroke="none" themselves: they must not inherit a
     // group's stroke, and an unset Stroke cannot tell the two apart.
     std::set<const VectorElement*> strokeNone;
@@ -972,6 +976,12 @@ private:
             s.Stroke.reset();
             strokeNone.insert(&out);
         }
+        // clip-path="url(#id)": the element is clipped to that <clipPath>.
+        std::string clip = Prop(e, "clip-path");
+        if (clip.rfind("url(#", 0) == 0) {
+            const size_t end = clip.find(')');
+            s.ClipPath = clip.substr(5, end == std::string::npos ? std::string::npos : end - 5);
+        }
         s.Opacity = ParseOpacity(Prop(e, "opacity"), 1.0f);
         s.FillOpacity = ParseOpacity(Prop(e, "fill-opacity"), 1.0f);
         std::string display = Prop(e, "display");
@@ -1024,12 +1034,112 @@ private:
             s.LetterSpacing = static_cast<float>(ParseLength(ls.c_str(), 0));
     }
 
+    // ===== NESTED SVG IMAGES =====
+
+    // <image href="data:image/svg+xml;..."> as a group: the embedded drawing
+    // read by a reader of its own, its page mapped onto the image box the
+    // way preserveAspectRatio says, and its definitions (clip paths) moved
+    // into this document under names that cannot collide.
+    std::shared_ptr<VectorElement> ParseNestedSvg(const tinyxml2::XMLElement* e, const char* href,
+                                                  VectorDocument& doc) {
+        if (depth >= 8) {
+            warn("SVG import: SVG images nested more than 8 deep are skipped");
+            return nullptr;
+        }
+        const std::string uri = href;
+        const size_t comma = uri.find(',');
+        if (comma == std::string::npos) return nullptr;
+        std::string data;
+        if (uri.substr(0, comma).find(";base64") != std::string::npos) {
+            const std::vector<uint8_t> bytes = Base64Decode(uri.substr(comma + 1));
+            data.assign(bytes.begin(), bytes.end());
+        } else {
+            data = PercentDecode(uri.substr(comma + 1));
+        }
+        SvgReader inner(warn);
+        inner.depth = depth + 1;
+        auto nested = inner.Parse(data);
+        if (!nested || nested->Size.width <= 0 || nested->Size.height <= 0) return nullptr;
+
+        const double x = LengthAttr(e, "x", 0), y = LengthAttr(e, "y", 0);
+        const double w = LengthAttr(e, "width", nested->Size.width);
+        const double h = LengthAttr(e, "height", nested->Size.height);
+        double sx = w / nested->Size.width, sy = h / nested->Size.height;
+        double tx = x, ty = y;
+        const char* par = e->Attribute("preserveAspectRatio");
+        const std::string align = par ? par : "xMidYMid meet";
+        if (align.rfind("none", 0) != 0) {
+            const bool slice = align.find("slice") != std::string::npos;
+            const double k = slice ? std::max(sx, sy) : std::min(sx, sy);
+            tx += (w - nested->Size.width * k) * (align.find("xMin") != std::string::npos ? 0.0
+                                                  : align.find("xMax") != std::string::npos ? 1.0 : 0.5);
+            ty += (h - nested->Size.height * k) * (align.find("YMin") != std::string::npos ? 0.0
+                                                   : align.find("YMax") != std::string::npos ? 1.0 : 0.5);
+            sx = sy = k;
+        }
+
+        // Definitions keep their content, under a prefix unique to this image.
+        const std::string prefix = "svgimg" + std::to_string(++nestedCount) + "-";
+        for (auto& [id, def] : nested->Definitions) {
+            if (!def) continue;
+            def->Id = prefix + id;
+            doc.AddDefinition(def->Id, def);
+        }
+        auto group = std::make_shared<VectorGroup>();
+        Matrix3x3 m = Matrix3x3::Translate(tx, ty) * Matrix3x3::Scale(sx, sy);
+        if (const char* tr = e->Attribute("transform")) m = ParseTransformString(tr) * m;
+        group->Transform = m;
+        std::function<void(VectorElement&)> rename = [&](VectorElement& el) {
+            if (el.Style.ClipPath && !el.Style.ClipPath->empty()) el.Style.ClipPath = prefix + *el.Style.ClipPath;
+            if (auto* g = dynamic_cast<VectorGroup*>(&el))
+                for (auto& c : g->Children) if (c) rename(*c);
+            if (auto* cp = dynamic_cast<VectorClipPath*>(&el))
+                for (auto& c : cp->Data.Elements) if (c) rename(*c);
+        };
+        for (auto& [id, def] : nested->Definitions) if (def) rename(*def);
+        for (auto& layer : nested->Layers) {
+            if (!layer) continue;
+            rename(*layer);
+            auto sub = std::make_shared<VectorGroup>();
+            sub->Style = layer->Style;
+            sub->Children = std::move(layer->Children);
+            for (auto& c : sub->Children) if (c) c->Parent.reset();
+            group->AddChild(sub);
+        }
+        // The <image>'s own presentation (opacity, clip-path, visibility).
+        const Matrix3x3 placed = *group->Transform;
+        ApplyStyle(e, *group);
+        group->Transform = placed;   // ApplyStyle read `transform`; it is folded in above
+        return group;
+    }
+
+    static std::string PercentDecode(const std::string& in) {
+        std::string out;
+        out.reserve(in.size());
+        for (size_t i = 0; i < in.size(); ++i) {
+            if (in[i] == '%' && i + 2 < in.size() && std::isxdigit(static_cast<unsigned char>(in[i + 1])) &&
+                std::isxdigit(static_cast<unsigned char>(in[i + 2]))) {
+                out.push_back(static_cast<char>(std::stoi(in.substr(i + 1, 2), nullptr, 16)));
+                i += 2;
+            } else {
+                out.push_back(in[i]);
+            }
+        }
+        return out;
+    }
+
     // ===== ELEMENTS =====
 
     void ParseNode(const tinyxml2::XMLElement* e, VectorDocument& doc,
                    VectorGroup* parent) {
         const char* name = StripNs(e->Name());
 
+        if (std::strcmp(name, "clipPath") == 0) {
+            // A definition wherever it appears; it draws nothing itself.
+            auto clip = ParseShape(e, doc);
+            if (clip && !clip->Id.empty()) doc.AddDefinition(clip->Id, clip);
+            return;
+        }
         if (std::strcmp(name, "defs") == 0) {
             for (const tinyxml2::XMLElement* child = e->FirstChildElement();
                  child; child = child->NextSiblingElement()) {
@@ -1169,12 +1279,33 @@ private:
             ApplyStyle(e, *u);
             return u;
         }
+        if (std::strcmp(name, "clipPath") == 0) {
+            auto clip = std::make_shared<VectorClipPath>();
+            if (const char* id = e->Attribute("id")) clip->Id = id;
+            if (Prop(e, "clip-rule") == "evenodd") clip->Data.ClipRule = VectorStorage::FillRule::EvenOdd;
+            for (const tinyxml2::XMLElement* child = e->FirstChildElement();
+                 child; child = child->NextSiblingElement()) {
+                auto el = ParseShape(child, doc);
+                if (!el) continue;
+                // A clip shape's own clip-rule overrides the container's.
+                if (Prop(child, "clip-rule") == "evenodd") clip->Data.ClipRule = VectorStorage::FillRule::EvenOdd;
+                clip->Data.Elements.push_back(el);
+            }
+            return clip;
+        }
+
         if (std::strcmp(name, "image") == 0) {
+            const char* href = e->Attribute("href");
+            if (!href) href = e->Attribute("xlink:href");
+            // An image that is itself SVG (libcdr places CorelDRAW PowerClip
+            // contents this way) is read as drawing, not pixels, so it stays
+            // editable and sharp at any zoom.
+            if (href && std::strncmp(href, "data:image/svg+xml", 18) == 0) {
+                if (auto nested = ParseNestedSvg(e, href, doc)) return nested;
+            }
             auto im = std::make_shared<VectorImage>();
             im->Bounds = Rect2Dd{LengthAttr(e, "x", 0), LengthAttr(e, "y", 0),
                                  LengthAttr(e, "width", 0), LengthAttr(e, "height", 0)};
-            const char* href = e->Attribute("href");
-            if (!href) href = e->Attribute("xlink:href");
             if (href) im->Source = href;
             ApplyStyle(e, *im);
             return im;
@@ -1243,8 +1374,9 @@ FormatCapabilities SVGConverter::GetCapabilities() const {
     caps.SupportsGroups = true;
     caps.SupportsLayers = true;
     caps.SupportsSymbols = true;
-    // <clipPath> and <mask> are neither read nor written yet: a document
-    // that relies on them exports without them, so say so.
+    // <clipPath> is read (VectorClipPath definitions, clip-path references)
+    // but not written, and <mask> is neither: a document that relies on
+    // them exports without them, so say so.
     caps.SupportsClipping = false;
     caps.SupportsMasking = false;
     return caps;

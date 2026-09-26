@@ -89,6 +89,11 @@ namespace UltraCanvas {
         void RenderDocument(IRenderContext* ctx, const VectorDocument& document);
         void RenderElement(IRenderContext* ctx, const VectorElement& element);
         void RenderLayer(IRenderContext* ctx, const VectorLayer& layer);
+        // The document definitions (clip paths, gradients and symbols
+        // referenced by id) are looked up in. RenderDocument sets it for its
+        // own call; a caller that draws layers itself (the editing canvas)
+        // sets it around them, or clips and references resolve to nothing.
+        void SetDocument(const VectorDocument* document) { currentDocument = document; }
 
         void SetOptions(const VectorRenderOptions& opts) { options = opts; }
         const VectorRenderOptions& GetOptions() const { return options; }

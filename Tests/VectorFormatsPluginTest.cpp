@@ -226,10 +226,11 @@ int main(int argc, char** argv) {
         auto doc = converter ? converter->Import(std::string(VECTOR_SAMPLES_DIR) + "/CDR/detailed.cdr", options)
                              : nullptr;
         Check(doc != nullptr, "detailed.cdr imports");
-        int png = 0, bmp = 0;
+        int png = 0, bmp = 0, clipped = 0;
         std::function<void(const std::shared_ptr<VectorElement>&)> walk =
                 [&](const std::shared_ptr<VectorElement>& e) {
             if (!e) return;
+            if (e->Style.ClipPath && !e->Style.ClipPath->empty() && doc->GetDefinition(*e->Style.ClipPath)) ++clipped;
             if (auto im = std::dynamic_pointer_cast<VectorImage>(e)) {
                 if (im->Source.rfind("data:image/png;base64,", 0) == 0) ++png;
                 else if (im->Source.rfind("data:image/bmp;base64,", 0) == 0) ++bmp;
@@ -238,9 +239,18 @@ int main(int argc, char** argv) {
                 for (const auto& c : g->Children) walk(c);
         };
         if (doc) for (const auto& l : doc->Layers) walk(l);
+        const std::string counts = " (png=" + std::to_string(png) + ", bmp=" + std::to_string(bmp) +
+                                   ", clipped=" + std::to_string(clipped) + ")";
+#ifdef ULTRACANVAS_VENDORED_LIBCDR
+        // The patched libcdr also draws the 8 PowerClips - the cards'
+        // leaves, waves and gloss - as clipped groups, 6 of them holding a
+        // masked bitmap of their own.
+        Check(png == 11 && bmp == 1, "detailed.cdr: every masked bitmap carries alpha" + counts);
+        Check(clipped == 8, "detailed.cdr: the 8 PowerClips arrive clipped to their frames" + counts);
+#else
         Check(png == 5 && bmp == 1,
-              "detailed.cdr: the 5 masked bitmaps carry alpha, the opaque one stays as it was (png=" +
-              std::to_string(png) + ", bmp=" + std::to_string(bmp) + ")");
+              "detailed.cdr: the 5 masked bitmaps carry alpha, the opaque one stays as it was" + counts);
+#endif
     }
 #endif
 

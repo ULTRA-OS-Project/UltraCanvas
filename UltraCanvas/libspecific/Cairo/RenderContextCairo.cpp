@@ -120,6 +120,12 @@ namespace UltraCanvas {
             } else {
                 debugOutput << "ERROR: ApplySourceToCairo no pattern handle";
             }
+        } else {
+            // A fully transparent colour paints nothing. Setting no source
+            // at all left cairo's previous one in place - black by default -
+            // so a fill-opacity="0" shape (CorelDRAW writes stripes of them)
+            // came out as a solid black bar.
+            cairo_set_source_rgba(cairo, 0.0, 0.0, 0.0, 0.0);
         }
     }
 

@@ -19,6 +19,7 @@
 #include "UltraCanvasImage.h"
 
 #include <cmath>
+#include <functional>
 #include <cstdio>
 #include <string>
 
@@ -371,6 +372,35 @@ int main(int argc, char** argv) {
               "viewBox offset/scale and a layer transform map the drawing onto the page");
         Check(pdoc && std::fabs(pdoc->ViewBox.x) < 1e-9 && std::fabs(pdoc->ViewBox.width - 20) < 1e-9,
               "the page becomes the viewBox");
+
+        // <clipPath> becomes a definition an element points at; an <image>
+        // that is SVG arrives as an editable group placed on its box, with
+        // its own clip paths renamed into this document (libcdr's PowerClip
+        // output is exactly this).
+        const std::string clipped = std::string(R"SVG(<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 100">
+  <defs><clipPath id="c"><circle cx="50" cy="50" r="20"/></clipPath></defs>
+  <rect width="100" height="100" fill="red" clip-path="url(#c)"/>
+  <image x="20" y="30" width="40" height="40" xlink:href="data:image/svg+xml;base64,)SVG") + "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgdmlld0JveD0iMCAwIDEwIDEwIj48ZGVmcz48Y2xpcFBhdGggaWQ9ImMiPjxyZWN0IHdpZHRoPSI1IiBoZWlnaHQ9IjUiLz48L2NsaXBQYXRoPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMGZmMDAiIGNsaXAtcGF0aD0idXJsKCNjKSIvPjwvc3ZnPg==" + R"SVG("/>
+</svg>)SVG";
+        auto cdoc = converter.ImportFromString(clipped, options);
+        auto cl = (cdoc && !cdoc->Layers.empty()) ? cdoc->Layers[0] : nullptr;
+        auto crect = (cl && !cl->Children.empty()) ? std::dynamic_pointer_cast<VectorRect>(cl->Children[0]) : nullptr;
+        Check(crect && crect->Style.ClipPath && *crect->Style.ClipPath == "c" &&
+              std::dynamic_pointer_cast<VectorClipPath>(cdoc->GetDefinition("c")) != nullptr,
+              "clip-path=url(#id) points at a VectorClipPath definition");
+        auto img = (cl && cl->Children.size() > 1) ? std::dynamic_pointer_cast<VectorGroup>(cl->Children[1]) : nullptr;
+        Check(img && img->Transform && std::fabs(img->Transform->m[0][0] - 4.0) < 1e-9 &&
+              std::fabs(img->Transform->m[0][2] - 20.0) < 1e-9 && std::fabs(img->Transform->m[1][2] - 30.0) < 1e-9,
+              "an SVG image becomes a group mapped onto its box");
+        std::shared_ptr<VectorRect> innerRect;
+        std::function<void(const std::shared_ptr<VectorElement>&)> find = [&](const std::shared_ptr<VectorElement>& e) {
+            if (auto r = std::dynamic_pointer_cast<VectorRect>(e)) innerRect = r;
+            if (auto g = std::dynamic_pointer_cast<VectorGroup>(e)) for (auto& c : g->Children) find(c);
+        };
+        if (img) find(img);
+        Check(innerRect && innerRect->Style.ClipPath && *innerRect->Style.ClipPath != "c" &&
+              cdoc->GetDefinition(*innerRect->Style.ClipPath) != nullptr,
+              "the nested image's clip path is carried over under its own name");
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

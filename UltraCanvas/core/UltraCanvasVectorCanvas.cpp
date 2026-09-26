@@ -450,8 +450,12 @@ void UltraCanvasVectorCanvas::DrawDocument(IRenderContext* ctx, const Rect2Dd& a
     renderer->SetOptions(opts);
     // The renderer maps the document's ViewBox onto its viewport; we have
     // already placed the document, so render layers directly.
+    // Definitions (clip paths, gradients, symbols) resolve against the
+    // document; without it every PowerClip and <clipPath> drew unclipped.
+    renderer->SetDocument(document.get());
     for (const auto& layer : document->Layers)
         if (layer && layer->Visible) renderer->RenderLayer(ctx, *layer);
+    renderer->SetDocument(nullptr);
     ctx->PopState();
 }
 

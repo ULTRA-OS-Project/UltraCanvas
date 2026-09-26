@@ -48,6 +48,10 @@
   opens as a black blot. CorelDRAW drop shadows and cut-out overlays keep
   their transparency instead of covering the drawing. See
   `Docs/UltraCanvas/changelog.d/vector-samples-cdr-hairlines-previews.md`.
+- **CorelDRAW drawings look like CorelDRAW's own preview.** Drop shadows,
+  cut-out overlays and PowerClipped artwork (content clipped into a frame)
+  now appear, through the framework's patched libcdr; clip paths in any
+  imported drawing are applied on the canvas.
 
 #### 2026-09-22 *0.6.0*
 - **Mirror.** Two toolbar buttons after Send to Back, and *Mirror

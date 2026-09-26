@@ -198,6 +198,29 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
 
 ---
 
+## libcdr (CorelDRAW reader) — vendored and patched
+
+- **Used by:** the CDR plugin (`UltraCanvas/Plugins/Vector/CDR/`) and, through
+  it, `CDRConverter` in the Vector plugin — CorelDRAW files open as editable
+  drawings through `UltraCanvasFileLoader::LoadVectorDocument`.
+- **Upstream:** https://git.libreoffice.org/libcdr (The Document Liberation
+  Project; the engine LibreOffice uses)
+- **Vendored, modified:** `UltraCanvas/third_party/libcdr/`, based on commit
+  `4401de4` (newer than release 0.1.7), with two fixes — bitmap transparency
+  masks and PowerClip contents — listed in its `README.md` and carried as
+  `ultracanvas.patch`. Built as the static library `ultracanvas_libcdr` when
+  librevenge, lcms2, ICU, zlib and the Boost headers are present; otherwise
+  the system libcdr is linked instead.
+- **License:** Mozilla Public License 2.0 (`third_party/libcdr/COPYING.MPL`),
+  contributors listed in `third_party/libcdr/AUTHORS`. The modified files are
+  available in source form in this repository, as the MPL requires; the
+  rest of UltraCanvas is not affected by it (file-level copyleft).
+- **Dependencies (linked, not vendored):** librevenge (MPL 2.0 / LGPL 2.1+),
+  lcms2 (MIT), ICU (Unicode License), zlib (zlib License), Boost headers
+  (Boost Software License 1.0).
+
+---
+
 ## AAC decoders (optional, and copyleft — read before enabling)
 
 - **Used by:** `UltraCanvas/libspecific/Audio/AudioCodecsAAC.cpp`, to decode

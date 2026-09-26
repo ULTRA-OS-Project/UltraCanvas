@@ -553,7 +553,9 @@ namespace UltraCanvas {
 
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         namespace {
-            // ===== BITMAP TRANSPARENCY =====
+            // ===== BITMAP TRANSPARENCY (system libcdr only) =====
+            // Only compiled into use without ULTRACANVAS_VENDORED_LIBCDR: the
+            // patched copy in third_party/libcdr does this at the source.
             // CorelDRAW stores a bitmap with transparency as two images in a
             // row: the colour image (24-bit, colour model 1) and its 8-bit
             // alpha mask (colour model 99), both bottom-up with 4-byte row
@@ -691,7 +693,7 @@ namespace UltraCanvas {
 
             // Rewrites every embedded BMP in libcdr's SVG that has a mask in
             // the source file as an RGBA PNG. Returns how many were changed.
-            int RestoreBitmapMasks(std::string& svg, const std::string& cdrPath) {
+            [[maybe_unused]] int RestoreBitmapMasks(std::string& svg, const std::string& cdrPath) {
                 static const std::string prefix = "data:image/bmp;base64,";
                 if (svg.find(prefix) == std::string::npos) return 0;
                 const std::vector<uint8_t> store = RawBitmapStore(cdrPath);
@@ -741,7 +743,11 @@ namespace UltraCanvas {
                     std::ifstream in(svgPath, std::ios::binary);
                     svgText.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
                 }
+#ifndef ULTRACANVAS_VENDORED_LIBCDR
+                // The patched libcdr in third_party/libcdr applies the masks
+                // itself; a system libcdr leaves them to us.
                 RestoreBitmapMasks(svgText, filename);
+#endif
                 SVGConverter svg;
                 doc = svg.ImportFromString(svgText, options);
             } else if (options.WarningCallback) {

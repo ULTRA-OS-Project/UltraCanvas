@@ -1,0 +1,399 @@
+diff -ru a/CDRCollector.h b/CDRCollector.h
+--- a/src/lib/CDRCollector.h	2026-09-26 12:24:13.719741441 +0000
++++ b/src/lib/CDRCollector.h	2026-09-26 12:24:13.723995448 +0000
+@@ -35,6 +35,9 @@
+   std::map<unsigned, librevenge::RVNGBinaryData> m_bmps;
+   std::map<unsigned, CDRPattern> m_patterns;
+   std::map<unsigned, librevenge::RVNGBinaryData> m_vects;
++  // UltraCanvas: the box each vect was drawn in (its m_page when stored),
++  // needed to place PowerClip contents back on the page.
++  std::map<unsigned, CDRPage> m_vectBoxes;
+   std::vector<CDRPage> m_pages;
+   std::map<unsigned, CDRColor> m_documentPalette;
+   std::map<unsigned, std::vector<CDRTextLine> > m_texts;
+@@ -94,6 +97,13 @@
+   virtual void collectBBox(double x0, double y0, double x1, double y1) = 0;
+   virtual void collectSpnd(unsigned spnd) = 0;
+   virtual void collectVectorPattern(unsigned id, const librevenge::RVNGBinaryData &data) = 0;
++  // UltraCanvas: the object being read is a PowerClip frame; `id` is the
++  // vect (spnd) holding its clipped contents (loda argument 0x1f45).
++  virtual void collectPowerClip(unsigned /* id */) {}
++  // UltraCanvas: the 8-bit alpha mask CorelDRAW stores after a bitmap
++  // (colour model 99), rows bottom-up like the colour image, `stride` bytes each.
++  virtual void collectBmpAlpha(unsigned /* imageId */, unsigned /* width */, unsigned /* height */,
++                               unsigned /* stride */, const std::vector<unsigned char> & /* mask */) {}
+   virtual void collectPaletteEntry(unsigned colorId, unsigned userId, const CDRColor &color) = 0;
+   virtual void collectText(unsigned textId, unsigned styleId, const std::vector<unsigned char> &data,
+                            const std::vector<unsigned char> &charDescriptions, const std::map<unsigned, CDRStyle> &styleOverrides) = 0;
+diff -ru a/CDRContentCollector.cpp b/CDRContentCollector.cpp
+--- a/src/lib/CDRContentCollector.cpp	2026-09-26 12:24:13.719271809 +0000
++++ b/src/lib/CDRContentCollector.cpp	2026-09-26 12:24:13.723427997 +0000
+@@ -64,7 +64,7 @@
+                                                  bool reverseOrder)
+   : m_painter(painter), m_isDocumentStarted(false), m_isPageProperties(false), m_isPageStarted(false),
+     m_ignorePage(false), m_page(ps.m_pages[0]), m_pageIndex(0), m_currentFillStyle(), m_currentLineStyle(),
+-    m_spnd(0), m_currentObjectLevel(0), m_currentGroupLevel(0), m_currentVectLevel(0), m_currentPageLevel(0),
++    m_spnd(0), m_powerClipId(0), m_currentObjectLevel(0), m_currentGroupLevel(0), m_currentVectLevel(0), m_currentPageLevel(0),
+     m_currentStyleId(0), m_currentImage(), m_currentText(nullptr), m_currentBBox(), m_currentTextBox(), m_currentPath(),
+     m_currentTransforms(), m_fillTransforms(), m_polygon(), m_isInPolygon(false), m_isInSpline(false),
+     m_outputElementsStack(nullptr), m_contentOutputElementsStack(), m_fillOutputElementsStack(),
+@@ -344,6 +344,8 @@
+       librevenge::RVNGPropertyList propList;
+       propList.insert("svg:d", outputPath);
+       outputElement.addPath(propList);
++      if (m_powerClipId)
++        _addPowerClipContent(outputElement, tmpPath);
+ 
+     }
+     m_currentPath.clear();
+@@ -412,7 +414,7 @@
+     if (!CDR_ALMOST_ZERO(rotate))
+       propList.insert("librevenge:rotate", rotate * 180 / M_PI, librevenge::RVNG_GENERIC);
+ 
+-    propList.insert("librevenge:mime-type", "image/bmp");
++    propList.insert("librevenge:mime-type", _bitmapMimeType(m_currentImage.getImage()));
+     propList.insert("office:binary-data", m_currentImage.getImage());
+     outputElement.addGraphicObject(propList);
+   }
+@@ -537,6 +539,7 @@
+     outputElement.addEndTextObject();
+   }
+   m_currentImage = libcdr::CDRImage();
++  m_powerClipId = 0;
+   if (!outputElement.empty())
+   {
+     if (m_reverseOrder)
+@@ -615,6 +618,7 @@
+       librevenge::RVNGBinaryData output((const unsigned char *)header, strlen(header));
+       output.append((const unsigned char *)svgOutput[0].cstr(), strlen(svgOutput[0].cstr()));
+       m_ps.m_vects[m_spnd] = output;
++      m_ps.m_vectBoxes[m_spnd] = m_page;
+     }
+ #if DUMP_VECT
+     librevenge::RVNGString filename;
+@@ -870,7 +874,7 @@
+         auto iterBmp = m_ps.m_bmps.find(m_currentFillStyle.imageFill.id);
+         if (iterBmp != m_ps.m_bmps.end())
+         {
+-          propList.insert("librevenge:mime-type", "image/bmp");
++          propList.insert("librevenge:mime-type", _bitmapMimeType(iterBmp->second));
+           propList.insert("draw:fill", "bitmap");
+           propList.insert("draw:fill-image", iterBmp->second);
+           propList.insert("style:repeat", "repeat");
+@@ -1225,6 +1229,117 @@
+     m_currentImage = CDRImage(iter->second, x1, x2, y1, y2);
+ }
+ 
++// UltraCanvas: collectBmpAlpha re-encodes transparent bitmaps as PNG.
++const char *libcdr::CDRContentCollector::_bitmapMimeType(const librevenge::RVNGBinaryData &data)
++{
++  const unsigned char *b = data.getDataBuffer();
++  if (data.size() >= 8 && b && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G')
++    return "image/png";
++  return "image/bmp";
++}
++
++void libcdr::CDRContentCollector::collectPowerClip(unsigned id)
++{
++  m_powerClipId = id;
++}
++
++// UltraCanvas: draws a PowerClip frame's contents. They were rendered into
++// their vect's own SVG (m_ps.m_vects) in the vect's box; that SVG goes back
++// on the page as an image over exactly that box, wrapped in an SVG of its
++// own whose clipPath is the frame's outline - so the contents are clipped
++// to the frame the way CorelDRAW draws them, for any SVG consumer.
++void libcdr::CDRContentCollector::_addPowerClipContent(CDROutputElementList &outputElement,
++                                                        const std::vector<librevenge::RVNGPropertyList> &framePath)
++{
++  auto vect = m_ps.m_vects.find(m_powerClipId);
++  auto box = m_ps.m_vectBoxes.find(m_powerClipId);
++  if (vect == m_ps.m_vects.end() || box == m_ps.m_vectBoxes.end() || framePath.empty())
++    return;
++  const CDRPage &content = box->second;
++  if (CDR_ALMOST_ZERO(content.width) || CDR_ALMOST_ZERO(content.height))
++    return;
++
++  // The contents' box on the output page (the same shift and Y flip the
++  // frame's path went through).
++  const double x0 = content.offsetX - m_page.offsetX;
++  const double y0 = m_page.height - (content.offsetY + content.height - m_page.offsetY);
++  const double w = content.width;
++  const double h = content.height;
++  const double pt = 72.0; // the nested SVG is in points, like the generator's output
++
++  // The frame's outline in the box's coordinates.
++  librevenge::RVNGString d;
++  auto num = [&](double v, double origin) -> librevenge::RVNGString
++  {
++    librevenge::RVNGString t;
++    t.sprintf("%.4f", (v - origin) * pt);
++    return t;
++  };
++  for (const auto &node : framePath)
++  {
++    if (!node["librevenge:path-action"])
++      continue;
++    const librevenge::RVNGString action = node["librevenge:path-action"]->getStr();
++    if (action == "Z")
++    {
++      d.append("Z ");
++      continue;
++    }
++    if (!node["svg:x"] || !node["svg:y"])
++      continue;
++    d.append(action);
++    d.append(" ");
++    if ((action == "C" || action == "Q") && node["svg:x1"] && node["svg:y1"])
++    {
++      d.append(num(node["svg:x1"]->getDouble(), x0)); d.append(" ");
++      d.append(num(node["svg:y1"]->getDouble(), y0)); d.append(" ");
++      if (action == "C" && node["svg:x2"] && node["svg:y2"])
++      {
++        d.append(num(node["svg:x2"]->getDouble(), x0)); d.append(" ");
++        d.append(num(node["svg:y2"]->getDouble(), y0)); d.append(" ");
++      }
++    }
++    else if (action == "A" && node["svg:rx"] && node["svg:ry"])
++    {
++      librevenge::RVNGString arc;
++      arc.sprintf("%.4f %.4f %.4f %d %d ", node["svg:rx"]->getDouble() * pt, node["svg:ry"]->getDouble() * pt,
++                  node["librevenge:rotate"] ? node["librevenge:rotate"]->getDouble() : 0.0,
++                  node["librevenge:large-arc"] ? node["librevenge:large-arc"]->getInt() : 0,
++                  node["librevenge:sweep"] ? node["librevenge:sweep"]->getInt() : 0);
++      d.append(arc);
++    }
++    d.append(num(node["svg:x"]->getDouble(), x0)); d.append(" ");
++    d.append(num(node["svg:y"]->getDouble(), y0)); d.append(" ");
++  }
++
++  librevenge::RVNGString svg;
++  svg.sprintf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
++              "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
++              "width=\"%.4f\" height=\"%.4f\" viewBox=\"0 0 %.4f %.4f\">"
++              "<defs><clipPath id=\"powerclip\"><path d=\"", w * pt, h * pt, w * pt, h * pt);
++  svg.append(d);
++  librevenge::RVNGString tail;
++  tail.sprintf("\"/></clipPath></defs><g clip-path=\"url(#powerclip)\">"
++               "<image x=\"0\" y=\"0\" width=\"%.4f\" height=\"%.4f\" preserveAspectRatio=\"none\" "
++               "xlink:href=\"data:image/svg+xml;base64,", w * pt, h * pt);
++  svg.append(tail);
++  svg.append(vect->second.getBase64Data());
++  svg.append("\"/></g></svg>");
++
++  librevenge::RVNGPropertyList style;
++  style.insert("draw:stroke", "none");
++  style.insert("draw:fill", "none");
++  outputElement.addStyle(style);
++  librevenge::RVNGPropertyList image;
++  image.insert("svg:x", x0);
++  image.insert("svg:y", y0);
++  image.insert("svg:width", w);
++  image.insert("svg:height", h);
++  image.insert("librevenge:mime-type", "image/svg+xml");
++  image.insert("office:binary-data", librevenge::RVNGBinaryData((const unsigned char *)svg.cstr(), svg.size()));
++  outputElement.addGraphicObject(image);
++}
++
+ void libcdr::CDRContentCollector::collectPpdt(const std::vector<std::pair<double, double> > &points, const std::vector<unsigned> &knotVector)
+ {
+   m_splineData = CDRSplineData(points, knotVector);
+diff -ru a/CDRContentCollector.h b/CDRContentCollector.h
+--- a/src/lib/CDRContentCollector.h	2026-09-26 12:24:13.720727616 +0000
++++ b/src/lib/CDRContentCollector.h	2026-09-26 12:24:13.724896604 +0000
+@@ -64,6 +64,7 @@
+   void collectBBox(double x0, double y0, double x1, double y1) override;
+   void collectSpnd(unsigned spnd) override;
+   void collectVectorPattern(unsigned id, const librevenge::RVNGBinaryData &data) override;
++  void collectPowerClip(unsigned id) override;
+   void collectPaletteEntry(unsigned, unsigned, const CDRColor &) override {}
+   void collectText(unsigned, unsigned, const std::vector<unsigned char> &,
+                    const std::vector<unsigned char> &, const std::map<unsigned, CDRStyle> &) override {}
+@@ -84,6 +85,8 @@
+   void _flushCurrentPath();
+ 
+   void _fillProperties(librevenge::RVNGPropertyList &propList);
++  static const char *_bitmapMimeType(const librevenge::RVNGBinaryData &data);
++  void _addPowerClipContent(CDROutputElementList &outputElement, const std::vector<librevenge::RVNGPropertyList> &framePath);
+   void _lineProperties(librevenge::RVNGPropertyList &propList);
+   void _generateBitmapFromPattern(librevenge::RVNGBinaryData &bitmap, const CDRPattern &pattern, const CDRColor &fgColor, const CDRColor &bgColor);
+ 
+@@ -99,6 +102,7 @@
+   CDRFillStyle m_currentFillStyle;
+   CDRLineStyle m_currentLineStyle;
+   unsigned m_spnd;
++  unsigned m_powerClipId; // UltraCanvas: vect clipped into the current object, 0 = none
+   unsigned m_currentObjectLevel, m_currentGroupLevel, m_currentVectLevel, m_currentPageLevel, m_currentStyleId;
+   CDRImage m_currentImage;
+   const std::vector<CDRTextLine> *m_currentText;
+diff -ru a/CDRParser.cpp b/CDRParser.cpp
+--- a/src/lib/CDRParser.cpp	2026-09-26 12:24:13.719397029 +0000
++++ b/src/lib/CDRParser.cpp	2026-09-26 12:24:13.723630261 +0000
+@@ -1827,6 +1827,15 @@
+     }
+     else if (argTypes[i] == 0x4aba)
+       readPageSize(input);
++    else if (argTypes[i] == 0x1f45)
++    {
++      // UltraCanvas: PowerClip. The first word names the vect whose objects
++      // are drawn clipped to this one's outline. libcdr read the vect but
++      // never drew it, so PowerClipped artwork went missing.
++      unsigned contentId = readU32(input);
++      if (contentId)
++        m_collector->collectPowerClip(contentId);
++    }
+   }
+   input->seek(startPosition+chunkLength, librevenge::RVNG_SEEK_SET);
+ }
+@@ -1973,6 +1982,33 @@
+   std::vector<unsigned> palette;
+   readRImage(colorModel, width, height, bpp, palette, bitmap, input);
+   m_collector->collectBmp(imageId, colorModel, width, height, bpp, palette, bitmap);
++
++  // UltraCanvas: a bitmap with transparency is followed by its 8-bit alpha
++  // mask - an image record of its own with colour model 99. libcdr stopped
++  // after the colour image, so drop shadows came out as solid black boxes
++  // and cut-out overlays as opaque sheets. The mask record starts a few
++  // bytes after the colour data (14 in every file seen); look for its header
++  // - model 99, 1, same width and height, 1, 8 bpp - within a short window.
++  const long afterColour = input->tell();
++  for (long gap = 0; gap <= 64; gap += 2)
++  {
++    input->seek(afterColour + gap, librevenge::RVNG_SEEK_SET);
++    if (getRemainingLength(input) < 64)
++      break;
++    if (readU32(input) != 99 || readU32(input) != 1 || readU32(input) != width || readU32(input) != height ||
++        readU32(input) != 1 || readU32(input) != 8)
++      continue;
++    const unsigned stride = readU32(input);
++    const unsigned size = readU32(input);
++    if (stride < width || size != stride * height || size > getRemainingLength(input))
++      break;
++    input->seek(32, librevenge::RVNG_SEEK_CUR);
++    unsigned long numRead = 0;
++    const unsigned char *data = input->read(size, numRead);
++    if (numRead == size)
++      m_collector->collectBmpAlpha(imageId, width, height, stride, std::vector<unsigned char>(data, data + size));
++    break;
++  }
+ }
+ 
+ void libcdr::CDRParser::readOpacity(librevenge::RVNGInputStream *input, unsigned /* length */)
+diff -ru a/CDRStylesCollector.cpp b/CDRStylesCollector.cpp
+--- a/src/lib/CDRStylesCollector.cpp	2026-09-26 12:24:13.719510979 +0000
++++ b/src/lib/CDRStylesCollector.cpp	2026-09-26 12:24:13.723741374 +0000
+@@ -9,6 +9,8 @@
+ 
+ #include "CDRStylesCollector.h"
+ 
++#include <zlib.h>
++
+ #include "CDRInternalStream.h"
+ #include "libcdr_utils.h"
+ 
+@@ -160,6 +162,93 @@
+   }
+ }
+ 
++namespace
++{
++
++void pngU32(std::vector<unsigned char> &out, unsigned v)
++{
++  out.push_back((unsigned char)(v >> 24));
++  out.push_back((unsigned char)(v >> 16));
++  out.push_back((unsigned char)(v >> 8));
++  out.push_back((unsigned char)v);
++}
++
++void pngChunk(std::vector<unsigned char> &out, const char *type, const std::vector<unsigned char> &data)
++{
++  pngU32(out, (unsigned)data.size());
++  const size_t start = out.size();
++  out.insert(out.end(), type, type + 4);
++  out.insert(out.end(), data.begin(), data.end());
++  const uLong crc = crc32(0L, &out[start], (uInt)(out.size() - start));
++  pngU32(out, (unsigned)crc);
++}
++
++} // anonymous namespace
++
++// UltraCanvas: puts a bitmap's alpha mask onto the 32-bit BMP collectBmp
++// made of it. BMP's fourth byte is not reliably read as alpha, so an image
++// whose mask is not fully opaque is re-encoded as RGBA PNG; the content
++// collector tells the two apart by signature.
++void libcdr::CDRStylesCollector::collectBmpAlpha(unsigned imageId, unsigned width, unsigned height, unsigned stride,
++                                                 const std::vector<unsigned char> &mask)
++{
++  auto iter = m_ps.m_bmps.find(imageId);
++  if (iter == m_ps.m_bmps.end() || !width || !height || mask.size() < (size_t)stride * height)
++    return;
++  bool opaque = true;
++  for (unsigned y = 0; y < height && opaque; ++y)
++    for (unsigned x = 0; x < width; ++x)
++      if (mask[(size_t)y * stride + x] != 0xff)
++      {
++        opaque = false;
++        break;
++      }
++  if (opaque)
++    return;
++  const librevenge::RVNGBinaryData &bmp = iter->second;
++  const size_t headerSize = 14 + 40;
++  if (bmp.size() < headerSize + (size_t)width * height * 4)
++    return;
++  const unsigned char *pixels = bmp.getDataBuffer() + headerSize;   // 32-bit BGRX, bottom-up
++
++  // Raw PNG scanlines: filter byte 0, then RGBA, top-down.
++  std::vector<unsigned char> raw;
++  raw.reserve((size_t)height * (1 + (size_t)width * 4));
++  for (unsigned y = 0; y < height; ++y)
++  {
++    const unsigned row = height - 1 - y;
++    const unsigned char *src = pixels + (size_t)row * width * 4;
++    const unsigned char *alpha = &mask[(size_t)row * stride];
++    raw.push_back(0);
++    for (unsigned x = 0; x < width; ++x)
++    {
++      raw.push_back(src[x * 4 + 2]);
++      raw.push_back(src[x * 4 + 1]);
++      raw.push_back(src[x * 4]);
++      raw.push_back(alpha[x]);
++    }
++  }
++  uLongf packedSize = compressBound((uLong)raw.size());
++  std::vector<unsigned char> packed(packedSize);
++  if (compress2(&packed[0], &packedSize, &raw[0], (uLong)raw.size(), 6) != Z_OK)
++    return;
++  packed.resize(packedSize);
++
++  std::vector<unsigned char> png = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
++  std::vector<unsigned char> ihdr;
++  pngU32(ihdr, width);
++  pngU32(ihdr, height);
++  ihdr.push_back(8);   // bit depth
++  ihdr.push_back(6);   // colour type: RGBA
++  ihdr.push_back(0);
++  ihdr.push_back(0);
++  ihdr.push_back(0);
++  pngChunk(png, "IHDR", ihdr);
++  pngChunk(png, "IDAT", packed);
++  pngChunk(png, "IEND", std::vector<unsigned char>());
++  iter->second = librevenge::RVNGBinaryData(&png[0], png.size());
++}
++
+ void libcdr::CDRStylesCollector::collectBmp(unsigned imageId, const std::vector<unsigned char> &bitmap)
+ {
+   librevenge::RVNGBinaryData image(&bitmap[0], bitmap.size());
+diff -ru a/CDRStylesCollector.h b/CDRStylesCollector.h
+--- a/src/lib/CDRStylesCollector.h	2026-09-26 12:24:13.720975225 +0000
++++ b/src/lib/CDRStylesCollector.h	2026-09-26 12:24:13.725090853 +0000
+@@ -51,6 +51,8 @@
+   void collectBitmap(unsigned, double, double, double, double) override {}
+   void collectBmp(unsigned imageId, unsigned colorModel, unsigned width, unsigned height, unsigned bpp, const std::vector<unsigned> &palette, const std::vector<unsigned char> &bitmap) override;
+   void collectBmp(unsigned imageId, const std::vector<unsigned char> &bitmap) override;
++  void collectBmpAlpha(unsigned imageId, unsigned width, unsigned height, unsigned stride,
++                       const std::vector<unsigned char> &mask) override;
+   void collectBmpf(unsigned patternId, unsigned width, unsigned height, const std::vector<unsigned char> &pattern) override;
+   void collectPpdt(const std::vector<std::pair<double, double> > &, const std::vector<unsigned> &) override {}
+   void collectFillTransform(const CDRTransforms &) override {}
