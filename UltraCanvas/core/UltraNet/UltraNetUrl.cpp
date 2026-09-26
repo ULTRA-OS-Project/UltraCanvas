@@ -61,7 +61,10 @@ UltraNetResult UltraNet_ParseUrl(const std::string& url,
         return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
                                      "curl_url() failed");
     }
-    CURLUcode rc = curl_url_set(u.get(), CURLUPART_URL, url.c_str(), 0);
+    // CURLU_NON_SUPPORT_SCHEME: parse any scheme, not only those this libcurl
+    // speaks - the plug-ins (amqp, coap, sip, rtp, grpc, ...) parse theirs here.
+    CURLUcode rc = curl_url_set(u.get(), CURLUPART_URL, url.c_str(),
+                                CURLU_NON_SUPPORT_SCHEME);
     if (rc != CURLUE_OK) {
         return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
                                      "invalid URL");
@@ -88,7 +91,8 @@ std::string UltraNet_BuildUrl(const UltraNetUrlComponents& c) {
     auto setPart = [&](CURLUPart part, const std::string& v) {
         if (!v.empty()) curl_url_set(u.get(), part, v.c_str(), 0);
     };
-    setPart(CURLUPART_SCHEME, c.scheme);
+    if (!c.scheme.empty())
+        curl_url_set(u.get(), CURLUPART_SCHEME, c.scheme.c_str(), CURLU_NON_SUPPORT_SCHEME);
     setPart(CURLUPART_USER, c.username);
     setPart(CURLUPART_PASSWORD, c.password);
     setPart(CURLUPART_HOST, c.host);
