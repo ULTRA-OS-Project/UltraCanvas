@@ -10,8 +10,8 @@
 //
 // Usage: SVGConverterTest [output.svg]
 // Exit code is the number of failed checks.
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
@@ -19,6 +19,7 @@
 #include "UltraCanvasImage.h"
 
 #include <cmath>
+#include <functional>
 #include <cstdio>
 #include <string>
 
@@ -301,6 +302,105 @@ int main(int argc, char** argv) {
             auto poly = l ? std::dynamic_pointer_cast<VectorPolygon>(l->Children[2]) : nullptr;
             Check(poly && !poly->Style.Visible, "visibility:hidden imports");
         }
+    }
+
+    // ===== REAL-WORLD SYNTAX =====
+    // What optimised and editor-written files look like, each of which made
+    // an imported drawing lose most of its shapes, its placement or its text
+    // (media/vector/SVG/robot.svg, photo-camera.svg, Logo_Texter.svg).
+    {
+        // Numbers run together wherever the next starts with a sign or a
+        // second decimal point; a repeated set continues the command.
+        PathData pd = ParsePathString("m36.938 423.38-18.759-11.621.95-.16.857.722z");
+        Check(pd.commands.size() == 5, "compact path data: five commands (m, 3 implicit l, z)");
+        if (pd.commands.size() == 5) {
+            Check(pd.commands[1].Type == PathCommandType::LineTo && pd.commands[1].Relative &&
+                  std::fabs(pd.commands[1].Parameters[0] + 18.759f) < 1e-3f &&
+                  std::fabs(pd.commands[1].Parameters[1] + 11.621f) < 1e-3f,
+                  "compact path data: pair after m is a relative lineto");
+            Check(std::fabs(pd.commands[2].Parameters[0] - 0.95f) < 1e-4f &&
+                  std::fabs(pd.commands[2].Parameters[1] + 0.16f) < 1e-4f &&
+                  std::fabs(pd.commands[3].Parameters[0] - 0.857f) < 1e-4f &&
+                  std::fabs(pd.commands[3].Parameters[1] - 0.722f) < 1e-4f,
+                  "compact path data: \".95-.16.857.722\" is four numbers");
+            Check(pd.commands[4].Type == PathCommandType::ClosePath, "compact path data: close");
+        }
+        PathData arc = ParsePathString("M+10,20a1 1 0 01 5 5e0");
+        Check(arc.commands.size() == 2 && arc.commands[1].Parameters.size() == 7 &&
+              arc.commands[1].Parameters[3] == 0.0f && arc.commands[1].Parameters[4] == 1.0f &&
+              std::fabs(arc.commands[1].Parameters[5] - 5.0f) < 1e-4f &&
+              std::fabs(arc.commands[0].Parameters[0] - 10.0f) < 1e-4f,
+              "arc flags need no separator, '+' and exponents read");
+
+        // Space-separated transform arguments: the old reader ate the first
+        // character of every argument after the first.
+        Matrix3x3 t = ParseTransformString("translate(483.572 574.049) scale(1 -1)");
+        Check(std::fabs(t.m[1][2] - 574.049) < 1e-3 && std::fabs(t.m[1][1] + 1.0) < 1e-6,
+              "space-separated transform arguments keep every digit and sign");
+        Point2Dd r = ParseTransformString("rotate(90 10 10)").Transform(Point2Dd(20, 10));
+        Check(std::fabs(r.x - 10) < 1e-6 && std::fabs(r.y - 20) < 1e-6,
+              "rotate(a cx cy) turns about its centre");
+
+        const char* inherit = R"SVG(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <g fill="#ff0000" stroke="#0000ff"><path d="M0 0h5v5z"/><rect width="5" height="5" stroke="none"/></g>
+  <path d="M50 50h5v5z"/>
+</svg>)SVG";
+        auto id = converter.ImportFromString(inherit, options);
+        auto il = (id && !id->Layers.empty()) ? id->Layers[0] : nullptr;
+        auto ig = il ? std::dynamic_pointer_cast<VectorGroup>(il->Children[0]) : nullptr;
+        auto inPath = ig ? std::dynamic_pointer_cast<VectorPath>(ig->Children[0]) : nullptr;
+        auto inRect = ig ? std::dynamic_pointer_cast<VectorRect>(ig->Children[1]) : nullptr;
+        auto bare = (il && il->Children.size() > 1) ? std::dynamic_pointer_cast<VectorPath>(il->Children[1]) : nullptr;
+        const Color* pf = (inPath && inPath->Style.Fill) ? std::get_if<Color>(&*inPath->Style.Fill) : nullptr;
+        Check(pf && pf->r == 255 && pf->b == 0, "a shape inherits its group's fill");
+        Check(inPath && inPath->Style.Stroke, "a shape inherits its group's stroke");
+        Check(inRect && !inRect->Style.Stroke, "stroke=\"none\" is not overridden by the group");
+        const Color* bf = (bare && bare->Style.Fill) ? std::get_if<Color>(&*bare->Style.Fill) : nullptr;
+        Check(bf && bf->r == 0 && bf->g == 0 && bf->b == 0 && bf->a == 255,
+              "a shape with no fill anywhere is black (the SVG default)");
+
+        // viewBox offset and scale, and a transform on a top-level <g>
+        // (which becomes a layer), both land on the page.
+        const char* placed = R"SVG(<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="10 10 10 10">
+  <g transform="translate(2 3)"><rect x="8" y="7" width="10" height="10"/></g>
+</svg>)SVG";
+        auto pdoc = converter.ImportFromString(placed, options);
+        auto pl = (pdoc && !pdoc->Layers.empty()) ? pdoc->Layers[0] : nullptr;
+        Rect2Dd pb = pl ? pl->GetBoundingBox() : Rect2Dd{};
+        Check(pl && !pl->Transform && std::fabs(pb.x) < 1e-6 && std::fabs(pb.y) < 1e-6 &&
+              std::fabs(pb.width - 20) < 1e-6 && std::fabs(pb.height - 20) < 1e-6,
+              "viewBox offset/scale and a layer transform map the drawing onto the page");
+        Check(pdoc && std::fabs(pdoc->ViewBox.x) < 1e-9 && std::fabs(pdoc->ViewBox.width - 20) < 1e-9,
+              "the page becomes the viewBox");
+
+        // <clipPath> becomes a definition an element points at; an <image>
+        // that is SVG arrives as an editable group placed on its box, with
+        // its own clip paths renamed into this document (libcdr's PowerClip
+        // output is exactly this).
+        const std::string clipped = std::string(R"SVG(<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 100">
+  <defs><clipPath id="c"><circle cx="50" cy="50" r="20"/></clipPath></defs>
+  <rect width="100" height="100" fill="red" clip-path="url(#c)"/>
+  <image x="20" y="30" width="40" height="40" xlink:href="data:image/svg+xml;base64,)SVG") + "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgdmlld0JveD0iMCAwIDEwIDEwIj48ZGVmcz48Y2xpcFBhdGggaWQ9ImMiPjxyZWN0IHdpZHRoPSI1IiBoZWlnaHQ9IjUiLz48L2NsaXBQYXRoPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiMwMGZmMDAiIGNsaXAtcGF0aD0idXJsKCNjKSIvPjwvc3ZnPg==" + R"SVG("/>
+</svg>)SVG";
+        auto cdoc = converter.ImportFromString(clipped, options);
+        auto cl = (cdoc && !cdoc->Layers.empty()) ? cdoc->Layers[0] : nullptr;
+        auto crect = (cl && !cl->Children.empty()) ? std::dynamic_pointer_cast<VectorRect>(cl->Children[0]) : nullptr;
+        Check(crect && crect->Style.ClipPath && *crect->Style.ClipPath == "c" &&
+              std::dynamic_pointer_cast<VectorClipPath>(cdoc->GetDefinition("c")) != nullptr,
+              "clip-path=url(#id) points at a VectorClipPath definition");
+        auto img = (cl && cl->Children.size() > 1) ? std::dynamic_pointer_cast<VectorGroup>(cl->Children[1]) : nullptr;
+        Check(img && img->Transform && std::fabs(img->Transform->m[0][0] - 4.0) < 1e-9 &&
+              std::fabs(img->Transform->m[0][2] - 20.0) < 1e-9 && std::fabs(img->Transform->m[1][2] - 30.0) < 1e-9,
+              "an SVG image becomes a group mapped onto its box");
+        std::shared_ptr<VectorRect> innerRect;
+        std::function<void(const std::shared_ptr<VectorElement>&)> find = [&](const std::shared_ptr<VectorElement>& e) {
+            if (auto r = std::dynamic_pointer_cast<VectorRect>(e)) innerRect = r;
+            if (auto g = std::dynamic_pointer_cast<VectorGroup>(e)) for (auto& c : g->Children) find(c);
+        };
+        if (img) find(img);
+        Check(innerRect && innerRect->Style.ClipPath && *innerRect->Style.ClipPath != "c" &&
+              cdoc->GetDefinition(*innerRect->Style.ClipPath) != nullptr,
+              "the nested image's clip path is carried over under its own name");
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

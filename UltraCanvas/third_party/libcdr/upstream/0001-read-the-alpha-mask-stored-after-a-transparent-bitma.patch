@@ -1,0 +1,254 @@
+From 89b5a8ede760fb1a112675d92193bb018a62cbb3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 26 Sep 2026 13:00:41 +0000
+Subject: [PATCH 1/2] read the alpha mask stored after a transparent bitmap
+
+CorelDRAW stores a bitmap with transparency as its colour image followed
+by an 8-bit alpha mask: an image record of its own with colour model 99,
+the same width and height, and rows bottom-up like the colour data. It
+starts a few bytes after the colour data (14 in every file seen).
+
+readBmp stopped after the colour image, so the mask was never read: drop
+shadows came out as solid black boxes, and cut-out overlays as opaque
+sheets covering everything under them.
+
+readBmp now looks for the mask header right after the colour data and
+passes the mask to the new collectBmpAlpha. If the mask is not fully
+opaque, CDRStylesCollector re-encodes the bitmap as RGBA PNG with zlib,
+which is already a dependency, because consumers do not reliably read
+BMP's fourth byte as alpha. Bitmaps with an opaque mask, and bitmaps
+without a mask, stay BMP. The content collector now takes the MIME type
+from the data instead of always writing image/bmp.
+---
+ src/lib/CDRCollector.h          |  4 ++
+ src/lib/CDRContentCollector.cpp | 13 ++++-
+ src/lib/CDRContentCollector.h   |  1 +
+ src/lib/CDRParser.cpp           | 25 +++++++++
+ src/lib/CDRStylesCollector.cpp  | 89 +++++++++++++++++++++++++++++++++
+ src/lib/CDRStylesCollector.h    |  2 +
+ 6 files changed, 132 insertions(+), 2 deletions(-)
+
+diff --git a/src/lib/CDRCollector.h b/src/lib/CDRCollector.h
+index 7acad54..3e5178a 100644
+--- a/src/lib/CDRCollector.h
++++ b/src/lib/CDRCollector.h
+@@ -94,6 +94,10 @@ public:
+   virtual void collectBBox(double x0, double y0, double x1, double y1) = 0;
+   virtual void collectSpnd(unsigned spnd) = 0;
+   virtual void collectVectorPattern(unsigned id, const librevenge::RVNGBinaryData &data) = 0;
++  // the 8-bit alpha mask CorelDRAW stores after a bitmap (colour model 99),
++  // rows bottom-up like the colour image, stride bytes each
++  virtual void collectBmpAlpha(unsigned /* imageId */, unsigned /* width */, unsigned /* height */,
++                               unsigned /* stride */, const std::vector<unsigned char> & /* mask */) {}
+   virtual void collectPaletteEntry(unsigned colorId, unsigned userId, const CDRColor &color) = 0;
+   virtual void collectText(unsigned textId, unsigned styleId, const std::vector<unsigned char> &data,
+                            const std::vector<unsigned char> &charDescriptions, const std::map<unsigned, CDRStyle> &styleOverrides) = 0;
+diff --git a/src/lib/CDRContentCollector.cpp b/src/lib/CDRContentCollector.cpp
+index e8e0291..2f87e6a 100644
+--- a/src/lib/CDRContentCollector.cpp
++++ b/src/lib/CDRContentCollector.cpp
+@@ -412,7 +412,7 @@ void libcdr::CDRContentCollector::_flushCurrentPath()
+     if (!CDR_ALMOST_ZERO(rotate))
+       propList.insert("librevenge:rotate", rotate * 180 / M_PI, librevenge::RVNG_GENERIC);
+ 
+-    propList.insert("librevenge:mime-type", "image/bmp");
++    propList.insert("librevenge:mime-type", _bitmapMimeType(m_currentImage.getImage()));
+     propList.insert("office:binary-data", m_currentImage.getImage());
+     outputElement.addGraphicObject(propList);
+   }
+@@ -870,7 +870,7 @@ void libcdr::CDRContentCollector::_fillProperties(librevenge::RVNGPropertyList &
+         auto iterBmp = m_ps.m_bmps.find(m_currentFillStyle.imageFill.id);
+         if (iterBmp != m_ps.m_bmps.end())
+         {
+-          propList.insert("librevenge:mime-type", "image/bmp");
++          propList.insert("librevenge:mime-type", _bitmapMimeType(iterBmp->second));
+           propList.insert("draw:fill", "bitmap");
+           propList.insert("draw:fill-image", iterBmp->second);
+           propList.insert("style:repeat", "repeat");
+@@ -1225,6 +1225,15 @@ void libcdr::CDRContentCollector::collectBitmap(unsigned imageId, double x1, dou
+     m_currentImage = CDRImage(iter->second, x1, x2, y1, y2);
+ }
+ 
++// CDRStylesCollector::collectBmpAlpha re-encodes transparent bitmaps as PNG
++const char *libcdr::CDRContentCollector::_bitmapMimeType(const librevenge::RVNGBinaryData &data)
++{
++  const unsigned char *b = data.getDataBuffer();
++  if (data.size() >= 8 && b && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G')
++    return "image/png";
++  return "image/bmp";
++}
++
+ void libcdr::CDRContentCollector::collectPpdt(const std::vector<std::pair<double, double> > &points, const std::vector<unsigned> &knotVector)
+ {
+   m_splineData = CDRSplineData(points, knotVector);
+diff --git a/src/lib/CDRContentCollector.h b/src/lib/CDRContentCollector.h
+index 2eae18c..5b79099 100644
+--- a/src/lib/CDRContentCollector.h
++++ b/src/lib/CDRContentCollector.h
+@@ -84,6 +84,7 @@ private:
+   void _flushCurrentPath();
+ 
+   void _fillProperties(librevenge::RVNGPropertyList &propList);
++  static const char *_bitmapMimeType(const librevenge::RVNGBinaryData &data);
+   void _lineProperties(librevenge::RVNGPropertyList &propList);
+   void _generateBitmapFromPattern(librevenge::RVNGBinaryData &bitmap, const CDRPattern &pattern, const CDRColor &fgColor, const CDRColor &bgColor);
+ 
+diff --git a/src/lib/CDRParser.cpp b/src/lib/CDRParser.cpp
+index 7690725..06f2c67 100644
+--- a/src/lib/CDRParser.cpp
++++ b/src/lib/CDRParser.cpp
+@@ -1973,6 +1973,31 @@ void libcdr::CDRParser::readBmp(librevenge::RVNGInputStream *input, unsigned len
+   std::vector<unsigned> palette;
+   readRImage(colorModel, width, height, bpp, palette, bitmap, input);
+   m_collector->collectBmp(imageId, colorModel, width, height, bpp, palette, bitmap);
++
++  // A bitmap with transparency is followed by its 8-bit alpha mask, an
++  // image record of its own with colour model 99. The mask record starts a few
++  // bytes after the colour data (14 in every file seen); look for its header
++  // - model 99, 1, same width and height, 1, 8 bpp - within a short window.
++  const long afterColour = input->tell();
++  for (long gap = 0; gap <= 64; gap += 2)
++  {
++    input->seek(afterColour + gap, librevenge::RVNG_SEEK_SET);
++    if (getRemainingLength(input) < 64)
++      break;
++    if (readU32(input) != 99 || readU32(input) != 1 || readU32(input) != width || readU32(input) != height ||
++        readU32(input) != 1 || readU32(input) != 8)
++      continue;
++    const unsigned stride = readU32(input);
++    const unsigned size = readU32(input);
++    if (stride < width || size != stride * height || size > getRemainingLength(input))
++      break;
++    input->seek(32, librevenge::RVNG_SEEK_CUR);
++    unsigned long numRead = 0;
++    const unsigned char *data = input->read(size, numRead);
++    if (numRead == size)
++      m_collector->collectBmpAlpha(imageId, width, height, stride, std::vector<unsigned char>(data, data + size));
++    break;
++  }
+ }
+ 
+ void libcdr::CDRParser::readOpacity(librevenge::RVNGInputStream *input, unsigned /* length */)
+diff --git a/src/lib/CDRStylesCollector.cpp b/src/lib/CDRStylesCollector.cpp
+index daeb295..35e3960 100644
+--- a/src/lib/CDRStylesCollector.cpp
++++ b/src/lib/CDRStylesCollector.cpp
+@@ -9,6 +9,8 @@
+ 
+ #include "CDRStylesCollector.h"
+ 
++#include <zlib.h>
++
+ #include "CDRInternalStream.h"
+ #include "libcdr_utils.h"
+ 
+@@ -160,6 +162,93 @@ void libcdr::CDRStylesCollector::collectBmp(unsigned imageId, unsigned colorMode
+   }
+ }
+ 
++namespace
++{
++
++void pngU32(std::vector<unsigned char> &out, unsigned v)
++{
++  out.push_back((unsigned char)(v >> 24));
++  out.push_back((unsigned char)(v >> 16));
++  out.push_back((unsigned char)(v >> 8));
++  out.push_back((unsigned char)v);
++}
++
++void pngChunk(std::vector<unsigned char> &out, const char *type, const std::vector<unsigned char> &data)
++{
++  pngU32(out, (unsigned)data.size());
++  const size_t start = out.size();
++  out.insert(out.end(), type, type + 4);
++  out.insert(out.end(), data.begin(), data.end());
++  const uLong crc = crc32(0L, &out[start], (uInt)(out.size() - start));
++  pngU32(out, (unsigned)crc);
++}
++
++} // anonymous namespace
++
++// Puts a bitmap's alpha mask onto the 32-bit BMP collectBmp
++// made of it. BMP's fourth byte is not reliably read as alpha, so an image
++// whose mask is not fully opaque is re-encoded as RGBA PNG; the content
++// collector tells the two apart by signature.
++void libcdr::CDRStylesCollector::collectBmpAlpha(unsigned imageId, unsigned width, unsigned height, unsigned stride,
++                                                 const std::vector<unsigned char> &mask)
++{
++  auto iter = m_ps.m_bmps.find(imageId);
++  if (iter == m_ps.m_bmps.end() || !width || !height || mask.size() < (size_t)stride * height)
++    return;
++  bool opaque = true;
++  for (unsigned y = 0; y < height && opaque; ++y)
++    for (unsigned x = 0; x < width; ++x)
++      if (mask[(size_t)y * stride + x] != 0xff)
++      {
++        opaque = false;
++        break;
++      }
++  if (opaque)
++    return;
++  const librevenge::RVNGBinaryData &bmp = iter->second;
++  const size_t headerSize = 14 + 40;
++  if (bmp.size() < headerSize + (size_t)width * height * 4)
++    return;
++  const unsigned char *pixels = bmp.getDataBuffer() + headerSize;   // 32-bit BGRX, bottom-up
++
++  // Raw PNG scanlines: filter byte 0, then RGBA, top-down.
++  std::vector<unsigned char> raw;
++  raw.reserve((size_t)height * (1 + (size_t)width * 4));
++  for (unsigned y = 0; y < height; ++y)
++  {
++    const unsigned row = height - 1 - y;
++    const unsigned char *src = pixels + (size_t)row * width * 4;
++    const unsigned char *alpha = &mask[(size_t)row * stride];
++    raw.push_back(0);
++    for (unsigned x = 0; x < width; ++x)
++    {
++      raw.push_back(src[x * 4 + 2]);
++      raw.push_back(src[x * 4 + 1]);
++      raw.push_back(src[x * 4]);
++      raw.push_back(alpha[x]);
++    }
++  }
++  uLongf packedSize = compressBound((uLong)raw.size());
++  std::vector<unsigned char> packed(packedSize);
++  if (compress2(&packed[0], &packedSize, &raw[0], (uLong)raw.size(), 6) != Z_OK)
++    return;
++  packed.resize(packedSize);
++
++  std::vector<unsigned char> png = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
++  std::vector<unsigned char> ihdr;
++  pngU32(ihdr, width);
++  pngU32(ihdr, height);
++  ihdr.push_back(8);   // bit depth
++  ihdr.push_back(6);   // colour type: RGBA
++  ihdr.push_back(0);
++  ihdr.push_back(0);
++  ihdr.push_back(0);
++  pngChunk(png, "IHDR", ihdr);
++  pngChunk(png, "IDAT", packed);
++  pngChunk(png, "IEND", std::vector<unsigned char>());
++  iter->second = librevenge::RVNGBinaryData(&png[0], png.size());
++}
++
+ void libcdr::CDRStylesCollector::collectBmp(unsigned imageId, const std::vector<unsigned char> &bitmap)
+ {
+   librevenge::RVNGBinaryData image(&bitmap[0], bitmap.size());
+diff --git a/src/lib/CDRStylesCollector.h b/src/lib/CDRStylesCollector.h
+index 00039ce..cb0dadd 100644
+--- a/src/lib/CDRStylesCollector.h
++++ b/src/lib/CDRStylesCollector.h
+@@ -51,6 +51,8 @@ public:
+   void collectBitmap(unsigned, double, double, double, double) override {}
+   void collectBmp(unsigned imageId, unsigned colorModel, unsigned width, unsigned height, unsigned bpp, const std::vector<unsigned> &palette, const std::vector<unsigned char> &bitmap) override;
+   void collectBmp(unsigned imageId, const std::vector<unsigned char> &bitmap) override;
++  void collectBmpAlpha(unsigned imageId, unsigned width, unsigned height, unsigned stride,
++                       const std::vector<unsigned char> &mask) override;
+   void collectBmpf(unsigned patternId, unsigned width, unsigned height, const std::vector<unsigned char> &pattern) override;
+   void collectPpdt(const std::vector<std::pair<double, double> > &, const std::vector<unsigned> &) override {}
+   void collectFillTransform(const CDRTransforms &) override {}
+-- 
+2.43.0
+

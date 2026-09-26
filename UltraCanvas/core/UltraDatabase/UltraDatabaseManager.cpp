@@ -87,17 +87,20 @@ IUltraDbConnection* Resolve(const std::string& name, UltraDbResult& err) {
 }
 
 // ---- Handle tables ---------------------------------------------------------
+// Never destroyed: UltraMessage broker sessions (detached threads, stopped
+// by an atexit handler registered before these are first built) can still
+// be journaling through them while statics are torn down.
 
 std::atomic<uint64_t> g_nextHandle{1};
-std::mutex& HandleMutex() { static std::mutex m; return m; }
+std::mutex& HandleMutex() { static std::mutex* m = new std::mutex; return *m; }
 
 struct PreparedEntry {
     std::shared_ptr<ConnEntry>          keepAlive;
     std::unique_ptr<IUltraDbStatement>  stmt;
 };
 std::map<UltraDbHandle, PreparedEntry>& PreparedTable() {
-    static std::map<UltraDbHandle, PreparedEntry> t;
-    return t;
+    static auto* t = new std::map<UltraDbHandle, PreparedEntry>;
+    return *t;
 }
 
 struct TxEntry {
@@ -106,8 +109,8 @@ struct TxEntry {
     bool                       finished = false;
 };
 std::map<UltraDbHandle, TxEntry>& TxTable() {
-    static std::map<UltraDbHandle, TxEntry> t;
-    return t;
+    static auto* t = new std::map<UltraDbHandle, TxEntry>;
+    return *t;
 }
 
 } // namespace

@@ -1,7 +1,7 @@
 // UltraCanvasVectorRenderer.h
 // Vector Graphics Rendering for UltraCanvas
-// Version: 2.1.0
-// Last Modified: 2026-09-15
+// Version: 2.1.1
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 //
 // REFACTORED: Removed IVectorRenderer, IVectorVisitor, SoftwareVectorRenderer,
@@ -61,6 +61,11 @@ namespace UltraCanvas {
         float PixelRatio = 1.0f;
         bool ShowBoundingBoxes = false;
         Color DebugColor = Color(255, 0, 255, 128);
+        // No stroke is drawn thinner than this many device pixels, as in a
+        // CAD viewer: a hairline (DXF lineweight 0, or a 0.25 pt pen on a
+        // plan 10,000 units wide shown at 7 %) stays a visible line at any
+        // zoom instead of fading to nothing. 0 draws widths exactly.
+        float MinStrokePixels = 1.0f;
     };
 
 // ===== RENDER STATISTICS =====
@@ -84,6 +89,11 @@ namespace UltraCanvas {
         void RenderDocument(IRenderContext* ctx, const VectorDocument& document);
         void RenderElement(IRenderContext* ctx, const VectorElement& element);
         void RenderLayer(IRenderContext* ctx, const VectorLayer& layer);
+        // The document definitions (clip paths, gradients and symbols
+        // referenced by id) are looked up in. RenderDocument sets it for its
+        // own call; a caller that draws layers itself (the editing canvas)
+        // sets it around them, or clips and references resolve to nothing.
+        void SetDocument(const VectorDocument* document) { currentDocument = document; }
 
         void SetOptions(const VectorRenderOptions& opts) { options = opts; }
         const VectorRenderOptions& GetOptions() const { return options; }
@@ -95,10 +105,15 @@ namespace UltraCanvas {
         size_t EffectCacheSize() const { return effectCache.size() + bevelCache.size() + contourCache.size(); }
 
     private:
+        float HairlineWidth() const;
         IRenderContext* ctx = nullptr;
         VectorRenderOptions options;
         VectorRenderStats stats;
         std::stack<float> opacityStack;
+        // The transforms of the groups being rendered, composed: maps the
+        // current element's parent space to document space, which is the
+        // space ViewportBounds is in. Culling tests bounds through it.
+        Matrix3x3 cullMatrix = Matrix3x3::Identity();
         float currentOpacity = 1.0f;
         const VectorDocument* currentDocument = nullptr;
 
@@ -149,6 +164,19 @@ namespace UltraCanvas {
             size_t key = 0;
         };
         std::unordered_map<const VectorElement*, EffectRaster> effectCache;
+        // Inline (data: URI) images, decoded once. Keyed by the source
+        // string's buffer and length: the element's own copy of the bytes,
+        // which moves only when the source changes. Emptied by ClearCaches.
+        struct InlineImageKey {
+            const char* data; size_t size;
+            bool operator==(const InlineImageKey& o) const { return data == o.data && size == o.size; }
+        };
+        struct InlineImageKeyHash {
+            size_t operator()(const InlineImageKey& k) const {
+                return std::hash<const void*>()(k.data) ^ (k.size * 0x9e3779b97f4a7c15ULL);
+            }
+        };
+        std::unordered_map<InlineImageKey, std::shared_ptr<UCImage>, InlineImageKeyHash> inlineImageCache;
         bool silhouetteMode = false;   // painting black into an offscreen raster
         void DrawElementBody(const VectorElement& element);
         void RenderWithEffects(const VectorElement& element);

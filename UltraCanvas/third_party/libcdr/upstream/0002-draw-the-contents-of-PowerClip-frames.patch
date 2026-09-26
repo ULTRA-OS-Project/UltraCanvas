@@ -1,0 +1,245 @@
+From 550f95ec31ef5951f4de727b45ba5a78a147e184 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 26 Sep 2026 13:00:54 +0000
+Subject: [PATCH 2/2] draw the contents of PowerClip frames
+
+An object whose loda record has argument 0x1f45 is a PowerClip frame.
+The argument's first word is the spnd id of the vect holding the artwork
+clipped into the frame. libcdr parsed that vect into m_vects but never
+drew it, so all PowerClipped artwork went missing.
+
+readLoda now passes the id to the new collectPowerClip. collectLevel
+records the box each vect was drawn in (m_vectBoxes). When the frame's
+path is flushed, the content collector emits, right after the frame, a
+graphic object of MIME type image/svg+xml over the contents' box. It is
+a small SVG whose clipPath is the frame's outline, wrapped around the
+vect's own SVG, so the contents are clipped to the frame the way
+CorelDRAW draws them, in any consumer that renders SVG images.
+---
+ src/lib/CDRCollector.h          |   6 ++
+ src/lib/CDRContentCollector.cpp | 108 +++++++++++++++++++++++++++++++-
+ src/lib/CDRContentCollector.h   |   3 +
+ src/lib/CDRParser.cpp           |   8 +++
+ 4 files changed, 124 insertions(+), 1 deletion(-)
+
+diff --git a/src/lib/CDRCollector.h b/src/lib/CDRCollector.h
+index 3e5178a..dca1ee9 100644
+--- a/src/lib/CDRCollector.h
++++ b/src/lib/CDRCollector.h
+@@ -35,6 +35,9 @@ public:
+   std::map<unsigned, librevenge::RVNGBinaryData> m_bmps;
+   std::map<unsigned, CDRPattern> m_patterns;
+   std::map<unsigned, librevenge::RVNGBinaryData> m_vects;
++  // the box each vect was drawn in (its m_page when stored), needed to
++  // place PowerClip contents back on the page
++  std::map<unsigned, CDRPage> m_vectBoxes;
+   std::vector<CDRPage> m_pages;
+   std::map<unsigned, CDRColor> m_documentPalette;
+   std::map<unsigned, std::vector<CDRTextLine> > m_texts;
+@@ -94,6 +97,9 @@ public:
+   virtual void collectBBox(double x0, double y0, double x1, double y1) = 0;
+   virtual void collectSpnd(unsigned spnd) = 0;
+   virtual void collectVectorPattern(unsigned id, const librevenge::RVNGBinaryData &data) = 0;
++  // the object being read is a PowerClip frame; id is the vect (spnd)
++  // holding its clipped contents (loda argument 0x1f45)
++  virtual void collectPowerClip(unsigned /* id */) {}
+   // the 8-bit alpha mask CorelDRAW stores after a bitmap (colour model 99),
+   // rows bottom-up like the colour image, stride bytes each
+   virtual void collectBmpAlpha(unsigned /* imageId */, unsigned /* width */, unsigned /* height */,
+diff --git a/src/lib/CDRContentCollector.cpp b/src/lib/CDRContentCollector.cpp
+index 2f87e6a..9441a99 100644
+--- a/src/lib/CDRContentCollector.cpp
++++ b/src/lib/CDRContentCollector.cpp
+@@ -64,7 +64,7 @@ libcdr::CDRContentCollector::CDRContentCollector(libcdr::CDRParserState &ps, lib
+                                                  bool reverseOrder)
+   : m_painter(painter), m_isDocumentStarted(false), m_isPageProperties(false), m_isPageStarted(false),
+     m_ignorePage(false), m_page(ps.m_pages[0]), m_pageIndex(0), m_currentFillStyle(), m_currentLineStyle(),
+-    m_spnd(0), m_currentObjectLevel(0), m_currentGroupLevel(0), m_currentVectLevel(0), m_currentPageLevel(0),
++    m_spnd(0), m_powerClipId(0), m_currentObjectLevel(0), m_currentGroupLevel(0), m_currentVectLevel(0), m_currentPageLevel(0),
+     m_currentStyleId(0), m_currentImage(), m_currentText(nullptr), m_currentBBox(), m_currentTextBox(), m_currentPath(),
+     m_currentTransforms(), m_fillTransforms(), m_polygon(), m_isInPolygon(false), m_isInSpline(false),
+     m_outputElementsStack(nullptr), m_contentOutputElementsStack(), m_fillOutputElementsStack(),
+@@ -344,6 +344,8 @@ void libcdr::CDRContentCollector::_flushCurrentPath()
+       librevenge::RVNGPropertyList propList;
+       propList.insert("svg:d", outputPath);
+       outputElement.addPath(propList);
++      if (m_powerClipId)
++        _addPowerClipContent(outputElement, tmpPath);
+ 
+     }
+     m_currentPath.clear();
+@@ -537,6 +539,7 @@ void libcdr::CDRContentCollector::_flushCurrentPath()
+     outputElement.addEndTextObject();
+   }
+   m_currentImage = libcdr::CDRImage();
++  m_powerClipId = 0;
+   if (!outputElement.empty())
+   {
+     if (m_reverseOrder)
+@@ -615,6 +618,7 @@ void libcdr::CDRContentCollector::collectLevel(unsigned level)
+       librevenge::RVNGBinaryData output((const unsigned char *)header, strlen(header));
+       output.append((const unsigned char *)svgOutput[0].cstr(), strlen(svgOutput[0].cstr()));
+       m_ps.m_vects[m_spnd] = output;
++      m_ps.m_vectBoxes[m_spnd] = m_page;
+     }
+ #if DUMP_VECT
+     librevenge::RVNGString filename;
+@@ -1234,6 +1238,108 @@ const char *libcdr::CDRContentCollector::_bitmapMimeType(const librevenge::RVNGB
+   return "image/bmp";
+ }
+ 
++void libcdr::CDRContentCollector::collectPowerClip(unsigned id)
++{
++  m_powerClipId = id;
++}
++
++// Draws a PowerClip frame's contents. They were rendered into
++// their vect's own SVG (m_ps.m_vects) in the vect's box; that SVG goes back
++// on the page as an image over exactly that box, wrapped in an SVG of its
++// own whose clipPath is the frame's outline - so the contents are clipped
++// to the frame the way CorelDRAW draws them, for any SVG consumer.
++void libcdr::CDRContentCollector::_addPowerClipContent(CDROutputElementList &outputElement,
++                                                        const std::vector<librevenge::RVNGPropertyList> &framePath)
++{
++  auto vect = m_ps.m_vects.find(m_powerClipId);
++  auto box = m_ps.m_vectBoxes.find(m_powerClipId);
++  if (vect == m_ps.m_vects.end() || box == m_ps.m_vectBoxes.end() || framePath.empty())
++    return;
++  const CDRPage &content = box->second;
++  if (CDR_ALMOST_ZERO(content.width) || CDR_ALMOST_ZERO(content.height))
++    return;
++
++  // The contents' box on the output page (the same shift and Y flip the
++  // frame's path went through).
++  const double x0 = content.offsetX - m_page.offsetX;
++  const double y0 = m_page.height - (content.offsetY + content.height - m_page.offsetY);
++  const double w = content.width;
++  const double h = content.height;
++  const double pt = 72.0; // the nested SVG is in points, like the generator's output
++
++  // The frame's outline in the box's coordinates.
++  librevenge::RVNGString d;
++  auto num = [&](double v, double origin) -> librevenge::RVNGString
++  {
++    librevenge::RVNGString t;
++    t.sprintf("%.4f", (v - origin) * pt);
++    return t;
++  };
++  for (const auto &node : framePath)
++  {
++    if (!node["librevenge:path-action"])
++      continue;
++    const librevenge::RVNGString action = node["librevenge:path-action"]->getStr();
++    if (action == "Z")
++    {
++      d.append("Z ");
++      continue;
++    }
++    if (!node["svg:x"] || !node["svg:y"])
++      continue;
++    d.append(action);
++    d.append(" ");
++    if ((action == "C" || action == "Q") && node["svg:x1"] && node["svg:y1"])
++    {
++      d.append(num(node["svg:x1"]->getDouble(), x0)); d.append(" ");
++      d.append(num(node["svg:y1"]->getDouble(), y0)); d.append(" ");
++      if (action == "C" && node["svg:x2"] && node["svg:y2"])
++      {
++        d.append(num(node["svg:x2"]->getDouble(), x0)); d.append(" ");
++        d.append(num(node["svg:y2"]->getDouble(), y0)); d.append(" ");
++      }
++    }
++    else if (action == "A" && node["svg:rx"] && node["svg:ry"])
++    {
++      librevenge::RVNGString arc;
++      arc.sprintf("%.4f %.4f %.4f %d %d ", node["svg:rx"]->getDouble() * pt, node["svg:ry"]->getDouble() * pt,
++                  node["librevenge:rotate"] ? node["librevenge:rotate"]->getDouble() : 0.0,
++                  node["librevenge:large-arc"] ? node["librevenge:large-arc"]->getInt() : 0,
++                  node["librevenge:sweep"] ? node["librevenge:sweep"]->getInt() : 0);
++      d.append(arc);
++    }
++    d.append(num(node["svg:x"]->getDouble(), x0)); d.append(" ");
++    d.append(num(node["svg:y"]->getDouble(), y0)); d.append(" ");
++  }
++
++  librevenge::RVNGString svg;
++  svg.sprintf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
++              "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
++              "width=\"%.4f\" height=\"%.4f\" viewBox=\"0 0 %.4f %.4f\">"
++              "<defs><clipPath id=\"powerclip\"><path d=\"", w * pt, h * pt, w * pt, h * pt);
++  svg.append(d);
++  librevenge::RVNGString tail;
++  tail.sprintf("\"/></clipPath></defs><g clip-path=\"url(#powerclip)\">"
++               "<image x=\"0\" y=\"0\" width=\"%.4f\" height=\"%.4f\" preserveAspectRatio=\"none\" "
++               "xlink:href=\"data:image/svg+xml;base64,", w * pt, h * pt);
++  svg.append(tail);
++  svg.append(vect->second.getBase64Data());
++  svg.append("\"/></g></svg>");
++
++  librevenge::RVNGPropertyList style;
++  style.insert("draw:stroke", "none");
++  style.insert("draw:fill", "none");
++  outputElement.addStyle(style);
++  librevenge::RVNGPropertyList image;
++  image.insert("svg:x", x0);
++  image.insert("svg:y", y0);
++  image.insert("svg:width", w);
++  image.insert("svg:height", h);
++  image.insert("librevenge:mime-type", "image/svg+xml");
++  image.insert("office:binary-data", librevenge::RVNGBinaryData((const unsigned char *)svg.cstr(), svg.size()));
++  outputElement.addGraphicObject(image);
++}
++
+ void libcdr::CDRContentCollector::collectPpdt(const std::vector<std::pair<double, double> > &points, const std::vector<unsigned> &knotVector)
+ {
+   m_splineData = CDRSplineData(points, knotVector);
+diff --git a/src/lib/CDRContentCollector.h b/src/lib/CDRContentCollector.h
+index 5b79099..e6922ac 100644
+--- a/src/lib/CDRContentCollector.h
++++ b/src/lib/CDRContentCollector.h
+@@ -64,6 +64,7 @@ public:
+   void collectBBox(double x0, double y0, double x1, double y1) override;
+   void collectSpnd(unsigned spnd) override;
+   void collectVectorPattern(unsigned id, const librevenge::RVNGBinaryData &data) override;
++  void collectPowerClip(unsigned id) override;
+   void collectPaletteEntry(unsigned, unsigned, const CDRColor &) override {}
+   void collectText(unsigned, unsigned, const std::vector<unsigned char> &,
+                    const std::vector<unsigned char> &, const std::map<unsigned, CDRStyle> &) override {}
+@@ -85,6 +86,7 @@ private:
+ 
+   void _fillProperties(librevenge::RVNGPropertyList &propList);
+   static const char *_bitmapMimeType(const librevenge::RVNGBinaryData &data);
++  void _addPowerClipContent(CDROutputElementList &outputElement, const std::vector<librevenge::RVNGPropertyList> &framePath);
+   void _lineProperties(librevenge::RVNGPropertyList &propList);
+   void _generateBitmapFromPattern(librevenge::RVNGBinaryData &bitmap, const CDRPattern &pattern, const CDRColor &fgColor, const CDRColor &bgColor);
+ 
+@@ -100,6 +102,7 @@ private:
+   CDRFillStyle m_currentFillStyle;
+   CDRLineStyle m_currentLineStyle;
+   unsigned m_spnd;
++  unsigned m_powerClipId; // vect clipped into the current object, 0 = none
+   unsigned m_currentObjectLevel, m_currentGroupLevel, m_currentVectLevel, m_currentPageLevel, m_currentStyleId;
+   CDRImage m_currentImage;
+   const std::vector<CDRTextLine> *m_currentText;
+diff --git a/src/lib/CDRParser.cpp b/src/lib/CDRParser.cpp
+index 06f2c67..02bf01c 100644
+--- a/src/lib/CDRParser.cpp
++++ b/src/lib/CDRParser.cpp
+@@ -1827,6 +1827,14 @@ void libcdr::CDRParser::readLoda(librevenge::RVNGInputStream *input, unsigned le
+     }
+     else if (argTypes[i] == 0x4aba)
+       readPageSize(input);
++    else if (argTypes[i] == 0x1f45)
++    {
++      // PowerClip: the first word names the vect whose objects are drawn
++      // clipped to this object's outline
++      unsigned contentId = readU32(input);
++      if (contentId)
++        m_collector->collectPowerClip(contentId);
++    }
+   }
+   input->seek(startPosition+chunkLength, librevenge::RVNG_SEEK_SET);
+ }
+-- 
+2.43.0
+

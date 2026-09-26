@@ -15,8 +15,8 @@
 // instead of a colour, for the common case of choosing what shows through a
 // transparent image: a colour, or the checkerboard that means "no colour".
 //
-// Version: 1.0.0
-// Last Modified: 2026-08-25
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -114,6 +114,11 @@ public:
 
     // ===== CALLBACKS =====
     std::function<void(const Color&)> onColorSelected;   // a colour swatch was clicked
+    // A colour swatch was clicked with the right (Adjust) button — the
+    // background / secondary colour in a foreground+background picker. It does
+    // not move the selection, which tracks left clicks. Unset, right clicks are
+    // ignored.
+    std::function<void(const Color&)> onColorAdjustSelected;
     std::function<void()>             onCheckeredSelected;
 
     // ===== OVERRIDES =====

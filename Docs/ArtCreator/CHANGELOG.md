@@ -1,3 +1,58 @@
+#### 2026-09-26 *0.6.1*
+- **Right click sets the line colour.** A right click on a palette swatch
+  under the colour picker now sets the line (background) colour of the
+  picker and the selection; it used to do nothing. A right-button drag on
+  the colour wheel or sliders with a shape selected no longer leaves the
+  background swatch showing the fill colour, and a right-button eyedropper
+  sample now reaches the selection's line colour too, and the swap arrow
+  swaps the selection's fill and line instead of leaving both swatches the
+  old fill colour. The
+  framework side is in `Docs/UltraCanvas/changelog.d/colorpicker-right-click-background.md`.
+- **The colour wheel fills the panel width.** The picker is sized to the
+  height at which its hue ring spans the side panel, as in UltraPaint,
+  instead of a fixed 300 px that left a small wheel. It is no longer
+  stretched to the panel's content box either, so the hex field and
+  channel values sit in the visible part beside the scrollbar instead of
+  running under it.
+- **SVG files open complete and in place.** Most shapes of an optimised
+  SVG went missing, drawings with a transformed top-level group or an
+  offset viewBox landed off the page (or not at all), and text was too
+  large and hung below its line. The causes were in the framework's shared
+  vector code (see
+  `Docs/UltraCanvas/changelog.d/svg-import-and-vector-fileloader.md`).
+  Text placed with the text tool now sits on the clicked point as its
+  baseline, and at the size chosen.
+- **Open and Save go through the FileLoader.** ArtCreator no longer calls
+  the Vector plugin's converters itself: `UltraCanvasFileLoader::
+  LoadVectorDocument` / `SaveVectorDocument` do, with the same formats and
+  the same reader and writer notes in the status bar.
+- **Ellipses and circles draw again, and no longer blank the window.** The
+  first step of every ellipse drag has a zero-size box; drawing its
+  preview put the window's Cairo context into a permanent error state, so
+  nothing was drawn or created afterwards and the side panel went blank
+  (Quick Shape looked broken too when tried next). Fixed in the framework's
+  Cairo context (see
+  `Docs/UltraCanvas/changelog.d/cairo-flat-ellipse.md`).
+- **Quick Shape: polygon or star, and the options in view.** A *Shape*
+  dropdown (Polygon / Star) replaces the Star checkbox, *Corners* (3–24)
+  sets the number of corners or points - 8 with Polygon is an octagon -
+  and *Depth* the star's inner radius. With Shift a star points up and a
+  polygon with an even number of corners stands on a flat side. The Tool
+  Options now sit directly under the colour swatches, above the Fill ramp,
+  so they show without scrolling.
+- **CorelDRAW files open, CAD drawings are readable.** Open now lists
+  `.cdr` (where the framework's CDR plugin is built - not yet on Windows),
+  `.svgz` and Xara's `.web`, from the formats the framework reports rather
+  than a list of its own. Thin CAD lines stay one pixel wide at any zoom,
+  and a DXF declared in metres (the millennium-falcon sample) no longer
+  opens as a black blot. CorelDRAW drop shadows and cut-out overlays keep
+  their transparency instead of covering the drawing. See
+  `Docs/UltraCanvas/changelog.d/vector-samples-cdr-hairlines-previews.md`.
+- **CorelDRAW drawings look like CorelDRAW's own preview.** Drop shadows,
+  cut-out overlays and PowerClipped artwork (content clipped into a frame)
+  now appear, through the framework's patched libcdr; clip paths in any
+  imported drawing are applied on the canvas.
+
 #### 2026-09-22 *0.6.0*
 - **Mirror.** Two toolbar buttons after Send to Back, and *Mirror
   Horizontally* / *Mirror Vertically* on the Arrange menu, flip the

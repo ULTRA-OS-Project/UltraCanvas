@@ -1099,13 +1099,16 @@ protected:
 
 class QuickShapeTool : public DragShapeTool {
 public:
-    QuickShapeTool() : DragShapeTool(ArtToolId::QuickShape, "Quick Shape", "quickshape.svg", 'Q', "Drag from the centre outwards for a polygon or a star") {}
+    QuickShapeTool() : DragShapeTool(ArtToolId::QuickShape, "Quick Shape", "quickshape.svg", 'Q', "Drag from the centre outwards for a polygon or a star; shift stands it upright") {}
 protected:
     std::vector<Point2Dd> Points(const ArtToolOptions& o) const {
         std::vector<Point2Dd> pts;
         const double r = std::hypot(current.x - start.x, current.y - start.y);
-        const double a0 = shift ? -M_PI / 2 : std::atan2(current.y - start.y, current.x - start.x);
         const int n = std::max(3, o.quickShapeSides);
+        // Shift: a star's point, or an odd polygon's corner, straight up; an
+        // even polygon (square, hexagon, octagon) sits on a flat side instead.
+        const double upright = (!o.quickShapeStar && n % 2 == 0) ? -M_PI / 2 + M_PI / n : -M_PI / 2;
+        const double a0 = shift ? upright : std::atan2(current.y - start.y, current.x - start.x);
         const int count = o.quickShapeStar ? 2 * n : n;
         for (int i = 0; i < count; ++i) {
             const double a = a0 + i * 2 * M_PI / count;
@@ -1125,9 +1128,12 @@ protected:
     }
     void ExtraOptions(ArtToolContext& ctx, UltraCanvasContainer& panel) override {
         ArtToolOptions& o = *ctx.options;
-        AddSliderRow(panel, "ac-qs-sides", "Sides", 3, 24, static_cast<float>(o.quickShapeSides), 1, true, [&o](float v) { o.quickShapeSides = static_cast<int>(v); });
-        AddCheckbox(panel, "ac-qs-star", "Star", o.quickShapeStar, [&o](bool v) { o.quickShapeStar = v; });
-        AddSliderRow(panel, "ac-qs-inner", "Inner radius", 0.1f, 0.95f, o.quickShapeInner, 0.05f, false, [&o](float v) { o.quickShapeInner = v; });
+        // Polygon: a regular n-gon (8 corners is an octagon). Star: n points,
+        // every other corner pulled in to the inner radius.
+        AddDropdown(panel, "ac-qs-kind", "Shape", {"Polygon", "Star"}, o.quickShapeStar ? 1 : 0,
+                    [&o](int i) { o.quickShapeStar = i == 1; });
+        AddSliderRow(panel, "ac-qs-sides", "Corners", 3, 24, static_cast<float>(o.quickShapeSides), 1, true, [&o](float v) { o.quickShapeSides = static_cast<int>(v); });
+        AddSliderRow(panel, "ac-qs-inner", "Depth", 0.1f, 0.95f, o.quickShapeInner, 0.05f, false, [&o](float v) { o.quickShapeInner = v; });
     }
 };
 

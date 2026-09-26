@@ -1,3 +1,10 @@
+#### 2026-09-26 *0.2.7*
+- **Right click on a palette swatch sets the background colour.** It used
+  to do nothing; the background swatch and the paint background now follow.
+  A right-button eyedropper sample and the swap arrow also update the
+  background colour the tools paint with. The framework side is in
+  `Docs/UltraCanvas/changelog.d/colorpicker-right-click-background.md`.
+
 #### 2026-09-15 *0.2.6*
 - **Save over the image you opened works on Windows, and says something
   usable when it cannot.** Saving an opened JPEG back over itself failed with

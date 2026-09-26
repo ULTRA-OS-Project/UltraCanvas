@@ -221,9 +221,13 @@ namespace UltraCanvas {
             std::map<std::string, std::string> lookups;  // "name|size" -> file
         };
 
+        // Never destroyed: the file-association worker thread looks icons up
+        // and may still be inside a lookup while the process exits. A
+        // function-local static first built on that thread is destroyed
+        // before the service that joins it, under the thread's feet.
         IconCache& Icons() {
-            static IconCache cache;
-            return cache;
+            static IconCache* cache = new IconCache;
+            return *cache;
         }
 
         // The subdirectories of one theme across every base dir, plus what

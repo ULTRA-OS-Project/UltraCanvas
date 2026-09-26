@@ -1,7 +1,7 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.3.0
-// Last Modified: 2026-08-09
+// Version: 1.3.1
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -50,6 +50,21 @@ namespace UltraCanvas {
     void UltraCanvasColorPicker::SetColor(const Color& color, bool notify) {
         float h, s, v;
         RGBToHSV(color, h, s, v);
+        if (editingBackground) {
+            // A right-button (Adjust) drag holds the background in the working
+            // state. A host that sets the foreground meanwhile — typically by
+            // re-syncing from its selection inside onBackgroundChanged — sets
+            // the saved foreground, or it would overwrite the background being
+            // edited (and EndBackgroundEdit would restore the wrong colour).
+            if (s > 1e-4f && v > 1e-4f) fgSaveHue = h;
+            fgSaveSat = s; fgSaveVal = v; fgSaveAlpha = color.a;
+            RequestRedraw();
+            if (notify) {
+                if (onColorChanging) onColorChanging(color);
+                if (onColorChanged) onColorChanged(color);
+            }
+            return;
+        }
         // Preserve the existing hue when the incoming colour is achromatic
         // (grey/black/white) so the wheel marker does not jump to red.
         if (s > 1e-4f && v > 1e-4f) {
@@ -60,6 +75,23 @@ namespace UltraCanvas {
         alpha = color.a;
         if (notify) Changed(true);
         else RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetBackgroundColor(const Color& c, bool notify) {
+        previousColor = c;
+        if (editingBackground) {
+            // Keep the working state (which holds the background during an
+            // Adjust drag) in step with the new value.
+            float h, s, v;
+            RGBToHSV(c, h, s, v);
+            if (s > 1e-4f && v > 1e-4f) hue = h;
+            sat = s; val = v; alpha = c.a;
+        }
+        RequestRedraw();
+        if (notify) {
+            if (onBackgroundChanging) onBackgroundChanging(c);
+            if (onBackgroundChanged) onBackgroundChanged(c);
+        }
     }
 
     void UltraCanvasColorPicker::SetAlpha(uint8_t a, bool notify) {
@@ -1133,10 +1165,17 @@ namespace UltraCanvas {
                 return true;
             }
             if (swapArrowRect.Contains(p)) {
-                Color cur = GetColor();
-                SetColor(previousColor, false);
-                previousColor = cur;
+                Color fg = GetColor();
+                Color bg = previousColor;
+                SetColor(bg, false);
+                previousColor = fg;
                 Changed(true);
+                // Both colours changed: tell the host about the background too.
+                // Set it from the value captured above, not previousColor: a
+                // host that re-syncs both swatches from its own state inside
+                // onColorChanged (ArtCreator does, from the selected shape,
+                // whose line is still the old colour) has overwritten it.
+                SetBackgroundColor(fg, true);
                 return true;
             }
         }
@@ -1392,7 +1431,10 @@ namespace UltraCanvas {
 
     void UltraCanvasColorPicker::EndBackgroundEdit() {
         if (!editingBackground) return;
-        previousColor = GetColor();            // commit the edited background
+        // previousColor already holds the edited background: Changed() mirrors
+        // it on every step, and a host SetBackgroundColor() during the drag
+        // wins. Re-reading GetColor() here would be wrong if the host touched
+        // the working state from a callback.
         hue = fgSaveHue; sat = fgSaveSat; val = fgSaveVal; alpha = fgSaveAlpha;
         editingBackground = false;
         RequestRedraw();
@@ -1484,7 +1526,7 @@ namespace UltraCanvas {
         if (win && win->GetPixelColor(event.pointerWindow.x, event.pointerWindow.y, sampled)) {
             sampled.a = 255;
             if (screenPickForeground) SetForegroundColor(sampled, true);
-            else                      SetBackgroundColor(sampled);
+            else                      SetBackgroundColor(sampled, true);
         }
         EndScreenPick();
     }

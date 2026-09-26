@@ -20,6 +20,7 @@
 #include "UltraCanvasImage.h"
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -182,6 +183,76 @@ int main(int argc, char** argv) {
                   "xar: filters, masks, clipping and pages are not claimed");
         }
     }
+
+    // ===== Extension lists come from the converters =====
+    // Nobody maintains them: every extension a converter declares is readable
+    // exactly when it can import and writable exactly when it can export.
+    {
+        UltraCanvasVectorFormatsPlugin plugin;
+        const auto readable = plugin.GetSupportedExtensions();
+        const auto writable = plugin.GetSaveExtensions();
+        auto has = [](const std::vector<std::string>& v, const std::string& e) {
+            return std::find(v.begin(), v.end(), e) != v.end();
+        };
+        bool consistent = true;
+        for (const std::string ext : {"svg", "svgz", "xar", "web", "eps", "cdr", "pdf", "emf",
+                                       "wmf", "ai", "dxf", "dwg", "dwt", "dws", "sv$"}) {
+            auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(ext);
+            if (!converter) { consistent = false; std::printf("    no converter for %s\n", ext.c_str()); continue; }
+            if (has(readable, ext) != converter->CanImport() || has(writable, ext) != converter->CanExport()) {
+                consistent = false;
+                std::printf("    list and converter disagree on %s\n", ext.c_str());
+            }
+        }
+        Check(consistent, "readable/writable lists match each converter's CanImport/CanExport");
+        Check(has(readable, "svgz"), ".svgz is readable (declared by the SVG converter)");
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+        Check(has(readable, "cdr"), ".cdr is readable when the CDR plugin is built");
+#else
+        Check(!has(readable, "cdr"), ".cdr is not readable without the CDR plugin");
+#endif
+    }
+
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+    // ===== CorelDRAW bitmaps keep their transparency =====
+    // CorelDRAW stores a transparent bitmap as a colour image plus an 8-bit
+    // mask; libcdr reads only the colour image. detailed.cdr's four card
+    // shadows came out as solid black boxes and its logo overlay as an opaque
+    // white sheet hiding the cards. The importer puts the masks back, so those
+    // five images arrive as RGBA PNG and the opaque background stays a BMP.
+    {
+        auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension("cdr");
+        VectorConverter::ConversionOptions options;
+        auto doc = converter ? converter->Import(std::string(VECTOR_SAMPLES_DIR) + "/CDR/detailed.cdr", options)
+                             : nullptr;
+        Check(doc != nullptr, "detailed.cdr imports");
+        int png = 0, bmp = 0, clipped = 0;
+        std::function<void(const std::shared_ptr<VectorElement>&)> walk =
+                [&](const std::shared_ptr<VectorElement>& e) {
+            if (!e) return;
+            if (e->Style.ClipPath && !e->Style.ClipPath->empty() && doc->GetDefinition(*e->Style.ClipPath)) ++clipped;
+            if (auto im = std::dynamic_pointer_cast<VectorImage>(e)) {
+                if (im->Source.rfind("data:image/png;base64,", 0) == 0) ++png;
+                else if (im->Source.rfind("data:image/bmp;base64,", 0) == 0) ++bmp;
+            }
+            if (auto g = std::dynamic_pointer_cast<VectorGroup>(e))
+                for (const auto& c : g->Children) walk(c);
+        };
+        if (doc) for (const auto& l : doc->Layers) walk(l);
+        const std::string counts = " (png=" + std::to_string(png) + ", bmp=" + std::to_string(bmp) +
+                                   ", clipped=" + std::to_string(clipped) + ")";
+#ifdef ULTRACANVAS_VENDORED_LIBCDR
+        // The patched libcdr also draws the 8 PowerClips - the cards'
+        // leaves, waves and gloss - as clipped groups, 6 of them holding a
+        // masked bitmap of their own.
+        Check(png == 11 && bmp == 1, "detailed.cdr: every masked bitmap carries alpha" + counts);
+        Check(clipped == 8, "detailed.cdr: the 8 PowerClips arrive clipped to their frames" + counts);
+#else
+        Check(png == 5 && bmp == 1,
+              "detailed.cdr: the 5 masked bitmaps carry alpha, the opaque one stays as it was" + counts);
+#endif
+    }
+#endif
 
     // ===== The DWG family reaches the DWG converter =====
     // A drawing arrives as .dwg, as a template (.dwt), a standards file

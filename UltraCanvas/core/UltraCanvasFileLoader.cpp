@@ -1,8 +1,8 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
-// Version: 1.0.0
-// Last Modified: 2026-05-12
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -11,6 +11,7 @@
 #include "UltraCanvasAudio.h"
 #include "UltraCanvasUtils.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasVectorPreview.h"   // the Vector plugin's readers/writers, installed at start-up
 
 #include <algorithm>
 #include <cctype>
@@ -293,6 +294,69 @@ namespace UltraCanvas {
 
     std::vector<std::string> UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCategory category) {
         return UltraCanvasSupportedFormats::GetSaveExtensions(category);
+    }
+
+    // ===== VECTOR DOCUMENTS =====
+
+    std::shared_ptr<VectorStorage::VectorDocument> UltraCanvasFileLoader::LoadVectorDocument(
+            const std::string& filePath, std::string& outError, std::vector<std::string>* notes) {
+        outError.clear();
+        if (PreviewableVectorExtensions().empty()) {
+            outError = "No vector file readers are installed (RegisterVectorFormatsPlugin was not called).";
+            return nullptr;
+        }
+        if (!CanPreviewVectorExtension(filePath)) {
+            outError = "No reader for this file type.";
+            return nullptr;
+        }
+        std::vector<std::string> collected;
+        auto doc = ImportVectorDocument(filePath, [&collected](const std::string& n) {
+            collected.push_back(n);
+        });
+        if (!doc) {
+            outError = "Could not read the file";
+            if (!collected.empty()) outError += ": " + collected.front();
+        }
+        if (notes) *notes = std::move(collected);
+        return doc;
+    }
+
+    bool UltraCanvasFileLoader::SaveVectorDocument(const VectorStorage::VectorDocument& document,
+                                                   const std::string& filePath, std::string& outError,
+                                                   std::vector<std::string>* notes) {
+        outError.clear();
+        std::string ext = std::filesystem::path(filePath).extension().string();
+        if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+        for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        const auto writable = SavableVectorExtensions();
+        if (std::find(writable.begin(), writable.end(), ext) == writable.end()) {
+            outError = writable.empty()
+                       ? "No vector file writers are installed (RegisterVectorFormatsPlugin was not called)."
+                       : "No writer for ." + ext;
+            return false;
+        }
+        std::vector<std::string> collected;
+        const bool ok = ExportVectorDocument(document, filePath, [&collected](const std::string& n) {
+            collected.push_back(n);
+        });
+        if (!ok) {
+            outError = "Could not save the file";
+            if (!collected.empty()) outError += ": " + collected.front();
+        }
+        if (notes) *notes = std::move(collected);
+        return ok;
+    }
+
+    std::vector<std::string> UltraCanvasFileLoader::GetVectorLoadExtensions() {
+        return PreviewableVectorExtensions();
+    }
+
+    std::vector<std::string> UltraCanvasFileLoader::GetVectorSaveExtensions() {
+        return SavableVectorExtensions();
+    }
+
+    bool UltraCanvasFileLoader::CanLoadVectorDocument(const std::string& extensionOrPath) {
+        return CanPreviewVectorExtension(extensionOrPath);
     }
 
     std::shared_ptr<UCRichDocument> UltraCanvasFileLoader::LoadTextDocument(

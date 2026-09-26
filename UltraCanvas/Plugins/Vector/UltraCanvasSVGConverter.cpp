@@ -8,13 +8,14 @@
 // stops in <defs>, text keeps its spans, and nothing is flattened. The
 // importer parses with tinyxml2 and leans on the storage utilities
 // (ParsePathString, ParseColorString, ParseTransformString).
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic
+#include "UltraCanvasFileLoader.h"   // LoadFile: inflates .svgz
 
 #include <tinyxml2.h>
 
@@ -28,6 +29,7 @@
 #include <iomanip>
 #include <locale>
 #include <map>
+#include <set>
 #include <sstream>
 #include <variant>
 
@@ -600,7 +602,10 @@ public:
         double vb[4] = {0, 0, 0, 0};
         bool hasViewBox = false;
         if (const char* v = svg->Attribute("viewBox")) {
-            std::istringstream iss(v);
+            std::string list = v;   // "0 0 100 100" or "0,0,100,100"
+            for (char& ch : list) if (ch == ',') ch = ' ';
+            std::istringstream iss(list);
+            iss.imbue(std::locale::classic());
             hasViewBox = static_cast<bool>(iss >> vb[0] >> vb[1] >> vb[2] >> vb[3]);
         }
         double w = LengthAttr(svg, "width", hasViewBox ? vb[2] : 0);
@@ -641,8 +646,8 @@ public:
                 layer->Transform = g->Transform;
                 layer->Visible = g->Style.Display && g->Style.Visible;
                 layer->Children = std::move(g->Children);
-                // SVG's default fill is black; the framework treats an unset
-                // fill as inherited, so the black lives at the layer root.
+                // SVG's default fill is black; it starts at the layer root
+                // and ResolveInheritedPaint hands it down.
                 if (!layer->Style.Fill) layer->Style.Fill = Color(0, 0, 0, 255);
                 doc->Layers.push_back(layer);
             }
@@ -654,7 +659,81 @@ public:
                 ParseNode(child, *doc, layer.get());
             }
         }
+
+        // The editor and the renderer place document coordinates straight on
+        // the page (0,0 to Size) and do not apply a layer's own Transform.
+        // SVG instead maps the viewBox onto width x height, and the top-level
+        // <g> a layer came from may carry a transform (Xara writes
+        // scale(1 -1), svgo a translate). Both go into one group inside each
+        // layer, where the renderer, hit-testing and the writers all honour
+        // them, and the viewBox becomes the page.
+        // A width in inches or points rarely lands exactly on the viewBox
+        // ("8.333in" is 799.97 px for an 800-wide viewBox): within 0.1% at the
+        // origin that is rounding, not a mapping.
+        const bool sameSpace = hasViewBox && vb[0] == 0 && vb[1] == 0 && vb[2] > 0 && vb[3] > 0 &&
+                               std::fabs(w / vb[2] - 1.0) < 1e-3 && std::fabs(h / vb[3] - 1.0) < 1e-3;
+        if (hasViewBox && !sameSpace && vb[2] > 0 && vb[3] > 0 && w > 0 && h > 0) {
+            double sx = w / vb[2], sy = h / vb[3];
+            double tx = 0, ty = 0;
+            const char* par = svg->Attribute("preserveAspectRatio");
+            const std::string align = par ? par : "xMidYMid meet";
+            if (align.rfind("none", 0) != 0) {
+                const bool slice = align.find("slice") != std::string::npos;
+                const double k = slice ? std::max(sx, sy) : std::min(sx, sy);
+                const double fx = align.find("xMin") != std::string::npos ? 0.0
+                                : align.find("xMax") != std::string::npos ? 1.0 : 0.5;
+                const double fy = align.find("YMin") != std::string::npos ? 0.0
+                                : align.find("YMax") != std::string::npos ? 1.0 : 0.5;
+                tx = (w - vb[2] * k) * fx;
+                ty = (h - vb[3] * k) * fy;
+                sx = sy = k;
+            }
+            viewBoxMatrix = Matrix3x3::Translate(tx, ty) * Matrix3x3::Scale(sx, sy) *
+                            Matrix3x3::Translate(-vb[0], -vb[1]);
+            doc->ViewBox = Rect2Dd{0, 0, w, h};
+        }
+        for (auto& layer : doc->Layers) {
+            if (!layer) continue;
+            Matrix3x3 m = viewBoxMatrix;
+            if (layer->Transform) m = m * *layer->Transform;
+            layer->Transform.reset();
+            if (m.IsIdentity() || layer->Children.empty()) continue;
+            auto content = std::make_shared<VectorGroup>();
+            content->Transform = m;
+            layer->AddChild(content);
+            for (auto& child : layer->Children) {
+                if (child && child != content) content->AddChild(child);
+            }
+            layer->Children.assign(1, content);
+        }
+
+        // The renderer draws each element with its own style only - an unset
+        // fill draws nothing - so the fill and stroke SVG inherits from the
+        // enclosing <g> elements (and the black default) are written into
+        // every element that does not set its own.
+        for (auto& layer : doc->Layers) {
+            if (layer) ResolveInheritedPaint(*layer, layer->Style.Fill, layer->Style.Stroke);
+        }
+        const std::optional<FillData> black = FillData(Color(0, 0, 0, 255));
+        for (auto& [id, def] : doc->Definitions) {
+            if (def) ResolveInheritedPaint(*def, black, std::nullopt);
+        }
         return doc;
+    }
+
+    // Hands the inherited fill and stroke down the tree. An element keeps
+    // what it sets itself, including an explicit "none" (a monostate fill,
+    // or a stroke recorded in strokeNone), and passes its resolved paint on
+    // to its own children.
+    void ResolveInheritedPaint(VectorElement& e, const std::optional<FillData>& fill,
+                               const std::optional<StrokeData>& stroke) {
+        if (!e.Style.Fill && fill) e.Style.Fill = fill;
+        if (!e.Style.Stroke && stroke && !strokeNone.count(&e)) e.Style.Stroke = stroke;
+        if (auto* g = dynamic_cast<VectorGroup*>(&e)) {
+            for (auto& child : g->Children) {
+                if (child) ResolveInheritedPaint(*child, e.Style.Fill, e.Style.Stroke);
+            }
+        }
     }
 
     static bool IsNonDrawable(const tinyxml2::XMLElement* e) {
@@ -670,6 +749,15 @@ private:
     std::function<void(const std::string&)> warn;
     std::map<std::string, GradientData> gradients;
     bool warnedCss = false;
+    // Maps viewBox units onto the page (identity when they coincide).
+    Matrix3x3 viewBoxMatrix = Matrix3x3::Identity();
+    // SVG images inside SVG images: how deep this reader is, and how many it
+    // has read (for unique definition prefixes).
+    int depth = 0;
+    int nestedCount = 0;
+    // Elements that say stroke="none" themselves: they must not inherit a
+    // group's stroke, and an unset Stroke cannot tell the two apart.
+    std::set<const VectorElement*> strokeNone;
 
     static const char* StripNs(const char* name) {
         const char* colon = std::strchr(name, ':');
@@ -886,6 +974,13 @@ private:
             s.Stroke = st;
         } else if (strokeVal == "none") {
             s.Stroke.reset();
+            strokeNone.insert(&out);
+        }
+        // clip-path="url(#id)": the element is clipped to that <clipPath>.
+        std::string clip = Prop(e, "clip-path");
+        if (clip.rfind("url(#", 0) == 0) {
+            const size_t end = clip.find(')');
+            s.ClipPath = clip.substr(5, end == std::string::npos ? std::string::npos : end - 5);
         }
         s.Opacity = ParseOpacity(Prop(e, "opacity"), 1.0f);
         s.FillOpacity = ParseOpacity(Prop(e, "fill-opacity"), 1.0f);
@@ -939,12 +1034,112 @@ private:
             s.LetterSpacing = static_cast<float>(ParseLength(ls.c_str(), 0));
     }
 
+    // ===== NESTED SVG IMAGES =====
+
+    // <image href="data:image/svg+xml;..."> as a group: the embedded drawing
+    // read by a reader of its own, its page mapped onto the image box the
+    // way preserveAspectRatio says, and its definitions (clip paths) moved
+    // into this document under names that cannot collide.
+    std::shared_ptr<VectorElement> ParseNestedSvg(const tinyxml2::XMLElement* e, const char* href,
+                                                  VectorDocument& doc) {
+        if (depth >= 8) {
+            warn("SVG import: SVG images nested more than 8 deep are skipped");
+            return nullptr;
+        }
+        const std::string uri = href;
+        const size_t comma = uri.find(',');
+        if (comma == std::string::npos) return nullptr;
+        std::string data;
+        if (uri.substr(0, comma).find(";base64") != std::string::npos) {
+            const std::vector<uint8_t> bytes = Base64Decode(uri.substr(comma + 1));
+            data.assign(bytes.begin(), bytes.end());
+        } else {
+            data = PercentDecode(uri.substr(comma + 1));
+        }
+        SvgReader inner(warn);
+        inner.depth = depth + 1;
+        auto nested = inner.Parse(data);
+        if (!nested || nested->Size.width <= 0 || nested->Size.height <= 0) return nullptr;
+
+        const double x = LengthAttr(e, "x", 0), y = LengthAttr(e, "y", 0);
+        const double w = LengthAttr(e, "width", nested->Size.width);
+        const double h = LengthAttr(e, "height", nested->Size.height);
+        double sx = w / nested->Size.width, sy = h / nested->Size.height;
+        double tx = x, ty = y;
+        const char* par = e->Attribute("preserveAspectRatio");
+        const std::string align = par ? par : "xMidYMid meet";
+        if (align.rfind("none", 0) != 0) {
+            const bool slice = align.find("slice") != std::string::npos;
+            const double k = slice ? std::max(sx, sy) : std::min(sx, sy);
+            tx += (w - nested->Size.width * k) * (align.find("xMin") != std::string::npos ? 0.0
+                                                  : align.find("xMax") != std::string::npos ? 1.0 : 0.5);
+            ty += (h - nested->Size.height * k) * (align.find("YMin") != std::string::npos ? 0.0
+                                                   : align.find("YMax") != std::string::npos ? 1.0 : 0.5);
+            sx = sy = k;
+        }
+
+        // Definitions keep their content, under a prefix unique to this image.
+        const std::string prefix = "svgimg" + std::to_string(++nestedCount) + "-";
+        for (auto& [id, def] : nested->Definitions) {
+            if (!def) continue;
+            def->Id = prefix + id;
+            doc.AddDefinition(def->Id, def);
+        }
+        auto group = std::make_shared<VectorGroup>();
+        Matrix3x3 m = Matrix3x3::Translate(tx, ty) * Matrix3x3::Scale(sx, sy);
+        if (const char* tr = e->Attribute("transform")) m = ParseTransformString(tr) * m;
+        group->Transform = m;
+        std::function<void(VectorElement&)> rename = [&](VectorElement& el) {
+            if (el.Style.ClipPath && !el.Style.ClipPath->empty()) el.Style.ClipPath = prefix + *el.Style.ClipPath;
+            if (auto* g = dynamic_cast<VectorGroup*>(&el))
+                for (auto& c : g->Children) if (c) rename(*c);
+            if (auto* cp = dynamic_cast<VectorClipPath*>(&el))
+                for (auto& c : cp->Data.Elements) if (c) rename(*c);
+        };
+        for (auto& [id, def] : nested->Definitions) if (def) rename(*def);
+        for (auto& layer : nested->Layers) {
+            if (!layer) continue;
+            rename(*layer);
+            auto sub = std::make_shared<VectorGroup>();
+            sub->Style = layer->Style;
+            sub->Children = std::move(layer->Children);
+            for (auto& c : sub->Children) if (c) c->Parent.reset();
+            group->AddChild(sub);
+        }
+        // The <image>'s own presentation (opacity, clip-path, visibility).
+        const Matrix3x3 placed = *group->Transform;
+        ApplyStyle(e, *group);
+        group->Transform = placed;   // ApplyStyle read `transform`; it is folded in above
+        return group;
+    }
+
+    static std::string PercentDecode(const std::string& in) {
+        std::string out;
+        out.reserve(in.size());
+        for (size_t i = 0; i < in.size(); ++i) {
+            if (in[i] == '%' && i + 2 < in.size() && std::isxdigit(static_cast<unsigned char>(in[i + 1])) &&
+                std::isxdigit(static_cast<unsigned char>(in[i + 2]))) {
+                out.push_back(static_cast<char>(std::stoi(in.substr(i + 1, 2), nullptr, 16)));
+                i += 2;
+            } else {
+                out.push_back(in[i]);
+            }
+        }
+        return out;
+    }
+
     // ===== ELEMENTS =====
 
     void ParseNode(const tinyxml2::XMLElement* e, VectorDocument& doc,
                    VectorGroup* parent) {
         const char* name = StripNs(e->Name());
 
+        if (std::strcmp(name, "clipPath") == 0) {
+            // A definition wherever it appears; it draws nothing itself.
+            auto clip = ParseShape(e, doc);
+            if (clip && !clip->Id.empty()) doc.AddDefinition(clip->Id, clip);
+            return;
+        }
         if (std::strcmp(name, "defs") == 0) {
             for (const tinyxml2::XMLElement* child = e->FirstChildElement();
                  child; child = child->NextSiblingElement()) {
@@ -1084,12 +1279,33 @@ private:
             ApplyStyle(e, *u);
             return u;
         }
+        if (std::strcmp(name, "clipPath") == 0) {
+            auto clip = std::make_shared<VectorClipPath>();
+            if (const char* id = e->Attribute("id")) clip->Id = id;
+            if (Prop(e, "clip-rule") == "evenodd") clip->Data.ClipRule = VectorStorage::FillRule::EvenOdd;
+            for (const tinyxml2::XMLElement* child = e->FirstChildElement();
+                 child; child = child->NextSiblingElement()) {
+                auto el = ParseShape(child, doc);
+                if (!el) continue;
+                // A clip shape's own clip-rule overrides the container's.
+                if (Prop(child, "clip-rule") == "evenodd") clip->Data.ClipRule = VectorStorage::FillRule::EvenOdd;
+                clip->Data.Elements.push_back(el);
+            }
+            return clip;
+        }
+
         if (std::strcmp(name, "image") == 0) {
+            const char* href = e->Attribute("href");
+            if (!href) href = e->Attribute("xlink:href");
+            // An image that is itself SVG (libcdr places CorelDRAW PowerClip
+            // contents this way) is read as drawing, not pixels, so it stays
+            // editable and sharp at any zoom.
+            if (href && std::strncmp(href, "data:image/svg+xml", 18) == 0) {
+                if (auto nested = ParseNestedSvg(e, href, doc)) return nested;
+            }
             auto im = std::make_shared<VectorImage>();
             im->Bounds = Rect2Dd{LengthAttr(e, "x", 0), LengthAttr(e, "y", 0),
                                  LengthAttr(e, "width", 0), LengthAttr(e, "height", 0)};
-            const char* href = e->Attribute("href");
-            if (!href) href = e->Attribute("xlink:href");
             if (href) im->Source = href;
             ApplyStyle(e, *im);
             return im;
@@ -1158,8 +1374,9 @@ FormatCapabilities SVGConverter::GetCapabilities() const {
     caps.SupportsGroups = true;
     caps.SupportsLayers = true;
     caps.SupportsSymbols = true;
-    // <clipPath> and <mask> are neither read nor written yet: a document
-    // that relies on them exports without them, so say so.
+    // <clipPath> is read (VectorClipPath definitions, clip-path references)
+    // but not written, and <mask> is neither: a document that relies on
+    // them exports without them, so say so.
     caps.SupportsClipping = false;
     caps.SupportsMasking = false;
     return caps;
@@ -1167,15 +1384,17 @@ FormatCapabilities SVGConverter::GetCapabilities() const {
 
 std::shared_ptr<VectorStorage::VectorDocument> SVGConverter::Import(
         const std::string& filename, const ConversionOptions& options) {
-    std::ifstream file(filename, std::ios::binary);
-    if (!file.is_open()) {
+    // Through the FileLoader: an .svgz is gzip-compressed SVG, which LoadFile
+    // inflates transparently (detected by content, not by name), and the
+    // path is opened the same way on every platform.
+    FileBytesResult bytes = UltraCanvasFileLoader::LoadFile(filename);
+    if (!bytes.success) {
         if (options.WarningCallback)
-            options.WarningCallback("Failed to open SVG file: " + filename);
+            options.WarningCallback("Failed to open SVG file: " + filename +
+                                    (bytes.error.empty() ? "" : " (" + bytes.error + ")"));
         return nullptr;
     }
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    return ImportFromString(ss.str(), options);
+    return ImportFromString(std::string(bytes.bytes.begin(), bytes.bytes.end()), options);
 }
 
 std::shared_ptr<VectorStorage::VectorDocument> SVGConverter::ImportFromString(

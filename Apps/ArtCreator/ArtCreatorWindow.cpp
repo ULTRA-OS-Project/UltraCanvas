@@ -15,9 +15,6 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
-#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
-#include "UltraCanvasVectorFormatsPlugin.h"
-#endif
 
 #include <algorithm>
 #include <cmath>
@@ -452,7 +449,17 @@ void ArtCreatorWindow::BuildRightPanel() {
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(lineColour);
     colorPicker->SetShowAlpha(true);
-    colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // The hue ring is capped by whatever vertical space the controls leave it,
+    // so a picker sized by eye draws a wheel narrower than the panel. Ask for
+    // the height at which the ring fills the panel's width instead.
+    const float pickerH = colorPicker->PreferredHeightForWidth(kRightInner);
+    colorPicker->SetSize(kRightInner, pickerH);
+    // Not stretched: the panel's content box is wider than what is visible
+    // beside the scrollbar, and a stretched picker lays its hex field and
+    // channel values out into the part that is covered.
+    colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Start)
+                           .SetFlexBasis(CSSLayout::Dimension::Px(pickerH));
     colorPicker->onColorChanged = [this](const Color& c) { fillColour = c; ApplyFillColour(c, true); };
     colorPicker->onColorChanging = [this](const Color& c) { fillColour = c; ApplyFillColour(c, false); };
     colorPicker->onBackgroundChanged = [this](const Color& c) { lineColour = c; ApplyLineColour(c, true); };
@@ -466,7 +473,21 @@ void ArtCreatorWindow::BuildRightPanel() {
         colorPicker->SetForegroundColor(c, false);
         ApplyFillColour(c, true);
     };
+    // Right click on a swatch sets the line (background) colour.
+    swatches->onColorAdjustSelected = [this](const Color& c) {
+        colorPicker->SetBackgroundColor(c, true);
+    };
     rightPanel->AddChild(swatches);
+
+    // ----- tool options -----
+    // Straight under the colours, where they are visible without scrolling:
+    // the Quick Shape corners and star depth used to sit below the fold.
+    optionsTitle = PanelTitle("ac-options-title", "Tool Options");
+    rightPanel->AddChild(optionsTitle);
+    optionsPanel = std::make_shared<UltraCanvasContainer>("ac-options", 0, 0, kRightInner, 0);
+    optionsPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    optionsPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    rightPanel->AddChild(optionsPanel);
 
     // ----- fill ramp -----
     rightPanel->AddChild(PanelTitle("ac-fill-title", "Fill"));
@@ -481,14 +502,6 @@ void ArtCreatorWindow::BuildRightPanel() {
         syncingColours = false;
     };
     rightPanel->AddChild(ramp);
-
-    // ----- tool options -----
-    optionsTitle = PanelTitle("ac-options-title", "Tool Options");
-    rightPanel->AddChild(optionsTitle);
-    optionsPanel = std::make_shared<UltraCanvasContainer>("ac-options", 0, 0, kRightInner, 0);
-    optionsPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    optionsPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
-    rightPanel->AddChild(optionsPanel);
 
     // ----- line gallery -----
     rightPanel->AddChild(PanelTitle("ac-line-title", "Line"));
@@ -622,35 +635,30 @@ void ArtCreatorWindow::SetDocument(std::shared_ptr<VectorDocument> doc, const st
     UpdateStatus();
 }
 
+// Every vector format goes through the FileLoader, which reads into and
+// writes from the shared VectorStorage model with the Vector plugin's
+// converters (registered in main.cpp). Without the plugin the lists are empty
+// and Open / Save say so.
 std::vector<std::string> ArtCreatorWindow::OpenableExtensions() {
-#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
-    return UltraCanvasVectorFormatsPlugin().GetSupportedExtensions();
-#else
-    return {};
-#endif
+    return UltraCanvasFileLoader::GetVectorLoadExtensions();
 }
 
 std::vector<std::string> ArtCreatorWindow::SaveableExtensions() {
-#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
-    return UltraCanvasVectorFormatsPlugin().GetSaveExtensions();
-#else
-    return {};
-#endif
+    return UltraCanvasFileLoader::GetVectorSaveExtensions();
 }
 
 bool ArtCreatorWindow::OpenFile(const std::string& path) {
-#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
-    auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
-    if (!converter || !converter->CanImport()) {
-        UltraCanvasDialogManager::ShowError("No reader for " + FileNameOf(path) + ".\nThis build opens: svg, xar, emf, wmf, dxf, dwg.", "Open", nullptr, window.get());
-        return false;
-    }
+    std::string error;
     std::vector<std::string> warnings;
-    VectorConverter::ConversionOptions options;
-    options.WarningCallback = [&warnings](const std::string& w) { warnings.push_back(w); };
-    auto doc = converter->Import(path, options);
+    auto doc = UltraCanvasFileLoader::LoadVectorDocument(path, error, &warnings);
     if (!doc) {
-        UltraCanvasDialogManager::ShowError("Could not read " + path + (warnings.empty() ? "" : "\n" + warnings.front()), "Open", nullptr, window.get());
+        std::string msg = error + "\n" + path;
+        const auto readable = OpenableExtensions();
+        if (!readable.empty() && !UltraCanvasFileLoader::CanLoadVectorDocument(path)) {
+            msg += "\nThis build opens:";
+            for (const auto& e : readable) msg += " " + e;
+        }
+        UltraCanvasDialogManager::ShowError(msg, "Open", nullptr, window.get());
         return false;
     }
     if (doc->Layers.empty()) doc->AddLayer("Layer 1");
@@ -663,31 +671,18 @@ bool ArtCreatorWindow::OpenFile(const std::string& path) {
         statusHint->SetText(s);
     }
     return true;
-#else
-    UltraCanvasDialogManager::ShowError("This build has no vector file formats (ULTRACANVAS_PLUGIN_VECTOR is off).", "Open", nullptr, window.get());
-    (void)path;
-    return false;
-#endif
 }
 
 bool ArtCreatorWindow::SaveToPath(const std::string& path) {
     if (!document) return false;
-#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
-    auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
-    if (!converter || !converter->CanExport()) {
-        UltraCanvasDialogManager::ShowError("No writer for ." + ExtensionOf(path), "Save", nullptr, window.get());
-        return false;
-    }
+    std::string error;
     std::vector<std::string> warnings;
-    VectorConverter::ConversionOptions options;
-    options.WarningCallback = [&warnings](const std::string& w) { warnings.push_back(w); };
-    if (!converter->Export(*document, path, options)) {
-        UltraCanvasDialogManager::ShowError("Could not save " + path + (warnings.empty() ? "" : "\n" + warnings.front()), "Save", nullptr, window.get());
+    if (!UltraCanvasFileLoader::SaveVectorDocument(*document, path, error, &warnings)) {
+        UltraCanvasDialogManager::ShowError(error + "\n" + path, "Save", nullptr, window.get());
         return false;
     }
     // Only a format that keeps the drawing editable becomes the document's file.
-    const std::string ext = ExtensionOf(path);
-    if (converter->CanImport()) { documentPath = path; modified = false; }
+    if (UltraCanvasFileLoader::CanLoadVectorDocument(path)) { documentPath = path; modified = false; }
     UpdateTitle();
     if (statusHint) {
         std::string s = "Saved " + FileNameOf(path);
@@ -695,11 +690,6 @@ bool ArtCreatorWindow::SaveToPath(const std::string& path) {
         statusHint->SetText(s);
     }
     return true;
-#else
-    UltraCanvasDialogManager::ShowError("This build has no vector file formats (ULTRACANVAS_PLUGIN_VECTOR is off).", "Save", nullptr, window.get());
-    (void)path;
-    return false;
-#endif
 }
 
 void ArtCreatorWindow::ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dialog) {

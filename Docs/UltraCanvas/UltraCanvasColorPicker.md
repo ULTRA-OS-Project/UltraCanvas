@@ -118,7 +118,9 @@ namespace UltraCanvas {
         Color GetForegroundColor() const;
         void  SetForegroundColor(const Color& c, bool notify = true);
         Color GetBackgroundColor() const;
-        void  SetBackgroundColor(const Color& c);
+        // notify = true fires onBackgroundChanging / onBackgroundChanged
+        // (e.g. a palette's right click); false (default) just syncs the swatch.
+        void  SetBackgroundColor(const Color& c, bool notify = false);
 
         // Built-in eyedropper control. `foreground` selects the target swatch
         // (true = foreground, false = background) for the preview and sample.
@@ -233,6 +235,14 @@ callback and the host writes the pixel back:
 picker->onScreenColorPick = [picker](bool foreground) {
     Color pixel = SampleScreenPixelUnderCursor();   // host-provided
     if (foreground) picker->SetForegroundColor(pixel);
-    else            picker->SetBackgroundColor(pixel);
+    else            picker->SetBackgroundColor(pixel, true);
 };
 ```
+
+The built-in eyedropper and the swap arrow report a changed background
+through `onBackgroundChanged` as well, so a host that mirrors the background
+into its own state (a line colour, a secondary paint colour) stays in step.
+A host may set the foreground or background from inside a background
+callback during a right-button drag (re-syncing from its selection, say):
+the value lands in the right swatch and the drag keeps editing the
+background.

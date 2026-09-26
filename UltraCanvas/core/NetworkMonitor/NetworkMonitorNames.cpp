@@ -70,9 +70,11 @@ struct NameTable {
     std::unordered_map<std::string, NameRecord> records;
 };
 
+// Never destroyed: the name-source worker threads can still be running at exit, and a lazy
+// static first built on it would be torn down under it.
 NameTable& Table() {
-    static NameTable table;
-    return table;
+    static NameTable* table = new NameTable;
+    return *table;
 }
 
 void EvictIfOver(NameTable& table, int64_t now) {
@@ -98,9 +100,11 @@ struct Listeners {
     NameListenerId next = 1;
 };
 
+// Never destroyed: the name-source worker threads can still be running at exit, and a lazy
+// static first built on it would be torn down under it.
 Listeners& TheListeners() {
-    static Listeners listeners;
-    return listeners;
+    static Listeners* listeners = new Listeners;
+    return *listeners;
 }
 
 // ===== THE REGISTRY =====

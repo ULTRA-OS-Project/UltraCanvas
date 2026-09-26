@@ -2862,9 +2862,19 @@ set(ULTRACANVAS_PLUGIN_INCLUDE_DIRS "")
 
 # CDR Plugin
 if(ULTRACANVAS_PLUGIN_CDR)
+    set(ULTRACANVAS_CDR_VENDORABLE FALSE)
     if(NOT WIN32)
         pkg_check_modules(LIBCDR libcdr-0.1)
         pkg_check_modules(LIBREVENGE librevenge-0.0)
+        # The patched libcdr in third_party/libcdr needs these instead of a
+        # system libcdr (see Plugins/Vector/CDR/CMakeLists.txt).
+        pkg_check_modules(CDR_DEP_LCMS2 lcms2)
+        pkg_check_modules(CDR_DEP_ICU icu-uc icu-i18n)
+        find_path(CDR_DEP_BOOST boost/optional.hpp
+                  HINTS "$ENV{HOMEBREW_PREFIX}/include" /opt/homebrew/include /usr/local/include)
+        if(CDR_DEP_LCMS2_FOUND AND CDR_DEP_ICU_FOUND AND CDR_DEP_BOOST)
+            set(ULTRACANVAS_CDR_VENDORABLE TRUE)
+        endif()
     else()
         # On Windows, these would need to be found differently
         # For now, mark as not found
@@ -2872,7 +2882,7 @@ if(ULTRACANVAS_PLUGIN_CDR)
         set(LIBREVENGE_FOUND FALSE)
     endif()
 
-    if(LIBCDR_FOUND AND LIBREVENGE_FOUND)
+    if((LIBCDR_FOUND OR ULTRACANVAS_CDR_VENDORABLE) AND LIBREVENGE_FOUND)
         add_subdirectory(Plugins/Vector/CDR)
         if(ULTRACANVAS_CDR_PLUGIN_FOUND)
             list(APPEND ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_CDR_PLUGIN_TARGET})

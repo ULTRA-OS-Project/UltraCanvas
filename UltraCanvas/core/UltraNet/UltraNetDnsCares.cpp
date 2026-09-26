@@ -112,9 +112,11 @@ struct Channel {
     Channel& operator=(const Channel&) = delete;
 };
 
+// Never destroyed, like the per-server channels below: a detached async
+// lookup can still be querying it while statics are torn down at exit.
 Channel& Chan() {
-    static Channel c;
-    return c;
+    static Channel* c = new Channel;
+    return *c;
 }
 
 // The channel for a per-call server list. Channels are leaked on purpose:
@@ -124,13 +126,13 @@ Channel& Chan() {
 // channel instead of paying ares_init_options and a new event thread.
 Channel& ChanFor(const std::vector<std::string>& servers) {
     if (servers.empty()) return Chan();
-    static std::mutex mu;
-    static std::map<std::string, std::unique_ptr<Channel>> channels;
+    static std::mutex* mu = new std::mutex;
+    static auto* channels = new std::map<std::string, std::unique_ptr<Channel>>;
     const std::string key = JoinServers(servers);
-    std::lock_guard<std::mutex> lk(mu);
-    auto it = channels.find(key);
-    if (it == channels.end()) {
-        it = channels.emplace(key, std::make_unique<Channel>(key)).first;
+    std::lock_guard<std::mutex> lk(*mu);
+    auto it = channels->find(key);
+    if (it == channels->end()) {
+        it = channels->emplace(key, std::make_unique<Channel>(key)).first;
     }
     return *it->second;
 }
