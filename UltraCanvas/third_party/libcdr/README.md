@@ -46,4 +46,36 @@ business cards and libcdr (and LibreOffice) showed an empty white sheet.
    the frame's outline, around the vect's own SVG — clipped exactly as
    CorelDRAW draws it, for any SVG consumer.
 
-Both are candidates to offer upstream.
+## Offering the patches upstream
+
+`upstream/` holds both fixes as `git format-patch` files against the base
+commit, one per fix. They contain the same code as `ultracanvas.patch`, but
+with upstream-style commit messages and without the `UltraCanvas:` markers:
+
+- `0001-read-the-alpha-mask-stored-after-a-transparent-bitma.patch`: bitmap
+  transparency.
+- `0002-draw-the-contents-of-PowerClip-frames.patch`: PowerClip. It builds
+  on 0001.
+
+Both apply with `git am` on commit `4401de4`, and each step compiles on its
+own. They are authored as "Claude"; the person submitting takes authorship.
+
+libcdr takes changes through LibreOffice's Gerrit, not GitHub pull requests.
+To submit:
+
+1. Set up Gerrit for `libcdr`
+   (https://wiki.documentfoundation.org/Development/gerrit/setup) and send the
+   license statement to the LibreOffice developer list, once.
+2. Run `git clone https://git.libreoffice.org/libcdr`, then `cd libcdr`.
+3. Install the Change-Id hook from the Gerrit setup page.
+4. Run `git am /path/to/upstream/*.patch`. Then run
+   `git rebase -x "git commit --amend --no-edit --reset-author" origin/master`
+   to take authorship and add the Change-Ids.
+5. Run `git push origin HEAD:refs/for/master`.
+
+Attach `media/vector/CDR/detailed.cdr` to the review if its licence allows,
+or describe the case: CorelDRAW's preview shows four business cards, but
+libcdr's SVG output is an empty white sheet.
+
+When upstream merges the patches, move the base commit forward and drop
+`ultracanvas.patch` and the `UltraCanvas:` markers.
