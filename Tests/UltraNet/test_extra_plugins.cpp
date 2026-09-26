@@ -16,10 +16,12 @@
 #include <UltraNet/UltraNetPlugins.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <thread>
 #include <vector>
 
 #if !defined(_WIN32)
@@ -283,6 +285,41 @@ TEST(coap_plugin_loads_and_registers) {
     // Bad URL -> InvalidHandle, no crash.
     UltraNetMessagingOptions opt;
     REQUIRE_EQ(msg->Connect("http://not-coap/", opt), UltraNetInvalidHandle);
+}
+
+// Shutdown with a session still open must stop its worker before the session
+// and the library go. It used to drop the table only: the worker kept running
+// coap_io_process through coap_cleanup. CoAP is UDP, so no server is needed.
+TEST(coap_plugin_shutdown_stops_open_sessions) {
+    if (!LoadInto("COAP", "coap")) SKIP("CoAP plug-in not buildable (libcoap3 missing?)");
+    auto p = UltraNet_GetPlugin("coap");
+    REQUIRE(p != nullptr);
+    auto* msg = dynamic_cast<IMessagingProtocolPlugin*>(p.get());
+    REQUIRE(msg != nullptr);
+    REQUIRE(bool(msg->Initialize(UltraNet_GetConfig())));
+
+    // Linux: the process's thread count, to see the worker go away.
+    auto threadCount = []() -> long {
+        std::error_code ec;
+        long n = 0;
+        for (auto it = fs::directory_iterator("/proc/self/task", ec);
+             !ec && it != fs::directory_iterator(); it.increment(ec)) ++n;
+        return ec ? -1 : n;
+    };
+    const long threadsBefore = threadCount();
+
+    UltraNetMessagingOptions opt;
+    const UltraNetHandle h = msg->Connect("coap://127.0.0.1:5683", opt);
+    REQUIRE(h != UltraNetInvalidHandle);
+    // An Observe GET nobody answers: the worker has retransmissions to run.
+    CHECK(bool(msg->Subscribe(h, "sensors/temp",
+                              [](const std::string&, const std::vector<uint8_t>&) {})));
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    msg->Shutdown();
+    REQUIRE_EQ(msg->Publish(h, "sensors/temp", {1}).code, UltraNetResultCode::InvalidHandle);
+    // The worker is joined, not left running on a cleaned-up libcoap.
+    if (threadsBefore > 0) REQUIRE(threadCount() <= threadsBefore);
 }
 
 // ===== SNMP =====

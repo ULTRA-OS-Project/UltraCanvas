@@ -46,6 +46,22 @@ TEST(url_parse_invalid_returns_error) {
     REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
 }
 
+// Plug-in schemes libcurl does not speak itself were rejected as invalid, so
+// the AMQP, CoAP, SIP, RTP and gRPC plug-ins could never connect.
+TEST(url_parse_scheme_libcurl_does_not_speak) {
+    for (const char* url : {"coap://127.0.0.1:5683/sensors", "amqp://guest@broker:5672/vhost",
+                            "sip://alice@example.com"}) {
+        UltraNetUrlComponents c;
+        REQUIRE(bool(UltraNet_ParseUrl(url, c)));
+        CHECK(!c.scheme.empty());
+        CHECK(!c.host.empty());
+        REQUIRE_EQ(UltraNet_BuildUrl(c).substr(0, c.scheme.size()), c.scheme);
+    }
+    UltraNetUrlComponents c;
+    REQUIRE(bool(UltraNet_ParseUrl("coap://127.0.0.1:5683/sensors", c)));
+    REQUIRE_EQ(c.port, 5683);
+}
+
 TEST(url_parse_empty_returns_error) {
     UltraNetUrlComponents c;
     auto r = UltraNet_ParseUrl("", c);

@@ -55,12 +55,37 @@ struct Session {
 
     // One receiver thread per session — librabbitmq has no native async
     // delivery, so we block on amqp_consume_message in a loop.
+    // The receiver holds a shared_ptr to its session, so the last reference -
+    // and the destructor - can end up on the receiver itself. threadMutex makes
+    // Start/Stop race-free; Stop never joins the calling thread, it detaches.
     std::atomic<bool>   running{false};
+    std::mutex          threadMutex;
+    bool                stopRequested = false;
     std::thread         receiver;
 
-    ~Session() {
+    template <typename Fn>
+    void Start(Fn&& body) {
+        std::lock_guard<std::mutex> lk(threadMutex);
+        if (stopRequested) return;
+        running.store(true, std::memory_order_release);
+        receiver = std::thread(std::forward<Fn>(body));
+    }
+
+    void Stop() {
         running.store(false, std::memory_order_release);
-        if (receiver.joinable()) receiver.join();
+        std::thread t;
+        {
+            std::lock_guard<std::mutex> lk(threadMutex);
+            stopRequested = true;
+            t = std::move(receiver);
+        }
+        if (!t.joinable()) return;
+        if (t.get_id() == std::this_thread::get_id()) t.detach();
+        else t.join();
+    }
+
+    ~Session() {
+        Stop();
         if (conn) {
             amqp_channel_close(conn, channel, AMQP_REPLY_SUCCESS);
             amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
@@ -69,14 +94,22 @@ struct Session {
     }
 };
 
-std::mutex g_sessionsMutex;
-std::unordered_map<UltraNetHandle, std::shared_ptr<Session>> g_sessions;
+// Never destroyed: a receiver can still be running during static destruction
+// at exit (the plug-in was never shut down), and it reads this table.
+struct Globals {
+    std::mutex sessionsMutex;
+    std::unordered_map<UltraNetHandle, std::shared_ptr<Session>> sessions;
+};
+Globals& G() {
+    static Globals* g = new Globals;
+    return *g;
+}
 std::atomic<UltraNetHandle> g_nextHandle{1};
 
 std::shared_ptr<Session> Find(UltraNetHandle h) {
-    std::lock_guard<std::mutex> lk(g_sessionsMutex);
-    auto it = g_sessions.find(h);
-    return it == g_sessions.end() ? nullptr : it->second;
+    std::lock_guard<std::mutex> lk(G().sessionsMutex);
+    auto it = G().sessions.find(h);
+    return it == G().sessions.end() ? nullptr : it->second;
 }
 
 amqp_bytes_t StrToBytes(const std::string& s) {
@@ -135,8 +168,15 @@ public:
         return UltraNetResult::Ok();
     }
     void Shutdown() override {
-        std::lock_guard<std::mutex> lk(g_sessionsMutex);
-        g_sessions.clear();
+        // Stop every receiver before the sessions go (and, for CoAP, before the
+        // library is cleaned up under a running coap_io_process).
+        std::unordered_map<UltraNetHandle, std::shared_ptr<Session>> all;
+        {
+            std::lock_guard<std::mutex> lk(G().sessionsMutex);
+            all.swap(G().sessions);
+        }
+        for (auto& [handle, s] : all) s->Stop();
+        all.clear();
     }
 
     UltraNetHandle Connect(const std::string& url,
@@ -184,11 +224,10 @@ public:
         const UltraNetHandle h =
             g_nextHandle.fetch_add(1, std::memory_order_relaxed);
         s->handle = h;
-        s->running.store(true, std::memory_order_release);
-        s->receiver = std::thread(ReceiverLoop, s);
+        s->Start([s]() { ReceiverLoop(s); });
         {
-            std::lock_guard<std::mutex> lk(g_sessionsMutex);
-            g_sessions[h] = s;
+            std::lock_guard<std::mutex> lk(G().sessionsMutex);
+            G().sessions[h] = s;
         }
         return h;
     }

@@ -15,6 +15,9 @@ namespace ultranet_internal {
     // Defined in UltraNetHttpAsync.cpp. Joins the worker thread (if any) so
     // it can't outlive curl_global_cleanup below.
     void StopAsyncWorker();
+    // Defined in UltraNetWebSocket.cpp. Stops every receiver thread and frees
+    // every WebSocket easy handle, for the same reason.
+    void CloseAllWebSockets();
 }
 
 namespace {
@@ -46,6 +49,7 @@ void UltraNet_Shutdown() {
     // Joining the worker outside g_mutex avoids deadlocks if a worker
     // callback re-enters into a UltraNet_* getter that takes g_mutex.
     ultranet_internal::StopAsyncWorker();
+    ultranet_internal::CloseAllWebSockets();
     std::lock_guard<std::mutex> lk(g_mutex);
     if (!g_initialized) return;
     curl_global_cleanup();
