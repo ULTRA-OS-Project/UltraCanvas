@@ -1632,6 +1632,426 @@ bool Store::SteuerschluesselByKey(int64_t mandantId, const std::string& schluess
     return false;
 }
 
+bool Store::SteuerschluesselById(int64_t id, Steuerschluessel& out) const {
+    UltraDbRow row;
+    if (!QueryOne(std::string("SELECT ") + kSteuerColumns +
+                  " FROM steuerschluessel WHERE id = ?", { id }, row))
+        return false;
+    out = SteuerschluesselFromRow(row);
+    return true;
+}
+
+// ===== STEUERSCHLUESSEL BEARBEITEN =====
+
+namespace {
+
+// Uppercased ISO country code, for a field a user types by hand. Used by the tax
+// keys below and the EU rates further down.
+std::string LandNormal(const std::string& land) {
+    std::string out;
+    for (const char c : land)
+        if (!std::isspace(static_cast<unsigned char>(c)))
+            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    return out;
+}
+
+// A span of days. An invalid date at either end means "unbounded" there,
+// which is how the table stores an open-ended key.
+struct Tage {
+    Date von;
+    Date bis;
+};
+
+// Far enough out to stand for "no bound" and still leave room to add a day.
+constexpr int64_t kKeinAnfang = -(int64_t(1) << 40);
+constexpr int64_t kKeinEnde   =  (int64_t(1) << 40);
+
+int64_t AnfangTag(const Date& d) { return d.Valid() ? d.ToEpochDay() : kKeinAnfang; }
+int64_t EndeTag(const Date& d)   { return d.Valid() ? d.ToEpochDay() : kKeinEnde; }
+
+Tage AusTagen(int64_t von, int64_t bis) {
+    Tage t;
+    if (von > kKeinAnfang) t.von = Date::FromEpochDay(von);
+    if (bis < kKeinEnde)   t.bis = Date::FromEpochDay(bis);
+    return t;
+}
+
+bool Ueberschneiden(const Tage& a, const Tage& b) {
+    return AnfangTag(a.von) <= EndeTag(b.bis) && AnfangTag(b.von) <= EndeTag(a.bis);
+}
+
+std::string TageText(const Tage& t) {
+    if (!t.von.Valid() && !t.bis.Valid()) return "unbefristet";
+    if (!t.bis.Valid()) return "ab " + FormatDateGerman(t.von);
+    if (!t.von.Valid()) return "bis " + FormatDateGerman(t.bis);
+    return FormatDateGerman(t.von) + " - " + FormatDateGerman(t.bis);
+}
+
+// The days on which a version spanning `alt` and one spanning `neu` disagree:
+// the days one of them covers and the other does not. Those are the days a
+// change of validity touches, and the only ones that need asking about.
+std::vector<Tage> GeaenderteTage(const Tage& alt, const Tage& neu) {
+    const int64_t a1 = AnfangTag(alt.von), b1 = EndeTag(alt.bis);
+    const int64_t a2 = AnfangTag(neu.von), b2 = EndeTag(neu.bis);
+    std::vector<Tage> tage;
+    if (b1 < a2 || b2 < a1) {           // no common day: both spans change entirely
+        tage.push_back(alt);
+        tage.push_back(neu);
+        return tage;
+    }
+    if (a1 != a2) tage.push_back(AusTagen(std::min(a1, a2), std::max(a1, a2) - 1));
+    if (b1 != b2) tage.push_back(AusTagen(std::min(b1, b2) + 1, std::max(b1, b2)));
+    return tage;
+}
+
+// Has this Mandant filed a return for any of these days? Same caution as for
+// the EU rates: a period whose bounds cannot be worked out counts as filed.
+bool MeldungFuerTage(const std::vector<Store::Meldung>& meldungen, int64_t mandantId,
+                     const Tage& tage, std::string& outBeschreibung) {
+    for (const Store::Meldung& m : meldungen) {
+        if (m.mandantId != 0 && mandantId != 0 && m.mandantId != mandantId) continue;
+        Tage zeitraum;
+        bool bekannt = false;
+        if (m.art == "oss" || m.art == "ioss") {
+            bekannt = OssZeitraumGrenzen(m.art == "oss" ? OssVerfahren::Oss : OssVerfahren::Ioss,
+                                         m.jahr, m.zeitraum, zeitraum.von, zeitraum.bis);
+        } else {
+            bekannt = UstvaZeitraumGrenzen(m.jahr, m.zeitraum, zeitraum.von, zeitraum.bis);
+        }
+        if (!bekannt || Ueberschneiden(zeitraum, tage)) {
+            outBeschreibung = m.art + " " + Number(m.jahr) + "/" + m.zeitraum;
+            if (!m.transferticket.empty())
+                outBeschreibung += " (Transferticket " + m.transferticket + ")";
+            return true;
+        }
+    }
+    return false;
+}
+
+bool NurZiffern(const std::string& text) {
+    for (char c : text) if (c < '0' || c > '9') return false;
+    return true;
+}
+
+// Everything the tax depends on. A version whose days carry postings may not
+// change any of it - only its description.
+bool GleicheWirkung(const Steuerschluessel& a, const Steuerschluessel& b) {
+    return a.art == b.art && a.satzPromille == b.satzPromille && a.land == b.land &&
+           a.vorsteuer == b.vorsteuer && a.datevBu == b.datevBu &&
+           a.kzBemessung == b.kzBemessung && a.kzSteuer == b.kzSteuer &&
+           a.kontoUmsatz == b.kontoUmsatz && a.kontoSteuer == b.kontoSteuer;
+}
+
+std::string Prozent(int promille) {
+    std::string text = Number(promille / 10);
+    if (promille % 10 != 0) text += "," + Number(promille % 10);
+    return text + " %";
+}
+
+std::string WirkungText(const Steuerschluessel& k) {
+    std::string text = SteuerArtToText(k.art) + ", " + Prozent(k.satzPromille);
+    if (k.vorsteuer) text += ", Vorsteuer";
+    if (!k.land.empty()) text += ", " + k.land;
+    if (!k.datevBu.empty()) text += ", BU " + k.datevBu;
+    if (!k.kzBemessung.empty()) text += ", Kz " + k.kzBemessung;
+    if (!k.kzSteuer.empty()) text += ", Kz Steuer " + k.kzSteuer;
+    if (!k.kontoUmsatz.empty()) text += ", Konto " + k.kontoUmsatz;
+    if (!k.kontoSteuer.empty()) text += ", Steuerkonto " + k.kontoSteuer;
+    return text;
+}
+
+} // namespace
+
+Store::SteuerschluesselNutzung Store::SteuerschluesselGebucht(int64_t mandantId,
+                                                             const std::string& schluessel,
+                                                             const Date& von,
+                                                             const Date& bis) const {
+    SteuerschluesselNutzung nutzung;
+    // ISO dates compare as text, so the range is plain SQL on every engine.
+    std::string sql = "SELECT COUNT(*) AS n, MIN(belegdatum) AS erste, MAX(belegdatum) AS letzte"
+                      " FROM buchung WHERE mandant_id = ? AND steuerschluessel = ?";
+    UltraDbParams params = { mandantId, schluessel };
+    if (von.Valid()) { sql += " AND belegdatum >= ?"; params.push_back(von.ToIso()); }
+    if (bis.Valid()) { sql += " AND belegdatum <= ?"; params.push_back(bis.ToIso()); }
+    UltraDbRow row;
+    if (!QueryOne(sql, params, row)) return nutzung;
+    nutzung.buchungen = static_cast<int>(row["n"].AsInt64());
+    nutzung.erste     = DateFrom(row["erste"]);
+    nutzung.letzte    = DateFrom(row["letzte"]);
+    return nutzung;
+}
+
+// Is this key sound as data, before any question about what it would change?
+// `bisher` is the version being edited or superseded, or null for a new key:
+// an account is only checked when it is new, so a key imported with an account
+// this chart does not have can still be described differently.
+std::string Store::SteuerschluesselPruefen(const Steuerschluessel& k,
+                                           const Steuerschluessel* bisher) const {
+    if (k.schluessel.empty()) return "Der Steuerschlüssel braucht einen Namen, z. B. USt19.";
+    if (k.schluessel.size() > 20) return "Der Name des Steuerschlüssels ist länger als 20 Zeichen.";
+    for (char c : k.schluessel) {
+        const bool erlaubt = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                             (c >= '0' && c <= '9') || c == '-' || c == '_';
+        // The name is typed into positions ("Text;Menge;Preis;Konto;USt19")
+        // and written into DATEV and CSV files; a space or a semicolon in it
+        // would split the line somewhere nobody meant.
+        if (!erlaubt)
+            return "Der Name \"" + k.schluessel + "\" enthält Zeichen außer Buchstaben, "
+                   "Ziffern, - und _.";
+    }
+    if (k.bezeichnung.empty()) return "Die Bezeichnung fehlt.";
+    if (k.satzPromille < 0 || k.satzPromille > 1000)
+        return "Der Steuersatz liegt zwischen 0 und 100 Prozent.";
+    if (!k.land.empty() && (k.land.size() != 2 || k.land[0] < 'A' || k.land[0] > 'Z' ||
+                            k.land[1] < 'A' || k.land[1] > 'Z'))
+        return "Das Land ist ein ISO-Kürzel aus zwei Buchstaben, z. B. DE, oder leer.";
+    // Required, unlike in the shipped file's history: the day a key starts to
+    // apply is the decision this editor exists for, and "since always" is how
+    // a new rate ends up under last year's postings.
+    if (!k.gueltigVon.Valid()) return "Der Steuerschlüssel braucht ein Datum, ab dem er gilt.";
+    if (k.gueltigBis.Valid() && k.gueltigBis < k.gueltigVon)
+        return "Das Ende (" + FormatDateGerman(k.gueltigBis) + ") liegt vor dem Beginn (" +
+               FormatDateGerman(k.gueltigVon) + ").";
+    if (!k.datevBu.empty() && (!NurZiffern(k.datevBu) || k.datevBu.size() > 4))
+        return "Der DATEV-BU-Schlüssel besteht aus höchstens vier Ziffern.";
+    for (const std::string* kz : { &k.kzBemessung, &k.kzSteuer }) {
+        if (!kz->empty() && (!NurZiffern(*kz) || kz->size() < 2 || kz->size() > 3))
+            return "Eine UStVA-Kennzahl besteht aus zwei oder drei Ziffern, nicht \"" +
+                   *kz + "\".";
+    }
+    if (k.satzPromille > 0 && k.kontoSteuer.empty())
+        return "Ein Steuersatz über 0 % braucht ein Steuerkonto, auf das die Steuer gebucht wird.";
+    // The rule an outgoing invoice already enforces, applied where the key is
+    // made: an exemption with a rate contradicts itself on every document.
+    if (!k.vorsteuer && IstNullsatzImAusgang(k.art) && k.satzPromille != 0)
+        return "Die Art \"" + SteuerArtToText(k.art) + "\" berechnet keine deutsche "
+               "Umsatzsteuer; ihr Satz ist 0 %.";
+    for (const auto& [konto, bisherKonto] :
+         { std::pair<std::string, std::string>{ k.kontoUmsatz, bisher ? bisher->kontoUmsatz : "" },
+           std::pair<std::string, std::string>{ k.kontoSteuer, bisher ? bisher->kontoSteuer : "" } }) {
+        if (konto.empty() || (bisher != nullptr && konto == bisherKonto)) continue;
+        Konto gefunden;
+        if (!KontoByNummer(k.mandantId, konto, gefunden))
+            return "Das Konto " + konto + " gibt es im Kontenrahmen nicht.";
+    }
+
+    // One version per day.
+    UltraDbResultSet rs;
+    if (Query(std::string("SELECT ") + kSteuerColumns +
+              " FROM steuerschluessel WHERE mandant_id = ? AND schluessel = ?",
+              { k.mandantId, k.schluessel }, rs)) {
+        for (const UltraDbRow& row : rs) {
+            const Steuerschluessel andere = SteuerschluesselFromRow(row);
+            if (andere.id == k.id) continue;
+            if (Ueberschneiden({ andere.gueltigVon, andere.gueltigBis },
+                               { k.gueltigVon, k.gueltigBis }))
+                return "\"" + k.schluessel + "\" gilt bereits " +
+                       TageText({ andere.gueltigVon, andere.gueltigBis }) +
+                       ". Eine Fassung darf sich mit keiner anderen desselben "
+                       "Schlüssels überschneiden - ein geänderter Satz ist eine neue "
+                       "Fassung ab dem Tag der Änderung.";
+        }
+    }
+    return std::string();
+}
+
+// Would touching these days of this key change something already on the
+// books or already filed? Returns why, or an empty string.
+std::string Store::SteuerschluesselTageBelegt(const Steuerschluessel& k,
+                                              const Date& von, const Date& bis,
+                                              const std::string& was) const {
+    const Tage tage { von, bis };
+    const SteuerschluesselNutzung n =
+        SteuerschluesselGebucht(k.mandantId, k.schluessel, tage.von, tage.bis);
+    if (n.buchungen > 0)
+        return was + " würde " + Number(n.buchungen) + " Buchung(en) mit \"" + k.schluessel +
+               "\" betreffen (" + FormatDateGerman(n.erste) +
+               (n.letzte != n.erste ? " - " + FormatDateGerman(n.letzte) : std::string()) +
+               "). Gebuchtes behält den Schlüssel, unter dem es gebucht wurde; ein "
+               "geänderter Satz ist eine neue Fassung ab einem Tag nach der letzten Buchung.";
+    std::string meldung;
+    if (MeldungFuerTage(EingereichteMeldungen(), k.mandantId, tage, meldung))
+        return was + " fällt in einen Zeitraum, für den bereits eine Meldung eingereicht "
+               "ist (" + meldung + "). Sie würde nachträglich anders rechnen; zu korrigieren "
+               "ist das über eine berichtigte Meldung.";
+    return std::string();
+}
+
+StoreResult Store::SteuerschluesselAnlegen(Steuerschluessel& k, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Steuerschlüssel ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+    if (k.id != 0) return StoreResult::Fail("Ein neuer Steuerschlüssel hat noch keine Nummer.");
+
+    k.land = LandNormal(k.land);
+    const std::string fehler = SteuerschluesselPruefen(k, nullptr);
+    if (!fehler.empty()) return StoreResult::Fail(fehler);
+    // A key name nothing is posted under yet - but a DATEV import may have
+    // brought postings in under a name this file did not know, and a return
+    // over them would suddenly count them.
+    const std::string belegt = SteuerschluesselTageBelegt(
+        k, k.gueltigVon, k.gueltigBis, "Der neue Schlüssel");
+    if (!belegt.empty()) return StoreResult::Fail(belegt);
+
+    const StoreResult r = SaveSteuerschluessel(k, akteur);
+    if (!r) return r;
+    return WriteAudit(akteur, "steuerschluessel", k.id, "anlegen",
+                      k.schluessel + " " + TageText({ k.gueltigVon, k.gueltigBis }) + ": " +
+                          WirkungText(k));
+}
+
+StoreResult Store::SteuerschluesselAendern(const Steuerschluessel& eingabe,
+                                           const Akteur& akteur) {
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Steuerschlüssel ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+
+    Steuerschluessel bisher;
+    if (eingabe.id == 0 || !SteuerschluesselById(eingabe.id, bisher))
+        return StoreResult::Fail("Diesen Steuerschlüssel gibt es nicht (mehr).");
+
+    Steuerschluessel k = eingabe;
+    k.mandantId = bisher.mandantId;
+    k.land      = LandNormal(k.land);
+    if (k.schluessel != bisher.schluessel)
+        return StoreResult::Fail("Der Name eines Steuerschlüssels bleibt, wie er ist - "
+                                 "Buchungen verweisen darauf. Ein anderer Name ist ein "
+                                 "neuer Schlüssel.");
+
+    const std::string fehler = SteuerschluesselPruefen(k, &bisher);
+    if (!fehler.empty()) return StoreResult::Fail(fehler);
+
+    const Tage alt { bisher.gueltigVon, bisher.gueltigBis };
+    const Tage neu { k.gueltigVon, k.gueltigBis };
+    const bool wirkungGeaendert = !GleicheWirkung(bisher, k);
+    if (wirkungGeaendert) {
+        // Every day either version covers: what was posted under the old
+        // values, and whatever the new span would now claim.
+        for (const Tage& tage : { alt, neu }) {
+            const std::string belegt = SteuerschluesselTageBelegt(k, tage.von, tage.bis,
+                                                                  "Die Änderung");
+            if (!belegt.empty()) return StoreResult::Fail(belegt);
+        }
+    } else {
+        for (const Tage& tage : GeaenderteTage(alt, neu)) {
+            const std::string belegt = SteuerschluesselTageBelegt(
+                k, tage.von, tage.bis, "Die geänderte Gültigkeit (" + TageText(tage) + ")");
+            if (!belegt.empty()) return StoreResult::Fail(belegt);
+        }
+    }
+
+    const StoreResult r = Exec(
+        "UPDATE steuerschluessel SET bezeichnung = ?, art = ?, satz_promille = ?, land = ?,"
+        " vorsteuer = ?, datev_bu = ?, kz_bemessung = ?, kz_steuer = ?, konto_umsatz = ?,"
+        " konto_steuer = ?, gueltig_von = ?, gueltig_bis = ? WHERE id = ?",
+        { k.bezeichnung, SteuerArtToText(k.art), k.satzPromille, k.land,
+          k.vorsteuer ? 1 : 0, k.datevBu, k.kzBemessung, k.kzSteuer, k.kontoUmsatz,
+          k.kontoSteuer, DateValue(k.gueltigVon), DateValue(k.gueltigBis), k.id },
+        "Der Steuerschlüssel konnte nicht geändert werden");
+    if (!r) return r;
+
+    std::string details = k.schluessel;
+    if (alt.von != neu.von || alt.bis != neu.bis)
+        details += ", Gültigkeit " + TageText(alt) + " -> " + TageText(neu);
+    if (wirkungGeaendert) details += ", " + WirkungText(bisher) + " -> " + WirkungText(k);
+    if (bisher.bezeichnung != k.bezeichnung)
+        details += ", Bezeichnung \"" + bisher.bezeichnung + "\" -> \"" + k.bezeichnung + "\"";
+    return WriteAudit(akteur, "steuerschluessel", k.id, "aendern", details);
+}
+
+StoreResult Store::SteuerschluesselNeueFassung(int64_t id, const Date& ab,
+                                               Steuerschluessel& neu, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Steuerschlüssel ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+
+    Steuerschluessel alt;
+    if (!SteuerschluesselById(id, alt))
+        return StoreResult::Fail("Diesen Steuerschlüssel gibt es nicht (mehr).");
+    if (!ab.Valid()) return StoreResult::Fail("Ab wann gilt die neue Fassung?");
+    if (!alt.GueltigAm(ab) || (alt.gueltigVon.Valid() && ab == alt.gueltigVon))
+        return StoreResult::Fail(
+            "Eine neue Fassung beginnt innerhalb der bisherigen (" +
+            TageText({ alt.gueltigVon, alt.gueltigBis }) + ") und nicht an ihrem ersten "
+            "Tag - dort wäre sie keine Änderung, sondern ein Ersatz.");
+
+    neu.id         = 0;
+    neu.mandantId  = alt.mandantId;
+    neu.schluessel = alt.schluessel;
+    neu.gueltigVon = ab;
+    neu.gueltigBis = alt.gueltigBis;
+    neu.land       = LandNormal(neu.land);
+    if (GleicheWirkung(alt, neu))
+        return StoreResult::Fail("Die neue Fassung rechnet genauso wie die bisherige - "
+                                 "für eine geänderte Bezeichnung genügt \"Bearbeiten\".");
+
+    // Checked against the other versions as they will be: the old one ending
+    // the day before, which is exactly what makes room for the new one.
+    Steuerschluessel altGekuerzt = alt;
+    altGekuerzt.gueltigBis = ab.AddDays(-1);
+    {
+        Steuerschluessel pruefling = neu;
+        pruefling.id = alt.id;  // the only version it may touch is the one it shortens
+        const std::string fehler = SteuerschluesselPruefen(pruefling, &alt);
+        if (!fehler.empty()) return StoreResult::Fail(fehler);
+    }
+    const std::string belegt = SteuerschluesselTageBelegt(
+        alt, ab, alt.gueltigBis, "Eine neue Fassung ab " + FormatDateGerman(ab));
+    if (!belegt.empty()) return StoreResult::Fail(belegt);
+
+    const StoreResult zu = Exec("UPDATE steuerschluessel SET gueltig_bis = ? WHERE id = ?",
+                                { DateValue(altGekuerzt.gueltigBis), alt.id },
+                                "Die bisherige Fassung konnte nicht beendet werden");
+    if (!zu) return zu;
+    const StoreResult r = SaveSteuerschluessel(neu, akteur);
+    if (!r) {
+        // Put the old end back rather than leave the key with no version at
+        // all from `ab` on.
+        Exec("UPDATE steuerschluessel SET gueltig_bis = ? WHERE id = ?",
+             { DateValue(alt.gueltigBis), alt.id }, "");
+        return r;
+    }
+    return WriteAudit(akteur, "steuerschluessel", neu.id, "neue-fassung",
+                      neu.schluessel + " ab " + FormatDateGerman(ab) + ": " +
+                          WirkungText(alt) + " -> " + WirkungText(neu));
+}
+
+StoreResult Store::SteuerschluesselLoeschen(int64_t id, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Steuerschlüssel ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+
+    Steuerschluessel k;
+    if (!SteuerschluesselById(id, k))
+        return StoreResult::Fail("Diesen Steuerschlüssel gibt es nicht (mehr).");
+    const std::string belegt = SteuerschluesselTageBelegt(
+        k, k.gueltigVon, k.gueltigBis, "Das Löschen");
+    if (!belegt.empty()) return StoreResult::Fail(belegt);
+
+    const StoreResult r = Exec("DELETE FROM steuerschluessel WHERE id = ?", { id },
+                               "Der Steuerschlüssel konnte nicht gelöscht werden");
+    if (!r) return r;
+
+    // The version this one had ended, if any, carries on in its place.
+    std::string details = k.schluessel + " " + TageText({ k.gueltigVon, k.gueltigBis });
+    if (k.gueltigVon.Valid()) {
+        UltraDbRow vorher;
+        if (QueryOne(std::string("SELECT ") + kSteuerColumns +
+                     " FROM steuerschluessel WHERE mandant_id = ? AND schluessel = ?"
+                     " AND gueltig_bis = ?",
+                     { k.mandantId, k.schluessel, k.gueltigVon.AddDays(-1).ToIso() }, vorher)) {
+            const StoreResult auf = Exec(
+                "UPDATE steuerschluessel SET gueltig_bis = ? WHERE id = ?",
+                { DateValue(k.gueltigBis), vorher["id"].AsInt64() },
+                "Die vorherige Fassung konnte nicht verlängert werden");
+            if (!auf) return auf;
+            details += "; die vorherige Fassung gilt wieder " +
+                       TageText({ DateFrom(vorher["gueltig_von"]), k.gueltigBis });
+        }
+    }
+    return WriteAudit(akteur, "steuerschluessel", id, "loeschen", details);
+}
+
 // ===== PARTNER =====
 
 namespace {
@@ -4186,15 +4606,6 @@ EuSteuersatz EuSatzAusZeile(const UltraDbRow& row) {
 
 const char* const kEuSatzSpalten =
     "id, land, art, satz_promille, gueltig_von, gueltig_bis, geprueft, quelle";
-
-// Uppercased ISO country code, for a field a user types by hand.
-std::string LandNormal(const std::string& land) {
-    std::string out;
-    for (const char c : land)
-        if (!std::isspace(static_cast<unsigned char>(c)))
-            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
-    return out;
-}
 
 } // namespace
 

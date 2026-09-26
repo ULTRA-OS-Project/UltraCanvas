@@ -5,9 +5,65 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUTabelle.h"
 
+#include <cstdlib>
+
 namespace UltraFIBU {
 
 using namespace UltraCanvas;
+
+// ===== CELLS AND NUMBERS =====
+
+// A date for a column: the German text a bookkeeper reads, and the day number
+// it sorts by. Sorting 15.06.2026 as text would order it by day of month,
+// which is the bug this pair exists to prevent.
+TabellenZelle DatumsZelle(const Date& datum) {
+    if (!datum.Valid()) return TabellenZelle(std::string());
+    return TabellenZelle(FormatDateGerman(datum), datum.ToEpochDay());
+}
+
+// An amount: German formatting, sorted by its minor units.
+TabellenZelle BetragsZelle(const Money& betrag) {
+    if (!betrag.Valid()) return TabellenZelle(std::string());
+    return TabellenZelle(betrag.ToString(), betrag.Minor());
+}
+
+// "20" -> 200, "8,1" -> 81. Integer arithmetic: a tax rate read through a
+// double comes back a fraction off, and that fraction reaches every invoice.
+bool ProzentNachPromille(const std::string& text, int& out) {
+    std::string ganz, bruch;
+    bool nachKomma = false;
+    for (const char c : text) {
+        if (c == ' ' || c == '%') continue;
+        if ((c == ',' || c == '.') && !nachKomma) { nachKomma = true; continue; }
+        if (c < '0' || c > '9') return false;
+        (nachKomma ? bruch : ganz).push_back(c);
+    }
+    if (ganz.empty() && bruch.empty()) return false;
+    if (bruch.size() > 1) return false;
+    const long promille = (ganz.empty() ? 0 : std::atol(ganz.c_str())) * 10 +
+                          (bruch.empty() ? 0 : (bruch[0] - '0'));
+    if (promille < 0 || promille > 1000) return false;
+    out = static_cast<int>(promille);
+    return true;
+}
+
+std::string Zahl(int64_t wert) {
+    std::string ziffern;
+    int64_t v = wert < 0 ? -wert : wert;
+    if (v == 0) ziffern = "0";
+    while (v > 0) {
+        ziffern.insert(ziffern.begin(), static_cast<char>('0' + (v % 10)));
+        v /= 10;
+    }
+    if (wert < 0) ziffern.insert(ziffern.begin(), '-');
+    return ziffern;
+}
+
+std::string ProzentText(int promille) {
+    std::string text = Zahl(promille / 10);
+    if (promille % 10 != 0) text += "," + Zahl(promille % 10);
+    return text + " %";
+}
 
 // ===== MODEL =====
 
@@ -224,6 +280,21 @@ int64_t TabellenPanel::AusgewaehlteId() const {
     const std::vector<int> rows = auswahl->GetSelectedRows();
     if (rows.empty()) return 0;
     return modell_->ZeileId(proxy_->MapToSource(rows.front()));
+}
+
+void TabellenPanel::Auswaehlen(int64_t id) {
+    if (!liste_ || !proxy_ || !modell_) return;
+    UltraCanvas::IListSelection* auswahl = liste_->GetSelection();
+    if (auswahl == nullptr) return;
+    for (int quelle = 0; quelle < modell_->GetRowCount(); ++quelle) {
+        if (modell_->ZeileId(quelle) != id) continue;
+        const int zeile = proxy_->MapFromSource(quelle);
+        if (zeile < 0) return;   // filtered out - nothing to show it on
+        auswahl->Select(zeile);
+        liste_->ScrollToRow(zeile);
+        liste_->RequestRedraw();
+        return;
+    }
 }
 
 } // namespace UltraFIBU

@@ -151,6 +151,7 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
         ui/UltraFIBUTabelle.cpp
         ui/UltraFIBUBelegDialog.cpp
         ui/UltraFIBUStart.cpp
+        ui/UltraFIBUSteuerschluessel.cpp
         ui/UltraFIBUKonsole.cpp
     )
     target_compile_features(ultrafibu PRIVATE cxx_std_20)

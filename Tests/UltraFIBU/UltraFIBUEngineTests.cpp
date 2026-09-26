@@ -6017,6 +6017,227 @@ static void TestOss() {
     }
 }
 
+// ===== STEUERSCHLUESSEL BEARBEITEN =====
+//
+// The editor behind Konfiguration > Steuerschlüssel. What matters is not that a
+// key can be changed but where it cannot: the UStVA looks each posting's key up
+// again by name and date, so a key edited under a posting rewrites a return,
+// and one edited under a filed period rewrites a return already sent.
+static void TestSteuerschluesselBearbeiten() {
+    std::printf("Steuerschlüssel bearbeiten\n");
+
+    const std::string pfad = "steuerschluessel-test.db";
+    RaeumeEinrichtungAuf(pfad);
+    EinrichtungsDaten daten;
+    daten.firma    = "Steuer GmbH";
+    daten.gjBeginn = Date(2025, 4, 1);
+    const EinrichtungsBericht bericht = RichteBuchhaltungEin(pfad, daten);
+    if (!bericht.ok) {
+        Check(false, "a bookkeeping to edit tax keys in is set up: " + bericht.fehler);
+        return;
+    }
+    Store store;
+    if (!CheckStore(store.Open("fibu-steuer-edit", pfad), "it opens")) return;
+
+    Akteur akteur;
+    akteur.benutzerId  = bericht.admin.id;
+    akteur.anmeldename = bericht.admin.anmeldename;
+    akteur.rolle       = bericht.admin.rolle;
+    const int64_t mandantId = bericht.mandant.id;
+
+    // One posted invoice under USt19, dated 15.06.2025.
+    Partner kunde;
+    kunde.mandantId = mandantId;
+    kunde.typ       = PartnerTyp::Kunde;
+    kunde.name      = "Kunde AG";
+    CheckStore(store.SavePartner(kunde, akteur), "a customer exists");
+    Beleg rechnung;
+    rechnung.mandantId    = mandantId;
+    rechnung.art          = BelegArt::Ausgangsrechnung;
+    rechnung.datum        = Date(2025, 6, 15);
+    rechnung.partnerId    = kunde.id;
+    rechnung.partnerKonto = kunde.konto;
+    rechnung.partnerName  = kunde.name;
+    {
+        BelegPosition pos;
+        pos.bezeichnung = "Beratung";
+        pos.einzelpreis = Money::FromMinor(100000, "EUR");
+        pos.konto       = "8400";
+        pos.steuerschluessel = "USt19";
+        rechnung.positionen.push_back(pos);
+    }
+    CheckStore(store.SaveBeleg(rechnung, "rechnung", akteur), "an invoice saves");
+    CheckStore(store.Buchen(rechnung, akteur), "and posts under USt19");
+
+    Steuerschluessel ust19;
+    Check(store.SteuerschluesselByKey(mandantId, "USt19", Date(2025, 6, 15), ust19),
+          "USt19 is found for the invoice's date");
+    const Store::SteuerschluesselNutzung genutzt =
+        store.SteuerschluesselGebucht(mandantId, "USt19", ust19.gueltigVon, ust19.gueltigBis);
+    Check(genutzt.buchungen > 0 && genutzt.erste == Date(2025, 6, 15),
+          "and it knows it carries postings, from the invoice's date");
+
+    // --- in place ---
+    {
+        Steuerschluessel k = ust19;
+        k.bezeichnung = "Umsatzsteuer 19 % (Regelsatz)";
+        CheckStore(store.SteuerschluesselAendern(k, akteur),
+                   "the description of a key in use can always be changed");
+
+        k = ust19; k.satzPromille = 200;
+        StoreResult r = store.SteuerschluesselAendern(k, akteur);
+        Check(!r, "its rate cannot - the June posting would be reinterpreted");
+        Check(r.fehler.find("Buchung") != std::string::npos,
+              "and the refusal names the postings");
+
+        k = ust19; k.kzBemessung = "35";
+        Check(!store.SteuerschluesselAendern(k, akteur),
+              "nor its Kennzahl, which would move June's turnover to another line");
+
+        k = ust19; k.gueltigVon = Date(2025, 7, 1);
+        Check(!store.SteuerschluesselAendern(k, akteur),
+              "a later start is refused: 15.06. would lose its key");
+        k = ust19; k.gueltigBis = Date(2025, 5, 31);
+        Check(!store.SteuerschluesselAendern(k, akteur),
+              "and so is an end before the posting");
+
+        k = ust19; k.gueltigVon = Date(2025, 1, 1);
+        CheckStore(store.SteuerschluesselAendern(k, akteur),
+                   "an earlier start touches only days with nothing on them");
+        Steuerschluessel gelesen;
+        Check(store.SteuerschluesselById(ust19.id, gelesen) &&
+                  gelesen.gueltigVon == Date(2025, 1, 1),
+              "and is stored");
+        k.gueltigVon = Date(2025, 4, 1);
+        CheckStore(store.SteuerschluesselAendern(k, akteur), "and it can be moved back");
+
+        k = ust19; k.schluessel = "USt19neu";
+        Check(!store.SteuerschluesselAendern(k, akteur),
+              "the name never changes - postings refer to it");
+    }
+
+    // --- a rate change is a new version ---
+    {
+        Steuerschluessel neu = ust19;
+        neu.satzPromille = 200;
+        StoreResult r = store.SteuerschluesselNeueFassung(ust19.id, Date(2025, 6, 1), neu, akteur);
+        Check(!r, "a new version starting before the last posting is refused");
+
+        neu = ust19;
+        r = store.SteuerschluesselNeueFassung(ust19.id, Date(2025, 7, 1), neu, akteur);
+        Check(!r, "one that computes exactly as the old one is refused as pointless");
+
+        neu = ust19;
+        neu.satzPromille = 200;
+        neu.bezeichnung  = "Umsatzsteuer 20 %";
+        CheckStore(store.SteuerschluesselNeueFassung(ust19.id, Date(2025, 7, 1), neu, akteur),
+                   "a new version from 01.07.2025 is set");
+        Steuerschluessel juni, august;
+        Check(store.SteuerschluesselByKey(mandantId, "USt19", Date(2025, 6, 15), juni) &&
+                  juni.satzPromille == 190 && juni.gueltigBis == Date(2025, 6, 30),
+              "June still finds 19 %, now ending on 30.06.");
+        Check(store.SteuerschluesselByKey(mandantId, "USt19", Date(2025, 8, 1), august) &&
+                  august.satzPromille == 200 && august.id == neu.id,
+              "and August the new version");
+
+        Check(!store.SteuerschluesselLoeschen(ust19.id, akteur),
+              "the version the invoice was posted under cannot be deleted");
+        CheckStore(store.SteuerschluesselLoeschen(neu.id, akteur),
+                   "the unused new version can");
+        Steuerschluessel wieder;
+        Check(store.SteuerschluesselById(ust19.id, wieder) && !wieder.gueltigBis.Valid(),
+              "and the one it had ended is open again - no gap from July on");
+    }
+
+    // --- new keys, and what is refused as data ---
+    {
+        Steuerschluessel k;
+        k.mandantId    = mandantId;
+        k.schluessel   = "VSt19BU9";
+        k.bezeichnung  = "Vorsteuer 19 % mit BU 9";
+        k.satzPromille = 190;
+        k.vorsteuer    = true;
+        k.datevBu      = "9";
+        k.kzSteuer     = "66";
+        k.kontoSteuer  = "1576";
+        k.gueltigVon   = Date(2025, 4, 1);
+        CheckText(store.SteuerschluesselPruefen(k, nullptr), "",
+                  "a complete new key passes the check");
+
+        Steuerschluessel f = k; f.kontoSteuer = "9999";
+        Check(!store.SteuerschluesselPruefen(f, nullptr).empty(),
+              "an account the chart does not have is refused");
+        f = k; f.kontoSteuer.clear();
+        Check(!store.SteuerschluesselPruefen(f, nullptr).empty(),
+              "and a rate with no account to post the tax to");
+        f = k; f.kzSteuer = "6a";
+        Check(!store.SteuerschluesselPruefen(f, nullptr).empty(), "and a Kennzahl with a letter");
+        f = k; f.datevBu = "12345";
+        Check(!store.SteuerschluesselPruefen(f, nullptr).empty(), "and a five-digit BU key");
+        f = k; f.schluessel = "VSt 19;x";
+        Check(!store.SteuerschluesselPruefen(f, nullptr).empty(),
+              "and a name with a space or semicolon in it");
+        f = k; f.gueltigVon = Date();
+        Check(!store.SteuerschluesselPruefen(f, nullptr).empty(), "and a key with no start");
+        f = k; f.gueltigBis = Date(2025, 3, 1);
+        Check(!store.SteuerschluesselPruefen(f, nullptr).empty(), "and one ending before it starts");
+        f = k; f.art = SteuerArt::IgLieferung; f.vorsteuer = false; f.kzSteuer.clear();
+        Check(!store.SteuerschluesselPruefen(f, nullptr).empty(),
+              "an exempt kind with a rate contradicts itself");
+
+        CheckStore(store.SteuerschluesselAnlegen(k, akteur), "the new key is created");
+        Steuerschluessel gefunden;
+        Check(store.SteuerschluesselByKey(mandantId, "VSt19BU9", Date(2025, 9, 1), gefunden) &&
+                  gefunden.datevBu == "9",
+              "and found by name and date");
+
+        Steuerschluessel doppelt = k;
+        doppelt.id = 0;
+        doppelt.gueltigVon = Date(2025, 10, 1);
+        StoreResult r = store.SteuerschluesselAnlegen(doppelt, akteur);
+        Check(!r, "a second version overlapping the first is refused");
+        Check(r.fehler.find("überschneiden") != std::string::npos,
+              "and the refusal says why");
+    }
+
+    // --- a filed return outranks everything ---
+    {
+        Store::Meldung meldung;
+        meldung.mandantId = mandantId;
+        meldung.art       = "ustva";
+        meldung.jahr      = 2025;
+        meldung.zeitraum  = "08";
+        meldung.status    = Store::MeldungStatus::Eingereicht;
+        CheckStore(store.MeldungEintragen(meldung, akteur), "the August return is on file");
+
+        Steuerschluessel vst7;
+        Check(store.SteuerschluesselByKey(mandantId, "VSt7", Date(2025, 8, 1), vst7),
+              "VSt7 exists and nothing is posted under it");
+        Steuerschluessel neu = vst7;
+        neu.kzSteuer = "67";
+        StoreResult r = store.SteuerschluesselNeueFassung(vst7.id, Date(2025, 8, 15), neu, akteur);
+        Check(!r, "a new version reaching into the filed August is refused");
+        Check(r.fehler.find("eingereicht") != std::string::npos, "and says a return is filed");
+        neu = vst7;
+        neu.kzSteuer = "67";
+        CheckStore(store.SteuerschluesselNeueFassung(vst7.id, Date(2025, 9, 1), neu, akteur),
+                   "from September, after the filed month, it is accepted");
+        Check(!store.SteuerschluesselLoeschen(vst7.id, akteur),
+              "and the version that covers August cannot be deleted");
+    }
+
+    // --- every change is on record ---
+    {
+        int eintraege = 0;
+        for (const Store::AuditEintrag& e : store.AuditListe(200))
+            if (e.tabelle == "steuerschluessel" && e.aktion != "import") ++eintraege;
+        CheckInt(eintraege, 7, "the seven accepted changes are in the audit trail, and none of the refused ones");
+    }
+
+    store.Close();
+    RaeumeEinrichtungAuf(pfad);
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -6045,6 +6266,7 @@ int main() {
     TestBruttoUndAngegebeneSteuer();
     TestReverseCharge();
     TestEuSteuersaetze();
+    TestSteuerschluesselBearbeiten();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

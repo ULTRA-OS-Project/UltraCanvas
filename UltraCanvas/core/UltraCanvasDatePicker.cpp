@@ -1516,6 +1516,15 @@ namespace UltraCanvas {
     UCDate UltraCanvasDatePicker::GetRangeStart() const { return calendar->GetRangeStart(); }
     UCDate UltraCanvasDatePicker::GetRangeEnd() const { return calendar->GetRangeEnd(); }
 
+    void UltraCanvasDatePicker::SetPlaceholder(const std::string& text) {
+        placeholder = text;
+        // The field is built in the constructor and took the placeholder as it
+        // was then; without handing the new one on, every picker showed the
+        // English default whatever the application set.
+        if (textInput) textInput->SetPlaceholder(text);
+        RequestRedraw();
+    }
+
     void UltraCanvasDatePicker::Clear(bool runCallbacks) {
         calendar->ClearSelection(false);
         SyncTextFromValue();

@@ -27,52 +27,6 @@ constexpr float kKopfH      = 52.0f;
 constexpr float kLeisteH    = 34.0f;
 constexpr float kStatusH    = 24.0f;
 
-// A date for a column: the German text a bookkeeper reads, and the day number
-// it sorts by. Sorting 15.06.2026 as text would order it by day of month,
-// which is the bug this pair exists to prevent.
-TabellenZelle DatumsZelle(const Date& datum) {
-    if (!datum.Valid()) return TabellenZelle(std::string());
-    return TabellenZelle(FormatDateGerman(datum), datum.ToEpochDay());
-}
-
-// An amount: German formatting, sorted by its minor units.
-TabellenZelle BetragsZelle(const Money& betrag) {
-    if (!betrag.Valid()) return TabellenZelle(std::string());
-    return TabellenZelle(betrag.ToString(), betrag.Minor());
-}
-
-// "20" -> 200, "8,1" -> 81. Integer arithmetic: a tax rate read through a
-// double comes back a fraction off, and that fraction reaches every invoice.
-bool ProzentNachPromille(const std::string& text, int& out) {
-    std::string ganz, bruch;
-    bool nachKomma = false;
-    for (const char c : text) {
-        if (c == ' ' || c == '%') continue;
-        if ((c == ',' || c == '.') && !nachKomma) { nachKomma = true; continue; }
-        if (c < '0' || c > '9') return false;
-        (nachKomma ? bruch : ganz).push_back(c);
-    }
-    if (ganz.empty() && bruch.empty()) return false;
-    if (bruch.size() > 1) return false;
-    const long promille = (ganz.empty() ? 0 : std::atol(ganz.c_str())) * 10 +
-                          (bruch.empty() ? 0 : (bruch[0] - '0'));
-    if (promille < 0 || promille > 1000) return false;
-    out = static_cast<int>(promille);
-    return true;
-}
-
-std::string Zahl(int64_t wert) {
-    std::string ziffern;
-    int64_t v = wert < 0 ? -wert : wert;
-    if (v == 0) ziffern = "0";
-    while (v > 0) {
-        ziffern.insert(ziffern.begin(), static_cast<char>('0' + (v % 10)));
-        v /= 10;
-    }
-    if (wert < 0) ziffern.insert(ziffern.begin(), '-');
-    return ziffern;
-}
-
 } // namespace
 
 // ===== OPENING =====
@@ -128,6 +82,9 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
         konfiguration.type  = MenuItemType::Submenu;
         konfiguration.label = "Konfiguration";
         konfiguration.subItems = {
+            MenuItemData::Action("Steuerschlüssel ...",
+                                 [this]() { SteuerschluesselOeffnen(); }),
+            MenuItemData::Separator(),
             MenuItemData::Action("EU-Steuersätze ...",
                                  [this]() { KonfigurationOeffnen(); }),
             MenuItemData::Action("Neuen Steuersatz setzen ...",
@@ -234,6 +191,17 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
         euSaetzeReiter_ = reiter_->AddTab("EU-Steuersätze", seite);
     }
 
+    // The tax keys of this bookkeeping. Beside the EU rates because both are
+    // setup, and on a page of their own because the rules about what may
+    // change are the store's and the page only has to show them.
+    {
+        steuerschluessel_ = std::make_unique<SteuerschluesselSeite>(store_, mandant_, akteur_);
+        steuerschluessel_->onMeldung = [this](const std::string& text) { Melden(text); };
+        steuerschluesselReiter_ = reiter_->AddTab(
+            "Steuerschlüssel",
+            steuerschluessel_->Bauen("fibuSteuer", seiteB, seiteH, fenster_.get()));
+    }
+
     // The entry form, as a tab. See UltraFIBUBelegDialog.h for why the tax
     // dropdown rather than the layout is the interesting part of it.
     {
@@ -308,6 +276,7 @@ void FibuApp::Aktualisieren() {
     SaldenFuellen();
     PartnerFuellen();
     EuSaetzeFuellen();
+    if (steuerschluessel_) steuerschluessel_->Fuellen();
 }
 
 void FibuApp::BelegeFuellen() {
@@ -723,6 +692,17 @@ void FibuApp::GewaehltenBelegDrucken() {
         return;
     }
     Melden("\"" + ziel + "\" geschrieben.");
+}
+
+// ===== KONFIGURATION: STEUERSCHLUESSEL =====
+
+void FibuApp::SteuerschluesselOeffnen() {
+    if (!steuerschluessel_) return;
+    if (reiter_ && steuerschluesselReiter_ >= 0) reiter_->SetActiveTab(steuerschluesselReiter_);
+    steuerschluessel_->Fuellen();
+    Melden("Eine Fassung wählen, um sie zu ändern. Ein geänderter Satz wird mit neuem "
+           "\"gilt ab\" als neue Fassung gespeichert - was davor gebucht ist, behält "
+           "den bisherigen.");
 }
 
 // ===== KONFIGURATION: EU-STEUERSAETZE =====

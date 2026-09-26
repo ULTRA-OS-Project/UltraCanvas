@@ -30,6 +30,8 @@
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasTextInput.h"
 
+#include "UltraFIBUTypes.h"   // Date, Money - after the UI headers, see UltraFIBUApp.h
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -94,6 +96,20 @@ private:
 // A search box, a sortable and filterable table, and a line underneath saying
 // what is in it. Every screen in the application is this, which is why it is
 // one class and not four copies.
+// ---- cells and numbers every screen formats the same way ----------------
+
+// A date for a column: the German text a bookkeeper reads, and the day number
+// it sorts by. Sorting 15.06.2026 as text would order it by day of month.
+TabellenZelle DatumsZelle(const Date& datum);
+// An amount: German formatting, sorted by its minor units.
+TabellenZelle BetragsZelle(const Money& betrag);
+// "20" -> 200, "8,1" -> 81 (per mille). Integer arithmetic: a tax rate read
+// through a double comes back a fraction off, and that reaches every invoice.
+bool ProzentNachPromille(const std::string& text, int& out);
+// 190 -> "19 %", 81 -> "8,1 %" - the inverse, for display and for a field.
+std::string ProzentText(int promille);
+std::string Zahl(int64_t wert);
+
 class TabellenPanel {
 public:
     // `id` prefixes the element ids so two panels in one window stay distinct.
@@ -121,6 +137,10 @@ public:
     // The record id under the current selection, or 0. Maps the proxy row back
     // to the source row for the caller, which is the point of having it here.
     int64_t AusgewaehlteId() const;
+    // Select the row carrying `id`, for when the program rather than a click
+    // decides which record is current - a record just saved, for instance.
+    // Does nothing when a filter hides that row.
+    void Auswaehlen(int64_t id);
 
     // A row was activated (double-click or Enter). Carries the record id, not
     // a row number, for the reason in this file's header.

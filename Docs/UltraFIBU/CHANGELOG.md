@@ -1,3 +1,42 @@
+#### 2026-09-26 *0.25.0*
+- **Steuerschluessel lassen sich im Programm aendern** (Konfiguration >
+  Steuerschluessel). Bisher ging das nur, indem man vor dem Einrichten
+  `Steuerschluessel.csv` von Hand bearbeitete - ab wann ein Schluessel gilt,
+  welchen Satz, welchen DATEV-BU-Schluessel, welche UStVA-Kennzahl und welche
+  Konten er hat, sind aber Entscheidungen der Buchhaltung. Die Seite zeigt
+  jeden Schluessel mit seinen Fassungen und wie viele Buchungen jede traegt;
+  daneben ein Formular zum Anlegen, Aendern, fuer eine neue Fassung ab einem
+  Datum und zum Loeschen.
+  - **Ein geaenderter Satz ist eine neue Fassung.** "Als neue Fassung
+    speichern" beendet die gewaehlte am Vortag des neuen "gilt ab" und setzt
+    die Werte des Formulars ab dort fort. Was davor gebucht ist, behaelt die
+    Fassung, unter der es gebucht wurde.
+  - **Was der Store ablehnt**, gleich woher der Aufruf kommt: Satz, Art,
+    Land, Vorsteuer, BU, Kennzahlen oder Konten einer Fassung aendern, unter
+    der gebucht ist; ihre Gueltigkeit so verschieben, dass eine Buchung ihren
+    Schluessel verliert; alles, was in einen Zeitraum mit eingereichter
+    Meldung reicht. Die UStVA schlaegt den Schluessel jeder Buchung nach Name
+    und Belegdatum neu nach - genau diese Aenderungen wuerden sie die
+    Vergangenheit anders melden lassen. Die Bezeichnung laesst sich immer
+    aendern, der Name nie (Buchungen verweisen darauf).
+  - **Eine Fassung pro Tag.** Zwei Fassungen desselben Schluessels duerfen
+    sich nicht ueberschneiden; bisher pruefte das niemand, und welche galt,
+    hing von der Reihenfolge in der Tabelle ab.
+  - Geprueft wird ausserdem: Name nur aus Buchstaben, Ziffern, - und _ (er
+    steht in Positionen und DATEV-Dateien), Kennzahlen zwei- oder dreistellig,
+    BU hoechstens vier Ziffern, Konten, die es im Kontenrahmen gibt, ein
+    Steuerkonto bei jedem Satz ueber 0 %, und kein Satz bei einer Art, die
+    keine deutsche Umsatzsteuer berechnet. Das Formular zeigt denselben Grund
+    live neben der gesperrten Schaltflaeche.
+  - Jede Aenderung steht im Protokoll, mit dem, was vorher und nachher galt.
+  - Engine: `Store::SteuerschluesselAnlegen`, `SteuerschluesselAendern`,
+    `SteuerschluesselNeueFassung`, `SteuerschluesselLoeschen`,
+    `SteuerschluesselPruefen`, `SteuerschluesselGebucht`,
+    `SteuerschluesselById`.
+  - Das Datumsfeld zeigte "Select a date" statt "TT.MM.JJJJ" - auch im
+    Startfenster. Ursache im Framework, dort behoben (Framework-Changelog,
+    Datumsauswahl `SetPlaceholder`).
+
 #### 2026-09-25 *0.24.0*
 - **Ein Programm statt zwei: `ultrafibu`.** Bisher gab es `ultrafibu` fuer die
   Befehle und `ultrafibu-ui` fuer das Fenster, und welches man gerade vor sich

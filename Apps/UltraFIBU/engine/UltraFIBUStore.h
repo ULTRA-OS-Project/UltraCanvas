@@ -190,6 +190,65 @@ public:
                                                         const Date& gueltigAm = Date()) const;
     bool SteuerschluesselByKey(int64_t mandantId, const std::string& schluessel,
                                const Date& gueltigAm, Steuerschluessel& out) const;
+    bool SteuerschluesselById(int64_t id, Steuerschluessel& out) const;
+
+    // ---- Steuerschluessel bearbeiten ---------------------------------------
+    //
+    // What the editor in the window may do to a tax key. The rows are not
+    // snapshots of the past: the UStVA looks each posting's key up again, by
+    // name and Belegdatum, and takes the Kennzahl and the direction from what
+    // it finds. A key edited under a posting therefore rewrites a return -
+    // one that may already be filed. So every change below is refused when it
+    // would reach a day that
+    //   - carries a posting under this key (it would be reinterpreted, or
+    //     lose its key altogether), or
+    //   - lies in a period whose return this Mandant has filed.
+    // Anything else is the bookkeeper's decision, and belongs in the program
+    // rather than in a CSV file edited by hand.
+    //
+    // **One key, one version per day.** Versions of the same key must not
+    // overlap: the lookup takes the first that matches, and two that both
+    // match make "which rate applies" depend on row order.
+
+    // How many postings use this key between `von` and `bis` (either may be
+    // invalid: unbounded), and the first and last Belegdatum among them.
+    struct SteuerschluesselNutzung {
+        int  buchungen = 0;
+        Date erste;
+        Date letzte;
+    };
+    SteuerschluesselNutzung SteuerschluesselGebucht(int64_t mandantId,
+                                                    const std::string& schluessel,
+                                                    const Date& von, const Date& bis) const;
+
+    // A key that does not exist yet, or a further version of one that does
+    // (it then must not overlap the others). `id` must be 0.
+    StoreResult SteuerschluesselAnlegen(Steuerschluessel& schluessel, const Akteur& akteur);
+    // Change one version in place, found by `id`. The description can always
+    // be changed. Everything the tax depends on - kind, rate, country,
+    // direction, BU, Kennzahlen, accounts - only while no posting and no filed
+    // return is covered by the version. Its validity may move as long as the
+    // days it gains or loses carry neither. The key's name never changes: a
+    // renamed key would orphan every posting under the old name.
+    StoreResult SteuerschluesselAendern(const Steuerschluessel& geaendert, const Akteur& akteur);
+    // What a rate change is: the version `id` ends the day before `ab`, and
+    // `neu` - same key, `gueltigVon` set to `ab` - carries on from there with
+    // the old end date. Postings before `ab` keep the version they were
+    // posted under, which is the point.
+    StoreResult SteuerschluesselNeueFassung(int64_t id, const Date& ab, Steuerschluessel& neu,
+                                            const Akteur& akteur);
+    // Remove a version nothing was posted under and no filed return covers -
+    // a mistake, or a key this business never uses. A version it had closed
+    // (ending the day before this one began) is opened again to this one's
+    // end, so deleting a mistaken rate change does not leave a gap.
+    StoreResult SteuerschluesselLoeschen(int64_t id, const Akteur& akteur);
+    // What is wrong with this key as data, or an empty string: the name, the
+    // dates, the Kennzahlen, accounts that exist, no overlap with another
+    // version. `bisher` is the version it replaces or null; accounts are only
+    // checked where they differ from it. Touches nothing, so a form can ask on
+    // every keystroke - the store asks the same before it writes.
+    std::string SteuerschluesselPruefen(const Steuerschluessel& schluessel,
+                                        const Steuerschluessel* bisher) const;
 
     // ---- Partner (Kunden / Lieferanten) ------------------------------------
 
@@ -670,6 +729,12 @@ public:
     std::vector<AuditEintrag> AuditListe(size_t limit = 200) const;
 
 private:
+    // Why changing key `k` on the days `von`..`bis` (invalid = unbounded) would
+    // alter something already posted or filed, or an empty string. `was` names
+    // the change in the sentence.
+    std::string SteuerschluesselTageBelegt(const Steuerschluessel& k, const Date& von,
+                                           const Date& bis, const std::string& was) const;
+
     // Small wrappers so the call sites stay readable and every failure carries
     // the driver's message.
     StoreResult Exec(const std::string& sql, const UltraDbParams& params,

@@ -30,6 +30,7 @@
 
 #include "UltraFIBUTabelle.h"
 #include "UltraFIBUBelegDialog.h"
+#include "UltraFIBUSteuerschluessel.h"
 
 #include "UltraFIBUStore.h"
 
@@ -89,6 +90,9 @@ private:
     void GewaehltenEuSatzLoeschen();
     void EuSaetzeUebernehmen();
     void KonfigurationOeffnen();
+    // Konfiguration > Steuerschlüssel: its own page, see
+    // UltraFIBUSteuerschluessel.h for what it may and may not change.
+    void SteuerschluesselOeffnen();
 
     // ---- Belege erfassen ---------------------------------------------------
     // The entry form, as its own tab rather than a modal window: entering a
@@ -129,6 +133,9 @@ private:
     TabellenPanel salden_;
     TabellenPanel partner_;
     TabellenPanel euSaetze_;
+
+    std::unique_ptr<SteuerschluesselSeite> steuerschluessel_;
+    int                                    steuerschluesselReiter_ = -1;
 
     std::unique_ptr<BelegDialog> formular_;
     int                          formularReiter_ = -1;

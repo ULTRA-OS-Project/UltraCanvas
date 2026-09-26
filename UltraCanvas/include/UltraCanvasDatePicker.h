@@ -491,7 +491,7 @@ namespace UltraCanvas {
 
         void SetDateFormat(const std::string& fmt) { dateFormat = fmt; SyncTextFromValue(); RequestRedraw(); }
         const std::string& GetDateFormat() const { return dateFormat; }
-        void SetPlaceholder(const std::string& text) { placeholder = text; RequestRedraw(); }
+        void SetPlaceholder(const std::string& text);
 
         // Whether the user may type the date directly into the field.
         void SetAllowTextInput(bool allow);

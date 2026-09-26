@@ -145,6 +145,18 @@ als PDF** prints it. Everything else is read-only — entering a document is
 the store, so a frozen period or an already-posted document is refused there
 and the reason appears in the status line.
 
+**Konfiguration > Steuerschlüssel** lists every tax key with its versions and
+how many postings each version carries, and has a form beside it. A key can be
+created, described differently, given a new version from a date - a rate
+change: the old version ends the day before, and what was posted under it
+stays as it was - or deleted if nothing was posted under it. What the store
+refuses, and the form cannot get round: changing the rate, the kind, the BU
+key, a Kennzahl or an account of a version postings were made under, moving
+its validity so that a posting would lose its key, and anything that reaches
+into a period whose return is filed. The UStVA looks every posting's key up
+again by name and date; those are the changes that would make it report the
+past differently.
+
 ## The decisions worth knowing
 
 - **Amounts are never floating point.** Everything is `UltraCanvas::Money` —
