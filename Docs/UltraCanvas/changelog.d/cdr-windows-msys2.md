@@ -13,5 +13,9 @@
     the CDR subdirectory added ICU's pkgconfig dir, so `libcdr-0.1` (which
     requires `icu-i18n`) and the ICU check both failed. The gate now adds it
     first.
-  - The Windows jobs run `VectorFormatsPluginTest` (`detailed.cdr` with its
-    masked bitmaps and PowerClips) and `CDRWriterTest`.
+  - The macOS and Windows jobs run `VectorFormatsPluginTest` (`detailed.cdr`
+    with its masked bitmaps and PowerClips) and `CDRWriterTest`. Those rows
+    build no full test suite (`BUILD_TESTS` is Linux-only), so the new
+    `ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS` option builds just these two;
+    their definitions moved to `Tests/VectorFormatsTests.cmake`, which
+    `Tests/CMakeLists.txt` includes as before.

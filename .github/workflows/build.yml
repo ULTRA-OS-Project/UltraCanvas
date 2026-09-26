@@ -471,6 +471,7 @@ jobs:
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
+            -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
@@ -491,6 +492,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
+            -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
       # Fail loudly if the OpenGL surface backend was silently disabled
@@ -662,12 +664,14 @@ jobs:
           # it arrives as one line with no diagnosis.
           psql -h /var/run/postgresql -p 5432 -d ultrafibu_ci -c 'SELECT 1' >/dev/null
 
-      # Windows runs no full ctest pass yet; the CorelDRAW path gets its own, so
-      # the vendored libcdr is exercised there on real files: detailed.cdr has
-      # to arrive with its masked bitmaps and PowerClips (VectorFormatsPluginTest),
-      # and our CDR writer's output has to parse (CDRWriterTest).
-      - name: Run CDR tests (Windows)
-        if: runner.os == 'Windows'
+      # macOS and Windows build no full test suite (BUILD_TESTS is Linux-only);
+      # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS builds these two anyway, so the
+      # vendored libcdr is exercised there on real files: detailed.cdr has to
+      # arrive with its masked bitmaps and PowerClips (VectorFormatsPluginTest),
+      # and our CDR writer's output has to parse (CDRWriterTest). Linux runs
+      # them in the full pass below.
+      - name: Run CDR tests (macOS/Windows)
+        if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
 
