@@ -1165,12 +1165,17 @@ namespace UltraCanvas {
                 return true;
             }
             if (swapArrowRect.Contains(p)) {
-                Color cur = GetColor();
-                SetColor(previousColor, false);
-                previousColor = cur;
+                Color fg = GetColor();
+                Color bg = previousColor;
+                SetColor(bg, false);
+                previousColor = fg;
                 Changed(true);
                 // Both colours changed: tell the host about the background too.
-                if (onBackgroundChanged) onBackgroundChanged(previousColor);
+                // Set it from the value captured above, not previousColor: a
+                // host that re-syncs both swatches from its own state inside
+                // onColorChanged (ArtCreator does, from the selected shape,
+                // whose line is still the old colour) has overwritten it.
+                SetBackgroundColor(fg, true);
                 return true;
             }
         }

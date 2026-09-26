@@ -4,7 +4,9 @@
   picker and the selection; it used to do nothing. A right-button drag on
   the colour wheel or sliders with a shape selected no longer leaves the
   background swatch showing the fill colour, and a right-button eyedropper
-  sample or the swap arrow now reach the selection's line colour too. The
+  sample now reaches the selection's line colour too, and the swap arrow
+  swaps the selection's fill and line instead of leaving both swatches the
+  old fill colour. The
   framework side is in `Docs/UltraCanvas/changelog.d/colorpicker-right-click-background.md`.
 
 #### 2026-09-22 *0.6.0*

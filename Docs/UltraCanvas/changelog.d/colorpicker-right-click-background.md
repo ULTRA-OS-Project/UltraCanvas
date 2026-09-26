@@ -18,3 +18,8 @@
     right-button sample and the swap arrow now report the new background
     through `onBackgroundChanged`; before, the swatch changed but the host
     never heard about it.
+  - The swap arrow could leave both swatches the same colour. It reported
+    the new foreground first; a host that re-syncs both swatches from its
+    selection in `onColorChanged` put the old background back, and the swap
+    then reported that. The swap now sets the background from the value it
+    captured before notifying.
