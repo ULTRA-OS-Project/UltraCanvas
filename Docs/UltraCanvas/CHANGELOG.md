@@ -1,3 +1,195 @@
+#### 2026-09-26 *0.9.63*
+- **A zero-width or zero-height ellipse no longer kills a window's drawing.**
+  `RenderContextCairo::DrawEllipse`, `FillEllipse` and `Ellipse` scaled the
+  context by the radii with `cairo_scale`; a zero radius is an invalid
+  matrix, which cairo answers by putting the whole context into a
+  permanent error state that `cairo_restore` does not clear - everything
+  drawn afterwards in that window silently did nothing. ArtCreator's
+  ellipse preview hit it on the first step of every drag. A flat ellipse
+  now adds the line it collapses to (`FillEllipse` adds nothing), a point
+  adds nothing, non-finite input is ignored, and the arc starts its own
+  sub-path instead of joining whatever path was current. `Scale()` and
+  `SetTransform()` already refused degenerate matrices.
+- **CorelDRAW files open complete: libcdr vendored and patched.** libcdr
+  (0.1.7, the engine LibreOffice also uses) lost two things
+  `media/vector/CDR/detailed.cdr` depends on, and LibreOffice shows the same
+  broken result: bitmap transparency masks (drop shadows became black boxes,
+  a cut-out logo overlay an opaque white sheet over everything) and
+  PowerClip contents (the cards' leaves, waves and gloss - parsed, never
+  drawn). The patched copy lives in `UltraCanvas/third_party/libcdr` (MPL
+  2.0; `README.md` and `ultracanvas.patch` document both fixes, meant for
+  upstream) and is built by the CDR plugin when librevenge, lcms2, ICU,
+  zlib and the Boost headers are present; the system libcdr remains the
+  fallback. CI installs the Boost, lcms2 and ICU headers.
+  - libcdr reads the 8-bit mask CorelDRAW stores after a bitmap (colour
+    model 99) and re-encodes the bitmap as RGBA PNG.
+  - libcdr reads loda argument `0x1f45` (PowerClip) and draws the clipped
+    vect after its frame: an SVG image over the contents' box whose
+    `clipPath` is the frame outline.
+- **The SVG importer reads `<clipPath>` and SVG images.** `clip-path`
+  references become `VectorStyle::ClipPath` over `VectorClipPath`
+  definitions; an `<image>` whose href is `data:image/svg+xml` is read as an
+  editable group placed by its box and `preserveAspectRatio`, its
+  definitions renamed so nested documents cannot collide.
+- **The editing canvas resolves definitions.** `UltraCanvasVectorCanvas`
+  drew layers through `VectorRenderer::RenderLayer` without the document, so
+  clip paths (and gradients or symbols referenced by id) resolved to
+  nothing and drew unclipped. `VectorRenderer::SetDocument()` is new; the
+  canvas sets it around the layers.
+- **A fully transparent paint draws nothing.** `RenderContextCairo` set no
+  source for a colour with alpha 0 and no pattern, leaving cairo's previous
+  one - black by default - so a `fill-opacity="0"` shape was filled black
+  (CorelDRAW writes stripes of them; one became a black bar across a card).
+- **Right click sets the background colour everywhere a picker offers it.**
+  Choosing the background (line, secondary) colour with the right mouse
+  button left the background swatch unchanged in three places.
+  - `UltraCanvasColorSwatchBar` ignored every button but the left one. A
+    right click now raises the new `onColorAdjustSelected(Color)` callback
+    (the selection outline stays on the left-click colour); unset, right
+    clicks are still ignored. Fast repeat clicks, which arrive as
+    double-clicks, now select like single clicks.
+  - A right-button drag in `UltraCanvasColorPicker` could end with the
+    background swatch showing the foreground colour: a host that re-synced
+    the foreground from `onBackgroundChanged` (ArtCreator does, from the
+    selected shape) wrote it into the working state that was holding the
+    background, and the release committed that. `SetColor` /
+    `SetForegroundColor` during such a drag now set the saved foreground,
+    and the release keeps the background the drag produced.
+  - `SetBackgroundColor(c, notify = false)`: `notify` raises
+    `onBackgroundChanging` / `onBackgroundChanged`. The built-in eyedropper's
+    right-button sample and the swap arrow now report the new background
+    through `onBackgroundChanged`; before, the swatch changed but the host
+    never heard about it.
+  - The swap arrow could leave both swatches the same colour. It reported
+    the new foreground first; a host that re-syncs both swatches from its
+    selection in `onColorChanged` put the old background back, and the swap
+    then reported that. The swap now sets the background from the value it
+    captured before notifying.
+- **A program could crash on exit after using file associations.** The
+  association service's worker thread resolves applications and icons in the
+  background; the service's destructor joins it, but only once the current
+  lookup ends. The statics that lookup used — the desktop icon cache on Linux
+  (`FindDesktopIconFile`), the icon cache directory on Windows and macOS, the
+  sweep's extension list — were function-local statics first built on that
+  thread, so they were destroyed *before* the service and freed under the
+  running lookup. `FilerNameEncodingTest` printed `ALL PASSED` and then
+  crashed in CI. They are now allocated once and never destroyed. The Linux
+  backend's MIME/application index is a namespace-scope global, built before
+  the service, and so already outlived it.
+- **More statics that background threads use now outlive them at exit.** An
+  audit of every library thread that can still be running at exit found the
+  same pattern in five more places. Each of these is now allocated once and
+  never destroyed:
+  - the NetworkMonitor name table and name listeners, used by the name-source
+    workers;
+  - its connection attribution, event listeners and recent-event ring, used
+    by the event-source workers;
+  - UltraDatabase's handle, prepared-statement and transaction tables and
+    their mutex, which UltraMessage broker sessions journal through; the
+    broker is stopped by an `atexit` handler that is registered before these
+    tables are first built;
+  - `JSONValue::NullValue()`, returned by every missing-key lookup, including
+    those on UltraMessage threads;
+  - UltraNet's c-ares channels (the default channel and the per-server-list
+    map) and the empty server list, used by detached async DNS lookups. The
+    per-server-list channels' comment already said "leaked on purpose", but
+    the map destroyed them at exit.
+- **Imported SVG drawings keep their shapes, placement and text.** Opening
+  an SVG in ArtCreator (or previewing one through the vector reader) lost
+  most of an optimised file and misplaced the rest. Five defects in the
+  shared vector code, each visible in the sample files under
+  `media/vector/SVG/`:
+  - `VectorStorage::ParsePathString` read path data with `istream >>`, so
+    it broke on the compact form every optimiser and editor writes: numbers
+    run together (`423.38-18.759`, `.95-.16.857`), repeated coordinates
+    after one command letter, and arc flags without separators
+    (`a1 1 0 01 5 5`). Such paths became runs of empty commands;
+    `robot.svg` showed a few fragments of 632 shapes. The reader now follows
+    the SVG path grammar (dot-decimal, locale-proof).
+  - `VectorStorage::ParseTransformString` "skipped the comma" by reading one
+    character after each number, which with a space separator ate the first
+    digit of the next: `translate(483.572 574.049)` became `(483.572,
+    74.049)` and `scale(1 -1)` lost its sign. `rotate(a cx cy)` now turns
+    about its centre.
+  - The SVG importer left inherited paint unset — a shape without its own
+    `fill` (black by default in SVG), or inside `<g fill="…">`, drew
+    nothing, because the renderer has no style inheritance. The importer
+    now writes the inherited fill and stroke into each element; an explicit
+    `none` is kept.
+  - A transform on a top-level `<g>` (which becomes a layer) and the
+    viewBox's offset and scale were ignored; the importer now places them in
+    a group inside each layer, so the drawing lands on the page
+    (`photo-camera.svg`, Xara's `Logo_Texter.svg`).
+  - `VectorRenderer` culled elements by comparing bounds in their parent's
+    space against the viewport in document space, dropping whole subtrees
+    of transformed groups; it now culls through the accumulated transform
+    (also for `<use>`). Text was drawn with its top-left, not its baseline,
+    at the text position, and at 4/3 of its size (the context's font size is
+    in points at 96 dpi, the model's in drawing units).
+  - `Tests/SVGConverterTest` pins each case.
+- **`UltraCanvasFileLoader` loads and saves editable vector documents.**
+  `LoadVectorDocument(path, error, notes)`, `SaveVectorDocument(doc, path,
+  error, notes)`, `GetVectorLoadExtensions()`, `GetVectorSaveExtensions()`
+  and `CanLoadVectorDocument()` read into and write from the shared
+  `VectorStorage::VectorDocument` with the Vector plugin's converters. They go
+  through the existing `VectorPreviewProvider` seam, which gains optional
+  `Import` (with the reader's notes), `SaveExtensions` and `Save` members
+  that `RegisterVectorFormatsPlugin()` fills in; core still links no reader.
+  `UCImage` keeps opening `.svg` as pixels through librsvg.
+- **Every vector sample in the repository opens, and looks like its source.**
+  Checked against independent references - each file's embedded preview
+  (Xara, CorelDRAW), ezdxf (DXF), LibreOffice (CDR) - through
+  `UltraCanvasFileLoader::LoadVectorDocument`:
+  - **CorelDRAW files are read.** `CDRConverter::CanImport()` is true when
+    the CDR plugin is built: libcdr's parse becomes SVG through librevenge's
+    generator and the SVG importer turns that into the document, so a `.cdr`
+    arrives as editable shapes (the three samples: 50, 400 and 725 objects).
+    `ImportFromString` / `ImportFromStream` spool to a temporary file for
+    libcdr. What libcdr drops stays dropped - in `detailed.cdr` the bitmaps'
+    transparency and four card images' rotation, exactly as in LibreOffice.
+    Windows builds still have no CDR plugin (no libcdr there).
+  - **The readable and writable extensions are no longer hand-written
+    lists.** `UltraCanvasVectorFormatsPlugin` keeps one converter table;
+    `GetSupportedExtensions()` / `GetSaveExtensions()` collect the extensions
+    each converter declares where `CanImport()` / `CanExport()` is true, and
+    `CreateConverterForExtension()` picks from the same table. A reader that
+    depends on an optional plugin appears exactly when it is built. New on
+    the read list as a result: `cdr`, `svgz`, and Xara's `web`.
+  - **`.svgz` reads.** `SVGConverter::Import` goes through
+    `UltraCanvasFileLoader::LoadFile`, which inflates gzip transparently.
+  - **Hairlines stay visible.** `VectorRenderOptions::MinStrokePixels`
+    (default 1): no stroke is drawn thinner than one device pixel, as in a
+    CAD viewer. A 0.25 pt pen on a plan 10,000 units wide shown at 7 %
+    faded to nothing; the AI samples' 0.26 pt cutting outlines read as grey
+    haze.
+  - **A DXF whose declared extents are absurdly small or large is scaled
+    like one without.** `millennium-falcon.dxf` declares 58 x 42 metres;
+    kept as points that was a 2 cm page under 1 pt pens - solid black.
+    Declared extents between 200 and 20,000 units are still kept as they are.
+  - **Embedded images draw.** `VectorRenderer` passed an image's
+    `data:...;base64,` source to `DrawImage` as a file path, so every
+    embedded image (SVG, and every bitmap in a CorelDRAW file) drew nothing.
+    It is decoded once, cached (cleared by `ClearCaches`) and drawn.
+  - **Previews are the right size.** `RenderVectorDocumentPixmap` put the
+    fit scale on the context and passed it again as `PixelRatio`, which the
+    renderer applies on top: every Filer thumbnail and media-viewer preview
+    of a drawing was drawn at the fit squared - a large drawing shrunk into
+    a corner, a small one enlarged and cropped.
+  - The AI documentation gains a *render trap* note: a `.ai` saved without
+    PDF compatibility is a blank page to Ghostscript, poppler, ImageMagick
+    and every PDF viewer, correctly, so they are no reference for it.
+  - **CorelDRAW bitmaps keep their transparency.** CorelDRAW stores a
+    transparent bitmap as a colour image followed by an 8-bit mask (colour
+    model 99); libcdr reads only the colour image, so drop shadows became
+    solid black boxes and cut-out overlays opaque sheets -
+    `detailed.cdr`'s four business cards vanished under a white overlay.
+    `CDRConverter` now reads the masks from the file (`Bitmaps.dat` in a
+    ZIP-format CDR, inline in a RIFF one), matches each to the image libcdr
+    produced, and re-embeds it as RGBA PNG. Pinned by
+    `VectorFormatsPluginTest`. Six CMYK bitmaps in that file that libcdr
+    places no object for (leaves, waves, the shield's gloss) are still
+    missing.
+
 #### 2026-09-26 *0.9.62*
 - **R, Scala, MATLAB and VBA are switched on in the syntax highlighter.**
   Their rules were written but their `RegisterLanguage` lines in the
