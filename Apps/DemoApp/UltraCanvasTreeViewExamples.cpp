@@ -26,6 +26,9 @@ namespace UltraCanvas {
         GroupBoxVisualStyle st = gb->GetVisualStyle();
         st.headerBackgroundColor = Color(235, 238, 245, 255);
         st.showHeaderSeparator = true;
+        // 10% under the default caption size, so the longer demo titles fit
+        // the 318px box.
+        st.titleFont.fontSize *= 0.9f;
         gb->SetVisualStyle(st);
         // A flex column, so the options get a gap below the tree (block layout
         // ignores child margins).
@@ -147,7 +150,7 @@ namespace UltraCanvas {
         // Demonstrates the columnar display mode (Name / Type / Value with an accent
         // Type column and section-header bars) an IDE debugger would use, plus the
         // Classic/Modern layout toggle and Alphabetic/Last-access sort options.
-        auto varsBox = TreeDemoGroupBox("VarsTreeBox", 670, 50, 430, "Debugger Variables (columns)");
+        auto varsBox = TreeDemoGroupBox("VarsTreeBox", 670, 50, 430, "Debugger Variables (Modern columns)");
         container->AddChild(varsBox);
         auto varsTree = std::make_shared<UltraCanvasColumnsTreeView>("VarsTree", 300, 330);
         varsTree->SetRowHeight(26);
