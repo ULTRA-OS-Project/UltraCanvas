@@ -57,9 +57,11 @@ JSONValue JSONValue::MakeObject() {
     return v;
 }
 
+// Never destroyed: every missing-key lookup returns it, including those on
+// worker threads (UltraMessage) that can still run while statics are torn down.
 const JSONValue& JSONValue::NullValue() {
-    static const JSONValue nullValue;
-    return nullValue;
+    static const JSONValue* nullValue = new JSONValue;
+    return *nullValue;
 }
 
 bool JSONValue::GetBoolean(bool fallback) const {

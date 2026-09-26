@@ -170,7 +170,8 @@ UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
         return ultranet_dns_platform::Resolve(name, type, outAddresses,
                                               timeoutMs, options.servers);
     }
-    static const std::vector<std::string> kNoServers;
+    // Never destroyed: detached async lookups can still run at exit.
+    static const std::vector<std::string>& kNoServers = *new std::vector<std::string>;
 
 #ifdef ULTRANET_HAS_CARES
     // c-ares handles every record type uniformly (including PTR — but the

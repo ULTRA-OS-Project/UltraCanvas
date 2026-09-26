@@ -103,9 +103,11 @@ struct Attribution {
     std::deque<std::string> rememberedOrder;
 };
 
+// Never destroyed: the event-source worker threads can still be running at exit, and a lazy
+// static first built on it would be torn down under it.
 Attribution& TheAttribution() {
-    static Attribution attribution;
-    return attribution;
+    static Attribution* attribution = new Attribution;
+    return *attribution;
 }
 
 constexpr auto kTableMaxAge = std::chrono::milliseconds(300);
@@ -242,9 +244,11 @@ struct EventListeners {
     EventListenerId next = 1;
 };
 
+// Never destroyed: the event-source worker threads can still be running at exit, and a lazy
+// static first built on it would be torn down under it.
 EventListeners& TheListeners() {
-    static EventListeners listeners;
-    return listeners;
+    static EventListeners* listeners = new EventListeners;
+    return *listeners;
 }
 
 struct RecentRing {
@@ -252,9 +256,11 @@ struct RecentRing {
     std::deque<NetworkConnectionEvent> events;   // newest at the back
 };
 
+// Never destroyed: the event-source worker threads can still be running at exit, and a lazy
+// static first built on it would be torn down under it.
 RecentRing& TheRing() {
-    static RecentRing ring;
-    return ring;
+    static RecentRing* ring = new RecentRing;
+    return *ring;
 }
 
 // ===== THE SNAPSHOT DIFFER =====
