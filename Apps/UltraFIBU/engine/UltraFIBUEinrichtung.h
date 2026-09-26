@@ -6,7 +6,7 @@
 // parsing and its printf calls. The screens could not create a file at all -
 // and worse, opening a path that did not exist created one anyway, empty and
 // unusable, because SQLite creates a file it is asked to open. The UI told the
-// user to run "ultrafibu einrichten" on a file it had just produced itself.
+// user to run "UltraFIBU einrichten" on a file it had just produced itself.
 // Both front ends now call this, so there is one definition of what a new
 // bookkeeping file contains.
 //

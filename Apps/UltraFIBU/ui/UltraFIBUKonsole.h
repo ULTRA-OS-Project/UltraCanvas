@@ -1,8 +1,8 @@
 // Apps/UltraFIBU/ui/UltraFIBUKonsole.h
 // Letting go of a console window nobody asked for.
 //
-// `ultrafibu` is one program for the commands and the window, so it is built
-// as a console program: that is what lets `ultrafibu info buch.db` print into
+// `UltraFIBU` is one program for the commands and the window, so it is built
+// as a console program: that is what lets `UltraFIBU info buch.db` print into
 // the prompt it was typed at, and makes the prompt wait for it. The price is
 // on Windows - started by a double-click, a console program gets a console
 // window of its own, which then stands empty behind the bookkeeping.

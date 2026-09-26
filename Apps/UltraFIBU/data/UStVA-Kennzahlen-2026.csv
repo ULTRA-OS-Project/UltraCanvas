@@ -42,13 +42,13 @@ kennzahl;art;satz_promille;geprueft;bezeichnung
 # ---------------------------------------------------------------------------
 # AB HIER: NICHT GEPRUEFT. Die Zeilen stehen hier, damit sichtbar ist, WELCHE
 # Faelle noch fehlen - nicht, damit sie verwendet werden. Solange "geprueft"
-# auf "nein" steht, verweigert "ultrafibu ustva-xml" die Datei, sobald ein
+# auf "nein" steht, verweigert "UltraFIBU ustva-xml" die Datei, sobald ein
 # Betrag auf eine dieser Kennzahlen entfaellt.
 #
 # Zum Pruefen: das BMF-Vordruckmuster des Jahres oder eine tatsaechlich
 # abgegebene Voranmeldung danebenlegen, Kennzahl fuer Kennzahl vergleichen,
 # "nein" auf "ja" setzen. Danach:
-#   ultrafibu ustva <datei> --jahr 2026 --zeitraum 06
+#   UltraFIBU ustva <datei> --jahr 2026 --zeitraum 06
 # ---------------------------------------------------------------------------
 89;bemessung;190;nein;Innergemeinschaftliche Erwerbe 19 %
 93;bemessung;70;nein;Innergemeinschaftliche Erwerbe 7 %

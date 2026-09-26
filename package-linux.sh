@@ -43,11 +43,11 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
     || echo "$(uname -m)-linux-gnu")"
 
 # Apps to include (executable target names, output to the build root).
-# `ultrafibu` is one program: the commands (`ultrafibu info buch.db`) and,
+# `UltraFIBU` is one program: the commands (`UltraFIBU info buch.db`) and,
 # given none, the window. Built without the UI library it is the commands
 # alone, which is what a server installation runs.
 APPS=(UltraCanvasDemo UltraCanvasTexter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
-      ultrafibu)
+      UltraFIBU)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
@@ -226,7 +226,7 @@ cp "$PROJECTDIR"/Apps/DemoApp/*.cpp "$PKG/share/DemoApp/" 2>/dev/null || true
 if [ -d "$PROJECTDIR/Apps/UltraFIBU/data" ]; then
     mkdir -p "$PKG/share/UltraFIBU"
     cp -r "$PROJECTDIR/Apps/UltraFIBU/data" "$PKG/share/UltraFIBU/data"
-    # And beside the binary, so `bin/ultrafibu` run directly - without the
+    # And beside the binary, so `bin/UltraFIBU` run directly - without the
     # wrapper that sets ULTRAFIBU_DATA_DIR - still finds them.
     cp -r "$PROJECTDIR/Apps/UltraFIBU/data" "$PKG/bin/data"
 fi

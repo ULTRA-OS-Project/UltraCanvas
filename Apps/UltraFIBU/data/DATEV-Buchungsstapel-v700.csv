@@ -27,7 +27,7 @@
 # kein neues Programm.
 #
 # SO WIRD SIE GEPRUEFT:
-#   ultrafibu datev-pruefen <echte_EXTF_Datei.csv>
+#   UltraFIBU datev-pruefen <echte_EXTF_Datei.csv>
 # Der Befehl liest die Kopfzeile einer echten DATEV-Datei und meldet jede
 # Abweichung - fehlende, zusaetzliche und verschobene Spalten - mit Position.
 # Danach hier korrigieren und erneut pruefen. Der Export schreibt die Werte

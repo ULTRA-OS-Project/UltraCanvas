@@ -380,7 +380,7 @@ endif()
 # ===== ULTRAFIBU =====
 # German double-entry accounting: DATEV, UStVA/ELSTER, One-Stop-Shop, a fiscal
 # year with a free start date. Phase A1 builds the headless engine and the
-# ultrafibu CLI on top of it; the German UI follows once the framework has a
+# UltraFIBU CLI on top of it; the German UI follows once the framework has a
 # data grid (Docs/Research/UltraFIBUDesignProposal.md).
 option(BUILD_ULTRAFIBU "Build the UltraFIBU accounting application" ON)
 if(BUILD_ULTRAFIBU AND TARGET UltraDatabase)

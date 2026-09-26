@@ -3,7 +3,7 @@
 #
 # Kurz und damit weniger riskant als der Buchungsstapel, aber ebenfalls NICHT
 # an einer echten DATEV-Datei geprueft. Pruefung mit
-#   ultrafibu datev-pruefen <echte_EXTF_Datei.csv>
+#   UltraFIBU datev-pruefen <echte_EXTF_Datei.csv>
 # Format wie bei DATEV-Buchungsstapel-v700.csv: nummer;name;typ
 #
 # Sprach-ID: "de-DE" ist die deutsche Beschriftung. DATEV kennt je Konto

@@ -10,7 +10,7 @@
 //
 // **Read-only, deliberately, with two exceptions.** Entering a document needs a
 // form with a position editor, and that is its own piece of work; until it
-// exists `ultrafibu beleg-neu` writes and these screens show. The two actions
+// exists `UltraFIBU beleg-neu` writes and these screens show. The two actions
 // that *are* here - posting a draft and printing an invoice - are one engine
 // call each, they are the two things one does to a document that is already
 // entered, and every rule that protects the ledger still lives in the store, so

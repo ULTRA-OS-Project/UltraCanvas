@@ -479,7 +479,7 @@ DatevErgebnis SchreibeBuchungsstapel(const Mandant& mandant,
             ergebnis.warnungen.push_back(
                 std::string("Die Spaltendefinition kennt keine Spalte \"") +
                 spalte.first + "\"; dieser Wert fehlt in der Datei. Bitte "
-                "data/DATEV-Buchungsstapel-v700.csv mit \"ultrafibu "
+                "data/DATEV-Buchungsstapel-v700.csv mit \"UltraFIBU "
                 "datev-pruefen\" gegen eine echte DATEV-Datei prüfen.");
         }
     }
@@ -1105,7 +1105,7 @@ DatevImportBericht LeseBuchungsstapel(
         bericht.warnungen.push_back(
             "Der Stapel ist in der Datei als festgeschrieben gekennzeichnet. "
             "Die Buchungen werden hier trotzdem offen übernommen - "
-            "festgeschrieben wird mit \"ultrafibu festschreiben\", damit das "
+            "festgeschrieben wird mit \"UltraFIBU festschreiben\", damit das "
             "Datum hier und nicht in einer fremden Datei entsteht.");
     }
     if (!bericht.fehlerZeilen.empty()) {

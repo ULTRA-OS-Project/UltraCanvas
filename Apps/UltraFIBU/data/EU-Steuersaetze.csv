@@ -22,9 +22,9 @@
 # Gueltigkeitsdatum und nicht eine Tabelle im Programm.
 #
 # DIESE DATEI IST DER ANFANGSBESTAND, NICHT DER LAUFENDE.
-# Gepflegt werden die Saetze in der Datenbank - "ultrafibu eu-saetze-uebernehmen"
+# Gepflegt werden die Saetze in der Datenbank - "UltraFIBU eu-saetze-uebernehmen"
 # holt diese Datei einmal herein, danach im Programm unter Konfiguration ->
-# EU-Steuersaetze bzw. mit "ultrafibu eu-satz-neu". Der Grund ist derselbe wie
+# EU-Steuersaetze bzw. mit "UltraFIBU eu-satz-neu". Der Grund ist derselbe wie
 # der fuer das Gueltigkeitsdatum: ein Land aendert seinen Satz mit ein paar
 # Wochen Vorlauf, und wer darauf ein neues Programm abwarten muss, stellt bis
 # dahin jede Rechnung mit dem falschen Satz aus.

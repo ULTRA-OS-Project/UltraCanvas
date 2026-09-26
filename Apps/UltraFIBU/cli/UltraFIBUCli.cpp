@@ -13,10 +13,10 @@
 // engine's first real caller, which is what keeps the engine honest about
 // being usable without a window.
 //
-// This file has no main(). It is linked into the one `ultrafibu` program,
+// This file has no main(). It is linked into the one `UltraFIBU` program,
 // which runs these commands when it is given one and opens the window when it
 // is not - and, where no UI can be built, into a command-line-only
-// `ultrafibu` (cli/main.cpp). See UltraFIBUCli.h.
+// `UltraFIBU` (cli/main.cpp). See UltraFIBUCli.h.
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUCli.h"
@@ -53,13 +53,13 @@ bool gMitFenster = false;
 
 void PrintUsage() {
     std::printf(
-        "ultrafibu - Buchhaltung (UltraFIBU %s)\n"
+        "UltraFIBU - Buchhaltung (UltraFIBU %s)\n"
         "\n"
-        "Aufruf:  ultrafibu <Befehl> [Optionen]\n",
+        "Aufruf:  UltraFIBU <Befehl> [Optionen]\n",
         ULTRAFIBU_CLI_VERSION);
     if (gMitFenster)
         std::printf(
-            "         ultrafibu [<datei>]\n"
+            "         UltraFIBU [<datei>]\n"
             "\n"
             "Ohne Befehl öffnet sich das Fenster: mit der angegebenen Buchhaltung,\n"
             "oder - ohne Datei, oder mit einer, die es noch nicht gibt - mit einem\n"
@@ -269,7 +269,7 @@ bool ErsterMandant(const Store& store, Mandant& out) {
     const std::vector<Mandant> alle = store.Mandanten();
     if (alle.empty()) {
         std::printf("In dieser Datei ist noch kein Mandant angelegt "
-                    "(ultrafibu einrichten ...).\n");
+                    "(UltraFIBU einrichten ...).\n");
         return false;
     }
     out = alle[0];
@@ -322,7 +322,7 @@ int Einrichten(int argc, char** argv) {
     // The company's own address and tax number are not decoration: without
     // them a printed invoice is deficient under § 14 UStG and its recipient
     // cannot deduct the input tax. They are settable here so a file can be set
-    // up complete in one go; "ultrafibu rechnung-pdf" names whatever is still
+    // up complete in one go; "UltraFIBU rechnung-pdf" names whatever is still
     // missing.
     Mandant& m = daten.stammdaten;
     m.ustIdNr         = Option(argc, argv, "--ust-idnr");
@@ -363,7 +363,7 @@ int Einrichten(int argc, char** argv) {
                 BenutzerRolleLabel(bericht.admin.rolle).c_str());
     std::printf("  Kontenrahmen     %s, %d Konten\n", bericht.jahr.skr.c_str(), bericht.konten);
     std::printf("  Steuerschlüssel  %d\n", bericht.steuerschluessel);
-    std::printf("\nNächster Schritt: ultrafibu partner-neu %s --name \"...\"\n", datei.c_str());
+    std::printf("\nNächster Schritt: UltraFIBU partner-neu %s --name \"...\"\n", datei.c_str());
     return 0;
 }
 
@@ -612,7 +612,7 @@ int Festschreiben(int argc, char** argv) {
         std::printf("Festschreiben macht alle Buchungen bis zum %s unveränderbar.\n"
                     "Korrekturen sind danach nur über eine Stornierung möglich, und die\n"
                     "Festschreibung kann nicht zurückgenommen werden (GoBD).\n"
-                    "\nZum Ausführen: ultrafibu festschreiben <datei> %s --ja\n",
+                    "\nZum Ausführen: UltraFIBU festschreiben <datei> %s --ja\n",
                     FormatDateGerman(bis).c_str(), bisText.c_str());
         return 0;
     }
@@ -780,7 +780,7 @@ int BelegNeu(int argc, char** argv) {
     std::printf("  %-30s %12s brutto\n", "Gesamt", beleg.brutto.ToString().c_str());
     if (beleg.faelligAm.Valid())
         std::printf("  Fällig am %s\n", FormatDateGerman(beleg.faelligAm).c_str());
-    std::printf("\nMit \"ultrafibu buchen %s %s\" wird daraus eine Buchung.\n",
+    std::printf("\nMit \"UltraFIBU buchen %s %s\" wird daraus eine Buchung.\n",
                 datei.c_str(), beleg.nummer.c_str());
     return 0;
 }
@@ -1155,7 +1155,7 @@ int KontenImport(int argc, char** argv) {
     const std::string datevDatei = Positional(argc, argv, 1);
     if (datevDatei.empty()) {
         std::printf("Fehler: Keine DATEV-Datei angegeben.\n"
-                    "Aufruf: ultrafibu konten-import <datei> "
+                    "Aufruf: UltraFIBU konten-import <datei> "
                     "<EXTF_Kontenbeschriftungen.csv> [--uebernehmen]\n");
         return 2;
     }
@@ -1301,7 +1301,7 @@ int DatevPruefen(int argc, char** argv) {
     const std::string datevDatei = Positional(argc, argv, 0);
     if (datevDatei.empty()) {
         std::printf("Fehler: Keine DATEV-Datei angegeben.\n"
-                    "Aufruf: ultrafibu datev-pruefen <EXTF_Datei.csv>\n");
+                    "Aufruf: UltraFIBU datev-pruefen <EXTF_Datei.csv>\n");
         return 2;
     }
 
@@ -1348,7 +1348,7 @@ int DatevImport(int argc, char** argv) {
     const std::string datevDatei = Positional(argc, argv, 1);
     if (datevDatei.empty()) {
         std::printf("Fehler: Keine DATEV-Datei angegeben.\n"
-                    "Aufruf: ultrafibu datev-import <datei> <EXTF_Datei.csv>\n");
+                    "Aufruf: UltraFIBU datev-import <datei> <EXTF_Datei.csv>\n");
         return 2;
     }
     Store store;
@@ -1450,7 +1450,7 @@ int BelegImport(int argc, char** argv) {
     }
     if (pfade.empty()) {
         std::printf("Fehler: Aufruf ist "
-                    "ultrafibu beleg-import <datei> <beleg> [<beleg> ...] "
+                    "UltraFIBU beleg-import <datei> <beleg> [<beleg> ...] "
                     "--datum <datum>\n");
         return 2;
     }
@@ -1492,7 +1492,7 @@ int BelegImport(int argc, char** argv) {
     for (const std::string& w : b.warnungen) std::printf("  ACHTUNG: %s\n", w.c_str());
     if (!b.ok) { std::printf("\nFehler: %s\n", b.fehler.c_str()); return 1; }
     if (b.angelegt > 0)
-        std::printf("\nWeiter mit: ultrafibu belege %s --status entwurf\n",
+        std::printf("\nWeiter mit: UltraFIBU belege %s --status entwurf\n",
                     datei.c_str());
     return 0;
 }
@@ -1654,7 +1654,7 @@ int UstvaXml(int argc, char** argv) {
         return 1;
     }
     std::printf("\nAls Meldung %lld protokolliert. Nach dem Upload in Mein ELSTER:\n"
-                "  ultrafibu meldung-quittung %s %lld --ticket <Transferticket>\n",
+                "  UltraFIBU meldung-quittung %s %lld --ticket <Transferticket>\n",
                 static_cast<long long>(meldung.id), datei.c_str(),
                 static_cast<long long>(meldung.id));
     return 0;
@@ -1697,7 +1697,7 @@ int Oss(int argc, char** argv) {
                         fehler.empty() ? "Datei nicht gefunden" : fehler.c_str());
         } else {
             std::printf("Hinweis: die Sätze stammen aus %s, nicht aus der Datenbank. "
-                        "Mit \"ultrafibu eu-saetze-uebernehmen\" werden sie "
+                        "Mit \"UltraFIBU eu-saetze-uebernehmen\" werden sie "
                         "übernommen und dann im Programm pflegbar.\n", pfad.c_str());
         }
     }
@@ -1820,7 +1820,7 @@ int MeldungQuittung(int argc, char** argv) {
     const std::string idText = Positional(argc, argv, 1);
     const std::string ticket = Option(argc, argv, "--ticket");
     if (idText.empty() || ticket.empty()) {
-        std::printf("Fehler: Aufruf ist ultrafibu meldung-quittung <datei> <id> "
+        std::printf("Fehler: Aufruf ist UltraFIBU meldung-quittung <datei> <id> "
                     "--ticket <Transferticket>\n"
                     "Das Transferticket steht in der Quittung von Mein ELSTER "
                     "und ist der Nachweis, dass die Meldung angekommen ist.\n");
@@ -1894,7 +1894,7 @@ int Bankkonten(int argc, char** argv) {
     const std::vector<Bankkonto> konten = store.Bankkonten(mandant.id, false);
     if (konten.empty()) {
         std::printf("Es ist kein Bankkonto angelegt "
-                    "(ultrafibu bankkonto-neu ... --name \"...\" --konto 1200).\n");
+                    "(UltraFIBU bankkonto-neu ... --name \"...\" --konto 1200).\n");
         return 0;
     }
     std::printf("%4s  %-28s %-24s %-6s %-10s %s\n",
@@ -1916,7 +1916,7 @@ int BankImport(int argc, char** argv) {
     const std::string auszug    = Positional(argc, argv, 2);
     if (auszug.empty()) {
         std::printf("Fehler: Aufruf ist "
-                    "ultrafibu bank-import <datei> <bankkonto-id> <auszug>\n");
+                    "UltraFIBU bank-import <datei> <bankkonto-id> <auszug>\n");
         return 2;
     }
     Store store;
@@ -1929,7 +1929,7 @@ int BankImport(int argc, char** argv) {
     if (!store.BankkontoById(std::atoll(kontoText.c_str()), konto) &&
         !store.BankkontoByIban(mandant.id, kontoText, konto)) {
         std::printf("Fehler: Das Bankkonto \"%s\" gibt es nicht "
-                    "(ultrafibu bankkonten %s).\n", kontoText.c_str(), datei.c_str());
+                    "(UltraFIBU bankkonten %s).\n", kontoText.c_str(), datei.c_str());
         return 1;
     }
 
@@ -2007,7 +2007,7 @@ int BankImport(int argc, char** argv) {
         std::printf(", %d bereits vorhanden und übersprungen", bekannt);
     std::printf(".\n");
     if (neu > 0)
-        std::printf("Nächster Schritt: ultrafibu umsaetze %s --offen\n", datei.c_str());
+        std::printf("Nächster Schritt: UltraFIBU umsaetze %s --offen\n", datei.c_str());
     return 0;
 }
 
@@ -2071,7 +2071,7 @@ int Umsaetze(int argc, char** argv) {
     std::printf("%6s %-10s %14s\n", "", "Summe",
                 Money::FromMinor(summe, mandant.waehrung).ToString().c_str());
     if (filter.nurOffene)
-        std::printf("\nZuordnen: ultrafibu zuordnen %s <id>\n", datei.c_str());
+        std::printf("\nZuordnen: UltraFIBU zuordnen %s <id>\n", datei.c_str());
     return 0;
 }
 
@@ -2079,7 +2079,7 @@ int Zuordnen(int argc, char** argv) {
     const std::string datei = Positional(argc, argv, 0);
     const std::string idText = Positional(argc, argv, 1);
     if (idText.empty()) {
-        std::printf("Fehler: Aufruf ist ultrafibu zuordnen <datei> <umsatz-id>\n");
+        std::printf("Fehler: Aufruf ist UltraFIBU zuordnen <datei> <umsatz-id>\n");
         return 2;
     }
     Store store;
@@ -2151,7 +2151,7 @@ int Zuordnen(int argc, char** argv) {
         for (const std::string& grund : v.gruende)
             std::printf("      %s\n", grund.c_str());
     }
-    std::printf("\nAnnehmen: ultrafibu zuordnen %s %lld --buchen %s\n",
+    std::printf("\nAnnehmen: UltraFIBU zuordnen %s %lld --buchen %s\n",
                 datei.c_str(), static_cast<long long>(umsatzId),
                 vorschlaege.front().belegnummer.c_str());
     return 0;
@@ -2293,7 +2293,7 @@ int EuSaetze(int argc, char** argv) {
     const std::vector<EuSteuersatz> alle = store.EuSteuersaetzeAlle();
     if (alle.empty()) {
         std::printf("In dieser Datei ist noch kein EU-Steuersatz erfasst.\n"
-                    "Mit \"ultrafibu eu-saetze-uebernehmen <datei>\" die "
+                    "Mit \"UltraFIBU eu-saetze-uebernehmen <datei>\" die "
                     "mitgelieferten Sätze übernehmen.\n");
         return 0;
     }
@@ -2332,7 +2332,7 @@ int EuSatzNeu(int argc, char** argv) {
     const std::string abText   = Option(argc, argv, "--ab");
     if (satz.land.empty() || satzText.empty() || abText.empty()) {
         std::printf("Fehler: --land, --satz und --ab sind erforderlich.\n"
-                    "  ultrafibu eu-satz-neu <datei> --land AT --satz 20 "
+                    "  UltraFIBU eu-satz-neu <datei> --land AT --satz 20 "
                     "--ab 2026-01-01 [--art ermaessigt] [--geprueft --quelle \"...\"]\n");
         return 2;
     }

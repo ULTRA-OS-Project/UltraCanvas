@@ -135,17 +135,17 @@ if(ULTRAFIBU_VERSION)
         COMPILE_DEFINITIONS "ULTRAFIBU_CLI_VERSION=\"${ULTRAFIBU_VERSION}\"")
 endif()
 
-# ── ultrafibu: one program, the commands and the window ─────────────────────
-# `ultrafibu <Befehl> ...` runs a command and prints; `ultrafibu [<datei>]`
+# ── UltraFIBU: one program, the commands and the window ─────────────────────
+# `UltraFIBU <Befehl> ...` runs a command and prints; `UltraFIBU [<datei>]`
 # opens the window. There used to be two programs, ultrafibu and ultrafibu-ui.
 #
 # The window needs the UI library, so where that cannot be built - a headless
 # CI runner, a server, a machine without pango or vips - the same target is
 # built from cli/main.cpp instead: the commands without the window. Either
-# way the target and the binary are called ultrafibu, so a build command, a
+# way the target and the binary are called UltraFIBU, so a build command, a
 # package list or a script never has to know which one it got.
 if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
-    add_executable(ultrafibu
+    add_executable(UltraFIBU
         ui/main.cpp
         ui/UltraFIBUApp.cpp
         ui/UltraFIBUTabelle.cpp
@@ -154,18 +154,18 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
         ui/UltraFIBUSteuerschluessel.cpp
         ui/UltraFIBUKonsole.cpp
     )
-    target_compile_features(ultrafibu PRIVATE cxx_std_20)
-    target_include_directories(ultrafibu PRIVATE
+    target_compile_features(UltraFIBU PRIVATE cxx_std_20)
+    target_include_directories(UltraFIBU PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/ui)
-    target_link_libraries(ultrafibu PRIVATE UltraFIBUCli ${ULTRACANVAS_LIBRARY})
-    set_target_properties(ultrafibu PROPERTIES
+    target_link_libraries(UltraFIBU PRIVATE UltraFIBUCli ${ULTRACANVAS_LIBRARY})
+    set_target_properties(UltraFIBU PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # The app icon, in one place for every consumer of it. ui/main.cpp asks for
     # this same file by name; UCAPP_ICON_PATH is the fallback the core applies
     # when an app sets no icon of its own, and the two agreeing is what keeps a
     # window from ever coming up unbranded.
-    target_compile_definitions(ultrafibu PRIVATE
+    target_compile_definitions(UltraFIBU PRIVATE
         UCAPP_ICON_PATH="media/appicon/UltraFIBU.png")
 
     # Embed the icon in the .exe (Windows only). Explorer and the Windows
@@ -176,7 +176,7 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
     # builds: a GUI-subsystem program cannot print into the prompt it was
     # started from, and the commands are half of this one. The console a
     # double-click opens is closed again at start (ui/UltraFIBUKonsole.h).
-    ultracanvas_embed_app_icon(ultrafibu
+    ultracanvas_embed_app_icon(UltraFIBU
         "${CMAKE_SOURCE_DIR}/media/appicon/UltraFIBU.png")
 
     # The freedesktop shortcut and the icon it names. `Icon=UltraFIBU` is an
@@ -184,7 +184,7 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
     # in one. There is no scalable/apps install here because UltraFIBU has no
     # SVG yet - unlike EmailCleaner and UltraFiler, which ship a PNG/SVG pair.
     if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
-        install(TARGETS ultrafibu RUNTIME DESTINATION bin)
+        install(TARGETS UltraFIBU RUNTIME DESTINATION bin)
         install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/UltraFIBU.desktop
                 DESTINATION share/applications)
         install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraFIBU.png
@@ -192,12 +192,12 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
         message(STATUS "  UltraFIBU desktop entry: share/applications/UltraFIBU.desktop")
     endif()
 
-    message(STATUS "  [✓] UltraFIBU - ENABLED, Befehle und Fenster (target: ultrafibu)")
+    message(STATUS "  [✓] UltraFIBU - ENABLED, Befehle und Fenster (target: UltraFIBU)")
 else()
-    add_executable(ultrafibu cli/main.cpp)
-    target_compile_features(ultrafibu PRIVATE cxx_std_20)
-    target_link_libraries(ultrafibu PRIVATE UltraFIBUCli)
-    set_target_properties(ultrafibu PROPERTIES
+    add_executable(UltraFIBU cli/main.cpp)
+    target_compile_features(UltraFIBU PRIVATE cxx_std_20)
+    target_link_libraries(UltraFIBU PRIVATE UltraFIBUCli)
+    set_target_properties(UltraFIBU PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "  [✓] UltraFIBU - ENABLED, nur Befehle: UltraCanvas UI library not built (target: ultrafibu)")
+    message(STATUS "  [✓] UltraFIBU - ENABLED, nur Befehle: UltraCanvas UI library not built (target: UltraFIBU)")
 endif()

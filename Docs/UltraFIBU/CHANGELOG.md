@@ -1,4 +1,12 @@
 #### 2026-09-26 *0.25.0*
+- **Das Programm heisst jetzt `UltraFIBU`** - unter Windows `UltraFIBU.exe`,
+  wie die Anwendung selbst, statt `ultrafibu`. Das CMake-Target, der
+  Desktop-Eintrag (`Exec=UltraFIBU`), `package-linux.sh` und jede Ausgabe
+  des Programms, die einen Aufruf nennt ("Naechster Schritt: UltraFIBU
+  partner-neu ..."), folgen dem Namen. Unter Linux unterscheidet die Shell
+  Gross- und Kleinschreibung: Skripte, die `ultrafibu <Befehl>` aufrufen,
+  muessen auf `UltraFIBU <Befehl>` umgestellt werden. Unter Windows spielt
+  die Schreibweise keine Rolle.
 - **Steuerschluessel lassen sich im Programm aendern** (Konfiguration >
   Steuerschluessel). Bisher ging das nur, indem man vor dem Einrichten
   `Steuerschluessel.csv` von Hand bearbeitete - ab wann ein Schluessel gilt,

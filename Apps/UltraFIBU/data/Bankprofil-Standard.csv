@@ -9,7 +9,7 @@
 # hier, kein neues Programm.
 #
 # SO WIRD SIE GEPRUEFT:
-#   ultrafibu bank-import <datei> <bankkonto> <auszug.csv>
+#   UltraFIBU bank-import <datei> <bankkonto> <auszug.csv>
 # Ohne --uebernehmen wird nichts geschrieben; stattdessen werden die ersten
 # Zeilen so angezeigt, wie das Profil sie liest. Stimmen Datum, Betrag,
 # Name und Verwendungszweck, ist die Zuordnung richtig. Stimmen sie nicht,

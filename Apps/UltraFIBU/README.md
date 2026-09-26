@@ -8,7 +8,7 @@ European VAT numbers, and a German user interface.
 - Design and rationale: [`Docs/Research/UltraFIBUDesignProposal.md`](../../Docs/Research/UltraFIBUDesignProposal.md)
 - Version and history: [`Docs/UltraFIBU/CHANGELOG.md`](../../Docs/UltraFIBU/CHANGELOG.md)
 
-> **Status: phase A1.** The headless engine and the `ultrafibu` command line are
+> **Status: phase A1.** The headless engine and the `UltraFIBU` command line are
 > built and tested. The German UI waits for `UltraCanvasDataGrid` (proposal
 > §3.3); DATEV, ELSTER, OSS, bank import and the journal are the phases after
 > that. Nothing here files a tax return yet.
@@ -18,17 +18,17 @@ European VAT numbers, and a German user interface.
 | Path | What it is |
 |---|---|
 | `engine/` | The headless engine — no UI, no SQL outside the store, unit-tested (`UltraFIBUEngine`) |
-| `cli/` | The commands over that engine (`UltraFIBUCli`), and `ultrafibu` without a window for where no UI can be built |
+| `cli/` | The commands over that engine (`UltraFIBUCli`), and `UltraFIBU` without a window for where no UI can be built |
 | `report/` | The printed invoice (`UltraFIBUReport`) — builds a VectorDocument for the framework's PDF writer |
 | `data/` | The chart of accounts, the tax keys and the DATEV column definitions, as data files |
-| `ui/` | `ultrafibu` itself: the German screens — Belege, Journal, Summen und Salden, Partner — and, given a command, the commands |
+| `ui/` | `UltraFIBU` itself: the German screens — Belege, Journal, Summen und Salden, Partner — and, given a command, the commands |
 | `../../Tests/UltraFIBU/` | The engine test suite |
 
 ## Build
 
 ```bash
 cmake -S . -B build -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON
-cmake --build build --target ultrafibu UltraFIBUEngineTests
+cmake --build build --target UltraFIBU UltraFIBUEngineTests
 ctest --test-dir build -R UltraFIBUEngine
 ```
 
@@ -41,67 +41,67 @@ runs on a machine that cannot build the UI library.
 
 ```bash
 # A company whose Geschäftsjahr starts on 1 April
-ultrafibu einrichten buch.db --firma "Beispiel GmbH" --gj-beginn 01.04.2026 \
+UltraFIBU einrichten buch.db --firma "Beispiel GmbH" --gj-beginn 01.04.2026 \
           --ort Olpe --ust-idnr DE136695976
 
-ultrafibu info buch.db          # Mandant, Geschäftsjahre, Bestände
-ultrafibu perioden buch.db      # April is period 1, January is period 10
-ultrafibu konten buch.db        # the imported SKR03 accounts
+UltraFIBU info buch.db          # Mandant, Geschäftsjahre, Bestände
+UltraFIBU perioden buch.db      # April is period 1, January is period 10
+UltraFIBU konten buch.db        # the imported SKR03 accounts
 
-ultrafibu partner-neu buch.db --name "olonda s.r.o." --land SK \
+UltraFIBU partner-neu buch.db --name "olonda s.r.o." --land SK \
           --ust-idnr SK2022513009 --ort Bratislava
-ultrafibu partner buch.db bratislava
+UltraFIBU partner buch.db bratislava
 
-ultrafibu ustid DE136695976     # offline: format and check digit
-ultrafibu termine buch.db 2026  # UStVA deadlines, with the weekend shift
-ultrafibu protokoll buch.db     # who did what, when (GoBD)
+UltraFIBU ustid DE136695976     # offline: format and check digit
+UltraFIBU termine buch.db 2026  # UStVA deadlines, with the weekend shift
+UltraFIBU protokoll buch.db     # who did what, when (GoBD)
 ```
 
 ### A document, posted, paid, reversed
 
 ```bash
 # A draft. Positions are "Text;Menge;Einzelpreis;Konto;Steuerschlüssel".
-ultrafibu beleg-neu buch.db --datum 15.06.2026 --partner "olonda s.r.o." \
+UltraFIBU beleg-neu buch.db --datum 15.06.2026 --partner "olonda s.r.o." \
           --position "Beratung;10;100,00;8400;USt19" \
           --position "Fachbuch;2;20,00;8300;USt7"
 #   Summe 1.040,00 netto / USt 192,80 / Gesamt 1.232,80 brutto
 
-ultrafibu buchen buch.db R-202606001     # from here it is immutable
+UltraFIBU buchen buch.db R-202606001     # from here it is immutable
 #   10000  S  1.190,00 an 8400  (davon 190,00 USt auf 1776)
 #   10000  S     42,80 an 8300  (davon   2,80 USt auf 1771)
 
-ultrafibu zahlung buch.db R-202606001 --betrag 1.232,80 --datum 01.07.2026
-ultrafibu belege  buch.db --offen
-ultrafibu belege  buch.db --ueberfaellig --stichtag 31.07.2026
-ultrafibu journal buch.db --von 01.06.2026 --bis 30.06.2026
-ultrafibu salden  buch.db                # and whether Soll and Haben agree
+UltraFIBU zahlung buch.db R-202606001 --betrag 1.232,80 --datum 01.07.2026
+UltraFIBU belege  buch.db --offen
+UltraFIBU belege  buch.db --ueberfaellig --stichtag 31.07.2026
+UltraFIBU journal buch.db --von 01.06.2026 --bis 30.06.2026
+UltraFIBU salden  buch.db                # and whether Soll and Haben agree
 
-ultrafibu storno  buch.db R-202606001 --datum 25.07.2026 \
+UltraFIBU storno  buch.db R-202606001 --datum 25.07.2026 \
           --grund "Falsche Menge" --ja
 
-ultrafibu rechnung-pdf buch.db R-202606001 --datei rechnung.pdf
+UltraFIBU rechnung-pdf buch.db R-202606001 --datei rechnung.pdf
 
 # DATEV: one Buchungsstapel per calendar month
-ultrafibu datev-export buch.db --monat 2026-06 --ziel ./datev
-ultrafibu datev-export buch.db --konten --ziel ./datev
-ultrafibu datev-pruefen ./datev/EXTF_Buchungsstapel_202606.csv
+UltraFIBU datev-export buch.db --monat 2026-06 --ziel ./datev
+UltraFIBU datev-export buch.db --konten --ziel ./datev
+UltraFIBU datev-pruefen ./datev/EXTF_Buchungsstapel_202606.csv
 
 # DATEV import: looking is the default, writing is the second step
-ultrafibu datev-import  buch.db ./von-der-kanzlei/EXTF_Buchungsstapel_202606.csv
-ultrafibu datev-import  buch.db ./von-der-kanzlei/EXTF_Buchungsstapel_202606.csv --uebernehmen
-ultrafibu datev-importe buch.db
+UltraFIBU datev-import  buch.db ./von-der-kanzlei/EXTF_Buchungsstapel_202606.csv
+UltraFIBU datev-import  buch.db ./von-der-kanzlei/EXTF_Buchungsstapel_202606.csv --uebernehmen
+UltraFIBU datev-importe buch.db
 
 # Bank: reading a statement, and assigning what it pays
-ultrafibu bankkonto-neu buch.db --name "Geschäftskonto" --konto 1200 \
+UltraFIBU bankkonto-neu buch.db --name "Geschäftskonto" --konto 1200 \
           --iban DE02120300000000202051
-ultrafibu bank-import   buch.db 1 ./auszug.xml        # CAMT.053, MT940 or CSV
-ultrafibu bank-import   buch.db 1 ./auszug.xml --uebernehmen
-ultrafibu umsaetze      buch.db --offen
-ultrafibu zuordnen      buch.db 7                     # proposals; books nothing
-ultrafibu zuordnen      buch.db 7 --buchen R-202606001
+UltraFIBU bank-import   buch.db 1 ./auszug.xml        # CAMT.053, MT940 or CSV
+UltraFIBU bank-import   buch.db 1 ./auszug.xml --uebernehmen
+UltraFIBU umsaetze      buch.db --offen
+UltraFIBU zuordnen      buch.db 7                     # proposals; books nothing
+UltraFIBU zuordnen      buch.db 7 --buchen R-202606001
 
-ultrafibu festschreiben buch.db 30.06.2026 --ja
-ultrafibu pruefen buch.db                # the journal's hash chain
+UltraFIBU festschreiben buch.db 30.06.2026 --ja
+UltraFIBU pruefen buch.db                # the journal's hash chain
 ```
 
 `rechnung-pdf` exits non-zero and names every field § 14 UStG wants that is
@@ -120,14 +120,14 @@ binary.
 ### The screens
 
 ```bash
-ultrafibu buch.db      # or just `ultrafibu`, or a double-click
+UltraFIBU buch.db      # or just `UltraFIBU`, or a double-click
 ```
 
-One program does both: `ultrafibu` with a command runs it and prints, as in
+One program does both: `UltraFIBU` with a command runs it and prints, as in
 the examples above; with nothing, or with a file, it opens the window. Without
 a file - or with one that holds no bookkeeping yet - the window starts with a
 form that sets one up or opens an existing one. Where the UI library cannot be
-built, `ultrafibu` is the commands alone.
+built, `UltraFIBU` is the commands alone.
 
 Four tabs over the same file the CLI writes: **Belege**, **Journal**, **Summen
 und Salden** and **Partner**. Each is a table you can sort by clicking a column
@@ -141,7 +141,7 @@ and reports both in its summary line.
 
 Two buttons write: **Beleg buchen** posts the selected draft, and **Rechnung
 als PDF** prints it. Everything else is read-only — entering a document is
-`ultrafibu beleg-neu` until the position editor exists. Both buttons go through
+`UltraFIBU beleg-neu` until the position editor exists. Both buttons go through
 the store, so a frozen period or an already-posted document is refused there
 and the reason appears in the status line.
 
@@ -172,7 +172,7 @@ past differently.
   corrections are a *Storno*, and every write and every refusal is in the audit
   trail with a real user against it — which is why users exist from the first
   schema and not from the day the server arrives. Over the journal sits a
-  SHA-256 hash chain, and `ultrafibu pruefen` is the thing that checks it: a
+  SHA-256 hash chain, and `UltraFIBU pruefen` is the thing that checks it: a
   chain nothing verifies is decoration. It is tamper *evidence*, which is what
   the GoBD ask of a bookkeeping system, and not a qualified signature.
 - **A document produces postings, never the other way round.** A draft can be
@@ -190,7 +190,7 @@ past differently.
   `data/DATEV-Buchungsstapel-v700.csv` is the best reconstruction available
   without an original, and it says so in its own header. The export writes each
   value **by column name**, so correcting the file moves the values with it.
-  `ultrafibu datev-pruefen <real file>` compares the definition against a real
+  `UltraFIBU datev-pruefen <real file>` compares the definition against a real
   DATEV export and names the position of every difference — one command, not a
   rewrite.
 - **The importer does not depend on that guessed order at all.** A real DATEV

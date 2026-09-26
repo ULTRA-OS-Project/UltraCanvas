@@ -642,7 +642,7 @@ public:
             r.warnungen.push_back(
                 "Die Datei wurde geschrieben, aber nichts wurde übermittelt. "
                 "Hochladen in Mein ELSTER; das Transferticket danach mit "
-                "\"ultrafibu meldung-quittung\" eintragen.");
+                "\"UltraFIBU meldung-quittung\" eintragen.");
         return r;
     }
 };

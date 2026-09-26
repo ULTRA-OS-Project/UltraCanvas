@@ -38,7 +38,7 @@ bool FibuApp::Initialisieren(const std::string& datenbank, std::string& fehler) 
     const std::vector<Mandant> alle = store_.Mandanten();
     if (alle.empty()) {
         fehler = "In \"" + datenbank + "\" ist noch kein Mandant angelegt.\n"
-                 "Mit \"ultrafibu einrichten " + datenbank +
+                 "Mit \"UltraFIBU einrichten " + datenbank +
                  " --firma ... --gj-beginn ...\" anlegen.";
         return false;
     }

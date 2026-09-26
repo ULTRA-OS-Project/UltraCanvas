@@ -1,7 +1,7 @@
 // Apps/UltraFIBU/ui/main.cpp
-// ultrafibu: the one UltraFIBU program - the commands and the window.
+// UltraFIBU: the one UltraFIBU program - the commands and the window.
 //
-// Given a command (`ultrafibu info buch.db`, `ultrafibu einrichten ...`), it
+// Given a command (`UltraFIBU info buch.db`, `UltraFIBU einrichten ...`), it
 // runs it and prints the result, exactly as the command-line tool always did.
 // Given nothing, or one file, it opens the window. There used to be two
 // programs for this, `ultrafibu` and `ultrafibu-ui`, and which one a user had
@@ -35,7 +35,7 @@ namespace {
 // Whether these arguments ask for the window rather than a command. The window
 // takes at most one argument, the file; a command word, an option, or more
 // than one argument goes to the commands - which also means a mistyped
-// command ("ultrafibu infoo buch.db") is reported as one instead of being
+// command ("UltraFIBU infoo buch.db") is reported as one instead of being
 // taken for a file name and answered with a setup form.
 bool WillFenster(int argc, char** argv) {
     if (argc < 2) return true;
