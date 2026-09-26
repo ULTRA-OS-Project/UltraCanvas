@@ -8,6 +8,10 @@
   MinGW DLL a packaged binary imports, so librevenge, lcms2 and ICU ship
   with it.
   - CI now fails if the CDR plugin, or its vendored libcdr, is not enabled
-    on any platform.
+    on any platform. That check found macOS silently without CDR import:
+    Homebrew's ICU is keg-only, and the top-level gate ran pkg-config before
+    the CDR subdirectory added ICU's pkgconfig dir, so `libcdr-0.1` (which
+    requires `icu-i18n`) and the ICU check both failed. The gate now adds it
+    first.
   - The Windows jobs run `VectorFormatsPluginTest` (`detailed.cdr` with its
     masked bitmaps and PowerClips) and `CDRWriterTest`.
