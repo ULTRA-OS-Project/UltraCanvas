@@ -2656,6 +2656,9 @@ if(TARGET UltraCanvasVectorPlugin)
     )
     target_include_directories(VectorFormatsPluginTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(VectorFormatsPluginTest PRIVATE cxx_std_20)
+    target_compile_definitions(VectorFormatsPluginTest PRIVATE
+        VECTOR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector"
+    )
     target_link_libraries(VectorFormatsPluginTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
     set_target_properties(VectorFormatsPluginTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

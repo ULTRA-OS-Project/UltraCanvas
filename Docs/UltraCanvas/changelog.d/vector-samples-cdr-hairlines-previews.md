@@ -40,3 +40,14 @@
   - The AI documentation gains a *render trap* note: a `.ai` saved without
     PDF compatibility is a blank page to Ghostscript, poppler, ImageMagick
     and every PDF viewer, correctly, so they are no reference for it.
+  - **CorelDRAW bitmaps keep their transparency.** CorelDRAW stores a
+    transparent bitmap as a colour image followed by an 8-bit mask (colour
+    model 99); libcdr reads only the colour image, so drop shadows became
+    solid black boxes and cut-out overlays opaque sheets -
+    `detailed.cdr`'s four business cards vanished under a white overlay.
+    `CDRConverter` now reads the masks from the file (`Bitmaps.dat` in a
+    ZIP-format CDR, inline in a RIFF one), matches each to the image libcdr
+    produced, and re-embeds it as RGBA PNG. Pinned by
+    `VectorFormatsPluginTest`. Six CMYK bitmaps in that file that libcdr
+    places no object for (leaves, waves, the shield's gloss) are still
+    missing.

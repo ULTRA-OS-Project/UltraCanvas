@@ -45,7 +45,8 @@
   `.svgz` and Xara's `.web`, from the formats the framework reports rather
   than a list of its own. Thin CAD lines stay one pixel wide at any zoom,
   and a DXF declared in metres (the millennium-falcon sample) no longer
-  opens as a black blot. See
+  opens as a black blot. CorelDRAW drop shadows and cut-out overlays keep
+  their transparency instead of covering the drawing. See
   `Docs/UltraCanvas/changelog.d/vector-samples-cdr-hairlines-previews.md`.
 
 #### 2026-09-22 *0.6.0*

@@ -20,6 +20,7 @@
 #include "UltraCanvasImage.h"
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -211,6 +212,37 @@ int main(int argc, char** argv) {
         Check(!has(readable, "cdr"), ".cdr is not readable without the CDR plugin");
 #endif
     }
+
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+    // ===== CorelDRAW bitmaps keep their transparency =====
+    // CorelDRAW stores a transparent bitmap as a colour image plus an 8-bit
+    // mask; libcdr reads only the colour image. detailed.cdr's four card
+    // shadows came out as solid black boxes and its logo overlay as an opaque
+    // white sheet hiding the cards. The importer puts the masks back, so those
+    // five images arrive as RGBA PNG and the opaque background stays a BMP.
+    {
+        auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension("cdr");
+        VectorConverter::ConversionOptions options;
+        auto doc = converter ? converter->Import(std::string(VECTOR_SAMPLES_DIR) + "/CDR/detailed.cdr", options)
+                             : nullptr;
+        Check(doc != nullptr, "detailed.cdr imports");
+        int png = 0, bmp = 0;
+        std::function<void(const std::shared_ptr<VectorElement>&)> walk =
+                [&](const std::shared_ptr<VectorElement>& e) {
+            if (!e) return;
+            if (auto im = std::dynamic_pointer_cast<VectorImage>(e)) {
+                if (im->Source.rfind("data:image/png;base64,", 0) == 0) ++png;
+                else if (im->Source.rfind("data:image/bmp;base64,", 0) == 0) ++bmp;
+            }
+            if (auto g = std::dynamic_pointer_cast<VectorGroup>(e))
+                for (const auto& c : g->Children) walk(c);
+        };
+        if (doc) for (const auto& l : doc->Layers) walk(l);
+        Check(png == 5 && bmp == 1,
+              "detailed.cdr: the 5 masked bitmaps carry alpha, the opaque one stays as it was (png=" +
+              std::to_string(png) + ", bmp=" + std::to_string(bmp) + ")");
+    }
+#endif
 
     // ===== The DWG family reaches the DWG converter =====
     // A drawing arrives as .dwg, as a template (.dwt), a standards file

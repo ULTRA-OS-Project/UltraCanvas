@@ -30,6 +30,11 @@
 #include "DataFormats/UltraCanvasVectorPathOps.h"
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
 #include "UltraCanvasCDRPlugin.h"
+#include "UltraCanvasZipPackage.h"
+#include "UltraCanvasTextUtils.h"   // Base64Decode / Base64Encode
+#include <cairo.h>
+#include <algorithm>
+#include <iterator>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -548,6 +553,166 @@ namespace UltraCanvas {
 
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         namespace {
+            // ===== BITMAP TRANSPARENCY =====
+            // CorelDRAW stores a bitmap with transparency as two images in a
+            // row: the colour image (24-bit, colour model 1) and its 8-bit
+            // alpha mask (colour model 99), both bottom-up with 4-byte row
+            // alignment. libcdr (0.1.7, CommonParser::readRImage) reads the
+            // colour image and never the mask, so every drop shadow arrived as
+            // a solid black box and every cut-out overlay as an opaque sheet
+            // hiding what lies under it (media/vector/CDR/detailed.cdr: its
+            // four business cards vanished under a white overlay). The masks
+            // are read here from the raw file and put back on the images
+            // libcdr passed on.
+
+            uint32_t U32(const std::vector<uint8_t>& d, size_t at) {
+                return static_cast<uint32_t>(d[at]) | (static_cast<uint32_t>(d[at + 1]) << 8) |
+                       (static_cast<uint32_t>(d[at + 2]) << 16) | (static_cast<uint32_t>(d[at + 3]) << 24);
+            }
+
+            // One raw image record (readRImage's layout): colour model, 1,
+            // width, height, 1, bpp, row stride, byte size, 32 more bytes,
+            // then the pixel rows.
+            struct RawImage { size_t pixels; uint32_t model, width, height, bpp, stride, size; };
+
+            // Every record of this size in the raw bytes, in file order.
+            std::vector<RawImage> FindRawImages(const std::vector<uint8_t>& d, uint32_t w, uint32_t h) {
+                std::vector<RawImage> out;
+                const uint8_t pat[8] = {uint8_t(w), uint8_t(w >> 8), uint8_t(w >> 16), uint8_t(w >> 24),
+                                        uint8_t(h), uint8_t(h >> 8), uint8_t(h >> 16), uint8_t(h >> 24)};
+                auto it = d.begin();
+                while ((it = std::search(it, d.end(), pat, pat + 8)) != d.end()) {
+                    const size_t at = static_cast<size_t>(it - d.begin());
+                    ++it;
+                    if (at < 8 || at + 56 > d.size()) continue;
+                    RawImage r;
+                    r.model = U32(d, at - 8); r.width = w; r.height = h;
+                    r.bpp = U32(d, at + 12); r.stride = U32(d, at + 16); r.size = U32(d, at + 20);
+                    r.pixels = at + 56;
+                    if (r.stride == 0 || r.size != static_cast<uint64_t>(r.stride) * h ||
+                        r.pixels + r.size > d.size()) continue;
+                    if (!(r.bpp == 8 || r.bpp == 24 || r.bpp == 32)) continue;
+                    out.push_back(r);
+                }
+                return out;
+            }
+
+            // The raw bytes the masks live in: a CorelDRAW X4+ file is a ZIP
+            // package with every bitmap in content/data/Bitmaps.dat; an older
+            // one is a RIFF file holding the same records inline.
+            std::vector<uint8_t> RawBitmapStore(const std::string& path) {
+                std::vector<uint8_t> bytes;
+                UCZipPackageReader zip;
+                if (zip.Open(path)) {
+                    if (zip.ReadEntry("content/data/Bitmaps.dat", bytes)) return bytes;
+                    return {};
+                }
+                std::ifstream in(std::filesystem::path(path), std::ios::binary);
+                bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+                return bytes;
+            }
+
+            // The BMP libcdr wrote, with the mask applied, as PNG bytes; empty
+            // when this image has no mask (or an opaque one) or does not match.
+            std::vector<uint8_t> ApplyMask(const std::vector<uint8_t>& bmp, const std::vector<uint8_t>& store) {
+                if (bmp.size() < 54 || bmp[0] != 'B' || bmp[1] != 'M') return {};
+                const uint32_t off = U32(bmp, 10);
+                const int32_t w = static_cast<int32_t>(U32(bmp, 18));
+                const int32_t hRaw = static_cast<int32_t>(U32(bmp, 22));
+                const uint16_t bpp = static_cast<uint16_t>(bmp[28] | (bmp[29] << 8));
+                if (w <= 0 || hRaw == 0 || (bpp != 24 && bpp != 32)) return {};
+                const bool bottomUp = hRaw > 0;
+                const int32_t h = bottomUp ? hRaw : -hRaw;
+                const size_t bmpStride = ((static_cast<size_t>(w) * (bpp / 8)) + 3) & ~size_t(3);
+                if (off + bmpStride * h > bmp.size()) return {};
+
+                // The colour record whose pixels are this BMP's (sampled on the
+                // middle row; both are stored bottom-up), and the mask after it.
+                const auto records = FindRawImages(store, static_cast<uint32_t>(w), static_cast<uint32_t>(h));
+                const RawImage* mask = nullptr;
+                const size_t row = static_cast<size_t>(h / 2);
+                const uint8_t* bmpRow = &bmp[off + bmpStride * (bottomUp ? row : h - 1 - row)];
+                for (size_t i = 0; i < records.size() && !mask; ++i) {
+                    const RawImage& c = records[i];
+                    if (c.model == 99 || (c.bpp != 24 && c.bpp != 32)) continue;
+                    const uint8_t* rawRow = &store[c.pixels + c.stride * row];
+                    const size_t cb = c.bpp / 8, bb = bpp / 8;
+                    bool same = true;
+                    for (int32_t x = 0; x < w && same; x += std::max(1, w / 64))
+                        for (int k = 0; k < 3; ++k)
+                            if (rawRow[x * cb + k] != bmpRow[x * bb + k]) { same = false; break; }
+                    if (!same) continue;
+                    for (size_t j = i + 1; j < records.size(); ++j) {
+                        if (records[j].model == 99 && records[j].bpp == 8) { mask = &records[j]; break; }
+                        if (records[j].model != 99) break;   // the next colour image: no mask
+                    }
+                    if (!mask) return {};
+                }
+                if (!mask) return {};
+
+                bool opaque = true;
+                for (int32_t y = 0; y < h && opaque; ++y)
+                    for (int32_t x = 0; x < w; ++x)
+                        if (store[mask->pixels + mask->stride * y + x] != 255) { opaque = false; break; }
+                if (opaque) return {};
+
+                cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+                if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+                    cairo_surface_destroy(surface);
+                    return {};
+                }
+                cairo_surface_flush(surface);
+                uint8_t* dst = cairo_image_surface_get_data(surface);
+                const int dstStride = cairo_image_surface_get_stride(surface);
+                const size_t bb = bpp / 8;
+                for (int32_t y = 0; y < h; ++y) {               // y: top-down output row
+                    const int32_t fileRow = bottomUp ? h - 1 - y : y;
+                    const uint8_t* src = &bmp[off + bmpStride * fileRow];
+                    const uint8_t* a = &store[mask->pixels + mask->stride * (h - 1 - y)];
+                    uint32_t* out = reinterpret_cast<uint32_t*>(dst + static_cast<size_t>(dstStride) * y);
+                    for (int32_t x = 0; x < w; ++x) {
+                        const uint32_t al = a[x];
+                        const uint32_t b = src[x * bb] * al / 255, g = src[x * bb + 1] * al / 255,
+                                       r = src[x * bb + 2] * al / 255;   // cairo wants premultiplied
+                        out[x] = (al << 24) | (r << 16) | (g << 8) | b;
+                    }
+                }
+                cairo_surface_mark_dirty(surface);
+                std::vector<uint8_t> png;
+                cairo_surface_write_to_png_stream(surface, [](void* closure, const unsigned char* data,
+                                                              unsigned int length) -> cairo_status_t {
+                    auto* v = static_cast<std::vector<uint8_t>*>(closure);
+                    v->insert(v->end(), data, data + length);
+                    return CAIRO_STATUS_SUCCESS;
+                }, &png);
+                cairo_surface_destroy(surface);
+                return png;
+            }
+
+            // Rewrites every embedded BMP in libcdr's SVG that has a mask in
+            // the source file as an RGBA PNG. Returns how many were changed.
+            int RestoreBitmapMasks(std::string& svg, const std::string& cdrPath) {
+                static const std::string prefix = "data:image/bmp;base64,";
+                if (svg.find(prefix) == std::string::npos) return 0;
+                const std::vector<uint8_t> store = RawBitmapStore(cdrPath);
+                if (store.empty()) return 0;
+                int changed = 0;
+                size_t pos = 0;
+                while ((pos = svg.find(prefix, pos)) != std::string::npos) {
+                    const size_t begin = pos + prefix.size();
+                    const size_t end = svg.find('"', begin);
+                    if (end == std::string::npos) break;
+                    const std::vector<uint8_t> png =
+                            ApplyMask(Base64Decode(svg.substr(begin, end - begin)), store);
+                    if (png.empty()) { pos = end; continue; }
+                    const std::string replacement = "data:image/png;base64," + Base64Encode(png, false);
+                    svg.replace(pos, end - pos, replacement);
+                    pos += replacement.size();
+                    ++changed;
+                }
+                return changed;
+            }
+
             // A fresh path in the temp directory for this process.
             std::filesystem::path TempPath(const std::string& ext) {
                 static std::atomic<unsigned> counter{0};
@@ -571,8 +736,14 @@ namespace UltraCanvas {
             CDRExportResult r = UltraCanvasCDRPlugin::ExportToSVG(filename, svgPath.string(), 0);
             std::shared_ptr<VectorStorage::VectorDocument> doc;
             if (r.success) {
+                std::string svgText;
+                {
+                    std::ifstream in(svgPath, std::ios::binary);
+                    svgText.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+                }
+                RestoreBitmapMasks(svgText, filename);
                 SVGConverter svg;
-                doc = svg.Import(svgPath.string(), options);
+                doc = svg.ImportFromString(svgText, options);
             } else if (options.WarningCallback) {
                 options.WarningCallback("CDR import: " +
                                         (r.error.empty() ? std::string("libcdr could not read the file") : r.error));
