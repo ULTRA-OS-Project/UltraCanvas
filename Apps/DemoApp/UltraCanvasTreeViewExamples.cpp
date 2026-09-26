@@ -1,12 +1,13 @@
 // Apps/DemoApp/UltraCanvasDemoExamples.cpp
 // Implementation of all component example creators
-// Version: 1.0.2
-// Last Modified: 2026-07-26
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasColumnsTreeView.h"
+#include "UltraCanvasGroupBox.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include <sstream>
@@ -15,8 +16,32 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+    // Each demo tree sits in a header-style group box: the caption names the
+    // demo, and the tree plus the options that drive it stack inside the frame.
+    static std::shared_ptr<UltraCanvasGroupBox> TreeDemoGroupBox(const std::string& id,
+                                                                 float x, float y, float h,
+                                                                 const std::string& caption) {
+        auto gb = CreateGroupBox(id, x, y, 318, h, caption);
+        gb->SetFrameStyle(GroupBoxFrameStyle::Header);
+        GroupBoxVisualStyle st = gb->GetVisualStyle();
+        st.headerBackgroundColor = Color(235, 238, 245, 255);
+        st.showHeaderSeparator = true;
+        gb->SetVisualStyle(st);
+        return gb;
+    }
+
+    // An option below the tree, with a little air above it.
+    static std::shared_ptr<UltraCanvasCheckbox> TreeDemoOption(const std::string& id,
+                                                               const std::string& text,
+                                                               bool checked) {
+        auto cb = std::make_shared<UltraCanvasCheckbox>(id, 300.0f, 24.0f, text);
+        cb->SetChecked(checked);
+        cb->SetMargin(4, 0, 0, 0);
+        return cb;
+    }
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeViewExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("TreeViewExamples", 0, 0, 1000, 800);
+        auto container = std::make_shared<UltraCanvasContainer>("TreeViewExamples", 0, 0, 1000, 820);
         container->SetPadding(0,0,10,0);
 
         // Title
@@ -27,7 +52,9 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // File Explorer Style Tree
-        auto fileTree = std::make_shared<UltraCanvasTreeView>("FileTree", 20, 50, 300, 400);
+        auto fileBox = TreeDemoGroupBox("FileTreeBox", 10, 50, 500, "File Explorer Style TreeView");
+        container->AddChild(fileBox);
+        auto fileTree = std::make_shared<UltraCanvasTreeView>("FileTree", 300, 400);
         fileTree->SetRowHeight(22);
         fileTree->SetSelectionMode(TreeSelectionMode::Single);
 
@@ -57,31 +84,25 @@ namespace UltraCanvas {
         };
 
         root->Expand();
-        container->AddChild(fileTree);
+        fileBox->AddChild(fileTree);
 
-// File Explorer Label
-        auto fileLabel = std::make_shared<UltraCanvasLabel>("FileTreeLabel", 20, 460, 300, 20);
-        fileLabel->SetText("File Explorer Style TreeView");
-        fileLabel->SetFontSize(12);
-        container->AddChild(fileLabel);
-
-        // Options checkboxes for File Explorer Tree
-        auto autoExpandCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoExpandCheckbox", 20, 490, 280, 24, "Auto expand selected node");
-        autoExpandCheckbox->SetChecked(false);
-        autoExpandCheckbox->onStateChanged = [fileTree](CheckedState oldState, CheckedState newState) {
-        fileTree->SetAutoExpandSelectedNode(newState == CheckedState::Checked);
+        // Options for the File Explorer tree
+        auto autoExpandCheckbox = TreeDemoOption("AutoExpandCheckbox", "Auto expand selected node", false);
+        autoExpandCheckbox->onStateChanged = [fileTree](CheckedState, CheckedState newState) {
+            fileTree->SetAutoExpandSelectedNode(newState == CheckedState::Checked);
         };
-        container->AddChild(autoExpandCheckbox);
+        fileBox->AddChild(autoExpandCheckbox);
 
-        auto autoSelectFirstChildCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoSelectFirstChildCheckbox", 20, 520, 280, 24, "Auto select first child of expanded node");
-        autoSelectFirstChildCheckbox->SetChecked(false);
-        autoSelectFirstChildCheckbox->onStateChanged = [fileTree](CheckedState oldState, CheckedState newState) {
-        fileTree->SetShowFirstChildOnExpand(newState == CheckedState::Checked);
+        auto autoSelectFirstChildCheckbox = TreeDemoOption("AutoSelectFirstChildCheckbox", "Auto select first child of expanded node", false);
+        autoSelectFirstChildCheckbox->onStateChanged = [fileTree](CheckedState, CheckedState newState) {
+            fileTree->SetShowFirstChildOnExpand(newState == CheckedState::Checked);
         };
-        container->AddChild(autoSelectFirstChildCheckbox);
+        fileBox->AddChild(autoSelectFirstChildCheckbox);
 
         // Multi-Selection Tree
-        auto multiTree = std::make_shared<UltraCanvasTreeView>("MultiTree", 350, 50, 300, 200);
+        auto multiBox = TreeDemoGroupBox("MultiTreeBox", 340, 50, 272, "Multi-Selection TreeView (Ctrl+Click)");
+        container->AddChild(multiBox);
+        auto multiTree = std::make_shared<UltraCanvasTreeView>("MultiTree", 300, 200);
         multiTree->SetRowHeight(20);
         multiTree->SetSelectionMode(TreeSelectionMode::Multiple);
 
@@ -109,27 +130,23 @@ namespace UltraCanvas {
         }
 
         multiTree->ExpandAll();
-        container->AddChild(multiTree);
-
-        auto multiLabel = std::make_shared<UltraCanvasLabel>("MultiTreeLabel", 350, 260, 300, 20);
-        multiLabel->SetText("Multi-Selection TreeView (Ctrl+Click)");
-        multiLabel->SetFontSize(12);
-        container->AddChild(multiLabel);
+        multiBox->AddChild(multiTree);
 
         // Scroll-to-top button toggle (the feature is on by default).
-        auto scrollTopCheckbox = std::make_shared<UltraCanvasCheckbox>(
-            "ScrollToTopCheckbox", 350, 288, 300, 24, "Show \"move to the top\" button");
-        scrollTopCheckbox->SetChecked(true);
+        auto scrollTopCheckbox = TreeDemoOption(
+            "ScrollToTopCheckbox", "Show \"move to the top\" button", true);
         scrollTopCheckbox->onStateChanged = [multiTree](CheckedState, CheckedState newState) {
             multiTree->SetShowScrollToTopButton(newState == CheckedState::Checked);
         };
-        container->AddChild(scrollTopCheckbox);
+        multiBox->AddChild(scrollTopCheckbox);
 
         // ----- Debugger "Variables" panel: Classic vs Modern columns -----
         // Demonstrates the columnar display mode (Name / Type / Value with an accent
         // Type column and section-header bars) an IDE debugger would use, plus the
         // Classic/Modern layout toggle and Alphabetic/Last-access sort options.
-        auto varsTree = std::make_shared<UltraCanvasColumnsTreeView>("VarsTree", 680, 50, 300, 330);
+        auto varsBox = TreeDemoGroupBox("VarsTreeBox", 670, 50, 430, "Debugger Variables (Modern columns)");
+        container->AddChild(varsBox);
+        auto varsTree = std::make_shared<UltraCanvasColumnsTreeView>("VarsTree", 300, 330);
         varsTree->SetRowHeight(26);
         varsTree->SetSelectionMode(TreeSelectionMode::Single);
         varsTree->SetShowExpandButtons(true);
@@ -188,28 +205,21 @@ namespace UltraCanvas {
         // earlier is a no-op because a childless node is a Leaf, not Collapsed.
         varsTree->ExpandAll();
 
-        container->AddChild(varsTree);
-
-        auto varsLabel = std::make_shared<UltraCanvasLabel>("VarsTreeLabel", 680, 386, 300, 20);
-        varsLabel->SetText("Debugger Variables (Modern columns)");
-        varsLabel->SetFontSize(12);
-        container->AddChild(varsLabel);
+        varsBox->AddChild(varsTree);
 
         // Layout toggle: Classic (single text) <-> Modern (columns)
-        auto modernCheckbox = std::make_shared<UltraCanvasCheckbox>(
-            "ModernLayoutCheckbox", 680, 414, 280, 24, "Modern layout (Name / Type / Value)");
-        modernCheckbox->SetChecked(true);
+        auto modernCheckbox = TreeDemoOption(
+            "ModernLayoutCheckbox", "Modern layout (Name / Type / Value)", true);
         modernCheckbox->onStateChanged = [varsTree](CheckedState, CheckedState newState) {
             varsTree->SetDisplayMode(newState == CheckedState::Checked
                                          ? TreeDisplayMode::Columns
                                          : TreeDisplayMode::Classic);
         };
-        container->AddChild(modernCheckbox);
+        varsBox->AddChild(modernCheckbox);
 
         // Sort toggle: Alphabetic <-> Last access
-        auto sortCheckbox = std::make_shared<UltraCanvasCheckbox>(
-            "SortLastAccessCheckbox", 680, 444, 280, 24, "Sort by last access (else alphabetic)");
-        sortCheckbox->SetChecked(false);
+        auto sortCheckbox = TreeDemoOption(
+            "SortLastAccessCheckbox", "Sort by last access (else alphabetic)", false);
         sortCheckbox->onStateChanged = [varsTree](CheckedState, CheckedState newState) {
             if (newState == CheckedState::Checked) {
                 varsTree->SetSortMode(TreeSortMode::LastAccess, /*ascending=*/false);
@@ -217,13 +227,15 @@ namespace UltraCanvas {
                 varsTree->SetSortMode(TreeSortMode::Alphabetic, /*ascending=*/true);
             }
         };
-        container->AddChild(sortCheckbox);
+        varsBox->AddChild(sortCheckbox);
 
         // ----- Connecting lines: None / Dotted / Solid, and the root-level trunk -----
         // A forest (hidden root, so the sections are the top level) is the case the
         // connectors were made for: without them the rows of three open sections are
         // just indentation. The segmented control switches TreeLineStyle live.
-        auto linesTree = std::make_shared<UltraCanvasTreeView>("LinesTree", 350, 330, 300, 190);
+        auto linesBox = TreeDemoGroupBox("LinesTreeBox", 340, 338, 296, "Connecting lines (SetLineStyle)");
+        container->AddChild(linesBox);
+        auto linesTree = std::make_shared<UltraCanvasTreeView>("LinesTree", 300, 190);
         linesTree->SetRowHeight(22);
         linesTree->SetSelectionMode(TreeSelectionMode::Single);
         linesTree->SetRootVisible(false);
@@ -246,14 +258,9 @@ namespace UltraCanvas {
         linesTree->AddNode("sec1_p1", TreeNodeData("sec1_p1_a", "Figure 1.1.a"));
         linesTree->AddNode("sec1_p1", TreeNodeData("sec1_p1_b", "Figure 1.1.b"));
         linesTree->ExpandAll();
-        container->AddChild(linesTree);
+        linesBox->AddChild(linesTree);
 
-        auto linesLabel = std::make_shared<UltraCanvasLabel>("LinesTreeLabel", 350, 524, 300, 20);
-        linesLabel->SetText("Connecting lines (SetLineStyle)");
-        linesLabel->SetFontSize(12);
-        container->AddChild(linesLabel);
-
-        auto lineStyleControl = SegmentedControlBuilder("LineStyleSegments", 350, 548, 300, 28)
+        auto lineStyleControl = SegmentedControlBuilder("LineStyleSegments", -1, -1, 300, 28)
                 .AddSegment("No lines")
                 .AddSegment("Dotted")
                 .AddSegment("Solid")
@@ -267,22 +274,24 @@ namespace UltraCanvas {
                     linesTree->RequestRedraw();
                 })
                 .Build();
-        container->AddChild(lineStyleControl);
+        lineStyleControl->SetMargin(6, 0, 0, 0);
+        linesBox->AddChild(lineStyleControl);
 
         // Root lines: the trunk down the left margin that ties the three sections
         // together. It costs one indent of left margin, which is why it can be
         // switched off. (It only applies to a forest — a visible root row is
         // already the trunk everything hangs from.)
-        auto rootLinesCheckbox = std::make_shared<UltraCanvasCheckbox>(
-            "RootLinesCheckbox", 350, 582, 300, 24, "Connect the top-level rows too");
-        rootLinesCheckbox->SetChecked(true);
+        auto rootLinesCheckbox = TreeDemoOption(
+            "RootLinesCheckbox", "Connect the top-level rows too", true);
         rootLinesCheckbox->onStateChanged = [linesTree](CheckedState, CheckedState newState) {
             linesTree->SetShowRootLines(newState == CheckedState::Checked);
         };
-        container->AddChild(rootLinesCheckbox);
+        linesBox->AddChild(rootLinesCheckbox);
 
         // ----- Check flags: a tri-state selection independent of the row selection -----
-        auto flagTree = std::make_shared<UltraCanvasTreeView>("FlagTree", 680, 490, 300, 190);
+        auto flagBox = TreeDemoGroupBox("FlagTreeBox", 670, 496, 288, "Check flags (SetShowCheckboxes)");
+        container->AddChild(flagBox);
+        auto flagTree = std::make_shared<UltraCanvasTreeView>("FlagTree", 300, 190);
         flagTree->SetRowHeight(22);
         flagTree->SetSelectionMode(TreeSelectionMode::Single);
         flagTree->SetShowCheckboxes(true);
@@ -313,17 +322,22 @@ namespace UltraCanvas {
         // a tick) is visible without touching anything.
         flagTree->SetNodeChecked("flag_dir0_f0", true);
         flagTree->SetNodeChecked("flag_dir1_f2", true);
-        container->AddChild(flagTree);
+        flagBox->AddChild(flagTree);
 
-        auto flagLabel = std::make_shared<UltraCanvasLabel>("FlagTreeLabel", 680, 684, 300, 20);
-        flagLabel->SetText("Check flags (SetShowCheckboxes)");
-        flagLabel->SetFontSize(12);
-        container->AddChild(flagLabel);
+        // Propagation: on, a folder's flag carries to its files and the folder shows
+        // "some" as a filled square; off, every row carries its own flag.
+        auto propagateCheckbox = TreeDemoOption(
+            "FlagPropagateCheckbox", "Flag the whole subtree", true);
+        propagateCheckbox->onStateChanged = [flagTree](CheckedState, CheckedState newState) {
+            flagTree->SetCheckPropagation(newState == CheckedState::Checked);
+        };
+        flagBox->AddChild(propagateCheckbox);
 
-        auto flagStatus = std::make_shared<UltraCanvasLabel>("FlagStatusLabel", 680, 738, 300, 22);
+        auto flagStatus = std::make_shared<UltraCanvasLabel>("FlagStatusLabel", 300, 22);
         flagStatus->SetFontSize(12);
+        flagStatus->SetMargin(4, 0, 0, 0);
         // Weak capture would be cleaner, but the label outlives the tree here: both
-        // belong to the same page container.
+        // belong to the same group box.
         auto updateFlagStatus = [flagTree, flagStatus]() {
             const size_t flagged = flagTree->GetCheckedNodes().size();
             flagStatus->SetText(std::to_string(flagged) + " of 12 rows flagged");
@@ -332,17 +346,7 @@ namespace UltraCanvas {
         flagTree->onNodeCheckChanged = [updateFlagStatus](TreeNode*, TreeCheckState) {
             updateFlagStatus();
         };
-        container->AddChild(flagStatus);
-
-        // Propagation: on, a folder's flag carries to its files and the folder shows
-        // "some" as a filled square; off, every row carries its own flag.
-        auto propagateCheckbox = std::make_shared<UltraCanvasCheckbox>(
-            "FlagPropagateCheckbox", 680, 708, 300, 24, "Flag the whole subtree");
-        propagateCheckbox->SetChecked(true);
-        propagateCheckbox->onStateChanged = [flagTree](CheckedState, CheckedState newState) {
-            flagTree->SetCheckPropagation(newState == CheckedState::Checked);
-        };
-        container->AddChild(propagateCheckbox);
+        flagBox->AddChild(flagStatus);
 
         return container;
     }
