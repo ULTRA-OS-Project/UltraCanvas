@@ -54,6 +54,31 @@ UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_p
 UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) { ... });
 ```
 
+### Editable Vector Documents
+
+Vector drawings load into — and save from — the shared
+`VectorStorage::VectorDocument` model (layers, groups, paths, text, gradients),
+the one ArtCreator edits and the vector renderer draws. The readers and
+writers are the Vector plugin's converters (SVG, XAR, EMF, WMF, DXF, DWG, AI,
+EPS, CDR, PDF), installed by `RegisterVectorFormatsPlugin()`:
+
+```cpp
+RegisterVectorFormatsPlugin();                       // once, at start-up
+
+std::string error;
+std::vector<std::string> notes;                      // what the reader could not carry over
+auto doc = UltraCanvasFileLoader::LoadVectorDocument("drawing.svg", error, &notes);
+if (!doc) ShowError(error);
+
+UltraCanvasFileLoader::SaveVectorDocument(*doc, "drawing.xar", error);   // format from the extension
+
+opts.AddFilter("Drawings", UltraCanvasFileLoader::GetVectorLoadExtensions());
+```
+
+`UCImage` also opens `.svg` (through librsvg), but as pixels — right for a
+viewer, useless to an editor. Use `LoadVectorDocument` whenever the drawing
+is to be changed or written back.
+
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
 with. Compressed content (gzip, zlib, Zstandard, LZ4) is detected by

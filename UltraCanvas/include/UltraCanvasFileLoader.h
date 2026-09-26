@@ -2,8 +2,8 @@
 // Facade for native file selection dialogs and typed file loaders (e.g. images).
 // Owns FileDialogOptions/FileLoadResult and delegates raw dialog calls to
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
-// Version: 1.0.0
-// Last Modified: 2026-05-12
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -20,6 +20,7 @@ namespace UltraCanvas {
     using UCImage = UCImageRaster;
     class UCAudio;
     class UCRichDocument;
+    namespace VectorStorage { class VectorDocument; }
 
     struct FileDialogOptions {
         std::string title;
@@ -147,6 +148,30 @@ namespace UltraCanvas {
         // UCRichDocument. Returns null and fills outError on failure.
         static std::shared_ptr<UCRichDocument> LoadTextDocument(const std::string& filePath,
                                                                 std::string& outError);
+
+        // ===== VECTOR DOCUMENTS =====
+        // Editable drawings: SVG, XAR, EMF, WMF, DXF, DWG, AI ... read into
+        // the shared VectorStorage::VectorDocument model and written back from
+        // it, by the Vector plugin's converters - the same readers the media
+        // viewer and the Filer preview with. (UCImage also opens .svg, through
+        // librsvg, but as pixels: fine to look at, nothing to edit.)
+        // Needs RegisterVectorFormatsPlugin() at start-up; without it every
+        // call reports that no reader or writer is installed.
+        //
+        // `notes`, when given, receives what the reader or writer could not
+        // carry over ("CSS stylesheets are not supported", "blend flattened").
+        static std::shared_ptr<VectorStorage::VectorDocument> LoadVectorDocument(
+                const std::string& filePath, std::string& outError,
+                std::vector<std::string>* notes = nullptr);
+        static bool SaveVectorDocument(const VectorStorage::VectorDocument& document,
+                                       const std::string& filePath, std::string& outError,
+                                       std::vector<std::string>* notes = nullptr);
+        // Lowercase, undotted, sorted: ready for FileDialogOptions::AddFilter.
+        static std::vector<std::string> GetVectorLoadExtensions();
+        static std::vector<std::string> GetVectorSaveExtensions();
+        // True when LoadVectorDocument reads this extension (or path; a path
+        // also lets a content-decided format such as a DWG .bak claim it).
+        static bool CanLoadVectorDocument(const std::string& extensionOrPath);
 
         // ===== SUPPORTED FORMAT INVENTORY =====
         // Runtime snapshot of every file format this build can load and/or

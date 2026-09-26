@@ -14,6 +14,18 @@
   stretched to the panel's content box either, so the hex field and
   channel values sit in the visible part beside the scrollbar instead of
   running under it.
+- **SVG files open complete and in place.** Most shapes of an optimised
+  SVG went missing, drawings with a transformed top-level group or an
+  offset viewBox landed off the page (or not at all), and text was too
+  large and hung below its line. The causes were in the framework's shared
+  vector code (see
+  `Docs/UltraCanvas/changelog.d/svg-import-and-vector-fileloader.md`).
+  Text placed with the text tool now sits on the clicked point as its
+  baseline, and at the size chosen.
+- **Open and Save go through the FileLoader.** ArtCreator no longer calls
+  the Vector plugin's converters itself: `UltraCanvasFileLoader::
+  LoadVectorDocument` / `SaveVectorDocument` do, with the same formats and
+  the same reader and writer notes in the status bar.
 
 #### 2026-09-22 *0.6.0*
 - **Mirror.** Two toolbar buttons after Send to Back, and *Mirror

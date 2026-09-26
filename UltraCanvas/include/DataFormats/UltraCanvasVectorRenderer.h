@@ -1,7 +1,7 @@
 // UltraCanvasVectorRenderer.h
 // Vector Graphics Rendering for UltraCanvas
-// Version: 2.1.0
-// Last Modified: 2026-09-15
+// Version: 2.1.1
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 //
 // REFACTORED: Removed IVectorRenderer, IVectorVisitor, SoftwareVectorRenderer,
@@ -99,6 +99,10 @@ namespace UltraCanvas {
         VectorRenderOptions options;
         VectorRenderStats stats;
         std::stack<float> opacityStack;
+        // The transforms of the groups being rendered, composed: maps the
+        // current element's parent space to document space, which is the
+        // space ViewportBounds is in. Culling tests bounds through it.
+        Matrix3x3 cullMatrix = Matrix3x3::Identity();
         float currentOpacity = 1.0f;
         const VectorDocument* currentDocument = nullptr;
 

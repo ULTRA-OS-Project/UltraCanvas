@@ -1,7 +1,7 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasVectorFormatsPlugin.cpp
 // Implementation of the vector formats graphics plugin - see the header.
-// Version: 1.1.0
-// Last Modified: 2026-09-16
+// Version: 1.2.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorFormatsPlugin.h"
@@ -167,6 +167,27 @@ void RegisterVectorFormatsPlugin() {
     provider.ClaimsFile = [](const std::string& path) {
         auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
         return converter && converter->CanImport();
+    };
+    // The editing half, for UltraCanvasFileLoader::LoadVectorDocument /
+    // SaveVectorDocument: the same readers with their notes, and the writers.
+    provider.Import = [](const std::string& path, const VectorPreviewProvider::NoteFn& note)
+            -> std::shared_ptr<VectorStorage::VectorDocument> {
+        auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
+        if (!converter || !converter->CanImport()) return nullptr;
+        VectorConverter::ConversionOptions options;
+        options.WarningCallback = note;
+        return converter->Import(path, options);
+    };
+    provider.SaveExtensions = []() {
+        return UltraCanvasVectorFormatsPlugin().GetSaveExtensions();
+    };
+    provider.Save = [](const VectorStorage::VectorDocument& document, const std::string& path,
+                       const VectorPreviewProvider::NoteFn& note) {
+        auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
+        if (!converter || !converter->CanExport()) return false;
+        VectorConverter::ConversionOptions options;
+        options.WarningCallback = note;
+        return converter->Export(document, path, options);
     };
     SetVectorPreviewProvider(std::move(provider));
 }

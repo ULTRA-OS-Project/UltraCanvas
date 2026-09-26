@@ -70,6 +70,9 @@ The Vector plugin writes the whole matrix it reads and more (SVG, XAR, EPS,
 CDR, PDF, EMF, WMF, AI, DXF, DWG) once `RegisterVectorFormatsPlugin()` has
 been called — see
 [UltraCanvasVectorConverters](../../UltraCanvas/UltraCanvasVectorConverters.md).
+Those converters read into an editable `VectorDocument` rather than pixels and
+are reached through `UltraCanvasFileLoader::LoadVectorDocument` /
+`SaveVectorDocument` (see the [README](README.md#editable-vector-documents)).
 
 § DWG *writing* needs GNU LibreDWG's `dxf2dwg`; reading needs nothing external.
 The four DWG extensions above are one format: AutoCAD writes the same drawing

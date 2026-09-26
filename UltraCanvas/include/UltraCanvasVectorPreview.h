@@ -23,8 +23,8 @@
 // detail pane, and the caller picks the size. RenderVectorPreviewPixmap()
 // below is the drawing half, shared by every caller that wants an image.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-16
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -61,6 +61,22 @@ struct VectorPreviewProvider {
     // a name comparison or a header read, never a full parse.
     std::function<bool(const std::string& path)> ClaimsFile;
 
+    // ----- Optional: the editing half, reached through UltraCanvasFileLoader -----
+    // A reader's or writer's notes ("CSS stylesheets are not supported", "a
+    // blend was flattened") go to `note`, one call per note.
+    using NoteFn = std::function<void(const std::string&)>;
+
+    // Load(), with the reader's notes. Absent: Load() is used, without notes.
+    std::function<std::shared_ptr<VectorStorage::VectorDocument>(
+            const std::string& path, const NoteFn& note)> Import;
+
+    // Every extension Save() writes, lowercase and without a dot.
+    std::function<std::vector<std::string>()> SaveExtensions;
+
+    // Writes the document in the format the path's extension names.
+    std::function<bool(const VectorStorage::VectorDocument& document,
+                       const std::string& path, const NoteFn& note)> Save;
+
     bool Valid() const { return Extensions && Load; }
 };
 
@@ -85,6 +101,23 @@ std::vector<std::string> PreviewableVectorExtensions();
 // Reads a drawing, or returns null when nothing in this build reads it.
 std::shared_ptr<VectorStorage::VectorDocument> LoadVectorPreviewDocument(
         const std::string& path);
+
+// ===== WHAT AN EDITOR ASKS =====
+// The same provider's full read and its write, for UltraCanvasFileLoader's
+// LoadVectorDocument / SaveVectorDocument. Applications call those, not these.
+
+// Reads a drawing with the reader's notes; null when nothing reads it.
+std::shared_ptr<VectorStorage::VectorDocument> ImportVectorDocument(
+        const std::string& path, const VectorPreviewProvider::NoteFn& note);
+
+// Every extension ExportVectorDocument() writes, sorted, lowercase, undotted.
+std::vector<std::string> SavableVectorExtensions();
+
+// Writes a drawing in the format the path's extension names. False when no
+// writer handles the extension or the write fails.
+bool ExportVectorDocument(const VectorStorage::VectorDocument& document,
+                          const std::string& path,
+                          const VectorPreviewProvider::NoteFn& note);
 
 // Draws a document into a pixmap of `w` x `h` logical pixels (`scale` is the
 // display scale, so the pixmap comes back `w * scale` wide). The drawing is

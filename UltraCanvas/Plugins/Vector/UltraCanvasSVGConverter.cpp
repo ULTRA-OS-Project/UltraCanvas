@@ -8,8 +8,8 @@
 // stops in <defs>, text keeps its spans, and nothing is flattened. The
 // importer parses with tinyxml2 and leans on the storage utilities
 // (ParsePathString, ParseColorString, ParseTransformString).
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
@@ -28,6 +28,7 @@
 #include <iomanip>
 #include <locale>
 #include <map>
+#include <set>
 #include <sstream>
 #include <variant>
 
@@ -600,7 +601,10 @@ public:
         double vb[4] = {0, 0, 0, 0};
         bool hasViewBox = false;
         if (const char* v = svg->Attribute("viewBox")) {
-            std::istringstream iss(v);
+            std::string list = v;   // "0 0 100 100" or "0,0,100,100"
+            for (char& ch : list) if (ch == ',') ch = ' ';
+            std::istringstream iss(list);
+            iss.imbue(std::locale::classic());
             hasViewBox = static_cast<bool>(iss >> vb[0] >> vb[1] >> vb[2] >> vb[3]);
         }
         double w = LengthAttr(svg, "width", hasViewBox ? vb[2] : 0);
@@ -641,8 +645,8 @@ public:
                 layer->Transform = g->Transform;
                 layer->Visible = g->Style.Display && g->Style.Visible;
                 layer->Children = std::move(g->Children);
-                // SVG's default fill is black; the framework treats an unset
-                // fill as inherited, so the black lives at the layer root.
+                // SVG's default fill is black; it starts at the layer root
+                // and ResolveInheritedPaint hands it down.
                 if (!layer->Style.Fill) layer->Style.Fill = Color(0, 0, 0, 255);
                 doc->Layers.push_back(layer);
             }
@@ -654,7 +658,81 @@ public:
                 ParseNode(child, *doc, layer.get());
             }
         }
+
+        // The editor and the renderer place document coordinates straight on
+        // the page (0,0 to Size) and do not apply a layer's own Transform.
+        // SVG instead maps the viewBox onto width x height, and the top-level
+        // <g> a layer came from may carry a transform (Xara writes
+        // scale(1 -1), svgo a translate). Both go into one group inside each
+        // layer, where the renderer, hit-testing and the writers all honour
+        // them, and the viewBox becomes the page.
+        // A width in inches or points rarely lands exactly on the viewBox
+        // ("8.333in" is 799.97 px for an 800-wide viewBox): within 0.1% at the
+        // origin that is rounding, not a mapping.
+        const bool sameSpace = hasViewBox && vb[0] == 0 && vb[1] == 0 && vb[2] > 0 && vb[3] > 0 &&
+                               std::fabs(w / vb[2] - 1.0) < 1e-3 && std::fabs(h / vb[3] - 1.0) < 1e-3;
+        if (hasViewBox && !sameSpace && vb[2] > 0 && vb[3] > 0 && w > 0 && h > 0) {
+            double sx = w / vb[2], sy = h / vb[3];
+            double tx = 0, ty = 0;
+            const char* par = svg->Attribute("preserveAspectRatio");
+            const std::string align = par ? par : "xMidYMid meet";
+            if (align.rfind("none", 0) != 0) {
+                const bool slice = align.find("slice") != std::string::npos;
+                const double k = slice ? std::max(sx, sy) : std::min(sx, sy);
+                const double fx = align.find("xMin") != std::string::npos ? 0.0
+                                : align.find("xMax") != std::string::npos ? 1.0 : 0.5;
+                const double fy = align.find("YMin") != std::string::npos ? 0.0
+                                : align.find("YMax") != std::string::npos ? 1.0 : 0.5;
+                tx = (w - vb[2] * k) * fx;
+                ty = (h - vb[3] * k) * fy;
+                sx = sy = k;
+            }
+            viewBoxMatrix = Matrix3x3::Translate(tx, ty) * Matrix3x3::Scale(sx, sy) *
+                            Matrix3x3::Translate(-vb[0], -vb[1]);
+            doc->ViewBox = Rect2Dd{0, 0, w, h};
+        }
+        for (auto& layer : doc->Layers) {
+            if (!layer) continue;
+            Matrix3x3 m = viewBoxMatrix;
+            if (layer->Transform) m = m * *layer->Transform;
+            layer->Transform.reset();
+            if (m.IsIdentity() || layer->Children.empty()) continue;
+            auto content = std::make_shared<VectorGroup>();
+            content->Transform = m;
+            layer->AddChild(content);
+            for (auto& child : layer->Children) {
+                if (child && child != content) content->AddChild(child);
+            }
+            layer->Children.assign(1, content);
+        }
+
+        // The renderer draws each element with its own style only - an unset
+        // fill draws nothing - so the fill and stroke SVG inherits from the
+        // enclosing <g> elements (and the black default) are written into
+        // every element that does not set its own.
+        for (auto& layer : doc->Layers) {
+            if (layer) ResolveInheritedPaint(*layer, layer->Style.Fill, layer->Style.Stroke);
+        }
+        const std::optional<FillData> black = FillData(Color(0, 0, 0, 255));
+        for (auto& [id, def] : doc->Definitions) {
+            if (def) ResolveInheritedPaint(*def, black, std::nullopt);
+        }
         return doc;
+    }
+
+    // Hands the inherited fill and stroke down the tree. An element keeps
+    // what it sets itself, including an explicit "none" (a monostate fill,
+    // or a stroke recorded in strokeNone), and passes its resolved paint on
+    // to its own children.
+    void ResolveInheritedPaint(VectorElement& e, const std::optional<FillData>& fill,
+                               const std::optional<StrokeData>& stroke) {
+        if (!e.Style.Fill && fill) e.Style.Fill = fill;
+        if (!e.Style.Stroke && stroke && !strokeNone.count(&e)) e.Style.Stroke = stroke;
+        if (auto* g = dynamic_cast<VectorGroup*>(&e)) {
+            for (auto& child : g->Children) {
+                if (child) ResolveInheritedPaint(*child, e.Style.Fill, e.Style.Stroke);
+            }
+        }
     }
 
     static bool IsNonDrawable(const tinyxml2::XMLElement* e) {
@@ -670,6 +748,11 @@ private:
     std::function<void(const std::string&)> warn;
     std::map<std::string, GradientData> gradients;
     bool warnedCss = false;
+    // Maps viewBox units onto the page (identity when they coincide).
+    Matrix3x3 viewBoxMatrix = Matrix3x3::Identity();
+    // Elements that say stroke="none" themselves: they must not inherit a
+    // group's stroke, and an unset Stroke cannot tell the two apart.
+    std::set<const VectorElement*> strokeNone;
 
     static const char* StripNs(const char* name) {
         const char* colon = std::strchr(name, ':');
@@ -886,6 +969,7 @@ private:
             s.Stroke = st;
         } else if (strokeVal == "none") {
             s.Stroke.reset();
+            strokeNone.insert(&out);
         }
         s.Opacity = ParseOpacity(Prop(e, "opacity"), 1.0f);
         s.FillOpacity = ParseOpacity(Prop(e, "fill-opacity"), 1.0f);

@@ -1,7 +1,7 @@
 // UltraCanvasVectorRenderer.cpp
 // Vector Graphics Rendering for UltraCanvas
-// Version: 2.1.1
-// Last Modified: 2026-09-22
+// Version: 2.1.2
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 //
 // Draws a VectorStorage::VectorDocument into any IRenderContext. Every
@@ -142,10 +142,16 @@ namespace UltraCanvas {
             return;
         }
 
-        if (options.EnableCulling && options.ClipToViewport && !IsInViewport(element.GetBoundingBox())) {
+        // GetBoundingBox is in the parent's space; inside a transformed group
+        // that is not document space, and testing it raw culled whole
+        // subtrees that were on screen (a Xara SVG's scale(1 -1) layer).
+        if (options.EnableCulling && options.ClipToViewport &&
+            !IsInViewport(cullMatrix.Transform(element.GetBoundingBox()))) {
             stats.ElementsCulled++;
             return;
         }
+        const Matrix3x3 parentCull = cullMatrix;
+        if (element.Transform.has_value()) cullMatrix = cullMatrix * element.Transform.value();
 
         ctx->PushState();
         if (element.Transform.has_value()) ApplyTransform(element.Transform.value());
@@ -168,6 +174,7 @@ namespace UltraCanvas {
 
         if (options.ShowBoundingBoxes) RenderDebugBounds(element.GetBoundingBox());
         stats.ElementsRendered++;
+        cullMatrix = parentCull;
         ctx->PopState();
     }
 
@@ -348,6 +355,10 @@ namespace UltraCanvas {
             if (st.FontFamily.empty()) st.FontFamily = text.BaseStyle.FontFamily;
             if (st.FontSize <= 0) st.FontSize = text.BaseStyle.FontSize;
             FontStyle fs = st.ToFontStyle();
+            // The model's font size is in drawing units, like every other
+            // length; the context's is in points at 96 dpi (1 pt = 4/3
+            // units), which drew all document text a third too large.
+            fs.fontSize *= 72.0f / 96.0f;
             ctx->SetFontFace(fs.fontFamily, fs.fontWeight, fs.fontSlant);
             ctx->SetFontSize(fs.fontSize);
             int w = span.Text.empty() ? 0 : ctx->GetTextLineWidth(span.Text);
@@ -368,7 +379,15 @@ namespace UltraCanvas {
             }
             ctx->SetFontFace(run.font.fontFamily, run.font.fontWeight, run.font.fontSlant);
             ctx->SetFontSize(run.font.fontSize);
-            ctx->DrawText(run.span->Text, Point2Dd(pos.x, pos.y));
+            // Position is the baseline (SVG x/y, and what GetBoundingBox
+            // assumes); DrawText places the layout's top-left corner there,
+            // which hung every text a full ascent below its line.
+            double baseline = 0.0;
+            if (!run.span->Text.empty())
+                // The same cached layout DrawText uses, in the current font.
+                if (auto layout = ctx->GetOrCreateTextLayout(run.span->Text, {0, 0}, false))
+                    baseline = layout->GetBaseline();
+            ctx->DrawText(run.span->Text, Point2Dd(pos.x, pos.y - baseline));
             pos.x += run.width;
         }
     }
@@ -399,11 +418,16 @@ namespace UltraCanvas {
         auto ref = currentDocument->GetDefinition(use.Reference);
         if (!ref) return;
         ctx->PushState();
+        const Matrix3x3 parentCull = cullMatrix;
         ctx->Translate(use.Position.x, use.Position.y);
+        cullMatrix = cullMatrix * Matrix3x3::Translate(use.Position.x, use.Position.y);
         Rect2Dd rb = ref->GetBoundingBox();
-        if (use.Size.width > 0 && use.Size.height > 0 && rb.width > 0 && rb.height > 0)
+        if (use.Size.width > 0 && use.Size.height > 0 && rb.width > 0 && rb.height > 0) {
             ctx->Scale(use.Size.width / rb.width, use.Size.height / rb.height);
+            cullMatrix = cullMatrix * Matrix3x3::Scale(use.Size.width / rb.width, use.Size.height / rb.height);
+        }
         RenderElement(ctx, *ref);
+        cullMatrix = parentCull;
         ctx->PopState();
     }
 

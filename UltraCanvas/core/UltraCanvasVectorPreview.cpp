@@ -3,8 +3,8 @@
 // half every caller shares: a VectorDocument fitted into an offscreen render
 // context and read back as a pixmap.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-16
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorPreview.h"
@@ -114,6 +114,38 @@ std::shared_ptr<VectorStorage::VectorDocument> LoadVectorPreviewDocument(
         if (!provider.ClaimsFile || !provider.ClaimsFile(path)) return nullptr;
     }
     return provider.Load(path);
+}
+
+std::shared_ptr<VectorStorage::VectorDocument> ImportVectorDocument(
+        const std::string& path, const VectorPreviewProvider::NoteFn& note) {
+    const VectorPreviewProvider provider = CurrentProvider();
+    if (!provider.Valid()) return nullptr;
+    if (!ProviderClaims(provider, ExtensionOf(path))) {
+        if (!provider.ClaimsFile || !provider.ClaimsFile(path)) return nullptr;
+    }
+    return provider.Import ? provider.Import(path, note) : provider.Load(path);
+}
+
+std::vector<std::string> SavableVectorExtensions() {
+    std::vector<std::string> extensions;
+    const VectorPreviewProvider provider = CurrentProvider();
+    if (provider.Valid() && provider.SaveExtensions && provider.Save) {
+        for (std::string e : provider.SaveExtensions()) {
+            for (char& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (!e.empty()) extensions.push_back(std::move(e));
+        }
+    }
+    std::sort(extensions.begin(), extensions.end());
+    extensions.erase(std::unique(extensions.begin(), extensions.end()), extensions.end());
+    return extensions;
+}
+
+bool ExportVectorDocument(const VectorStorage::VectorDocument& document,
+                          const std::string& path,
+                          const VectorPreviewProvider::NoteFn& note) {
+    const VectorPreviewProvider provider = CurrentProvider();
+    if (!provider.Valid() || !provider.Save) return false;
+    return provider.Save(document, path, note);
 }
 
 std::shared_ptr<UCPixmap> RenderVectorDocumentPixmap(
