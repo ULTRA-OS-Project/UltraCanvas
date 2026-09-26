@@ -8,6 +8,15 @@
 
 set(_VFT_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(_VFT_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../UltraCanvas/include")
+# Where the test executables go. On Windows beside the core DLL
+# (libUltraCanvas.dll, at the build root like the apps): an executable finds
+# its DLLs in its own directory, and build/bin is on no search path - the
+# tests failed to start there with STATUS_DLL_NOT_FOUND (0xc0000135).
+if(WIN32)
+    set(_VFT_BIN_DIR "$<TARGET_FILE_DIR:UltraCanvas>")
+else()
+    set(_VFT_BIN_DIR "${CMAKE_BINARY_DIR}/bin")
+endif()
 
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # The whole converter matrix through the graphics plugin registry: saving
@@ -26,10 +35,10 @@ if(TARGET UltraCanvasVectorPlugin)
     )
     target_link_libraries(VectorFormatsPluginTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
     set_target_properties(VectorFormatsPluginTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
     )
     add_test(NAME VectorFormatsPluginTest COMMAND VectorFormatsPluginTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
     message(STATUS "    Test registered: VectorFormatsPluginTest")
 else()
     message(STATUS "  VectorFormatsPluginTest skipped (UltraCanvasVectorPlugin target not present)")
@@ -63,10 +72,10 @@ if(TARGET UltraCanvasCDRPlugin AND TARGET UltraCanvasVectorPlugin)
         endif()
     endif()
     set_target_properties(CDRWriterTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
     )
     add_test(NAME CDRWriterTest COMMAND CDRWriterTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
     message(STATUS "    Test registered: CDRWriterTest")
 else()
     message(STATUS "  CDRWriterTest skipped (needs UltraCanvasCDRPlugin and UltraCanvasVectorPlugin)")
