@@ -466,6 +466,10 @@ void ArtCreatorWindow::BuildRightPanel() {
         colorPicker->SetForegroundColor(c, false);
         ApplyFillColour(c, true);
     };
+    // Right click on a swatch sets the line (background) colour.
+    swatches->onColorAdjustSelected = [this](const Color& c) {
+        colorPicker->SetBackgroundColor(c, true);
+    };
     rightPanel->AddChild(swatches);
 
     // ----- fill ramp -----

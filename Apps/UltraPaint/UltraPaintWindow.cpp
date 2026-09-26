@@ -540,6 +540,10 @@ void UltraPaintWindow::BuildRightPanel() {
         foreground = RasterPixel(c);
         colorPicker->SetForegroundColor(c, false);
     };
+    // Right click on a swatch sets the background colour.
+    swatches->onColorAdjustSelected = [this](const Color& c) {
+        colorPicker->SetBackgroundColor(c, true);
+    };
     rightPanel->AddChild(swatches);
 
     // ----- tool options -----

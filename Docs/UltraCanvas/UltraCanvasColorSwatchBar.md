@@ -28,7 +28,9 @@ colours nobody can reach.
   transparency pattern"
 - ✅ Swatch size adapts to the element's width **and** height; the row is centred
 - ✅ Hover outline, selected outline, per-swatch tooltip (`#RRGGBB`)
-- ✅ `onColorSelected` / `onCheckeredSelected` callbacks
+- ✅ `onColorSelected` / `onCheckeredSelected` callbacks; right (Adjust) click
+  raises `onColorAdjustSelected` — the background colour of a
+  foreground/background picker
 - ✅ Never takes the keyboard focus, so a host keeps its own arrow-key handling
 
 ## Quick Start
@@ -122,9 +124,21 @@ needs to read as a bar of its own.
 ## Callbacks
 
 ```cpp
-std::function<void(const Color&)> onColorSelected;
+std::function<void(const Color&)> onColorSelected;        // left click
+std::function<void(const Color&)> onColorAdjustSelected;  // right click
 std::function<void()>             onCheckeredSelected;
 ```
+
+A right click does not move the selection outline (that tracks left clicks)
+and is ignored when `onColorAdjustSelected` is unset. Pair the bar with a
+colour picker so left sets the foreground and right the background:
+
+```cpp
+bar->onColorSelected       = [picker](const Color& c) { picker->SetForegroundColor(c); };
+bar->onColorAdjustSelected = [picker](const Color& c) { picker->SetBackgroundColor(c, true); };
+```
+
+Fast repeated clicks (delivered as double-clicks) select just like single ones.
 
 Programmatic selection stays silent unless `runCallback` is passed, so a host
 can mirror an external change without hearing its own echo.

@@ -1,7 +1,7 @@
 // core/UltraCanvasColorSwatchBar.cpp
 // Platform-independent colour swatch strip implementation.
-// Version: 1.0.0
-// Last Modified: 2026-08-25
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorSwatchBar.h"
@@ -329,10 +329,19 @@ bool UltraCanvasColorSwatchBar::OnEvent(const UCEvent& event) {
             return false;
         }
 
-        case UCEventType::MouseDown: {
-            if (event.button != UCMouseButton::Left) return false;
+        // A rapid second click arrives as a double-click instead of a
+        // MouseDown; clicking through the palette must react to every click.
+        case UCEventType::MouseDown:
+        case UCEventType::MouseDoubleClick: {
             const int slot = SlotAt(event.pointer);
             if (slot < 0) return false;
+            if (event.button == UCMouseButton::Right) {
+                const int colorIndex = ColorIndexOfSlot(slot);
+                if (colorIndex < 0 || !onColorAdjustSelected) return false;
+                onColorAdjustSelected(colors_[static_cast<size_t>(colorIndex)]);
+                return true;
+            }
+            if (event.button != UCMouseButton::Left) return false;
             if (IsCheckeredSlot(slot)) {
                 SelectCheckered(true);
             } else {

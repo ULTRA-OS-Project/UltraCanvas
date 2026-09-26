@@ -10,8 +10,8 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
-// Version: 1.3.0
-// Last Modified: 2026-08-09
+// Version: 1.3.1
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -208,7 +208,10 @@ namespace UltraCanvas {
         Color GetForegroundColor() const { return GetColor(); }
         void  SetForegroundColor(const Color& c, bool notify = true) { SetColor(c, notify); }
         Color GetBackgroundColor() const { return previousColor; }
-        void  SetBackgroundColor(const Color& c) { SetPreviousColor(c); }
+        // notify fires onBackgroundChanging / onBackgroundChanged, as a
+        // right-button edit does; off by default so a host syncing the swatch
+        // from its own state does not get called back.
+        void  SetBackgroundColor(const Color& c, bool notify = false);
 
         // ===== MODE / LAYOUT =====
         ColorPickerModel GetModel() const { return model; }

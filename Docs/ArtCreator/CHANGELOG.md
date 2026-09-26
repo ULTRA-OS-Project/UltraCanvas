@@ -1,3 +1,12 @@
+#### 2026-09-26 *0.6.1*
+- **Right click sets the line colour.** A right click on a palette swatch
+  under the colour picker now sets the line (background) colour of the
+  picker and the selection; it used to do nothing. A right-button drag on
+  the colour wheel or sliders with a shape selected no longer leaves the
+  background swatch showing the fill colour, and a right-button eyedropper
+  sample or the swap arrow now reach the selection's line colour too. The
+  framework side is in `Docs/UltraCanvas/changelog.d/colorpicker-right-click-background.md`.
+
 #### 2026-09-22 *0.6.0*
 - **Mirror.** Two toolbar buttons after Send to Back, and *Mirror
   Horizontally* / *Mirror Vertically* on the Arrange menu, flip the
