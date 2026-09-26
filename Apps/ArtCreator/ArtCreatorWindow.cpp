@@ -452,7 +452,17 @@ void ArtCreatorWindow::BuildRightPanel() {
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(lineColour);
     colorPicker->SetShowAlpha(true);
-    colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // The hue ring is capped by whatever vertical space the controls leave it,
+    // so a picker sized by eye draws a wheel narrower than the panel. Ask for
+    // the height at which the ring fills the panel's width instead.
+    const float pickerH = colorPicker->PreferredHeightForWidth(kRightInner);
+    colorPicker->SetSize(kRightInner, pickerH);
+    // Not stretched: the panel's content box is wider than what is visible
+    // beside the scrollbar, and a stretched picker lays its hex field and
+    // channel values out into the part that is covered.
+    colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Start)
+                           .SetFlexBasis(CSSLayout::Dimension::Px(pickerH));
     colorPicker->onColorChanged = [this](const Color& c) { fillColour = c; ApplyFillColour(c, true); };
     colorPicker->onColorChanging = [this](const Color& c) { fillColour = c; ApplyFillColour(c, false); };
     colorPicker->onBackgroundChanged = [this](const Color& c) { lineColour = c; ApplyLineColour(c, true); };

@@ -8,6 +8,12 @@
   swaps the selection's fill and line instead of leaving both swatches the
   old fill colour. The
   framework side is in `Docs/UltraCanvas/changelog.d/colorpicker-right-click-background.md`.
+- **The colour wheel fills the panel width.** The picker is sized to the
+  height at which its hue ring spans the side panel, as in UltraPaint,
+  instead of a fixed 300 px that left a small wheel. It is no longer
+  stretched to the panel's content box either, so the hex field and
+  channel values sit in the visible part beside the scrollbar instead of
+  running under it.
 
 #### 2026-09-22 *0.6.0*
 - **Mirror.** Two toolbar buttons after Send to Back, and *Mirror
