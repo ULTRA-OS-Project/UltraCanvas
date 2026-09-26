@@ -17,8 +17,8 @@
 //     name inside a character;
 //   * a real folder scan lists such names intact, and a non-UTF-8 name keeps
 //     its real bytes for every file operation while showing decoded.
-// Version: 1.0.0
-// Last Modified: 2026-09-24
+// Version: 1.0.1
+// Last Modified: 2026-09-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
@@ -33,12 +33,35 @@
 #include <string>
 #include <vector>
 
+#if defined(__linux__) && defined(__GLIBC__)
+#include <execinfo.h>
+#include <csignal>
+#include <unistd.h>
+#define FILER_NAME_TEST_HAVE_BACKTRACE 1
+#endif
+
 using namespace UltraCanvas;
 namespace fs = std::filesystem;
 
 namespace {
 
 int g_failures = 0;
+
+#ifdef FILER_NAME_TEST_HAVE_BACKTRACE
+// This test crashed on the ARM Linux runner only, after its last check, and a
+// CI runner has no core dump and no debugger to ask. The handler names the
+// frames. Only async-signal-safe calls here: backtrace_symbols_fd writes
+// straight to the fd.
+void CrashHandler(int sig) {
+    static const char msg[] = "\n*** FilerNameEncodingTest crashed - backtrace ***\n";
+    ssize_t ignored = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    (void)ignored;
+    void* frames[48];
+    const int n = backtrace(frames, 48);
+    backtrace_symbols_fd(frames, n, STDERR_FILENO);
+    _exit(128 + sig);
+}
+#endif
 
 void Check(bool condition, const std::string& what) {
     std::cout << (condition ? "  [ OK ] " : "  [FAIL] ") << what << "\n";
@@ -94,6 +117,14 @@ const FilerEntry* FindByDisplayName(const UltraCanvasFilerWidget& filer,
 } // namespace
 
 int main() {
+#ifdef FILER_NAME_TEST_HAVE_BACKTRACE
+    std::signal(SIGSEGV, CrashHandler);
+    std::signal(SIGABRT, CrashHandler);
+    std::signal(SIGBUS, CrashHandler);
+#endif
+    // Unbuffered: stdout to a pipe is block-buffered, and a crash would take
+    // the buffer with it - the log would stop mid-line, far from the fault.
+    std::cout << std::unitbuf;
     std::cout << "===== Filer: file names in every script =====\n";
 
     std::cout << "\n-- UTF-8 is recognised and left alone --\n";
@@ -200,6 +231,7 @@ int main() {
     }
 #endif
     fs::remove_all(dir, ec);
+    std::cout << "\n(folder removed; the widget is torn down on return)\n";
 
     std::cout << "\n" << (g_failures ? "FAILED" : "ALL PASSED") << " ("
               << g_failures << " failure" << (g_failures == 1 ? "" : "s") << ")\n";

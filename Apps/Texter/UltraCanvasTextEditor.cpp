@@ -2316,9 +2316,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
                 if (ext == "md") {
                     doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
-                } else if (doc->textArea->SetProgrammingLanguageByFilename(doc->fileName)) {
+                } else if (doc->textArea->SetProgrammingLanguageForFile(doc->fileName, utf8Text)) {
                     // Full-filename match wins over extension (e.g. pom.xml -> POM,
-                    // manifest.json -> WebManifest). Falls through to extension otherwise.
+                    // manifest.json -> WebManifest). Falls through to extension otherwise;
+                    // a shared extension (.cls, .m) is settled by the text.
                     doc->textArea->SetHighlightSyntax(true);
                 } else {
                     doc->textArea->SetHighlightSyntax(false);
@@ -2763,11 +2764,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
                 if (ext == "md" || ext == "odt" || ext == "docx") {
                     doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
-                } else if (doc->textArea->SetProgrammingLanguageByFilename(doc->fileName)) {
+                } else if (doc->textArea->SetProgrammingLanguageForFile(
+                               doc->fileName, doc->textArea->GetText())) {
                     // Full-filename match wins over extension (e.g. pom.xml -> POM,
-                    // manifest.json -> WebManifest). Falls through to extension otherwise.
-                    doc->textArea->SetHighlightSyntax(true);
-                } else if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
+                    // manifest.json -> WebManifest). Falls through to extension otherwise;
+                    // a shared extension (.cls, .m) is settled by the text.
                     doc->textArea->SetHighlightSyntax(true);
                 } else {
                     doc->textArea->SetHighlightSyntax(false);

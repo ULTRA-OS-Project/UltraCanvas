@@ -577,6 +577,14 @@ namespace UltraCanvas {
         void SetProgrammingLanguage(const std::string& language);
         bool SetProgrammingLanguageByExtension(const std::string& extension);
         bool SetProgrammingLanguageByFilename(const std::string& filename);
+        // SetProgrammingLanguageByFilename, but an extension two languages
+        // share (.cls: VBA or LaTeX, .m: MATLAB or Objective-C) is settled by
+        // the text itself (SyntaxTokenizer::LanguageFromContent). Text in a
+        // language without rules - a LaTeX .cls - is left as plain text
+        // rather than coloured as the other one. Returns whether a language
+        // was set.
+        bool SetProgrammingLanguageForFile(const std::string& filename,
+                                           const std::string& text);
         const std::string GetCurrentProgrammingLanguage();
         std::vector<std::string> GetSupportedLanguages();
 

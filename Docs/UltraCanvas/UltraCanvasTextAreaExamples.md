@@ -324,6 +324,19 @@ void SetProgrammingLanguageByExtension(const std::string& extension)
 ```
 Auto-detects language from file extension (e.g., ".cpp", ".py", ".js").
 
+#### SetProgrammingLanguageForFile
+```cpp
+bool SetProgrammingLanguageForFile(const std::string& filename, const std::string& text)
+```
+Picks the language for a file being opened: a full-filename match first
+(`pom.xml`), then the extension. An extension two languages share - `.cls`
+(VBA class module or LaTeX class) and `.m` (MATLAB or Objective-C) - is
+settled by the file's first lines through
+`SyntaxTokenizer::LanguageFromContent(extension, text)`. Text in a language
+the highlighter has no rules for (a LaTeX `.cls`, an Objective-C `.m`) is left
+as plain text instead of being coloured as the other language. Returns
+whether a language was set.
+
 ### Property Setters
 
 #### SetReadOnly

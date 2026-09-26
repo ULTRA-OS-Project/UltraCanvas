@@ -1,3 +1,15 @@
+#### 2026-09-25 *1.54.0*
+- **R, Scala, MATLAB and VBA files show their text too.** Their languages
+  were written into the syntax highlighter but switched off, so `.r`,
+  `.rmd`, `.scala`, `.sc`, `.sbt`, `.m`, `.vba`, `.cls` and `.frm` files
+  still drew the blank sheet. The highlighter now has them switched on,
+  so each of them shows its miniature page, gets a switch under Text, and
+  is named after its language ("MATLAB Text"). `.bas` stays BASIC.
+- **`.cls` and `.m` files are named after what they are.** Both extensions
+  belong to two languages: `.cls` to VBA and LaTeX, `.m` to MATLAB and
+  Objective-C. The Type column now reads the first lines of such a file and
+  says "LaTeX Text" or "Objective-C Text" where that is what it holds, and
+  the detail view no longer colours a LaTeX class as VBA code.
 #### 2026-09-25 *1.53.0*
 - **Find text: Match case and file patterns.** *Extras > Find text* opens a
   dialog of its own instead of the one-line prompt: besides the text it asks

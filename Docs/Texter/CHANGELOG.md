@@ -1,3 +1,12 @@
+#### 2026-09-25 *1.50*
+- **A LaTeX `.cls` is no longer coloured as VBA, an Objective-C `.m` no
+  longer as MATLAB.** With R, Scala, MATLAB and VBA switched on in the
+  highlighter, `.cls` and `.m` each belong to two languages. Texter now reads
+  the first lines of such a file to tell them apart: `\ProvidesClass` or a `%`
+  comment is LaTeX, `VERSION 1.0 CLASS` or `Attribute VB_` is VBA, `#import`
+  or `@interface` is Objective-C, a `%` comment or `function` is MATLAB. A
+  LaTeX or Objective-C file opens as Plain Text, since the highlighter has no
+  rules for those two.
 #### 2026-09-25 *1.49*
 - **The markdown side toolbar is 40 px wide again, with its separators
   centred.** It had grown to half the window: the framework's toolbar builder

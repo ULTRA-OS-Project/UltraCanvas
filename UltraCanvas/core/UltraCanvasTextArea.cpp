@@ -2548,6 +2548,23 @@ namespace UltraCanvas {
         return result;
     }
 
+    bool UltraCanvasTextArea::SetProgrammingLanguageForFile(const std::string& filename,
+                                                            const std::string& text) {
+        const std::string sniffed = SyntaxTokenizer::LanguageFromContent(
+                std::filesystem::path(filename).extension().string(), text);
+        if (sniffed.empty()) return SetProgrammingLanguageByFilename(filename);
+        if (!syntaxTokenizer) {
+            syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
+        }
+        const bool result = syntaxTokenizer->SetLanguage(sniffed);
+        if (!result) syntaxTokenizer->ClearLanguage();
+        if (style.highlightSyntax) {
+            InvalidateAllLineLayouts();
+            RequestRedraw();
+        }
+        return result;
+    }
+
     const std::string UltraCanvasTextArea::GetCurrentProgrammingLanguage() {
         if (!syntaxTokenizer) return "Plain text";
         return syntaxTokenizer->GetCurrentProgrammingLanguage();
