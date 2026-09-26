@@ -183,6 +183,35 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== Extension lists come from the converters =====
+    // Nobody maintains them: every extension a converter declares is readable
+    // exactly when it can import and writable exactly when it can export.
+    {
+        UltraCanvasVectorFormatsPlugin plugin;
+        const auto readable = plugin.GetSupportedExtensions();
+        const auto writable = plugin.GetSaveExtensions();
+        auto has = [](const std::vector<std::string>& v, const std::string& e) {
+            return std::find(v.begin(), v.end(), e) != v.end();
+        };
+        bool consistent = true;
+        for (const std::string ext : {"svg", "svgz", "xar", "web", "eps", "cdr", "pdf", "emf",
+                                       "wmf", "ai", "dxf", "dwg", "dwt", "dws", "sv$"}) {
+            auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(ext);
+            if (!converter) { consistent = false; std::printf("    no converter for %s\n", ext.c_str()); continue; }
+            if (has(readable, ext) != converter->CanImport() || has(writable, ext) != converter->CanExport()) {
+                consistent = false;
+                std::printf("    list and converter disagree on %s\n", ext.c_str());
+            }
+        }
+        Check(consistent, "readable/writable lists match each converter's CanImport/CanExport");
+        Check(has(readable, "svgz"), ".svgz is readable (declared by the SVG converter)");
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+        Check(has(readable, "cdr"), ".cdr is readable when the CDR plugin is built");
+#else
+        Check(!has(readable, "cdr"), ".cdr is not readable without the CDR plugin");
+#endif
+    }
+
     // ===== The DWG family reaches the DWG converter =====
     // A drawing arrives as .dwg, as a template (.dwt), a standards file
     // (.dws) or an automatic save (.sv$) - one format under four names.

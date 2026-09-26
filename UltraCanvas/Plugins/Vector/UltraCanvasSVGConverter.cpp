@@ -15,6 +15,7 @@
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic
+#include "UltraCanvasFileLoader.h"   // LoadFile: inflates .svgz
 
 #include <tinyxml2.h>
 
@@ -1251,15 +1252,17 @@ FormatCapabilities SVGConverter::GetCapabilities() const {
 
 std::shared_ptr<VectorStorage::VectorDocument> SVGConverter::Import(
         const std::string& filename, const ConversionOptions& options) {
-    std::ifstream file(filename, std::ios::binary);
-    if (!file.is_open()) {
+    // Through the FileLoader: an .svgz is gzip-compressed SVG, which LoadFile
+    // inflates transparently (detected by content, not by name), and the
+    // path is opened the same way on every platform.
+    FileBytesResult bytes = UltraCanvasFileLoader::LoadFile(filename);
+    if (!bytes.success) {
         if (options.WarningCallback)
-            options.WarningCallback("Failed to open SVG file: " + filename);
+            options.WarningCallback("Failed to open SVG file: " + filename +
+                                    (bytes.error.empty() ? "" : " (" + bytes.error + ")"));
         return nullptr;
     }
-    std::ostringstream ss;
-    ss << file.rdbuf();
-    return ImportFromString(ss.str(), options);
+    return ImportFromString(std::string(bytes.bytes.begin(), bytes.bytes.end()), options);
 }
 
 std::shared_ptr<VectorStorage::VectorDocument> SVGConverter::ImportFromString(

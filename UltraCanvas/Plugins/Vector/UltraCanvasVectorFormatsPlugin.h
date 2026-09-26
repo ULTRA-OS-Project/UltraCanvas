@@ -40,22 +40,17 @@ namespace UltraCanvas {
         }
         std::string GetPluginVersion() const override { return "1.0.0"; }
 
-        // Formats with a reader in the converter matrix. dwt/dws/sv$ are
-        // AutoCAD's template, drawing-standards and automatic-save files:
-        // the same drawing database as a .dwg, read by the same converter.
-        // A .bak is one too when it is a copy of a drawing, but the suffix
-        // is not AutoCAD's to claim, so it is recognised from its content
-        // rather than listed here (UltraCanvasCADConverters.h). An .ai is
-        // read for its Illustrator private data; one that instead draws
-        // through its PDF page is declined and belongs to the PDF plugin.
-        std::vector<std::string> GetSupportedExtensions() const override {
-            return {"svg", "xar", "emf", "wmf", "ai", "dxf", "dwg", "dwt", "dws", "sv$"};
-        }
-        // The full writer matrix.
-        std::vector<std::string> GetSaveExtensions() const override {
-            return {"svg", "xar", "eps", "cdr", "pdf", "emf", "wmf", "ai",
-                    "dxf", "dwg"};
-        }
+        // What this build reads and writes, asked of the converters rather
+        // than listed: every converter that can import contributes the
+        // extensions it declares to the first list, every one that can export
+        // to the second. A format whose reader depends on an optional plugin
+        // (CDR on libcdr, XAR on the XAR plugin) appears exactly when that
+        // plugin is built, and a new converter needs no list edited.
+        // Lowercase, without the dot, in converter order, no duplicates.
+        // A .bak holding an AutoCAD drawing is read too, but only on its
+        // content, so it is never listed (UltraCanvasCADConverters.h).
+        std::vector<std::string> GetSupportedExtensions() const override;
+        std::vector<std::string> GetSaveExtensions() const override;
 
         bool CanHandle(const std::string& filePath) const override;
         bool CanHandle(const GraphicsFileInfo& fileInfo) const override;

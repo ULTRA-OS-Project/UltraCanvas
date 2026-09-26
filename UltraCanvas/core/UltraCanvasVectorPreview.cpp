@@ -183,7 +183,10 @@ std::shared_ptr<UCPixmap> RenderVectorDocumentPixmap(
     VectorRenderer renderer;
     VectorRenderOptions options;
     options.ViewportBounds = Rect2Dd(0, 0, dw, dh);
-    options.PixelRatio = static_cast<float>(fit);
+    // No PixelRatio: RenderDocument scales by it on top of the context's
+    // transform, and the fit is already on the context - setting it too drew
+    // every preview at fit squared (a large drawing shrunk into a corner, a
+    // small one enlarged and cropped).
     renderer.SetOptions(options);
     renderer.RenderDocument(ctx.get(), document);
     ctx->PopState();

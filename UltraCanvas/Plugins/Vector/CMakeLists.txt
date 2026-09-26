@@ -83,6 +83,16 @@ target_link_libraries(${PLUGIN_NAME}
 # XAR reading is the XAR plugin's parser translated into the model; when
 # that plugin is built (ULTRACANVAS_PLUGIN_XAR, on by default) link it
 # publicly so ULTRACANVAS_HAS_XAR_PLUGIN reaches the converter and its users.
+# CDR reading is the CDR plugin's libcdr parse, turned into SVG by librevenge
+# and read by the SVG importer (CDRConverter::Import). Linked publicly so
+# ULTRACANVAS_HAS_CDR_PLUGIN reaches the converter and GetSupportedExtensions.
+if(TARGET UltraCanvasCDRPlugin)
+    target_link_libraries(${PLUGIN_NAME} PUBLIC UltraCanvasCDRPlugin)
+    message(STATUS "  CDR import: through the CDR plugin (libcdr -> SVG -> SVG importer)")
+else()
+    message(STATUS "  CDR import: unavailable (CDR plugin not built); CDR export only")
+endif()
+
 if(TARGET UltraCanvasXARPlugin)
     target_link_libraries(${PLUGIN_NAME} PUBLIC UltraCanvasXARPlugin)
     message(STATUS "  XAR import: through the XAR plugin's reader")

@@ -28,6 +28,12 @@
 #include "UltraCanvasCDRConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+#include "UltraCanvasCDRPlugin.h"
+#include <atomic>
+#include <chrono>
+#include <filesystem>
+#endif
 
 #include <cmath>
 #include <cstring>
@@ -540,27 +546,75 @@ namespace UltraCanvas {
             return caps;
         }
 
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+        namespace {
+            // A fresh path in the temp directory for this process.
+            std::filesystem::path TempPath(const std::string& ext) {
+                static std::atomic<unsigned> counter{0};
+                std::error_code ec;
+                auto dir = std::filesystem::temp_directory_path(ec);
+                if (ec) dir = ".";
+                const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+                return dir / ("uc-cdr-" + std::to_string(stamp) + "-" +
+                              std::to_string(counter++) + ext);
+            }
+        }
+#endif
+
         std::shared_ptr<VectorStorage::VectorDocument> CDRConverter::Import(
                 const std::string& filename, const ConversionOptions& options) {
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+            // libcdr -> librevenge's SVG generator -> the SVG importer. The
+            // SVG goes through a temporary file because that is the plugin's
+            // export interface; it is removed again straight away.
+            const std::filesystem::path svgPath = TempPath(".svg");
+            CDRExportResult r = UltraCanvasCDRPlugin::ExportToSVG(filename, svgPath.string(), 0);
+            std::shared_ptr<VectorStorage::VectorDocument> doc;
+            if (r.success) {
+                SVGConverter svg;
+                doc = svg.Import(svgPath.string(), options);
+            } else if (options.WarningCallback) {
+                options.WarningCallback("CDR import: " +
+                                        (r.error.empty() ? std::string("libcdr could not read the file") : r.error));
+            }
+            std::error_code ec;
+            for (const std::string& written : r.writtenFiles) std::filesystem::remove(written, ec);
+            std::filesystem::remove(svgPath, ec);
+            return doc;
+#else
             (void)filename;
             if (options.WarningCallback) {
                 options.WarningCallback(
-                        "CDRConverter cannot import; render CDR files through the "
-                        "CDR plugin (UltraCanvasCDRPlugin) instead");
+                        "CDRConverter cannot import in this build: the CDR plugin "
+                        "(libcdr) is not built");
             }
             return nullptr;
+#endif
         }
 
         std::shared_ptr<VectorStorage::VectorDocument> CDRConverter::ImportFromString(
                 const std::string& data, const ConversionOptions& options) {
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+            const std::filesystem::path cdrPath = TempPath(".cdr");
+            {
+                std::ofstream out(cdrPath, std::ios::binary);
+                out.write(data.data(), static_cast<std::streamsize>(data.size()));
+            }
+            auto doc = Import(cdrPath.string(), options);
+            std::error_code ec;
+            std::filesystem::remove(cdrPath, ec);
+            return doc;
+#else
             (void)data;
             return Import("", options);
+#endif
         }
 
         std::shared_ptr<VectorStorage::VectorDocument> CDRConverter::ImportFromStream(
                 std::istream& stream, const ConversionOptions& options) {
-            (void)stream;
-            return Import("", options);
+            std::ostringstream buffer;
+            buffer << stream.rdbuf();
+            return ImportFromString(buffer.str(), options);
         }
 
         bool CDRConverter::Export(

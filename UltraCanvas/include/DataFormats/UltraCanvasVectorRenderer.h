@@ -61,6 +61,11 @@ namespace UltraCanvas {
         float PixelRatio = 1.0f;
         bool ShowBoundingBoxes = false;
         Color DebugColor = Color(255, 0, 255, 128);
+        // No stroke is drawn thinner than this many device pixels, as in a
+        // CAD viewer: a hairline (DXF lineweight 0, or a 0.25 pt pen on a
+        // plan 10,000 units wide shown at 7 %) stays a visible line at any
+        // zoom instead of fading to nothing. 0 draws widths exactly.
+        float MinStrokePixels = 1.0f;
     };
 
 // ===== RENDER STATISTICS =====
@@ -95,6 +100,7 @@ namespace UltraCanvas {
         size_t EffectCacheSize() const { return effectCache.size() + bevelCache.size() + contourCache.size(); }
 
     private:
+        float HairlineWidth() const;
         IRenderContext* ctx = nullptr;
         VectorRenderOptions options;
         VectorRenderStats stats;
@@ -153,6 +159,19 @@ namespace UltraCanvas {
             size_t key = 0;
         };
         std::unordered_map<const VectorElement*, EffectRaster> effectCache;
+        // Inline (data: URI) images, decoded once. Keyed by the source
+        // string's buffer and length: the element's own copy of the bytes,
+        // which moves only when the source changes. Emptied by ClearCaches.
+        struct InlineImageKey {
+            const char* data; size_t size;
+            bool operator==(const InlineImageKey& o) const { return data == o.data && size == o.size; }
+        };
+        struct InlineImageKeyHash {
+            size_t operator()(const InlineImageKey& k) const {
+                return std::hash<const void*>()(k.data) ^ (k.size * 0x9e3779b97f4a7c15ULL);
+            }
+        };
+        std::unordered_map<InlineImageKey, std::shared_ptr<UCImage>, InlineImageKeyHash> inlineImageCache;
         bool silhouetteMode = false;   // painting black into an offscreen raster
         void DrawElementBody(const VectorElement& element);
         void RenderWithEffects(const VectorElement& element);

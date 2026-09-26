@@ -17,6 +17,7 @@
 #include "DataFormats/UltraCanvasVectorRenderer.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
 #include "DataFormats/UltraCanvasVectorGeometry.h"
+#include "UltraCanvasTextUtils.h"   // Base64Decode
 #include <cmath>
 #include <algorithm>
 #include <functional>
@@ -398,10 +399,29 @@ namespace UltraCanvas {
             ctx->FillRectangle(image.Bounds);
             return;
         }
-        if (!image.Source.empty())
-            ctx->DrawImage(image.Source,
-                           Rect2Dd(image.Bounds.x, image.Bounds.y, image.Bounds.width, image.Bounds.height),
-                           ImageFitMode::Contain);
+        if (image.Source.empty()) return;
+        const Rect2Dd box(image.Bounds.x, image.Bounds.y, image.Bounds.width, image.Bounds.height);
+        // An image embedded in the file ("data:image/png;base64,...": SVG,
+        // and every bitmap libcdr passes on from a CorelDRAW file) is the
+        // picture itself, not a path to one; handing it to DrawImage as a
+        // path drew nothing.
+        if (image.Source.compare(0, 5, "data:") == 0) {
+            const InlineImageKey key{image.Source.data(), image.Source.size()};
+            auto it = inlineImageCache.find(key);
+            if (it == inlineImageCache.end()) {
+                std::shared_ptr<UCImage> decoded;
+                const size_t comma = image.Source.find(',');
+                const std::string header = image.Source.substr(0, comma == std::string::npos ? 0 : comma);
+                if (comma != std::string::npos && header.find(";base64") != std::string::npos) {
+                    const std::vector<uint8_t> bytes = Base64Decode(image.Source.substr(comma + 1));
+                    if (!bytes.empty()) decoded = UCImage::LoadFromMemory(bytes);
+                }
+                it = inlineImageCache.emplace(key, decoded).first;   // a failure is cached too
+            }
+            if (it->second) ctx->DrawImage(*it->second, box, ImageFitMode::Fill);
+            return;
+        }
+        ctx->DrawImage(image.Source, box, ImageFitMode::Contain);
     }
 
     void VectorRenderer::RenderGroup(const VectorGroup &group) {
@@ -472,6 +492,17 @@ namespace UltraCanvas {
         }
     }
 
+    // The user-space width of options.MinStrokePixels device pixels under the
+    // current transform (the geometric mean of its two scale factors).
+    float VectorRenderer::HairlineWidth() const {
+        if (options.MinStrokePixels <= 0.0f || !ctx) return 0.0f;
+        double a, b, c, d, e, f;
+        ctx->GetTransform(a, b, c, d, e, f);
+        const double scale = std::sqrt(std::fabs(a * d - b * c));
+        if (!(scale > 1e-12) || !std::isfinite(scale)) return 0.0f;
+        return static_cast<float>(options.MinStrokePixels / scale);
+    }
+
     void VectorRenderer::ApplyStroke(const StrokeData &stroke, const Rect2Dd &bounds, float opacity) {
         const float strokeOpacity = opacity * stroke.Opacity;
         if (silhouetteMode) ctx->SetStrokePaint(Colors::Black);
@@ -483,7 +514,7 @@ namespace UltraCanvas {
                     if (auto *gd = dynamic_cast<VectorGradient *>(d.get()))
                         SetupGradient(gd->Data, bounds, strokeOpacity, true);
         }
-        ctx->SetStrokeWidth(stroke.Width);
+        ctx->SetStrokeWidth(std::max(stroke.Width, HairlineWidth()));
         LineCap cap = stroke.LineCap == StrokeLineCap::Round ? LineCap::Round : (stroke.LineCap == StrokeLineCap::Square
                                                                                  ? LineCap::Square : LineCap::Butt);
         LineJoin join =
@@ -1640,7 +1671,7 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-    void VectorRenderer::ClearCaches() { effectCache.clear(); bevelCache.clear(); contourCache.clear(); }
+    void VectorRenderer::ClearCaches() { effectCache.clear(); bevelCache.clear(); contourCache.clear(); inlineImageCache.clear(); }
 
     bool BuildVectorElementOutline(IRenderContext *context, const VectorElement &element) {
         if (!context) return false;

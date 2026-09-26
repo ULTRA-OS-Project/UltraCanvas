@@ -27,6 +27,35 @@ back to the PDF engine for a file whose artwork really is in its page.
 | Read (fallback) | `UltraCanvasPDFView` / `PDFEngineFactory` (`ULTRACANVAS_PLUGIN_PDF`) | A PDF-compatible `.ai` carries no private data; `AIConverter` declines it and the PDF engine renders the page |
 | Write | `VectorConverter::AIConverter` | Export-only: emits the plugin's PDF output under the `.ai` extension — valid for Illustrator and every PDF consumer |
 
+### Render trap: do not check an `.ai` against a PDF renderer
+
+A `.ai` saved without PDF compatibility is exactly the file a PDF or
+PostScript tool gets "wrong": **Ghostscript, poppler (`pdftoppm`),
+ImageMagick, libvips, LibreOffice and browser PDF viewers all render an
+empty page**, and they are right to — the page they draw is empty. So when a
+render of such a file needs checking:
+
+- **Not a reference:** anything that renders the PDF page (the list above,
+  and UltraCanvas's own image pipeline and PDF plugin). A blank result there
+  says nothing about the artwork, and a blank result from UltraCanvas means
+  the file was sent down that path instead of through `AIConverter`.
+- **References:** the *AI Artwork* demo page, `Tests/AIReaderTest.cpp`, or the
+  artwork's own application. Both samples draw through `AIConverter`
+  identically in the demo page, ArtCreator (`UltraCanvasFileLoader::
+  LoadVectorDocument`), the Filer preview and the media viewer — they all read
+  the private data into the same `VectorDocument` and draw it with
+  `VectorRenderer`.
+- **Why the samples look faint:** they are line art for cutting and plotting
+  — outlines only, no fills, 0.26 pt (`turtle.ai`) and 0.51 pt
+  (`mandalorian-star-wars.ai`) wide. `VectorRenderer` never draws a stroke
+  thinner than `VectorRenderOptions::MinStrokePixels` (one device pixel by
+  default), so they stay visible zoomed out, but they are meant to be thin.
+- **Telling the two kinds apart:** a file whose page draws nothing has a page
+  content stream of a few dozen bytes and a `/PieceInfo` → `/Illustrator` →
+  `/Private` → `/AIPrivateData1…n` chain; `AIConverter::Import` returning a
+  document is the programmatic test (null plus a warning means the artwork is
+  in the page, and the PDF engine should draw it).
+
 **Demo source:** `Apps/DemoApp/UltraCanvasAIExamples.cpp`
 **Reader:** `UltraCanvas/Plugins/Vector/UltraCanvasAIReader.cpp`
 **Test:** `Tests/AIReaderTest.cpp`

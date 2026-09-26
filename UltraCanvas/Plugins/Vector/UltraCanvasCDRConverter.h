@@ -2,9 +2,12 @@
 // CDR (CorelDRAW) writer for the Vector plugin: serializes a
 // VectorStorage::VectorDocument as a version-7 RIFF CDR file.
 //
-// Write-only. Reading CDR is the CDR plugin's job
-// (Plugins/Vector/CDR/UltraCanvasCDRPlugin.h, built on libcdr), so
-// CanImport() is false here and the Import methods return null.
+// Reading goes through the CDR plugin (Plugins/Vector/CDR, built on libcdr)
+// when this build has it (ULTRACANVAS_HAS_CDR_PLUGIN): libcdr's parse is
+// turned into SVG by librevenge's generator and that into the document by
+// the SVG importer, so everything libcdr understands arrives as editable
+// shapes. Without the plugin (Windows builds so far) CanImport() is false
+// and the Import methods return null.
 //
 // CorelDRAW's format has no public specification; the writer targets the
 // record layouts libcdr's parser (the reference open-source reader, and the
@@ -14,8 +17,8 @@
 // outline styles as referenced fild/outl definitions. Gradients fall back
 // to the blend of their end stops, text and bitmaps are skipped — each
 // reported through the warning callback.
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -40,11 +43,17 @@ namespace UltraCanvas {
             }
 
             FormatCapabilities GetCapabilities() const override;
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
+            bool CanImport() const override { return true; }
+#else
             bool CanImport() const override { return false; }
+#endif
             bool CanExport() const override { return true; }
 
-            // Import is not supported (see the header comment); these return
-            // null after reporting through options.WarningCallback.
+            // Import reads the first page through the CDR plugin (see the
+            // header comment); without it these return null after reporting
+            // through options.WarningCallback. ImportFromString/Stream spool
+            // the bytes to a temporary file, which is what libcdr reads.
             std::shared_ptr<VectorStorage::VectorDocument> Import(
                     const std::string& filename,
                     const ConversionOptions& options = ConversionOptions()) override;

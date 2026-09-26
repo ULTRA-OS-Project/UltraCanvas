@@ -39,24 +39,65 @@ ConversionOptions DebugLogOptions() {
 
 }   // namespace
 
+namespace {
+
+// The one list of converters. Everything else - which converter a path
+// gets, which extensions are readable, which writable - is asked of these.
+std::vector<std::unique_ptr<IVectorFormatConverter>> AllConverters() {
+    std::vector<std::unique_ptr<IVectorFormatConverter>> all;
+    all.push_back(std::make_unique<SVGConverter>());
+    all.push_back(std::make_unique<XARConverter>());
+    all.push_back(std::make_unique<EPSConverter>());
+    all.push_back(std::make_unique<CDRConverter>());
+    all.push_back(std::make_unique<PDFVectorConverter>());
+    all.push_back(std::make_unique<EMFConverter>());
+    all.push_back(std::make_unique<WMFConverter>());
+    all.push_back(std::make_unique<AIConverter>());
+    all.push_back(std::make_unique<DXFConverter>());
+    all.push_back(std::make_unique<DWGConverter>());
+    return all;
+}
+
+// ".SVG" / "svg" -> "svg".
+std::string NormalizedExtension(std::string ext) {
+    if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    return ext;
+}
+
+std::vector<std::string> ExtensionsWhere(bool (IVectorFormatConverter::*can)() const) {
+    std::vector<std::string> out;
+    for (const auto& converter : AllConverters()) {
+        if (!((*converter).*can)()) continue;
+        for (const std::string& e : converter->GetFileExtensions()) {
+            std::string ext = NormalizedExtension(e);
+            if (!ext.empty() && std::find(out.begin(), out.end(), ext) == out.end())
+                out.push_back(ext);
+        }
+    }
+    return out;
+}
+
+}   // namespace
+
+std::vector<std::string> UltraCanvasVectorFormatsPlugin::GetSupportedExtensions() const {
+    return ExtensionsWhere(&IVectorFormatConverter::CanImport);
+}
+
+std::vector<std::string> UltraCanvasVectorFormatsPlugin::GetSaveExtensions() const {
+    return ExtensionsWhere(&IVectorFormatConverter::CanExport);
+}
+
 std::unique_ptr<IVectorFormatConverter>
 UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(
         const std::string& extensionOrPath) {
-    std::string ext = ExtensionOf(extensionOrPath);
-    if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
-    if (ext == "svg" || ext == "svgz") return std::make_unique<SVGConverter>();
-    if (ext == "xar") return std::make_unique<XARConverter>();
-    if (ext == "eps" || ext == "epsf" || ext == "ps")
-        return std::make_unique<EPSConverter>();
-    if (ext == "cdr") return std::make_unique<CDRConverter>();
-    if (ext == "pdf") return std::make_unique<PDFVectorConverter>();
-    if (ext == "emf") return std::make_unique<EMFConverter>();
-    if (ext == "wmf") return std::make_unique<WMFConverter>();
-    if (ext == "ai") return std::make_unique<AIConverter>();
-    if (ext == "dxf") return std::make_unique<DXFConverter>();
-    // .dwg and the other names AutoCAD writes the same drawing database
-    // under: .dwt, .dws, .sv$.
-    if (DWGConverter::IsDrawingExtension(ext)) return std::make_unique<DWGConverter>();
+    const std::string ext = NormalizedExtension(ExtensionOf(extensionOrPath));
+    if (ext.empty()) return nullptr;
+    for (auto& converter : AllConverters()) {
+        for (const std::string& e : converter->GetFileExtensions()) {
+            if (NormalizedExtension(e) == ext) return std::move(converter);
+        }
+    }
     // A .bak is AutoCAD's verbatim copy of a drawing - but it is also what
     // every other program calls its backups, so this one is claimed on its
     // content, not its name: only a file that actually carries the AC10xx

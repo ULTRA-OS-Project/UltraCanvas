@@ -256,6 +256,13 @@ public:
         } else if (!declaredPage) {
             if (maxDim < 1000) unitScale = 1000.0 / maxDim;
             else if (maxDim > 10000) unitScale = 10000.0 / maxDim;
+        } else if (maxDim < 200 || maxDim > 20000) {
+            // Declared extents are still drawing units, not points: the
+            // millennium-falcon sample declares 58 x 42 (metres), which as
+            // points is a 2 cm page under 1 pt pens - solid black. Keep a
+            // declared page that is already a usable size; bring the rest
+            // into range like an undeclared one.
+            unitScale = (maxDim < 200 ? 1000.0 : 10000.0) / maxDim;
         }
         unitsH = pageH;
         pageW *= unitScale;
