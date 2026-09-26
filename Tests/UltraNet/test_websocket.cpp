@@ -289,6 +289,65 @@ TEST(ws_loopback_server_initiated_close_fires_callback) {
 #endif
 }
 
+// A callback closing its own socket runs on the receiver thread. Close used
+// to join that thread from itself: std::system_error out of the receiver,
+// std::terminate.
+TEST(ws_loopback_close_from_own_callback) {
+#if defined(_WIN32)
+    SKIP("loopback WS server is POSIX-only");
+#else
+    if (!StartWsServer()) SKIP("python3 + websockets package not available");
+
+    std::atomic<bool> closedInCallback{false};
+    std::atomic<bool> closeOk{false};
+    UltraNetWebSocketCallbacks cb;
+    cb.onText = [&](UltraNetHandle h, const std::string&) {
+        closeOk = bool(UltraNet_WebSocketClose(h, 1000, "from-callback"));
+        closedInCallback = true;
+    };
+    auto prev = UltraNet_WebSocketSetCallbacks(cb);
+
+    UltraNetHandle h = UltraNet_WebSocketConnect(EchoUrl());
+    if (h == UltraNetInvalidHandle) {
+        UltraNet_WebSocketSetCallbacks(prev);
+        SKIP("libcurl built without --enable-websockets");
+    }
+    REQUIRE(bool(UltraNet_WebSocketSendText(h, "close-me")));
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!closedInCallback.load() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    UltraNet_WebSocketSetCallbacks(prev);
+
+    REQUIRE(closedInCallback.load());
+    CHECK(closeOk.load());
+    CHECK(!UltraNet_WebSocketIsOpen(h));
+    REQUIRE_EQ(UltraNet_WebSocketGetState(h), UltraNetWebSocketState::Closed);
+#endif
+}
+
+// UltraNet_Shutdown with a socket still open must stop its receiver before
+// curl_global_cleanup; it used to leave the receiver running on libcurl.
+TEST(ws_loopback_shutdown_closes_open_sockets) {
+#if defined(_WIN32)
+    SKIP("loopback WS server is POSIX-only");
+#else
+    if (!StartWsServer()) SKIP("python3 + websockets package not available");
+    UltraNet_Initialize();
+
+    UltraNetHandle h = UltraNet_WebSocketConnect(EchoUrl());
+    if (h == UltraNetInvalidHandle) SKIP("libcurl built without --enable-websockets");
+    REQUIRE(UltraNet_WebSocketIsOpen(h));
+
+    UltraNet_Shutdown();
+    CHECK(!UltraNet_WebSocketIsOpen(h));
+    REQUIRE_EQ(UltraNet_WebSocketGetState(h), UltraNetWebSocketState::Closed);
+
+    UltraNet_Initialize();   // the tests after this one expect UltraNet up
+#endif
+}
+
 TEST(ws_loopback_invalid_handle_send_fails_cleanly) {
     auto r = UltraNet_WebSocketSendText(UltraNetInvalidHandle, "x");
     CHECK(!bool(r));
