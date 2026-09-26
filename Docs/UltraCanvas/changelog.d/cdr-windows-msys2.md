@@ -19,3 +19,15 @@
     `ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS` option builds just these two;
     their definitions moved to `Tests/VectorFormatsTests.cmake`, which
     `Tests/CMakeLists.txt` includes as before.
+- **Windows: one graphics plugin registry per process.** The registry's
+  storage (`Plugins()`, `ExtensionMap()`, `Initialized()`) sat in inline
+  functions in `UltraCanvasGraphicsPluginSystem.h`. On Windows each module
+  gets its own copy of an inline function's statics. The core is a DLL there
+  and the apps link the format plugins into the executable, so plugins
+  registered into the executable's copy, while the core's own readers saw an
+  empty one. Those readers include the supported-format inventory (file
+  dialogs, the Filer's classification) and the vector previews. The storage
+  is defined in `core/UltraCanvasGraphicsPluginSystem.cpp` again: still
+  built on first use, and now one copy for every module.
+  `VectorFormatsPluginTest`'s inventory checks, which now run on Windows,
+  found it.
