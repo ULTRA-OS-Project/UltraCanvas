@@ -382,9 +382,12 @@ namespace FileAssociationsBackend {
     namespace {
         // .tmp is an interrupted write's leftover, not an icon — swept on the
         // same rule so it cannot accumulate either.
+        // Never destroyed: the sweep runs on the association worker, which
+        // can outlive a static that is torn down at exit.
         const std::vector<std::string>& IconCacheExtensions() {
-            static const std::vector<std::string> extensions = { ".png", ".tmp" };
-            return extensions;
+            static const std::vector<std::string>* extensions =
+                    new std::vector<std::string>{ ".png", ".tmp" };
+            return *extensions;
         }
     } // namespace
 

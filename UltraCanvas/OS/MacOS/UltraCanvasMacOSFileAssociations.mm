@@ -88,8 +88,10 @@ namespace {
 
     // ===== ICON CACHE =====
 
+    // Never destroyed: the association worker reads it and can outlive a
+    // static torn down at exit.
     std::string IconCacheDir() {
-        static const std::string dir = []() -> std::string {
+        static const std::string* dir = new std::string([]() -> std::string {
             NSArray<NSString*>* caches = NSSearchPathForDirectoriesInDomains(
                     NSCachesDirectory, NSUserDomainMask, YES);
             std::string root = caches.count > 0 ? ToStdString(caches[0])
@@ -103,8 +105,8 @@ namespace {
             std::error_code ec;
             fs::create_directories(candidate, ec);
             return ec ? std::string() : candidate;
-        }();
-        return dir;
+        }());
+        return *dir;
     }
 
     std::string HashKey(const std::string& text) {

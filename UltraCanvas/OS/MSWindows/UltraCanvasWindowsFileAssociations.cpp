@@ -249,8 +249,10 @@ namespace {
 
     // %LOCALAPPDATA%\UltraCanvas\openwith-icons — created on demand. TEMP
     // covers the (rare) account without a local app-data directory.
+    // Never destroyed: the association worker reads it and can outlive a
+    // static torn down at exit.
     std::string IconCacheDir() {
-        static const std::string dir = []() -> std::string {
+        static const std::string* dir = new std::string([]() -> std::string {
             const char* roots[] = { std::getenv("LOCALAPPDATA"),
                                     std::getenv("TEMP"),
                                     std::getenv("TMP") };
@@ -263,8 +265,8 @@ namespace {
                 if (!ec) return candidate;
             }
             return {};
-        }();
-        return dir;
+        }());
+        return *dir;
     }
 
     std::string HashKey(const std::string& text) {
