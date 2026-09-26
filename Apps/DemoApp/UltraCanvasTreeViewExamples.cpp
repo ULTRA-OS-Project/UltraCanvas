@@ -27,16 +27,19 @@ namespace UltraCanvas {
         st.headerBackgroundColor = Color(235, 238, 245, 255);
         st.showHeaderSeparator = true;
         gb->SetVisualStyle(st);
+        // A flex column, so the options get a gap below the tree (block layout
+        // ignores child margins).
+        gb->layout.SetFlex(CSSLayout::FlexDirection::Column);
+        gb->layout.SetFlexGap(4.0f);
         return gb;
     }
 
-    // An option below the tree, with a little air above it.
+    // An option below the tree.
     static std::shared_ptr<UltraCanvasCheckbox> TreeDemoOption(const std::string& id,
                                                                const std::string& text,
                                                                bool checked) {
         auto cb = std::make_shared<UltraCanvasCheckbox>(id, 300.0f, 24.0f, text);
         cb->SetChecked(checked);
-        cb->SetMargin(4, 0, 0, 0);
         return cb;
     }
 
@@ -144,7 +147,7 @@ namespace UltraCanvas {
         // Demonstrates the columnar display mode (Name / Type / Value with an accent
         // Type column and section-header bars) an IDE debugger would use, plus the
         // Classic/Modern layout toggle and Alphabetic/Last-access sort options.
-        auto varsBox = TreeDemoGroupBox("VarsTreeBox", 670, 50, 430, "Debugger Variables (Modern columns)");
+        auto varsBox = TreeDemoGroupBox("VarsTreeBox", 670, 50, 430, "Debugger Variables (columns)");
         container->AddChild(varsBox);
         auto varsTree = std::make_shared<UltraCanvasColumnsTreeView>("VarsTree", 300, 330);
         varsTree->SetRowHeight(26);
@@ -274,7 +277,6 @@ namespace UltraCanvas {
                     linesTree->RequestRedraw();
                 })
                 .Build();
-        lineStyleControl->SetMargin(6, 0, 0, 0);
         linesBox->AddChild(lineStyleControl);
 
         // Root lines: the trunk down the left margin that ties the three sections
@@ -335,7 +337,6 @@ namespace UltraCanvas {
 
         auto flagStatus = std::make_shared<UltraCanvasLabel>("FlagStatusLabel", 300, 22);
         flagStatus->SetFontSize(12);
-        flagStatus->SetMargin(4, 0, 0, 0);
         // Weak capture would be cleaner, but the label outlives the tree here: both
         // belong to the same group box.
         auto updateFlagStatus = [flagTree, flagStatus]() {
