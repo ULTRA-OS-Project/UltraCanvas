@@ -409,6 +409,54 @@ that is what "inherit" means in `UCRichDocument`, and it is why a document
 authored elsewhere adopts the host application's typography until the user
 overrides it.
 
+## Paragraph layout from documents
+
+A block read from `.odt`, `.docx` or `.doc` carries its paragraph geometry
+(see `RichDocBlock` in `UltraCanvasRichDocument.h`), and the element lays it
+out:
+
+- **Indents:** `leftIndentPt` / `rightIndentPt` narrow the text column;
+  `firstLineIndentPt` moves the first line, and when negative gives a hanging
+  indent. List items keep `style.listIndent` instead.
+- **Spacing:** when either neighbour states spacing, the gap between two blocks
+  is `spaceAfterPt + spaceBeforePt`. Otherwise it is `style.blockSpacing`, so a
+  document built from Markdown looks as before.
+- **Line spacing:** `lineSpacing` (1.5 = one and a half lines).
+- **Tab stops:** `tabStops` (left, centre, right, decimal) measured from the
+  text column's edge, then every `UCRichDocument::defaultTabStopPt` (or
+  `style.defaultTabStop` when the document states none).
+
+- **List labels:** an ordered item draws `RichDocListLabel()` - its
+  `numberFormat` (1, 01, a, A, i, I) inside its `numberTemplate` (`"%1.%2)"`
+  gives "1.2)") - and an unordered one its `bulletText`, else
+  `style.bulletCharacters`. A level's text starts after its widest label, so
+  "(iii)" and "(iv)" line up. Enter keeps the label format; indenting or
+  outdenting an item takes the format of that level in the same list.
+- **Highlight, line heights, paragraph frames:** a run's `highlightColor` is
+  drawn behind its text. `lineHeightPt` sets each line's height, exactly or
+  as a minimum (`lineHeightAtLeast`). A paragraph's frame and fill are drawn
+  3 pt outside its text, and that room is added to the space around it;
+  consecutive paragraphs with the same frame form one box.
+- **Table size and cells:** a document table takes its own width
+  (`tableWidthPt`, or `tableWidthPercent` of the column, never more than the
+  column) and place (`tableAlign`, `tableIndentPt`). A cell's text sits inside
+  its `padding*Pt` (default 4 px at the sides, 2 px above) and at the cell's
+  top, middle or bottom (`verticalAlign`); drawing, caret and clicks all use
+  the same text origin.
+- **Table frames:** a table read from a document
+  (`RichDocBlock::tableBordersFromDocument`) is drawn with its cells' own
+  borders (`RichTableCell::borderTop` … `borderRight`, width and colour) and
+  `backgroundColor`, and its rows abut so the lines are continuous. A side with
+  no border draws nothing when read-only, and a faint `style.tableGuideColor`
+  guide when editable. Tables from Markdown or built in the editor keep the
+  `style.tableBorderColor` grid. Rows and columns inserted into a framed table
+  copy their neighbour's frame and fill.
+
+Lengths are points and are drawn at 96/72 pixels per point - the scale run
+font sizes get from Pango at the 96 DPI every context is pinned to - so
+indents, tab stops, spacing and table widths stay in proportion to the text. Enter gives the
+new paragraph the geometry of the one it was split from.
+
 ## Read-only rendering
 
 ```cpp
@@ -416,6 +464,39 @@ editor->SetReadOnly(true);       // no caret, no keys; still selectable and scro
 ```
 
 This is the shortest path to a faithful `.odt`/`.docx` preview pane.
+
+## Page view
+
+```cpp
+RichTextEditStyle style = editor->GetStyle();
+style.padding = 0.0f;            // the pages bring their own margins
+editor->SetStyle(style);
+editor->SetPageView(true);       // like Writer's print layout
+int pages = editor->GetPageCount();
+```
+
+Page view draws the document's pages (`UCRichDocument::page`: size,
+margins, header and footer distances - A4 with 2 cm margins when the
+document states none) on a desk (`style.deskColor`), centred, `style.pageGap`
+apart. The text column is the page's, between its side margins, so a table
+sized for the page's column fills it. Blocks go onto pages in order: one
+that does not fit in what is left of a page moves whole to the next, and a
+page break starts one. The space between two blocks is dropped at the top
+of a page.
+
+Each page carries its header and footer (`UCRichDocument::FurnitureForPage`:
+`firstPageFurniture` on page one when `firstPageDiffers`, `pageFurniture`
+otherwise), with page number and page count fields
+(`RichTextRun::field`) filled in for that page. The body starts below the
+top margin, or below the header when the header is taller than the margin
+leaves room for; the footer likewise.
+
+An editable page view marks the corners of each page's text area
+(`style.pageMarginGuideColor`) and shows page breaks as dashed rules; a
+read-only one shows neither.
+
+Outside page view the text fills the element, and a document's first-page
+header and footer are drawn above and below the body.
 
 ## What is not implemented yet
 
@@ -428,9 +509,15 @@ Honest limits of this first version — none of them silently misbehave:
   selection model holds a range inside one container, and widening it is a
   piece of work in its own right — rendering, hit testing and copying all
   change with it.
-- **Column widths are uniform.** The grid divides the available width evenly;
-  a column width stored in a `.docx` or `.odt` is preserved on save but not
-  honoured on screen.
+- **Border line styles draw solid.** A double, dotted or dashed cell border
+  from a document is drawn as a solid line of its width.
+- **Page view moves whole blocks.** A paragraph or table is not split across
+  pages (no widow/orphan control, no repeated table header rows), and a block
+  taller than a page runs past its bottom margin.
+- **Headers and footers are shown, not edited.** The caret never enters
+  them; page number fields in the body keep the number they were saved with.
+- **No zoom and no horizontal scrolling.** A page wider than the element is
+  cut at the right.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the

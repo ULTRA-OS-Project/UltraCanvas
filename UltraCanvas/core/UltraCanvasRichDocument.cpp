@@ -9,6 +9,7 @@
 #include "UltraCanvasRichDocument.h"
 
 #include <algorithm>
+#include <locale>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -647,7 +648,32 @@ std::string UCRichDocument::ConcatenateRunText(const std::vector<RichTextRun>& r
 
 // ===== MARKDOWN SERIALIZER =====
 
+UCRichDocument UCRichDocument::WithFirstPageFurnitureInline() const {
+    UCRichDocument flat = *this;
+    flat.pageFurniture = RichPageFurniture{};
+    flat.firstPageFurniture = RichPageFurniture{};
+    flat.firstPageDiffers = false;
+    const RichPageFurniture& furniture = FurnitureForPage(0);
+    std::vector<RichDocBlock> blocksInline;
+    RichDocBlock rule;
+    rule.type = RichBlockType::HorizontalRule;
+    if (!furniture.header.empty()) {
+        blocksInline.insert(blocksInline.end(), furniture.header.begin(), furniture.header.end());
+        blocksInline.push_back(rule);
+    }
+    blocksInline.insert(blocksInline.end(), blocks.begin(), blocks.end());
+    if (!furniture.footer.empty()) {
+        blocksInline.push_back(rule);
+        blocksInline.insert(blocksInline.end(), furniture.footer.begin(), furniture.footer.end());
+    }
+    flat.blocks = std::move(blocksInline);
+    return flat;
+}
+
 std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& options) const {
+    // Text output has no pages: the first page's header and footer go before
+    // and after the body, set off by rules.
+    if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToMarkdown(options);
     // Write referenced media to disk once, remembering the path per index.
     std::vector<std::string> mediaPaths(media.size());
     if (!options.imageDirectory.empty()) {
@@ -689,7 +715,11 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
                 if (!previousIsListItem) blockSeparator();
                 else first = false;
                 md << std::string(static_cast<size_t>(std::max(0, block.listLevel)) * 2, ' ')
-                   << (block.orderedList ? "1. " : "- ")
+                   // A list that starts at N (or runs on past an interruption)
+                   // spells N on its item: Markdown starts a list at its first
+                   // number and counts on from there.
+                   << (!block.orderedList ? std::string("- ")
+                       : std::to_string(block.listStartNumber > 0 ? block.listStartNumber : 1) + ". ")
                    << RunsToMarkdown(block.runs, false, &mediaPaths) << "\n";
                 break;
             }
@@ -999,6 +1029,7 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
         if (run.superscript) body = "<sup>" + body + "</sup>";
         std::string style;
         if (!run.color.empty()) style += "color:" + run.color + ";";
+        if (!run.highlightColor.empty()) style += "background-color:" + run.highlightColor + ";";
         if (!run.fontFamily.empty()) style += "font-family:'" + run.fontFamily + "';";
         if (run.fontSizePt > 0) style += "font-size:" + std::to_string(run.fontSizePt) + "pt;";
         if (!style.empty()) body = "<span style=\"" + style + "\">" + body + "</span>";
@@ -1008,6 +1039,27 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
         out += body;
     }
     return out;
+}
+
+// border-* and background-color declarations for a cell's document frame.
+// Numbers go out dot-decimal whatever the process locale.
+std::string CellFrameCss(const RichTableCell& cell) {
+    std::ostringstream css;
+    css.imbue(std::locale::classic());
+    auto side = [&](const char* name, const RichBorder& border) {
+        css << "border-" << name << ":";
+        if (border.IsVisible()) {
+            css << border.widthPt << "pt solid " << (border.color.empty() ? "#000000" : border.color) << ";";
+        } else {
+            css << "none;";
+        }
+    };
+    side("top", cell.borderTop);
+    side("bottom", cell.borderBottom);
+    side("left", cell.borderLeft);
+    side("right", cell.borderRight);
+    if (!cell.backgroundColor.empty()) css << "background-color:" << cell.backgroundColor << ";";
+    return css.str();
 }
 
 const char* AlignCss(RichTextAlign align) {
@@ -1022,6 +1074,7 @@ const char* AlignCss(RichTextAlign align) {
 } // namespace
 
 std::string UCRichDocument::ToHTML() const {
+    if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToHTML();
     std::ostringstream html;
     int openListLevel = -1;   // -1 = no list open
     std::vector<bool> listOrderedStack;
@@ -1051,11 +1104,27 @@ std::string UCRichDocument::ToHTML() const {
                     closeListsTo(block.listLevel - 1);
                 }
                 while (openListLevel < block.listLevel) {
-                    html << (block.orderedList ? "<ol>\n" : "<ul>\n");
+                    if (!block.orderedList) {
+                        html << "<ul>\n";
+                    } else {
+                        // HTML spells letters and Roman numerals itself.
+                        const char* type = block.numberFormat == RichNumberFormat::LowerLetter ? "a"
+                                         : block.numberFormat == RichNumberFormat::UpperLetter ? "A"
+                                         : block.numberFormat == RichNumberFormat::LowerRoman ? "i"
+                                         : block.numberFormat == RichNumberFormat::UpperRoman ? "I" : nullptr;
+                        html << (type ? std::string("<ol type=\"") + type + "\">\n" : std::string("<ol>\n"));
+                    }
                     listOrderedStack.push_back(block.orderedList);
                     ++openListLevel;
                 }
-                html << "<li>" << RunsToHtml(block.runs, &media) << "</li>\n";
+                // <li value> carries a number the item holds itself, which
+                // also keeps a list running on after an interruption.
+                if (block.orderedList && block.listStartNumber > 0) {
+                    html << "<li value=\"" << block.listStartNumber << "\">";
+                } else {
+                    html << "<li>";
+                }
+                html << RunsToHtml(block.runs, &media) << "</li>\n";
                 break;
             }
             case RichBlockType::CodeBlock:
@@ -1066,7 +1135,10 @@ std::string UCRichDocument::ToHTML() const {
                 html << "<blockquote><p>" << RunsToHtml(block.runs, &media) << "</p></blockquote>\n";
                 break;
             case RichBlockType::Table: {
-                html << "<table border=\"1\">\n";
+                // A document's own frames become CSS on the cells; otherwise
+                // the plain bordered table.
+                html << (block.tableBordersFromDocument
+                             ? "<table style=\"border-collapse:collapse\">\n" : "<table border=\"1\">\n");
                 for (const auto& row : block.tableRows) {
                     const char* tag = row.header ? "th" : "td";
                     html << "<tr>";
@@ -1074,6 +1146,10 @@ std::string UCRichDocument::ToHTML() const {
                         html << "<" << tag;
                         if (cell.columnSpan > 1) html << " colspan=\"" << cell.columnSpan << "\"";
                         if (cell.rowSpan > 1) html << " rowspan=\"" << cell.rowSpan << "\"";
+                        std::string css;
+                        if (const char* alignCss = AlignCss(cell.align)) css += std::string("text-align:") + alignCss + ";";
+                        if (block.tableBordersFromDocument) css += CellFrameCss(cell);
+                        if (!css.empty()) html << " style=\"" << EscapeHtml(css) << "\"";
                         html << ">" << RunsToHtml(cell.runs, &media) << "</" << tag << ">";
                     }
                     html << "</tr>\n";
@@ -1102,8 +1178,19 @@ std::string UCRichDocument::ToHTML() const {
                 break;
             case RichBlockType::Paragraph:
             default: {
-                const char* alignCss = AlignCss(block.align);
-                if (alignCss) html << "<p style=\"text-align:" << alignCss << "\">";
+                std::string css;
+                if (const char* alignCss = AlignCss(block.align)) css += std::string("text-align:") + alignCss + ";";
+                if (block.HasParagraphFrame()) {
+                    // Same declarations as a cell frame.
+                    RichTableCell frame;
+                    frame.borderTop = block.paragraphBorderTop;
+                    frame.borderBottom = block.paragraphBorderBottom;
+                    frame.borderLeft = block.paragraphBorderLeft;
+                    frame.borderRight = block.paragraphBorderRight;
+                    frame.backgroundColor = block.paragraphBackground;
+                    css += CellFrameCss(frame);
+                }
+                if (!css.empty()) html << "<p style=\"" << EscapeHtml(css) << "\">";
                 else html << "<p>";
                 html << RunsToHtml(block.runs, &media) << "</p>\n";
                 break;
@@ -1117,6 +1204,7 @@ std::string UCRichDocument::ToHTML() const {
 // ===== PLAIN TEXT SERIALIZER =====
 
 std::string UCRichDocument::ToPlainText() const {
+    if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToPlainText();
     std::ostringstream text;
     bool first = true;
     for (const auto& block : blocks) {
@@ -1147,6 +1235,139 @@ std::string UCRichDocument::ToPlainText() const {
         }
     }
     return text.str();
+}
+
+// ===== LIST NUMBERING =====
+
+int RichDocOrderedItemNumber(const std::vector<RichDocBlock>& blocks, size_t index) {
+    if (index >= blocks.size()) return 0;
+    const RichDocBlock& block = blocks[index];
+    if (block.type != RichBlockType::ListItem || !block.orderedList) return 0;
+    if (block.listStartNumber > 0) return block.listStartNumber;
+    int number = 1;
+    for (size_t i = index; i-- > 0;) {
+        const RichDocBlock& previous = blocks[i];
+        if (previous.type != RichBlockType::ListItem) break;
+        if (previous.listLevel < block.listLevel) break;
+        if (previous.listLevel > block.listLevel) continue;
+        if (previous.orderedList != block.orderedList) break;
+        if (previous.listStartNumber > 0) return previous.listStartNumber + number;
+        number++;
+    }
+    return number;
+}
+
+std::string FormatListNumber(int number, RichNumberFormat format) {
+    switch (format) {
+        case RichNumberFormat::NoNumber:
+            return "";
+        case RichNumberFormat::DecimalZero:
+            return (number >= 0 && number < 10 ? "0" : "") + std::to_string(number);
+        case RichNumberFormat::LowerLetter:
+        case RichNumberFormat::UpperLetter: {
+            // Word and Writer repeat the letter past z: y, z, aa, bb, ...
+            if (number < 1) return std::to_string(number);
+            const char base = format == RichNumberFormat::LowerLetter ? 'a' : 'A';
+            return std::string(static_cast<size_t>((number - 1) / 26 + 1),
+                               static_cast<char>(base + (number - 1) % 26));
+        }
+        case RichNumberFormat::LowerRoman:
+        case RichNumberFormat::UpperRoman: {
+            if (number < 1 || number > 3999) return std::to_string(number);
+            static const std::pair<int, const char*> numerals[] = {
+                {1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"}, {100, "C"}, {90, "XC"},
+                {50, "L"}, {40, "XL"}, {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}};
+            std::string out;
+            for (const auto& [value, text] : numerals) {
+                while (number >= value) { out += text; number -= value; }
+            }
+            if (format == RichNumberFormat::LowerRoman) {
+                for (char& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            }
+            return out;
+        }
+        case RichNumberFormat::Decimal:
+        default:
+            return std::to_string(number);
+    }
+}
+
+std::string RichDocListLabel(const std::vector<RichDocBlock>& blocks, size_t index) {
+    if (index >= blocks.size()) return "";
+    const RichDocBlock& block = blocks[index];
+    if (block.type != RichBlockType::ListItem || !block.orderedList) return "";
+    const std::string templ = block.numberTemplate.empty()
+            ? "%" + std::to_string(std::clamp(block.listLevel, 0, 8) + 1) + "."
+            : block.numberTemplate;
+    // The number of level `level` as seen from this item.
+    auto levelNumber = [&](int level) -> std::string {
+        if (level == block.listLevel) {
+            return FormatListNumber(RichDocOrderedItemNumber(blocks, index), block.numberFormat);
+        }
+        for (size_t i = index; i-- > 0;) {
+            const RichDocBlock& previous = blocks[i];
+            if (previous.type != RichBlockType::ListItem) break;
+            if (previous.listLevel == level) {
+                return previous.orderedList
+                        ? FormatListNumber(RichDocOrderedItemNumber(blocks, i), previous.numberFormat) : "";
+            }
+            if (previous.listLevel < level) break;
+        }
+        return "1";
+    };
+    std::string label;
+    for (size_t i = 0; i < templ.size(); ++i) {
+        if (templ[i] == '%' && i + 1 < templ.size() && templ[i + 1] >= '1' && templ[i + 1] <= '9') {
+            label += levelNumber(templ[i + 1] - '1');
+            ++i;
+        } else {
+            label.push_back(templ[i]);
+        }
+    }
+    return label;
+}
+
+std::vector<RichListNumbering::Counter>& RichListNumbering::LevelsOf(const std::string& listKey) {
+    for (auto& entry : lists_) {
+        if (entry.first == listKey) return entry.second;
+    }
+    lists_.emplace_back(listKey, std::vector<Counter>(10));
+    return lists_.back().second;
+}
+
+int RichListNumbering::Next(const std::string& listKey, int level, int startAt) {
+    std::vector<Counter>& levels = LevelsOf(listKey);
+    const size_t l = static_cast<size_t>(std::clamp(level, 0, static_cast<int>(levels.size()) - 1));
+    Counter& counter = levels[l];
+    if (counter.restartAt > 0) {
+        counter.value = counter.restartAt;
+        counter.restartAt = 0;
+    } else if (!counter.started) {
+        counter.value = startAt;
+    } else {
+        counter.value++;
+    }
+    counter.started = true;
+    // A deeper level begins again under this item.
+    for (size_t deeper = l + 1; deeper < levels.size(); deeper++) {
+        levels[deeper].started = false;
+        levels[deeper].restartAt = 0;
+    }
+    return counter.value;
+}
+
+void RichListNumbering::Restart(const std::string& listKey, int level, int number) {
+    std::vector<Counter>& levels = LevelsOf(listKey);
+    const size_t l = static_cast<size_t>(std::clamp(level, 0, static_cast<int>(levels.size()) - 1));
+    levels[l].restartAt = number;
+}
+
+void RichListNumbering::Apply(std::vector<RichDocBlock>& blocks, size_t index, int number) {
+    if (index >= blocks.size() || number <= 0) return;
+    RichDocBlock& block = blocks[index];
+    if (block.type != RichBlockType::ListItem || !block.orderedList) return;
+    block.listStartNumber = 0;
+    if (RichDocOrderedItemNumber(blocks, index) != number) block.listStartNumber = number;
 }
 
 } // namespace UltraCanvas

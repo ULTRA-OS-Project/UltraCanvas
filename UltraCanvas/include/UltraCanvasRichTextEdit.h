@@ -33,6 +33,7 @@
 #include <array>
 #include <atomic>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -60,9 +61,15 @@ struct RichTextEditStyle {
     Color ruleColor = Color(200, 200, 200);
     Color pageBreakColor = Color(170, 170, 170);
     Color listMarkerColor = Color(80, 80, 80);
-    Color tableBorderColor = Color(200, 200, 200);
+    Color tableBorderColor = Color(200, 200, 200);   // grid of tables without document borders
+    Color tableGuideColor = Color(225, 225, 225);    // borderless document cells, editable view only
     Color imagePlaceholderColor = Color(150, 150, 150);
     Color borderColor = Color(170, 170, 170);
+    // Page view: the desk around the pages, the paper, and its shadow.
+    Color deskColor = Color(212, 212, 212);
+    Color pageColor = Color(255, 255, 255);
+    Color pageShadowColor = Color(0, 0, 0, 40);
+    Color pageMarginGuideColor = Color(210, 210, 210);  // text area corners, editable view only
 
     // Heading sizes as multiples of the base font size (H1..H6).
     std::array<float, 6> headingSizeMultipliers = {2.0f, 1.6f, 1.35f, 1.2f, 1.1f, 1.0f};
@@ -79,9 +86,11 @@ struct RichTextEditStyle {
     float listIndent = 24.0f;         // per nesting level
     float quoteIndent = 16.0f;
     float codeIndent = 12.0f;
-    float blockSpacing = 6.0f;        // between blocks
+    float blockSpacing = 6.0f;        // between blocks that state no spacing of their own
+    float defaultTabStop = 36.0f;     // tab interval when the document states none
     float paragraphLeading = 0.0f;    // extra leading inside a paragraph
     float scrollbarWidth = 15.0f;
+    float pageGap = 16.0f;            // page view: desk between and around pages
     bool drawBorder = true;
 };
 
@@ -135,6 +144,17 @@ public:
     // ===== MODE =====
     void SetReadOnly(bool value);
     bool IsReadOnly() const { return readOnly; }
+
+    // Page view, like a word processor's print layout: the document's pages
+    // (UCRichDocument::page - A4 with 2 cm margins when it states none) drawn
+    // on a desk, each with its header and footer, and the text column as wide
+    // as the page's. Blocks move to the next page whole; a page break starts
+    // one. Off (the default), the text fills the element and a document's
+    // first-page header and footer sit above and below it.
+    void SetPageView(bool enabled);
+    bool IsPageView() const { return pageView; }
+    // Pages laid out so far: 1 outside page view.
+    int GetPageCount() const { return pageView ? std::max(1, static_cast<int>(pages.size())) : 1; }
 
     // ===== STYLE =====
     const RichTextEditStyle& GetStyle() const { return style; }
@@ -299,6 +319,12 @@ private:
         std::vector<std::unique_ptr<BlockLayout>> cells;
         std::vector<int> cellColumns;
         std::vector<int> cellRows;
+        // Table cells: where the text sits inside `bounds` (padding plus
+        // vertical alignment) - used alike by drawing, caret and hit testing.
+        float textTop = 0.0f;
+        float textHeight = 0.0f;
+        float textBottomPad = 0.0f;
+        RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
         std::shared_ptr<UCImage> image;           // image blocks
         // Pictures sitting inside this block's text. The layout reserves a box
         // for each (a CreateShape attribute over its U+FFFC placeholder) and
@@ -317,13 +343,28 @@ private:
     // ===== LAYOUT =====
     void EnsureLayouts(IRenderContext* ctx);
     void BuildBlockLayout(IRenderContext* ctx, int blockIndex);
+    // Lays out blocks[index] into `bl`. `blockIndex` is the block's index in
+    // the edited document, which selection and link hits refer to; -1 for a
+    // header or footer block, which carries neither.
+    void BuildBlockLayout(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int index,
+                          BlockLayout& bl, int blockIndex);
     std::unique_ptr<ITextLayout> MakeRunsLayout(IRenderContext* ctx,
                                                 const RichDocBlock& block,
                                                 const std::vector<RichTextRun>& runs,
                                                 float wrapWidth,
                                                 std::vector<RichTextHitRect>* outHits,
                                                 int blockIndex,
-                                                std::vector<BlockLayout::InlineImage>* outInlineImages = nullptr) const;
+                                                std::vector<BlockLayout::InlineImage>* outInlineImages = nullptr,
+                                                float paragraphOriginX = -1.0f) const;
+    void ApplyParagraphGeometry(ITextLayout* layout, const RichDocBlock& block,
+                                const std::string& text, float originX, float wrapWidth) const;
+    float GapAfterBlock(int index) const;
+    float GapAfterBlock(const std::vector<RichDocBlock>& blocks, int index) const;
+    FontStyle MarkerFontFor(const RichDocBlock& block) const;
+    float WidestSiblingLabel(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int index) const;
+    void DrawDocumentCellFrame(IRenderContext* ctx, const RichTableCell& cell, const Rect2Dd& rect) const;
+    void DrawParagraphFrame(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int index,
+                            const BlockLayout& bl, float originX, float originY) const;
     void ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                             const std::vector<RichTextRun>& runs,
                             std::vector<RichTextHitRect>* outHits, int blockIndex,
@@ -335,8 +376,40 @@ private:
     FontStyle FontForBlock(const RichDocBlock& block) const;
     void RecalculateVisibleArea();
 
+    // ===== PAGES =====
+    // A header or footer as laid out for one page (its page number filled in).
+    struct FurnitureLayout {
+        std::vector<RichDocBlock> blocks;
+        std::vector<BlockLayout> layouts;         // bounds.y relative to the first block
+        float height = 0.0f;
+    };
+    struct PageFrame {
+        float top = 0.0f;                         // content coordinates
+        float bodyTop = 0.0f;
+        float bodyBottom = 0.0f;
+        float headerTop = 0.0f;
+        float footerTop = 0.0f;
+        std::shared_ptr<FurnitureLayout> header;
+        std::shared_ptr<FurnitureLayout> footer;
+    };
+    bool PageViewActive() const { return pageView; }
+    RichPageSetup EffectivePageSetup() const;
+    void UpdateColumnGeometry();
+    // The text column: its left edge in element coordinates and its width.
+    float ColumnLeft() const { return visibleArea.x + columnOffsetX; }
+    float ColumnWidth() const { return columnWidth; }
+    std::shared_ptr<FurnitureLayout> LayoutFurniture(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
+                                                     int pageNumber, int pageCount);
+    // Positions every block: on pages in page view, one column otherwise.
+    float PlaceBlocksOnPages(IRenderContext* ctx);
+    float PlaceBlocksInColumn(IRenderContext* ctx);
+    void RenderPages(IRenderContext* ctx);
+    void RenderFurniture(IRenderContext* ctx, const FurnitureLayout& furniture, float top);
+
     // ===== RENDERING =====
     void RenderBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl);
+    void RenderBlock(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int index,
+                     const BlockLayout& bl, float originX, float originY, int blockIndex);
     void DrawInlineImages(IRenderContext* ctx, const BlockLayout& bl,
                           float originX, float originY) const;
     void DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl);
@@ -389,6 +462,20 @@ private:
     std::vector<BlockLayout> blockLayouts;
 
     Rect2Df visibleArea{0, 0, 0, 0};  // text area inside padding and scrollbar
+    // Page view state. The text column sits columnOffsetX right of
+    // visibleArea.x and is columnWidth wide (the whole visible width outside
+    // page view).
+    bool pageView = false;
+    float columnOffsetX = 0.0f;
+    float columnWidth = 1.0f;
+    float pageLeftX = 0.0f;           // page's left edge, from visibleArea.x
+    float pageWidthPx = 0.0f;
+    float pageHeightPx = 0.0f;
+    std::vector<PageFrame> pages;     // page view: every page; else one frame for the furniture
+    // Header and footer layouts by furniture, page number and page count, so
+    // scrolling does not re-lay them. Cleared with the block layouts.
+    std::map<std::string, std::shared_ptr<FurnitureLayout>> furnitureCache;
+    float furnitureCacheWidth = -1.0f;
     float scrollOffset = 0.0f;
     float contentHeight = 0.0f;
     float lastWrapWidth = -1.0f;

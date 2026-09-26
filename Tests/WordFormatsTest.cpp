@@ -10,13 +10,17 @@
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasRichDocumentEditor.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasWordFormatInternal.h"
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -54,6 +58,296 @@ static std::string TmpPath(const std::string& name) { return gTmpDir + "/" + nam
 static void WriteFile(const std::string& path, const void* data, size_t size) {
     std::ofstream out(path, std::ios::binary);
     out.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));
+}
+
+// Finds the first block whose text contains `needle` (nullptr if none).
+static const RichDocBlock* FindBlock(const UCRichDocument& d, const std::string& needle,
+                                     size_t* index = nullptr) {
+    for (size_t i = 0; i < d.blocks.size(); ++i) {
+        if (UCRichDocument::ConcatenateRunText(d.blocks[i].runs).find(needle) != std::string::npos) {
+            if (index) *index = i;
+            return &d.blocks[i];
+        }
+    }
+    return nullptr;
+}
+
+// Finds the run whose text is exactly `text` in block `b`.
+static const RichTextRun* FindRun(const RichDocBlock* b, const std::string& text) {
+    if (!b) return nullptr;
+    for (const auto& run : b->runs) {
+        if (run.text == text) return &run;
+    }
+    return nullptr;
+}
+
+static std::string Lower(std::string s) {
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+static bool Near(float a, float b) { return std::abs(a - b) < 0.6f; }
+
+static const RichTableCell* FindCell(const UCRichDocument& d, const std::string& text,
+                                     const RichDocBlock** tableOut = nullptr) {
+    for (const auto& b : d.blocks) {
+        for (const auto& row : b.tableRows) {
+            for (const auto& cell : row.cells) {
+                if (UCRichDocument::ConcatenateRunText(cell.runs) == text) {
+                    if (tableOut) *tableOut = &b;
+                    return &cell;
+                }
+            }
+        }
+    }
+    return nullptr;
+}
+
+// Number formats, multi-level labels and document bullets.
+static void CheckListLabels(const UCRichDocument& d, const std::string& label) {
+    auto labelOf = [&](const std::string& text) {
+        size_t index = 0;
+        return FindBlock(d, text, &index) ? RichDocListLabel(d.blocks, index) : std::string("<missing>");
+    };
+    CHECK_MSG(labelOf("outline one") == "1.", label + ": " + labelOf("outline one"));
+    CHECK_MSG(labelOf("outline one one") == "1.1.", label + ": " + labelOf("outline one one"));
+    CHECK_MSG(labelOf("outline one two") == "1.2.", label + ": " + labelOf("outline one two"));
+    CHECK_MSG(labelOf("outline letter a") == "a)", label + ": " + labelOf("outline letter a"));
+    CHECK_MSG(labelOf("outline letter b") == "b)", label + ": " + labelOf("outline letter b"));
+    CHECK_MSG(labelOf("outline two") == "2.", label + ": " + labelOf("outline two"));
+    CHECK_MSG(labelOf("roman one") == "(I)", label + ": " + labelOf("roman one"));
+    CHECK_MSG(labelOf("roman four") == "(IV)", label + ": " + labelOf("roman four"));
+    CHECK_MSG(labelOf("step three") == "3.", label + ": " + labelOf("step three"));
+    const RichDocBlock* square = FindBlock(d, "square item");
+    CHECK_MSG(square && square->bulletText == "\xE2\x96\xAA", label + ": Wingdings bullet is a small square");
+    // LibreOffice writes the en dash bullet to Word formats as a Symbol-font
+    // minus, which is what comes back from those.
+    const RichDocBlock* dash = FindBlock(d, "dash item");
+    CHECK_MSG(dash && (dash->bulletText == "\xE2\x80\x93" || dash->bulletText == "\xE2\x88\x92"),
+              label + ": dash bullet");
+}
+
+// The narrow table: 3in wide, centred; a vertically centred, padded cell.
+static void CheckTablePlacement(const UCRichDocument& d, const std::string& label) {
+    const RichDocBlock* narrow = nullptr;
+    const RichTableCell* middle = FindCell(d, "middle cell", &narrow);
+    CHECK_MSG(narrow && Near(narrow->tableWidthPt, 216.0f) && narrow->tableAlign == RichTextAlign::Center,
+              label + ": narrow centred table");
+    CHECK_MSG(middle && middle->verticalAlign == RichVerticalAlign::Middle, label + ": vertically centred cell");
+    CHECK_MSG(middle && Near(middle->paddingTopPt, 7.2f) && Near(middle->paddingLeftPt, 7.2f)
+              && Near(middle->paddingBottomPt, 7.2f) && Near(middle->paddingRightPt, 7.2f), label + ": cell padding");
+    const RichDocBlock* wide = nullptr;
+    FindCell(d, "Date", &wide);
+    CHECK_MSG(wide && Near(wide->tableWidthPt, 432.0f), label + ": 6in table");
+}
+
+// The page: US Letter with its own margins, a header with page number and
+// count fields, a footer, and another header and footer on the first page.
+// ODF's body top is the header's start plus its minimum height; Word's is
+// where LibreOffice put it on export, below the header's actual text.
+static void CheckPageLayout(const UCRichDocument& d, const std::string& label) {
+    const RichPageSetup& page = d.page;
+    CHECK_MSG(Near(page.widthPt, 612.0f) && Near(page.heightPt, 792.0f), label + ": page size");
+    CHECK_MSG(Near(page.marginLeftPt, 86.4f) && Near(page.marginRightPt, 64.8f), label + ": side margins");
+    CHECK_MSG(page.marginTopPt > 55.0f && page.marginTopPt < 74.0f && Near(page.headerTopPt, 36.0f),
+              label + ": top margin and header distance");
+    CHECK_MSG(page.marginBottomPt > 48.0f && page.marginBottomPt < 60.0f && Near(page.footerBottomPt, 28.8f),
+              label + ": bottom margin and footer distance");
+    CHECK_MSG(d.firstPageDiffers, label + ": first page differs");
+    auto text = [](const std::vector<RichDocBlock>& blocks) {
+        std::string all;
+        for (const RichDocBlock& b : blocks) all += UCRichDocument::ConcatenateRunText(b.runs);
+        return all;
+    };
+    CHECK_MSG(text(d.firstPageFurniture.header) == "First page header", label + ": first page header");
+    CHECK_MSG(text(d.firstPageFurniture.footer) == "First page footer", label + ": first page footer");
+    CHECK_MSG(text(d.pageFurniture.footer) == "Fixture footer", label + ": footer");
+    bool pageNumber = false, pageCount = false;
+    for (const RichDocBlock& b : d.pageFurniture.header) {
+        for (const RichTextRun& run : b.runs) {
+            pageNumber = pageNumber || run.field == RichTextRun::Field::PageNumber;
+            pageCount = pageCount || run.field == RichTextRun::Field::PageCount;
+        }
+    }
+    CHECK_MSG(text(d.pageFurniture.header).rfind("Fixture header page ", 0) == 0 && pageNumber && pageCount,
+              label + ": header with page fields");
+    CHECK_MSG(&d.FurnitureForPage(0) == &d.firstPageFurniture && &d.FurnitureForPage(1) == &d.pageFurniture,
+              label + ": furniture per page");
+}
+
+// Highlight, fixed line heights and paragraph frames.
+static void CheckHighlightAndFrames(const UCRichDocument& d, const std::string& label) {
+    const RichDocBlock* marked = FindBlock(d, "marked");
+    const RichTextRun* run = FindRun(marked, "marked");
+    CHECK_MSG(run && Lower(run->highlightColor) == "#ffff00", label + ": highlight");
+    const RichTextRun* plain = FindRun(marked, " word.");
+    CHECK_MSG(plain && plain->highlightColor.empty(), label + ": no highlight after it");
+
+    const RichDocBlock* fixed = FindBlock(d, "fixed height line");
+    CHECK_MSG(fixed && Near(fixed->lineHeightPt, 20.0f) && !fixed->lineHeightAtLeast, label + ": exact line height");
+    const RichDocBlock* atLeast = FindBlock(d, "at least height line");
+    CHECK_MSG(atLeast && Near(atLeast->lineHeightPt, 18.0f) && atLeast->lineHeightAtLeast,
+              label + ": at-least line height");
+
+    const RichDocBlock* boxOne = FindBlock(d, "boxed one");
+    const RichDocBlock* boxTwo = FindBlock(d, "boxed two");
+    CHECK_MSG(boxOne && Near(boxOne->paragraphBorderTop.widthPt, 0.5f) && Near(boxOne->paragraphBorderLeft.widthPt, 0.5f)
+              && Lower(boxOne->paragraphBackground) == "#eeeeee", label + ": boxed paragraph");
+    CHECK_MSG(boxOne && boxTwo && boxOne->SameParagraphFrame(*boxTwo), label + ": one box");
+    const RichDocBlock* ruled = FindBlock(d, "ruled paragraph");
+    CHECK_MSG(ruled && Near(ruled->paragraphBorderTop.widthPt, 1.0f) && Lower(ruled->paragraphBorderTop.color) == "#808080"
+              && !ruled->paragraphBorderBottom.IsVisible() && ruled->paragraphBackground.empty(),
+              label + ": rule above");
+}
+
+// Cell borders and fills of the fixture's tables.
+static void CheckCellFrames(const UCRichDocument& d, const std::string& label) {
+    const RichDocBlock* table = nullptr;
+    const RichTableCell* header = FindCell(d, "Date", &table);
+    CHECK_MSG(table && table->tableBordersFromDocument, label + ": borders come from the document");
+    auto lower = [](std::string v) { for (char& c : v) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return v; };
+    CHECK_MSG(header && lower(header->backgroundColor) == "#ddeeff", label + ": header fill");
+    CHECK_MSG(header && Near(header->borderTop.widthPt, 0.5f) && Near(header->borderLeft.widthPt, 0.5f)
+              && (header->borderTop.color.empty() || header->borderTop.color == "#000000"), label + ": grid line");
+    const RichTableCell* thick = FindCell(d, "250.50");
+    CHECK_MSG(thick && Near(thick->borderBottom.widthPt, 2.0f) && lower(thick->borderBottom.color) == "#0000ff"
+              && Near(thick->borderRight.widthPt, 0.5f), label + ": thick blue bottom line");
+    CHECK_MSG(thick && thick->backgroundColor.empty(), label + ": no fill");
+    const RichTableCell* layout = FindCell(d, "layout left");
+    CHECK_MSG(layout && !layout->borderTop.IsVisible() && !layout->borderBottom.IsVisible()
+              && !layout->borderLeft.IsVisible() && !layout->borderRight.IsVisible(),
+              label + ": borderless layout table");
+}
+
+// Paragraph geometry and symbol fonts of the fixture (and of what the
+// writers make of it).
+static void CheckGeometry(const UCRichDocument& d, const std::string& label) {
+    CHECK_MSG(Near(d.defaultTabStopPt, 36.0f), label + ": default tab 0.5in");
+
+    const RichDocBlock* indented = FindBlock(d, "Indented paragraph");
+    CHECK_MSG(indented && Near(indented->leftIndentPt, 72.0f) && Near(indented->rightIndentPt, 36.0f)
+              && Near(indented->firstLineIndentPt, 18.0f), label + ": indents");
+    CHECK_MSG(indented && Near(indented->spaceBeforePt, 12.0f) && Near(indented->spaceAfterPt, 6.0f),
+              label + ": spacing");
+    CHECK_MSG(indented && std::abs(indented->lineSpacing - 1.5f) < 0.01f, label + ": line spacing");
+
+    const RichDocBlock* hanging = FindBlock(d, "Hanging:");
+    CHECK_MSG(hanging && Near(hanging->leftIndentPt, 36.0f) && Near(hanging->firstLineIndentPt, -36.0f),
+              label + ": hanging indent");
+
+    const RichDocBlock* tabbed = FindBlock(d, "centre");
+    CHECK_MSG(tabbed && tabbed->tabStops.size() == 4, label + ": tab stops");
+    if (tabbed && tabbed->tabStops.size() == 4) {
+        const RichTabKind kinds[4] = {RichTabKind::Left, RichTabKind::Center, RichTabKind::Right,
+                                      RichTabKind::Decimal};
+        const float positions[4] = {72.0f, 216.0f, 360.0f, 432.0f};
+        for (size_t i = 0; i < 4; ++i) {
+            CHECK_MSG(tabbed->tabStops[i].kind == kinds[i] && Near(tabbed->tabStops[i].positionPt, positions[i]),
+                      label + ": tab " + std::to_string(i));
+        }
+    }
+
+    // Wingdings "(*" is a telephone and an envelope; the symbol font is gone.
+    const RichDocBlock* symbols = FindBlock(d, "symbols");
+    CHECK_MSG(symbols && UCRichDocument::ConcatenateRunText(symbols->runs).rfind("\xE2\x98\x8E\xE2\x9C\x89", 0) == 0,
+              label + ": Wingdings mapped to Unicode");
+    if (symbols) {
+        for (const auto& run : symbols->runs) CHECK_MSG(Lower(run.fontFamily) != "wingdings", label);
+    }
+}
+
+// Tests/fixtures/word97-formatting.{fodt,odt,doc,docx} are one document: the .fodt
+// is the hand-written source, the .odt and .doc are LibreOffice's saves of it
+// (soffice --convert-to odt / "doc:MS Word 97"). Every reader has to recover
+// the same structure from them.
+static void CheckFormattingFixture(const UCRichDocument& d, const std::string& label) {
+    CHECK_MSG(!d.blocks.empty() && d.blocks[0].type == RichBlockType::Heading
+              && d.blocks[0].headingLevel == 1, label);
+
+    const RichDocBlock* styled = FindBlock(d, "Plain");
+    CHECK_MSG(styled != nullptr, label);
+    if (styled) {
+        // Spaces between two styled spans are real spaces.
+        CHECK_MSG(UCRichDocument::ConcatenateRunText(styled->runs)
+                      == "Plain bold red under struck E=mc2 big link text.", label);
+        const RichTextRun* run = FindRun(styled, "bold");
+        CHECK_MSG(run && run->bold, label + ": bold");
+        run = FindRun(styled, "red");
+        CHECK_MSG(run && Lower(run->color) == "#c00000", label + ": colour");
+        run = FindRun(styled, "under");
+        CHECK_MSG(run && run->underline, label + ": underline");
+        run = FindRun(styled, "struck");
+        CHECK_MSG(run && run->strikethrough, label + ": strike");
+        run = FindRun(styled, "2");
+        CHECK_MSG(run && run->superscript, label + ": superscript");
+        run = FindRun(styled, "big");
+        CHECK_MSG(run && run->fontSizePt == 16.0f, label + ": size");
+        run = FindRun(styled, "link text");
+        CHECK_MSG(run && run->linkTarget == "https://example.org/doc", label + ": link");
+    }
+
+    const RichDocBlock* centred = FindBlock(d, "Centred line");
+    CHECK_MSG(centred && centred->align == RichTextAlign::Center, label + ": alignment");
+
+    const RichDocBlock* nested = FindBlock(d, "bullet A.1");
+    CHECK_MSG(nested && nested->type == RichBlockType::ListItem && !nested->orderedList
+              && nested->listLevel == 1, label + ": nested bullet");
+
+    // Numbering runs on across the interrupting paragraph, and a list can
+    // start at 5.
+    auto numberOf = [&](const std::string& text) {
+        size_t index = 0;
+        return FindBlock(d, text, &index) ? RichDocOrderedItemNumber(d.blocks, index) : -1;
+    };
+    CHECK_MSG(numberOf("step one") == 1, label + ": step one");
+    CHECK_MSG(numberOf("step two") == 2, label + ": step two");
+    CHECK_MSG(numberOf("step three") == 3, label + ": numbering continues");
+    CHECK_MSG(numberOf("item five") == 5, label + ": start value");
+    CHECK_MSG(numberOf("item six") == 6, label + ": after start value");
+
+    const RichDocBlock* table = nullptr;
+    for (const auto& b : d.blocks) {
+        if (b.type == RichBlockType::Table) { table = &b; break; }
+    }
+    // Word 97 has no separator between two adjacent tables, so the .doc (like
+    // Word itself) shows the layout table as further rows of this one.
+    CHECK_MSG(table && table->tableRows.size() >= 3, label + ": table");
+    if (table && table->tableRows.size() >= 3) {
+        CHECK_MSG(table->tableRows[0].header, label + ": header row");
+        CHECK_MSG(table->tableRows[0].cells[0].align == RichTextAlign::Center, label + ": header centred");
+        CHECK_MSG(table->tableRows[1].cells[1].align == RichTextAlign::Right, label + ": amount right");
+        CHECK_MSG(UCRichDocument::ConcatenateRunText(table->tableRows[1].cells[1].runs) == "1,000.00",
+                  label);
+        CHECK_MSG(table->tableColumnWidths.size() == 2, label + ": column widths");
+        if (table->tableColumnWidths.size() == 2) {
+            const float ratio = table->tableColumnWidths[1] / table->tableColumnWidths[0];
+            CHECK_MSG(ratio > 2.9f && ratio < 3.1f, label + ": 1.5in : 4.5in");
+        }
+    }
+
+    const RichDocBlock* picture = FindBlock(d, "Picture:");
+    bool inlinePicture = false;
+    if (picture) {
+        for (const auto& run : picture->runs) {
+            if (run.IsInlineImage() && run.mediaIndex >= 0
+                && run.mediaIndex < static_cast<int>(d.media.size())
+                && d.media[static_cast<size_t>(run.mediaIndex)].mimeType == "image/png") {
+                inlinePicture = true;
+            }
+        }
+    }
+    CHECK_MSG(inlinePicture, label + ": inline PNG picture");
+
+    size_t afterBreak = 0;
+    CHECK_MSG(FindBlock(d, "After the page break.", &afterBreak) && afterBreak > 0
+              && d.blocks[afterBreak - 1].type == RichBlockType::PageBreak, label + ": page break");
+
+    CheckGeometry(d, label);
+    CheckCellFrames(d, label);
+    CheckListLabels(d, label);
+    CheckHighlightAndFrames(d, label);
+    CheckTablePlacement(d, label);
+    CheckPageLayout(d, label);
 }
 
 static UCRichDocument BuildSampleDocument() {
@@ -227,7 +521,7 @@ int main(int argc, char** argv) {
         CHECK(!err.empty());
     }
 
-    // ===== 5b. Legacy .doc text extraction (real Word 97 fixture) =====
+    // ===== 5b. Legacy .doc import (real Word 97 fixture) =====
 #ifdef WORDTEST_FIXTURE_DIR
     {
         std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/legacy-word97.doc";
@@ -250,6 +544,217 @@ int main(int argc, char** argv) {
         }
     }
 #endif
+
+    // ===== 5c. Formatted import: the same document as .odt and as .doc =====
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        for (const char* name : {"word97-formatting.odt", "word97-formatting.doc", "word97-formatting.docx"}) {
+            const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
+            UCRichDocument imported;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(fixture, imported, err), err);
+            CheckFormattingFixture(imported, name);
+
+            // What was read survives a save: list numbers, cell alignment and
+            // column widths go back out through both writers.
+            for (const char* ext : {".odt", ".docx"}) {
+                const std::string saved = TmpPath(std::string("resaved-") + name + ext);
+                CHECK_MSG(UCWordDocumentIO::Save(saved, imported, err), err);
+                UCRichDocument back;
+                CHECK_MSG(UCWordDocumentIO::Load(saved, back, err), err);
+                const std::string label = std::string(name) + " -> " + ext;
+                const RichDocBlock* table = nullptr;
+                for (const auto& b : back.blocks) {
+                    if (b.type == RichBlockType::Table) { table = &b; break; }
+                }
+                CHECK_MSG(table && table->tableRows.size() >= 3
+                          && table->tableRows[1].cells[1].align == RichTextAlign::Right, label);
+                CheckCellFrames(back, label);
+                CheckListLabels(back, label);
+                CHECK_MSG(table && table->tableColumnWidths.size() == 2
+                          && table->tableColumnWidths[1] > 2.9f * table->tableColumnWidths[0], label);
+                CheckGeometry(back, label);
+                CheckPageLayout(back, label);
+                // What an empty paragraph is measured with survives too.
+                size_t sized = 0;
+                for (size_t b = 0; b < imported.blocks.size(); ++b) {
+                    if (imported.blocks[b].type == RichBlockType::Paragraph
+                        && imported.blocks[b].paragraphFontSizePt > 0.0f) { sized = b; break; }
+                }
+                CHECK_MSG(sized > 0 && sized < back.blocks.size()
+                          && Near(back.blocks[sized].paragraphFontSizePt, imported.blocks[sized].paragraphFontSizePt),
+                          label + ": paragraph font size");
+                if (std::string(ext) == ".odt") {
+                    size_t index = 0;
+                    CHECK_MSG(FindBlock(back, "step three", &index)
+                              && RichDocOrderedItemNumber(back.blocks, index) == 3, label);
+                    CHECK_MSG(FindBlock(back, "item five", &index)
+                              && RichDocOrderedItemNumber(back.blocks, index) == 5, label);
+                }
+            }
+        }
+    }
+#endif
+
+    // ===== 5e. Symbol fonts: the three encodings of one character =====
+    {
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Wingdings", 0x28) == 0x260E);    // telephone
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Wingdings", 0xF028) == 0x260E);  // U+F000 + code
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Wingdings", 0xFC) == 0x2713);    // check mark
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Webdings", 0xF09C) == 0x2709);   // e-mail
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Webdings", 0xCA) == 0x1F5A8);    // printer
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Symbol", 0x61) == 0x03B1);       // alpha
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("SYMBOL", 0xB3) == 0x2265);       // >=
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Arial", 0x28) == 0);             // not a symbol font
+        CHECK(WordFormatInternal::SymbolFontCharToUnicode("Symbola", 0x61) == 0);
+
+        UCRichDocument symbolDoc;
+        RichDocBlock paragraph;
+        RichTextRun run;
+        run.text = "(";
+        run.fontFamily = "Wingdings";
+        paragraph.runs.push_back(run);
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        table.tableRows.resize(1);
+        RichTableCell cell;
+        RichTextRun alpha;
+        alpha.text = "a";
+        alpha.fontFamily = "Symbol";
+        cell.runs.push_back(alpha);
+        table.tableRows[0].cells.push_back(cell);
+        symbolDoc.blocks = {paragraph, table};
+        WordFormatInternal::MapSymbolFontRuns(symbolDoc);
+        CHECK(symbolDoc.blocks[0].runs[0].text == "\xE2\x98\x8E");
+        CHECK(symbolDoc.blocks[0].runs[0].fontFamily.empty());
+        CHECK(symbolDoc.blocks[1].tableRows[0].cells[0].runs[0].text == "\xCE\xB1");
+    }
+
+    // ===== 5f. Enter keeps the paragraph's geometry =====
+    {
+        auto geometryDoc = std::make_shared<UCRichDocument>();
+        RichDocBlock paragraph;
+        RichTextRun run;
+        run.text = "first second";
+        paragraph.runs.push_back(run);
+        paragraph.leftIndentPt = 36.0f;
+        paragraph.spaceAfterPt = 6.0f;
+        paragraph.tabStops.push_back(RichTabStop{100.0f, RichTabKind::Right});
+        geometryDoc->blocks.push_back(paragraph);
+        UCRichDocumentEditor editor;
+        editor.SetDocument(geometryDoc);
+        editor.SetCaret(RichDocPosition(0, 5));
+        editor.SplitBlock();
+        CHECK(geometryDoc->blocks.size() == 2);
+        if (geometryDoc->blocks.size() == 2) {
+            const RichDocBlock& second = geometryDoc->blocks[1];
+            CHECK(second.leftIndentPt == 36.0f && second.spaceAfterPt == 6.0f
+                  && second.tabStops.size() == 1);
+        }
+    }
+
+    // ===== 5g. Rows and columns added to a framed table look like it =====
+    {
+        auto framedDoc = std::make_shared<UCRichDocument>();
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        table.tableBordersFromDocument = true;
+        table.tableRows.resize(1);
+        RichTableCell cell;
+        cell.borderTop.widthPt = cell.borderBottom.widthPt = 1.0f;
+        cell.borderLeft.widthPt = cell.borderRight.widthPt = 1.0f;
+        cell.borderBottom.color = "#FF0000";
+        cell.backgroundColor = "#EEEEEE";
+        table.tableRows[0].cells = {cell, cell};
+        framedDoc->blocks.push_back(table);
+        UCRichDocumentEditor editor;
+        editor.SetDocument(framedDoc);
+        CHECK(editor.InsertTableRow(0, 0, true));
+        CHECK(editor.InsertTableColumn(0, 1, true));
+        const RichDocBlock& grown = framedDoc->blocks[0];
+        CHECK(grown.tableRows.size() == 2);
+        for (const auto& row : grown.tableRows) {
+            CHECK(row.cells.size() == 3);
+            for (const auto& added : row.cells) {
+                CHECK(added.borderBottom.color == "#FF0000" && added.backgroundColor == "#EEEEEE"
+                      && added.borderLeft.IsVisible());
+            }
+        }
+    }
+
+    // ===== 5h. List labels: formats, templates, editing =====
+    {
+        CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");
+        CHECK(FormatListNumber(1994, RichNumberFormat::UpperRoman) == "MCMXCIV");
+        CHECK(FormatListNumber(28, RichNumberFormat::LowerLetter) == "bb");
+        CHECK(FormatListNumber(3, RichNumberFormat::UpperLetter) == "C");
+        CHECK(FormatListNumber(7, RichNumberFormat::DecimalZero) == "07");
+        CHECK(FormatListNumber(12, RichNumberFormat::DecimalZero) == "12");
+        CHECK(FormatListNumber(5, RichNumberFormat::NoNumber).empty());
+
+        auto item = [](int level, RichNumberFormat format, const std::string& templ) {
+            RichDocBlock b;
+            b.type = RichBlockType::ListItem;
+            b.orderedList = true;
+            b.listLevel = level;
+            b.numberFormat = format;
+            b.numberTemplate = templ;
+            RichTextRun run;
+            run.text = "x";
+            b.runs.push_back(run);
+            return b;
+        };
+        auto listDoc = std::make_shared<UCRichDocument>();
+        listDoc->blocks = {item(0, RichNumberFormat::UpperRoman, "%1."),
+                           item(1, RichNumberFormat::LowerLetter, "%1.%2)"),
+                           item(1, RichNumberFormat::LowerLetter, "%1.%2)"),
+                           item(0, RichNumberFormat::UpperRoman, "%1.")};
+        CHECK(RichDocListLabel(listDoc->blocks, 0) == "I.");
+        CHECK(RichDocListLabel(listDoc->blocks, 2) == "I.b)");
+        CHECK(RichDocListLabel(listDoc->blocks, 3) == "II.");
+        CHECK(RichDocListLabel(listDoc->blocks, 1).find("a)") != std::string::npos);
+
+        // Enter continues the label format; indenting takes the new level's.
+        UCRichDocumentEditor editor;
+        editor.SetDocument(listDoc);
+        editor.SetCaret(RichDocPosition(3, 1));
+        editor.SplitBlock();
+        CHECK(listDoc->blocks.size() == 5 && listDoc->blocks[4].numberFormat == RichNumberFormat::UpperRoman
+              && listDoc->blocks[4].numberTemplate == "%1.");
+        editor.SetCaret(RichDocPosition(4, 0));
+        editor.IndentList();
+        CHECK(listDoc->blocks[4].listLevel == 1 && listDoc->blocks[4].numberFormat == RichNumberFormat::LowerLetter
+              && listDoc->blocks[4].numberTemplate == "%1.%2)");
+        CHECK(RichDocListLabel(listDoc->blocks, 4) == "II.a)");
+    }
+
+    // ===== 5d. List numbering: per list and level =====
+    {
+        RichListNumbering numbering;
+        CHECK(numbering.Next("a", 0) == 1);
+        CHECK(numbering.Next("a", 0) == 2);
+        CHECK(numbering.Next("a", 1) == 1);
+        CHECK(numbering.Next("a", 1) == 2);
+        CHECK(numbering.Next("b", 0, 7) == 7);     // another list, its own start
+        CHECK(numbering.Next("a", 0) == 3);         // "a" ran on past "b"
+        CHECK(numbering.Next("a", 1) == 1);         // a sublist restarts under a new parent
+        numbering.Restart("a", 0, 10);
+        CHECK(numbering.Next("a", 0) == 10);
+
+        // Apply stores a number only where the renderer's count differs.
+        std::vector<RichDocBlock> blocks(3);
+        for (auto& b : blocks) { b.type = RichBlockType::ListItem; b.orderedList = true; }
+        blocks[1].type = RichBlockType::Paragraph;
+        blocks[1].orderedList = false;
+        RichListNumbering::Apply(blocks, 0, 1);
+        RichListNumbering::Apply(blocks, 2, 2);
+        CHECK(blocks[0].listStartNumber == 0);
+        CHECK(blocks[2].listStartNumber == 2);
+        CHECK(RichDocOrderedItemNumber(blocks, 2) == 2);
+        UCRichDocument numbered;
+        numbered.blocks = blocks;
+        CHECK(numbered.ToMarkdown().find("2. ") != std::string::npos);
+    }
 
     // ===== 6. Markdown emission and re-parse =====
     {
@@ -440,12 +945,15 @@ int main(int argc, char** argv) {
         CHECK_MSG(plain.find("phone +49 123 456") != std::string::npos, plain);
         CHECK(plain.find("Dear applicant,") != std::string::npos);
 
-        // Master-page header renders before the body, footer table after it.
-        CHECK(!letter.blocks.empty());
-        if (!letter.blocks.empty()) {
-            CHECK(UCRichDocument::ConcatenateRunText(letter.blocks.front().runs)
+        // The master page's header and footer are the page's, not the body's:
+        // a paged view draws them on every page, text output writes them
+        // before and after the body.
+        const RichPageFurniture& furniture = letter.FurnitureForPage(0);
+        CHECK(furniture.header.size() == 1 && furniture.footer.size() == 1);
+        if (!furniture.header.empty() && !furniture.footer.empty()) {
+            CHECK(UCRichDocument::ConcatenateRunText(furniture.header.front().runs)
                   == "Example GmbH - Sample Street 1");
-            CHECK(letter.blocks.back().type == RichBlockType::Table);
+            CHECK(furniture.footer.back().type == RichBlockType::Table);
         }
         CHECK_MSG(plain.find("Bank Ltd\nKonto: 12345\tRegister B 7741") != std::string::npos, plain);
         size_t headerPos = plain.find("Example GmbH - Sample Street 1");
@@ -682,6 +1190,41 @@ int main(int argc, char** argv) {
         // paragraph — none from the text-box contact line.
         CHECK_MSG(breaks == 1, std::to_string(breaks));
         CHECK_MSG(breakBeforeContactTwo == 0, "no page break splits the contact block");
+    }
+
+    // ===== 11d. A table of contents shows the text it was built into =====
+    {
+        std::string contentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-content "
+            "xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+            "xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+            "office:version=\"1.2\">"
+            "<office:body><office:text>"
+            "<text:table-of-content text:name=\"TOC\">"
+            "<text:table-of-content-source><text:index-title-template>Contents"
+            "</text:index-title-template></text:table-of-content-source>"
+            "<text:index-body>"
+            "<text:index-title><text:p>Contents</text:p></text:index-title>"
+            "<text:p>Introduction\t1</text:p><text:p>Results\t4</text:p>"
+            "</text:index-body></text:table-of-content>"
+            "<text:h text:outline-level=\"1\">Introduction</text:h>"
+            "</office:text></office:body></office:document-content>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("toc.odt")));
+            zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.text"), false);
+            zip.AddEntry("content.xml", contentXml);
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument tocDoc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("toc.odt"), tocDoc, err), err);
+        const std::string plain = tocDoc.ToPlainText();
+        CHECK_MSG(plain.find("Contents") != std::string::npos, plain);
+        CHECK_MSG(plain.find("Results") != std::string::npos, plain);
+        // The source template is not content.
+        CHECK_MSG(plain.find("Contents") == plain.rfind("Contents"), plain);
     }
 
     // ===== 12. Table cells preserve non-paragraph block content =====

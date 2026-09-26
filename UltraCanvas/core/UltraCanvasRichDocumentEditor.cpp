@@ -19,6 +19,27 @@ namespace UltraCanvas {
 
 namespace {
 
+// A list item that moved to another level (or changed between bullets and
+// numbers) takes that level's label format from the same list - the nearest
+// item of that level and kind above it, else below it - so "a)" items stay
+// "a)" when one more joins them. With no such item the view's default applies.
+void AdoptListLevelFormat(std::vector<RichDocBlock>& blocks, size_t index) {
+    RichDocBlock& item = blocks[index];
+    auto matches = [&](const RichDocBlock& other) {
+        return other.listLevel == item.listLevel && other.orderedList == item.orderedList;
+    };
+    const RichDocBlock* model = nullptr;
+    for (size_t i = index; i-- > 0 && blocks[i].type == RichBlockType::ListItem;) {
+        if (matches(blocks[i])) { model = &blocks[i]; break; }
+    }
+    for (size_t i = index + 1; !model && i < blocks.size() && blocks[i].type == RichBlockType::ListItem; ++i) {
+        if (matches(blocks[i])) model = &blocks[i];
+    }
+    item.numberFormat = model ? model->numberFormat : RichNumberFormat::Decimal;
+    item.numberTemplate = model ? model->numberTemplate : std::string();
+    item.bulletText = model ? model->bulletText : std::string();
+}
+
 bool IsContinuationByte(unsigned char c) { return (c & 0xC0) == 0x80; }
 
 // Word characters for double-click and Ctrl+Arrow. Every byte above ASCII
@@ -1198,6 +1219,7 @@ void UCRichDocumentEditor::SplitBlockInternal() {
     if (block.type == RichBlockType::ListItem && RunsText(block.runs).empty()) {
         if (block.listLevel > 0) {
             block.listLevel--;
+            AdoptListLevelFormat(doc->blocks, static_cast<size_t>(caret.blockIndex));
         } else {
             block.type = RichBlockType::Paragraph;
             block.orderedList = false;
@@ -1218,6 +1240,9 @@ void UCRichDocumentEditor::SplitBlockInternal() {
             next.type = RichBlockType::ListItem;
             next.orderedList = block.orderedList;
             next.listLevel = block.listLevel;
+            next.numberFormat = block.numberFormat;
+            next.numberTemplate = block.numberTemplate;
+            next.bulletText = block.bulletText;
             break;
         case RichBlockType::BlockQuote:
             next.type = RichBlockType::BlockQuote;
@@ -1231,6 +1256,10 @@ void UCRichDocumentEditor::SplitBlockInternal() {
             next.type = RichBlockType::Paragraph;
             break;
     }
+    // The second half of a paragraph is laid out like the first: same
+    // indents, spacing and tab stops. Not so after a heading, whose
+    // continuation is body text.
+    if (next.type == block.type) next.CopyParagraphGeometry(block);
     next.runs = std::move(tailRuns);
     doc->blocks.insert(doc->blocks.begin() + caret.blockIndex + 1, next);
     caret = RichDocPosition(caret.blockIndex + 1, 0);
@@ -1689,6 +1718,7 @@ void UCRichDocumentEditor::SetListStyle(bool ordered) {
             }
             block.type = RichBlockType::ListItem;
             block.orderedList = ordered;
+            AdoptListLevelFormat(doc->blocks, static_cast<size_t>(b));
         }
     }
     NotifyChanged();
@@ -1734,6 +1764,7 @@ void UCRichDocumentEditor::IndentList() {
             RichDocBlock& block = doc->blocks[b];
             if (block.type == RichBlockType::ListItem && block.listLevel < 8) {
                 block.listLevel++;
+                AdoptListLevelFormat(doc->blocks, static_cast<size_t>(b));
             }
         }
     }
@@ -1756,6 +1787,7 @@ void UCRichDocumentEditor::OutdentList() {
             if (block.type != RichBlockType::ListItem) continue;
             if (block.listLevel > 0) {
                 block.listLevel--;
+                AdoptListLevelFormat(doc->blocks, static_cast<size_t>(b));
             } else {
                 block.type = RichBlockType::Paragraph;
                 block.orderedList = false;
@@ -1846,6 +1878,23 @@ RichTableCell FreshCell() {
     return RichTableCell{};
 }
 
+// An empty cell formatted like the cell covering (row, gridColumn), if any:
+// a row or column added to a table with a document's borders gets the same
+// frame and fill as its neighbours instead of a gap in the lines.
+RichTableCell FreshCellLike(const RichDocBlock& table, int row, int gridColumn) {
+    RichTableCell cell = FreshCell();
+    const RichTableGrid grid = BuildTableGrid(table);
+    if (grid.rowCount == 0 || grid.columnCount == 0) return cell;
+    row = std::clamp(row, 0, grid.rowCount - 1);
+    gridColumn = std::clamp(gridColumn, 0, grid.columnCount - 1);
+    int ownerRow = 0, ownerCell = 0;
+    if (grid.CellAt(row, gridColumn, ownerRow, ownerCell)) {
+        cell.CopyCellFormat(table.tableRows[static_cast<size_t>(ownerRow)]
+                                .cells[static_cast<size_t>(ownerCell)]);
+    }
+    return cell;
+}
+
 // Index in `row`'s cell vector at which a cell starting at `gridColumn`
 // belongs: after every cell of that row whose own column is to its left.
 int CellInsertIndexForColumn(const RichTableGrid& grid, int row, int gridColumn) {
@@ -1864,7 +1913,9 @@ void InsertFreshCellAt(RichDocBlock& table, int row, int gridColumn) {
     RichTableRow& modelRow = table.tableRows[static_cast<size_t>(row)];
     const int at = std::min(CellInsertIndexForColumn(grid, row, gridColumn),
                             static_cast<int>(modelRow.cells.size()));
-    modelRow.cells.insert(modelRow.cells.begin() + at, FreshCell());
+    // Formatted like its left neighbour (or the right one at the left edge).
+    RichTableCell cell = FreshCellLike(table, row, gridColumn > 0 ? gridColumn - 1 : gridColumn + 1);
+    modelRow.cells.insert(modelRow.cells.begin() + at, std::move(cell));
 }
 
 } // namespace
@@ -1964,7 +2015,8 @@ bool UCRichDocumentEditor::InsertTableRow(int blockIndex, int row, bool below) {
         // The new row supplies cells only for the columns no span covers.
         RichTableRow fresh;
         for (int c = 0; c < grid.columnCount; ++c) {
-            if (!coveredColumn[static_cast<size_t>(c)]) fresh.cells.push_back(FreshCell());
+            // Formatted like the cell of the row it was inserted next to.
+            if (!coveredColumn[static_cast<size_t>(c)]) fresh.cells.push_back(FreshCellLike(table, row, c));
         }
         table.tableRows.insert(table.tableRows.begin() + newRow, std::move(fresh));
 
@@ -2082,6 +2134,12 @@ bool UCRichDocumentEditor::InsertTableColumn(int blockIndex, int gridColumn, boo
             }
             if (!grew) InsertFreshCellAt(table, r, newColumn);
         }
+        // The new column takes the width of the one it was inserted beside,
+        // so the document's own column proportions survive the edit.
+        std::vector<float>& widths = table.tableColumnWidths;
+        if (static_cast<int>(widths.size()) == grid.columnCount) {
+            widths.insert(widths.begin() + newColumn, widths[static_cast<size_t>(gridColumn)]);
+        }
 
         if (caret.blockIndex == blockIndex && caret.InCell()) {
             // The caret's cell may have gained an index if a fresh cell landed
@@ -2131,6 +2189,10 @@ bool UCRichDocumentEditor::DeleteTableColumn(int blockIndex, int gridColumn) {
             if (std::find(target.begin(), target.end(), id) == target.end()) {
                 target.push_back(id);
             }
+        }
+        std::vector<float>& widths = table.tableColumnWidths;
+        if (static_cast<int>(widths.size()) == grid.columnCount) {
+            widths.erase(widths.begin() + gridColumn);
         }
         for (const auto& [r, cellIndex] : narrowing) {
             RichTableCell& cell = table.tableRows[static_cast<size_t>(r)]
@@ -2331,8 +2393,8 @@ int UCRichDocumentEditor::InsertInlineImage(const std::string& name,
     picture.imageAltText = altText;
     int width = 0, height = 0;
     if (UCRichDocument::SniffImagePixelSize(data, width, height)) {
-        picture.imageWidthPt = static_cast<float>(width);
-        picture.imageHeightPt = static_cast<float>(height);
+        picture.imageWidthPt = static_cast<float>(width) * 72.0f / 96.0f;    // a pixel at 96 DPI
+        picture.imageHeightPt = static_cast<float>(height) * 72.0f / 96.0f;
     }
 
     RichDocRange selection = GetSelectionRange();
@@ -2373,8 +2435,8 @@ int UCRichDocumentEditor::InsertImage(const std::string& name, const std::string
         image.imageAltText = altText;
         int width = 0, height = 0;
         if (UCRichDocument::SniffImagePixelSize(data, width, height)) {
-            image.imageWidthPt = static_cast<float>(width);
-            image.imageHeightPt = static_cast<float>(height);
+            image.imageWidthPt = static_cast<float>(width) * 72.0f / 96.0f;      // a pixel at 96 DPI
+            image.imageHeightPt = static_cast<float>(height) * 72.0f / 96.0f;
         }
 
         RichDocBlock& current = doc->blocks[caret.blockIndex];

@@ -1434,6 +1434,8 @@ namespace UltraCanvas {
             UCRichDocument doc;
             std::string error;
             if (!UCWordDocumentIO::Load(path, doc, error)) return;
+            // The first page's header and footer belong to what the page shows.
+            if (!doc.FurnitureForPage(0).IsEmpty()) doc = doc.WithFirstPageFurnitureInline();
             for (const RichDocBlock& block : doc.blocks) {
                 if (lines.size() >= kPreviewMaxLines) break;
                 std::string text;

@@ -10,10 +10,14 @@
 #include "UltraCanvasMathToLatex.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasTextUtils.h"
 
 #include "tinyxml2.h"
 
+#include <cmath>
+#include <cstdlib>
 #include <map>
+#include <set>
 #include <sstream>
 
 namespace UltraCanvas {
@@ -33,6 +37,44 @@ struct DocxRelationship {
     bool external = false;
 };
 
+// A run of nothing but spaces - <w:t xml:space="preserve"> </w:t>, the space
+// between two differently formatted words - is text, but tinyxml2 drops
+// whitespace-only text. Each such space is swapped for a private-use marker
+// before parsing and turned back into a space when the run is read. Without
+// xml:space="preserve" Word ignores the whitespace too, so that is left alone.
+constexpr const char* kKeptSpaceMarker = "\xEE\x80\x81";   // U+E001
+
+void ProtectWhitespaceRuns(std::string& xml) {
+    std::string out;
+    out.reserve(xml.size());
+    size_t pos = 0;
+    while (true) {
+        size_t open = xml.find("<w:t", pos);
+        if (open == std::string::npos) break;
+        const char after = open + 4 < xml.size() ? xml[open + 4] : '\0';
+        size_t close = xml.find('>', open);
+        if ((after != '>' && after != ' ') || close == std::string::npos || xml[close - 1] == '/') {
+            out.append(xml, pos, open + 4 - pos);
+            pos = open + 4;
+            continue;
+        }
+        size_t text = close + 1;
+        size_t end = text;
+        while (end < xml.size() && (xml[end] == ' ' || xml[end] == '\t' || xml[end] == '\n' || xml[end] == '\r')) ++end;
+        out.append(xml, pos, text - pos);
+        const bool preserve =
+            xml.substr(open, close - open).find("xml:space=\"preserve\"") != std::string::npos;
+        if (end > text && preserve && xml.compare(end, 6, "</w:t>") == 0) {
+            for (size_t i = text; i < end; ++i) out += kKeptSpaceMarker;
+        } else {
+            out.append(xml, text, end - text);
+        }
+        pos = end;
+    }
+    out.append(xml, pos, std::string::npos);
+    xml.swap(out);
+}
+
 class DocxReader {
 public:
     bool Load(const std::string& filePath, UCRichDocument& doc, std::string& error) {
@@ -48,8 +90,10 @@ public:
         }
         LoadRelationships();
         LoadStyles();
+        LoadSettings();
         LoadNumbering();
 
+        ProtectWhitespaceRuns(documentXml);
         if (docXml_.Parse(documentXml.c_str()) != tinyxml2::XML_SUCCESS) {
             error = "The Word document content is not valid XML: " + filePath;
             return false;
@@ -65,18 +109,114 @@ public:
             if (tag == "w:p") ParseParagraph(elem);
             else if (tag == "w:tbl") ParseTable(elem);
         }
+        LoadSection(body->FirstChildElement("w:sectPr"));
         LoadMetadata();
         return true;
     }
 
 private:
+    // ===== PARAGRAPH GEOMETRY =====
+    // Word measures in twips (1/20 pt); tab positions count from the page's
+    // text margin, which is exactly the model's convention.
+    struct Geometry {
+        float left = kUnset, right = kUnset, firstLine = kUnset;
+        float before = kUnset, after = kUnset, lineSpacing = kUnset;
+        float lineHeight = kUnset;          // exact / at-least, points
+        bool lineHeightAtLeast = false;
+        bool hasFrame = false;              // w:pBdr or w:shd stated
+        RichBorder frame[4];                // top, bottom, left, right
+        std::string background;
+        // Tab changes in order: a stop to add, or (clear) one to remove.
+        struct TabChange { RichTabStop stop; bool clear = false; };
+        std::vector<TabChange> tabs;
+        // The style's character size and font (w:rPr beside its w:pPr).
+        float fontSize = kUnset;
+        std::string fontFamily;
+    };
+    struct StyleGeometry {
+        std::string basedOn;
+        Geometry geometry;
+    };
+    static constexpr float kUnset = -1.0e9f;
+
+    // ===== TABLE BORDERS =====
+    // A table's six border positions; a side not stated stays unset so a
+    // table's own borders can override its style's side by side.
+    struct BorderSpec { bool set = false; RichBorder border; };
+    struct TableBorders { BorderSpec top, left, bottom, right, insideH, insideV; };
+    struct TableStyle { std::string basedOn; TableBorders borders; };
+
+    // w:top/w:bottom/w:left(w:start)/w:right(w:end)/w:insideH/w:insideV:
+    // w:val "nil"/"none" = no line, w:sz in eighths of a point.
+    static BorderSpec ReadBorder(tinyxml2::XMLElement* e) {
+        BorderSpec spec;
+        if (!e) return spec;
+        spec.set = true;
+        const std::string val = Attr(e, "w:val");
+        if (val == "nil" || val == "none" || val.empty()) return spec;
+        spec.border.widthPt = std::max(0.25f, static_cast<float>(e->IntAttribute("w:sz", 4)) / 8.0f);
+        const std::string color = Attr(e, "w:color");
+        if (color.size() == 6 && color != "auto") spec.border.color = "#" + color;
+        return spec;
+    }
+
+    static void ReadTableBorders(tinyxml2::XMLElement* borders, TableBorders& out) {
+        auto take = [&](BorderSpec& target, const char* a, const char* b) {
+            BorderSpec spec = ReadBorder(borders->FirstChildElement(a));
+            if (!spec.set && b) spec = ReadBorder(borders->FirstChildElement(b));
+            if (spec.set) target = spec;
+        };
+        take(out.top, "w:top", nullptr);
+        take(out.bottom, "w:bottom", nullptr);
+        take(out.left, "w:left", "w:start");
+        take(out.right, "w:right", "w:end");
+        take(out.insideH, "w:insideH", nullptr);
+        take(out.insideV, "w:insideV", nullptr);
+    }
+
+    static void OverlayBorders(TableBorders& base, const TableBorders& over) {
+        for (auto [target, source] : {std::pair{&base.top, &over.top}, std::pair{&base.left, &over.left},
+                                      std::pair{&base.bottom, &over.bottom}, std::pair{&base.right, &over.right},
+                                      std::pair{&base.insideH, &over.insideH},
+                                      std::pair{&base.insideV, &over.insideV}}) {
+            if (source->set) *target = *source;
+        }
+    }
+
+    TableBorders TableStyleBorders(const std::string& styleId, int depth = 0) const {
+        auto it = tableStyles_.find(styleId);
+        if (it == tableStyles_.end() || depth > 16) return TableBorders{};
+        TableBorders borders = it->second.basedOn.empty() ? TableBorders{}
+                                                           : TableStyleBorders(it->second.basedOn, depth + 1);
+        OverlayBorders(borders, it->second.borders);
+        return borders;
+    }
+
     UCZipPackageReader zip_;
     UCRichDocument* doc_ = nullptr;
     tinyxml2::XMLDocument docXml_;
     std::map<std::string, DocxRelationship> relationships_;
     std::map<std::string, std::string> styleNames_;        // styleId -> display name
+    std::map<std::string, StyleGeometry> styleGeometry_;   // paragraph styleId -> geometry
+    Geometry defaultGeometry_;                             // w:docDefaults/w:pPrDefault
+    std::string defaultParagraphStyle_;                    // applies when a paragraph names none
+    std::map<std::string, TableStyle> tableStyles_;        // table styleId -> borders
+    std::string defaultTableStyle_;
     std::map<std::string, std::string> numIdToAbstract_;
     std::map<std::string, std::map<int, bool>> abstractNumOrdered_;   // abstractId -> ilvl -> ordered
+    std::map<std::string, std::map<int, int>> abstractNumStart_;      // abstractId -> ilvl -> w:start
+    struct LevelLabel {
+        RichNumberFormat format = RichNumberFormat::Decimal;
+        std::string numberTemplate;
+        std::string bulletText;
+    };
+    std::map<std::string, std::map<int, LevelLabel>> abstractLabels_;   // abstractId -> ilvl -> label
+    // numId -> ilvl -> w:startOverride, applied when that numId is first used
+    std::map<std::string, std::map<int, int>> numStartOverride_;
+    std::set<std::string> numIdsSeen_;
+    // Word counts per abstract list: every paragraph of that list advances
+    // one counter per level, whatever paragraphs sit between them.
+    RichListNumbering numbering_;
     std::map<std::string, int> mediaByTarget_;              // package path -> media index
     bool pendingPageBreak_ = false;
 
@@ -135,12 +275,214 @@ private:
         if (styles.Parse(stylesXml.c_str()) != tinyxml2::XML_SUCCESS) return;
         auto* root = styles.FirstChildElement("w:styles");
         if (!root) return;
+        if (auto* defaults = root->FirstChildElement("w:docDefaults")) {
+            auto* pPrDefault = defaults->FirstChildElement("w:pPrDefault");
+            if (auto* pPr = pPrDefault ? pPrDefault->FirstChildElement("w:pPr") : nullptr) {
+                ReadGeometry(pPr, defaultGeometry_);
+            }
+            auto* rPrDefault = defaults->FirstChildElement("w:rPrDefault");
+            ReadStyleFont(rPrDefault ? rPrDefault->FirstChildElement("w:rPr") : nullptr, defaultGeometry_);
+        }
         for (auto* style = root->FirstChildElement("w:style"); style;
              style = style->NextSiblingElement("w:style")) {
             std::string id = Attr(style, "w:styleId");
             auto* name = style->FirstChildElement("w:name");
             if (!id.empty() && name) styleNames_[id] = Attr(name, "w:val");
+            if (!id.empty() && std::string(Attr(style, "w:type")) == "table") {
+                TableStyle tableStyle;
+                if (auto* basedOn = style->FirstChildElement("w:basedOn")) tableStyle.basedOn = Attr(basedOn, "w:val");
+                auto* tblPr = style->FirstChildElement("w:tblPr");
+                if (auto* borders = tblPr ? tblPr->FirstChildElement("w:tblBorders") : nullptr) {
+                    ReadTableBorders(borders, tableStyle.borders);
+                }
+                tableStyles_[id] = tableStyle;
+                if (std::string(Attr(style, "w:default")) == "1") defaultTableStyle_ = id;
+                continue;
+            }
+            if (id.empty() || std::string(Attr(style, "w:type")) != "paragraph") continue;
+            StyleGeometry entry;
+            if (auto* basedOn = style->FirstChildElement("w:basedOn")) entry.basedOn = Attr(basedOn, "w:val");
+            if (auto* pPr = style->FirstChildElement("w:pPr")) ReadGeometry(pPr, entry.geometry);
+            ReadStyleFont(style->FirstChildElement("w:rPr"), entry.geometry);
+            styleGeometry_[id] = entry;
+            if (std::string(Attr(style, "w:default")) == "1" || std::string(Attr(style, "w:default")) == "true") {
+                defaultParagraphStyle_ = id;
+            }
         }
+    }
+
+    // word/settings.xml: the distance between default tab stops.
+    void LoadSettings() {
+        std::string settingsXml;
+        if (!zip_.ReadEntry("word/settings.xml", settingsXml)) return;
+        tinyxml2::XMLDocument settings;
+        if (settings.Parse(settingsXml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        auto* root = settings.FirstChildElement("w:settings");
+        auto* tab = root ? root->FirstChildElement("w:defaultTabStop") : nullptr;
+        if (tab) {
+            const int twips = tab->IntAttribute("w:val", 0);
+            if (twips > 0) doc_->defaultTabStopPt = static_cast<float>(twips) / 20.0f;
+        }
+    }
+
+
+    static void ReadGeometry(tinyxml2::XMLElement* pPr, Geometry& g) {
+        auto twips = [](tinyxml2::XMLElement* e, const char* name, float& out) {
+            if (e && e->Attribute(name)) out = static_cast<float>(e->IntAttribute(name, 0)) / 20.0f;
+        };
+        if (auto* ind = pPr->FirstChildElement("w:ind")) {
+            twips(ind, "w:start", g.left);
+            twips(ind, "w:left", g.left);
+            twips(ind, "w:end", g.right);
+            twips(ind, "w:right", g.right);
+            twips(ind, "w:firstLine", g.firstLine);
+            if (ind->Attribute("w:hanging")) {
+                g.firstLine = -static_cast<float>(ind->IntAttribute("w:hanging", 0)) / 20.0f;
+            }
+        }
+        if (auto* spacing = pPr->FirstChildElement("w:spacing")) {
+            twips(spacing, "w:before", g.before);
+            twips(spacing, "w:after", g.after);
+            // Only "auto" spacing is proportional (240 = single); exact and
+            // at-least heights are left to the view.
+            const std::string rule = Attr(spacing, "w:lineRule");
+            if (spacing->Attribute("w:line") && (rule.empty() || rule == "auto")) {
+                g.lineSpacing = static_cast<float>(spacing->IntAttribute("w:line", 240)) / 240.0f;
+                g.lineHeight = 0.0f;
+            } else if (spacing->Attribute("w:line") && (rule == "exact" || rule == "atLeast")) {
+                g.lineHeight = static_cast<float>(spacing->IntAttribute("w:line", 240)) / 20.0f;
+                g.lineHeightAtLeast = rule == "atLeast";
+                g.lineSpacing = 0.0f;
+            }
+        }
+        auto* pBdr = pPr->FirstChildElement("w:pBdr");
+        auto* shd = pPr->FirstChildElement("w:shd");
+        if (pBdr || shd) {
+            g.hasFrame = true;
+            if (pBdr) {
+                const char* names[4] = {"w:top", "w:bottom", "w:left", "w:right"};
+                const char* alternates[4] = {nullptr, nullptr, "w:start", "w:end"};
+                for (int i = 0; i < 4; ++i) {
+                    BorderSpec spec = ReadBorder(pBdr->FirstChildElement(names[i]));
+                    if (!spec.set && alternates[i]) spec = ReadBorder(pBdr->FirstChildElement(alternates[i]));
+                    g.frame[i] = spec.border;
+                }
+            }
+            if (shd) {
+                const std::string fill = Attr(shd, "w:fill");
+                if (fill.size() == 6 && fill != "auto") g.background = "#" + fill;
+            }
+        }
+        if (auto* tabs = pPr->FirstChildElement("w:tabs")) {
+            for (auto* tab = tabs->FirstChildElement("w:tab"); tab;
+                 tab = tab->NextSiblingElement("w:tab")) {
+                Geometry::TabChange change;
+                change.stop.positionPt = static_cast<float>(tab->IntAttribute("w:pos", 0)) / 20.0f;
+                const std::string val = Attr(tab, "w:val");
+                change.clear = val == "clear";
+                change.stop.kind = (val == "center") ? RichTabKind::Center
+                                 : (val == "right" || val == "end") ? RichTabKind::Right
+                                 : (val == "decimal") ? RichTabKind::Decimal : RichTabKind::Left;
+                if (val == "bar") continue;   // a vertical line, not a stop
+                g.tabs.push_back(change);
+            }
+        }
+    }
+
+    static void Overlay(Geometry& base, const Geometry& over) {
+        auto take = [](float& value, float overValue) { if (overValue != kUnset) value = overValue; };
+        take(base.left, over.left);
+        take(base.right, over.right);
+        take(base.firstLine, over.firstLine);
+        take(base.before, over.before);
+        take(base.after, over.after);
+        take(base.lineSpacing, over.lineSpacing);
+        if (over.lineHeight != kUnset) {
+            base.lineHeight = over.lineHeight;
+            base.lineHeightAtLeast = over.lineHeightAtLeast;
+        }
+        if (over.hasFrame) {
+            base.hasFrame = true;
+            for (int i = 0; i < 4; ++i) base.frame[i] = over.frame[i];
+            base.background = over.background;
+        }
+        base.tabs.insert(base.tabs.end(), over.tabs.begin(), over.tabs.end());
+        take(base.fontSize, over.fontSize);
+        if (!over.fontFamily.empty()) base.fontFamily = over.fontFamily;
+    }
+
+    static void ReadStyleFont(tinyxml2::XMLElement* rPr, Geometry& g) {
+        if (!rPr) return;
+        if (auto* sz = rPr->FirstChildElement("w:sz")) g.fontSize = sz->FloatAttribute("w:val", 0.0f) / 2.0f;
+        if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
+            const std::string family = Attr(fonts, "w:ascii");
+            if (!family.empty()) g.fontFamily = family;
+        }
+    }
+
+    Geometry StyleChainGeometry(const std::string& styleId, int depth = 0) const {
+        auto it = styleGeometry_.find(styleId);
+        if (it == styleGeometry_.end() || depth > 16) return defaultGeometry_;
+        Geometry g = it->second.basedOn.empty() ? defaultGeometry_
+                                                : StyleChainGeometry(it->second.basedOn, depth + 1);
+        Overlay(g, it->second.geometry);
+        return g;
+    }
+
+    void ApplyGeometry(RichDocBlock& block, tinyxml2::XMLElement* pPr) const {
+        std::string styleId = defaultParagraphStyle_;
+        auto* pStyle = pPr ? pPr->FirstChildElement("w:pStyle") : nullptr;
+        if (pStyle) styleId = Attr(pStyle, "w:val");
+        Geometry g = StyleChainGeometry(styleId);
+        if (pPr) {
+            Geometry direct;
+            ReadGeometry(pPr, direct);
+            Overlay(g, direct);
+        }
+        auto value = [](float v) { return v == kUnset ? 0.0f : v; };
+        block.leftIndentPt = value(g.left);
+        block.rightIndentPt = value(g.right);
+        block.firstLineIndentPt = value(g.firstLine);
+        // Word's built-in default spacing is zero; unstated means zero.
+        block.spaceBeforePt = value(g.before);
+        block.spaceAfterPt = value(g.after);
+        block.lineSpacing = g.lineSpacing == kUnset ? 0.0f : g.lineSpacing;
+        if (g.lineHeight != kUnset && g.lineHeight > 0.0f) {
+            block.lineHeightPt = g.lineHeight;
+            block.lineHeightAtLeast = g.lineHeightAtLeast;
+        }
+        if (g.hasFrame) {
+            block.paragraphBorderTop = g.frame[0];
+            block.paragraphBorderBottom = g.frame[1];
+            block.paragraphBorderLeft = g.frame[2];
+            block.paragraphBorderRight = g.frame[3];
+            block.paragraphBackground = g.background;
+        }
+        block.tabStops.clear();
+        for (const auto& change : g.tabs) {
+            auto& stops = block.tabStops;
+            stops.erase(std::remove_if(stops.begin(), stops.end(),
+                                       [&](const RichTabStop& t) {
+                                           return std::abs(t.positionPt - change.stop.positionPt) < 0.5f;
+                                       }),
+                        stops.end());
+            if (!change.clear) stops.push_back(change.stop);
+        }
+        std::sort(block.tabStops.begin(), block.tabStops.end(),
+                  [](const RichTabStop& a, const RichTabStop& b) { return a.positionPt < b.positionPt; });
+        // The style's size and font, which runs without their own take.
+        block.paragraphFontSizePt = g.fontSize != kUnset ? g.fontSize : 0.0f;
+        block.paragraphFontFamily = g.fontFamily;
+    }
+
+    // An empty paragraph's line is as tall as its paragraph mark's font
+    // (w:pPr/w:rPr), which is what Word measures it with.
+    static void ApplyParagraphMark(RichDocBlock& block, tinyxml2::XMLElement* pPr) {
+        if (!block.runs.empty() || !pPr) return;
+        Geometry mark;
+        ReadStyleFont(pPr->FirstChildElement("w:rPr"), mark);
+        if (mark.fontSize != kUnset && mark.fontSize > 0.0f) block.paragraphFontSizePt = mark.fontSize;
+        if (!mark.fontFamily.empty()) block.paragraphFontFamily = mark.fontFamily;
     }
 
     void LoadNumbering() {
@@ -159,6 +501,35 @@ private:
                 auto* numFmt = lvl->FirstChildElement("w:numFmt");
                 std::string fmt = numFmt ? Attr(numFmt, "w:val") : "";
                 abstractNumOrdered_[abstractId][ilvl] = (fmt != "bullet" && !fmt.empty());
+                LevelLabel& label = abstractLabels_[abstractId][ilvl];
+                auto* lvlText = lvl->FirstChildElement("w:lvlText");
+                const std::string text = lvlText ? Attr(lvlText, "w:val") : "";
+                if (fmt == "bullet") {
+                    // The bullet, mapped when its font is a symbol font.
+                    auto* rPr = lvl->FirstChildElement("w:rPr");
+                    auto* fonts = rPr ? rPr->FirstChildElement("w:rFonts") : nullptr;
+                    const std::string font = fonts ? Attr(fonts, "w:ascii") : "";
+                    label.bulletText = text;
+                    if (!font.empty() && !text.empty()) {
+                        size_t at = 0;
+                        const uint32_t cp = WordFormatInternal::DecodeUtf8(text, at);
+                        if (uint32_t unicode = WordFormatInternal::SymbolFontCharToUnicode(font, cp)) {
+                            label.bulletText.clear();
+                            WordFormatInternal::AppendUtf8(label.bulletText, unicode);
+                        }
+                    }
+                } else {
+                    label.format = fmt == "lowerLetter" ? RichNumberFormat::LowerLetter
+                                 : fmt == "upperLetter" ? RichNumberFormat::UpperLetter
+                                 : fmt == "lowerRoman" ? RichNumberFormat::LowerRoman
+                                 : fmt == "upperRoman" ? RichNumberFormat::UpperRoman
+                                 : fmt == "decimalZero" ? RichNumberFormat::DecimalZero
+                                 : fmt == "none" ? RichNumberFormat::NoNumber : RichNumberFormat::Decimal;
+                    label.numberTemplate = text;   // Word's own "%1.%2." notation
+                }
+                if (auto* start = lvl->FirstChildElement("w:start")) {
+                    abstractNumStart_[abstractId][ilvl] = std::max(1, start->IntAttribute("w:val", 1));
+                }
             }
         }
         for (auto* num = root->FirstChildElement("w:num"); num;
@@ -166,6 +537,13 @@ private:
             auto* abstractRef = num->FirstChildElement("w:abstractNumId");
             if (abstractRef) {
                 numIdToAbstract_[Attr(num, "w:numId")] = Attr(abstractRef, "w:val");
+            }
+            for (auto* lvlOverride = num->FirstChildElement("w:lvlOverride"); lvlOverride;
+                 lvlOverride = lvlOverride->NextSiblingElement("w:lvlOverride")) {
+                if (auto* start = lvlOverride->FirstChildElement("w:startOverride")) {
+                    numStartOverride_[Attr(num, "w:numId")][lvlOverride->IntAttribute("w:ilvl", 0)] =
+                        std::max(1, start->IntAttribute("w:val", 1));
+                }
             }
         }
     }
@@ -217,7 +595,37 @@ private:
         std::vector<RichTextRun> runs;
         std::vector<RichDocBlock> trailingImages;
         bool pendingLineBreak = false;
+        // Complex field (w:fldChar begin / w:instrText / separate / end): the
+        // result runs of a PAGE or NUMPAGES field are marked as that field.
+        std::string fieldInstruction;
+        bool inFieldResult = false;
+        RichTextRun::Field field = RichTextRun::Field::Plain;
     };
+
+    // PAGE -> page number, NUMPAGES / SECTIONPAGES -> page count.
+    static RichTextRun::Field FieldForInstruction(const std::string& instruction) {
+        std::string word;
+        for (char c : instruction) {
+            if (c == ' ' || c == '\t') { if (!word.empty()) break; continue; }
+            word.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+        }
+        if (word == "PAGE") return RichTextRun::Field::PageNumber;
+        if (word == "NUMPAGES" || word == "SECTIONPAGES") return RichTextRun::Field::PageCount;
+        return RichTextRun::Field::Plain;
+    }
+
+    static std::string HighlightColor(const std::string& name) {
+        static const std::pair<const char*, const char*> colors[] = {
+            {"yellow", "#FFFF00"}, {"green", "#00FF00"}, {"cyan", "#00FFFF"}, {"magenta", "#FF00FF"},
+            {"blue", "#0000FF"}, {"red", "#FF0000"}, {"darkBlue", "#000080"}, {"darkCyan", "#008080"},
+            {"darkGreen", "#008000"}, {"darkMagenta", "#800080"}, {"darkRed", "#800000"},
+            {"darkYellow", "#808000"}, {"darkGray", "#808080"}, {"lightGray", "#C0C0C0"},
+            {"black", "#000000"}, {"white", "#FFFFFF"}};
+        for (const auto& [key, hex] : colors) {
+            if (name == key) return hex;
+        }
+        return "";
+    }
 
     void ParseRunProperties(tinyxml2::XMLElement* rPr, RichTextRun& run) const {
         if (!rPr) return;
@@ -236,6 +644,15 @@ private:
         }
         if (auto* sz = rPr->FirstChildElement("w:sz")) {
             run.fontSizePt = sz->FloatAttribute("w:val", 0.0f) / 2.0f;   // half-points
+        }
+        // A highlighter colour (one of Word's named ones), or character
+        // shading, which may be any colour.
+        if (auto* highlight = rPr->FirstChildElement("w:highlight")) {
+            run.highlightColor = HighlightColor(Attr(highlight, "w:val"));
+        }
+        if (auto* shd = rPr->FirstChildElement("w:shd"); shd && run.highlightColor.empty()) {
+            const std::string fill = Attr(shd, "w:fill");
+            if (fill.size() == 6 && fill != "auto") run.highlightColor = "#" + fill;
         }
         if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
             run.fontFamily = Attr(fonts, "w:ascii");
@@ -301,9 +718,28 @@ private:
         for (auto* child = runElem->FirstChildElement(); child;
              child = child->NextSiblingElement()) {
             std::string tag = child->Name() ? child->Name() : "";
-            if (tag == "w:t") {
+            if (tag == "w:fldChar") {
+                const std::string type = Attr(child, "w:fldCharType");
+                if (type == "begin") {
+                    ctx.fieldInstruction.clear();
+                    ctx.inFieldResult = false;
+                    ctx.field = RichTextRun::Field::Plain;
+                } else if (type == "separate") {
+                    ctx.field = FieldForInstruction(ctx.fieldInstruction);
+                    ctx.inFieldResult = true;
+                } else if (type == "end") {
+                    ctx.inFieldResult = false;
+                    ctx.field = RichTextRun::Field::Plain;
+                }
+            } else if (tag == "w:instrText") {
+                if (child->GetText()) ctx.fieldInstruction += child->GetText();
+            } else if (tag == "w:t") {
                 RichTextRun run = props;
+                if (ctx.inFieldResult || ctx.field != RichTextRun::Field::Plain) run.field = ctx.field;
                 run.text = child->GetText() ? child->GetText() : "";
+                for (size_t at; (at = run.text.find(kKeptSpaceMarker)) != std::string::npos;) {
+                    run.text.replace(at, 3, " ");
+                }
                 run.lineBreakBefore = ctx.pendingLineBreak;
                 ctx.pendingLineBreak = false;
                 if (!run.text.empty()) ctx.runs.push_back(std::move(run));
@@ -318,6 +754,18 @@ private:
                 run.lineBreakBefore = ctx.pendingLineBreak;
                 ctx.pendingLineBreak = false;
                 ctx.runs.push_back(std::move(run));
+            } else if (tag == "w:sym") {
+                // Insert > Symbol: a character code in a named (usually
+                // symbol) font; the import's symbol-font pass maps it.
+                RichTextRun run = props;
+                run.fontFamily = Attr(child, "w:font");
+                const unsigned long code = std::strtoul(Attr(child, "w:char"), nullptr, 16);
+                if (code > 0 && code < 0x110000) {
+                    WordFormatInternal::AppendUtf8(run.text, static_cast<uint32_t>(code));
+                    run.lineBreakBefore = ctx.pendingLineBreak;
+                    ctx.pendingLineBreak = false;
+                    ctx.runs.push_back(std::move(run));
+                }
             } else if (tag == "w:noBreakHyphen") {
                 RichTextRun run = props;
                 run.text = "-";
@@ -366,6 +814,12 @@ private:
                 auto* fallback = child->FirstChildElement("mc:Fallback");
                 if (choice) ParseInlineContainer(choice, linkTarget, ctx);
                 else if (fallback) ParseInlineContainer(fallback, linkTarget, ctx);
+            } else if (tag == "w:fldSimple") {
+                // <w:fldSimple w:instr="PAGE"><w:r><w:t>3</w:t></w:r></w:fldSimple>
+                const RichTextRun::Field saved = ctx.field;
+                ctx.field = FieldForInstruction(Attr(child, "w:instr"));
+                ParseInlineContainer(child, linkTarget, ctx);
+                ctx.field = saved;
             } else if (tag == "w:ins" || tag == "w:smartTag" || tag == "w:sdt"
                        || tag == "w:sdtContent") {
                 // Accepted tracked insertions and content-control wrappers.
@@ -376,10 +830,12 @@ private:
     }
 
     void ParseParagraph(tinyxml2::XMLElement* p) {
+        int listNumber = 0;   // the number an ordered list item carries
         RichDocBlock block;
         block.type = RichBlockType::Paragraph;
         bool hasBottomBorder = false;
 
+        ApplyGeometry(block, p->FirstChildElement("w:pPr"));
         if (auto* pPr = p->FirstChildElement("w:pPr")) {
             if (auto* pBdr = pPr->FirstChildElement("w:pBdr")) {
                 hasBottomBorder = pBdr->FirstChildElement("w:bottom") != nullptr;
@@ -415,13 +871,46 @@ private:
                     block.type = RichBlockType::ListItem;
                     block.listLevel = ilvl ? std::atoi(Attr(ilvl, "w:val")) : 0;
                     block.orderedList = false;
-                    auto abstractIt = numIdToAbstract_.find(Attr(numId, "w:val"));
+                    const std::string numIdValue = Attr(numId, "w:val");
+                    auto abstractIt = numIdToAbstract_.find(numIdValue);
                     if (abstractIt != numIdToAbstract_.end()) {
                         auto levels = abstractNumOrdered_.find(abstractIt->second);
                         if (levels != abstractNumOrdered_.end()) {
                             auto lvlIt = levels->second.find(block.listLevel);
                             if (lvlIt != levels->second.end()) block.orderedList = lvlIt->second;
                         }
+                    }
+                    if (abstractIt != numIdToAbstract_.end()) {
+                        auto labels = abstractLabels_.find(abstractIt->second);
+                        if (labels != abstractLabels_.end()) {
+                            auto label = labels->second.find(block.listLevel);
+                            if (label != labels->second.end()) {
+                                block.numberFormat = label->second.format;
+                                block.numberTemplate = label->second.numberTemplate;
+                                block.bulletText = label->second.bulletText;
+                            }
+                        }
+                    }
+                    if (block.orderedList) {
+                        const std::string listKey = abstractIt != numIdToAbstract_.end()
+                                ? abstractIt->second : "num-" + numIdValue;
+                        // A numId with a start override restarts the list the
+                        // first time it is used ("restart numbering" in Word).
+                        if (numIdsSeen_.insert(numIdValue).second) {
+                            auto overrides = numStartOverride_.find(numIdValue);
+                            if (overrides != numStartOverride_.end()) {
+                                for (const auto& [level, start] : overrides->second) {
+                                    numbering_.Restart(listKey, level, start);
+                                }
+                            }
+                        }
+                        int startAt = 1;
+                        auto starts = abstractNumStart_.find(listKey);
+                        if (starts != abstractNumStart_.end()) {
+                            auto it = starts->second.find(block.listLevel);
+                            if (it != starts->second.end()) startAt = it->second;
+                        }
+                        listNumber = numbering_.Next(listKey, block.listLevel, startAt);
                     }
                 }
             }
@@ -430,6 +919,7 @@ private:
         InlineContext ctx;
         ParseInlineContainer(p, "", ctx);
         block.runs = std::move(ctx.runs);
+        ApplyParagraphMark(block, p->FirstChildElement("w:pPr"));
 
         // An empty paragraph carrying only a bottom border is the
         // horizontal-rule idiom.
@@ -451,6 +941,9 @@ private:
         bool imageOnly = block.runs.empty() && !ctx.trailingImages.empty();
         if (!imageOnly && !emptyParagraph) {
             doc_->blocks.push_back(std::move(block));
+            if (listNumber > 0) {
+                RichListNumbering::Apply(doc_->blocks, doc_->blocks.size() - 1, listNumber);
+            }
         } else if (emptyParagraph && !pendingPageBreak_) {
             doc_->blocks.push_back(std::move(block));   // keep intentional blank lines
         }
@@ -465,6 +958,18 @@ private:
         }
     }
 
+    static RichTextAlign ParagraphAlignment(tinyxml2::XMLElement* p) {
+        auto* pPr = p->FirstChildElement("w:pPr");
+        auto* jc = pPr ? pPr->FirstChildElement("w:jc") : nullptr;
+        if (!jc) return RichTextAlign::Default;
+        std::string v = Attr(jc, "w:val");
+        if (v == "center") return RichTextAlign::Center;
+        if (v == "right" || v == "end") return RichTextAlign::Right;
+        if (v == "both" || v == "distribute") return RichTextAlign::Justify;
+        if (v == "left" || v == "start") return RichTextAlign::Left;
+        return RichTextAlign::Default;
+    }
+
     void ParseTable(tinyxml2::XMLElement* tbl) {
         RichDocBlock block;
         block.type = RichBlockType::Table;
@@ -477,6 +982,24 @@ private:
         // where that cell lives, keyed by the grid column it occupies.
         struct OpenMerge { size_t rowIndex; size_t cellIndex; };
         std::map<size_t, OpenMerge> openMerge;
+        std::map<std::pair<size_t, size_t>, TableBorders> cellBorders;   // (row, cell) -> w:tcBorders
+        std::map<std::pair<size_t, size_t>, RichDocBlock> paragraphFrames; // (row, cell) -> first paragraph
+        // Word's default cell margins (0.19 cm at the sides), then the table's.
+        float tableMargins[4] = {0.0f, 0.0f, 5.4f, 5.4f};
+        if (auto* tblPr = tbl->FirstChildElement("w:tblPr")) {
+            ReadCellMargins(tblPr->FirstChildElement("w:tblCellMar"), tableMargins);
+        }
+
+        // Column proportions (twips) from the table grid.
+        if (auto* grid = tbl->FirstChildElement("w:tblGrid")) {
+            for (auto* col = grid->FirstChildElement("w:gridCol"); col;
+                 col = col->NextSiblingElement("w:gridCol")) {
+                block.tableColumnWidths.push_back(static_cast<float>(col->IntAttribute("w:w", 0)));
+            }
+            for (float w : block.tableColumnWidths) {
+                if (w <= 0) { block.tableColumnWidths.clear(); break; }
+            }
+        }
 
         for (auto* tr = tbl->FirstChildElement("w:tr"); tr;
              tr = tr->NextSiblingElement("w:tr")) {
@@ -520,13 +1043,57 @@ private:
 
                 RichTableCell cell;
                 cell.columnSpan = columnSpan;
+                {
+                    // Word's cell margins: the table's, then the cell's own.
+                    float margins[4] = {tableMargins[0], tableMargins[1], tableMargins[2], tableMargins[3]};
+                    auto* tcPr = tc->FirstChildElement("w:tcPr");
+                    ReadCellMargins(tcPr ? tcPr->FirstChildElement("w:tcMar") : nullptr, margins);
+                    cell.paddingTopPt = margins[0];
+                    cell.paddingBottomPt = margins[1];
+                    cell.paddingLeftPt = margins[2];
+                    cell.paddingRightPt = margins[3];
+                    if (auto* vAlign = tcPr ? tcPr->FirstChildElement("w:vAlign") : nullptr) {
+                        const std::string v = Attr(vAlign, "w:val");
+                        cell.verticalAlign = v == "center" ? RichVerticalAlign::Middle
+                                           : v == "bottom" ? RichVerticalAlign::Bottom : RichVerticalAlign::Top;
+                    }
+                }
+                if (auto* tcPr = tc->FirstChildElement("w:tcPr")) {
+                    if (auto* borders = tcPr->FirstChildElement("w:tcBorders")) {
+                        TableBorders own;
+                        ReadTableBorders(borders, own);
+                        cellBorders[{rowIndex, row.cells.size()}] = own;
+                    }
+                    if (auto* shd = tcPr->FirstChildElement("w:shd")) {
+                        const std::string fill = Attr(shd, "w:fill");
+                        if (fill.size() == 6 && fill != "auto") cell.backgroundColor = "#" + fill;
+                    }
+                }
                 InlineContext ctx;
                 bool firstParagraph = true;
                 for (auto* p = tc->FirstChildElement("w:p"); p;
                      p = p->NextSiblingElement("w:p")) {
                     if (!firstParagraph) ctx.pendingLineBreak = true;
+                    // Alignment is a paragraph property; the cell takes its
+                    // first paragraph's, and its frame where the cell has none.
+                    if (firstParagraph) {
+                        cell.align = ParagraphAlignment(p);
+                        RichDocBlock paragraph;
+                        ApplyGeometry(paragraph, p->FirstChildElement("w:pPr"));
+                        if (paragraph.HasParagraphFrame()) paragraphFrames[{rowIndex, row.cells.size()}] = paragraph;
+                    }
                     firstParagraph = false;
+                    const size_t runsBefore = ctx.runs.size();
                     ParseInlineContainer(p, "", ctx);
+                    // A cell keeps runs, not paragraphs: text without a size
+                    // or font of its own takes its paragraph style's here.
+                    RichDocBlock styled;
+                    ApplyGeometry(styled, p->FirstChildElement("w:pPr"));
+                    for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                        RichTextRun& run = ctx.runs[r];
+                        if (run.fontSizePt <= 0.0f) run.fontSizePt = styled.paragraphFontSizePt;
+                        if (run.fontFamily.empty()) run.fontFamily = styled.paragraphFontFamily;
+                    }
                 }
                 cell.runs = std::move(ctx.runs);
 
@@ -540,7 +1107,167 @@ private:
             }
             block.tableRows.push_back(std::move(row));
         }
+        ResolveCellBorders(tbl, block, cellBorders);
+        ReadTablePlacement(tbl, block);
+        // A cell holds text, not paragraphs: its paragraph's frame fills in
+        // the sides the cell leaves open.
+        for (const auto& [position, paragraph] : paragraphFrames) {
+            if (position.first >= block.tableRows.size()
+                || position.second >= block.tableRows[position.first].cells.size()) continue;
+            RichTableCell& cell = block.tableRows[position.first].cells[position.second];
+            const RichBorder* from[4] = {&paragraph.paragraphBorderTop, &paragraph.paragraphBorderBottom,
+                                         &paragraph.paragraphBorderLeft, &paragraph.paragraphBorderRight};
+            RichBorder* to[4] = {&cell.borderTop, &cell.borderBottom, &cell.borderLeft, &cell.borderRight};
+            for (int i = 0; i < 4; ++i) {
+                if (!to[i]->IsVisible() && from[i]->IsVisible()) *to[i] = *from[i];
+            }
+            if (cell.backgroundColor.empty()) cell.backgroundColor = paragraph.paragraphBackground;
+        }
         if (!block.tableRows.empty()) doc_->blocks.push_back(std::move(block));
+    }
+
+    // Each cell's four sides: its own w:tcBorders where stated, else the
+    // table's borders (w:tblBorders over the table style's) - the outer ones
+    // on the table's edge, insideH/insideV between cells.
+    // Cell margins: w:top/w:bottom/w:left(w:start)/w:right(w:end), twips.
+    static void ReadCellMargins(tinyxml2::XMLElement* margins, float out[4]) {
+        if (!margins) return;
+        const char* names[4] = {"w:top", "w:bottom", "w:left", "w:right"};
+        const char* alternates[4] = {nullptr, nullptr, "w:start", "w:end"};
+        for (int i = 0; i < 4; ++i) {
+            auto* e = margins->FirstChildElement(names[i]);
+            if (!e && alternates[i]) e = margins->FirstChildElement(alternates[i]);
+            if (e && (std::string(Attr(e, "w:type")) == "dxa" || !e->Attribute("w:type"))) {
+                out[i] = static_cast<float>(e->IntAttribute("w:w", 0)) / 20.0f;
+            }
+        }
+    }
+
+    // Width (w:tblW), alignment (w:jc) and indent (w:tblInd) of a table. An
+    // "auto" width is the sum of its grid columns, which is what Word draws.
+    void ReadTablePlacement(tinyxml2::XMLElement* tbl, RichDocBlock& table) const {
+        auto* tblPr = tbl->FirstChildElement("w:tblPr");
+        if (auto* width = tblPr ? tblPr->FirstChildElement("w:tblW") : nullptr) {
+            const std::string type = Attr(width, "w:type");
+            const std::string value = Attr(width, "w:w");
+            if (type == "dxa") {
+                table.tableWidthPt = static_cast<float>(width->IntAttribute("w:w", 0)) / 20.0f;
+            } else if (type == "pct") {
+                float percent = 0.0f;
+                if (!value.empty() && value.back() == '%') TryParseFloat(value.substr(0, value.size() - 1), percent);
+                else percent = static_cast<float>(width->IntAttribute("w:w", 0)) / 50.0f;   // fiftieths
+                table.tableWidthPercent = percent;
+            }
+        }
+        if (table.tableWidthPt <= 0.0f && table.tableWidthPercent <= 0.0f) {
+            float twips = 0.0f;
+            for (float w : table.tableColumnWidths) twips += w;
+            table.tableWidthPt = twips / 20.0f;
+        }
+        if (auto* jc = tblPr ? tblPr->FirstChildElement("w:jc") : nullptr) {
+            const std::string v = Attr(jc, "w:val");
+            table.tableAlign = v == "center" ? RichTextAlign::Center
+                             : (v == "right" || v == "end") ? RichTextAlign::Right : RichTextAlign::Left;
+        }
+        if (auto* indent = tblPr ? tblPr->FirstChildElement("w:tblInd") : nullptr) {
+            table.tableIndentPt = static_cast<float>(indent->IntAttribute("w:w", 0)) / 20.0f;
+        }
+    }
+
+    void ResolveCellBorders(tinyxml2::XMLElement* tbl, RichDocBlock& table,
+                            const std::map<std::pair<size_t, size_t>, TableBorders>& cellBorders) const {
+        table.tableBordersFromDocument = true;
+        auto* tblPr = tbl->FirstChildElement("w:tblPr");
+        std::string styleId = defaultTableStyle_;
+        if (auto* tblStyle = tblPr ? tblPr->FirstChildElement("w:tblStyle") : nullptr) {
+            styleId = Attr(tblStyle, "w:val");
+        }
+        TableBorders borders = TableStyleBorders(styleId);
+        if (auto* own = tblPr ? tblPr->FirstChildElement("w:tblBorders") : nullptr) {
+            TableBorders direct;
+            ReadTableBorders(own, direct);
+            OverlayBorders(borders, direct);
+        }
+        const RichTableGrid grid = BuildTableGrid(table);
+        for (size_t r = 0; r < table.tableRows.size(); ++r) {
+            for (size_t c = 0; c < table.tableRows[r].cells.size(); ++c) {
+                RichTableCell& cell = table.tableRows[r].cells[c];
+                int top = 0, left = 0;
+                if (!grid.OriginOf(static_cast<int>(r), static_cast<int>(c), top, left)) continue;
+                const int bottom = top + std::max(1, cell.rowSpan) - 1;
+                const int right = left + std::max(1, cell.columnSpan) - 1;
+                auto pick = [](const BorderSpec& own, const BorderSpec& table) {
+                    return own.set ? own.border : table.border;
+                };
+                auto it = cellBorders.find({r, c});
+                const TableBorders none;
+                const TableBorders& own = it != cellBorders.end() ? it->second : none;
+                cell.borderTop = pick(own.top, top == 0 ? borders.top : borders.insideH);
+                cell.borderBottom = pick(own.bottom, bottom >= grid.rowCount - 1 ? borders.bottom : borders.insideH);
+                cell.borderLeft = pick(own.left, left == 0 ? borders.left : borders.insideV);
+                cell.borderRight = pick(own.right, right >= grid.columnCount - 1 ? borders.right : borders.insideV);
+            }
+        }
+    }
+
+    // The body's section: page size and margins, and the header and footer
+    // parts it references (w:titlePg gives the first page its own).
+    void LoadSection(tinyxml2::XMLElement* sectPr) {
+        if (!sectPr) return;
+        auto twips = [](tinyxml2::XMLElement* e, const char* name) {
+            return e ? static_cast<float>(e->IntAttribute(name, 0)) / 20.0f : 0.0f;
+        };
+        RichPageSetup& page = doc_->page;
+        auto* size = sectPr->FirstChildElement("w:pgSz");
+        page.widthPt = twips(size, "w:w");
+        page.heightPt = twips(size, "w:h");
+        auto* margins = sectPr->FirstChildElement("w:pgMar");
+        page.marginTopPt = twips(margins, "w:top");
+        page.marginBottomPt = twips(margins, "w:bottom");
+        page.marginLeftPt = twips(margins, "w:left");
+        page.marginRightPt = twips(margins, "w:right");
+        page.headerTopPt = twips(margins, "w:header");
+        page.footerBottomPt = twips(margins, "w:footer");
+        // A negative top/bottom margin means "exactly, whatever the header".
+        page.marginTopPt = std::abs(page.marginTopPt);
+        page.marginBottomPt = std::abs(page.marginBottomPt);
+
+        doc_->firstPageDiffers = sectPr->FirstChildElement("w:titlePg") != nullptr;
+        for (const char* kind : {"w:headerReference", "w:footerReference"}) {
+            const bool header = std::string(kind) == "w:headerReference";
+            for (auto* ref = sectPr->FirstChildElement(kind); ref; ref = ref->NextSiblingElement(kind)) {
+                const std::string type = Attr(ref, "w:type");
+                RichPageFurniture* target = type == "first" ? &doc_->firstPageFurniture
+                                          : (type == "default" || type.empty()) ? &doc_->pageFurniture : nullptr;
+                if (!target) continue;   // even pages: not modelled
+                auto rel = relationships_.find(Attr(ref, "r:id"));
+                if (rel == relationships_.end()) continue;
+                LoadHeaderFooterPart("word/" + rel->second.target, header ? target->header : target->footer);
+            }
+        }
+        if (!doc_->firstPageDiffers) doc_->firstPageFurniture = RichPageFurniture{};
+    }
+
+    // A header or footer part: its paragraphs and tables, read like the body.
+    void LoadHeaderFooterPart(const std::string& partName, std::vector<RichDocBlock>& out) {
+        std::string xml;
+        if (!zip_.ReadEntry(partName, xml)) return;
+        ProtectWhitespaceRuns(xml);
+        tinyxml2::XMLDocument part;
+        if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        auto* root = part.RootElement();
+        if (!root) return;
+        const size_t start = doc_->blocks.size();
+        for (auto* elem = root->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
+            std::string tag = elem->Name() ? elem->Name() : "";
+            if (tag == "w:p") ParseParagraph(elem);
+            else if (tag == "w:tbl") ParseTable(elem);
+        }
+        out.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                   std::make_move_iterator(doc_->blocks.end()));
+        doc_->blocks.resize(start);
+        // An empty paragraph Word keeps in every header is not content.
+        while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
     }
 
     void LoadMetadata() {
@@ -587,6 +1314,17 @@ public:
             error = "Failed to write list definitions: " + zip_.GetLastError();
             return false;
         }
+        if (HasSettings() && !zip_.AddEntry("word/settings.xml", BuildSettingsXml())) {
+            error = "Failed to write document settings: " + zip_.GetLastError();
+            return false;
+        }
+        for (const FurniturePart& part : furnitureParts_) {
+            if (!zip_.AddEntry("word/" + part.name, part.xml)
+                || !zip_.AddEntry("word/_rels/" + part.name + ".rels", BuildPartRelsXml())) {
+                error = "Failed to write a header or footer: " + zip_.GetLastError();
+                return false;
+            }
+        }
         for (size_t i = 0; i < doc.media.size(); ++i) {
             if (!zip_.AddEntry(MediaPartName(i), doc.media[i].data.data(),
                                doc.media[i].data.size())) {
@@ -608,8 +1346,12 @@ private:
     // count from a high base so they cannot collide with the block images,
     // which number from 1.
     int inlineDrawingId_ = 100000;
+    int drawingId_ = 0;
+    const std::vector<RichDocBlock>* blocks_ = nullptr;   // the blocks being written (body or furniture)
     std::vector<std::string> hyperlinks_;   // index -> URL; rel id = rIdLink{index+1}
     bool usesLists_ = false;
+    std::vector<std::string> listDefinitions_;   // w:abstractNum per list run
+    int currentListNumId_ = 1;
 
     std::string MediaPartName(size_t mediaIndex) const {
         const RichDocMedia& m = doc_->media[mediaIndex];
@@ -630,7 +1372,7 @@ private:
         bool hasProps = run.bold || run.italic || run.underline || run.strikethrough
                         || run.code || run.subscript || run.superscript
                         || !run.color.empty() || !run.fontFamily.empty()
-                        || run.fontSizePt > 0 || asHyperlink;
+                        || run.fontSizePt > 0 || !run.highlightColor.empty() || asHyperlink;
         if (!hasProps) return;
         xml << "<w:rPr>";
         if (run.code) {
@@ -639,12 +1381,11 @@ private:
             xml << "<w:rFonts w:ascii=\"" << EscapeXml(run.fontFamily)
                 << "\" w:hAnsi=\"" << EscapeXml(run.fontFamily) << "\"/>";
         }
+        // In the order CT_RPr requires: b, i, strike, color, sz, u, shd,
+        // vertAlign (Word rejects a run whose properties are out of order).
         if (run.bold) xml << "<w:b/>";
         if (run.italic) xml << "<w:i/>";
         if (run.strikethrough) xml << "<w:strike/>";
-        if (run.underline || asHyperlink) xml << "<w:u w:val=\"single\"/>";
-        if (run.superscript) xml << "<w:vertAlign w:val=\"superscript\"/>";
-        if (run.subscript) xml << "<w:vertAlign w:val=\"subscript\"/>";
         if (!run.color.empty()) {
             std::string hex = run.color;
             if (!hex.empty() && hex[0] == '#') hex = hex.substr(1);
@@ -656,6 +1397,15 @@ private:
             xml << "<w:sz w:val=\"" << static_cast<int>(run.fontSizePt * 2 + 0.5f) << "\"/>"
                 << "<w:szCs w:val=\"" << static_cast<int>(run.fontSizePt * 2 + 0.5f) << "\"/>";
         }
+        if (run.underline || asHyperlink) xml << "<w:u w:val=\"single\"/>";
+        // Any highlight colour, as character shading (w:highlight knows only
+        // sixteen named colours).
+        if (run.highlightColor.size() == 7) {
+            xml << "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\""
+                << EscapeXml(run.highlightColor.substr(1)) << "\"/>";
+        }
+        if (run.superscript) xml << "<w:vertAlign w:val=\"superscript\"/>";
+        if (run.subscript) xml << "<w:vertAlign w:val=\"subscript\"/>";
         xml << "</w:rPr>";
     }
 
@@ -682,6 +1432,17 @@ private:
                 xml << "<w:hyperlink r:id=\"rIdLink"
                     << (HyperlinkRelIndex(run.linkTarget) + 1) << "\">";
             }
+            if (run.field != RichTextRun::Field::Plain) {
+                // A page number or count: a simple field showing its last value.
+                xml << "<w:fldSimple w:instr=\""
+                    << (run.field == RichTextRun::Field::PageNumber ? " PAGE " : " NUMPAGES ")
+                    << "\"><w:r>";
+                WriteRunProperties(xml, run, false);
+                WriteRunText(xml, run.text);
+                xml << "</w:r></w:fldSimple>";
+                if (isLink) xml << "</w:hyperlink>";
+                continue;
+            }
             xml << "<w:r>";
             if (run.IsInlineImage()) {
                 if (run.lineBreakBefore) xml << "<w:br/>";
@@ -706,6 +1467,70 @@ private:
         }
     }
 
+    static std::string Twips(float points) {
+        return std::to_string(std::lround(points * 20.0f));
+    }
+
+    // w:tabs, w:spacing, w:ind - in the order CT_PPrBase requires them
+    // (after w:pBdr, before w:jc).
+    static void WriteGeometry(std::ostringstream& pPr, const RichDocBlock& block) {
+        if (block.HasParagraphFrame()) {
+            auto side = [&](const char* name, const RichBorder& border) {
+                if (!border.IsVisible()) return;
+                const long eighths = std::max(2L, std::lround(border.widthPt * 8.0f));
+                const std::string color = border.color.size() == 7 ? border.color.substr(1) : "auto";
+                pPr << "<w:" << name << " w:val=\"single\" w:sz=\"" << std::to_string(eighths)
+                    << "\" w:space=\"4\" w:color=\"" << EscapeXml(color) << "\"/>";
+            };
+            if (block.paragraphBorderTop.IsVisible() || block.paragraphBorderBottom.IsVisible()
+                || block.paragraphBorderLeft.IsVisible() || block.paragraphBorderRight.IsVisible()) {
+                pPr << "<w:pBdr>";
+                side("top", block.paragraphBorderTop);
+                side("left", block.paragraphBorderLeft);
+                side("bottom", block.paragraphBorderBottom);
+                side("right", block.paragraphBorderRight);
+                pPr << "</w:pBdr>";
+            }
+            if (block.paragraphBackground.size() == 7) {
+                pPr << "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\""
+                    << EscapeXml(block.paragraphBackground.substr(1)) << "\"/>";
+            }
+        }
+        if (!block.tabStops.empty()) {
+            pPr << "<w:tabs>";
+            for (const RichTabStop& stop : block.tabStops) {
+                const char* kind = stop.kind == RichTabKind::Center ? "center"
+                                 : stop.kind == RichTabKind::Right ? "right"
+                                 : stop.kind == RichTabKind::Decimal ? "decimal" : "left";
+                pPr << "<w:tab w:val=\"" << kind << "\" w:pos=\"" << Twips(stop.positionPt) << "\"/>";
+            }
+            pPr << "</w:tabs>";
+        }
+        if (block.spaceBeforePt >= 0.0f || block.spaceAfterPt >= 0.0f || block.lineSpacing > 0.0f
+            || block.lineHeightPt > 0.0f) {
+            pPr << "<w:spacing";
+            if (block.spaceBeforePt >= 0.0f) pPr << " w:before=\"" << Twips(block.spaceBeforePt) << "\"";
+            if (block.spaceAfterPt >= 0.0f) pPr << " w:after=\"" << Twips(block.spaceAfterPt) << "\"";
+            if (block.lineHeightPt > 0.0f) {
+                pPr << " w:line=\"" << Twips(block.lineHeightPt) << "\" w:lineRule=\""
+                    << (block.lineHeightAtLeast ? "atLeast" : "exact") << "\"";
+            } else if (block.lineSpacing > 0.0f) {
+                pPr << " w:line=\"" << std::to_string(std::lround(block.lineSpacing * 240.0f))
+                    << "\" w:lineRule=\"auto\"";
+            }
+            pPr << "/>";
+        }
+        // List items take their indent from the numbering definition.
+        if (block.type != RichBlockType::ListItem
+            && (block.leftIndentPt != 0.0f || block.rightIndentPt != 0.0f || block.firstLineIndentPt != 0.0f)) {
+            pPr << "<w:ind w:left=\"" << Twips(block.leftIndentPt) << "\" w:right=\""
+                << Twips(block.rightIndentPt) << "\"";
+            if (block.firstLineIndentPt > 0.0f) pPr << " w:firstLine=\"" << Twips(block.firstLineIndentPt) << "\"";
+            if (block.firstLineIndentPt < 0.0f) pPr << " w:hanging=\"" << Twips(-block.firstLineIndentPt) << "\"";
+            pPr << "/>";
+        }
+    }
+
     void WriteParagraph(std::ostringstream& xml, const RichDocBlock& block) {
         xml << "<w:p>";
         std::ostringstream pPr;
@@ -719,14 +1544,28 @@ private:
         } else if (block.type == RichBlockType::ListItem) {
             usesLists_ = true;
             pPr << "<w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\""
-                << std::max(0, block.listLevel) << "\"/><w:numId w:val=\""
-                << (block.orderedList ? 2 : 1) << "\"/></w:numPr>";
+                << std::clamp(block.listLevel, 0, 8) << "\"/><w:numId w:val=\""
+                << currentListNumId_ << "\"/></w:numPr>";
         } else if (block.type == RichBlockType::HorizontalRule) {
             pPr << "<w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" "
                    "w:color=\"808080\"/></w:pBdr>";
         }
+        WriteGeometry(pPr, block);
         if (const char* jc = JcValue(block.align)) {
             pPr << "<w:jc w:val=\"" << jc << "\"/>";
+        }
+        // The paragraph mark carries the paragraph's font, which is what
+        // an empty paragraph is measured with.
+        if (block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
+            pPr << "<w:rPr>";
+            if (!block.paragraphFontFamily.empty()) {
+                pPr << "<w:rFonts w:ascii=\"" << EscapeXml(block.paragraphFontFamily) << "\" w:hAnsi=\""
+                    << EscapeXml(block.paragraphFontFamily) << "\"/>";
+            }
+            if (block.paragraphFontSizePt > 0.0f) {
+                pPr << "<w:sz w:val=\"" << std::lround(block.paragraphFontSizePt * 2.0f) << "\"/>";
+            }
+            pPr << "</w:rPr>";
         }
         std::string pPrStr = pPr.str();
         if (!pPrStr.empty()) xml << "<w:pPr>" << pPrStr << "</w:pPr>";
@@ -737,6 +1576,15 @@ private:
             run.text = UCRichDocument::ConcatenateRunText(block.runs);
             run.code = true;
             WriteRuns(xml, {run});
+        } else if (block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
+            // Word's runs take their size from the style, not the paragraph,
+            // so text without its own size or font carries the paragraph's.
+            std::vector<RichTextRun> runs = block.runs;
+            for (RichTextRun& run : runs) {
+                if (run.fontSizePt <= 0.0f) run.fontSizePt = block.paragraphFontSizePt;
+                if (run.fontFamily.empty() && !run.code) run.fontFamily = block.paragraphFontFamily;
+            }
+            WriteRuns(xml, runs);
         } else {
             WriteRuns(xml, block.runs);
         }
@@ -800,6 +1648,57 @@ private:
             << "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>";
     }
 
+    // w:tcBorders then w:shd, in the order CT_TcPr requires (after vMerge).
+    static void WriteCellFrame(std::ostringstream& xml, const RichTableCell& cell) {
+        xml << "<w:tcBorders>";
+        auto side = [&](const char* name, const RichBorder& border) {
+            if (!border.IsVisible()) {
+                xml << "<w:" << name << " w:val=\"nil\"/>";
+                return;
+            }
+            const long eighths = std::max(2L, std::lround(border.widthPt * 8.0f));
+            const std::string color = border.color.size() == 7 ? border.color.substr(1) : "auto";
+            xml << "<w:" << name << " w:val=\"single\" w:sz=\"" << std::to_string(eighths)
+                << "\" w:space=\"0\" w:color=\"" << EscapeXml(color) << "\"/>";
+        };
+        side("top", cell.borderTop);
+        side("left", cell.borderLeft);
+        side("bottom", cell.borderBottom);
+        side("right", cell.borderRight);
+        xml << "</w:tcBorders>";
+        if (cell.backgroundColor.size() == 7) {
+            xml << "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\""
+                << EscapeXml(cell.backgroundColor.substr(1)) << "\"/>";
+        }
+        // Then w:tcMar and w:vAlign, still in CT_TcPr order.
+        const float paddings[4] = {cell.paddingTopPt, cell.paddingLeftPt, cell.paddingBottomPt, cell.paddingRightPt};
+        const char* names[4] = {"top", "left", "bottom", "right"};
+        bool anyPadding = false;
+        for (float p : paddings) anyPadding = anyPadding || p >= 0.0f;
+        if (anyPadding) {
+            xml << "<w:tcMar>";
+            for (int i = 0; i < 4; ++i) {
+                if (paddings[i] >= 0.0f) {
+                    xml << "<w:" << names[i] << " w:w=\"" << Twips(paddings[i]) << "\" w:type=\"dxa\"/>";
+                }
+            }
+            xml << "</w:tcMar>";
+        }
+        if (cell.verticalAlign != RichVerticalAlign::Top) {
+            xml << "<w:vAlign w:val=\"" << (cell.verticalAlign == RichVerticalAlign::Middle ? "center" : "bottom") << "\"/>";
+        }
+    }
+
+    static const char* JustificationFor(RichTextAlign align) {
+        switch (align) {
+            case RichTextAlign::Center: return "center";
+            case RichTextAlign::Right: return "right";
+            case RichTextAlign::Justify: return "both";
+            case RichTextAlign::Left: return "left";
+            default: return nullptr;
+        }
+    }
+
     void WriteTable(std::ostringstream& xml, const RichDocBlock& block) {
         size_t columnCount = 0;
         for (const auto& row : block.tableRows) {
@@ -807,17 +1706,42 @@ private:
             for (const auto& cell : row.cells) width += std::max(1, cell.columnSpan);
             columnCount = std::max(columnCount, width);
         }
-        xml << "<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/>"
-               "<w:tblW w:w=\"0\" w:type=\"auto\"/>"
-               "<w:tblBorders>"
-               "<w:top w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "<w:left w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "<w:bottom w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "<w:right w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "<w:insideH w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "<w:insideV w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>"
-               "</w:tblBorders></w:tblPr><w:tblGrid>";
-        for (size_t c = 0; c < columnCount; ++c) xml << "<w:gridCol/>";
+        // A document's own frames go on the cells (w:tcBorders); the table
+        // then has no borders of its own. Otherwise the usual thin grid.
+        const char* tableLine = block.tableBordersFromDocument
+                ? "w:val=\"nil\"/>" : "w:val=\"single\" w:sz=\"4\" w:color=\"auto\"/>";
+        // CT_TblPr order: tblStyle, tblW, jc, tblInd, tblBorders.
+        xml << "<w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/>";
+        if (block.tableWidthPt > 0.0f) {
+            xml << "<w:tblW w:w=\"" << Twips(block.tableWidthPt) << "\" w:type=\"dxa\"/>";
+        } else if (block.tableWidthPercent > 0.0f) {
+            xml << "<w:tblW w:w=\"" << std::to_string(std::lround(block.tableWidthPercent * 50.0f)) << "\" w:type=\"pct\"/>";
+        } else {
+            xml << "<w:tblW w:w=\"0\" w:type=\"auto\"/>";
+        }
+        if (block.tableAlign == RichTextAlign::Center) xml << "<w:jc w:val=\"center\"/>";
+        else if (block.tableAlign == RichTextAlign::Right) xml << "<w:jc w:val=\"right\"/>";
+        if (block.tableIndentPt > 0.0f) xml << "<w:tblInd w:w=\"" << Twips(block.tableIndentPt) << "\" w:type=\"dxa\"/>";
+        xml << "<w:tblBorders>";
+        for (const char* side : {"top", "left", "bottom", "right", "insideH", "insideV"}) {
+            xml << "<w:" << side << " " << tableLine;
+        }
+        xml << "</w:tblBorders></w:tblPr><w:tblGrid>";
+        // Known proportions become twips across the table's width (9000 twips,
+        // 6.25in, when it has none of its own).
+        const std::vector<float>& widths = block.tableColumnWidths;
+        float totalWidth = 0.0f;
+        for (float w : widths) totalWidth += std::max(0.0f, w);
+        const bool widthsKnown = widths.size() == columnCount && totalWidth > 0.0f;
+        for (size_t c = 0; c < columnCount; ++c) {
+            if (widthsKnown) {
+                const float tableTwips = block.tableWidthPt > 0.0f ? block.tableWidthPt * 20.0f : 9000.0f;
+                const long twips = std::max(1L, std::lround(tableTwips * widths[c] / totalWidth));
+                xml << "<w:gridCol w:w=\"" << std::to_string(twips) << "\"/>";
+            } else {
+                xml << "<w:gridCol/>";
+            }
+        }
         xml << "</w:tblGrid>\n";
         // Walk the grid, not the cell list: a row-spanning cell is written once
         // with <w:vMerge w:val="restart"/>, and every grid position it covers
@@ -855,7 +1779,11 @@ private:
                 if (rowSpan > 1) {
                     xml << "<w:vMerge w:val=\"restart\"/>";
                 }
+                if (block.tableBordersFromDocument) WriteCellFrame(xml, cell);
                 xml << "</w:tcPr><w:p>";
+                if (const char* jc = JustificationFor(cell.align)) {
+                    xml << "<w:pPr><w:jc w:val=\"" << jc << "\"/></w:pPr>";
+                }
                 std::vector<RichTextRun> runs = cell.runs;
                 if (row.header) {
                     for (auto& run : runs) run.bold = true;
@@ -870,16 +1798,24 @@ private:
             << "<w:p/>\n";
     }
 
-    std::string BuildDocumentXml() {
+    // The blocks as WordprocessingML paragraphs and tables.
+    std::string WriteBlocks(const std::vector<RichDocBlock>& blocks) {
+        const std::vector<RichDocBlock>* savedBlocks = blocks_;
+        blocks_ = &blocks;
         std::ostringstream body;
-        int drawingId = 0;
-        for (const auto& block : doc_->blocks) {
+        for (size_t index = 0; index < blocks.size(); ++index) {
+            const RichDocBlock& block = blocks[index];
+            // A run of list items is one Word list - until an item needs a
+            // level definition of its own (see StartsNewList).
+            if (block.type == RichBlockType::ListItem && WordFormatInternal::StartsNewList(blocks, index)) {
+                currentListNumId_ = AddListDefinition(index);
+            }
             switch (block.type) {
                 case RichBlockType::Table:
                     WriteTable(body, block);
                     break;
                 case RichBlockType::Image:
-                    WriteImage(body, block, ++drawingId);
+                    WriteImage(body, block, ++drawingId_);
                     break;
                 case RichBlockType::PageBreak:
                     body << "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\n";
@@ -895,16 +1831,72 @@ private:
                     break;
             }
         }
+        blocks_ = savedBlocks;
+        return body.str();
+    }
+
+    static constexpr const char* kPartNamespaces =
+        "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" "
+        "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+        "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\"";
+
+    // The headers and footers as their own parts, referenced from sectPr.
+    struct FurniturePart { std::string name; std::string kind; std::string type; std::string xml; };
+    std::vector<FurniturePart> furnitureParts_;
+
+    std::string SectionPropertiesXml() {
+        const UCRichDocument& doc = *doc_;
+        std::ostringstream refs;
+        auto part = [&](const std::vector<RichDocBlock>& blocks, const char* kind, const char* type) {
+            if (blocks.empty()) return;
+            FurniturePart p;
+            p.kind = kind;
+            p.type = type;
+            p.name = std::string(kind) + std::to_string(furnitureParts_.size() + 1) + ".xml";
+            const char* root = std::string(kind) == "header" ? "w:hdr" : "w:ftr";
+            p.xml = std::string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<")
+                  + root + " " + kPartNamespaces + ">" + WriteBlocks(blocks) + "</" + root + ">\n";
+            refs << "<w:" << kind << "Reference w:type=\"" << type << "\" r:id=\"rIdPart"
+                 << (furnitureParts_.size() + 1) << "\"/>";
+            furnitureParts_.push_back(std::move(p));
+        };
+        part(doc.pageFurniture.header, "header", "default");
+        if (doc.firstPageDiffers) part(doc.firstPageFurniture.header, "header", "first");
+        part(doc.pageFurniture.footer, "footer", "default");
+        if (doc.firstPageDiffers) part(doc.firstPageFurniture.footer, "footer", "first");
+
+        // Word's defaults (A4, 2 cm margins) where the document states no page.
+        const RichPageSetup& page = doc.page;
+        auto twips = [](float pt) { return std::lround(pt * 20.0f); };
+        const bool hasPage = page.HasPage();
+        std::ostringstream xml;
+        xml << "<w:sectPr>" << refs.str();
+        xml << "<w:pgSz w:w=\"" << (hasPage ? twips(page.widthPt) : 11906)
+            << "\" w:h=\"" << (hasPage ? twips(page.heightPt) : 16838) << "\""
+            << (hasPage && page.widthPt > page.heightPt ? " w:orient=\"landscape\"" : "") << "/>";
+        const float headerTop = page.headerTopPt > 0.0f ? page.headerTopPt : 35.45f;
+        const float footerBottom = page.footerBottomPt > 0.0f ? page.footerBottomPt : 35.45f;
+        xml << "<w:pgMar w:top=\"" << (hasPage ? twips(page.marginTopPt) : 1134)
+            << "\" w:right=\"" << (hasPage ? twips(page.marginRightPt) : 1134)
+            << "\" w:bottom=\"" << (hasPage ? twips(page.marginBottomPt) : 1134)
+            << "\" w:left=\"" << (hasPage ? twips(page.marginLeftPt) : 1134)
+            << "\" w:header=\"" << twips(headerTop) << "\" w:footer=\"" << twips(footerBottom)
+            << "\" w:gutter=\"0\"/>";
+        if (doc.firstPageDiffers) xml << "<w:titlePg/>";
+        xml << "</w:sectPr>";
+        return xml.str();
+    }
+
+    std::string BuildDocumentXml() {
+        const std::string body = WriteBlocks(doc_->blocks);
+        const std::string sectPr = SectionPropertiesXml();
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<w:document "
             << "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" "
             << "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
             << "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\">"
-            << "<w:body>\n" << body.str()
-            << "<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/>"
-               "<w:pgMar w:top=\"1134\" w:right=\"1134\" w:bottom=\"1134\" w:left=\"1134\" "
-               "w:header=\"709\" w:footer=\"709\" w:gutter=\"0\"/></w:sectPr>"
+            << "<w:body>\n" << body << sectPr
             << "</w:body></w:document>\n";
         return xml.str();
     }
@@ -935,6 +1927,16 @@ private:
                    "ContentType=\"application/vnd.openxmlformats-officedocument."
                    "wordprocessingml.numbering+xml\"/>\n";
         }
+        for (const FurniturePart& part : furnitureParts_) {
+            xml << "<Override PartName=\"/word/" << part.name << "\" "
+                   "ContentType=\"application/vnd.openxmlformats-officedocument."
+                   "wordprocessingml." << part.kind << "+xml\"/>\n";
+        }
+        if (HasSettings()) {
+            xml << "<Override PartName=\"/word/settings.xml\" "
+                   "ContentType=\"application/vnd.openxmlformats-officedocument."
+                   "wordprocessingml.settings+xml\"/>\n";
+        }
         xml << "<Override PartName=\"/docProps/core.xml\" "
                "ContentType=\"application/vnd.openxmlformats-package."
                "core-properties+xml\"/>\n"
@@ -943,6 +1945,16 @@ private:
                "extended-properties+xml\"/>\n"
             << "</Types>\n";
         return xml.str();
+    }
+
+    // word/settings.xml carries only the default tab interval, so it is
+    // written only when the document states one.
+    bool HasSettings() const { return doc_->defaultTabStopPt > 0.0f; }
+
+    std::string BuildSettingsXml() const {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+               "<w:settings xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+               "<w:defaultTabStop w:val=\"" + Twips(doc_->defaultTabStopPt) + "\"/></w:settings>\n";
     }
 
     static std::string BuildRootRelsXml() {
@@ -972,6 +1984,30 @@ private:
                    "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering\" "
                    "Target=\"numbering.xml\"/>\n";
         }
+        if (HasSettings()) {
+            xml << "<Relationship Id=\"rIdSettings\" "
+                   "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings\" "
+                   "Target=\"settings.xml\"/>\n";
+        }
+        for (size_t i = 0; i < furnitureParts_.size(); ++i) {
+            xml << "<Relationship Id=\"rIdPart" << (i + 1)
+                << "\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                << furnitureParts_[i].kind << "\" Target=\"" << furnitureParts_[i].name << "\"/>\n";
+        }
+        xml << MediaAndLinkRelationships() << "</Relationships>\n";
+        return xml.str();
+    }
+
+    // A header or footer part refers to pictures and links by the same ids
+    // the body does, so its relationships repeat the body's.
+    std::string BuildPartRelsXml() const {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+               "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+             + MediaAndLinkRelationships() + "</Relationships>\n";
+    }
+
+    std::string MediaAndLinkRelationships() const {
+        std::ostringstream xml;
         for (size_t i = 0; i < doc_->media.size(); ++i) {
             std::string target = MediaPartName(i).substr(5);   // strip "word/"
             xml << "<Relationship Id=\"rIdImg" << (i + 1)
@@ -984,7 +2020,6 @@ private:
                 << "Target=\"" << EscapeXml(hyperlinks_[i])
                 << "\" TargetMode=\"External\"/>\n";
         }
-        xml << "</Relationships>\n";
         return xml.str();
     }
 
@@ -1027,30 +2062,62 @@ private:
         return xml.str();
     }
 
-    static std::string BuildNumberingXml() {
-        std::ostringstream xml;
-        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-            << "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">\n"
-            << "<w:abstractNum w:abstractNumId=\"0\">\n";
-        for (int level = 0; level < 9; ++level) {
-            xml << "<w:lvl w:ilvl=\"" << level << "\"><w:start w:val=\"1\"/>"
-                << "<w:numFmt w:val=\"bullet\"/><w:lvlText w:val=\"\xE2\x80\xA2\"/>"
-                << "<w:lvlJc w:val=\"left\"/><w:pPr><w:ind w:left=\""
-                << 720 * (level + 1) << "\" w:hanging=\"360\"/></w:pPr>"
-                << "<w:rPr><w:rFonts w:ascii=\"Symbol\" w:hAnsi=\"Symbol\" w:hint=\"default\"/>"
-                << "</w:rPr></w:lvl>\n";
+    // One Word list per run of list items: its own abstract numbering with
+    // each level's label taken from the first item at that level, so separate
+    // lists count separately and "a)" / "1.2." / custom bullets survive.
+    static const char* WordNumFmt(RichNumberFormat format) {
+        switch (format) {
+            case RichNumberFormat::LowerLetter: return "lowerLetter";
+            case RichNumberFormat::UpperLetter: return "upperLetter";
+            case RichNumberFormat::LowerRoman: return "lowerRoman";
+            case RichNumberFormat::UpperRoman: return "upperRoman";
+            case RichNumberFormat::DecimalZero: return "decimalZero";
+            case RichNumberFormat::NoNumber: return "none";
+            default: return "decimal";
         }
-        xml << "</w:abstractNum>\n<w:abstractNum w:abstractNumId=\"1\">\n";
+    }
+
+    int AddListDefinition(size_t begin) {
+        const RichDocBlock* byLevel[9] = {};
+        for (size_t j = begin; j < (*blocks_).size() && (*blocks_)[j].type == RichBlockType::ListItem; ++j) {
+            if (j > begin && WordFormatInternal::StartsNewList((*blocks_), j)) break;
+            const int l = std::clamp((*blocks_)[j].listLevel, 0, 8);
+            if (!byLevel[l]) byLevel[l] = &(*blocks_)[j];
+        }
+        const int id = static_cast<int>(listDefinitions_.size());
+        std::ostringstream xml;
+        xml << "<w:abstractNum w:abstractNumId=\"" << id << "\">\n";
         for (int level = 0; level < 9; ++level) {
-            xml << "<w:lvl w:ilvl=\"" << level << "\"><w:start w:val=\"1\"/>"
-                << "<w:numFmt w:val=\"decimal\"/><w:lvlText w:val=\"%" << (level + 1)
-                << ".\"/><w:lvlJc w:val=\"left\"/><w:pPr><w:ind w:left=\""
+            const RichDocBlock* item = byLevel[level];
+            const bool ordered = item && item->orderedList;
+            const int start = ordered && item->listStartNumber > 0 ? item->listStartNumber : 1;
+            xml << "<w:lvl w:ilvl=\"" << level << "\"><w:start w:val=\"" << start << "\"/>";
+            if (ordered) {
+                const std::string text = item->numberTemplate.empty()
+                        ? "%" + std::to_string(level + 1) + "." : item->numberTemplate;
+                xml << "<w:numFmt w:val=\"" << WordNumFmt(item->numberFormat) << "\"/>"
+                    << "<w:lvlText w:val=\"" << EscapeXml(text) << "\"/>";
+            } else {
+                const std::string bullet = item && !item->bulletText.empty() ? item->bulletText : "\xE2\x80\xA2";
+                xml << "<w:numFmt w:val=\"bullet\"/><w:lvlText w:val=\"" << EscapeXml(bullet) << "\"/>";
+            }
+            xml << "<w:lvlJc w:val=\"left\"/><w:pPr><w:ind w:left=\""
                 << 720 * (level + 1) << "\" w:hanging=\"360\"/></w:pPr></w:lvl>\n";
         }
-        xml << "</w:abstractNum>\n"
-            << "<w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num>\n"
-            << "<w:num w:numId=\"2\"><w:abstractNumId w:val=\"1\"/></w:num>\n"
-            << "</w:numbering>\n";
+        xml << "</w:abstractNum>\n";
+        listDefinitions_.push_back(xml.str());
+        return id + 1;   // numId: 1-based
+    }
+
+    std::string BuildNumberingXml() const {
+        std::ostringstream xml;
+        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+            << "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">\n";
+        for (const std::string& definition : listDefinitions_) xml << definition;
+        for (size_t i = 0; i < listDefinitions_.size(); ++i) {
+            xml << "<w:num w:numId=\"" << (i + 1) << "\"><w:abstractNumId w:val=\"" << i << "\"/></w:num>\n";
+        }
+        xml << "</w:numbering>\n";
         return xml.str();
     }
 

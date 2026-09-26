@@ -8,7 +8,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "UltraCanvasRichDocument.h"
 
@@ -98,6 +100,45 @@ inline bool ParagraphIsOneInlineImage(const std::vector<RichTextRun>& runs,
     outImage.imageAltText = picture->imageAltText;
     return true;
 }
+
+// True when the list item at `index` begins a new list for a writer: no list
+// item before it, or the previous item at its level (within the same list,
+// before any shallower item) differs in kind, number format, label template
+// or bullet, or it restarts the count. Word and ODF lists carry one label
+// definition per level, so such an item cannot share its predecessor's list.
+inline bool StartsNewList(const std::vector<RichDocBlock>& blocks, size_t index) {
+    const RichDocBlock& item = blocks[index];
+    if (index == 0 || blocks[index - 1].type != RichBlockType::ListItem) return true;
+    for (size_t i = index; i-- > 0 && blocks[i].type == RichBlockType::ListItem;) {
+        const RichDocBlock& previous = blocks[i];
+        if (previous.listLevel < item.listLevel) return false;    // first of a sublist
+        if (previous.listLevel > item.listLevel) continue;
+        if (previous.orderedList != item.orderedList) return true;
+        if (item.orderedList) {
+            if (previous.numberFormat != item.numberFormat || previous.numberTemplate != item.numberTemplate) {
+                return true;
+            }
+            return item.listStartNumber > 0
+                && item.listStartNumber != RichDocOrderedItemNumber(blocks, i) + 1;
+        }
+        return previous.bulletText != item.bulletText;
+    }
+    return false;
+}
+
+// ===== SYMBOL FONTS (UltraCanvasSymbolFonts.cpp) =====
+// Unicode for `codepoint` set in `fontFamily` when that is one of the Windows
+// symbol fonts (Symbol, Wingdings, Wingdings 2/3, Webdings); accepts the bare
+// font code and the U+F000 + code form. 0 = not a symbol font, or unmapped.
+uint32_t SymbolFontCharToUnicode(const std::string& fontFamily, uint32_t codepoint);
+// Rewrites every run set in a symbol font (body, table cells, headers and
+// footers) as the Unicode characters it depicts, and drops the symbol font
+// from the run.
+void MapSymbolFontRuns(UCRichDocument& document);
+// Decodes the UTF-8 sequence at text[at] and advances `at` past it.
+uint32_t DecodeUtf8(const std::string& text, size_t& at);
+// Appends `codepoint` to `out` as UTF-8.
+void AppendUtf8(std::string& out, uint32_t codepoint);
 
 } // namespace WordFormatInternal
 } // namespace UltraCanvas

@@ -26,6 +26,18 @@ std::string UltraCanvasRichTextEdit::internalClipboardText;
 
 namespace {
 
+// Document lengths are points; the view draws in pixels. Text sizes go to
+// Pango as points at the 96 DPI every Cairo context is pinned to
+// (RenderContextCairo), so indents, tab stops, spacing and table widths have
+// to be scaled the same way or they come out a quarter too small beside the
+// text they belong to.
+constexpr float kPixelsPerPoint = 96.0f / 72.0f;
+inline float Px(float points) { return points * kPixelsPerPoint; }
+
+// Room between a paragraph's text and its frame (and what the frame adds to
+// the space around the paragraph).
+constexpr float kParagraphFramePadding = 3.0f;
+
 Color ParseHexColor(const std::string& hex, const Color& fallback) {
     if (hex.size() != 7 || hex[0] != '#') return fallback;
     auto digit = [](char c) -> int {
@@ -49,22 +61,6 @@ TextAlignment ToTextAlignment(RichTextAlign align) {
         case RichTextAlign::Justify: return TextAlignment::Justify;
         default:                     return TextAlignment::Left;
     }
-}
-
-// Ordinal of a list item among its siblings at the same level, so numbering
-// restarts after a paragraph and after a deeper sublist closes.
-int OrderedItemNumber(const UCRichDocumentEditor& editor, int blockIndex) {
-    const RichDocBlock& block = editor.GetBlock(blockIndex);
-    int number = 1;
-    for (int i = blockIndex - 1; i >= 0; i--) {
-        const RichDocBlock& previous = editor.GetBlock(i);
-        if (previous.type != RichBlockType::ListItem) break;
-        if (previous.listLevel < block.listLevel) break;
-        if (previous.listLevel > block.listLevel) continue;
-        if (previous.orderedList != block.orderedList) break;
-        number++;
-    }
-    return number;
 }
 
 } // namespace
@@ -107,6 +103,8 @@ UltraCanvasRichTextEdit::~UltraCanvasRichTextEdit() {
 void UltraCanvasRichTextEdit::SetDocument(std::shared_ptr<UCRichDocument> document) {
     editor.SetDocument(std::move(document));
     blockLayouts.clear();
+    furnitureCache.clear();
+    visibleAreaDirty = true;          // another page size
     scrollOffset = 0.0f;
     layoutsDirty = true;
     RequestRedraw();
@@ -126,6 +124,7 @@ void UltraCanvasRichTextEdit::Clear() {
 void UltraCanvasRichTextEdit::InvalidateDocument() {
     layoutsDirty = true;
     blockLayouts.clear();
+    furnitureCache.clear();
     RequestRedraw();
 }
 
@@ -142,6 +141,14 @@ void UltraCanvasRichTextEdit::SetReadOnly(bool value) {
     readOnly = value;
     if (readOnly) UltraCanvasCaret::GetInstance().Hide(this);
     RequestRedraw();
+}
+
+void UltraCanvasRichTextEdit::SetPageView(bool enabled) {
+    if (pageView == enabled) return;
+    pageView = enabled;
+    pages.clear();
+    visibleAreaDirty = true;
+    InvalidateDocument();
 }
 
 void UltraCanvasRichTextEdit::SetStyle(const RichTextEditStyle& s) {
@@ -164,19 +171,374 @@ void UltraCanvasRichTextEdit::RecalculateVisibleArea() {
                           std::max(1.0f, bounds.width - 2 * style.padding - scrollbar),
                           std::max(1.0f, bounds.height - 2 * style.padding));
     visibleAreaDirty = false;
+    UpdateColumnGeometry();
+}
+
+// ===== PAGES =====
+
+// The document's page, or A4 portrait with 2 cm margins for a document that
+// states none (Markdown, plain text) - what Writer gives a new document.
+RichPageSetup UltraCanvasRichTextEdit::EffectivePageSetup() const {
+    const std::shared_ptr<UCRichDocument>& document = editor.GetDocument();
+    if (document && document->page.HasPage()) return document->page;
+    RichPageSetup a4;
+    a4.widthPt = 595.28f;
+    a4.heightPt = 841.89f;
+    a4.marginTopPt = a4.marginBottomPt = a4.marginLeftPt = a4.marginRightPt = 56.69f;
+    a4.headerTopPt = a4.footerBottomPt = 56.69f;
+    return a4;
+}
+
+// Where the text column is. In page view it is the page's, between its side
+// margins, with the page centred on the desk (or at its left edge when the
+// element is narrower than the page); otherwise the whole visible width.
+void UltraCanvasRichTextEdit::UpdateColumnGeometry() {
+    if (!pageView) {
+        columnOffsetX = 0.0f;
+        columnWidth = visibleArea.width;
+        pageLeftX = 0.0f;
+        pageWidthPx = pageHeightPx = 0.0f;
+        return;
+    }
+    const RichPageSetup page = EffectivePageSetup();
+    pageWidthPx = Px(page.widthPt);
+    pageHeightPx = Px(page.heightPt);
+    pageLeftX = std::max(0.0f, (visibleArea.width - pageWidthPx) * 0.5f);
+    const float left = Px(std::max(0.0f, page.marginLeftPt));
+    const float right = Px(std::max(0.0f, page.marginRightPt));
+    columnOffsetX = pageLeftX + left;
+    columnWidth = std::max(24.0f, pageWidthPx - left - right);
+}
+
+namespace {
+
+// A header or footer with its page fields spelt out for one page.
+std::vector<RichDocBlock> FillPageFields(const std::vector<RichDocBlock>& blocks,
+                                         int pageNumber, int pageCount, bool& hasFields) {
+    std::vector<RichDocBlock> out = blocks;
+    auto fill = [&](std::vector<RichTextRun>& runs) {
+        for (RichTextRun& run : runs) {
+            if (run.field == RichTextRun::Field::PageNumber) {
+                run.text = std::to_string(pageNumber);
+                hasFields = true;
+            } else if (run.field == RichTextRun::Field::PageCount) {
+                run.text = std::to_string(pageCount);
+                hasFields = true;
+            }
+        }
+    };
+    for (RichDocBlock& block : out) {
+        fill(block.runs);
+        for (RichTableRow& row : block.tableRows) {
+            for (RichTableCell& cell : row.cells) fill(cell.runs);
+        }
+    }
+    return out;
+}
+
+bool HasPageFields(const std::vector<RichDocBlock>& blocks) {
+    bool hasFields = false;
+    FillPageFields(blocks, 1, 1, hasFields);
+    return hasFields;
+}
+
+} // namespace
+
+// Lays out a header or footer for one page. Layouts are cached by content and
+// page, so only a furniture with page fields is laid out once per page.
+std::shared_ptr<UltraCanvasRichTextEdit::FurnitureLayout> UltraCanvasRichTextEdit::LayoutFurniture(
+        IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int pageNumber, int pageCount) {
+    if (blocks.empty()) return nullptr;
+    if (furnitureCacheWidth != ColumnWidth()) {
+        furnitureCache.clear();
+        furnitureCacheWidth = ColumnWidth();
+    }
+    const bool numbered = HasPageFields(blocks);
+    const std::string key = std::to_string(reinterpret_cast<uintptr_t>(&blocks)) + "|"
+                          + (numbered ? std::to_string(pageNumber) + "|" + std::to_string(pageCount) : "");
+    auto found = furnitureCache.find(key);
+    if (found != furnitureCache.end()) return found->second;
+
+    auto furniture = std::make_shared<FurnitureLayout>();
+    bool hasFields = false;
+    furniture->blocks = FillPageFields(blocks, pageNumber, pageCount, hasFields);
+    furniture->layouts.resize(furniture->blocks.size());
+    float y = 0.0f;
+    for (size_t i = 0; i < furniture->blocks.size(); i++) {
+        BlockLayout& bl = furniture->layouts[i];
+        BuildBlockLayout(ctx, furniture->blocks, static_cast<int>(i), bl, -1);
+        bl.bounds.x = bl.textLeft;
+        bl.bounds.y = y;
+        y += bl.bounds.height + GapAfterBlock(furniture->blocks, static_cast<int>(i));
+    }
+    furniture->height = y;
+    furnitureCache[key] = furniture;
+    return furniture;
+}
+
+// Page view: blocks go onto pages in order, and one that does not fit in
+// what is left of a page's text area moves whole to the next page; a page
+// break block ends its page. The space between two blocks is dropped at the
+// top of a page. Each page's text area lies between its margins, pushed in
+// further when a header or footer is taller than the margin leaves room for.
+// Returns the content height.
+float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
+    const UCRichDocument& document = *editor.GetDocument();
+    const RichPageSetup page = EffectivePageSetup();
+    const float gap = style.pageGap;
+    const int blockCount = editor.GetBlockCount();
+
+    // The frame of page `index`, header and footer included. The page count
+    // is not known until the last block is placed, so furniture is laid for
+    // `count` and the pages are re-framed once it is known.
+    auto frameFor = [&](int index, int count) {
+        PageFrame frame;
+        frame.top = gap + static_cast<float>(index) * (pageHeightPx + gap);
+        const RichPageFurniture& furniture = document.FurnitureForPage(index);
+        frame.header = LayoutFurniture(ctx, furniture.header, index + 1, count);
+        frame.footer = LayoutFurniture(ctx, furniture.footer, index + 1, count);
+        const float spacing = Px(7.0f);           // 0.25 cm, Writer's header spacing
+        frame.headerTop = frame.top + Px(page.headerTopPt > 0.0f ? page.headerTopPt : page.marginTopPt * 0.5f);
+        frame.bodyTop = frame.top + Px(page.marginTopPt);
+        if (frame.header) frame.bodyTop = std::max(frame.bodyTop, frame.headerTop + frame.header->height + spacing);
+        const float pageBottom = frame.top + pageHeightPx;
+        const float footerBottom = pageBottom - Px(page.footerBottomPt > 0.0f ? page.footerBottomPt
+                                                                            : page.marginBottomPt * 0.5f);
+        frame.bodyBottom = pageBottom - Px(page.marginBottomPt);
+        frame.footerTop = footerBottom;
+        if (frame.footer) {
+            frame.footerTop = footerBottom - frame.footer->height;
+            frame.bodyBottom = std::min(frame.bodyBottom, frame.footerTop - spacing);
+        }
+        // A page always keeps some room for text, whatever its furniture.
+        frame.bodyBottom = std::max(frame.bodyBottom, frame.bodyTop + 24.0f);
+        return frame;
+    };
+
+    // Two passes when the page count changes what the furniture says ("Page
+    // 1 / 3" can wrap differently from "Page 1 / 12"); usually one.
+    int count = std::max(1, static_cast<int>(pages.size()));
+    for (int pass = 0; pass < 2; pass++) {
+        pages.clear();
+        pages.push_back(frameFor(0, count));
+        float y = pages.back().bodyTop;
+        bool pageEmpty = true;
+        bool breakPending = false;
+        for (int i = 0; i < blockCount; i++) {
+            BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+            const float before = (!pageEmpty && i > 0) ? GapAfterBlock(i - 1) : 0.0f;
+            if (breakPending || (!pageEmpty && y + before + bl.bounds.height > pages.back().bodyBottom)) {
+                pages.push_back(frameFor(static_cast<int>(pages.size()), count));
+                y = pages.back().bodyTop;
+                pageEmpty = true;
+                breakPending = false;
+                bl.bounds.y = y;
+            } else {
+                bl.bounds.y = y + before;
+            }
+            bl.bounds.x = bl.textLeft;
+            y = bl.bounds.y + bl.bounds.height;
+            pageEmpty = false;
+            if (editor.GetBlock(i).type == RichBlockType::PageBreak) breakPending = true;
+        }
+        if (static_cast<int>(pages.size()) == count) break;
+        count = static_cast<int>(pages.size());
+    }
+    return pages.back().top + pageHeightPx + gap;
+}
+
+// Continuous view: one column, with the first page's header above the body
+// and its footer below it (so a letterhead still shows its bank lines).
+float UltraCanvasRichTextEdit::PlaceBlocksInColumn(IRenderContext* ctx) {
+    const UCRichDocument& document = *editor.GetDocument();
+    const RichPageFurniture& furniture = document.FurnitureForPage(0);
+    pages.clear();
+    PageFrame frame;
+    frame.header = LayoutFurniture(ctx, furniture.header, 1, 1);
+    frame.footer = LayoutFurniture(ctx, furniture.footer, 1, 1);
+    const float separation = style.blockSpacing * 3.0f;
+    float y = frame.header ? frame.header->height + separation : 0.0f;
+    frame.bodyTop = y;
+    const int blockCount = editor.GetBlockCount();
+    for (int i = 0; i < blockCount; i++) {
+        BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+        bl.bounds.x = bl.textLeft;
+        bl.bounds.y = y;
+        y += bl.bounds.height + GapAfterBlock(i);
+    }
+    frame.bodyBottom = y;
+    if (frame.footer) {
+        frame.footerTop = y + separation;
+        y = frame.footerTop + frame.footer->height;
+    }
+    if (frame.header || frame.footer) pages.push_back(std::move(frame));
+    return y;
 }
 
 float UltraCanvasRichTextEdit::BlockIndentFor(const RichDocBlock& block) const {
+    // A document's own left indent adds to the view's indent for the block's
+    // kind. List items keep the view's list indentation only (see the model).
+    const float documentIndent = Px(std::max(0.0f, block.leftIndentPt));
     switch (block.type) {
         case RichBlockType::ListItem:
             return style.listIndent * static_cast<float>(block.listLevel + 1);
         case RichBlockType::BlockQuote:
-            return style.quoteIndent;
+            return style.quoteIndent + documentIndent;
         case RichBlockType::CodeBlock:
-            return style.codeIndent;
+            return style.codeIndent + documentIndent;
+        case RichBlockType::Paragraph:
+        case RichBlockType::Heading:
+        case RichBlockType::MathBlock:
+            return documentIndent;
         default:
             return 0.0f;
     }
+}
+
+// The number or bullet matches the item's own text: an 11 pt list must not
+// carry 14 pt numbers.
+FontStyle UltraCanvasRichTextEdit::MarkerFontFor(const RichDocBlock& block) const {
+    FontStyle font = style.baseFont;
+    for (const RichTextRun& run : block.runs) {
+        if (run.IsInlineImage()) continue;
+        if (run.fontSizePt > 0.0f) font.fontSize = run.fontSizePt;
+        if (!run.fontFamily.empty()) font.fontFamily = run.fontFamily;
+        break;
+    }
+    return font;
+}
+
+// Width of the widest label among the ordered items of `blockIndex`'s list
+// level - the siblings before and after it in the same list, up to a
+// shallower item or the end of the list. Bounded, so a very long list costs
+// no more than a few hundred measurements.
+float UltraCanvasRichTextEdit::WidestSiblingLabel(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
+                                                  int blockIndex) const {
+    const RichDocBlock& block = blocks[static_cast<size_t>(blockIndex)];
+    float widest = 0.0f;
+    auto measure = [&](size_t i) {
+        const RichDocBlock& sibling = blocks[i];
+        ctx->PushState();
+        ctx->SetFontStyle(MarkerFontFor(sibling));
+        widest = std::max(widest, static_cast<float>(ctx->GetTextLineWidth(RichDocListLabel(blocks, i))));
+        ctx->PopState();
+    };
+    // A sibling with another label format belongs to another list.
+    auto sameList = [&](const RichDocBlock& other) {
+        return other.numberFormat == block.numberFormat && other.numberTemplate == block.numberTemplate;
+    };
+    const size_t limit = 200;
+    size_t seen = 0;
+    for (size_t i = static_cast<size_t>(blockIndex) + 1; i-- > 0 && seen < limit;) {
+        const RichDocBlock& other = blocks[i];
+        if (other.type != RichBlockType::ListItem || other.listLevel < block.listLevel) break;
+        if (other.listLevel == block.listLevel && other.orderedList) {
+            if (!sameList(other)) break;
+            measure(i);
+            ++seen;
+        }
+    }
+    for (size_t i = static_cast<size_t>(blockIndex) + 1; i < blocks.size() && seen < 2 * limit; ++i) {
+        const RichDocBlock& other = blocks[i];
+        if (other.type != RichBlockType::ListItem || other.listLevel < block.listLevel) break;
+        if (other.listLevel == block.listLevel && other.orderedList) {
+            if (!sameList(other)) break;
+            measure(i);
+            ++seen;
+        }
+    }
+    return widest;
+}
+
+// Space between block `index` and the one after it: the document's stated
+// spacing (after + before, added as word processors do) when either states
+// any, otherwise the view's block spacing.
+float UltraCanvasRichTextEdit::GapAfterBlock(int index) const {
+    return GapAfterBlock(editor.GetDocument()->blocks, index);
+}
+
+float UltraCanvasRichTextEdit::GapAfterBlock(const std::vector<RichDocBlock>& blocks, int index) const {
+    const int count = static_cast<int>(blocks.size());
+    if (index < 0 || index + 1 >= count) return 0.0f;
+    const RichDocBlock& block = blocks[static_cast<size_t>(index)];
+    const RichDocBlock& next = blocks[static_cast<size_t>(index) + 1];
+    float gap = (block.spaceAfterPt < 0.0f && next.spaceBeforePt < 0.0f)
+            ? style.blockSpacing
+            : Px(std::max(0.0f, block.spaceAfterPt) + std::max(0.0f, next.spaceBeforePt));
+    // A paragraph frame takes room of its own, as in a word processor: its
+    // padding and line width below the last paragraph of a box and above the
+    // first. Paragraphs within one box keep their plain spacing.
+    const bool oneBox = block.HasParagraphFrame() && next.HasParagraphFrame() && block.SameParagraphFrame(next);
+    if (!oneBox) {
+        if (block.HasParagraphFrame()) {
+            gap += kParagraphFramePadding + Px(std::max(0.0f, block.paragraphBorderBottom.widthPt));
+        }
+        if (next.HasParagraphFrame()) {
+            gap += kParagraphFramePadding + Px(std::max(0.0f, next.paragraphBorderTop.widthPt));
+        }
+    }
+    return gap;
+}
+
+// First-line indent, line spacing and tab stops of a paragraph's layout.
+// `originX` is where the layout's left edge sits in the text column, which
+// is what the column-relative tab positions are converted against.
+void UltraCanvasRichTextEdit::ApplyParagraphGeometry(ITextLayout* layout, const RichDocBlock& block,
+                                                     const std::string& text, float originX,
+                                                     float wrapWidth) const {
+    if (block.type != RichBlockType::ListItem && block.firstLineIndentPt != 0.0f) {
+        layout->SetIndent(static_cast<int>(std::lround(Px(block.firstLineIndentPt))));
+    }
+    if (block.lineSpacing > 0.0f) layout->SetLineSpacing(block.lineSpacing);
+    if (block.lineHeightPt > 0.0f && !text.empty()) {
+        // "Exactly" is the height as given; "at least" never squeezes the
+        // text below its natural line height.
+        float height = block.lineHeightPt;
+        if (block.lineHeightAtLeast) {
+            float fontSize = static_cast<float>(style.baseFont.fontSize);
+            for (const RichTextRun& run : block.runs) {
+                if (run.fontSizePt > 0.0f) fontSize = std::max(fontSize, run.fontSizePt);
+            }
+            height = std::max(height, fontSize * 1.2f);
+        }
+        auto attribute = TextAttributeFactory::CreateAbsoluteLineHeight(Px(height));
+        if (attribute) {
+            attribute->SetRange(0, static_cast<int>(text.size()));
+            layout->InsertAttribute(std::move(attribute));
+        }
+    }
+    if (text.find('\t') == std::string::npos) return;
+
+    std::vector<UCLayoutTabPos> tabs;
+    float last = 0.0f;
+    for (const RichTabStop& stop : block.tabStops) {
+        const float x = Px(stop.positionPt) - originX;
+        if (x <= 0.0f) continue;
+        UCLayoutTabPos tab;
+        tab.xPos = static_cast<int>(std::lround(x));
+        tab.align = stop.kind == RichTabKind::Center ? UCLayoutTabAlignment::TabCenter
+                  : stop.kind == RichTabKind::Right ? UCLayoutTabAlignment::TabRight
+                  : stop.kind == RichTabKind::Decimal ? UCLayoutTabAlignment::TabDecimal
+                  : UCLayoutTabAlignment::TabLeft;
+        tabs.push_back(tab);
+        last = std::max(last, Px(stop.positionPt));
+    }
+    // Past the explicit stops, tabs fall on the document's default interval,
+    // counted from the column edge like the stops themselves.
+    const UCRichDocument* document = editor.GetDocument().get();
+    const float interval = Px((document && document->defaultTabStopPt > 0.0f)
+                              ? document->defaultTabStopPt : style.defaultTabStop);
+    if (interval > 1.0f) {
+        const float limit = originX + std::max(wrapWidth, 0.0f) + interval;
+        float x = (std::floor(last / interval) + 1.0f) * interval;
+        for (int guard = 0; x < limit && guard < 256; x += interval, ++guard) {
+            if (x - originX <= 0.0f) continue;
+            UCLayoutTabPos tab;
+            tab.xPos = static_cast<int>(std::lround(x - originX));
+            tabs.push_back(tab);
+        }
+    }
+    if (!tabs.empty()) layout->SetTabs(tabs);
 }
 
 FontStyle UltraCanvasRichTextEdit::FontForBlock(const RichDocBlock& block) const {
@@ -187,6 +549,9 @@ FontStyle UltraCanvasRichTextEdit::FontForBlock(const RichDocBlock& block) const
         if (style.headingsBold) font.fontWeight = FontWeight::Bold;
     } else if (block.type == RichBlockType::CodeBlock) {
         font.fontFamily = style.codeFontFamily;
+    } else {
+        if (block.paragraphFontSizePt > 0.0f) font.fontSize = block.paragraphFontSizePt;
+        if (!block.paragraphFontFamily.empty()) font.fontFamily = block.paragraphFontFamily;
     }
     return font;
 }
@@ -220,12 +585,12 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             if (run.mediaIndex >= 0 && run.mediaIndex < static_cast<int>(document.media.size())) {
                 image = UCImage::LoadFromMemory(document.media[static_cast<size_t>(run.mediaIndex)].data);
             }
-            float width = run.imageWidthPt > 0.0f ? run.imageWidthPt
+            float width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt)
                         : (image ? static_cast<float>(image->GetWidth()) : 16.0f);
-            float height = run.imageHeightPt > 0.0f ? run.imageHeightPt
+            float height = run.imageHeightPt > 0.0f ? Px(run.imageHeightPt)
                          : (image ? static_cast<float>(image->GetHeight()) : 16.0f);
             // Never wider than the column it sits in; keep the aspect ratio.
-            const float maxWidth = std::max(16.0f, visibleArea.width);
+            const float maxWidth = std::max(16.0f, ColumnWidth());
             if (width > maxWidth) {
                 height *= maxWidth / width;
                 width = maxWidth;
@@ -269,6 +634,9 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         if (run.fontSizePt > 0.0f)   add(TextAttributeFactory::CreateFontSize(run.fontSizePt));
         if (!run.color.empty()) {
             add(TextAttributeFactory::CreateForeground(ParseHexColor(run.color, style.textColor)));
+        }
+        if (!run.highlightColor.empty()) {
+            add(TextAttributeFactory::CreateBackground(ParseHexColor(run.highlightColor, Colors::Transparent)));
         }
         if (!run.linkTarget.empty()) {
             add(TextAttributeFactory::CreateForeground(style.linkColor));
@@ -328,7 +696,7 @@ void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int 
 std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
         IRenderContext* ctx, const RichDocBlock& block, const std::vector<RichTextRun>& runs,
         float wrapWidth, std::vector<RichTextHitRect>* outHits, int blockIndex,
-        std::vector<BlockLayout::InlineImage>* outInlineImages) const {
+        std::vector<BlockLayout::InlineImage>* outInlineImages, float paragraphOriginX) const {
     std::string text = UCRichDocumentEditor::RunsText(runs);
     auto layout = ctx->CreateTextLayout(text, false);
     layout->SetFontStyle(FontForBlock(block));
@@ -339,13 +707,21 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     if (block.align != RichTextAlign::Default) {
         layout->SetAlignment(ToTextAlignment(block.align));
     }
+    if (paragraphOriginX >= 0.0f) {
+        ApplyParagraphGeometry(layout.get(), block, text, paragraphOriginX, wrapWidth);
+    }
     ApplyRunAttributes(layout.get(), block, runs, outHits, blockIndex, outInlineImages);
     return layout;
 }
 
 void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockIndex) {
-    BlockLayout& bl = blockLayouts[static_cast<size_t>(blockIndex)];
-    const RichDocBlock& block = editor.GetBlock(blockIndex);
+    BuildBlockLayout(ctx, editor.GetDocument()->blocks, blockIndex,
+                     blockLayouts[static_cast<size_t>(blockIndex)], blockIndex);
+}
+
+void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
+                                               int index, BlockLayout& bl, int blockIndex) {
+    const RichDocBlock& block = blocks[static_cast<size_t>(index)];
 
     bl.layout.reset();
     bl.cells.clear();
@@ -356,18 +732,35 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
     bl.image.reset();
 
     float indent = BlockIndentFor(block);
-    bl.textLeft = indent;
     bl.markerLeft = std::max(0.0f, indent - style.listIndent * 0.8f);
-    float wrapWidth = std::max(1.0f, visibleArea.width - indent);
+    if (block.type == RichBlockType::ListItem && block.orderedList) {
+        // A level's text starts after its widest label, as in a word
+        // processor: "(III)" and "1.2.10." need more room than "1.", and
+        // every item of the level lines up behind the widest one.
+        const float labels = WidestSiblingLabel(ctx, blocks, index);
+        const float needed = style.listIndent * static_cast<float>(block.listLevel) + labels
+                           + std::max(4.0f, static_cast<float>(MarkerFontFor(block).fontSize) * 0.4f);
+        indent = std::max(indent, needed);
+    }
+    bl.textLeft = indent;
+    const float columnSpan = ColumnWidth();
+    float wrapWidth = std::max(1.0f, columnSpan - indent);
+    if (block.type != RichBlockType::ListItem) {
+        // A hanging indent puts the first line left of the others: the layout
+        // starts there, and its (negative) indent moves the rest back in.
+        const float hang = Px(std::min(0.0f, block.firstLineIndentPt));
+        bl.textLeft = std::max(0.0f, indent + hang);
+        wrapWidth = std::max(1.0f, columnSpan - bl.textLeft - Px(std::max(0.0f, block.rightIndentPt)));
+    }
 
     switch (block.type) {
         case RichBlockType::HorizontalRule:
-            bl.bounds.width = visibleArea.width;
+            bl.bounds.width = columnSpan;
             bl.bounds.height = std::max(8.0f, static_cast<float>(style.baseFont.fontSize));
             break;
 
         case RichBlockType::PageBreak:
-            bl.bounds.width = visibleArea.width;
+            bl.bounds.width = columnSpan;
             bl.bounds.height = std::max(12.0f, static_cast<float>(style.baseFont.fontSize) * 1.2f);
             break;
 
@@ -377,14 +770,14 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                 && block.mediaIndex < static_cast<int>(document.media.size())) {
                 bl.image = UCImage::LoadFromMemory(document.media[static_cast<size_t>(block.mediaIndex)].data);
             }
-            float width = block.imageWidthPt > 0 ? block.imageWidthPt
+            float width = block.imageWidthPt > 0 ? Px(block.imageWidthPt)
                                                  : (bl.image ? static_cast<float>(bl.image->GetWidth()) : 160.0f);
-            float height = block.imageHeightPt > 0 ? block.imageHeightPt
+            float height = block.imageHeightPt > 0 ? Px(block.imageHeightPt)
                                                    : (bl.image ? static_cast<float>(bl.image->GetHeight()) : 120.0f);
             // Never wider than the text column; keep the aspect ratio.
-            if (width > visibleArea.width && width > 0) {
-                height *= visibleArea.width / width;
-                width = visibleArea.width;
+            if (width > columnSpan && width > 0) {
+                height *= columnSpan / width;
+                width = columnSpan;
             }
             bl.bounds.width = std::max(8.0f, width);
             bl.bounds.height = std::max(8.0f, height);
@@ -400,11 +793,43 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
             const RichTableGrid grid = BuildTableGrid(block);
             const size_t columnCount = static_cast<size_t>(grid.columnCount);
             if (columnCount == 0) {
-                bl.bounds.width = visibleArea.width;
+                bl.bounds.width = columnSpan;
                 bl.bounds.height = static_cast<float>(style.baseFont.fontSize);
                 break;
             }
-            float columnWidth = std::max(24.0f, (visibleArea.width - indent) / static_cast<float>(columnCount));
+            // The table's own width and place in the column: a fixed or
+            // relative width from the document, else the whole column.
+            const float columnSpace = std::max(24.0f * static_cast<float>(columnCount), columnSpan - indent);
+            float tableWidth = columnSpace;
+            if (block.tableWidthPt > 0.0f) tableWidth = std::min(Px(block.tableWidthPt), columnSpace);
+            else if (block.tableWidthPercent > 0.0f) tableWidth = columnSpace * std::min(100.0f, block.tableWidthPercent) / 100.0f;
+            tableWidth = std::max(tableWidth, 24.0f * static_cast<float>(columnCount));
+            float tableLeft = 0.0f;
+            switch (block.tableAlign) {
+                case RichTextAlign::Center: tableLeft = (columnSpace - tableWidth) * 0.5f; break;
+                case RichTextAlign::Right: tableLeft = columnSpace - tableWidth; break;
+                default: tableLeft = std::clamp(Px(block.tableIndentPt), 0.0f, std::max(0.0f, columnSpace - tableWidth)); break;
+            }
+            float columnWidth = tableWidth / static_cast<float>(columnCount);
+            // Column geometry: the document's own relative widths when it has
+            // one per grid column (a narrow date column beside a wide text
+            // one), otherwise equal shares - scaled to the text column either
+            // way. A width list that no longer matches the grid (a column
+            // inserted since) falls back to equal shares.
+            std::vector<float> columnLeft(columnCount + 1, 0.0f);
+            {
+                const std::vector<float>& widths = block.tableColumnWidths;
+                float total = 0.0f;
+                bool usable = widths.size() == columnCount;
+                for (float w : widths) {
+                    if (!(w > 0.0f)) usable = false;
+                    total += w;
+                }
+                for (size_t c = 0; c < columnCount; c++) {
+                    float share = usable ? tableWidth * widths[c] / total : columnWidth;
+                    columnLeft[c + 1] = columnLeft[c] + std::max(24.0f, share);
+                }
+            }
 
             // A cell's position is its GRID column, which is not its index in
             // the row once anything spans: a row-spanning cell above occupies a
@@ -418,13 +843,16 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
             struct PendingSpan { size_t cellIndex; size_t lastRow; };
             std::vector<PendingSpan> pendingSpans;
             std::vector<float> rowTop(block.tableRows.size(), 0.0f);
+            // The view's own grid leaves a gap between rows; a document's
+            // borders are continuous lines, so its rows abut.
+            const float rowGap = block.tableBordersFromDocument ? 0.0f : 4.0f;
             std::vector<float> rowBottom(block.tableRows.size(), 0.0f);
 
             float y = 0.0f;
             for (size_t r = 0; r < block.tableRows.size(); r++) {
                 const RichTableRow& row = block.tableRows[r];
                 rowTop[r] = y;
-                float rowHeight = static_cast<float>(style.baseFont.fontSize) * 1.3f;
+                float rowHeight = 0.0f;
                 const size_t firstCellOfRow = bl.cells.size();
 
                 for (size_t gridColumn = 0; gridColumn < columnCount; ) {
@@ -445,19 +873,35 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                                                     static_cast<int>(columnCount - gridColumn));
                     const int rowSpan = std::min(std::max(1, modelCell.rowSpan),
                                                  static_cast<int>(block.tableRows.size() - r));
-                    const float cellWidth = columnWidth * static_cast<float>(columnSpan);
+                    const float cellWidth = columnLeft[gridColumn + static_cast<size_t>(columnSpan)]
+                                          - columnLeft[gridColumn];
+
+                    // The room around the text: the document's cell padding,
+                    // else 4 at the sides and 2 above (and below, for a
+                    // document's table, whose rows abut).
+                    const float padLeft = modelCell.paddingLeftPt >= 0.0f ? Px(modelCell.paddingLeftPt) : 4.0f;
+                    const float padRight = modelCell.paddingRightPt >= 0.0f ? Px(modelCell.paddingRightPt) : 4.0f;
+                    const float padTop = modelCell.paddingTopPt >= 0.0f ? Px(modelCell.paddingTopPt) : 2.0f;
+                    const float padBottom = modelCell.paddingBottomPt >= 0.0f ? Px(modelCell.paddingBottomPt)
+                                          : (block.tableBordersFromDocument ? 2.0f : 0.0f);
 
                     RichDocBlock cellBlock;
                     cellBlock.type = RichBlockType::Paragraph;
+                    cellBlock.align = modelCell.align;
                     auto cell = std::make_unique<BlockLayout>();
                     cell->layout = MakeRunsLayout(ctx, cellBlock, modelCell.runs,
-                                                  cellWidth - 8.0f, nullptr, blockIndex,
-                                                  &cell->inlineImages);
+                                                  std::max(1.0f, cellWidth - padLeft - padRight), nullptr,
+                                                  blockIndex, &cell->inlineImages);
                     ApplySelectionAttributes(cell->layout.get(), blockIndex,
                                              static_cast<int>(r), static_cast<int>(cellIndex));
-                    cell->bounds = Rect2Df(indent + static_cast<float>(gridColumn) * columnWidth, y,
-                                           cellWidth,
-                                           static_cast<float>(cell->layout->GetLayoutHeight()));
+                    const float textHeight = static_cast<float>(cell->layout->GetLayoutHeight());
+                    cell->bounds = Rect2Df(indent + tableLeft + columnLeft[gridColumn], y,
+                                           cellWidth, textHeight + padTop + padBottom);
+                    cell->textLeft = padLeft;
+                    cell->textTop = padTop;
+                    cell->textHeight = textHeight;
+                    cell->textBottomPad = padBottom;
+                    cell->verticalAlign = modelCell.verticalAlign;
                     // A cell spanning rows must not force this row to its full
                     // height; it stretches over the rows below instead.
                     if (rowSpan == 1) rowHeight = std::max(rowHeight, cell->bounds.height);
@@ -475,6 +919,7 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                     gridColumn += static_cast<size_t>(columnSpan);
                 }
 
+                if (rowHeight <= 0.0f) rowHeight = static_cast<float>(style.baseFont.fontSize) * 1.3f;
                 // Every cell that belongs to this row alone takes its height.
                 for (size_t i = firstCellOfRow; i < bl.cells.size(); i++) {
                     bool spans = false;
@@ -483,8 +928,8 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                     }
                     if (!spans) bl.cells[i]->bounds.height = rowHeight;
                 }
-                y += rowHeight + 4.0f;
-                rowBottom[r] = y - 4.0f;
+                y += rowHeight + rowGap;
+                rowBottom[r] = y - rowGap;
             }
 
             // Now that every row has a height, stretch the row-spanning cells
@@ -494,23 +939,38 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                 const float bottom = rowBottom[pending.lastRow];
                 cell.bounds.height = std::max(cell.bounds.height, bottom - cell.bounds.y);
             }
+            // A cell taller than its text places the text at its top,
+            // middle or bottom.
+            for (auto& cell : bl.cells) {
+                const float spare = cell->bounds.height - cell->textTop - cell->textHeight - cell->textBottomPad;
+                if (spare <= 0.0f) continue;
+                if (cell->verticalAlign == RichVerticalAlign::Middle) cell->textTop += spare * 0.5f;
+                else if (cell->verticalAlign == RichVerticalAlign::Bottom) cell->textTop += spare;
+            }
 
-            bl.bounds.width = columnWidth * static_cast<float>(columnCount);
+            bl.bounds.width = tableLeft + columnLeft[columnCount];
             bl.bounds.height = y;
             break;
         }
 
         default: {
-            bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth, &bl.hitRects, blockIndex,
-                                       &bl.inlineImages);
+            bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth,
+                                       blockIndex >= 0 ? &bl.hitRects : nullptr, blockIndex,
+                                       &bl.inlineImages, bl.textLeft);
             ApplySelectionAttributes(bl.layout.get(), blockIndex);
             bl.bounds.width = static_cast<float>(bl.layout->GetLayoutWidth());
             bl.bounds.height = static_cast<float>(bl.layout->GetLayoutHeight()) + style.paragraphLeading;
             if (block.type == RichBlockType::ListItem) {
-                bl.markerText = block.orderedList
-                        ? std::to_string(OrderedItemNumber(editor, blockIndex)) + "."
-                        : style.bulletCharacters[static_cast<size_t>(
-                              std::min<int>(block.listLevel, static_cast<int>(style.bulletCharacters.size()) - 1))];
+                // The document's own label ("b)", "1.2.", "(iv)") or bullet
+                // when it has one; the view's otherwise.
+                if (block.orderedList) {
+                    bl.markerText = RichDocListLabel(blocks, static_cast<size_t>(index));
+                } else if (!block.bulletText.empty()) {
+                    bl.markerText = block.bulletText;
+                } else {
+                    bl.markerText = style.bulletCharacters[static_cast<size_t>(
+                        std::min<int>(block.listLevel, static_cast<int>(style.bulletCharacters.size()) - 1))];
+                }
             }
             break;
         }
@@ -530,9 +990,9 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
         blockLayouts.resize(static_cast<size_t>(blockCount));
         layoutsDirty = true;
     }
-    if (lastWrapWidth != visibleArea.width) {
+    if (lastWrapWidth != ColumnWidth()) {
         for (auto& bl : blockLayouts) bl.valid = false;
-        lastWrapWidth = visibleArea.width;
+        lastWrapWidth = ColumnWidth();
         layoutsDirty = true;
     }
     // The selection is painted as a layout attribute, so a layout built under
@@ -556,32 +1016,32 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
 
     if (!layoutsDirty) return;
 
-    // Two passes: heights first (so scrolling and the scrollbar are correct),
-    // then full layouts only for the blocks the viewport shows. Blocks outside
-    // it keep the height they had, so a long document never pays for layouts
-    // nobody is looking at.
+    // Continuous view: full layouts only for the blocks near the viewport.
+    // Blocks outside it keep the height they had (or an estimate), so a long
+    // document never pays for layouts nobody is looking at. Page view needs
+    // every block's true height to know where the pages end, so it builds
+    // them all.
     float y = 0.0f;
     float viewTop = scrollOffset - visibleArea.height;
     float viewBottom = scrollOffset + 2 * visibleArea.height;
 
     for (int i = 0; i < blockCount; i++) {
         BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
-        bool visible = (y + bl.bounds.height >= viewTop) && (y <= viewBottom);
+        bool visible = pageView || ((y + bl.bounds.height >= viewTop) && (y <= viewBottom));
         if (!bl.valid && visible) {
             BuildBlockLayout(ctx, i);
         } else if (!bl.valid) {
             // Estimate: one line per block until it scrolls into view.
             const RichDocBlock& block = editor.GetBlock(i);
-            bl.bounds.width = visibleArea.width;
+            bl.bounds.width = ColumnWidth();
             bl.bounds.height = static_cast<float>(style.baseFont.fontSize)
                              * (block.type == RichBlockType::Heading ? 2.0f : 1.4f);
-            bl.textLeft = BlockIndentFor(block);
+            bl.textLeft = std::max(0.0f, BlockIndentFor(block) + Px(std::min(0.0f, block.firstLineIndentPt)));
         }
-        bl.bounds.x = bl.textLeft;
-        bl.bounds.y = y;
-        y += bl.bounds.height + style.blockSpacing;
+        y += bl.bounds.height + GapAfterBlock(i);
     }
-    contentHeight = std::max(0.0f, y - style.blockSpacing);
+    y = pageView ? PlaceBlocksOnPages(ctx) : PlaceBlocksInColumn(ctx);
+    contentHeight = std::max(0.0f, y);
     layoutsDirty = false;
 
     float maxScroll = std::max(0.0f, contentHeight - visibleArea.height);
@@ -614,12 +1074,13 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
 
     Rect2Df bounds = GetLocalBounds();
     ctx->DrawFilledRectangle(Rect2Dd(bounds.x, bounds.y, bounds.width, bounds.height),
-                             style.backgroundColor,
+                             pageView ? style.deskColor : style.backgroundColor,
                              style.drawBorder ? 1.0f : 0.0f,
                              style.drawBorder ? style.borderColor : Colors::Transparent);
 
     ctx->PushState();
     ctx->ClipRect(Rect2Dd(visibleArea.x, visibleArea.y, visibleArea.width, visibleArea.height));
+    RenderPages(ctx);
 
     float viewTop = scrollOffset;
     float viewBottom = scrollOffset + visibleArea.height;
@@ -663,29 +1124,84 @@ void UltraCanvasRichTextEdit::DrawInlineImages(IRenderContext* ctx, const BlockL
     }
 }
 
+// The pages under the text (page view), and every page's header and footer;
+// outside page view, the first page's header and footer around the body.
+void UltraCanvasRichTextEdit::RenderPages(IRenderContext* ctx) {
+    const float viewTop = scrollOffset;
+    const float viewBottom = scrollOffset + visibleArea.height;
+    for (const PageFrame& frame : pages) {
+        if (pageView) {
+            const float bottom = frame.top + pageHeightPx;
+            if (bottom < viewTop) continue;
+            if (frame.top > viewBottom) break;
+            const double x = visibleArea.x + pageLeftX;
+            const double y = visibleArea.y + frame.top - scrollOffset;
+            ctx->DrawFilledRectangle(Rect2Dd(x + 3.0, y + 3.0, pageWidthPx, pageHeightPx),
+                                     style.pageShadowColor, 0.0f, Colors::Transparent);
+            ctx->DrawFilledRectangle(Rect2Dd(x, y, pageWidthPx, pageHeightPx),
+                                     style.pageColor, 1.0f, style.borderColor);
+            if (!readOnly) {
+                // Writer's text boundaries: a corner mark at each corner of
+                // the text area.
+                const double left = ColumnLeft(), right = left + ColumnWidth();
+                const double top = visibleArea.y + frame.bodyTop - scrollOffset;
+                const double foot = visibleArea.y + frame.bodyBottom - scrollOffset;
+                const double arm = 12.0;
+                auto corner = [&](double cx, double cy, double dx, double dy) {
+                    ctx->DrawLine(Point2Dd(cx, cy), Point2Dd(cx + dx * arm, cy), style.pageMarginGuideColor);
+                    ctx->DrawLine(Point2Dd(cx, cy), Point2Dd(cx, cy + dy * arm), style.pageMarginGuideColor);
+                };
+                corner(left, top, -1, -1);
+                corner(right, top, 1, -1);
+                corner(left, foot, -1, 1);
+                corner(right, foot, 1, 1);
+            }
+        }
+        if (frame.header) RenderFurniture(ctx, *frame.header, pageView ? frame.headerTop : 0.0f);
+        if (frame.footer) RenderFurniture(ctx, *frame.footer, frame.footerTop);
+    }
+}
+
+void UltraCanvasRichTextEdit::RenderFurniture(IRenderContext* ctx, const FurnitureLayout& furniture, float top) {
+    for (size_t i = 0; i < furniture.layouts.size(); i++) {
+        const BlockLayout& bl = furniture.layouts[i];
+        const float originY = visibleArea.y + top + bl.bounds.y - scrollOffset;
+        if (originY > visibleArea.y + visibleArea.height || originY + bl.bounds.height < visibleArea.y) continue;
+        RenderBlock(ctx, furniture.blocks, static_cast<int>(i), bl, ColumnLeft(), originY, -1);
+    }
+}
+
 void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
                                           const BlockLayout& bl) {
-    const RichDocBlock& block = editor.GetBlock(blockIndex);
-    float originX = visibleArea.x;
-    float originY = visibleArea.y + bl.bounds.y - scrollOffset;
+    RenderBlock(ctx, editor.GetDocument()->blocks, blockIndex, bl, ColumnLeft(),
+                visibleArea.y + bl.bounds.y - scrollOffset, blockIndex);
+}
+
+void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
+                                          int index, const BlockLayout& bl,
+                                          float originX, float originY, int blockIndex) {
+    const RichDocBlock& block = blocks[static_cast<size_t>(index)];
     float textX = originX + bl.textLeft;
 
     switch (block.type) {
         case RichBlockType::HorizontalRule: {
             float centerY = originY + bl.bounds.height / 2.0f;
             ctx->DrawLine(Point2Dd(originX, centerY),
-                          Point2Dd(originX + visibleArea.width, centerY), style.ruleColor);
-            DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
+                          Point2Dd(originX + ColumnWidth(), centerY), style.ruleColor);
+            if (blockIndex >= 0) DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
             return;
         }
         case RichBlockType::PageBreak: {
+            // In page view the break is the page's end; only an editable
+            // view marks where it sits.
+            if (pageView && readOnly) return;
             float centerY = originY + bl.bounds.height / 2.0f;
             ctx->PushState();
             ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
             ctx->DrawLine(Point2Dd(originX, centerY),
-                          Point2Dd(originX + visibleArea.width, centerY), style.pageBreakColor);
+                          Point2Dd(originX + ColumnWidth(), centerY), style.pageBreakColor);
             ctx->PopState();
-            DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
+            if (blockIndex >= 0) DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
             return;
         }
         case RichBlockType::Image: {
@@ -705,7 +1221,7 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
                     ctx->PopState();
                 }
             }
-            DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
+            if (blockIndex >= 0) DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
             return;
         }
         case RichBlockType::Table: {
@@ -714,32 +1230,55 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
                 if (!cell || !cell->layout) continue;
                 Rect2Dd cellRect(originX + cell->bounds.x, originY + cell->bounds.y,
                                  cell->bounds.width, cell->bounds.height);
-                ctx->DrawFilledRectangle(cellRect, Colors::Transparent, 1.0f, style.tableBorderColor);
+                const RichTableCell* modelCell = nullptr;
+                if (i < bl.cellRows.size() && i < bl.cellColumns.size()) {
+                    const size_t r = static_cast<size_t>(bl.cellRows[i]);
+                    const size_t c = static_cast<size_t>(bl.cellColumns[i]);
+                    if (r < block.tableRows.size() && c < block.tableRows[r].cells.size()) {
+                        modelCell = &block.tableRows[r].cells[c];
+                    }
+                }
+                if (block.tableBordersFromDocument && modelCell) {
+                    DrawDocumentCellFrame(ctx, *modelCell, cellRect);
+                } else {
+                    ctx->DrawFilledRectangle(cellRect, Colors::Transparent, 1.0f, style.tableBorderColor);
+                }
                 ctx->SetCurrentPaint(style.textColor);
-                ctx->DrawTextLayout(*cell->layout, Point2Dd(cellRect.x + 4.0, cellRect.y + 2.0));
-                DrawInlineImages(ctx, *cell, static_cast<float>(cellRect.x + 4.0),
-                                 static_cast<float>(cellRect.y + 2.0));
+                const Point2Dd textAt(cellRect.x + cell->textLeft, cellRect.y + cell->textTop);
+                ctx->DrawTextLayout(*cell->layout, textAt);
+                DrawInlineImages(ctx, *cell, static_cast<float>(textAt.x), static_cast<float>(textAt.y));
             }
-            DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
+            if (blockIndex >= 0) DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
             return;
         }
         default:
             break;
     }
 
+    if (block.HasParagraphFrame()) DrawParagraphFrame(ctx, blocks, index, bl, originX, originY);
+
     if (block.type == RichBlockType::BlockQuote) {
         ctx->DrawFilledRectangle(Rect2Dd(originX, originY, 3.0, bl.bounds.height),
                                  style.quoteBarColor, 0.0f, Colors::Transparent);
     } else if (block.type == RichBlockType::CodeBlock) {
-        ctx->DrawFilledRectangle(Rect2Dd(originX, originY, visibleArea.width, bl.bounds.height),
+        ctx->DrawFilledRectangle(Rect2Dd(originX, originY, ColumnWidth(), bl.bounds.height),
                                  style.codeBackgroundColor, 1.0f, style.codeBorderColor);
     }
 
     if (!bl.markerText.empty()) {
+        const FontStyle markerFont = MarkerFontFor(block);
         ctx->PushState();
-        ctx->SetFontStyle(style.baseFont);
+        ctx->SetFontStyle(markerFont);
         ctx->SetTextPaint(style.listMarkerColor);
-        ctx->DrawText(bl.markerText, Point2Dd(originX + bl.markerLeft, originY));
+        // At the usual marker position, unless the label is too wide to fit
+        // before the text there ("1.2.3.", "(viii)"): then it moves left to
+        // end a small gap before the text, but never past the column edge.
+        const double width = static_cast<double>(ctx->GetTextLineWidth(bl.markerText));
+        const double gap = std::max(4.0, markerFont.fontSize * 0.4);
+        const double markerX = std::max(static_cast<double>(originX),
+                                        std::min(static_cast<double>(originX + bl.markerLeft),
+                                                 static_cast<double>(originX + bl.textLeft) - gap - width));
+        ctx->DrawText(bl.markerText, Point2Dd(markerX, originY));
         ctx->PopState();
     }
 
@@ -748,6 +1287,76 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
         ctx->DrawTextLayout(*bl.layout, Point2Dd(textX, originY));
         DrawInlineImages(ctx, bl, static_cast<float>(textX), static_cast<float>(originY));
     }
+}
+
+// A cell of a table whose borders come from a document: its fill, then each
+// side it has a line on, at the line's width and colour. Where a side has
+// none, an editable view draws a faint guide so the cell can still be seen
+// (Writer's "table boundaries"); a read-only view draws nothing there.
+void UltraCanvasRichTextEdit::DrawDocumentCellFrame(IRenderContext* ctx, const RichTableCell& cell,
+                                                   const Rect2Dd& rect) const {
+    if (!cell.backgroundColor.empty()) {
+        ctx->DrawFilledRectangle(rect, ParseHexColor(cell.backgroundColor, Colors::Transparent),
+                                 0.0f, Colors::Transparent);
+    }
+    const double left = rect.x, top = rect.y;
+    const double right = rect.x + rect.width, bottom = rect.y + rect.height;
+    auto side = [&](const RichBorder& border, const Point2Dd& from, const Point2Dd& to) {
+        if (border.IsVisible()) {
+            ctx->PushState();
+            ctx->SetStrokeWidth(std::max(1.0, static_cast<double>(Px(border.widthPt))));
+            ctx->DrawLine(from, to, ParseHexColor(border.color, style.textColor));
+            ctx->PopState();
+        } else if (!readOnly) {
+            ctx->PushState();
+            ctx->SetStrokeWidth(1.0);
+            ctx->DrawLine(from, to, style.tableGuideColor);
+            ctx->PopState();
+        }
+    };
+    side(cell.borderTop, Point2Dd(left, top), Point2Dd(right, top));
+    side(cell.borderBottom, Point2Dd(left, bottom), Point2Dd(right, bottom));
+    side(cell.borderLeft, Point2Dd(left, top), Point2Dd(left, bottom));
+    side(cell.borderRight, Point2Dd(right, top), Point2Dd(right, bottom));
+}
+
+// A paragraph's frame and fill, just outside its text. A run of paragraphs
+// with the same frame is one box: the fill closes the gaps between them, and
+// only the first draws the top line and only the last the bottom one.
+void UltraCanvasRichTextEdit::DrawParagraphFrame(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
+                                                 int blockIndex, const BlockLayout& bl,
+                                                 float originX, float originY) const {
+    const size_t at = static_cast<size_t>(blockIndex);
+    const RichDocBlock& block = blocks[at];
+    const bool withPrevious = at > 0 && blocks[at - 1].HasParagraphFrame()
+                              && blocks[at - 1].SameParagraphFrame(block);
+    const bool withNext = at + 1 < blocks.size() && blocks[at + 1].HasParagraphFrame()
+                          && blocks[at + 1].SameParagraphFrame(block);
+    const float padding = kParagraphFramePadding;
+    const double left = originX + Px(std::max(0.0f, block.leftIndentPt)) - padding;
+    const double right = originX + ColumnWidth() - Px(std::max(0.0f, block.rightIndentPt));
+    // Grouped paragraphs meet halfway across the gap between them.
+    const float gapBelow = GapAfterBlock(blocks, blockIndex);
+    const float gapAbove = blockIndex > 0 ? GapAfterBlock(blocks, blockIndex - 1) : 0.0f;
+    const double top = originY - (withPrevious ? gapAbove * 0.5f : padding);
+    const double bottom = originY + bl.bounds.height + (withNext ? gapBelow * 0.5f : padding);
+
+    if (!block.paragraphBackground.empty()) {
+        ctx->DrawFilledRectangle(Rect2Dd(left, top, right - left, bottom - top),
+                                 ParseHexColor(block.paragraphBackground, Colors::Transparent),
+                                 0.0f, Colors::Transparent);
+    }
+    auto line = [&](const RichBorder& border, const Point2Dd& from, const Point2Dd& to) {
+        if (!border.IsVisible()) return;
+        ctx->PushState();
+        ctx->SetStrokeWidth(std::max(1.0, static_cast<double>(Px(border.widthPt))));
+        ctx->DrawLine(from, to, ParseHexColor(border.color, style.textColor));
+        ctx->PopState();
+    };
+    if (!withPrevious) line(block.paragraphBorderTop, Point2Dd(left, top), Point2Dd(right, top));
+    if (!withNext) line(block.paragraphBorderBottom, Point2Dd(left, bottom), Point2Dd(right, bottom));
+    line(block.paragraphBorderLeft, Point2Dd(left, top), Point2Dd(left, bottom));
+    line(block.paragraphBorderRight, Point2Dd(right, top), Point2Dd(right, bottom));
 }
 
 void UltraCanvasRichTextEdit::DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex,
@@ -760,8 +1369,8 @@ void UltraCanvasRichTextEdit::DrawSelectionForNonTextBlock(IRenderContext* ctx, 
     if (here < range.start || !(here < range.end)) return;
     Color wash = style.selectionColor;
     wash.a = 110;
-    ctx->DrawFilledRectangle(Rect2Dd(visibleArea.x, visibleArea.y + bl.bounds.y - scrollOffset,
-                                     visibleArea.width, bl.bounds.height),
+    ctx->DrawFilledRectangle(Rect2Dd(ColumnLeft(), visibleArea.y + bl.bounds.y - scrollOffset,
+                                     ColumnWidth(), bl.bounds.height),
                              wash, 0.0f, Colors::Transparent);
 }
 
@@ -810,14 +1419,16 @@ Rect2Df UltraCanvasRichTextEdit::CaretRect() const {
         return Rect2Df(0, 0, 0, 0);
     }
     const BlockLayout& bl = blockLayouts[static_cast<size_t>(position.blockIndex)];
-    float x = visibleArea.x + bl.textLeft;
+    float x = ColumnLeft() + bl.textLeft;
     float y = visibleArea.y + bl.bounds.y - scrollOffset;
 
     // Inside a table the caret belongs to a cell's layout, positioned at that
     // cell's origin rather than the table's.
     if (const BlockLayout* cell = CellLayoutFor(position)) {
-        const float cellX = visibleArea.x + cell->bounds.x;
-        const float cellY = visibleArea.y + bl.bounds.y + cell->bounds.y - scrollOffset;
+        // Where the cell's text starts, as it is drawn (padding, vertical
+        // alignment).
+        const float cellX = ColumnLeft() + cell->bounds.x + cell->textLeft;
+        const float cellY = visibleArea.y + bl.bounds.y + cell->bounds.y + cell->textTop - scrollOffset;
         if (!cell->layout) return Rect2Df(cellX, cellY, 2.0f, cell->bounds.height);
         int cellLength = static_cast<int>(cell->layout->GetText().size());
         int cellOffset = std::max(0, std::min(position.byteOffset, cellLength));
@@ -859,12 +1470,16 @@ RichDocPosition UltraCanvasRichTextEdit::PositionFromPoint(const Point2Df& local
     if (blockLayouts.empty()) return RichDocPosition(0, 0);
 
     float contentY = localPoint.y - visibleArea.y + scrollOffset;
-    float contentX = localPoint.x - visibleArea.x;
+    float contentX = localPoint.x - ColumnLeft();
 
     int blockIndex = static_cast<int>(blockLayouts.size()) - 1;
     for (int i = 0; i < static_cast<int>(blockLayouts.size()); i++) {
         const BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
-        if (contentY < bl.bounds.y + bl.bounds.height + style.blockSpacing * 0.5f) {
+        // The gap below a block belongs half to it, half to the next one.
+        const float bottom = bl.bounds.y + bl.bounds.height;
+        const float nextTop = i + 1 < static_cast<int>(blockLayouts.size())
+                ? blockLayouts[static_cast<size_t>(i + 1)].bounds.y : bottom;
+        if (contentY < (bottom + nextTop) * 0.5f || contentY < bottom) {
             blockIndex = i;
             break;
         }
@@ -891,8 +1506,8 @@ RichDocPosition UltraCanvasRichTextEdit::PositionFromPoint(const Point2Df& local
         const BlockLayout& cell = *bl.cells[best];
         RichDocPosition out(blockIndex, bl.cellRows[best], bl.cellColumns[best], 0);
         if (cell.layout) {
-            int layoutX = static_cast<int>(contentX - cell.bounds.x);
-            int layoutY = static_cast<int>(cellY - cell.bounds.y);
+            int layoutX = static_cast<int>(contentX - cell.bounds.x - cell.textLeft);
+            int layoutY = static_cast<int>(cellY - cell.bounds.y - cell.textTop);
             UCLayoutHitResult hit = cell.layout->XYToIndex(std::max(0, layoutX), std::max(0, layoutY));
             std::string text = cell.layout->GetText();
             int offset = hit.index;
@@ -917,7 +1532,7 @@ RichDocPosition UltraCanvasRichTextEdit::PositionFromPoint(const Point2Df& local
 
 const RichTextHitRect* UltraCanvasRichTextEdit::LinkAtPoint(const Point2Df& localPoint) const {
     float contentY = localPoint.y - visibleArea.y + scrollOffset;
-    float contentX = localPoint.x - visibleArea.x;
+    float contentX = localPoint.x - ColumnLeft();
     for (const BlockLayout& bl : blockLayouts) {
         if (contentY < bl.bounds.y || contentY > bl.bounds.y + bl.bounds.height) continue;
         for (const RichTextHitRect& hit : bl.hitRects) {
@@ -1325,7 +1940,7 @@ std::vector<Rect2Df> UltraCanvasRichTextEdit::BlockRangeRects(int blockIndex,
     const BlockLayout& bl = blockLayouts[static_cast<size_t>(blockIndex)];
     if (!bl.layout || endByte <= startByte) return rects;
 
-    const float originX = visibleArea.x + bl.textLeft;
+    const float originX = ColumnLeft() + bl.textLeft;
     const float originY = visibleArea.y + bl.bounds.y - scrollOffset;
 
     for (const LayoutLineRange& line : bl.layout->GetLineByteRanges()) {
@@ -1574,7 +2189,7 @@ bool UltraCanvasRichTextEdit::HandleKeyDown(const UCEvent& event) {
             int direction = (event.virtualKey == UCKeys::PageUp) ? -1 : 1;
             float page = visibleArea.height;
             SetScrollOffset(scrollOffset + direction * page);
-            Point2Df probe(visibleArea.x + 4.0f,
+            Point2Df probe(ColumnLeft() + 4.0f,
                            visibleArea.y + (direction < 0 ? 4.0f : visibleArea.height - 4.0f));
             editor.SetCaret(PositionFromPoint(probe), event.shift);
             break;

@@ -94,16 +94,25 @@ WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath) {
 bool UCWordDocumentIO::Load(const std::string& filePath, UCRichDocument& outDocument,
                             std::string& outError) {
     outError.clear();
+    if (!LoadByFormat(filePath, outDocument, outError)) return false;
+    // Every format can carry text in a Windows symbol font; the model holds
+    // what it depicts instead, so it draws without that font installed.
+    WordFormatInternal::MapSymbolFontRuns(outDocument);
+    return true;
+}
+
+bool UCWordDocumentIO::LoadByFormat(const std::string& filePath, UCRichDocument& outDocument,
+                                    std::string& outError) {
     switch (DetectWordDocumentFormat(filePath)) {
         case WordDocumentFormat::Odt:
             return LoadOdt(filePath, outDocument, outError);
         case WordDocumentFormat::Docx:
             return LoadDocx(filePath, outDocument, outError);
         case WordDocumentFormat::LegacyDoc: {
-            // Text-only extraction; the binary format's rich formatting is
-            // not parsed (and never written — export goes to .docx).
+            // Read-only: the binary format is never written (export goes
+            // to .docx or .odt).
             std::string extractError;
-            if (LoadDocText(filePath, outDocument, extractError)) {
+            if (LoadDoc(filePath, outDocument, extractError)) {
                 return true;
             }
             outError = "Could not read this legacy Word 97-2003 (.doc) file ("
