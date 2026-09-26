@@ -479,6 +479,16 @@ void ArtCreatorWindow::BuildRightPanel() {
     };
     rightPanel->AddChild(swatches);
 
+    // ----- tool options -----
+    // Straight under the colours, where they are visible without scrolling:
+    // the Quick Shape corners and star depth used to sit below the fold.
+    optionsTitle = PanelTitle("ac-options-title", "Tool Options");
+    rightPanel->AddChild(optionsTitle);
+    optionsPanel = std::make_shared<UltraCanvasContainer>("ac-options", 0, 0, kRightInner, 0);
+    optionsPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    optionsPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    rightPanel->AddChild(optionsPanel);
+
     // ----- fill ramp -----
     rightPanel->AddChild(PanelTitle("ac-fill-title", "Fill"));
     ramp = CreateGradientEditor("ac-ramp", 0, 0, static_cast<int>(kRightInner), 46);
@@ -492,14 +502,6 @@ void ArtCreatorWindow::BuildRightPanel() {
         syncingColours = false;
     };
     rightPanel->AddChild(ramp);
-
-    // ----- tool options -----
-    optionsTitle = PanelTitle("ac-options-title", "Tool Options");
-    rightPanel->AddChild(optionsTitle);
-    optionsPanel = std::make_shared<UltraCanvasContainer>("ac-options", 0, 0, kRightInner, 0);
-    optionsPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    optionsPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
-    rightPanel->AddChild(optionsPanel);
 
     // ----- line gallery -----
     rightPanel->AddChild(PanelTitle("ac-line-title", "Line"));

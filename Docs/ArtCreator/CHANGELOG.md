@@ -26,6 +26,20 @@
   the Vector plugin's converters itself: `UltraCanvasFileLoader::
   LoadVectorDocument` / `SaveVectorDocument` do, with the same formats and
   the same reader and writer notes in the status bar.
+- **Ellipses and circles draw again, and no longer blank the window.** The
+  first step of every ellipse drag has a zero-size box; drawing its
+  preview put the window's Cairo context into a permanent error state, so
+  nothing was drawn or created afterwards and the side panel went blank
+  (Quick Shape looked broken too when tried next). Fixed in the framework's
+  Cairo context (see
+  `Docs/UltraCanvas/changelog.d/cairo-flat-ellipse.md`).
+- **Quick Shape: polygon or star, and the options in view.** A *Shape*
+  dropdown (Polygon / Star) replaces the Star checkbox, *Corners* (3–24)
+  sets the number of corners or points - 8 with Polygon is an octagon -
+  and *Depth* the star's inner radius. With Shift a star points up and a
+  polygon with an even number of corners stands on a flat side. The Tool
+  Options now sit directly under the colour swatches, above the Fill ramp,
+  so they show without scrolling.
 
 #### 2026-09-22 *0.6.0*
 - **Mirror.** Two toolbar buttons after Send to Back, and *Mirror

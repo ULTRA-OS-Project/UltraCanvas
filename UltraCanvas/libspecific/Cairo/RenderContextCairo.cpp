@@ -1005,26 +1005,17 @@ namespace UltraCanvas {
 
 
     void RenderContextCairo::FillEllipse(const Rect2Dd& rect) {
-
         cairo_new_path(cairo);   // the path survives cairo_save/restore, so clear it here
-        cairo_save(cairo);
-        cairo_translate(cairo, rect.x + rect.width / 2, rect.y + rect.height / 2);
-        cairo_scale(cairo, rect.width / 2, rect.height / 2);
-        cairo_arc(cairo, 0, 0, 1, 0, 2 * M_PI);
-        cairo_restore(cairo);
-
+        // A flat ellipse encloses nothing; see Ellipse() for why it must
+        // not reach cairo_scale.
+        if (!(std::fabs(rect.width) > 1e-9 && std::fabs(rect.height) > 1e-9)) return;
+        Ellipse(rect.x + rect.width / 2, rect.y + rect.height / 2, rect.width / 2, rect.height / 2, 0.0);
         Fill();
     }
 
     void RenderContextCairo::DrawEllipse(const Rect2Dd& rect) {
-
         cairo_new_path(cairo);   // the path survives cairo_save/restore, so clear it here
-        cairo_save(cairo);
-        cairo_translate(cairo, rect.x + rect.width / 2, rect.y + rect.height / 2);
-        cairo_scale(cairo, rect.width / 2, rect.height / 2);
-        cairo_arc(cairo, 0, 0, 1, 0, 2 * M_PI);
-        cairo_restore(cairo);
-
+        Ellipse(rect.x + rect.width / 2, rect.y + rect.height / 2, rect.width / 2, rect.height / 2, 0.0);
         Stroke();
     }
 
@@ -1198,10 +1189,30 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::Ellipse(double cx, double cy, double rx, double ry, double rotation) {
+        // cairo_scale with a zero (or non-finite) factor is an invalid
+        // matrix, and cairo answers it by putting the whole context into a
+        // permanent error state that cairo_restore does not clear: nothing
+        // drawn afterwards reaches the window. The first step of every
+        // ellipse drag has a zero-size box, so picking the Ellipse tool in
+        // ArtCreator and pressing the mouse blanked the window. A flat
+        // ellipse is the line it collapses to; a point is nothing.
+        if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(rx) || !std::isfinite(ry)) return;
+        const bool flatX = std::fabs(rx) <= 1e-9, flatY = std::fabs(ry) <= 1e-9;
+        if (flatX && flatY) return;
         cairo_save(cairo);
         cairo_translate(cairo, cx, cy);
         cairo_rotate(cairo, rotation);
+        if (flatX || flatY) {
+            cairo_restore(cairo);
+            const double c = std::cos(rotation), s = std::sin(rotation);
+            const double ex = flatY ? rx * c : -ry * s;   // one end, relative to the centre
+            const double ey = flatY ? rx * s :  ry * c;
+            cairo_move_to(cairo, cx - ex, cy - ey);
+            cairo_line_to(cairo, cx + ex, cy + ey);
+            return;
+        }
         cairo_scale(cairo, rx, ry);
+        cairo_new_sub_path(cairo);
         cairo_arc(cairo, 0, 0, 1, 0, 2 * M_PI);
         cairo_restore(cairo);
     }

@@ -47,7 +47,7 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 | L | Straight Line | Drag; shift constrains to 45° |
 | R | Rectangle | Drag; shift for a square, ctrl from the centre; corner radius option |
 | E | Ellipse | Drag; shift for a circle, ctrl from the centre |
-| Q | Quick Shape | Drag from the centre; polygon or star, sides and inner radius |
+| Q | Quick Shape | Drag from the centre. Options: Shape (Polygon — a regular n-gon, 8 corners for an octagon — or Star), Corners (3–24), Depth (how far a star's inner corners are pulled in). Shift stands it upright: a star's point up, an even polygon on a flat side |
 | T | Text | Click; a dialog asks for the text, font, size, bold, italic |
 | G | Fill | Drag across a shape for a linear (or radial) gradient from the fill colour; drag the gradient's ends to adjust; flat / no fill buttons |
 | Y | Transparency | Click a shape and drag right for a flat level, or drag across it for a linear / radial / conical ramp; the mix (stained glass, bleach, contrast, ...) and the level are in the options |
