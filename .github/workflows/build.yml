@@ -209,6 +209,11 @@ jobs:
             ${{ matrix.msys_prefix }}-opusfile
             ${{ matrix.msys_prefix }}-libopusenc
             ${{ matrix.msys_prefix }}-lame
+            ${{ matrix.msys_prefix }}-librevenge
+            ${{ matrix.msys_prefix }}-libcdr
+            ${{ matrix.msys_prefix }}-lcms2
+            ${{ matrix.msys_prefix }}-icu
+            ${{ matrix.msys_prefix }}-boost
             zip
 
       # ===== macOS: Homebrew (shared by the arm64 and x86_64 jobs; Homebrew
@@ -459,7 +464,7 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DBUILD_DEMO_APP=ON \
-            -DULTRACANVAS_PLUGIN_CDR=OFF \
+            -DULTRACANVAS_PLUGIN_CDR=ON \
             -DULTRACANVAS_PLUGIN_XAR=ON \
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
@@ -570,6 +575,26 @@ jobs:
           fi
           echo "Vectorizer plugin enabled on ${{ runner.os }}"
 
+      # CorelDRAW import needs the CDR plugin built on the patched libcdr in
+      # UltraCanvas/third_party/libcdr (bitmap transparency, PowerClip). Its gate
+      # only prints a status line when librevenge/lcms2/ICU/Boost are missing,
+      # so a lost dependency would ship without CDR import. Fail loudly instead.
+      - name: Verify CDR plugin enabled
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "CDR Plugin - ENABLED" configure.log; then
+            echo "::error::CDR plugin was not enabled during configure (librevenge/libcdr dependencies missing?)"
+            grep -i "cdr\|revenge" configure.log || true
+            exit 1
+          fi
+          if ! grep -q "libcdr version: .*vendored" configure.log; then
+            echo "::error::CDR plugin built without the patched libcdr in third_party/libcdr (lcms2, ICU, zlib or Boost missing?)"
+            grep -i "libcdr" configure.log || true
+            exit 1
+          fi
+          echo "CDR plugin enabled with the vendored libcdr on ${{ runner.os }}"
+
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
 
@@ -636,6 +661,15 @@ jobs:
           # where the error names the cause - rather than inside ctest, where
           # it arrives as one line with no diagnosis.
           psql -h /var/run/postgresql -p 5432 -d ultrafibu_ci -c 'SELECT 1' >/dev/null
+
+      # Windows runs no full ctest pass yet; the CorelDRAW path gets its own, so
+      # the vendored libcdr is exercised there on real files: detailed.cdr has
+      # to arrive with its masked bitmaps and PowerClips (VectorFormatsPluginTest),
+      # and our CDR writer's output has to parse (CDRWriterTest).
+      - name: Run CDR tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
 
       - name: Run unit tests
         if: runner.os == 'Linux'

@@ -2863,7 +2863,10 @@ set(ULTRACANVAS_PLUGIN_INCLUDE_DIRS "")
 # CDR Plugin
 if(ULTRACANVAS_PLUGIN_CDR)
     set(ULTRACANVAS_CDR_VENDORABLE FALSE)
-    if(NOT WIN32)
+    # pkg-config everywhere: Linux and macOS packages, and MSYS2's
+    # (mingw-w64-clang-*-librevenge, -lcms2, -icu, -boost, -libcdr) on Windows.
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
         pkg_check_modules(LIBCDR libcdr-0.1)
         pkg_check_modules(LIBREVENGE librevenge-0.0)
         # The patched libcdr in third_party/libcdr needs these instead of a
@@ -2876,8 +2879,6 @@ if(ULTRACANVAS_PLUGIN_CDR)
             set(ULTRACANVAS_CDR_VENDORABLE TRUE)
         endif()
     else()
-        # On Windows, these would need to be found differently
-        # For now, mark as not found
         set(LIBCDR_FOUND FALSE)
         set(LIBREVENGE_FOUND FALSE)
     endif()
