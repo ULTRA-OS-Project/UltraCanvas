@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraPaintDialogs.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraPaintTools.h"   // PaintOptionWidgets
 #include "UltraCanvasRasterLayer.h"
 #include "UltraCanvasFormLayout.h"
@@ -83,7 +84,7 @@ namespace {
 
     std::string FileNameOnly(const std::string& path) {
         if (path.empty()) return "Untitled";
-        return std::filesystem::path(path).filename().string();
+        return PathToUtf8(PathFromUtf8(path).filename());
     }
 }
 

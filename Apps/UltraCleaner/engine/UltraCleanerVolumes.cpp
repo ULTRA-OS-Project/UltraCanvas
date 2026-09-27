@@ -2,6 +2,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerVolumes.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCleanerPaths.h"
 
@@ -10,6 +11,9 @@
 #include <fstream>
 #include <set>
 #include <sstream>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
@@ -60,7 +64,7 @@ bool IsPseudoFilesystem(const std::string& type) {
 // differently depending on where the app is running.
 std::string DisplayNameForMount(const std::string& mountPoint) {
     if (mountPoint == "/") return "System";
-    const std::string leaf = fs::path(mountPoint).filename().string();
+    const std::string leaf = PathToUtf8(PathFromUtf8(mountPoint).filename());
     return leaf.empty() ? mountPoint : leaf;
 }
 #endif

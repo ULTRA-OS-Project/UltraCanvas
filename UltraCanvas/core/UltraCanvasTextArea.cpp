@@ -2539,7 +2539,7 @@ namespace UltraCanvas {
         }
         if (!result) {
             std::filesystem::path p(filename);
-            std::string ext = p.extension().string();
+            std::string ext = PathToUtf8(p.extension());
             if (!ext.empty() && ext[0] == '.') {
                 ext = ext.substr(1);
             }
@@ -2551,7 +2551,7 @@ namespace UltraCanvas {
     bool UltraCanvasTextArea::SetProgrammingLanguageForFile(const std::string& filename,
                                                             const std::string& text) {
         const std::string sniffed = SyntaxTokenizer::LanguageFromContent(
-                std::filesystem::path(filename).extension().string(), text);
+                PathToUtf8(PathFromUtf8(filename).extension()), text);
         if (sniffed.empty()) return SetProgrammingLanguageByFilename(filename);
         if (!syntaxTokenizer) {
             syntaxTokenizer = std::make_unique<SyntaxTokenizer>();

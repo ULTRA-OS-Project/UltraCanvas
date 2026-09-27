@@ -2,12 +2,16 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerScanner.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCleanerPaths.h"
 
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
@@ -35,7 +39,7 @@ bool MatchesAny(const std::string& name,
 // still cannot be listed is worth counting.
 bool NoteUnreadableRoot(const std::string& root, ScanReport& report) {
     std::error_code ec;
-    if (fs::exists(fs::path(root), ec) && !ec) ++report.unreadablePaths;
+    if (fs::exists(PathFromUtf8(root), ec) && !ec) ++report.unreadablePaths;
     return false;
 }
 
@@ -51,7 +55,7 @@ uint64_t DirectorySize(const std::string& path, uint64_t fileLimit) {
     uint64_t total = 0;
     uint64_t seen = 0;
 
-    fs::recursive_directory_iterator iterator(fs::path(path), kWalkOptions, ec);
+    fs::recursive_directory_iterator iterator(PathFromUtf8(path), kWalkOptions, ec);
     if (ec) return 0;
     const fs::recursive_directory_iterator end;
     for (; iterator != end; iterator.increment(ec)) {
@@ -71,7 +75,7 @@ uint64_t DirectorySize(const std::string& path, uint64_t fileLimit) {
 
 int64_t LastWriteSeconds(const std::string& path) {
     std::error_code ec;
-    const fs::file_time_type written = fs::last_write_time(fs::path(path), ec);
+    const fs::file_time_type written = fs::last_write_time(PathFromUtf8(path), ec);
     if (ec) return 0;
 
     // file_clock and system_clock tick at the same rate but need not share an
@@ -192,7 +196,7 @@ ScanReport Scanner::Scan(const std::vector<CleanRule>& rules,
 void Scanner::ScanClearContents(const CleanRule& rule, const std::string& root,
                                 const PathGuard& guard, ScanReport& report) {
     std::error_code ec;
-    fs::directory_iterator iterator(fs::path(root), kWalkOptions, ec);
+    fs::directory_iterator iterator(PathFromUtf8(root), kWalkOptions, ec);
     if (ec) {
         NoteUnreadableRoot(root, report);
         return;
@@ -205,22 +209,22 @@ void Scanner::ScanClearContents(const CleanRule& rule, const std::string& root,
         if (ec) { ec.clear(); ++report.unreadablePaths; continue; }
         if (cancelRequested_) return;
 
-        const std::string path = NormalizeForCompare(iterator->path().string());
-        const std::string name = iterator->path().filename().string();
+        const std::string path = NormalizeForCompare(PathToUtf8(iterator->path()));
+        const std::string name = PathToUtf8(iterator->path().filename());
         if (MatchesAny(name, rule.excludeNames)) continue;
 
-        const SafetyCheck check = guard.Check(iterator->path().string());
+        const SafetyCheck check = guard.Check(PathToUtf8(iterator->path()));
         if (!check.Allowed()) { ++report.skippedProtected; continue; }
 
         std::error_code entryEc;
         const bool isSymlink = iterator->is_symlink(entryEc);
         const bool isDirectory = !isSymlink && iterator->is_directory(entryEc);
 
-        const int64_t modified = LastWriteSeconds(iterator->path().string());
+        const int64_t modified = LastWriteSeconds(PathToUtf8(iterator->path()));
         if (minAge > 0 && modified > 0 && (now - modified) < minAge) continue;
 
         CleanItem item;
-        item.path = iterator->path().string();
+        item.path = PathToUtf8(iterator->path());
         item.ruleId = rule.id;
         item.category = rule.category;
         item.isDirectory = isDirectory;
@@ -244,7 +248,7 @@ void Scanner::ScanClearContents(const CleanRule& rule, const std::string& root,
 void Scanner::ScanMatchingFiles(const CleanRule& rule, const std::string& root,
                                 const PathGuard& guard, ScanReport& report) {
     std::error_code ec;
-    fs::recursive_directory_iterator iterator(fs::path(root), kWalkOptions, ec);
+    fs::recursive_directory_iterator iterator(PathFromUtf8(root), kWalkOptions, ec);
     if (ec) {
         NoteUnreadableRoot(root, report);
         return;
@@ -257,7 +261,7 @@ void Scanner::ScanMatchingFiles(const CleanRule& rule, const std::string& root,
         if (ec) { ec.clear(); ++report.unreadablePaths; continue; }
         if (cancelRequested_) return;
 
-        const std::string name = iterator->path().filename().string();
+        const std::string name = PathToUtf8(iterator->path().filename());
         std::error_code entryEc;
 
         // Depth 0 is the root's own children, so a maxDepth of N means N
@@ -277,14 +281,14 @@ void Scanner::ScanMatchingFiles(const CleanRule& rule, const std::string& root,
         if (!iterator->is_regular_file(entryEc) || entryEc) continue;
         if (!MatchesAny(name, rule.namePatterns)) continue;
 
-        const SafetyCheck check = guard.Check(iterator->path().string());
+        const SafetyCheck check = guard.Check(PathToUtf8(iterator->path()));
         if (!check.Allowed()) { ++report.skippedProtected; continue; }
 
-        const int64_t modified = LastWriteSeconds(iterator->path().string());
+        const int64_t modified = LastWriteSeconds(PathToUtf8(iterator->path()));
         if (minAge > 0 && modified > 0 && (now - modified) < minAge) continue;
 
         CleanItem item;
-        item.path = iterator->path().string();
+        item.path = PathToUtf8(iterator->path());
         item.ruleId = rule.id;
         item.category = rule.category;
         item.isDirectory = false;
@@ -306,7 +310,7 @@ void Scanner::ScanMatchingDirectories(const CleanRule& rule,
                                       const PathGuard& guard,
                                       ScanReport& report) {
     std::error_code ec;
-    fs::directory_iterator iterator(fs::path(root), kWalkOptions, ec);
+    fs::directory_iterator iterator(PathFromUtf8(root), kWalkOptions, ec);
     if (ec) {
         NoteUnreadableRoot(root, report);
         return;
@@ -323,18 +327,18 @@ void Scanner::ScanMatchingDirectories(const CleanRule& rule,
         if (iterator->is_symlink(entryEc)) continue;
         if (!iterator->is_directory(entryEc) || entryEc) continue;
 
-        const std::string name = iterator->path().filename().string();
+        const std::string name = PathToUtf8(iterator->path().filename());
         if (MatchesAny(name, rule.excludeNames)) continue;
         if (!MatchesAny(name, rule.namePatterns)) continue;
 
-        const SafetyCheck check = guard.Check(iterator->path().string());
+        const SafetyCheck check = guard.Check(PathToUtf8(iterator->path()));
         if (!check.Allowed()) { ++report.skippedProtected; continue; }
 
-        const int64_t modified = LastWriteSeconds(iterator->path().string());
+        const int64_t modified = LastWriteSeconds(PathToUtf8(iterator->path()));
         if (minAge > 0 && modified > 0 && (now - modified) < minAge) continue;
 
         CleanItem item;
-        item.path = iterator->path().string();
+        item.path = PathToUtf8(iterator->path());
         item.ruleId = rule.id;
         item.category = rule.category;
         item.isDirectory = true;
@@ -355,7 +359,7 @@ void Scanner::ScanDanglingSymlinks(const CleanRule& rule,
                                    const PathGuard& guard,
                                    ScanReport& report) {
     std::error_code ec;
-    fs::recursive_directory_iterator iterator(fs::path(root), kWalkOptions, ec);
+    fs::recursive_directory_iterator iterator(PathFromUtf8(root), kWalkOptions, ec);
     if (ec) {
         NoteUnreadableRoot(root, report);
         return;
@@ -376,11 +380,11 @@ void Scanner::ScanDanglingSymlinks(const CleanRule& rule,
         std::error_code targetEc;
         if (fs::exists(iterator->path(), targetEc) && !targetEc) continue;
 
-        const SafetyCheck check = guard.Check(iterator->path().string());
+        const SafetyCheck check = guard.Check(PathToUtf8(iterator->path()));
         if (!check.Allowed()) { ++report.skippedProtected; continue; }
 
         CleanItem item;
-        item.path = iterator->path().string();
+        item.path = PathToUtf8(iterator->path());
         item.ruleId = rule.id;
         item.category = rule.category;
         item.isDirectory = false;

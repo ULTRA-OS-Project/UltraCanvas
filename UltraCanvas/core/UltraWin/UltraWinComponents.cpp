@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWinInternal.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <cctype>
@@ -16,6 +17,9 @@
 #include <sstream>
 
 #include <unistd.h>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace fs = std::filesystem;
 
@@ -43,7 +47,7 @@ std::string ResolveWineElfBinary(const std::string& winePath) {
     std::error_code ec;
     fs::path real = fs::canonical(winePath, ec);
     if (ec) return winePath;
-    if (IsElfFile(real.string())) return real.string();
+    if (IsElfFile(PathToUtf8(real))) return PathToUtf8(real);
 
     // A script wrapper: try the loader locations wrappers point at,
     // strictly relative to the wrapper so a custom-configured wine never
@@ -54,7 +58,7 @@ std::string ResolveWineElfBinary(const std::string& winePath) {
          {dir / "wine64", dir / ".." / "lib" / "wine" / "wine64",
           dir / ".." / "lib" / "wine" / "wine"}) {
         fs::path resolved = fs::canonical(candidate, ec);
-        if (!ec && IsElfFile(resolved.string())) return resolved.string();
+        if (!ec && IsElfFile(PathToUtf8(resolved))) return PathToUtf8(resolved);
     }
     return winePath;
 }

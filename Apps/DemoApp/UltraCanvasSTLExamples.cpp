@@ -55,8 +55,8 @@ namespace {
         std::error_code ec;
         for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
             if (!entry.is_regular_file()) continue;
-            if (!UltraCanvasSTLLoader::HasSTLExtension(entry.path().string())) continue;
-            paths.push_back(entry.path().string());
+            if (!UltraCanvasSTLLoader::HasSTLExtension(PathToUtf8(entry.path()))) continue;
+            paths.push_back(PathToUtf8(entry.path()));
         }
         std::sort(paths.begin(), paths.end());
         return paths;
@@ -65,7 +65,7 @@ namespace {
     StlSample LoadSample(const std::string& path) {
         StlSample sample;
         sample.path = path;
-        sample.fileName = std::filesystem::path(path).filename().string();
+        sample.fileName = PathToUtf8(PathFromUtf8(path).filename());
 
         std::error_code ec;
         sample.bytes = std::filesystem::file_size(path, ec);

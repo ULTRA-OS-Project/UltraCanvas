@@ -8,6 +8,7 @@
 // Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #include "UltraCanvasElevatedFileOperations.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <filesystem>
 #include <fstream>
@@ -29,7 +30,7 @@ namespace UltraCanvas {
             // file links on its own (the standalone test builds it without
             // UltraCanvasUtils).
             fs::path PathFromUtf8(const std::string& utf8) {
-                return fs::path(std::u8string(utf8.begin(), utf8.end()));
+                return std::filesystem::path(std::u8string(utf8.begin(), utf8.end()));   // path-string-ok: char8_t is UTF-8 by definition
             }
 
             // Lift the write protection of `p` and, for a folder, of everything

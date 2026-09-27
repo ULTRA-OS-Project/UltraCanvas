@@ -59201,6 +59201,38 @@ than a missing piece of the backend.
 So: if a host application hangs before its first window on Windows, check what
 it is built against before looking anywhere else.
 
+## "Windows cannot access the specified device, path, or file"
+
+Explorer shows this dialog (Thai: *Windows ไม่สามารถเข้าถึงอุปกรณ์ เส้นทาง หรือแฟ้มที่ระบุได้*)
+with the full path of the executable as its title. Unlike the other failures
+on this page, it comes from Explorer before the process exists. No log is
+written and `uc-diagnose.bat` has nothing to show. In 0.9.70 it was reported
+for `UltraCleaner.exe` and `UltraNetMonitor.exe` while UltraFiler, from the
+same folder, started normally.
+
+Almost every time, endpoint protection is the cause. Microsoft Defender or a
+third-party product has quarantined or blocked the file, often at the moment
+it was launched. These two are exactly what behaviour heuristics look for in
+an unsigned binary: a tool that deletes files in bulk, and a tool that lists
+every process's sockets. See also item 3 of the next section.
+
+1. Check that the file still exists. If the `.exe` is gone from the folder,
+   it was quarantined.
+2. Windows Security → Virus & threat protection → *Protection history*
+   names the file and the detection. Restore it and add an exclusion for
+   the folder, or check the quarantine log of whatever AV product is
+   installed.
+3. Clear Mark of the Web for the whole unpacked folder:
+   `Get-ChildItem -Recurse . | Unblock-File`.
+4. Rule out a damaged extraction by extracting the ZIP again with Explorer
+   or 7-Zip, into a folder under the user's profile.
+
+What fixes this for good is Authenticode-signing every executable with a
+certificate from a trusted CA. `package-win.sh` signs only `Texter.exe` and
+`UltraCanvasDemo.exe`, only when run without `--no-sign`, and CI always
+passes `--no-sign`. The PowerShell signing scripts can create only a
+self-signed certificate, which does not help against AV or SmartScreen.
+
 ## Windows 11 differences worth checking first
 
 Nothing in `UltraCanvas/OS/MSWindows/` branches on the Windows version — the

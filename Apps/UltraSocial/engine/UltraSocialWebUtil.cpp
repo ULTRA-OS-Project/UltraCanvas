@@ -2,6 +2,7 @@
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialWebUtil.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <UltraNet/UltraNetOAuth2.h>   // UltraNet_OAuth2GenerateState (boundary)
 #include <UltraNet/UltraNetUrl.h>      // UltraNet_UrlEncode (form bodies)
@@ -10,6 +11,9 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 using UltraCanvas::JSONValue;
 
@@ -227,7 +231,7 @@ UltraNetResult LoadFileBytes(const std::string& path,
 }
 
 std::string GuessMimeType(const std::string& path) {
-    std::string ext = std::filesystem::path(path).extension().string();
+    std::string ext = PathToUtf8(PathFromUtf8(path).extension());
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";

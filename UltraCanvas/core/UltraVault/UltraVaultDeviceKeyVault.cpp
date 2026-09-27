@@ -5,6 +5,7 @@
 // Version: 0.1.0 - moved here from UltraMail's CredentialVault 0.6.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraVault/UltraVaultDeviceKeyVault.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCrypt/UltraCryptCore.h"   // UltraCrypt_RandomBytes
 
@@ -16,6 +17,9 @@
 #include <map>
 #include <string>
 #include <vector>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace fs = std::filesystem;
 
@@ -91,8 +95,8 @@ std::string LegacyXor(const std::string& data, const std::vector<uint8_t>& key) 
 std::map<std::string, std::string> ReadLegacyVault(const std::string& dir) {
     std::map<std::string, std::string> creds;
     std::error_code ec;
-    const fs::path keyPath   = fs::path(dir) / kLegacyKeyFile;
-    const fs::path credsPath = fs::path(dir) / kLegacyCredsFile;
+    const fs::path keyPath   = PathFromUtf8(dir) / kLegacyKeyFile;
+    const fs::path credsPath = PathFromUtf8(dir) / kLegacyCredsFile;
     if (!fs::exists(keyPath, ec) || !fs::exists(credsPath, ec)) return creds;
 
     std::ifstream ks(keyPath, std::ios::binary);
@@ -133,12 +137,12 @@ std::string DeviceKeyVault::KeyFor(const std::string& account) const {
 }
 
 std::string DeviceKeyVault::VaultPath() const {
-    return (fs::path(dir_) / profile_.vaultFileName).string();
+    return PathToUtf8(PathFromUtf8(dir_) / profile_.vaultFileName);
 }
 
 bool DeviceKeyVault::Exists() const {
     std::error_code ec;
-    return fs::exists(fs::path(dir_) / profile_.vaultFileName, ec);
+    return fs::exists(PathFromUtf8(dir_) / profile_.vaultFileName, ec);
 }
 
 UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
@@ -179,7 +183,7 @@ void DeviceKeyVault::Lock() {
 }
 
 std::string DeviceKeyVault::DeviceKeyPath() const {
-    return (fs::path(dir_) / kDeviceKeyFile).string();
+    return PathToUtf8(PathFromUtf8(dir_) / kDeviceKeyFile);
 }
 
 bool DeviceKeyVault::TryAutoUnlock() {
@@ -233,8 +237,8 @@ int DeviceKeyVault::MigrateLegacy() {
         // The 0.1 code wrote its key file on the first read, so a folder that
         // never held a secret still carries one. With no creds.dat there is
         // nothing it could decrypt; drop it rather than leave a stray key.
-        if (!fs::exists(fs::path(dir_) / kLegacyCredsFile, ec))
-            fs::remove(fs::path(dir_) / kLegacyKeyFile, ec);
+        if (!fs::exists(PathFromUtf8(dir_) / kLegacyCredsFile, ec))
+            fs::remove(PathFromUtf8(dir_) / kLegacyKeyFile, ec);
         return 0;
     }
 
@@ -247,8 +251,8 @@ int DeviceKeyVault::MigrateLegacy() {
     // Only drop the old files once every secret is safely in the new vault;
     // a partial migration keeps them so nothing is lost.
     if (carried == static_cast<int>(legacy.size())) {
-        fs::remove(fs::path(dir_) / kLegacyCredsFile, ec);
-        fs::remove(fs::path(dir_) / kLegacyKeyFile, ec);
+        fs::remove(PathFromUtf8(dir_) / kLegacyCredsFile, ec);
+        fs::remove(PathFromUtf8(dir_) / kLegacyKeyFile, ec);
     }
     return carried;
 }

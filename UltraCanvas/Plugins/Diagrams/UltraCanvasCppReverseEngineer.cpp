@@ -16,6 +16,7 @@
 //   5. ResolveInferredRelationships— resolves edges recorded by type name.
 
 #include "Plugins/Diagrams/UltraCanvasCppReverseEngineer.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "Plugins/Diagrams/UltraCanvasUMLNotation.h"
 
 #include <algorithm>
@@ -1204,10 +1205,10 @@ CppReverseEngineerResult UltraCanvasCppReverseEngineer::ParseDirectory(
     std::vector<std::string> files;
     auto consider = [&](const fs::directory_entry& entry) {
         if (!entry.is_regular_file()) return;
-        std::string extension = entry.path().extension().string();
+        std::string extension = PathToUtf8(entry.path().extension());
         for (const auto& allowed : options.fileExtensions) {
             if (extension == allowed) {
-                files.push_back(entry.path().string());
+                files.push_back(PathToUtf8(entry.path()));
                 return;
             }
         }

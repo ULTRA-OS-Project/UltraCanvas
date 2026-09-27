@@ -6,6 +6,7 @@
 // Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasConfig.h"
@@ -186,7 +187,7 @@ bool ComposeView::AttachFile(const std::string& path) {
     std::ifstream is(path, std::ios::binary);
     if (!is) return false;
     Attachment a;
-    a.filename  = std::filesystem::path(path).filename().string();
+    a.filename  = PathToUtf8(PathFromUtf8(path).filename());
     a.mediaType = GuessMediaType(a.filename);
     a.data.assign(std::istreambuf_iterator<char>(is), std::istreambuf_iterator<char>());
     draft_.attachments.push_back(std::move(a));

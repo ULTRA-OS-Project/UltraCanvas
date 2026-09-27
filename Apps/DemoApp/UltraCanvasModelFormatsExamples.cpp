@@ -441,7 +441,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
         if (!extension.empty() && extension != spec.extension) continue;
         FormatSample sample;
         sample.path = NormalizePath(modelsDir + spec.relativePath);
-        sample.fileName = std::filesystem::path(sample.path).filename().string();
+        sample.fileName = PathToUtf8(PathFromUtf8(sample.path).filename());
         sample.extension = spec.extension;
         sample.note = spec.note;
         // Cheap, and it decides what the capability panel can say even for a

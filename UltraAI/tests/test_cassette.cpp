@@ -32,7 +32,7 @@ namespace {
 } while (0)
 
 std::string TempPath(const char* name) {
-    return (std::filesystem::temp_directory_path() / name).string();
+    return (std::filesystem::temp_directory_path() / name).string();  // path-string-ok: UltraAI builds standalone; a test file under the runner's temp dir
 }
 
 void TestRoundTrip() {

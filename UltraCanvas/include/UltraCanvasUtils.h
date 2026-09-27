@@ -9,6 +9,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasTextUtils.h"   // Trim/Split/ToLowerCase..., Base64 / Base32
+#include "UltraCanvasPathUtf8.h"    // PathFromUtf8 / PathToUtf8
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -70,14 +71,11 @@ namespace UltraCanvas {
     // the Dropbox configuration needs UltraCanvasJSON, which this bottom-of-
     // the-stack header deliberately does not drag in.
 
-    // UltraCanvas strings are UTF-8 everywhere. On Windows the narrow CRT /
-    // ANSI Win32 APIs interpret narrow strings in the legacy system code page,
-    // so characters outside it (Thai, CJK, ...) get mangled to '?'. These
-    // helpers convert a UTF-8 string to a std::filesystem::path via UTF-16 so
-    // file opens and directory walks work for any file name; on other
-    // platforms they pass through unchanged.
-    std::filesystem::path PathFromUtf8(const std::string& utf8);
-    std::string PathToUtf8(const std::filesystem::path& p);
+    // PathFromUtf8 / PathToUtf8 - every path <-> std::string conversion -
+    // live in UltraCanvasPathUtf8.h (included above), header-only so that
+    // headless modules can use them. On Windows the narrow CRT / ANSI Win32
+    // APIs read narrow strings in the legacy code page; these two convert
+    // UTF-8 <-> UTF-16 so any file name works.
 #if defined(_WIN32) || defined(_WIN64)
     std::wstring Utf8ToWide(const std::string& utf8);
     std::string WideToUtf8(const std::wstring& wide);

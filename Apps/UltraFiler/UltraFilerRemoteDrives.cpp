@@ -339,7 +339,7 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
         // better than uploading the first file and going quiet.
         if (std::filesystem::is_directory(argument, ec) && !ec) {
             error = "a folder cannot be uploaded from here, only files: " +
-                    std::filesystem::path(argument).filename().string();
+                    PathToUtf8(PathFromUtf8(argument).filename());
             return false;
         }
         ec.clear();
@@ -646,9 +646,9 @@ UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
 
     const std::string name = RemotePreviewLocalName(
             entry.name.empty() ? RemoteFilerName(entry.path) : entry.name);
-    const fs::path target = fs::path(directory) /
+    const fs::path target = PathFromUtf8(directory) /
             RemotePreviewCacheKey(entry.path, entry.size, entry.modifiedTime) / name;
-    const std::string targetPath = target.string();
+    const std::string targetPath = PathToUtf8(target);
 
     // Fetched before - in this run or an earlier one - and unchanged since,
     // since a change would have given it another folder.
@@ -720,7 +720,7 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job) {
     // the download is really going to happen.
     if (job.isPreview) {
         std::error_code ec;
-        fs::create_directories(fs::path(job.previewTarget).parent_path(), ec);
+        fs::create_directories(PathFromUtf8(job.previewTarget).parent_path(), ec);
     }
 
     UltraCloud::Result r = UltraCloud::Result::Ok();
@@ -743,7 +743,7 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job) {
             // Under the file's own name, in the folder the job names.
             const std::string parent = remotePath == "/" ? std::string()
                                                          : remotePath;
-            const std::string name = fs::path(job.argument).filename().string();
+            const std::string name = PathToUtf8(PathFromUtf8(job.argument).filename());
             r = impl_->service->Upload(accountId, job.argument, parent + "/" + name);
             break;
         }
@@ -971,7 +971,7 @@ void UltraFilerRemoteDrives::SaveDiskCache() {
     const std::string target = DiskCachePath();
     const std::string temp = target + ".tmp";
     std::error_code ec;
-    fs::create_directories(fs::path(target).parent_path(), ec);
+    fs::create_directories(PathFromUtf8(target).parent_path(), ec);
     {
         std::ofstream out(temp, std::ios::binary | std::ios::trunc);
         if (!out) return;
@@ -1082,7 +1082,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
         activity.what = job.isListing
                 ? RemoteFilerName(job.path)   // "" at a drive root: its own name
                 : job.operation == RemoteOperation::Upload
-                        ? std::filesystem::path(job.argument).filename().string()
+                        ? PathToUtf8(PathFromUtf8(job.argument).filename())
                         : job.operation == RemoteOperation::MakeDirectory
                                 ? job.argument
                                 : RemoteFilerName(job.path);
@@ -1204,7 +1204,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
                 // gained a file is the local one the bytes were written to.
                 // The cache erase below then finds no such key, which is
                 // exactly right: the drive's listing is still good.
-                changedFolder = fs::path(job.argument).parent_path().string();
+                changedFolder = PathToUtf8(PathFromUtf8(job.argument).parent_path());
             } else {
                 changedFolder = (job.operation == RemoteOperation::MakeDirectory ||
                                  job.operation == RemoteOperation::Upload)

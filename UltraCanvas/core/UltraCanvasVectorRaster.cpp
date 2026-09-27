@@ -12,6 +12,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorRaster.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasGraphicsPluginSystem.h"
 #include "UltraCanvasImage.h"            // UCPixmap, VipsCanLoad
@@ -45,7 +46,7 @@ namespace {
 
     std::string StemOf(const std::string& path) {
         std::error_code ec;
-        std::string stem = fs::path(path).stem().string();
+        std::string stem = PathToUtf8(PathFromUtf8(path).stem());
         (void)ec;
         return stem.empty() ? std::string("Vector") : stem;
     }

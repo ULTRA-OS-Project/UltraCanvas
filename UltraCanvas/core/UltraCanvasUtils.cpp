@@ -86,22 +86,6 @@ namespace UltraCanvas {
     }
 #endif
 
-    std::filesystem::path PathFromUtf8(const std::string& utf8) {
-#if defined(_WIN32) || defined(_WIN64)
-        return std::filesystem::path(Utf8ToWide(utf8));
-#else
-        return std::filesystem::path(utf8);
-#endif
-    }
-
-    std::string PathToUtf8(const std::filesystem::path& p) {
-#if defined(_WIN32) || defined(_WIN64)
-        return WideToUtf8(p.native());
-#else
-        return p.string();
-#endif
-    }
-
     // ToLowerCase / StartsWith / Trim / Split and the Base64 codecs live in
     // UltraCanvasTextUtils.cpp so that headless modules can link them without
     // this file's platform glue.
@@ -1030,7 +1014,7 @@ namespace UltraCanvas {
     }
 
     bool IsHiddenFileSystemEntry(const std::filesystem::path& path) {
-        const std::string name = path.filename().string();
+        const std::string name = PathToUtf8(path.filename());
         if (!name.empty() && name.front() == '.') return true;
 #if defined(_WIN32) || defined(_WIN64)
         const DWORD attrs = GetFileAttributesW(path.c_str());
@@ -1052,10 +1036,10 @@ namespace UltraCanvas {
         auto add = [&folders](UserFolderKind kind, const std::filesystem::path& p) {
             std::error_code ec;
             if (p.empty() || !std::filesystem::is_directory(p, ec) || ec) return;
-            const std::string path = p.string();
+            const std::string path = PathToUtf8(p);
             for (const UserFolderInfo& f : folders)
                 if (f.path == path) return;
-            std::string label = p.filename().string();
+            std::string label = PathToUtf8(p.filename());
             if (label.empty()) label = path;
             folders.push_back({kind, path, label});
         };
@@ -1072,7 +1056,7 @@ namespace UltraCanvas {
         for (const auto& [id, kind] : kKnown) {
             PWSTR wpath = nullptr;
             if (SUCCEEDED(SHGetKnownFolderPath(*id, 0, nullptr, &wpath)) && wpath)
-                add(kind, std::filesystem::path(wpath));
+                add(kind, std::filesystem::path(wpath));   // path-string-ok: wide
             if (wpath) CoTaskMemFree(wpath);
         }
 #else
@@ -1132,14 +1116,14 @@ namespace UltraCanvas {
             return s;
         };
         const std::string homeKey =
-                stripTrailing(std::filesystem::path(home).lexically_normal().string());
+                stripTrailing(PathToUtf8(PathFromUtf8(home).lexically_normal()));
         for (const XdgEntry& x : kXdg) {
             const auto it = configured.find(x.key);
             const std::filesystem::path p = (it != configured.end())
-                    ? std::filesystem::path(it->second)
-                    : std::filesystem::path(home) / x.fallback;
+                    ? PathFromUtf8(it->second)
+                    : PathFromUtf8(home) / x.fallback;
             // An entry set to the home folder itself means "disabled".
-            if (stripTrailing(p.lexically_normal().string()) == homeKey) continue;
+            if (stripTrailing(PathToUtf8(p.lexically_normal())) == homeKey) continue;
             add(x.kind, p);
         }
 #endif

@@ -2,6 +2,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerImageDescriptor.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasImage.h"
 
@@ -13,6 +14,9 @@
 #include <ctime>
 #include <filesystem>
 #include <vector>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace UltraCleaner {
 namespace {
@@ -201,7 +205,7 @@ int64_t ParseExifTimestamp(const std::string& exif) {
 }
 
 bool HasImageExtension(const std::string& path) {
-    const std::string ext = LowerCase(fs::path(path).extension().string());
+    const std::string ext = LowerCase(PathToUtf8(PathFromUtf8(path).extension()));
     static const char* known[] = {
         ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff",
         ".heic", ".heif", ".avif", ".jxl", ".qoi", ".ppm", ".tga"
@@ -218,7 +222,7 @@ PictureKind ClassifyPicture(const std::string& path, int width, int height,
     // A camera stamped it: a photograph, whatever it is called.
     if (!cameraMake.empty() || !cameraModel.empty()) return PictureKind::Photograph;
 
-    const std::string name = LowerCase(fs::path(path).filename().string());
+    const std::string name = LowerCase(PathToUtf8(PathFromUtf8(path).filename()));
     static const char* screenshotPrefixes[] = {
         "screenshot", "screen shot", "bildschirmfoto", "capture d",
         "captura de pantalla", "schermafbeelding", "zrzut ekranu",
@@ -230,7 +234,7 @@ PictureKind ClassifyPicture(const std::string& path, int width, int height,
 
     // A lossless format at an exact display or window size, with no camera
     // metadata at all, is almost always a capture rather than a picture.
-    const std::string ext = LowerCase(fs::path(path).extension().string());
+    const std::string ext = LowerCase(PathToUtf8(PathFromUtf8(path).extension()));
     if (ext == ".png" || ext == ".bmp") {
         static const int kScreenWidths[] = {
             1024, 1152, 1280, 1366, 1440, 1600, 1680, 1920, 2048, 2240, 2560,

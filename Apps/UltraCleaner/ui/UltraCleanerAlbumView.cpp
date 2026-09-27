@@ -2,6 +2,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerAlbumView.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasImageElement.h"
 
@@ -19,7 +20,7 @@ constexpr float kThumbnailSize = 132.0f;
 constexpr size_t kMaxGroupsShown = 40;
 
 std::string FileNameOf(const std::string& path) {
-    return std::filesystem::path(path).filename().string();
+    return PathToUtf8(PathFromUtf8(path).filename());
 }
 
 } // namespace

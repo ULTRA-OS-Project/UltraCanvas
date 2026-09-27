@@ -465,9 +465,9 @@ namespace {
         std::error_code ec;
         for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
             if (!entry.is_regular_file()) continue;
-            std::string ext = entry.path().extension().string();
+            std::string ext = PathToUtf8(entry.path().extension());
             if (!ext.empty()) ext.erase(0, 1);
-            if (IsSampleImageExtension(ext)) names.push_back(entry.path().filename().string());
+            if (IsSampleImageExtension(ext)) names.push_back(PathToUtf8(entry.path().filename()));
         }
         std::sort(names.begin(), names.end());
         return names;
@@ -1055,7 +1055,7 @@ namespace {
                         setStatus("Upload cancelled.");
                         return;
                     }
-                    std::string name = std::filesystem::path(path).filename().string();
+                    std::string name = PathToUtf8(PathFromUtf8(path).filename());
                     sampleDropdown->AddItem(DropdownItem("Custom: " + name, path));
                     sampleDropdown->SetSelectedIndex(sampleDropdown->GetItemCount() - 1, false);
                     loadSource(path);

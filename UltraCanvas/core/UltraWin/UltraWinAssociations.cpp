@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWinInternal.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <cctype>
@@ -15,6 +16,9 @@
 #include <fstream>
 #include <map>
 #include <sstream>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace fs = std::filesystem;
 
@@ -36,9 +40,8 @@ namespace {
 
 std::string AssociationsPath() {
     // Sibling of ".../ultrawin/environments" and ".../ultrawin/vm".
-    return (fs::path(EnvironmentsRoot()).parent_path() /
-            "associations.conf")
-        .string();
+    return PathToUtf8(PathFromUtf8(EnvironmentsRoot()).parent_path() /
+                      "associations.conf");
 }
 
 // Cheap identity check for "is this still the same file?": size plus an
@@ -105,7 +108,7 @@ std::map<std::string, AssociationEntry> LoadAssociations() {
 bool SaveAssociations(const std::map<std::string, AssociationEntry>& assoc) {
     std::error_code ec;
     fs::create_directories(
-        fs::path(AssociationsPath()).parent_path(), ec);
+        PathFromUtf8(AssociationsPath()).parent_path(), ec);
     std::ofstream out(AssociationsPath(), std::ios::trunc);
     if (!out) return false;
     out << "# UltraWin program associations — "
@@ -195,17 +198,17 @@ std::string UltraWin_SuggestEnvironment(const std::string& programPath) {
     // A sibling program's association: the multi-exe application case —
     // helper.exe should land where app.exe already lives.
     auto assoc = LoadAssociations();
-    const std::string dir = fs::path(programPath).parent_path().string();
+    const std::string dir = PathToUtf8(PathFromUtf8(programPath).parent_path());
     for (const auto& [path, entry] : assoc) {
         if (path != programPath &&
-            fs::path(path).parent_path().string() == dir)
+            PathToUtf8(PathFromUtf8(path).parent_path()) == dir)
             return entry.environment;
     }
 
     std::string folder = SanitizeEnvironmentName(
-        fs::path(programPath).parent_path().filename().string());
+        PathToUtf8(PathFromUtf8(programPath).parent_path().filename()));
     if (!folder.empty()) return folder;
     std::string stem =
-        SanitizeEnvironmentName(fs::path(programPath).stem().string());
+        SanitizeEnvironmentName(PathToUtf8(PathFromUtf8(programPath).stem()));
     return stem.empty() ? "Default" : stem;
 }

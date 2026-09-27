@@ -79,11 +79,11 @@ std::string TesseractOCREngine::ResolveDataPath(const std::string& userPath,
         std::error_code ec;
         const fs::path b(base);
         const fs::path direct = b / leaf;
-        tried.push_back(direct.string());
-        if (fs::exists(direct, ec)) return b.string();
+        tried.push_back(PathToUtf8(direct));
+        if (fs::exists(direct, ec)) return PathToUtf8(b);
         const fs::path nested = b / "tessdata" / leaf;
-        tried.push_back(nested.string());
-        if (fs::exists(nested, ec)) return (b / "tessdata").string();
+        tried.push_back(PathToUtf8(nested));
+        if (fs::exists(nested, ec)) return PathToUtf8(b / "tessdata");
         return {};
     };
 

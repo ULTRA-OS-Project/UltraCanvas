@@ -6,6 +6,7 @@
 #include "UltraFilerRamDisks.h"
 
 #include "UltraCanvasHardwareInfo.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #ifdef ULTRAFILER_HAS_RAMDISK
 #include "VirtualFS/VirtualFSRamDisk.h"
@@ -25,7 +26,7 @@ namespace {
 // Paths compared as the filesystem spells them, without a trailing
 // separator: "R:\" from the drive list and "R:" typed elsewhere are one disc.
 std::string NormalizedRoot(const std::string& path) {
-    std::string p = fs::path(path).lexically_normal().string();
+    std::string p = PathToUtf8(PathFromUtf8(path).lexically_normal());
     while (p.size() > 1 && (p.back() == '/' || p.back() == '\\')) p.pop_back();
     return p;
 }

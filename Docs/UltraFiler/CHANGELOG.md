@@ -1,3 +1,14 @@
+#### 2026-09-27 *1.56.1*
+- **No more "Illegal byte sequence" crash on Windows.** Opening a folder that
+  holds a file or folder whose name has characters outside the Windows
+  system code page (for example an emoji, a Chinese name or an accented
+  letter on a Thai Windows 10) quit UltraFiler with *Unhandled exception:
+  filesystem error: in __wide_to_char: Illegal byte sequence*. Names are now
+  converted to and from UTF-8 without going through the code page, in the
+  folder listing and in every file operation, the tree, the breadcrumb,
+  search, history and the remote drives. See the framework changelog entry
+  for the details.
+
 #### 2026-09-27 *1.56.0*
 - **RAM discs.** *+ Drive* has a third choice, *RAM disc...*: a second
   dialog asks for the disc's name and size, offering only sizes that fit in

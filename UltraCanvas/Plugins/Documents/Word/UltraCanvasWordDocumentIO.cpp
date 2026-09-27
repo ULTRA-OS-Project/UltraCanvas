@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
@@ -36,7 +37,7 @@ WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath) {
     if (!file.is_open() || file.gcount() < 4) {
         // Unreadable/short file: the extension is the best remaining signal.
         return WordDocumentFormatFromExtension(
-            std::filesystem::path(filePath).extension().string());
+            PathToUtf8(PathFromUtf8(filePath).extension()));
     }
 
     // OLE2 Compound File Binary — the legacy Word 97-2003 container.
@@ -61,7 +62,7 @@ WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath) {
             // presence for ODF-shaped packages with an .odt extension.
             if (zip.HasEntry("content.xml")
                 && WordDocumentFormatFromExtension(
-                       std::filesystem::path(filePath).extension().string())
+                       PathToUtf8(PathFromUtf8(filePath).extension()))
                        == WordDocumentFormat::Odt) {
                 return WordDocumentFormat::Odt;
             }
@@ -80,7 +81,7 @@ WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath) {
         if (UltraCanvasLaTeXDocumentReader::LooksLikeLaTeXDocument(head)) {
             return WordDocumentFormat::LaTeX;
         }
-        if (WordDocumentFormatFromExtension(std::filesystem::path(filePath).extension().string())
+        if (WordDocumentFormatFromExtension(PathToUtf8(PathFromUtf8(filePath).extension()))
                 == WordDocumentFormat::LaTeX
             && head.find('\\') != std::string::npos
             && head.find('\0') == std::string::npos) {
@@ -138,7 +139,7 @@ bool UCWordDocumentIO::Save(const std::string& filePath, const UCRichDocument& d
                             std::string& outError) {
     outError.clear();
     switch (WordDocumentFormatFromExtension(
-        std::filesystem::path(filePath).extension().string())) {
+        PathToUtf8(PathFromUtf8(filePath).extension()))) {
         case WordDocumentFormat::Odt:
             return SaveOdt(filePath, document, outError);
         case WordDocumentFormat::Docx:

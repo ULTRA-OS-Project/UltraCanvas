@@ -8,6 +8,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModelViewDialog.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasFormLayout.h"
 #include "CSSLayout/CSSLayout.h"
@@ -24,7 +25,7 @@ namespace UltraCanvas {
 
         std::string FileNameOnly(const std::string& path) {
             if (path.empty()) return "Model";
-            return std::filesystem::path(path).filename().string();
+            return PathToUtf8(PathFromUtf8(path).filename());
         }
 
         std::string TriangleCountText(size_t triangles) {

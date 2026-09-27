@@ -52,10 +52,10 @@ namespace UltraCanvas {
                             const std::string& label = std::string()) {
             std::error_code ec;
             if (p.empty() || !std::filesystem::is_directory(p, ec) || ec) return;
-            const std::string path = p.string();
+            const std::string path = PathToUtf8(p);
             for (const CloudStorageInfo& c : out)
                 if (c.path == path) return;
-            std::string name = label.empty() ? p.filename().string() : label;
+            std::string name = label.empty() ? PathToUtf8(p.filename()) : label;
             if (name.empty()) name = CloudStorageDisplayName(kind);
             out.push_back({kind, path, name});
         }
@@ -67,10 +67,10 @@ namespace UltraCanvas {
         std::filesystem::path CloudEnvPath(const char* name) {
 #if defined(_WIN32) || defined(_WIN64)
             const wchar_t* value = ::_wgetenv(Utf8ToWide(name).c_str());
-            return value ? std::filesystem::path(value) : std::filesystem::path();
+            return value ? std::filesystem::path(value) : std::filesystem::path();   // path-string-ok: wide
 #else
             const char* value = std::getenv(name);
-            return value ? std::filesystem::path(value) : std::filesystem::path();
+            return value ? PathFromUtf8(value) : std::filesystem::path();
 #endif
         }
 
@@ -84,7 +84,7 @@ namespace UltraCanvas {
             std::error_code ec;
             if (!std::filesystem::is_regular_file(infoJson, ec) || ec) return;
             JSONParseResult result;
-            const JSONValue root = JSON::ParseFile(infoJson.string(), &result);
+            const JSONValue root = JSON::ParseFile(PathToUtf8(infoJson), &result);
             if (!result.success || !root.IsObject()) return;
             for (const JSONValue::Member& account : root.GetMembers()) {
                 const std::string path = account.second.Get("path").GetString();
@@ -93,7 +93,7 @@ namespace UltraCanvas {
                 // after its section so the two are told apart - but only when
                 // its folder is not already named for it, which is what the
                 // client does by default ("Dropbox (Acme Inc)").
-                std::string label = PathFromUtf8(path).filename().string();
+                std::string label = PathToUtf8(PathFromUtf8(path).filename());
                 if (label.empty()) label = CloudStorageDisplayName(CloudStorageKind::Dropbox);
                 if (!account.first.empty() && account.first != "personal" &&
                     label == CloudStorageDisplayName(CloudStorageKind::Dropbox)) {
@@ -121,7 +121,7 @@ namespace UltraCanvas {
             std::wstring value(buffer);
             if (value.empty()) return {};
             if (value.size() == 2 && value[1] == L':') value += L'\\';
-            return std::filesystem::path(value);
+            return std::filesystem::path(value);   // path-string-ok: wide
         }
 
         // A default Google Drive install mounts a virtual drive labelled
@@ -204,7 +204,7 @@ namespace UltraCanvas {
             const std::filesystem::path cloudStorage = homePath / "Library" / "CloudStorage";
             for (std::filesystem::directory_iterator it(cloudStorage, ec), end;
                  it != end && !ec; it.increment(ec)) {
-                const std::string name = it->path().filename().string();
+                const std::string name = PathToUtf8(it->path().filename());
                 CloudStorageKind kind;
                 if (name.rfind("OneDrive", 0) == 0)          kind = CloudStorageKind::OneDrive;
                 else if (name.rfind("GoogleDrive", 0) == 0)  kind = CloudStorageKind::GoogleDrive;
@@ -237,14 +237,14 @@ namespace UltraCanvas {
         {
             std::filesystem::path gvfs;
             if (const char* runtime = std::getenv("XDG_RUNTIME_DIR"))
-                gvfs = std::filesystem::path(runtime) / "gvfs";
+                gvfs = PathFromUtf8(runtime) / "gvfs";
             else
-                gvfs = std::filesystem::path("/run/user") /
+                gvfs = PathFromUtf8("/run/user") /
                        std::to_string(static_cast<unsigned long>(::getuid())) / "gvfs";
             std::error_code ec;
             for (std::filesystem::directory_iterator it(gvfs, ec), end;
                  it != end && !ec; it.increment(ec)) {
-                const std::string name = it->path().filename().string();
+                const std::string name = PathToUtf8(it->path().filename());
                 CloudStorageKind kind;
                 if (name.rfind("google-drive:", 0) == 0)  kind = CloudStorageKind::GoogleDrive;
                 else if (name.rfind("onedrive:", 0) == 0) kind = CloudStorageKind::OneDrive;

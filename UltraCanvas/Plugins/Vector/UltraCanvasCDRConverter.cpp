@@ -26,6 +26,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCDRConverter.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
@@ -609,7 +610,7 @@ namespace UltraCanvas {
                     if (zip.ReadEntry("content/data/Bitmaps.dat", bytes)) return bytes;
                     return {};
                 }
-                std::ifstream in(std::filesystem::path(path), std::ios::binary);
+                std::ifstream in(PathFromUtf8(path), std::ios::binary);
                 bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
                 return bytes;
             }
@@ -735,7 +736,7 @@ namespace UltraCanvas {
             // SVG goes through a temporary file because that is the plugin's
             // export interface; it is removed again straight away.
             const std::filesystem::path svgPath = TempPath(".svg");
-            CDRExportResult r = UltraCanvasCDRPlugin::ExportToSVG(filename, svgPath.string(), 0);
+            CDRExportResult r = UltraCanvasCDRPlugin::ExportToSVG(filename, PathToUtf8(svgPath), 0);
             std::shared_ptr<VectorStorage::VectorDocument> doc;
             if (r.success) {
                 std::string svgText;
@@ -777,7 +778,7 @@ namespace UltraCanvas {
                 std::ofstream out(cdrPath, std::ios::binary);
                 out.write(data.data(), static_cast<std::streamsize>(data.size()));
             }
-            auto doc = Import(cdrPath.string(), options);
+            auto doc = Import(PathToUtf8(cdrPath), options);
             std::error_code ec;
             std::filesystem::remove(cdrPath, ec);
             return doc;

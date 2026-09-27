@@ -46,11 +46,11 @@ namespace {
 
     std::string FileNameOf(const std::string& path) {
         if (path.empty()) return "Untitled";
-        return fs::path(path).filename().string();
+        return PathToUtf8(PathFromUtf8(path).filename());
     }
 
     std::string ExtensionOf(const std::string& path) {
-        std::string e = fs::path(path).extension().string();
+        std::string e = PathToUtf8(PathFromUtf8(path).extension());
         if (!e.empty() && e[0] == '.') e.erase(0, 1);
         std::transform(e.begin(), e.end(), e.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return e;
@@ -835,7 +835,7 @@ void ArtCreatorWindow::CmdSaveAs() {
     UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
         std::string p = path;
-        if (fs::path(p).extension().empty()) p += ".xar";
+        if (PathFromUtf8(p).extension().empty()) p += ".xar";
         SaveToPath(p);
     });
 }
@@ -843,7 +843,7 @@ void ArtCreatorWindow::CmdSaveAs() {
 void ArtCreatorWindow::CmdExport() {
     if (!document) return;
     FileDialogOptions opts;
-    std::string def = documentPath.empty() ? "untitled.pdf" : fs::path(documentPath).stem().string() + ".pdf";
+    std::string def = documentPath.empty() ? "untitled.pdf" : PathToUtf8(PathFromUtf8(documentPath).stem()) + ".pdf";
     opts.SetTitle("Export drawing")
         .AddFilter("PDF", std::vector<std::string>{ "pdf" })
         .AddFilter("Adobe Illustrator", std::vector<std::string>{ "ai" })
@@ -860,7 +860,7 @@ void ArtCreatorWindow::CmdExport() {
     UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
         std::string p = path;
-        if (fs::path(p).extension().empty()) p += ".pdf";
+        if (PathFromUtf8(p).extension().empty()) p += ".pdf";
         SaveToPath(p);
     });
 }

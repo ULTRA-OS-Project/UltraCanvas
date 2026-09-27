@@ -2,11 +2,15 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerSafety.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCleanerPaths.h"
 
 #include <algorithm>
 #include <filesystem>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace UltraCleaner {
 namespace {
@@ -92,9 +96,9 @@ std::vector<std::string> BuildProtectedPaths() {
 // scan result is re-checked after something else removed it.
 std::string ResolveSymlinks(const std::string& path) {
     std::error_code ec;
-    const fs::path resolved = fs::weakly_canonical(fs::path(path), ec);
+    const fs::path resolved = fs::weakly_canonical(PathFromUtf8(path), ec);
     if (ec) return NormalizeForCompare(path);
-    return NormalizeForCompare(resolved.string());
+    return NormalizeForCompare(PathToUtf8(resolved));
 }
 
 } // namespace
@@ -120,7 +124,7 @@ void PathGuard::AllowRoot(const std::string& root) {
     if (root.empty()) return;
     std::error_code ec;
     std::string normalized = NormalizeForCompare(root);
-    if (fs::exists(fs::path(root), ec) && !ec) {
+    if (fs::exists(PathFromUtf8(root), ec) && !ec) {
         normalized = ResolveSymlinks(root);
     }
     if (std::find(roots_.begin(), roots_.end(), normalized) == roots_.end()) {
@@ -166,9 +170,9 @@ SafetyCheck PathGuard::Check(const std::string& path) const {
     // lead out of the allowed roots, or a planted link would redirect the
     // delete somewhere the rules never named.
     std::error_code ec;
-    const fs::path parent = fs::path(candidate).parent_path();
+    const fs::path parent = PathFromUtf8(candidate).parent_path();
     if (!parent.empty()) {
-        const std::string resolvedParent = ResolveSymlinks(parent.string());
+        const std::string resolvedParent = ResolveSymlinks(PathToUtf8(parent));
         bool parentInside = false;
         for (const auto& root : roots_) {
             if (resolvedParent == root || IsPathInside(resolvedParent, root)) {
@@ -181,7 +185,7 @@ SafetyCheck PathGuard::Check(const std::string& path) const {
                      "a link in the path leads outside the allowed roots: " + path };
         }
         const std::string resolvedCandidate =
-            resolvedParent + "/" + fs::path(candidate).filename().string();
+            resolvedParent + "/" + PathToUtf8(PathFromUtf8(candidate).filename());
         if (IsProtectedPath(resolvedCandidate)) {
             return { SafetyVerdict::ProtectedLocation,
                      "resolves to a protected location: " + path };
@@ -190,7 +194,7 @@ SafetyCheck PathGuard::Check(const std::string& path) const {
 
     // Sockets, fifos and device nodes are never junk, and unlinking one can
     // take a running session with it.
-    const fs::file_status status = fs::symlink_status(fs::path(path), ec);
+    const fs::file_status status = fs::symlink_status(PathFromUtf8(path), ec);
     if (!ec && fs::exists(status)) {
         const fs::file_type type = status.type();
         if (type != fs::file_type::regular &&

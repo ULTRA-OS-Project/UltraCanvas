@@ -325,7 +325,7 @@ namespace UltraCanvas {
                                                    const std::string& filePath, std::string& outError,
                                                    std::vector<std::string>* notes) {
         outError.clear();
-        std::string ext = std::filesystem::path(filePath).extension().string();
+        std::string ext = PathToUtf8(PathFromUtf8(filePath).extension());
         if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
         for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         const auto writable = SavableVectorExtensions();
@@ -381,7 +381,7 @@ namespace UltraCanvas {
         }
         std::string text((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
-        std::string baseDirectory = std::filesystem::path(filePath).parent_path().string();
+        std::string baseDirectory = PathToUtf8(PathFromUtf8(filePath).parent_path());
         return std::make_shared<UCRichDocument>(
             UCRichDocument::FromMarkdown(text, baseDirectory));
     }

@@ -335,7 +335,7 @@ bool LaunchExecutable(const std::string& path, std::string& outError) {
         const pid_t second = ::fork();
         if (second != 0) ::_exit(second < 0 ? 127 : 0);
         const std::string dir =
-                std::filesystem::path(path).parent_path().string();
+                PathToUtf8(PathFromUtf8(path).parent_path());
         if (!dir.empty() && ::chdir(dir.c_str()) != 0) { /* keep going */ }
         ::execl(path.c_str(), path.c_str(), static_cast<char*>(nullptr));
         ::_exit(127);   // exec failed; the launcher cannot see this anymore

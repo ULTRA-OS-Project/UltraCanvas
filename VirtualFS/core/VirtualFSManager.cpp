@@ -5,6 +5,9 @@
 // Author: ULTRA OS Framework
 
 #include "VirtualFSManager.h"
+// Relative, so every target that compiles this file finds it (the tests
+// build VirtualFS sources into their own executables).
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "VirtualFSPath.h"
 
 #ifdef VIRTUALFS_HAS_LIBARCHIVE
@@ -18,6 +21,9 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace VirtualFS {
 
@@ -34,7 +40,7 @@ VirtualFSResult VirtualFSManager::Initialize() {
         }
 
         // Set default temp directory
-        tempDirectory = std::filesystem::temp_directory_path().string();
+        tempDirectory = PathToUtf8(std::filesystem::temp_directory_path());
 
         initialized = true;
     }
@@ -378,8 +384,8 @@ std::vector<VirtualFSEntry> VirtualFSManager::ListRealDirectory(const std::strin
         
         for (const auto& dirEntry : std::filesystem::directory_iterator(fsPath)) {
             VirtualFSEntry entry;
-            entry.name = dirEntry.path().filename().string();
-            entry.path = dirEntry.path().string();
+            entry.name = PathToUtf8(dirEntry.path().filename());
+            entry.path = PathToUtf8(dirEntry.path());
             entry.realPath = entry.path;
             
             if (dirEntry.is_directory()) {
@@ -394,7 +400,7 @@ std::vector<VirtualFSEntry> VirtualFSManager::ListRealDirectory(const std::strin
                 }
             } else if (dirEntry.is_symlink()) {
                 entry.type = VirtualFSEntryType::Symlink;
-                entry.linkTarget = std::filesystem::read_symlink(dirEntry.path()).string();
+                entry.linkTarget = PathToUtf8(std::filesystem::read_symlink(dirEntry.path()));
             }
             
             // Get timestamps
@@ -483,7 +489,7 @@ VirtualFSEntry VirtualFSManager::GetRealFSInfo(const std::string& path) {
             return entry;
         }
         
-        entry.name = fsPath.filename().string();
+        entry.name = PathToUtf8(fsPath.filename());
         entry.path = path;
         entry.realPath = path;
         
@@ -498,7 +504,7 @@ VirtualFSEntry VirtualFSManager::GetRealFSInfo(const std::string& path) {
             }
         } else if (std::filesystem::is_symlink(fsPath)) {
             entry.type = VirtualFSEntryType::Symlink;
-            entry.linkTarget = std::filesystem::read_symlink(fsPath).string();
+            entry.linkTarget = PathToUtf8(std::filesystem::read_symlink(fsPath));
         }
         
         // Get timestamps

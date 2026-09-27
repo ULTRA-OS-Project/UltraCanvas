@@ -63,7 +63,7 @@ const Color kSaveBtnH    (  5, 150, 105, 255);
 std::string TempSvgPath() {
     namespace fs = std::filesystem;
     fs::path p = fs::temp_directory_path() / "ultracanvas-vectorizer-output.svg";
-    return p.string();
+    return PathToUtf8(p);
 }
 
 bool WriteFile(const std::string& path, const std::string& bytes) {

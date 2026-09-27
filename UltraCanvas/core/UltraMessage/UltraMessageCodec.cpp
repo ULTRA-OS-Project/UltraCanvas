@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMessageInternal.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <chrono>
@@ -14,6 +15,9 @@
 #include <filesystem>
 #include <mutex>
 #include <random>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 #ifdef _WIN32
 #  ifndef WIN32_LEAN_AND_MEAN
@@ -689,7 +693,7 @@ std::string HomeDirectory() {
 } // namespace
 
 std::string ParentDirectory(const std::string& path) {
-    return std::filesystem::path(path).parent_path().string();
+    return PathToUtf8(PathFromUtf8(path).parent_path());
 }
 
 bool EnsureDirectory(const std::string& path) {

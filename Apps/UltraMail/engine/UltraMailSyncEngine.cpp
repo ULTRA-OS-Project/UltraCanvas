@@ -15,6 +15,9 @@
 #include <vector>
 #include <UltraCanvasUtils.h>
 #include <UltraNet/UltraNetMime.h>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 namespace fs = std::filesystem;
 
 namespace UltraMail {
@@ -119,9 +122,9 @@ std::string SanitizeFolder(const std::string& folder) {
 
 std::string SyncEngine::BodyPath(const std::string& accountId,
                                  const std::string& folder, int64_t uid) const {
-    fs::path p = fs::path(emlDir_) / accountId / SanitizeFolder(folder)
+    fs::path p = PathFromUtf8(emlDir_) / accountId / SanitizeFolder(folder)
                / (std::to_string(uid) + ".eml");
-    return p.string();
+    return PathToUtf8(p);
 }
 
 SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
@@ -229,7 +232,7 @@ std::string SyncEngine::WriteBody(const std::string& accountId, const std::strin
     if (raw.empty()) return std::string();
     const std::string path = BodyPath(accountId, folder, uid);
     std::error_code ec;
-    fs::create_directories(fs::path(path).parent_path(), ec);
+    fs::create_directories(PathFromUtf8(path).parent_path(), ec);
     std::ofstream os(path, std::ios::binary | std::ios::trunc);
     if (!os) return std::string();
     os.write(raw.data(), static_cast<std::streamsize>(raw.size()));

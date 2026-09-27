@@ -4,6 +4,9 @@
 // Version: 0.1.0
 // Author: AnchorPoint
 #include "Protocol.h"
+// Relative, so every target that compiles this file finds it (the tests
+// build VirtualFS sources into their own executables).
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCrypt/UltraCryptCore.h"
 
@@ -17,6 +20,7 @@
 
 using namespace AnchorPoint;
 namespace fs = std::filesystem;
+using UltraCanvas::PathToUtf8;
 
 namespace {
 
@@ -143,7 +147,7 @@ void TestTraversalLandsInsideSaveFolder(const fs::path& root) {
     std::string offered;
     auto res = ReceiveFile(conn, [&](const OfferInfo& offer, const std::string&) {
         offered = offer.fileName;
-        return (saveDir / offer.fileName).string();
+        return PathToUtf8(saveDir / offer.fileName);
     });
 
     Check(res.ok, "traversal name still transfers, into the save folder: " + res.error);
@@ -158,7 +162,7 @@ void TestUnsafeNameRefused(const fs::path& root, const std::string& wire) {
     bool asked = false;
     auto res = ReceiveFile(conn, [&](const OfferInfo&, const std::string&) {
         asked = true;
-        return (root / "never").string();
+        return PathToUtf8(root / "never");
     });
 
     Check(!res.ok, "unsafe name \"" + wire + "\" refused");

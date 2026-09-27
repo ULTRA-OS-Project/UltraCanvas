@@ -21,6 +21,8 @@
 #include <filesystem>
 #include <functional>
 
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8 / OpenFileUtf8
+
 namespace UltraCanvas {
 
 // Explain why a file cannot be opened for READING. Returns an empty string when
@@ -31,11 +33,12 @@ inline std::string DescribeFileReadError(const std::string& path) {
     std::error_code ec;
 
     if (path.empty()) return "No file name was given.";
-    if (!fs::exists(path, ec)) return "File not found: " + path;
-    if (fs::is_directory(path, ec)) return "This is a folder, not a file: " + path;
+    const fs::path p = PathFromUtf8(path);
+    if (!fs::exists(p, ec)) return "File not found: " + path;
+    if (fs::is_directory(p, ec)) return "This is a folder, not a file: " + path;
 
     errno = 0;
-    std::FILE* f = std::fopen(path.c_str(), "rb");
+    std::FILE* f = OpenFileUtf8(path, "rb");
     if (f) { std::fclose(f); return std::string(); }
 
     int e = errno;
@@ -77,24 +80,24 @@ inline std::string DescribeFileWriteError(const std::string& path) {
 
     if (path.empty()) return "No file name was given.";
 
-    fs::path p(path);
-    fs::path dir = p.has_parent_path() ? p.parent_path() : fs::path(".");
+    fs::path p = PathFromUtf8(path);
+    fs::path dir = p.has_parent_path() ? p.parent_path() : PathFromUtf8(".");
 
-    if (!fs::exists(dir, ec))      return "The destination folder does not exist: " + dir.string();
-    if (!fs::is_directory(dir, ec))return "The destination is not a folder: " + dir.string();
+    if (!fs::exists(dir, ec))      return "The destination folder does not exist: " + PathToUtf8(dir);
+    if (!fs::is_directory(dir, ec))return "The destination is not a folder: " + PathToUtf8(dir);
     if (fs::exists(p, ec) && fs::is_directory(p, ec))
         return "Cannot write the file because a folder with that name exists: " + path;
 
     errno = 0;
     if (fs::exists(p, ec)) {
         // Open the existing file for writing WITHOUT truncating it.
-        std::FILE* f = std::fopen(path.c_str(), "r+b");
+        std::FILE* f = OpenFileUtf8(path, "r+b");
         if (f) { std::fclose(f); return std::string(); }
     } else {
         // Don't touch the target path; probe the folder with a temp file instead.
         fs::path probe = dir / (".ucwrite_probe_" + std::to_string(std::time(nullptr)));
         errno = 0;
-        std::FILE* pf = std::fopen(probe.string().c_str(), "wb");
+        std::FILE* pf = OpenFileUtf8(PathToUtf8(probe), "wb");
         if (pf) {
             std::fclose(pf);
             std::error_code rmEc;
@@ -141,17 +144,17 @@ namespace Detail {
     inline std::filesystem::path AtomicWriteTempPath(const std::filesystem::path& target) {
         namespace fs = std::filesystem;
         static std::atomic<unsigned> counter{0};
-        const fs::path dir = target.has_parent_path() ? target.parent_path() : fs::path(".");
+        const fs::path dir = target.has_parent_path() ? target.parent_path() : PathFromUtf8(".");
         const auto stamp = static_cast<unsigned long long>(
                 std::chrono::steady_clock::now().time_since_epoch().count()) & 0xffffffu;
         for (unsigned attempt = 0; attempt < 1000; ++attempt) {
             const fs::path candidate = dir / (".ucsave-" + std::to_string(stamp) + "-" +
                                               std::to_string(counter.fetch_add(1)) +
-                                              target.extension().string());
+                                              PathToUtf8(target.extension()));
             std::error_code ec;
             if (!fs::exists(candidate, ec)) return candidate;
         }
-        return dir / (".ucsave" + target.extension().string());
+        return dir / (".ucsave" + PathToUtf8(target.extension()));
     }
 
     // Removes the staged file unless the write was committed - including when
@@ -198,7 +201,7 @@ inline std::string WriteFileAtomically(
     if (!writer) return "Nothing was given to write " + path + " with.";
 
     std::error_code ec;
-    fs::path target(path);
+    fs::path target = PathFromUtf8(path);
     if (fs::is_symlink(target, ec)) {
         std::error_code resolveEc;
         const fs::path resolved = fs::weakly_canonical(target, resolveEc);
@@ -207,7 +210,7 @@ inline std::string WriteFileAtomically(
     ec.clear();
 
     Detail::AtomicWriteTemp temp{ Detail::AtomicWriteTempPath(target) };
-    const std::string staged = temp.path.string();
+    const std::string staged = PathToUtf8(temp.path);
 
     auto retarget = [&staged, &path](std::string message) {
         for (size_t at = message.find(staged); at != std::string::npos;

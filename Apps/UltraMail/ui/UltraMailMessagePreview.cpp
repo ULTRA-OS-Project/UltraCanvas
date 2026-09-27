@@ -8,6 +8,7 @@
 // Last Modified: 2026-09-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasFileLoader.h"
@@ -451,7 +452,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     std::string raw;
 
     // Load the cached body (.eml) and decode it.
-    fs::path path = fs::path(mailDir_) / env.accountId / SanitizeFolder(env.folder)
+    fs::path path = PathFromUtf8(mailDir_) / env.accountId / SanitizeFolder(env.folder)
                   / (std::to_string(env.uid) + ".eml");
     // Read through the framework's file loader: a cached body is never
     // compressed, but unlike a bare ifstream it reports why a read failed, so an
@@ -463,10 +464,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         current_.body.clear();
         current_.attachments.clear();
         curRaw_.clear();
-    } else if (auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path.string());
+    } else if (auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(PathToUtf8(path));
                !loaded.success) {
         RenderBody("(this message's body could not be read)\n\n"
-                   + (loaded.error.empty() ? path.string() : loaded.error), false);
+                   + (loaded.error.empty() ? PathToUtf8(path) : loaded.error), false);
         attachmentStrip_.SetAttachments({});
         current_.body.clear();
         current_.attachments.clear();

@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasGitRepository.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "miniz.h"
 
@@ -303,7 +304,7 @@ struct UltraCanvasGitRepository::Impl {
         if (packsLoaded) return;
         packsLoaded = true;
 
-        const fs::path packDirectory = fs::path(gitDirectory) / "objects" / "pack";
+        const fs::path packDirectory = PathFromUtf8(gitDirectory) / "objects" / "pack";
         std::error_code ec;
         if (!fs::is_directory(packDirectory, ec)) return;
 
@@ -322,7 +323,7 @@ struct UltraCanvasGitRepository::Impl {
 
     bool ReadLooseObject(const std::string& sha, std::string& type, std::string& body) {
         if (sha.size() < 3) return false;
-        const fs::path path = fs::path(gitDirectory) / "objects" / sha.substr(0, 2)
+        const fs::path path = PathFromUtf8(gitDirectory) / "objects" / sha.substr(0, 2)
                                                      / sha.substr(2);
         std::error_code ec;
         if (!fs::exists(path, ec)) return false;
@@ -671,7 +672,7 @@ struct UltraCanvasGitRepository::Impl {
     void CollectRefsFromDirectory(const fs::path& base, const std::string& prefix,
                                   std::unordered_map<std::string, std::string>& refs) {
         std::error_code ec;
-        const fs::path directory = fs::path(gitDirectory) / base;
+        const fs::path directory = PathFromUtf8(gitDirectory) / base;
         if (!fs::is_directory(directory, ec)) return;
 
         for (const fs::directory_entry& entry :
@@ -685,7 +686,7 @@ struct UltraCanvasGitRepository::Impl {
             if (content.empty()) continue;
 
             const std::string relative =
-                fs::relative(entry.path(), directory, ec).generic_string();
+                PathToUtf8(fs::relative(entry.path(), directory, ec));
             if (relative.empty()) continue;
 
             if (content.rfind("ref: ", 0) == 0) continue;      // Symbolic, skip
@@ -696,7 +697,7 @@ struct UltraCanvasGitRepository::Impl {
     void CollectPackedRefs(std::unordered_map<std::string, std::string>& refs,
                            std::unordered_map<std::string, std::string>& peeled) {
         std::string content;
-        if (!ReadWholeFile(fs::path(gitDirectory) / "packed-refs", content)) return;
+        if (!ReadWholeFile(PathFromUtf8(gitDirectory) / "packed-refs", content)) return;
 
         std::istringstream stream(content);
         std::string line;
@@ -731,7 +732,7 @@ bool UltraCanvasGitRepository::Open(const std::string& path) {
     Close();
 
     std::error_code ec;
-    fs::path candidate = fs::absolute(fs::path(path), ec);
+    fs::path candidate = fs::absolute(PathFromUtf8(path), ec);
     if (ec) {
         impl->lastError = "cannot resolve '" + path + "'";
         return false;
@@ -768,11 +769,11 @@ bool UltraCanvasGitRepository::Open(const std::string& path) {
     }
 
     if (!fs::exists(candidate / "HEAD", ec)) {
-        impl->lastError = "'" + candidate.string() + "' is not a git directory (no HEAD)";
+        impl->lastError = "'" + PathToUtf8(candidate) + "' is not a git directory (no HEAD)";
         return false;
     }
 
-    impl->gitDirectory = candidate.string();
+    impl->gitDirectory = PathToUtf8(candidate);
     impl->open = true;
     impl->lastError.clear();
     return true;
@@ -796,7 +797,7 @@ std::string UltraCanvasGitRepository::ReadCurrentBranch() {
     if (!impl->open) return std::string();
 
     std::string content;
-    if (!ReadWholeFile(fs::path(impl->gitDirectory) / "HEAD", content)) return std::string();
+    if (!ReadWholeFile(PathFromUtf8(impl->gitDirectory) / "HEAD", content)) return std::string();
     content = Trim(content);
     if (content.rfind("ref: ", 0) != 0) return std::string();       // Detached
 
@@ -809,14 +810,14 @@ std::string UltraCanvasGitRepository::ReadHeadSha() {
     if (!impl->open) return std::string();
 
     std::string content;
-    if (!ReadWholeFile(fs::path(impl->gitDirectory) / "HEAD", content)) return std::string();
+    if (!ReadWholeFile(PathFromUtf8(impl->gitDirectory) / "HEAD", content)) return std::string();
     content = Trim(content);
 
     if (content.rfind("ref: ", 0) != 0) return content;             // Detached HEAD
 
     const std::string ref = Trim(content.substr(5));
     std::string target;
-    if (ReadWholeFile(fs::path(impl->gitDirectory) / ref, target)) return Trim(target);
+    if (ReadWholeFile(PathFromUtf8(impl->gitDirectory) / ref, target)) return Trim(target);
 
     // Fall back to packed-refs.
     std::unordered_map<std::string, std::string> refs, peeled;

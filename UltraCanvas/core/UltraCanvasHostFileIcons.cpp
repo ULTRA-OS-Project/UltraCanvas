@@ -10,6 +10,7 @@
 // Author: UltraCanvas Framework
 #include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasUtils.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <cctype>
@@ -41,7 +42,7 @@ namespace UltraCanvas {
         if (NativeFileIconAvailable(path)) return "file:" + path;
 
         std::error_code ec;
-        std::string name = std::filesystem::path(path).filename().string();
+        std::string name = PathToUtf8(PathFromUtf8(path).filename());
         if (name.empty()) name = path;
         name = ToLower(name);
 

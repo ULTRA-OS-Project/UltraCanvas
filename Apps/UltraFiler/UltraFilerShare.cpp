@@ -165,7 +165,7 @@ bool ShareByEmail(const std::vector<std::string>& paths, std::string& outError) 
     namesW.reserve(files.size());
     for (const std::string& f : files) {
         pathsW.push_back(Utf8ToWide(f));
-        namesW.push_back(Utf8ToWide(fs::path(f).filename().string()));
+        namesW.push_back(Utf8ToWide(PathToUtf8(PathFromUtf8(f).filename())));
     }
     std::vector<UcMapiFileDescW> descs(files.size());
     for (size_t i = 0; i < files.size(); ++i) {

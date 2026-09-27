@@ -33,7 +33,7 @@ namespace {
                             const std::vector<std::string>& extensions) {
         const fs::path ext = path.extension();
         for (const std::string& wanted : extensions) {
-            if (ext == fs::path(wanted)) return true;
+            if (ext == PathFromUtf8(wanted)) return true;
         }
         return false;
     }

@@ -170,7 +170,7 @@ public:
     // folders through this too, so what the tree, the file display and this
     // store call "the same folder" cannot drift apart.
     static std::string IdentityKey(const std::string& path) {
-        std::string key = std::filesystem::path(path).lexically_normal().string();
+        std::string key = PathToUtf8(PathFromUtf8(path).lexically_normal());
         while (key.size() > 1 && (key.back() == '/' || key.back() == '\\'))
             key.pop_back();
 #if defined(_WIN32) || defined(_WIN64)

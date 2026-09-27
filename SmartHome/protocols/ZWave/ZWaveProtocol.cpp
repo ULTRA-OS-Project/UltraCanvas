@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "ZWaveProtocol.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <filesystem>
 #include <iostream>
@@ -2166,12 +2167,12 @@ std::vector<std::string> ZWaveProtocol::GetAvailableAdapters() const {
         std::error_code ec;
         if (!std::filesystem::is_directory(dir, ec)) continue;
         for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-            const std::string name = entry.path().filename().string();
+            const std::string name = PathToUtf8(entry.path().filename());
             const bool looksSerial =
                 name.rfind("ttyUSB", 0) == 0 || name.rfind("ttyACM", 0) == 0 ||
                 name.rfind("cu.usbserial", 0) == 0 || name.rfind("cu.usbmodem", 0) == 0;
             if (looksSerial || std::string(dir) == "/dev/serial/by-id") {
-                adapters.push_back(entry.path().string());
+                adapters.push_back(PathToUtf8(entry.path()));
             }
         }
     }

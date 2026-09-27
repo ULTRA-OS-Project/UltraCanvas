@@ -2,11 +2,15 @@
 // Version: 0.1.0 (Phase 3)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialFacebookConnector.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "../UltraSocialComposer.h"
 #include "../UltraSocialWebUtil.h"
 
 #include <filesystem>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 using UltraCanvas::JSONValue;
 
@@ -113,7 +117,7 @@ UltraNetResult FacebookConnector::PublishPost(const Account& account,
 
         MultipartFile source;
         source.name        = "source";
-        source.fileName    = std::filesystem::path(media.filePath).filename().string();
+        source.fileName    = PathToUtf8(PathFromUtf8(media.filePath).filename());
         source.contentType = media.mimeType.empty() ? GuessMimeType(media.filePath)
                                                     : media.mimeType;
         source.bytes       = std::move(bytes);

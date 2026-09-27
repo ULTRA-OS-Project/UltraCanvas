@@ -290,10 +290,10 @@ namespace {
             if (!it->is_regular_file(ec)) continue;
             const fs::path& p = it->path();
             if (p.extension() != ".desktop") continue;
-            std::string id = fs::relative(p, appsDir, ec).string();
+            std::string id = PathToUtf8(fs::relative(p, appsDir, ec));
             if (ec) continue;
             std::replace(id.begin(), id.end(), '/', '-');
-            ParseDesktopFile(index, p.string(), id);
+            ParseDesktopFile(index, PathToUtf8(p), id);
         }
         // The scan feeds the freshness list through the directory itself: a
         // package install changes the directory mtime.
@@ -481,7 +481,7 @@ namespace {
             return false;
         }
         const std::string workingDir = paths.empty()
-                ? std::string() : fs::path(paths[0]).parent_path().string();
+                ? std::string() : PathToUtf8(PathFromUtf8(paths[0]).parent_path());
         return LaunchDetachedProcess(argv, workingDir, outError);
     }
 
@@ -552,7 +552,7 @@ bool LaunchDefault(const std::vector<std::string>& paths, std::string& outError)
             // desktop-specific fallbacks this backend does not.
             std::vector<std::string> argv{"xdg-open"};
             argv.insert(argv.end(), files.begin(), files.end());
-            ok = LaunchDetachedProcess(argv, fs::path(files[0]).parent_path().string(),
+            ok = LaunchDetachedProcess(argv, PathToUtf8(PathFromUtf8(files[0]).parent_path()),
                                        error);
         }
         if (!ok) {
@@ -599,7 +599,7 @@ bool LaunchWithPath(const std::string& applicationPath,
         argv.insert(argv.end(), paths.begin(), paths.end());
     }
     if (workingDir.empty() && !paths.empty())
-        workingDir = fs::path(paths[0]).parent_path().string();
+        workingDir = PathToUtf8(PathFromUtf8(paths[0]).parent_path());
     return LaunchDetachedProcess(argv, workingDir, outError);
 }
 

@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewerWindow.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <filesystem>
@@ -38,7 +39,7 @@ namespace UltraCanvas {
 
         WindowConfig cfg;
         cfg.title = options.title.empty()
-                            ? fs::path(filePath).filename().string()
+                            ? PathToUtf8(PathFromUtf8(filePath).filename())
                             : options.title;
         if (cfg.title.empty()) cfg.title = "Media";
         cfg.type = WindowType::Standard;

@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWinInternal.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <cerrno>
@@ -22,6 +23,9 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace fs = std::filesystem;
 
@@ -116,7 +120,7 @@ UltraWinResult ApplyMappings(const std::string& prefixPath) {
         std::lock_guard<std::mutex> lk(g_mutex);
         cfg = g_config;
     }
-    fs::path dosdevices = fs::path(prefixPath) / "dosdevices";
+    fs::path dosdevices = PathFromUtf8(prefixPath) / "dosdevices";
     std::error_code ec;
     fs::create_directories(dosdevices, ec);
     if (ec) {
@@ -232,7 +236,7 @@ UltraWinResult UltraWin_CreateEnvironment(const std::string& name) {
     // system.reg on shutdown). Wait for it: `wineserver -w` when the binary
     // sits next to wine, then a bounded poll for the registry file.
     std::string wineserver =
-        (fs::path(wine).parent_path() / "wineserver").string();
+        PathToUtf8(PathFromUtf8(wine).parent_path() / "wineserver");
     if (access(wineserver.c_str(), X_OK) == 0) {
         RunWineCommand(wineserver, {"-w"}, prefix, false,
                        cfg.environmentCreateTimeoutSeconds);
@@ -284,11 +288,11 @@ std::vector<UltraWinEnvironmentInfo> UltraWin_ListEnvironments() {
     if (ec) return out;
     for (const auto& entry : it) {
         if (!entry.is_directory(ec)) continue;
-        std::string name = entry.path().filename().string();
+        std::string name = PathToUtf8(entry.path().filename());
         if (!IsValidEnvironmentName(name)) continue;
         UltraWinEnvironmentInfo info;
         info.name = name;
-        info.prefixPath = entry.path().string();
+        info.prefixPath = PathToUtf8(entry.path());
         info.initialized = PrefixInitialized(info.prefixPath);
         out.push_back(std::move(info));
     }
@@ -379,7 +383,7 @@ UltraWinResult UltraWin_UnmapFolder(const std::string& environment,
         return UltraWinResult::Error(UltraWinResultCode::IoError,
                                      "cannot write mapping manifest");
     std::error_code ec;
-    fs::remove(fs::path(prefix) / "dosdevices" /
+    fs::remove(PathFromUtf8(prefix) / "dosdevices" /
                    (std::string(1, static_cast<char>(std::tolower(
                                        static_cast<unsigned char>(letter)))) +
                     ":"),

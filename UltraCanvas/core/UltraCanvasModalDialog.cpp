@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasApplication.h"
 #include <fmt/os.h>
@@ -1067,7 +1068,7 @@ namespace UltraCanvas {
 
         if (currentDirectory.empty()) {
             try {
-                currentDirectory = std::filesystem::current_path().string();
+                currentDirectory = PathToUtf8(std::filesystem::current_path());
             } catch (const std::exception& e) {
                 currentDirectory = ".";
             }
@@ -1091,7 +1092,7 @@ namespace UltraCanvas {
     void UltraCanvasFileDialog::SetCurrentDirectory(const std::string& directory) {
         try {
             if (std::filesystem::exists(directory) && std::filesystem::is_directory(directory)) {
-                currentDirectory = std::filesystem::canonical(directory).string();
+                currentDirectory = PathToUtf8(std::filesystem::canonical(directory));
                 RefreshFileList();
                 if (onDirectoryChanged) onDirectoryChanged(currentDirectory);
             }
@@ -1114,7 +1115,7 @@ namespace UltraCanvas {
 
         try {
             for (const auto& entry : std::filesystem::directory_iterator(currentDirectory)) {
-                std::string fileName = entry.path().filename().string();
+                std::string fileName = PathToUtf8(entry.path().filename());
 
                 if (!showHiddenFiles && !fileName.empty() && fileName[0] == '.') {
                     continue;
@@ -1626,9 +1627,9 @@ namespace UltraCanvas {
 
     void UltraCanvasFileDialog::NavigateToParentDirectory() {
         try {
-            std::filesystem::path parentPath = std::filesystem::path(currentDirectory).parent_path();
+            std::filesystem::path parentPath = PathFromUtf8(currentDirectory).parent_path();
             if (!parentPath.empty()) {
-                SetCurrentDirectory(parentPath.string());
+                SetCurrentDirectory(PathToUtf8(parentPath));
             }
         } catch (const std::exception& e) {
             debugOutput << "Error navigating to parent directory: " << e.what() << std::endl;
@@ -1682,7 +1683,7 @@ namespace UltraCanvas {
     std::string UltraCanvasFileDialog::CombinePath(const std::string& dir, const std::string& file) const {
         std::filesystem::path path(dir);
         path /= file;
-        return path.string();
+        return PathToUtf8(path);
     }
 
 // ===== DIALOG MANAGER IMPLEMENTATION =====

@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetPlugins.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <cctype>
@@ -16,13 +17,19 @@
 #include <unordered_set>
 #include <vector>
 
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
+
 #if defined(_WIN32) || defined(_WIN64)
   #ifndef WIN32_LEAN_AND_MEAN
   #define WIN32_LEAN_AND_MEAN
   #endif
   #include <windows.h>
   using PluginLibHandle = HMODULE;
-  static PluginLibHandle PluginOpen(const char* path)   { return LoadLibraryA(path); }
+  // The path is UTF-8; LoadLibraryA would read it in the ANSI code page.
+  static PluginLibHandle PluginOpen(const char* path)   {
+      return LoadLibraryW(UltraCanvas::PathFromUtf8(path).c_str());
+  }
   static void*           PluginSym (PluginLibHandle h,
                                     const char* sym)    { return reinterpret_cast<void*>(GetProcAddress(h, sym)); }
 #else
@@ -39,7 +46,7 @@
 // the build style. (The old code hard-coded .dylib on __APPLE__ and silently
 // skipped the .so files CMake actually produces there.)
 static bool IsPluginFile(const std::filesystem::path& p) {
-    const std::string ext = p.extension().string();
+    const std::string ext = PathToUtf8(p.extension());
 #if defined(_WIN32) || defined(_WIN64)
     return ext == ".dll";
 #else
@@ -164,7 +171,7 @@ void UltraNet_RefreshPlugins() {
         if (!IsPluginFile(path)) continue;
 
         const std::string canonical =
-            std::filesystem::weakly_canonical(path, ec).string();
+            PathToUtf8(std::filesystem::weakly_canonical(path, ec));
         if (ec || canonical.empty()) continue;
 
         {

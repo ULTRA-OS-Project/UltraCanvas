@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWinInternal.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraWinRdp.h"
 
 #include <algorithm>
@@ -21,6 +22,9 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace fs = std::filesystem;
 using namespace ultrawin_internal;
@@ -230,12 +234,12 @@ UltraWinResult UltraWin_RunApp(const std::string& executablePath,
     if (!mapped) return mapped;
 
     std::string workdir = options.workingDirectory.empty()
-                              ? fs::path(executablePath).parent_path().string()
+                              ? PathToUtf8(PathFromUtf8(executablePath).parent_path())
                               : options.workingDirectory;
 
     // Extension routing: installers and Start-Menu shortcuts need a Wine
     // helper in front of the file; plain executables run directly.
-    std::string ext = fs::path(executablePath).extension().string();
+    std::string ext = PathToUtf8(PathFromUtf8(executablePath).extension());
     for (char& c : ext) c = static_cast<char>(std::tolower(
                               static_cast<unsigned char>(c)));
     std::vector<std::string> wineArgs;
@@ -378,9 +382,9 @@ std::vector<UltraWinProgramInfo> UltraWin_ListPrograms(
     std::vector<UltraWinProgramInfo> out;
     if (!UltraWin_IsInitialized() || !IsValidEnvironmentName(environment))
         return out;
-    const fs::path driveC = fs::path(PrefixPath(environment)) / "drive_c";
+    const fs::path driveC = PathFromUtf8(PrefixPath(environment)) / "drive_c";
     const fs::path menuTail =
-        fs::path("Microsoft") / "Windows" / "Start Menu" / "Programs";
+        PathFromUtf8("Microsoft") / "Windows" / "Start Menu" / "Programs";
 
     // The all-users menu plus every profile's per-user menu.
     std::vector<fs::path> roots = {driveC / "ProgramData" / menuTail};
@@ -395,17 +399,17 @@ std::vector<UltraWinProgramInfo> UltraWin_ListPrograms(
         fs::recursive_directory_iterator it(root, rec), end;
         for (; !rec && it != end; it.increment(rec)) {
             if (!it->is_regular_file(rec)) continue;
-            std::string ext = it->path().extension().string();
+            std::string ext = PathToUtf8(it->path().extension());
             for (char& c : ext)
                 c = static_cast<char>(
                     std::tolower(static_cast<unsigned char>(c)));
             if (ext != ".lnk") continue;
             UltraWinProgramInfo info;
-            info.name = it->path().stem().string();
+            info.name = PathToUtf8(it->path().stem());
             info.category =
-                fs::relative(it->path().parent_path(), root, rec).string();
+                PathToUtf8(fs::relative(it->path().parent_path(), root, rec));
             if (info.category == ".") info.category.clear();
-            info.shortcutPath = it->path().string();
+            info.shortcutPath = PathToUtf8(it->path());
             info.environment = environment;
             out.push_back(std::move(info));
         }

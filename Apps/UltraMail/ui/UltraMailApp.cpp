@@ -432,13 +432,13 @@ std::string UltraMailApp::ResolvePluginDirectory() {
         if (!fs::is_directory(dir, ec) || ec) return false;
         for (const auto& entry : fs::directory_iterator(dir, ec)) {
             if (ec) return false;
-            const std::string ext = entry.path().extension().string();
+            const std::string ext = PathToUtf8(entry.path().extension());
             if (ext == ".so" || ext == ".dll" || ext == ".dylib") return true;
         }
         return false;
     };
 
-    const fs::path relative = fs::path("Plugins") / "UltraNet";
+    const fs::path relative = PathFromUtf8("Plugins") / "UltraNet";
     std::vector<fs::path> candidates;
     const std::string exeDir = UltraCanvas::GetExecutableDir();
     if (!exeDir.empty()) {
@@ -454,10 +454,10 @@ std::string UltraMailApp::ResolvePluginDirectory() {
     candidates.push_back(relative);   // the registry's own default (cwd)
 
     for (const auto& c : candidates)
-        if (holdsPlugin(c)) return c.lexically_normal().string();
+        if (holdsPlugin(c)) return PathToUtf8(c.lexically_normal());
     // Nothing found: keep the first executable-relative path so the diagnostic
     // names a concrete place to put the DSOs.
-    return candidates.front().lexically_normal().string();
+    return PathToUtf8(candidates.front().lexically_normal());
 }
 
 IMailboxProtocolPlugin* UltraMailApp::ImapPlugin() const {
@@ -880,7 +880,7 @@ void UltraMailApp::SeedDemoMail() {
         }
         const std::string raw = UltraNet_MimeBuild(in);
 
-        fs::path p = fs::path(mailDir_) / "erika" / "INBOX" / (std::to_string(uid) + ".eml");
+        fs::path p = PathFromUtf8(mailDir_) / "erika" / "INBOX" / (std::to_string(uid) + ".eml");
         std::error_code ec; fs::create_directories(p.parent_path(), ec);
         std::ofstream(p, std::ios::binary).write(raw.data(),
                                                  static_cast<std::streamsize>(raw.size()));
@@ -1370,7 +1370,7 @@ void UltraMailApp::SaveAttachment(const Attachment& attachment) {
         .SetDefaultFileName(suggested)
         .SetParentWindow(parent);
     // Offer the attachment's own type first, then an unrestricted choice.
-    if (const std::string ext = std::filesystem::path(suggested).extension().string();
+    if (const std::string ext = PathToUtf8(PathFromUtf8(suggested).extension());
         ext.size() > 1)
         opts.AddFilter(attachment.mediaType.empty() ? ("*" + ext) : attachment.mediaType,
                        ext.substr(1));
@@ -1400,8 +1400,8 @@ std::string UltraMailApp::DefaultSaveDirectory() {
     // working directory — the same order a browser's save dialog uses.
     if (const char* home = std::getenv("HOME"); home && *home) {
         std::error_code ec;
-        const std::filesystem::path downloads = std::filesystem::path(home) / "Downloads";
-        if (std::filesystem::is_directory(downloads, ec)) return downloads.string();
+        const std::filesystem::path downloads = PathFromUtf8(home) / "Downloads";
+        if (std::filesystem::is_directory(downloads, ec)) return PathToUtf8(downloads);
         return home;
     }
     return ".";
@@ -1526,7 +1526,7 @@ void UltraMailApp::HandleDeleteAccount(const std::string& accountId) {
 
             // Delete the downloaded mail bodies (mailDir_/<accountId>/…).
             std::error_code ec;
-            std::filesystem::remove_all(std::filesystem::path(mailDir_) / accountId, ec);
+            std::filesystem::remove_all(PathFromUtf8(mailDir_) / accountId, ec);
 
             // Drop the selection; Refresh() re-selects the first account left.
             if (selectedAccount_ == accountId) selectedAccount_.clear();

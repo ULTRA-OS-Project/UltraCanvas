@@ -13,6 +13,7 @@
 // Last Modified: 2026-09-05
 // Author: UltraCanvas Framework
 #include "UltraCanvasDesktopEntry.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <cctype>
@@ -108,12 +109,12 @@ namespace UltraCanvas {
             const std::string home = GetEnvString("HOME");
             std::string dataHome = GetEnvString("XDG_DATA_HOME");
             if (dataHome.empty() && !home.empty()) dataHome = home + "/.local/share";
-            if (!dataHome.empty()) dirs.push_back(fs::path(dataHome) / "icons");
-            if (!home.empty()) dirs.push_back(fs::path(home) / ".icons");
+            if (!dataHome.empty()) dirs.push_back(PathFromUtf8(dataHome) / "icons");
+            if (!home.empty()) dirs.push_back(PathFromUtf8(home) / ".icons");
             std::string dataDirs = GetEnvString("XDG_DATA_DIRS");
             if (dataDirs.empty()) dataDirs = "/usr/local/share:/usr/share";
             for (const std::string& dir : SplitList(dataDirs, ':'))
-                if (!dir.empty()) dirs.push_back(fs::path(dir) / "icons");
+                if (!dir.empty()) dirs.push_back(PathFromUtf8(dir) / "icons");
             return dirs;
         }
 
@@ -122,9 +123,9 @@ namespace UltraCanvas {
             std::string dataDirs = GetEnvString("XDG_DATA_DIRS");
             if (dataDirs.empty()) dataDirs = "/usr/local/share:/usr/share";
             for (const std::string& dir : SplitList(dataDirs, ':'))
-                if (!dir.empty()) dirs.push_back(fs::path(dir) / "pixmaps");
+                if (!dir.empty()) dirs.push_back(PathFromUtf8(dir) / "pixmaps");
             const std::string dataHome = GetEnvString("XDG_DATA_HOME");
-            if (!dataHome.empty()) dirs.push_back(fs::path(dataHome) / "pixmaps");
+            if (!dataHome.empty()) dirs.push_back(PathFromUtf8(dataHome) / "pixmaps");
             return dirs;
         }
 
@@ -157,16 +158,16 @@ namespace UltraCanvas {
                 for (const char* file : {"gtk-4.0/settings.ini",
                                          "gtk-3.0/settings.ini"}) {
                     const std::string theme = ReadSettingsKey(
-                            fs::path(configHome) / file, "gtk-icon-theme-name");
+                            PathFromUtf8(configHome) / file, "gtk-icon-theme-name");
                     if (!theme.empty()) return theme;
                 }
                 const std::string kde = ReadSettingsKey(
-                        fs::path(configHome) / "kdeglobals", "Theme");
+                        PathFromUtf8(configHome) / "kdeglobals", "Theme");
                 if (!kde.empty()) return kde;
             }
             if (!home.empty()) {
                 const std::string theme = ReadSettingsKey(
-                        fs::path(home) / ".gtkrc-2.0", "gtk-icon-theme-name");
+                        PathFromUtf8(home) / ".gtkrc-2.0", "gtk-icon-theme-name");
                 if (!theme.empty()) {
                     // The GTK2 file quotes its values.
                     std::string value = theme;
@@ -251,7 +252,7 @@ namespace UltraCanvas {
                     if (!dir->is_directory(ec)) continue;
                     ThemeDir entry;
                     entry.path = dir->path();
-                    ClassifyThemeDir(dir->path().filename().string(), entry);
+                    ClassifyThemeDir(PathToUtf8(dir->path().filename()), entry);
                     info.dirs.push_back(std::move(entry));
                 }
             }
@@ -324,7 +325,7 @@ namespace UltraCanvas {
                         for (const char* ext : kIconExtensions) {
                             const fs::path candidate =
                                     dir->path / category / (name + "." + ext);
-                            if (IsFile(candidate)) return candidate.string();
+                            if (IsFile(candidate)) return PathToUtf8(candidate);
                         }
                     }
                 }
@@ -334,7 +335,7 @@ namespace UltraCanvas {
             for (const fs::path& dir : PixmapDirs()) {
                 for (const char* ext : kIconExtensions) {
                     const fs::path candidate = dir / (name + "." + ext);
-                    if (IsFile(candidate)) return candidate.string();
+                    if (IsFile(candidate)) return PathToUtf8(candidate);
                 }
             }
             return {};
