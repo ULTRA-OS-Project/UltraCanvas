@@ -1,3 +1,9 @@
+#### 2026-09-27 *0.9.74*
+- **DemoApp: the SVG examples page shows the UltraFiler palette in place of
+  `demo.svg`.** `media/vector/SVG/demo.svg` is removed, and its tile now loads
+  `filer-palette-rev3.svg`, the proposed revision-3 colour palette for the
+  Filer widget; the other seven drawings stay where they were.
+
 #### 2026-09-27 *0.9.73*
 - **Mail sessions take an authentication method.** `UltraNetMailOptions::auth`
   (`UltraNetMailAuth`, `UltraNet/UltraNetPlugins.h`) restricts an IMAP, SMTP
