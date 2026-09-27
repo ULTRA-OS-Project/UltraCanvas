@@ -5,7 +5,7 @@
   aufloesen: Die Stelle war in keinem Build einkompiliert, und die Funktion,
   die sie aufrief, gab es nicht. Jede Anmeldung mit Passwort endete deshalb mit
   "UltraVault is not built in". Der Mehrplatz-Test in CI meldet sich ohne
-  Passwort an und hat das nicht bemerkt. Behoben im Framework 0.9.65 (siehe
+  Passwort an und hat das nicht bemerkt. Behoben im Framework 0.9.66 (siehe
   dort).
   - Das Programm muss UltraVault vor `OpenServer` oeffnen
     (`UltraVault::Initialize`). Fehlt der Schluessel oder ist der Tresor

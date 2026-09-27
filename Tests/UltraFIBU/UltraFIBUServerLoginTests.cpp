@@ -3,7 +3,7 @@
 //
 // Store::OpenServer takes only a "vault:<key>" reference, never a password, and
 // the PostgreSQL driver is what turns the reference into the password libpq
-// sends. Until 0.9.65 that resolution was compiled out in every build (the
+// sends. Until 0.9.66 that resolution was compiled out in every build (the
 // define that enabled it was set nowhere, and the function it called did not
 // exist), so every password login failed with "UltraVault is not built in" -
 // and nothing noticed, because the multi-user test logs in without a password.

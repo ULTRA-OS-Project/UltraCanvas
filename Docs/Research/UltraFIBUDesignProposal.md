@@ -944,7 +944,7 @@ from the first commit.
 > **Update, 2026-09:** the prerequisite below has landed. The `libpq` driver is
 > `core/UltraDatabase/UltraDatabasePostgresDriver.cpp`, built whenever libpq is
 > found, with TLS `verify-full` by default and the password read from
-> UltraVault (UltraFIBU 0.11.0 for the driver, framework 0.9.65 for the
+> UltraVault (UltraFIBU 0.11.0 for the driver, framework 0.9.66 for the
 > UltraVault lookup, which until then was compiled out). `Store::OpenServer`
 > uses it, and CI runs the two-client test against a real server. The paragraph
 > is kept as it was written, because the plan it describes is how it was done.
