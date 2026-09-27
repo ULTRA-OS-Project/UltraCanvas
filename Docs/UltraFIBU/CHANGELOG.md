@@ -1,3 +1,32 @@
+#### 2026-09-27 *0.24.1*
+- **Mehrbenutzerbetrieb: die Anmeldung mit Passwort funktioniert.**
+  `Store::OpenServer` nimmt das Passwort nur als UltraVault-Schluessel
+  (`vault:...`) an. Der PostgreSQL-Treiber konnte diesen Schluessel aber nie
+  aufloesen: Die Stelle war in keinem Build einkompiliert, und die Funktion,
+  die sie aufrief, gab es nicht. Jede Anmeldung mit Passwort endete deshalb mit
+  "UltraVault is not built in". Der Mehrplatz-Test in CI meldet sich ohne
+  Passwort an und hat das nicht bemerkt. Behoben im Framework 0.9.66 (siehe
+  dort).
+  - Das Programm muss UltraVault vor `OpenServer` oeffnen
+    (`UltraVault::Initialize`). Fehlt der Schluessel oder ist der Tresor
+    geschlossen, lehnt `OpenServer` ab, bevor eine Verbindung aufgebaut wird,
+    und sagt, welcher der beiden Faelle vorliegt.
+  - **Die Fehlermeldung sagt, wo das Problem liegt.** Bisher begann jede
+    gescheiterte Anmeldung mit "Der Server ist nicht erreichbar:", auch wenn
+    nur der Schluessel im Tresor fehlte - man pruefte dann das Netz statt des
+    Tresors. Jetzt gibt es zwei Meldungen:
+    - "Das Passwort für den Server ist auf diesem Rechner nicht verfügbar, es
+      wurde keine Verbindung aufgebaut: ..." - wenn der Tresor geschlossen ist
+      oder der Schluessel fehlt. Das behebt man an diesem Rechner.
+    - "Die Verbindung zum Server ist fehlgeschlagen: ..." - bei allem, was
+      zwischen Rechner und Server passiert: abgewiesen, kein TLS, falsches
+      Passwort. Den genauen Grund nennt der Text nach dem Doppelpunkt.
+  - Neuer Test `UltraFIBUServerLoginTests`: Er braucht keinen Server und laeuft
+    ueberall, wo libpq vorhanden ist.
+  - Die Dokumentation (`UltraFIBUStore.h`, README, Entwurf §10.1) sagt nicht
+    mehr, der PostgreSQL-Treiber fehle.
+  - Fenster und Befehle bieten den Mehrbenutzerbetrieb weiterhin nicht an.
+
 #### 2026-09-25 *0.24.0*
 - **Ein Programm statt zwei: `ultrafibu`.** Bisher gab es `ultrafibu` fuer die
   Befehle und `ultrafibu-ui` fuer das Fenster, und welches man gerade vor sich

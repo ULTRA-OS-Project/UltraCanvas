@@ -696,6 +696,10 @@ private:
     // the selected file is kept scrolled into view when the pane narrows the
     // folder display.
     void UpdatePreviewPane();
+    // Whether a file on a remote drive is previewed: pictures, vector
+    // drawings and 3D models only, because showing one means downloading
+    // it first. A video or a document there is opened, not previewed.
+    static bool IsRemotePreviewKind(const std::string& path);
     // The single selected entry of the active tab's filer, or nullptr while
     // the selection is empty or holds several entries. The pointer is into
     // the filer's entry vector — use it immediately, don't keep it.
@@ -878,6 +882,10 @@ private:
     // owns the strip while the files that did go are going, so this would
     // otherwise show for a fraction of a second and vanish.
     std::string remoteDropNote;
+    // Why the selected file on a drive has no preview (too large to fetch,
+    // or the download failed). Shown on the status line after the drop note
+    // and cleared as soon as the selection moves.
+    std::string remotePreviewNote;
     std::shared_ptr<UltraCanvasButton>          backButton;
     std::shared_ptr<UltraCanvasButton>          forwardButton;
     std::shared_ptr<UltraCanvasButton>          upButton;

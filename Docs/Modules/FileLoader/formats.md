@@ -58,7 +58,7 @@ load through the ImageMagick delegate when libvips was built with it.
 | Format | Extension(s) | Load | Save | Provider |
 |--------|--------------|:----:|:----:|----------|
 | SVG | `.svg`, `.svgz` | ✅ | — | librsvg (via libvips) |
-| CorelDRAW | `.cdr`, `.cmx` | ✅ ‡ | ✅ ‡ | CDR plugin (libcdr) to view; `.cdr` also as an editable `VectorDocument` through `LoadVectorDocument` (libcdr → SVG → SVG importer). Not in Windows builds yet (no libcdr) |
+| CorelDRAW | `.cdr`, `.cmx` | ✅ ‡ | ✅ ‡ | CDR plugin (libcdr) to view; `.cdr` also as an editable `VectorDocument` through `LoadVectorDocument` (libcdr → SVG → SVG importer). On Linux, macOS and Windows (MSYS2) |
 | Xara | `.xar`, `.web` | ✅ ‡ | — | XAR plugin |
 | PostScript / EPS | `.eps`, `.ps` | ✅ † | — | libvips delegate |
 | AutoCAD DXF | `.dxf` | ✅ ‡ | ✅ ‡ | Vector plugin (built-in reader and writer) |

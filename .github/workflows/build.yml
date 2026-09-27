@@ -209,6 +209,11 @@ jobs:
             ${{ matrix.msys_prefix }}-opusfile
             ${{ matrix.msys_prefix }}-libopusenc
             ${{ matrix.msys_prefix }}-lame
+            ${{ matrix.msys_prefix }}-librevenge
+            ${{ matrix.msys_prefix }}-libcdr
+            ${{ matrix.msys_prefix }}-lcms2
+            ${{ matrix.msys_prefix }}-icu
+            ${{ matrix.msys_prefix }}-boost
             zip
 
       # ===== macOS: Homebrew (shared by the arm64 and x86_64 jobs; Homebrew
@@ -459,13 +464,14 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DBUILD_DEMO_APP=ON \
-            -DULTRACANVAS_PLUGIN_CDR=OFF \
+            -DULTRACANVAS_PLUGIN_CDR=ON \
             -DULTRACANVAS_PLUGIN_XAR=ON \
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
+            -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
@@ -486,6 +492,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
+            -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
       # Fail loudly if the OpenGL surface backend was silently disabled
@@ -570,6 +577,26 @@ jobs:
           fi
           echo "Vectorizer plugin enabled on ${{ runner.os }}"
 
+      # CorelDRAW import needs the CDR plugin built on the patched libcdr in
+      # UltraCanvas/third_party/libcdr (bitmap transparency, PowerClip). Its gate
+      # only prints a status line when librevenge/lcms2/ICU/Boost are missing,
+      # so a lost dependency would ship without CDR import. Fail loudly instead.
+      - name: Verify CDR plugin enabled
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "CDR Plugin - ENABLED" configure.log; then
+            echo "::error::CDR plugin was not enabled during configure (librevenge/libcdr dependencies missing?)"
+            grep -i "cdr\|revenge" configure.log || true
+            exit 1
+          fi
+          if ! grep -q "libcdr version: .*vendored" configure.log; then
+            echo "::error::CDR plugin built without the patched libcdr in third_party/libcdr (lcms2, ICU, zlib or Boost missing?)"
+            grep -i "libcdr" configure.log || true
+            exit 1
+          fi
+          echo "CDR plugin enabled with the vendored libcdr on ${{ runner.os }}"
+
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
 
@@ -637,6 +664,17 @@ jobs:
           # it arrives as one line with no diagnosis.
           psql -h /var/run/postgresql -p 5432 -d ultrafibu_ci -c 'SELECT 1' >/dev/null
 
+      # macOS and Windows build no full test suite (BUILD_TESTS is Linux-only);
+      # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS builds these two anyway, so the
+      # vendored libcdr is exercised there on real files: detailed.cdr has to
+      # arrive with its masked bitmaps and PowerClips (VectorFormatsPluginTest),
+      # and our CDR writer's output has to parse (CDRWriterTest). Linux runs
+      # them in the full pass below.
+      - name: Run CDR tests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
+
       - name: Run unit tests
         if: runner.os == 'Linux'
         working-directory: build
@@ -659,11 +697,32 @@ jobs:
         shell: bash
         run: |
           set -eu
-          if ! grep -q "UltraFIBUServer" ctest.log; then
-            echo "::error::the UltraFIBUServer test was not registered - libpq missing at configure time?"
-            exit 1
-          fi
-          echo "multi-user acceptance test is registered and ran against PostgreSQL"
+          # [ .] after the name, so UltraFIBUServerLogin cannot stand in for it.
+          for t in UltraFIBUServer UltraFIBUServerLogin; do
+            if ! grep -qE "${t}[ .]" ctest.log; then
+              echo "::error::the $t test was not registered - libpq missing at configure time?"
+              exit 1
+            fi
+          done
+          echo "multi-user acceptance test and server-login test are registered and ran"
+
+      # AnchorPoint is its own CMake project and not part of the build above,
+      # so nothing here built it: its standalone link broke (UltraCrypt had
+      # started calling the shared Base32 codec) and nobody saw. Build the core
+      # and CLI the way its README says, and run the protocol tests - they
+      # replay hostile file names against the receiver. Needs only libsodium,
+      # which is installed above.
+      - name: AnchorPoint core, CLI and protocol tests (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          cmake -S Apps/AnchorPoint -B build-anchorpoint \
+            -DANCHORPOINT_BUILD_GUI=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build-anchorpoint --parallel
+          ctest --test-dir build-anchorpoint --output-on-failure
 
       # Bundle all apps into the portable multi-executable tree. Reuses the
       # already-built shared `build` dir (SKIP_BUILD=1) rather than rebuilding.

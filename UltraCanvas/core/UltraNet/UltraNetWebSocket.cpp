@@ -37,6 +37,12 @@ struct WsConnection {
     std::mutex sendMutex;
     std::atomic<UltraNetWebSocketState> state{UltraNetWebSocketState::Closed};
     std::atomic<bool> running{false};
+    // The receiver holds a shared_ptr to its connection, so the last
+    // reference - and this destructor - can end up on the receiver itself.
+    // threadMutex makes Start/Stop race-free; Stop never joins the calling
+    // thread, it detaches it.
+    std::mutex threadMutex;
+    bool stopRequested = false;
     std::thread receiver;
 
     ~WsConnection() {
@@ -45,28 +51,54 @@ struct WsConnection {
         if (easy)  curl_easy_cleanup(easy);
     }
 
+    template <typename Fn>
+    void Start(Fn&& body) {
+        std::lock_guard<std::mutex> lk(threadMutex);
+        if (stopRequested) return;
+        running.store(true, std::memory_order_release);
+        receiver = std::thread(std::forward<Fn>(body));
+    }
+
+    // Returns once the receiver has finished - unless called from the
+    // receiver itself (a callback closing its own socket), which cannot wait
+    // for itself: the loop then ends when that callback returns.
     void Stop() {
         running.store(false, std::memory_order_release);
-        if (receiver.joinable()) receiver.join();
+        std::thread t;
+        {
+            std::lock_guard<std::mutex> lk(threadMutex);
+            stopRequested = true;
+            t = std::move(receiver);
+        }
+        if (!t.joinable()) return;
+        if (t.get_id() == std::this_thread::get_id()) t.detach();
+        else t.join();
     }
 };
 
-std::mutex g_regMutex;
-std::unordered_map<UltraNetHandle, std::shared_ptr<WsConnection>> g_connections;
+// Never destroyed: a receiver can still be running during static destruction
+// at exit (no UltraNet_Shutdown), and it reads the callbacks and the table.
+struct Globals {
+    std::mutex regMutex;
+    std::unordered_map<UltraNetHandle, std::shared_ptr<WsConnection>> connections;
+    std::mutex cbMutex;
+    UltraNetWebSocketCallbacks callbacks;
+};
+Globals& G() {
+    static Globals* g = new Globals;
+    return *g;
+}
 std::atomic<UltraNetHandle> g_nextHandle{1};
 
-std::mutex g_cbMutex;
-UltraNetWebSocketCallbacks g_callbacks;
-
 UltraNetWebSocketCallbacks CallbacksSnapshot() {
-    std::lock_guard<std::mutex> lk(g_cbMutex);
-    return g_callbacks;
+    std::lock_guard<std::mutex> lk(G().cbMutex);
+    return G().callbacks;
 }
 
 std::shared_ptr<WsConnection> FindConnection(UltraNetHandle h) {
-    std::lock_guard<std::mutex> lk(g_regMutex);
-    auto it = g_connections.find(h);
-    return it == g_connections.end() ? nullptr : it->second;
+    std::lock_guard<std::mutex> lk(G().regMutex);
+    auto it = G().connections.find(h);
+    return it == G().connections.end() ? nullptr : it->second;
 }
 
 void ReceiverLoop(std::shared_ptr<WsConnection> c) {
@@ -219,15 +251,14 @@ UltraNetHandle UltraNet_WebSocketConnect(
 
     UltraNetHandle h = c->handle;
     {
-        std::lock_guard<std::mutex> lk(g_regMutex);
-        g_connections[h] = c;
+        std::lock_guard<std::mutex> lk(G().regMutex);
+        G().connections[h] = c;
     }
 
     const auto cbs = CallbacksSnapshot();
     if (cbs.onOpen) cbs.onOpen(h);
 
-    c->running.store(true, std::memory_order_release);
-    c->receiver = std::thread(ReceiverLoop, c);
+    c->Start([c]() { ReceiverLoop(c); });
     return h;
 }
 
@@ -299,8 +330,8 @@ UltraNetResult UltraNet_WebSocketClose(UltraNetHandle handle,
     c->state.store(UltraNetWebSocketState::Closed, std::memory_order_release);
 
     {
-        std::lock_guard<std::mutex> lk(g_regMutex);
-        g_connections.erase(handle);
+        std::lock_guard<std::mutex> lk(G().regMutex);
+        G().connections.erase(handle);
     }
     return sendRes;
 }
@@ -319,12 +350,30 @@ UltraNetWebSocketState UltraNet_WebSocketGetState(UltraNetHandle handle) {
 
 UltraNetWebSocketCallbacks UltraNet_WebSocketSetCallbacks(
     const UltraNetWebSocketCallbacks& cb) {
-    std::lock_guard<std::mutex> lk(g_cbMutex);
-    UltraNetWebSocketCallbacks prev = std::move(g_callbacks);
-    g_callbacks = cb;
+    std::lock_guard<std::mutex> lk(G().cbMutex);
+    UltraNetWebSocketCallbacks prev = std::move(G().callbacks);
+    G().callbacks = cb;
     return prev;
 }
 
 UltraNetWebSocketCallbacks UltraNet_WebSocketGetCallbacks() {
     return CallbacksSnapshot();
+}
+
+namespace ultranet_internal {
+    // Called by UltraNet_Shutdown before curl_global_cleanup: every receiver
+    // is stopped and every easy handle freed while libcurl is still set up.
+    // No close handshake - the process is going away; peers see the TCP close.
+    void CloseAllWebSockets() {
+        std::unordered_map<UltraNetHandle, std::shared_ptr<WsConnection>> all;
+        {
+            std::lock_guard<std::mutex> lk(G().regMutex);
+            all.swap(G().connections);
+        }
+        for (auto& [handle, c] : all) {
+            c->state.store(UltraNetWebSocketState::Closing, std::memory_order_release);
+            c->Stop();
+            c->state.store(UltraNetWebSocketState::Closed, std::memory_order_release);
+        }
+    }
 }

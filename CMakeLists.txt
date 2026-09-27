@@ -802,6 +802,16 @@ if(BUILD_TESTS)
     add_subdirectory(Tests)
 endif()
 
+# ===== VECTOR FORMAT TESTS WITHOUT THE FULL SUITE =====
+# VectorFormatsPluginTest and CDRWriterTest alone, for builds that leave
+# BUILD_TESTS off (the Windows and macOS CI rows): the CorelDRAW import on
+# the patched libcdr is exercised on every platform that ships it.
+option(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS "Build the vector format tests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VectorFormatsTests.cmake)
+endif()
+
 # ===== ULTRANET TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraNet is built.
@@ -965,7 +975,7 @@ endif()
 
 if (BUILD_TEXTER_APP)
     # Create executable
-    add_executable(UltraCanvasTexter
+    add_executable(Texter
             Apps/Texter/UltraCanvasTextEditor.cpp
             Apps/Texter/UltraCanvasTextEditorHelpers.cpp
             Apps/Texter/UltraCanvasTextEditorDialogs.cpp
@@ -978,33 +988,33 @@ if (BUILD_TEXTER_APP)
     )
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
-    set_target_properties(UltraCanvasTexter PROPERTIES ENABLE_EXPORTS ON)
+    set_target_properties(Texter PROPERTIES ENABLE_EXPORTS ON)
 
     # Include directories
-    target_include_directories(UltraCanvasTexter PRIVATE
+    target_include_directories(Texter PRIVATE
             ${ULTRACANVAS_INCLUDE_DIRS}
     )
 
     # Link against UltraCanvas core library
-    target_link_libraries(UltraCanvasTexter PRIVATE
+    target_link_libraries(Texter PRIVATE
             ${ULTRACANVAS_LIBRARY}
     )
-    target_link_libraries(UltraCanvasTexter PRIVATE fmt::fmt)
+    target_link_libraries(Texter PRIVATE fmt::fmt)
 
     # iconv - on Linux it's part of glibc, on macOS it needs explicit linking
 if(APPLE)
-    target_link_libraries(UltraCanvasTexter PRIVATE iconv)
+    target_link_libraries(Texter PRIVATE iconv)
 endif()
 
 if(WIN32)
-    target_link_libraries(UltraCanvasTexter PRIVATE iconv)
+    target_link_libraries(Texter PRIVATE iconv)
 endif()
 
     # Compile features
-    target_compile_features(UltraCanvasTexter PRIVATE cxx_std_20)
+    target_compile_features(Texter PRIVATE cxx_std_20)
 
     # Compile definitions
-    target_compile_definitions(UltraCanvasTexter PRIVATE
+    target_compile_definitions(Texter PRIVATE
             ULTRACANVAS_DEMO_VERSION="${PROJECT_VERSION}"
             # UltraTexter has its own changelog and its own version line; this
             # target must define it too, or the editor built from here would
@@ -1016,19 +1026,19 @@ endif()
     )
 
     # Embed app icon in .exe (Windows only)
-    ultracanvas_embed_app_icon(UltraCanvasTexter
+    ultracanvas_embed_app_icon(Texter
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/Texter.png")
 
     # Compiler warnings
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(UltraCanvasTexter PRIVATE
+        target_compile_options(Texter PRIVATE
                 #            -Wall -Wextra
         )
     endif()
 
     # Set executable properties
-#    set_target_properties(UltraCanvasTexter PROPERTIES
-#            OUTPUT_NAME "UltraCanvasTexter"
+#    set_target_properties(Texter PROPERTIES
+#            OUTPUT_NAME "Texter"
 #            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
 #    )
 endif()
@@ -1868,7 +1878,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
         set_target_properties(UltraCanvasDemo PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
     if(BUILD_TEXTER_APP)
-        set_target_properties(UltraCanvasTexter PROPERTIES WIN32_EXECUTABLE TRUE)
+        set_target_properties(Texter PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
     if(BUILD_ULTRAFILER_APP)
         set_target_properties(UltraFiler PROPERTIES WIN32_EXECUTABLE TRUE)
@@ -1896,7 +1906,7 @@ add_custom_target(copy_assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Apps/DemoApp ${CMAKE_CURRENT_BINARY_DIR}/share/DemoApp
 )
 if(BUILD_TEXTER_APP)
-    add_dependencies(UltraCanvasTexter copy_assets)
+    add_dependencies(Texter copy_assets)
 endif()
 if(BUILD_DEMO_APP)
     add_dependencies(UltraCanvasDemo copy_assets)
@@ -1939,7 +1949,7 @@ endif()
 # crashing on the first cross-module virtual call. Take an explicit build-order
 # dependency (NOT a link) so any app that can load the module always rebuilds it.
 if(TARGET UltraCanvasLaTeX)
-    foreach(_uc_app UltraCanvasDemo UltraCanvasTexter UltraFiler UltraViewer UltraAIApp UCFileManager EBookViewerTest)
+    foreach(_uc_app UltraCanvasDemo Texter UltraFiler UltraViewer UltraAIApp UCFileManager EBookViewerTest)
         if(TARGET ${_uc_app})
             add_dependencies(${_uc_app} UltraCanvasLaTeX)
         endif()

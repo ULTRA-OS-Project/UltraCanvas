@@ -59,19 +59,52 @@ struct Session {
     std::mutex                                      handlersMutex;
     std::unordered_map<std::string, MessageHandler> handlers;   // path -> cb
 
-    std::atomic<bool> running{false};
-    std::thread       worker;
+    // The worker holds a shared_ptr to its session, so the last reference -
+    // and the destructor - can end up on the worker itself. threadMutex makes
+    // Start/Stop race-free; Stop never joins the calling thread, it detaches.
+    std::atomic<bool>   running{false};
+    std::mutex          threadMutex;
+    bool                stopRequested = false;
+    std::thread         worker;
+
+    template <typename Fn>
+    void Start(Fn&& body) {
+        std::lock_guard<std::mutex> lk(threadMutex);
+        if (stopRequested) return;
+        running.store(true, std::memory_order_release);
+        worker = std::thread(std::forward<Fn>(body));
+    }
+
+    void Stop() {
+        running.store(false, std::memory_order_release);
+        std::thread t;
+        {
+            std::lock_guard<std::mutex> lk(threadMutex);
+            stopRequested = true;
+            t = std::move(worker);
+        }
+        if (!t.joinable()) return;
+        if (t.get_id() == std::this_thread::get_id()) t.detach();
+        else t.join();
+    }
 
     ~Session() {
-        running.store(false, std::memory_order_release);
-        if (worker.joinable()) worker.join();
+        Stop();
         if (session) coap_session_release(session);
         if (ctx) coap_free_context(ctx);
     }
 };
 
-std::mutex g_sessionsMutex;
-std::unordered_map<UltraNetHandle, std::shared_ptr<Session>> g_sessions;
+// Never destroyed: a worker can still be running during static destruction
+// at exit (the plug-in was never shut down), and it reads this table.
+struct Globals {
+    std::mutex sessionsMutex;
+    std::unordered_map<UltraNetHandle, std::shared_ptr<Session>> sessions;
+};
+Globals& G() {
+    static Globals* g = new Globals;
+    return *g;
+}
 std::atomic<UltraNetHandle> g_nextHandle{1};
 
 // Library lifecycle — coap_startup is idempotent enough for our usage but
@@ -88,9 +121,9 @@ void LibRelease() {
 }
 
 std::shared_ptr<Session> Find(UltraNetHandle h) {
-    std::lock_guard<std::mutex> lk(g_sessionsMutex);
-    auto it = g_sessions.find(h);
-    return it == g_sessions.end() ? nullptr : it->second;
+    std::lock_guard<std::mutex> lk(G().sessionsMutex);
+    auto it = G().sessions.find(h);
+    return it == G().sessions.end() ? nullptr : it->second;
 }
 
 // Response handler — libcoap invokes this on every received CoAP response
@@ -120,8 +153,8 @@ coap_response_t OnResponse(coap_session_t* /*session*/,
 
     std::vector<std::pair<MessageHandler, std::string>> fire;
     {
-        std::lock_guard<std::mutex> lk(g_sessionsMutex);
-        for (auto& [_, sess] : g_sessions) {
+        std::lock_guard<std::mutex> lk(G().sessionsMutex);
+        for (auto& [_, sess] : G().sessions) {
             std::lock_guard<std::mutex> lk2(sess->handlersMutex);
             auto it = sess->handlers.find(pathFromToken);
             if (it != sess->handlers.end()) {
@@ -232,10 +265,15 @@ public:
         return UltraNetResult::Ok();
     }
     void Shutdown() override {
+        // Stop every worker before the sessions go (and, for CoAP, before the
+        // library is cleaned up under a running coap_io_process).
+        std::unordered_map<UltraNetHandle, std::shared_ptr<Session>> all;
         {
-            std::lock_guard<std::mutex> lk(g_sessionsMutex);
-            g_sessions.clear();
+            std::lock_guard<std::mutex> lk(G().sessionsMutex);
+            all.swap(G().sessions);
         }
+        for (auto& [handle, s] : all) s->Stop();
+        all.clear();
         LibRelease();
     }
 
@@ -255,11 +293,10 @@ public:
         const UltraNetHandle h =
             g_nextHandle.fetch_add(1, std::memory_order_relaxed);
         s->handle = h;
-        s->running.store(true, std::memory_order_release);
-        s->worker = std::thread(WorkerLoop, s);
+        s->Start([s]() { WorkerLoop(s); });
         {
-            std::lock_guard<std::mutex> lk(g_sessionsMutex);
-            g_sessions[h] = s;
+            std::lock_guard<std::mutex> lk(G().sessionsMutex);
+            G().sessions[h] = s;
         }
         return h;
     }

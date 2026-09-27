@@ -13,10 +13,8 @@ set(PLUGIN_VERSION "1.0.0")
 message(STATUS "Configuring ${PLUGIN_NAME} v${PLUGIN_VERSION}")
 
 # ===== FIND DEPENDENCIES =====
-# Only use PkgConfig on non-Windows platforms
-if(NOT WIN32)
-    find_package(PkgConfig REQUIRED)
-endif()
+# pkg-config on every platform; on Windows it is MSYS2's pkgconf.
+find_package(PkgConfig REQUIRED)
 
 # librevenge - Document conversion framework
 pkg_check_modules(LIBREVENGE REQUIRED librevenge-0.0)

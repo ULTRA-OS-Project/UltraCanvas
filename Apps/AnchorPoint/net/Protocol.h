@@ -31,7 +31,8 @@ constexpr uint32_t kDefaultChunkSize = 256 * 1024;   // 256 KiB
 constexpr uint32_t kMaxFrameSize     = 16 * 1024 * 1024; // safety cap
 
 struct OfferInfo {
-    std::string fileName;                 // base name only (no path)
+    std::string fileName;                 // base name only (no path); on the
+                                          // receiver already through SafeFileName
     uint64_t fileSize = 0;
     uint32_t chunkSize = kDefaultChunkSize;
     std::array<uint8_t, 32> sha256{};     // whole-file digest
@@ -46,6 +47,14 @@ struct TransferResult {
     uint64_t bytes = 0;
 };
 
+// Reduces a file name that came off the wire to one that can only name a file
+// directly inside the receiver's save folder. Keeps the last component, split
+// on both '/' and '\\' whatever the platform, since the peer may be either.
+// Returns false - and the offer must be refused - for a name that is empty or
+// ends in a separator, is "." or "..", contains NUL, or contains ':' (a drive
+// such as "C:name", or an NTFS stream such as "name:stream").
+bool SafeFileName(const std::string& wireName, std::string& outName);
+
 // ---- Sender side ----------------------------------------------------------
 // Reads `filePath` from disk, offers it to the peer, streams it, and waits for
 // the receiver's integrity verification. `displayName` is sent in the Hello.
@@ -55,7 +64,10 @@ TransferResult SendFile(IConnection& conn,
                         ProgressFn onProgress = nullptr);
 
 // ---- Receiver side --------------------------------------------------------
-// Decides whether to accept an incoming offer. Return the absolute output path
+// Decides whether to accept an incoming offer. `OfferInfo::fileName` has already
+// passed SafeFileName, so joining it to a folder stays inside that folder; an
+// offer whose name fails it is refused before this is called.
+// Return the absolute output path
 // to accept (existing partial file enables resume), or empty string to reject.
 using AcceptFn = std::function<std::string(const OfferInfo&, const std::string& peerName)>;
 

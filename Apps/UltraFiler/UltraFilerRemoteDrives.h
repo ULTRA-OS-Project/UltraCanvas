@@ -18,8 +18,23 @@
 // Builds without UltraCloud: Available() answers false, the drive list is
 // empty and every call fails with a message saying so, so UltraFiler still
 // compiles and runs when the module is not built.
-// Version: 1.3.0
-// Last Modified: 2026-09-24
+//
+// On an FTP drive the cache also works ahead and outlives the session. When a
+// folder the user opened arrives, its subfolders are queued as background
+// listings behind everything the user asks for, so opening one of them next
+// is a cache hit rather than a login. And the listings are written to disk
+// when the window closes and read back at start-up: a folder opened in an
+// earlier session is shown at once from what it held then, while the server
+// is asked again behind it. The rules and the file are in
+// UltraFilerRemoteCache.h.
+//
+// A file shown in the preview pane is fetched too, on any drive: the media
+// viewer reads local files, so RequestPreviewCopy downloads a picture, a
+// vector drawing or a 3D model into a disk cache first and the copy is what
+// is shown. The copy is kept, keyed by the file's path, size and date, so a
+// second look costs nothing and a changed file is fetched again.
+// Version: 1.5.0
+// Last Modified: 2026-09-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -56,6 +71,9 @@ struct RemoteDrive {
     std::string rootPath;      // MakeRemoteFilerPath(accountId, "/")
     bool canModify = false;    // the provider's ProviderCapabilities::modify
     bool canUpload = true;     // ... and its ProviderCapabilities::upload
+    // Whether opening a folder fetches its subfolders ahead and the listings
+    // are kept between runs (RemoteProviderPrefetches: FTP only).
+    bool prefetches = false;
 };
 
 // What the toolbar's "+ Drive" button offers. The two differ only in which
@@ -213,6 +231,29 @@ public:
     bool Download(const std::string& remoteFile, const std::string& localFolder,
                   std::string& savedAs, std::string& error);
 
+    // ---- Preview copies ----------------------------------------------------
+    enum class PreviewCopy {
+        Ready,      // `localPath` is the copy; show it
+        Pending,    // being fetched; onPreviewCopyReady fires when it is in
+        Failed,     // `error` says why; asked again only after a Refresh
+        TooLarge    // over kRemotePreviewMaxBytes: not fetched for a preview
+    };
+    // A local copy of the remote file `entry` for the preview pane. Answers
+    // at once from the disk cache when the copy is there; otherwise queues
+    // the download AHEAD of everything waiting (the user is looking at the
+    // selection now) and replaces an earlier preview download that has not
+    // started - the selection has moved on from it. Never blocks.
+    PreviewCopy RequestPreviewCopy(const FilerEntry& entry, std::string& localPath,
+                                   std::string& error);
+    // Fires on the UI THREAD when a copy asked for above is in or has
+    // failed, naming the remote file. The window asks again, and this time
+    // gets Ready (or Failed).
+    std::function<void(const std::string& remoteFile)> onPreviewCopyReady;
+    // Where the copies live: "remote-previews" under UltraCanvas's per-user
+    // cache root (DiskCache::Directory). Empty when there is nowhere
+    // writable, which switches previews of remote files off.
+    static std::string PreviewCacheDirectory();
+
     bool Submit(RemoteOperation operation, const std::string& path,
                 const std::string& argument, bool isDirectory,
                 std::string& error);
@@ -235,6 +276,11 @@ public:
     std::function<void(const std::string& folderPath,
                        const std::string& message)> onOperationFinished;
 
+    // How many subfolder listings are waiting to be fetched ahead. Tests and
+    // diagnostics; the UI does not show it - prefetching is meant to be
+    // invisible.
+    std::size_t PrefetchQueueSize() const;
+
     // Forgets what is cached, so the next List fetches again. Invalidate() is
     // what a manual Refresh on a remote folder means.
     void Invalidate(const std::string& path);
@@ -245,16 +291,28 @@ public:
     // without UltraCloud.
     UltraCloud::CloudService* Service();
 
-    // Joins the worker. Must run before the owner is destroyed - the worker
+    // Joins the worker, then writes the prefetching drives' listings to disk
+    // for the next run. Must run before the owner is destroyed - the worker
     // posts into it. Idempotent.
     void Stop();
 
+    // Where the listings are kept between runs: remote-listings.cache in
+    // UltraFiler's config directory.
+    static std::string DiskCachePath();
+
 private:
-    enum class CacheState { Loading, Ready, Failed };
+    // Stale: read from the disk cache at start-up, and shown as it is until
+    // the server has been asked again. `revalidating` says that question has
+    // been queued, so a folder scanned twice asks once.
+    enum class CacheState { Loading, Ready, Failed, Stale };
     struct CacheEntry {
         CacheState state = CacheState::Loading;
         std::vector<FilerEntry> entries;
         std::string error;
+        bool revalidating = false;
+        // When this listing was last asked for or fetched, from useCounter_:
+        // what decides which listings the disk cache keeps when it is full.
+        uint64_t lastUsed = 0;
     };
 
     // One thing for the worker to do. A listing and a change queue together
@@ -267,6 +325,18 @@ private:
         RemoteOperation operation = RemoteOperation::Delete;
         std::string argument;
         bool isDirectory = false;
+        // A listing fetched ahead rather than asked for: it reports no
+        // activity, starts no prefetch of its own (one level only), and a
+        // failure is forgotten rather than cached, so opening the folder
+        // later asks again and shows the server's answer then.
+        bool isPrefetch = false;
+        // A Download into the preview cache: `argument` is the ".part" file
+        // it is written to and `previewTarget` the name it is renamed to
+        // once complete, so the viewer can never be handed half a picture.
+        // It changes no folder anybody is looking at, so it ends in
+        // onPreviewCopyReady rather than onOperationFinished.
+        bool isPreview = false;
+        std::string previewTarget;
     };
 
     void EnsureWorker();
@@ -278,8 +348,29 @@ private:
     // Turns the kind of a job into the kind of activity it is.
     static RemoteActivity::Kind ActivityKindFor(const Job& job);
     // Both run on the worker thread and make the actual UltraCloud call.
-    void FetchListing(const std::string& path);
+    // FetchListing answers whether the window should hear about the path
+    // (onListingArrived): false for a prefetch that failed with nobody
+    // waiting on it.
+    bool FetchListing(const std::string& path, bool isPrefetch);
+    // Records a listing that could not be fetched, with the lock held, and
+    // answers the same question.
+    bool RecordListingFailureLocked(const std::string& path, bool isPrefetch,
+                                    const std::string& error);
     void RunOperation(const Job& job);
+    // Called with the lock held, after a listing the user asked for arrived:
+    // puts its subfolders at the front of the prefetch queue.
+    void QueuePrefetchLocked(const std::string& folderPath,
+                             const std::vector<FilerEntry>& entries);
+    // Takes the next prefetch that is still worth doing, with the lock held.
+    // False when there is none.
+    bool TakePrefetchLocked(Job& job);
+    // The disk cache. Load runs once, from the first Reload that knows the
+    // drives; Save once, from Stop.
+    void LoadDiskCacheLocked();
+    void SaveDiskCache();
+    // Whether `accountId` is a configured drive that prefetches. Lock held.
+    bool DrivePrefetchesLocked(const std::string& accountId,
+                               bool* canModify = nullptr) const;
 
     // The UltraCloud objects (account store, secret store, service) live
     // here rather than in this header: UltraFiler must build when the module
@@ -291,6 +382,26 @@ private:
     std::vector<RemoteDrive> drives_;
     std::unordered_map<std::string, CacheEntry> cache_;
     std::deque<Job> queue_;
+    // Preview copies by remote path: in flight (no entry in the map means
+    // "not asked for"), or failed with the reason. A Ready copy needs no
+    // entry - the file on disk is the record.
+    struct PreviewState {
+        bool pending = false;
+        std::string localPath;
+        std::string error;
+    };
+    std::unordered_map<std::string, PreviewState> previews_;
+    // Old copies are swept once per run, before the first is asked for.
+    bool previewCacheSwept_ = false;
+    // Subfolders waiting to be fetched ahead, newest folder's first, and the
+    // same paths as a set so a folder is never queued twice. Taken by the
+    // worker only when queue_ is empty: a prefetch never makes the user wait
+    // for more than the one already on the wire.
+    std::deque<std::string> prefetchQueue_;
+    std::unordered_set<std::string> prefetchQueued_;
+    uint64_t useCounter_ = 0;
+    bool diskCacheLoaded_ = false;
+    bool diskCacheSaved_ = false;
     // The job the worker is carrying out right now, for ListingStatus: its
     // path (empty between jobs) and when the worker took it off the queue.
     // Written by the worker under the lock.

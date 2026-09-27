@@ -2702,6 +2702,15 @@ if(ULTRACANVAS_ENABLE_DATABASE)
             endif()
             target_compile_definitions(UltraDatabase PRIVATE ULTRADATABASE_HAS_POSTGRES=1)
             set(ULTRADATABASE_POSTGRES_NOTE " + PostgreSQL")
+            # A server connection's `credentials` is an UltraVault key ("vault:…"),
+            # never a literal password, so the driver reads it from the vault.
+            # Without this link and define every password login refuses with
+            # "UltraVault is not built in" - which it did until 0.9.66.
+            if(TARGET UltraVault)
+                target_link_libraries(UltraDatabase PRIVATE UltraVault)
+                target_compile_definitions(UltraDatabase PRIVATE ULTRADATABASE_HAS_VAULT=1)
+                string(APPEND ULTRADATABASE_POSTGRES_NOTE " (passwords from UltraVault)")
+            endif()
         else()
             set(ULTRADATABASE_POSTGRES_NOTE " (no libpq: SQLite only)")
         endif()
@@ -2863,7 +2872,21 @@ set(ULTRACANVAS_PLUGIN_INCLUDE_DIRS "")
 # CDR Plugin
 if(ULTRACANVAS_PLUGIN_CDR)
     set(ULTRACANVAS_CDR_VENDORABLE FALSE)
-    if(NOT WIN32)
+    # pkg-config everywhere: Linux and macOS packages, and MSYS2's
+    # (mingw-w64-clang-*-librevenge, -lcms2, -icu, -boost, -libcdr) on Windows.
+    find_package(PkgConfig QUIET)
+    if(APPLE)
+        # Homebrew's ICU is keg-only: without its pkgconfig dir, libcdr's .pc
+        # (which requires icu-i18n) and the ICU check below both fail, and the
+        # plugin was silently disabled on every macOS build.
+        execute_process(COMMAND brew --prefix icu4c
+                        OUTPUT_VARIABLE CDR_ICU_HOMEBREW_PREFIX
+                        OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        if(CDR_ICU_HOMEBREW_PREFIX AND EXISTS "${CDR_ICU_HOMEBREW_PREFIX}/lib/pkgconfig")
+            set(ENV{PKG_CONFIG_PATH} "${CDR_ICU_HOMEBREW_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+        endif()
+    endif()
+    if(PkgConfig_FOUND)
         pkg_check_modules(LIBCDR libcdr-0.1)
         pkg_check_modules(LIBREVENGE librevenge-0.0)
         # The patched libcdr in third_party/libcdr needs these instead of a
@@ -2876,8 +2899,6 @@ if(ULTRACANVAS_PLUGIN_CDR)
             set(ULTRACANVAS_CDR_VENDORABLE TRUE)
         endif()
     else()
-        # On Windows, these would need to be found differently
-        # For now, mark as not found
         set(LIBCDR_FOUND FALSE)
         set(LIBREVENGE_FOUND FALSE)
     endif()

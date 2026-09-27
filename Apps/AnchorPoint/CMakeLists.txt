@@ -1,16 +1,17 @@
 # Apps/AnchorPoint/CMakeLists.txt
 # AnchorPoint - peer-to-peer file sharing (no server file storage).
-# Version: 0.2.0
+# Version: 0.2.1
 #
 # Targets:
-#   anchorpoint_core  static lib: transfer protocol + raw-socket transport (no deps)
+#   anchorpoint_core  static lib: transfer protocol + raw-socket transport (UltraCrypt)
 #   anchorpoint       headless CLI (always built)
+#   anchorpoint_tests protocol tests, run by ctest (-DANCHORPOINT_BUILD_TESTS=OFF to skip)
 #   AnchorPoint       UltraCanvas GUI (built when the framework is available;
 #                     toggle with -DANCHORPOINT_BUILD_GUI=ON/OFF)
 cmake_minimum_required(VERSION 3.16)
 
 project(AnchorPoint
-        VERSION 0.2.0
+        VERSION 0.2.1
         DESCRIPTION "AnchorPoint - peer-to-peer file sharing"
         LANGUAGES CXX)
 
@@ -24,6 +25,7 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 option(ANCHORPOINT_BUILD_GUI "Build the UltraCanvas GUI (needs the framework toolchain)" ON)
+option(ANCHORPOINT_BUILD_TESTS "Build the protocol tests" ON)
 
 # ===========================================================================
 # Transfer core (depends only on UltraCrypt/libsodium)
@@ -60,8 +62,12 @@ else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(SODIUM REQUIRED libsodium)
 
+    # UltraCrypt's secure Base32 decoder delegates to the framework's shared
+    # codec, which is one more self-contained file (UltraCanvasBase32 in the
+    # framework build).
     target_sources(anchorpoint_core PRIVATE
-            ${ANCHORPOINT_ULTRACANVAS}/core/UltraCrypt/UltraCryptCore.cpp)
+            ${ANCHORPOINT_ULTRACANVAS}/core/UltraCrypt/UltraCryptCore.cpp
+            ${ANCHORPOINT_ULTRACANVAS}/core/UltraCanvasBase32.cpp)
     target_include_directories(anchorpoint_core PUBLIC
             ${ANCHORPOINT_ULTRACANVAS}/include)
     target_include_directories(anchorpoint_core PRIVATE ${SODIUM_INCLUDE_DIRS})
@@ -88,6 +94,16 @@ add_executable(anchorpoint cli/main.cpp)
 target_link_libraries(anchorpoint PRIVATE anchorpoint_core)
 set_target_properties(anchorpoint PROPERTIES OUTPUT_NAME "anchorpoint")
 install(TARGETS anchorpoint RUNTIME DESTINATION bin)
+
+# ===========================================================================
+# Tests (headless, core only)
+# ===========================================================================
+if(ANCHORPOINT_BUILD_TESTS)
+    enable_testing()
+    add_executable(anchorpoint_tests tests/ProtocolTests.cpp)
+    target_link_libraries(anchorpoint_tests PRIVATE anchorpoint_core)
+    add_test(NAME AnchorPointProtocol COMMAND anchorpoint_tests)
+endif()
 
 # ===========================================================================
 # GUI (UltraCanvas)

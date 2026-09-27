@@ -138,4 +138,35 @@ if(ULTRAFIBU_TEST_LIBPQ)
 
     add_test(NAME UltraFIBUServer COMMAND UltraFIBUServerTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Server mode's password comes out of UltraVault. No server needed: the
+    # test talks to a fake one on the loopback interface, so unlike the test
+    # above it runs everywhere libpq does, not only where CI starts PostgreSQL.
+    add_executable(UltraFIBUServerLoginTests
+        UltraFIBUServerLoginTests.cpp
+        ${ULTRAFIBU_SERVER_TEST_SOURCES}
+    )
+    target_compile_features(UltraFIBUServerLoginTests PRIVATE cxx_std_20)
+    target_include_directories(UltraFIBUServerLoginTests PRIVATE
+        ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine
+        ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/report
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
+    target_link_libraries(UltraFIBUServerLoginTests PRIVATE UltraDatabase UltraVault)
+    if(TINYXML2_FOUND)
+        target_include_directories(UltraFIBUServerLoginTests PRIVATE ${TINYXML2_INCLUDE_DIRS})
+        target_link_libraries(UltraFIBUServerLoginTests PRIVATE ${TINYXML2_LIBRARIES})
+        if(TINYXML2_LIBRARY_DIRS)
+            target_link_directories(UltraFIBUServerLoginTests PRIVATE ${TINYXML2_LIBRARY_DIRS})
+        endif()
+    endif()
+    if(TARGET UltraCrypt)
+        target_link_libraries(UltraFIBUServerLoginTests PRIVATE UltraCrypt)
+    endif()
+    set_target_properties(UltraFIBUServerLoginTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    add_test(NAME UltraFIBUServerLogin COMMAND UltraFIBUServerLoginTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()

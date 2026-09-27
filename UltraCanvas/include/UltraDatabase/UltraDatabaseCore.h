@@ -41,6 +41,8 @@ enum class UltraDbResultCode {
     ConnectionNotFound,
     DriverNotFound,
     ConnectionFailed,
+    CredentialsUnavailable,   // the password could not be obtained here (vault
+                              // closed, key missing); nothing was sent anywhere
     QueryFailed,
     ConstraintViolation,
     TypeMismatch,

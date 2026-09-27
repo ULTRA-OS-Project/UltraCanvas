@@ -1,3 +1,205 @@
+#### 2026-09-27 *0.9.71*
+- **Bar connections for bar charts on the chart engine.** A line from the
+  value end of each bar to the same series' bar in the next category - it
+  traces every series across the groups of a clustered chart, and anchored at
+  the bar edges it is the series line of a stacked chart.
+  - `BuildBarConnections(projection, spans, options)`
+    (`Engine/UltraCanvasChartSeries.h`) builds one screen polyline per
+    unbroken run of each series. `ChartBarConnectionShape::Straight` or
+    `Curved`; the curve is a monotone cubic, so it is smooth, stays flat
+    between equal bars and never overshoots the bars it joins.
+    `ChartBarConnectionAnchor::BarCenter` meets the middle of each bar's top,
+    `BarEdges` runs corner to corner along it. A missing value breaks the line
+    unless `bridgeGaps` is set. The line is sampled through the projection, so
+    it follows the rings under Polar.
+  - `UltraCanvasChartEngineElement::RenderBarConnections` strokes them in the
+    series colours with a `ChartBarConnectionStyle`: width, a wider stroke for
+    an emphasised (hovered) series, dashes, dot markers at every bar, and a
+    halo in the plot-area colour so a line stays readable across a bar of its
+    own colour.
+  - DemoApp's Bar Charts page shows it: the Clustered tab joins the four
+    fruit series (Off / Straight / Curved, and "From bar edges"), and the
+    Stacked tab offers the same controls for series lines. Hovering a bar
+    widens its series' line.
+
+#### 2026-09-27 *0.9.70*
+- **The macOS and Linux packages now ship UltraNetMonitor, DeviceExplorer and
+  `ultramsg`.** CI already built all three on every row, and the Windows
+  package already carried them (it takes every `.exe` in the build tree), but
+  the macOS and Linux packagers work from a fixed list and never gained them.
+  - Linux (`package-linux.sh`): the three join the portable bundle as
+    `bin/<name>` with a wrapper launcher beside the other apps.
+  - macOS (`package-macos.sh`): `UltraNetMonitor.app` and
+    `DeviceExplorer.app` are built, signed and notarized like the Texter and
+    Demo bundles, with their own icons. `ultramsg`, the UltraMessage command
+    line, is not an app, so it ships as `ultramsg/bin/ultramsg` with its
+    dylibs in `ultramsg/Frameworks/`. It is signed and notarized but not
+    stapled, because a ticket cannot be stapled to a bare executable;
+    Gatekeeper checks it online instead. `--dmg` puts that folder in the disk
+    image next to the bundles.
+
+#### 2026-09-27 *0.9.69*
+- **`UltraCanvasMediaViewer::ClassifyFile` is public.** It answers which view
+  a path opens in (`MediaKind::Image`, `Vector`, `Model`, `Video`, ...) from
+  the name alone. A host needs this to decide whether a file is worth fetching
+  before it can be shown: UltraFiler uses it to preview pictures, vector
+  drawings and 3D models from FTP and cloud drives, and not videos or
+  documents. An unknown extension still answers `Image`, so check
+  `IsSupportedMedia` first.
+- **FTP rename, delete and new folder work in subfolders and on names with
+  spaces.** `UltraNet_FtpRename`, `UltraNet_FtpDelete`,
+  `UltraNet_FtpCreateDirectory` and `UltraNet_FtpRemoveDirectory` had three
+  bugs:
+  - The name was cut from the URL still percent-encoded, so
+    `RNFR My%20Photo.jpg` asked for a file that does not exist. Any name with
+    a space, a bracket, `+`, `&` or a non-ASCII letter failed with a 550.
+  - libcurl sends quote commands before it changes into the URL's folder, so
+    every command ran in the login folder. A rename in a subfolder failed, a
+    new folder was created at the top of the server, and a delete in a
+    subfolder could remove a same-named file at the top instead. Commands now
+    name the entry by its path from the login folder, as libcurl reads the URL.
+  - An `sftp://` URL was sent FTP commands, which SFTP does not speak. It now
+    gets libcurl's SFTP commands (`rename`, `rm`, `rmdir`, `mkdir`) with
+    quoted full paths.
+
+  A name containing a line break is refused, since on FTP it would start a
+  second command. The command text is built in `UltraNetFtpQuote.h`, is
+  covered by `UltraNetFtpQuoteTest`, and was checked against a real FTP server.
+
+#### 2026-09-27 *0.9.68*
+- **DemoApp: the Message Centre page moved to *ULTRA OS modules* as *Ultra
+  Message*.** It was listed under *Complex UI Elements*, which holds widgets
+  any application can use on their own. The Message Centre is the view onto
+  UltraMessage's broker and journal, so it now sits with the other ULTRA OS
+  services (Ultra Database, Ultra Net, Ultra Vault) and is reached from the
+  ULTRA OS overview. The page itself is unchanged.
+
+#### 2026-09-27 *0.9.67*
+- **The startup screens open in the middle of the app's window, not the
+  middle of the monitor.** `UltraCanvasSplashScreen::Show` centred the splash
+  on the parent window's screen, so with the main window anywhere but
+  screen-centre the splash sat off to one side of it. It now centres over the
+  parent with `CenterOnParent`, clamped to the parent's monitor, and still
+  centres on the screen when no parent is given. UltraTexter's splash is the
+  one caller.
+  - DemoApp's startup information window gets the same treatment: it is
+    created with the main window as its parent and centred over it after it is
+    shown. Before, it was left wherever the window manager put it.
+- **The root build's text editor target is now `Texter`.** It was
+  `UltraCanvasTexter`, so the program was `UltraCanvasTexter`,
+  `UltraCanvasTexter.exe` and `UltraCanvasTexter.app`; they are now `Texter`,
+  `Texter.exe` and `Texter.app`. `cmake --build … --target Texter` builds it.
+  `package-linux.sh` (the `Texter` launcher), `package-macos.sh`,
+  `package-win.sh` (the signing step) and `.gitignore` follow, and the
+  Windows version resource names `Texter.exe`. The macOS bundle identifier
+  stays `com.cloverleaf.UltraCanvasTexter` so existing preferences and
+  signing identity carry over. The standalone `Apps/Texter` build still
+  produces `UltraTexter`.
+
+#### 2026-09-27 *0.9.66*
+- **A PostgreSQL connection can log in with a password.** The driver was
+  meant to read the password from UltraVault, but that lookup sat behind
+  `ULTRADATABASE_HAS_VAULT`, which no build defined, and it called
+  `UltraVault_GetSecret`, which does not exist. So every connection with
+  `credentials` failed with "UltraVault is not built in". Only passwordless
+  logins (peer / trust / `.pgpass`) worked, and that is all CI's multi-user
+  test uses, so nothing failed.
+  - The build now links UltraVault into UltraDatabase and defines the flag
+    wherever the PostgreSQL driver is built. Configure prints "PostgreSQL
+    (passwords from UltraVault)".
+  - The driver reads the password with `UltraVault::Get`. The application
+    opens the vault; the driver never opens one itself, since that would
+    quietly give an empty in-memory vault and turn a setup mistake into "not
+    found". A closed vault, a missing key and an unreadable vault now each
+    give their own message.
+  - The password no longer outlives the connect call. The vault's copy, the
+    driver's copy and the connection string are all overwritten once libpq
+    has them. The connection string is sized up front so appending never
+    reallocates and frees a buffer holding the password, and the escaping
+    writes straight into it instead of through a temporary copy.
+  - **New result code `UltraDbResultCode::CredentialsUnavailable`.** The
+    driver returns it when it cannot obtain the password on this machine (the
+    vault is closed, the key is missing, or UltraVault is not built in). In
+    that case no connection was attempted. It used to return
+    `ConnectionFailed`, so a caller could not tell "fix this machine" from
+    "fix the network", and UltraFIBU reported a missing vault key as "the
+    server cannot be reached". Failures on the way to the server, including a
+    wrong password, are still `ConnectionFailed`.
+  - New `UltraFIBUServerLoginTests` needs no database server. It stores a
+    password containing a quote and a backslash in a memory vault, and a
+    fake PostgreSQL server on the loopback interface asks for a cleartext
+    password. The test checks that exactly the stored password reaches the
+    wire. It also checks that `OpenServer` gets as far as the server with a
+    stored key, and is refused before connecting when the key is missing
+    or the vault is closed. CI's "was the test registered" check now covers
+    it too.
+- **CI:** the Linux jobs also build `Apps/AnchorPoint` on its own and run
+  its protocol tests (see AnchorPoint 0.2.1). The login test builds on macOS,
+  which has no `MSG_NOSIGNAL`: it falls back to ignoring `SIGPIPE`.
+- **Docs:** the UltraDatabase README status table lists the PostgreSQL driver
+  as implemented, and explains that the application opens the vault.
+
+#### 2026-09-27 *0.9.65*
+- **CorelDRAW (`.cdr`) import on Windows.** The CDR plugin was off in every
+  Windows build: the top-level CMake skipped the pkg-config checks with
+  `if(NOT WIN32)`, and CI passed `-DULTRACANVAS_PLUGIN_CDR=OFF`. MSYS2
+  packages everything the plugin needs, so the Windows builds (CLANG64 and
+  CLANGARM64) now install librevenge, lcms2, ICU and Boost (plus libcdr as
+  the fallback), find them through MSYS2's pkgconf, and build the patched
+  libcdr from `third_party/libcdr`. `package-win.sh` already copies every
+  MinGW DLL a packaged binary imports, so librevenge, lcms2 and ICU ship
+  with it.
+  - CI now fails if the CDR plugin, or its vendored libcdr, is not enabled
+    on any platform. That check found macOS silently without CDR import:
+    Homebrew's ICU is keg-only, and the top-level gate ran pkg-config before
+    the CDR subdirectory added ICU's pkgconfig dir, so `libcdr-0.1` (which
+    requires `icu-i18n`) and the ICU check both failed. The gate now adds it
+    first.
+  - The macOS and Windows jobs run `VectorFormatsPluginTest` (`detailed.cdr`
+    with its masked bitmaps and PowerClips) and `CDRWriterTest`. Those rows
+    build no full test suite (`BUILD_TESTS` is Linux-only), so the new
+    `ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS` option builds just these two;
+    their definitions moved to `Tests/VectorFormatsTests.cmake`, which
+    `Tests/CMakeLists.txt` includes as before.
+- **Windows: one graphics plugin registry per process.** The registry's
+  storage (`Plugins()`, `ExtensionMap()`, `Initialized()`) sat in inline
+  functions in `UltraCanvasGraphicsPluginSystem.h`. On Windows each module
+  gets its own copy of an inline function's statics. The core is a DLL there
+  and the apps link the format plugins into the executable, so plugins
+  registered into the executable's copy, while the core's own readers saw an
+  empty one. Those readers include the supported-format inventory (file
+  dialogs, the Filer's classification) and the vector previews. The storage
+  is defined in `core/UltraCanvasGraphicsPluginSystem.cpp` again: still
+  built on first use, and now one copy for every module.
+  `VectorFormatsPluginTest`'s inventory checks, which now run on Windows,
+  found it.
+
+#### 2026-09-26 *0.9.64*
+- **WebSocket, CoAP and AMQP receiver threads no longer abort or outlive
+  shutdown.** Each receiver held a `shared_ptr` to its own connection, and
+  its `Stop()` always joined:
+  - A callback that closed its own socket (`UltraNet_WebSocketClose` from
+    `onText`, for example) joined the receiver from itself:
+    `std::system_error` ("Resource deadlock avoided") and `std::terminate`.
+    The same happened when the receiver dropped the last reference itself.
+    `Stop()` now detaches when called on the receiver, and a small lock makes
+    starting and stopping the thread race-free.
+  - `UltraNet_Shutdown` left open WebSockets running on libcurl through
+    `curl_global_cleanup`. It now stops every receiver and frees every easy
+    handle first.
+  - The CoAP and AMQP plug-ins' `Shutdown()` only emptied their session
+    tables, so no receiver was ever told to stop. CoAP's worker even kept
+    running `coap_io_process` through `coap_cleanup`. `Shutdown()` now stops
+    and joins every receiver before the sessions and the library go.
+  - Receivers still running at exit (no shutdown call) read connection and
+    callback tables that static destruction had already freed. Those tables
+    are now allocated once and never destroyed.
+- **`UltraNet_ParseUrl` accepts schemes libcurl does not speak.** It passed
+  URLs to libcurl without `CURLU_NON_SUPPORT_SCHEME`, so `coap://`,
+  `amqp://`, `sip://`, `rtp://` and `grpc://` URLs were rejected as invalid.
+  The plug-ins for those schemes could never connect. `UltraNet_BuildUrl`
+  had the same restriction.
+
 #### 2026-09-26 *0.9.63*
 - **A zero-width or zero-height ellipse no longer kills a window's drawing.**
   `RenderContextCairo::DrawEllipse`, `FillEllipse` and `Ellipse` scaled the

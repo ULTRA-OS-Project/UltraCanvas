@@ -315,25 +315,22 @@ namespace UltraCanvas {
 // ===== GRAPHICS PLUGIN REGISTRY =====
     class UltraCanvasGraphicsPluginRegistry {
     private:
-        // Function-local rather than namespace-scope, so they are constructed
-        // on first use instead of at some point during static initialisation.
-        // The plugin libraries register themselves from a static initialiser
-        // (UltraCanvasAllFormats), which can run before any other translation
-        // unit's globals are alive - a registry whose vector had not been
-        // constructed yet would have taken those registrations into a dead
-        // object. Whoever touches the registry first now builds it.
-        static std::vector<std::shared_ptr<IGraphicsPlugin>>& Plugins() {
-            static std::vector<std::shared_ptr<IGraphicsPlugin>> instance;
-            return instance;
-        }
-        static std::map<std::string, std::shared_ptr<IGraphicsPlugin>>& ExtensionMap() {
-            static std::map<std::string, std::shared_ptr<IGraphicsPlugin>> instance;
-            return instance;
-        }
-        static bool& Initialized() {
-            static bool instance = false;
-            return instance;
-        }
+        // The registry's storage: function-local statics, so they are
+        // constructed on first use instead of at some point during static
+        // initialisation (the plugin libraries register themselves from a
+        // static initialiser, UltraCanvasAllFormats, which can run before any
+        // other translation unit's globals are alive).
+        //
+        // Defined in core/UltraCanvasGraphicsPluginSystem.cpp, NOT inline
+        // here: an inline function's statics exist once per module on
+        // Windows. With the core a DLL and the format plugins linked into
+        // each executable, plugins registered into the executable's copy
+        // while the core's own readers (the supported-format inventory, the
+        // vector previews) saw an empty one. Out of line, every module
+        // calls into the core's single copy.
+        static std::vector<std::shared_ptr<IGraphicsPlugin>>& Plugins();
+        static std::map<std::string, std::shared_ptr<IGraphicsPlugin>>& ExtensionMap();
+        static bool& Initialized();
 
         static std::string ExtensionOf(const std::string& filePath) {
             size_t dotPos = filePath.find_last_of('.');

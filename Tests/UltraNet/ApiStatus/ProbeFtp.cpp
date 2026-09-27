@@ -330,15 +330,15 @@ ULTRANET_PROBE(kArea, UltraNet_FtpCreateDirectory) {
         return BackendOnly("UltraNet_FtpCreateDirectory", dead);
     }
 
-    const UltraNetResult r = UltraNet_FtpCreateDirectory(base + "probe_dir/");
+    const UltraNetResult r = UltraNet_FtpCreateDirectory(base + "probe_dir");
     if (!r) {
-        return Implemented("MKD on " + base + "probe_dir/ failed (" + r.message +
+        return Implemented("MKD on " + base + "probe_dir failed (" + r.message +
                            "); the account may not be allowed to create "
                            "directories");
     }
     std::vector<UltraNetFtpEntry> entries;
     const UltraNetResult listed = UltraNet_FtpListDirectory(base, entries);
-    UltraNet_FtpRemoveDirectory(base + "probe_dir/");
+    UltraNet_FtpRemoveDirectory(base + "probe_dir");
     PROBE_EXPECT_MSG(static_cast<bool>(listed), listed.message);
 
     bool found = false;
@@ -361,12 +361,12 @@ ULTRANET_PROBE(kArea, UltraNet_FtpRemoveDirectory) {
         return BackendOnly("UltraNet_FtpRemoveDirectory", dead);
     }
 
-    const UltraNetResult created = UltraNet_FtpCreateDirectory(base + "probe_rmdir/");
+    const UltraNetResult created = UltraNet_FtpCreateDirectory(base + "probe_rmdir");
     if (!created) {
         return Implemented("could not create a directory to remove on " + base +
                            " (" + created.message + ")");
     }
-    const UltraNetResult r = UltraNet_FtpRemoveDirectory(base + "probe_rmdir/");
+    const UltraNetResult r = UltraNet_FtpRemoveDirectory(base + "probe_rmdir");
     PROBE_EXPECT_MSG(static_cast<bool>(r), r.message);
 
     std::vector<UltraNetFtpEntry> entries;

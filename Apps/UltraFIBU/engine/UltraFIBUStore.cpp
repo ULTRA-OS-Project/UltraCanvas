@@ -908,7 +908,16 @@ StoreResult Store::OpenServer(const std::string& connectionName,
     UltraDbResult geoeffnet = UltraDb_OpenConnection(connectionName);
     if (!geoeffnet) {
         connection_.clear();
-        return StoreResult::Fail("Der Server ist nicht erreichbar: " +
+        // Two different problems with two different remedies. A password that
+        // cannot be read is fixed on this machine (open the vault, store the
+        // key), and no connection was attempted; everything else - refused,
+        // no TLS, wrong password - happened between here and the server, and
+        // libpq's own text after the colon says which.
+        if (geoeffnet.code == UltraDbResultCode::CredentialsUnavailable)
+            return StoreResult::Fail("Das Passwort für den Server ist auf diesem "
+                                     "Rechner nicht verfügbar, es wurde keine "
+                                     "Verbindung aufgebaut: " + geoeffnet.message);
+        return StoreResult::Fail("Die Verbindung zum Server ist fehlgeschlagen: " +
                                  geoeffnet.message);
     }
 
