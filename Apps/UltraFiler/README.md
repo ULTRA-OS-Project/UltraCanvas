@@ -236,6 +236,13 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     background. Cloud drives (Nextcloud, Dropbox, …) do neither, because
     their providers limit API calls. The toolbar's *Refresh* on a remote
     folder still asks the server directly.
+  - **Remote files preview too.** A picture, a vector drawing (SVG, DXF,
+    CorelDRAW, EPS, ...) or a 3D model (STL, OBJ, ...) selected on an FTP or
+    cloud drive is downloaded into `remote-previews` under UltraCanvas's
+    cache folder and shown in the preview pane. The copy is kept for two
+    weeks after its last use and fetched again if the file changes on the
+    server. Files over 64 MB are not fetched for a preview. Video, audio,
+    documents and text on a drive are not previewed.
 - **Archives:** packing and unpacking run in the background behind a progress
   window: a ring with the percentage, the file being handled and Cancel.
   Cancelling a pack removes the half-written archive; cancelling an unpack keeps

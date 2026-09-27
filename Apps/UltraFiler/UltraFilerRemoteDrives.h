@@ -27,7 +27,13 @@
 // earlier session is shown at once from what it held then, while the server
 // is asked again behind it. The rules and the file are in
 // UltraFilerRemoteCache.h.
-// Version: 1.4.0
+//
+// A file shown in the preview pane is fetched too, on any drive: the media
+// viewer reads local files, so RequestPreviewCopy downloads a picture, a
+// vector drawing or a 3D model into a disk cache first and the copy is what
+// is shown. The copy is kept, keyed by the file's path, size and date, so a
+// second look costs nothing and a changed file is fetched again.
+// Version: 1.5.0
 // Last Modified: 2026-09-27
 // Author: UltraCanvas Framework
 #pragma once
@@ -225,6 +231,29 @@ public:
     bool Download(const std::string& remoteFile, const std::string& localFolder,
                   std::string& savedAs, std::string& error);
 
+    // ---- Preview copies ----------------------------------------------------
+    enum class PreviewCopy {
+        Ready,      // `localPath` is the copy; show it
+        Pending,    // being fetched; onPreviewCopyReady fires when it is in
+        Failed,     // `error` says why; asked again only after a Refresh
+        TooLarge    // over kRemotePreviewMaxBytes: not fetched for a preview
+    };
+    // A local copy of the remote file `entry` for the preview pane. Answers
+    // at once from the disk cache when the copy is there; otherwise queues
+    // the download AHEAD of everything waiting (the user is looking at the
+    // selection now) and replaces an earlier preview download that has not
+    // started - the selection has moved on from it. Never blocks.
+    PreviewCopy RequestPreviewCopy(const FilerEntry& entry, std::string& localPath,
+                                   std::string& error);
+    // Fires on the UI THREAD when a copy asked for above is in or has
+    // failed, naming the remote file. The window asks again, and this time
+    // gets Ready (or Failed).
+    std::function<void(const std::string& remoteFile)> onPreviewCopyReady;
+    // Where the copies live: "remote-previews" under UltraCanvas's per-user
+    // cache root (DiskCache::Directory). Empty when there is nowhere
+    // writable, which switches previews of remote files off.
+    static std::string PreviewCacheDirectory();
+
     bool Submit(RemoteOperation operation, const std::string& path,
                 const std::string& argument, bool isDirectory,
                 std::string& error);
@@ -301,6 +330,13 @@ private:
         // failure is forgotten rather than cached, so opening the folder
         // later asks again and shows the server's answer then.
         bool isPrefetch = false;
+        // A Download into the preview cache: `argument` is the ".part" file
+        // it is written to and `previewTarget` the name it is renamed to
+        // once complete, so the viewer can never be handed half a picture.
+        // It changes no folder anybody is looking at, so it ends in
+        // onPreviewCopyReady rather than onOperationFinished.
+        bool isPreview = false;
+        std::string previewTarget;
     };
 
     void EnsureWorker();
@@ -346,6 +382,17 @@ private:
     std::vector<RemoteDrive> drives_;
     std::unordered_map<std::string, CacheEntry> cache_;
     std::deque<Job> queue_;
+    // Preview copies by remote path: in flight (no entry in the map means
+    // "not asked for"), or failed with the reason. A Ready copy needs no
+    // entry - the file on disk is the record.
+    struct PreviewState {
+        bool pending = false;
+        std::string localPath;
+        std::string error;
+    };
+    std::unordered_map<std::string, PreviewState> previews_;
+    // Old copies are swept once per run, before the first is asked for.
+    bool previewCacheSwept_ = false;
     // Subfolders waiting to be fetched ahead, newest folder's first, and the
     // same paths as a set so a folder is never queued twice. Taken by the
     // worker only when queue_ is empty: a prefetch never makes the user wait

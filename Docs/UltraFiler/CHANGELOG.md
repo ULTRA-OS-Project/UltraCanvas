@@ -11,6 +11,20 @@
   server in the background. Only FTP drives do this; the metered cloud
   providers do not. The rules and the file format are in
   `UltraFilerRemoteCache.h` and are tested by `FilerRemoteCacheTest`.
+- **Preview pictures, vector drawings and 3D models on FTP and cloud drives.**
+  Selecting such a file on a remote drive while the preview is on now
+  downloads it into a preview cache (`remote-previews` under UltraCanvas's
+  per-user cache folder) and shows the copy. The download goes ahead of
+  anything already queued; the status line shows its progress. If the
+  selection moves on before a download starts, that download is dropped.
+  Copies are kept, and one that hasn't been looked at for two weeks is
+  deleted. Looking at the same file again, in this session or a later one,
+  costs no transfer. A file that changed on the server is fetched again,
+  because the copy is keyed by path, size and date. Files over 64 MB are not
+  fetched just for a preview, and the status line says so; so does a failed
+  download, and *Refresh* retries it. Other file kinds on a drive (video,
+  audio, documents, text) are not previewed: double-clicking one opens it
+  instead of showing an empty pane.
 
 #### 2026-09-25 *1.54.0*
 - **R, Scala, MATLAB and VBA files show their text too.** Their languages

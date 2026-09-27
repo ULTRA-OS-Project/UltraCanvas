@@ -96,6 +96,60 @@ inline std::vector<std::string> SelectRemotePrefetchTargets(
     return out;
 }
 
+// ---- Preview copies --------------------------------------------------------
+// A picture on a drive cannot be handed to the media viewer: it reads files,
+// and an ultracloud:// path is not one. So a file the user selects for the
+// preview pane is downloaded into a cache of its own first, and the copy is
+// what is shown. The copies are kept - a second look at the same file, in
+// this run or the next, costs no transfer - and named so that a file that has
+// changed on the server is fetched again rather than shown from before.
+
+// The largest file fetched only to be previewed. Selecting a file is not
+// asking to download it, and a 2 GB TIFF on a slow server would hold the
+// drive's queue for minutes; that one is opened by downloading it.
+inline constexpr uint64_t kRemotePreviewMaxBytes = 64ull * 1024 * 1024;
+
+// The cache folder of one preview copy: a 64-bit FNV-1a of the remote path,
+// the size and the modification time the listing reported, in hex. Any of
+// them changing - the file replaced on the server - gives a new folder, and
+// the old one simply ages out. FNV rather than std::hash because the name
+// has to be the same in the next run and on every platform.
+inline std::string RemotePreviewCacheKey(const std::string& remotePath,
+                                         uint64_t size, std::time_t modified) {
+    uint64_t h = 14695981039346656037ull;
+    auto mix = [&h](const std::string& s) {
+        for (unsigned char c : s) { h ^= c; h *= 1099511628211ull; }
+        h ^= 0xff; h *= 1099511628211ull;   // a separator no byte can fake
+    };
+    mix(remotePath);
+    mix(std::to_string(size));
+    mix(std::to_string(static_cast<long long>(modified)));
+    static const char* hex = "0123456789abcdef";
+    std::string out(16, '0');
+    for (int i = 15; i >= 0; --i) { out[i] = hex[h & 0xf]; h >>= 4; }
+    return out;
+}
+
+// The copy's own file name: the remote name, made safe for any local
+// filesystem - the viewer reads the format from the extension and shows the
+// name, so both are kept. A server may list names Windows cannot store
+// (a ':' or a '?'), or a name that is really a path ("..").
+inline std::string RemotePreviewLocalName(const std::string& remoteName) {
+    std::string out;
+    out.reserve(remoteName.size());
+    for (unsigned char c : remoteName) {
+        const bool bad = c < 0x20 || c == '/' || c == '\\' || c == ':' ||
+                         c == '*' || c == '?' || c == '"' || c == '<' ||
+                         c == '>' || c == '|';
+        out.push_back(bad ? '_' : static_cast<char>(c));
+    }
+    // Windows drops trailing dots and blanks, which would change the name
+    // under us; and "." / ".." are not names at all.
+    while (!out.empty() && (out.back() == '.' || out.back() == ' ')) out.pop_back();
+    if (out.empty()) out = "preview";
+    return out;
+}
+
 // ---- The file -------------------------------------------------------------
 
 inline std::string EscapeRemoteCacheField(const std::string& s) {

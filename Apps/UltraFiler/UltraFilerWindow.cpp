@@ -776,6 +776,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     if (remoteDrives) {
         remoteDrives->onListingArrived = nullptr;
         remoteDrives->onActivityChanged = nullptr;
+        remoteDrives->onPreviewCopyReady = nullptr;
         remoteDrives->Stop();
     }
     StopVolumeSpaceQuery();
@@ -1199,8 +1200,24 @@ void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
     UltraFilerSettingsDialog::SyncWithSettings();
 }
 
+bool UltraFilerWindow::IsRemotePreviewKind(const std::string& path) {
+    if (!UltraCanvasMediaViewer::IsSupportedMedia(path)) return false;
+    switch (UltraCanvasMediaViewer::ClassifyFile(path)) {
+        case MediaKind::Image:    // bitmaps, and SVG through the image pipeline
+        case MediaKind::Vector:   // DXF, CorelDRAW, EPS, ...
+        case MediaKind::Model:    // STL, OBJ, ...
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool UltraFilerWindow::CanShowInDetailView(const FilerEntry& entry) const {
     if (!UltraCanvasMediaViewer::IsSupportedMedia(entry.path)) return false;
+    // On a drive the preview is a download (see UpdatePreviewPane), which is
+    // worth it for a picture and not for a film or a book.
+    if (IsRemoteFilerPath(entry.path) && !IsRemotePreviewKind(entry.path))
+        return false;
     // Settings > Display > Detail view. Any file display answers the same -
     // they all carry the same switches - so the active tab's is used, and a
     // window without one falls back to "the viewer decides".
@@ -3063,6 +3080,12 @@ void UltraFilerWindow::BuildFolderTree() {
             IsRemoteFilerPath(tab->filer->GetPath()) &&
             IsPathInside(tab->filer->GetPath(), path))
             SyncTreeSelection(tab->filer->GetPath());
+    };
+    // A preview copy is in (or failed): if that file is still the one
+    // selected, the pane shows it now - or the status line says why not.
+    remoteDrives->onPreviewCopyReady = [this](const std::string& path) {
+        const FilerEntry* e = SingleSelectedEntry();
+        if (e && e->path == path) UpdatePreviewPane();
     };
     // A change to a drive finished: the folder it touched has already been
     // dropped from the cache, so refreshing it refetches from the server.
@@ -5509,6 +5532,10 @@ void UltraFilerWindow::UpdateStatusBar() {
         statusLabel->SetText(remoteDropNote);
         return;
     }
+    if (!remotePreviewNote.empty()) {
+        statusLabel->SetText(remotePreviewNote);
+        return;
+    }
     if (historyShown) {
         const int index = historyTabs ? historyTabs->GetActiveTab() : -1;
         std::string text = "History";
@@ -5681,6 +5708,11 @@ void UltraFilerWindow::UpdatePreviewPane() {
     // (showing that folder's content), anything else folds the pane away.
     std::string mediaPath;
     std::string folderPath;
+    // A file on a drive is shown from a local copy, so the viewer is given
+    // just that one file: browsing the copy's folder would find nothing
+    // else, and the drive's other files are not on this disk.
+    bool mediaIsRemoteCopy = false;
+    std::string previewNote;
     // The Computer page has no selection to preview: the pane folds away
     // while it is shown.
     if (previewEnabled && !computerShown) {
@@ -5689,6 +5721,51 @@ void UltraFilerWindow::UpdatePreviewPane() {
             else if (CanShowInDetailView(*e))
                 mediaPath = e->path;
         }
+    }
+    if (!mediaPath.empty() && IsRemoteFilerPath(mediaPath)) {
+        // The viewer reads files, and this one is on a server: ask for the
+        // local copy. Ready shows it; anything else shows nothing yet, and
+        // onPreviewCopyReady comes back here once the copy is in.
+        const FilerEntry* e = SingleSelectedEntry();
+        std::string copy, why;
+        const auto state = remoteDrives && e
+                ? remoteDrives->RequestPreviewCopy(*e, copy, why)
+                : UltraFilerRemoteDrives::PreviewCopy::Failed;
+        const std::string name = RemoteFilerName(mediaPath);
+        mediaPath.clear();
+        switch (state) {
+            case UltraFilerRemoteDrives::PreviewCopy::Ready:
+                mediaPath = copy;
+                mediaIsRemoteCopy = true;
+                break;
+            case UltraFilerRemoteDrives::PreviewCopy::Pending:
+                // The status line already says the file is downloading. A
+                // pane still showing the previous file would show the wrong
+                // picture under this name, so it is emptied and kept rather
+                // than folded away and reopened a moment later.
+                if (previewShown && !previewShowsFolder && preview) {
+                    preview->CloseFile();
+                    if (remotePreviewNote != previewNote) {
+                        remotePreviewNote = previewNote;
+                        UpdateStatusBar();
+                    }
+                    return;
+                }
+                break;
+            case UltraFilerRemoteDrives::PreviewCopy::TooLarge:
+                previewNote = "No preview of " + name + " - it is too large to "
+                              "fetch just to look at; copy it to this computer "
+                              "to open it";
+                break;
+            case UltraFilerRemoteDrives::PreviewCopy::Failed:
+                previewNote = "No preview of " + name + (why.empty() ? std::string()
+                                                                     : ": " + why);
+                break;
+        }
+    }
+    if (remotePreviewNote != previewNote) {
+        remotePreviewNote = previewNote;
+        UpdateStatusBar();
     }
     const bool wantFolder = !folderPath.empty();
     if (wantFolder) {
@@ -5785,7 +5862,10 @@ void UltraFilerWindow::UpdatePreviewPane() {
             if (folderPreview->GetPath() != folderPath)
                 folderPreview->SetPath(folderPath);
         } else {
-            if (preview->GetCurrentPath() != mediaPath) preview->OpenFile(mediaPath);
+            if (preview->GetCurrentPath() != mediaPath) {
+                if (mediaIsRemoteCopy) preview->SetFiles({mediaPath});
+                else                   preview->OpenFile(mediaPath);
+            }
         }
     } else if (previewShown) {
         // Nothing to preview - give the folder display the whole width.

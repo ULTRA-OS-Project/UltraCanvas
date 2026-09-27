@@ -146,6 +146,34 @@ int main() {
               "CRLF line ends are read");
     }
 
+    std::printf("Preview copies\n");
+    {
+        const std::string photo = MakeRemoteFilerPath("nas", "/pub/photo.jpg");
+        const std::string k = RemotePreviewCacheKey(photo, 1000, 1700000000);
+        Check(k.size() == 16 && k.find_first_not_of("0123456789abcdef") == std::string::npos,
+              "the key is 16 hex digits");
+        Check(k == RemotePreviewCacheKey(photo, 1000, 1700000000), "the key is stable");
+        Check(k != RemotePreviewCacheKey(photo, 1001, 1700000000), "a new size, a new key");
+        Check(k != RemotePreviewCacheKey(photo, 1000, 1700000001), "a new date, a new key");
+        Check(k != RemotePreviewCacheKey(MakeRemoteFilerPath("nas2", "/pub/photo.jpg"),
+                                         1000, 1700000000), "another drive, another key");
+        // Fixed across runs and platforms: the copies of the last run are
+        // found again only if this never changes.
+        Check(RemotePreviewCacheKey("", 0, 0) == RemotePreviewCacheKey("", 0, 0) &&
+              RemotePreviewCacheKey("a", 1, 2) != RemotePreviewCacheKey("a1", 0, 2),
+              "fields cannot run into each other");
+
+        Check(RemotePreviewLocalName("photo.jpg") == "photo.jpg", "a plain name is kept");
+        Check(RemotePreviewLocalName("a:b?c*.png") == "a_b_c_.png",
+              "characters Windows refuses are replaced, the extension kept");
+        Check(RemotePreviewLocalName("..") == "preview", "'..' is not a name");
+        Check(RemotePreviewLocalName("x/../y.svg") == "x_.._y.svg", "no path gets through");
+        Check(RemotePreviewLocalName("name. ") == "name", "trailing dots and blanks go");
+        Check(RemotePreviewLocalName("tab\there.stl") == "tab_here.stl",
+              "control characters are replaced");
+        Check(kRemotePreviewMaxBytes == 64ull * 1024 * 1024, "the preview size limit");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures,
                 failures == 1 ? "" : "s");
     return failures ? 1 : 0;

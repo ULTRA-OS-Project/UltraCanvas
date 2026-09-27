@@ -1,5 +1,5 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.2.0
+// Version: 1.3.0
 // Last Modified: 2026-09-27
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
@@ -8,6 +8,7 @@
 #include "UltraFilerSettings.h"        // GetConfigDirectory
 
 #include "UltraCanvasApplication.h"    // PostToUIThread
+#include "UltraCanvasDiskCache.h"      // the preview copies' cache root
 
 #include "UltraNet/UltraNetCore.h"   // the transfer callbacks a job reports through
 
@@ -571,6 +572,142 @@ bool UltraFilerRemoteDrives::Download(const std::string& remoteFile,
     return true;
 }
 
+std::string UltraFilerRemoteDrives::PreviewCacheDirectory() {
+    return DiskCache::Directory("remote-previews");
+}
+
+namespace {
+
+// Deletes the preview copies nobody has looked at within the disk cache's
+// usual age, and any ".part" a download interrupted by a crash left behind.
+// Each copy has a folder of its own (so the viewer browses nothing else), and
+// DiskCache::Sweep does not descend, hence this: the same rule, one level
+// down. A copy's stamp is its file's time, refreshed by DiskCache::Touch on
+// every look.
+void SweepPreviewCache(const std::string& directory) {
+    if (directory.empty()) return;
+    const auto now = fs::file_time_type::clock::now();
+    const auto maxAge = std::chrono::duration_cast<fs::file_time_type::duration>(
+            DiskCache::kDefaultMaxAge);
+    std::error_code ec;
+    std::vector<fs::path> stale;
+    for (fs::directory_iterator it(directory, ec), end; it != end && !ec;
+         it.increment(ec)) {
+        std::error_code dec;
+        if (!it->is_directory(dec) || dec) continue;
+        bool fresh = false;
+        for (fs::directory_iterator f(it->path(), dec), fend; f != fend && !dec;
+             f.increment(dec)) {
+            std::error_code fec;
+            if (f->path().extension() == ".part") {
+                fs::remove(f->path(), fec);
+                continue;
+            }
+            const auto t = fs::last_write_time(f->path(), fec);
+            // A stamp in the future reads as fresh, as DiskCache::Sweep has it.
+            if (!fec && (t > now || now - t < maxAge)) fresh = true;
+        }
+        if (!fresh) stale.push_back(it->path());
+    }
+    for (const fs::path& d : stale) {
+        std::error_code rec;
+        fs::remove_all(d, rec);
+    }
+}
+
+} // namespace
+
+UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
+        const FilerEntry& entry, std::string& localPath, std::string& error) {
+    localPath.clear();
+    std::string accountId, remotePath;
+    if (!SplitRemoteFilerPath(entry.path, accountId, remotePath) ||
+        entry.isDirectory || remotePath == "/") {
+        error = "not a file on a drive";
+        return PreviewCopy::Failed;
+    }
+    if (!Available()) {
+        error = "this build of UltraFiler carries no cloud support";
+        return PreviewCopy::Failed;
+    }
+    if (entry.size > kRemotePreviewMaxBytes) {
+        error = "too large to fetch for a preview";
+        return PreviewCopy::TooLarge;
+    }
+    const std::string directory = PreviewCacheDirectory();
+    if (directory.empty()) {
+        error = "there is no cache folder to fetch a preview into";
+        return PreviewCopy::Failed;
+    }
+    if (!previewCacheSwept_) {
+        previewCacheSwept_ = true;
+        SweepPreviewCache(directory);
+    }
+
+    const std::string name = RemotePreviewLocalName(
+            entry.name.empty() ? RemoteFilerName(entry.path) : entry.name);
+    const fs::path target = fs::path(directory) /
+            RemotePreviewCacheKey(entry.path, entry.size, entry.modifiedTime) / name;
+    const std::string targetPath = target.string();
+
+    // Fetched before - in this run or an earlier one - and unchanged since,
+    // since a change would have given it another folder.
+    std::error_code ec;
+    if (fs::is_regular_file(target, ec) && !ec) {
+        DiskCache::Touch(targetPath);
+        localPath = targetPath;
+        return PreviewCopy::Ready;
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        bool known = false;
+        for (const RemoteDrive& d : drives_) {
+            if (d.accountId == accountId) { known = true; break; }
+        }
+        if (!known) {
+            error = "this drive is no longer configured";
+            return PreviewCopy::Failed;
+        }
+
+        auto it = previews_.find(entry.path);
+        if (it != previews_.end() && it->second.localPath == targetPath) {
+            if (it->second.pending) return PreviewCopy::Pending;
+            if (!it->second.error.empty()) {
+                error = it->second.error;
+                return PreviewCopy::Failed;
+            }
+        }
+
+        // The selection has moved on: a preview download that has not
+        // started is for a file nobody is looking at any more. One that has
+        // started is left to finish - it is the nearest thing to done.
+        for (auto q = queue_.begin(); q != queue_.end();) {
+            if (q->isPreview && q->path != entry.path) {
+                previews_.erase(q->path);
+                q = queue_.erase(q);
+            } else {
+                ++q;
+            }
+        }
+
+        Job job;
+        job.isListing = false;
+        job.isPreview = true;
+        job.operation = RemoteOperation::Download;
+        job.path = entry.path;
+        job.argument = targetPath + ".part";
+        job.previewTarget = targetPath;
+        // At the front: the user is looking at the selection now, and a batch
+        // of uploads queued earlier should not stand between them and it.
+        queue_.push_front(std::move(job));
+        previews_[entry.path] = PreviewState{true, targetPath, {}};
+        EnsureWorker();
+    }
+    cond_.notify_one();
+    return PreviewCopy::Pending;
+}
+
 void UltraFilerRemoteDrives::RunOperation(const Job& job) {
 #ifndef ULTRAFILER_HAS_ULTRACLOUD
     std::lock_guard<std::mutex> lk(mutex_);
@@ -578,6 +715,13 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job) {
 #else
     std::string accountId, remotePath;
     if (!SplitRemoteFilerPath(job.path, accountId, remotePath)) return;
+
+    // A preview copy's folder is made here, off the UI thread, and only once
+    // the download is really going to happen.
+    if (job.isPreview) {
+        std::error_code ec;
+        fs::create_directories(fs::path(job.previewTarget).parent_path(), ec);
+    }
 
     UltraCloud::Result r = UltraCloud::Result::Ok();
     switch (job.operation) {
@@ -621,11 +765,22 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job) {
 void UltraFilerRemoteDrives::Invalidate(const std::string& path) {
     std::lock_guard<std::mutex> lk(mutex_);
     cache_.erase(path);
+    // A Refresh is also "try again" for a preview in that folder that failed.
+    for (auto it = previews_.begin(); it != previews_.end();) {
+        if (!it->second.pending && RemoteFilerParent(it->first) == path)
+            it = previews_.erase(it);
+        else
+            ++it;
+    }
 }
 
 void UltraFilerRemoteDrives::InvalidateAll() {
     std::lock_guard<std::mutex> lk(mutex_);
     cache_.clear();
+    for (auto it = previews_.begin(); it != previews_.end();) {
+        if (!it->second.pending) it = previews_.erase(it);
+        else ++it;
+    }
 }
 
 std::size_t UltraFilerRemoteDrives::PrefetchQueueSize() const {
@@ -994,6 +1149,48 @@ void UltraFilerRemoteDrives::WorkerMain() {
         {
             std::lock_guard<std::mutex> lk(mutex_);
             activeJobPath_.clear();
+        }
+
+        // A preview copy changed nothing anybody is looking at: it is renamed
+        // into place if it arrived whole, and the window is told either way.
+        if (job.isPreview) {
+            std::string previewError = operationError;
+            {
+                std::lock_guard<std::mutex> lk(mutex_);
+                if (previewError.empty()) previewError = lastOperationError_;
+                lastOperationError_.clear();
+            }
+            std::error_code ec;
+            if (previewError.empty()) {
+                fs::rename(job.argument, job.previewTarget, ec);
+                if (ec) previewError = "cannot store the preview: " + ec.message();
+                // Stamped now, whatever time the transfer gave the file, so
+                // the sweep counts its age from this look.
+                else DiskCache::Touch(job.previewTarget, std::chrono::seconds(0));
+            }
+            if (!previewError.empty()) fs::remove(job.argument, ec);
+            {
+                std::lock_guard<std::mutex> lk(mutex_);
+                if (previewError.empty()) previews_.erase(job.path);
+                else previews_[job.path] = PreviewState{false, job.previewTarget,
+                                                        previewError};
+            }
+            if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
+            std::size_t left = 0;
+            {
+                std::lock_guard<std::mutex> lk(mutex_);
+                left = queue_.size();
+            }
+            if (left == 0) ReportActivity(RemoteActivity{}, /*force=*/true);
+            if (UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent()) {
+                auto alive = alive_;
+                const std::string path = job.path;
+                app->PostToUIThread([this, alive, path]() {
+                    if (!alive->load()) return;
+                    if (onPreviewCopyReady) onPreviewCopyReady(path);
+                });
+            }
+            continue;
         }
 
         // A change that got as far as the server invalidates the folder it
