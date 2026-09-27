@@ -19,6 +19,14 @@
     has them. The connection string is sized up front so appending never
     reallocates and frees a buffer holding the password, and the escaping
     writes straight into it instead of through a temporary copy.
+  - **New result code `UltraDbResultCode::CredentialsUnavailable`.** The
+    driver returns it when it cannot obtain the password on this machine (the
+    vault is closed, the key is missing, or UltraVault is not built in). In
+    that case no connection was attempted. It used to return
+    `ConnectionFailed`, so a caller could not tell "fix this machine" from
+    "fix the network", and UltraFIBU reported a missing vault key as "the
+    server cannot be reached". Failures on the way to the server, including a
+    wrong password, are still `ConnectionFailed`.
   - New `UltraFIBUServerLoginTests` needs no database server. It stores a
     password containing a quote and a backslash in a memory vault, and a
     fake PostgreSQL server on the loopback interface asks for a cleartext

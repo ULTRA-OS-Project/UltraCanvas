@@ -460,8 +460,11 @@ public:
                                              UltraDbResult& error) override {
         std::string passwort, fehler;
         if (!Passwort(config, passwort, fehler)) {
-            error = UltraDbResult::Error(UltraDbResultCode::ConnectionFailed, fehler,
-                                         kDriverId);
+            // Its own code, not ConnectionFailed: nothing was attempted, and
+            // a caller that says "the server cannot be reached" about a key
+            // missing from the vault sends the user to check the network.
+            error = UltraDbResult::Error(UltraDbResultCode::CredentialsUnavailable,
+                                         fehler, kDriverId);
             return nullptr;
         }
 

@@ -11,6 +11,16 @@
     (`UltraVault::Initialize`). Fehlt der Schluessel oder ist der Tresor
     geschlossen, lehnt `OpenServer` ab, bevor eine Verbindung aufgebaut wird,
     und sagt, welcher der beiden Faelle vorliegt.
+  - **Die Fehlermeldung sagt, wo das Problem liegt.** Bisher begann jede
+    gescheiterte Anmeldung mit "Der Server ist nicht erreichbar:", auch wenn
+    nur der Schluessel im Tresor fehlte - man pruefte dann das Netz statt des
+    Tresors. Jetzt gibt es zwei Meldungen:
+    - "Das Passwort für den Server ist auf diesem Rechner nicht verfügbar, es
+      wurde keine Verbindung aufgebaut: ..." - wenn der Tresor geschlossen ist
+      oder der Schluessel fehlt. Das behebt man an diesem Rechner.
+    - "Die Verbindung zum Server ist fehlgeschlagen: ..." - bei allem, was
+      zwischen Rechner und Server passiert: abgewiesen, kein TLS, falsches
+      Passwort. Den genauen Grund nennt der Text nach dem Doppelpunkt.
   - Neuer Test `UltraFIBUServerLoginTests`: Er braucht keinen Server und laeuft
     ueberall, wo libpq vorhanden ist.
   - Die Dokumentation (`UltraFIBUStore.h`, README, Entwurf §10.1) sagt nicht

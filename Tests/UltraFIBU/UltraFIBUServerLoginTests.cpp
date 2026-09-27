@@ -251,6 +251,18 @@ void TestDriverSendsTheVaultPassword() {
     Check(server.password == kPasswort,
           "the password on the wire is the one stored in the vault (got \"" +
           server.password + "\")");
+    Check(r.code == UltraDbResultCode::ConnectionFailed,
+          "a login the server refuses is ConnectionFailed");
+
+    // A key that is not in the vault never reaches a server, and says so in
+    // its code, so a caller can tell "fix this machine" from "fix the network".
+    UltraDbConnectionConfig fehlt = cfg;
+    fehlt.name        = "login-driver-missing";
+    fehlt.credentials = "vault:ultrafibu.test.nobody";
+    Check(bool(UltraDb_RegisterConnection(fehlt)), "a second connection registers");
+    const UltraDbResult f = UltraDb_OpenConnection(fehlt.name);
+    Check(f.code == UltraDbResultCode::CredentialsUnavailable,
+          "a key missing from the vault is CredentialsUnavailable, not ConnectionFailed");
 }
 
 void TestOpenServerResolvesTheKey() {
@@ -268,7 +280,8 @@ void TestOpenServerResolvesTheKey() {
     Check(server.connected, "OpenServer resolved the key and went on to connect");
     Check(server.askedForEncryption, "and asked for TLS first, as verify-full must");
     Check(server.password.empty(), "no password is sent without TLS");
-    Check(Contains(r.fehler, "nicht erreichbar") && !Contains(r.fehler, "UltraVault"),
+    Check(Contains(r.fehler, "Verbindung zum Server ist fehlgeschlagen") &&
+          !Contains(r.fehler, "UltraVault") && !Contains(r.fehler, "nicht verfügbar"),
           "the message is about the server, not the vault: " + r.fehler);
 }
 
@@ -281,6 +294,9 @@ void TestMissingKeyIsRefusedBeforeConnecting() {
     server.Stop();
     Check(!r.ok, "a key that is not in the vault is refused");
     Check(Contains(r.fehler, "not in UltraVault"), "and says so: " + r.fehler);
+    Check(Contains(r.fehler, "auf diesem Rechner nicht verfügbar") &&
+          !Contains(r.fehler, "Verbindung zum Server"),
+          "as a local problem, not as an unreachable server");
     Check(!server.connected, "before any connection is made");
 }
 
@@ -294,6 +310,8 @@ void TestClosedVaultIsRefusedBeforeConnecting() {
     server.Stop();
     Check(!r.ok, "with the vault closed the login is refused");
     Check(Contains(r.fehler, "not open"), "and names the closed vault: " + r.fehler);
+    Check(Contains(r.fehler, "auf diesem Rechner nicht verfügbar"),
+          "as a local problem, not as an unreachable server");
     Check(!server.connected, "before any connection is made");
 }
 
