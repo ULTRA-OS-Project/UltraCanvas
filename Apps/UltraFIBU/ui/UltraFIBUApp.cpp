@@ -77,22 +77,57 @@ std::string Zahl(int64_t wert) {
 
 // ===== OPENING =====
 
-bool FibuApp::Initialisieren(const std::string& datenbank, std::string& fehler) {
-    const StoreResult geoeffnet = store_.Open("ultrafibu-ui", datenbank);
-    if (!geoeffnet) { fehler = geoeffnet.fehler; return false; }
-
+bool FibuApp::MandantLaden(const std::string& quelle, std::string& fehler) {
     const std::vector<Mandant> alle = store_.Mandanten();
     if (alle.empty()) {
-        fehler = "In \"" + datenbank + "\" ist noch kein Mandant angelegt.\n"
-                 "Mit \"ultrafibu einrichten " + datenbank +
+        fehler = "In \"" + quelle + "\" ist noch kein Mandant angelegt.\n"
+                 "Mit \"ultrafibu einrichten " + quelle +
                  " --firma ... --gj-beginn ...\" anlegen.";
         return false;
     }
     mandant_ = alle[0];
+    const std::vector<Geschaeftsjahr> jahre = store_.Geschaeftsjahre(mandant_.id);
+    if (!jahre.empty()) { jahr_ = jahre.back(); jahrGefunden_ = true; }
+    return true;
+}
 
-    // The application acts as the first administrator in the file and says so
-    // in the audit trail, exactly as the CLI does. A real login belongs to
-    // server mode.
+std::string FibuApp::VerbindeServer(const ServerZiel& ziel, const std::string& dbPasswort,
+                                    bool& leer) {
+    leer = false;
+    ServerTresor tresor;
+    std::string fehler;
+    if (!tresor.Oeffnen(fehler)) return fehler;
+    if (!dbPasswort.empty() && !tresor.SpeicherePasswort(ziel, dbPasswort, fehler))
+        return fehler;
+    store_.Close();
+    const StoreResult r = VerbindeMitServer(store_, ziel, tresor);
+    if (!r) return r.fehler;
+    serverUrl_  = ziel.ToUrl();
+    serverKurz_ = ziel.host + "/" + ziel.datenbank;
+    leer = !store_.HatBenutzer();
+    return std::string();
+}
+
+std::string FibuApp::AnmeldenUndLaden(const std::string& name, const std::string& passwort) {
+    if (!store_.IsOpen() || serverUrl_.empty())
+        return "Es besteht keine Serververbindung.";
+    Akteur akteur;
+    const StoreResult r = Anmelden(store_, name, passwort, akteur);
+    if (!r) return r.fehler;
+    std::string fehler;
+    if (!MandantLaden(serverUrl_, fehler)) return fehler;
+    akteur_ = akteur;
+    return std::string();
+}
+
+bool FibuApp::Initialisieren(const std::string& datenbank, std::string& fehler) {
+    const StoreResult geoeffnet = store_.Open("ultrafibu-ui", datenbank);
+    if (!geoeffnet) { fehler = geoeffnet.fehler; return false; }
+    if (!MandantLaden(datenbank, fehler)) return false;
+
+    // A local file opens as its first administrator and says so in the audit
+    // trail, exactly as the CLI does. On a server the person signs in instead
+    // (AnmeldenUndLaden).
     akteur_.rolle = BenutzerRolle::Administrator;
     akteur_.anmeldename = "ui";
     for (const Benutzer& benutzer : store_.BenutzerListe()) {
@@ -102,9 +137,6 @@ bool FibuApp::Initialisieren(const std::string& datenbank, std::string& fehler) 
             break;
         }
     }
-
-    const std::vector<Geschaeftsjahr> jahre = store_.Geschaeftsjahre(mandant_.id);
-    if (!jahre.empty()) { jahr_ = jahre.back(); jahrGefunden_ = true; }
     return true;
 }
 
@@ -288,6 +320,11 @@ void FibuApp::KopfAktualisieren() {
     } else {
         text += "   |   kein Geschäftsjahr angelegt";
     }
+    // On a server, who is working and where: two people at two desks see the
+    // same company and must be able to tell whose session this is.
+    if (!serverUrl_.empty())
+        text += "   |   " + akteur_.anmeldename + ", " + BenutzerRolleLabel(akteur_.rolle) +
+                "   |   " + serverKurz_;
     kopf_->SetText(text);
 }
 

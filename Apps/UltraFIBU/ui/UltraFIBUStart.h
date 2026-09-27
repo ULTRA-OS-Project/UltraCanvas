@@ -54,6 +54,11 @@ public:
     // no window left, and closing this one first would end it.
     std::function<std::string(const std::string&)> onDateiGewaehlt;
 
+    // "Mit einem Server verbinden ..." - the caller opens the server window.
+    // This window stays open behind it, so closing the server window returns
+    // here instead of ending the program.
+    std::function<void()> onServerGewuenscht;
+
     // `hinweis` says why this window is showing instead of a bookkeeping, so
     // the user is not left guessing what went wrong. `vorschlag` is a path to
     // offer when setting up - the one that was given and did not exist.

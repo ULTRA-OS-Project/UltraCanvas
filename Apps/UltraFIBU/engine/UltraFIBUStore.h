@@ -108,7 +108,9 @@ public:
     StoreResult Open(const std::string& connectionName, const std::string& databasePath,
                      bool anlegen = false);
 
-    // Shared server. `credentialsRef` is an UltraVault key ("vault:fibu-rw"),
+    // Shared server. Callers normally go through VerbindeMitServer
+    // (UltraFIBUServer.h), which names the vault key and remembers the server.
+    // `credentialsRef` is an UltraVault key ("vault:fibu-rw"),
     // never a literal password; the driver reads the password from the vault,
     // which the caller must have opened (UltraVault::Initialize) first. TLS is
     // verify-full. Refuses clearly - never falls back to a local file - when

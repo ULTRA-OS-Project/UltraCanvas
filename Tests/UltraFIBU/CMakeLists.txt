@@ -35,6 +35,7 @@ set(ULTRAFIBU_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUOss.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUEinrichtung.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUStore.cpp
+    ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUServer.cpp
     # The invoice print, and the two framework sources its PDF writer
     # needs. Compiled here rather than linked as the Vector plugin for
     # the same reason the engine sources are: the plugin pulls in the
@@ -58,7 +59,7 @@ target_include_directories(UltraFIBUEngineTests PRIVATE
     ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector
     ${CMAKE_SOURCE_DIR}/UltraCanvas/include
     ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
-target_link_libraries(UltraFIBUEngineTests PRIVATE UltraDatabase)
+target_link_libraries(UltraFIBUEngineTests PRIVATE UltraDatabase UltraVault)
 # The DATEV column line of a real EXTF export lives in data/ next to this file.
 # It is passed as a path rather than found relative to the working directory,
 # because the test runs from ${CMAKE_BINARY_DIR}/bin and a fixture that is
@@ -122,7 +123,7 @@ if(ULTRAFIBU_TEST_LIBPQ)
         ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector
         ${CMAKE_SOURCE_DIR}/UltraCanvas/include
         ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
-    target_link_libraries(UltraFIBUServerTests PRIVATE UltraDatabase)
+    target_link_libraries(UltraFIBUServerTests PRIVATE UltraDatabase UltraVault)
     if(TINYXML2_FOUND)
         target_include_directories(UltraFIBUServerTests PRIVATE ${TINYXML2_INCLUDE_DIRS})
         target_link_libraries(UltraFIBUServerTests PRIVATE ${TINYXML2_LIBRARIES})

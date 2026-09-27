@@ -19,7 +19,7 @@ namespace {
 constexpr int   kBreite = 560;
 // Tall enough that the calendar under the date field opens downward and
 // leaves the rest of the form visible.
-constexpr int   kHoehe  = 640;
+constexpr int   kHoehe  = 680;
 constexpr float kRand   = 24.0f;
 constexpr float kZeile  = 28.0f;
 constexpr float kLabelB = 190.0f;
@@ -62,6 +62,13 @@ std::shared_ptr<UltraCanvasWindow> StartFenster::Bauen(const std::string& hinwei
                                      "Bestehende Buchhaltung öffnen ...");
     oeffnenKnopf->SetOnClick([this]() { Oeffnen(); });
     fenster_->AddChild(oeffnenKnopf);
+    y += kZeile + 8;
+
+    // ---- or work in a shared one on a server ----
+    auto serverKnopf = CreateButton("startServer", kRand, y, 300, kZeile,
+                                    "Mit einem Server verbinden ...");
+    serverKnopf->SetOnClick([this]() { if (onServerGewuenscht) onServerGewuenscht(); });
+    fenster_->AddChild(serverKnopf);
     y += kZeile + 26;
 
     // ---- set up a new one ----
@@ -106,13 +113,13 @@ std::shared_ptr<UltraCanvasWindow> StartFenster::Bauen(const std::string& hinwei
     fenster_->AddChild(skr_);
     y += kZeile + 10;
 
-    auto spaeter = CreateLabel("startSpaeter", kRand, y, kBreite - 2 * kRand, 36,
+    auto spaeter = CreateLabel("startSpaeter", kRand, y, kBreite - 2 * kRand, 54,
         "Anschrift, Steuernummer und Bankverbindung lassen sich später ergänzen - "
         "sie werden erst für die erste gedruckte Rechnung gebraucht.");
     spaeter->SetWrap(TextWrap::WrapWord);
     spaeter->SetFontSize(11);
     fenster_->AddChild(spaeter);
-    y += 44;
+    y += 60;
 
     // The reason the button is greyed, next to it - never a greyed button with
     // no explanation.

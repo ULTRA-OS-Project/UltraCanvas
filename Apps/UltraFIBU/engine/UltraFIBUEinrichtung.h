@@ -35,6 +35,8 @@
 
 namespace UltraFIBU {
 
+class Store;   // UltraFIBUStore.h - only RichteServerEin needs it, by reference
+
 // What a new bookkeeping needs to be told. Only the company name and the start
 // of the fiscal year are required; everything else can be completed later,
 // and `rechnung-pdf` names what is still missing before it prints.
@@ -43,6 +45,10 @@ struct EinrichtungsDaten {
     Date        gjBeginn;               // required: the first of a month
     std::string skr      = "SKR03";     // SKR03 | SKR04
     std::string benutzer = "admin";     // the first administrator's login
+    // The first administrator's password. Optional for a local file, which
+    // opens as its first administrator anyway; required on a server, where
+    // nobody gets in without one - including the person who set it up.
+    std::string passwort;
 
     // Address, tax numbers, bank, Kanzlei numbers. `name` is ignored - it is
     // `firma` - and `land` defaults to DE when left empty.
@@ -77,5 +83,15 @@ bool EnthaeltBuchhaltung(const std::string& pfad);
 // all or nothing, and never over a file that already holds one.
 EinrichtungsBericht RichteBuchhaltungEin(const std::string& ziel,
                                          const EinrichtungsDaten& daten);
+
+// Set up a bookkeeping in a server database that `store` already has open
+// (Store::OpenServer). The same contents as a new file, with one difference
+// that cannot be helped: a server database cannot be built beside the target
+// and moved into place, so the steps run one after another on the server.
+// Everything that can fail without a database - the form, the chart of
+// accounts, the tax keys - is checked and read *before* the first write, so
+// what is left to fail midway is the connection. The database must be empty:
+// no company and no user.
+EinrichtungsBericht RichteServerEin(Store& store, const EinrichtungsDaten& daten);
 
 } // namespace UltraFIBU

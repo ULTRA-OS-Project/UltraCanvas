@@ -29,14 +29,31 @@
 #include "UltraFIBUBuchung.h"
 #include "UltraFIBUGeschaeftsjahr.h"
 #include "UltraFIBUKontenrahmen.h"
+#include "UltraFIBUServer.h"
 #include "UltraFIBUStore.h"
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNr.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <string>
 #include <vector>
+
+#if defined(_WIN32)
+   // For the no-echo password prompt only; keep the macro fallout small.
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#else
+#  include <termios.h>
+#  include <unistd.h>
+#endif
 
 #ifndef ULTRAFIBU_CLI_VERSION
 #define ULTRAFIBU_CLI_VERSION "0.0.0"
@@ -50,6 +67,13 @@ namespace {
 // read by PrintUsage(), so the help text only promises a window where one
 // exists.
 bool gMitFenster = false;
+
+// Who signed in with --anmelden, for every command that writes. Empty until a
+// login succeeded; AkteurFor() then returns this user instead of the first
+// administrator.
+std::string gAnmeldename;
+Akteur      gAngemeldet;
+bool        gIstAngemeldet = false;
 
 void PrintUsage() {
     std::printf(
@@ -86,6 +110,8 @@ void PrintUsage() {
         "                              Anschrift und Steuernummer sind\n"
         "                              Pflichtangaben auf jeder Rechnung\n"
         "                              (§ 14 UStG).\n"
+        "        Auf einem Server (<datei> = postgresql://...) fragt einrichten\n"
+        "        nach dem Passwort des ersten Administrators.\n"
         "  info <datei>            Mandant, Geschäftsjahre und Bestände anzeigen\n"
         "  konten <datei>          Kontenrahmen anzeigen\n"
         "  partner <datei> [suche] Kunden und Lieferanten anzeigen\n"
@@ -102,6 +128,19 @@ void PrintUsage() {
         "  festschreiben <datei> <datum> [--ja]\n"
         "                          Buchungen bis zu diesem Tag unveränderbar machen\n"
         "  protokoll <datei>       Änderungsprotokoll (GoBD) anzeigen\n"
+        "\n"
+        "Benutzer und Mehrplatz-Betrieb:\n"
+        "  Statt <datei> geht überall eine Serveradresse:\n"
+        "      postgresql://<db-benutzer>@<host>[:<port>]/<datenbank>\n"
+        "  Auf einem Server ist eine Anmeldung Pflicht:\n"
+        "        --anmelden <name>     Passwort wird abgefragt, oder aus\n"
+        "                              ULTRAFIBU_PASSWORT gelesen\n"
+        "  server-passwort <adresse>   Datenbankpasswort einmal abfragen und im\n"
+        "                              Tresor dieses Rechners ablegen\n"
+        "  benutzer <datei>        Benutzer und Rollen anzeigen\n"
+        "  benutzer-neu <datei> <name> --rolle <administrator|buchhalter|\n"
+        "               erfasser|steuerberater|nur-lesen> [--anzeigename <text>]\n"
+        "  passwort <datei> <name> Passwort eines Benutzers setzen (fragt zweimal)\n"
         "\n"
         "Belege und Buchungen:\n"
         "  beleg-neu <datei>       Beleg erfassen (Entwurf)\n"
@@ -250,16 +289,123 @@ std::string Positional(int argc, char** argv, int index) {
     return std::string();
 }
 
+// Read a secret from the terminal without echoing it. From a pipe (a
+// script) it is read as a plain line, so `echo ... | ultrafibu` works too.
+std::string LiesGeheim(const std::string& frage) {
+    std::fprintf(stderr, "%s", frage.c_str());
+    std::fflush(stderr);
+    std::string zeile;
+#if defined(_WIN32)
+    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD modus = 0;
+    const bool konsole = GetConsoleMode(h, &modus) != 0;
+    if (konsole) SetConsoleMode(h, modus & ~static_cast<DWORD>(ENABLE_ECHO_INPUT));
+    std::getline(std::cin, zeile);
+    if (konsole) SetConsoleMode(h, modus);
+#else
+    termios alt{};
+    const bool terminal = isatty(STDIN_FILENO) && tcgetattr(STDIN_FILENO, &alt) == 0;
+    if (terminal) {
+        termios still = alt;
+        still.c_lflag &= ~static_cast<tcflag_t>(ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &still);
+    }
+    std::getline(std::cin, zeile);
+    if (terminal) tcsetattr(STDIN_FILENO, TCSANOW, &alt);
+#endif
+    std::fprintf(stderr, "\n");
+    if (!zeile.empty() && zeile.back() == '\r') zeile.pop_back();
+    return zeile;
+}
+
+// A new password, asked twice: a typo in a password nobody can read back
+// would otherwise become the password.
+bool LiesNeuesPasswort(const std::string& wofuer, std::string& out) {
+    const std::string erstes = LiesGeheim("Neues Passwort für " + wofuer + ": ");
+    const std::string zweites = LiesGeheim("Noch einmal: ");
+    if (erstes != zweites) {
+        std::printf("Fehler: Die beiden Eingaben stimmen nicht überein.\n");
+        return false;
+    }
+    out = erstes;
+    return true;
+}
+
+// Connect `store` to a server named by a postgresql:// address. The database
+// password comes out of this computer's vault; the first time there is none,
+// it is asked for (unless `nachfragen` is false) and stored.
+bool VerbindeServer(Store& store, const std::string& adresse, bool nachfragen = true) {
+    ServerZiel ziel;
+    std::string fehler;
+    if (!ParseServerUrl(adresse, ziel, fehler)) {
+        std::printf("Fehler: %s\n", fehler.c_str());
+        return false;
+    }
+    ServerTresor tresor;
+    if (!tresor.Oeffnen(fehler)) {
+        std::printf("Fehler: %s\n", fehler.c_str());
+        return false;
+    }
+    if (!tresor.HatPasswort(ziel)) {
+        if (!nachfragen) {
+            std::printf("Fehler: Für %s ist kein Datenbankpasswort hinterlegt "
+                        "(ultrafibu server-passwort %s).\n",
+                        ziel.ToUrl().c_str(), ziel.ToUrl().c_str());
+            return false;
+        }
+        const std::string pw = LiesGeheim("Datenbankpasswort für " + ziel.ToUrl() + ": ");
+        if (!tresor.SpeicherePasswort(ziel, pw, fehler)) {
+            std::printf("Fehler: %s\n", fehler.c_str());
+            return false;
+        }
+    }
+    const StoreResult r = VerbindeMitServer(store, ziel, tresor);
+    if (!r) {
+        std::printf("Fehler: %s\n", r.fehler.c_str());
+        return false;
+    }
+    return true;
+}
+
+// Sign the --anmelden user in. The password comes from ULTRAFIBU_PASSWORT
+// (scripts, cron) or is asked for.
+bool MeldeAn(Store& store) {
+    const char* ausUmgebung = std::getenv("ULTRAFIBU_PASSWORT");
+    const std::string pw = (ausUmgebung && *ausUmgebung)
+        ? std::string(ausUmgebung)
+        : LiesGeheim("Passwort für " + gAnmeldename + ": ");
+    const StoreResult r = Anmelden(store, gAnmeldename, pw, gAngemeldet);
+    if (!r) {
+        std::printf("Fehler: %s\n", r.fehler.c_str());
+        return false;
+    }
+    gIstAngemeldet = true;
+    return true;
+}
+
 bool OpenStore(Store& store, const std::string& datei) {
     if (datei.empty()) {
         std::printf("Fehler: Keine Datei angegeben.\n");
         return false;
+    }
+    if (IstServerUrl(datei)) {
+        // A shared database: nobody works in it anonymously. Every row the
+        // command writes names the person who signed in (GoBD attribution).
+        if (gAnmeldename.empty()) {
+            std::printf("Fehler: Im Mehrplatz-Betrieb ist eine Anmeldung nötig: "
+                        "--anmelden <name>\n");
+            return false;
+        }
+        return VerbindeServer(store, datei) && MeldeAn(store);
     }
     const StoreResult opened = store.Open("ultrafibu", datei);
     if (!opened) {
         std::printf("Fehler: %s\n", opened.fehler.c_str());
         return false;
     }
+    // A local file needs no login, but takes one: --anmelden records the
+    // person instead of the first administrator.
+    if (!gAnmeldename.empty()) return MeldeAn(store);
     return true;
 }
 
@@ -276,9 +422,11 @@ bool ErsterMandant(const Store& store, Mandant& out) {
     return true;
 }
 
-// The CLI acts as the first administrator it finds, and says so in the audit
-// trail. A real login belongs to the UI and to server mode.
+// Who a command acts as: the user who signed in with --anmelden, or - on a
+// local file without one - the first administrator, marked "(cli)" in the
+// audit trail.
 Akteur AkteurFor(const Store& store) {
+    if (gIstAngemeldet) return gAngemeldet;
     Akteur akteur;
     for (const Benutzer& user : store.BenutzerListe()) {
         if (user.rolle == BenutzerRolle::Administrator && user.aktiv) {
@@ -345,7 +493,20 @@ int Einrichten(int argc, char** argv) {
     m.beraternummer   = Option(argc, argv, "--beraternummer");
     m.mandantennummer = Option(argc, argv, "--mandantennummer");
 
-    const EinrichtungsBericht bericht = RichteBuchhaltungEin(datei, daten);
+    EinrichtungsBericht bericht;
+    if (IstServerUrl(datei)) {
+        // The server database is created by its administrator; this fills it.
+        // The first administrator's password is not optional here: on a
+        // server nobody gets in without one.
+        if (!LiesNeuesPasswort("den Administrator \"" + daten.benutzer + "\"",
+                               daten.passwort))
+            return 1;
+        Store store;
+        if (!VerbindeServer(store, datei)) return 1;
+        bericht = RichteServerEin(store, daten);
+    } else {
+        bericht = RichteBuchhaltungEin(datei, daten);
+    }
     for (const std::string& warnung : bericht.warnungen)
         std::printf("  Warnung: %s\n", warnung.c_str());
     if (!bericht.ok) {
@@ -2409,6 +2570,100 @@ int EuSaetzeUebernehmen(int argc, char** argv) {
     return 0;
 }
 
+// ---- Benutzer and the server's password ----------------------------------
+
+int BenutzerZeigen(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    std::printf("%-16s %-24s %-16s %-6s %s\n", "Anmeldename", "Name", "Rolle",
+                "aktiv", "letzte Anmeldung");
+    for (const Benutzer& b : store.BenutzerListe()) {
+        std::string zuletzt = "-";
+        if (b.letzterLogin > 0) {
+            const Date tag = Date::FromEpochDay(b.letzterLogin / 86400);
+            zuletzt = FormatDateGerman(tag);
+        }
+        std::printf("%-16s %-24s %-16s %-6s %s\n", b.anmeldename.c_str(),
+                    b.anzeigename.c_str(), BenutzerRolleLabel(b.rolle).c_str(),
+                    b.aktiv ? "ja" : "nein", zuletzt.c_str());
+    }
+    return 0;
+}
+
+int BenutzerNeu(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Benutzer b;
+    b.anmeldename = Positional(argc, argv, 1);
+    b.anzeigename = Option(argc, argv, "--anzeigename", b.anmeldename);
+    const std::string rolle = Option(argc, argv, "--rolle");
+    if (b.anmeldename.empty() || rolle.empty()) {
+        std::printf("Aufruf: ultrafibu benutzer-neu <datei> <name> --rolle <rolle>\n");
+        return 2;
+    }
+    if (!BenutzerRolleFromText(rolle, b.rolle)) {
+        std::printf("Fehler: \"%s\" ist keine Rolle (administrator, buchhalter, "
+                    "erfasser, steuerberater, nur-lesen).\n", rolle.c_str());
+        return 2;
+    }
+    const StoreResult r = store.SaveBenutzer(b, AkteurFor(store));
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Benutzer %s angelegt (%s). Ohne Passwort ist keine Anmeldung "
+                "möglich: ultrafibu passwort %s %s\n", b.anmeldename.c_str(),
+                BenutzerRolleLabel(b.rolle).c_str(), Positional(argc, argv, 0).c_str(),
+                b.anmeldename.c_str());
+    return 0;
+}
+
+int PasswortSetzen(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    const std::string name = Positional(argc, argv, 1);
+    if (name.empty()) {
+        std::printf("Aufruf: ultrafibu passwort <datei> <name>\n");
+        return 2;
+    }
+    Benutzer b;
+    if (!store.BenutzerByName(name, b)) {
+        std::printf("Fehler: Einen Benutzer \"%s\" gibt es nicht.\n", name.c_str());
+        return 1;
+    }
+    std::string pw;
+    if (!LiesNeuesPasswort(name, pw)) return 1;
+    const StoreResult r = store.SetPasswort(b.id, pw, AkteurFor(store));
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Passwort für %s gesetzt.\n", name.c_str());
+    return 0;
+}
+
+int ServerPasswort(int argc, char** argv) {
+    const std::string adresse = Positional(argc, argv, 0);
+    ServerZiel ziel;
+    std::string fehler;
+    if (!ParseServerUrl(adresse, ziel, fehler)) {
+        std::printf("Fehler: %s\n", fehler.c_str());
+        return 2;
+    }
+    ServerTresor tresor;
+    if (!tresor.Oeffnen(fehler)) { std::printf("Fehler: %s\n", fehler.c_str()); return 1; }
+    const std::string pw = LiesGeheim("Datenbankpasswort für " + ziel.ToUrl() + ": ");
+    if (!tresor.SpeicherePasswort(ziel, pw, fehler)) {
+        std::printf("Fehler: %s\n", fehler.c_str());
+        return 1;
+    }
+    // Tried at once, so a wrong password is found now and not at the next
+    // booking.
+    Store store;
+    const StoreResult r = VerbindeMitServer(store, ziel, tresor);
+    if (!r) {
+        std::printf("Abgelegt, aber die Verbindung klappt nicht: %s\n", r.fehler.c_str());
+        return 1;
+    }
+    std::printf("Datenbankpasswort für %s abgelegt; die Verbindung steht.\n",
+                ziel.ToUrl().c_str());
+    return 0;
+}
+
 struct Befehl {
     const char* name;
     int (*ausfuehren)(int argc, char** argv);
@@ -2460,6 +2715,10 @@ const Befehl kBefehle[] = {
     { "bank-importe",          BankImporte },
     { "umsaetze",              Umsaetze },
     { "zuordnen",              Zuordnen },
+    { "benutzer",              BenutzerZeigen },
+    { "benutzer-neu",          BenutzerNeu },
+    { "passwort",              PasswortSetzen },
+    { "server-passwort",       ServerPasswort },
 };
 
 const Befehl* FindeBefehl(const std::string& name) {
@@ -2477,6 +2736,7 @@ bool UltraFIBU::IstBefehl(const std::string& wort) {
 
 int UltraFIBU::Kommandozeile(int argc, char** argv, bool mitFenster) {
     gMitFenster = mitFenster;
+    gAnmeldename = Option(argc, argv, "--anmelden");
     if (argc < 2) { PrintUsage(); return 2; }
     const std::string befehl = argv[1];
 

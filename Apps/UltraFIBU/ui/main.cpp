@@ -20,6 +20,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUApp.h"
 #include "UltraFIBUStart.h"
+#include "UltraFIBUServerFenster.h"
+#include "UltraFIBUServer.h"
 #include "UltraFIBUKonsole.h"
 #include "UltraFIBUCli.h"
 
@@ -71,6 +73,8 @@ int main(int argc, char** argv) {
 
     UltraFIBU::FibuApp fibu;
     UltraFIBU::StartFenster start;
+    UltraFIBU::ServerFenster server;
+    bool serverOffen = false;
 
     // Open a file in the main window. Returns why not, or an empty string.
     // The main window is built and shown here, before anything closes the
@@ -80,6 +84,45 @@ int main(int argc, char** argv) {
         if (!fibu.Initialisieren(pfad, fehler)) return fehler;
         fibu.FensterBauen()->Show();
         return std::string();
+    };
+
+    // The server path: connect, sign in, then the same main window. Built on
+    // demand, at most once - a second click brings nothing new.
+    auto zeigeServer = [&](const UltraFIBU::ServerZiel& vorgabe, const std::string& hinweis) {
+        if (serverOffen) return;
+        serverOffen = true;
+        server.onVerbinden = [&fibu](const UltraFIBU::ServerZiel& ziel,
+                                     const std::string& dbPasswort, bool& leer) {
+            return fibu.VerbindeServer(ziel, dbPasswort, leer);
+        };
+        server.onAnmelden = [&fibu, &start](const std::string& name,
+                                            const std::string& passwort) -> std::string {
+            const std::string fehler = fibu.AnmeldenUndLaden(name, passwort);
+            if (!fehler.empty()) return fehler;
+            fibu.FensterBauen()->Show();
+            start.Schliessen();   // a no-op when it was never opened
+            return std::string();
+        };
+        server.Bauen(vorgabe, hinweis)->Show();
+    };
+    const std::string serverHinweis =
+        "Mehrere Personen, eine Buchhaltung. Das Datenbankpasswort bleibt im Tresor "
+        "dieses Rechners; das persönliche wird bei jedem Start abgefragt.";
+
+    // A server address as the one argument: straight to the connect form,
+    // filled in from it.
+    if (UltraFIBU::IstServerUrl(datenbank)) {
+        UltraFIBU::ServerZiel ziel;
+        std::string fehler;
+        const bool gueltig = UltraFIBU::ParseServerUrl(datenbank, ziel, fehler);
+        zeigeServer(ziel, gueltig ? serverHinweis : fehler);
+        app.Run();
+        return EXIT_SUCCESS;
+    }
+    start.onServerGewuenscht = [&]() {
+        UltraFIBU::ServerZiel zuletzt;
+        UltraFIBU::LadeLetztenServer(zuletzt);   // the last one used, if any
+        zeigeServer(zuletzt, serverHinweis);
     };
 
     // Why the start window is needed, if it is. Each case gets its own

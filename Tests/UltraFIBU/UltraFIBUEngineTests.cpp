@@ -39,6 +39,7 @@
 #include "UltraFIBUBelegArchiv.h"
 #include "UltraFIBUDatev.h"
 #include "UltraFIBUEinrichtung.h"
+#include "UltraFIBUServer.h"
 #include "UltraFIBURechnungPdf.h"
 #include "UltraFIBUStore.h"
 #include "UltraFIBUTypes.h"
@@ -48,6 +49,7 @@
 #include "UltraFIBUUstva.h"
 
 #include <UltraCrypt/UltraCryptCore.h>
+#include <UltraVault/UltraVault.h>
 // The hash-chain test edits a posting the way somebody with the database
 // file and a SQL prompt would - which is the only way to prove the chain
 // notices. Nothing else in the engine writes SQL outside the store.
@@ -57,7 +59,10 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <set>
 #include <string>
@@ -6019,6 +6024,199 @@ static void TestOss() {
     }
 }
 
+
+// ---- Server mode: address, settings, vault, login, setup -------------------
+
+static void TestServerModus() {
+    std::printf("Mehrplatz-Betrieb (Adresse, Tresor, Anmeldung)\n");
+
+    // --- the address ---
+    {
+        ServerZiel z;
+        std::string fehler;
+        Check(ParseServerUrl("postgresql://fibu@db.kanzlei.local/buch", z, fehler),
+              "a plain server address parses");
+        CheckText(z.host, "db.kanzlei.local", "host");
+        CheckInt(z.port, 5432, "and the port defaults to PostgreSQL's");
+        CheckText(z.datenbank, "buch", "database");
+        CheckText(z.benutzer, "fibu", "database role");
+        CheckText(z.ToUrl(), "postgresql://fibu@db.kanzlei.local/buch",
+                  "the default port is left out when written back");
+        CheckText(z.TresorKonto(), "server.fibu@db.kanzlei.local:5432/buch",
+                  "but always in the vault key, so db and db:5432 are one entry");
+
+        Check(ParseServerUrl("postgres://fibu@10.0.0.5:6543/buch", z, fehler) &&
+              z.port == 6543 && z.ToUrl() == "postgresql://fibu@10.0.0.5:6543/buch",
+              "postgres:// and a port parse, and the port survives the round trip");
+        Check(ParseServerUrl("postgresql://fibu@[::1]:5432/buch", z, fehler) &&
+              z.host == "::1" && z.ToUrl() == "postgresql://fibu@[::1]/buch",
+              "an IPv6 host goes in brackets both ways");
+
+        Check(!ParseServerUrl("postgresql://fibu:geheim@db/buch", z, fehler) &&
+              fehler.find("Passwort") != std::string::npos,
+              "a password in the address is refused, and the message says why");
+        Check(!ParseServerUrl("postgresql://db/buch", z, fehler), "the role is required");
+        Check(!ParseServerUrl("postgresql://fibu@db", z, fehler), "and the database");
+        Check(!ParseServerUrl("postgresql://fibu@db:70000/buch", z, fehler),
+              "a port above 65535 is refused");
+        Check(!ParseServerUrl("postgresql://fibu@db:12a/buch", z, fehler),
+              "and one that is not a number");
+        Check(!ParseServerUrl("postgresql://fi bu@db/buch", z, fehler),
+              "whitespace in a name is refused");
+        Check(!ParseServerUrl("buch.db", z, fehler), "a file path is not an address");
+        Check(IstServerUrl("postgresql://x@y/z") && IstServerUrl("postgres://x@y/z") &&
+              !IstServerUrl("buch.db") && !IstServerUrl("/tmp/postgresql.db"),
+              "IstServerUrl tells addresses from paths");
+    }
+
+    // Everything below writes into a private configuration directory.
+    char vorlage[] = "/tmp/ultrafibu-konfig-XXXXXX";
+    const char* dir = mkdtemp(vorlage);
+    Check(dir != nullptr, "a temporary configuration directory");
+    if (!dir) return;
+    setenv("ULTRAFIBU_CONFIG_DIR", dir, 1);
+    CheckText(KonfigurationsVerzeichnis(), dir, "ULTRAFIBU_CONFIG_DIR is honoured");
+
+    // --- the last server, remembered without its password ---
+    {
+        ServerZiel gelesen;
+        Check(!LadeLetztenServer(gelesen), "no last server before one was saved");
+        ServerZiel z;
+        std::string fehler;
+        ParseServerUrl("postgresql://fibu@db.local:5433/buch", z, fehler);
+        Check(SpeichereLetztenServer(z, fehler), "the last server is saved");
+        Check(LadeLetztenServer(gelesen) && gelesen.ToUrl() == z.ToUrl(),
+              "and read back unchanged");
+
+        std::ifstream in(std::string(dir) + "/server.ini");
+        const std::string inhalt((std::istreambuf_iterator<char>(in)), {});
+        Check(inhalt.find("url = postgresql://fibu@db.local:5433/buch") != std::string::npos,
+              "server.ini holds the address as text");
+
+        // A hand-edited file is held to the same rules as the form.
+        std::ofstream(std::string(dir) + "/server.ini")
+            << "url = postgresql://fibu:geheim@db.local/buch\n";
+        Check(!LadeLetztenServer(gelesen),
+              "a server.ini with a password in the address is not taken");
+    }
+
+    if (!UltraCrypt_IsAvailable()) {
+        std::printf("    (UltraCrypt without libsodium: vault and login tests skipped)\n");
+        return;
+    }
+
+    // --- the vault ---
+    {
+        ServerZiel z;
+        std::string fehler;
+        ParseServerUrl("postgresql://fibu@db.local/buch", z, fehler);
+        ServerTresor tresor;
+        Check(tresor.Oeffnen(fehler), "the vault opens without a prompt: " + fehler);
+        Check(!tresor.HatPasswort(z), "and holds nothing for a new server");
+        Check(!tresor.SpeicherePasswort(z, "", fehler), "an empty password is refused");
+        Check(tresor.SpeicherePasswort(z, "db-geheim", fehler), "a password is stored");
+        Check(tresor.HatPasswort(z), "and found again");
+        Check(std::filesystem::exists(std::string(dir) + "/vault/ultrafibu.vault"),
+              "in UltraFIBU's own vault file under the configuration directory");
+
+        // What the PostgreSQL driver does with the reference.
+        const std::string ref = ServerTresor::CredentialsRef(z);
+        CheckText(ref, "vault:fibu.ultrafibu.server.fibu@db.local:5432/buch",
+                  "the reference OpenServer passes to the driver");
+        UltraVault::SecretValue wert;
+        Check(UltraVault::Get(ref.substr(6), wert).IsOk() && wert.AsString() == "db-geheim",
+              "the driver finds the password under that key");
+
+        ServerZiel anderer = z;
+        anderer.datenbank = "andere";
+        Check(!tresor.HatPasswort(anderer), "another database is another entry");
+
+        Store store;
+        CheckRefused(VerbindeMitServer(store, anderer, tresor),
+                     "connecting without a stored password is refused before any network");
+        Check(tresor.VergissPasswort(z) && !tresor.HatPasswort(z), "a password can be removed");
+    }
+
+    // --- the login ---
+    {
+        Store store;
+        if (!CheckStore(store.Open("fibu-login", ":memory:"), "an in-memory database")) return;
+        Benutzer admin;
+        admin.anmeldename = "chefin";
+        admin.anzeigename = "Die Chefin";
+        admin.rolle       = BenutzerRolle::Administrator;
+        CheckStore(store.SaveBenutzer(admin, Akteur()), "the first administrator");
+        Akteur alsAdmin;
+        alsAdmin.benutzerId = admin.id; alsAdmin.anmeldename = admin.anmeldename;
+        alsAdmin.rolle = admin.rolle;
+
+        Benutzer erfasser;
+        erfasser.anmeldename = "azubi";
+        erfasser.rolle       = BenutzerRolle::Erfasser;
+        CheckStore(store.SaveBenutzer(erfasser, alsAdmin), "a second user");
+
+        Akteur akteur;
+        CheckRefused(Anmelden(store, "chefin", "egal-was", akteur),
+                     "a user without a password cannot sign in");
+        CheckStore(store.SetPasswort(admin.id, "richtig-lang", alsAdmin), "a password is set");
+        CheckStore(store.SetPasswort(erfasser.id, "auch-lang-genug", alsAdmin),
+                   "and one for the second user");
+
+        CheckRefused(Anmelden(store, "chefin", "falsch-lang", akteur), "a wrong password is refused");
+        CheckRefused(Anmelden(store, "niemand", "richtig-lang", akteur),
+                     "an unknown user gets the same refusal");
+        CheckRefused(Anmelden(store, "chefin", "", akteur), "an empty password is refused");
+        Check(CheckStore(Anmelden(store, "azubi", "auch-lang-genug", akteur), "the second user signs in") &&
+              akteur.benutzerId == erfasser.id && akteur.rolle == BenutzerRolle::Erfasser &&
+              akteur.anmeldename == "azubi",
+              "and the Akteur carries that user and role - not the administrator");
+
+        // The role follows the person into the store: an Erfasser may not
+        // manage users, whoever set up the file.
+        Benutzer dritter;
+        dritter.anmeldename = "dritter";
+        CheckRefused(store.SaveBenutzer(dritter, akteur),
+                     "the signed-in Erfasser may not create users");
+    }
+
+    // --- setting up on an open store (the server path) ---
+    {
+        const char* daten = std::getenv("ULTRAFIBU_DATA_DIR");
+        if (daten == nullptr || *daten == '\0') {
+            std::printf("    (ULTRAFIBU_DATA_DIR not set: server setup test skipped)\n");
+        } else {
+            Store store;
+            if (CheckStore(store.Open("fibu-srv-einr", ":memory:"), "an empty database")) {
+                EinrichtungsDaten d;
+                d.firma    = "Mehrplatz GmbH";
+                d.gjBeginn = Date(2026, 1, 1);
+                const EinrichtungsBericht ohne = RichteServerEin(store, d);
+                Check(!ohne.ok && ohne.fehler.find("Passwort") != std::string::npos,
+                      "on a server the first administrator needs a password");
+                Check(store.Mandanten().empty() && !store.HatBenutzer(),
+                      "and nothing was written before that was checked");
+
+                d.passwort = "admin-passwort";
+                const EinrichtungsBericht bericht = RichteServerEin(store, d);
+                Check(bericht.ok, "a bookkeeping is set up in an open database: " + bericht.fehler);
+                Check(store.Mandanten().size() == 1 && bericht.konten > 0 &&
+                      bericht.steuerschluessel > 0,
+                      "with the company, the chart of accounts and the tax keys");
+                Akteur akteur;
+                CheckStore(Anmelden(store, "admin", "admin-passwort", akteur),
+                           "and its administrator can sign in straight away");
+
+                const EinrichtungsBericht nochmal = RichteServerEin(store, d);
+                Check(!nochmal.ok, "a database that is not empty is not set up again");
+            }
+        }
+    }
+
+    unsetenv("ULTRAFIBU_CONFIG_DIR");
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -6047,6 +6245,7 @@ int main() {
     TestBruttoUndAngegebeneSteuer();
     TestReverseCharge();
     TestEuSteuersaetze();
+    TestServerModus();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

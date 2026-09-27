@@ -145,6 +145,60 @@ als PDF** prints it. Everything else is read-only — entering a document is
 the store, so a frozen period or an already-posted document is refused there
 and the reason appears in the status line.
 
+### Several people, one server
+
+Wherever a file goes, a server address goes too:
+
+```bash
+postgresql://<db-role>@<host>[:<port>]/<database>     # e.g. postgresql://fibu@db.kanzlei.local/buch
+```
+
+The database itself - the PostgreSQL role, the empty database, TLS - is set up
+by whoever runs the server. UltraFIBU fills it:
+
+```bash
+ultrafibu einrichten postgresql://fibu@db/buch --firma "Muster GmbH" --gj-beginn 01.01.2026
+#   asks for the database password once (stored in this computer's vault)
+#   and for the first administrator's password (required on a server)
+
+ultrafibu benutzer-neu postgresql://fibu@db/buch erika --rolle buchhalter --anmelden admin
+ultrafibu passwort     postgresql://fibu@db/buch erika --anmelden admin
+ultrafibu belege       postgresql://fibu@db/buch --anmelden erika
+ultrafibu server-passwort postgresql://fibu@db/buch   # replace the stored database password
+```
+
+**Two passwords, and they are different things.** The *database* password
+lets this computer talk to the server; it belongs to the installation, is
+asked for once and is kept in UltraFIBU's own vault (an UltraVault
+`DeviceKeyVault` under `~/.config/UltraFIBU/vault`, or `$XDG_CONFIG_HOME`,
+`%APPDATA%` on Windows, `$ULTRAFIBU_CONFIG_DIR` to override). The *personal*
+password says who is working - every row the store writes names that person
+(GoBD attribution) and the role decides what they may do. It is typed at
+every start (`--anmelden <name>`; scripts may set `ULTRAFIBU_PASSWORT`) and
+never stored. A password in the address itself is refused: it would land in
+the shell history.
+
+In the window, **Mit einem Server verbinden ...** on the start form - or
+`ultrafibu postgresql://...` - opens the same two steps: the server, then the
+login, which stays greyed until the connection stands. The last server used
+is remembered in `server.ini` beside the vault, without its password. The
+header of the main window then says who is signed in, with which role, on
+which server.
+
+On a server nobody works anonymously: every command needs `--anmelden`, and
+the window has no way past the login. A local file still opens as its first
+administrator, as before; `--anmelden` works there too and records the person
+instead.
+
+TLS is `verify-full`: the server's certificate must be signed by a CA this
+computer trusts for PostgreSQL - `~/.postgresql/root.crt`, or the file named
+by `PGSSLROOTCERT` - and name the host exactly as typed. The server belongs on
+the LAN or behind a VPN, never on the open internet (design proposal §10.5).
+
+Not yet: receipt files (`Beleg hochladen`) still go to an archive beside the
+*local* database path, so on a server each computer keeps its own; and there
+is no second factor (TOTP) on the personal login.
+
 ## The decisions worth knowing
 
 - **Amounts are never floating point.** Everything is `UltraCanvas::Money` —
@@ -252,8 +306,9 @@ and the reason appears in the status line.
   database, chosen by one configuration field. The server driver is
   UltraDatabase's PostgreSQL driver, built wherever libpq is found; the
   password comes out of UltraVault, never from a file, and a build without
-  libpq says so from `OpenServer` rather than falling back. The program
-  does not yet offer server mode in its window or its commands. A shared SQLite file on a network share or a synced folder is
+  libpq says so from `OpenServer` rather than falling back. Wherever a file
+  path goes, a `postgresql://` address opens the server instead (see
+  *Several people, one server*). A shared SQLite file on a network share or a synced folder is
   never an option — that is silent loss of a book the law requires to be
   complete.
 - **The VAT number check is honest about itself.** Offline it catches typing

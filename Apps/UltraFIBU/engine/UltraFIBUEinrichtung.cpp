@@ -84,6 +84,120 @@ bool EnthaeltBuchhaltung(const std::string& pfad) {
     return hat;
 }
 
+namespace {
+
+// The chart of accounts and the tax keys, found and read before anything is
+// written. A missing one used to be a "note" after the company had already
+// been created - which produced a company with no accounts at all.
+struct Stammdateien {
+    std::vector<Konto>            konten;
+    std::vector<Steuerschluessel> schluessel;
+};
+
+bool LadeStammdateien(const EinrichtungsDaten& daten, Stammdateien& out,
+                      EinrichtungsBericht& bericht) {
+    const std::string skrPfad = FindeDatenDatei(daten.skr + ".csv");
+    if (skrPfad.empty()) {
+        bericht.fehler = "Der Kontenrahmen " + daten.skr + ".csv wurde nicht "
+                         "gefunden. Ohne ihn lässt sich nicht buchen; das "
+                         "Datenverzeichnis liegt neben dem Programm unter data/.";
+        return false;
+    }
+    const std::string steuerPfad = FindeDatenDatei("Steuerschluessel.csv");
+    if (steuerPfad.empty()) {
+        bericht.fehler = "Steuerschluessel.csv wurde nicht gefunden.";
+        return false;
+    }
+    const LadeErgebnis kontenGeladen = LadeKontenrahmen(skrPfad, daten.skr, out.konten);
+    for (const std::string& w : kontenGeladen.warnungen) bericht.warnungen.push_back(w);
+    if (!kontenGeladen.ok) {
+        bericht.fehler = "Kontenrahmen: " + kontenGeladen.fehler;
+        return false;
+    }
+    const LadeErgebnis steuerGeladen = LadeSteuerschluesselDatei(steuerPfad, out.schluessel);
+    for (const std::string& w : steuerGeladen.warnungen) bericht.warnungen.push_back(w);
+    if (!steuerGeladen.ok) {
+        bericht.fehler = "Steuerschlüssel: " + steuerGeladen.fehler;
+        return false;
+    }
+    return true;
+}
+
+// What a new bookkeeping contains, written into an open store. The one
+// definition of it, for a file and for a server alike. Returns an empty string
+// on success, else what failed; `bericht` receives what was created.
+std::string FuelleBuchhaltung(Store& store, const EinrichtungsDaten& daten,
+                              const Stammdateien& dateien, EinrichtungsBericht& bericht) {
+    // The first user becomes the administrator: there is nobody to authorise
+    // them, which is the one case the store allows.
+    Benutzer admin;
+    admin.anmeldename = daten.benutzer;
+    admin.anzeigename = daten.benutzer;
+    Akteur niemand;
+    StoreResult r = store.SaveBenutzer(admin, niemand);
+    if (!r) return r.fehler;
+    Akteur akteur;
+    akteur.benutzerId  = admin.id;
+    akteur.anmeldename = admin.anmeldename;
+    akteur.rolle       = admin.rolle;
+
+    if (!daten.passwort.empty()) {
+        r = store.SetPasswort(admin.id, daten.passwort, akteur);
+        if (!r) return "Passwort: " + r.fehler;
+    }
+
+    Mandant mandant = daten.stammdaten;
+    mandant.id   = 0;
+    mandant.name = daten.firma;
+    if (mandant.land.empty()) mandant.land = "DE";
+    r = store.SaveMandant(mandant, akteur);
+    if (!r) return r.fehler;
+
+    Geschaeftsjahr jahr   = MakeGeschaeftsjahr(daten.gjBeginn);
+    jahr.mandantId        = mandant.id;
+    jahr.skr              = daten.skr;
+    jahr.sachkontenlaenge = 4;
+    r = store.SaveGeschaeftsjahr(jahr, akteur);
+    if (!r) return r.fehler;
+
+    // The number ranges a bookkeeping cannot work without. Their results used
+    // to be discarded; a range that failed to save then surfaced only when the
+    // first invoice could not be numbered.
+    struct Kreis { const char* name; const char* praefix; int stellen; };
+    static const Kreis kKreise[] = {
+        { "rechnung", "R-{JJJJ}{MM}", 3 },
+        { "beleg",    "B-",           5 },
+        // Incoming documents get their own range: a supplier's invoice carries
+        // the supplier's number, this is our internal one, and mixing it with
+        // the outgoing numbers would make both meaningless.
+        { "eingang",  "E-{JJJJ}",     5 },
+    };
+    for (const Kreis& k : kKreise) {
+        Nummernkreis kreis;
+        kreis.mandantId = mandant.id;
+        kreis.kreis     = k.name;
+        kreis.praefix   = k.praefix;
+        kreis.stellen   = k.stellen;
+        r = store.SaveNummernkreis(kreis, akteur);
+        if (!r) return "Nummernkreis \"" + std::string(k.name) + "\": " + r.fehler;
+    }
+
+    std::vector<Konto> konten = dateien.konten;
+    r = store.ImportKonten(mandant.id, konten, akteur, bericht.konten);
+    if (!r) return "Kontenrahmen: " + r.fehler;
+
+    std::vector<Steuerschluessel> schluessel = dateien.schluessel;
+    r = store.ImportSteuerschluessel(mandant.id, schluessel, akteur, bericht.steuerschluessel);
+    if (!r) return "Steuerschlüssel: " + r.fehler;
+
+    bericht.mandant = mandant;
+    bericht.jahr    = jahr;
+    bericht.admin   = admin;
+    return std::string();
+}
+
+} // namespace
+
 EinrichtungsBericht RichteBuchhaltungEin(const std::string& ziel,
                                          const EinrichtungsDaten& daten) {
     EinrichtungsBericht bericht;
@@ -101,34 +215,13 @@ EinrichtungsBericht RichteBuchhaltungEin(const std::string& ziel,
         return bericht;
     }
 
-    // The chart of accounts is checked before anything is written. A missing
-    // one used to be a "note" after the company had already been created -
-    // which produced a company with no accounts at all.
-    const std::string skrPfad = FindeDatenDatei(daten.skr + ".csv");
-    if (skrPfad.empty()) {
-        bericht.fehler = "Der Kontenrahmen " + daten.skr + ".csv wurde nicht "
-                         "gefunden. Ohne ihn lässt sich nicht buchen; das "
-                         "Datenverzeichnis liegt neben dem Programm unter data/.";
-        return bericht;
-    }
-    const std::string steuerPfad = FindeDatenDatei("Steuerschluessel.csv");
-    if (steuerPfad.empty()) {
-        bericht.fehler = "Steuerschluessel.csv wurde nicht gefunden.";
-        return bericht;
-    }
+    Stammdateien dateien;
+    if (!LadeStammdateien(daten, dateien, bericht)) return bericht;
 
     // Built beside the target and moved into place at the end, so the target
     // path only ever holds a complete bookkeeping or whatever it held before.
     const std::string temp = ziel + ".einrichtung";
     EntferneMitNebendateien(temp);
-
-    auto scheitern = [&](Store& store, const std::string& fehler) {
-        store.Close();
-        EntferneMitNebendateien(temp);
-        bericht.ok = false;
-        bericht.fehler = fehler;
-        return bericht;
-    };
 
     Store store;
     const StoreResult geoeffnet = store.Open(Verbindungsname("anlegen"), temp, true);
@@ -138,73 +231,14 @@ EinrichtungsBericht RichteBuchhaltungEin(const std::string& ziel,
         return bericht;
     }
 
-    // The first user becomes the administrator: there is nobody to authorise
-    // them, which is the one case the store allows.
-    Benutzer admin;
-    admin.anmeldename = daten.benutzer;
-    admin.anzeigename = daten.benutzer;
-    Akteur niemand;
-    StoreResult r = store.SaveBenutzer(admin, niemand);
-    if (!r) return scheitern(store, r.fehler);
-    Akteur akteur;
-    akteur.benutzerId  = admin.id;
-    akteur.anmeldename = admin.anmeldename;
-    akteur.rolle       = admin.rolle;
-
-    Mandant mandant = daten.stammdaten;
-    mandant.id   = 0;
-    mandant.name = daten.firma;
-    if (mandant.land.empty()) mandant.land = "DE";
-    r = store.SaveMandant(mandant, akteur);
-    if (!r) return scheitern(store, r.fehler);
-
-    Geschaeftsjahr jahr   = MakeGeschaeftsjahr(daten.gjBeginn);
-    jahr.mandantId        = mandant.id;
-    jahr.skr              = daten.skr;
-    jahr.sachkontenlaenge = 4;
-    r = store.SaveGeschaeftsjahr(jahr, akteur);
-    if (!r) return scheitern(store, r.fehler);
-
-    // The number ranges a bookkeeping file cannot work without. Their results
-    // used to be discarded; a range that failed to save then surfaced only
-    // when the first invoice could not be numbered.
-    struct Kreis { const char* name; const char* praefix; int stellen; };
-    static const Kreis kKreise[] = {
-        { "rechnung", "R-{JJJJ}{MM}", 3 },
-        { "beleg",    "B-",           5 },
-        // Incoming documents get their own range: a supplier's invoice carries
-        // the supplier's number, this is our internal one, and mixing it with
-        // the outgoing numbers would make both meaningless.
-        { "eingang",  "E-{JJJJ}",     5 },
-    };
-    for (const Kreis& k : kKreise) {
-        Nummernkreis kreis;
-        kreis.mandantId = mandant.id;
-        kreis.kreis     = k.name;
-        kreis.praefix   = k.praefix;
-        kreis.stellen   = k.stellen;
-        r = store.SaveNummernkreis(kreis, akteur);
-        if (!r) return scheitern(store, "Nummernkreis \"" + std::string(k.name) +
-                                            "\": " + r.fehler);
-    }
-
-    std::vector<Konto> konten;
-    const LadeErgebnis kontenGeladen = LadeKontenrahmen(skrPfad, daten.skr, konten);
-    for (const std::string& w : kontenGeladen.warnungen) bericht.warnungen.push_back(w);
-    if (!kontenGeladen.ok)
-        return scheitern(store, "Kontenrahmen: " + kontenGeladen.fehler);
-    r = store.ImportKonten(mandant.id, konten, akteur, bericht.konten);
-    if (!r) return scheitern(store, "Kontenrahmen: " + r.fehler);
-
-    std::vector<Steuerschluessel> schluessel;
-    const LadeErgebnis steuerGeladen = LadeSteuerschluesselDatei(steuerPfad, schluessel);
-    for (const std::string& w : steuerGeladen.warnungen) bericht.warnungen.push_back(w);
-    if (!steuerGeladen.ok)
-        return scheitern(store, "Steuerschlüssel: " + steuerGeladen.fehler);
-    r = store.ImportSteuerschluessel(mandant.id, schluessel, akteur, bericht.steuerschluessel);
-    if (!r) return scheitern(store, "Steuerschlüssel: " + r.fehler);
-
+    const std::string fehler = FuelleBuchhaltung(store, daten, dateien, bericht);
     store.Close();
+    if (!fehler.empty()) {
+        EntferneMitNebendateien(temp);
+        bericht.ok = false;
+        bericht.fehler = fehler;
+        return bericht;
+    }
 
     // A journal or write-ahead log still beside the file after the last commit
     // means data that is not yet in the file itself. Moving the file without it
@@ -224,10 +258,44 @@ EinrichtungsBericht RichteBuchhaltungEin(const std::string& ziel,
         return bericht;
     }
 
-    bericht.ok      = true;
-    bericht.mandant = mandant;
-    bericht.jahr    = jahr;
-    bericht.admin   = admin;
+    bericht.ok = true;
+    return bericht;
+}
+
+EinrichtungsBericht RichteServerEin(Store& store, const EinrichtungsDaten& daten) {
+    EinrichtungsBericht bericht;
+
+    if (!store.IsOpen()) {
+        bericht.fehler = "Es ist keine Serververbindung geöffnet.";
+        return bericht;
+    }
+    bericht.fehler = PruefeEinrichtung(daten);
+    if (!bericht.fehler.empty()) return bericht;
+    if (daten.passwort.empty()) {
+        bericht.fehler = "Auf einem Server braucht der erste Administrator ein Passwort - "
+                         "ohne kommt niemand hinein, auch nicht, wer eingerichtet hat.";
+        return bericht;
+    }
+    if (!store.Mandanten().empty() || store.HatBenutzer()) {
+        bericht.fehler = "Diese Datenbank enthält bereits eine Buchhaltung oder Benutzer. "
+                         "Sie wird nicht überschrieben.";
+        return bericht;
+    }
+
+    Stammdateien dateien;
+    if (!LadeStammdateien(daten, dateien, bericht)) return bericht;
+
+    const std::string fehler = FuelleBuchhaltung(store, daten, dateien, bericht);
+    if (!fehler.empty()) {
+        // Nothing to roll back to on a server; say exactly how far it got so
+        // the administrator knows the database is not empty any more.
+        bericht.ok = false;
+        bericht.fehler = fehler + " - Die Einrichtung auf dem Server ist unterbrochen. "
+                         "Was bis hierher angelegt wurde, steht in der Datenbank; vor "
+                         "einem neuen Versuch die Datenbank leeren.";
+        return bericht;
+    }
+    bericht.ok = true;
     return bericht;
 }
 

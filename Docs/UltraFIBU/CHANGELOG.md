@@ -1,3 +1,41 @@
+#### 2026-09-27 *0.25.0*
+- **Mehrplatz-Betrieb im Programm: verbinden, anmelden, einrichten.** Bisher
+  konnte nur die Engine mit einem PostgreSQL-Server sprechen; Fenster und
+  Befehle kannten nur Dateien. Jetzt geht überall, wo eine Datei steht, auch
+  eine Serveradresse: `postgresql://<db-rolle>@<host>[:<port>]/<datenbank>`.
+  - **Zwei Passwörter, zwei Zwecke.** Das Datenbankpasswort gehört zum
+    Rechner: Es wird einmal abgefragt und im eigenen Tresor von UltraFIBU
+    abgelegt (`~/.config/UltraFIBU/vault`, ein UltraVault-`DeviceKeyVault`),
+    der PostgreSQL-Treiber liest es von dort. Das persönliche Passwort sagt,
+    wer arbeitet; es wird bei jedem Start eingegeben und nie gespeichert.
+    Jede Buchung trägt so die Person, die angemeldet ist (GoBD), und deren
+    Rolle entscheidet, was sie darf. Ein Passwort in der Adresse wird
+    abgelehnt - es landete in der Shell-Historie.
+  - **Befehle:** `--anmelden <name>` bei jedem Befehl (auf einem Server
+    Pflicht; Passwort wird abgefragt oder aus `ULTRAFIBU_PASSWORT` gelesen).
+    Neu: `benutzer`, `benutzer-neu <name> --rolle ...`, `passwort <name>`
+    (fragt zweimal) und `server-passwort <adresse>`. `einrichten
+    postgresql://...` richtet eine leere Serverdatenbank ein und verlangt
+    dabei ein Passwort für den ersten Administrator - ohne käme niemand
+    hinein.
+  - **Fenster:** "Mit einem Server verbinden ..." im Startfenster, oder
+    `ultrafibu postgresql://...`, öffnet ein Fenster in zwei Schritten:
+    Server, dann Anmeldung. Die Anmeldung bleibt grau, bis die Verbindung
+    steht. Der zuletzt benutzte Server steht in `server.ini` (ohne
+    Passwort). Die Kopfzeile nennt danach Person, Rolle und Server.
+  - **Einrichtung:** Was eine neue Buchhaltung enthält, ist jetzt eine
+    Funktion für Datei und Server (`RichteServerEin` neben
+    `RichteBuchhaltungEin`). Kontenrahmen und Steuerschlüssel werden vor dem
+    ersten Schreiben gelesen und geprüft - auch für Dateien; bisher fiel ein
+    kaputter Kontenrahmen erst nach dem Anlegen der Firma auf.
+  - Eine lokale Datei öffnet sich weiter als ihr erster Administrator;
+    `--anmelden` geht dort auch und trägt dann die Person ein.
+  - Noch nicht: Belegdateien liegen weiter neben dem *lokalen* Pfad, auf
+    einem Server hat also jeder Rechner sein eigenes Archiv; und die
+    persönliche Anmeldung hat keinen zweiten Faktor (TOTP).
+  - Tests: 54 neue Prüfungen in `UltraFIBUEngineTests` (Adresse, `server.ini`,
+    Tresor, Anmeldung und Rollen, Einrichtung auf einer offenen Datenbank).
+
 #### 2026-09-27 *0.24.1*
 - **Mehrbenutzerbetrieb: die Anmeldung mit Passwort funktioniert.**
   `Store::OpenServer` nimmt das Passwort nur als UltraVault-Schluessel

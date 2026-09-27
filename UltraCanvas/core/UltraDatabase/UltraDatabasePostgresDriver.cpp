@@ -513,6 +513,13 @@ public:
             return nullptr;
         }
 
+        // libpq prints the server's NOTICE lines to stderr by default -
+        // "relation ... already exists, skipping" on every migration check,
+        // straight into the output of whatever program links this. A notice is
+        // information, not a result or an error; errors still arrive as
+        // results and are reported through UltraDbResult.
+        PQsetNoticeProcessor(conn, [](void*, const char*) {}, nullptr);
+
         // A read-only connection is made read-only by the server rather than by
         // convention, so a mistake in a caller cannot write through it.
         if (config.readOnly) {

@@ -32,6 +32,7 @@
 #include "UltraFIBUBelegDialog.h"
 
 #include "UltraFIBUStore.h"
+#include "UltraFIBUServer.h"
 
 #include <memory>
 #include <string>
@@ -46,6 +47,19 @@ public:
     // a missing file, or a file with no Mandant in it yet.
     bool Initialisieren(const std::string& datenbank, std::string& fehler);
 
+    // ---- Server mode: connect, then sign in ----
+    //
+    // Connect to `ziel`. A non-empty `dbPasswort` is stored in this computer's
+    // vault first (and replaces what was there); an empty one uses the stored
+    // password. `leer` reports a database with no users yet. Returns why not,
+    // or an empty string.
+    std::string VerbindeServer(const ServerZiel& ziel, const std::string& dbPasswort,
+                               bool& leer);
+    // Sign a person in on the connected server and load its company. Every
+    // write from then on is recorded as this person. Returns why not, or an
+    // empty string.
+    std::string AnmeldenUndLaden(const std::string& name, const std::string& passwort);
+
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> FensterBauen();
 
     // Re-read every screen from the database. Called after anything writes.
@@ -59,6 +73,9 @@ private:
     void EuSaetzeFuellen();
 
     void KopfAktualisieren();
+    // The company and fiscal year, once the store is open. Shared by the file
+    // and the server path.
+    bool MandantLaden(const std::string& quelle, std::string& fehler);
     void Melden(const std::string& text);
 
     // The two actions. Both go through the store, so a frozen period, a wrong
@@ -102,6 +119,8 @@ private:
     Mandant      mandant_;
     Geschaeftsjahr jahr_;
     Akteur       akteur_;
+    std::string serverUrl_;       // empty for a local file
+    std::string serverKurz_;      // "host/datenbank", for the header
     bool         jahrGefunden_ = false;
 
     int64_t      gewaehlterBeleg_ = 0;
