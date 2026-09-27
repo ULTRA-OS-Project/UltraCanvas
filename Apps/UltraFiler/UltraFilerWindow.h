@@ -294,6 +294,18 @@ private:
     // and hides the section while there are none - like "Pinned" and
     // "Cloud Storage" above it.
     void RefreshRemoteDriveNodes();
+    // ===== RAM DISCS =====
+    // "+ Drive > RAM disc...": asks for a name and a size, creates the disc
+    // (UltraFilerRamDisks, over VirtualFS) and opens it in the folder view.
+    void AddRamDisk();
+    // Brings the "RAM Discs" rows in line with the discs mounted now - ones
+    // made by an earlier run included, since a disc stays until it is
+    // ejected - and hides the section while there are none.
+    void RefreshRamDiskNodes();
+    // Asks, then unmounts the disc at `mountPath`: tabs inside it move to
+    // Home first, and its row leaves the tree. Everything on it is lost,
+    // which is why the question names the disc.
+    void ConfirmEjectRamDisk(const std::string& mountPath);
     // Adds one drive row. Unlike AddTreeFolderNode this queues no subfolder
     // probe: that probe reads the local filesystem, which has nothing to say
     // about a path on a server. The row's expand button comes from the
@@ -930,6 +942,8 @@ private:
     // Node ids (the drives' root paths) of the "Remote Drives" rows, so the
     // section can be rebuilt without walking the whole tree.
     std::vector<std::string> treeRemoteDriveNodeIds;
+    // Node ids (the mount paths) of the "RAM Discs" rows.
+    std::vector<std::string> treeRamDiskNodeIds;
     // The last failure reported for a drive operation. Deleting five entries
     // queues five operations, and five identical "permission denied" dialogs
     // in a row tell the user nothing the first one did not - so a repeat of

@@ -246,6 +246,21 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     weeks after its last use and fetched again if the file changes on the
     server. Files over 64 MB are not fetched for a preview. Video, audio,
     documents and text on a drive are not previewed.
+  - **RAM discs.** *+ Drive > RAM disc...* asks for a name and a size and
+    creates a disc in memory (VirtualFS's RAM disc API, wrapped by
+    `UltraFilerRamDisks`), which then opens in the folder view and gets a row
+    under **RAM Discs** in the tree. The sizes offered stop at what the
+    machine can give right now. What the size means depends on the platform,
+    and the dialog says which: on macOS (`hdiutil ram://`) and on Windows with
+    ImDisk installed the memory is reserved when the disc is made; on Linux
+    every disc is a private directory on the `/dev/shm` tmpfs, which uses
+    memory only as files are written, so the size is checked against what is
+    free but not enforced; on Windows without ImDisk the disc is a folder in
+    `%TEMP%`, wiped on eject, and its row says *on disk*. A disc stays until it
+    is ejected — *Eject RAM disc* in its row's context menu, after a question
+    naming it — or the machine restarts, and one left by an earlier run is
+    found again at start-up. Its row keeps *Delete* disabled like the other
+    roots; tabs inside a disc move to Home when it is ejected.
 - **Archives:** packing and unpacking run in the background behind a progress
   window: a ring with the percentage, the file being handled and Cancel.
   Cancelling a pack removes the half-written archive; cancelling an unpack keeps
