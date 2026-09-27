@@ -21,6 +21,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetCurlError.h>
+#include <UltraNet/UltraNetCurlMailAuth.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetUrl.h>
 
@@ -170,20 +172,29 @@ bool ParsePop3Url(const std::string& url,
     return true;
 }
 
-void ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
-    if (!opt.credentials.username.empty()) {
-        curl_easy_setopt(h, CURLOPT_USERNAME, opt.credentials.username.c_str());
-        curl_easy_setopt(h, CURLOPT_PASSWORD, opt.credentials.password.c_str());
-    }
+UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
+    if (UltraNetResult a = ultranet_curlmailauth::Apply(
+            h, opt, ultranet_curlmailauth::Protocol::Pop3); !a)
+        return a;
     if (opt.useTls || implicitTls) {
         curl_easy_setopt(h, CURLOPT_USE_SSL,
                          implicitTls ? CURLUSESSL_ALL : CURLUSESSL_TRY);
+        // Same CA anchors as the IMAP/SMTP plug-ins and the HTTP client —
+        // without them the Windows libcurl's baked-in CA path (a build-tree
+        // path) is all there is, and every pop3s:// sign-in fails verification.
+        const std::string caBundle = UltraNet_ResolveCaBundlePath();
+        if (!caBundle.empty())
+            curl_easy_setopt(h, CURLOPT_CAINFO, caBundle.c_str());
+#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
+        curl_easy_setopt(h, CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
+#endif
     }
     curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS,
                      static_cast<long>(opt.connectTimeoutMs));
     curl_easy_setopt(h, CURLOPT_TIMEOUT_MS,
                      static_cast<long>(opt.operationTimeoutMs));
     curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    return UltraNetResult::Ok();
 }
 
 // ============================================================================
@@ -231,12 +242,12 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_URL, baseUrl.c_str());
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &listBody);
-            ApplyCommonOptions(h.get(), options, implicitTls);
+            if (UltraNetResult a = ApplyCommonOptions(h.get(), options, implicitTls); !a) return a;
 
-            CURLcode rc = curl_easy_perform(h.get());
+            std::string why;
+            CURLcode rc = ultranet_curlerror::Perform(h.get(), why);
             if (rc != CURLE_OK) {
-                return UltraNetResult::Error(MapCurlError(rc),
-                                             curl_easy_strerror(rc));
+                return UltraNetResult::Error(MapCurlError(rc), why);
             }
             totalMessages = CountMessagesInListResponse(listBody);
         }
@@ -258,7 +269,7 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_URL, retrUrl.c_str());
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &raw);
-            ApplyCommonOptions(h.get(), options, implicitTls);
+            if (UltraNetResult a = ApplyCommonOptions(h.get(), options, implicitTls); !a) return a;
 
             if (curl_easy_perform(h.get()) != CURLE_OK || raw.empty()) continue;
 

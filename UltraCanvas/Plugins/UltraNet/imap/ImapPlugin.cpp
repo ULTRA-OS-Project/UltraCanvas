@@ -22,6 +22,8 @@
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetUrl.h>
 #include <UltraNet/UltraNetCurlDebug.h>
+#include <UltraNet/UltraNetCurlError.h>
+#include <UltraNet/UltraNetCurlMailAuth.h>
 
 #include "ImapParse.h"
 
@@ -118,20 +120,11 @@ bool ParseServerBase(const std::string& serverUrl, std::string& outBase, bool& o
     return true;
 }
 
-void ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
+UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
     ultranet_curldebug::EnableIfRequested(h);
-    const auto& cred = opt.credentials;
-    const bool useBearer = !cred.token.empty() &&
-        (cred.type == UltraNetAuthType::OAuth2 || cred.type == UltraNetAuthType::Bearer);
-    if (useBearer) {
-        // XOAUTH2 for Gmail / Microsoft: username + bearer token.
-        if (!cred.username.empty())
-            curl_easy_setopt(h, CURLOPT_USERNAME, cred.username.c_str());
-        curl_easy_setopt(h, CURLOPT_XOAUTH2_BEARER, cred.token.c_str());
-    } else if (!cred.username.empty()) {
-        curl_easy_setopt(h, CURLOPT_USERNAME, cred.username.c_str());
-        curl_easy_setopt(h, CURLOPT_PASSWORD, cred.password.c_str());
-    }
+    if (UltraNetResult a = ultranet_curlmailauth::Apply(
+            h, opt, ultranet_curlmailauth::Protocol::Imap); !a)
+        return a;
     if (opt.useTls || implicitTls) {
         curl_easy_setopt(h, CURLOPT_USE_SSL,
                          implicitTls ? CURLUSESSL_ALL : CURLUSESSL_TRY);
@@ -148,6 +141,7 @@ void ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTl
     curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, static_cast<long>(opt.connectTimeoutMs));
     curl_easy_setopt(h, CURLOPT_TIMEOUT_MS,        static_cast<long>(opt.operationTimeoutMs));
     curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    return UltraNetResult::Ok();
 }
 
 // One IMAP transfer on an EXISTING, already-configured handle (ApplyCommonOptions
@@ -164,9 +158,10 @@ UltraNetResult PerformOn(CURL* h, const std::string& url,
     curl_easy_setopt(h, CURLOPT_CUSTOMREQUEST, customReq.empty() ? nullptr : customReq.c_str());
     curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, &WriteToString);
     curl_easy_setopt(h, CURLOPT_WRITEDATA, &outBody);
-    CURLcode rc = curl_easy_perform(h);
+    std::string why;
+    CURLcode rc = ultranet_curlerror::Perform(h, why);
     if (rc != CURLE_OK)
-        return UltraNetResult::Error(MapCurlError(rc), curl_easy_strerror(rc));
+        return UltraNetResult::Error(MapCurlError(rc), why);
     return UltraNetResult::Ok();
 }
 
@@ -178,7 +173,7 @@ UltraNetResult RunCommand(const std::string& url, const std::string& customReq,
     CurlHandle h = NewHandle();
     if (!h)
         return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
-    ApplyCommonOptions(h.get(), opt, implicitTls);
+    if (UltraNetResult a = ApplyCommonOptions(h.get(), opt, implicitTls); !a) return a;
     return PerformOn(h.get(), url, customReq, outBody);
 }
 
@@ -315,7 +310,7 @@ public:
         CurlHandle h = NewHandle();
         if (!h)
             return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
-        ApplyCommonOptions(h.get(), options, tls);
+        if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;
 
         std::ostringstream search;
         if (sinceUid > 0) search << "UID SEARCH UID " << (sinceUid + 1) << ":*";
@@ -385,7 +380,7 @@ public:
         CurlHandle h = NewHandle();
         if (!h)
             return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
-        ApplyCommonOptions(h.get(), options, tls);   // authenticate once; reuse below
+        if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;   // authenticate once; reuse below
 
         const std::string mbPath = EncodeMailboxPath(folder);  // constant across UIDs
         for (uint32_t uid : uids) {
@@ -451,10 +446,11 @@ public:
         curl_easy_setopt(h.get(), CURLOPT_READDATA, &ctx);
         curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
                          static_cast<curl_off_t>(rawMessage.size()));
-        ApplyCommonOptions(h.get(), options, tls);
-        CURLcode rc = curl_easy_perform(h.get());
+        if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;
+        std::string why;
+        CURLcode rc = ultranet_curlerror::Perform(h.get(), why);
         if (rc != CURLE_OK)
-            return UltraNetResult::Error(MapCurlError(rc), curl_easy_strerror(rc));
+            return UltraNetResult::Error(MapCurlError(rc), why);
         return UltraNetResult::Ok();
     }
 
@@ -471,7 +467,7 @@ public:
         CurlHandle h = NewHandle();
         if (!h)
             return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
-        ApplyCommonOptions(h.get(), options, tls);
+        if (UltraNetResult a = ApplyCommonOptions(h.get(), options, tls); !a) return a;
 
         // The authoritative live-UID set comes from SEARCH, the same primitive
         // FetchEnvelopes uses successfully — NOT from parsing a bulk FLAGS fetch,
@@ -530,7 +526,7 @@ private:
                   bool tls, std::string& out) {
         CurlHandle h = NewHandle();
         if (!h) return false;
-        ApplyCommonOptions(h.get(), opt, tls);
+        if (UltraNetResult a = ApplyCommonOptions(h.get(), opt, tls); !a) return a;
         return static_cast<bool>(PerformOn(h.get(), url, std::string(), out));
     }
 };

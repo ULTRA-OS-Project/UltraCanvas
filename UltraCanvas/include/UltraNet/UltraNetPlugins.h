@@ -34,11 +34,28 @@ struct UltraNetMailMessage {
     std::vector<std::pair<std::string, std::vector<uint8_t>>> attachments; // (name, bytes)
 };
 
+// How a mail session signs in at the server - the "authentication method" of a
+// mail program's server settings. Any leaves the choice to the server's offer
+// (the strongest mechanism both sides support); the others restrict the
+// session to that family, so a server that also advertises, say, GSSAPI is
+// not tried with Kerberos when the account uses a plain password.
+enum class UltraNetMailAuth {
+    Any = 0,            // whatever the server offers (default)
+    Password,           // normal password: IMAP LOGIN, SASL PLAIN / LOGIN, POP3 USER/PASS
+    EncryptedPassword,  // challenge-response: SASL CRAM-MD5 / DIGEST-MD5, POP3 APOP
+    OAuth2,             // SASL XOAUTH2 / OAUTHBEARER with credentials.token
+    Kerberos,           // SASL GSSAPI (the system's Kerberos ticket)
+    NTLM,               // SASL NTLM
+    None                // no sign-in: the credentials are not sent (an SMTP relay
+                        // that trusts the network, an IMAP PREAUTH greeting)
+};
+
 struct UltraNetMailOptions {
     UltraNetCredentials credentials;
     std::string serverUrl;              // "smtp://host:587/" / "smtps://host:465/"
     bool useTls = true;
     bool implicitTls = false;
+    UltraNetMailAuth auth = UltraNetMailAuth::Any;
     int connectTimeoutMs = 10000;
     int operationTimeoutMs = 30000;
     int maxMessages = 0;                // 0 = unlimited

@@ -382,6 +382,30 @@ offers **Save anyway** for a server that is down right now. The outgoing
 so a wrong SMTP entry shows up on the first send. The page also validates
 in place (a host must be given, ports are 1–65535).
 
+**Authentication method.** Under the server rows, *Sign-in (IMAP)* and
+*Sign-in (SMTP)* choose how each server is signed in to — the same choice
+Thunderbird calls the authentication method:
+
+| Choice | What UltraMail sends |
+|---|---|
+| Automatic | Whatever the server offers, strongest first (the default, and what every account created before this setting keeps) |
+| Normal password | IMAP `LOGIN`; SMTP `AUTH PLAIN` / `AUTH LOGIN` |
+| Encrypted password | `AUTH CRAM-MD5` / `DIGEST-MD5` (POP3: `APOP`); the password never crosses the wire |
+| OAuth2 | `AUTH XOAUTH2` / `OAUTHBEARER` with the browser sign-in's token |
+| Kerberos / GSSAPI | `AUTH GSSAPI` with the system's Kerberos ticket |
+| NTLM | `AUTH NTLM` |
+| No authentication | Nothing (outgoing server only: a relay that trusts your network) |
+
+Gmail, Outlook/Hotmail/Live and Yahoo are set to **OAuth2** by the provider
+table; an autoconfig document sets the method it lists first (OAuth2 only
+when nothing else is listed, since the browser sign-in exists for those three
+providers alone); everything else starts on **Automatic**. Pick a specific
+method when Automatic tries one the account cannot use — a server that
+advertises Kerberos or NTLM next to the password, for example. OAuth2 needs
+the browser sign-in: set on an account that signs in with a password, the
+check fails with "OAuth2 is set as the authentication method, but there is no
+OAuth2 sign-in for this account".
+
 The settings are **stored on the account**, so later syncs and sends never
 look them up again. The page also opens by itself when Reload finds an
 account without known servers — for example one that was added before
@@ -403,6 +427,8 @@ Gmail and Outlook.
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
 | *Server settings for …* opens on Reload | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
 | *The sign-in at … did not succeed* on the settings page | The host, port, security or password is wrong, or the server is unreachable. Correct the page and Save again; *Save anyway* keeps the entry for a server that is only down right now. |
+| *… security certificate is not valid …* with a reason in brackets | The reason is the TLS library's own: *unable to get local issuer certificate* (the server sends an incomplete chain, or a program such as a virus scanner intercepts the connection with its own certificate), *certificate has expired*, *self-signed certificate*, or *no alternative certificate subject name matches* (the certificate is for another host name — use the host it names). |
+| *… sign-in was rejected* with the right password | The server may not accept the method *Automatic* picked. Set *Sign-in (IMAP)* / *Sign-in (SMTP)* to *Normal password* (or what the provider's help page names) and Save again. |
 | *New mail could not be fetched … host not found / connection refused* | A server name or port on the settings page is wrong. Add the account again with the same address and correct the page. |
 | *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days). Add the account again to sign in anew. |
 | *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |

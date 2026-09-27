@@ -2,11 +2,12 @@
 // Core data types for the UltraMail engine: accounts, folders, message
 // envelopes, message flags, and the per-account status rollup that drives the
 // account bar (unread today · unread before · waiting for reply).
-// Version: 0.3.0 - server settings (IMAP/SMTP host, port, security, username)
-//                  stored on the account
-// Last Modified: 2026-09-10
+// Version: 0.4.0 - the authentication method per server
+// Last Modified: 2026-09-27
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include <UltraNet/UltraNetPlugins.h>   // UltraNetMailAuth, UltraNetMailOptions
 
 #include <cstdint>
 #include <string>
@@ -50,15 +51,29 @@ enum class MailSecurity {
 std::string  ToString(MailSecurity security);
 MailSecurity MailSecurityFromString(const std::string& s);
 
+// The authentication method of a server, as the server settings page offers
+// it: "auto" | "password" | "encrypted" | "oauth2" | "kerberos" | "ntlm" |
+// "none" — the form stored in the database. Unknown text reads as Any.
+std::string      ToString(UltraNetMailAuth auth);
+UltraNetMailAuth MailAuthFromString(const std::string& s);
+
 struct MailServerSettings {
     std::string  host;
     int          port = 0;
     MailSecurity security = MailSecurity::SslTls;
     std::string  username;     // resolved (full address or local-part)
     bool         oauth = false; // provider expects OAuth2/XOAUTH2
+    // How the session signs in. Any (shown as "Automatic") lets the server's
+    // offer decide — what every account created before the setting existed
+    // keeps; the provider table sets OAuth2 for Gmail, Outlook and Yahoo.
+    UltraNetMailAuth auth = UltraNetMailAuth::Any;
 
     bool Valid() const { return !host.empty() && port > 0; }
 };
+
+// The connection part of a session's options for `server`: TLS mode from its
+// security setting and its authentication method. Credentials are left alone.
+void ApplyConnection(const MailServerSettings& server, UltraNetMailOptions& options);
 
 // A configured account as the local store knows it (no secrets here —
 // credentials live in the OS keychain via the credential vault).

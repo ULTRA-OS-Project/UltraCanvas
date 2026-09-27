@@ -1,6 +1,6 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.h
 // The manual server settings page: incoming (IMAP) and outgoing (SMTP) host,
-// port and security, plus the username — shown when neither the provider
+// port, security and authentication method, plus the username — shown when neither the provider
 // table nor the autoconfig lookup knew the address, prefilled with whatever
 // was found or guessed, and reachable again for an account whose servers are
 // unknown. Save validates in place and — when a verifier is given — checks the
@@ -9,7 +9,7 @@
 // With `AccountFields::edit` set it doubles as the account settings page: a
 // display-name row above the servers, and - for a password account - a
 // password row, or - for an OAuth account - a "Sign in again" button.
-// Version: 0.3.0 - doubles as the account settings page (name + password / OAuth)
+// Version: 0.4.0 - an authentication method per server
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

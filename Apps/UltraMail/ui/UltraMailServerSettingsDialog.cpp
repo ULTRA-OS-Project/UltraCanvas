@@ -1,7 +1,6 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
-// Version: 0.3.2 - password and/or "Sign in with <provider>" per capability;
-//                  the sign-in error grows to fit; saving preserves the
-//                  account's OAuth/provider identity (does not clear it)
+// Version: 0.4.0 - an authentication method per server (Automatic, normal or
+//                  encrypted password, OAuth2, Kerberos, NTLM, none for SMTP)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailServerSettingsDialog.h"
 
@@ -44,6 +43,32 @@ MailSecurity SecurityAt(int index) {
                       : MailSecurity::SslTls;
 }
 
+// The authentication methods in dropdown order. "No authentication" is only
+// offered for the outgoing server: an SMTP relay may trust the network, but an
+// IMAP mailbox always needs a sign-in.
+struct AuthChoice { UltraNetMailAuth auth; const char* label; };
+constexpr AuthChoice kAuthChoices[] = {
+    { UltraNetMailAuth::Any,               "Automatic" },
+    { UltraNetMailAuth::Password,          "Normal password" },
+    { UltraNetMailAuth::EncryptedPassword, "Encrypted password" },
+    { UltraNetMailAuth::OAuth2,            "OAuth2" },
+    { UltraNetMailAuth::Kerberos,          "Kerberos / GSSAPI" },
+    { UltraNetMailAuth::NTLM,              "NTLM" },
+    { UltraNetMailAuth::None,              "No authentication" },
+};
+constexpr int kAuthChoiceCount = static_cast<int>(sizeof(kAuthChoices) / sizeof(kAuthChoices[0]));
+
+int AuthIndex(UltraNetMailAuth auth) {
+    for (int i = 0; i < kAuthChoiceCount; ++i)
+        if (kAuthChoices[i].auth == auth) return i;
+    return 0;
+}
+
+UltraNetMailAuth AuthAt(int index) {
+    return (index >= 0 && index < kAuthChoiceCount) ? kAuthChoices[index].auth
+                                                    : UltraNetMailAuth::Any;
+}
+
 std::string Trim(const std::string& s) {
     std::size_t b = 0, e = s.size();
     while (b < e && std::isspace(static_cast<unsigned char>(s[b]))) ++b;
@@ -72,7 +97,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // The account settings page carries a display-name row and up to two
     // credential rows (a password field and/or a "Sign in with …" button) on
     // top of the server rows, plus room for a multi-line sign-in error.
-    config.height     = account.edit ? 500 : 340;
+    // Two authentication rows sit under the server rows on both.
+    config.height     = account.edit ? 560 : 400;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -161,6 +187,38 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
 
     ServerRow imap = addServerRow("srvImap", "Incoming (IMAP)", prefill.imap);
     ServerRow smtp = addServerRow("srvSmtp", "Outgoing (SMTP)", prefill.smtp);
+
+    // Authentication method per server, as Thunderbird offers it: prefilled
+    // from the provider table (OAuth2 for Gmail, Outlook, Yahoo) or the
+    // provider's autoconfig, else Automatic — whatever the server offers.
+    auto addAuthRow = [&content](const std::string& id, const std::string& caption,
+                                 UltraNetMailAuth current, bool offerNone) {
+        auto row = CreateContainer(id + "Row", 0, 0, 0, Theme::kControlHeight);
+        row->layout.SetFlexRow()
+                   .SetFlexGap(Theme::kInnerGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        auto label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
+                                     Theme::kSizeBody, Theme::kTextSecondary);
+        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
+        row->AddChild(label);
+        auto dd = CreateDropdown(id, 0, 0, 0, Theme::kControlHeight);
+        for (const AuthChoice& c : kAuthChoices) {
+            if (c.auth == UltraNetMailAuth::None && !offerNone) continue;
+            dd->AddItem(c.label, ToString(c.auth));
+        }
+        Theme::StyleDropdown(dd);
+        // "None" is last, so indices match kAuthChoices whether or not it is listed.
+        int index = AuthIndex(current);
+        if (current == UltraNetMailAuth::None && !offerNone) index = 0;
+        dd->SetSelectedIndex(index, /*runNotifications=*/false);
+        row->AddChild(dd);
+        dd->layoutItem.SetFlexGrow(1);
+        content->AddChild(row);
+        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return dd;
+    };
+    auto imapAuth = addAuthRow("srvImapAuth", "Sign-in (IMAP)", prefill.imap.auth, false);
+    auto smtpAuth = addAuthRow("srvSmtpAuth", "Sign-in (SMTP)", prefill.smtp.auth, true);
 
     // Username row.
     auto userRow = CreateContainer("srvUserRow", 0, 0, 0, Theme::kControlHeight);
@@ -325,8 +383,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // Read + validate the fields; false (with the reason in `status`) when
     // something is missing. Fills the servers plus, on the settings page, the
     // edited display name and any typed new password.
-    auto collect = [imap, smtp, user, status, email, nameInput, passInput, prefill,
-                    readingPaneCheck, senderIconCheck](Result& out) {
+    auto collect = [imap, smtp, imapAuth, smtpAuth, user, status, email, nameInput,
+                    passInput, prefill, readingPaneCheck, senderIconCheck](Result& out) {
         DiscoveryResult& r = out.settings;
         r = DiscoveryResult{};
         r.imap.host = Trim(imap.host->GetText());
@@ -335,6 +393,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         r.smtp.host = Trim(smtp.host->GetText());
         r.smtp.port = ParsePort(smtp.port->GetText());
         r.smtp.security = SecurityAt(smtp.security->GetSelectedIndex());
+        r.imap.auth = AuthAt(imapAuth->GetSelectedIndex());
+        r.smtp.auth = AuthAt(smtpAuth->GetSelectedIndex());
         const std::string username = Trim(user->GetText());
         r.imap.username = username.empty() ? email : username;
         r.smtp.username = r.imap.username;
