@@ -2816,6 +2816,26 @@ add_test(NAME FilerRemotePathTest COMMAND FilerRemotePathTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FilerRemotePathTest")
 
+# ===== FILER REMOTE CACHE TEST =====
+# The server-free half of UltraFiler's remote listing cache
+# (Apps/UltraFiler/UltraFilerRemoteCache.h): which drives prefetch their
+# subfolders, which are picked, and the file listings are kept in between
+# runs. Header-only, like the path scheme it builds on.
+message(STATUS "  Building FilerRemoteCacheTest...")
+add_executable(FilerRemoteCacheTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerRemoteCacheTest.cpp
+)
+target_include_directories(FilerRemoteCacheTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerRemoteCacheTest PRIVATE cxx_std_20)
+set_target_properties(FilerRemoteCacheTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerRemoteCacheTest COMMAND FilerRemoteCacheTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerRemoteCacheTest")
+
 message(STATUS "")
 
 # ===== FILER VOLUME SPACE TEST =====

@@ -1,8 +1,9 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
-// Version: 1.1.0
-// Last Modified: 2026-09-24
+// Version: 1.2.0
+// Last Modified: 2026-09-27
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
+#include "UltraFilerRemoteCache.h"
 
 #include "UltraFilerSettings.h"        // GetConfigDirectory
 
@@ -12,6 +13,8 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
@@ -147,6 +150,7 @@ bool UltraFilerRemoteDrives::Reload(std::string& error) {
             d.canModify = p->Capabilities().modify;
             d.canUpload = p->Capabilities().upload;
         }
+        d.prefetches = RemoteProviderPrefetches(a.providerId);
         drives.push_back(std::move(d));
     }
     // By name, so the rows do not move about between runs; the account store
@@ -158,6 +162,9 @@ bool UltraFilerRemoteDrives::Reload(std::string& error) {
 
     std::lock_guard<std::mutex> lk(mutex_);
     drives_ = std::move(drives);
+    // The first time the drives are known is the first time the listings
+    // kept from the last run can be matched to them.
+    LoadDiskCacheLocked();
     return true;
 #endif
 }
@@ -205,10 +212,29 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
 
     const auto it = cache_.find(path);
     if (it != cache_.end()) {
+        it->second.lastUsed = ++useCounter_;
         switch (it->second.state) {
             case CacheState::Ready:
                 out = it->second.entries;
                 return true;
+            case CacheState::Stale: {
+                // What the folder held last time, shown now; the server is
+                // asked again behind it and the answer replaces it through
+                // onListingArrived. Queued as the user's request, not as a
+                // prefetch: they are looking at this folder.
+                out = it->second.entries;
+                if (!it->second.revalidating) {
+                    it->second.revalidating = true;
+                    Job job;
+                    job.isListing = true;
+                    job.path = path;
+                    queue_.push_back(std::move(job));
+                    EnsureWorker();
+                    lk.unlock();
+                    cond_.notify_one();
+                }
+                return true;
+            }
             case CacheState::Failed:
                 error = it->second.error;
                 return false;
@@ -223,7 +249,9 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
     // A miss. Remember that it is being fetched BEFORE releasing the lock, so
     // a second scan of the same folder joins this fetch instead of queueing
     // another - the folder display scans more than once per navigation.
-    cache_[path] = CacheEntry{CacheState::Loading, {}, {}};
+    CacheEntry loading;
+    loading.lastUsed = ++useCounter_;
+    cache_[path] = std::move(loading);
     Job job;
     job.isListing = true;
     job.path = path;
@@ -501,7 +529,8 @@ bool UltraFilerRemoteDrives::Download(const std::string& remoteFile,
         // which will refuse to read a directory as a file.
         const std::string parent = RemoteFilerParent(remoteFile);
         auto it = cache_.find(parent);
-        if (it != cache_.end() && it->second.state == CacheState::Ready) {
+        if (it != cache_.end() && (it->second.state == CacheState::Ready ||
+                                   it->second.state == CacheState::Stale)) {
             for (const FilerEntry& e : it->second.entries) {
                 if (e.path != remoteFile) continue;
                 if (e.isDirectory) {
@@ -599,6 +628,205 @@ void UltraFilerRemoteDrives::InvalidateAll() {
     cache_.clear();
 }
 
+std::size_t UltraFilerRemoteDrives::PrefetchQueueSize() const {
+    std::lock_guard<std::mutex> lk(mutex_);
+    return prefetchQueue_.size();
+}
+
+bool UltraFilerRemoteDrives::DrivePrefetchesLocked(const std::string& accountId,
+                                                   bool* canModify) const {
+    for (const RemoteDrive& d : drives_) {
+        if (d.accountId != accountId) continue;
+        if (canModify) *canModify = d.canModify;
+        return d.prefetches;
+    }
+    return false;
+}
+
+void UltraFilerRemoteDrives::QueuePrefetchLocked(
+        const std::string& folderPath, const std::vector<FilerEntry>& entries) {
+    if (shutdown_) return;
+    if (!DrivePrefetchesLocked(RemoteFilerAccountId(folderPath))) return;
+
+    // Known: anything cached that the server has answered for this session,
+    // or that is already on its way. A listing kept from the last run is not
+    // known - fetching it ahead is what brings it up to date before it is
+    // opened.
+    std::unordered_set<std::string> known = prefetchQueued_;
+    for (const auto& [path, entry] : cache_) {
+        if (entry.state != CacheState::Stale || entry.revalidating)
+            known.insert(path);
+    }
+    std::vector<RemoteCachedEntry> candidates;
+    candidates.reserve(entries.size());
+    for (const FilerEntry& e : entries) {
+        RemoteCachedEntry c;
+        c.name = e.name;
+        c.path = e.path;
+        c.isDirectory = e.isDirectory;
+        candidates.push_back(std::move(c));
+    }
+    const std::vector<std::string> targets =
+            SelectRemotePrefetchTargets(candidates, known);
+    if (targets.empty()) return;
+
+    // To the front, in listing order: the folder the user has just opened is
+    // where they will go next, not the one they opened a minute ago.
+    for (auto it = targets.rbegin(); it != targets.rend(); ++it) {
+        prefetchQueue_.push_front(*it);
+        prefetchQueued_.insert(*it);
+    }
+    // Bounded: a user walking quickly through a big tree leaves behind
+    // folders they are no longer near. The oldest are the ones dropped.
+    const std::size_t cap = kRemotePrefetchPerFolder * 4;
+    while (prefetchQueue_.size() > cap) {
+        prefetchQueued_.erase(prefetchQueue_.back());
+        prefetchQueue_.pop_back();
+    }
+    EnsureWorker();
+}
+
+bool UltraFilerRemoteDrives::TakePrefetchLocked(Job& job) {
+    while (!prefetchQueue_.empty()) {
+        std::string path = std::move(prefetchQueue_.front());
+        prefetchQueue_.pop_front();
+        prefetchQueued_.erase(path);
+
+        // The drive may have gone, or the user may have opened the folder
+        // meanwhile - its own listing is then already queued or in.
+        if (!DrivePrefetchesLocked(RemoteFilerAccountId(path))) continue;
+        auto it = cache_.find(path);
+        if (it != cache_.end()) {
+            if (it->second.state != CacheState::Stale || it->second.revalidating)
+                continue;
+            // Kept from the last run: stays on show while it is checked.
+            it->second.revalidating = true;
+        } else {
+            cache_[path] = CacheEntry{};   // Loading
+        }
+        job = Job{};
+        job.isListing = true;
+        job.isPrefetch = true;
+        job.path = std::move(path);
+        return true;
+    }
+    return false;
+}
+
+std::string UltraFilerRemoteDrives::DiskCachePath() {
+    return UltraFilerSettings::GetConfigDirectory() + "/remote-listings.cache";
+}
+
+void UltraFilerRemoteDrives::LoadDiskCacheLocked() {
+    if (diskCacheLoaded_) return;
+    diskCacheLoaded_ = true;
+
+    std::ifstream in(DiskCachePath(), std::ios::binary);
+    if (!in) return;   // the first run, or the cache was deleted: nothing kept
+    std::ostringstream text;
+    text << in.rdbuf();
+    std::vector<RemoteCachedListing> listings;
+    if (!ParseRemoteListings(text.str(), listings)) return;
+
+    // The file lists the most recently used first. Each listing is stamped
+    // below every use this session will make, in that order, so the next
+    // save keeps what was used last time ahead of what was only carried over.
+    useCounter_ = std::max<uint64_t>(useCounter_, listings.size());
+    uint64_t stamp = listings.size();
+    for (const RemoteCachedListing& l : listings) {
+        const uint64_t lastUsed = stamp--;
+        bool canModify = false;
+        // Only for a drive that is still configured and still keeps listings;
+        // an account removed since then leaves its listings behind unread,
+        // and the next save drops them.
+        if (!DrivePrefetchesLocked(RemoteFilerAccountId(l.folderPath), &canModify))
+            continue;
+        if (cache_.count(l.folderPath)) continue;
+        CacheEntry entry;
+        entry.state = CacheState::Stale;
+        entry.entries.reserve(l.entries.size());
+        for (const RemoteCachedEntry& c : l.entries) {
+            // An entry is kept only inside the drive of its folder; a line
+            // that names another drive is damage, not data.
+            if (RemoteFilerAccountId(c.path) != RemoteFilerAccountId(l.folderPath))
+                continue;
+            FilerEntry f;
+            f.name = c.name;
+            f.path = c.path;
+            f.isDirectory = c.isDirectory;
+            f.isHidden = IsHiddenRemoteFilerName(c.name);
+            f.size = c.size;
+            f.modifiedTime = c.modifiedTime;
+            // Asked of the drive now, not remembered: the badge follows what
+            // the provider can do today.
+            f.isReadOnly = !canModify;
+            entry.entries.push_back(std::move(f));
+        }
+        entry.lastUsed = lastUsed;
+        cache_[l.folderPath] = std::move(entry);
+    }
+}
+
+void UltraFilerRemoteDrives::SaveDiskCache() {
+    std::vector<RemoteCachedListing> listings;
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        if (diskCacheSaved_ || !diskCacheLoaded_) return;
+        diskCacheSaved_ = true;
+
+        struct Candidate { uint64_t lastUsed; const std::string* path;
+                           const CacheEntry* entry; };
+        std::vector<Candidate> candidates;
+        for (const auto& [path, entry] : cache_) {
+            if (entry.state != CacheState::Ready && entry.state != CacheState::Stale)
+                continue;
+            if (!DrivePrefetchesLocked(RemoteFilerAccountId(path))) continue;
+            candidates.push_back({entry.lastUsed, &path, &entry});
+        }
+        // Most recently used first, so a full cache keeps what the user was
+        // actually working in; by path among equals, so the file is stable.
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const Candidate& a, const Candidate& b) {
+                      if (a.lastUsed != b.lastUsed) return a.lastUsed > b.lastUsed;
+                      return *a.path < *b.path;
+                  });
+        if (candidates.size() > kRemoteCacheMaxListings)
+            candidates.resize(kRemoteCacheMaxListings);
+
+        listings.reserve(candidates.size());
+        for (const Candidate& c : candidates) {
+            RemoteCachedListing l;
+            l.folderPath = *c.path;
+            l.entries.reserve(c.entry->entries.size());
+            for (const FilerEntry& f : c.entry->entries) {
+                RemoteCachedEntry e;
+                e.name = f.name;
+                e.path = f.path;
+                e.isDirectory = f.isDirectory;
+                e.size = f.size;
+                e.modifiedTime = f.modifiedTime;
+                l.entries.push_back(std::move(e));
+            }
+            listings.push_back(std::move(l));
+        }
+    }
+
+    // Written beside the target and renamed over it, so a crash half way
+    // leaves last run's cache rather than half of this one's.
+    const std::string target = DiskCachePath();
+    const std::string temp = target + ".tmp";
+    std::error_code ec;
+    fs::create_directories(fs::path(target).parent_path(), ec);
+    {
+        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+        if (!out) return;
+        out << SerializeRemoteListings(listings);
+        if (!out) { out.close(); fs::remove(temp, ec); return; }
+    }
+    fs::rename(temp, target, ec);
+    if (ec) fs::remove(temp, ec);
+}
+
 UltraCloud::CloudService* UltraFilerRemoteDrives::Service() {
 #ifndef ULTRAFILER_HAS_ULTRACLOUD
     return nullptr;
@@ -612,9 +840,14 @@ void UltraFilerRemoteDrives::Stop() {
         std::lock_guard<std::mutex> lk(mutex_);
         shutdown_ = true;
         queue_.clear();
+        prefetchQueue_.clear();
+        prefetchQueued_.clear();
     }
     cond_.notify_all();
     if (worker_.joinable()) worker_.join();
+    // After the join: the worker writes the cache, and what it was fetching
+    // when asked to stop is either in by now or never will be.
+    SaveDiskCache();
 }
 
 void UltraFilerRemoteDrives::EnsureWorker() {
@@ -667,10 +900,16 @@ void UltraFilerRemoteDrives::WorkerMain() {
         std::size_t waiting = 0;
         {
             std::unique_lock<std::mutex> lk(mutex_);
-            cond_.wait(lk, [this]() { return shutdown_ || !queue_.empty(); });
+            cond_.wait(lk, [this]() {
+                return shutdown_ || !queue_.empty() || !prefetchQueue_.empty();
+            });
             if (shutdown_) return;
-            job = std::move(queue_.front());
-            queue_.pop_front();
+            if (!queue_.empty()) {
+                job = std::move(queue_.front());
+                queue_.pop_front();
+            } else if (!TakePrefetchLocked(job)) {
+                continue;   // every queued prefetch had been overtaken
+            }
             waiting = queue_.size();
             // main's ListingStatus reads these to describe the job the folder
             // display is waiting on; the activity report below is the other
@@ -692,7 +931,10 @@ void UltraFilerRemoteDrives::WorkerMain() {
                         : job.operation == RemoteOperation::MakeDirectory
                                 ? job.argument
                                 : RemoteFilerName(job.path);
-        ReportActivity(activity, /*force=*/true);
+        // A prefetch is not something the user asked for, so the status line
+        // does not mention it: it would read as the drive being busy with
+        // folders nobody opened.
+        if (!job.isPrefetch) ReportActivity(activity, /*force=*/true);
 
         // A transfer counts its own bytes. UltraNet reports them through the
         // module's global transfer callbacks, which is why the previous bag is
@@ -726,21 +968,24 @@ void UltraFilerRemoteDrives::WorkerMain() {
         // A change reports its failure through operationError so the UI hears
         // the same thing whether the provider refused or threw.
         std::string operationError;
+        bool notifyListing = true;
         try {
-            if (job.isListing) FetchListing(job.path);
+            if (job.isListing) notifyListing = FetchListing(job.path, job.isPrefetch);
             else               RunOperation(job);
         } catch (const std::exception& e) {
             if (job.isListing) {
                 std::lock_guard<std::mutex> lk(mutex_);
-                cache_[job.path] = CacheEntry{CacheState::Failed, {},
-                                              std::string("listing failed: ") + e.what()};
+                notifyListing = RecordListingFailureLocked(
+                        job.path, job.isPrefetch,
+                        std::string("listing failed: ") + e.what());
             } else {
                 operationError = std::string("the operation failed: ") + e.what();
             }
         } catch (...) {
             if (job.isListing) {
                 std::lock_guard<std::mutex> lk(mutex_);
-                cache_[job.path] = CacheEntry{CacheState::Failed, {}, "listing failed"};
+                notifyListing = RecordListingFailureLocked(job.path, job.isPrefetch,
+                                                           "listing failed");
             } else {
                 operationError = "the operation failed";
             }
@@ -792,12 +1037,17 @@ void UltraFilerRemoteDrives::WorkerMain() {
                 std::lock_guard<std::mutex> lk(mutex_);
                 left = queue_.size();
             }
-            if (left == 0) ReportActivity(RemoteActivity{}, /*force=*/true);
+            if (left == 0 && !job.isPrefetch)
+                ReportActivity(RemoteActivity{}, /*force=*/true);
         }
 
         // Tell the window on the UI thread. Posted rather than called: this is
         // a worker, and everything it would touch in the display belongs to
         // the UI thread.
+        // A prefetch nobody was waiting for that failed changed nothing on
+        // screen, and telling the window would have the tree take the empty
+        // answer for a folder with nothing in it.
+        if (job.isListing && !notifyListing) continue;
         if (UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent()) {
             auto alive = alive_;
             const bool listing = job.isListing;
@@ -815,69 +1065,104 @@ void UltraFilerRemoteDrives::WorkerMain() {
     }
 }
 
-void UltraFilerRemoteDrives::FetchListing(const std::string& path) {
+bool UltraFilerRemoteDrives::RecordListingFailureLocked(const std::string& path,
+                                                        bool isPrefetch,
+                                                        const std::string& error) {
+    auto it = cache_.find(path);
+    if (isPrefetch && it != cache_.end()) {
+        // Kept from the last run: still the best there is to show, and the
+        // folder is asked again when it is opened.
+        if (it->second.state == CacheState::Stale) {
+            it->second.revalidating = false;
+            return false;
+        }
+        // Fetched ahead and nobody has asked for it meanwhile: forget the
+        // failure, so opening the folder asks the server afresh rather than
+        // showing an error from a moment the user never saw. Someone who did
+        // ask (List stamped lastUsed while it was loading) is owed the
+        // answer, and gets it below like any other listing.
+        if (it->second.state == CacheState::Loading && it->second.lastUsed == 0) {
+            cache_.erase(it);
+            return false;
+        }
+    }
+    CacheEntry failed;
+    failed.state = CacheState::Failed;
+    failed.error = error;
+    failed.lastUsed = it != cache_.end() ? it->second.lastUsed : 0;
+    cache_[path] = std::move(failed);
+    return true;
+}
+
+bool UltraFilerRemoteDrives::FetchListing(const std::string& path, bool isPrefetch) {
 #ifndef ULTRAFILER_HAS_ULTRACLOUD
+    (void)isPrefetch;
     std::lock_guard<std::mutex> lk(mutex_);
     cache_[path] = CacheEntry{CacheState::Failed, {},
                               "this build of UltraFiler carries no cloud support"};
+    return true;
 #else
     std::string accountId, remotePath;
-    if (!SplitRemoteFilerPath(path, accountId, remotePath)) return;
+    if (!SplitRemoteFilerPath(path, accountId, remotePath)) return false;
 
     // Whether this drive can be changed decides the read-only badge on every
     // entry of it, so it is read once here rather than per entry.
     bool canModify = false;
     {
         std::lock_guard<std::mutex> lk(mutex_);
-        for (const RemoteDrive& d : drives_) {
-            if (d.accountId == accountId) { canModify = d.canModify; break; }
-        }
+        DrivePrefetchesLocked(accountId, &canModify);
     }
 
     std::vector<UltraCloud::Entry> entries;
     const UltraCloud::Result r =
             impl_->service->List(accountId, remotePath, entries);
 
-    CacheEntry result;
     if (!r.IsOk()) {
-        result.state = CacheState::Failed;
         // The provider's own words: "530 Login incorrect" tells the user what
         // to change, where "could not list" tells them nothing.
-        result.error = r.message.empty()
-                ? "cannot list this folder"
-                : "cannot list this folder: " + r.message;
-    } else {
-        result.state = CacheState::Ready;
-        result.entries.reserve(entries.size());
-        for (const UltraCloud::Entry& e : entries) {
-            FilerEntry f;
-            f.name = e.name;
-            f.path = MakeRemoteFilerPath(accountId, e.path);
-            f.isDirectory = e.isDirectory;
-            // Left unset, this was false for every entry on a drive, so a
-            // ".ssh" there was shown even with hidden files turned off while
-            // the one on this disk was not. The display already filters on it
-            // (and counts what it held back), so the flag was all that was
-            // missing. The rule itself lives next to the path scheme, where
-            // it can be tested without a server.
-            f.isHidden = IsHiddenRemoteFilerName(e.name);
-            f.size = e.isDirectory ? 0 : static_cast<uint64_t>(e.size < 0 ? 0 : e.size);
-            f.modifiedTime = ParseRemoteFilerTime(e.modified);
-            // The Unix convention, which is what a server lists: a dot-entry
-            // is hidden the way a local one is (Display > Hidden files shows
-            // it), rather than shown on a drive and hidden on a disk.
-            f.isHidden = !e.name.empty() && e.name[0] == '.';
-            // The display draws its read-only badge from this, so it has to
-            // follow what the drive can actually do: an FTP drive can be
-            // changed, a Nextcloud or Dropbox one cannot (yet) and says so on
-            // every entry rather than only when a command is tried.
-            f.isReadOnly = !canModify;
-            result.entries.push_back(std::move(f));
-        }
+        std::lock_guard<std::mutex> lk(mutex_);
+        return RecordListingFailureLocked(
+                path, isPrefetch,
+                r.message.empty() ? "cannot list this folder"
+                                  : "cannot list this folder: " + r.message);
+    }
+
+    CacheEntry result;
+    result.state = CacheState::Ready;
+    result.entries.reserve(entries.size());
+    for (const UltraCloud::Entry& e : entries) {
+        FilerEntry f;
+        f.name = e.name;
+        f.path = MakeRemoteFilerPath(accountId, e.path);
+        f.isDirectory = e.isDirectory;
+        // The Unix convention, which is what a server lists: a dot-entry is
+        // hidden the way a local one is (Display > Hidden files shows it),
+        // rather than shown on a drive and hidden on a disk. The rule itself
+        // lives next to the path scheme, where it can be tested without a
+        // server.
+        f.isHidden = IsHiddenRemoteFilerName(e.name);
+        f.size = e.isDirectory ? 0 : static_cast<uint64_t>(e.size < 0 ? 0 : e.size);
+        f.modifiedTime = ParseRemoteFilerTime(e.modified);
+        // The display draws its read-only badge from this, so it has to
+        // follow what the drive can actually do: an FTP drive can be
+        // changed, a Nextcloud or Dropbox one cannot (yet) and says so on
+        // every entry rather than only when a command is tried.
+        f.isReadOnly = !canModify;
+        result.entries.push_back(std::move(f));
     }
 
     std::lock_guard<std::mutex> lk(mutex_);
+    auto it = cache_.find(path);
+    // A prefetch keeps whatever use stamp the entry had: fetching ahead is
+    // not the user using it. A listing they asked for is fresh use.
+    result.lastUsed = isPrefetch ? (it != cache_.end() ? it->second.lastUsed : 0)
+                                 : ++useCounter_;
+    // One level ahead of what the user opens, never a prefetch of a prefetch:
+    // that is how "the subfolders" stays a couple of dozen listings instead
+    // of a crawl of the whole server.
+    if (!isPrefetch) QueuePrefetchLocked(path, result.entries);
     cache_[path] = std::move(result);
+    return true;
 #endif
 }
 

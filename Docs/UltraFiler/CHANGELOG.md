@@ -1,3 +1,17 @@
+#### 2026-09-27 *1.55.0*
+- **FTP drives prefetch subfolders and remember them.** Opening a folder on
+  an FTP / SFTP drive now also lists its first 24 visible subfolders in the
+  background. These requests wait behind anything the user asks for and stay
+  out of the status line, so opening one of those subfolders is usually
+  instant instead of a fresh login. A prefetch that fails is dropped, and the
+  folder is asked for again when it is opened. When the window closes, the
+  drive listings (the 512 most recently used folders; names, sizes and dates
+  only) are saved to `remote-listings.cache` in the config directory. On the
+  next start a remembered folder shows at once and is checked with the
+  server in the background. Only FTP drives do this; the metered cloud
+  providers do not. The rules and the file format are in
+  `UltraFilerRemoteCache.h` and are tested by `FilerRemoteCacheTest`.
+
 #### 2026-09-25 *1.54.0*
 - **R, Scala, MATLAB and VBA files show their text too.** Their languages
   were written into the syntax highlighter but switched off, so `.r`,
