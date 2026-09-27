@@ -224,6 +224,9 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     and `/Volumes` is where every removable volume on macOS lands — neither
     used to be looked at, so on those systems a stick was missing from the
     tree even after a restart.
+  - **Remote drive rows say what they are.** An FTP-family drive's row in
+    the tree starts with its protocol, taken from the server address:
+    `FTP: Backup NAS`, `FTPS: …`, `FTPES: …` or `SFTP: …`.
   - **FTP drives work ahead and remember.** Opening a folder on an FTP / SFTP
     drive (*+ Drive*) also fetches its first 24 visible subfolders in the
     background, one level deep. These fetches wait behind anything you ask

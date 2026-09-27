@@ -30,6 +30,13 @@
   see the framework changelog entry *FTP rename, delete and new folder work
   in subfolders*. SFTP drives can now rename, delete and create folders at
   all.
+- **FTP drives show their protocol in the folder tree.** An FTP-family
+  drive's row now starts with how it connects: `FTP: Backup NAS`,
+  `FTPS: …`, `FTPES: …` or `SFTP: …`. The label comes from the server
+  address's scheme, so servers that look alike by name are easy to tell
+  apart, including whether the password travels unencrypted (plain FTP).
+  A name that already starts with the label is not labelled twice. Cloud
+  drives keep their names.
 
 #### 2026-09-25 *1.54.0*
 - **R, Scala, MATLAB and VBA files show their text too.** Their languages
