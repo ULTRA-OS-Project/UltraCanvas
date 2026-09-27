@@ -1,0 +1,669 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="2100" viewBox="0 0 1320 2100">
+<rect width="1320" height="2100" fill="#FFFFFF"/>
+<text x="40" y="48" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#2A2A30" opacity="1.0">UltraCanvasFilerWidget — proposed palette, revision 3</text>
+<text x="40" y="72" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13" font-weight="400" fill="#63636B" opacity="1.0">Images, video, audio, vector, 3D and documents now mirrored with applications: the efficient modern format glows, the legacy one sinks. Lossless audio re-cut at full chroma — no green left in it.</text>
+<rect x="28" y="92" width="1264" height="88" rx="10" fill="#F6F6F8" stroke="#E2E2E7"/>
+<text x="48" y="118" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#8A8A92" opacity="1.0">HUE = FAMILY</text>
+<text x="206" y="118" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#44444C" opacity="1.0">blue images · green video · yellow-to-orange audio · purple documents · grey text &amp; code · dark red apps · steel grey libraries</text>
+<text x="48" y="135" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#8A8A92" opacity="1.0">BRIGHTNESS = EFFICIENCY</text>
+<text x="206" y="135" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#44444C" opacity="1.0">mirrored: rank 1 is the most efficient format and the BRIGHTEST rung; legacy formats sink into the dark end. Formats sharing a compressor share a rung (zip, jar and gz are all deflate)</text>
+<text x="48" y="152" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#8A8A92" opacity="1.0">HUE TILT = LOSSLESS</text>
+<text x="206" y="152" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#44444C" opacity="1.0">lossless sits a few degrees round the wheel from lossy — indigo beside azure, full yellow beside full orange</text>
+<text x="48" y="169" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#8A8A92" opacity="1.0">ONE INK PER FAMILY</text>
+<text x="206" y="169" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#44444C" opacity="1.0">the label colour is a property of the family, never of the file: no ramp ever crosses the white/dark ink boundary inside itself</text>
+<text x="48" y="218" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Images · lossy</text>
+<text x="48" y="233" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Azure blue · mirrored</text>
+<rect x="48" y="240" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="251.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 3.68:1</text>
+<rect x="312" y="200" width="88" height="40" rx="4" fill="#2D86EA" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="219" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">AVIF</text>
+<text x="356.0" y="233" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#2D86EA</text>
+<text x="356.0" y="251" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">AV1 still — best ratio</text>
+<rect x="406" y="200" width="88" height="40" rx="4" fill="#1672DB" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="219" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">HEIC</text>
+<text x="450.0" y="233" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#1672DB</text>
+<text x="450.0" y="251" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">HEVC still</text>
+<rect x="500" y="200" width="88" height="40" rx="4" fill="#1672DB" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="219" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">HEIF</text>
+<text x="544.0" y="233" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#1672DB</text>
+<rect x="594" y="200" width="88" height="40" rx="4" fill="#1260BA" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="219" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">WEBP</text>
+<text x="638.0" y="233" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#1260BA</text>
+<text x="638.0" y="251" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">VP8 lossy</text>
+<rect x="688" y="200" width="88" height="40" rx="4" fill="#0F4F98" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="219" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">JPG</text>
+<text x="732.0" y="233" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#0F4F98</text>
+<text x="732.0" y="251" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">baseline JPEG</text>
+<rect x="782" y="200" width="88" height="40" rx="4" fill="#0F4F98" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="219" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">JPEG</text>
+<text x="826.0" y="233" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#0F4F98</text>
+<rect x="876" y="200" width="88" height="40" rx="4" fill="#0C3F7A" stroke="rgba(0,0,0,0.12)"/>
+<text x="920.0" y="219" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">GIF</text>
+<text x="920.0" y="233" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#0C3F7A</text>
+<text x="920.0" y="251" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">palette, legacy</text>
+<line x1="40" y1="253" x2="1280" y2="253" stroke="#ECECF0"/>
+<text x="48" y="284" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Images · lossless</text>
+<text x="48" y="299" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Indigo · mirrored — same family, hue tilted +22°</text>
+<rect x="48" y="306" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="317.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 3.98:1</text>
+<rect x="312" y="266" width="88" height="40" rx="4" fill="#6F79CC" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="285" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">PNG</text>
+<text x="356.0" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#6F79CC</text>
+<text x="356.0" y="317" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">deflate</text>
+<rect x="406" y="266" width="88" height="40" rx="4" fill="#5761C4" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="285" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">QOI</text>
+<text x="450.0" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#5761C4</text>
+<text x="450.0" y="317" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">fast, ≈PNG size</text>
+<rect x="500" y="266" width="88" height="40" rx="4" fill="#414DB8" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="285" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TIF</text>
+<text x="544.0" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#414DB8</text>
+<text x="544.0" y="317" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">LZW / often raw</text>
+<rect x="594" y="266" width="88" height="40" rx="4" fill="#414DB8" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="285" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TIFF</text>
+<text x="638.0" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#414DB8</text>
+<rect x="688" y="266" width="88" height="40" rx="4" fill="#363F98" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="285" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">ICO</text>
+<text x="732.0" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#363F98</text>
+<text x="732.0" y="317" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">icon container</text>
+<rect x="782" y="266" width="88" height="40" rx="4" fill="#2B337A" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="285" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">BMP</text>
+<text x="826.0" y="299" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#2B337A</text>
+<text x="826.0" y="317" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">uncompressed</text>
+<line x1="40" y1="319" x2="1280" y2="319" stroke="#ECECF0"/>
+<text x="48" y="350" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Video</text>
+<text x="48" y="365" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Green · mirrored</text>
+<rect x="48" y="372" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="383.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 3.4:1</text>
+<rect x="312" y="332" width="88" height="40" rx="4" fill="#1CA04B" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="351" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">WEBM</text>
+<text x="356.0" y="365" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#1CA04B</text>
+<text x="356.0" y="383" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">VP9 / AV1</text>
+<rect x="406" y="332" width="88" height="40" rx="4" fill="#1A9545" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="351" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">MKV</text>
+<text x="450.0" y="365" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#1A9545</text>
+<text x="450.0" y="383" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">AV1 / HEVC</text>
+<rect x="500" y="332" width="88" height="40" rx="4" fill="#18883F" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="351" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">MP4</text>
+<text x="544.0" y="365" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#18883F</text>
+<text x="544.0" y="383" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">H.264 / HEVC</text>
+<rect x="594" y="332" width="88" height="40" rx="4" fill="#157938" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="351" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">MOV</text>
+<text x="638.0" y="365" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#157938</text>
+<text x="638.0" y="383" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">ProRes / H.264</text>
+<rect x="688" y="332" width="88" height="40" rx="4" fill="#12632E" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="351" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">AVI</text>
+<text x="732.0" y="365" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#12632E</text>
+<text x="732.0" y="383" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">MPEG-4 ASP</text>
+<rect x="782" y="332" width="88" height="40" rx="4" fill="#0F5326" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="351" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">WMV</text>
+<text x="826.0" y="365" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#0F5326</text>
+<text x="826.0" y="383" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">VC-1, legacy</text>
+<line x1="40" y1="385" x2="1280" y2="385" stroke="#ECECF0"/>
+<text x="48" y="416" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Audio · lossy</text>
+<text x="48" y="431" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Full orange · mirrored — dark ink</text>
+<rect x="48" y="438" width="96" height="16" rx="8" fill="#EDEDF1" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="449.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#2A2A30" opacity="1.0">dark ink · 4.9:1</text>
+<rect x="312" y="398" width="88" height="40" rx="4" fill="#FFAA54" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="417" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">OPUS</text>
+<text x="356.0" y="431" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#FFAA54</text>
+<text x="356.0" y="449" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">best at any bitrate</text>
+<rect x="406" y="398" width="88" height="40" rx="4" fill="#FF9830" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="417" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">AAC</text>
+<text x="450.0" y="431" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#FF9830</text>
+<rect x="500" y="398" width="88" height="40" rx="4" fill="#FF9830" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="417" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">M4A</text>
+<text x="544.0" y="431" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#FF9830</text>
+<text x="544.0" y="449" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">AAC — or ALAC, see notes</text>
+<rect x="594" y="398" width="88" height="40" rx="4" fill="#FF8408" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="417" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">M4B</text>
+<text x="638.0" y="431" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#FF8408</text>
+<text x="638.0" y="449" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">audiobook, AAC</text>
+<rect x="688" y="398" width="88" height="40" rx="4" fill="#F37900" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="417" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">OGG</text>
+<text x="732.0" y="431" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#F37900</text>
+<text x="732.0" y="449" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">Vorbis</text>
+<rect x="782" y="398" width="88" height="40" rx="4" fill="#E27100" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="417" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">MP3</text>
+<text x="826.0" y="431" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#E27100</text>
+<text x="826.0" y="449" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">legacy</text>
+<line x1="40" y1="451" x2="1280" y2="451" stroke="#ECECF0"/>
+<text x="48" y="482" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Audio · lossless</text>
+<text x="48" y="497" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Pure yellow · mirrored — hue 48 at full chroma, no green in it</text>
+<rect x="48" y="504" width="96" height="16" rx="8" fill="#EDEDF1" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="515.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#2A2A30" opacity="1.0">dark ink · 7.79:1</text>
+<rect x="312" y="464" width="88" height="40" rx="4" fill="#FFDC4D" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="483" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">FLAC</text>
+<text x="356.0" y="497" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#FFDC4D</text>
+<text x="356.0" y="515" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">compressed lossless</text>
+<rect x="406" y="464" width="88" height="40" rx="4" fill="#FDCA00" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="483" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">ALAC</text>
+<text x="450.0" y="497" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#FDCA00</text>
+<text x="450.0" y="515" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">inside .m4a</text>
+<rect x="500" y="464" width="88" height="40" rx="4" fill="#EDBD00" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="483" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">WAV</text>
+<text x="544.0" y="497" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#EDBD00</text>
+<text x="544.0" y="515" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">uncompressed PCM</text>
+<rect x="594" y="464" width="88" height="40" rx="4" fill="#DEB200" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="483" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">AIFF</text>
+<text x="638.0" y="497" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#DEB200</text>
+<text x="638.0" y="515" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">uncompressed PCM</text>
+<line x1="40" y1="517" x2="1280" y2="517" stroke="#ECECF0"/>
+<text x="48" y="548" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Vector</text>
+<text x="48" y="563" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Cyan · mirrored — the graphics band, clear of both blues</text>
+<rect x="48" y="570" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="581.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 3.62:1</text>
+<rect x="312" y="530" width="88" height="40" rx="4" fill="#0E93AE" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="549" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">SVGZ</text>
+<text x="356.0" y="563" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#0E93AE</text>
+<text x="356.0" y="581" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">gzipped</text>
+<rect x="406" y="530" width="88" height="40" rx="4" fill="#0D88A0" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="549" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">SVG</text>
+<text x="450.0" y="563" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#0D88A0</text>
+<rect x="500" y="530" width="88" height="40" rx="4" fill="#0C798E" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="549" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">AI</text>
+<text x="544.0" y="563" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#0C798E</text>
+<rect x="594" y="530" width="88" height="40" rx="4" fill="#0A677A" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="549" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">EPS</text>
+<text x="638.0" y="563" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#0A677A</text>
+<rect x="688" y="530" width="88" height="40" rx="4" fill="#0A677A" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="549" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">PS</text>
+<text x="732.0" y="563" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#0A677A</text>
+<rect x="782" y="530" width="88" height="40" rx="4" fill="#085666" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="549" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">CDR</text>
+<text x="826.0" y="563" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#085666</text>
+<rect x="876" y="530" width="88" height="40" rx="4" fill="#085666" stroke="rgba(0,0,0,0.12)"/>
+<text x="920.0" y="549" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">DXF</text>
+<text x="920.0" y="563" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#085666</text>
+<text x="920.0" y="581" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">ASCII</text>
+<line x1="40" y1="583" x2="1280" y2="583" stroke="#ECECF0"/>
+<text x="48" y="614" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">3D models</text>
+<text x="48" y="629" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Teal · mirrored — binary containers light, text formats dark</text>
+<rect x="48" y="636" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="647.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 3.5:1</text>
+<rect x="312" y="596" width="88" height="40" rx="4" fill="#26998A" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="615" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">GLB</text>
+<text x="356.0" y="629" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#26998A</text>
+<text x="356.0" y="647" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">binary glTF</text>
+<rect x="406" y="596" width="88" height="40" rx="4" fill="#249182" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="615" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">3MF</text>
+<text x="450.0" y="629" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#249182</text>
+<text x="450.0" y="647" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">zipped</text>
+<rect x="500" y="596" width="88" height="40" rx="4" fill="#218577" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="615" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">STL</text>
+<text x="544.0" y="629" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#218577</text>
+<rect x="594" y="596" width="88" height="40" rx="4" fill="#218577" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="615" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">FBX</text>
+<text x="638.0" y="629" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#218577</text>
+<rect x="688" y="596" width="88" height="40" rx="4" fill="#1E776B" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="615" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">PLY</text>
+<text x="732.0" y="629" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#1E776B</text>
+<rect x="782" y="596" width="88" height="40" rx="4" fill="#1A665C" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="615" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">GLTF</text>
+<text x="826.0" y="629" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#1A665C</text>
+<text x="826.0" y="647" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">JSON + buffers</text>
+<rect x="876" y="596" width="88" height="40" rx="4" fill="#16584F" stroke="rgba(0,0,0,0.12)"/>
+<text x="920.0" y="615" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">OBJ</text>
+<text x="920.0" y="629" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#16584F</text>
+<text x="920.0" y="647" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">ASCII</text>
+<rect x="970" y="596" width="88" height="40" rx="4" fill="#16584F" stroke="rgba(0,0,0,0.12)"/>
+<text x="1014.0" y="615" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">DAE</text>
+<text x="1014.0" y="629" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#16584F</text>
+<text x="1014.0" y="647" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">XML</text>
+<line x1="40" y1="649" x2="1280" y2="649" stroke="#ECECF0"/>
+<text x="48" y="680" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Documents</text>
+<text x="48" y="695" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Purple · mirrored — fixed layout light, markup dark</text>
+<rect x="48" y="702" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="713.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 3.38:1</text>
+<rect x="312" y="662" width="88" height="40" rx="4" fill="#A876D4" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="681" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">PDF</text>
+<text x="356.0" y="695" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#A876D4</text>
+<rect x="406" y="662" width="88" height="40" rx="4" fill="#9F69CF" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="681" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">EPUB</text>
+<text x="450.0" y="695" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#9F69CF</text>
+<rect x="500" y="662" width="88" height="40" rx="4" fill="#975BCB" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="681" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">ODT</text>
+<text x="544.0" y="695" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#975BCB</text>
+<rect x="594" y="662" width="88" height="40" rx="4" fill="#8B49C6" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="681" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">DOCX</text>
+<text x="638.0" y="695" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#8B49C6</text>
+<rect x="688" y="662" width="88" height="40" rx="4" fill="#7E3AB9" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="681" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">DOC</text>
+<text x="732.0" y="695" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#7E3AB9</text>
+<text x="732.0" y="713" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">legacy binary</text>
+<rect x="782" y="662" width="88" height="40" rx="4" fill="#6D33A0" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="681" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">RTF</text>
+<text x="826.0" y="695" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#6D33A0</text>
+<rect x="876" y="662" width="88" height="40" rx="4" fill="#5C2B87" stroke="rgba(0,0,0,0.12)"/>
+<text x="920.0" y="681" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">MD</text>
+<text x="920.0" y="695" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#5C2B87</text>
+<text x="920.0" y="713" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">markup</text>
+<rect x="970" y="662" width="88" height="40" rx="4" fill="#5C2B87" stroke="rgba(0,0,0,0.12)"/>
+<text x="1014.0" y="681" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">HTML</text>
+<text x="1014.0" y="695" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#5C2B87</text>
+<text x="1014.0" y="713" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">markup</text>
+<line x1="40" y1="715" x2="1280" y2="715" stroke="#ECECF0"/>
+<text x="48" y="746" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Spreadsheets</text>
+<text x="48" y="761" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Violet — NOT mirrored, see the note below</text>
+<rect x="48" y="768" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="779.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 3.99:1</text>
+<rect x="312" y="728" width="88" height="40" rx="4" fill="#893589" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="747" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">XLSX</text>
+<text x="356.0" y="761" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#893589</text>
+<rect x="406" y="728" width="88" height="40" rx="4" fill="#A741A7" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="747" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">ODS</text>
+<text x="450.0" y="761" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#A741A7</text>
+<rect x="500" y="728" width="88" height="40" rx="4" fill="#BD57BD" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="747" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">XLS</text>
+<text x="544.0" y="761" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#BD57BD</text>
+<text x="544.0" y="779" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">legacy binary</text>
+<line x1="40" y1="781" x2="1280" y2="781" stroke="#ECECF0"/>
+<text x="48" y="812" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Text &amp; code</text>
+<text x="48" y="827" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Light neutral greys — the recessive end of the palette, dark ink</text>
+<rect x="48" y="834" width="96" height="16" rx="8" fill="#EDEDF1" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="845.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#2A2A30" opacity="1.0">dark ink · 4.52:1</text>
+<rect x="312" y="794" width="88" height="40" rx="4" fill="#818B98" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="813" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">CPP</text>
+<text x="356.0" y="827" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#818B98</text>
+<text x="356.0" y="845" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">source</text>
+<rect x="406" y="794" width="88" height="40" rx="4" fill="#818B98" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="813" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">H</text>
+<text x="450.0" y="827" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#818B98</text>
+<rect x="500" y="794" width="88" height="40" rx="4" fill="#818B98" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="813" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">PY</text>
+<text x="544.0" y="827" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#818B98</text>
+<rect x="594" y="794" width="88" height="40" rx="4" fill="#818B98" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="813" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">SH</text>
+<text x="638.0" y="827" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#818B98</text>
+<rect x="688" y="794" width="88" height="40" rx="4" fill="#949DA8" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="813" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">JSON</text>
+<text x="732.0" y="827" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#949DA8</text>
+<text x="732.0" y="845" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">config / data</text>
+<rect x="782" y="794" width="88" height="40" rx="4" fill="#949DA8" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="813" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">XML</text>
+<text x="826.0" y="827" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#949DA8</text>
+<rect x="876" y="794" width="88" height="40" rx="4" fill="#949DA8" stroke="rgba(0,0,0,0.12)"/>
+<text x="920.0" y="813" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">YAML</text>
+<text x="920.0" y="827" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#949DA8</text>
+<rect x="970" y="794" width="88" height="40" rx="4" fill="#949DA8" stroke="rgba(0,0,0,0.12)"/>
+<text x="1014.0" y="813" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">CSV</text>
+<text x="1014.0" y="827" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#949DA8</text>
+<rect x="1064" y="794" width="88" height="40" rx="4" fill="#ABB1BA" stroke="rgba(0,0,0,0.12)"/>
+<text x="1108.0" y="813" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">TXT</text>
+<text x="1108.0" y="827" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#ABB1BA</text>
+<text x="1108.0" y="845" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">prose</text>
+<rect x="1158" y="794" width="88" height="40" rx="4" fill="#BABFC7" stroke="rgba(0,0,0,0.12)"/>
+<text x="1202.0" y="813" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">LOG</text>
+<text x="1202.0" y="827" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#BABFC7</text>
+<line x1="40" y1="847" x2="1280" y2="847" stroke="#ECECF0"/>
+<text x="48" y="878" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Applications</text>
+<text x="48" y="893" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Dark red · mirrored — the everyday .exe takes the bright end</text>
+<rect x="48" y="900" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="911.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 4.51:1</text>
+<rect x="312" y="860" width="88" height="40" rx="4" fill="#DC3644" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="879" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">EXE</text>
+<text x="356.0" y="893" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#DC3644</text>
+<text x="356.0" y="911" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">native program</text>
+<rect x="406" y="860" width="88" height="40" rx="4" fill="#DC3644" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="879" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">APP</text>
+<text x="450.0" y="893" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#DC3644</text>
+<text x="450.0" y="911" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">bundle</text>
+<rect x="500" y="860" width="88" height="40" rx="4" fill="#CA2431" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="879" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">APPIMAGE</text>
+<text x="544.0" y="893" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#CA2431</text>
+<text x="544.0" y="911" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">self-contained</text>
+<rect x="594" y="860" width="88" height="40" rx="4" fill="#AE1F2B" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="879" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">MSI</text>
+<text x="638.0" y="893" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#AE1F2B</text>
+<text x="638.0" y="911" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">installer</text>
+<rect x="688" y="860" width="88" height="40" rx="4" fill="#911A24" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="879" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">DEB</text>
+<text x="732.0" y="893" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#911A24</text>
+<text x="732.0" y="911" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">package</text>
+<rect x="782" y="860" width="88" height="40" rx="4" fill="#911A24" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="879" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">RPM</text>
+<text x="826.0" y="893" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#911A24</text>
+<text x="826.0" y="911" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">package</text>
+<line x1="40" y1="913" x2="1280" y2="913" stroke="#ECECF0"/>
+<text x="48" y="944" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Libraries</text>
+<text x="48" y="959" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Steel blue-grey — dynamic deep, static light</text>
+<rect x="48" y="966" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="977.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 3.98:1</text>
+<rect x="312" y="926" width="88" height="40" rx="4" fill="#445662" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="945" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">SO</text>
+<text x="356.0" y="959" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#445662</text>
+<text x="356.0" y="977" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">ELF shared object</text>
+<rect x="406" y="926" width="88" height="40" rx="4" fill="#506573" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="945" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">DLL</text>
+<text x="450.0" y="959" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#506573</text>
+<text x="450.0" y="977" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">PE dynamic library</text>
+<rect x="500" y="926" width="88" height="40" rx="4" fill="#5C7384" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="945" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">DYLIB</text>
+<text x="544.0" y="959" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#5C7384</text>
+<text x="544.0" y="977" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">Mach-O dynamic</text>
+<rect x="594" y="926" width="88" height="40" rx="4" fill="#688396" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="945" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">A</text>
+<text x="638.0" y="959" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#688396</text>
+<text x="638.0" y="977" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">static archive</text>
+<rect x="688" y="926" width="88" height="40" rx="4" fill="#688396" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="945" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">LIB</text>
+<text x="732.0" y="959" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#688396</text>
+<text x="732.0" y="977" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">static / import</text>
+<line x1="40" y1="979" x2="1280" y2="979" stroke="#ECECF0"/>
+<text x="48" y="1010" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Archives</text>
+<text x="48" y="1025" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Magenta — NOT mirrored, see the note below</text>
+<rect x="48" y="1032" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="1043.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 3.48:1</text>
+<rect x="312" y="992" width="88" height="40" rx="4" fill="#842A57" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">7Z</text>
+<text x="356.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#842A57</text>
+<text x="356.0" y="1043" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">LZMA2</text>
+<rect x="406" y="992" width="88" height="40" rx="4" fill="#842A57" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">ZST</text>
+<text x="450.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#842A57</text>
+<text x="450.0" y="1043" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">Zstandard</text>
+<rect x="500" y="992" width="88" height="40" rx="4" fill="#9E3268" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">XZ</text>
+<text x="544.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#9E3268</text>
+<text x="544.0" y="1043" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">LZMA2</text>
+<rect x="594" y="992" width="88" height="40" rx="4" fill="#9E3268" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">LZMA</text>
+<text x="638.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#9E3268</text>
+<rect x="688" y="992" width="88" height="40" rx="4" fill="#B93A79" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">RAR</text>
+<text x="732.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#B93A79</text>
+<rect x="782" y="992" width="88" height="40" rx="4" fill="#B93A79" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">BZ2</text>
+<text x="826.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#B93A79</text>
+<text x="826.0" y="1043" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">bzip2</text>
+<rect x="876" y="992" width="88" height="40" rx="4" fill="#C74E8A" stroke="rgba(0,0,0,0.12)"/>
+<text x="920.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">GZ</text>
+<text x="920.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#C74E8A</text>
+<text x="920.0" y="1043" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">deflate</text>
+<rect x="970" y="992" width="88" height="40" rx="4" fill="#C74E8A" stroke="rgba(0,0,0,0.12)"/>
+<text x="1014.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">ZIP</text>
+<text x="1014.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#C74E8A</text>
+<text x="1014.0" y="1043" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">deflate</text>
+<rect x="1064" y="992" width="88" height="40" rx="4" fill="#C74E8A" stroke="rgba(0,0,0,0.12)"/>
+<text x="1108.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">JAR</text>
+<text x="1108.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#C74E8A</text>
+<text x="1108.0" y="1043" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">zip = deflate</text>
+<rect x="1158" y="992" width="88" height="40" rx="4" fill="#C74E8A" stroke="rgba(0,0,0,0.12)"/>
+<text x="1202.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TGZ</text>
+<text x="1202.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#C74E8A</text>
+<rect x="1252" y="992" width="88" height="40" rx="4" fill="#CF669B" stroke="rgba(0,0,0,0.12)"/>
+<text x="1296.0" y="1011" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TAR</text>
+<text x="1296.0" y="1025" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#CF669B</text>
+<text x="1296.0" y="1043" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">no compression</text>
+<line x1="40" y1="1045" x2="1280" y2="1045" stroke="#ECECF0"/>
+<text x="48" y="1076" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Fonts</text>
+<text x="48" y="1091" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">Sepia brown — NOT mirrored, see the note below</text>
+<rect x="48" y="1098" width="96" height="16" rx="8" fill="#2A2A30" stroke="rgba(0,0,0,0.12)"/>
+<text x="96" y="1109.5" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="9" font-weight="700" fill="#FFFFFF" opacity="1.0">white ink · 3.26:1</text>
+<rect x="312" y="1058" width="88" height="40" rx="4" fill="#6E4A36" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="1077" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">WOFF2</text>
+<text x="356.0" y="1091" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#6E4A36</text>
+<text x="356.0" y="1109" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">Brotli</text>
+<rect x="406" y="1058" width="88" height="40" rx="4" fill="#81573F" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="1077" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">WOFF</text>
+<text x="450.0" y="1091" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#81573F</text>
+<text x="450.0" y="1109" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">deflate</text>
+<rect x="500" y="1058" width="88" height="40" rx="4" fill="#946449" stroke="rgba(0,0,0,0.12)"/>
+<text x="544.0" y="1077" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">OTF</text>
+<text x="544.0" y="1091" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#946449</text>
+<rect x="594" y="1058" width="88" height="40" rx="4" fill="#A47051" stroke="rgba(0,0,0,0.12)"/>
+<text x="638.0" y="1077" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TTF</text>
+<text x="638.0" y="1091" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#A47051</text>
+<rect x="688" y="1058" width="88" height="40" rx="4" fill="#AE7A5B" stroke="rgba(0,0,0,0.12)"/>
+<text x="732.0" y="1077" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TTC</text>
+<text x="732.0" y="1091" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#AE7A5B</text>
+<text x="732.0" y="1109" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">collection</text>
+<rect x="782" y="1058" width="88" height="40" rx="4" fill="#AE7A5B" stroke="rgba(0,0,0,0.12)"/>
+<text x="826.0" y="1077" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">OTC</text>
+<text x="826.0" y="1091" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#AE7A5B</text>
+<rect x="876" y="1058" width="88" height="40" rx="4" fill="#B48467" stroke="rgba(0,0,0,0.12)"/>
+<text x="920.0" y="1077" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">PFB</text>
+<text x="920.0" y="1091" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#B48467</text>
+<text x="920.0" y="1109" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">Type 1</text>
+<rect x="970" y="1058" width="88" height="40" rx="4" fill="#B48467" stroke="rgba(0,0,0,0.12)"/>
+<text x="1014.0" y="1077" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">BDF</text>
+<text x="1014.0" y="1091" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#B48467</text>
+<text x="1014.0" y="1109" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">bitmap</text>
+<rect x="1064" y="1058" width="88" height="40" rx="4" fill="#B48467" stroke="rgba(0,0,0,0.12)"/>
+<text x="1108.0" y="1077" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">FON</text>
+<text x="1108.0" y="1091" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#B48467</text>
+<text x="1108.0" y="1109" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">bitmap</text>
+<line x1="40" y1="1111" x2="1280" y2="1111" stroke="#ECECF0"/>
+<text x="48" y="1142" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2A2A30" opacity="1.0">Unchanged</text>
+<text x="48" y="1157" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#7A7A82" opacity="1.0">the two that carry no format meaning</text>
+<rect x="312" y="1124" width="88" height="40" rx="4" fill="#F7BE50" stroke="rgba(0,0,0,0.12)"/>
+<text x="356.0" y="1143" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">FOLDER</text>
+<text x="356.0" y="1157" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#F7BE50</text>
+<text x="356.0" y="1175" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">amber folder shape</text>
+<rect x="406" y="1124" width="88" height="40" rx="4" fill="#9E9E9E" stroke="rgba(0,0,0,0.12)"/>
+<text x="450.0" y="1143" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#23232A" opacity="1.0">OTHER</text>
+<text x="450.0" y="1157" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#23232A" opacity="0.88">#9E9E9E</text>
+<text x="450.0" y="1175" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="8.8" font-weight="400" fill="#8A8A92" opacity="1.0">unrecognised</text>
+<rect x="28" y="1204" width="1264" height="238" rx="10" fill="#FFFFFF" stroke="#E2E2E7"/>
+<text x="48" y="1232" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#2A2A30" opacity="1.0">How a mixed folder reads</text>
+<text x="48" y="1251" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#7A7A82" opacity="1.0">The band across the foot of each tile. The extension on the sheet is always the same dark ink — the sheet is white, so nothing switches there.</text>
+<rect x="48" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M48 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#2D86EA"/>
+<text x="80.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">AVIF</text>
+<text x="80.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">holiday.avif</text>
+<rect x="153" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M153 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#0F4F98"/>
+<text x="185.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">JPG</text>
+<text x="185.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">scan.jpg</text>
+<rect x="258" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M258 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#0C3F7A"/>
+<text x="290.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">GIF</text>
+<text x="290.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">banner.gif</text>
+<rect x="363" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M363 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#6F79CC"/>
+<text x="395.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">PNG</text>
+<text x="395.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">logo.png</text>
+<rect x="468" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M468 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#2B337A"/>
+<text x="500.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">BMP</text>
+<text x="500.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">old.bmp</text>
+<rect x="573" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M573 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#1CA04B"/>
+<text x="605.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">WEBM</text>
+<text x="605.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">clip.webm</text>
+<rect x="678" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M678 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#18883F"/>
+<text x="710.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">MP4</text>
+<text x="710.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">talk.mp4</text>
+<rect x="783" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M783 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#12632E"/>
+<text x="815.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">AVI</text>
+<text x="815.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">vhs.avi</text>
+<rect x="888" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M888 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#FFAA54"/>
+<text x="920.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">OPUS</text>
+<text x="920.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">song.opus</text>
+<rect x="993" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M993 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#E27100"/>
+<text x="1025.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">MP3</text>
+<text x="1025.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">radio.mp3</text>
+<rect x="1098" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M1098 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#FFDC4D"/>
+<text x="1130.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">FLAC</text>
+<text x="1130.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">master.flac</text>
+<rect x="1203" y="1270" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M1203 1314.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#EDBD00"/>
+<text x="1235.0" y="1298.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">WAV</text>
+<text x="1235.0" y="1349" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">take1.wav</text>
+<rect x="48" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M48 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#A876D4"/>
+<text x="80.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">PDF</text>
+<text x="80.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">manual.pdf</text>
+<rect x="153" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M153 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#893589"/>
+<text x="185.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">XLSX</text>
+<text x="185.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">budget.xlsx</text>
+<rect x="258" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M258 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#818B98"/>
+<text x="290.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">CPP</text>
+<text x="290.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">main.cpp</text>
+<rect x="363" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M363 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#ABB1BA"/>
+<text x="395.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">TXT</text>
+<text x="395.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">readme.txt</text>
+<rect x="468" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M468 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#DC3644"/>
+<text x="500.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">EXE</text>
+<text x="500.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">UltraFiler.exe</text>
+<rect x="573" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M573 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#911A24"/>
+<text x="605.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">RPM</text>
+<text x="605.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">ultra.rpm</text>
+<rect x="678" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M678 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#445662"/>
+<text x="710.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">SO</text>
+<text x="710.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">libuc.so</text>
+<rect x="783" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M783 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#506573"/>
+<text x="815.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">DLL</text>
+<text x="815.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">core.dll</text>
+<rect x="888" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M888 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#688396"/>
+<text x="920.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">A</text>
+<text x="920.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">libuc.a</text>
+<rect x="993" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M993 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#842A57"/>
+<text x="1025.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">7Z</text>
+<text x="1025.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">backup.7z</text>
+<rect x="1098" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M1098 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#CF669B"/>
+<text x="1130.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">TAR</text>
+<text x="1130.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">dump.tar</text>
+<rect x="1203" y="1367" width="64" height="64" rx="3" fill="#FCFCFD" stroke="rgba(0,0,0,0.25)"/>
+<path d="M1203 1411.8 h64 v16.2 a3 3 0 0 1 -3 3 h-58 a3 3 0 0 1 -3 -3 Z" fill="#A47051"/>
+<text x="1235.0" y="1395.8000000000002" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15.36" font-weight="700" fill="#3C3C42" opacity="1.0">TTF</text>
+<text x="1235.0" y="1446" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5A5A62" opacity="1.0">Serif.ttf</text>
+<rect x="28" y="1466" width="1264" height="200" rx="10" fill="#FFFFFF" stroke="#E2E2E7"/>
+<text x="48" y="1494" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#2A2A30" opacity="1.0">TreeMap view — where the ink rule actually bites</text>
+<text x="48" y="1513" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#7A7A82" opacity="1.0">DrawTreeMapCell paints the caption in hard-coded white (UltraCanvasFilerWidget.cpp:9486). On the lightened audio and the grey text shades that is unreadable, so the caption ink has to come from the family.</text>
+<rect x="48" y="1532" width="210" height="104" fill="#18883F" stroke="#FFFFFF" stroke-width="1"/>
+<text x="54" y="1550" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#FFFFFF" opacity="1.0">conference.mp4</text>
+<text x="54" y="1566" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#FFFFFF" opacity="0.82">1.4 GB</text>
+<rect x="261" y="1532" width="150" height="104" fill="#FFDC4D" stroke="#FFFFFF" stroke-width="1"/>
+<text x="267" y="1550" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#23232A" opacity="1.0">album.flac</text>
+<text x="267" y="1566" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#23232A" opacity="0.82">310 MB</text>
+<rect x="414" y="1532" width="120" height="104" fill="#E27100" stroke="#FFFFFF" stroke-width="1"/>
+<text x="420" y="1550" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#23232A" opacity="1.0">podcast.mp3</text>
+<text x="420" y="1566" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#23232A" opacity="0.82">88 MB</text>
+<rect x="537" y="1532" width="110" height="104" fill="#DC3644" stroke="#FFFFFF" stroke-width="1"/>
+<text x="543" y="1550" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#FFFFFF" opacity="1.0">Installer.exe</text>
+<text x="543" y="1566" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#FFFFFF" opacity="0.82">64 MB</text>
+<rect x="650" y="1532" width="100" height="104" fill="#ABB1BA" stroke="#FFFFFF" stroke-width="1"/>
+<text x="656" y="1550" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#23232A" opacity="1.0">notes.txt</text>
+<text x="656" y="1566" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#23232A" opacity="0.82">12 MB</text>
+<rect x="753" y="1532" width="110" height="104" fill="#842A57" stroke="#FFFFFF" stroke-width="1"/>
+<text x="759" y="1550" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#FFFFFF" opacity="1.0">archive.7z</text>
+<text x="759" y="1566" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#FFFFFF" opacity="0.82">40 MB</text>
+<text x="880" y="1550" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#44444C" opacity="1.0">← caption ink follows the family:</text>
+<text x="880" y="1568" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#63636B" opacity="1.0">white on video / apps / archives,</text>
+<text x="880" y="1584" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#63636B" opacity="1.0">dark on audio and text greys.</text>
+<rect x="28" y="1690" width="1264" height="150" rx="10" fill="#FFF9FB" stroke="#F0DCE4"/>
+<text x="48" y="1718" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#2A2A30" opacity="1.0">The three families left running the other way</text>
+<text x="48" y="1737" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#7A7A82" opacity="1.0">Top row as proposed (rank 1 darkest); bottom row is the same ramp mirrored, if you want one global rule.</text>
+<text x="48" y="1764" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#44444C" opacity="1.0">Spreadsheets</text>
+<rect x="48" y="1772" width="62" height="30" rx="4" fill="#893589" stroke="rgba(0,0,0,0.12)"/>
+<text x="79.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">XLSX</text>
+<text x="79.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#893589</text>
+<rect x="116" y="1772" width="62" height="30" rx="4" fill="#A741A7" stroke="rgba(0,0,0,0.12)"/>
+<text x="147.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">ODS</text>
+<text x="147.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#A741A7</text>
+<rect x="184" y="1772" width="62" height="30" rx="4" fill="#BD57BD" stroke="rgba(0,0,0,0.12)"/>
+<text x="215.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">XLS</text>
+<text x="215.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#BD57BD</text>
+<rect x="48" y="1806" width="62" height="30" rx="4" fill="#BD57BD" stroke="rgba(0,0,0,0.12)"/>
+<text x="79.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">XLSX</text>
+<text x="79.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#BD57BD</text>
+<rect x="116" y="1806" width="62" height="30" rx="4" fill="#A741A7" stroke="rgba(0,0,0,0.12)"/>
+<text x="147.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">ODS</text>
+<text x="147.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#A741A7</text>
+<rect x="184" y="1806" width="62" height="30" rx="4" fill="#893589" stroke="rgba(0,0,0,0.12)"/>
+<text x="215.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">XLS</text>
+<text x="215.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#893589</text>
+<text x="288" y="1764" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#44444C" opacity="1.0">Archives</text>
+<rect x="288" y="1772" width="62" height="30" rx="4" fill="#842A57" stroke="rgba(0,0,0,0.12)"/>
+<text x="319.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">7Z</text>
+<text x="319.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#842A57</text>
+<rect x="356" y="1772" width="62" height="30" rx="4" fill="#9E3268" stroke="rgba(0,0,0,0.12)"/>
+<text x="387.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">XZ</text>
+<text x="387.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#9E3268</text>
+<rect x="424" y="1772" width="62" height="30" rx="4" fill="#B93A79" stroke="rgba(0,0,0,0.12)"/>
+<text x="455.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">RAR</text>
+<text x="455.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#B93A79</text>
+<rect x="492" y="1772" width="62" height="30" rx="4" fill="#C74E8A" stroke="rgba(0,0,0,0.12)"/>
+<text x="523.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">GZ</text>
+<text x="523.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#C74E8A</text>
+<rect x="560" y="1772" width="62" height="30" rx="4" fill="#CF669B" stroke="rgba(0,0,0,0.12)"/>
+<text x="591.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TAR</text>
+<text x="591.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#CF669B</text>
+<rect x="288" y="1806" width="62" height="30" rx="4" fill="#CF669B" stroke="rgba(0,0,0,0.12)"/>
+<text x="319.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">7Z</text>
+<text x="319.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#CF669B</text>
+<rect x="356" y="1806" width="62" height="30" rx="4" fill="#C74E8A" stroke="rgba(0,0,0,0.12)"/>
+<text x="387.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">XZ</text>
+<text x="387.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#C74E8A</text>
+<rect x="424" y="1806" width="62" height="30" rx="4" fill="#B93A79" stroke="rgba(0,0,0,0.12)"/>
+<text x="455.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">RAR</text>
+<text x="455.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#B93A79</text>
+<rect x="492" y="1806" width="62" height="30" rx="4" fill="#9E3268" stroke="rgba(0,0,0,0.12)"/>
+<text x="523.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">GZ</text>
+<text x="523.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#9E3268</text>
+<rect x="560" y="1806" width="62" height="30" rx="4" fill="#842A57" stroke="rgba(0,0,0,0.12)"/>
+<text x="591.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TAR</text>
+<text x="591.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#842A57</text>
+<text x="664" y="1764" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="700" fill="#44444C" opacity="1.0">Fonts</text>
+<rect x="664" y="1772" width="62" height="30" rx="4" fill="#6E4A36" stroke="rgba(0,0,0,0.12)"/>
+<text x="695.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">WOFF2</text>
+<text x="695.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#6E4A36</text>
+<rect x="732" y="1772" width="62" height="30" rx="4" fill="#81573F" stroke="rgba(0,0,0,0.12)"/>
+<text x="763.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">WOFF</text>
+<text x="763.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#81573F</text>
+<rect x="800" y="1772" width="62" height="30" rx="4" fill="#946449" stroke="rgba(0,0,0,0.12)"/>
+<text x="831.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">OTF</text>
+<text x="831.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#946449</text>
+<rect x="868" y="1772" width="62" height="30" rx="4" fill="#A47051" stroke="rgba(0,0,0,0.12)"/>
+<text x="899.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TTF</text>
+<text x="899.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#A47051</text>
+<rect x="936" y="1772" width="62" height="30" rx="4" fill="#AE7A5B" stroke="rgba(0,0,0,0.12)"/>
+<text x="967.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TTC</text>
+<text x="967.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#AE7A5B</text>
+<rect x="1004" y="1772" width="62" height="30" rx="4" fill="#B48467" stroke="rgba(0,0,0,0.12)"/>
+<text x="1035.0" y="1791" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">PFB</text>
+<text x="1035.0" y="1805" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#B48467</text>
+<rect x="664" y="1806" width="62" height="30" rx="4" fill="#B48467" stroke="rgba(0,0,0,0.12)"/>
+<text x="695.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">WOFF2</text>
+<text x="695.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#B48467</text>
+<rect x="732" y="1806" width="62" height="30" rx="4" fill="#AE7A5B" stroke="rgba(0,0,0,0.12)"/>
+<text x="763.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">WOFF</text>
+<text x="763.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#AE7A5B</text>
+<rect x="800" y="1806" width="62" height="30" rx="4" fill="#A47051" stroke="rgba(0,0,0,0.12)"/>
+<text x="831.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">OTF</text>
+<text x="831.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#A47051</text>
+<rect x="868" y="1806" width="62" height="30" rx="4" fill="#946449" stroke="rgba(0,0,0,0.12)"/>
+<text x="899.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TTF</text>
+<text x="899.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#946449</text>
+<rect x="936" y="1806" width="62" height="30" rx="4" fill="#81573F" stroke="rgba(0,0,0,0.12)"/>
+<text x="967.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">TTC</text>
+<text x="967.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#81573F</text>
+<rect x="1004" y="1806" width="62" height="30" rx="4" fill="#6E4A36" stroke="rgba(0,0,0,0.12)"/>
+<text x="1035.0" y="1825" text-anchor="middle" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="700" fill="#FFFFFF" opacity="1.0">PFB</text>
+<text x="1035.0" y="1839" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="9.5" font-weight="400" fill="#FFFFFF" opacity="0.88">#6E4A36</text>
+<rect x="28" y="1864" width="1264" height="200" rx="10" fill="#F6F6F8" stroke="#E2E2E7"/>
+<text x="48" y="1892" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#2A2A30" opacity="1.0">Open points and consequences</text>
+<circle cx="54" cy="1912" r="2.5" fill="#9A9AA2"/>
+<text x="66" y="1916" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#44444C" opacity="1.0">Mirrored as asked: AVIF #2D86EA glows and GIF #0C3F7A sinks; WebM #1CA04B over WMV #0F5326; Opus #FFAA54 over MP3 #E27100; PDF #A876D4 over the markup formats at #5C2B87. Applications already ran this way.</text>
+<circle cx="54" cy="1939" r="2.5" fill="#9A9AA2"/>
+<text x="66" y="1943" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#44444C" opacity="1.0">Lossless audio re-cut at hue 48 and full chroma: #FFDC4D, #FDCA00, #EDBD00, #DEB200. The olive cast came from asking a saturated yellow to be dark — the ladder now stays above L 55 and the whole family reads as yellow.</text>
+<circle cx="54" cy="1966" r="2.5" fill="#9A9AA2"/>
+<text x="66" y="1970" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#44444C" opacity="1.0">Spreadsheets, Archives and Fonts still run the other way (rank 1 darkest) because they were not on your list. Spreadsheets sit in the purple band right beside Documents, so the two now rank in opposite directions — that is the one pairing where the inconsistency is visible.</text>
+<circle cx="54" cy="1993" r="2.5" fill="#9A9AA2"/>
+<text x="66" y="1997" text-anchor="start" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="11.5" font-weight="400" fill="#44444C" opacity="1.0">The mirror does not change the ink rule: every family still clears 3.2:1 on a single ink, and the audio and text families keep dark captions.</text>
+</svg>
