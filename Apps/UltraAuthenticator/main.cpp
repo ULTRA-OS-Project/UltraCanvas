@@ -90,11 +90,11 @@ std::string DefaultVaultPath() {
     fs::path base;
 
     if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg) {
-        base = fs::path(xdg);
+        base = PathFromUtf8(xdg);
     } else if (const char* home = std::getenv("HOME"); home && *home) {
-        base = fs::path(home) / ".local" / "share";
+        base = PathFromUtf8(home) / ".local" / "share";
     } else if (const char* appData = std::getenv("APPDATA"); appData && *appData) {
-        base = fs::path(appData);
+        base = PathFromUtf8(appData);
     } else {
         base = fs::current_path();
     }
@@ -102,7 +102,7 @@ std::string DefaultVaultPath() {
     fs::path dir = base / "UltraAuthenticator";
     std::error_code ec;
     fs::create_directories(dir, ec);   // best effort; open reports real errors
-    return (dir / "accounts.vault").string();
+    return PathToUtf8(dir / "accounts.vault");
 }
 
 // Bridges a dialog's std::string into a secure buffer and wipes the copy we
@@ -117,7 +117,7 @@ UltraCryptSecureBuffer AdoptPassword(const std::string& typed) {
 // Settings live beside the vault, so a custom --vault path carries its own.
 std::string PreferencesPathFor(const std::string& vaultPath) {
     namespace fs = std::filesystem;
-    return (fs::path(vaultPath).parent_path() / "settings.ini").string();
+    return PathToUtf8(PathFromUtf8(vaultPath).parent_path() / "settings.ini");
 }
 
 bool CreateMainWindow(UltraCanvasApplication& app, AccountStore& store,

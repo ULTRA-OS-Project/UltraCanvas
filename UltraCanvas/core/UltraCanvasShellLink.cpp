@@ -16,6 +16,7 @@
 // Last Modified: 2026-09-05
 // Author: UltraCanvas Framework
 #include "UltraCanvasShellLink.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <array>
@@ -192,7 +193,7 @@ namespace UltraCanvas {
             for (fs::directory_iterator it(dir, ec), end; it != end;
                  it.increment(ec)) {
                 if (ec) break;
-                if (EqualsNoCase(it->path().filename().string(), name)) {
+                if (EqualsNoCase(PathToUtf8(it->path().filename()), name)) {
                     out = it->path();
                     return true;
                 }
@@ -208,8 +209,8 @@ namespace UltraCanvas {
         std::string CanonicalOrSelf(const fs::path& path) {
             std::error_code ec;
             const fs::path canonical = fs::weakly_canonical(path, ec);
-            if (ec || canonical.empty()) return path.string();
-            return canonical.string();
+            if (ec || canonical.empty()) return PathToUtf8(path);
+            return PathToUtf8(canonical);
         }
 
 #ifndef _WIN32
@@ -292,14 +293,14 @@ namespace UltraCanvas {
                                                   const std::string& contextPath) {
             std::vector<fs::path> roots;
             std::error_code ec;
-            fs::path dir = fs::absolute(fs::path(contextPath), ec);
-            if (ec) dir = fs::path(contextPath);
+            fs::path dir = fs::absolute(PathFromUtf8(contextPath), ec);
+            if (ec) dir = PathFromUtf8(contextPath);
             if (!contextPath.empty()) {
                 if (!fs::is_directory(dir, ec) || ec) dir = dir.parent_path();
                 for (; !dir.empty() && dir != dir.root_path();
                      dir = dir.parent_path()) {
                     // Inside a Wine prefix: .../<prefix>/drive_c/...
-                    if (EqualsNoCase(dir.filename().string(), "drive_c"))
+                    if (EqualsNoCase(PathToUtf8(dir.filename()), "drive_c"))
                         AddPrefixCandidate(roots, dir.parent_path(), letter);
                     // The prefix itself.
                     if (HasChildNamed(dir, {"dosdevices"}))
@@ -315,9 +316,9 @@ namespace UltraCanvas {
                 }
             }
             if (const char* prefix = std::getenv("WINEPREFIX"))
-                AddPrefixCandidate(roots, fs::path(prefix), letter);
+                AddPrefixCandidate(roots, PathFromUtf8(prefix), letter);
             if (const char* home = std::getenv("HOME"))
-                AddPrefixCandidate(roots, fs::path(home) / ".wine", letter);
+                AddPrefixCandidate(roots, PathFromUtf8(home) / ".wine", letter);
             return roots;
         }
 #endif // !_WIN32
@@ -380,15 +381,15 @@ namespace UltraCanvas {
         std::string UserProfileFromContext(const std::string& contextPath) {
             if (contextPath.empty()) return {};
             std::error_code ec;
-            fs::path dir = fs::absolute(fs::path(contextPath), ec);
-            if (ec) dir = fs::path(contextPath);
+            fs::path dir = fs::absolute(PathFromUtf8(contextPath), ec);
+            if (ec) dir = PathFromUtf8(contextPath);
             std::string user;
             for (fs::path p = dir; !p.empty() && p != p.root_path();
                  p = p.parent_path()) {
-                if (EqualsNoCase(p.filename().string(), "users") &&
+                if (EqualsNoCase(PathToUtf8(p.filename()), "users") &&
                     !user.empty())
                     return "C:\\Users\\" + user;
-                user = p.filename().string();
+                user = PathToUtf8(p.filename());
             }
             return {};
         }
@@ -643,7 +644,7 @@ namespace UltraCanvas {
         std::vector<std::string> candidates;
         if (!linkInfoTarget.empty()) candidates.push_back(linkInfoTarget);
         if (!envTarget.empty()) candidates.push_back(envTarget);
-        const fs::path linkDir = fs::path(linkPath).parent_path();
+        const fs::path linkDir = PathFromUtf8(linkPath).parent_path();
         for (const std::string& candidate : candidates) {
             const std::string host = ResolveWindowsPathOnHost(candidate, linkPath);
             if (!host.empty()) {

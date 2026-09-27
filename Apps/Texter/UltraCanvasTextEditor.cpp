@@ -139,7 +139,7 @@ namespace {
         } else {
             // Extract filename from path
             std::filesystem::path p(originalPath);
-            filename = p.filename().string() + ".autosave";
+            filename = PathToUtf8(p.filename()) + ".autosave";
         }
 
         // Add timestamp to make it unique
@@ -248,9 +248,9 @@ namespace {
 
             for (const auto& entry : std::filesystem::directory_iterator(dir)) {
                 if (entry.is_regular_file()) {
-                    std::string filename = entry.path().filename().string();
+                    std::string filename = PathToUtf8(entry.path().filename());
                     if (filename.find(".autosave") != std::string::npos) {
-                        backups.push_back(entry.path().string());
+                        backups.push_back(PathToUtf8(entry.path()));
                     }
                 }
             }
@@ -273,7 +273,7 @@ namespace {
 
             for (const auto& entry : std::filesystem::directory_iterator(dir)) {
                 if (entry.is_regular_file()) {
-                    std::string filename = entry.path().filename().string();
+                    std::string filename = PathToUtf8(entry.path().filename());
                     if (filename.find(".autosave") != std::string::npos) {
                         auto lastWrite = std::filesystem::last_write_time(entry);
                         auto fileTime = std::chrono::system_clock::to_time_t(
@@ -521,7 +521,7 @@ namespace {
                                 std::unordered_set<std::string> seen;
                                 for (const auto& filePath : recentFiles) {
                                     std::filesystem::path p(filePath);
-                                    std::string folder = p.parent_path().string();
+                                    std::string folder = PathToUtf8(p.parent_path());
                                     if (folder.empty()) continue;
                                     if (seen.insert(folder).second) {
                                         folders.push_back(folder);
@@ -1772,13 +1772,13 @@ namespace {
 
         // Create new document
         std::filesystem::path p(filePath);
-        int docIndex = CreateNewDocument(p.filename().string());
+        int docIndex = CreateNewDocument(PathToUtf8(p.filename()));
 
         // PDFs take a separate codepath: the tab's textArea is swapped out
         // for a UltraCanvasPDFView. Word-processing documents (.odt/.docx/.doc)
         // are converted to editable Markdown. Detect by extension
         // (case-insensitive).
-        std::string ext = p.extension().string();
+        std::string ext = PathToUtf8(p.extension());
         if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
         bool ok;
@@ -2187,7 +2187,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         };
 
         std::filesystem::path p(filePath);
-        doc->fileName     = p.filename().string();
+        doc->fileName     = PathToUtf8(p.filename());
         doc->filePath     = filePath;
         doc->isNewFile    = false;
         doc->isModified   = false;
@@ -2215,7 +2215,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         UpdateEncodingDropdown();
         UpdateMarkdownToolbarVisibility();
 
-        lastOpenedDirectory = p.parent_path().string();
+        lastOpenedDirectory = PathToUtf8(p.parent_path());
         AddToRecentFiles(filePath);
         return true;
     }
@@ -2246,7 +2246,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             // Update filename from path
             std::filesystem::path p(filePath);
-            doc->fileName = p.filename().string();
+            doc->fileName = PathToUtf8(p.filename());
             doc->filePath = filePath;
             doc->textArea->SetDocumentFilePath(filePath);
             doc->isNewFile = false;
@@ -2254,7 +2254,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->lastSaveTime = std::chrono::steady_clock::now();
 
             // Get file extension
-            std::string ext = p.extension().string();
+            std::string ext = PathToUtf8(p.extension());
             if (!ext.empty() && ext[0] == '.') {
                 ext = ext.substr(1);
             }
@@ -2338,7 +2338,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             UpdateMarkdownToolbarVisibility();
 
             // Track directory and recent files
-            lastOpenedDirectory = p.parent_path().string();
+            lastOpenedDirectory = PathToUtf8(p.parent_path());
             AddToRecentFiles(filePath);
 
             if (doc->textArea && doc->textArea->IsMarkdownHybridMode()) {
@@ -2377,7 +2377,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             }
 
             std::filesystem::path p(filePath);
-            doc->fileName = p.filename().string();
+            doc->fileName = PathToUtf8(p.filename());
             doc->filePath = filePath;
             doc->textArea->SetDocumentFilePath(filePath);
             doc->isNewFile = false;
@@ -2429,7 +2429,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             UpdateLanguageDropdown();
             UpdateMarkdownToolbarVisibility();
 
-            lastOpenedDirectory = p.parent_path().string();
+            lastOpenedDirectory = PathToUtf8(p.parent_path());
             AddToRecentFiles(filePath);
 
             if (docIndex == activeDocumentIndex) {
@@ -2553,7 +2553,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (targetExtension == "odt" || targetExtension == "docx") {
             if (document->metadata.title.empty()) {
                 document->metadata.title =
-                    std::filesystem::path(filePath).stem().string();
+                    PathToUtf8(PathFromUtf8(filePath).stem());
             }
             std::string saveError;
             if (!UCWordDocumentIO::Save(filePath, *document, saveError)) {
@@ -2572,7 +2572,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (targetExtension == "md" || targetExtension == "markdown") {
             RichDocumentMarkdownOptions options;
             options.imageDirectory =
-                std::filesystem::path(filePath).parent_path().string();
+                PathToUtf8(PathFromUtf8(filePath).parent_path());
             text = document->ToMarkdown(options);
         } else if (targetExtension == "html" || targetExtension == "htm") {
             text = document->ToHTML();
@@ -2605,7 +2605,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 }
                 doc->filePath     = filePath;
                 std::filesystem::path p(filePath);
-                doc->fileName     = p.filename().string();
+                doc->fileName     = PathToUtf8(p.filename());
                 doc->isModified   = false;
                 doc->isSaved      = true;
                 doc->isNewFile    = false;
@@ -2617,7 +2617,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 return true;
             }
 
-            std::string targetExt = std::filesystem::path(filePath).extension().string();
+            std::string targetExt = PathToUtf8(PathFromUtf8(filePath).extension());
             if (!targetExt.empty() && targetExt[0] == '.') targetExt = targetExt.substr(1);
             std::transform(targetExt.begin(), targetExt.end(), targetExt.begin(), ::tolower);
 
@@ -2630,7 +2630,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 }
                 doc->filePath = filePath;
                 std::filesystem::path p(filePath);
-                doc->fileName = p.filename().string();
+                doc->fileName = PathToUtf8(p.filename());
                 doc->isNewFile = false;
                 doc->isSaved = true;
                 doc->isModified = false;
@@ -2680,10 +2680,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 // document's directory; extracted embedded images use absolute
                 // paths and re-embed on their own.
                 std::string baseDir =
-                    std::filesystem::path(filePath).parent_path().string();
+                    PathToUtf8(PathFromUtf8(filePath).parent_path());
                 UCRichDocument rich =
                     UCRichDocument::FromMarkdown(doc->textArea->GetText(), baseDir);
-                rich.metadata.title = std::filesystem::path(filePath).stem().string();
+                rich.metadata.title = PathToUtf8(PathFromUtf8(filePath).stem());
                 std::string saveError;
                 if (!UCWordDocumentIO::Save(filePath, rich, saveError)) {
                     debugOutput << "Failed to save document: " << saveError << std::endl;
@@ -2753,11 +2753,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             // Update filename
             std::filesystem::path p(filePath);
-            doc->fileName = p.filename().string();
+            doc->fileName = PathToUtf8(p.filename());
 
             // Detect language from file extension on first save
             if (wasNewFile) {
-                std::string ext = p.extension().string();
+                std::string ext = PathToUtf8(p.extension());
                 if (!ext.empty() && ext[0] == '.') {
                     ext = ext.substr(1);
                 }
@@ -3039,7 +3039,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         std::string displayName;
         if (!originalPath.empty()) {
             std::filesystem::path p(originalPath);
-            displayName = p.filename().string();
+            displayName = PathToUtf8(p.filename());
         } else {
             displayName = GenerateUniqueDocumentName("Recovered");
         }
@@ -5636,14 +5636,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         std::map<std::string, int> nameCounts;
         for (int i = 0; i < count; i++) {
-            nameCounts[std::filesystem::path(recentFiles[i]).filename().string()]++;
+            nameCounts[PathToUtf8(PathFromUtf8(recentFiles[i]).filename())]++;
         }
 
         for (int i = 0; i < count; i++) {
             std::filesystem::path p(recentFiles[i]);
-            std::string label = std::to_string(i + 1) + ". " + p.filename().string();
-            if (nameCounts[p.filename().string()] > 1) {
-                std::string folder = p.parent_path().string();
+            std::string label = std::to_string(i + 1) + ". " + PathToUtf8(p.filename());
+            if (nameCounts[PathToUtf8(p.filename())] > 1) {
+                std::string folder = PathToUtf8(p.parent_path());
                 if (!folder.empty()) {
                     label += "   [" + folder + "]";
                 }

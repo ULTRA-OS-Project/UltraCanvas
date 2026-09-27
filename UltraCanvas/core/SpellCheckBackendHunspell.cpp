@@ -19,6 +19,7 @@
 // unavailable rather than silently flagging every accented word as wrong.
 
 #include "ISpellCheckBackend.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <cctype>
@@ -263,7 +264,7 @@ void CollectDictionaries(std::vector<DictionaryEntry>& outFound) {
             if (!entry.is_regular_file(fileError) || fileError) continue;
             if (entry.path().extension() != ".aff") continue;
 
-            const std::string code = entry.path().stem().string();
+            const std::string code = PathToUtf8(entry.path().stem());
             if (code.empty() || seen.count(code) != 0) continue;
 
             fs::path dictionaryPath = entry.path();
@@ -277,8 +278,8 @@ void CollectDictionaries(std::vector<DictionaryEntry>& outFound) {
 
             DictionaryEntry found;
             found.code = code;
-            found.basePath = base.string();
-            found.encoding = ReadAffixEncoding(entry.path().string());
+            found.basePath = PathToUtf8(base);
+            found.encoding = ReadAffixEncoding(PathToUtf8(entry.path()));
 
             seen.insert(code);
             outFound.push_back(std::move(found));

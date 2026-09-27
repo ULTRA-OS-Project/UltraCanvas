@@ -20,6 +20,9 @@
 #include <string>
 #include <vector>
 
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
+
 #if defined(_WIN32)
 #include <windows.h>
 #else
@@ -74,7 +77,7 @@ namespace {
 std::string& PluginDir() { static std::string dir; return dir; }
 
 bool IsPluginLibrary(const std::filesystem::path& p) {
-    const std::string ext = p.extension().string();
+    const std::string ext = PathToUtf8(p.extension());
 #if defined(_WIN32)
     return ext == ".dll";
 #elif defined(__APPLE__)
@@ -108,11 +111,11 @@ int LoadProviderPlugins() {
         if (!entry.is_regular_file(ec) || !IsPluginLibrary(entry.path())) continue;
         const std::size_t before = ListProviders().size();
 #if defined(_WIN32)
-        HMODULE lib = LoadLibraryA(entry.path().string().c_str());
+        HMODULE lib = LoadLibraryW(entry.path().c_str());
         if (!lib) continue;
         auto init = reinterpret_cast<InitFn>(GetProcAddress(lib, "UltraCloud_PluginInit"));
 #else
-        void* lib = dlopen(entry.path().string().c_str(), RTLD_NOW | RTLD_LOCAL);
+        void* lib = dlopen(PathToUtf8(entry.path()).c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!lib) continue;
         auto init = reinterpret_cast<InitFn>(dlsym(lib, "UltraCloud_PluginInit"));
 #endif

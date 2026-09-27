@@ -2,11 +2,15 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerPaths.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
@@ -344,9 +348,9 @@ std::vector<std::string> ExpandWildcardDirectories(const std::string& pattern) {
             for (const auto& entry : iterator) {
                 std::error_code entryEc;
                 if (!entry.is_directory(entryEc) || entryEc) continue;
-                const std::string name = entry.path().filename().string();
+                const std::string name = PathToUtf8(entry.path().filename());
                 if (!GlobMatch(name, segment)) continue;
-                next.push_back(ToForwardSlashes(entry.path().string()));
+                next.push_back(ToForwardSlashes(PathToUtf8(entry.path())));
             }
         }
         current.swap(next);

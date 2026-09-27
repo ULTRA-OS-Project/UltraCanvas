@@ -2,6 +2,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerAlbumScanner.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCleanerPaths.h"
 
@@ -12,6 +13,9 @@
 #include <fstream>
 #include <map>
 #include <numeric>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace UltraCleaner {
 namespace {
@@ -158,11 +162,11 @@ AlbumScanReport AlbumScanner::Scan(const std::string& folder,
 
     auto describeOne = [&](const fs::path& path) {
         ++progress.filesSeen;
-        if (!HasImageExtension(path.string())) return;
-        progress.currentPath = path.string();
+        if (!HasImageExtension(PathToUtf8(path))) return;
+        progress.currentPath = PathToUtf8(path);
         if (onProgress) onProgress(progress);
 
-        ImageDescriptor descriptor = DescribeImage(path.string());
+        ImageDescriptor descriptor = DescribeImage(PathToUtf8(path));
         if (!descriptor.valid) return;
         if (descriptor.width < options.minimumEdgePixels ||
             descriptor.height < options.minimumEdgePixels) {
@@ -349,7 +353,7 @@ ScanReport ToRemovalReport(const AlbumScanReport& album,
             // The remover rebuilds its guard from these roots, so each
             // picture's own folder has to be allowed.
             const std::string parent =
-                fs::path(picture.path).parent_path().string();
+                PathToUtf8(PathFromUtf8(picture.path).parent_path());
             if (std::find(report.allowedRoots.begin(), report.allowedRoots.end(),
                           NormalizeForCompare(parent)) == report.allowedRoots.end()) {
                 report.allowedRoots.push_back(NormalizeForCompare(parent));

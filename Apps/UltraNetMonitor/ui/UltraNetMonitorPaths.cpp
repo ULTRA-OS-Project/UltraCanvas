@@ -2,10 +2,14 @@
 // Version: 0.5.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorPaths.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <cstdlib>
 #include <filesystem>
 #include <system_error>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 #if !defined(_WIN32)
 #include <sys/stat.h>
@@ -20,10 +24,10 @@ std::string DefaultStorePath() {
 #if defined(_WIN32)
     if (const char* local = std::getenv("LOCALAPPDATA"); local && *local) root = local;
 #elif defined(__APPLE__)
-    if (home && *home) root = fs::path(home) / "Library" / "Application Support";
+    if (home && *home) root = PathFromUtf8(home) / "Library" / "Application Support";
 #else
     if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg) root = xdg;
-    else if (home && *home) root = fs::path(home) / ".local" / "share";
+    else if (home && *home) root = PathFromUtf8(home) / ".local" / "share";
 #endif
     if (root.empty()) return std::string();
     const fs::path directory = root / "UltraNetMonitor";
@@ -36,7 +40,7 @@ std::string DefaultStorePath() {
     // per-user already.
     ::chmod(directory.c_str(), S_IRWXU);
 #endif
-    return (directory / "activity.db").string();
+    return PathToUtf8(directory / "activity.db");
 }
 
 } // namespace UltraNetMonitor

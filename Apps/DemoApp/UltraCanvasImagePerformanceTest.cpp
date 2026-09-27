@@ -222,6 +222,7 @@
 // ================================================================================
 
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
@@ -677,7 +678,7 @@ namespace UltraCanvas {
             if (std::filesystem::exists(dir, ec)) return dir;
             std::string alt = GetResourcesDir() + "media";
             if (std::filesystem::exists(alt, ec)) return alt;
-            return std::filesystem::current_path(ec).string();
+            return PathToUtf8(std::filesystem::current_path(ec));
         }
 
     } // namespace (anonymous)
@@ -1858,7 +1859,7 @@ namespace UltraCanvas {
             // its own, mark the label dirty for the next paint pass — without
             // it, the new filename only appears the next time something else
             // triggers a repaint of the toolbar.
-            std::string fileName = std::filesystem::path(path).filename().string();
+            std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
             std::ostringstream info;
             info << fileName << "  -  "
                  << state->sourceWidth << " x " << state->sourceHeight << " px";

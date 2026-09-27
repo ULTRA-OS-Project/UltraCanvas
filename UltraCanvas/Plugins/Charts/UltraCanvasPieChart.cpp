@@ -4,6 +4,7 @@
 // Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 #include "Plugins/Charts/UltraCanvasPieChart.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "../../libspecific/Cairo/RenderContextCairo.h"
 
 #include <cairo/cairo.h>
@@ -1472,10 +1473,10 @@ namespace UltraCanvas {
         namespace fs = std::filesystem;
         fs::path tmpDir = fs::temp_directory_path();
         fs::path tmpFile = tmpDir / ("ultracanvas_piechart_export.png");
-        cairo_status_t st = cairo_surface_write_to_png(surf, tmpFile.string().c_str());
+        cairo_status_t st = cairo_surface_write_to_png(surf, PathToUtf8(tmpFile).c_str());
         if (st != CAIRO_STATUS_SUCCESS) return false;
 
-        auto raster = UCImageRaster::Load(tmpFile.string(), false);
+        auto raster = UCImageRaster::Load(PathToUtf8(tmpFile), false);
         if (!raster || !raster->IsValid()) {
             fs::remove(tmpFile);
             return false;

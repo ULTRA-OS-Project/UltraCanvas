@@ -2,6 +2,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerRemover.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCleanerPaths.h"
 #include "UltraCleanerSafety.h"
@@ -11,6 +12,9 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
@@ -29,15 +33,15 @@ namespace fs = std::filesystem;
 std::string UniqueTrashName(const std::string& directory,
                             const std::string& baseName) {
     std::error_code ec;
-    if (!fs::exists(fs::path(directory) / baseName, ec)) return baseName;
+    if (!fs::exists(PathFromUtf8(directory) / baseName, ec)) return baseName;
 
     const fs::path base(baseName);
-    const std::string stem = base.stem().string();
-    const std::string extension = base.extension().string();
+    const std::string stem = PathToUtf8(base.stem());
+    const std::string extension = PathToUtf8(base.extension());
     for (int suffix = 1; suffix < 10000; ++suffix) {
         const std::string candidate =
             stem + "." + std::to_string(suffix) + extension;
-        if (!fs::exists(fs::path(directory) / candidate, ec)) return candidate;
+        if (!fs::exists(PathFromUtf8(directory) / candidate, ec)) return candidate;
     }
     return baseName + ".overflow";
 }
@@ -111,8 +115,8 @@ bool MoveToXdgTrash(const std::string& path, std::string& error) {
         error = "no trash directory for this session";
         return false;
     }
-    const fs::path filesDir = fs::path(trash) / "files";
-    const fs::path infoDir  = fs::path(trash) / "info";
+    const fs::path filesDir = PathFromUtf8(trash) / "files";
+    const fs::path infoDir  = PathFromUtf8(trash) / "info";
 
     std::error_code ec;
     fs::create_directories(filesDir, ec);
@@ -122,8 +126,8 @@ bool MoveToXdgTrash(const std::string& path, std::string& error) {
         return false;
     }
 
-    const std::string baseName = fs::path(path).filename().string();
-    const std::string unique = UniqueTrashName(filesDir.string(), baseName);
+    const std::string baseName = PathToUtf8(PathFromUtf8(path).filename());
+    const std::string unique = UniqueTrashName(PathToUtf8(filesDir), baseName);
 
     // The info file is written first: a file in files/ without its info is a
     // stray the desktop cannot restore, while the reverse is harmless.
@@ -137,7 +141,7 @@ bool MoveToXdgTrash(const std::string& path, std::string& error) {
          << "DeletionDate=" << TrashInfoTimestamp() << "\n";
     info.close();
 
-    if (!MoveDirectoryOrFile(fs::path(path), filesDir / unique, error)) {
+    if (!MoveDirectoryOrFile(PathFromUtf8(path), filesDir / unique, error)) {
         std::error_code cleanupEc;
         fs::remove(infoDir / (unique + ".trashinfo"), cleanupEc);
         return false;
@@ -154,10 +158,10 @@ bool MoveToMacTrash(const std::string& path, std::string& error) {
         return false;
     }
     std::error_code ec;
-    fs::create_directories(fs::path(trash), ec);
-    const std::string baseName = fs::path(path).filename().string();
+    fs::create_directories(PathFromUtf8(trash), ec);
+    const std::string baseName = PathToUtf8(PathFromUtf8(path).filename());
     const std::string unique = UniqueTrashName(trash, baseName);
-    return MoveDirectoryOrFile(fs::path(path), fs::path(trash) / unique, error);
+    return MoveDirectoryOrFile(PathFromUtf8(path), PathFromUtf8(trash) / unique, error);
 }
 #endif
 
@@ -284,7 +288,7 @@ RemovalReport Remover::Remove(const ScanReport& report,
         }
 
         std::error_code ec;
-        if (!fs::exists(fs::symlink_status(fs::path(item->path), ec)) || ec) {
+        if (!fs::exists(fs::symlink_status(PathFromUtf8(item->path), ec)) || ec) {
             ++result.skippedMissing;
             continue;
         }
@@ -312,7 +316,7 @@ RemovalReport Remover::Remove(const ScanReport& report,
             removed = MoveToPlatformTrash(item->path, error);
         } else {
             std::error_code removeEc;
-            const uintmax_t count = fs::remove_all(fs::path(item->path), removeEc);
+            const uintmax_t count = fs::remove_all(PathFromUtf8(item->path), removeEc);
             removed = !removeEc && count > 0;
             if (removeEc) error = removeEc.message();
             else if (count == 0) error = "nothing was removed";

@@ -4,6 +4,7 @@
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerIngest.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "EmailCleanerUnsubscribe.h"
 
@@ -16,6 +17,9 @@
 #include <fstream>
 #include <map>
 #include <sstream>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace EmailCleaner {
 
@@ -233,7 +237,7 @@ bool Ingestor::IngestFile(const std::string& path, const std::string& accountId,
     std::string raw;
     if (!ReadFileBytes(path, raw)) return false;
     if (uid == 0)
-        uid = UidFromFileName(std::filesystem::path(path).filename().string());
+        uid = UidFromFileName(PathToUtf8(PathFromUtf8(path).filename()));
     return IngestRaw(raw, accountId, folder, uid, options, out);
 }
 
@@ -253,8 +257,8 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
     for (const auto& entry : std::filesystem::directory_iterator(directory, ec)) {
         if (ec) break;
         if (!entry.is_regular_file(ec)) continue;
-        const std::string name = entry.path().filename().string();
-        if (name.size() < 5 || Lower(entry.path().extension().string()) != ".eml") continue;
+        const std::string name = PathToUtf8(entry.path().filename());
+        if (name.size() < 5 || Lower(PathToUtf8(entry.path().extension())) != ".eml") continue;
         files.emplace_back(UidFromFileName(name), entry.path());
     }
     std::sort(files.begin(), files.end(),
@@ -276,7 +280,7 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
         }
 
         std::string raw;
-        if (!ReadFileBytes(path.string(), raw)) {
+        if (!ReadFileBytes(PathToUtf8(path), raw)) {
             ++stats.failed;
             continue;
         }
@@ -318,7 +322,7 @@ IngestStats Ingestor::IngestMailCache(const std::string& mailCacheDir,
                                       const IngestOptions& options) {
     IngestStats stats;
     std::error_code ec;
-    const std::filesystem::path root = std::filesystem::path(mailCacheDir) / accountId;
+    const std::filesystem::path root = PathFromUtf8(mailCacheDir) / accountId;
     if (!std::filesystem::is_directory(root, ec)) return stats;
 
     std::vector<std::filesystem::path> folders;
@@ -335,8 +339,8 @@ IngestStats Ingestor::IngestMailCache(const std::string& mailCacheDir,
             if (left <= 0) break;
             remaining.maxMessages = left;
         }
-        stats.Add(IngestFolderDirectory(folderPath.string(), accountId,
-                                        folderPath.filename().string(), remaining));
+        stats.Add(IngestFolderDirectory(PathToUtf8(folderPath), accountId,
+                                        PathToUtf8(folderPath.filename()), remaining));
     }
     return stats;
 }

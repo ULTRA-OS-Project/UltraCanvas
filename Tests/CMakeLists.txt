@@ -439,6 +439,21 @@ add_test(NAME TexterMarkdownSpellRangesTest COMMAND TexterMarkdownSpellRangesTes
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: TexterMarkdownSpellRangesTest")
 
+# ===== PATH UTF-8 TEST =====
+# UltraCanvasPathUtf8.h: the UTF-8 <-> UTF-16 conversion every Windows file
+# name goes through (PathToUtf8 / PathFromUtf8 / OpenFileUtf8). Header-only,
+# so the test links nothing.
+message(STATUS "  Building PathUtf8Test...")
+add_executable(PathUtf8Test ${CMAKE_CURRENT_SOURCE_DIR}/PathUtf8Test.cpp)
+target_include_directories(PathUtf8Test PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(PathUtf8Test PRIVATE cxx_std_17)
+set_target_properties(PathUtf8Test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME PathUtf8Test COMMAND PathUtf8Test
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: PathUtf8Test")
+
 # ===== HTMLREADER TEST =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent, so the
 # test builds straight from the sources without linking UltraCanvas.

@@ -8,7 +8,7 @@
   accented Latin letter on a Thai system. The UTF-8 `activeCodePage` in the
   application manifest would avoid this, but Windows ignores it before 10
   version 1903, so it cannot be relied on. The Filer path now converts
-  through `PathToUtf8` / `PathFromUtf8` (`UltraCanvasUtils.h`), which go
+  through `PathToUtf8` / `PathFromUtf8` (`UltraCanvasPathUtf8.h`), which go
   through UTF-16 and never depend on the code page. The code that changed:
   `UltraCanvasFilerWidget` (folder listing, copy / move / delete / rename,
   archives), `UltraCanvasBreadcrumb`, `UltraCanvasVolumeMonitor`,

@@ -67,7 +67,7 @@ namespace UltraCanvas {
         std::filesystem::path CloudEnvPath(const char* name) {
 #if defined(_WIN32) || defined(_WIN64)
             const wchar_t* value = ::_wgetenv(Utf8ToWide(name).c_str());
-            return value ? std::filesystem::path(value) : std::filesystem::path();
+            return value ? std::filesystem::path(value) : std::filesystem::path();   // path-string-ok: wide
 #else
             const char* value = std::getenv(name);
             return value ? PathFromUtf8(value) : std::filesystem::path();
@@ -121,7 +121,7 @@ namespace UltraCanvas {
             std::wstring value(buffer);
             if (value.empty()) return {};
             if (value.size() == 2 && value[1] == L':') value += L'\\';
-            return std::filesystem::path(value);
+            return std::filesystem::path(value);   // path-string-ok: wide
         }
 
         // A default Google Drive install mounts a virtual drive labelled

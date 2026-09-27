@@ -2,12 +2,16 @@
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAttachmentCache.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <string>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace fs = std::filesystem;
 
@@ -92,16 +96,16 @@ std::string AttachmentCache::Write(const Attachment& attachment) const {
 
     const std::string safe = SanitizeFilename(attachment.filename, attachment.mediaType);
     const fs::path dir(cacheDir_);
-    const std::string stem = fs::path(safe).stem().string();
-    const std::string ext  = fs::path(safe).extension().string();
+    const std::string stem = PathToUtf8(PathFromUtf8(safe).stem());
+    const std::string ext  = PathToUtf8(PathFromUtf8(safe).extension());
 
     // Reuse an identical existing file; otherwise pick a free suffixed name.
     for (int i = 0; i < 10000; ++i) {
         fs::path candidate = dir / (i == 0 ? safe : (stem + " (" + std::to_string(i) + ")" + ext));
         if (!fs::exists(candidate, ec))
-            return WriteBytes(candidate, attachment.data) ? candidate.string() : std::string();
+            return WriteBytes(candidate, attachment.data) ? PathToUtf8(candidate) : std::string();
         if (SameContent(candidate, attachment.data))
-            return candidate.string();   // already cached
+            return PathToUtf8(candidate);   // already cached
     }
     return std::string();
 }

@@ -483,7 +483,7 @@ namespace UltraCanvas {
                         raw->edit->SetModified(false);
                         raw->edit->ScrollToTop();
                         raw->Sync();
-                        raw->SetStatus("Loaded " + std::filesystem::path(path).filename().string()
+                        raw->SetStatus("Loaded " + PathToUtf8(PathFromUtf8(path).filename())
                                        + " — " + std::to_string(document->blocks.size()) + " blocks, "
                                        + std::to_string(document->media.size()) + " images");
                     });
@@ -512,7 +512,7 @@ namespace UltraCanvas {
                             return;
                         }
                         raw->edit->SetModified(false);
-                        raw->SetStatus("Saved " + std::filesystem::path(path).filename().string());
+                        raw->SetStatus("Saved " + PathToUtf8(PathFromUtf8(path).filename()));
                         raw->Sync();
                     });
             }), "Save the edited document as .odt or .docx");
@@ -540,7 +540,7 @@ namespace UltraCanvas {
                     [raw](DialogResult result, const std::string& path) {
                         if (result != DialogResult::OK || path.empty()) return;
                         if (!raw->edit->InsertImageFromFile(path,
-                                std::filesystem::path(path).filename().string())) {
+                                PathToUtf8(PathFromUtf8(path).filename()))) {
                             raw->SetStatus("Could not read the image: " + path);
                             return;
                         }

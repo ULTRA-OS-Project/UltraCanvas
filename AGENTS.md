@@ -87,6 +87,29 @@ before adding cross-module code.
   `scripts/locale_numbers_baseline.txt` lists the sites still to fix. A number
   a person typed or reads follows their locale on purpose and says so at the
   site with `// locale-ok: <why>`.
+- **File paths and names are UTF-8, on every platform, in every
+  application.** Any file or folder name must work, whatever script it is
+  in: Thai, CJK, Cyrillic, emoji, accents. Convert between
+  `std::filesystem::path` and `std::string` only with `PathToUtf8(p)` and
+  `PathFromUtf8(s)`, and open a UTF-8 path with `OpenFileUtf8(s, mode)`
+  instead of `std::fopen` (all three are in `UltraCanvasPathUtf8.h`, which is
+  header-only, C++17 and has no link dependency, so headless engines and
+  VirtualFS use it too). Never write `p.string()`, `p.generic_string()` or
+  `fs::path(someString)`. On Windows the builds use libc++, where those go
+  through the ANSI code page: `.string()` *throws* ("filesystem error: in
+  __wide_to_char: Illegal byte sequence") on a name the code page cannot
+  hold, and `fs::path(utf8)` quietly names a different file. That is how
+  UltraFiler quit on a Thai Windows 10 machine the moment it opened a folder.
+  The manifests' UTF-8 `activeCodePage` does not make this safe, because
+  Windows before 10 version 1903 ignores it. For the same reason, hand a
+  path to a Win32 call through the `W` API (`LoadLibraryW(p.c_str())`), not
+  the `A` one. `scripts/check_path_string.py` enforces this in CI
+  (`path-strings.yml`), and `scripts/path_string_baseline.txt` is empty and
+  must stay that way. A path built from a wide string or a `std::u8string`
+  is already correct; say so at the site with `// path-string-ok: <why>`.
+  The check cannot see a declaration `fs::path p(str);` or an implicit
+  `fs::exists(str)`, so review catches those: write
+  `fs::exists(PathFromUtf8(str))`.
 - **Third-party code** is vendored under `UltraCanvas/third_party/` and
   `3rdparty/` — do not modify it, and record licenses in
   `THIRD_PARTY_LICENSES.md`.

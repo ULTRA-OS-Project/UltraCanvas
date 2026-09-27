@@ -8,6 +8,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWinInternal.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraWinQmp.h"
 
 #include <cstdlib>
@@ -27,6 +28,9 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace fs = std::filesystem;
 
@@ -76,7 +80,7 @@ std::string VmDirectory() {
     }
     // Sibling of ".../ultrawin/environments".
     std::string envRoot = EnvironmentsRoot();
-    return fs::path(envRoot).parent_path() / "vm";
+    return PathFromUtf8(envRoot).parent_path() / "vm";
 }
 
 bool ProbeTcpPort(const std::string& host, int port, int timeoutMs) {
@@ -348,12 +352,12 @@ void StopVirtiofsdLocked() {
 }
 
 std::string QmpSocketPath() {
-    return (fs::path(VmDirectory()) / "qmp.sock").string();
+    return PathToUtf8(PathFromUtf8(VmDirectory()) / "qmp.sock");
 }
 
 std::map<std::string, std::string> ReadManifest(const std::string& vmDir) {
     std::map<std::string, std::string> kv;
-    std::ifstream in(fs::path(vmDir) / kManifest);
+    std::ifstream in(PathFromUtf8(vmDir) / kManifest);
     std::string line;
     while (std::getline(in, line)) {
         if (line.empty() || line[0] == '#') continue;
@@ -366,7 +370,7 @@ std::map<std::string, std::string> ReadManifest(const std::string& vmDir) {
 
 bool WriteManifest(const std::string& vmDir,
                    const std::map<std::string, std::string>& kv) {
-    std::ofstream out(fs::path(vmDir) / kManifest, std::ios::trunc);
+    std::ofstream out(PathFromUtf8(vmDir) / kManifest, std::ios::trunc);
     if (!out) return false;
     out << "# UltraWin machine manifest — KEY=VALUE per line.\n";
     for (const auto& [k, v] : kv) out << k << '=' << v << '\n';
@@ -425,7 +429,7 @@ UltraWinResult UltraWin_VmProvision(const UltraWinVmOptions& options) {
     if (ec)
         return UltraWinResult::Error(UltraWinResultCode::IoError,
                                      "cannot create " + vmDir);
-    const std::string disk = (fs::path(vmDir) / "disk.qcow2").string();
+    const std::string disk = PathToUtf8(PathFromUtf8(vmDir) / "disk.qcow2");
 
     auto manifest = ReadManifest(vmDir);
     const bool existed = !manifest.empty();
@@ -443,7 +447,7 @@ UltraWinResult UltraWin_VmProvision(const UltraWinVmOptions& options) {
     // qemu-img create -f qcow2 disk.qcow2 <N>G — reusing the wine command
     // runner (it is just fork/exec/wait with output capture).
     const std::string createLog =
-        (fs::path(vmDir) / "ultrawin-provision.log").string();
+        PathToUtf8(PathFromUtf8(vmDir) / "ultrawin-provision.log");
     int rc = RunWineCommand(
         qemuImg,
         {"create", "-f", "qcow2", disk,
@@ -459,9 +463,9 @@ UltraWinResult UltraWin_VmProvision(const UltraWinVmOptions& options) {
     // The answer file lives in its own subdirectory: QEMU attaches that
     // directory as a virtual FAT volume during installation, whose root is
     // where Windows Setup searches for autounattend.xml.
-    fs::create_directories(fs::path(vmDir) / "unattend", ec);
+    fs::create_directories(PathFromUtf8(vmDir) / "unattend", ec);
     {
-        std::ofstream out(fs::path(vmDir) / "unattend" /
+        std::ofstream out(PathFromUtf8(vmDir) / "unattend" /
                           "autounattend.xml");
         out << GenerateAutounattendXml(
             UltraWin_GetConfig().vmGuestUsername,
@@ -512,7 +516,7 @@ UltraWinResult UltraWin_VmStart() {
             "/dev/kvm is not usable (set vmAllowWithoutKvm to boot with "
             "slow software emulation)");
 
-    const std::string disk = (fs::path(vmDir) / "disk.qcow2").string();
+    const std::string disk = PathToUtf8(PathFromUtf8(vmDir) / "disk.qcow2");
     const std::string qmpSock = QmpSocketPath();
     std::error_code ec;
     fs::remove(qmpSock, ec);  // stale socket from a previous run
@@ -522,7 +526,7 @@ UltraWinResult UltraWin_VmStart() {
     // guest's virtiofs service mounts tag "ultrawin_home" as the unified
     // home drive.
     const char* homeEnv = std::getenv("HOME");
-    const std::string vfsSock = (fs::path(vmDir) / "vfs.sock").string();
+    const std::string vfsSock = PathToUtf8(PathFromUtf8(vmDir) / "vfs.sock");
     std::string virtiofsd;
     if (cfg.vmShareHome && homeEnv && *homeEnv == '/')
         virtiofsd = FindVirtiofsdBinary();
@@ -535,7 +539,7 @@ UltraWinResult UltraWin_VmStart() {
             int devnull = open("/dev/null", O_RDWR);
             if (devnull >= 0) dup2(devnull, STDIN_FILENO);
             int log =
-                open((fs::path(vmDir) / "ultrawin-virtiofsd.log").c_str(),
+                open((PathFromUtf8(vmDir) / "ultrawin-virtiofsd.log").c_str(),
                      O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (log >= 0) {
                 dup2(log, STDOUT_FILENO);
@@ -605,7 +609,7 @@ UltraWinResult UltraWin_VmStart() {
         args.insert(
             args.end(),
             {"-drive",
-             "file=fat:rw:" + (fs::path(vmDir) / "unattend").string() +
+             "file=fat:rw:" + PathToUtf8(PathFromUtf8(vmDir) / "unattend") +
                  ",format=raw,if=none,id=unattend",
              "-device", "usb-storage,drive=unattend", "-usb", "-boot",
              "once=d"});
@@ -619,7 +623,7 @@ UltraWinResult UltraWin_VmStart() {
         setpgid(0, 0);
         int devnull = open("/dev/null", O_RDWR);
         if (devnull >= 0) dup2(devnull, STDIN_FILENO);
-        int log = open((fs::path(vmDir) / "ultrawin-qemu.log").c_str(),
+        int log = open((PathFromUtf8(vmDir) / "ultrawin-qemu.log").c_str(),
                        O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (log >= 0) {
             dup2(log, STDOUT_FILENO);
@@ -649,7 +653,7 @@ UltraWinResult UltraWin_VmStart() {
             UltraWinResultCode::QmpError,
             "QEMU did not answer on QMP: " + qmp.LastError() +
                 " (details: " +
-                (fs::path(vmDir) / "ultrawin-qemu.log").string() + ")");
+                PathToUtf8(PathFromUtf8(vmDir) / "ultrawin-qemu.log") + ")");
     }
 
     std::lock_guard<std::mutex> lk(g_mutex);
@@ -771,7 +775,7 @@ UltraWinResult UltraWin_VmGetInfo(UltraWinVmInfo* out) {
         return UltraWinResult::Error(UltraWinResultCode::NotInitialized,
                                      "call UltraWin_Initialize first");
     out->vmDirectory = VmDirectory();
-    out->diskPath = (fs::path(out->vmDirectory) / "disk.qcow2").string();
+    out->diskPath = PathToUtf8(PathFromUtf8(out->vmDirectory) / "disk.qcow2");
     out->state = UltraWin_VmGetState();
     out->windowsInstalled =
         ReadManifest(out->vmDirectory)["installed"] == "1";

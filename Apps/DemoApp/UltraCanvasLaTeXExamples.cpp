@@ -126,7 +126,7 @@ namespace {
         UCRichDocument document;
         std::string error;
         std::vector<LaTeXDocumentDiagnostic> diagnostics;
-        if (!UltraCanvasLaTeXDocumentReader::Load(texPath.string(), document, error, &diagnostics)) {
+        if (!UltraCanvasLaTeXDocumentReader::Load(PathToUtf8(texPath), document, error, &diagnostics)) {
             auto failed = std::make_shared<UltraCanvasLabel>("LaTeXDocError_" + stem, 0, 0, 0, 0);
             failed->SetText("The document could not be imported:\n" + error);
             failed->SetFontSize(12);
@@ -141,12 +141,12 @@ namespace {
         RichDocumentMarkdownOptions options;
         if (!document.media.empty()) {
             static int loadCounter = 0;
-            options.imageDirectory = (std::filesystem::temp_directory_path()
-                / ("UltraCanvasLaTeXDemo-" + std::to_string(++loadCounter))).string();
+            options.imageDirectory = PathToUtf8(std::filesystem::temp_directory_path()
+                / ("UltraCanvasLaTeXDemo-" + std::to_string(++loadCounter)));
         }
 
         auto view = std::make_shared<UltraCanvasTextArea>("LaTeXDoc_" + stem);
-        view->SetDocumentFilePath(texPath.string());
+        view->SetDocumentFilePath(PathToUtf8(texPath));
         view->SetText(document.ToMarkdown(options), false);
         view->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
         view->SetReadOnly(true);
@@ -166,8 +166,8 @@ namespace {
 
     // One tab page: the rendered result above the LaTeX source itself.
     std::shared_ptr<UltraCanvasUIElement> CreateLaTeXTabPage(const std::filesystem::path& texPath) {
-        const std::string stem = texPath.stem().string();
-        const std::string source = LoadFile(texPath.string());
+        const std::string stem = PathToUtf8(texPath.stem());
+        const std::string source = LoadFile(PathToUtf8(texPath));
 
         auto page = std::make_shared<UltraCanvasContainer>("LaTeXPage_" + stem, 0, 0, 800, 600);
         page->layout.SetFlexColumn().SetFlexGap(6)
@@ -242,7 +242,7 @@ namespace {
 
         // ----- LaTeX source -----
         auto sourceLabel = std::make_shared<UltraCanvasLabel>("LaTeXSourceLabel_" + stem, 0, 0, 0, 20);
-        sourceLabel->SetText("LaTeX source (" + texPath.filename().string() + "):");
+        sourceLabel->SetText("LaTeX source (" + PathToUtf8(texPath.filename()) + "):");
         sourceLabel->SetFontSize(12);
         sourceLabel->SetFontWeight(FontWeight::Bold);
         sourceLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -305,7 +305,7 @@ namespace {
         std::error_code ec;
         for (const auto& entry : std::filesystem::directory_iterator(latexDir, ec)) {
             if (!entry.is_regular_file(ec)) continue;
-            std::string ext = ToLowerCopy(entry.path().extension().string());
+            std::string ext = ToLowerCopy(PathToUtf8(entry.path().extension()));
             if (ext == ".tex") {
                 texFiles.push_back(entry.path());
             }
@@ -313,7 +313,7 @@ namespace {
         // Order the tabs: article documents first, then the MicroTeX gallery
         // examples ("microtex-*"), then the rest; each group alphabetical.
         auto rank = [](const std::filesystem::path& p) {
-            const std::string stem = p.stem().string();
+            const std::string stem = PathToUtf8(p.stem());
             if (stem.rfind("article-", 0) == 0) return 0;
             if (stem.rfind("microtex-", 0) == 0) return 1;
             return 2;
@@ -350,7 +350,7 @@ namespace {
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         for (const auto& texPath : texFiles) {
-            tabs->AddTab(texPath.stem().string(), CreateLaTeXTabPage(texPath));
+            tabs->AddTab(PathToUtf8(texPath.stem()), CreateLaTeXTabPage(texPath));
         }
         tabs->SetActiveTab(0);
         root->AddChild(tabs);

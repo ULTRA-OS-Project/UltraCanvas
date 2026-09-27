@@ -7,6 +7,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocument.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <locale>
@@ -576,7 +577,7 @@ int UCRichDocument::AddMedia(std::string name, std::string mimeType, std::vector
 }
 
 std::string UCRichDocument::MimeTypeForImageName(const std::string& fileName) {
-    std::string ext = ToLowerCopy(std::filesystem::path(fileName).extension().string());
+    std::string ext = ToLowerCopy(PathToUtf8(PathFromUtf8(fileName).extension()));
     if (ext == ".png") return "image/png";
     if (ext == ".jpg" || ext == ".jpeg" || ext == ".jfif") return "image/jpeg";
     if (ext == ".gif") return "image/gif";
@@ -682,13 +683,13 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
         for (size_t i = 0; i < media.size(); ++i) {
             std::string name = media[i].name.empty()
                 ? "image" + std::to_string(i + 1) + "." + FileExtensionForMimeType(media[i].mimeType)
-                : std::filesystem::path(media[i].name).filename().string();
-            std::filesystem::path target = std::filesystem::path(options.imageDirectory) / name;
+                : PathToUtf8(PathFromUtf8(media[i].name).filename());
+            std::filesystem::path target = PathFromUtf8(options.imageDirectory) / name;
             std::ofstream out(target, std::ios::binary);
             if (out.is_open()) {
                 out.write(reinterpret_cast<const char*>(media[i].data.data()),
                           static_cast<std::streamsize>(media[i].data.size()));
-                mediaPaths[i] = target.string();
+                mediaPaths[i] = PathToUtf8(target);
             }
         }
     }
@@ -910,7 +911,7 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
             if (ParseStandaloneImage(line, alt, path)) {
                 std::filesystem::path resolved(path);
                 if (resolved.is_relative() && !baseDirectory.empty()) {
-                    resolved = std::filesystem::path(baseDirectory) / resolved;
+                    resolved = PathFromUtf8(baseDirectory) / resolved;
                 }
                 std::ifstream in(resolved, std::ios::binary);
                 if (in.is_open()) {
@@ -919,8 +920,8 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
                     RichDocBlock block;
                     block.type = RichBlockType::Image;
                     block.imageAltText = alt;
-                    block.mediaIndex = doc.AddMedia(resolved.filename().string(),
-                                                    MimeTypeForImageName(resolved.string()),
+                    block.mediaIndex = doc.AddMedia(PathToUtf8(resolved.filename()),
+                                                    MimeTypeForImageName(PathToUtf8(resolved)),
                                                     std::move(bytes));
                     int w = 0, h = 0;
                     if (SniffImagePixelSize(doc.media[block.mediaIndex].data, w, h)) {

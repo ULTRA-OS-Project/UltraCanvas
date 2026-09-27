@@ -8,6 +8,7 @@
 //   is a flex column and the table is a CSS grid.
 
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include <vector>
@@ -177,7 +178,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
 
         if (!doc->filePath.empty() && std::filesystem::exists(doc->filePath)) {
             std::filesystem::path p(doc->filePath);
-            row.location = p.parent_path().string();
+            row.location = PathToUtf8(p.parent_path());
 
             std::error_code ec;
             uintmax_t fileSize = std::filesystem::file_size(doc->filePath, ec);

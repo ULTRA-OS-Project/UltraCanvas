@@ -15,6 +15,7 @@
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <cerrno>
 #include <filesystem>
@@ -25,6 +26,9 @@
 #include <sys/statfs.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 // Defined in <linux/magic.h>, repeated here to avoid a kernel-header
 // dependency in a portable module.
@@ -50,7 +54,7 @@ std::string MountPathFor(const std::string& name) {
 std::string NameFromMountPath(const std::string& path) {
     const std::string prefix = std::string(MountPrefix()) +
         std::to_string(static_cast<unsigned long>(getuid())) + "-";
-    const std::string leaf = std::filesystem::path(path).filename().string();
+    const std::string leaf = PathToUtf8(PathFromUtf8(path).filename());
     if (leaf.size() <= prefix.size() || leaf.compare(0, prefix.size(), prefix) != 0) {
         return {};
     }
@@ -136,7 +140,7 @@ std::vector<VirtualFSRamDisk> PlatformList() {
         if (!it->is_directory(ec)) {
             continue;
         }
-        const std::string path = it->path().string();
+        const std::string path = PathToUtf8(it->path());
         const std::string name = NameFromMountPath(path);
         if (name.empty()) {
             continue;

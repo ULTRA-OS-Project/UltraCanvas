@@ -21,6 +21,7 @@
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <array>
 #include <cstdio>
@@ -33,6 +34,9 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace VirtualFS {
 namespace RamDiskDetail {
@@ -122,7 +126,7 @@ char FindImDiskDrive(const std::string& name) {
 
 std::string NameFromFallbackPath(const std::string& path) {
     const std::string prefix = MountPrefix();
-    const std::string leaf = std::filesystem::path(path).filename().string();
+    const std::string leaf = PathToUtf8(PathFromUtf8(path).filename());
     if (leaf.size() <= prefix.size() || leaf.compare(0, prefix.size(), prefix) != 0) {
         return {};
     }
@@ -247,14 +251,14 @@ std::vector<VirtualFSRamDisk> PlatformList() {
         if (!it->is_directory(ec)) {
             continue;
         }
-        const std::string name = NameFromFallbackPath(it->path().string());
+        const std::string name = NameFromFallbackPath(PathToUtf8(it->path()));
         if (name.empty()) {
             continue;
         }
 
         VirtualFSRamDisk disk;
         disk.name = name;
-        disk.mountPath = it->path().string();
+        disk.mountPath = PathToUtf8(it->path());
         disk.backing = VirtualFSRamDiskBacking::DiskFallback;
         discs.push_back(disk);
     }

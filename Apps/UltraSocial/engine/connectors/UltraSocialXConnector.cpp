@@ -2,6 +2,7 @@
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialXConnector.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "../UltraSocialComposer.h"
 #include "../UltraSocialWebUtil.h"
@@ -9,6 +10,9 @@
 #include <UltraNet/UltraNetOAuth2.h>
 
 #include <filesystem>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 using UltraCanvas::JSONValue;
 
@@ -53,7 +57,7 @@ UltraNetResult TryPublish(const std::string& apiBase,
 
         MultipartFile file;
         file.name        = "media";
-        file.fileName    = std::filesystem::path(media.filePath).filename().string();
+        file.fileName    = PathToUtf8(PathFromUtf8(media.filePath).filename());
         file.contentType = media.mimeType.empty() ? GuessMimeType(media.filePath)
                                                   : media.mimeType;
         file.bytes       = std::move(bytes);

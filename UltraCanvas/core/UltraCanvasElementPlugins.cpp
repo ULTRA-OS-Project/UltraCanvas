@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasElementPlugins.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasPluginLoader.h"
 
 #include <algorithm>
@@ -324,7 +325,7 @@ int UltraCanvas_RefreshElementPlugins() {
             }
 
             std::string openError;
-            UCPluginLibHandle handle = UCPluginOpen(entry.path().string(), &openError);
+            UCPluginLibHandle handle = UCPluginOpen(PathToUtf8(entry.path()), &openError);
             if (!handle) {
                 Registry& r = Reg();
                 std::lock_guard<std::mutex> lock(r.mutex);

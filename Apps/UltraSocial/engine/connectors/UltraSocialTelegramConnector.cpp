@@ -2,11 +2,15 @@
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialTelegramConnector.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "../UltraSocialComposer.h"
 #include "../UltraSocialWebUtil.h"
 
 #include <filesystem>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 using UltraCanvas::JSONValue;
 
@@ -141,7 +145,7 @@ UltraNetResult TelegramConnector::PublishPost(const Account& account,
 
         MultipartFile photo;
         photo.name        = "photo";
-        photo.fileName    = std::filesystem::path(media.filePath).filename().string();
+        photo.fileName    = PathToUtf8(PathFromUtf8(media.filePath).filename());
         photo.contentType = media.mimeType.empty() ? GuessMimeType(media.filePath)
                                                    : media.mimeType;
         photo.bytes       = std::move(bytes);
@@ -167,8 +171,8 @@ UltraNetResult TelegramConnector::PublishPost(const Account& account,
             const std::string attachName = "photo" + std::to_string(i);
             MultipartFile photo;
             photo.name        = attachName;
-            photo.fileName    = std::filesystem::path(media.filePath)
-                                    .filename().string();
+            photo.fileName    = PathToUtf8(
+                                    PathFromUtf8(media.filePath).filename());
             photo.contentType = media.mimeType.empty()
                                     ? GuessMimeType(media.filePath)
                                     : media.mimeType;

@@ -271,7 +271,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConf
     };
     widget->onSave = [applyToPreview, status](const MenuLayoutSet& set) {
         applyToPreview(set);
-        std::string path = (std::filesystem::temp_directory_path() / "ultracanvas_filer_menu.txt").string();
+        std::string path = PathToUtf8(std::filesystem::temp_directory_path() / "ultracanvas_filer_menu.txt");
         bool ok = SaveMenuLayoutSet(set, path);
         status->SetText(ok ? ("Saved to " + path) : "Save failed.");
     };

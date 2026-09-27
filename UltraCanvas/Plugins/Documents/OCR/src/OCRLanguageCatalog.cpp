@@ -184,16 +184,16 @@ std::string PlatformDataRoot() {
 #if defined(_WIN32)
     if (std::string v = EnvOr({"LOCALAPPDATA", "APPDATA"}); !v.empty()) return v;
     if (std::string h = EnvOr({"USERPROFILE"}); !h.empty())
-        return (fs::path(h) / "AppData" / "Local").string();
+        return PathToUtf8(PathFromUtf8(h) / "AppData" / "Local");
     return ".";
 #elif defined(__APPLE__)
     if (std::string h = EnvOr({"HOME"}); !h.empty())
-        return (fs::path(h) / "Library" / "Application Support").string();
+        return PathToUtf8(PathFromUtf8(h) / "Library" / "Application Support");
     return ".";
 #else
     if (std::string v = EnvOr({"XDG_DATA_HOME"}); !v.empty()) return v;
     if (std::string h = EnvOr({"HOME"}); !h.empty())
-        return (fs::path(h) / ".local" / "share").string();
+        return PathToUtf8(PathFromUtf8(h) / ".local" / "share");
     return ".";
 #endif
 }
@@ -207,7 +207,7 @@ std::vector<std::string> DiscoveryDirs() {
     auto add = [&](const std::string& base) {
         if (base.empty()) return;
         dirs.push_back(base);
-        dirs.push_back((fs::path(base) / "tessdata").string());
+        dirs.push_back(PathToUtf8(PathFromUtf8(base) / "tessdata"));
     };
 
     add(UltraCanvasOCR::LanguageDataDir()); // writable, downloaded packs
@@ -259,8 +259,7 @@ const OCRLanguageInfo* UltraCanvasOCR::FindLanguage(const std::string& code) {
 }
 
 std::string UltraCanvasOCR::LanguageDataDir() {
-    return (fs::path(PlatformDataRoot()) / "UltraCanvas" / "ocr" / "tessdata")
-        .string();
+    return PathToUtf8(PathFromUtf8(PlatformDataRoot()) / "UltraCanvas" / "ocr" / "tessdata");
 }
 
 bool UltraCanvasOCR::IsLanguageInstalled(const std::string& code,
@@ -269,11 +268,11 @@ bool UltraCanvasOCR::IsLanguageInstalled(const std::string& code,
     const std::string leaf = code + ".traineddata";
     std::error_code ec;
     if (!dataDir.empty()) {
-        if (fs::exists(fs::path(dataDir) / leaf, ec)) return true;
-        return fs::exists(fs::path(dataDir) / "tessdata" / leaf, ec);
+        if (fs::exists(PathFromUtf8(dataDir) / leaf, ec)) return true;
+        return fs::exists(PathFromUtf8(dataDir) / "tessdata" / leaf, ec);
     }
     for (const std::string& dir : DiscoveryDirs())
-        if (fs::exists(fs::path(dir) / leaf, ec)) return true;
+        if (fs::exists(PathFromUtf8(dir) / leaf, ec)) return true;
     return false;
 }
 
@@ -286,7 +285,7 @@ std::vector<std::string> UltraCanvasOCR::InstalledLanguages() {
             if (ec) break;
             const fs::path& p = entry.path();
             if (p.extension() == ".traineddata")
-                found.insert(p.stem().string());
+                found.insert(PathToUtf8(p.stem()));
         }
     }
     return {found.begin(), found.end()};
@@ -302,7 +301,7 @@ bool UltraCanvasOCR::DownloadLanguage(const std::string& code,
         return false;
     }
     const std::string dir = destDir.empty() ? LanguageDataDir() : destDir;
-    const fs::path target = fs::path(dir) / (code + ".traineddata");
+    const fs::path target = PathFromUtf8(dir) / (code + ".traineddata");
 
     std::error_code ec;
     if (fs::exists(target, ec)) return true; // already present
@@ -326,13 +325,13 @@ bool UltraCanvasOCR::DownloadLanguage(const std::string& code,
 
     // Stream to a ".part" file, then rename so a partial download never
     // masquerades as a valid pack.
-    const fs::path tmp = fs::path(dir) / (code + ".traineddata.part");
+    const fs::path tmp = PathFromUtf8(dir) / (code + ".traineddata.part");
     fs::remove(tmp, ec);
 
     UltraNetHttpOptions opts;
     opts.followRedirects = true;
     const std::string url = TrainedDataUrl(code, tier);
-    UltraNetResult r = UltraNet_HttpDownloadFile(url, tmp.string(), opts);
+    UltraNetResult r = UltraNet_HttpDownloadFile(url, PathToUtf8(tmp), opts);
     if (!r) {
         fs::remove(tmp, ec);
         outError = "Download failed for '" + code + "' (" + url + "): " +
@@ -387,7 +386,7 @@ bool UltraCanvasOCR::EnsureLanguages(const std::vector<std::string>& codes,
     fs::create_directories(dir, ec); // best-effort; download re-checks
 
     for (const std::string& code : want) {
-        const fs::path target = fs::path(dir) / (code + ".traineddata");
+        const fs::path target = PathFromUtf8(dir) / (code + ".traineddata");
         if (fs::exists(target, ec)) continue;
 
         // Prefer seeding from an already-present local copy (e.g. the bundled
@@ -396,9 +395,9 @@ bool UltraCanvasOCR::EnsureLanguages(const std::vector<std::string>& codes,
         bool seeded = false;
         const std::string leaf = code + ".traineddata";
         for (const std::string& src : DiscoveryDirs()) {
-            const fs::path candidate = fs::path(src) / leaf;
+            const fs::path candidate = PathFromUtf8(src) / leaf;
             // Skip the destination itself.
-            if (fs::equivalent(fs::path(src), fs::path(dir), ec)) continue;
+            if (fs::equivalent(PathFromUtf8(src), PathFromUtf8(dir), ec)) continue;
             if (fs::exists(candidate, ec)) {
                 fs::create_directories(dir, ec);
                 fs::copy_file(candidate, target,

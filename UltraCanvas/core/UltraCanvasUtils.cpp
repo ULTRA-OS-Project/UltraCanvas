@@ -86,22 +86,6 @@ namespace UltraCanvas {
     }
 #endif
 
-    std::filesystem::path PathFromUtf8(const std::string& utf8) {
-#if defined(_WIN32) || defined(_WIN64)
-        return std::filesystem::path(Utf8ToWide(utf8));
-#else
-        return std::filesystem::path(utf8);
-#endif
-    }
-
-    std::string PathToUtf8(const std::filesystem::path& p) {
-#if defined(_WIN32) || defined(_WIN64)
-        return WideToUtf8(p.native());
-#else
-        return p.string();
-#endif
-    }
-
     // ToLowerCase / StartsWith / Trim / Split and the Base64 codecs live in
     // UltraCanvasTextUtils.cpp so that headless modules can link them without
     // this file's platform glue.
@@ -1072,7 +1056,7 @@ namespace UltraCanvas {
         for (const auto& [id, kind] : kKnown) {
             PWSTR wpath = nullptr;
             if (SUCCEEDED(SHGetKnownFolderPath(*id, 0, nullptr, &wpath)) && wpath)
-                add(kind, std::filesystem::path(wpath));
+                add(kind, std::filesystem::path(wpath));   // path-string-ok: wide
             if (wpath) CoTaskMemFree(wpath);
         }
 #else

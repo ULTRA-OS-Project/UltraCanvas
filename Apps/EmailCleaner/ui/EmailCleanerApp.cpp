@@ -2,6 +2,7 @@
 // Version: 0.2.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerApp.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -170,7 +171,7 @@ void EmailCleanerApp::ImportAccounts() {
         if (ec) break;
         if (!entry.is_directory(ec)) continue;
         StoredAccount stored;
-        stored.accountId   = entry.path().filename().string();
+        stored.accountId   = PathToUtf8(entry.path().filename());
         stored.displayName = stored.accountId;
         stored.shortName   = stored.accountId;
         // The owner address is unknown here, which only means "addressed to

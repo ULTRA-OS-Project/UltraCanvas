@@ -282,7 +282,7 @@ namespace {
     std::string AbsolutePathOf(const std::string& path) {
         std::error_code ec;
         const fs::path full = fs::absolute(path, ec);
-        return ec ? path : full.lexically_normal().string();
+        return ec ? path : PathToUtf8(full.lexically_normal());
     }
 
     // /usr/bin/open, the way this used to launch everything. Kept for the
@@ -296,7 +296,7 @@ namespace {
         for (const std::string& path : paths)
             argv.push_back(AbsolutePathOf(path));
         const std::string workingDir = paths.empty()
-                ? std::string() : fs::path(paths[0]).parent_path().string();
+                ? std::string() : PathToUtf8(PathFromUtf8(paths[0]).parent_path());
         return LaunchDetachedProcess(argv, workingDir, outError);
     }
 
@@ -334,7 +334,7 @@ bool LaunchDefault(const std::vector<std::string>& paths, std::string& outError)
                 failures += line;
             };
             for (const std::string& path : paths) {
-                const std::string name = fs::path(path).filename().string();
+                const std::string name = PathToUtf8(PathFromUtf8(path).filename());
                 NSURL* url = FileURL(path);
                 NSURL* application = url ? [workspace URLForApplicationToOpenURL:url]
                                          : nil;
@@ -415,7 +415,7 @@ bool LaunchWithPath(const std::string& applicationPath,
     }
     argv.insert(argv.end(), paths.begin(), paths.end());
     const std::string workingDir = paths.empty()
-            ? std::string() : fs::path(paths[0]).parent_path().string();
+            ? std::string() : PathToUtf8(PathFromUtf8(paths[0]).parent_path());
     return LaunchDetachedProcess(argv, workingDir, outError);
 }
 

@@ -9,6 +9,7 @@
 // Last Modified: 2026-09-05
 // Author: UltraCanvas Framework
 #include "UltraCanvasMacBundle.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasPropertyList.h"
 
 #include <algorithm>
@@ -56,9 +57,9 @@ namespace UltraCanvas {
             for (const std::string& candidate : {iconFile, iconName}) {
                 if (candidate.empty()) continue;
                 const fs::path direct = resources / candidate;
-                if (IsFile(direct)) return direct.string();
+                if (IsFile(direct)) return PathToUtf8(direct);
                 const fs::path suffixed = resources / (candidate + ".icns");
-                if (IsFile(suffixed)) return suffixed.string();
+                if (IsFile(suffixed)) return PathToUtf8(suffixed);
             }
             if (!fs::is_directory(resources, ec) || ec) return {};
             // No name that resolves: take an .icns from Resources, preferring
@@ -67,11 +68,11 @@ namespace UltraCanvas {
             for (fs::directory_iterator it(resources, ec), end;
                  it != end && !ec; it.increment(ec)) {
                 if (!it->is_regular_file(ec)) continue;
-                if (LowerExtensionOf(it->path().filename().string()) != "icns")
+                if (LowerExtensionOf(PathToUtf8(it->path().filename())) != "icns")
                     continue;
-                const std::string name = it->path().filename().string();
-                if (name == "AppIcon.icns") return it->path().string();
-                if (firstFound.empty()) firstFound = it->path().string();
+                const std::string name = PathToUtf8(it->path().filename());
+                if (name == "AppIcon.icns") return PathToUtf8(it->path());
+                if (firstFound.empty()) firstFound = PathToUtf8(it->path());
             }
             return firstFound;
         }
@@ -98,8 +99,8 @@ namespace UltraCanvas {
         UCPropertyList info;
         // Applications keep Info.plist under Contents; a framework or a
         // loadable bundle can keep it in Resources instead.
-        if (!UCPropertyList::Read((contents / "Info.plist").string(), info) &&
-            !UCPropertyList::Read((root / "Resources" / "Info.plist").string(),
+        if (!UCPropertyList::Read(PathToUtf8(contents / "Info.plist"), info) &&
+            !UCPropertyList::Read(PathToUtf8(root / "Resources" / "Info.plist"),
                                   info))
             return false;
 
@@ -113,7 +114,7 @@ namespace UltraCanvas {
         if (bundle.displayName.empty()) {
             // The directory name without its extension, which is what the
             // Finder falls back to as well.
-            std::string name = root.filename().string();
+            std::string name = PathToUtf8(root.filename());
             const size_t dot = name.find_last_of('.');
             if (dot != std::string::npos && dot > 0) name = name.substr(0, dot);
             bundle.displayName = name;
@@ -122,7 +123,7 @@ namespace UltraCanvas {
         const std::string executable = info.GetString("CFBundleExecutable");
         if (!executable.empty()) {
             const fs::path macOs = contents / "MacOS" / executable;
-            if (IsFile(macOs)) bundle.executable = macOs.string();
+            if (IsFile(macOs)) bundle.executable = PathToUtf8(macOs);
         }
         bundle.iconFile = FindBundleIcon(contents / "Resources",
                                          info.GetString("CFBundleIconFile"),

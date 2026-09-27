@@ -8,6 +8,10 @@
 #include <ctime>
 #include <filesystem>
 #include <string>
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace UltraCloud {
 
@@ -155,10 +159,10 @@ Result CloudService::Download(const std::string& accountId, const std::string& r
     // provider but FTP writes with an ofstream, which fails with nothing more
     // useful than "cannot write" when the directory is missing.
     std::error_code ec;
-    const std::filesystem::path parent = std::filesystem::path(localPath).parent_path();
+    const std::filesystem::path parent = PathFromUtf8(localPath).parent_path();
     if (!parent.empty() && !std::filesystem::is_directory(parent, ec))
         return Result::Error(ResultCode::IoError,
-                             "no such folder: " + parent.string());
+                             "no such folder: " + PathToUtf8(parent));
     return p->Download(a, c, NormalizePath(remotePath), localPath);
 }
 Result CloudService::UploadAndShare(const std::string& accountId, const std::string& localPath,
@@ -180,7 +184,7 @@ Result CloudService::UploadAndShare(const std::string& accountId, const std::str
         if (!mk && mk.httpStatus != 405 && mk.httpStatus != 409 && mk.code != ResultCode::Unsupported)
             return mk;
     }
-    const std::string name = std::filesystem::path(localPath).filename().string();
+    const std::string name = PathToUtf8(PathFromUtf8(localPath).filename());
     const std::string remotePath = (folder == "/" ? "" : folder) + "/" + name;
 
     Result up = p->Upload(a, c, localPath, remotePath);

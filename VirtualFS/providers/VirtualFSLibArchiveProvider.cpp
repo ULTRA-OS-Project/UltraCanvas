@@ -5,7 +5,11 @@
 // Author: ULTRA OS Framework
 
 #include "VirtualFSLibArchiveProvider.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "VirtualFSManager.h"
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 #ifdef VIRTUALFS_HAS_LIBARCHIVE
 
@@ -934,8 +938,8 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     std::string dest = destDirectory;
     {
         const std::filesystem::path canonical =
-                std::filesystem::weakly_canonical(std::filesystem::path(destDirectory), ec);
-        if (!ec && !canonical.empty()) dest = canonical.string();
+                std::filesystem::weakly_canonical(PathFromUtf8(destDirectory), ec);
+        if (!ec && !canonical.empty()) dest = PathToUtf8(canonical);
         while (dest.size() > 1 && (dest.back() == '/' || dest.back() == '\\')) dest.pop_back();
     }
     
@@ -1212,7 +1216,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddDirectory(
     
     size_t filesAdded = 0;
     auto addEntry = [&](const std::filesystem::directory_entry& dirEntry) -> VirtualFSResult {
-        std::string relativePath = std::filesystem::relative(dirEntry.path(), srcPath).string();
+        std::string relativePath = PathToUtf8(std::filesystem::relative(dirEntry.path(), srcPath));
         std::string destPath = virtualPath.empty() ? relativePath : virtualPath + "/" + relativePath;
         std::replace(destPath.begin(), destPath.end(), '\\', '/');
 
@@ -1222,7 +1226,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddDirectory(
         // running totals (it is the only one that knows the grand total).
         if (progressCallback && dirEntry.is_regular_file()) {
             VirtualFSProgress progress;
-            progress.currentFile = dirEntry.path().string();
+            progress.currentFile = PathToUtf8(dirEntry.path());
             std::error_code sizeEc;
             progress.currentTotalBytes =
                     std::filesystem::file_size(dirEntry.path(), sizeEc);
@@ -1246,7 +1250,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddDirectory(
             }
             archive_entry_free(entry);
         } else if (dirEntry.is_regular_file()) {
-            return AddFile(dirEntry.path().string(), destPath, options);
+            return AddFile(PathToUtf8(dirEntry.path()), destPath, options);
         }
         
         return VirtualFSResult::Success;

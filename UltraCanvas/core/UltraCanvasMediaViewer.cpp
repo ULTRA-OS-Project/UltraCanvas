@@ -19,6 +19,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasFontViewer.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasBreadcrumb.h"
@@ -88,7 +89,7 @@ static std::string LowerExt(const std::string& path) {
 static std::string BaseName(const std::string& path) {
     std::error_code ec;
     fs::path p(path);
-    return p.filename().string();
+    return PathToUtf8(p.filename());
 }
 
 static std::string HumanSize(uintmax_t bytes) {
@@ -1432,7 +1433,7 @@ std::vector<std::string> UltraCanvasMediaViewer::EnumerateFolder(const std::stri
     for (fs::directory_iterator it(folder, ec), end; it != end && !ec; it.increment(ec)) {
         std::error_code fec;
         if (it->is_regular_file(fec)) {
-            std::string p = it->path().string();
+            std::string p = PathToUtf8(it->path());
             if (IsSupportedMedia(p)) out.push_back(p);
         }
     }
@@ -1481,7 +1482,7 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
     // Reflect the folder the (first) file lives in.
     {
         fs::path p(playlist.front());
-        currentFolder = p.parent_path().string();
+        currentFolder = PathToUtf8(p.parent_path());
     }
     UpdateBreadcrumb();
     LoadCurrent(false);
@@ -1491,7 +1492,7 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
 void UltraCanvasMediaViewer::OpenFile(const std::string& filePath) {
     std::error_code ec;
     fs::path p(filePath);
-    std::string folder = p.parent_path().string();
+    std::string folder = PathToUtf8(p.parent_path());
     if (folder.empty()) folder = ".";
     OpenFolder(folder, filePath);
 }
@@ -1787,9 +1788,9 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
             if (UCWordDocumentIO::LoadLaTeX(path, document, error)) {
                 RichDocumentMarkdownOptions options;
                 if (!document.media.empty()) {
-                    options.imageDirectory = (std::filesystem::temp_directory_path()
+                    options.imageDirectory = PathToUtf8(std::filesystem::temp_directory_path()
                         / ("UltraCanvas-media-" + std::to_string(
-                               std::chrono::steady_clock::now().time_since_epoch().count()))).string();
+                               std::chrono::steady_clock::now().time_since_epoch().count())));
                 }
                 content = document.ToMarkdown(options);
                 importedDocument = true;

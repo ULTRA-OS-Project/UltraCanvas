@@ -13,6 +13,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <cctype>
@@ -1854,7 +1855,7 @@ void Reader::ParseIncludeGraphics() {
     RichDocBlock block;
     block.type = RichBlockType::Image;
     block.align = CurrentAlign();
-    block.imageAltText = std::filesystem::path(file).filename().string();
+    block.imageAltText = PathToUtf8(PathFromUtf8(file).filename());
 
     // Resolve the file against the graphics paths and the base directory.
     std::vector<std::string> dirs = graphicsPaths_;
@@ -1863,8 +1864,8 @@ void Reader::ParseIncludeGraphics() {
     std::filesystem::path found;
     for (const std::string& dir : dirs) {
         for (const char* ext : kExtensions) {
-            std::filesystem::path candidate = std::filesystem::path(file + ext);
-            if (candidate.is_relative()) candidate = std::filesystem::path(dir) / candidate;
+            std::filesystem::path candidate = PathFromUtf8(file + ext);
+            if (candidate.is_relative()) candidate = PathFromUtf8(dir) / candidate;
             std::error_code ec;
             if (std::filesystem::is_regular_file(candidate, ec)) { found = candidate; break; }
         }
@@ -1880,12 +1881,12 @@ void Reader::ParseIncludeGraphics() {
         else if (key == "scale") scale = std::strtof(value.c_str(), nullptr);
     }
     if (!found.empty()) {
-        block.imageAltText = found.filename().string();
+        block.imageAltText = PathToUtf8(found.filename());
         std::ifstream in(found, std::ios::binary);
         std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         if (!data.empty()) {
-            block.mediaIndex = doc_.AddMedia(found.filename().string(),
-                                             UCRichDocument::MimeTypeForImageName(found.filename().string()),
+            block.mediaIndex = doc_.AddMedia(PathToUtf8(found.filename()),
+                                             UCRichDocument::MimeTypeForImageName(PathToUtf8(found.filename())),
                                              std::move(data));
             int px = 0, py = 0;
             if (UCRichDocument::SniffImagePixelSize(doc_.media[static_cast<size_t>(block.mediaIndex)].data, px, py) && px > 0 && py > 0) {
@@ -2131,7 +2132,7 @@ void Reader::ParseInput(const std::string& name) {
         return;
     }
     std::filesystem::path path(file);
-    if (path.is_relative()) path = std::filesystem::path(options_.baseDirectory) / path;
+    if (path.is_relative()) path = PathFromUtf8(options_.baseDirectory) / path;
     std::error_code ec;
     if (!std::filesystem::is_regular_file(path, ec) && path.extension().empty()) path += ".tex";
     std::ifstream in(path, std::ios::binary);
@@ -2402,8 +2403,8 @@ bool Reader::HandleCommand(const std::string& name, Stop stop, StopReason& reaso
                 std::string dir;
                 if (paths[i] == '{' && ReadRawGroupAt(paths, i, dir)) {
                     std::filesystem::path p(TrimCopy(dir));
-                    if (p.is_relative()) p = std::filesystem::path(options_.baseDirectory) / p;
-                    graphicsPaths_.push_back(p.string());
+                    if (p.is_relative()) p = PathFromUtf8(options_.baseDirectory) / p;
+                    graphicsPaths_.push_back(PathToUtf8(p));
                 } else {
                     ++i;
                 }
@@ -2748,21 +2749,21 @@ bool UltraCanvasLaTeXDocumentReader::Load(const std::string& filePath, UCRichDoc
                                           LaTeXDocumentReadOptions options) {
     outError.clear();
     outDocument = UCRichDocument{};
-    std::ifstream in(std::filesystem::path(filePath), std::ios::binary);
+    std::ifstream in(PathFromUtf8(filePath), std::ios::binary);
     if (!in.is_open()) {
         outError = "Cannot open LaTeX document: " + filePath;
         return false;
     }
     std::string source((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     if (options.baseDirectory.empty()) {
-        options.baseDirectory = std::filesystem::path(filePath).parent_path().string();
+        options.baseDirectory = PathToUtf8(PathFromUtf8(filePath).parent_path());
     }
     if (!Parse(source, outDocument, outDiagnostics, options)) {
         outError = "The LaTeX file holds no document content: " + filePath;
         return false;
     }
     if (outDocument.metadata.title.empty()) {
-        outDocument.metadata.title = std::filesystem::path(filePath).stem().string();
+        outDocument.metadata.title = PathToUtf8(PathFromUtf8(filePath).stem());
     }
     return true;
 }

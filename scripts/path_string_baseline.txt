@@ -1,0 +1,15 @@
+# std::filesystem::path <-> std::string conversions still going through the
+# Windows code page, recorded so CI can block *new* ones while these are
+# worked off. Each line is <path>::<kind>::<symbol>.
+#
+# These are debt, not exceptions: on a Windows whose code page lacks a
+# character of the file name, `.string()` throws and `fs::path(std::string)`
+# names a different file. Convert with PathToUtf8 / PathFromUtf8
+# (UltraCanvasPathUtf8.h) and remove the line.
+#
+# Do not add to this file to silence a new finding. A site that is correct as
+# it stands - a path built from a wide string, say - says so where it is:
+#     return std::filesystem::path(wpath);   // path-string-ok: wide
+#
+# Regenerate with:
+#     python3 scripts/check_path_string.py --update-baseline

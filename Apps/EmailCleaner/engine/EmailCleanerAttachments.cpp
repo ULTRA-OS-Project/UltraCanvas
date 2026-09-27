@@ -2,6 +2,7 @@
 // Version: 0.3.0 (Phase 3)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerAttachments.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "EmailCleanerClassifier.h"
 
@@ -13,6 +14,9 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace EmailCleaner {
 
@@ -76,9 +80,9 @@ std::string CachedMessagePath(const std::string& mailCacheDir,
                               int64_t uid) {
     if (mailCacheDir.empty() || accountId.empty() || folder.empty() || uid <= 0)
         return "";
-    std::filesystem::path p = std::filesystem::path(mailCacheDir) / accountId / folder;
+    std::filesystem::path p = PathFromUtf8(mailCacheDir) / accountId / folder;
     p /= (std::to_string(uid) + ".eml");
-    return p.string();
+    return PathToUtf8(p);
 }
 
 std::string SafeAttachmentName(const std::string& filename,
@@ -181,7 +185,7 @@ std::string WriteToCache(const std::string& cacheDir,
     std::filesystem::create_directories(cacheDir, ec);
 
     const std::string safe = SafeAttachmentName(filename, mediaType);
-    std::filesystem::path target = std::filesystem::path(cacheDir) / safe;
+    std::filesystem::path target = PathFromUtf8(cacheDir) / safe;
 
     // Belt and braces: whatever the sanitiser produced, the result has to sit
     // inside the cache directory.
@@ -197,7 +201,7 @@ std::string WriteToCache(const std::string& cacheDir,
                   static_cast<std::streamsize>(bytes.size()));
     if (!out.good()) return "";
     out.close();
-    return target.string();
+    return PathToUtf8(target);
 }
 
 } // namespace EmailCleaner

@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <functional>
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 namespace UltraCanvas {
 
@@ -181,7 +182,7 @@ namespace UltraCanvas {
                 resolved = std::filesystem::absolute(p, ec);
                 if (ec) resolved = p;
             }
-            return resolved.lexically_normal().string();
+            return PathToUtf8(resolved.lexically_normal());
         }
 
         /// Load recent files list from file (normalized, duplicates dropped,

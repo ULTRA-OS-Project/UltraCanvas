@@ -2,6 +2,7 @@
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialComposeView.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraSocialComposer.h"
 #include "UltraSocialConnector.h"
@@ -160,7 +161,7 @@ void ComposeView::RebuildMediaChips() {
         const std::string id = "cvMedia" + std::to_string(index++);
         auto chip = CreateChip(id,
                                0, 0,
-                               std::filesystem::path(path).filename().string(),
+                               PathToUtf8(PathFromUtf8(path).filename()),
                                /*closable=*/true);
         chip->onClose = [this, path]() {
             mediaPaths_.erase(

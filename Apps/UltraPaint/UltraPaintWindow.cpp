@@ -52,11 +52,11 @@ namespace {
 
     std::string FileNameOf(const std::string& path) {
         if (path.empty()) return "Untitled";
-        return fs::path(path).filename().string();
+        return PathToUtf8(PathFromUtf8(path).filename());
     }
 
     std::string LowerExtOf(const std::string& path) {
-        std::string e = fs::path(path).extension().string();
+        std::string e = PathToUtf8(PathFromUtf8(path).extension());
         if (!e.empty() && e[0] == '.') e.erase(0, 1);
         std::transform(e.begin(), e.end(), e.begin(), [](unsigned char c) { return std::tolower(c); });
         return e;
@@ -1282,7 +1282,7 @@ void UltraPaintWindow::CmdSaveAs() {
     UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
         std::string p = path;
-        if (fs::path(p).extension().empty()) p += ".png";
+        if (PathFromUtf8(p).extension().empty()) p += ".png";
         SaveToPath(p);
     });
 }

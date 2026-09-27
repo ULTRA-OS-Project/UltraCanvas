@@ -507,7 +507,7 @@ namespace UltraCanvas {
         // Resolved so that two spellings of one file - a relative path and an
         // absolute one, a symlink and its target - are recognised as the same
         // registration rather than handed to the platform twice.
-        std::string key = std::filesystem::weakly_canonical(fontFilePath, ec).string();
+        std::string key = PathToUtf8(std::filesystem::weakly_canonical(fontFilePath, ec));
         if (ec || key.empty()) key = fontFilePath;
 
         {
@@ -534,7 +534,7 @@ namespace UltraCanvas {
             const std::string& fontFilePath) const {
         if (fontFilePath.empty()) return false;
         std::error_code ec;
-        std::string key = std::filesystem::weakly_canonical(fontFilePath, ec).string();
+        std::string key = PathToUtf8(std::filesystem::weakly_canonical(fontFilePath, ec));
         if (ec || key.empty()) key = fontFilePath;
         std::lock_guard<std::mutex> lk(registeredFontsMutex_);
         return std::find(registeredFontFiles_.begin(), registeredFontFiles_.end(),

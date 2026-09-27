@@ -13,6 +13,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModelRaster.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasModelPreview.h"
 
@@ -172,7 +173,7 @@ namespace {
     }
 
     std::string LowerExtOf(const std::string& path) {
-        std::string e = std::filesystem::path(path).extension().string();
+        std::string e = PathToUtf8(PathFromUtf8(path).extension());
         if (!e.empty() && e[0] == '.') e.erase(0, 1);
         std::transform(e.begin(), e.end(), e.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -180,7 +181,7 @@ namespace {
     }
 
     std::string StemOf(const std::string& path) {
-        std::string stem = std::filesystem::path(path).stem().string();
+        std::string stem = PathToUtf8(PathFromUtf8(path).stem());
         return stem.empty() ? std::string("Model") : stem;
     }
 

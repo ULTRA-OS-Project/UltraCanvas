@@ -115,14 +115,14 @@ namespace UltraCanvas {
             }
 
             std::string ReadWholeFile(const std::wstring& path) {
-                std::ifstream in(fs::path(path), std::ios::binary);
+                std::ifstream in(fs::path(path), std::ios::binary);   // path-string-ok: wide
                 if (!in) return {};
                 return std::string(std::istreambuf_iterator<char>(in),
                                    std::istreambuf_iterator<char>());
             }
 
             void TruncateFile(const std::wstring& path) {
-                std::ofstream out(fs::path(path), std::ios::binary | std::ios::trunc);
+                std::ofstream out(fs::path(path), std::ios::binary | std::ios::trunc);   // path-string-ok: wide
             }
 
             // The whole command line must stay under the 32767-character
@@ -249,7 +249,7 @@ namespace UltraCanvas {
                     // its arguments): what is still there is what failed.
                     for (const std::string& path : run) {
                         std::error_code ec;
-                        if (fs::exists(fs::path(ToWide(path)), ec))
+                        if (fs::exists(fs::path(ToWide(path)), ec))   // path-string-ok: wide
                             failures.push_back({path,
                                     exitCode == static_cast<DWORD>(kHelperExitBadArguments)
                                             ? "The helper rejected its arguments"

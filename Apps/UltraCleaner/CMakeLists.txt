@@ -27,6 +27,10 @@ set_target_properties(UltraCleanerEngine PROPERTIES
 target_compile_features(UltraCleanerEngine PUBLIC cxx_std_20)
 target_include_directories(UltraCleanerEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/engine)
+# UltraCanvasPathUtf8.h only - header-only, so the engine stays free of the
+# UltraCanvas core: every path <-> std::string conversion goes through it.
+target_include_directories(UltraCleanerEngine PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/include)
 
 # The trash goes through the shell on Windows (SHFileOperationW /
 # SHEmptyRecycleBinW / SHQueryRecycleBinW); everywhere else the engine is

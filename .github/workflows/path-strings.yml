@@ -1,0 +1,51 @@
+name: UTF-8 file paths
+
+# Blocks new std::filesystem::path <-> std::string conversions that go through
+# the Windows code page. With libc++ (the MSYS2 CLANG64 / CLANGARM64 Windows
+# builds) `path.string()` THROWS "__wide_to_char: Illegal byte sequence" on a
+# name the code page cannot hold, and `fs::path(std::string)` reads UTF-8 as
+# that code page and names a different file. UltraFiler quit on a Thai
+# Windows 10 machine this way. Convert with PathToUtf8 / PathFromUtf8
+# (UltraCanvas/include/UltraCanvasPathUtf8.h) - see AGENTS.md.
+#
+# Sites that predate the check would be listed in
+# scripts/path_string_baseline.txt (empty when the check was introduced); only
+# additions fail. A site that is correct as it stands - a path built from a
+# wide string - says so with `// path-string-ok: <why>`.
+
+# Trigger policy matches build.yml / locale-numbers.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/**'
+      - 'SmartHome/**'
+      - 'UltraAI/**'
+      - 'UltraCloud/**'
+      - 'VirtualFS/**'
+      - 'Apps/**'
+      - 'scripts/check_path_string.py'
+      - 'scripts/path_string_baseline.txt'
+      - '.github/workflows/path-strings.yml'
+  pull_request:
+    # `branches` filters the BASE branch -- the branch the pull request
+    # TARGETS; see locale-numbers.yml for why `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check for code-page path conversions
+        run: python3 scripts/check_path_string.py --strict

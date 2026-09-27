@@ -15,6 +15,7 @@
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <array>
 #include <cstdio>
@@ -24,6 +25,9 @@
 
 #include <sys/stat.h>
 #include <unistd.h>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace VirtualFS {
 namespace RamDiskDetail {
@@ -159,7 +163,7 @@ std::vector<VirtualFSRamDisk> PlatformList() {
     std::error_code ec;
     for (auto it = std::filesystem::directory_iterator("/Volumes", ec);
          !ec && it != std::filesystem::directory_iterator(); ++it) {
-        const std::string volumeName = it->path().filename().string();
+        const std::string volumeName = PathToUtf8(it->path().filename());
         const std::string name = NameFromVolumeName(volumeName);
         if (name.empty()) {
             continue;
@@ -167,7 +171,7 @@ std::vector<VirtualFSRamDisk> PlatformList() {
 
         VirtualFSRamDisk disk;
         disk.name = name;
-        disk.mountPath = it->path().string();
+        disk.mountPath = PathToUtf8(it->path());
         disk.backing = VirtualFSRamDiskBacking::HdiUtil;
 
         // The device node is not recoverable from the mount point alone;

@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 //#include "UltraCanvasButton3Sections.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
@@ -191,7 +192,7 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateTextSampleTabPage(const std::string& language,
                                                         const std::string& filePath) {
-        const std::string fileName = std::filesystem::path(filePath).filename().string();
+        const std::string fileName = PathToUtf8(PathFromUtf8(filePath).filename());
 
         auto page = std::make_shared<UltraCanvasContainer>("TextSamplePage_" + language, 0, 0, 800, 600);
         page->layout.SetFlexColumn().SetFlexGap(6)

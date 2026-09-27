@@ -9,6 +9,7 @@
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDisk.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
 #include "VirtualFS/VirtualFS.h"
 
@@ -17,6 +18,9 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+
+using UltraCanvas::PathFromUtf8;
+using UltraCanvas::PathToUtf8;
 
 namespace VirtualFS {
 
@@ -140,7 +144,7 @@ VirtualFSResult VirtualFS_DestroyRamDisk(VirtualFSRamDisk& disk) {
     if (VirtualFS_GetTempDirectory() == disk.mountPath) {
         std::error_code ec;
         const auto fallback = std::filesystem::temp_directory_path(ec);
-        VirtualFS_SetTempDirectory(ec ? std::string(".") : fallback.string());
+        VirtualFS_SetTempDirectory(ec ? std::string(".") : PathToUtf8(fallback));
     }
 
     const VirtualFSResult result = RamDiskDetail::PlatformDestroy(disk);

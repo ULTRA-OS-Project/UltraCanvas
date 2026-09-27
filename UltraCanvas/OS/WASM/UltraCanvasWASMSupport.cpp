@@ -11,6 +11,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWASMSupport.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasDebug.h"
 
 #include <emscripten.h>
@@ -108,7 +109,7 @@ namespace {
     // by LoadFont and the file picker. Returns "" on failure.
     bool WriteBytes(const std::string& path, const uint8_t* data, size_t size) {
         std::error_code ec;
-        std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
+        std::filesystem::create_directories(PathFromUtf8(path).parent_path(), ec);
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         if (!out) return false;
         if (size > 0) out.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
@@ -247,7 +248,7 @@ std::vector<std::string> WASMFileSystem::ListDirectory(const std::string& path) 
     std::vector<std::string> names;
     std::error_code ec;
     for (const auto& entry : std::filesystem::directory_iterator(path, ec)) {
-        names.push_back(entry.path().filename().string());
+        names.push_back(PathToUtf8(entry.path().filename()));
     }
     return names;
 }

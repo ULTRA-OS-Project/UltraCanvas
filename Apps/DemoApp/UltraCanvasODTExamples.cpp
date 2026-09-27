@@ -48,7 +48,7 @@ namespace UltraCanvas {
             view->SetModified(false);
             view->RequestRedraw();
 
-            std::string name = std::filesystem::path(path).filename().string();
+            std::string name = PathToUtf8(PathFromUtf8(path).filename());
             std::string details = std::to_string(document->blocks.size()) + " blocks";
             if (!document->media.empty()) {
                 details += ", " + std::to_string(document->media.size()) + " images";

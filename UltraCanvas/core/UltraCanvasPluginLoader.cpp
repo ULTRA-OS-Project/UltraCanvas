@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPluginLoader.h"
+#include "UltraCanvasPathUtf8.h"
 
 #if defined(_WIN32) || defined(_WIN64)
   #ifndef WIN32_LEAN_AND_MEAN
@@ -19,9 +20,10 @@ namespace UltraCanvas {
 
 UCPluginLibHandle UCPluginOpen(const std::string& path, std::string* error) {
 #if defined(_WIN32) || defined(_WIN64)
-    HMODULE h = LoadLibraryA(path.c_str());
+    // The path is UTF-8; LoadLibraryA would read it in the ANSI code page.
+    HMODULE h = LoadLibraryW(PathFromUtf8(path).c_str());
     if (!h && error) {
-        *error = "LoadLibraryA failed with error " + std::to_string(GetLastError());
+        *error = "LoadLibraryW failed with error " + std::to_string(GetLastError());
     }
     return reinterpret_cast<UCPluginLibHandle>(h);
 #else
@@ -57,7 +59,7 @@ void UCPluginClose(UCPluginLibHandle handle) {
 }
 
 bool UCIsPluginFile(const std::filesystem::path& path) {
-    const std::string ext = path.extension().string();
+    const std::string ext = PathToUtf8(path.extension());
 #if defined(_WIN32) || defined(_WIN64)
     return ext == ".dll";
 #else
@@ -68,7 +70,7 @@ bool UCIsPluginFile(const std::filesystem::path& path) {
 std::string UCPluginCanonicalPath(const std::filesystem::path& path) {
     std::error_code ec;
     const std::filesystem::path canonical = std::filesystem::weakly_canonical(path, ec);
-    return ec ? path.string() : canonical.string();
+    return ec ? PathToUtf8(path) : PathToUtf8(canonical);
 }
 
 } // namespace UltraCanvas
