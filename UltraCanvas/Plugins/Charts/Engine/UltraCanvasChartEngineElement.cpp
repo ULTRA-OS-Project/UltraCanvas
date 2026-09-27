@@ -928,6 +928,52 @@ void UltraCanvasChartEngineElement::RenderEngineLimiters(IRenderContext* ctx) {
     }
 }
 
+void UltraCanvasChartEngineElement::RenderBarConnections(
+        IRenderContext* ctx, const std::vector<ChartBarConnection>& connections,
+        const std::vector<Color>& seriesColors, const ChartBarConnectionStyle& style,
+        size_t emphasizedSeries) {
+    if (connections.empty()) return;
+    const Color halo = style.haloColor.a > 0 ? style.haloColor : engineTheme.plotAreaColor;
+
+    ctx->PushState();
+    ctx->SetLineJoin(LineJoin::Round);
+    ctx->SetLineCap(LineCap::Round);
+    if (style.dashed) ctx->SetLineDash(UCDashPattern({6.0, 4.0}));
+    for (const ChartBarConnection& connection : connections) {
+        if (connection.points.size() < 2) continue;
+        const Color color = connection.seriesIndex < seriesColors.size()
+                                ? seriesColors[connection.seriesIndex]
+                                : Palette().ColorAt(connection.seriesIndex);
+        const float width = (connection.seriesIndex == emphasizedSeries &&
+                             style.emphasisWidth > 0.0f)
+                                ? style.emphasisWidth : style.width;
+        if (style.haloWidth > 0.0f) {
+            ctx->SetStrokePaint(halo);
+            ctx->SetStrokeWidth(width + style.haloWidth * 2.0f);
+            ctx->DrawLinePath(connection.points, false);
+        }
+        ctx->SetStrokePaint(color);
+        ctx->SetStrokeWidth(width);
+        ctx->DrawLinePath(connection.points, false);
+    }
+    if (style.dashed) ctx->SetLineDash(UCDashPattern());
+
+    if (style.markerRadius > 0.0f) {
+        for (const ChartBarConnection& connection : connections) {
+            const Color color = connection.seriesIndex < seriesColors.size()
+                                    ? seriesColors[connection.seriesIndex]
+                                    : Palette().ColorAt(connection.seriesIndex);
+            for (const Point2Dd& p : connection.barPoints) {
+                ctx->SetFillPaint(halo);
+                ctx->FillCircle(p, style.markerRadius + style.haloWidth);
+                ctx->SetFillPaint(color);
+                ctx->FillCircle(p, style.markerRadius);
+            }
+        }
+    }
+    ctx->PopState();
+}
+
 void UltraCanvasChartEngineElement::RenderEngineAxes(IRenderContext* ctx) {
     ctx->SetFontSize(axisFontSize);
     for (size_t i = 0; i < engineAxes.Count(); ++i) {

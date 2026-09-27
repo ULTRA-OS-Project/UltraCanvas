@@ -17,8 +17,8 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
-// Version: 1.2.0
-// Last Modified: 2026-08-20
+// Version: 1.3.0
+// Last Modified: 2026-09-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,6 +28,7 @@
 #include "Plugins/Charts/Engine/UltraCanvasChartHighlights.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartTheme.h"
 #include "UltraCanvasElementProperties.h"
 #include "UltraCanvasTimer.h"
@@ -63,6 +64,22 @@ struct ChartLimiter {
     bool dashed = true;
     std::string caption;             // solved as a LimiterCaption label
     Color captionColor = Color(120, 40, 40, 255);
+};
+
+// How RenderBarConnections strokes the lines BuildBarConnections produced
+// (Engine/UltraCanvasChartSeries.h). Each line takes its series' colour.
+struct ChartBarConnectionStyle {
+    float width = 2.0f;
+    // Widened stroke for the series whose bar is hovered; 0 = no emphasis.
+    float emphasisWidth = 3.5f;
+    bool dashed = false;
+    // Knot dots at every joined bar; 0 = none.
+    float markerRadius = 0.0f;
+    // A contrasting underlay so a line stays readable where it crosses a bar
+    // of its own colour; 0 = none. Its colour defaults to the theme's plot
+    // area when left fully transparent.
+    float haloWidth = 1.5f;
+    Color haloColor = Color(0, 0, 0, 0);
 };
 
 // The legend is the shared ChartLegend component
@@ -259,6 +276,16 @@ protected:
     virtual void RenderEngineTitle(IRenderContext* ctx);
     virtual void RenderPlannedLabels(IRenderContext* ctx);
     virtual void RenderEngineLegend(IRenderContext* ctx);
+
+    // Bar connections: strokes lines built by BuildBarConnections from inside
+    // RenderChartContent, after the bars, so they ride over the bars and under
+    // the solved labels. seriesColors[i] colours series i; the series listed
+    // in emphasizedSeries (SIZE_MAX = none) is drawn at emphasisWidth.
+    void RenderBarConnections(IRenderContext* ctx,
+                              const std::vector<ChartBarConnection>& connections,
+                              const std::vector<Color>& seriesColors,
+                              const ChartBarConnectionStyle& style = {},
+                              size_t emphasizedSeries = static_cast<size_t>(-1));
 
     // Layout/plan lifecycle. Both are cheap no-ops when nothing is dirty.
     void EnsureEngineLayout(IRenderContext* ctx);

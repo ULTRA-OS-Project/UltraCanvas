@@ -12067,6 +12067,53 @@ bridging with a sampled fillet, so rounded bars are rounded ring sectors under
 Polar rather than a fallback. The radius self-clamps against short edges, so a
 bar collapsing mid-animation degrades gracefully.
 
+### Bar connections
+
+A bar connection is a line from the value end of one bar to the same series'
+bar in the next category. In a clustered chart it traces each series across
+the groups; in a stacked chart, anchored at the bar edges, it is the classic
+series line joining the segment tops. `BuildBarConnections` turns the spans
+into one screen polyline per unbroken run of each series, and the engine
+element's `RenderBarConnections` strokes them in the series colours — call it
+from `RenderChartContent` after the bars, so the lines ride over the bars and
+under the solved labels:
+
+```cpp
+// RenderChartContent: animate the spans once, draw the bars from them, then
+// join them - the lines grow with the bars.
+std::vector<ChartBarSpan> spans = BuildBarSpans(valueAxis, categoryAxis,
+                                                categoryCount, seriesValues, options);
+for (ChartBarSpan& span : spans) {
+    span.v0 = zero + (span.v0 - zero) * frame.animationProgress;
+    span.v1 = zero + (span.v1 - zero) * frame.animationProgress;
+}
+// ... draw the bars from `spans` ...
+
+ChartBarConnectionOptions connection;
+connection.shape = ChartBarConnectionShape::Curved;       // or Straight
+connection.anchor = ChartBarConnectionAnchor::BarCenter;  // or BarEdges
+ChartBarConnectionStyle style;                            // width, dash, markers, halo
+style.markerRadius = 3.0f;
+RenderBarConnections(ctx, BuildBarConnections(*frame.projection, spans, connection),
+                     seriesColors, style, hoveredSeries /* SIZE_MAX = none */);
+```
+
+| Option | Meaning |
+|---|---|
+| `shape` | `Straight` joins bar to bar with straight segments; `Curved` is a monotone cubic (Fritsch–Carlson) — smooth, flat where neighbouring bars are equal, and never overshooting either bar, so the curve cannot suggest a value no bar has |
+| `anchor` | `BarCenter` meets the middle of each bar's value edge; `BarEdges` leaves each bar from the corner facing the next one and runs along the value edge of the bars in between |
+| `bridgeGaps` | A missing value (short series, NaN) breaks the line by default; `true` joins the bars either side |
+| `samplesPerSegment` | Screen samples per join (default 16). Straight lines are sampled too, so under Polar they follow the rings instead of cutting across them |
+
+Each `ChartBarConnection` carries its `seriesIndex`, the `categories` it joins,
+the stroke `points`, and `barPoints` — each joined bar's value-edge centre,
+where `RenderBarConnections` puts the optional markers. `ChartBarConnectionStyle`
+sets `width`, `emphasisWidth` (the series passed as emphasised, typically the
+hovered bar's), `dashed`, `markerRadius` and a `haloWidth` underlay in the
+plot-area colour that keeps a line readable where it crosses a bar of its own
+colour. A run of fewer than two bars draws nothing. The demo's Bar Charts page
+shows it on the Clustered and Stacked tabs.
+
 ## Phase-3 services
 
 - **Label plan**: labels submitted in `CollectChartLabels` go through the
