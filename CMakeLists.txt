@@ -802,6 +802,16 @@ if(BUILD_TESTS)
     add_subdirectory(Tests)
 endif()
 
+# ===== VECTOR FORMAT TESTS WITHOUT THE FULL SUITE =====
+# VectorFormatsPluginTest and CDRWriterTest alone, for builds that leave
+# BUILD_TESTS off (the Windows and macOS CI rows): the CorelDRAW import on
+# the patched libcdr is exercised on every platform that ships it.
+option(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS "Build the vector format tests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VectorFormatsTests.cmake)
+endif()
+
 # ===== ULTRANET TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraNet is built.
