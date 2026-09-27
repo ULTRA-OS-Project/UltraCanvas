@@ -2038,8 +2038,11 @@ void UltraFilerWindow::AddTreeRemoteDriveNode(const RemoteDrive& drive) {
     if (!folderTree) return;
     // No subfolder probe: it reads the local filesystem, which knows nothing
     // about a path on a server.
-    TreeNodeData data = MakeFolderNodeData(drive.rootPath, drive.displayName,
-                                           "cloud.svg");
+    // "FTPS: Backup NAS": what kind of server it is, in front of its name.
+    TreeNodeData data = MakeFolderNodeData(
+            drive.rootPath,
+            RemoteDriveTreeLabel(drive.providerId, drive.serverUrl, drive.displayName),
+            "cloud.svg");
     if (!folderTree->AddNode(kRemoteNodeId, data)) return;
     treeRemoteDriveNodeIds.push_back(drive.rootPath);
     // A drive opens like any other folder row. What is below it is fetched
