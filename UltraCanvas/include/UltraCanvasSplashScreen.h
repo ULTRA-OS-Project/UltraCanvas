@@ -63,6 +63,8 @@ namespace UltraCanvas {
         UltraCanvasSplashScreen() = default;
         ~UltraCanvasSplashScreen();
 
+        // Shows the splash centered over parentWin (clamped to its monitor),
+        // or centered on the screen when parentWin is null.
         void Show(const SplashScreenConfig& config, UltraCanvasWindowBase* parentWin = nullptr);
         void Close();
         bool IsVisible() const;

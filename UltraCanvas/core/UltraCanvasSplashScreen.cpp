@@ -189,10 +189,10 @@ namespace UltraCanvas {
         };
 
         window->Show();
-        // Center on the parent window so the splash stays on the same monitor as
-        // the main window in multi-monitor setups. CenterOnParent falls back to
-        // CenterOnScreen when parentWin is null.
-        window->CenterOnScreenOfWindow(parentWin);
+        // Center over the parent window, clamped to its monitor, so the splash
+        // sits in the middle of the app rather than the middle of the screen.
+        // CenterOnParent falls back to CenterOnScreen when parentWin is null.
+        window->CenterOnParent(parentWin);
 
         // Start auto-close timer if a timeout was specified
         if (config.showTimeout > 0) {
