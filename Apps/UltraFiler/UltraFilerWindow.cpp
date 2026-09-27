@@ -4062,7 +4062,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     if (UltraCanvasClipboard* cb = GetClipboard())
         cb->GetFiles(clipboardFiles, clipboardCut);
 
-    MenuItemData copyItem = MenuItemData::Action("Copy", [this, target]() {
+    MenuItemData copyItem = MenuItemData::Action("Copy", [target]() {
         if (UltraCanvasClipboard* cb = GetClipboard())
             cb->SetFiles({target}, false);
     });
