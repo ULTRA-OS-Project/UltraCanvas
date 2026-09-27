@@ -1,3 +1,21 @@
+#### 2026-09-27 *1.56.0*
+- **RAM discs.** *+ Drive* has a third choice, *RAM disc...*: a second
+  dialog asks for the disc's name and size, offering only sizes that fit in
+  the memory free right now, and the new disc opens in the folder view and
+  appears under a new **RAM Discs** section of the tree. It is VirtualFS's
+  RAM disc, so it is a real path every program can use: a directory on the
+  `/dev/shm` tmpfs on Linux, an `hdiutil ram://` volume on macOS, an ImDisk
+  drive on Windows - or, on Windows without ImDisk, a folder in `%TEMP%`
+  that is wiped on eject, which the dialog warns about and the tree row
+  marks *on disk*. A disc stays until it is ejected with *Eject RAM disc* in
+  its row's context menu (asked first, since everything on it is lost), and
+  one left by an earlier run shows up again at start-up. On Linux the size
+  is checked against free memory but not reserved or enforced - all discs
+  share `/dev/shm`, and the dialog says so.
+- **+ Drive works without UltraCloud.** The button used to be disabled in a
+  build without UltraCloud; it now stays usable when RAM discs are
+  available, with the FTP and cloud choices shown disabled.
+
 #### 2026-09-25 *1.54.0*
 - **R, Scala, MATLAB and VBA files show their text too.** Their languages
   were written into the syntax highlighter but switched off, so `.r`,
