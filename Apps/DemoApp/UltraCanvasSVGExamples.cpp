@@ -164,7 +164,7 @@ namespace UltraCanvas {
         };
 
         // Every .svg file shipped under media/vector/SVG, four to a row.
-        makeTile("SVGTile1", 20, 100, "demo.svg");
+        makeTile("SVGTile1", 20, 100, "filer-palette-rev3.svg");
         makeTile("SVGTile2", 270, 100, "demo1.svg");
         makeTile("SVGTile3", 520, 100, "demo2.svg");
         makeTile("SVGTile4", 770, 100, "svg-test.svg");
