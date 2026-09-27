@@ -41,6 +41,7 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -50,6 +51,13 @@
 #include <vector>
 
 using namespace UltraFIBU;
+
+// Linux and the BSDs take MSG_NOSIGNAL per send; macOS has no such flag. main()
+// ignores SIGPIPE as well, so a client that hangs up mid-reply ends one
+// conversation with an error instead of killing the test on any platform.
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
 
 namespace {
 
@@ -318,6 +326,7 @@ void TestClosedVaultIsRefusedBeforeConnecting() {
 } // namespace
 
 int main() {
+    std::signal(SIGPIPE, SIG_IGN);
     std::printf("UltraFIBU: Server-Anmeldung ueber UltraVault\n\n");
 
     if (!HasPostgresDriver()) {

@@ -35,6 +35,9 @@
     stored key, and is refused before connecting when the key is missing
     or the vault is closed. CI's "was the test registered" check now covers
     it too.
+- **CI:** the Linux jobs also build `Apps/AnchorPoint` on its own and run
+  its protocol tests (see AnchorPoint 0.2.1). The login test builds on macOS,
+  which has no `MSG_NOSIGNAL`: it falls back to ignoring `SIGPIPE`.
 - **Docs:** the UltraDatabase README status table lists the PostgreSQL driver
   as implemented, and explains that the application opens the vault.
 

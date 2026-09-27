@@ -21,6 +21,10 @@
   now calls the framework's shared codec, which the standalone build did not
   compile, so `anchorpoint` failed to link. The build now compiles
   `UltraCanvasBase32.cpp` alongside UltraCrypt.
+- **CI builds AnchorPoint now.** It is its own CMake project, outside the
+  framework build, so CI never built it and the broken link above went
+  unnoticed. The Linux jobs now build the core and CLI on their own, as the
+  README describes, and run `anchorpoint_tests`.
 - The README no longer says the core has no external dependencies: it needs
   UltraCrypt and libsodium, and has since the SHA-256 moved to UltraCrypt.
 
