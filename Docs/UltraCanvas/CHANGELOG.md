@@ -1,3 +1,33 @@
+#### 2026-09-27 *0.9.73*
+- **Mail sessions take an authentication method.** `UltraNetMailOptions::auth`
+  (`UltraNetMailAuth`, `UltraNet/UltraNetPlugins.h`) restricts an IMAP, SMTP
+  or POP3 sign-in to one family - `Password`, `EncryptedPassword` (CRAM-MD5 /
+  DIGEST-MD5, POP3 APOP), `OAuth2` (XOAUTH2 / OAUTHBEARER), `Kerberos`
+  (GSSAPI), `NTLM` - or skips it (`None`, for a relay that trusts the
+  network). `Any`, the default, is the old behaviour: whatever the server
+  offers. The three plug-ins now share one sign-in routine,
+  `ultranet_curlmailauth::Apply` (`UltraNet/UltraNetCurlMailAuth.h`,
+  header-only), which also refuses up front a method that cannot work with
+  the credentials given (OAuth2 without a token, a token with a password
+  method) instead of letting the server reject it.
+  - POP3 now signs in with an OAuth2 token too (it only ever sent a
+    username and password).
+- **IMAP, SMTP and POP3 errors now say *why* a connection failed.** They used
+  to report only curl's error class — for a rejected server certificate that
+  was "SSL peer certificate or SSH remote key was not OK", which does not say
+  whether the certificate is self-signed, expired, issued for another host
+  name or missing its intermediate. The plug-ins now keep curl's
+  per-transfer reason ("SSL certificate problem: unable to get local issuer
+  certificate", "... certificate has expired", ...) in
+  `UltraNetResult::message`, which UltraMail shows under its summary. This is
+  the only trace a Windows GUI build leaves, since it has no stderr for
+  `ULTRANET_CURL_VERBOSE`. Helper: `ultranet_curlerror::Perform`
+  (`UltraNet/UltraNetCurlError.h`, header-only).
+- **POP3 over TLS trusts the same CA anchors as IMAP and SMTP.** The POP3
+  plug-in never set the CA bundle or, on Windows, the system certificate
+  store, so on Windows every `pop3s://` sign-in was left with the libcurl
+  build's own (non-existent) CA path.
+
 #### 2026-09-27 *0.9.72*
 - **Every application now handles file names in any script on Windows.** The
   UltraFiler fix (a name outside the Windows code page ended the program with
