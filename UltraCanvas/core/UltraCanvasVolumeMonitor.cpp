@@ -16,6 +16,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVolumeMonitor.h"
+#include "UltraCanvasUtils.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <chrono>
@@ -75,7 +76,7 @@ namespace UltraCanvas {
                              const std::set<std::string>& table) {
             if (!id.valid) return false;
             if (table.count(path)) return true;
-            const std::string up = fs::path(path).parent_path().string();
+            const std::string up = PathToUtf8(PathFromUtf8(path).parent_path());
             if (up.empty()) return false;
             const DirIdentity parent = IdentityOf(up);
             return parent.valid && parent.device != id.device;
@@ -168,13 +169,13 @@ namespace UltraCanvas {
         std::vector<MountedVolume> mounts;
         for (const VolumeBase& base : kVolumeBases) {
             for (const fs::path& entry : Subdirectories(base.path)) {
-                const std::string path = entry.string();
+                const std::string path = PathToUtf8(entry);
                 const DirIdentity id = IdentityOf(path);
                 if (IsMountPointDir(path, id, table)) {
                     if (!seen.insert(id).second) continue;
                     MountedVolume v;
                     v.path = path;
-                    v.label = entry.filename().string();
+                    v.label = PathToUtf8(entry.filename());
                     mounts.push_back(std::move(v));
                     continue;
                 }
@@ -182,13 +183,13 @@ namespace UltraCanvas {
                 // Not itself a mount: on a nested base this is the per-user
                 // directory (/media/bob), and the volumes are one level down.
                 for (const fs::path& sub : Subdirectories(path)) {
-                    const std::string subPath = sub.string();
+                    const std::string subPath = PathToUtf8(sub);
                     const DirIdentity subId = IdentityOf(subPath);
                     if (!IsMountPointDir(subPath, subId, table)) continue;
                     if (!seen.insert(subId).second) continue;
                     MountedVolume v;
                     v.path = subPath;
-                    v.label = sub.filename().string();
+                    v.label = PathToUtf8(sub.filename());
                     mounts.push_back(std::move(v));
                 }
             }

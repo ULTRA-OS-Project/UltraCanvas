@@ -295,7 +295,7 @@ void UltraFilerPropertiesDialogs::ShowAttributes(
         content->AddChild(MakeDetailRow("ufl-attr-name", "Name:", e.name));
         content->AddChild(MakeDetailRow("ufl-attr-type", "Type:", e.typeName));
         content->AddChild(MakeDetailRow("ufl-attr-loc", "Location:",
-                fs::path(e.path).parent_path().string()));
+                PathToUtf8(PathFromUtf8(e.path).parent_path())));
         content->AddChild(MakeDetailRow("ufl-attr-size", "Size:", DescribeSize(e)));
         if (e.compressedSize > 0) {
             content->AddChild(MakeDetailRow("ufl-attr-csize", "Compressed:",

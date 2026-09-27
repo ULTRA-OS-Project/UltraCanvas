@@ -1030,7 +1030,7 @@ namespace UltraCanvas {
     }
 
     bool IsHiddenFileSystemEntry(const std::filesystem::path& path) {
-        const std::string name = path.filename().string();
+        const std::string name = PathToUtf8(path.filename());
         if (!name.empty() && name.front() == '.') return true;
 #if defined(_WIN32) || defined(_WIN64)
         const DWORD attrs = GetFileAttributesW(path.c_str());
@@ -1052,10 +1052,10 @@ namespace UltraCanvas {
         auto add = [&folders](UserFolderKind kind, const std::filesystem::path& p) {
             std::error_code ec;
             if (p.empty() || !std::filesystem::is_directory(p, ec) || ec) return;
-            const std::string path = p.string();
+            const std::string path = PathToUtf8(p);
             for (const UserFolderInfo& f : folders)
                 if (f.path == path) return;
-            std::string label = p.filename().string();
+            std::string label = PathToUtf8(p.filename());
             if (label.empty()) label = path;
             folders.push_back({kind, path, label});
         };
@@ -1132,14 +1132,14 @@ namespace UltraCanvas {
             return s;
         };
         const std::string homeKey =
-                stripTrailing(std::filesystem::path(home).lexically_normal().string());
+                stripTrailing(PathToUtf8(PathFromUtf8(home).lexically_normal()));
         for (const XdgEntry& x : kXdg) {
             const auto it = configured.find(x.key);
             const std::filesystem::path p = (it != configured.end())
-                    ? std::filesystem::path(it->second)
-                    : std::filesystem::path(home) / x.fallback;
+                    ? PathFromUtf8(it->second)
+                    : PathFromUtf8(home) / x.fallback;
             // An entry set to the home folder itself means "disabled".
-            if (stripTrailing(p.lexically_normal().string()) == homeKey) continue;
+            if (stripTrailing(PathToUtf8(p.lexically_normal())) == homeKey) continue;
             add(x.kind, p);
         }
 #endif

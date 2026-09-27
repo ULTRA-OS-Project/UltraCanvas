@@ -1680,7 +1680,7 @@ namespace UltraCanvas {
         // answer is cached per item, so a segment pays for it once.
         bool HasSubFolders(const std::string& folder) {
             std::error_code ec;
-            for (std::filesystem::directory_iterator it(std::filesystem::path(folder), ec), end;
+            for (std::filesystem::directory_iterator it(PathFromUtf8(folder), ec), end;
                  it != end && !ec; it.increment(ec)) {
                 std::error_code dec;
                 if (it->is_directory(dec)) return true;
@@ -1704,12 +1704,12 @@ namespace UltraCanvas {
             // sorting the full paths instead put every capitalised folder in
             // front of every lower-case one.
             std::vector<std::pair<std::string, std::string>> dirs;   // name, path
-            for (std::filesystem::directory_iterator it(std::filesystem::path(folder), ec), end;
+            for (std::filesystem::directory_iterator it(PathFromUtf8(folder), ec), end;
                  it != end && !ec; it.increment(ec)) {
                 std::error_code dec;
                 if (!it->is_directory(dec)) continue;
-                std::string path = it->path().string();
-                std::string name = it->path().filename().string();
+                std::string path = PathToUtf8(it->path());
+                std::string name = PathToUtf8(it->path().filename());
                 if (name.empty()) name = path;
                 dirs.emplace_back(std::move(name), std::move(path));
             }
@@ -1742,8 +1742,8 @@ namespace UltraCanvas {
 
         std::error_code ec;
         std::filesystem::path p =
-                std::filesystem::weakly_canonical(std::filesystem::path(folderPath), ec);
-        if (ec || p.empty()) p = std::filesystem::path(folderPath);
+                std::filesystem::weakly_canonical(PathFromUtf8(folderPath), ec);
+        if (ec || p.empty()) p = PathFromUtf8(folderPath);
 
         std::filesystem::path base = p.root_path();
         if (base.empty()) base = "/";
@@ -1753,7 +1753,7 @@ namespace UltraCanvas {
         if (options.showComputerItem) {
             BreadcrumbItem computer("__computer__", options.computerLabel);
             computer.tooltip = options.computerLabel + " — show all drives";
-            std::string rootTarget = base.string();
+            std::string rootTarget = PathToUtf8(base);
             std::function<void()> onComputerClick = options.onComputerClick;
             computer.onClick = [onNavigate, rootTarget, onComputerClick]() {
                 // A host with a page for the machine itself gets the click;
@@ -1782,11 +1782,11 @@ namespace UltraCanvas {
         // On Windows the drive letter ("C:") is its own node; on Unix the root
         // "/" is already covered by "Computer", so segments start below it.
         // Either way the separator itself never becomes a node of its own.
-        std::string driveLabel = p.root_name().string();
-        if (driveLabel.empty() && !options.showComputerItem) driveLabel = base.string();
+        std::string driveLabel = PathToUtf8(p.root_name());
+        if (driveLabel.empty() && !options.showComputerItem) driveLabel = PathToUtf8(base);
         if (!driveLabel.empty()) {
             BreadcrumbItem drive(driveLabel);
-            std::string target = base.string();
+            std::string target = PathToUtf8(base);
             drive.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
             if (options.subFolderDropdowns) {
                 drive.hasDropdown = true;
@@ -1803,11 +1803,11 @@ namespace UltraCanvas {
 
         std::filesystem::path accum = base;
         for (const auto& part : p.relative_path()) {
-            std::string seg = part.string();
+            std::string seg = PathToUtf8(part);
             if (seg.empty() || seg == "/" || seg == "\\") continue;
             accum /= part;
             BreadcrumbItem item(seg);
-            std::string target = accum.string();
+            std::string target = PathToUtf8(accum);
             item.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
             if (options.subFolderDropdowns) {
                 item.hasDropdown = true;

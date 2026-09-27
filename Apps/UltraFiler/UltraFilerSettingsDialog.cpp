@@ -1673,9 +1673,9 @@ namespace {
         if (d->settings && !d->settings->promptApplication.empty()) {
             std::error_code ec;
             const std::filesystem::path parent =
-                    std::filesystem::path(d->settings->promptApplication).parent_path();
+                    PathFromUtf8(d->settings->promptApplication).parent_path();
             if (!parent.empty() && std::filesystem::is_directory(parent, ec) && !ec)
-                initialDir = parent.string();
+                initialDir = PathToUtf8(parent);
         }
 
         FileDialogOptions opts;

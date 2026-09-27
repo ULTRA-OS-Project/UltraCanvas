@@ -387,10 +387,10 @@ namespace {
     // in, or into its own subtree (a descendant of itself).
     bool IsInvalidMoveInto(const std::string& src, const std::string& dest) {
         std::error_code ec;
-        fs::path s = fs::weakly_canonical(fs::path(src), ec);
-        if (ec) { s = fs::path(src).lexically_normal(); ec.clear(); }
-        fs::path d = fs::weakly_canonical(fs::path(dest), ec);
-        if (ec) d = fs::path(dest).lexically_normal();
+        fs::path s = fs::weakly_canonical(PathFromUtf8(src), ec);
+        if (ec) { s = PathFromUtf8(src).lexically_normal(); ec.clear(); }
+        fs::path d = fs::weakly_canonical(PathFromUtf8(dest), ec);
+        if (ec) d = PathFromUtf8(dest).lexically_normal();
         if (s == d) return true;                 // onto itself
         if (s.parent_path() == d) return true;   // already lives in dest
         // dest is src or a descendant of src -> would nest a folder in itself.
@@ -451,7 +451,7 @@ namespace {
                 dirs.push_back(it->path());
         }
         std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) {
-            std::string an = a.filename().string(), bn = b.filename().string();
+            std::string an = PathToUtf8(a.filename()), bn = PathToUtf8(b.filename());
             std::transform(an.begin(), an.end(), an.begin(), ToLowerChar);
             std::transform(bn.begin(), bn.end(), bn.begin(), ToLowerChar);
             return an < bn;
@@ -482,12 +482,12 @@ namespace {
                 children.push_back(c);
             }
             for (const fs::path& dir : ListSubdirectories(path)) {
-                if (curated.count(FolderIdentityKey(dir.string()))) continue;
-                children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
+                if (curated.count(FolderIdentityKey(PathToUtf8(dir)))) continue;
+                children.push_back({PathToUtf8(dir), PathToUtf8(dir.filename()), "folder-brown.svg"});
             }
         } else {
             for (const fs::path& dir : ListSubdirectories(path))
-                children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
+                children.push_back({PathToUtf8(dir), PathToUtf8(dir.filename()), "folder-brown.svg"});
         }
         std::sort(children.begin(), children.end(),
                   [](const TreeChild& a, const TreeChild& b) {
@@ -661,7 +661,7 @@ namespace {
     // tile and every command that leads there already call it.
     std::string TabTitleForPath(const std::string& path) {
         if (IsUserHomeDir(path)) return "Home";
-        const std::string name = fs::path(path).filename().string();
+        const std::string name = PathToUtf8(PathFromUtf8(path).filename());
         return name.empty() ? (path.empty() ? "New tab" : path) : name;
     }
 
@@ -680,8 +680,8 @@ namespace {
     // has is under it, and an icon every tab carries marks nothing.
     std::string TabIconForPath(const std::string& path) {
         if (IsUserHomeDir(path)) return IconPath("home-user.svg");
-        for (fs::path folder = fs::path(path).lexically_normal(); !folder.empty(); ) {
-            const std::string icon = WellKnownFolderIconFile(folder.string());
+        for (fs::path folder = PathFromUtf8(path).lexically_normal(); !folder.empty(); ) {
+            const std::string icon = WellKnownFolderIconFile(PathToUtf8(folder));
             if (!icon.empty()) return IconPath(icon);
             const fs::path parent = folder.parent_path();
             if (parent == folder) break;   // the root is its own parent
@@ -1040,10 +1040,10 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // were started in - the move below changes what a relative path means.
     if (!start.empty()) {
         fs::path absolute = fs::absolute(start, ec);
-        if (!ec) start = absolute.lexically_normal().string();
+        if (!ec) start = PathToUtf8(absolute.lexically_normal());
     }
     if (start.empty() || !fs::is_directory(start, ec)) start = UserHomeDir();
-    if (start.empty()) start = fs::current_path(ec).string();
+    if (start.empty()) start = PathToUtf8(fs::current_path(ec));
 
     // A process holds its working directory open, and on Windows that handle
     // alone is enough to stop the folder being renamed, replaced or deleted.
@@ -1103,7 +1103,7 @@ void UltraFilerWindow::HandlePrint(const std::vector<FilerEntry>& targets) {
                                      + FormatFileSize(e.size) + ").");
             continue;
         }
-        std::ifstream in(fs::path(e.path), std::ios::binary);
+        std::ifstream in(PathFromUtf8(e.path), std::ios::binary);
         if (!in) {
             if (statusLabel)
                 statusLabel->SetText("Print: cannot read \"" + e.name + "\".");
@@ -1244,7 +1244,7 @@ void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
     // on Windows is what makes a later rename fail.
     if (preview) preview->CloseFile();
     MediaViewerWindowOptions options;
-    options.title = fs::path(path).filename().string();
+    options.title = PathToUtf8(PathFromUtf8(path).filename());
     if (!mediaWindow.Show(path, window.get(), options)) {
         UltraCanvasAlert::Error("Could not open a window for " + options.title,
                                 "View", nullptr, window.get());
@@ -1528,7 +1528,7 @@ std::vector<FilerEntry> UltraFilerWindow::PinTargets() const {
         if (!path.empty() && fs::is_directory(path, ec) && !ec) {
             FilerEntry folder;
             folder.path = path;
-            folder.name = fs::path(path).filename().string();
+            folder.name = PathToUtf8(PathFromUtf8(path).filename());
             folder.isDirectory = true;
             return {folder};
         }
@@ -1679,7 +1679,7 @@ void UltraFilerWindow::SetFolderIconForTargets() {
 
     FileDialogOptions opts;
     opts.SetTitle(folders.size() == 1
-                          ? "Icon for " + fs::path(folders.front()).filename().string()
+                          ? "Icon for " + PathToUtf8(PathFromUtf8(folders.front()).filename())
                           : "Icon for " + std::to_string(folders.size()) + " folders")
         .SetInitialDirectory(folders.front())
         // A picture chosen as an icon is not a document the shell should
@@ -2387,7 +2387,7 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
 
     struct PendingDir { fs::path path; int depth; };
     std::vector<PendingDir> stack;
-    stack.push_back({fs::path(root), 0});
+    stack.push_back({PathFromUtf8(root), 0});
     auto lastPost = std::chrono::steady_clock::now();
 
     try {
@@ -2445,7 +2445,7 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
                     if (isDir) {
                         if (state->hiddenFoldersSkipped.fetch_add(1) < 3) {
                             std::lock_guard<std::mutex> lk(state->mutex);
-                            state->hiddenFolderNames.push_back(p.filename().string());
+                            state->hiddenFolderNames.push_back(PathToUtf8(p.filename()));
                         }
                     }
                     continue;
@@ -2455,11 +2455,11 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
                     stack.push_back({p, dir.depth + 1});
 
                 if (!inContents) {
-                    const std::string name = p.filename().string();
+                    const std::string name = PathToUtf8(p.filename());
                     std::string lower = name;
                     std::transform(lower.begin(), lower.end(), lower.begin(), ToLowerChar);
                     if (lower.find(needle) != std::string::npos)
-                        found.push_back(p.string());
+                        found.push_back(PathToUtf8(p));
                     continue;
                 }
 
@@ -2467,7 +2467,7 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
                 // link (see above) or a device - and never an oversized one.
                 if (isDir || link) continue;
                 // The file pattern is checked first: it costs no disk access.
-                if (!FileNameMatchesPatterns(p.filename().string(), filePatterns))
+                if (!FileNameMatchesPatterns(PathToUtf8(p.filename()), filePatterns))
                     continue;
                 dec.clear();
                 if (!it->is_regular_file(dec) || dec) continue;
@@ -2475,7 +2475,7 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
                 if (dec || size == 0 || size > kMaxContentSearchFileBytes) continue;
                 state->filesRead.fetch_add(1);
                 if (FileContainsText(p, needle, !matchCase, state->cancelled))
-                    found.push_back(p.string());
+                    found.push_back(PathToUtf8(p));
 
                 // Reading a folder of large files takes a while: matches and
                 // the files-read count reach the display while it goes on,
@@ -3320,13 +3320,13 @@ int UltraFilerWindow::DownloadToLocalFolder(const std::string& folder,
             continue;
         }
         ++queued;
-        const std::string landed = fs::path(savedAs).filename().string();
+        const std::string landed = PathToUtf8(PathFromUtf8(savedAs).filename());
         if (queued == 1 && landed != RemoteFilerName(f)) renamedTo = landed;
     }
     if (statusLabel) {
         // Where they are landing, as the user knows it: the folder's own name,
         // and the whole path only when it has none (a drive root).
-        std::string where = fs::path(folder).filename().string();
+        std::string where = PathToUtf8(PathFromUtf8(folder).filename());
         if (where.empty()) where = folder;
         std::string line;
         if (queued > 0) {
@@ -3801,7 +3801,7 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
         } else {
             fs::path p(path);
             while (true) {
-                chain.push_back(p.string());
+                chain.push_back(PathToUtf8(p));
                 const fs::path parent = p.parent_path();
                 if (parent.empty() || parent == p) break;
                 p = parent;
@@ -3852,7 +3852,7 @@ void UltraFilerWindow::RefreshPinnedTreeNodes() {
     // Paths() drops pins whose folder no longer exists, so the section heals
     // itself like the History lists do.
     for (const std::string& path : favorites.Paths(FilerFavoriteKind::Tree)) {
-        std::string label = fs::path(path).filename().string();
+        std::string label = PathToUtf8(PathFromUtf8(path).filename());
         if (label.empty()) label = path;   // a filesystem root
         TreeNodeData data = MakeFolderNodeData(kPinnedChildPrefix + path, label,
                                                "folder-brown.svg");
@@ -4002,7 +4002,7 @@ void UltraFilerWindow::ConfirmDeleteTreeFolder(const std::string& path) {
     // folder holds) as a delete in the view, and a folder that takes a while
     // to empty gets its progress window - and its "cannot delete" dialog -
     // exactly like one started there.
-    const std::string parent = fs::path(path).parent_path().string();
+    const std::string parent = PathToUtf8(PathFromUtf8(path).parent_path());
     filer->ConfirmDeletePaths({path}, [this, path, parent](bool changed) {
         if (!changed) return;
         // Take the folder out of the tree, its pins, and the bookkeeping of
@@ -4198,7 +4198,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // Opening a file (or launching an application) puts it at the top of
         // the matching History list, and counts as work done in its folder.
         RecordEntryInHistory(entry);
-        RecordFolderInHistory(fs::path(entry.path).parent_path().string());
+        RecordFolderInHistory(PathToUtf8(PathFromUtf8(entry.path).parent_path()));
         if (!IsActiveTab(tab)) return;
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
         // Windows executables, installers and program shortcuts go to the
@@ -4308,7 +4308,7 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
     };
     tab->filer->onOpenPath = [this](const FilerEntry& entry) {
-        const std::string parent = fs::path(entry.path).parent_path().string();
+        const std::string parent = PathToUtf8(PathFromUtf8(entry.path).parent_path());
         if (!parent.empty()) AddNewTab(parent, true);
     };
     // The context menu's Settings item opens the same settings window as the
@@ -4533,7 +4533,7 @@ void UltraFilerWindow::BuildHistoryView() {
         histFiler->onFolderRefreshed = [this]() { UpdateStatusBar(); };
         histFiler->onFileActivated = [this](const FilerEntry& entry) {
             RecordEntryInHistory(entry);
-            RecordFolderInHistory(fs::path(entry.path).parent_path().string());
+            RecordFolderInHistory(PathToUtf8(PathFromUtf8(entry.path).parent_path()));
             OpenHistoryEntry(entry.path, false);
         };
         // A folder tile is activated by the widget itself (it navigates into
@@ -4543,7 +4543,7 @@ void UltraFilerWindow::BuildHistoryView() {
             OpenHistoryEntry(path, true);
         };
         histFiler->onOpenPath = [this](const FilerEntry& entry) {
-            const std::string parent = fs::path(entry.path).parent_path().string();
+            const std::string parent = PathToUtf8(PathFromUtf8(entry.path).parent_path());
             if (parent.empty()) return;
             SetHistoryVisible(false);
             AddNewTab(parent, true);
@@ -4721,7 +4721,7 @@ void UltraFilerWindow::OpenHistoryEntry(const std::string& path, bool isFolder) 
     // A folder is opened; a file (or application) is shown selected inside the
     // folder it lives in, which also hands it to the preview when it is media.
     const std::string target = isFolder ? path
-                                        : fs::path(path).parent_path().string();
+                                        : PathToUtf8(PathFromUtf8(path).parent_path());
     if (target.empty()) return;
     NavigateTo(target);
     if (!isFolder && filer) filer->SelectPath(path);
@@ -4786,7 +4786,7 @@ void UltraFilerWindow::BuildFavoritesView() {
         // Opening a favorite is a real use, so it enters the History too.
         favFiler->onFileActivated = [this](const FilerEntry& entry) {
             RecordEntryInHistory(entry);
-            RecordFolderInHistory(fs::path(entry.path).parent_path().string());
+            RecordFolderInHistory(PathToUtf8(PathFromUtf8(entry.path).parent_path()));
             OpenHistoryEntry(entry.path, false);
         };
         // A folder tile is activated by the widget itself (it navigates into
@@ -4796,7 +4796,7 @@ void UltraFilerWindow::BuildFavoritesView() {
             OpenHistoryEntry(path, true);
         };
         favFiler->onOpenPath = [this](const FilerEntry& entry) {
-            const std::string parent = fs::path(entry.path).parent_path().string();
+            const std::string parent = PathToUtf8(PathFromUtf8(entry.path).parent_path());
             if (parent.empty()) return;
             ShowBrowsingView();
             AddNewTab(parent, true);
@@ -4917,7 +4917,7 @@ void UltraFilerWindow::BuildComputerPage() {
     computerFolders->onFolderRefreshed = [this]() { UpdateStatusBar(); };
     computerFolders->onFileActivated = [this](const FilerEntry& entry) {
         RecordEntryInHistory(entry);
-        RecordFolderInHistory(fs::path(entry.path).parent_path().string());
+        RecordFolderInHistory(PathToUtf8(PathFromUtf8(entry.path).parent_path()));
         OpenHistoryEntry(entry.path, false);
     };
     // A folder tile is activated by the widget itself (it navigates into the
@@ -5282,7 +5282,7 @@ void UltraFilerWindow::NavigateUp() {
     }
     const fs::path p(current);
     if (p.has_parent_path() && p.parent_path() != p) {
-        NavigateTo(p.parent_path().string());
+        NavigateTo(PathToUtf8(p.parent_path()));
         return;
     }
     // Above a drive root sits the machine itself: Up from "/" or "C:\\"
