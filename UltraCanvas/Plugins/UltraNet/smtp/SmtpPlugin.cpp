@@ -18,6 +18,7 @@
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetMime.h>
 #include <UltraNet/UltraNetCurlDebug.h>
+#include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetMailAddr.h>
 
 #include <curl/curl.h>
@@ -216,9 +217,10 @@ public:
                          static_cast<long>(options.operationTimeoutMs));
         curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);
 
-        CURLcode rc = curl_easy_perform(h.get());
+        std::string why;
+        CURLcode rc = ultranet_curlerror::Perform(h.get(), why);
         if (rc == CURLE_OK) return UltraNetResult::Ok();
-        return UltraNetResult::Error(MapCurlError(rc), curl_easy_strerror(rc));
+        return UltraNetResult::Error(MapCurlError(rc), why);
     }
 
     UltraNetResult FetchMessages(const std::string&,

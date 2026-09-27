@@ -21,6 +21,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetUrl.h>
 
@@ -178,6 +179,15 @@ void ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTl
     if (opt.useTls || implicitTls) {
         curl_easy_setopt(h, CURLOPT_USE_SSL,
                          implicitTls ? CURLUSESSL_ALL : CURLUSESSL_TRY);
+        // Same CA anchors as the IMAP/SMTP plug-ins and the HTTP client —
+        // without them the Windows libcurl's baked-in CA path (a build-tree
+        // path) is all there is, and every pop3s:// sign-in fails verification.
+        const std::string caBundle = UltraNet_ResolveCaBundlePath();
+        if (!caBundle.empty())
+            curl_easy_setopt(h, CURLOPT_CAINFO, caBundle.c_str());
+#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
+        curl_easy_setopt(h, CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
+#endif
     }
     curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS,
                      static_cast<long>(opt.connectTimeoutMs));
@@ -233,10 +243,10 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &listBody);
             ApplyCommonOptions(h.get(), options, implicitTls);
 
-            CURLcode rc = curl_easy_perform(h.get());
+            std::string why;
+            CURLcode rc = ultranet_curlerror::Perform(h.get(), why);
             if (rc != CURLE_OK) {
-                return UltraNetResult::Error(MapCurlError(rc),
-                                             curl_easy_strerror(rc));
+                return UltraNetResult::Error(MapCurlError(rc), why);
             }
             totalMessages = CountMessagesInListResponse(listBody);
         }

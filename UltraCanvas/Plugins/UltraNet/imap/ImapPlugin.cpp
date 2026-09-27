@@ -22,6 +22,7 @@
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetUrl.h>
 #include <UltraNet/UltraNetCurlDebug.h>
+#include <UltraNet/UltraNetCurlError.h>
 
 #include "ImapParse.h"
 
@@ -164,9 +165,10 @@ UltraNetResult PerformOn(CURL* h, const std::string& url,
     curl_easy_setopt(h, CURLOPT_CUSTOMREQUEST, customReq.empty() ? nullptr : customReq.c_str());
     curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, &WriteToString);
     curl_easy_setopt(h, CURLOPT_WRITEDATA, &outBody);
-    CURLcode rc = curl_easy_perform(h);
+    std::string why;
+    CURLcode rc = ultranet_curlerror::Perform(h, why);
     if (rc != CURLE_OK)
-        return UltraNetResult::Error(MapCurlError(rc), curl_easy_strerror(rc));
+        return UltraNetResult::Error(MapCurlError(rc), why);
     return UltraNetResult::Ok();
 }
 
@@ -452,9 +454,10 @@ public:
         curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
                          static_cast<curl_off_t>(rawMessage.size()));
         ApplyCommonOptions(h.get(), options, tls);
-        CURLcode rc = curl_easy_perform(h.get());
+        std::string why;
+        CURLcode rc = ultranet_curlerror::Perform(h.get(), why);
         if (rc != CURLE_OK)
-            return UltraNetResult::Error(MapCurlError(rc), curl_easy_strerror(rc));
+            return UltraNetResult::Error(MapCurlError(rc), why);
         return UltraNetResult::Ok();
     }
 
