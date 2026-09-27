@@ -277,7 +277,7 @@ to the three feed topics plus `system.notification.dismissed`, `feed.read` and
 `feed.dismissed`, and posts `feed.read`, `feed.dismissed`,
 `system.notification.dismissed` and `system.notification.action` back. A
 mirrored chat or mail row stands in for the notification it came from. The
-DemoApp's *Message Centre* page hosts it on a private bus with seeded traffic.
+DemoApp's *Ultra Message* page (under *ULTRA OS modules*) hosts it on a private bus with seeded traffic.
 
 ## 4. The C++ layer
 
