@@ -675,6 +675,20 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
 
+      # PathToUtf8 / PathFromUtf8 exist for Windows: with this toolchain's
+      # libc++, `path.string()` threw "__wide_to_char: Illegal byte sequence"
+      # on a name outside the ANSI code page and quit UltraFiler. The runner's
+      # code page is 1252, which has no Thai or emoji, so creating, listing
+      # and opening the test's Thai-and-emoji file here runs that exact case.
+      # The test is header-only, so it compiles in one line instead of
+      # needing the Linux-only BUILD_TESTS.
+      - name: Run PathUtf8Test (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          clang++ -std=c++17 -Wall -Wextra -IUltraCanvas/include \
+              Tests/PathUtf8Test.cpp -o build/PathUtf8Test.exe
+          ./build/PathUtf8Test.exe
+
       - name: Run unit tests
         if: runner.os == 'Linux'
         working-directory: build
