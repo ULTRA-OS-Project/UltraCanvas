@@ -538,8 +538,7 @@ void UltraMailApp::RunMailboxAction(
         }
 
         UltraNetMailOptions opts;
-        opts.useTls      = settings.imap.security != MailSecurity::Plain;
-        opts.implicitTls = settings.imap.security == MailSecurity::SslTls;
+        ApplyConnection(settings.imap, opts);
         const std::string email    = account->email;
         const std::string username = settings.imap.username.empty() ? email
                                                                     : settings.imap.username;
@@ -601,8 +600,7 @@ void UltraMailApp::RunMailboxActionQuiet(
     if (vault_.MethodFor(accountId) == SignInMethod::None) return;
 
     UltraNetMailOptions opts;
-    opts.useTls      = settings.imap.security != MailSecurity::Plain;
-    opts.implicitTls = settings.imap.security == MailSecurity::SslTls;
+    ApplyConnection(settings.imap, opts);
     const std::string email    = account->email;
     const std::string username = settings.imap.username.empty() ? email
                                                                 : settings.imap.username;
@@ -1013,8 +1011,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
     if (vault_.MethodFor(accountId) == SignInMethod::None) return;
 
     UltraNetMailOptions opts;
-    opts.useTls      = settings.imap.security != MailSecurity::Plain;
-    opts.implicitTls = settings.imap.security == MailSecurity::SslTls;
+    ApplyConnection(settings.imap, opts);
     const std::string email    = account->email;
     const std::string who      = email.empty() ? accountId : email;
     const std::string username = settings.imap.username.empty() ? email : settings.imap.username;
@@ -1130,8 +1127,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         }
 
         UltraNetMailOptions opts;
-        opts.useTls      = settings.imap.security != MailSecurity::Plain;
-        opts.implicitTls = settings.imap.security == MailSecurity::SslTls;
+        ApplyConnection(settings.imap, opts);
         const std::string username =
             settings.imap.username.empty() ? email : settings.imap.username;
         const std::string provider = OAuthProviderFor(settings);
@@ -1942,8 +1938,7 @@ UltraNetResult UltraMailApp::PrepareSmtp(const std::string& accountId, UltraNetM
     if (!settings.found)
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                      "no outgoing (SMTP) server is known for " + account->email);
-    o.useTls      = settings.smtp.security != MailSecurity::Plain;
-    o.implicitTls = settings.smtp.security == MailSecurity::SslTls;
+    ApplyConnection(settings.smtp, o);
     const std::string username =
         settings.smtp.username.empty() ? account->email : settings.smtp.username;
     return ResolveCredentials(accountId, username, OAuthProviderFor(settings), o.credentials);

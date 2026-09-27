@@ -125,6 +125,76 @@ TEST(parse_autoconfig_xml) {
     REQUIRE_EQ(r.smtp.username, std::string("erika"));              // %EMAILLOCALPART%
 }
 
+TEST(parse_autoconfig_takes_the_authentication_method) {
+    auto parse = [](const std::string& imapAuth, const std::string& smtpAuth) {
+        const std::string xml =
+            "<clientConfig><emailProvider id=\"example.com\">"
+            "<incomingServer type=\"imap\"><hostname>imap.example.com</hostname>"
+            "<port>993</port><socketType>SSL</socketType>" + imapAuth + "</incomingServer>"
+            "<outgoingServer type=\"smtp\"><hostname>smtp.example.com</hostname>"
+            "<port>587</port><socketType>STARTTLS</socketType>" + smtpAuth + "</outgoingServer>"
+            "</emailProvider></clientConfig>";
+        return AutoDiscovery::ParseAutoconfig(xml, "erika@example.com");
+    };
+    // The parse_autoconfig_xml document: a normal password in, nothing said out.
+    DiscoveryResult r = parse("<authentication>password-cleartext</authentication>", "");
+    REQUIRE(r.imap.auth == UltraNetMailAuth::Password);
+    REQUIRE(r.smtp.auth == UltraNetMailAuth::Any);
+
+    r = parse("<authentication>password-encrypted</authentication>",
+              "<authentication>none</authentication>");
+    REQUIRE(r.imap.auth == UltraNetMailAuth::EncryptedPassword);
+    REQUIRE(r.smtp.auth == UltraNetMailAuth::None);
+
+    // OAuth2 listed first with a password fallback: the password (UltraMail has
+    // no OAuth client for an arbitrary provider), but the capability is kept.
+    r = parse("<authentication>OAuth2</authentication>"
+              "<authentication>password-cleartext</authentication>",
+              "<authentication>OAuth2</authentication>");
+    REQUIRE(r.imap.auth == UltraNetMailAuth::Password);
+    REQUIRE(r.imap.oauth);
+    REQUIRE(r.smtp.auth == UltraNetMailAuth::OAuth2);   // nothing else offered
+
+    r = parse("<authentication>GSSAPI</authentication>", "<authentication>NTLM</authentication>");
+    REQUIRE(r.imap.auth == UltraNetMailAuth::Kerberos);
+    REQUIRE(r.smtp.auth == UltraNetMailAuth::NTLM);
+
+    // A method UltraMail cannot run leaves the choice to the server.
+    r = parse("<authentication>TLS-client-cert</authentication>", "");
+    REQUIRE(r.imap.auth == UltraNetMailAuth::Any);
+}
+
+TEST(presets_default_to_oauth2_for_gmail_outlook_and_yahoo) {
+    for (const char* email : {"erika@gmail.com", "erika@googlemail.com", "erika@live.com",
+                              "erika@outlook.com", "erika@hotmail.com", "erika@yahoo.com"}) {
+        DiscoveryResult r = AutoDiscovery::FromPresets(email);
+        REQUIRE(r.found);
+        REQUIRE(r.imap.auth == UltraNetMailAuth::OAuth2);
+        REQUIRE(r.smtp.auth == UltraNetMailAuth::OAuth2);
+    }
+    // Other providers leave it to the server.
+    DiscoveryResult gmx = AutoDiscovery::FromPresets("erika@gmx.de");
+    REQUIRE(gmx.imap.auth == UltraNetMailAuth::Any);
+    REQUIRE(gmx.smtp.auth == UltraNetMailAuth::Any);
+    REQUIRE(AutoDiscovery::GuessForDomain("erika@example.com").imap.auth == UltraNetMailAuth::Any);
+
+    // An account stored without servers predates the setting: Automatic, so an
+    // old app-password Gmail account keeps signing in.
+    Account old; old.accountId = "erika-gmail-com"; old.email = "erika@gmail.com";
+    REQUIRE(AutoDiscovery::ForAccount(old).imap.auth == UltraNetMailAuth::Any);
+    REQUIRE(AutoDiscovery::ForAccount(old).smtp.auth == UltraNetMailAuth::Any);
+}
+
+TEST(mail_auth_round_trips_through_strings) {
+    for (UltraNetMailAuth a : {UltraNetMailAuth::Any, UltraNetMailAuth::Password,
+                               UltraNetMailAuth::EncryptedPassword, UltraNetMailAuth::OAuth2,
+                               UltraNetMailAuth::Kerberos, UltraNetMailAuth::NTLM,
+                               UltraNetMailAuth::None})
+        REQUIRE(MailAuthFromString(ToString(a)) == a);
+    REQUIRE(MailAuthFromString("") == UltraNetMailAuth::Any);   // accounts from before the setting
+    REQUIRE(MailAuthFromString("bogus") == UltraNetMailAuth::Any);
+}
+
 TEST(parse_autoconfig_missing_returns_not_found) {
     DiscoveryResult r = AutoDiscovery::ParseAutoconfig("<clientConfig></clientConfig>",
                                                        "x@y.com");

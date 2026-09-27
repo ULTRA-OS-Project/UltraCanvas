@@ -22,6 +22,7 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetCurlError.h>
+#include <UltraNet/UltraNetCurlMailAuth.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetUrl.h>
 
@@ -171,11 +172,10 @@ bool ParsePop3Url(const std::string& url,
     return true;
 }
 
-void ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
-    if (!opt.credentials.username.empty()) {
-        curl_easy_setopt(h, CURLOPT_USERNAME, opt.credentials.username.c_str());
-        curl_easy_setopt(h, CURLOPT_PASSWORD, opt.credentials.password.c_str());
-    }
+UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
+    if (UltraNetResult a = ultranet_curlmailauth::Apply(
+            h, opt, ultranet_curlmailauth::Protocol::Pop3); !a)
+        return a;
     if (opt.useTls || implicitTls) {
         curl_easy_setopt(h, CURLOPT_USE_SSL,
                          implicitTls ? CURLUSESSL_ALL : CURLUSESSL_TRY);
@@ -194,6 +194,7 @@ void ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTl
     curl_easy_setopt(h, CURLOPT_TIMEOUT_MS,
                      static_cast<long>(opt.operationTimeoutMs));
     curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    return UltraNetResult::Ok();
 }
 
 // ============================================================================
@@ -241,7 +242,7 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_URL, baseUrl.c_str());
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &listBody);
-            ApplyCommonOptions(h.get(), options, implicitTls);
+            if (UltraNetResult a = ApplyCommonOptions(h.get(), options, implicitTls); !a) return a;
 
             std::string why;
             CURLcode rc = ultranet_curlerror::Perform(h.get(), why);
@@ -268,7 +269,7 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_URL, retrUrl.c_str());
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &raw);
-            ApplyCommonOptions(h.get(), options, implicitTls);
+            if (UltraNetResult a = ApplyCommonOptions(h.get(), options, implicitTls); !a) return a;
 
             if (curl_easy_perform(h.get()) != CURLE_OK || raw.empty()) continue;
 

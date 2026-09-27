@@ -1,3 +1,22 @@
+#### 2026-09-27 *0.10.4*
+- **An authentication method per server, as in Thunderbird.** The server
+  settings page - during setup for an unknown domain and on every account's
+  Settings - has *Sign-in (IMAP)* and *Sign-in (SMTP)*: Automatic, Normal
+  password, Encrypted password, OAuth2, Kerberos / GSSAPI, NTLM, and (for the
+  outgoing server) No authentication. The provider table sets OAuth2 for
+  Gmail, Outlook/Hotmail/Live and Yahoo; an autoconfig document sets the
+  method it lists; everything else, and every existing account, starts on
+  Automatic, which is what UltraMail did before. Stored per account
+  (`imap_auth` / `smtp_auth`, schema step 5) and applied to every IMAP
+  session, send and login check. Needs the framework's
+  `UltraNetMailOptions::auth` (see `Docs/UltraCanvas/changelog.d/`).
+  `Docs/UltraMail/AccountSetup.md` §5 lists what each choice sends.
+- **Sign-in errors say why.** A failed login check or sync now shows the
+  TLS library's own reason in brackets - "unable to get local issuer
+  certificate", "certificate has expired", ... - where it used to say only
+  "SSL peer certificate or SSH remote key was not OK". §6 of the setup guide
+  says what each one means.
+
 #### 2026-09-23 *0.10.3*
 - **`OAuthApps` is a profile of UltraNet's shared OAuth2 app registry**
   (framework 0.9.34). Same API, same order - `Set()`, `ULTRAMAIL_*` in the

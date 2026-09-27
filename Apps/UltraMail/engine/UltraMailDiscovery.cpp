@@ -58,6 +58,9 @@ DiscoveryResult MakePreset(const std::string& display, const std::string& email,
     r.imap.security = MailSecurity::SslTls; r.imap.username = email; r.imap.oauth = oauth;
     r.smtp.host = smtpHost; r.smtp.port = smtpPort;
     r.smtp.security = smtpSec; r.smtp.username = email; r.smtp.oauth = oauth;
+    // OAuth2 providers take nothing else in a mail program any more; the rest
+    // are left to what their servers offer.
+    r.imap.auth = r.smtp.auth = oauth ? UltraNetMailAuth::OAuth2 : UltraNetMailAuth::Any;
     return r;
 }
 
@@ -92,6 +95,38 @@ std::string TagText(const std::string& block, const std::string& tag) {
     return UltraCanvas::Trim(block.substr(start, close - start));
 }
 
+// Inner text of every <tag>...</tag> within `block`, in order.
+std::vector<std::string> TagTexts(const std::string& block, const std::string& tag) {
+    std::vector<std::string> out;
+    const std::string open = "<" + tag + ">", close = "</" + tag + ">";
+    std::size_t pos = 0;
+    while (true) {
+        std::size_t o = block.find(open, pos);
+        if (o == std::string::npos) break;
+        std::size_t start = o + open.size();
+        std::size_t c = block.find(close, start);
+        if (c == std::string::npos) break;
+        out.push_back(UltraCanvas::Trim(block.substr(start, c - start)));
+        pos = c + close.size();
+    }
+    return out;
+}
+
+// An autoconfig <authentication> value (Mozilla's names). Methods UltraMail
+// cannot run — a client certificate, the sender's IP address — read as Any.
+UltraNetMailAuth AuthFromAutoconfig(const std::string& method) {
+    std::string m = method;
+    std::transform(m.begin(), m.end(), m.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (m == "password-cleartext" || m == "plain")    return UltraNetMailAuth::Password;
+    if (m == "password-encrypted" || m == "secure")   return UltraNetMailAuth::EncryptedPassword;
+    if (m == "oauth2")                                return UltraNetMailAuth::OAuth2;
+    if (m == "gssapi")                                return UltraNetMailAuth::Kerberos;
+    if (m == "ntlm")                                  return UltraNetMailAuth::NTLM;
+    if (m == "none")                                  return UltraNetMailAuth::None;
+    return UltraNetMailAuth::Any;
+}
+
 MailSecurity SecurityFromSocketType(const std::string& s) {
     std::string t = s;
     std::transform(t.begin(), t.end(), t.begin(),
@@ -115,9 +150,20 @@ void FillServer(const std::string& block, const std::string& email,
     out.port = port.empty() ? 0 : std::atoi(port.c_str());
     out.security = SecurityFromSocketType(TagText(block, "socketType"));
     out.username = ResolveUsername(TagText(block, "username"), email);
-    std::string auth = TagText(block, "authentication");
-    if (auth.find("OAuth2") != std::string::npos || auth.find("oauth2") != std::string::npos)
-        out.oauth = true;
+    // A server block may list several <authentication> methods, preferred
+    // first. UltraMail can only run OAuth2 for the providers it has a client
+    // for, so the first method that works with a password is taken, and OAuth2
+    // only when nothing else is listed.
+    bool listsOAuth = false;
+    UltraNetMailAuth chosen = UltraNetMailAuth::Any;
+    for (const std::string& method : TagTexts(block, "authentication")) {
+        const UltraNetMailAuth m = AuthFromAutoconfig(method);
+        if (m == UltraNetMailAuth::OAuth2) { listsOAuth = true; continue; }
+        if (m != UltraNetMailAuth::Any && chosen == UltraNetMailAuth::Any) chosen = m;
+    }
+    out.oauth = listsOAuth;
+    out.auth  = (chosen == UltraNetMailAuth::Any && listsOAuth) ? UltraNetMailAuth::OAuth2
+                                                                 : chosen;
 }
 
 std::string PortStr(int port) { return std::to_string(port); }
@@ -215,7 +261,12 @@ DiscoveryResult AutoDiscovery::ForAccount(const Account& account) {
         if (r.smtp.username.empty()) r.smtp.username = account.email;
         return r;
     }
-    return FromPresets(account.email);
+    // An account without stored servers predates the authentication setting
+    // too, and may sign in with an app password at an OAuth2 provider: leave
+    // the method to the server, as it always was.
+    DiscoveryResult r = FromPresets(account.email);
+    r.imap.auth = r.smtp.auth = UltraNetMailAuth::Any;
+    return r;
 }
 
 void AutoDiscovery::ApplyTo(Account& account, const DiscoveryResult& discovery) {

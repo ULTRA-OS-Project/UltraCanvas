@@ -76,6 +76,14 @@ TEST(login_check_options_follow_the_security_setting) {
                std::string("erika"));
 }
 
+TEST(login_check_options_carry_the_authentication_method) {
+    UltraNetCredentials c; c.type = UltraNetAuthType::Basic; c.password = "pw";
+    MailServerSettings s = Server("mail.example.org", 993, MailSecurity::SslTls);
+    REQUIRE(LoginCheck::OptionsFor(s, c).auth == UltraNetMailAuth::Any);
+    s.auth = UltraNetMailAuth::EncryptedPassword;
+    REQUIRE(LoginCheck::OptionsFor(s, c).auth == UltraNetMailAuth::EncryptedPassword);
+}
+
 TEST(login_check_lists_once_and_passes_the_answer_through) {
     RecordingMailbox mailbox;
     UltraNetCredentials c; c.type = UltraNetAuthType::Basic; c.password = "pw";

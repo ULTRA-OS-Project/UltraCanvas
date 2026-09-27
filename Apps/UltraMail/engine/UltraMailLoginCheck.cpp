@@ -14,8 +14,7 @@ UltraNetMailOptions LoginCheck::OptionsFor(const MailServerSettings& imap,
     UltraNetMailOptions opts;
     opts.credentials = credentials;
     if (opts.credentials.username.empty()) opts.credentials.username = imap.username;
-    opts.useTls      = imap.security != MailSecurity::Plain;
-    opts.implicitTls = imap.security == MailSecurity::SslTls;
+    ApplyConnection(imap, opts);   // TLS mode + authentication method
     // A check should answer quickly: a wrong host is a wrong host.
     opts.connectTimeoutMs   = 10000;
     opts.operationTimeoutMs = 20000;

@@ -19,6 +19,7 @@
 #include <UltraNet/UltraNetMime.h>
 #include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
+#include <UltraNet/UltraNetCurlMailAuth.h>
 #include <UltraNet/UltraNetMailAddr.h>
 
 #include <curl/curl.h>
@@ -152,18 +153,9 @@ public:
 
         curl_easy_setopt(h.get(), CURLOPT_URL, options.serverUrl.c_str());
 
-        const auto& cred = options.credentials;
-        const bool useBearer = !cred.token.empty() &&
-            (cred.type == UltraNetAuthType::OAuth2 || cred.type == UltraNetAuthType::Bearer);
-        if (useBearer) {
-            // XOAUTH2 for Gmail / Microsoft: username + bearer token.
-            if (!cred.username.empty())
-                curl_easy_setopt(h.get(), CURLOPT_USERNAME, cred.username.c_str());
-            curl_easy_setopt(h.get(), CURLOPT_XOAUTH2_BEARER, cred.token.c_str());
-        } else if (!cred.username.empty()) {
-            curl_easy_setopt(h.get(), CURLOPT_USERNAME, cred.username.c_str());
-            curl_easy_setopt(h.get(), CURLOPT_PASSWORD, cred.password.c_str());
-        }
+        if (UltraNetResult a = ultranet_curlmailauth::Apply(
+                h.get(), options, ultranet_curlmailauth::Protocol::Smtp); !a)
+            return a;
         if (options.useTls || options.implicitTls) {
             // Require TLS for both modes: implicit (smtps://host:465, TLS from
             // connect) and STARTTLS upgrade (smtp://host:587). CURLUSESSL_ALL

@@ -140,6 +140,10 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           "  reason TEXT DEFAULT '',"
           "  scanned_at INTEGER DEFAULT 0,"
           "  PRIMARY KEY(account_id, folder, uid));" },
+        { 5, "authentication method per server",
+          // 'auto' keeps what existing accounts did: whatever the server offers.
+          "ALTER TABLE accounts ADD COLUMN imap_auth TEXT DEFAULT 'auto';"
+          "ALTER TABLE accounts ADD COLUMN smtp_auth TEXT DEFAULT 'auto';" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -154,8 +158,8 @@ UltraDbResult LocalStore::UpsertAccount(const Account& a) {
         "INSERT INTO accounts(account_id, display_name, email, short_name, "
         "  imap_host, imap_port, imap_security, imap_username, imap_oauth, "
         "  smtp_host, smtp_port, smtp_security, smtp_username, smtp_oauth, "
-        "  provider_name) "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "  provider_name, imap_auth, smtp_auth) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(account_id) DO UPDATE SET "
         "display_name=excluded.display_name, email=excluded.email, "
         "short_name=excluded.short_name, "
@@ -164,13 +168,14 @@ UltraDbResult LocalStore::UpsertAccount(const Account& a) {
         "imap_oauth=excluded.imap_oauth, "
         "smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port, "
         "smtp_security=excluded.smtp_security, smtp_username=excluded.smtp_username, "
-        "smtp_oauth=excluded.smtp_oauth, provider_name=excluded.provider_name",
+        "smtp_oauth=excluded.smtp_oauth, provider_name=excluded.provider_name, "
+        "imap_auth=excluded.imap_auth, smtp_auth=excluded.smtp_auth",
         { a.accountId, a.displayName, a.email, a.shortName,
           a.imap.host, static_cast<int64_t>(a.imap.port), ToString(a.imap.security),
           a.imap.username, static_cast<int64_t>(a.imap.oauth ? 1 : 0),
           a.smtp.host, static_cast<int64_t>(a.smtp.port), ToString(a.smtp.security),
           a.smtp.username, static_cast<int64_t>(a.smtp.oauth ? 1 : 0),
-          a.providerName });
+          a.providerName, ToString(a.imap.auth), ToString(a.smtp.auth) });
 }
 
 UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
@@ -180,7 +185,7 @@ UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
         "SELECT account_id, display_name, email, short_name, "
         "  imap_host, imap_port, imap_security, imap_username, imap_oauth, "
         "  smtp_host, smtp_port, smtp_security, smtp_username, smtp_oauth, "
-        "  provider_name FROM accounts "
+        "  provider_name, imap_auth, smtp_auth FROM accounts "
         "ORDER BY short_name", rs);
     if (!q) return q;
     for (const auto& row : rs) {
@@ -200,6 +205,8 @@ UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
         a.smtp.username = row["smtp_username"].AsString();
         a.smtp.oauth    = row["smtp_oauth"].AsInt() != 0;
         a.providerName  = row["provider_name"].AsString();
+        a.imap.auth     = MailAuthFromString(row["imap_auth"].AsString());
+        a.smtp.auth     = MailAuthFromString(row["smtp_auth"].AsString());
         out.push_back(std::move(a));
     }
     return UltraDbResult::Ok();

@@ -68,6 +68,15 @@ TEST(accounts_store_their_server_settings) {
     REQUIRE(b.smtp.security == MailSecurity::StartTls);
     REQUIRE_EQ(b.smtp.username, std::string("erika@example.org"));
     REQUIRE_EQ(b.providerName, std::string("Example Org"));
+    REQUIRE(b.imap.auth == UltraNetMailAuth::Any);   // never set: Automatic
+    REQUIRE(b.smtp.auth == UltraNetMailAuth::Any);
+
+    a.imap.auth = UltraNetMailAuth::Password;
+    a.smtp.auth = UltraNetMailAuth::None;
+    REQUIRE(s.UpsertAccount(a).success);
+    REQUIRE(s.ListAccounts(accs).success);
+    REQUIRE(accs[0].imap.auth == UltraNetMailAuth::Password);
+    REQUIRE(accs[0].smtp.auth == UltraNetMailAuth::None);
 }
 
 namespace {
