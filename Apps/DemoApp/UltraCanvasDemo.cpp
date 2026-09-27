@@ -810,17 +810,6 @@ namespace UltraCanvas {
                 .AddVariant("textarea", "Line Numbers Display")
                 .AddVariant("textarea", "Theme Support");
 
-        extendedBuilder.AddItem("messagecenter", "Message Centre",
-                                "The UltraMessage feed in one element: chats, mail and notifications with sources, filters, search and actions",
-                                ImplementationStatus::FullyImplemented,
-                                [this]() { return CreateMessageCenterExamples(); },
-                                "DemoApp/UltraCanvasMessageCenterExamples.cpp",
-                                "Docs/UltraCanvas/UltraCanvasMessageCenter.md")
-                .AddVariant("messagecenter", "All / Chats / Mail / System")
-                .AddVariant("messagecenter", "Sources tree and service chips")
-                .AddVariant("messagecenter", "Detail pane with actions")
-                .AddVariant("messagecenter", "Live: post a sample message");
-
         extendedBuilder.AddItem("treeview", "Tree View", "Hierarchical data display with icons",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateTreeViewExamples(); },
@@ -1997,6 +1986,20 @@ namespace UltraCanvas {
                                "queries, transactions and migrations over SQLite (Stage 1)",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraDatabase"); });
+        // Built module (target UltraMessage): the ULTRA OS message channel.
+        // Its page is the Message Centre element (target UltraMessageCenter)
+        // on a private broker, since that element is the module's view.
+        modulesBuilder.AddItem("ultramessage", "Ultra Message",
+                               "Ultra Message Module — the message channel and its Message Centre: "
+                               "chats, mail and notifications with sources, filters, search and actions",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateMessageCenterExamples(); },
+                               "DemoApp/UltraCanvasMessageCenterExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasMessageCenter.md")
+                .AddVariant("ultramessage", "All / Chats / Mail / System")
+                .AddVariant("ultramessage", "Sources tree and service chips")
+                .AddVariant("ultramessage", "Detail pane with actions")
+                .AddVariant("ultramessage", "Live: post a sample message");
         // Built module (target UltraNet) used by UltraSocial (HTTP, OAuth2,
         // sockets), UltraMail, AnchorPoint and this demo's own live loader.
         modulesBuilder.AddItem("ultranet", "Ultra Net",
