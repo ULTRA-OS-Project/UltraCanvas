@@ -164,13 +164,14 @@ namespace UltraCanvas {
         };
 
         // Every .svg file shipped under media/vector/SVG, four to a row.
-        makeTile("SVGTile1", 20, 100, "demo1.svg");
-        makeTile("SVGTile2", 270, 100, "demo2.svg");
-        makeTile("SVGTile3", 520, 100, "svg-test.svg");
-        makeTile("SVGTile4", 770, 100, "robot.svg");
-        makeTile("SVGTile5", 20, 350, "astronaut.svg");
-        makeTile("SVGTile6", 270, 350, "photo-camera.svg");
-        makeTile("SVGTile7", 520, 350, "Logo_Texter.svg");
+        makeTile("SVGTile1", 20, 100, "filer-palette-rev3.svg");
+        makeTile("SVGTile2", 270, 100, "demo1.svg");
+        makeTile("SVGTile3", 520, 100, "demo2.svg");
+        makeTile("SVGTile4", 770, 100, "svg-test.svg");
+        makeTile("SVGTile5", 20, 350, "robot.svg");
+        makeTile("SVGTile6", 270, 350, "astronaut.svg");
+        makeTile("SVGTile7", 520, 350, "photo-camera.svg");
+        makeTile("SVGTile8", 770, 350, "Logo_Texter.svg");
 
         // Information panel
         auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 20, 600, 960, 92);
