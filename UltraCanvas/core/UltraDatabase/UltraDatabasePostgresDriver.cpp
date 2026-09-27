@@ -423,8 +423,8 @@ bool Passwort(const UltraDbConnectionConfig& config, std::string& out,
     // driver only reads from it. Opening one here would silently fall back to
     // an empty in-memory vault and turn a setup mistake into "not found".
     if (!UltraVault::IsAvailable()) {
-        fehler = "the password for '" + schluessel + "' is in UltraVault, "
-                 "but UltraVault is not open";
+        fehler = "the password for '" + schluessel + "' cannot be read: "
+                 "UltraVault is not open";
         return false;
     }
     UltraVault::SecretValue geheimnis;

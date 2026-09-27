@@ -101,6 +101,13 @@ public:
         if (thread_.joinable()) thread_.join();
     }
 
+    // Stops waiting. For a caller whose connect attempt has already returned
+    // without connecting, so nobody is coming and the wait would be wasted.
+    void Stop() {
+        stop_ = true;
+        Finish();
+    }
+
     bool connected = false;             // anyone opened a connection
     bool askedForEncryption = false;    // SSLRequest or GSSENCRequest seen
     bool sawStartup = false;            // the StartupMessage itself
@@ -271,7 +278,7 @@ void TestMissingKeyIsRefusedBeforeConnecting() {
     Store store;
     const StoreResult r = store.OpenServer("login-missing", "127.0.0.1", server.Port(),
                                            "fibu", "fibu", "vault:ultrafibu.test.nobody");
-    server.Finish();
+    server.Stop();
     Check(!r.ok, "a key that is not in the vault is refused");
     Check(Contains(r.fehler, "not in UltraVault"), "and says so: " + r.fehler);
     Check(!server.connected, "before any connection is made");
@@ -284,7 +291,7 @@ void TestClosedVaultIsRefusedBeforeConnecting() {
     Store store;
     const StoreResult r = store.OpenServer("login-closed", "127.0.0.1", server.Port(),
                                            "fibu", "fibu", "vault:" + kSchluessel);
-    server.Finish();
+    server.Stop();
     Check(!r.ok, "with the vault closed the login is refused");
     Check(Contains(r.fehler, "not open"), "and names the closed vault: " + r.fehler);
     Check(!server.connected, "before any connection is made");
