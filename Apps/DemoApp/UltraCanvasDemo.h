@@ -89,7 +89,7 @@ namespace UltraCanvas {
         InfoWindow();
         ~InfoWindow();
 
-        bool Initialize();
+        bool Initialize(UltraCanvasWindowBase* parent = nullptr);
         void SetOkCallback(std::function<void()> callback);
 
     private:

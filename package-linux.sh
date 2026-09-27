@@ -6,7 +6,7 @@
 #
 # Resulting layout:
 #   UltraCanvas-Linux-<ver>-<arch>/            <- arch: x86_64 or arm64
-#     UltraCanvasDemo  UltraCanvasTexter  UltraFiler ...   <- wrapper scripts
+#     UltraCanvasDemo  Texter  UltraFiler ...   <- wrapper scripts
 #     bin/                                                 <- real ELF executables
 #     lib/                                                 <- libUltraCanvas.so + all deps
 #         ImageMagick-<ver>/                               <- ImageMagick coder modules
@@ -46,7 +46,7 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # `ultrafibu` is one program: the commands (`ultrafibu info buch.db`) and,
 # given none, the window. Built without the UI library it is the commands
 # alone, which is what a server installation runs.
-APPS=(UltraCanvasDemo UltraCanvasTexter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
+APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader

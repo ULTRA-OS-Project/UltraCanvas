@@ -25,9 +25,9 @@ Apps/Texter/build/
 
 # Generated binaries
 /UltraCanvasDemo
-/UltraCanvasTexter
+/Texter
 UltraCanvasDemo.exe
-UltraCanvasTexter.exe
+Texter.exe
 *.dylib
 *.a
 *.so

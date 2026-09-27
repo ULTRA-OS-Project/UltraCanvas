@@ -1,3 +1,11 @@
+#### 2026-09-27 *1.51*
+- **The program file is `Texter` (`Texter.exe`, `Texter.app`), no longer
+  `UltraCanvasTexter`.** Update shortcuts and file associations that name the
+  old file. The window title and the name in the splash are still UltraTexter.
+- **The splash opens in the middle of the editor window.** It used to be
+  centred on the monitor, so it sat off to one side whenever the window was
+  not in the middle of the screen. Both are framework changes, see
+  `Docs/UltraCanvas/changelog.d/splash-centred-on-window.md`.
 #### 2026-09-25 *1.50*
 - **A LaTeX `.cls` is no longer coloured as VBA, an Objective-C `.m` no
   longer as MATLAB.** With R, Scala, MATLAB and VBA switched on in the

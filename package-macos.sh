@@ -1,6 +1,6 @@
 #!/bin/bash
 # package-macos.sh - Create macOS .app bundles for UltraCanvas applications
-# Packages UltraCanvasTexter and UltraCanvasDemo with bundled dylibs,
+# Packages Texter and UltraCanvasDemo with bundled dylibs,
 # Info.plist, .icns icons, and optional DMG creation.
 #
 # Usage: ./package-macos.sh [options]
@@ -586,9 +586,9 @@ TEXTER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
         </dict>
     </array>'
 
-# Package UltraCanvasTexter
+# Package Texter
 build_app_bundle \
-    "UltraCanvasTexter" \
+    "Texter" \
     "UltraCanvas Texter" \
     "com.cloverleaf.UltraCanvasTexter" \
     "media/appicon/Texter.png" \
