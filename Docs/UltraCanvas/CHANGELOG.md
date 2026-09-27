@@ -1,3 +1,20 @@
+#### 2026-09-27 *0.9.68*
+- **UltraDatabase's PostgreSQL driver no longer prints server notices.**
+  libpq writes every `NOTICE` a server sends to stderr unless told
+  otherwise, so each migration check put "relation ... already exists,
+  skipping" into the output of the program using the driver - several lines
+  per command in UltraFIBU's CLI. The driver now installs a notice processor
+  that drops them. Errors are unaffected: they still come back as results
+  and are reported through `UltraDbResult`.
+- **Module map.** `Docs/Modules/ModuleMap.svg` shows how UltraCloud,
+  UltraNet, UltraDatabase, UltraVault, UltraCrypt and UltraMessage link one
+  another, the third-party libraries under them, the servers they reach, and
+  which modules each app links. It is drawn by
+  `scripts/generate_module_map.py` from the CMake targets, and the UltraCloud
+  README embeds it.
+- UltraFIBU 0.25.0 adds server mode to the program (connect, sign in, set
+  up); see its changelog.
+
 #### 2026-09-27 *0.9.67*
 - **The startup screens open in the middle of the app's window, not the
   middle of the monitor.** `UltraCanvasSplashScreen::Show` centred the splash
