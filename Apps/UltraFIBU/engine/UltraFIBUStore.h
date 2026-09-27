@@ -21,10 +21,10 @@
 //      a `version` for optimistic locking, and the schema version is checked
 //      before anything is written.
 //
-// The PostgreSQL driver is UltraDatabase Stage 2 and does not exist yet;
-// OpenServer() therefore reports what is missing rather than pretending. The
-// application is portable in the meantime, which is the whole point of writing
-// it this way now.
+// The PostgreSQL driver (UltraDatabasePostgresDriver.cpp, over libpq) is built
+// whenever libpq is found. A build without it still compiles, and OpenServer()
+// then reports that the driver is missing rather than falling back to a local
+// file.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -109,9 +109,11 @@ public:
                      bool anlegen = false);
 
     // Shared server. `credentialsRef` is an UltraVault key ("vault:fibu-rw"),
-    // never a literal password. Returns a clear refusal while the PostgreSQL
-    // driver is not built, listing what is missing - the application is
-    // portable, the driver is not there yet.
+    // never a literal password; the driver reads the password from the vault,
+    // which the caller must have opened (UltraVault::Initialize) first. TLS is
+    // verify-full. Refuses clearly - never falls back to a local file - when
+    // the build has no PostgreSQL driver, the key is not in the vault or the
+    // vault is not open, or the server cannot be reached.
     StoreResult OpenServer(const std::string& connectionName,
                            const std::string& host, int port,
                            const std::string& database,

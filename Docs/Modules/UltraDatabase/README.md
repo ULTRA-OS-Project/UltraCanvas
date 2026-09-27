@@ -11,13 +11,18 @@ from anywhere; which engine actually backs that connection (SQLite,
 PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
-> Status: **Stage 1 implemented.** The SQLite core, connection registry,
-> parameterized queries, prepared statements, transactions and versioned
-> migrations are built and tested — `UltraCanvas/{include,core}/UltraDatabase/`,
-> library target `UltraDatabase` (`libultradatabase.a`), test suite
-> `Tests/UltraDatabase` (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 14 tests).
-> The networked drivers (PostgreSQL, MySQL, …), async queries, pooling and
-> streaming cursors described below are the Stage 2/3 plan.
+> Status: **Stage 1 implemented, and the PostgreSQL driver from Stage 2.**
+> The SQLite core, connection registry, parameterized queries, prepared
+> statements, transactions and versioned migrations are built and tested —
+> `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
+> (`libultradatabase.a`), test suite `Tests/UltraDatabase`
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 14 tests). The **PostgreSQL** driver
+> (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
+> found at configure time; it takes `?` placeholders, verifies TLS by default
+> and reads the password from UltraVault. UltraFIBU's multi-user mode runs on
+> it, and CI tests it against a real server (`Tests/UltraFIBU`). The other
+> networked drivers (MySQL, …), async queries, pooling and streaming cursors
+> described below are still the Stage 2/3 plan.
 
 ---
 
@@ -238,7 +243,12 @@ block. The UI never waits on the database.
 - **Credentials via UltraVault.** `credentials` on a connection is a
   vault key (`vault:...`); the module resolves it at connect time.
   Config files and `connections.json` never contain passwords — the
-  same rule UltraNet follows.
+  same rule UltraNet follows. The **application opens the vault**
+  (`UltraVault::Initialize`, with its own file and passphrase) before it
+  connects; the driver only reads from it, and reports "UltraVault is not
+  open" rather than quietly opening an empty one. The password is wiped
+  from the driver's memory once libpq has it. Empty `credentials` means
+  libpq's own methods (peer / trust / `.pgpass`).
 - **TLS for networked engines.** `UltraDbTls::{Disable,Prefer,Require,
   VerifyFull}` with verification on by default; certificate handling
   reuses the platform trust store (and UltraNet's TLS stack where a
@@ -328,7 +338,8 @@ headless data module usable from any ULTRA OS process.
 | Transactions + versioned migrations | Implemented |
 | Test suite (14 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
-| PostgreSQL / MySQL drivers | Planned (Stage 2, Tier 2 plugins) |
+| PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
+| MySQL / MariaDB driver | Planned (Stage 2) |
 | Async + streaming cursors | Planned (Stage 2) |
 | Other drivers (MSSQL, Redis, Mongo, DuckDB) | Tracked separately (Stage 3) |
 
@@ -337,8 +348,8 @@ headless data module usable from any ULTRA OS process.
    `Prepare`/values/transactions/migrations. Enough for every app's
    local storage (and all of UltraMail).
 2. **Stage 2** — async queries + worker pool, streaming cursors, the
-   driver-plugin manager, PostgreSQL and MySQL/MariaDB drivers,
-   UltraVault + TLS wiring.
+   driver-plugin manager, the MySQL/MariaDB driver. (The PostgreSQL
+   driver, with its UltraVault and TLS wiring, is done.)
 3. **Stage 3** — remaining drivers (MSSQL, Redis, MongoDB, DuckDB),
    at-rest encryption, read-replica/failover options.
 

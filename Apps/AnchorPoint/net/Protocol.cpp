@@ -103,6 +103,16 @@ std::string BaseName(const std::string& path) {
 
 } // namespace
 
+bool SafeFileName(const std::string& wireName, std::string& outName) {
+    outName.clear();
+    if (wireName.find('\0') != std::string::npos) return false;
+    std::string name = BaseName(wireName);
+    if (name.empty() || name == "." || name == "..") return false;
+    if (name.find(':') != std::string::npos) return false;
+    outName = std::move(name);
+    return true;
+}
+
 // ===========================================================================
 // Sender
 // ===========================================================================
@@ -228,7 +238,17 @@ TransferResult ReceiveFile(IConnection& conn, const AcceptFn& accept,
     std::memcpy(offer.sha256.data(), p, 32); p += 32;
     uint16_t fnLen = GetU16(p); p += 2;
     if (payload.data() + payload.size() < p + fnLen) { r.error = "bad offer name"; return r; }
-    offer.fileName.assign(reinterpret_cast<const char*>(p), fnLen);
+    std::string wireName(reinterpret_cast<const char*>(p), fnLen);
+
+    // The name is the peer's word, not ours: "../../.bashrc" or "/etc/x" joined
+    // to the save folder would write - and, through resume, append to - a file
+    // outside it. Reduce it here, once, so no caller has to remember.
+    if (!SafeFileName(wireName, offer.fileName)) {
+        std::string reason = "unsafe file name";
+        WriteFrame(conn, MsgType::Reject, std::vector<uint8_t>(reason.begin(), reason.end()));
+        r.error = "refused an unsafe file name from the peer";
+        return r;
+    }
 
     // Ask the caller where to put it (or to reject).
     std::string outPath = accept ? accept(offer, peerName) : std::string();

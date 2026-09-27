@@ -32,8 +32,9 @@ AnchorPoint's networking is written against a thin interface
 `UltraNetTls.h`).
 
 * **Today:** backed by raw POSIX / Winsock sockets
-  ([`net/RawSocketTransport.cpp`](net/RawSocketTransport.cpp)) so the core
-  builds and runs with **zero external dependencies**.
+  ([`net/RawSocketTransport.cpp`](net/RawSocketTransport.cpp)), so the core
+  needs no networking library. Its one external dependency is
+  **UltraCrypt** (over libsodium) for the SHA-256 integrity check.
 * **When UltraNet ships:** add an `UltraNetTransport` backend implementing the
   same `IConnection` / `IListener` interface. The protocol, CLI, and GUI are
   unchanged.
@@ -62,6 +63,13 @@ Verified → receiver re-hashes the written file and confirms (or errors)
 Integrity is verified end-to-end with SHA-256; partial files resume from the
 byte count already on disk.
 
+The file name in an Offer is the peer's, so the receiver never uses it as a
+path. `SafeFileName` keeps only its last component, split on both `/` and `\`,
+so `../../.bashrc` is saved as `.bashrc` inside the save folder. A name that is
+empty or ends in a separator, is `.` or `..`, contains NUL, or contains `:` (a
+drive such as `C:name`, or an NTFS stream) is refused with a Reject before the
+receiver is even asked where to save it.
+
 ---
 
 ## Build
@@ -69,7 +77,7 @@ byte count already on disk.
 ```bash
 cd Apps/AnchorPoint
 
-# Core + headless CLI only (no framework deps — std lib + platform sockets):
+# Core + headless CLI only (no UI framework — UltraCrypt, libsodium, sockets):
 cmake -B build -DANCHORPOINT_BUILD_GUI=OFF -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 # → build/bin/anchorpoint
@@ -80,8 +88,12 @@ cmake --build build --parallel
 # → build/bin/AnchorPoint  and  build/bin/anchorpoint
 ```
 
-The core + CLI have **no** dependencies beyond the standard library and the
-platform socket API (`ws2_32` on Windows, pthreads on Linux). The GUI links the
+The core + CLI need **libsodium** (found through pkg-config; `libsodium-dev` on
+Debian/Ubuntu) and the platform socket API (`ws2_32` on Windows, pthreads on
+Linux). They do not need the UltraCanvas UI library: built on their own they
+compile just UltraCrypt and its Base32 codec from `UltraCanvas/core`, the two
+files the SHA-256 check needs. The protocol tests build with them;
+`ctest --test-dir build` runs them (`-DANCHORPOINT_BUILD_TESTS=OFF` skips them). The GUI links the
 UltraCanvas framework the same way `Apps/Texter` does.
 
 ---

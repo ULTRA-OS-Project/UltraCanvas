@@ -798,13 +798,15 @@ static void TestStore() {
              "the schema matches the version the code declares");
     Check(!store.SchemaIsNewerThanCode(), "and is not newer than the code");
 
-    // Server mode is prepared but refuses clearly rather than silently falling
-    // back to a local file - a multi-user installation that quietly became
-    // single-user would be discovered by two people overwriting each other.
+    // Server mode refuses clearly rather than silently falling back to a local
+    // file - a multi-user installation that quietly became single-user would be
+    // discovered by two people overwriting each other. Here the refusal is the
+    // missing driver, the closed vault or the unreachable host, whichever this
+    // build meets first; UltraFIBUServerLoginTests covers the login itself.
     Store server;
     CheckRefused(server.OpenServer("fibu-server", "db.local", 5432, "fibu", "fibu",
                                    "vault:fibu-rw"),
-                 "server mode reports that the PostgreSQL driver is not built yet");
+                 "server mode refuses rather than falling back to a local file");
     CheckRefused(server.OpenServer("fibu-server", "db.local", 5432, "fibu", "fibu",
                                    "hunter2"),
                  "and a literal password is refused outright");

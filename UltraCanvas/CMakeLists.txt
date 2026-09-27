@@ -2702,6 +2702,15 @@ if(ULTRACANVAS_ENABLE_DATABASE)
             endif()
             target_compile_definitions(UltraDatabase PRIVATE ULTRADATABASE_HAS_POSTGRES=1)
             set(ULTRADATABASE_POSTGRES_NOTE " + PostgreSQL")
+            # A server connection's `credentials` is an UltraVault key ("vault:…"),
+            # never a literal password, so the driver reads it from the vault.
+            # Without this link and define every password login refuses with
+            # "UltraVault is not built in" - which it did until 0.9.66.
+            if(TARGET UltraVault)
+                target_link_libraries(UltraDatabase PRIVATE UltraVault)
+                target_compile_definitions(UltraDatabase PRIVATE ULTRADATABASE_HAS_VAULT=1)
+                string(APPEND ULTRADATABASE_POSTGRES_NOTE " (passwords from UltraVault)")
+            endif()
         else()
             set(ULTRADATABASE_POSTGRES_NOTE " (no libpq: SQLite only)")
         endif()

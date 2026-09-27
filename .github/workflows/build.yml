@@ -697,11 +697,32 @@ jobs:
         shell: bash
         run: |
           set -eu
-          if ! grep -q "UltraFIBUServer" ctest.log; then
-            echo "::error::the UltraFIBUServer test was not registered - libpq missing at configure time?"
-            exit 1
-          fi
-          echo "multi-user acceptance test is registered and ran against PostgreSQL"
+          # [ .] after the name, so UltraFIBUServerLogin cannot stand in for it.
+          for t in UltraFIBUServer UltraFIBUServerLogin; do
+            if ! grep -qE "${t}[ .]" ctest.log; then
+              echo "::error::the $t test was not registered - libpq missing at configure time?"
+              exit 1
+            fi
+          done
+          echo "multi-user acceptance test and server-login test are registered and ran"
+
+      # AnchorPoint is its own CMake project and not part of the build above,
+      # so nothing here built it: its standalone link broke (UltraCrypt had
+      # started calling the shared Base32 codec) and nobody saw. Build the core
+      # and CLI the way its README says, and run the protocol tests - they
+      # replay hostile file names against the receiver. Needs only libsodium,
+      # which is installed above.
+      - name: AnchorPoint core, CLI and protocol tests (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          cmake -S Apps/AnchorPoint -B build-anchorpoint \
+            -DANCHORPOINT_BUILD_GUI=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build-anchorpoint --parallel
+          ctest --test-dir build-anchorpoint --output-on-failure
 
       # Bundle all apps into the portable multi-executable tree. Reuses the
       # already-built shared `build` dir (SKIP_BUILD=1) rather than rebuilding.

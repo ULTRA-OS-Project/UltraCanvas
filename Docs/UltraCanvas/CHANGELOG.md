@@ -1,3 +1,46 @@
+#### 2026-09-27 *0.9.66*
+- **A PostgreSQL connection can log in with a password.** The driver was
+  meant to read the password from UltraVault, but that lookup sat behind
+  `ULTRADATABASE_HAS_VAULT`, which no build defined, and it called
+  `UltraVault_GetSecret`, which does not exist. So every connection with
+  `credentials` failed with "UltraVault is not built in". Only passwordless
+  logins (peer / trust / `.pgpass`) worked, and that is all CI's multi-user
+  test uses, so nothing failed.
+  - The build now links UltraVault into UltraDatabase and defines the flag
+    wherever the PostgreSQL driver is built. Configure prints "PostgreSQL
+    (passwords from UltraVault)".
+  - The driver reads the password with `UltraVault::Get`. The application
+    opens the vault; the driver never opens one itself, since that would
+    quietly give an empty in-memory vault and turn a setup mistake into "not
+    found". A closed vault, a missing key and an unreadable vault now each
+    give their own message.
+  - The password no longer outlives the connect call. The vault's copy, the
+    driver's copy and the connection string are all overwritten once libpq
+    has them. The connection string is sized up front so appending never
+    reallocates and frees a buffer holding the password, and the escaping
+    writes straight into it instead of through a temporary copy.
+  - **New result code `UltraDbResultCode::CredentialsUnavailable`.** The
+    driver returns it when it cannot obtain the password on this machine (the
+    vault is closed, the key is missing, or UltraVault is not built in). In
+    that case no connection was attempted. It used to return
+    `ConnectionFailed`, so a caller could not tell "fix this machine" from
+    "fix the network", and UltraFIBU reported a missing vault key as "the
+    server cannot be reached". Failures on the way to the server, including a
+    wrong password, are still `ConnectionFailed`.
+  - New `UltraFIBUServerLoginTests` needs no database server. It stores a
+    password containing a quote and a backslash in a memory vault, and a
+    fake PostgreSQL server on the loopback interface asks for a cleartext
+    password. The test checks that exactly the stored password reaches the
+    wire. It also checks that `OpenServer` gets as far as the server with a
+    stored key, and is refused before connecting when the key is missing
+    or the vault is closed. CI's "was the test registered" check now covers
+    it too.
+- **CI:** the Linux jobs also build `Apps/AnchorPoint` on its own and run
+  its protocol tests (see AnchorPoint 0.2.1). The login test builds on macOS,
+  which has no `MSG_NOSIGNAL`: it falls back to ignoring `SIGPIPE`.
+- **Docs:** the UltraDatabase README status table lists the PostgreSQL driver
+  as implemented, and explains that the application opens the vault.
+
 #### 2026-09-27 *0.9.65*
 - **CorelDRAW (`.cdr`) import on Windows.** The CDR plugin was off in every
   Windows build: the top-level CMake skipped the pkg-config checks with
