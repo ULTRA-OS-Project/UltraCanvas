@@ -50,6 +50,9 @@
 
 #include <UltraCrypt/UltraCryptCore.h>
 #include <UltraVault/UltraVault.h>
+#include <UltraOtp/UltraOtp.h>
+#include <UltraOtp/OtpAuthUri.h>
+#include <ctime>
 // The hash-chain test edits a posting the way somebody with the database
 // file and a SQL prompt would - which is the only way to prove the chain
 // notices. Nothing else in the engine writes SQL outside the store.
@@ -6156,17 +6159,17 @@ static void TestServerModus() {
         CheckStore(store.SaveBenutzer(erfasser, alsAdmin), "a second user");
 
         Akteur akteur;
-        CheckRefused(Anmelden(store, "chefin", "egal-was", akteur),
+        CheckRefused(Anmelden(store, "chefin", "egal-was", "", akteur),
                      "a user without a password cannot sign in");
         CheckStore(store.SetPasswort(admin.id, "richtig-lang", alsAdmin), "a password is set");
         CheckStore(store.SetPasswort(erfasser.id, "auch-lang-genug", alsAdmin),
                    "and one for the second user");
 
-        CheckRefused(Anmelden(store, "chefin", "falsch-lang", akteur), "a wrong password is refused");
-        CheckRefused(Anmelden(store, "niemand", "richtig-lang", akteur),
+        CheckRefused(Anmelden(store, "chefin", "falsch-lang", "", akteur), "a wrong password is refused");
+        CheckRefused(Anmelden(store, "niemand", "richtig-lang", "", akteur),
                      "an unknown user gets the same refusal");
-        CheckRefused(Anmelden(store, "chefin", "", akteur), "an empty password is refused");
-        Check(CheckStore(Anmelden(store, "azubi", "auch-lang-genug", akteur), "the second user signs in") &&
+        CheckRefused(Anmelden(store, "chefin", "", "", akteur), "an empty password is refused");
+        Check(CheckStore(Anmelden(store, "azubi", "auch-lang-genug", "", akteur), "the second user signs in") &&
               akteur.benutzerId == erfasser.id && akteur.rolle == BenutzerRolle::Erfasser &&
               akteur.anmeldename == "azubi",
               "and the Akteur carries that user and role - not the administrator");
@@ -6203,7 +6206,7 @@ static void TestServerModus() {
                       bericht.steuerschluessel > 0,
                       "with the company, the chart of accounts and the tax keys");
                 Akteur akteur;
-                CheckStore(Anmelden(store, "admin", "admin-passwort", akteur),
+                CheckStore(Anmelden(store, "admin", "admin-passwort", "", akteur),
                            "and its administrator can sign in straight away");
 
                 const EinrichtungsBericht nochmal = RichteServerEin(store, d);
@@ -6215,6 +6218,212 @@ static void TestServerModus() {
     unsetenv("ULTRAFIBU_CONFIG_DIR");
     std::error_code ec;
     std::filesystem::remove_all(dir, ec);
+}
+
+// ---- The second factor, and receipts kept in the database ------------------
+
+// The code an authenticator app would show for this setup key at `zeit`.
+static std::string CodeFuer(const std::string& base32, int64_t zeit) {
+    UltraCryptSecureBuffer geheimnis;
+    if (!UltraCrypt_Base32Decode(base32, geheimnis)) return std::string();
+    UltraCanvas::Otp::Parameters p;
+    std::string code;
+    UltraCanvas::Otp::GenerateTotp(geheimnis, p, zeit, code);
+    return code;
+}
+
+static void TestZweiterFaktor() {
+    std::printf("Zweiter Faktor (TOTP) und Belege in der Datenbank\n");
+    if (!UltraCrypt_IsAvailable()) {
+        std::printf("    (UltraCrypt without libsodium: skipped)\n");
+        return;
+    }
+    Store store;
+    if (!CheckStore(store.Open("fibu-totp", ":memory:"), "an in-memory database")) return;
+    Benutzer admin;
+    admin.anmeldename = "chefin";
+    CheckStore(store.SaveBenutzer(admin, Akteur()), "the administrator");
+    Akteur alsAdmin;
+    alsAdmin.benutzerId = admin.id; alsAdmin.anmeldename = "chefin";
+    alsAdmin.rolle = BenutzerRolle::Administrator;
+    Benutzer erika;
+    erika.anmeldename = "erika";
+    erika.rolle = BenutzerRolle::Buchhalter;
+    CheckStore(store.SaveBenutzer(erika, alsAdmin), "a Buchhalterin");
+    CheckStore(store.SetPasswort(erika.id, "erikas-passwort", alsAdmin), "with a password");
+    Akteur alsErika;
+    alsErika.benutzerId = erika.id; alsErika.anmeldename = "erika";
+    alsErika.rolle = BenutzerRolle::Buchhalter;
+
+    // --- enrolment ---
+    Store::ZweiterFaktorEinrichtung einrichtung;
+    CheckRefused(store.ZweitenFaktorVorbereiten(Akteur(), "x", einrichtung),
+                 "nobody enrols without being signed in");
+    CheckStore(store.ZweitenFaktorVorbereiten(alsErika, "erika@Muster GmbH", einrichtung),
+               "a secret is prepared");
+    Check(einrichtung.otpauthUri.rfind("otpauth://totp/", 0) == 0 &&
+          einrichtung.otpauthUri.find("issuer=UltraFIBU") != std::string::npos &&
+          einrichtung.otpauthUri.find("secret=" + einrichtung.geheimnisBase32) != std::string::npos,
+          "as an otpauth:// URI an authenticator app scans: " + einrichtung.otpauthUri);
+    CheckInt(static_cast<int64_t>(einrichtung.geheimnisBase32.size()), 32,
+             "160 bits of secret, 32 Base32 characters");
+    {
+        // What UltraAuthenticator does with the QR code: its own parser must
+        // take it, with the parameters the login checks against.
+        UltraCanvas::Otp::Parameters p;
+        UltraCryptSecureBuffer geheimnis;
+        Check(static_cast<bool>(UltraCanvas::Otp::ParseOtpAuthUri(einrichtung.otpauthUri, p, geheimnis)) &&
+              p.type == UltraCanvas::Otp::Type::Totp && p.digits == 6 && p.periodSeconds == 30 &&
+              p.algorithm == UltraCanvas::Otp::Algorithm::SHA1 && p.issuer == "UltraFIBU" &&
+              geheimnis.GetSize() == 20,
+              "UltraAuthenticator's parser accepts the URI: TOTP, 6 digits, 30 s, SHA1, 160 bits");
+    }
+    Check(!store.HatZweitenFaktor(erika.id), "preparing stores nothing");
+
+    const int64_t jetzt = static_cast<int64_t>(std::time(nullptr));
+    CheckRefused(store.ZweitenFaktorAktivieren(alsErika, "erikas-passwort",
+                                               einrichtung.geheimnisBase32, "000000"),
+                 "a wrong code does not activate it - the scan is not proven");
+    CheckRefused(store.ZweitenFaktorAktivieren(alsErika, "falsches-passwort",
+                                               einrichtung.geheimnisBase32,
+                                               CodeFuer(einrichtung.geheimnisBase32, jetzt)),
+                 "nor does a wrong password - it is the key");
+    CheckStore(store.ZweitenFaktorAktivieren(alsErika, "erikas-passwort",
+                                             einrichtung.geheimnisBase32,
+                                             CodeFuer(einrichtung.geheimnisBase32, jetzt)),
+               "the right code and password activate it");
+    Check(store.HatZweitenFaktor(erika.id), "and it is stored");
+
+    // Stored sealed: neither the Base32 key nor its bytes are in the row.
+    {
+        UltraDbResultSet rs;
+        UltraDb_Query("fibu-totp", "SELECT totp_geheimnis FROM benutzer WHERE id = ?",
+                      { erika.id }, rs);
+        const std::string gespeichert = rs.Empty() ? "" : rs.Row(0)["totp_geheimnis"].AsString();
+        UltraCryptSecureBuffer roh;
+        UltraCrypt_Base32Decode(einrichtung.geheimnisBase32, roh);
+        const std::string rohHex = UltraCrypt_ToHex(std::vector<uint8_t>(roh.Data(), roh.Data() + roh.GetSize()));
+        Check(!gespeichert.empty() && gespeichert.find(rohHex) == std::string::npos &&
+              gespeichert.find(einrichtung.geheimnisBase32) == std::string::npos,
+              "the secret is stored encrypted, not readable");
+    }
+
+    // --- signing in ---
+    Benutzer b;
+    Check(!store.Anmelden("erika", "erikas-passwort", b),
+          "the password alone no longer signs in");
+    Check(store.Anmelden("erika", "erikas-passwort", "", b) == Store::AnmeldeErgebnis::CodeNoetig,
+          "the right password without a code asks for one");
+    Check(store.Anmelden("erika", "falsch-falsch", CodeFuer(einrichtung.geheimnisBase32, jetzt + 30), b) ==
+              Store::AnmeldeErgebnis::Abgelehnt,
+          "a wrong password is refused as such, even with a valid code");
+    Check(store.Anmelden("erika", "erikas-passwort", "123456", b) ==
+              Store::AnmeldeErgebnis::CodeFalsch,
+          "a wrong code is refused");
+    Check(store.Anmelden("erika", "erikas-passwort", CodeFuer(einrichtung.geheimnisBase32, jetzt), b) ==
+              Store::AnmeldeErgebnis::CodeFalsch,
+          "the code used for the enrolment cannot sign in again (one use per step)");
+    const std::string naechster = CodeFuer(einrichtung.geheimnisBase32, jetzt + 30);
+    Check(store.Anmelden("erika", "erikas-passwort", naechster, b) == Store::AnmeldeErgebnis::Ok &&
+          b.id == erika.id,
+          "the next code signs in (one step of clock drift allowed)");
+    Check(store.Anmelden("erika", "erikas-passwort", naechster, b) ==
+              Store::AnmeldeErgebnis::CodeFalsch,
+          "and that code is spent - replaying it is refused");
+    Check(store.Anmelden("erika", "erikas-passwort",
+                         CodeFuer(einrichtung.geheimnisBase32, jetzt + 300), b) ==
+              Store::AnmeldeErgebnis::CodeFalsch,
+          "a code from five minutes ahead is refused");
+    Akteur akteur;
+    bool codeNoetig = false;
+    CheckRefused(Anmelden(store, "erika", "erikas-passwort", "", akteur, &codeNoetig),
+                 "the login helper refuses without a code");
+    Check(codeNoetig, "and says a code is needed");
+
+    // --- removing it ---
+    Benutzer azubi;
+    azubi.anmeldename = "azubi";
+    azubi.rolle = BenutzerRolle::Erfasser;
+    CheckStore(store.SaveBenutzer(azubi, alsAdmin), "an Erfasser");
+    Akteur alsAzubi;
+    alsAzubi.benutzerId = azubi.id; alsAzubi.rolle = BenutzerRolle::Erfasser;
+    CheckRefused(store.ZweitenFaktorEntfernen(erika.id, alsAzubi),
+                 "an Erfasser cannot remove someone else's second factor");
+
+    // An administrator resetting the password cannot re-encrypt the secret,
+    // so the second factor goes with the old password.
+    CheckStore(store.SetPasswort(erika.id, "neues-passwort-1", alsAdmin),
+               "the administrator resets Erika's password");
+    Check(!store.HatZweitenFaktor(erika.id), "which removes her second factor");
+    Check(store.Anmelden("erika", "neues-passwort-1", "", b) == Store::AnmeldeErgebnis::Ok,
+          "and she signs in with the new password alone until she enrols again");
+    bool protokolliert = false;
+    for (const Store::AuditEintrag& e : store.AuditListe(20))
+        if (e.aktion == "zweiter-faktor-entfernt" && e.rowId == erika.id) protokolliert = true;
+    Check(protokolliert, "the removal is in the audit trail");
+
+    // Enrol again, and the administrator removes it (a lost phone).
+    CheckStore(store.ZweitenFaktorVorbereiten(alsErika, "erika", einrichtung), "a second enrolment");
+    CheckStore(store.ZweitenFaktorAktivieren(alsErika, "neues-passwort-1", einrichtung.geheimnisBase32,
+                                             CodeFuer(einrichtung.geheimnisBase32, jetzt)),
+               "activates");
+    CheckStore(store.ZweitenFaktorEntfernen(erika.id, alsAdmin),
+               "the administrator removes it after a lost phone");
+    Check(!store.HatZweitenFaktor(erika.id), "and it is gone");
+
+    // --- receipts in the database ---
+    {
+        Mandant mandant;
+        mandant.name = "Beleg GmbH";
+        CheckStore(store.SaveMandant(mandant, alsAdmin), "a company");
+        Geschaeftsjahr jahr;
+        jahr.mandantId = mandant.id;
+        jahr.beginn = Date(2026, 1, 1);
+        jahr.ende   = Date(2026, 12, 31);
+        jahr.bezeichnung = jahr.DefaultBezeichnung();
+        CheckStore(store.SaveGeschaeftsjahr(jahr, alsAdmin), "a fiscal year");
+        Nummernkreis kreis;
+        kreis.mandantId = mandant.id; kreis.kreis = "eingang"; kreis.praefix = "E-";
+        CheckStore(store.SaveNummernkreis(kreis, alsAdmin), "a number range");
+
+        store.SetBelegeInDatenbank(true);
+        Check(store.BelegArchivPfad().find("beleg_datei") != std::string::npos,
+              "the archive says it is the database");
+        const std::string inhalt = std::string(kPdfKopf) + "1 0 obj << >> endobj\n%%EOF\n";
+        SchreibeDatei("db-beleg.pdf", inhalt);
+        SchreibeDatei("db-beleg-kopie.pdf", inhalt);
+        SchreibeDatei("db-kein-beleg.txt", "nur Text");
+        const Store::BelegImportBericht bericht = store.ImportiereBelegDateien(
+            mandant.id, { "db-beleg.pdf", "db-beleg-kopie.pdf", "db-kein-beleg.txt" },
+            BelegArt::Eingangsrechnung, Date(2026, 3, 1), "eingang", alsAdmin);
+        CheckInt(bericht.angelegt, 1, "one receipt filed into the database");
+        CheckInt(bericht.bekannt, 1, "the byte-identical copy is recognised");
+        CheckInt(bericht.abgelehnt, 1, "and a text file refused, as the directory archive does");
+
+        UltraDbResultSet rs;
+        UltraDb_Query("fibu-totp", "SELECT COUNT(*) AS n FROM beleg_datei", {}, rs);
+        CheckInt(rs.Empty() ? -1 : rs.Row(0)["n"].AsInt64(), 1,
+                 "one row in beleg_datei for the two identical files");
+
+        std::remove("db-beleg.pdf");
+        std::remove("db-beleg-kopie.pdf");
+        std::remove("db-kein-beleg.txt");
+
+        Beleg beleg;
+        Check(store.BelegById(bericht.eintraege[0].belegId, beleg), "the draft exists");
+        Check(beleg.dateiPfad.rfind("datenbank:", 0) == 0, "its file points into the database");
+        std::string gelesen, fehler;
+        Check(store.LiesBelegDatei(beleg, gelesen, fehler) && gelesen == inhalt,
+              "and reads back byte for byte after the source files are gone: " + fehler);
+        Check(store.PruefeBelegDatei(beleg, fehler), "the integrity check passes");
+
+        // Somebody with a SQL prompt edits the stored bytes.
+        UltraDb_Exec("fibu-totp", "UPDATE beleg_datei SET inhalt = ?",
+                     { UltraDbValue::Blob(std::vector<uint8_t>{'%', 'P', 'D', 'F'}) });
+        Check(!store.PruefeBelegDatei(beleg, fehler) &&
+              fehler.find("Prüfsumme") != std::string::npos,
+              "an altered file in the database is detected");
+    }
 }
 
 int main() {
@@ -6246,6 +6455,7 @@ int main() {
     TestReverseCharge();
     TestEuSteuersaetze();
     TestServerModus();
+    TestZweiterFaktor();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

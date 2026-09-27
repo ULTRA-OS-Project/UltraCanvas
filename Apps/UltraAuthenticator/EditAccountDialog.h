@@ -25,7 +25,7 @@
 #ifndef EDITACCOUNTDIALOG_H
 #define EDITACCOUNTDIALOG_H
 
-#include "otp/UltraOtp.h"
+#include "UltraOtp/UltraOtp.h"
 
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"

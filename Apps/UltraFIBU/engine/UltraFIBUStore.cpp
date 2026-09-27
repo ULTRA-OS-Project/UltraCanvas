@@ -15,6 +15,9 @@
 #include <UltraDatabase/UltraDatabaseTransaction.h>
 
 #include <UltraCrypt/UltraCryptCore.h>
+#include <UltraOtp/OtpAuthUri.h>
+#include "UltraCanvasTextUtils.h"   // Base32Encode, for the setup key
+#include <UltraOtp/UltraOtp.h>
 
 #include <ctime>
 
@@ -471,6 +474,30 @@ const char* const kSchemaV8 =
     "ALTER TABLE konto ADD COLUMN programmverbindung TEXT;"
     "ALTER TABLE konto ADD COLUMN nummer_bis TEXT;";
 
+// The second factor and the server's receipt archive.
+//
+// totp_geheimnis is hex(nonce || ciphertext): the TOTP secret, encrypted with
+// XChaCha20-Poly1305 under an Argon2id key from the user's password and
+// totp_salt. totp_letzter_schritt is the last 30-second step a code was
+// accepted for, so a code works once.
+//
+// beleg_datei holds receipt files in the database when it is a server - one
+// row per distinct file, keyed by its SHA-256 like the directory archive.
+// BYTEA is PostgreSQL's binary type; SQLite accepts the name and stores the
+// bytes as a BLOB, so the one list of migrations still serves both.
+const char* const kSchemaV9 =
+    "ALTER TABLE benutzer ADD COLUMN totp_geheimnis TEXT;"
+    "ALTER TABLE benutzer ADD COLUMN totp_salt TEXT;"
+    "ALTER TABLE benutzer ADD COLUMN totp_letzter_schritt BIGINT;"
+    "CREATE TABLE beleg_datei ("
+    "  hash        TEXT PRIMARY KEY,"
+    "  art         TEXT NOT NULL,"
+    "  groesse     BIGINT NOT NULL,"
+    "  dateiname   TEXT,"
+    "  angelegt_am BIGINT NOT NULL,"
+    "  inhalt      BYTEA NOT NULL"
+    ");";
+
 } // namespace
 
 // ===== BELEGE UND BUCHUNGEN =====
@@ -787,7 +814,8 @@ static std::vector<UltraDbMigration> MigrationSchritte() {
         { 5, "UltraFIBU Steuermeldungen", kSchemaV5 },
         { 6, "UltraFIBU EU-Steuersaetze", kSchemaV6 },
         { 7, "UltraFIBU Brutto-Erfassung und Leistungszeitpunkt", kSchemaV7 },
-        { 8, "UltraFIBU Kontenrahmen: Funktion, Abschlusszweck, Programmverbindung", kSchemaV8 }
+        { 8, "UltraFIBU Kontenrahmen: Funktion, Abschlusszweck, Programmverbindung", kSchemaV8 },
+        { 9, "UltraFIBU Zweiter Faktor und Belegdateien auf dem Server", kSchemaV9 }
     };
 }
 
@@ -805,6 +833,8 @@ bool DateiExistiert(const std::string& pfad) {
 StoreResult Store::Open(const std::string& connectionName, const std::string& databasePath,
                         bool anlegen) {
     datenbankPfad_ = databasePath;
+    istServer_     = false;
+    belegeInDatenbank_ = false;
     // Re-registering a name replaces the pooled entry and drops the physical
     // connection - which for ":memory:" would throw the database away. So it
     // only happens when the name is new or now points somewhere else.
@@ -886,6 +916,8 @@ StoreResult Store::OpenServer(const std::string& connectionName,
     }
 
     datenbankPfad_ = database;
+    istServer_     = true;
+    belegeInDatenbank_ = true;
 
     UltraDbConnectionConfig cfg;
     cfg.name        = connectionName;
@@ -2020,7 +2052,277 @@ StoreResult Store::SetPasswort(int64_t benutzerId, const std::string& passwort,
           static_cast<int64_t>(params.outputLength), benutzerId },
         "Das Passwort konnte nicht gespeichert werden");
     if (!updated) return updated;
-    return WriteAudit(akteur, "benutzer", benutzerId, "passwort", std::string());
+    const StoreResult geschrieben =
+        WriteAudit(akteur, "benutzer", benutzerId, "passwort", std::string());
+    if (!geschrieben) return geschrieben;
+
+    // The second factor's secret is encrypted under the old password, which
+    // this call does not have. It cannot be carried over, so it goes - and
+    // says so in the audit trail - and the user enrols again.
+    if (HatZweitenFaktor(benutzerId)) {
+        const StoreResult weg = Exec(
+            "UPDATE benutzer SET totp_geheimnis = NULL, totp_salt = NULL,"
+            " totp_letzter_schritt = NULL WHERE id = ?",
+            { benutzerId }, "Der zweite Faktor konnte nicht zurückgesetzt werden");
+        if (!weg) return weg;
+        return WriteAudit(akteur, "benutzer", benutzerId, "zweiter-faktor-entfernt",
+                          "mit dem Passwort zurückgesetzt");
+    }
+    return geschrieben;
+}
+
+// ===== ZWEITER FAKTOR =====
+
+namespace {
+
+constexpr uint32_t kTotpPeriode = 30;
+constexpr uint32_t kTotpStellen = 6;
+constexpr size_t   kTotpBytes   = 20;   // 160 bits, RFC 4226's recommendation
+
+UltraCanvas::Otp::Parameters TotpParameter() {
+    UltraCanvas::Otp::Parameters p;
+    p.type          = UltraCanvas::Otp::Type::Totp;
+    p.algorithm     = UltraCanvas::Otp::Algorithm::SHA1;   // what every app accepts
+    p.digits        = kTotpStellen;
+    p.periodSeconds = kTotpPeriode;
+    return p;
+}
+
+// Only digits, ignoring the space some apps show in the middle ("123 456").
+std::string NurZiffern(const std::string& code) {
+    std::string out;
+    for (const char c : code)
+        if (c >= '0' && c <= '9') out.push_back(c);
+        else if (c != ' ') return std::string();
+    return out;
+}
+
+// The step a code belongs to, if it is valid now or one step either side.
+// Constant-time comparison per candidate; the loop itself is fixed-length.
+bool PruefeTotp(const UltraCryptSecureBuffer& geheimnis, const std::string& code,
+                int64_t jetzt, uint64_t& outSchritt) {
+    const std::string ziffern = NurZiffern(code);
+    if (ziffern.size() != kTotpStellen) return false;
+    uint64_t schritt = 0;
+    if (!UltraCanvas::Otp::TimeStepCounter(jetzt, kTotpPeriode, schritt)) return false;
+    bool gefunden = false;
+    for (int versatz = -1; versatz <= 1; ++versatz) {
+        const uint64_t kandidat = schritt + static_cast<uint64_t>(static_cast<int64_t>(versatz));
+        std::string erwartet;
+        if (!UltraCanvas::Otp::GenerateTotp(geheimnis, TotpParameter(),
+                                            static_cast<int64_t>(kandidat * kTotpPeriode),
+                                            erwartet))
+            continue;
+        if (erwartet.size() == ziffern.size() &&
+            UltraCrypt_ConstantTimeEquals(erwartet.data(), erwartet.size(),
+                                          ziffern.data(), ziffern.size()) &&
+            !gefunden) {
+            outSchritt = kandidat;
+            gefunden = true;
+        }
+    }
+    return gefunden;
+}
+
+// The key the secret is sealed with: Argon2id over the password, with the
+// user's stored cost parameters and a salt of its own (never the password
+// hash's salt - that hash is stored, and must not be the key).
+bool TotpSchluessel(const std::string& passwort, const UltraDbRow& row,
+                    const std::vector<uint8_t>& salt, UltraCryptSecureBuffer& key) {
+    UltraCryptKdfParams params = UltraCrypt_RecommendedKdfParams();
+    params.salt = salt;
+    if (row["kdf_iterationen"].AsInt64() > 0)
+        params.iterations = static_cast<uint32_t>(row["kdf_iterationen"].AsInt64());
+    if (row["kdf_speicher_kib"].AsInt64() > 0)
+        params.memoryKiB = static_cast<uint32_t>(row["kdf_speicher_kib"].AsInt64());
+    params.outputLength = 32;
+    const UltraCryptSecureBuffer pw(passwort.data(), passwort.size());
+    return static_cast<bool>(UltraCrypt_DeriveKeyFromPassword(pw, params, key));
+}
+
+} // namespace
+
+bool Store::HatZweitenFaktor(int64_t benutzerId) const {
+    UltraDbRow row;
+    if (!QueryOne("SELECT totp_geheimnis FROM benutzer WHERE id = ?", { benutzerId }, row))
+        return false;
+    return !row["totp_geheimnis"].AsString().empty();
+}
+
+Store::AnmeldeErgebnis Store::Anmelden(const std::string& anmeldename,
+                                       const std::string& passwort,
+                                       const std::string& code, Benutzer& out) {
+    UltraDbRow row;
+    if (!QueryOne("SELECT id, anmeldename, anzeigename, email, rolle, aktiv, angelegt_am,"
+                  " letzter_login, passwort_hash, passwort_salt, kdf_iterationen,"
+                  " kdf_speicher_kib, kdf_laenge, totp_geheimnis, totp_salt,"
+                  " totp_letzter_schritt FROM benutzer WHERE anmeldename = ?",
+                  { anmeldename }, row))
+        return AnmeldeErgebnis::Abgelehnt;
+    const std::string versiegelt = row["totp_geheimnis"].AsString();
+    if (versiegelt.empty())
+        return Anmelden(anmeldename, passwort, out) ? AnmeldeErgebnis::Ok
+                                                    : AnmeldeErgebnis::Abgelehnt;
+
+    // The password first, exactly as without a second factor. Only a right
+    // password is told that a code is needed.
+    if (row["aktiv"].AsInt() == 0) return AnmeldeErgebnis::Abgelehnt;
+    const std::string stored = row["passwort_hash"].AsString();
+    if (stored.empty()) return AnmeldeErgebnis::Abgelehnt;
+    UltraCryptKdfParams params = UltraCrypt_RecommendedKdfParams();
+    std::vector<uint8_t> salt;
+    if (!UltraCrypt_FromHex(row["passwort_salt"].AsString(), salt))
+        return AnmeldeErgebnis::Abgelehnt;
+    params.salt         = salt;
+    params.iterations   = static_cast<uint32_t>(row["kdf_iterationen"].AsInt64());
+    params.memoryKiB    = static_cast<uint32_t>(row["kdf_speicher_kib"].AsInt64());
+    params.outputLength = static_cast<size_t>(row["kdf_laenge"].AsInt64());
+    if (params.outputLength == 0) params.outputLength = 32;
+    std::string hex;
+    if (!DeriveePasswort(passwort, params, hex) || hex.size() != stored.size() ||
+        !UltraCrypt_ConstantTimeEquals(hex.data(), hex.size(), stored.data(), stored.size()))
+        return AnmeldeErgebnis::Abgelehnt;
+
+    if (NurZiffern(code).empty()) return AnmeldeErgebnis::CodeNoetig;
+
+    // Unseal the secret with the password just verified.
+    std::vector<uint8_t> totpSalt, blob;
+    if (!UltraCrypt_FromHex(row["totp_salt"].AsString(), totpSalt) ||
+        !UltraCrypt_FromHex(versiegelt, blob))
+        return AnmeldeErgebnis::CodeFalsch;
+    const size_t nonceLaenge = UltraCrypt_GetNonceSize(UltraCryptAeadAlgorithm::XChaCha20Poly1305);
+    if (blob.size() <= nonceLaenge) return AnmeldeErgebnis::CodeFalsch;
+    UltraCryptSecureBuffer key;
+    if (!TotpSchluessel(passwort, row, totpSalt, key)) return AnmeldeErgebnis::CodeFalsch;
+    UltraCryptAeadParams aead;
+    aead.nonce.assign(blob.begin(), blob.begin() + static_cast<long>(nonceLaenge));
+    const std::string idText = std::to_string(row["id"].AsInt64());
+    aead.associatedData.assign(idText.begin(), idText.end());   // bound to this user
+    UltraCryptSecureBuffer geheimnis;
+    if (!UltraCrypt_AeadOpen(key, aead, blob.data() + nonceLaenge, blob.size() - nonceLaenge,
+                             geheimnis))
+        return AnmeldeErgebnis::CodeFalsch;
+
+    uint64_t schritt = 0;
+    if (!PruefeTotp(geheimnis, code, static_cast<int64_t>(std::time(nullptr)), schritt))
+        return AnmeldeErgebnis::CodeFalsch;
+
+    // Once per step, across every computer: the row only moves forward, and
+    // the update says whether this login was the one that moved it.
+    const UltraDbResult genommen = UltraDb_Exec(connection_,
+        "UPDATE benutzer SET totp_letzter_schritt = ?, letzter_login = ?"
+        " WHERE id = ? AND (totp_letzter_schritt IS NULL OR totp_letzter_schritt < ?)",
+        { static_cast<int64_t>(schritt), NowSeconds(), row["id"].AsInt64(),
+          static_cast<int64_t>(schritt) });
+    if (!genommen || genommen.affectedRows == 0) return AnmeldeErgebnis::CodeFalsch;
+
+    out = BenutzerFromRow(row);
+    out.letzterLogin = NowSeconds();
+    return AnmeldeErgebnis::Ok;
+}
+
+StoreResult Store::ZweitenFaktorVorbereiten(const Akteur& akteur, const std::string& konto,
+                                            ZweiterFaktorEinrichtung& out) {
+    if (akteur.benutzerId == 0)
+        return StoreResult::Fail("Einen zweiten Faktor richtet nur ein angemeldeter "
+                                 "Benutzer für sich selbst ein.");
+    if (!UltraCrypt_IsAvailable())
+        return StoreResult::Fail("Die Kryptobibliothek ist nicht verfügbar.");
+    UltraCryptSecureBuffer geheimnis;
+    if (!UltraCrypt_RandomSecureBuffer(kTotpBytes, geheimnis))
+        return StoreResult::Fail("Es konnte kein Geheimnis erzeugt werden.");
+    UltraCanvas::Otp::Parameters p = TotpParameter();
+    p.issuer      = "UltraFIBU";
+    p.accountName = konto.empty() ? akteur.anmeldename : konto;
+    std::string uri;
+    const UltraCanvas::Otp::Result gebaut = UltraCanvas::Otp::BuildOtpAuthUri(p, geheimnis, uri);
+    if (!gebaut) return StoreResult::Fail("Der QR-Inhalt konnte nicht gebildet werden.");
+    out.otpauthUri = uri;
+    out.geheimnisBase32 = UltraCanvas::Base32Encode(geheimnis.Data(), geheimnis.GetSize(), false);
+    return StoreResult::Ok();
+}
+
+StoreResult Store::ZweitenFaktorAktivieren(const Akteur& akteur, const std::string& passwort,
+                                           const std::string& geheimnisBase32,
+                                           const std::string& code) {
+    if (akteur.benutzerId == 0)
+        return StoreResult::Fail("Einen zweiten Faktor richtet nur ein angemeldeter "
+                                 "Benutzer für sich selbst ein.");
+    UltraDbRow row;
+    if (!QueryOne("SELECT id, anmeldename, passwort_hash, passwort_salt, kdf_iterationen,"
+                  " kdf_speicher_kib, kdf_laenge FROM benutzer WHERE id = ?",
+                  { akteur.benutzerId }, row))
+        return StoreResult::Fail("Den Benutzer gibt es nicht mehr.");
+
+    // The password again: it is the key, and a session left open at a desk
+    // must not be enough to change how this account signs in.
+    UltraCryptKdfParams params = UltraCrypt_RecommendedKdfParams();
+    std::vector<uint8_t> salt;
+    const std::string stored = row["passwort_hash"].AsString();
+    if (stored.empty() || !UltraCrypt_FromHex(row["passwort_salt"].AsString(), salt))
+        return StoreResult::Fail("Ohne Passwort gibt es keinen zweiten Faktor - erst ein "
+                                 "Passwort setzen.");
+    params.salt         = salt;
+    params.iterations   = static_cast<uint32_t>(row["kdf_iterationen"].AsInt64());
+    params.memoryKiB    = static_cast<uint32_t>(row["kdf_speicher_kib"].AsInt64());
+    params.outputLength = static_cast<size_t>(row["kdf_laenge"].AsInt64());
+    if (params.outputLength == 0) params.outputLength = 32;
+    std::string hex;
+    if (!DeriveePasswort(passwort, params, hex) || hex.size() != stored.size() ||
+        !UltraCrypt_ConstantTimeEquals(hex.data(), hex.size(), stored.data(), stored.size()))
+        return StoreResult::Fail("Das Passwort ist falsch.");
+
+    UltraCryptSecureBuffer geheimnis;
+    if (!UltraCrypt_Base32Decode(geheimnisBase32, geheimnis) ||
+        geheimnis.GetSize() < UltraCanvas::Otp::kMinSecretBytes)
+        return StoreResult::Fail("Das Geheimnis ist unvollständig - die Einrichtung "
+                                 "bitte neu beginnen.");
+
+    // The scan is proven by a code from the app, before anything is stored:
+    // an enrolment that never reached the phone would lock the user out.
+    uint64_t schritt = 0;
+    if (!PruefeTotp(geheimnis, code, static_cast<int64_t>(std::time(nullptr)), schritt))
+        return StoreResult::Fail("Der Code passt nicht. Stimmt die Uhrzeit auf dem Telefon, "
+                                 "und ist es der Eintrag \"UltraFIBU\"?");
+
+    std::vector<uint8_t> totpSalt;
+    if (!UltraCrypt_RandomBytes(totpSalt, UltraCrypt_GetKdfSaltSize()))
+        return StoreResult::Fail("Es konnte kein Salz erzeugt werden.");
+    UltraCryptSecureBuffer key;
+    if (!TotpSchluessel(passwort, row, totpSalt, key))
+        return StoreResult::Fail("Der Schlüssel konnte nicht abgeleitet werden.");
+    UltraCryptAeadParams aead;
+    const std::string idText = std::to_string(akteur.benutzerId);
+    aead.associatedData.assign(idText.begin(), idText.end());
+    std::vector<uint8_t> chiffre;
+    if (!UltraCrypt_AeadSeal(key, aead, geheimnis.Data(), geheimnis.GetSize(), chiffre))
+        return StoreResult::Fail("Das Geheimnis konnte nicht verschlüsselt werden.");
+    std::vector<uint8_t> blob = aead.nonce;
+    blob.insert(blob.end(), chiffre.begin(), chiffre.end());
+
+    const StoreResult gespeichert = Exec(
+        "UPDATE benutzer SET totp_geheimnis = ?, totp_salt = ?, totp_letzter_schritt = ?"
+        " WHERE id = ?",
+        { UltraCrypt_ToHex(blob), UltraCrypt_ToHex(totpSalt), static_cast<int64_t>(schritt),
+          akteur.benutzerId },
+        "Der zweite Faktor konnte nicht gespeichert werden");
+    if (!gespeichert) return gespeichert;
+    return WriteAudit(akteur, "benutzer", akteur.benutzerId, "zweiter-faktor-eingerichtet",
+                      std::string());
+}
+
+StoreResult Store::ZweitenFaktorEntfernen(int64_t benutzerId, const Akteur& akteur) {
+    if (akteur.benutzerId != benutzerId && !akteur.Darf(Recht::BenutzerVerwalten))
+        return StoreResult::Fail("Diese Rolle darf den zweiten Faktor anderer Benutzer "
+                                 "nicht entfernen.");
+    if (!HatZweitenFaktor(benutzerId))
+        return StoreResult::Fail("Für diesen Benutzer ist kein zweiter Faktor eingerichtet.");
+    const StoreResult weg = Exec(
+        "UPDATE benutzer SET totp_geheimnis = NULL, totp_salt = NULL,"
+        " totp_letzter_schritt = NULL WHERE id = ?",
+        { benutzerId }, "Der zweite Faktor konnte nicht entfernt werden");
+    if (!weg) return weg;
+    return WriteAudit(akteur, "benutzer", benutzerId, "zweiter-faktor-entfernt", std::string());
 }
 
 bool Store::Anmelden(const std::string& anmeldename, const std::string& passwort,
@@ -2028,7 +2330,8 @@ bool Store::Anmelden(const std::string& anmeldename, const std::string& passwort
     UltraDbRow row;
     if (!QueryOne("SELECT id, anmeldename, anzeigename, email, rolle, aktiv, angelegt_am,"
                   " letzter_login, passwort_hash, passwort_salt, kdf_iterationen,"
-                  " kdf_speicher_kib, kdf_laenge FROM benutzer WHERE anmeldename = ?",
+                  " kdf_speicher_kib, kdf_laenge, totp_geheimnis"
+                  " FROM benutzer WHERE anmeldename = ?",
                   { anmeldename }, row))
         return false;                      // unknown user and wrong password look alike
     if (row["aktiv"].AsInt() == 0) return false;
@@ -2053,6 +2356,9 @@ bool Store::Anmelden(const std::string& anmeldename, const std::string& passwort
     if (hex.size() != stored.size()) return false;
     if (!UltraCrypt_ConstantTimeEquals(hex.data(), hex.size(),
                                       stored.data(), stored.size())) return false;
+
+    // Enrolled users sign in with the code; the password alone is not enough.
+    if (!row["totp_geheimnis"].AsString().empty()) return false;
 
     out = BenutzerFromRow(row);
     out.letzterLogin = NowSeconds();
@@ -2488,26 +2794,8 @@ StoreResult Store::BelegDateiAnhaengen(int64_t belegId, const std::string& datei
 }
 
 bool Store::PruefeBelegDatei(const Beleg& beleg, std::string& fehler) const {
-    if (beleg.dateiPfad.empty() || beleg.dateiHash.empty()) {
-        fehler = "Zu diesem Beleg ist keine Datei hinterlegt.";
-        return false;
-    }
-    std::vector<uint8_t> digest;
-    const UltraCryptResult hashed = UltraCrypt_HashFile(
-        UltraCryptHashAlgorithm::SHA256, beleg.dateiPfad, digest);
-    if (!hashed) {
-        fehler = "Die hinterlegte Datei \"" + beleg.dateiPfad +
-                 "\" ist nicht lesbar: " + hashed.message;
-        return false;
-    }
-    if (UltraCrypt_ToHex(digest) != beleg.dateiHash) {
-        fehler = "Die hinterlegte Datei \"" + beleg.dateiPfad +
-                 "\" stimmt nicht mehr mit der Prüfsumme überein, die beim Anhängen "
-                 "gespeichert wurde.";
-        return false;
-    }
-    fehler.clear();
-    return true;
+    std::string inhalt;
+    return LiesBelegDatei(beleg, inhalt, fehler);
 }
 
 // ===== BUCHEN =====
@@ -3859,7 +4147,87 @@ std::vector<Store::BankZuordnung> Store::Zuordnungen(int64_t bankumsatzId) const
 // ===== BELEGE AUS DATEIEN =====
 
 std::string Store::BelegArchivPfad() const {
+    if (belegeInDatenbank_)
+        return istServer_ ? "Datenbank (Tabelle beleg_datei) auf dem Server"
+                          : "Datenbank (Tabelle beleg_datei)";
     return BelegArchivPfadFuer(datenbankPfad_);
+}
+
+ArchivEintrag Store::AblegenInDatenbank(const std::string& quellPfad) {
+    std::string inhalt;
+    ArchivEintrag eintrag = PruefeFuerArchiv(quellPfad, inhalt);
+    if (!eintrag.ok) return eintrag;
+    eintrag.pfad = "datenbank:" + eintrag.hash;
+
+    UltraDbRow vorhanden;
+    if (QueryOne("SELECT hash FROM beleg_datei WHERE hash = ?", { eintrag.hash }, vorhanden)) {
+        eintrag.schonVorhanden = true;
+        return eintrag;
+    }
+    // Content-addressed and idempotent: two computers filing the same receipt
+    // at the same moment both end with the one row.
+    const UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT INTO beleg_datei(hash, art, groesse, dateiname, angelegt_am, inhalt)"
+        " VALUES(?,?,?,?,?,?) ON CONFLICT (hash) DO NOTHING",
+        { eintrag.hash, EndungFuer(eintrag.art), eintrag.groesse, eintrag.dateiname,
+          NowSeconds(),
+          UltraDbValue::Blob(std::vector<uint8_t>(inhalt.begin(), inhalt.end())) });
+    if (!r) {
+        eintrag.ok = false;
+        eintrag.fehler = "Die Datei konnte nicht auf dem Server abgelegt werden: " + r.message;
+        return eintrag;
+    }
+    // Read back and hash again, as the directory archive does: a truncated
+    // upload is exactly the failure an archive exists to prevent.
+    Beleg probe;
+    probe.dateiPfad = eintrag.pfad;
+    probe.dateiHash = eintrag.hash;
+    std::string zurueck, fehler;
+    if (!LiesBelegDatei(probe, zurueck, fehler)) {
+        UltraDb_Exec(connection_, "DELETE FROM beleg_datei WHERE hash = ?", { eintrag.hash });
+        eintrag.ok = false;
+        eintrag.fehler = "Die Datei auf dem Server stimmt nicht mit dem Original überein "
+                         "und wurde wieder entfernt.";
+    }
+    return eintrag;
+}
+
+bool Store::LiesBelegDatei(const Beleg& beleg, std::string& inhalt, std::string& fehler) const {
+    inhalt.clear();
+    if (beleg.dateiPfad.empty() || beleg.dateiHash.empty()) {
+        fehler = "Zu diesem Beleg ist keine Datei hinterlegt.";
+        return false;
+    }
+    if (beleg.dateiPfad.rfind("datenbank:", 0) == 0) {
+        UltraDbRow row;
+        if (!QueryOne("SELECT inhalt FROM beleg_datei WHERE hash = ?",
+                      { beleg.dateiPfad.substr(10) }, row)) {
+            fehler = "Die Datei zu diesem Beleg fehlt in der Datenbank.";
+            return false;
+        }
+        const std::vector<uint8_t> bytes = row["inhalt"].AsBlob();
+        inhalt.assign(bytes.begin(), bytes.end());
+    } else {
+        std::FILE* f = std::fopen(beleg.dateiPfad.c_str(), "rb");
+        if (!f) {
+            fehler = "Die hinterlegte Datei \"" + beleg.dateiPfad + "\" ist nicht lesbar.";
+            return false;
+        }
+        char puffer[65536];
+        size_t n;
+        while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0) inhalt.append(puffer, n);
+        std::fclose(f);
+    }
+    std::vector<uint8_t> digest;
+    if (!UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, inhalt.data(), inhalt.size(), digest) ||
+        UltraCrypt_ToHex(digest) != beleg.dateiHash) {
+        inhalt.clear();
+        fehler = "Die hinterlegte Datei stimmt nicht mehr mit der Prüfsumme überein, die "
+                 "beim Anhängen gespeichert wurde.";
+        return false;
+    }
+    fehler.clear();
+    return true;
 }
 
 bool Store::BelegMitDateiHash(int64_t mandantId, const std::string& hash,
@@ -3903,7 +4271,10 @@ Store::BelegImportBericht Store::ImportiereBelegDateien(
 
         // Copy the file in first. A document row pointing at an archive entry
         // that was never written would be worse than no row at all.
-        const ArchivEintrag abgelegt = archiv.Ablegen(pfad, datum.year);
+        // On a server the file goes into the database, so every computer
+        // sees it and one backup holds the ledger and its receipts together.
+        const ArchivEintrag abgelegt = belegeInDatenbank_ ? AblegenInDatenbank(pfad)
+                                                          : archiv.Ablegen(pfad, datum.year);
         eintrag.dateiname = abgelegt.dateiname;
         eintrag.hash      = abgelegt.hash;
         eintrag.pfad      = abgelegt.pfad;

@@ -59,7 +59,7 @@ target_include_directories(UltraFIBUEngineTests PRIVATE
     ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector
     ${CMAKE_SOURCE_DIR}/UltraCanvas/include
     ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
-target_link_libraries(UltraFIBUEngineTests PRIVATE UltraDatabase UltraVault)
+target_link_libraries(UltraFIBUEngineTests PRIVATE UltraDatabase UltraVault UltraOtp)
 # The DATEV column line of a real EXTF export lives in data/ next to this file.
 # It is passed as a path rather than found relative to the working directory,
 # because the test runs from ${CMAKE_BINARY_DIR}/bin and a fixture that is
@@ -123,7 +123,7 @@ if(ULTRAFIBU_TEST_LIBPQ)
         ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector
         ${CMAKE_SOURCE_DIR}/UltraCanvas/include
         ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
-    target_link_libraries(UltraFIBUServerTests PRIVATE UltraDatabase UltraVault)
+    target_link_libraries(UltraFIBUServerTests PRIVATE UltraDatabase UltraVault UltraOtp)
     if(TINYXML2_FOUND)
         target_include_directories(UltraFIBUServerTests PRIVATE ${TINYXML2_INCLUDE_DIRS})
         target_link_libraries(UltraFIBUServerTests PRIVATE ${TINYXML2_LIBRARIES})
@@ -154,7 +154,7 @@ if(ULTRAFIBU_TEST_LIBPQ)
         ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector
         ${CMAKE_SOURCE_DIR}/UltraCanvas/include
         ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
-    target_link_libraries(UltraFIBUServerLoginTests PRIVATE UltraDatabase UltraVault)
+    target_link_libraries(UltraFIBUServerLoginTests PRIVATE UltraDatabase UltraVault UltraOtp)
     if(TINYXML2_FOUND)
         target_include_directories(UltraFIBUServerLoginTests PRIVATE ${TINYXML2_INCLUDE_DIRS})
         target_link_libraries(UltraFIBUServerLoginTests PRIVATE ${TINYXML2_LIBRARIES})

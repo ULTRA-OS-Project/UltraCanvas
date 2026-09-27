@@ -9,8 +9,8 @@
 // Self-contained: no test framework, no UI stack.
 //
 // Author: UltraCanvas Framework / ULTRA OS
-#include "../Apps/UltraAuthenticator/otp/OtpAuthUri.h"
-#include "../Apps/UltraAuthenticator/otp/UltraOtp.h"
+#include "UltraOtp/OtpAuthUri.h"
+#include "UltraOtp/UltraOtp.h"
 
 #include <cstdio>
 #include <cstring>

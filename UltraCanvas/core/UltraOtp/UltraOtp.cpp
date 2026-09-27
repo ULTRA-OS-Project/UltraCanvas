@@ -1,9 +1,9 @@
-// Apps/UltraAuthenticator/otp/UltraOtp.cpp
+// core/UltraOtp/UltraOtp.cpp
 // HOTP / TOTP implementation. See the header for design notes.
 //
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
-#include "UltraOtp.h"
+#include "UltraOtp/UltraOtp.h"
 
 #include <cstring>
 #include <strings.h>

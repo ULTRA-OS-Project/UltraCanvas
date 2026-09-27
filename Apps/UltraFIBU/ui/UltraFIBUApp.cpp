@@ -108,11 +108,13 @@ std::string FibuApp::VerbindeServer(const ServerZiel& ziel, const std::string& d
     return std::string();
 }
 
-std::string FibuApp::AnmeldenUndLaden(const std::string& name, const std::string& passwort) {
+std::string FibuApp::AnmeldenUndLaden(const std::string& name, const std::string& passwort,
+                                      const std::string& code, bool& codeNoetig) {
+    codeNoetig = false;
     if (!store_.IsOpen() || serverUrl_.empty())
         return "Es besteht keine Serververbindung.";
     Akteur akteur;
-    const StoreResult r = Anmelden(store_, name, passwort, akteur);
+    const StoreResult r = Anmelden(store_, name, passwort, code, akteur, &codeNoetig);
     if (!r) return r.fehler;
     std::string fehler;
     if (!MandantLaden(serverUrl_, fehler)) return fehler;
@@ -169,6 +171,21 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
                                  [this]() { EuSaetzeUebernehmen(); }),
         };
         menue_->AddItem(konfiguration);
+
+        // Only on a server: a local file opens without a login, so a second
+        // factor there would guard nothing.
+        if (!serverUrl_.empty()) {
+            MenuItemData konto;
+            konto.type  = MenuItemType::Submenu;
+            konto.label = "Konto";
+            konto.subItems = {
+                MenuItemData::Action("Zweiten Faktor einrichten ...",
+                                     [this]() { ZweitenFaktorEinrichten(); }),
+                MenuItemData::Action("Zweiten Faktor entfernen",
+                                     [this]() { ZweitenFaktorEntfernen(); }),
+            };
+            menue_->AddItem(konto);
+        }
     }
     fenster_->AddChild(menue_);
 
@@ -326,6 +343,24 @@ void FibuApp::KopfAktualisieren() {
         text += "   |   " + akteur_.anmeldename + ", " + BenutzerRolleLabel(akteur_.rolle) +
                 "   |   " + serverKurz_;
     kopf_->SetText(text);
+}
+
+void FibuApp::ZweitenFaktorEinrichten() {
+    if (store_.HatZweitenFaktor(akteur_.benutzerId)) {
+        Melden("Für " + akteur_.anmeldename + " ist bereits ein zweiter Faktor eingerichtet. "
+               "Für ein neues Telefon erst entfernen, dann neu einrichten.");
+        return;
+    }
+    zweiterFaktor_ = std::make_unique<ZweiterFaktorFenster>();
+    zweiterFaktor_->onFertig = [this](const std::string& text) { Melden(text); };
+    zweiterFaktor_->Bauen(store_, akteur_, akteur_.anmeldename + "@" + mandant_.name)->Show();
+}
+
+void FibuApp::ZweitenFaktorEntfernen() {
+    const StoreResult r = store_.ZweitenFaktorEntfernen(akteur_.benutzerId, akteur_);
+    Melden(r ? std::string("Zweiter Faktor entfernt - die Anmeldung braucht wieder nur das "
+                           "Passwort.")
+             : r.fehler);
 }
 
 void FibuApp::Melden(const std::string& text) {

@@ -12,8 +12,19 @@
   which modules each app links. It is drawn by
   `scripts/generate_module_map.py` from the CMake targets, and the UltraCloud
   README embeds it.
+- **New module `UltraOtp`: HOTP, TOTP and `otpauth://`, for every app.**
+  The one-time-password engine and the provisioning-URI parser lived in
+  `Apps/UltraAuthenticator/otp/`, so a second program that wanted to *check*
+  codes would have had to compile another application's files. They move,
+  unchanged in behaviour, to `UltraCanvas/{include,core}/UltraOtp/`
+  (`<UltraOtp/UltraOtp.h>`, `<UltraOtp/OtpAuthUri.h>`, still
+  `namespace UltraCanvas::Otp`), built as the static library `UltraOtp` on
+  UltraCrypt alone. UltraAuthenticator links it; UltraFIBU uses it to check
+  the second factor at login. `UltraOtpTests` and the Authenticator suites
+  link the library instead of compiling the sources.
 - UltraFIBU 0.25.0 adds server mode to the program (connect, sign in, set
-  up); see its changelog.
+  up), a TOTP second factor and receipts stored on the server; see its
+  changelog.
 
 #### 2026-09-27 *0.9.67*
 - **The startup screens open in the middle of the app's window, not the

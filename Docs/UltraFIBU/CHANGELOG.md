@@ -30,9 +30,39 @@
     kaputter Kontenrahmen erst nach dem Anlegen der Firma auf.
   - Eine lokale Datei öffnet sich weiter als ihr erster Administrator;
     `--anmelden` geht dort auch und trägt dann die Person ein.
-  - Noch nicht: Belegdateien liegen weiter neben dem *lokalen* Pfad, auf
-    einem Server hat also jeder Rechner sein eigenes Archiv; und die
-    persönliche Anmeldung hat keinen zweiten Faktor (TOTP).
+  - **Zweiter Faktor (TOTP) auf der persönlichen Anmeldung.** Wer will,
+    verlangt zusätzlich zum Passwort den sechsstelligen Code aus
+    UltraAuthenticator (oder jeder anderen TOTP-App). Eingerichtet wird im
+    Fenster über "Konto > Zweiten Faktor einrichten ..." mit einem QR-Code,
+    oder mit `ultrafibu zweiter-faktor`; erst wenn die App einen passenden
+    Code liefert, wird er gespeichert. Anmelden dann mit `--code`,
+    `ULTRAFIBU_CODE` oder Abfrage, im Fenster mit dem Feld "Code (App)", das
+    erst erscheint, wenn es gebraucht wird.
+    - Das Geheimnis steht verschlüsselt in der Zeile des Benutzers (Argon2id
+      aus dem eigenen Passwort, XChaCha20-Poly1305) - nicht im Tresor eines
+      Rechners, denn jeder Rechner prüft den Code, und nicht lesbar, denn
+      eine Kopie der Datenbank soll keine Codes liefern.
+    - Ein Code gilt einen Schritt (30 s) früher oder später und nur einmal,
+      über alle Rechner hinweg.
+    - Setzt ein Administrator ein Passwort neu, lässt sich das Geheimnis
+      nicht umschlüsseln; der zweite Faktor entfällt dann (im Protokoll
+      vermerkt), und der Benutzer richtet ihn neu ein. Nach verlorenem
+      Telefon: `zweiter-faktor-entfernen`.
+  - **Belegdateien auf dem Server.** Im Mehrplatz-Betrieb landen hochgeladene
+    Belege in der Datenbank selbst (Tabelle `beleg_datei`, eine Zeile je
+    Datei, Schlüssel SHA-256 wie im Verzeichnisarchiv). Jeder Rechner sieht
+    jeden Beleg, und eine Sicherung der Datenbank enthält Buchungen und
+    Belege zusammen. Dieselben Prüfungen wie lokal (`PruefeFuerArchiv`), die
+    abgelegte Kopie wird zurückgelesen und neu gehasht. Neu:
+    `beleg-datei <adresse> <belegnummer> --ziel <verz>` schreibt einen Beleg
+    geprüft wieder heraus - aus beiden Archivarten.
+  - Schema-Version 9 (Spalten für den zweiten Faktor, Tabelle
+    `beleg_datei`); die Migration läuft beim Öffnen, lokal wie auf dem
+    Server.
+  - Tests: weitere 48 Prüfungen (Einrichtung und Anmeldung mit Code,
+    Wiederholungsschutz, Zurücksetzen, Rollen, Belege in der Datenbank samt
+    Manipulationserkennung). Der Wiederholungsschutz ist gegengeprüft: mit
+    `<=` statt `<` in der Bedingung schlagen zwei Prüfungen fehl.
   - Tests: 54 neue Prüfungen in `UltraFIBUEngineTests` (Adresse, `server.ini`,
     Tresor, Anmeldung und Rollen, Einrichtung auf einer offenen Datenbank).
 

@@ -1211,6 +1211,25 @@ compatibility routing are planned for Stages 2-3. See
 
 ---
 
+### **9a. UltraOtp**
+
+One-time passwords: HOTP (RFC 4226), TOTP (RFC 6238) and the `otpauth://`
+Key URI format. Sources under `UltraCanvas/{include,core}/UltraOtp/`, target
+`UltraOtp` (static, UI-free, on UltraCrypt alone), headers
+`<UltraOtp/UltraOtp.h>` and `<UltraOtp/OtpAuthUri.h>`,
+`namespace UltraCanvas::Otp`.
+
+Public surface: `Parameters` (type, algorithm SHA1/SHA256/SHA512, digits,
+period, counter, issuer/account), `ValidateParameters`, `ValidateSecret`,
+`GenerateHotp`, `GenerateTotp`, `TimeStepCounter`, `SecondsRemaining`,
+`ParseOtpAuthUri` (the untrusted-input boundary for scanned QR codes) and
+`BuildOtpAuthUri`. Secrets travel in `UltraCryptSecureBuffer`.
+
+Consumers: UltraAuthenticator generates codes with it; UltraFIBU checks them
+at login (its TOTP second factor) and builds the enrolment URI. Tests:
+`Tests/UltraOtpTests.cpp` (RFC 4226 App. D and RFC 6238 App. B vectors,
+URI rejection cases).
+
 ### **10. VirtualFS**
 
 Virtual file system — the single place where archive traversal, format

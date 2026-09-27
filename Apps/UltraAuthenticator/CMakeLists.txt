@@ -17,8 +17,6 @@ if(NOT TARGET UltraCrypt)
 endif()
 
 set(ULTRAAUTHENTICATOR_CORE_SOURCES
-    otp/UltraOtp.cpp
-    otp/OtpAuthUri.cpp
     store/EncryptedFileStore.cpp
     AccountStore.cpp
     AccountExport.cpp
@@ -40,7 +38,7 @@ set_target_properties(UltraAuthenticatorCore PROPERTIES
 target_compile_features(UltraAuthenticatorCore PUBLIC cxx_std_20)
 target_include_directories(UltraAuthenticatorCore PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(UltraAuthenticatorCore PUBLIC UltraCrypt)
+target_link_libraries(UltraAuthenticatorCore PUBLIC UltraOtp UltraCrypt)
 
 # ===========================================================================
 # GUI

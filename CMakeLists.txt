@@ -1593,14 +1593,12 @@ if (BUILD_TESTS)
         Apps/UltraAuthenticator/LockPolicy.cpp
         Apps/UltraAuthenticator/AccountExport.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
-        Apps/UltraAuthenticator/otp/UltraOtp.cpp
-        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
         UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
     )
     target_include_directories(UltraAuthenticatorExportTests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
-    target_link_libraries(UltraAuthenticatorExportTests PRIVATE UltraCrypt)
+    target_link_libraries(UltraAuthenticatorExportTests PRIVATE UltraOtp UltraCrypt)
     target_compile_features(UltraAuthenticatorExportTests PRIVATE cxx_std_20)
     set_target_properties(UltraAuthenticatorExportTests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -1629,10 +1627,8 @@ if (BUILD_TESTS)
     # UltraCrypt, so it runs headless.
     add_executable(UltraOtpTests
         Tests/UltraOtpTests.cpp
-        Apps/UltraAuthenticator/otp/UltraOtp.cpp
-        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
     )
-    target_link_libraries(UltraOtpTests PRIVATE UltraCrypt)
+    target_link_libraries(UltraOtpTests PRIVATE UltraOtp UltraCrypt)
     target_compile_features(UltraOtpTests PRIVATE cxx_std_20)
     set_target_properties(UltraOtpTests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -1653,13 +1649,11 @@ if (BUILD_TESTS)
         Apps/UltraAuthenticator/AccountExport.cpp
         UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
-        Apps/UltraAuthenticator/otp/UltraOtp.cpp
-        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
     )
     target_include_directories(UltraAuthenticatorAccountTests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
-    target_link_libraries(UltraAuthenticatorAccountTests PRIVATE UltraCrypt)
+    target_link_libraries(UltraAuthenticatorAccountTests PRIVATE UltraOtp UltraCrypt)
     target_compile_features(UltraAuthenticatorAccountTests PRIVATE cxx_std_20)
     set_target_properties(UltraAuthenticatorAccountTests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

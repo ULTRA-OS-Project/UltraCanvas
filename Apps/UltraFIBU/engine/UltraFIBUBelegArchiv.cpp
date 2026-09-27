@@ -237,12 +237,11 @@ bool BelegArchiv::Enthaelt(const std::string& hash, int jahr,
     return false;
 }
 
-ArchivEintrag BelegArchiv::Ablegen(const std::string& quellPfad, int jahr) {
+ArchivEintrag PruefeFuerArchiv(const std::string& quellPfad, std::string& inhalt) {
     ArchivEintrag eintrag;
     eintrag.quelle    = quellPfad;
     eintrag.dateiname = Dateiname(quellPfad);
 
-    std::string inhalt;
     if (!LiesGanz(quellPfad, inhalt, eintrag.fehler)) return eintrag;
     eintrag.groesse = static_cast<int64_t>(inhalt.size());
 
@@ -271,6 +270,15 @@ ArchivEintrag BelegArchiv::Ablegen(const std::string& quellPfad, int jahr) {
         return eintrag;
     }
     eintrag.hash = UltraCrypt_ToHex(digest);
+    eintrag.ok = true;   // checked; the caller decides where it goes
+    return eintrag;
+}
+
+ArchivEintrag BelegArchiv::Ablegen(const std::string& quellPfad, int jahr) {
+    std::string inhalt;
+    ArchivEintrag eintrag = PruefeFuerArchiv(quellPfad, inhalt);
+    if (!eintrag.ok) return eintrag;
+    eintrag.ok = false;
 
     std::string vorhanden;
     // The kind stays the one the bytes gave: it is what decided the extension

@@ -7,7 +7,7 @@
 //
 //  - The URI is already the interchange format every authenticator agrees on,
 //    and this app already has a tested parser and builder for it
-//    (otp/OtpAuthUri.h). Inventing a second on-disk shape would mean a second
+//    (UltraOtp/OtpAuthUri.h). Inventing a second on-disk shape would mean a second
 //    thing to validate and keep in step.
 //  - One value per account means adding, removing and rewriting an account is
 //    a single Put/Delete against the vault, with no index to corrupt.
@@ -38,7 +38,7 @@
 #define ACCOUNTSTORE_H
 
 #include "LockPolicy.h"
-#include "otp/UltraOtp.h"
+#include "UltraOtp/UltraOtp.h"
 #include "store/EncryptedFileStore.h"
 
 #include <cstdint>

@@ -95,9 +95,10 @@ int main(int argc, char** argv) {
                                      const std::string& dbPasswort, bool& leer) {
             return fibu.VerbindeServer(ziel, dbPasswort, leer);
         };
-        server.onAnmelden = [&fibu, &start](const std::string& name,
-                                            const std::string& passwort) -> std::string {
-            const std::string fehler = fibu.AnmeldenUndLaden(name, passwort);
+        server.onAnmelden = [&fibu, &start](const std::string& name, const std::string& passwort,
+                                            const std::string& code,
+                                            bool& codeNoetig) -> std::string {
+            const std::string fehler = fibu.AnmeldenUndLaden(name, passwort, code, codeNoetig);
             if (!fehler.empty()) return fehler;
             fibu.FensterBauen()->Show();
             start.Schliessen();   // a no-op when it was never opened

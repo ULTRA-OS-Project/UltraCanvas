@@ -1,4 +1,4 @@
-// Apps/UltraAuthenticator/otp/UltraOtp.h
+// include/UltraOtp/UltraOtp.h
 // HOTP (RFC 4226) and TOTP (RFC 6238) one-time password generation.
 //
 // Protocol-level construction built on UltraCrypt's primitives, per the scope

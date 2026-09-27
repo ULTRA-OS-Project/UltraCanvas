@@ -1,3 +1,14 @@
+#### 2026-09-27 *0.2.3*
+- **The OTP engine is a framework module now.** `otp/UltraOtp.*` and
+  `otp/OtpAuthUri.*` moved to `UltraCanvas/{include,core}/UltraOtp/` and are
+  built as the `UltraOtp` library, because UltraFIBU checks the codes this app
+  shows (its new second factor) and must not compile another application's
+  sources to do it. Nothing changes for the user: same algorithms, same
+  parser, same tests - `UltraOtpTests` and the account tests now link the
+  library. The QR code UltraFIBU shows when setting up its second factor is
+  an ordinary `otpauth://totp/UltraFIBU:...` URI this app scans like any
+  other.
+
 #### 2026-09-24 *0.2.2*
 - **The start screens show the app's logo.** The first-launch password screen
   and the lock screen now open with the UltraAuthenticator logo, centred, and

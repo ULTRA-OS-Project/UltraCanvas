@@ -296,13 +296,27 @@ StoreResult VerbindeMitServer(Store& store, const ServerZiel& ziel,
 // ===== WHO IS WORKING =====
 
 StoreResult Anmelden(Store& store, const std::string& anmeldename,
-                     const std::string& passwort, Akteur& akteur) {
+                     const std::string& passwort, const std::string& code,
+                     Akteur& akteur, bool* codeNoetig) {
+    if (codeNoetig) *codeNoetig = false;
     if (anmeldename.empty() || passwort.empty())
         return StoreResult::Fail("Anmeldename und Passwort werden gebraucht.");
     Benutzer benutzer;
-    if (!store.Anmelden(anmeldename, passwort, benutzer))
-        return StoreResult::Fail("Anmeldename oder Passwort ist falsch, oder der Benutzer "
-                                 "ist gesperrt.");
+    switch (store.Anmelden(anmeldename, passwort, code, benutzer)) {
+        case Store::AnmeldeErgebnis::Ok:
+            break;
+        case Store::AnmeldeErgebnis::CodeNoetig:
+            if (codeNoetig) *codeNoetig = true;
+            return StoreResult::Fail("Bitte den Code aus UltraAuthenticator eingeben.");
+        case Store::AnmeldeErgebnis::CodeFalsch:
+            if (codeNoetig) *codeNoetig = true;
+            return StoreResult::Fail("Der Code ist falsch, abgelaufen oder schon benutzt. "
+                                     "Den nächsten abwarten und neu eingeben.");
+        case Store::AnmeldeErgebnis::Abgelehnt:
+        default:
+            return StoreResult::Fail("Anmeldename oder Passwort ist falsch, oder der "
+                                     "Benutzer ist gesperrt.");
+    }
     akteur.benutzerId  = benutzer.id;
     akteur.anmeldename = benutzer.anmeldename;
     akteur.rolle       = benutzer.rolle;

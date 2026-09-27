@@ -30,6 +30,7 @@
 
 #include "UltraFIBUTabelle.h"
 #include "UltraFIBUBelegDialog.h"
+#include "UltraFIBUZweiterFaktorFenster.h"
 
 #include "UltraFIBUStore.h"
 #include "UltraFIBUServer.h"
@@ -56,9 +57,11 @@ public:
     std::string VerbindeServer(const ServerZiel& ziel, const std::string& dbPasswort,
                                bool& leer);
     // Sign a person in on the connected server and load its company. Every
-    // write from then on is recorded as this person. Returns why not, or an
-    // empty string.
-    std::string AnmeldenUndLaden(const std::string& name, const std::string& passwort);
+    // write from then on is recorded as this person. `code` is the one from
+    // UltraAuthenticator, for a user with a second factor; `codeNoetig` says
+    // one is wanted. Returns why not, or an empty string.
+    std::string AnmeldenUndLaden(const std::string& name, const std::string& passwort,
+                                 const std::string& code, bool& codeNoetig);
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> FensterBauen();
 
@@ -106,6 +109,11 @@ private:
     void GewaehltenEuSatzLoeschen();
     void EuSaetzeUebernehmen();
     void KonfigurationOeffnen();
+
+    // ---- Konto: the signed-in user's second factor ----
+    void ZweitenFaktorEinrichten();
+    void ZweitenFaktorEntfernen();
+    std::unique_ptr<ZweiterFaktorFenster> zweiterFaktor_;
 
     // ---- Belege erfassen ---------------------------------------------------
     // The entry form, as its own tab rather than a modal window: entering a

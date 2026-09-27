@@ -126,7 +126,13 @@ StoreResult VerbindeMitServer(Store& store, const ServerZiel& ziel,
 // Server mode always asks. A local file still opens as its first
 // administrator, as it did before there was a server mode: a single-user file
 // on one computer has nobody else to tell apart.
+//
+// With a second factor enrolled (Store::ZweitenFaktorAktivieren) the code from
+// the authenticator app is needed too. Without one, `codeNoetig` is set and
+// the call fails with a message that asks for it - the caller asks and calls
+// again with the code.
 StoreResult Anmelden(Store& store, const std::string& anmeldename,
-                     const std::string& passwort, Akteur& akteur);
+                     const std::string& passwort, const std::string& code,
+                     Akteur& akteur, bool* codeNoetig = nullptr);
 
 } // namespace UltraFIBU

@@ -72,6 +72,7 @@ bool gMitFenster = false;
 // login succeeded; AkteurFor() then returns this user instead of the first
 // administrator.
 std::string gAnmeldename;
+std::string gCode;          // --code, for a user with a second factor
 Akteur      gAngemeldet;
 bool        gIstAngemeldet = false;
 
@@ -141,6 +142,12 @@ void PrintUsage() {
         "  benutzer-neu <datei> <name> --rolle <administrator|buchhalter|\n"
         "               erfasser|steuerberater|nur-lesen> [--anzeigename <text>]\n"
         "  passwort <datei> <name> Passwort eines Benutzers setzen (fragt zweimal)\n"
+        "  zweiter-faktor <datei>  Code aus UltraAuthenticator zusätzlich zum\n"
+        "                          Passwort verlangen (für sich selbst einrichten)\n"
+        "        Anmeldung dann mit --code <123456>, ULTRAFIBU_CODE, oder Abfrage\n"
+        "  zweiter-faktor-entfernen <datei> <name>   z. B. nach verlorenem Telefon\n"
+        "  beleg-datei <datei> <belegnummer> [--ziel <verz>]\n"
+        "                          Belegdatei auslesen, geprüft gegen ihre Prüfsumme\n"
         "\n"
         "Belege und Buchungen:\n"
         "  beleg-neu <datei>       Beleg erfassen (Entwurf)\n"
@@ -374,7 +381,19 @@ bool MeldeAn(Store& store) {
     const std::string pw = (ausUmgebung && *ausUmgebung)
         ? std::string(ausUmgebung)
         : LiesGeheim("Passwort für " + gAnmeldename + ": ");
-    const StoreResult r = Anmelden(store, gAnmeldename, pw, gAngemeldet);
+    // The code from UltraAuthenticator, for a user with a second factor:
+    // --code, ULTRAFIBU_CODE, or asked for once the password proved right.
+    std::string code = gCode;
+    if (code.empty())
+        if (const char* c = std::getenv("ULTRAFIBU_CODE"); c && *c) code = c;
+    bool codeNoetig = false;
+    StoreResult r = Anmelden(store, gAnmeldename, pw, code, gAngemeldet, &codeNoetig);
+    if (!r && codeNoetig && code.empty()) {
+        std::fprintf(stderr, "Code aus UltraAuthenticator: ");
+        std::fflush(stderr);
+        std::getline(std::cin, code);
+        r = Anmelden(store, gAnmeldename, pw, code, gAngemeldet, &codeNoetig);
+    }
     if (!r) {
         std::printf("Fehler: %s\n", r.fehler.c_str());
         return false;
@@ -2575,17 +2594,18 @@ int EuSaetzeUebernehmen(int argc, char** argv) {
 int BenutzerZeigen(int argc, char** argv) {
     Store store;
     if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
-    std::printf("%-16s %-24s %-16s %-6s %s\n", "Anmeldename", "Name", "Rolle",
-                "aktiv", "letzte Anmeldung");
+    std::printf("%-16s %-24s %-16s %-6s %-6s %s\n", "Anmeldename", "Name", "Rolle",
+                "aktiv", "Code", "letzte Anmeldung");
     for (const Benutzer& b : store.BenutzerListe()) {
         std::string zuletzt = "-";
         if (b.letzterLogin > 0) {
             const Date tag = Date::FromEpochDay(b.letzterLogin / 86400);
             zuletzt = FormatDateGerman(tag);
         }
-        std::printf("%-16s %-24s %-16s %-6s %s\n", b.anmeldename.c_str(),
+        std::printf("%-16s %-24s %-16s %-6s %-6s %s\n", b.anmeldename.c_str(),
                     b.anzeigename.c_str(), BenutzerRolleLabel(b.rolle).c_str(),
-                    b.aktiv ? "ja" : "nein", zuletzt.c_str());
+                    b.aktiv ? "ja" : "nein", store.HatZweitenFaktor(b.id) ? "ja" : "-",
+                    zuletzt.c_str());
     }
     return 0;
 }
@@ -2630,9 +2650,95 @@ int PasswortSetzen(int argc, char** argv) {
     }
     std::string pw;
     if (!LiesNeuesPasswort(name, pw)) return 1;
+    const bool hatteCode = store.HatZweitenFaktor(b.id);
     const StoreResult r = store.SetPasswort(b.id, pw, AkteurFor(store));
     if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
     std::printf("Passwort für %s gesetzt.\n", name.c_str());
+    if (hatteCode)
+        std::printf("Der zweite Faktor war mit dem alten Passwort verschlüsselt und ist "
+                    "damit entfernt. Neu einrichten: ultrafibu zweiter-faktor %s "
+                    "--anmelden %s\n", Positional(argc, argv, 0).c_str(), name.c_str());
+    return 0;
+}
+
+// Enrol the signed-in user's second factor. The window shows a QR code; here
+// the setup key and the otpauth:// line are printed, and UltraAuthenticator
+// takes either ("Konto hinzufügen" - scan, or type the key).
+int ZweiterFaktor(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    if (!gIstAngemeldet) {
+        std::printf("Fehler: Einen zweiten Faktor richtet man für sich selbst ein: "
+                    "--anmelden <name>\n");
+        return 2;
+    }
+    Mandant mandant;
+    std::string konto = gAngemeldet.anmeldename;
+    if (ErsterMandant(store, mandant)) konto += "@" + mandant.name;
+    Store::ZweiterFaktorEinrichtung e;
+    StoreResult r = store.ZweitenFaktorVorbereiten(gAngemeldet, konto, e);
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("In UltraAuthenticator ein Konto hinzufügen - den Schlüssel eintippen:\n\n"
+                "    %s\n\n"
+                "oder diese Zeile als QR-Code verwenden:\n\n    %s\n\n"
+                "(Im Fenster zeigt \"Konto > Zweiten Faktor einrichten ...\" den QR-Code.)\n\n",
+                e.geheimnisBase32.c_str(), e.otpauthUri.c_str());
+    const std::string pw = LiesGeheim("Passwort zur Bestätigung: ");
+    std::fprintf(stderr, "Code aus UltraAuthenticator: ");
+    std::fflush(stderr);
+    std::string code;
+    std::getline(std::cin, code);
+    r = store.ZweitenFaktorAktivieren(gAngemeldet, pw, e.geheimnisBase32, code);
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Zweiter Faktor eingerichtet. Ab jetzt fragt die Anmeldung nach dem Code.\n");
+    return 0;
+}
+
+int ZweiterFaktorEntfernen(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    const std::string name = Positional(argc, argv, 1);
+    Benutzer b;
+    if (name.empty() || !store.BenutzerByName(name, b)) {
+        std::printf("Aufruf: ultrafibu zweiter-faktor-entfernen <datei> <name>\n");
+        return 2;
+    }
+    const StoreResult r = store.ZweitenFaktorEntfernen(b.id, AkteurFor(store));
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Zweiter Faktor von %s entfernt.\n", name.c_str());
+    return 0;
+}
+
+// A document's file, wherever it is kept - the directory beside a local file,
+// or the database on a server - checked against its hash and written out.
+int BelegDatei(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const std::string nummer = Positional(argc, argv, 1);
+    Beleg beleg;
+    if (nummer.empty() || !store.BelegByNummer(mandant.id, nummer, beleg)) {
+        std::printf("Aufruf: ultrafibu beleg-datei <datei> <belegnummer> [--ziel <verz>]\n");
+        return 2;
+    }
+    std::string inhalt, fehler;
+    if (!store.LiesBelegDatei(beleg, inhalt, fehler)) {
+        std::printf("Fehler: %s\n", fehler.c_str());
+        return 1;
+    }
+    std::string name = beleg.nummer;
+    for (char& c : name) if (c == '/' || c == '\\' || c == ':') c = '_';
+    const std::string ziel = Option(argc, argv, "--ziel", ".") + "/" + name + "." +
+                             EndungFuer(ErkenneDateiArt(inhalt));
+    std::FILE* f = std::fopen(ziel.c_str(), "wb");
+    if (!f || std::fwrite(inhalt.data(), 1, inhalt.size(), f) != inhalt.size()) {
+        if (f) std::fclose(f);
+        std::printf("Fehler: \"%s\" kann nicht geschrieben werden.\n", ziel.c_str());
+        return 1;
+    }
+    std::fclose(f);
+    std::printf("%s (%zu Bytes, Prüfsumme stimmt)\n", ziel.c_str(), inhalt.size());
     return 0;
 }
 
@@ -2719,6 +2825,9 @@ const Befehl kBefehle[] = {
     { "benutzer-neu",          BenutzerNeu },
     { "passwort",              PasswortSetzen },
     { "server-passwort",       ServerPasswort },
+    { "zweiter-faktor",        ZweiterFaktor },
+    { "zweiter-faktor-entfernen", ZweiterFaktorEntfernen },
+    { "beleg-datei",           BelegDatei },
 };
 
 const Befehl* FindeBefehl(const std::string& name) {
@@ -2737,6 +2846,7 @@ bool UltraFIBU::IstBefehl(const std::string& wort) {
 int UltraFIBU::Kommandozeile(int argc, char** argv, bool mitFenster) {
     gMitFenster = mitFenster;
     gAnmeldename = Option(argc, argv, "--anmelden");
+    gCode        = Option(argc, argv, "--code");
     if (argc < 2) { PrintUsage(); return 2; }
     const std::string befehl = argv[1];
 

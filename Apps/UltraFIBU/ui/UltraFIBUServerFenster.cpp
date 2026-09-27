@@ -13,7 +13,7 @@ namespace UltraFIBU {
 namespace {
 
 constexpr int   kBreite = 620;
-constexpr int   kHoehe  = 640;
+constexpr int   kHoehe  = 680;
 constexpr float kRand   = 24.0f;
 constexpr float kZeile  = 28.0f;
 constexpr float kLabelB = 170.0f;
@@ -115,6 +115,17 @@ std::shared_ptr<UltraCanvasWindow> ServerFenster::Bauen(const ServerZiel& vorgab
     fenster_->AddChild(passwort_);
     y += kZeile + 8;
 
+    // Offered only when the account has a second factor - most do not, and a
+    // code field for everybody would suggest a code is always needed.
+    fenster_->AddChild(CreateLabel("srvCodeL", kRand, y, kLabelB, kZeile, "Code (App)"));
+    code_ = CreateTextInput("srvCode", static_cast<int>(kRand + kLabelB), static_cast<int>(y),
+                            static_cast<int>(feldB), static_cast<int>(kZeile));
+    code_->SetMaxLength(7);
+    code_->SetPlaceholder("nur mit zweitem Faktor");
+    code_->onEnterPressed = [this](const std::string&) { Anmelden(); return true; };
+    fenster_->AddChild(code_);
+    y += kZeile + 8;
+
     anmeldenKnopf_ = CreateButton("srvAnmelden", kRand + kLabelB, y, 160, kZeile, "Anmelden");
     anmeldenKnopf_->SetOnClick([this]() { Anmelden(); });
     fenster_->AddChild(anmeldenKnopf_);
@@ -198,18 +209,33 @@ void ServerFenster::Anmelden() {
     if (!verbunden_) { Melden("Erst mit dem Server verbinden.", true); return; }
     const std::string name = name_->GetText();
     const std::string pw   = passwort_->GetText();
-    // Never kept in the widget longer than this call.
-    passwort_->SetText("");
+    const std::string code = code_->GetText();
+    code_->SetText("");
+    bool codeNoetig = false;
     const std::string fehler = onAnmelden
-        ? onAnmelden(name, pw)
+        ? onAnmelden(name, pw, code, codeNoetig)
         : std::string("Es ist niemand da, der die Anmeldung prüft.");
-    if (!fehler.empty()) { Melden(fehler, true); return; }
+    if (!fehler.empty()) {
+        // The password stays only while a code is being asked for - it is
+        // needed again with the code. Any other refusal clears it.
+        if (codeNoetig) {
+            codeGefragt_ = true;
+            code_->SetDisabled(false);
+            code_->SetFocus(true);
+        } else {
+            passwort_->SetText("");
+        }
+        Melden(fehler, true);
+        return;
+    }
+    passwort_->SetText("");
     Schliessen();
 }
 
 void ServerFenster::AnmeldungFreigeben(bool frei) {
     if (name_) name_->SetDisabled(!frei);
     if (passwort_) passwort_->SetDisabled(!frei);
+    if (code_) code_->SetDisabled(!frei || !codeGefragt_);
     if (anmeldenKnopf_) anmeldenKnopf_->SetDisabled(!frei);
 }
 

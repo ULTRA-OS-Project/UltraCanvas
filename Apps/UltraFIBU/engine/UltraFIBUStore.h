@@ -87,7 +87,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert that the database matches the
     // code without a literal that has to be chased.
-    static constexpr int kSchemaVersion = 8;
+    static constexpr int kSchemaVersion = 9;
 
     Store() = default;
     ~Store() = default;
@@ -281,8 +281,25 @@ public:
     // ---- Belege aus Dateien -------------------------------------------------
 
     // Where this database's documents are archived. Derived from the database
-    // path rather than configured, so the two move together.
+    // path rather than configured, so the two move together. On a server the
+    // files are in the database itself (table beleg_datei) and this says so.
     std::string BelegArchivPfad() const;
+
+    // True when this store is a shared server database.
+    bool IstServer() const { return istServer_; }
+
+    // Where new receipt files go: into the database itself (table
+    // beleg_datei), or into the directory beside a local file. On for a
+    // server - every computer must see the same receipts - and off for a
+    // local file, where the directory is readable without this program.
+    // Files already filed are found either way; this only decides new ones.
+    void SetBelegeInDatenbank(bool an) { belegeInDatenbank_ = an; }
+    bool BelegeInDatenbank() const { return belegeInDatenbank_; }
+
+    // The bytes of a document's file, wherever it is kept, checked against
+    // the hash recorded with the document. False with a German sentence when
+    // it is missing or does not match.
+    bool LiesBelegDatei(const Beleg& beleg, std::string& inhalt, std::string& fehler) const;
 
     struct BelegImportEintrag {
         std::string dateiname;
@@ -645,9 +662,57 @@ public:
     StoreResult SetPasswort(int64_t benutzerId, const std::string& passwort,
                             const Akteur& akteur);
     // Verifies a password against the stored Argon2id parameters. A wrong
-    // password and an unknown user are the same answer, deliberately.
+    // password and an unknown user are the same answer, deliberately. A user
+    // with a second factor is refused here - they sign in with the overload
+    // below, which takes the code.
     bool Anmelden(const std::string& anmeldename, const std::string& passwort,
                   Benutzer& out);
+
+    // ---- The second factor (TOTP, RFC 6238) ---------------------------------
+    //
+    // A six-digit code from UltraAuthenticator (or any authenticator app) on
+    // top of the password. **Where the secret lives:** in this database, in
+    // the user's row, encrypted with XChaCha20-Poly1305 under a key derived
+    // from the user's own password (Argon2id, a salt of its own). It cannot
+    // live in one computer's vault: on a server every computer checks the
+    // code. It is not stored readable either: somebody who copies the database
+    // gets neither the password nor the means to produce codes.
+    //
+    // What follows from that: setting a *new* password without the old one -
+    // an administrator resetting it, say - cannot re-encrypt the secret, so it
+    // removes the second factor, and the user enrols again.
+    //
+    // Codes are accepted one 30-second step early or late (clock drift), and
+    // each step only once: a code seen on a shoulder cannot be replayed, not
+    // even on another computer at the same moment.
+
+    enum class AnmeldeErgebnis {
+        Ok,
+        Abgelehnt,     // unknown user, wrong password, or inactive
+        CodeNoetig,    // password right, second factor enrolled, no code given
+        CodeFalsch     // password right, code wrong, expired or already used
+    };
+    AnmeldeErgebnis Anmelden(const std::string& anmeldename, const std::string& passwort,
+                             const std::string& code, Benutzer& out);
+
+    struct ZweiterFaktorEinrichtung {
+        std::string geheimnisBase32;   // the setup key, for typing in by hand
+        std::string otpauthUri;        // what the QR code carries
+    };
+    // Step 1: a fresh secret for the signed-in user. Nothing is stored yet -
+    // an abandoned enrolment leaves the account as it was. `konto` is the
+    // label the authenticator app shows ("erika@Muster GmbH").
+    StoreResult ZweitenFaktorVorbereiten(const Akteur& akteur, const std::string& konto,
+                                         ZweiterFaktorEinrichtung& out);
+    // Step 2: the user proves the scan worked with a code from the app and
+    // confirms their password; then the secret is stored, encrypted. Only the
+    // user themself can do this - the password is the key.
+    StoreResult ZweitenFaktorAktivieren(const Akteur& akteur, const std::string& passwort,
+                                        const std::string& geheimnisBase32,
+                                        const std::string& code);
+    // Remove it: the user themself, or an administrator (a lost phone).
+    StoreResult ZweitenFaktorEntfernen(int64_t benutzerId, const Akteur& akteur);
+    bool HatZweitenFaktor(int64_t benutzerId) const;
     bool BenutzerById(int64_t id, Benutzer& out) const;
     bool BenutzerByName(const std::string& anmeldename, Benutzer& out) const;
     std::vector<Benutzer> BenutzerListe() const;
@@ -687,7 +752,14 @@ private:
     bool        Query(const std::string& sql, const UltraDbParams& params,
                       UltraDbResultSet& out) const;
 
+    // Server mode: file a receipt into the database. Same checks as the
+    // directory archive (kind by bytes, no encrypted PDFs), same identity
+    // (SHA-256), idempotent.
+    ArchivEintrag AblegenInDatenbank(const std::string& quellPfad);
+
     std::string connection_;
+    bool        istServer_ = false;
+    bool        belegeInDatenbank_ = false;
     // Kept so the document archive can live beside the database. A database
     // and its receipts that can be separated will be separated.
     std::string datenbankPfad_;

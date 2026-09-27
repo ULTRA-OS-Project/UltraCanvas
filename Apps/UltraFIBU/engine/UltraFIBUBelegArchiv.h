@@ -116,6 +116,14 @@ bool IstPdf(const std::string& inhalt);
 // be holding something unreadable.
 bool IstVerschluesseltesPdf(const std::string& inhalt);
 
+// Read a file and decide whether the archive may take it: the kind by its
+// bytes, a warning for an encrypted PDF, and its SHA-256 - everything short of
+// storing it. Both homes a receipt can have use this, the directory beside a
+// local database (BelegArchiv) and the database itself on a server
+// (Store::AblegenInDatenbank), so they accept and refuse exactly the same
+// files. `ok` means "may be stored"; `inhalt` receives the bytes.
+ArchivEintrag PruefeFuerArchiv(const std::string& quellPfad, std::string& inhalt);
+
 // The file store for one Mandant's documents.
 //
 // Laid out as `<wurzel>/<jahr>/<hash>.<endung>`: the year keeps directories

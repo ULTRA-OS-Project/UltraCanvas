@@ -1,4 +1,4 @@
-// Apps/UltraAuthenticator/otp/OtpAuthUri.h
+// include/UltraOtp/OtpAuthUri.h
 // Parsing and building of the de-facto `otpauth://` Key URI format.
 //
 // This is the app's primary untrusted-input boundary: a provisioning URI
@@ -18,7 +18,7 @@
 #ifndef OTPAUTHURI_H
 #define OTPAUTHURI_H
 
-#include "UltraOtp.h"
+#include "UltraOtp/UltraOtp.h"
 
 #include <string>
 

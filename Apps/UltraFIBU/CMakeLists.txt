@@ -49,6 +49,8 @@ endif()
 # Multi-user mode: the database password lives in UltraFIBU's own vault
 # (engine/UltraFIBUServer.cpp), which the PostgreSQL driver reads by key.
 target_link_libraries(UltraFIBUEngine PUBLIC UltraVault)
+# The second factor on the personal login: TOTP codes checked at sign-in.
+target_link_libraries(UltraFIBUEngine PUBLIC UltraOtp)
 
 # CAMT.053 is XML, and tinyxml2 is already a REQUIRED core dependency
 # (UltraCanvas/CMakeLists.txt pkg_check_modules TINYXML2) - so the bank reader
@@ -156,6 +158,7 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
         ui/UltraFIBUBelegDialog.cpp
         ui/UltraFIBUStart.cpp
         ui/UltraFIBUServerFenster.cpp
+        ui/UltraFIBUZweiterFaktorFenster.cpp
         ui/UltraFIBUKonsole.cpp
     )
     target_compile_features(ultrafibu PRIVATE cxx_std_20)

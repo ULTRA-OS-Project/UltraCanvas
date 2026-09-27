@@ -195,9 +195,39 @@ computer trusts for PostgreSQL - `~/.postgresql/root.crt`, or the file named
 by `PGSSLROOTCERT` - and name the host exactly as typed. The server belongs on
 the LAN or behind a VPN, never on the open internet (design proposal §10.5).
 
-Not yet: receipt files (`Beleg hochladen`) still go to an archive beside the
-*local* database path, so on a server each computer keeps its own; and there
-is no second factor (TOTP) on the personal login.
+**A second factor, if you want one.** Each user can require a six-digit code
+from UltraAuthenticator (or any TOTP app) on top of their password - in the
+window **Konto > Zweiten Faktor einrichten ...** shows a QR code to scan, and
+the code the app then shows, with the password, switches it on. From the
+command line `ultrafibu zweiter-faktor <adresse> --anmelden <name>` prints the
+setup key and the `otpauth://` line instead; afterwards every sign-in asks for
+the code (`--code 123456`, `ULTRAFIBU_CODE`, or a prompt).
+
+The secret sits in the user's row in the database, **encrypted with a key
+derived from that user's own password** (Argon2id, then XChaCha20-Poly1305).
+It cannot live in one computer's vault - every computer checks the code - and
+it is not stored readable: a copy of the database gives neither the password
+nor the codes. The price: a password set *without* the old one (an
+administrator resetting it) cannot re-encrypt the secret, so it removes the
+second factor and the user enrols again. A lost phone is the same step:
+`ultrafibu zweiter-faktor-entfernen <adresse> <name>` by an administrator.
+Codes are accepted one 30-second step early or late, and each only once -
+across all computers, so a code read over a shoulder cannot be replayed.
+
+**Receipts live on the server too.** On a server, *Beleg hochladen* and
+`beleg-import` store the file in the database itself (table `beleg_datei`,
+one row per distinct file, keyed by its SHA-256 exactly like the directory
+archive), so every computer sees every receipt and one database backup holds
+the ledger and its evidence together. The same checks apply as locally -
+the kind by the bytes, a warning for an encrypted PDF - and the stored copy
+is read back and hashed before the document row points at it.
+`ultrafibu beleg-datei <adresse> <belegnummer> --ziel <verz>` writes a file
+out again, checked against its hash, from either kind of archive. A local
+file keeps its directory beside the database, which stays readable without
+this program.
+
+The database password this computer uses and the personal passwords are
+still two separate things; the second factor is on the personal one.
 
 ## The decisions worth knowing
 

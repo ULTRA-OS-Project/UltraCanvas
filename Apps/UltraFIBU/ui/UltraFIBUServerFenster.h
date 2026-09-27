@@ -43,7 +43,10 @@ public:
 
     // Sign in and open the main window. Returns why not, or an empty string;
     // on success this window closes itself.
-    std::function<std::string(const std::string& name, const std::string& passwort)> onAnmelden;
+    // `code` is empty until the first attempt reports `codeNoetig` - the user
+    // has a second factor - and the code field is then offered.
+    std::function<std::string(const std::string& name, const std::string& passwort,
+                              const std::string& code, bool& codeNoetig)> onAnmelden;
 
     // `vorgabe` fills the form: the address given on the command line, or the
     // last server this computer used.
@@ -72,6 +75,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    verbindenKnopf_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> name_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> passwort_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> code_;
+    bool codeGefragt_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    anmeldenKnopf_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
 };

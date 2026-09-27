@@ -2126,6 +2126,19 @@ target_compile_features(UltraVault PUBLIC cxx_std_20)
 set_target_properties(UltraVault PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(UltraVault PUBLIC UltraCrypt)
 
+# One-time passwords: HOTP (RFC 4226), TOTP (RFC 6238) and otpauth:// URIs.
+# UltraAuthenticator generates codes with it; UltraFIBU checks them at login.
+# UI-free and on UltraCrypt alone, like UltraVault above.
+add_library(UltraOtp STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraOtp/UltraOtp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraOtp/OtpAuthUri.cpp)
+target_include_directories(UltraOtp PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas>)
+target_compile_features(UltraOtp PUBLIC cxx_std_20)
+set_target_properties(UltraOtp PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(UltraOtp PUBLIC UltraCrypt)
+
 # System-wide network activity (Docs/Modules/NetworkMonitor/README.md): the
 # operating system's socket table with process attribution. UI-free like
 # UltraCrypt, so the command line and the test suite link it headless. The
