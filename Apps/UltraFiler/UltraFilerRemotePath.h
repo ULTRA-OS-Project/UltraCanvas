@@ -18,8 +18,8 @@
 //
 // The account id is an UltraCloud slug and never contains '/', which is what
 // makes the split unambiguous.
-// Version: 1.1.0
-// Last Modified: 2026-09-23
+// Version: 1.2.0
+// Last Modified: 2026-09-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -218,6 +218,41 @@ inline std::time_t ParseRemoteFilerTime(const std::string& text) {
         if (m) return RemoteFilerTimeFromUtcParts(year, m, day, hour, minute, second);
     }
     return 0;
+}
+
+
+// ===== WHAT KIND OF SERVER A DRIVE IS =====
+// The protocol an FTP-family drive speaks, as the tree shows it in front of
+// the drive's name ("FTPS: Backup NAS"): FTP, FTPS (TLS from the first
+// byte), FTPES (FTP that asks for TLS) or SFTP (SSH) - read off the scheme of
+// its server address, the way UltraCloud's FTP provider picks its transport.
+// Several servers of different kinds look alike by name alone, and whether
+// the password crosses the network in the clear is the first thing worth
+// knowing about one. Empty for any other provider: a cloud drive's name
+// already says what it is.
+inline std::string RemoteDriveProtocolLabel(const std::string& providerId,
+                                            const std::string& serverUrl) {
+    if (providerId != "ftp") return std::string();
+    std::string scheme;
+    const std::string::size_type sep = serverUrl.find("://");
+    if (sep != std::string::npos) {
+        for (char c : serverUrl.substr(0, sep))
+            scheme.push_back(static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c));
+    }
+    if (scheme == "FTPS" || scheme == "FTPES" || scheme == "SFTP") return scheme;
+    return "FTP";   // "ftp://", and an address with no scheme, which is FTP
+}
+
+// The name of a drive's row: "FTPS: Backup NAS". A name that already starts
+// with its label (an account the user called "FTP: NAS") keeps the one.
+inline std::string RemoteDriveTreeLabel(const std::string& providerId,
+                                        const std::string& serverUrl,
+                                        const std::string& displayName) {
+    const std::string label = RemoteDriveProtocolLabel(providerId, serverUrl);
+    if (label.empty()) return displayName;
+    const std::string prefix = label + ": ";
+    if (displayName.compare(0, prefix.size(), prefix) == 0) return displayName;
+    return prefix + displayName;
 }
 
 } // namespace UltraCanvas
