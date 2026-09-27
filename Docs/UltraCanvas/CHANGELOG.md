@@ -1,4 +1,4 @@
-#### 2026-09-27 *0.9.68*
+#### 2026-09-27 *0.9.71*
 - **UltraDatabase's PostgreSQL driver no longer prints server notices.**
   libpq writes every `NOTICE` a server sends to stderr unless told
   otherwise, so each migration check put "relation ... already exists,
@@ -25,6 +25,58 @@
 - UltraFIBU 0.25.0 adds server mode to the program (connect, sign in, set
   up), a TOTP second factor and receipts stored on the server; see its
   changelog.
+
+#### 2026-09-27 *0.9.70*
+- **The macOS and Linux packages now ship UltraNetMonitor, DeviceExplorer and
+  `ultramsg`.** CI already built all three on every row, and the Windows
+  package already carried them (it takes every `.exe` in the build tree), but
+  the macOS and Linux packagers work from a fixed list and never gained them.
+  - Linux (`package-linux.sh`): the three join the portable bundle as
+    `bin/<name>` with a wrapper launcher beside the other apps.
+  - macOS (`package-macos.sh`): `UltraNetMonitor.app` and
+    `DeviceExplorer.app` are built, signed and notarized like the Texter and
+    Demo bundles, with their own icons. `ultramsg`, the UltraMessage command
+    line, is not an app, so it ships as `ultramsg/bin/ultramsg` with its
+    dylibs in `ultramsg/Frameworks/`. It is signed and notarized but not
+    stapled, because a ticket cannot be stapled to a bare executable;
+    Gatekeeper checks it online instead. `--dmg` puts that folder in the disk
+    image next to the bundles.
+
+#### 2026-09-27 *0.9.69*
+- **`UltraCanvasMediaViewer::ClassifyFile` is public.** It answers which view
+  a path opens in (`MediaKind::Image`, `Vector`, `Model`, `Video`, ...) from
+  the name alone. A host needs this to decide whether a file is worth fetching
+  before it can be shown: UltraFiler uses it to preview pictures, vector
+  drawings and 3D models from FTP and cloud drives, and not videos or
+  documents. An unknown extension still answers `Image`, so check
+  `IsSupportedMedia` first.
+- **FTP rename, delete and new folder work in subfolders and on names with
+  spaces.** `UltraNet_FtpRename`, `UltraNet_FtpDelete`,
+  `UltraNet_FtpCreateDirectory` and `UltraNet_FtpRemoveDirectory` had three
+  bugs:
+  - The name was cut from the URL still percent-encoded, so
+    `RNFR My%20Photo.jpg` asked for a file that does not exist. Any name with
+    a space, a bracket, `+`, `&` or a non-ASCII letter failed with a 550.
+  - libcurl sends quote commands before it changes into the URL's folder, so
+    every command ran in the login folder. A rename in a subfolder failed, a
+    new folder was created at the top of the server, and a delete in a
+    subfolder could remove a same-named file at the top instead. Commands now
+    name the entry by its path from the login folder, as libcurl reads the URL.
+  - An `sftp://` URL was sent FTP commands, which SFTP does not speak. It now
+    gets libcurl's SFTP commands (`rename`, `rm`, `rmdir`, `mkdir`) with
+    quoted full paths.
+
+  A name containing a line break is refused, since on FTP it would start a
+  second command. The command text is built in `UltraNetFtpQuote.h`, is
+  covered by `UltraNetFtpQuoteTest`, and was checked against a real FTP server.
+
+#### 2026-09-27 *0.9.68*
+- **DemoApp: the Message Centre page moved to *ULTRA OS modules* as *Ultra
+  Message*.** It was listed under *Complex UI Elements*, which holds widgets
+  any application can use on their own. The Message Centre is the view onto
+  UltraMessage's broker and journal, so it now sits with the other ULTRA OS
+  services (Ultra Database, Ultra Net, Ultra Vault) and is reached from the
+  ULTRA OS overview. The page itself is unchanged.
 
 #### 2026-09-27 *0.9.67*
 - **The startup screens open in the middle of the app's window, not the

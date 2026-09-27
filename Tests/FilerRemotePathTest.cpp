@@ -256,6 +256,24 @@ int main() {
               "an hour later compares greater across the two formats");
     }
 
+    std::printf("\nDrive protocol labels\n");
+    CheckEq(RemoteDriveProtocolLabel("ftp", "ftp://nas.local"), "FTP", "ftp://");
+    CheckEq(RemoteDriveProtocolLabel("ftp", "FTPS://nas.local:990"), "FTPS",
+            "ftps://, any case");
+    CheckEq(RemoteDriveProtocolLabel("ftp", "ftpes://nas.local"), "FTPES", "ftpes://");
+    CheckEq(RemoteDriveProtocolLabel("ftp", "sftp://nas.local"), "SFTP", "sftp://");
+    CheckEq(RemoteDriveProtocolLabel("ftp", "nas.local"), "FTP", "no scheme is FTP");
+    CheckEq(RemoteDriveProtocolLabel("nextcloud", "https://cloud.example"), "",
+            "a cloud drive has no label");
+    CheckEq(RemoteDriveTreeLabel("ftp", "ftps://nas", "Backup NAS"), "FTPS: Backup NAS",
+            "the label goes in front");
+    CheckEq(RemoteDriveTreeLabel("ftp", "ftp://nas", "FTP: NAS"), "FTP: NAS",
+            "a name that already carries it keeps one");
+    CheckEq(RemoteDriveTreeLabel("ftp", "sftp://nas", "FTP: NAS"), "SFTP: FTP: NAS",
+            "a name that carries the wrong one is still labelled truthfully");
+    CheckEq(RemoteDriveTreeLabel("dropbox", "", "Dropbox (me)"), "Dropbox (me)",
+            "a cloud drive's name is left alone");
+
     if (failures) {
         std::printf("\n%d check(s) FAILED\n", failures);
         return 1;

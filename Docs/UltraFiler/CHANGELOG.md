@@ -1,3 +1,43 @@
+#### 2026-09-27 *1.55.0*
+- **FTP drives prefetch subfolders and remember them.** Opening a folder on
+  an FTP / SFTP drive now also lists its first 24 visible subfolders in the
+  background. These requests wait behind anything the user asks for and stay
+  out of the status line, so opening one of those subfolders is usually
+  instant instead of a fresh login. A prefetch that fails is dropped, and the
+  folder is asked for again when it is opened. When the window closes, the
+  drive listings (the 512 most recently used folders; names, sizes and dates
+  only) are saved to `remote-listings.cache` in the config directory. On the
+  next start a remembered folder shows at once and is checked with the
+  server in the background. Only FTP drives do this; the metered cloud
+  providers do not. The rules and the file format are in
+  `UltraFilerRemoteCache.h` and are tested by `FilerRemoteCacheTest`.
+- **Preview pictures, vector drawings and 3D models on FTP and cloud drives.**
+  Selecting such a file on a remote drive while the preview is on now
+  downloads it into a preview cache (`remote-previews` under UltraCanvas's
+  per-user cache folder) and shows the copy. The download goes ahead of
+  anything already queued; the status line shows its progress. If the
+  selection moves on before a download starts, that download is dropped.
+  Copies are kept, and one that hasn't been looked at for two weeks is
+  deleted. Looking at the same file again, in this session or a later one,
+  costs no transfer. A file that changed on the server is fetched again,
+  because the copy is keyed by path, size and date. Files over 64 MB are not
+  fetched just for a preview, and the status line says so; so does a failed
+  download, and *Refresh* retries it. Other file kinds on a drive (video,
+  audio, documents, text) are not previewed: double-clicking one opens it
+  instead of showing an empty pane.
+- **Renaming, deleting and creating folders on FTP drives works again** in
+  subfolders and for names with spaces or accents. The fix is in UltraNet;
+  see the framework changelog entry *FTP rename, delete and new folder work
+  in subfolders*. SFTP drives can now rename, delete and create folders at
+  all.
+- **FTP drives show their protocol in the folder tree.** An FTP-family
+  drive's row now starts with how it connects: `FTP: Backup NAS`,
+  `FTPS: …`, `FTPES: …` or `SFTP: …`. The label comes from the server
+  address's scheme, so servers that look alike by name are easy to tell
+  apart, including whether the password travels unencrypted (plain FTP).
+  A name that already starts with the label is not labelled twice. Cloud
+  drives keep their names.
+
 #### 2026-09-25 *1.54.0*
 - **R, Scala, MATLAB and VBA files show their text too.** Their languages
   were written into the syntax highlighter but switched off, so `.r`,

@@ -455,6 +455,13 @@ public:
 
     // Whether a path is a media file this viewer can display.
     static bool IsSupportedMedia(const std::string& path);
+    // Which view a file opens in, from its name alone - nothing is read. An
+    // unknown extension answers Image (what the viewer tries last), so ask
+    // IsSupportedMedia first when that matters. A host uses it to decide
+    // what is worth fetching before it can be shown: UltraFiler downloads a
+    // picture, a vector drawing or a 3D model from a remote drive to preview
+    // it, and not a two-hour video.
+    static MediaKind ClassifyFile(const std::string& path);
 
     // ===== DETAILS PANEL =====
     // The panel the "Details" button opens over the display area: file facts
@@ -533,7 +540,6 @@ private:
     static bool IsTextFile(const std::string& path);        // text / source / markdown
     static bool IsVideoFile(const std::string& path);
     static bool IsAudioFile(const std::string& path);
-    static MediaKind ClassifyFile(const std::string& path);
 
     // ----- keyboard plumbing -----
     // Browsing / view keys, shared by OnEvent() (focus is on the widget or one

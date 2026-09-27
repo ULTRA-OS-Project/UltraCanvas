@@ -3,12 +3,13 @@
 // streaming download/upload uses constant memory (libcurl write/read callbacks
 // to/from FILE*). Mutating operations (DELE / RNFR-RNTO / MKD / RMD) ride on
 // CURLOPT_QUOTE so libcurl handles connection setup and authentication for us.
-// Version: 0.3.1 (Stage 3)
-// Last Modified: 2026-09-23
+// Version: 0.3.2 (Stage 3)
+// Last Modified: 2026-09-27
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetFtp.h"
 #include "UltraNetHttpEasy.h"   // MapCurlError (private helpers)
+#include "UltraNetFtpQuote.h"   // the text of DELE / RNFR-RNTO / MKD / RMD
 
 #include <curl/curl.h>
 
@@ -275,23 +276,6 @@ using ultranet_internal::ftp::ParseUnixLine;
 using ultranet_internal::ftp::SplitLines;
 } // namespace
 
-// Splits a URL into base (scheme://host[:port]/) and the last path segment.
-// "ftp://host/dir/sub/file" -> {"ftp://host/dir/sub/", "file"}.
-// Used by Delete/Rename/MakeDir/RemoveDir to issue post-quote commands at
-// the parent directory.
-bool SplitParentAndName(const std::string& url,
-                        std::string& parentUrl,
-                        std::string& name) {
-    std::size_t lastSlash = url.find_last_of('/');
-    if (lastSlash == std::string::npos) return false;
-    // Avoid splitting on "ftp://" double-slash.
-    std::size_t schemeEnd = url.find("://");
-    if (schemeEnd != std::string::npos && lastSlash <= schemeEnd + 2) return false;
-    parentUrl = url.substr(0, lastSlash + 1);
-    name      = url.substr(lastSlash + 1);
-    return !name.empty();
-}
-
 UltraNetResult UltraNet_FtpDownload(const std::string& url,
                                     const std::string& localPath,
                                     const UltraNetFtpOptions& opt) {
@@ -474,9 +458,16 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
 
 namespace {
 
-UltraNetResult RunCommand(const std::string& url,
-                          const UltraNetFtpOptions& opt,
-                          const std::string& command) {
+// Runs the quote commands that carry out `verb` on the entry `url` names.
+// UltraNetFtpQuote.h makes the command text: the decoded name for FTP, the
+// SFTP backend's own commands for an sftp:// URL.
+UltraNetResult RunQuote(const std::string& url, ultranet_internal::ftpquote::Verb verb,
+                        const std::string& newName, const UltraNetFtpOptions& opt) {
+    ultranet_internal::ftpquote::Plan plan;
+    std::string error;
+    if (!ultranet_internal::ftpquote::Build(url, verb, newName, plan, error)) {
+        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, error);
+    }
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
     std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(curl_easy_init(),
                                                           curl_easy_cleanup);
@@ -485,75 +476,38 @@ UltraNetResult RunCommand(const std::string& url,
                                      "curl_easy_init() failed");
     }
     curl_slist* cmds = nullptr;
-    cmds = curl_slist_append(cmds, command.c_str());
+    for (const std::string& c : plan.commands)
+        cmds = curl_slist_append(cmds, c.c_str());
     std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
         guard(cmds, curl_slist_free_all);
 
-    curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
+    curl_easy_setopt(h.get(), CURLOPT_URL, plan.parentUrl.c_str());
     curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
-    curl_easy_setopt(h.get(), CURLOPT_QUOTE,  cmds);
+    curl_easy_setopt(h.get(), CURLOPT_QUOTE, cmds);
     ApplyCommonOptions(h.get(), opt);
 
-    return Perform(h.get(), url);
+    return Perform(h.get(), plan.parentUrl);
 }
 
 } // namespace
 
 UltraNetResult UltraNet_FtpDelete(const std::string& url,
                                   const UltraNetFtpOptions& opt) {
-    std::string parent, name;
-    if (!SplitParentAndName(url, parent, name)) {
-        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                     "cannot derive parent directory");
-    }
-    return RunCommand(parent, opt, "DELE " + name);
+    return RunQuote(url, ultranet_internal::ftpquote::Verb::Delete, {}, opt);
 }
 
 UltraNetResult UltraNet_FtpRename(const std::string& url,
                                   const std::string& newName,
                                   const UltraNetFtpOptions& opt) {
-    std::string parent, name;
-    if (!SplitParentAndName(url, parent, name)) {
-        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                     "cannot derive parent directory");
-    }
-    if (!UltraNet_IsInitialized()) UltraNet_Initialize();
-    std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(curl_easy_init(),
-                                                          curl_easy_cleanup);
-    if (!h) {
-        return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
-                                     "curl_easy_init() failed");
-    }
-    curl_slist* cmds = nullptr;
-    cmds = curl_slist_append(cmds, ("RNFR " + name).c_str());
-    cmds = curl_slist_append(cmds, ("RNTO " + newName).c_str());
-    std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>
-        guard(cmds, curl_slist_free_all);
-
-    curl_easy_setopt(h.get(), CURLOPT_URL, parent.c_str());
-    curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
-    curl_easy_setopt(h.get(), CURLOPT_QUOTE, cmds);
-    ApplyCommonOptions(h.get(), opt);
-
-    return Perform(h.get(), parent);
+    return RunQuote(url, ultranet_internal::ftpquote::Verb::Rename, newName, opt);
 }
 
 UltraNetResult UltraNet_FtpCreateDirectory(const std::string& url,
                                            const UltraNetFtpOptions& opt) {
-    std::string parent, name;
-    if (!SplitParentAndName(url, parent, name)) {
-        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                     "cannot derive parent directory");
-    }
-    return RunCommand(parent, opt, "MKD " + name);
+    return RunQuote(url, ultranet_internal::ftpquote::Verb::MakeDirectory, {}, opt);
 }
 
 UltraNetResult UltraNet_FtpRemoveDirectory(const std::string& url,
                                            const UltraNetFtpOptions& opt) {
-    std::string parent, name;
-    if (!SplitParentAndName(url, parent, name)) {
-        return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                     "cannot derive parent directory");
-    }
-    return RunCommand(parent, opt, "RMD " + name);
+    return RunQuote(url, ultranet_internal::ftpquote::Verb::RemoveDirectory, {}, opt);
 }

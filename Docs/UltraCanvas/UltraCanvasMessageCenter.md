@@ -17,8 +17,8 @@ messenger or a mail server.
 `Plugins/UltraMessage/UltraCanvasMessageCenter.cpp`
 **Library target:** `UltraMessageCenter` (links the UltraCanvas library and
 `UltraMessage`; built whenever UltraMessage is)
-**Demo:** `Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp` (Extended
-functionality › Message Centre)
+**Demo:** `Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp` (ULTRA OS
+modules › Ultra Message)
 **Tests:** `Tests/UltraMessage/test_messagecenter.cpp` (target
 `UltraMessageCenterTests`, in-tree)
 

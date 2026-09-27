@@ -228,7 +228,11 @@ viewer->PlaySlideshow();
 
 `IsSupportedMedia(path)` answers whether the viewer can display a path
 (static — the UltraFiler preview uses it to decide whether to open the
-pane). Keyboard: Left / Right (or left / right mouse click on the picture)
+pane). `ClassifyFile(path)` (static) says which view a path opens in -
+`MediaKind::Image`, `Vector`, `Model`, `Video`, ... - from its name alone;
+an unknown extension answers `Image`, so check `IsSupportedMedia` first.
+UltraFiler uses it to preview pictures, vector drawings and 3D models from
+FTP and cloud drives without downloading videos or documents. Keyboard: Left / Right (or left / right mouse click on the picture)
 browse, Space toggles the slideshow; the widget claims the window keyboard
 focus when attached (`SetGrabFocusOnAttach(false)` opts out) and filters the
 window's key events so browsing works while a display view holds the focus.

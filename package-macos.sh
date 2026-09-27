@@ -1,7 +1,8 @@
 #!/bin/bash
 # package-macos.sh - Create macOS .app bundles for UltraCanvas applications
-# Packages Texter and UltraCanvasDemo with bundled dylibs,
-# Info.plist, .icns icons, and optional DMG creation.
+# Packages Texter, UltraCanvasDemo, UltraNetMonitor and DeviceExplorer as
+# .app bundles with bundled dylibs, Info.plist and .icns icons, the `ultramsg`
+# command-line tool as a bin/ + Frameworks/ folder, and an optional DMG.
 #
 # Usage: ./package-macos.sh [options]
 #   --build-dir DIR    Build directory (default: build)
@@ -40,7 +41,7 @@ while [[ $# -gt 0 ]]; do
         --no-sign)    DO_SIGN=false; shift ;;
         --notarize)   NOTARIZE=true; shift ;;
         -h|--help)
-            sed -n '2,18p' "$0" | sed 's/^# \?//'
+            sed -n '2,19p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -405,8 +406,12 @@ codesign_bundle() {
 
 # ── Helper: Notarize bundle ──────────────────────────────────────────────────
 
+# $2 = false skips stapling: a ticket can only be stapled to a bundle, a disk
+# image or an installer package, never to a bare command-line executable.
+# Gatekeeper looks the notarization of such a tool up online instead.
 notarize_bundle() {
     local app_bundle="$1"
+    local staple="${2:-true}"
     local zip_path="${app_bundle%.app}-notarize.zip"
     local submit_log
     submit_log=$(mktemp)
@@ -442,11 +447,13 @@ notarize_bundle() {
         exit 1
     fi
 
-    echo "  Stapling notarization ticket..."
-    xcrun stapler staple "$app_bundle"
+    if [ "$staple" = "true" ]; then
+        echo "  Stapling notarization ticket..."
+        xcrun stapler staple "$app_bundle"
 
-    echo "  Verifying stapled bundle..."
-    xcrun stapler validate "$app_bundle"
+        echo "  Verifying stapled bundle..."
+        xcrun stapler validate "$app_bundle"
+    fi
 
     echo "  Notarized: $(basename "$app_bundle")"
 }
@@ -562,6 +569,54 @@ build_app_bundle() {
     echo ""
 }
 
+# ── Package one command-line tool ────────────────────────────────────────────
+#
+# A command-line tool is not an .app: it ships as <name>/bin/<name> with its
+# Homebrew dylibs in <name>/Frameworks/, the same relative layout a bundle
+# has, so bundle_dylibs' @executable_path/../Frameworks rewrite holds for it.
+
+build_cli_tool() {
+    local exe_name="$1"
+
+    local exe_path="$BUILD_DIR/$exe_name"
+    if [ ! -f "$exe_path" ]; then
+        echo "Warning: Executable not found: $exe_path (skipping $exe_name)"
+        return 1
+    fi
+
+    local tool_dir="$OUTPUT_DIR/$exe_name"
+
+    echo "── Packaging $exe_name (command line) ──"
+
+    mkdir -p "$tool_dir/bin" "$tool_dir/Frameworks"
+    cp "$exe_path" "$tool_dir/bin/$exe_name"
+    chmod 755 "$tool_dir/bin/$exe_name"
+    echo "  Copied executable"
+
+    bundle_dylibs "$tool_dir/bin/$exe_name" "$tool_dir/Frameworks"
+
+    if $DO_SIGN; then
+        echo "  Signing tool..."
+        for dylib in "$tool_dir/Frameworks/"*.dylib; do
+            if [ -f "$dylib" ]; then
+                codesign --force --timestamp --options runtime \
+                    --sign "$IDENTITY" "$dylib"
+            fi
+        done
+        codesign --force --timestamp --options runtime \
+            --sign "$IDENTITY" "$tool_dir/bin/$exe_name"
+        codesign --verify --verbose=4 --strict "$tool_dir/bin/$exe_name"
+        echo "  Tool signed"
+    fi
+
+    if $NOTARIZE; then
+        notarize_bundle "$tool_dir" false
+    fi
+
+    echo "  Tool size: $(du -sh "$tool_dir" | cut -f1)"
+    echo ""
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 # Clean and create output directory
@@ -604,6 +659,27 @@ build_app_bundle \
     "public.app-category.developer-tools" \
     ""
 
+# Package UltraNetMonitor
+build_app_bundle \
+    "UltraNetMonitor" \
+    "UltraNetMonitor" \
+    "com.cloverleaf.UltraNetMonitor" \
+    "media/appicon/UltraNetMonitor.png" \
+    "public.app-category.utilities" \
+    ""
+
+# Package DeviceExplorer
+build_app_bundle \
+    "DeviceExplorer" \
+    "DeviceExplorer" \
+    "com.cloverleaf.DeviceExplorer" \
+    "media/appicon/DeviceExplorer.png" \
+    "public.app-category.utilities" \
+    ""
+
+# Package the UltraMessage command line (Apps/UltraMessageCli)
+build_cli_tool "ultramsg"
+
 # ── Optional DMG creation ───────────────────────────────────────────────────
 
 if $CREATE_DMG; then
@@ -619,6 +695,11 @@ if $CREATE_DMG; then
             cp -R "$app" "$DMG_STAGING/"
         fi
     done
+
+    # And the command-line tool folder beside them
+    if [ -d "$OUTPUT_DIR/ultramsg" ]; then
+        cp -R "$OUTPUT_DIR/ultramsg" "$DMG_STAGING/"
+    fi
 
     # Add Applications symlink for drag-and-drop install
     ln -s /Applications "$DMG_STAGING/Applications"
