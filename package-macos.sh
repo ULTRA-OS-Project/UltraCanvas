@@ -1,9 +1,8 @@
 #!/bin/bash
 # package-macos.sh - Create macOS .app bundles for UltraCanvas applications
-# Packages UltraCanvasTexter, UltraCanvasDemo, UltraNetMonitor and
-# DeviceExplorer as .app bundles with bundled dylibs, Info.plist and .icns
-# icons, the `ultramsg` command-line tool as a bin/ + Frameworks/ folder, and
-# an optional DMG.
+# Packages Texter, UltraCanvasDemo, UltraNetMonitor and DeviceExplorer as
+# .app bundles with bundled dylibs, Info.plist and .icns icons, the `ultramsg`
+# command-line tool as a bin/ + Frameworks/ folder, and an optional DMG.
 #
 # Usage: ./package-macos.sh [options]
 #   --build-dir DIR    Build directory (default: build)
@@ -42,7 +41,7 @@ while [[ $# -gt 0 ]]; do
         --no-sign)    DO_SIGN=false; shift ;;
         --notarize)   NOTARIZE=true; shift ;;
         -h|--help)
-            sed -n '2,20p' "$0" | sed 's/^# \?//'
+            sed -n '2,19p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -642,9 +641,9 @@ TEXTER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
         </dict>
     </array>'
 
-# Package UltraCanvasTexter
+# Package Texter
 build_app_bundle \
-    "UltraCanvasTexter" \
+    "Texter" \
     "UltraCanvas Texter" \
     "com.cloverleaf.UltraCanvasTexter" \
     "media/appicon/Texter.png" \

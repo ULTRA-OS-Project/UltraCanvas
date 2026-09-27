@@ -151,7 +151,7 @@ if ! "$SCRIPT_DIR/scripts/verify-pe.sh" "$VERIFY_ARCH" "${VERIFY_FILES[@]}"; the
 fi
 
 if $DO_SIGN; then
-    powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode Sign -ExePath dist/UltraCanvasTexter.exe
+    powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode Sign -ExePath dist/Texter.exe
     powershell -ExecutionPolicy Bypass -File SignUltraDemo.ps1 -Mode Sign -ExePath dist/UltraCanvasDemo.exe
 else
     echo "Skipping code signing (--no-sign)"
