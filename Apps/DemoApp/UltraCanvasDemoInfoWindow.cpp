@@ -91,7 +91,7 @@ namespace UltraCanvas {
         // Cleanup
     }
 
-    bool InfoWindow::Initialize() {
+    bool InfoWindow::Initialize(UltraCanvasWindowBase* parent) {
         debugOutput << "Initializing Info Window..." << std::endl;
 
         // Configure the info window
@@ -102,7 +102,8 @@ namespace UltraCanvas {
         config.resizable = false;
         config.type = WindowType::Dialog;
         config.modal = true;
-        //config.centerOnScreen = true;
+        // Keeps the window manager treating it as belonging to the main window.
+        config.parentWindow = parent;
 
         Create(config);
         if (!_created) {
@@ -321,7 +322,7 @@ namespace UltraCanvas {
         // Create the info window
         infoWindow = std::make_shared<InfoWindow>();
 
-        if (!infoWindow->Initialize()) {
+        if (!infoWindow->Initialize(mainWindow.get())) {
             debugOutput << "Failed to initialize info window" << std::endl;
             return;
         }
@@ -331,8 +332,10 @@ namespace UltraCanvas {
             CloseInfoWindow();
         });
 
-        // Show the window as modal
+        // Show the window as modal, centered over the main window (clamped to
+        // its monitor; centered on the screen when there is no main window).
         infoWindow->Show();
+        infoWindow->CenterOnParent(mainWindow.get());
 
         infoWindowShown = true;
     }
