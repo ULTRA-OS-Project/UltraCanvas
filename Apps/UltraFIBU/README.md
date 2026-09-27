@@ -226,6 +226,18 @@ out again, checked against its hash, from either kind of archive. A local
 file keeps its directory beside the database, which stays readable without
 this program.
 
+**Guessing is slowed down and recorded.** Every failed sign-in - wrong
+password, wrong code, unknown name - is counted per login name in the
+database (so across every computer) and written to the audit trail
+(`ultrafibu protokoll`: `anmeldung-fehlgeschlagen`, `anmeldung-gesperrt`,
+`anmeldung-abgewiesen`). Three failures are free; then the name is locked for
+30 seconds, doubling with each further failure up to 15 minutes. While locked,
+attempts are refused without the password even being checked, so a lock is a
+stop, not a hint. Unknown names are locked exactly like real ones, so the lock
+does not reveal which accounts exist. A successful sign-in clears the count,
+failures older than a day are forgotten, and an administrator can lift a lock
+early with `ultrafibu entsperren <adresse> <name>`.
+
 The database password this computer uses and the personal passwords are
 still two separate things; the second factor is on the personal one.
 

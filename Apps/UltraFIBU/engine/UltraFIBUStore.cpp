@@ -498,6 +498,16 @@ const char* const kSchemaV9 =
     "  inhalt      BYTEA NOT NULL"
     ");";
 
+// Failed sign-ins per login name typed (not per user id - unknown names are
+// counted and locked the same way, so the lock reveals nothing).
+const char* const kSchemaV10 =
+    "CREATE TABLE anmeldesperre ("
+    "  anmeldename         TEXT PRIMARY KEY,"
+    "  fehlversuche        BIGINT NOT NULL DEFAULT 0,"
+    "  gesperrt_bis        BIGINT NOT NULL DEFAULT 0,"
+    "  letzter_fehlversuch BIGINT NOT NULL DEFAULT 0"
+    ");";
+
 } // namespace
 
 // ===== BELEGE UND BUCHUNGEN =====
@@ -815,7 +825,8 @@ static std::vector<UltraDbMigration> MigrationSchritte() {
         { 6, "UltraFIBU EU-Steuersaetze", kSchemaV6 },
         { 7, "UltraFIBU Brutto-Erfassung und Leistungszeitpunkt", kSchemaV7 },
         { 8, "UltraFIBU Kontenrahmen: Funktion, Abschlusszweck, Programmverbindung", kSchemaV8 },
-        { 9, "UltraFIBU Zweiter Faktor und Belegdateien auf dem Server", kSchemaV9 }
+        { 9, "UltraFIBU Zweiter Faktor und Belegdateien auf dem Server", kSchemaV9 },
+        { 10, "UltraFIBU Anmeldesperre nach Fehlversuchen", kSchemaV10 }
     };
 }
 
@@ -2149,9 +2160,139 @@ bool Store::HatZweitenFaktor(int64_t benutzerId) const {
     return !row["totp_geheimnis"].AsString().empty();
 }
 
+// ---- Throttling ------------------------------------------------------------
+
+int64_t Store::Jetzt() const { return uhr_ ? uhr_() : NowSeconds(); }
+
+namespace {
+
+// What the audit trail records as the actor of a failed sign-in: the name that
+// was typed, cut to a sane length - it is attacker-controlled text.
+std::string VersuchterName(const std::string& name) {
+    std::string out;
+    for (const unsigned char c : name) {
+        if (out.size() >= 64) { out += "..."; break; }
+        out.push_back(c < 0x20 ? '?' : static_cast<char>(c));
+    }
+    return out;
+}
+
+} // namespace
+
+int64_t Store::SperreRestSekunden(const std::string& anmeldename) const {
+    UltraDbRow row;
+    if (!QueryOne("SELECT gesperrt_bis FROM anmeldesperre WHERE anmeldename = ?",
+                  { anmeldename }, row))
+        return 0;
+    const int64_t rest = row["gesperrt_bis"].AsInt64() - Jetzt();
+    return rest > 0 ? rest : 0;
+}
+
+int Store::FehlversucheFuer(const std::string& anmeldename) const {
+    UltraDbRow row;
+    if (!QueryOne("SELECT fehlversuche, letzter_fehlversuch FROM anmeldesperre"
+                  " WHERE anmeldename = ?", { anmeldename }, row))
+        return 0;
+    if (row["letzter_fehlversuch"].AsInt64() < Jetzt() - kFehlversuchVergessenSek) return 0;
+    return static_cast<int>(row["fehlversuche"].AsInt64());
+}
+
+void Store::FehlversuchZaehlen(const std::string& anmeldename, const std::string& grund) {
+    const int64_t jetzt = Jetzt();
+    // One statement, so two computers failing at once both count: the row is
+    // incremented in the database, not read, bumped and written back.
+    UltraDb_Exec(connection_,
+        "INSERT INTO anmeldesperre(anmeldename, fehlversuche, gesperrt_bis, letzter_fehlversuch)"
+        " VALUES(?, 1, 0, ?) ON CONFLICT (anmeldename) DO UPDATE SET"
+        " fehlversuche = CASE WHEN anmeldesperre.letzter_fehlversuch < ? THEN 1"
+        "                     ELSE anmeldesperre.fehlversuche + 1 END,"
+        " letzter_fehlversuch = ?",
+        { anmeldename, jetzt, jetzt - kFehlversuchVergessenSek, jetzt });
+    const int n = FehlversucheFuer(anmeldename);
+
+    Benutzer bekannt;
+    const bool gibtEs = BenutzerByName(anmeldename, bekannt);
+    Akteur wer;
+    wer.benutzerId  = gibtEs ? bekannt.id : 0;
+    wer.anmeldename = VersuchterName(anmeldename);
+    WriteAudit(wer, "benutzer", wer.benutzerId, "anmeldung-fehlgeschlagen",
+               grund + ", " + Number(n) + ". Fehlversuch");
+
+    if (n > kFreieFehlversuche) {
+        int64_t warten = kErsteSperreSek;
+        for (int i = kFreieFehlversuche + 1; i < n && warten < kLaengsteSperreSek; ++i)
+            warten *= 2;
+        if (warten > kLaengsteSperreSek) warten = kLaengsteSperreSek;
+        UltraDb_Exec(connection_,
+            "UPDATE anmeldesperre SET gesperrt_bis = ? WHERE anmeldename = ?",
+            { jetzt + warten, anmeldename });
+        WriteAudit(wer, "benutzer", wer.benutzerId, "anmeldung-gesperrt",
+                   "für " + Number(warten) + " s nach " + Number(n) + " Fehlversuchen");
+    }
+
+    // Names that stopped failing a day ago and are not locked are forgotten,
+    // so guessing random names cannot grow the table without bound.
+    UltraDb_Exec(connection_,
+        "DELETE FROM anmeldesperre WHERE letzter_fehlversuch < ? AND gesperrt_bis < ?",
+        { jetzt - kFehlversuchVergessenSek, jetzt });
+}
+
+StoreResult Store::AnmeldungEntsperren(const std::string& anmeldename, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::BenutzerVerwalten))
+        return StoreResult::Fail("Diese Rolle darf keine Anmeldesperren aufheben.");
+    const UltraDbResult r = UltraDb_Exec(connection_,
+        "DELETE FROM anmeldesperre WHERE anmeldename = ?", { anmeldename });
+    if (!r) return StoreResult::Fail("Die Sperre konnte nicht aufgehoben werden: " + r.message);
+    if (r.affectedRows == 0)
+        return StoreResult::Fail("Für \"" + anmeldename + "\" liegen keine Fehlversuche vor.");
+    Benutzer b;
+    const int64_t id = BenutzerByName(anmeldename, b) ? b.id : 0;
+    return WriteAudit(akteur, "benutzer", id, "anmeldung-entsperrt", VersuchterName(anmeldename));
+}
+
 Store::AnmeldeErgebnis Store::Anmelden(const std::string& anmeldename,
                                        const std::string& passwort,
                                        const std::string& code, Benutzer& out) {
+    // Locked: refused before the password is even looked at, and the refusal
+    // is recorded too - a stream of these is what an attack looks like.
+    if (const int64_t rest = SperreRestSekunden(anmeldename); rest > 0) {
+        Benutzer bekannt;
+        Akteur wer;
+        wer.benutzerId  = BenutzerByName(anmeldename, bekannt) ? bekannt.id : 0;
+        wer.anmeldename = VersuchterName(anmeldename);
+        WriteAudit(wer, "benutzer", wer.benutzerId, "anmeldung-abgewiesen",
+                   "gesperrt, noch " + Number(rest) + " s");
+        return AnmeldeErgebnis::Gesperrt;
+    }
+
+    const AnmeldeErgebnis r = PruefeAnmeldung(anmeldename, passwort, code, out);
+    switch (r) {
+        case AnmeldeErgebnis::Ok:
+            UltraDb_Exec(connection_, "DELETE FROM anmeldesperre WHERE anmeldename = ?",
+                         { anmeldename });
+            break;
+        case AnmeldeErgebnis::CodeNoetig:
+            // The password was right; asking for the code is not a failure.
+            break;
+        case AnmeldeErgebnis::CodeFalsch:
+            FehlversuchZaehlen(anmeldename, "falscher Code");
+            break;
+        case AnmeldeErgebnis::Abgelehnt: {
+            Benutzer bekannt;
+            FehlversuchZaehlen(anmeldename, BenutzerByName(anmeldename, bekannt)
+                                                ? "falsches Passwort"
+                                                : "unbekannter Anmeldename");
+            break;
+        }
+        case AnmeldeErgebnis::Gesperrt:
+            break;
+    }
+    return r;
+}
+
+Store::AnmeldeErgebnis Store::PruefeAnmeldung(const std::string& anmeldename,
+                                              const std::string& passwort,
+                                              const std::string& code, Benutzer& out) {
     UltraDbRow row;
     if (!QueryOne("SELECT id, anmeldename, anzeigename, email, rolle, aktiv, angelegt_am,"
                   " letzter_login, passwort_hash, passwort_salt, kdf_iterationen,"
@@ -2161,8 +2302,8 @@ Store::AnmeldeErgebnis Store::Anmelden(const std::string& anmeldename,
         return AnmeldeErgebnis::Abgelehnt;
     const std::string versiegelt = row["totp_geheimnis"].AsString();
     if (versiegelt.empty())
-        return Anmelden(anmeldename, passwort, out) ? AnmeldeErgebnis::Ok
-                                                    : AnmeldeErgebnis::Abgelehnt;
+        return PasswortPruefen(anmeldename, passwort, out) ? AnmeldeErgebnis::Ok
+                                                           : AnmeldeErgebnis::Abgelehnt;
 
     // The password first, exactly as without a second factor. Only a right
     // password is told that a code is needed.
@@ -2327,6 +2468,11 @@ StoreResult Store::ZweitenFaktorEntfernen(int64_t benutzerId, const Akteur& akte
 
 bool Store::Anmelden(const std::string& anmeldename, const std::string& passwort,
                      Benutzer& out) {
+    return Anmelden(anmeldename, passwort, std::string(), out) == AnmeldeErgebnis::Ok;
+}
+
+bool Store::PasswortPruefen(const std::string& anmeldename, const std::string& passwort,
+                            Benutzer& out) {
     UltraDbRow row;
     if (!QueryOne("SELECT id, anmeldename, anzeigename, email, rolle, aktiv, angelegt_am,"
                   " letzter_login, passwort_hash, passwort_salt, kdf_iterationen,"

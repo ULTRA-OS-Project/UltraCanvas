@@ -40,6 +40,8 @@
 #include "UltraFIBUUstva.h"
 
 #include <UltraDatabase/UltraDatabaseCore.h>
+
+#include <functional>
 #include <UltraDatabase/UltraDatabaseValue.h>
 
 #include <cstdint>
@@ -87,7 +89,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert that the database matches the
     // code without a literal that has to be chased.
-    static constexpr int kSchemaVersion = 9;
+    static constexpr int kSchemaVersion = 10;
 
     Store() = default;
     ~Store() = default;
@@ -690,8 +692,40 @@ public:
         Ok,
         Abgelehnt,     // unknown user, wrong password, or inactive
         CodeNoetig,    // password right, second factor enrolled, no code given
-        CodeFalsch     // password right, code wrong, expired or already used
+        CodeFalsch,    // password right, code wrong, expired or already used
+        Gesperrt       // too many failures: not even checked until the wait is over
     };
+
+    // ---- Throttling repeated guesses -----------------------------------------
+    //
+    // Every failed sign-in - wrong password, wrong code, unknown name - is
+    // counted per login name, in the database, so the count holds across every
+    // computer and every restart, and is written to the audit trail. Three
+    // failures are free (typos happen); after that the name is locked for 30
+    // seconds, doubling with each further failure up to 15 minutes. While it
+    // is locked, attempts are refused **without checking the password** - a
+    // lock that still answered "right" or "wrong" would only slow an attacker
+    // down, not stop the guessing. A successful sign-in clears the count;
+    // failures older than a day are forgotten.
+    //
+    // Counted by the *name typed*, not by user id: an unknown name is locked
+    // exactly like a real one, so the lock does not tell anybody which names
+    // exist.
+    static constexpr int     kFreieFehlversuche  = 3;
+    static constexpr int64_t kErsteSperreSek     = 30;
+    static constexpr int64_t kLaengsteSperreSek  = 15 * 60;
+    static constexpr int64_t kFehlversuchVergessenSek = 24 * 60 * 60;
+
+    // Seconds until `anmeldename` may try again; 0 when it may now.
+    int64_t SperreRestSekunden(const std::string& anmeldename) const;
+    // Failures counted for this name right now.
+    int FehlversucheFuer(const std::string& anmeldename) const;
+    // An administrator lifts the lock early (after a phone call, say).
+    StoreResult AnmeldungEntsperren(const std::string& anmeldename, const Akteur& akteur);
+
+    // Tests only: a clock the throttling reads instead of the system time, so
+    // a fifteen-minute lock can be tested without waiting fifteen minutes.
+    void SetUhrFuerTests(std::function<int64_t()> uhr) { uhr_ = std::move(uhr); }
     AnmeldeErgebnis Anmelden(const std::string& anmeldename, const std::string& passwort,
                              const std::string& code, Benutzer& out);
 
@@ -751,6 +785,16 @@ private:
                          UltraDbRow& out) const;
     bool        Query(const std::string& sql, const UltraDbParams& params,
                       UltraDbResultSet& out) const;
+
+    // The checks behind Anmelden, without the throttling around them.
+    bool PasswortPruefen(const std::string& anmeldename, const std::string& passwort,
+                         Benutzer& out);
+    AnmeldeErgebnis PruefeAnmeldung(const std::string& anmeldename,
+                                    const std::string& passwort,
+                                    const std::string& code, Benutzer& out);
+    void FehlversuchZaehlen(const std::string& anmeldename, const std::string& grund);
+    int64_t Jetzt() const;
+    std::function<int64_t()> uhr_;
 
     // Server mode: file a receipt into the database. Same checks as the
     // directory archive (kind by bytes, no encrypted PDFs), same identity

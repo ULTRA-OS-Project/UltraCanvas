@@ -312,6 +312,14 @@ StoreResult Anmelden(Store& store, const std::string& anmeldename,
             if (codeNoetig) *codeNoetig = true;
             return StoreResult::Fail("Der Code ist falsch, abgelaufen oder schon benutzt. "
                                      "Den nächsten abwarten und neu eingeben.");
+        case Store::AnmeldeErgebnis::Gesperrt: {
+            const int64_t rest = store.SperreRestSekunden(anmeldename);
+            const std::string wann = rest >= 120 ? std::to_string((rest + 59) / 60) + " Minuten"
+                                                 : std::to_string(rest) + " Sekunden";
+            return StoreResult::Fail("Zu viele Fehlversuche - die Anmeldung für \"" +
+                                     anmeldename + "\" ist für " + wann + " gesperrt. "
+                                     "Ein Administrator kann die Sperre aufheben.");
+        }
         case Store::AnmeldeErgebnis::Abgelehnt:
         default:
             return StoreResult::Fail("Anmeldename oder Passwort ist falsch, oder der "

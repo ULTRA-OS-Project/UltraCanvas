@@ -56,9 +56,26 @@
     abgelegte Kopie wird zurückgelesen und neu gehasht. Neu:
     `beleg-datei <adresse> <belegnummer> --ziel <verz>` schreibt einen Beleg
     geprüft wieder heraus - aus beiden Archivarten.
-  - Schema-Version 9 (Spalten für den zweiten Faktor, Tabelle
-    `beleg_datei`); die Migration läuft beim Öffnen, lokal wie auf dem
-    Server.
+  - **Raten wird gebremst und protokolliert.** Jede fehlgeschlagene
+    Anmeldung (falsches Passwort, falscher Code, unbekannter Name) wird je
+    Anmeldename in der Datenbank gezählt - also über alle Rechner - und ins
+    Protokoll geschrieben. Drei Fehlversuche sind frei, dann ist der Name 30
+    Sekunden gesperrt, bei jedem weiteren doppelt so lang, höchstens 15
+    Minuten. Während der Sperre wird das Passwort gar nicht erst geprüft.
+    Unbekannte Namen werden genauso gesperrt wie echte; die Sperre verrät
+    also nicht, welche Konten es gibt. Eine erfolgreiche Anmeldung setzt den
+    Zähler zurück, Fehlversuche älter als ein Tag verfallen. Neu:
+    `entsperren <adresse> <name>` für Administratoren. Der Zähler wird in
+    einer einzigen Anweisung erhöht; acht gleichzeitige Fehlversuche gegen
+    PostgreSQL ergaben 4 gezählte = 4 protokollierte Fehlversuche und 4
+    während der Sperre abgewiesene - keiner ging verloren.
+  - Schema-Version 10 (Spalten für den zweiten Faktor, Tabellen
+    `beleg_datei` und `anmeldesperre`); die Migrationen laufen beim Öffnen,
+    lokal wie auf dem Server.
+  - Tests: weitere 43 Prüfungen zur Anmeldesperre (mit einstellbarer Uhr:
+    Verdopplung bis 15 Minuten, Sperre auch für richtige Passwörter,
+    unbekannte Namen, Entsperren, Verfallen nach einem Tag, keine Passwörter
+    im Protokoll); gegengeprüft - ohne die Sperrprüfung schlagen fünf fehl.
   - Tests: weitere 48 Prüfungen (Einrichtung und Anmeldung mit Code,
     Wiederholungsschutz, Zurücksetzen, Rollen, Belege in der Datenbank samt
     Manipulationserkennung). Der Wiederholungsschutz ist gegengeprüft: mit

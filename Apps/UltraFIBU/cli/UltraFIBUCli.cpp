@@ -146,6 +146,10 @@ void PrintUsage() {
         "                          Passwort verlangen (für sich selbst einrichten)\n"
         "        Anmeldung dann mit --code <123456>, ULTRAFIBU_CODE, oder Abfrage\n"
         "  zweiter-faktor-entfernen <datei> <name>   z. B. nach verlorenem Telefon\n"
+        "  entsperren <datei> <name>\n"
+        "                          Anmeldesperre nach Fehlversuchen aufheben (nach\n"
+        "                          3 Fehlversuchen 30 s, dann doppelt so lang, bis\n"
+        "                          15 min; jeder Fehlversuch steht im Protokoll)\n"
         "  beleg-datei <datei> <belegnummer> [--ziel <verz>]\n"
         "                          Belegdatei auslesen, geprüft gegen ihre Prüfsumme\n"
         "\n"
@@ -2694,6 +2698,22 @@ int ZweiterFaktor(int argc, char** argv) {
     return 0;
 }
 
+// Lift a login lock early - after a phone call, say. Needs the right to
+// manage users; the lock and this step are both in the audit trail.
+int Entsperren(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    const std::string name = Positional(argc, argv, 1);
+    if (name.empty()) {
+        std::printf("Aufruf: ultrafibu entsperren <datei> <name>\n");
+        return 2;
+    }
+    const StoreResult r = store.AnmeldungEntsperren(name, AkteurFor(store));
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Anmeldesperre für %s aufgehoben.\n", name.c_str());
+    return 0;
+}
+
 int ZweiterFaktorEntfernen(int argc, char** argv) {
     Store store;
     if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
@@ -2827,6 +2847,7 @@ const Befehl kBefehle[] = {
     { "server-passwort",       ServerPasswort },
     { "zweiter-faktor",        ZweiterFaktor },
     { "zweiter-faktor-entfernen", ZweiterFaktorEntfernen },
+    { "entsperren",            Entsperren },
     { "beleg-datei",           BelegDatei },
 };
 

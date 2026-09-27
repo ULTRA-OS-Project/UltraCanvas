@@ -6426,6 +6426,124 @@ static void TestZweiterFaktor() {
     }
 }
 
+// ---- Throttling repeated guesses --------------------------------------------
+
+static void TestAnmeldesperre() {
+    std::printf("Anmeldesperre nach Fehlversuchen\n");
+    if (!UltraCrypt_IsAvailable()) {
+        std::printf("    (UltraCrypt without libsodium: skipped)\n");
+        return;
+    }
+    Store store;
+    if (!CheckStore(store.Open("fibu-sperre", ":memory:"), "an in-memory database")) return;
+    int64_t uhr = 1'800'000'000;   // a fixed clock, moved by hand
+    store.SetUhrFuerTests([&uhr]() { return uhr; });
+
+    Benutzer admin;
+    admin.anmeldename = "chefin";
+    CheckStore(store.SaveBenutzer(admin, Akteur()), "the administrator");
+    Akteur alsAdmin;
+    alsAdmin.benutzerId = admin.id; alsAdmin.anmeldename = "chefin";
+    alsAdmin.rolle = BenutzerRolle::Administrator;
+    CheckStore(store.SetPasswort(admin.id, "chefin-passwort", alsAdmin), "her password");
+    Benutzer erika;
+    erika.anmeldename = "erika";
+    erika.rolle = BenutzerRolle::Buchhalter;
+    CheckStore(store.SaveBenutzer(erika, alsAdmin), "Erika");
+    CheckStore(store.SetPasswort(erika.id, "erikas-passwort", alsAdmin), "her password");
+
+    auto zaehle = [&store](const std::string& aktion) {
+        int n = 0;
+        for (const Store::AuditEintrag& e : store.AuditListe(500)) if (e.aktion == aktion) ++n;
+        return n;
+    };
+
+    Benutzer b;
+    // Three free failures.
+    for (int i = 0; i < 3; ++i)
+        Check(store.Anmelden("erika", "falsch-" + std::to_string(i), "", b) ==
+                  Store::AnmeldeErgebnis::Abgelehnt,
+              "failure " + std::to_string(i + 1) + " is an ordinary refusal");
+    CheckInt(store.FehlversucheFuer("erika"), 3, "three failures counted");
+    CheckInt(store.SperreRestSekunden("erika"), 0, "and no lock yet - typos happen");
+    CheckInt(zaehle("anmeldung-fehlgeschlagen"), 3, "each one is in the audit trail");
+
+    // The fourth locks for 30 s.
+    Check(store.Anmelden("erika", "falsch-4", "", b) == Store::AnmeldeErgebnis::Abgelehnt,
+          "the fourth failure is refused");
+    CheckInt(store.SperreRestSekunden("erika"), 30, "and locks the name for 30 s");
+    CheckInt(zaehle("anmeldung-gesperrt"), 1, "the lock is in the audit trail");
+
+    // Locked: even the right password is refused, without being checked.
+    Check(store.Anmelden("erika", "erikas-passwort", "", b) == Store::AnmeldeErgebnis::Gesperrt,
+          "while locked even the right password is refused");
+    CheckInt(zaehle("anmeldung-abgewiesen"), 1, "and that attempt is recorded too");
+    CheckInt(store.FehlversucheFuer("erika"), 4, "an attempt during the lock is not a guess");
+    Akteur a;
+    const StoreResult hinweis = Anmelden(store, "erika", "erikas-passwort", "", a);
+    Check(!hinweis.ok && hinweis.fehler.find("gesperrt") != std::string::npos &&
+          hinweis.fehler.find("30 Sekunden") != std::string::npos,
+          "the message says how long: " + hinweis.fehler);
+
+    // Doubling: 30, 60, 120 ... up to 15 minutes.
+    const int64_t erwartet[] = { 60, 120, 240, 480, 900, 900 };
+    for (int64_t warten : erwartet) {
+        uhr += store.SperreRestSekunden("erika");   // wait it out
+        Check(store.Anmelden("erika", "wieder-falsch", "", b) == Store::AnmeldeErgebnis::Abgelehnt,
+              "after the wait the next guess is checked (and wrong)");
+        CheckInt(store.SperreRestSekunden("erika"), warten,
+                 "the lock doubles to " + std::to_string(warten) + " s");
+    }
+
+    // The same limits for a name that does not exist - the lock tells nothing.
+    for (int i = 0; i < 4; ++i) store.Anmelden("niemand", "egal-egal", "", b);
+    CheckInt(store.SperreRestSekunden("niemand"), 30,
+             "an unknown name is locked exactly like a real one");
+    bool unbekanntProtokolliert = false;
+    for (const Store::AuditEintrag& e : store.AuditListe(500))
+        if (e.aktion == "anmeldung-fehlgeschlagen" && e.benutzer == "niemand" &&
+            e.details.find("unbekannter Anmeldename") != std::string::npos)
+            unbekanntProtokolliert = true;
+    Check(unbekanntProtokolliert, "and recorded as an unknown name, for the administrator");
+
+    // Other users are not affected.
+    Check(store.Anmelden("chefin", "chefin-passwort", "", b) == Store::AnmeldeErgebnis::Ok,
+          "another user signs in normally meanwhile");
+
+    // An administrator lifts the lock; an Erfasser may not.
+    Akteur alsErfasser;
+    alsErfasser.benutzerId = 99; alsErfasser.rolle = BenutzerRolle::Erfasser;
+    CheckRefused(store.AnmeldungEntsperren("erika", alsErfasser),
+                 "an Erfasser cannot lift a lock");
+    CheckStore(store.AnmeldungEntsperren("erika", alsAdmin), "the administrator lifts it");
+    CheckInt(store.SperreRestSekunden("erika"), 0, "the lock is gone");
+    CheckInt(zaehle("anmeldung-entsperrt"), 1, "and the unlock is in the audit trail");
+    Check(store.Anmelden("erika", "erikas-passwort", "", b) == Store::AnmeldeErgebnis::Ok,
+          "Erika signs in again");
+
+    // A success clears the count; old failures are forgotten after a day.
+    store.Anmelden("erika", "falsch", "", b);
+    store.Anmelden("erika", "falsch", "", b);
+    Check(store.Anmelden("erika", "erikas-passwort", "", b) == Store::AnmeldeErgebnis::Ok,
+          "two typos and then the right password");
+    CheckInt(store.FehlversucheFuer("erika"), 0, "clear the count");
+    for (int i = 0; i < 3; ++i) store.Anmelden("erika", "falsch", "", b);
+    uhr += Store::kFehlversuchVergessenSek + 1;
+    store.Anmelden("erika", "falsch", "", b);
+    CheckInt(store.FehlversucheFuer("erika"), 1,
+             "failures a day old are forgotten: the next one counts as the first");
+    CheckInt(store.SperreRestSekunden("erika"), 0, "so it does not lock");
+
+    // The passwords never reach the audit trail.
+    bool leck = false;
+    for (const Store::AuditEintrag& e : store.AuditListe(500))
+        if (e.details.find("falsch-") != std::string::npos ||
+            e.details.find("erikas-passwort") != std::string::npos ||
+            e.details.find("wieder-falsch") != std::string::npos)
+            leck = true;
+    Check(!leck, "no typed password appears in the audit trail");
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -6456,6 +6574,7 @@ int main() {
     TestEuSteuersaetze();
     TestServerModus();
     TestZweiterFaktor();
+    TestAnmeldesperre();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
