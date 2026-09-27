@@ -1,3 +1,35 @@
+#### 2026-09-27 *0.9.65*
+- **A PostgreSQL connection can log in with a password.** The driver was
+  meant to read the password from UltraVault, but that lookup sat behind
+  `ULTRADATABASE_HAS_VAULT`, which no build defined, and it called
+  `UltraVault_GetSecret`, which does not exist. So every connection with
+  `credentials` failed with "UltraVault is not built in". Only passwordless
+  logins (peer / trust / `.pgpass`) worked, and that is all CI's multi-user
+  test uses, so nothing failed.
+  - The build now links UltraVault into UltraDatabase and defines the flag
+    wherever the PostgreSQL driver is built. Configure prints "PostgreSQL
+    (passwords from UltraVault)".
+  - The driver reads the password with `UltraVault::Get`. The application
+    opens the vault; the driver never opens one itself, since that would
+    quietly give an empty in-memory vault and turn a setup mistake into "not
+    found". A closed vault, a missing key and an unreadable vault now each
+    give their own message.
+  - The password no longer outlives the connect call. The vault's copy, the
+    driver's copy and the connection string are all overwritten once libpq
+    has them. The connection string is sized up front so appending never
+    reallocates and frees a buffer holding the password, and the escaping
+    writes straight into it instead of through a temporary copy.
+  - New `UltraFIBUServerLoginTests` needs no database server. It stores a
+    password containing a quote and a backslash in a memory vault, and a
+    fake PostgreSQL server on the loopback interface asks for a cleartext
+    password. The test checks that exactly the stored password reaches the
+    wire. It also checks that `OpenServer` gets as far as the server with a
+    stored key, and is refused before connecting when the key is missing
+    or the vault is closed. CI's "was the test registered" check now covers
+    it too.
+- **Docs:** the UltraDatabase README status table lists the PostgreSQL driver
+  as implemented, and explains that the application opens the vault.
+
 #### 2026-09-26 *0.9.64*
 - **WebSocket, CoAP and AMQP receiver threads no longer abort or outlive
   shutdown.** Each receiver held a `shared_ptr` to its own connection, and

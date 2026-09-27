@@ -941,7 +941,15 @@ from the first commit.
 
 ### 10.1 What "server mode" costs, honestly
 
-**The PostgreSQL driver does not exist yet.** Verified: `core/UltraDatabase/`
+> **Update, 2026-09:** the prerequisite below has landed. The `libpq` driver is
+> `core/UltraDatabase/UltraDatabasePostgresDriver.cpp`, built whenever libpq is
+> found, with TLS `verify-full` by default and the password read from
+> UltraVault (UltraFIBU 0.11.0 for the driver, framework 0.9.65 for the
+> UltraVault lookup, which until then was compiled out). `Store::OpenServer`
+> uses it, and CI runs the two-client test against a real server. The paragraph
+> is kept as it was written, because the plan it describes is how it was done.
+
+**At the time of writing, the PostgreSQL driver did not exist.** Verified: `core/UltraDatabase/`
 contains `UltraDatabaseSqliteDriver.cpp`, `UltraDatabaseValue.cpp` and
 `UltraDatabaseManager.cpp`, and there is no `Plugins/UltraDatabase/` directory —
 the networked drivers, pooling and async queries are the documented Stage 2/3

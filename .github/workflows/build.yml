@@ -659,11 +659,14 @@ jobs:
         shell: bash
         run: |
           set -eu
-          if ! grep -q "UltraFIBUServer" ctest.log; then
-            echo "::error::the UltraFIBUServer test was not registered - libpq missing at configure time?"
-            exit 1
-          fi
-          echo "multi-user acceptance test is registered and ran against PostgreSQL"
+          # [ .] after the name, so UltraFIBUServerLogin cannot stand in for it.
+          for t in UltraFIBUServer UltraFIBUServerLogin; do
+            if ! grep -qE "${t}[ .]" ctest.log; then
+              echo "::error::the $t test was not registered - libpq missing at configure time?"
+              exit 1
+            fi
+          done
+          echo "multi-user acceptance test and server-login test are registered and ran"
 
       # Bundle all apps into the portable multi-executable tree. Reuses the
       # already-built shared `build` dir (SKIP_BUILD=1) rather than rebuilding.

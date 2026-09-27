@@ -250,8 +250,10 @@ and the reason appears in the status line.
   truth, and the start of a refund.
 - **One schema, two storage modes.** Local SQLite or a shared PostgreSQL
   database, chosen by one configuration field. The server driver is
-  UltraDatabase Stage 2 and not built yet; `OpenServer` says so rather than
-  falling back. A shared SQLite file on a network share or a synced folder is
+  UltraDatabase's PostgreSQL driver, built wherever libpq is found; the
+  password comes out of UltraVault, never from a file, and a build without
+  libpq says so from `OpenServer` rather than falling back. The program
+  does not yet offer server mode in its window or its commands. A shared SQLite file on a network share or a synced folder is
   never an option — that is silent loss of a book the law requires to be
   complete.
 - **The VAT number check is honest about itself.** Offline it catches typing

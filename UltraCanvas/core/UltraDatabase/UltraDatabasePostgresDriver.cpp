@@ -26,7 +26,7 @@
 // the driver is simply not registered and an attempt to open a "postgresql"
 // connection reports that the driver is missing, which is a true answer rather
 // than a link error.
-// Version: 0.1.0
+// Version: 0.1.1
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDatabase/UltraDatabaseCore.h"
@@ -39,6 +39,7 @@
 
 #include <libpq-fe.h>
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -46,7 +47,8 @@
 #include <string>
 #include <vector>
 
-// Resolving the password through UltraVault when that module is available.
+// Resolving the password through UltraVault. The build defines
+// ULTRADATABASE_HAS_VAULT wherever it links UltraVault into UltraDatabase.
 #if defined(ULTRADATABASE_HAS_VAULT)
   #include "UltraVault/UltraVault.h"
 #endif
@@ -384,15 +386,24 @@ std::string TlsModus(UltraDbTls tls) {
     return "verify-full";
 }
 
-// Escape a value for a libpq keyword/value connection string.
-std::string Escape(const std::string& wert) {
-    std::string aus = "'";
+// Append a value to a libpq keyword/value connection string, quoted and
+// escaped. Written straight into the target rather than returned, so the
+// password never passes through a temporary that is freed without a wipe.
+void AppendEscaped(std::string& ziel, const std::string& wert) {
+    ziel.push_back('\'');
     for (char c : wert) {
-        if (c == '\'' || c == '\\') aus.push_back('\\');
-        aus.push_back(c);
+        if (c == '\'' || c == '\\') ziel.push_back('\\');
+        ziel.push_back(c);
     }
-    aus.push_back('\'');
-    return aus;
+    ziel.push_back('\'');
+}
+
+// Overwrite a string's bytes before it is released. volatile, so the stores
+// are not dropped as dead writes to memory that is about to be freed.
+void Wipe(std::string& s) {
+    volatile char* p = s.data();
+    for (size_t i = 0; i < s.size(); ++i) p[i] = '\0';
+    s.clear();
 }
 
 // Resolve the password. `credentials` names an UltraVault entry; a literal
@@ -408,9 +419,27 @@ bool Passwort(const UltraDbConnectionConfig& config, std::string& out,
     if (schluessel.rfind(praefix, 0) == 0) schluessel = schluessel.substr(praefix.size());
 
 #if defined(ULTRADATABASE_HAS_VAULT)
-    if (UltraVault_GetSecret(schluessel, out)) return true;
-    fehler = "the password for '" + schluessel + "' is not in UltraVault";
-    return false;
+    // The application opens the vault (its own file and passphrase); the
+    // driver only reads from it. Opening one here would silently fall back to
+    // an empty in-memory vault and turn a setup mistake into "not found".
+    if (!UltraVault::IsAvailable()) {
+        fehler = "the password for '" + schluessel + "' is in UltraVault, "
+                 "but UltraVault is not open";
+        return false;
+    }
+    UltraVault::SecretValue geheimnis;
+    const UltraVault::Result gelesen = UltraVault::Get(schluessel, geheimnis);
+    if (!gelesen) {
+        fehler = gelesen.code == UltraVault::ResultCode::NotFound
+            ? "the password for '" + schluessel + "' is not in UltraVault"
+            : "the password for '" + schluessel + "' could not be read from "
+              "UltraVault: " + gelesen.message;
+        return false;
+    }
+    out.assign(geheimnis.bytes.begin(), geheimnis.bytes.end());
+    volatile uint8_t* b = geheimnis.bytes.data();
+    for (size_t i = 0; i < geheimnis.bytes.size(); ++i) b[i] = 0;
+    return true;
 #else
     fehler = "credentials were requested ('" + config.credentials +
              "') but UltraVault is not built in, and a literal password in a "
@@ -436,13 +465,22 @@ public:
             return nullptr;
         }
 
+        // Room for the whole string up front - every value escaped at worst
+        // doubles, plus quotes, keys and separators - so appending never
+        // reallocates and frees a buffer that already holds the password.
+        size_t platz = 256 + 2 * (config.host.size() + config.database.size() +
+                                  config.user.size() + passwort.size() +
+                                  config.name.size());
+        for (const auto& option : config.options)
+            platz += 4 + option.first.size() + 2 * option.second.size();
         std::string verbindung;
+        verbindung.reserve(platz);
         auto anhaengen = [&](const char* schluessel, const std::string& wert) {
             if (wert.empty()) return;
             if (!verbindung.empty()) verbindung.push_back(' ');
             verbindung += schluessel;
             verbindung.push_back('=');
-            verbindung += Escape(wert);
+            AppendEscaped(verbindung, wert);
         };
         anhaengen("host", config.host);
         if (config.port > 0) anhaengen("port", std::to_string(config.port));
@@ -454,9 +492,9 @@ public:
         for (const auto& option : config.options) anhaengen(option.first.c_str(), option.second);
 
         PGconn* conn = PQconnectdb(verbindung.c_str());
-        // The password has been handed to libpq; it does not stay here.
-        std::fill(passwort.begin(), passwort.end(), '\0');
-        verbindung.clear();
+        // The password has been handed to libpq; neither copy stays here.
+        Wipe(passwort);
+        Wipe(verbindung);
 
         if (conn == nullptr) {
             error = UltraDbResult::Error(UltraDbResultCode::ConnectionFailed,
