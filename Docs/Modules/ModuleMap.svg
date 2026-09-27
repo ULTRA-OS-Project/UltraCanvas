@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1110" viewBox="0 0 1400 1110" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title>UltraCloud, UltraNet and the shared modules</title>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4b5563"/></marker></defs>
+<rect width="1400" height="1110" fill="#ffffff"/>
+<text x="24" y="36" font-size="22" font-weight="bold" fill="#1f2937" text-anchor="start">UltraCloud, UltraNet and the shared modules</text>
+<text x="24" y="58" font-size="13" font-weight="normal" fill="#6b7280" text-anchor="start">An arrow means “links and calls”. Solid = built today (main, framework 0.9.66); dashed = planned. Verified against the CMake targets.</text>
+<text x="24" y="84" font-size="12" font-weight="bold" fill="#6b7280" text-anchor="start">APPLICATIONS</text>
+<text x="136.39999999999998" y="84" font-size="12" font-weight="normal" fill="#6b7280" text-anchor="start" font-style="italic">— the chips name the modules each app links</text>
+<rect x="18" y="96" width="160" height="172" rx="10" fill="#f8fafc" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="98.0" y="118" font-size="13.5" font-weight="bold" fill="#1f2937" text-anchor="middle">UltraMail</text>
+<rect x="30" y="130" width="136" height="16" rx="8" fill="#e6f4f2" stroke="#0f766e" stroke-width="1"/>
+<text x="98.0" y="142" font-size="11" font-weight="normal" fill="#0f766e" text-anchor="middle">UltraCloudUI</text>
+<rect x="30" y="149" width="136" height="16" rx="8" fill="#e6f4f2" stroke="#0f766e" stroke-width="1"/>
+<text x="98.0" y="161" font-size="11" font-weight="normal" fill="#0f766e" text-anchor="middle">UltraCloud</text>
+<rect x="30" y="168" width="136" height="16" rx="8" fill="#e8eefc" stroke="#1d4ed8" stroke-width="1"/>
+<text x="98.0" y="180" font-size="11" font-weight="normal" fill="#1d4ed8" text-anchor="middle">UltraNet</text>
+<rect x="30" y="187" width="136" height="16" rx="8" fill="#fbf0e1" stroke="#b45309" stroke-width="1"/>
+<text x="98.0" y="199" font-size="11" font-weight="normal" fill="#b45309" text-anchor="middle">UltraDatabase</text>
+<rect x="30" y="206" width="136" height="16" rx="8" fill="#f1ebfd" stroke="#7c3aed" stroke-width="1"/>
+<text x="98.0" y="218" font-size="11" font-weight="normal" fill="#7c3aed" text-anchor="middle">UltraVault</text>
+<rect x="30" y="225" width="136" height="16" rx="8" fill="#e7f4ea" stroke="#15803d" stroke-width="1"/>
+<text x="98.0" y="237" font-size="11" font-weight="normal" fill="#15803d" text-anchor="middle">UltraMessage</text>
+<rect x="30" y="244" width="136" height="16" rx="8" fill="#f1ebfd" stroke="#7c3aed" stroke-width="1"/>
+<text x="98.0" y="256" font-size="11" font-weight="normal" fill="#7c3aed" text-anchor="middle">UltraCrypt</text>
+<rect x="190" y="96" width="160" height="172" rx="10" fill="#f8fafc" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="270.0" y="118" font-size="13.5" font-weight="bold" fill="#1f2937" text-anchor="middle">UltraFiler</text>
+<rect x="202" y="130" width="136" height="16" rx="8" fill="#e6f4f2" stroke="#0f766e" stroke-width="1"/>
+<text x="270.0" y="142" font-size="11" font-weight="normal" fill="#0f766e" text-anchor="middle">UltraCloudUI</text>
+<rect x="202" y="149" width="136" height="16" rx="8" fill="#e6f4f2" stroke="#0f766e" stroke-width="1"/>
+<text x="270.0" y="161" font-size="11" font-weight="normal" fill="#0f766e" text-anchor="middle">UltraCloud</text>
+<rect x="362" y="96" width="160" height="172" rx="10" fill="#f8fafc" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="442.0" y="118" font-size="13.5" font-weight="bold" fill="#1f2937" text-anchor="middle">UltraSocial</text>
+<rect x="374" y="130" width="136" height="16" rx="8" fill="#e8eefc" stroke="#1d4ed8" stroke-width="1"/>
+<text x="442.0" y="142" font-size="11" font-weight="normal" fill="#1d4ed8" text-anchor="middle">UltraNet</text>
+<rect x="374" y="149" width="136" height="16" rx="8" fill="#fbf0e1" stroke="#b45309" stroke-width="1"/>
+<text x="442.0" y="161" font-size="11" font-weight="normal" fill="#b45309" text-anchor="middle">UltraDatabase</text>
+<rect x="374" y="168" width="136" height="16" rx="8" fill="#f1ebfd" stroke="#7c3aed" stroke-width="1"/>
+<text x="442.0" y="180" font-size="11" font-weight="normal" fill="#7c3aed" text-anchor="middle">UltraVault</text>
+<rect x="374" y="187" width="136" height="16" rx="8" fill="#f1ebfd" stroke="#7c3aed" stroke-width="1"/>
+<text x="442.0" y="199" font-size="11" font-weight="normal" fill="#7c3aed" text-anchor="middle">UltraCrypt</text>
+<rect x="534" y="96" width="160" height="172" rx="10" fill="#f8fafc" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="614.0" y="118" font-size="13.5" font-weight="bold" fill="#1f2937" text-anchor="middle">EmailCleaner</text>
+<rect x="546" y="130" width="136" height="16" rx="8" fill="#e8eefc" stroke="#1d4ed8" stroke-width="1"/>
+<text x="614.0" y="142" font-size="11" font-weight="normal" fill="#1d4ed8" text-anchor="middle">UltraNet</text>
+<rect x="546" y="149" width="136" height="16" rx="8" fill="#fbf0e1" stroke="#b45309" stroke-width="1"/>
+<text x="614.0" y="161" font-size="11" font-weight="normal" fill="#b45309" text-anchor="middle">UltraDatabase</text>
+<rect x="706" y="96" width="160" height="172" rx="10" fill="#f8fafc" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="786.0" y="118" font-size="13.5" font-weight="bold" fill="#1f2937" text-anchor="middle">UltraFIBU</text>
+<rect x="718" y="130" width="136" height="16" rx="8" fill="#fbf0e1" stroke="#b45309" stroke-width="1"/>
+<text x="786.0" y="142" font-size="11" font-weight="normal" fill="#b45309" text-anchor="middle">UltraDatabase</text>
+<rect x="718" y="149" width="136" height="16" rx="8" fill="#f1ebfd" stroke="#7c3aed" stroke-width="1"/>
+<text x="786.0" y="161" font-size="11" font-weight="normal" fill="#7c3aed" text-anchor="middle">UltraCrypt</text>
+<rect x="878" y="96" width="160" height="172" rx="10" fill="#f8fafc" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="958.0" y="118" font-size="13.5" font-weight="bold" fill="#1f2937" text-anchor="middle">UltraAuthenticator</text>
+<rect x="890" y="130" width="136" height="16" rx="8" fill="#f1ebfd" stroke="#7c3aed" stroke-width="1"/>
+<text x="958.0" y="142" font-size="11" font-weight="normal" fill="#7c3aed" text-anchor="middle">UltraCrypt</text>
+<rect x="1050" y="96" width="160" height="172" rx="10" fill="#f8fafc" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="1130.0" y="118" font-size="13.5" font-weight="bold" fill="#1f2937" text-anchor="middle">AnchorPoint</text>
+<rect x="1062" y="130" width="136" height="16" rx="8" fill="#f1ebfd" stroke="#7c3aed" stroke-width="1"/>
+<text x="1130.0" y="142" font-size="11" font-weight="normal" fill="#7c3aed" text-anchor="middle">UltraCrypt</text>
+<rect x="1062" y="149" width="136" height="16" rx="8" fill="#ffffff" stroke="#1d4ed8" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="1130.0" y="161" font-size="11" font-weight="normal" fill="#1d4ed8" text-anchor="middle">UltraNet (later)</text>
+<rect x="1222" y="96" width="160" height="172" rx="10" fill="#ffffff" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1302.0" y="118" font-size="13.5" font-weight="bold" fill="#6b7280" text-anchor="middle">UltraCalendar</text>
+<text x="1302.0" y="134" font-size="11" font-weight="normal" fill="#6b7280" text-anchor="middle" font-style="italic">planned (proposal)</text>
+<rect x="1234" y="144" width="136" height="16" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="1302.0" y="156" font-size="11" font-weight="normal" fill="#0f766e" text-anchor="middle">UltraCloud</text>
+<rect x="1234" y="163" width="136" height="16" rx="8" fill="#ffffff" stroke="#1d4ed8" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="1302.0" y="175" font-size="11" font-weight="normal" fill="#1d4ed8" text-anchor="middle">UltraNet</text>
+<rect x="1234" y="182" width="136" height="16" rx="8" fill="#ffffff" stroke="#b45309" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="1302.0" y="194" font-size="11" font-weight="normal" fill="#b45309" text-anchor="middle">UltraDatabase</text>
+<rect x="1234" y="201" width="136" height="16" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="1302.0" y="213" font-size="11" font-weight="normal" fill="#7c3aed" text-anchor="middle">UltraVault</text>
+<rect x="1234" y="220" width="136" height="16" rx="8" fill="#ffffff" stroke="#15803d" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="1302.0" y="232" font-size="11" font-weight="normal" fill="#15803d" text-anchor="middle">UltraMessage</text>
+<text x="24" y="304" font-size="12" font-weight="bold" fill="#6b7280" text-anchor="start">SHARED SERVICE MODULES</text>
+<rect x="380" y="316" width="270" height="64" rx="10" fill="#e6f4f2" stroke="#0f766e" stroke-width="1.6"/>
+<text x="394" y="340" font-size="16" font-weight="bold" fill="#0f766e" text-anchor="start">UltraCloudUI</text>
+<text x="394" y="362" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">Add-account dialog · link picker</text>
+<rect x="380" y="412" width="270" height="112" rx="10" fill="#e6f4f2" stroke="#0f766e" stroke-width="1.6"/>
+<text x="394" y="436" font-size="16" font-weight="bold" fill="#0f766e" text-anchor="start">UltraCloud</text>
+<text x="394" y="458" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">Accounts, upload, download, share links</text>
+<text x="394" y="476" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">Nextcloud/ownCloud · WebDAV · FTP/SFTP</text>
+<text x="394" y="494" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">Dropbox · OneDrive · Google Drive (OAuth2)</text>
+<text x="394" y="512" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">Provider plug-ins (dlopen)</text>
+<rect x="760" y="412" width="250" height="84" rx="10" fill="#e7f4ea" stroke="#15803d" stroke-width="1.6"/>
+<text x="774" y="436" font-size="16" font-weight="bold" fill="#15803d" text-anchor="start">UltraMessage</text>
+<text x="774" y="458" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">Message bus between apps</text>
+<text x="774" y="476" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">journal in UltraDatabase</text>
+<text x="24" y="574" font-size="12" font-weight="bold" fill="#6b7280" text-anchor="start">FOUNDATION MODULES</text>
+<rect x="40" y="586" width="340" height="160" rx="10" fill="#e8eefc" stroke="#1d4ed8" stroke-width="1.6"/>
+<text x="54" y="610" font-size="16" font-weight="bold" fill="#1d4ed8" text-anchor="start">UltraNet</text>
+<text x="54" y="632" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">HTTP(S) with any verb and header, SSE</text>
+<text x="54" y="650" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">OAuth2 + PKCE, shared app registry</text>
+<text x="54" y="668" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">DNS incl. SRV · TLS verified by default</text>
+<text x="54" y="686" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">TCP/UDP sockets, WebSocket, FTP</text>
+<text x="54" y="704" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">Plug-ins: webdav, smtp, imap, jmap, pop3,</text>
+<text x="54" y="722" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">ssh, mqtt, amqp, sip, rtsp, mdns, …</text>
+<text x="368" y="610" font-size="11" font-weight="normal" fill="#6b7280" text-anchor="end">client side only</text>
+<rect x="540" y="586" width="290" height="110" rx="10" fill="#fbf0e1" stroke="#b45309" stroke-width="1.6"/>
+<text x="554" y="610" font-size="16" font-weight="bold" fill="#b45309" text-anchor="start">UltraDatabase</text>
+<text x="554" y="632" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">Named connections, migrations</text>
+<text x="554" y="650" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">SQLite (local) · PostgreSQL (server)</text>
+<text x="554" y="668" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">password = UltraVault key (vault:…)</text>
+<rect x="990" y="586" width="280" height="110" rx="10" fill="#f1ebfd" stroke="#7c3aed" stroke-width="1.6"/>
+<text x="1004" y="610" font-size="16" font-weight="bold" fill="#7c3aed" text-anchor="start">UltraVault</text>
+<text x="1004" y="632" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">Secrets by key; memory + file backends</text>
+<text x="1004" y="650" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">DeviceKeyVault: per-app vault that</text>
+<text x="1004" y="668" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">unlocks with the device key</text>
+<rect x="990" y="776" width="280" height="84" rx="10" fill="#f1ebfd" stroke="#7c3aed" stroke-width="1.6"/>
+<text x="1004" y="800" font-size="16" font-weight="bold" fill="#7c3aed" text-anchor="start">UltraCrypt</text>
+<text x="1004" y="822" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">Hash, HMAC, AEAD, Argon2id, CSPRNG</text>
+<text x="1004" y="840" font-size="12.5" font-weight="normal" fill="#1f2937" text-anchor="start">TOTP maths for UltraAuthenticator</text>
+<rect x="1286" y="790" width="100" height="56" rx="10" fill="#f1ebfd" stroke="#7c3aed" stroke-width="1.6"/>
+<text x="1336" y="814" font-size="13" font-weight="bold" fill="#7c3aed" text-anchor="middle">Base32</text>
+<text x="1336" y="832" font-size="11.5" font-weight="normal" fill="#1f2937" text-anchor="middle">codec</text>
+<line x1="515" y1="380" x2="515" y2="410" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="430" y1="524" x2="300" y2="584" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="352" y="548" font-size="11.5" font-weight="normal" fill="#6b7280" text-anchor="end">HTTP, WebDAV, OAuth2</text>
+<line x1="560" y1="524" x2="560" y2="584" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="552" y="568" font-size="11.5" font-weight="normal" fill="#6b7280" text-anchor="end">account list</text>
+<polyline points="610,524 610,550 1130,550 1130,584" fill="none" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="940" y="543" font-size="11.5" font-weight="normal" fill="#6b7280" text-anchor="start">tokens, passwords</text>
+<line x1="800" y1="496" x2="800" y2="584" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="808" y="522" font-size="11.5" font-weight="normal" fill="#6b7280" text-anchor="start">journal</text>
+<line x1="830" y1="640" x2="988" y2="640" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="846" y="632" font-size="11.5" font-weight="normal" fill="#6b7280" text-anchor="start">PostgreSQL password</text>
+<line x1="1130" y1="696" x2="1130" y2="774" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="1270" y1="818" x2="1284" y2="818" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="24" y="890" font-size="12" font-weight="bold" fill="#6b7280" text-anchor="start">THIRD-PARTY LIBRARIES</text>
+<rect x="40" y="902" width="340" height="44" rx="10" fill="#f8fafc" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="210" y="929" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">libcurl · OpenSSL · c-ares</text>
+<rect x="540" y="902" width="290" height="44" rx="10" fill="#f8fafc" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="685" y="929" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">SQLite3 · libpq</text>
+<rect x="990" y="902" width="280" height="44" rx="10" fill="#f8fafc" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="1130" y="929" font-size="13" font-weight="normal" fill="#1f2937" text-anchor="middle">libsodium</text>
+<line x1="210" y1="746" x2="210" y2="900" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="685" y1="696" x2="685" y2="900" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<line x1="1130" y1="860" x2="1130" y2="900" stroke="#4b5563" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="24" y="986" font-size="12" font-weight="bold" fill="#6b7280" text-anchor="start">SERVERS</text>
+<rect x="40" y="998" width="440" height="64" rx="10" fill="#ffffff" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="56" y="1022" font-size="13.5" font-weight="bold" fill="#1f2937" text-anchor="start">Cloud storage and mail servers</text>
+<text x="56" y="1043" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">Nextcloud, WebDAV, Dropbox, OneDrive, Google, FTP; IMAP/SMTP/JMAP</text>
+<rect x="540" y="998" width="290" height="64" rx="10" fill="#ffffff" stroke="#9ca3af" stroke-width="1.6"/>
+<text x="556" y="1022" font-size="13.5" font-weight="bold" fill="#1f2937" text-anchor="start">PostgreSQL server</text>
+<text x="556" y="1043" font-size="12" font-weight="normal" fill="#1f2937" text-anchor="start">UltraFIBU multi-user; LAN or VPN, TLS</text>
+<rect x="880" y="998" width="500" height="64" rx="10" fill="#ffffff" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="896" y="1022" font-size="13.5" font-weight="bold" fill="#6b7280" text-anchor="start">ULTRA cloud (planned, not chosen yet)</text>
+<text x="896" y="1043" font-size="12" font-weight="normal" fill="#6b7280" text-anchor="start">CalDAV · CardDAV · WebDAV + one ULTRA account (OIDC), e.g. Nextcloud</text>
+<line x1="210" y1="946" x2="210" y2="996" stroke="#4b5563" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+<line x1="685" y1="946" x2="685" y2="996" stroke="#4b5563" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+<text x="224" y="976" font-size="11" font-weight="normal" fill="#6b7280" text-anchor="start" font-style="italic">over the network</text>
+<text x="699" y="976" font-size="11" font-weight="normal" fill="#6b7280" text-anchor="start" font-style="italic">over the network</text>
+</svg>
