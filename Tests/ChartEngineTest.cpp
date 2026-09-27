@@ -385,6 +385,135 @@ static void TestBarOutlineRounding() {
     CHECK(inPlot, "a rounded ring sector stays inside the plot");
 }
 
+static void TestBarConnections() {
+    std::printf("Bar connections: straight, curved, gaps, edges\n");
+
+    // The fruit chart: four series, four shops; series 1 dips then recovers.
+    const std::vector<std::vector<double>> series = {
+        {33.0, 38.0, 31.0, 44.0}, {30.0, 25.0, 20.0, 25.0},
+        {21.0, 18.0, 18.0, 19.0}, {10.0, 10.0, 10.0, 10.0}};
+    ChartBarLayoutOptions layout;
+    ChartAxis value;
+    ObserveBarSeries(value, series, layout);
+    value.Finalize();
+    const ChartAxis category = MakeBarCategoryAxis(4);
+    const auto spans = BuildBarSpans(value, category, 4, series, layout);
+
+    ChartVerticalProjection vertical;
+    vertical.SetPlotArea(Rect2Dd(0.0, 0.0, 400.0, 200.0));
+
+    ChartBarConnectionOptions straight;
+    straight.samplesPerSegment = 4;
+    const auto lines = BuildBarConnections(vertical, spans, straight);
+    CHECK(lines.size() == 4, "one line per series");
+    CHECK(lines[1].seriesIndex == 1 && lines[1].categories.size() == 4,
+          "each line joins all four shops in order");
+    CHECK(lines[1].points.size() == 1 + 3 * 4, "a line holds one start plus the samples per join");
+
+    bool knotsOnBars = true;
+    for (size_t c = 0; c < 4; ++c) {
+        for (const ChartBarSpan& span : spans) {
+            if (span.seriesIndex != 1 || span.categoryIndex != c) continue;
+            const Point2Dd top = vertical.ToScreen(
+                ChartNormalizedPoint((span.u0 + span.u1) * 0.5, span.v1));
+            const Point2Dd& knot = lines[1].points[c * 4];
+            if (!Near(knot.x, top.x, 1e-6) || !Near(knot.y, top.y, 1e-6)) knotsOnBars = false;
+            if (!Near(lines[1].barPoints[c].x, top.x, 1e-6)) knotsOnBars = false;
+        }
+    }
+    CHECK(knotsOnBars, "the line passes through the middle of every bar's value edge");
+
+    // Curved: same knots, smooth, and monotone - never past either bar.
+    ChartBarConnectionOptions curved = straight;
+    curved.shape = ChartBarConnectionShape::Curved;
+    curved.samplesPerSegment = 32;
+    const auto smooth = BuildBarConnections(vertical, spans, curved);
+    CHECK(smooth.size() == 4 && smooth[1].points.size() == 1 + 3 * 32,
+          "a curved line is sampled per join");
+    bool bounded = true;
+    for (const auto& line : smooth) {
+        for (size_t join = 0; join + 1 < line.barPoints.size(); ++join) {
+            const double lo = std::min(line.barPoints[join].y, line.barPoints[join + 1].y);
+            const double hi = std::max(line.barPoints[join].y, line.barPoints[join + 1].y);
+            for (int k = 0; k <= 32; ++k) {
+                const double y = line.points[join * 32 + k].y;
+                if (y < lo - 1e-6 || y > hi + 1e-6) bounded = false;
+            }
+        }
+    }
+    CHECK(bounded, "a curved connection never overshoots the bars it joins");
+    bool flat = true;
+    for (const auto& p : smooth[3].points) {
+        if (!Near(p.y, smooth[3].points.front().y, 1e-6)) flat = false;
+    }
+    CHECK(flat, "equal bars are joined by a flat curve");
+    // Series 1 turns at shop 3: 30 -> 25 -> 20 -> 25; the curve levels off there.
+    const double beforeTurn = smooth[1].points[2 * 32 - 1].y;
+    const double atTurn = smooth[1].points[2 * 32].y;
+    const double afterTurn = smooth[1].points[2 * 32 + 1].y;
+    CHECK(atTurn >= beforeTurn - 1e-9 && atTurn >= afterTurn - 1e-9,
+          "the curve bottoms out exactly at the lowest bar");
+
+    // A missing value breaks the line unless gaps are bridged.
+    const std::vector<std::vector<double>> gapped = {
+        {5.0, std::nan(""), 7.0, 8.0, 9.0}};
+    ChartAxis gappedValue;
+    ObserveBarSeries(gappedValue, gapped, layout);
+    gappedValue.Finalize();
+    const ChartAxis fiveCategories = MakeBarCategoryAxis(5);
+    const auto gappedSpans = BuildBarSpans(gappedValue, fiveCategories, 5, gapped, layout);
+    const auto broken = BuildBarConnections(vertical, gappedSpans, straight);
+    CHECK(broken.size() == 1 && broken[0].categories.size() == 3 &&
+          broken[0].categories.front() == 2,
+          "a gap breaks the line; a lone bar before it draws nothing");
+    ChartBarConnectionOptions bridging = straight;
+    bridging.bridgeGaps = true;
+    const auto bridged = BuildBarConnections(vertical, gappedSpans, bridging);
+    CHECK(bridged.size() == 1 && bridged[0].categories.size() == 4,
+          "bridgeGaps joins across the missing bar");
+
+    // Edges: stacked series lines run from a bar's trailing corner to the
+    // next bar's leading corner, along the value edge of the bars between.
+    ChartBarLayoutOptions stacked;
+    stacked.arrangement = ChartBarArrangement::Stacked;
+    ChartAxis stackedValue;
+    ObserveBarSeries(stackedValue, series, stacked);
+    stackedValue.Finalize();
+    const auto stackedSpans = BuildBarSpans(stackedValue, category, 4, series, stacked);
+    ChartBarConnectionOptions edges = straight;
+    edges.anchor = ChartBarConnectionAnchor::BarEdges;
+    const auto seriesLines = BuildBarConnections(vertical, stackedSpans, edges);
+    CHECK(seriesLines.size() == 4, "a stacked chart gets one series line per series");
+    const ChartBarSpan* first = nullptr;
+    const ChartBarSpan* second = nullptr;
+    for (const ChartBarSpan& span : stackedSpans) {
+        if (span.seriesIndex == 0 && span.categoryIndex == 0) first = &span;
+        if (span.seriesIndex == 0 && span.categoryIndex == 1) second = &span;
+    }
+    const Point2Dd trailing = vertical.ToScreen(ChartNormalizedPoint(first->u1, first->v1));
+    const Point2Dd leading = vertical.ToScreen(ChartNormalizedPoint(second->u0, second->v1));
+    CHECK(Near(seriesLines[0].points.front().x, trailing.x, 1e-6) &&
+          Near(seriesLines[0].points[4].x, leading.x, 1e-6),
+          "an edge-anchored line leaves the trailing corner and meets the leading one");
+    // Four bars give six knots (two per interior bar) and five joins.
+    CHECK(seriesLines[0].points.size() == 1 + (2 * 4 - 3) * 4,
+          "interior bars add their value edge to the line");
+
+    // Polar: the line follows the rings rather than cutting across them.
+    ChartPolarProjection polar;
+    polar.SetPlotArea(Rect2Dd(0.0, 0.0, 200.0, 200.0));
+    const auto polarLines = BuildBarConnections(polar, spans, straight);
+    bool inPlot = !polarLines.empty();
+    for (const auto& line : polarLines) {
+        for (const auto& p : line.points) {
+            if (!std::isfinite(p.x) || p.x < -0.5 || p.x > 200.5 || p.y < -0.5 || p.y > 200.5)
+                inPlot = false;
+        }
+    }
+    CHECK(inPlot, "polar connections stay inside the plot");
+    CHECK(BuildBarConnections(vertical, {}, straight).empty(), "no spans, no lines");
+}
+
 static void TestTicksAndFormatting() {
     std::printf("Ticks and formatting\n");
 
@@ -1083,6 +1212,7 @@ int main() {
     TestPercentStackedBarSpans();
     TestBarSpansRaggedAndGapped();
     TestBarOutlineRounding();
+    TestBarConnections();
     TestTicksAndFormatting();
     TestAxisSet();
     TestLayoutNegotiation();

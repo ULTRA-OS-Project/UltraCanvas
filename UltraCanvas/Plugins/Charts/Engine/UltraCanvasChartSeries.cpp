@@ -1,7 +1,7 @@
 // Plugins/Charts/Engine/UltraCanvasChartSeries.cpp
 // Shared series geometry for the bar chart family.
-// Version: 1.0.0
-// Last Modified: 2026-08-07
+// Version: 1.1.0
+// Last Modified: 2026-09-27
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
@@ -258,6 +258,165 @@ std::vector<Point2Dd> BuildBarOutline(const IChartProjection& projection,
         AppendTrimmed(outline, edges[k], radii[k], lengths[k] - radii[(k + 1) % 4]);
     }
     return outline;
+}
+
+// =============================================================================
+// BAR CONNECTIONS
+// =============================================================================
+
+namespace {
+
+struct ConnectionKnot {
+    double u = 0.0, v = 0.0;
+};
+
+// Knots closer than this in u are one vertical step (touching stacked bars
+// with slotFill 1): no slope exists across them, so they join straight.
+constexpr double kKnotEpsilon = 1e-12;
+
+// Fritsch-Carlson tangents for a monotone cubic Hermite through the knots.
+// The curve is monotone between every pair of knots, so a connection never
+// bulges above the taller bar or dips below the shorter one - the line can
+// never suggest a value no bar has.
+std::vector<double> MonotoneTangents(const std::vector<ConnectionKnot>& knots) {
+    const size_t n = knots.size();
+    std::vector<double> slope(n - 1, 0.0);
+    std::vector<bool> vertical(n - 1, false);
+    for (size_t i = 0; i + 1 < n; ++i) {
+        const double h = knots[i + 1].u - knots[i].u;
+        if (std::abs(h) <= kKnotEpsilon) { vertical[i] = true; continue; }
+        slope[i] = (knots[i + 1].v - knots[i].v) / h;
+    }
+
+    std::vector<double> tangent(n, 0.0);
+    tangent[0] = vertical[0] ? 0.0 : slope[0];
+    tangent[n - 1] = vertical[n - 2] ? 0.0 : slope[n - 2];
+    for (size_t i = 1; i + 1 < n; ++i) {
+        // A peak, a trough, a flat run or a vertical step: level off there.
+        if (vertical[i - 1] || vertical[i] || slope[i - 1] * slope[i] <= 0.0) continue;
+        tangent[i] = (slope[i - 1] + slope[i]) * 0.5;
+    }
+    for (size_t i = 0; i + 1 < n; ++i) {
+        if (vertical[i]) continue;
+        if (slope[i] == 0.0) { tangent[i] = tangent[i + 1] = 0.0; continue; }
+        const double a = tangent[i] / slope[i];
+        const double b = tangent[i + 1] / slope[i];
+        const double sum = a * a + b * b;
+        if (sum > 9.0) {
+            const double tau = 3.0 / std::sqrt(sum);
+            tangent[i] = tau * a * slope[i];
+            tangent[i + 1] = tau * b * slope[i];
+        }
+    }
+    return tangent;
+}
+
+// The knots one run of bars puts on its line, in travel order.
+std::vector<ConnectionKnot> ConnectionKnots(const std::vector<const ChartBarSpan*>& run,
+                                            ChartBarConnectionAnchor anchor) {
+    std::vector<ConnectionKnot> knots;
+    if (anchor == ChartBarConnectionAnchor::BarCenter) {
+        for (const ChartBarSpan* span : run) {
+            knots.push_back({(span->u0 + span->u1) * 0.5, span->v1});
+        }
+        return knots;
+    }
+
+    // BarEdges: the line leaves each bar from the corner facing the next one
+    // and meets the next bar at its near corner, running along the value edge
+    // of every bar in between. Category order can run against u (an inverted
+    // category axis), so "facing" follows the direction of travel.
+    const double first = (run.front()->u0 + run.front()->u1) * 0.5;
+    const double last = (run.back()->u0 + run.back()->u1) * 0.5;
+    const bool forward = last >= first;
+    for (size_t i = 0; i < run.size(); ++i) {
+        const ChartBarSpan* span = run[i];
+        const double lo = std::min(span->u0, span->u1);
+        const double hi = std::max(span->u0, span->u1);
+        const double leading = forward ? lo : hi;
+        const double trailing = forward ? hi : lo;
+        if (i > 0) knots.push_back({leading, span->v1});
+        if (i + 1 < run.size()) knots.push_back({trailing, span->v1});
+    }
+    return knots;
+}
+
+} // namespace
+
+std::vector<ChartBarConnection> BuildBarConnections(const IChartProjection& projection,
+                                                    const std::vector<ChartBarSpan>& spans,
+                                                    const ChartBarConnectionOptions& options) {
+    std::vector<ChartBarConnection> connections;
+    if (spans.empty()) return connections;
+
+    size_t seriesCount = 0;
+    for (const ChartBarSpan& span : spans) {
+        seriesCount = std::max(seriesCount, span.seriesIndex + 1);
+    }
+    const int samples = std::max(1, options.samplesPerSegment);
+
+    for (size_t s = 0; s < seriesCount; ++s) {
+        std::vector<const ChartBarSpan*> bars;
+        for (const ChartBarSpan& span : spans) {
+            if (span.seriesIndex == s && std::isfinite(span.v1)) bars.push_back(&span);
+        }
+        std::stable_sort(bars.begin(), bars.end(),
+                         [](const ChartBarSpan* a, const ChartBarSpan* b) {
+                             return a->categoryIndex < b->categoryIndex;
+                         });
+
+        // Split into runs of neighbouring categories unless gaps are bridged.
+        size_t start = 0;
+        while (start < bars.size()) {
+            size_t end = start + 1;
+            while (end < bars.size() &&
+                   (options.bridgeGaps ||
+                    bars[end]->categoryIndex == bars[end - 1]->categoryIndex + 1)) {
+                ++end;
+            }
+            const std::vector<const ChartBarSpan*> run(bars.begin() + start,
+                                                       bars.begin() + end);
+            start = end;
+            if (run.size() < 2) continue;
+
+            const std::vector<ConnectionKnot> knots = ConnectionKnots(run, options.anchor);
+            const bool curved = options.shape == ChartBarConnectionShape::Curved;
+            const std::vector<double> tangent =
+                curved ? MonotoneTangents(knots) : std::vector<double>(knots.size(), 0.0);
+
+            ChartBarConnection connection;
+            connection.seriesIndex = s;
+            for (const ChartBarSpan* span : run) {
+                connection.categories.push_back(span->categoryIndex);
+                connection.barPoints.push_back(projection.ToScreen(
+                    ChartNormalizedPoint((span->u0 + span->u1) * 0.5, span->v1)));
+            }
+
+            connection.points.push_back(projection.ToScreen(
+                ChartNormalizedPoint(knots.front().u, knots.front().v)));
+            for (size_t i = 0; i + 1 < knots.size(); ++i) {
+                const ConnectionKnot& a = knots[i];
+                const ConnectionKnot& b = knots[i + 1];
+                const double h = b.u - a.u;
+                const bool hermite = curved && std::abs(h) > kKnotEpsilon;
+                for (int k = 1; k <= samples; ++k) {
+                    const double t = static_cast<double>(k) / samples;
+                    double v = a.v + (b.v - a.v) * t;
+                    if (hermite) {
+                        const double t2 = t * t, t3 = t2 * t;
+                        v = (2.0 * t3 - 3.0 * t2 + 1.0) * a.v +
+                            (t3 - 2.0 * t2 + t) * h * tangent[i] +
+                            (-2.0 * t3 + 3.0 * t2) * b.v +
+                            (t3 - t2) * h * tangent[i + 1];
+                    }
+                    connection.points.push_back(projection.ToScreen(
+                        ChartNormalizedPoint(a.u + h * t, v)));
+                }
+            }
+            connections.push_back(std::move(connection));
+        }
+    }
+    return connections;
 }
 
 } // namespace UltraCanvas

@@ -6,11 +6,15 @@
 // pictogram). The engine supplies axes, grid, layout, legend, the solved
 // value-label plan, hover hit-testing with tooltips, and the entrance
 // animation; this file adds only the bar content contract.
-// Version: 1.1.0
-// Last Modified: 2026-08-07
+// Version: 1.2.0
+// Last Modified: 2026-09-27
 // Author: UltraCanvas Framework
 //
 // Changelog:
+//   v1.2.0 (2026-09-27):
+//     - Bar connections: the Clustered and Stacked tabs join each series'
+//       bars across the categories with a straight or curved line
+//       (BuildBarConnections + RenderBarConnections).
 //   v1.1.0 (2026-08-07):
 //     - Moved onto the engine services added for the bar family: Category
 //       scale slot padding, ObserveBarSeries/BuildBarSpans geometry, engine
@@ -104,6 +108,21 @@ public:
         MarkEngineDirty(ChartDirty::Style);
     }
 
+    // Bar connection: a line from each bar's value end to the same series'
+    // bar in the next category. Repaint-only - no layout or labels move.
+    void SetShowBarConnections(bool show) {
+        showConnections = show;
+        RequestRedraw();
+    }
+    void SetBarConnectionShape(ChartBarConnectionShape shape) {
+        connectionOptions.shape = shape;
+        RequestRedraw();
+    }
+    void SetBarConnectionAnchor(ChartBarConnectionAnchor anchor) {
+        connectionOptions.anchor = anchor;
+        RequestRedraw();
+    }
+
     // ---- engine contract ---------------------------------------------------
 
     void DescribeAxes(ChartAxisSet& axes) override {
@@ -148,13 +167,19 @@ public:
         // engine's outline builder rounds ring sectors as readily as rects.
         const double roundRadius = (fillStyle == BarFillStyle::Rounded) ? 8.0 : 0.0;
 
-        for (const ChartBarSpan& span : BuildBarSpans(value, category,
-                                                      categoryNames.size(),
-                                                      SeriesValues(), LayoutOptions())) {
-            // The whole stack grows out of the zero line together, so animated
-            // segments never separate.
-            const double v0 = zero + (span.v0 - zero) * progress;
-            const double v1 = zero + (span.v1 - zero) * progress;
+        // The whole stack grows out of the zero line together, so animated
+        // segments never separate - and the connections ride the same spans.
+        std::vector<ChartBarSpan> spans = BuildBarSpans(value, category,
+                                                        categoryNames.size(),
+                                                        SeriesValues(), LayoutOptions());
+        for (ChartBarSpan& span : spans) {
+            span.v0 = zero + (span.v0 - zero) * progress;
+            span.v1 = zero + (span.v1 - zero) * progress;
+        }
+
+        for (const ChartBarSpan& span : spans) {
+            const double v0 = span.v0;
+            const double v1 = span.v1;
             const int64_t regionId = RegionId(span.seriesIndex, span.categoryIndex);
             const bool hovered = (HoveredRegionId() == regionId);
             const Color& color = series[span.seriesIndex].color;
@@ -175,6 +200,19 @@ public:
                 RenderBar(ctx, frame, span.u0, v0, span.u1, v1, quad, bbox, color, hovered, false);
                 AddHitRegion(quad, regionId, TooltipFor(span, value));
             }
+        }
+
+        if (showConnections) {
+            std::vector<Color> colors;
+            for (const auto& s : series) colors.push_back(s.color);
+            ChartBarConnectionStyle style;
+            style.markerRadius = 3.0f;
+            const int64_t hovered = HoveredRegionId();
+            RenderBarConnections(ctx, BuildBarConnections(*frame.projection, spans,
+                                                          connectionOptions),
+                                 colors, style,
+                                 hovered >= 0 ? static_cast<size_t>(hovered / 1000)
+                                              : static_cast<size_t>(-1));
         }
     }
 
@@ -498,6 +536,8 @@ private:
     std::string valuePrefix, valueSuffix;
     bool compactValues = false;
     bool showValueLabels = true;
+    bool showConnections = false;
+    ChartBarConnectionOptions connectionOptions;
 };
 
 // =============================================================================
@@ -627,6 +667,40 @@ std::shared_ptr<UltraCanvasContainer> MakeControlStrip(
     return strip;
 }
 
+// Bar connection controls: off / straight / curved, and where the line meets
+// each bar.
+void AddBarConnectionControls(UltraCanvasContainer& strip, const std::string& idPrefix,
+                              const std::shared_ptr<EngineBarChart>& chart, int initialIndex) {
+    auto label = std::make_shared<UltraCanvasLabel>(idPrefix + "ConnLabel", 100, 20, "Bar connection:");
+    label->SetFontSize(11);
+    label->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    strip.AddChild(label);
+
+    auto shape = std::make_shared<UltraCanvasDropdown>(idPrefix + "Connection", 110, 24);
+    shape->AddItem("Off");
+    shape->AddItem("Straight");
+    shape->AddItem("Curved");
+    shape->SetSelectedIndex(initialIndex);
+    // The strip is a sibling of the chart, not its parent: no ownership cycle.
+    shape->onSelectionChanged = [chart](int index, const DropdownItem&) {
+        chart->SetShowBarConnections(index > 0);
+        chart->SetBarConnectionShape(index == 2 ? ChartBarConnectionShape::Curved
+                                                : ChartBarConnectionShape::Straight);
+    };
+    shape->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    strip.AddChild(shape);
+
+    auto edges = std::make_shared<UltraCanvasCheckbox>(idPrefix + "ConnEdges", 150, 24);
+    edges->SetText("From bar edges");
+    edges->onStateChanged = [chart](CheckedState, CheckedState newState) {
+        chart->SetBarConnectionAnchor(newState == CheckedState::Checked
+                                          ? ChartBarConnectionAnchor::BarEdges
+                                          : ChartBarConnectionAnchor::BarCenter);
+    };
+    edges->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    strip.AddChild(edges);
+}
+
 // ----- TAB 1: NORMAL - VERTICAL AND HORIZONTAL -----
 std::shared_ptr<UltraCanvasContainer> MakeOrientationTab() {
     auto vertical = MakeCityChart("BarOrientV");
@@ -647,13 +721,17 @@ std::shared_ptr<UltraCanvasContainer> MakeOrientationTab() {
 std::shared_ptr<UltraCanvasContainer> MakeClusteredTab() {
     auto chart = MakeFruitChart("BarClustered");
     chart->SetChartTitle("Fruit sales per shop - four series, clustered");
+    chart->SetShowBarConnections(true);
 
     auto tab = MakeChartRowTab(
         "BarClustered",
-        "Clustered (grouped) bars: each category slot holds one bar per series, side by side. The legend,\n"
-        "grid, value labels, hover highlight and tooltips are engine services - hover a bar for its tooltip.",
+        "Clustered (grouped) bars: each category slot holds one bar per series, side by side. Bar connections join each\n"
+        "series across the shops, straight or curved; hover a bar for its tooltip and to emphasise its series' line.",
         {chart});
-    tab->AddChild(MakeControlStrip("BarClustered", {chart}));
+    tab->AddChild(MakeControlStrip("BarClustered", {chart},
+        [chart](UltraCanvasContainer& strip) {
+            AddBarConnectionControls(strip, "BarClustered", chart, 1);
+        }));
     return tab;
 }
 
@@ -682,6 +760,7 @@ std::shared_ptr<UltraCanvasContainer> MakeStackedTab() {
             };
             percent->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
             strip.AddChild(percent);
+            AddBarConnectionControls(strip, "BarStacked", chart, 0);
         }));
     return tab;
 }

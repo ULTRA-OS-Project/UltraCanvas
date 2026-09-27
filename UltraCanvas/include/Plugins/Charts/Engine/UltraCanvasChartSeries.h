@@ -14,8 +14,11 @@
 // mapped through the projection by the caller, so the same spans work under
 // Vertical, Horizontal and Polar.
 //
-// Version: 1.0.0
-// Last Modified: 2026-08-07
+// Bar connections (1.1.0) join each series' bars across the categories with a
+// straight or curved line - see BuildBarConnections below.
+//
+// Version: 1.1.0
+// Last Modified: 2026-09-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -80,5 +83,51 @@ std::vector<Point2Dd> BuildBarOutline(const IChartProjection& projection,
                                       double u0, double v0, double u1, double v1,
                                       int subdivisions = 8,
                                       double cornerRadiusPx = 0.0);
+
+// =============================================================================
+// BAR CONNECTIONS
+// =============================================================================
+// A line from the value end of one bar to the value end of the same series'
+// bar in the next category: in a clustered chart it traces each series across
+// the groups, in a stacked chart it is the classic "series line" joining the
+// segment tops. The line is built in normalised space and sampled through the
+// projection, so it follows the chart under Vertical, Horizontal and Polar.
+
+enum class ChartBarConnectionShape {
+    Straight,   // a polyline, corner to corner
+    Curved      // a monotone cubic: smooth, and never overshoots a bar's value
+};
+
+enum class ChartBarConnectionAnchor {
+    BarCenter,  // the middle of each bar's value edge
+    BarEdges    // along each bar's value edge, leaving from its trailing corner
+};
+
+struct ChartBarConnectionOptions {
+    ChartBarConnectionShape shape = ChartBarConnectionShape::Straight;
+    ChartBarConnectionAnchor anchor = ChartBarConnectionAnchor::BarCenter;
+    // A series with no bar in a category (a short series, a non-finite value)
+    // breaks its line there; true joins the bars either side instead.
+    bool bridgeGaps = false;
+    // Screen samples per joined pair of bars. Straight lines are sampled too,
+    // so they bend with the Polar projection instead of cutting across it.
+    int samplesPerSegment = 16;
+};
+
+// One unbroken line of one series.
+struct ChartBarConnection {
+    size_t seriesIndex = 0;
+    std::vector<size_t> categories;   // the bars joined, in category order
+    std::vector<Point2Dd> points;     // the screen polyline, ready to stroke
+    std::vector<Point2Dd> barPoints;  // each joined bar's value-edge centre (markers)
+};
+
+// Joins the spans of each series in category order. Pass the spans as drawn -
+// scaled by the entrance animation, if any - and the lines move with the bars.
+// A series with fewer than two bars in a run produces no line for that run.
+// Lines are returned series by series, in series order.
+std::vector<ChartBarConnection> BuildBarConnections(const IChartProjection& projection,
+                                                    const std::vector<ChartBarSpan>& spans,
+                                                    const ChartBarConnectionOptions& options = {});
 
 } // namespace UltraCanvas
