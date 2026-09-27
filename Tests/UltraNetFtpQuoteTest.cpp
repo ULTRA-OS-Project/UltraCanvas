@@ -67,8 +67,8 @@ int main() {
               {"RMD a b/c d"}, "the parent URL stays encoded, for libcurl to decode");
     CheckPlan("ftp://h/a/new%20folder", Verb::MakeDirectory, {}, "ftp://h/a/",
               {"MKD a/new folder"}, "make a folder where it was asked for");
-    CheckPlan("ftps://h:990/a/old/", Verb::RemoveDirectory, {}, "ftps://h:990/a/",
-              {"RMD a/old"}, "a folder URL ending in '/' and a port");
+    CheckPlan("ftps://h:990/a/old", Verb::RemoveDirectory, {}, "ftps://h:990/a/",
+              {"RMD a/old"}, "a folder with a port");
     CheckPlan("ftp://h/a%2Bb%26c", Verb::Delete, {}, "ftp://h/", {"DELE a+b&c"},
               "'+' and '&'");
     CheckPlan("ftp://h/%2Fsrv/x.txt", Verb::Delete, {}, "ftp://h/%2Fsrv/",
@@ -91,6 +91,10 @@ int main() {
 
     std::printf("Refused\n");
     Check(Refused("ftp://h/", Verb::Delete), "the server's root");
+    Check(Refused("ftp://127.0.0.1:18899/probe/", Verb::MakeDirectory),
+          "a URL ending in '/' names nothing to create (the ApiStatus probe's rule)");
+    Check(Refused("ftp://h/a/old/", Verb::RemoveDirectory),
+          "... nor anything to remove");
     Check(Refused("ftp://h", Verb::Delete), "no path at all");
     Check(Refused("ftp://h/a%2", Verb::Delete), "a broken escape");
     Check(Refused("ftp://h/a", Verb::Rename, ""), "no new name");

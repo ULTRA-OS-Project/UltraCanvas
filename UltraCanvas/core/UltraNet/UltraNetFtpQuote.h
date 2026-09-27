@@ -101,22 +101,23 @@ inline std::string SftpQuotePath(const std::string& path) {
 
 // Splits `url` into the folder it is in (still encoded - libcurl decodes a
 // URL it connects to) and the path of the entry on the server (decoded).
-// One trailing '/' is allowed, the way a folder's URL is often spelled.
+// The entry is the URL's last path segment, so a URL ending in '/' names
+// nothing to act on and is refused - the contract UltraNet's FTP calls have
+// always had (Tests/UltraNet/ApiStatus/ProbeFtp.cpp checks it for MKD and RMD).
 inline bool SplitUrl(const std::string& url, std::string& parentUrl,
                      std::string& serverPath, std::string& error) {
     const std::string::size_type sep = url.find("://");
     if (sep == std::string::npos) { error = "not a URL"; return false; }
     const std::string::size_type pathStart = url.find('/', sep + 3);
     if (pathStart == std::string::npos) { error = "no path in the URL"; return false; }
-    std::string trimmed = url;
-    if (trimmed.size() > pathStart + 1 && trimmed.back() == '/') trimmed.pop_back();
-    const std::string::size_type lastSlash = trimmed.find_last_of('/');
-    if (lastSlash < pathStart || lastSlash + 1 >= trimmed.size()) {
-        error = "the URL names the server's root, not something on it";
+    const std::string::size_type lastSlash = url.find_last_of('/');
+    if (lastSlash < pathStart || lastSlash + 1 >= url.size()) {
+        error = "the URL ends in '/' - it names a folder to look in, not an "
+                "entry to act on";
         return false;
     }
-    parentUrl = trimmed.substr(0, lastSlash + 1);
-    if (!PercentDecode(trimmed.substr(pathStart), serverPath)) {
+    parentUrl = url.substr(0, lastSlash + 1);
+    if (!PercentDecode(url.substr(pathStart), serverPath)) {
         error = "the URL's path is not validly encoded";
         return false;
     }
