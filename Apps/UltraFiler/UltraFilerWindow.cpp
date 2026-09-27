@@ -77,6 +77,8 @@
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerShare.h"
 #include "UltraFilerPrompt.h"
+#include "UltraFilerRamDiskDialog.h"
+#include "UltraFilerRamDisks.h"
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 // UltraCloudUI's shared "add account" dialog - the same one UltraMail uses
 // for "Attach cloud link". Its include directory comes with the target.
@@ -130,6 +132,10 @@ namespace {
     // lists the sync folders a cloud client already put on this disk: one
     // section holds local paths that work offline, the other holds servers.
     constexpr const char* kRemoteNodeId = "ufl-remote-drives";
+    // "RAM Discs": the discs made through "+ Drive > RAM disc...". A section
+    // of its own because a RAM disc is not a drive the machine came with: it
+    // is ejected from UltraFiler, and everything on it goes with it.
+    constexpr const char* kRamNodeId = "ufl-ram-discs";
     // "Computer": the section Home, Cloud Storage and the drives hang under -
     // and the entry that opens the Computer page (BuildComputerPage).
     constexpr const char* kComputerNodeId = "ufl-computer";
@@ -1623,6 +1629,8 @@ std::string UltraFilerWindow::DefaultTreeIconFile(const TreeNode* node) const {
     if (node->parent && (node->parent->data.nodeId == kCloudNodeId ||
                          node->parent->data.nodeId == kRemoteNodeId))
         return "cloud.svg";
+    if (node->parent && node->parent->data.nodeId == kRamNodeId)
+        return "drive.png";
     const std::string path = TreeNodeTargetPath(node);
     if (std::find(treeDriveNodeIds.begin(), treeDriveNodeIds.end(),
                   node->data.nodeId) != treeDriveNodeIds.end())
@@ -1855,10 +1863,16 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     // entries of one folder.
     addDriveButton = MakeToolButton("ufl-add-drive", "Drive", "add-folder.svg", 0,
             [this]() { ShowAddDriveMenu(); });
-    addDriveButton->SetTooltip(UltraFilerRemoteDrives::Available()
-            ? "Add a drive: an FTP / SFTP server or a cloud account"
-            : "Add a drive - not available in this build (UltraCloud is not built in)");
-    addDriveButton->SetDisabled(!UltraFilerRemoteDrives::Available());
+    {
+        const bool remote = UltraFilerRemoteDrives::Available();
+        const bool ram = UltraFilerRamDisks::Available();
+        addDriveButton->SetTooltip(
+                remote && ram ? "Add a drive: an FTP / SFTP server, a cloud account or a RAM disc"
+                : remote      ? "Add a drive: an FTP / SFTP server or a cloud account"
+                : ram         ? "Add a drive: a RAM disc (FTP and cloud drives need UltraCloud)"
+                              : "Add a drive - not available in this build");
+        addDriveButton->SetDisabled(!remote && !ram);
+    }
     row->AddChild(addDriveButton);
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
@@ -1960,11 +1974,14 @@ void UltraFilerWindow::ShowNewEntryMenu() {
 
 void UltraFilerWindow::ShowAddDriveMenu() {
     if (!window || !addDriveButton) return;
-    if (!UltraFilerRemoteDrives::Available()) {
+    const bool remote = UltraFilerRemoteDrives::Available();
+    const bool ram = UltraFilerRamDisks::Available();
+    if (!remote && !ram) {
         // The button is disabled in such a build, so this is belt and braces -
         // but saying why beats a button that does nothing.
-        UltraCanvasAlert::Info("This build of UltraFiler was made without "
-                               "UltraCloud, so it cannot carry FTP or cloud drives.",
+        UltraCanvasAlert::Info("This build of UltraFiler can add no drives: it "
+                               "was made without UltraCloud (FTP and cloud "
+                               "drives) and this system offers no RAM disc.",
                                "Add a drive", nullptr, window.get());
         return;
     }
@@ -1975,12 +1992,25 @@ void UltraFilerWindow::ShowAddDriveMenu() {
     addDriveMenu->SetStyle(style);
     // Two kinds, because the two are configured differently: a server you
     // type a host and a password for, against an account you sign in to.
-    addDriveMenu->AddItem(MenuItemData::Action(
+    // Shown disabled rather than left out when the build lacks them, so the
+    // menu looks the same on every build and the missing kind is visible.
+    MenuItemData ftpItem = MenuItemData::Action(
             "FTP / SFTP server...",
-            [this]() { AddDriveOfKind(RemoteDriveKind::FtpOrSftp); }));
-    addDriveMenu->AddItem(MenuItemData::Action(
+            [this]() { AddDriveOfKind(RemoteDriveKind::FtpOrSftp); });
+    ftpItem.enabled = remote;
+    MenuItemData cloudItem = MenuItemData::Action(
             "Cloud storage...",
-            [this]() { AddDriveOfKind(RemoteDriveKind::CloudStorage); }));
+            [this]() { AddDriveOfKind(RemoteDriveKind::CloudStorage); });
+    cloudItem.enabled = remote;
+    // A third kind, set up differently again: nothing to sign in to, only a
+    // name and a size, and the disc lives in this machine's memory.
+    MenuItemData ramItem = MenuItemData::Action(
+            "RAM disc...", [this]() { AddRamDisk(); });
+    ramItem.enabled = ram;
+    addDriveMenu->AddItem(ftpItem);
+    addDriveMenu->AddItem(cloudItem);
+    addDriveMenu->AddItem(MenuItemData::Separator());
+    addDriveMenu->AddItem(ramItem);
     addDriveMenu->OpenMenu(
             Point2Di(addDriveButton->GetXInWindow(),
                      addDriveButton->GetYInWindow() + (int)addDriveButton->GetHeight() + 1),
@@ -2032,6 +2062,107 @@ void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
             },
             ftp ? "Add an FTP / SFTP drive" : "Add a cloud drive");
 #endif
+}
+
+// ===== RAM DISCS =====
+
+void UltraFilerWindow::AddRamDisk() {
+    if (!window) return;
+    ShowRamDiskDialog([this](const std::string& name, uint64_t sizeBytes) {
+        UltraFilerRamDisks::RamDisc disc;
+        std::string error;
+        if (!UltraFilerRamDisks::Create(name, sizeBytes, disc, error)) {
+            UltraCanvasAlert::Error(error, "New RAM disc", nullptr, window.get());
+            return;
+        }
+        RefreshRamDiskNodes();
+        // The disc was made to be used: open it, like a folder just created.
+        NavigateTo(disc.mountPath);
+        if (statusLabel) {
+            statusLabel->SetText("RAM disc \"" + disc.name + "\" created" +
+                    (disc.trueRam ? std::string()
+                                  : std::string(" - on disk, not in memory")));
+        }
+    }, window.get());
+}
+
+void UltraFilerWindow::RefreshRamDiskNodes() {
+    if (!folderTree) return;
+    TreeNode* section = folderTree->FindNode(kRamNodeId);
+    if (!section) return;
+
+    const std::vector<UltraFilerRamDisks::RamDisc> discs = UltraFilerRamDisks::List();
+    std::set<std::string> mounted;
+    for (const auto& disc : discs) mounted.insert(disc.mountPath);
+
+    // Only what changed, like RefreshDriveNodes: rebuilding every row would
+    // collapse a disc the user has open because another one was ejected.
+    std::vector<std::string> gone;
+    for (const std::string& id : treeRamDiskNodeIds)
+        if (!mounted.count(id)) gone.push_back(id);
+    for (const std::string& id : gone) {
+        DropTreeSubtree(id);
+        treeRamDiskNodeIds.erase(
+                std::remove(treeRamDiskNodeIds.begin(), treeRamDiskNodeIds.end(), id),
+                treeRamDiskNodeIds.end());
+    }
+    for (const auto& disc : discs) {
+        if (std::find(treeRamDiskNodeIds.begin(), treeRamDiskNodeIds.end(),
+                      disc.mountPath) != treeRamDiskNodeIds.end())
+            continue;
+        // Already a row elsewhere: on macOS and with ImDisk the disc is a
+        // mounted volume, and may have been listed as a drive first. One row
+        // per path - the node id is the path.
+        if (folderTree->FindNode(disc.mountPath)) continue;
+        std::string label = disc.name;
+        if (disc.sizeBytes > 0)
+            label += " (" + UltraFilerRamDisks::FormatSize(disc.sizeBytes) + ")";
+        // The Windows fallback without ImDisk: say so wherever it is shown.
+        if (!disc.trueRam) label += " - on disk";
+        AddTreeFolderNode(kRamNodeId, disc.mountPath, label, "drive.png");
+        if (folderTree->FindNode(disc.mountPath))
+            treeRamDiskNodeIds.push_back(disc.mountPath);
+    }
+
+    // Empty stays hidden, like "Remote Drives" above it.
+    const bool any = !treeRamDiskNodeIds.empty();
+    section->data.visible = any;
+    if (any) folderTree->ExpandNode(section);
+    folderTree->RequestRedraw();
+}
+
+void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
+    if (!window) return;
+    std::string name = mountPath;
+    for (const auto& disc : UltraFilerRamDisks::List())
+        if (disc.mountPath == mountPath) name = disc.name;
+    UltraCanvasAlert::Confirm(
+            "Eject the RAM disc \"" + name + "\"?\n\nEverything on it is "
+            "deleted and cannot be recovered.",
+            "Eject RAM disc",
+            [this, mountPath, name](bool confirmed) {
+        if (!confirmed) return;
+        // Tabs leave first: a display still listing the disc keeps no file
+        // open, but it would show a folder that no longer exists.
+        const std::string home = UserHomeDir();
+        for (FilerTabState* state : FolderDisplayStates()) {
+            if (!state->filer) continue;
+            if (!IsPathInside(state->filer->GetPath(), mountPath)) continue;
+            if (!home.empty()) state->filer->SetPath(home);
+        }
+        std::string error;
+        if (!UltraFilerRamDisks::Eject(mountPath, error)) {
+            UltraCanvasAlert::Error(error, "Eject RAM disc", nullptr, window.get());
+            RefreshRamDiskNodes();   // it may be half gone
+            return;
+        }
+        RefreshRamDiskNodes();
+        // A disc that was a mounted volume (macOS, ImDisk) had its drive card
+        // on the Computer page; the volume monitor would catch up, but only
+        // when the platform reports the unmount.
+        RefreshDriveNodes();
+        if (statusLabel) statusLabel->SetText("RAM disc \"" + name + "\" ejected");
+    }, window.get());
 }
 
 void UltraFilerWindow::AddTreeRemoteDriveNode(const RemoteDrive& drive) {
@@ -3038,6 +3169,17 @@ void UltraFilerWindow::BuildFolderTree() {
     if (TreeNode* remote = folderTree->FindNode(kRemoteNodeId))
         remote->data.visible = false;
 
+    // "RAM Discs" follows: discs made through "+ Drive > RAM disc...", found
+    // again at start-up because a disc stays until it is ejected. Filled
+    // before the drives so a disc that is also a mounted volume (macOS,
+    // ImDisk) gets its row here, where it can be ejected, and not twice.
+    folderTree->AddNode(kComputerNodeId,
+            MakeFolderNodeData(kRamNodeId, "RAM Discs", "drive.png"));
+    treeChildrenLoaded.insert(kRamNodeId);
+    if (TreeNode* ram = folderTree->FindNode(kRamNodeId))
+        ram->data.visible = false;
+    RefreshRamDiskNodes();
+
     // ListMountedVolumes() reads the mount table in one pass (the drive
     // letters on Windows, the directories volumes are mounted under
     // elsewhere - /media, /run/media, /Volumes, /mnt). Probing every drive
@@ -3369,12 +3511,20 @@ void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,
 
 void UltraFilerWindow::AddTreeDriveNode(const std::string& path,
                                         const std::string& label) {
+    // A RAM disc that is also a mounted volume already has its row.
+    if (std::find(treeRamDiskNodeIds.begin(), treeRamDiskNodeIds.end(), path) !=
+        treeRamDiskNodeIds.end())
+        return;
     AddTreeFolderNode(kComputerNodeId, path, label, "drive.png");
     if (folderTree->FindNode(path)) treeDriveNodeIds.push_back(path);
 }
 
 void UltraFilerWindow::RefreshDriveNodes() {
     if (!folderTree) return;
+    // RAM discs first, for the same one-row-per-path reason as at start-up -
+    // and because this pass is also how a disc another program made or
+    // removed reaches the tree.
+    RefreshRamDiskNodes();
 
     const std::vector<MountedVolume> volumes = ListMountedVolumes();
     std::set<std::string> mounted;
@@ -3834,7 +3984,7 @@ std::string UltraFilerWindow::TreeNodeTargetPath(const TreeNode* node) const {
     if (!node) return {};
     const std::string& id = node->data.nodeId;
     if (id == kTreeRootNodeId || id == kComputerNodeId || id == kPinnedNodeId ||
-        id == kCloudNodeId || id == kRemoteNodeId)
+        id == kCloudNodeId || id == kRemoteNodeId || id == kRamNodeId)
         return {};
     if (id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0)
         return id.substr(kPinnedChildPrefixLen);
@@ -3892,14 +4042,27 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     const bool isTopLevelRoot = !isPinnedEntry && node->parent &&
             (node->parent->data.nodeId == kComputerNodeId ||
              node->parent->data.nodeId == kCloudNodeId ||
-             node->parent->data.nodeId == kRemoteNodeId);
+             node->parent->data.nodeId == kRemoteNodeId ||
+             node->parent->data.nodeId == kRamNodeId);
+    // A RAM disc's own row - whichever section it sits in - is the one place
+    // it can be ejected from. The list is asked as well as the section: the
+    // disc's path can already have had a row elsewhere (a volume on macOS,
+    // /dev/shm opened under File System on Linux) when the section was filled.
+    bool isRamDisc = false;
+    if (isFolder && !isPinnedEntry) {
+        isRamDisc = std::find(treeRamDiskNodeIds.begin(), treeRamDiskNodeIds.end(),
+                              id) != treeRamDiskNodeIds.end();
+        for (const auto& disc : isRamDisc ? std::vector<UltraFilerRamDisks::RamDisc>()
+                                          : UltraFilerRamDisks::List())
+            if (disc.mountPath == target) isRamDisc = true;
+    }
 
     std::vector<std::string> clipboardFiles;
     bool clipboardCut = false;
     if (UltraCanvasClipboard* cb = GetClipboard())
         cb->GetFiles(clipboardFiles, clipboardCut);
 
-    MenuItemData copyItem = MenuItemData::Action("Copy", [this, target]() {
+    MenuItemData copyItem = MenuItemData::Action("Copy", [target]() {
         if (UltraCanvasClipboard* cb = GetClipboard())
             cb->SetFiles({target}, false);
     });
@@ -3961,6 +4124,10 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
         RefreshDriveNodes();
     });
 
+    MenuItemData ejectRamDisk = MenuItemData::Action("Eject RAM disc", [this, target]() {
+        ConfirmEjectRamDisk(target);
+    });
+
     MenuStyle style = MenuStyle::Default();
     style.font.fontSize = kUiFontSize;
     treeContextMenu = std::make_shared<UltraCanvasMenu>("ufl-tree-menu", 0, 0, 160, 0);
@@ -3973,6 +4140,9 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     treeContextMenu->AddItem(pinSubmenu);
     treeContextMenu->AddItem(unpinItem);
     treeContextMenu->AddItem(MenuItemData::Separator());
+    // Only on a RAM disc's row: on any other row it could only be disabled,
+    // and a disabled Eject on every folder suggests folders can be ejected.
+    if (isRamDisc) treeContextMenu->AddItem(ejectRamDisk);
     treeContextMenu->AddItem(refreshDrives);
     treeContextMenu->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
 }

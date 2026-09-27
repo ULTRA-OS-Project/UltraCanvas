@@ -1061,6 +1061,8 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+            Apps/UltraFiler/UltraFilerRamDisks.cpp
+            Apps/UltraFiler/UltraFilerRamDiskDialog.cpp
     )
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
@@ -1086,6 +1088,17 @@ if (BUILD_ULTRAFILER_APP)
         message(STATUS "  UltraFiler: remote drives enabled (UltraCloud)")
     else()
         message(STATUS "  UltraFiler: remote drives disabled (UltraCloudUI not built)")
+    endif()
+
+    # RAM discs ("+ Drive > RAM disc..."): VirtualFS's RAM disc API, which the
+    # core library already links PUBLIC, so the define is all that is needed.
+    # VirtualFS compiles a RAM disc back end only for Windows, macOS and other
+    # Unix systems; anywhere else the menu item stays disabled.
+    if(TARGET VirtualFS AND (WIN32 OR UNIX) AND NOT EMSCRIPTEN)
+        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_RAMDISK=1)
+        message(STATUS "  UltraFiler: RAM discs enabled (VirtualFS)")
+    else()
+        message(STATUS "  UltraFiler: RAM discs disabled (VirtualFS not built)")
     endif()
 
     target_link_libraries(UltraFiler PRIVATE

@@ -210,9 +210,6 @@ target_include_directories(VirtualFS
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include/VirtualFS
         ${CMAKE_CURRENT_SOURCE_DIR}/providers
-        # UltraCanvasPathUtf8.h only - header-only, no link dependency: every
-        # path <-> std::string conversion goes through it (AGENTS.md).
-        ${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas/include
 )
 
 if(LIBARCHIVE_FOUND)

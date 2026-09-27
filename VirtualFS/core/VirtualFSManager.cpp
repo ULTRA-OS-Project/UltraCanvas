@@ -5,7 +5,9 @@
 // Author: ULTRA OS Framework
 
 #include "VirtualFSManager.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+// Relative, so every target that compiles this file finds it (the tests
+// build VirtualFS sources into their own executables).
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "VirtualFSPath.h"
 
 #ifdef VIRTUALFS_HAS_LIBARCHIVE

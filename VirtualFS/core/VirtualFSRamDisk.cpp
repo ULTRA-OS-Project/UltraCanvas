@@ -9,7 +9,9 @@
 // Author: ULTRA OS Framework
 
 #include "VirtualFS/VirtualFSRamDisk.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+// Relative, so every target that compiles this file finds it (the tests
+// build VirtualFS sources into their own executables).
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "VirtualFS/VirtualFSRamDiskPlatform.h"
 #include "VirtualFS/VirtualFS.h"
 

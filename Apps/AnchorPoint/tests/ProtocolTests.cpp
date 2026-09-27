@@ -4,7 +4,9 @@
 // Version: 0.1.0
 // Author: AnchorPoint
 #include "Protocol.h"
-#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+// Relative, so every target that compiles this file finds it (the tests
+// build VirtualFS sources into their own executables).
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCrypt/UltraCryptCore.h"
 
