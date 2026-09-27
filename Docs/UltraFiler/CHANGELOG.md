@@ -25,6 +25,11 @@
   download, and *Refresh* retries it. Other file kinds on a drive (video,
   audio, documents, text) are not previewed: double-clicking one opens it
   instead of showing an empty pane.
+- **Renaming, deleting and creating folders on FTP drives works again** in
+  subfolders and for names with spaces or accents. The fix is in UltraNet;
+  see the framework changelog entry *FTP rename, delete and new folder work
+  in subfolders*. SFTP drives can now rename, delete and create folders at
+  all.
 
 #### 2026-09-25 *1.54.0*
 - **R, Scala, MATLAB and VBA files show their text too.** Their languages

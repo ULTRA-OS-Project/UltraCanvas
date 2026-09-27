@@ -2836,6 +2836,26 @@ add_test(NAME FilerRemoteCacheTest COMMAND FilerRemoteCacheTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FilerRemoteCacheTest")
 
+# ===== ULTRANET FTP QUOTE TEST =====
+# The commands UltraNet sends to rename, delete and create on an FTP or SFTP
+# server (UltraCanvas/core/UltraNet/UltraNetFtpQuote.h): decoded names, paths
+# from the login folder, SFTP's own dialect, no line breaks. Header-only and
+# free of libcurl, so it runs on any build.
+message(STATUS "  Building UltraNetFtpQuoteTest...")
+add_executable(UltraNetFtpQuoteTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraNetFtpQuoteTest.cpp
+)
+target_include_directories(UltraNetFtpQuoteTest PRIVATE
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraNet
+)
+target_compile_features(UltraNetFtpQuoteTest PRIVATE cxx_std_20)
+set_target_properties(UltraNetFtpQuoteTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME UltraNetFtpQuoteTest COMMAND UltraNetFtpQuoteTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: UltraNetFtpQuoteTest")
+
 message(STATUS "")
 
 # ===== FILER VOLUME SPACE TEST =====
