@@ -21,6 +21,20 @@
   - Header text written in ISO-2022-JP without encoded-words (older Japanese
     mailers put the JIS escape sequences straight in the header) is
     recognised and converted too.
+  - Unlabelled 8-bit header text (raw bytes in `Subject:` / `From:` with no
+    encoded-word, which many mailers still send) is decoded as well:
+    - It is kept when it is UTF-8 (RFC 6532).
+    - Otherwise it is read in the charset of the message body, which is
+      what `UltraNet_MimeParse` passes as the hint. The new overload
+      `UltraNet_MimeDecodeHeader(raw, fallbackCharset)` takes one directly.
+    - Without a usable hint, it is read in whichever charset gives the most
+      plausible text in its own script: Western, Japanese, Chinese
+      (GB/Big5), Korean, Cyrillic (windows-1251/KOI8-R), Central European,
+      Greek, Arabic or Hebrew.
+    - The result is always valid UTF-8, and decoding it again leaves it
+      unchanged.
+  - Shift_JIS is read as CP932 first. Strict SHIFT_JIS turned every `\`
+    into `¥` and every `~` into `‾`, breaking paths and URLs.
   - `windows-1252` now maps 0x80–0x9F correctly (€, „, …) instead of treating
     it as Latin-1.
   - Build: UltraNet links `Iconv::Iconv` when CMake finds it (part of glibc,

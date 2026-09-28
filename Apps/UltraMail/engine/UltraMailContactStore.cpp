@@ -74,23 +74,27 @@ UltraDbResult ContactStore::Open(const std::string& connectionName,
     };
     UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
     if (!migrated) return migrated;
-    RepairJisNames();
+    RepairUndecodedNames();
     return migrated;
 }
 
-void ContactStore::RepairJisNames() {
-    // Names collected before UltraNet converted ISO-2022-JP were stored as the
-    // raw JIS bytes ("\x1b$B3t<02q...\x1b(B"). The header decoder converts that
-    // form now; run it over the stored names that still carry the escape.
+void ContactStore::RepairUndecodedNames() {
+    // Names collected before UltraNet converted every charset were stored as
+    // the sender's raw bytes: ISO-2022-JP escapes ("\x1b$B3t<02q...\x1b(B"),
+    // or 8-bit text in the sender's local charset. The header decoder reads
+    // both now and returns decoded UTF-8 unchanged, so run it over every
+    // stored name and keep what it changes.
     UltraDbResultSet rs;
-    if (!UltraDb_Query(connection_,
-            "SELECT id, display_name FROM contacts "
-            "WHERE instr(display_name, char(27)) > 0", rs))
+    if (!UltraDb_Query(connection_, "SELECT id, display_name FROM contacts", rs))
         return;
     for (const auto& row : rs) {
         const std::string before = row["display_name"].AsString();
+        bool plain = true;
+        for (unsigned char c : before)
+            if (c >= 0x80 || c == 0x1B) { plain = false; break; }
+        if (plain) continue;                               // nothing to convert
         const std::string after = UltraNet_MimeDecodeHeader(before);
-        if (after.empty() || after == before) continue;   // this build cannot convert
+        if (after.empty() || after == before) continue;    // already UTF-8
         UltraDb_Exec(connection_, "UPDATE contacts SET display_name=? WHERE id=?",
                      { after, row["id"].AsInt64() });
     }

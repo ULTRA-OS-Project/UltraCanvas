@@ -128,7 +128,9 @@ std::vector<std::string> IconvNames(const std::string& cs) {
         return { "ISO-2022-JP", "ISO-2022-JP-2", "ISO-2022-JP-3", "CP50221" };
     if (cs == "shift_jis" || cs == "shift-jis" || cs == "sjis" || cs == "x-sjis" ||
         cs == "ms_kanji" || cs == "windows-31j")
-        return { "SHIFT_JIS", "CP932" };
+        // CP932 first: strict SHIFT_JIS maps 0x5C / 0x7E to the yen sign and
+        // overline, breaking every path and URL in the text.
+        return { "CP932", "SHIFT_JIS" };
     if (cs == "gb2312" || cs == "gbk" || cs == "x-gbk" || cs == "euc-cn")
         return { "GB18030", "GBK" };
     if (cs == "ks_c_5601-1987" || cs == "euc-kr" || cs == "korean")
@@ -277,6 +279,189 @@ bool TryEncodedWord(const std::string& s, std::size_t i, std::string& out, std::
     return true;
 }
 
+// ---- charset guess for unlabelled 8-bit header text -------------------------
+//
+// RFC 5322 headers are 7-bit; 8-bit text belongs in RFC 2047 encoded-words
+// (or is UTF-8, RFC 6532). Plenty of mailers still put raw bytes in their
+// local charset straight into Subject: and From:. UTF-8 is recognised by
+// being valid; anything else is guessed: the caller's hint (the message
+// body's charset - the same mailer wrote both) when it converts cleanly,
+// else the candidate whose conversion reads most like text in its own
+// script. A guess stays a guess on a few bytes, but a wrong one is no worse
+// than the raw bytes shown before, and a hint settles most real cases.
+
+#if defined(ULTRANET_HAS_ICONV)
+std::vector<uint32_t> Utf8Codepoints(const std::string& s) {
+    std::vector<uint32_t> out;
+    for (std::size_t i = 0; i < s.size();) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        std::size_t len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : 4;
+        uint32_t cp = len == 1 ? c : len == 2 ? (c & 0x1F) : len == 3 ? (c & 0x0F) : (c & 0x07);
+        for (std::size_t k = 1; k < len && i + k < s.size(); ++k)
+            cp = (cp << 6) | (static_cast<unsigned char>(s[i + k]) & 0x3F);
+        out.push_back(cp);
+        i += len;
+    }
+    return out;
+}
+
+enum class Script { Latin, Cyrillic, Greek, Hebrew, Arabic, Japanese, Chinese, Korean };
+
+struct Candidate { const char* charset; Script script; };
+
+// In order of how common unlabelled 8-bit mail in each is; the order breaks
+// ties between equally good readings.
+const Candidate kCandidates[] = {
+    { "WINDOWS-1252", Script::Latin },    { "CP932",        Script::Japanese },
+    { "GB18030",      Script::Chinese },  { "CP949",        Script::Korean },
+    { "WINDOWS-1251", Script::Cyrillic }, { "BIG5",         Script::Chinese },
+    { "EUC-JP",       Script::Japanese }, { "KOI8-R",       Script::Cyrillic },
+    { "WINDOWS-1250", Script::Latin },    { "WINDOWS-1253", Script::Greek },
+    { "WINDOWS-1256", Script::Arabic },   { "WINDOWS-1255", Script::Hebrew },
+};
+
+bool IsLatinLetter(uint32_t c) {
+    return (c >= 0xC0 && c <= 0x24F && c != 0xD7 && c != 0xF7) ||
+           c == 0x152 || c == 0x153 || c == 0x160 || c == 0x161 ||
+           c == 0x17D || c == 0x17E || c == 0x178;
+}
+// Punctuation a real text of any script may carry: quotes, dashes, the
+// euro, no-break space, bullets, guillemets, the degree sign, ...
+bool IsCommonSymbol(uint32_t c) {
+    return c == 0xA0 || c == 0xA9 || c == 0xAB || c == 0xAE || c == 0xB0 ||
+           c == 0xBB || c == 0x20AC || (c >= 0x2010 && c <= 0x2026);
+}
+bool InScript(uint32_t c, Script s) {
+    switch (s) {
+        case Script::Latin:    return IsLatinLetter(c);
+        case Script::Cyrillic: return c >= 0x410 && c <= 0x44F || c == 0x401 || c == 0x451;
+        case Script::Greek:    return c >= 0x386 && c <= 0x3CE;
+        case Script::Hebrew:   return c >= 0x5D0 && c <= 0x5EA;
+        case Script::Arabic:   return c >= 0x621 && c <= 0x64A;
+        case Script::Japanese: return (c >= 0x3041 && c <= 0x30FF) || (c >= 0x4E00 && c <= 0x9FFF) ||
+                                      (c >= 0x3000 && c <= 0x303F) || (c >= 0xFF01 && c <= 0xFF5E);
+        case Script::Chinese:  return (c >= 0x4E00 && c <= 0x9FFF) ||
+                                      (c >= 0x3000 && c <= 0x303F) || (c >= 0xFF01 && c <= 0xFF5E);
+        case Script::Korean:   return (c >= 0xAC00 && c <= 0xD7A3) ||
+                                      (c >= 0x3000 && c <= 0x303F) || (c >= 0xFF01 && c <= 0xFF5E);
+    }
+    return false;
+}
+
+// Byte-level checks where a decoding alone cannot tell: most byte pairs are
+// valid GBK / Big5, so the text must use the common-character rows.
+bool CommonHanziRows(const std::string& bytes, Script s, const char* charset) {
+    const bool big5 = std::string(charset) == "BIG5";
+    int pairs = 0, common = 0;
+    for (std::size_t i = 0; i + 1 < bytes.size(); ++i) {
+        const unsigned char a = static_cast<unsigned char>(bytes[i]);
+        if (a < 0x81) continue;
+        const unsigned char b = static_cast<unsigned char>(bytes[i + 1]);
+        ++pairs;
+        if (big5) { if ((a >= 0xA4 && a <= 0xC6) || (a == 0xA1 && b >= 0x40)) ++common; }
+        else      { if (((a >= 0xB0 && a <= 0xD7) || (a >= 0xA1 && a <= 0xA3)) && b >= 0xA1) ++common; }
+        ++i;
+    }
+    (void)s;
+    return pairs > 0 && common * 10 >= pairs * 7;
+}
+
+// How much of `bytes` the reading in `c` accounts for as text in its script,
+// in non-ASCII input bytes; 0 when it does not read as that script at all.
+int ScoreReading(const std::string& bytes, const std::string& utf8, const Candidate& c) {
+    int highBytes = 0, run = 0, longestRun = 0;
+    for (unsigned char b : bytes) {
+        if (b >= 0x80) { ++highBytes; longestRun = std::max(longestRun, ++run); }
+        else run = 0;
+    }
+    int inScript = 0, other = 0, kana = 0, lower = 0, cyr = 0;
+    for (uint32_t cp : Utf8Codepoints(utf8)) {
+        if (cp < 0x80) continue;
+        if (InScript(cp, c.script)) {
+            ++inScript;
+            if (cp >= 0x3041 && cp <= 0x30FF) ++kana;
+            if (c.script == Script::Cyrillic) { ++cyr; if ((cp >= 0x430 && cp <= 0x44F) || cp == 0x451) ++lower; }
+        } else if (!IsCommonSymbol(cp)) {
+            ++other;
+        }
+    }
+    if (inScript == 0) return 0;
+    // Nearly everything must read as that script.
+    if (other * 10 > (inScript + other)) return 0;
+    switch (c.script) {
+        case Script::Latin:
+            // Accented letters sit alone inside words ("café", "Grüße");
+            // long runs of them are another script read as Latin.
+            if (longestRun > 5) return 0;
+            break;
+        case Script::Japanese:
+            // Japanese text has kana; kanji alone is more likely Chinese.
+            if (inScript < 2) return 0;
+            if (kana == 0) return highBytes / 2;
+            break;
+        case Script::Chinese:
+            if (inScript < 2 || !CommonHanziRows(bytes, c.script, c.charset)) return 0;
+            break;
+        case Script::Korean: {
+            if (inScript < 2) return 0;
+            // Common Hangul rows are valid common-row GB2312 too, so both
+            // readings score alike. Korean spaces its words, Chinese does
+            // not: pure Hangul with a space between words wins the tie.
+            bool gap = false, seenHigh = false, spaceAfterHigh = false;
+            for (unsigned char b : bytes) {
+                if (b >= 0x80) { if (spaceAfterHigh) gap = true; seenHigh = true; }
+                else if (b == ' ' && seenHigh) spaceAfterHigh = true;
+            }
+            if (other == 0 && gap) return highBytes + 1;
+            break;
+        }
+        case Script::Cyrillic:
+            // Running text is mostly lower case; the wrong one of KOI8-R and
+            // windows-1251 turns it into capitals.
+            if (lower * 2 < cyr) return highBytes / 2;
+            break;
+        default:
+            break;
+    }
+    return highBytes;
+}
+#endif
+
+// `bytes` (8-bit, not UTF-8, no charset label) -> UTF-8, by `hint` when that
+// converts cleanly, else by the best-scoring candidate, else as windows-1252.
+std::string GuessCharsetToUtf8(const std::string& bytes, const std::string& hint) {
+#if defined(ULTRANET_HAS_ICONV)
+    if (!hint.empty()) {
+        const std::string cs = Lower(UltraCanvas::Trim(hint));
+        if (cs != "us-ascii" && cs != "ascii" && cs != "utf-8" && cs != "utf8") {
+            for (const std::string& name : IconvNames(cs)) {
+                std::string out; bool clean = false;
+                if (IconvToUtf8(bytes, name, out, clean) && clean) return out;
+            }
+        }
+    }
+    std::string best;
+    int bestScore = 0;
+    for (const Candidate& c : kCandidates) {
+        std::string out; bool clean = false;
+        if (!IconvToUtf8(bytes, c.charset, out, clean) || !clean) continue;
+        const int score = ScoreReading(bytes, out, c);
+        if (score > bestScore) { bestScore = score; best = std::move(out); }
+    }
+    if (bestScore > 0) return best;
+    { std::string out; bool clean = false;
+      if (IconvToUtf8(bytes, "WINDOWS-1252", out, clean) && clean) return out; }
+#else
+    (void)hint;
+#endif
+    return Latin1ToUtf8(bytes);
+}
+
+bool HasHighBytes(const std::string& s) {
+    for (unsigned char c : s) if (c >= 0x80) return true;
+    return false;
+}
+
 // Header text written in ISO-2022-JP without encoded-words (older Japanese
 // mailers): 7-bit, with ESC $ B / ESC $ @ shifting into JIS X 0208. Encoded-
 // words are plain ASCII, so converting the whole value first leaves them
@@ -293,9 +478,15 @@ bool LooksLikeRawIso2022Jp(const std::string& s) {
     return esc;
 }
 
-std::string DecodeHeaderImpl(const std::string& rawIn) {
-    const std::string raw = LooksLikeRawIso2022Jp(rawIn) ? CharsetToUtf8(rawIn, "iso-2022-jp")
-                                                         : rawIn;
+std::string DecodeHeaderImpl(const std::string& rawIn, const std::string& hint = "") {
+    // Unlabelled text first: raw ISO-2022-JP escapes, or 8-bit bytes that
+    // are not UTF-8. Encoded-words are plain ASCII, which every candidate
+    // charset leaves as it is, so they are decoded afterwards as usual.
+    std::string raw = rawIn;
+    if (LooksLikeRawIso2022Jp(rawIn))
+        raw = CharsetToUtf8(rawIn, "iso-2022-jp");
+    else if (HasHighBytes(rawIn) && !IsValidUtf8(rawIn))
+        raw = GuessCharsetToUtf8(rawIn, hint);
     std::string result;
     std::size_t i = 0, n = raw.size();
     bool lastWasWord = false;
@@ -638,6 +829,9 @@ std::string UltraNet_QuotedPrintableEncode(const std::string& text) { return QpE
 std::string UltraNet_QuotedPrintableDecode(const std::string& text) { return QpDecodeImpl(text); }
 
 std::string UltraNet_MimeDecodeHeader(const std::string& raw) { return DecodeHeaderImpl(raw); }
+std::string UltraNet_MimeDecodeHeader(const std::string& raw, const std::string& fallbackCharset) {
+    return DecodeHeaderImpl(raw, fallbackCharset);
+}
 
 std::string UltraNet_MimeEncodeHeader(const std::string& utf8Value, bool useBase64) {
     bool ascii = true;
@@ -811,18 +1005,30 @@ bool UltraNet_MimeParse(const std::string& rawMessage, UltraNetMimeMessage& out)
         for (const auto& kv : out.root.headers) if (Lower(kv.first) == ln) return kv.second;
         return "";
     };
-    out.subject   = DecodeHeaderImpl(get("subject"));
-    out.from      = DecodeHeaderImpl(get("from"));
+    // The charset of the message's first text part: the charset its mailer
+    // most likely wrote any unlabelled 8-bit header text in, too.
+    std::string hint;
+    {
+        std::vector<const UltraNetMimePart*> stack{ &out.root };
+        while (!stack.empty() && hint.empty()) {
+            const UltraNetMimePart* p = stack.back(); stack.pop_back();
+            if (!p->charset.empty()) hint = p->charset;
+            for (auto it = p->children.rbegin(); it != p->children.rend(); ++it)
+                stack.push_back(&*it);
+        }
+    }
+    out.subject   = DecodeHeaderImpl(get("subject"), hint);
+    out.from      = DecodeHeaderImpl(get("from"), hint);
     out.date      = get("date");
     out.messageId = get("message-id");
     out.inReplyTo = get("in-reply-to");
-    auto splitAddrs = [](const std::string& v, std::vector<std::string>& dst) {
+    auto splitAddrs = [&hint](const std::string& v, std::vector<std::string>& dst) {
         std::size_t i = 0;
         while (i < v.size()) {
             std::size_t comma = v.find(',', i);
             if (comma == std::string::npos) comma = v.size();
             std::string a = UltraCanvas::Trim(v.substr(i, comma - i));
-            if (!a.empty()) dst.push_back(DecodeHeaderImpl(a));
+            if (!a.empty()) dst.push_back(DecodeHeaderImpl(a, hint));
             i = comma + 1;
         }
     };

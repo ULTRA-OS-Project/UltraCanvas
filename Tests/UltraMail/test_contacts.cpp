@@ -278,7 +278,7 @@ TEST(groups_add_move_count_and_remove) {
 }
 
 #if defined(ULTRANET_HAS_ICONV)
-TEST(open_repairs_names_stored_as_raw_iso2022jp) {
+TEST(open_repairs_names_stored_as_raw_bytes) {
     const std::string path = "contacts-jis-repair.db";
     std::remove(path.c_str());
     {
@@ -287,13 +287,20 @@ TEST(open_repairs_names_stored_as_raw_iso2022jp) {
         Contact c = MakeContact("\x1b$B3t<02q<R%F%l%7%\"\x1b(B", ContactSection::Other,
                                 "wordpress@www.tereshia.com");
         REQUIRE(s.Save(c).success);   // Save leaves the name as given
+        // A Latin-1 name stored raw, and a UTF-8 one that must stay as it is.
+        Contact latin = MakeContact("Andr\xE9 M\xFCller", ContactSection::Other, "am@x.example");
+        REQUIRE(s.Save(latin).success);
+        Contact ok = MakeContact("J\xC3\xBCrgen", ContactSection::Other, "j@x.example");
+        REQUIRE(s.Save(ok).success);
     }
     ContactStore again;
     REQUIRE(again.Open("contacts-jis-b", path).success);
     std::vector<Contact> all;
     REQUIRE(again.ListAll(all).success);
-    REQUIRE_EQ(all.size(), (size_t)1);
-    REQUIRE_EQ(all[0].displayName,
+    REQUIRE_EQ(all.size(), (size_t)3);
+    REQUIRE_EQ(all[0].displayName, std::string("Andr\xC3\xA9 M\xC3\xBCller"));   // sorted by name
+    REQUIRE_EQ(all[1].displayName, std::string("J\xC3\xBCrgen"));
+    REQUIRE_EQ(all[2].displayName,
                std::string("\xE6\xA0\xAA\xE5\xBC\x8F\xE4\xBC\x9A\xE7\xA4\xBE"
                            "\xE3\x83\x86\xE3\x83\xAC\xE3\x82\xB7\xE3\x82\xA2"));
     std::remove(path.c_str());
