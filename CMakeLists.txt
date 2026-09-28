@@ -111,8 +111,19 @@ endif()
 #
 # The one wrinkle: clang emits DWARF5, which binutils ld < 2.40 (Ubuntu 22.04
 # ships 2.38) mis-parses - "DWARF error: invalid or unhandled FORM value: 0x23"
-# (DW_FORM_rnglistx) - and spams it at link. Drop such old-ld builds to DWARF4;
-# it is a no-op without -g and is read fine by gdb/lldb. Newer ld keeps DWARF5.
+# (DW_FORM_rnglistx) - and spams it at link. Drop such old-ld builds to DWARF4.
+#
+# -fdebug-default-version=4, NOT -gdwarf-4: on Clang every -gdwarf-N also
+# switches debug info ON. This line used -gdwarf-4, and every Release build on
+# the Linux CI leg carried full DWARF - the portable bundle's binaries were
+# 907 MB unstripped against 100 MB stripped. The version flag only chooses the
+# format for a build that asks for -g (Debug, RelWithDebInfo) and adds nothing
+# to one that does not.
+#
+# The comparison is nested, not joined with AND: CMake expands
+# ${CMAKE_MATCH_1} before if() evaluates MATCHES, so in one condition it read
+# the previous match's leftovers and the branch was taken on any ld
+# ("GNU ld 2.42 < 2.40").
 if(UNIX AND NOT APPLE AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Ask the compiler which linker it actually drives (honours its default and any
     # -fuse-ld), not CMAKE_LINKER - that is just a path CMake happened to find and
@@ -120,11 +131,13 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     execute_process(
         COMMAND ${CMAKE_CXX_COMPILER} -Wl,--version -x c++ /dev/null -o /dev/null
         OUTPUT_VARIABLE _uc_ld_ver ERROR_QUIET)
-    if(_uc_ld_ver MATCHES "GNU ld[^0-9]*([0-9]+)\\.([0-9]+)"
-       AND "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}" VERSION_LESS "2.40")
-        add_compile_options(-gdwarf-4)
-        message(STATUS "UltraCanvas: emitting DWARF4 (GNU ld "
-                       "${CMAKE_MATCH_1}.${CMAKE_MATCH_2} < 2.40)")
+    if(_uc_ld_ver MATCHES "GNU ld[^0-9]*([0-9]+)\\.([0-9]+)")
+        set(_uc_ld_version "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}")
+        if(_uc_ld_version VERSION_LESS "2.40")
+            add_compile_options(-fdebug-default-version=4)
+            message(STATUS "UltraCanvas: DWARF4 for debug builds (GNU ld "
+                           "${_uc_ld_version} < 2.40)")
+        endif()
     endif()
 endif()
 
