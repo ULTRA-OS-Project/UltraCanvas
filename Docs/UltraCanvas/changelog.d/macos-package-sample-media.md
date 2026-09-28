@@ -8,3 +8,8 @@
   MicroTeX, OCR data, app icons, ...), 9 MB each. The samples are an exclusion
   list (`DEMO_SAMPLE_MEDIA`), so a runtime folder added later is shipped by
   default.
+- **The macOS packager strips its binaries,** as the Linux one does:
+  `strip -S -x` on every executable, plug-in and bundled dylib, after the
+  install-name rewrites and before signing. It keeps the global symbols, which
+  the dlopen()ed LaTeX module binds to; only the debug map and the local
+  symbols go. Each bundle's log line reports the before/after size.

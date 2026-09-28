@@ -366,6 +366,31 @@ fix_install_names() {
     done
 }
 
+# ── Helper: Strip ────────────────────────────────────────────────────────────
+#
+# The Linux packager strips its binaries (--strip-unneeded, 391 -> 190 MB);
+# this one shipped every executable, plug-in and dylib with its full symbol
+# table. `strip -S -x` drops the debug map and the local symbols and keeps the
+# global ones - the executables are linked with exported symbols that the
+# dlopen()ed LaTeX module binds to, so a plain `strip` (which drops globals
+# too) would break it. Runs after bundle_dylibs' install_name_tool rewrites
+# and before signing: both change the file, so the signature has to come last.
+strip_binaries() {
+    local f before after
+    before=$(du -sk "$@" 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    while IFS= read -r -d '' f; do
+        # Mach-O only (the magic of a thin or fat binary), not resources.
+        case "$(file -b "$f")" in
+            Mach-O*)
+                chmod u+w "$f"
+                strip -S -x "$f" 2>/dev/null || echo "  Warning: could not strip $(basename "$f")"
+                ;;
+        esac
+    done < <(find "$@" -type f -print0 2>/dev/null)
+    after=$(du -sk "$@" 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    echo "  Stripped binaries: $((before / 1024)) MB -> $((after / 1024)) MB"
+}
+
 # ── Helper: Code sign ────────────────────────────────────────────────────────
 
 codesign_bundle() {
@@ -592,6 +617,8 @@ build_app_bundle() {
         bundle_dylibs "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" "$contents_dir/Frameworks"
     fi
 
+    strip_binaries "$contents_dir/MacOS" "$contents_dir/Frameworks" "$contents_dir/PlugIns"
+
     # Code sign
     if $DO_SIGN; then
         codesign_bundle "$app_dir"
@@ -633,6 +660,7 @@ build_cli_tool() {
     echo "  Copied executable"
 
     bundle_dylibs "$tool_dir/bin/$exe_name" "$tool_dir/Frameworks"
+    strip_binaries "$tool_dir/bin" "$tool_dir/Frameworks"
 
     if $DO_SIGN; then
         echo "  Signing tool..."
