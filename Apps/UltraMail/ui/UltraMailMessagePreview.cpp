@@ -476,15 +476,26 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
                                             const std::string& raw) {
     MessageSecurity sec;
     if (store_) store_->GetSecurity(env.accountId, env.folder, env.uid, sec);
-    if (sec.Scanned() || raw.empty()) return sec;
+    if (raw.empty()) return sec;
+    bool changed = false;
 
     // First read of this message: scan the cached body once and keep the
     // verdict, so the list can colour the row without parsing every .eml.
-    const ThreatReport report = ScanRawMessage(raw);
-    sec.level  = report.level;
-    sec.score  = report.score;
-    sec.bulk   = report.bulk;
-    sec.reason = report.Summary();
+    if (!sec.Scanned()) {
+        const ThreatReport report = ScanRawMessage(raw);
+        sec.level  = report.level;
+        sec.score  = report.score;
+        sec.bulk   = report.bulk;
+        sec.reason = report.Summary();
+        changed = true;
+    }
+    // And its attachment count, for the list's paperclip, when the body was
+    // downloaded before counts were kept.
+    if (sec.attachments < 0) {
+        sec.attachments = MimeCodec::CountAttachments(raw);
+        changed = true;
+    }
+    if (!changed) return sec;
     if (store_) store_->SetSecurity(env.accountId, env.folder, env.uid, sec);
     if (onSecurityScanned) onSecurityScanned(env, sec);
     return sec;

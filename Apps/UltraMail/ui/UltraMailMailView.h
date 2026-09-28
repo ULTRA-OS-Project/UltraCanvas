@@ -41,6 +41,7 @@ namespace UltraMail {
 struct MailRowState {
     bool unread  = false;
     bool waiting = false;
+    int  attachments = 0;   // > 0: a paperclip at the right of the subject
 };
 
 class MailView {

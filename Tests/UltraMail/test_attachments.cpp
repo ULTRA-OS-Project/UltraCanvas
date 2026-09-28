@@ -119,3 +119,24 @@ TEST(cache_save_as_explicit_path) {
 
     fs::remove_all(dir);
 }
+
+TEST(codec_counts_attachments_like_parse) {
+    const std::vector<uint8_t> bytes = {1, 2, 3, 4};
+    const std::string one = RawWithAttachment("a.pdf", "application/pdf", bytes);
+    REQUIRE_EQ(MimeCodec::CountAttachments(one), (int)MimeCodec::Parse(one).attachments.size());
+    REQUIRE_EQ(MimeCodec::CountAttachments(one), 1);
+
+    UltraNetMimeBuildInput in;
+    in.from = "a@x.com"; in.to = {"b@y.com"}; in.subject = "two";
+    in.body = "text"; in.date = "d"; in.messageId = "<t>";
+    for (const char* name : {"x.txt", "y.zip"}) {
+        UltraNetMimeBuildAttachment a;
+        a.filename = name; a.mediaType = "application/octet-stream"; a.data = bytes;
+        in.attachments.push_back(a);
+    }
+    REQUIRE_EQ(MimeCodec::CountAttachments(UltraNet_MimeBuild(in)), 2);
+
+    in.attachments.clear();
+    REQUIRE_EQ(MimeCodec::CountAttachments(UltraNet_MimeBuild(in)), 0);
+    REQUIRE_EQ(MimeCodec::CountAttachments(""), 0);
+}

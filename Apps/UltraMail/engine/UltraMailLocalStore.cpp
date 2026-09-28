@@ -156,6 +156,9 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           // 0 = the automatic rule, 1 = the user said it needs an answer,
           // -1 = the user said it does not (LocalStore::SetNeedsAnswer).
           "ALTER TABLE messages ADD COLUMN answer_mark INTEGER DEFAULT 0;" },
+        { 7, "attachment count per message",
+          // -1 = not counted yet; filled when a body is downloaded or read.
+          "ALTER TABLE message_security ADD COLUMN attachments INTEGER DEFAULT -1;" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -489,13 +492,43 @@ UltraDbResult LocalStore::SetSecurity(const std::string& accountId,
                                            : static_cast<int64_t>(std::time(nullptr));
     return UltraDb_Exec(connection_,
         "INSERT INTO message_security(account_id, folder, uid, level, score, bulk, "
-        "  reason, scanned_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?) "
+        "  reason, scanned_at, attachments) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(account_id, folder, uid) DO UPDATE SET "
         "level=excluded.level, score=excluded.score, bulk=excluded.bulk, "
-        "reason=excluded.reason, scanned_at=excluded.scanned_at",
+        "reason=excluded.reason, scanned_at=excluded.scanned_at, "
+        // A verdict without a count keeps the count already stored.
+        "attachments=CASE WHEN excluded.attachments >= 0 THEN excluded.attachments "
+        "                 ELSE message_security.attachments END",
         { accountId, folder, uid, ToString(sec.level),
           static_cast<int64_t>(sec.score), static_cast<int64_t>(sec.bulk ? 1 : 0),
-          sec.reason, when });
+          sec.reason, when, static_cast<int64_t>(sec.attachments) });
+}
+
+UltraDbResult LocalStore::SetAttachmentCount(const std::string& accountId,
+                                             const std::string& folder, int64_t uid,
+                                             int count) {
+    return UltraDb_Exec(connection_,
+        "INSERT INTO message_security(account_id, folder, uid, attachments) "
+        "VALUES(?, ?, ?, ?) "
+        "ON CONFLICT(account_id, folder, uid) DO UPDATE SET attachments=excluded.attachments",
+        { accountId, folder, uid, static_cast<int64_t>(count) });
+}
+
+UltraDbResult LocalStore::ListUncountedAttachments(const std::string& accountId,
+                                                   const std::string& folder, int limit,
+                                                   std::vector<int64_t>& uids) const {
+    uids.clear();
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT m.uid AS uid FROM messages m "
+        "LEFT JOIN message_security s ON s.account_id = m.account_id "
+        "  AND s.folder = m.folder AND s.uid = m.uid "
+        "WHERE m.account_id=? AND m.folder=? AND (s.uid IS NULL OR s.attachments < 0) "
+        "ORDER BY m.date DESC LIMIT ?",
+        { accountId, folder, static_cast<int64_t>(limit) }, rs);
+    if (!q) return q;
+    for (const auto& row : rs) uids.push_back(row["uid"].AsInt64());
+    return UltraDbResult::Ok();
 }
 
 namespace {
@@ -507,10 +540,11 @@ MessageSecurity RowToSecurity(const UltraDbRow& row) {
     sec.bulk      = row["bulk"].AsInt64() != 0;
     sec.reason    = row["reason"].AsString();
     sec.scannedAt = row["scanned_at"].AsInt64();
+    sec.attachments = static_cast<int>(row["attachments"].AsInt64());
     return sec;
 }
 
-const char* kSecurityColumns = "uid, level, score, bulk, reason, scanned_at";
+const char* kSecurityColumns = "uid, level, score, bulk, reason, scanned_at, attachments";
 
 } // namespace
 

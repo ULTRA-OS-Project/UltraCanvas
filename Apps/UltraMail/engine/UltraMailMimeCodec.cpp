@@ -39,4 +39,12 @@ ParsedMessage MimeCodec::Parse(const std::string& rawMessage) {
     return out;
 }
 
+int MimeCodec::CountAttachments(const std::string& rawMessage) {
+    UltraNetMimeMessage msg;
+    if (rawMessage.empty() || !UltraNet_MimeParse(rawMessage, msg)) return 0;
+    std::vector<UltraNetMimeAttachmentView> atts;
+    UltraNet_MimeCollectAttachments(msg, atts, /*includeInline=*/false);
+    return static_cast<int>(atts.size());
+}
+
 } // namespace UltraMail

@@ -55,6 +55,16 @@
 - **View source is colour-coded as HTML.** The message source window
   highlights tags, attributes and values, so an HTML mail's structure is
   readable. The headers stay plain text.
+- **A paperclip marks mail with attachments.** It sits at the right end of
+  the subject cell, and the row's tooltip says how many attachments there
+  are.
+  - The count is taken when the message body is downloaded, from the same
+    parts the reading pane shows as attachment chips. Inline images of the
+    body do not count.
+  - It is stored beside the message's security verdict, so the list needs no
+    extra work to show it.
+  - Mail downloaded by an earlier version is counted during the next syncs
+    (300 per folder per sync, newest first), or as soon as it is opened.
 - **Unread mail is bold.** An unread message's subject and date are drawn
   bold in the list, besides the ● and the darker colour it already had.
 - **Update button with a download icon.** *Reload* is now *Update*, with a

@@ -88,6 +88,12 @@ public:
     std::string WriteBody(const std::string& accountId, const std::string& folder,
                           int64_t uid, const std::string& raw) const;
 
+    // Count the attachments of cached bodies that have no count yet (at most
+    // `limit`, newest first) - for mail downloaded before counting existed.
+    // Runs at the end of SyncMessages. Returns how many were counted.
+    int CountStoredAttachments(const std::string& accountId, const std::string& folder,
+                               int limit = 300);
+
     // Set/clear a flag on the server (UID STORE) and in the local index.
     SyncOutcome SetFlag(const std::string& accountId, const std::string& folder,
                         int64_t uid, uint32_t ultramailFlag, bool set,

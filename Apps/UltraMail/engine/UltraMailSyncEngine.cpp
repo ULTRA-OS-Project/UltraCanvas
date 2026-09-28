@@ -2,6 +2,7 @@
 // Version: 0.1.1 - envelope subject/from/to are RFC 2047 decoded when stored
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSyncEngine.h"
+#include "UltraMailMimeCodec.h"
 
 #include "UltraMailThreatScan.h"
 
@@ -9,6 +10,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -229,7 +231,29 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
             },
             options);
     }
+    CountStoredAttachments(accountId, folder);
     return out;
+}
+
+int SyncEngine::CountStoredAttachments(const std::string& accountId, const std::string& folder,
+                                       int limit) {
+    // Bodies downloaded before the count was recorded (or by FetchBody) are
+    // counted here from the cache, a bounded batch per sync, newest first -
+    // the messages the list shows at the top.
+    std::vector<int64_t> uids;
+    if (!store_.ListUncountedAttachments(accountId, folder, limit, uids)) return 0;
+    int counted = 0;
+    for (int64_t uid : uids) {
+        const std::string path = BodyPath(accountId, folder, uid);
+        std::ifstream in(PathFromUtf8(path), std::ios::binary);
+        if (!in) continue;                         // body not downloaded yet
+        const std::string raw((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+        if (raw.empty()) continue;
+        if (store_.SetAttachmentCount(accountId, folder, uid, MimeCodec::CountAttachments(raw)))
+            ++counted;
+    }
+    return counted;
 }
 
 std::string SyncEngine::WriteBody(const std::string& accountId, const std::string& folder,
@@ -253,6 +277,7 @@ std::string SyncEngine::WriteBody(const std::string& accountId, const std::strin
     security.score  = report.score;
     security.bulk   = report.bulk;
     security.reason = report.Summary();
+    security.attachments = MimeCodec::CountAttachments(raw);   // the list's paperclip
     store_.SetSecurity(accountId, folder, uid, security);
     return path;
 }

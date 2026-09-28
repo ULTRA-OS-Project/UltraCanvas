@@ -9,6 +9,9 @@
 #include "UltraMailMailView.h"
 
 #include "UltraMailTheme.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasImage.h"
+#include "UltraCanvasUtils.h"
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -166,6 +169,9 @@ public:
     int   badgeColumn = -1;
     // Columns from this one on (subject, date) are drawn bold for unread mail.
     int   boldFromColumn = 2;
+    // The subject column, which ends in a paperclip for mail with attachments.
+    int   subjectColumn = 2;
+    std::string clipIcon;
     float badgeSide   = 18.0f;
     Color unreadColor;
     Color readColor;
@@ -197,11 +203,27 @@ public:
         if (text.empty()) return;
 
         const int textX  = option.columnX + textPadding;
-        const int availW = option.columnWidth - textPadding * 2;
+        int availW = option.columnWidth - textPadding * 2;
         if (availW <= 0) return;
 
-        const bool unread = states && row >= 0 && row < static_cast<int>(states->size()) &&
-                            (*states)[row].unread;
+        const bool haveState = states && row >= 0 && row < static_cast<int>(states->size());
+        const bool unread = haveState && (*states)[row].unread;
+
+        // Attachments: a paperclip at the right end of the subject cell; the
+        // subject text stops short of it.
+        if (column == subjectColumn && haveState && (*states)[row].attachments > 0) {
+            const double side = std::min(14.0, option.rect.height - 6.0);
+            if (side > 4.0 && availW > side + 8) {
+                if (auto clip = UCImage::Get(clipIcon)) {
+                    ctx->DrawMask(unread ? unreadColor : readColor, *clip,
+                                  Rect2Dd(option.columnX + option.columnWidth - textPadding - side,
+                                          option.rect.y + (option.rect.height - side) / 2.0,
+                                          side, side),
+                                  ImageFitMode::Contain);
+                }
+                availW -= static_cast<int>(side) + 6;
+            }
+        }
 
         ctx->SetFontSize(fontSize);
         // Unread mail stands out: its subject and date are bold (the sender
@@ -337,6 +359,7 @@ void MailView::BuildListBox() {
     d->readColor   = Theme::kTextSecondary;
     d->fontSize    = Theme::kSizeBody;
     d->rowHeight   = kRowHeight;
+    d->clipIcon    = NormalizePath(GetResourcesDir() + "media/icons/paperclip.svg");
     delegate_ = d;
     list_->SetDelegate(delegate_);
 
@@ -599,6 +622,8 @@ void MailView::RefreshRowBadge(const MessageEnvelope& message,
         if (messages_[row].uid != message.uid) continue;
         if (row >= rowBadges_.size()) break;
         rowBadges_[row] = BadgeFor(messages_[row]);
+        if (row < rowStates_.size())
+            rowStates_[row].attachments = security.attachments > 0 ? security.attachments : 0;
         // Writing the cell tooltip also notifies the view, which redraws the row.
         model_->SetData(ListIndex{static_cast<int>(row), 1}, ListDataRole::ToolTipRole,
                         rowBadges_[row].tooltip);
@@ -746,13 +771,18 @@ void MailView::BuildMessageRow(const MessageEnvelope& m, const std::set<int64_t>
                       + (isWaiting ? "\xE2\x86\xA9 " : "");
     outBadge = BadgeFor(m);
     outItem = MultiColumnListItem({ state + sender, "", subject, FormatListDate(m.date) });
+    int attachments = 0;
+    if (auto it = security_.find(m.uid); it != security_.end() && it->second.attachments > 0)
+        attachments = it->second.attachments;
     outItem.tooltip = sender + " <" + m.fromAddr + ">"
                  + (isUnread ? " — unread" : "") + (isWaiting ? " — waiting for reply" : "")
+                 + (attachments == 1 ? " — 1 attachment"
+                    : attachments > 1 ? " — " + std::to_string(attachments) + " attachments" : "")
                  + "\n" + FormatShortDate(m.date);
     // The badge cell explains itself rather than repeating the row tooltip:
     // what the sender is, and — when the content scan found something — why.
     outItem.SetCellTooltip(1, outBadge.tooltip);
-    outState = { isUnread, isWaiting };
+    outState = { isUnread, isWaiting, attachments };
 }
 
 void MailView::AddMessageRow(const MessageEnvelope& m,
@@ -982,6 +1012,14 @@ void MailView::DiffListFromStore(bool /*markTopRead*/) {
             if (pos < rowStates_.size() && rowStates_[pos].waiting != waiting) {
                 rowStates_[pos].waiting = waiting;
                 RefreshRowText(static_cast<int>(pos));
+            }
+            // The paperclip, once the sync has counted a body already listed.
+            int attachments = 0;
+            if (auto it = security_.find(f.uid); it != security_.end() && it->second.attachments > 0)
+                attachments = it->second.attachments;
+            if (pos < rowStates_.size() && rowStates_[pos].attachments != attachments) {
+                rowStates_[pos].attachments = attachments;
+                RefreshRowText(static_cast<int>(pos));   // notifies the view: the row redraws
             }
             ++pos;
         } else {
