@@ -4,6 +4,14 @@
   It stops, and leaves the space blank, when the app is idle. It is the new
   framework element `UltraCanvasBusyIndicator` (see
   `Docs/UltraCanvas/changelog.d/`).
+- **Attachments open in UltraCanvas's media viewer.** Images, PDF,
+  spreadsheets, text and source files, e-books, fonts, 3D models, audio and
+  video open in a viewer window of UltraMail's own, the same on every
+  platform. Only a kind the viewer does not know goes to the system's default
+  application, or is offered for saving as before.
+- **View source is colour-coded as HTML.** The message source window
+  highlights tags, attributes and values, so an HTML mail's structure is
+  readable. The headers stay plain text.
 - **Unread mail is bold.** An unread message's subject and date are drawn
   bold in the list, besides the ● and the darker colour it already had.
 - **Update button with a download icon.** *Reload* is now *Update*, with a

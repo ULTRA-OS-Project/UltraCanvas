@@ -10,6 +10,7 @@
 #pragma once
 
 #include "UltraCanvasBusyIndicator.h"
+#include "UltraCanvasMediaViewerWindow.h"
 #include "UltraMailStartPage.h"
 #include "UltraMailAccountBar.h"
 #include "UltraMailMailView.h"
@@ -406,6 +407,9 @@ private:
     // sync workers' progress callbacks.
     FeedPublisher   feed_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
+    // Attachments open in the framework's media viewer (images, PDF, office
+    // sheets, text, audio, video, fonts, …); one window, reused per attachment.
+    std::unique_ptr<UltraCanvas::UltraCanvasMediaViewerWindow> attachmentViewer_;
 };
 
 } // namespace UltraMail

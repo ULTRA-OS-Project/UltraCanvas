@@ -914,6 +914,10 @@ void UltraMailApp::OpenSourceViewer(const std::string& subject, const std::strin
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(false);
     Theme::StyleTextArea(text, /*bordered=*/true);
+    // Coloured as HTML: tags, attributes and values stand out in an HTML
+    // mail's source, and the headers above it stay plain text.
+    text->SetHighlightSyntax(true);
+    text->SetProgrammingLanguage("HTML");
     text->SetText(raw);
     root->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -1615,8 +1619,21 @@ void UltraMailApp::OpenAttachment(const Attachment& attachment) {
         return;
     }
 
-    // Hand the file to the operating system's default application — the same
-    // behaviour as double-clicking it in a file manager. When nothing is
+    // Show it in UltraCanvas's own media viewer when it knows the kind: no
+    // other application needed, and it looks the same on every platform.
+    if (UltraCanvas::UltraCanvasMediaViewer::IsSupportedMedia(path)) {
+        if (!attachmentViewer_)
+            attachmentViewer_ = std::make_unique<UltraCanvas::UltraCanvasMediaViewerWindow>();
+        UltraCanvas::MediaViewerWindowOptions options;
+        options.title = attachment.filename.empty() ? std::string("Attachment")
+                                                    : attachment.filename;
+        // The cache folder holds every attachment ever opened: show this one only.
+        options.browseFolder = false;
+        if (attachmentViewer_->Show(path, parent, options)) return;
+    }
+
+    // Anything else goes to the operating system's default application — the
+    // same behaviour as double-clicking it in a file manager. When nothing is
     // associated with the type, offer to save it instead.
     if (UltraCanvas::FileAssociations::HasDefaultApplication(path)) {
         std::string err;
