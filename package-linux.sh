@@ -141,6 +141,23 @@ if compgen -G "$BUILDDIR/lib/*.so*" > /dev/null; then
     cp -a "$BUILDDIR"/lib/*.so* "$PKG/lib/"
 fi
 
+# --- strip our own binaries --------------------------------------------------
+
+# Only what this build produced: bin/ and the libraries copied from the build
+# tree just above. The host libraries collected below come from distro
+# packages, which are already stripped. --strip-unneeded drops the static
+# symbol table and any DWARF but keeps .dynsym, so the executables built with
+# ENABLE_EXPORTS still export the core symbols the dlopen()ed plug-ins bind to.
+# A build carrying -g (Debug, RelWithDebInfo, or the -gdwarf-4 that sat in the
+# top-level CMakeLists.txt) otherwise ships its DWARF: 907 MB of binaries that
+# are 100 MB stripped.
+log "Stripping executables and UltraCanvas libraries ..."
+while IFS= read -r -d '' f; do
+    if [ "$(head -c4 "$f" | tr -d '\0')" = $'\x7fELF' ]; then
+        strip --strip-unneeded "$f"
+    fi
+done < <(find "$PKG/bin" "$PKG/lib" -type f -print0)
+
 # --- collect dependent .so (transitive closure) ------------------------------
 
 log "Collecting dependent shared libraries ..."
