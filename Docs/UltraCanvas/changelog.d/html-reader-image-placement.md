@@ -23,11 +23,16 @@
     images alone keeps one image per aligned line. The image stands on the
     baseline, the line grows to hold it, it is scaled to the line when wider,
     and inside a link it is part of the link.
-  - New in `UltraCanvasLabel`: `LabelInlineImage`, `SetInlineImages()` and
-    `InlineImageRect()`. An image is drawn at a U+FFFC placeholder in the
+  - Inline images honour vertical alignment: CSS `vertical-align`
+    (`baseline`, `middle`, `top`/`text-top`, `bottom`/`text-bottom`) and the
+    `<img align>` values `middle`/`absmiddle`, `top`/`texttop` and
+    `bottom`/`absbottom`.
+  - New in `UltraCanvasLabel`: `LabelInlineImage` (with
+    `LabelInlineImageAlign`), `SetInlineImages()` and `InlineImageRect()`. An image is drawn at a U+FFFC placeholder in the
     text, in a box reserved with `TextAttributeFactory::CreateShape`. See
     `UltraCanvasLabelExamples.md`, *Inline Images*.
   - `ElementBuilder::BuildImage` takes an optional link href.
   - Test: `Tests/HTMLImageAlignTest.cpp` (headless builder + CSSLayout;
     placement for each alignment source, an oversized image, a clicked link,
-    and an inline image laid out and drawn on an offscreen context).
+    an inline image laid out and drawn on an offscreen context, and each
+    vertical alignment measured against a baseline image in the same line).

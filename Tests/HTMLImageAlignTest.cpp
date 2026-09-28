@@ -232,6 +232,49 @@ void TestInlineImageFlowsInText() {
     CheckNear(fitted.height, fitted.width / 10.f, "keeps its 10:1 aspect ratio");
 }
 
+// Two inline images in one line: the first on the baseline (the reference),
+// the second aligned by `secondImage`'s attributes. Returns both boxes.
+bool TwoInlineImages(const std::string& secondImage, Rect2Df& reference, Rect2Df& other) {
+    HTML::BuildOptions opts;
+    opts.enableImages = true;
+    opts.resourceLoader = [](const std::string&) {
+        return std::vector<uint8_t>(std::begin(kPng160x60), std::end(kPng160x60));
+    };
+    HTML::ElementBuilder builder;
+    HTML::BuildResult r = builder.Build(
+        "<p>Text <img src=\"a\"> and <img src=\"b\" " + secondImage + "> end</p>", opts);
+    UltraCanvasLabel* label = FindInlineLabel(r.root.get());
+    auto ctx = CreateRenderContext(Size2Di(640, 200), nullptr);
+    if (!label || !ctx || label->GetInlineImages().size() != 2) return false;
+    label->SetBounds(Rect2Df(0, 0, 640, 200));
+    label->UpdateInternalLayout(ctx.get());
+    reference = label->InlineImageRect(0);
+    other = label->InlineImageRect(1);
+    return reference.height > 0 && other.height > 0;
+}
+
+void TestInlineImageVerticalAlign() {
+    std::printf("vertical alignment of inline images\n");
+    Rect2Df base, img;
+    // The reference stands on the baseline: its bottom is the baseline.
+    Check(TwoInlineImages("", base, img), "two images on one line");
+    CheckNear(img.y, base.y, "baseline: same place as the reference");
+
+    Check(TwoInlineImages("style=\"vertical-align:middle\"", base, img), "middle (CSS)");
+    Check(img.y > base.y + 15.f && img.y + img.height > base.y + base.height + 15.f,
+          "middle: centred near the text, reaching below the baseline");
+    Rect2Df cssMiddle = img;
+    Check(TwoInlineImages("align=\"absmiddle\"", base, img), "absmiddle (attribute)");
+    CheckNear(img.y, cssMiddle.y, "align=absmiddle places it like vertical-align:middle");
+
+    Check(TwoInlineImages("style=\"vertical-align:text-top\"", base, img), "text-top");
+    Check(img.y > base.y + 30.f, "text-top: its top at the text's top, far below the tall reference's");
+
+    Check(TwoInlineImages("align=\"bottom\"", base, img), "bottom (attribute)");
+    const float below = (img.y + img.height) - (base.y + base.height);
+    Check(below > 0.5f && below < 12.f, "bottom: its bottom just under the baseline (the descent)");
+}
+
 } // namespace
 
 int main() {
@@ -266,6 +309,7 @@ int main() {
     }
 
     TestInlineImageFlowsInText();
+    TestInlineImageVerticalAlign();
 
     std::printf("clicking a linked image\n");
     {

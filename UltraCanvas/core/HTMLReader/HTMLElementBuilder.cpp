@@ -557,6 +557,12 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
                     image.width = w;
                     image.height = h;
                     image.image = raster;
+                    switch (style.verticalAlign) {
+                        case VerticalAlignMode::Middle: image.align = LabelInlineImageAlign::Middle; break;
+                        case VerticalAlignMode::Top:    image.align = LabelInlineImageAlign::Top;    break;
+                        case VerticalAlignMode::Bottom: image.align = LabelInlineImageAlign::Bottom; break;
+                        case VerticalAlignMode::Baseline: break;
+                    }
                     runImages.push_back(std::move(image));
                     static const char kPlaceholder[] = "\xEF\xBF\xBC";   // U+FFFC
                     out += kPlaceholder;

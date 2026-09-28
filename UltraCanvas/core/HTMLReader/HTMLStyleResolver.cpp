@@ -46,7 +46,8 @@ const ComputedStyle& StyleResolver::StyleOf(const Node* node) const {
 // The presentational align="..." attribute, still everywhere in
 // email HTML. Applied before the author rules, so any CSS text-align wins, as
 // in a browser. On a block (and a table cell) it is the text alignment of
-// its content; on an <img> the builder uses it to place the image. A
+// its content; on an <img> left/center/right place the image on its line and
+// top/middle/bottom (texttop, absmiddle, absbottom) set its vertical-align. A
 // <table align> centres the table itself, which is not text alignment, and is
 // left alone here.
 void StyleResolver::ApplyAlignAttribute(const Node& element, ComputedStyle& style) {
@@ -58,6 +59,19 @@ void StyleResolver::ApplyAlignAttribute(const Node& element, ComputedStyle& styl
     if (!alignable || !element.HasAttribute("align")) return;
     std::string value = element.GetAttribute("align");
     for (char& c : value) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    // On an image, the vertical values place it against the text of its line.
+    if (element.tag == "img") {
+        if (value == "middle" || value == "absmiddle") {
+            style.verticalAlign = VerticalAlignMode::Middle; return;
+        }
+        if (value == "top" || value == "texttop") {
+            style.verticalAlign = VerticalAlignMode::Top; return;
+        }
+        if (value == "bottom" || value == "absbottom") {
+            style.verticalAlign = VerticalAlignMode::Bottom; return;
+        }
+        if (value == "baseline") { style.verticalAlign = VerticalAlignMode::Baseline; return; }
+    }
     if (value == "left")         style.textAlign = TextAlignMode::Left;
     else if (value == "right")   style.textAlign = TextAlignMode::Right;
     else if (value == "center" || (value == "middle" && element.tag != "img"))
@@ -451,6 +465,13 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         else if (lower == "right" || lower == "end") s.textAlign = TextAlignMode::Right;
         else if (lower == "center") s.textAlign = TextAlignMode::Center;
         else if (lower == "justify") s.textAlign = TextAlignMode::Justify;
+    }
+    else if (prop == "vertical-align") {
+        if (lower == "middle") s.verticalAlign = VerticalAlignMode::Middle;
+        else if (lower == "top" || lower == "text-top") s.verticalAlign = VerticalAlignMode::Top;
+        else if (lower == "bottom" || lower == "text-bottom")
+            s.verticalAlign = VerticalAlignMode::Bottom;
+        else if (lower == "baseline") s.verticalAlign = VerticalAlignMode::Baseline;
     }
     else if (prop == "line-height") {
         if (lower == "normal") { s.lineHeight = 1.4f; return; }

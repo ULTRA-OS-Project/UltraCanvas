@@ -158,13 +158,38 @@ namespace UltraCanvas {
         textLayout->SetWrap(style.wrap);
         textLayout->SetAlignment(style.horizontalAlign);
         textLayout->SetVerticalAlignment(style.verticalAlign);
-        // Reserve each inline image's box on its placeholder: it stands on the
-        // baseline (ascent = its height), and the line grows to hold it.
-        for (const auto& img : inlineImages) {
-            const Size2Df size = InlineImageSize(img);
-            auto shape = TextAttributeFactory::CreateShape(size.width, size.height, 0.0);
-            shape->SetRange(img.byteOffset, img.byteOffset + 3);   // U+FFFC is 3 bytes
-            textLayout->InsertAttribute(std::move(shape));
+        // Reserve each inline image's box on its placeholder, above and below
+        // the baseline as its alignment asks; the line grows to hold it.
+        inlineAscents.assign(inlineImages.size(), 0.f);
+        if (!inlineImages.empty()) {
+            // The font's own ascent and descent, from a probe line in the
+            // label's font; the x-height (for "middle") is taken as a share of
+            // the ascent, which holds for common text faces.
+            float fontAscent = 0.f, fontDescent = 0.f;
+            if (auto probe = ctx->CreateTextLayout("Hxg", false)) {
+                probe->SetFontStyle(style.fontStyle);
+                fontAscent  = static_cast<float>(probe->GetBaseline());
+                fontDescent = std::max(0.f, static_cast<float>(probe->GetLayoutHeight()) - fontAscent);
+            }
+            const float xHeight = fontAscent * 0.55f;
+            for (size_t i = 0; i < inlineImages.size(); ++i) {
+                const LabelInlineImage& img = inlineImages[i];
+                const Size2Df size = InlineImageSize(img);
+                const float h = size.height;
+                float ascent = h;                                  // baseline
+                switch (img.align) {
+                    case LabelInlineImageAlign::Middle: ascent = (h + xHeight) / 2.f; break;
+                    case LabelInlineImageAlign::Top:    ascent = fontAscent;           break;
+                    case LabelInlineImageAlign::Bottom: ascent = h - fontDescent;      break;
+                    case LabelInlineImageAlign::Baseline: break;
+                }
+                inlineAscents[i] = ascent;
+                auto shape = TextAttributeFactory::CreateShape(size.width,
+                                                               std::max(0.f, ascent),
+                                                               std::max(0.f, h - ascent));
+                shape->SetRange(img.byteOffset, img.byteOffset + 3);   // U+FFFC is 3 bytes
+                textLayout->InsertAttribute(std::move(shape));
+            }
         }
         return true;
     }
@@ -212,9 +237,10 @@ namespace UltraCanvas {
         const Rect2Di pos = textLayout->IndexToPos(img.byteOffset);
         const double baseline = textLayout->IndexToBaseline(img.byteOffset);
         const float x = static_cast<float>(GetBorderLeftWidth() + GetPaddingLeft() + pos.x);
+        const float ascent = index < inlineAscents.size() ? inlineAscents[index] : size.height;
         const float y = static_cast<float>(GetBorderTopWidth() + GetPaddingTop() +
                                            textLayout->GetLayoutVerticalOffset() +
-                                           baseline - size.height);
+                                           baseline - ascent);
         return Rect2Df(x, y, size.width, size.height);
     }
 

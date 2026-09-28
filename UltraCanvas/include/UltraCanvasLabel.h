@@ -63,11 +63,17 @@ namespace UltraCanvas {
     // the line's baseline at the place of a U+FFFC placeholder character in
     // the rendered text, and the line grows to hold it. Wider than the line,
     // it is scaled down to fit, keeping its aspect ratio.
+    // Where an inline image sits against the text of its line (CSS
+    // vertical-align): standing on the baseline, centred on the x-height, its
+    // top at the text's top, or its bottom at the text's bottom.
+    enum class LabelInlineImageAlign { Baseline, Middle, Top, Bottom };
+
     struct LabelInlineImage {
         int   byteOffset = 0;       // of the U+FFFC placeholder in the rendered text
         float width = 0.f;          // display size in px (before any fit-to-line)
         float height = 0.f;
         std::shared_ptr<UCImage> image;
+        LabelInlineImageAlign align = LabelInlineImageAlign::Baseline;
     };
 
 // ===== LABEL COMPONENT =====
@@ -80,6 +86,7 @@ namespace UltraCanvas {
         int hoveredLink = -1;
         std::vector<LabelInlineImage> inlineImages;
         float inlineFitWidth = -1.f;   // line width the image shapes were sized for; -1 = none
+        std::vector<float> inlineAscents;   // per image: its top above the baseline, as laid out
 
         // ===== COMPUTED LAYOUT =====
         Rect2Di textArea;

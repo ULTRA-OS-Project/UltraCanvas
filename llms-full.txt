@@ -29804,8 +29804,16 @@ label->SetInlineImages({ star });
 ```
 
 - The label reserves the image's box on the placeholder
-  (`TextAttributeFactory::CreateShape`) and draws the image there, on the
-  baseline. A line holding an image grows to fit it.
+  (`TextAttributeFactory::CreateShape`) and draws the image there. A line
+  holding an image grows to fit it.
+- `align` (`LabelInlineImageAlign`) says where the image sits against the
+  text of its line, like CSS `vertical-align`:
+  - `Baseline` (the default): it stands on the baseline.
+  - `Middle`: centred on the x-height.
+  - `Top`: its top at the top of the text.
+  - `Bottom`: its bottom at the bottom of the text, just under the baseline.
+
+  The text's ascent and descent are measured from the label's own font.
 - An image wider than the label's line is scaled down to fit, keeping its
   aspect ratio.
 - `InlineImageRect(i)` returns where image `i` is drawn, in label-local
