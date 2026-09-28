@@ -1,3 +1,54 @@
+#### 2026-09-28 *0.9.78*
+- **The macOS package shrinks by about 560 MB.** `package-macos.sh` copied all
+  of `media/` (121 MB) into every `.app`, and with six bundles the artifact
+  reached 920 MB against Linux's 190 MB, which ships `media/` once. About
+  112 MB of it is the DemoApp's sample content (3D models, videos, pictures,
+  vector drawings, sound, e-books), which only the demo opens. Only
+  `UltraCanvasDemo.app` carries it now - and the demo's example sources -
+  and the other bundles get the runtime part of `media/` (icons, fonts,
+  MicroTeX, OCR data, app icons, ...), 9 MB each. The samples are an exclusion
+  list (`DEMO_SAMPLE_MEDIA`), so a runtime folder added later is shipped by
+  default.
+- **The macOS packager strips its binaries,** as the Linux one does:
+  `strip -S -x` on every executable, plug-in and bundled dylib, after the
+  install-name rewrites and before signing. It keeps the global symbols, which
+  the dlopen()ed LaTeX module binds to; only the debug map and the local
+  symbols go. Each bundle's log line reports the before/after size.
+- **A failed mail connection reports its whole chain.** `UltraNetResult`
+  gains `diagnostics`: one "Name: value" line each for the error (curl's own
+  reason with its libcurl error number), the component and its version
+  ("UltraNet IMAP plug-in 0.2.0"), the server URL (credentials removed), the
+  address actually connected to, the TLS mode (implicit, STARTTLS required or
+  if offered, none), the sign-in (method, curl login options, kind of
+  credential, user name - never the password or token), libcurl's version and
+  target, every TLS backend compiled in (the active one without parentheses),
+  zlib, the trusted roots and the operating system with its version and
+  architecture. The IMAP, SMTP and POP3 plug-ins fill it
+  (`ultranet_curlerror::Perform` / `Error` / `CurrentContext` in
+  `UltraNet/UltraNetCurlError.h`, `ultranet_curlmailauth::RecordContext`); two
+  new core functions supply the last two lines, `UltraNet_DescribeTrustRoots()`
+  and `UltraNet_DescribePlatform()` (Windows via `RtlGetVersion`, which does
+  not lie to unmanifested programs the way `GetVersionEx` does).
+- **Windows: TLS verifies against the Windows certificate store.** The MSYS2
+  libcurl the Windows packages ship runs on Schannel, not OpenSSL, and UltraNet
+  handed it the bundled `cacert.pem` - with a CA file, curl's Schannel verifies
+  against that file only, following the chain exactly as the server sent it.
+  A Let's Encrypt mail server still sending its chain through the retired
+  "DST Root CA X3" then failed in UltraMail with "the certificate or
+  certificate chain is based on an untrusted root", although Windows itself
+  (Outlook, Edge) trusts it through ISRG Root X1; so did any server whose root
+  Windows trusts but the bundle lacks (an organisation's CA, a security
+  suite's). Under Schannel UltraNet now gives no CA file and Windows' own chain
+  building decides; `cacert.pem` is still used by an OpenSSL build. The active
+  backend is read from `curl_version_info()` (a multi-SSL build marks the
+  inactive ones with parentheses).
+- **Windows: revocation is checked the way browsers do.** Schannel's default
+  refuses a certificate when its revocation server cannot be reached; every
+  UltraNet handle - the HTTP client and the IMAP, SMTP and POP3 plug-ins - now
+  sets `CURLSSLOPT_REVOKE_BEST_EFFORT` beside `CURLSSLOPT_NATIVE_CA`, which
+  still refuses a certificate that is actually revoked. One place for both:
+  `ultranet_curltls::Apply` (`UltraNet/UltraNetCurlTls.h`, header-only).
+
 #### 2026-09-28 *0.9.77*
 - DemoApp: clicking a sample to open it "full size" opens it in
   `UltraCanvasMediaViewerWindow`, over the demo's main window. Before, each
