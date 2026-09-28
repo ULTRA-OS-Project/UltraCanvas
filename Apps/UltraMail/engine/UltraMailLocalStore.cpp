@@ -59,6 +59,14 @@ MessageEnvelope RowToEnvelope(const UltraDbRow& row) {
     return m;
 }
 
+// Whether a message is on the "needs an answer" list: the user's own choice
+// (answer_mark) when there is one, else the automatic rule.
+bool NeedsAnswerFor(bool eligible, uint32_t flags, int64_t answerMark) {
+    if (answerMark > 0) return true;
+    if (answerMark < 0) return false;
+    return eligible && (flags & Flag_Answered) == 0;
+}
+
 const char* kMsgColumns =
     "account_id, folder, uid, message_id, in_reply_to, subject, "
     "from_name, from_addr, to_addrs, date, flags";
@@ -144,6 +152,10 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           // 'auto' keeps what existing accounts did: whatever the server offers.
           "ALTER TABLE accounts ADD COLUMN imap_auth TEXT DEFAULT 'auto';"
           "ALTER TABLE accounts ADD COLUMN smtp_auth TEXT DEFAULT 'auto';" },
+        { 6, "manual needs-answer mark",
+          // 0 = the automatic rule, 1 = the user said it needs an answer,
+          // -1 = the user said it does not (LocalStore::SetNeedsAnswer).
+          "ALTER TABLE messages ADD COLUMN answer_mark INTEGER DEFAULT 0;" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -323,7 +335,10 @@ UltraDbResult LocalStore::UpsertMessage(const MessageEnvelope& m) {
         "subject=excluded.subject, from_name=excluded.from_name, "
         "from_addr=excluded.from_addr, to_addrs=excluded.to_addrs, "
         "date=excluded.date, flags=excluded.flags, eligible=excluded.eligible, "
-        "needs_answer=excluded.needs_answer",
+        // A header re-sync must not undo the user's own needs-answer choice.
+        "needs_answer=CASE WHEN messages.answer_mark > 0 THEN 1 "
+        "                  WHEN messages.answer_mark < 0 THEN 0 "
+        "                  ELSE excluded.needs_answer END",
         { m.accountId, m.folder, m.uid, m.messageId, m.inReplyTo, m.subject,
           m.fromName, m.fromAddr, Join(m.to, '\n'), m.date, m.flags,
           eligible ? 1 : 0, needsAnswer ? 1 : 0 });
@@ -375,7 +390,7 @@ UltraDbResult LocalStore::SetFlags(const std::string& accountId,
                                    uint32_t flags, bool set) {
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_,
-        "SELECT flags, eligible FROM messages "
+        "SELECT flags, eligible, answer_mark FROM messages "
         "WHERE account_id=? AND folder=? AND uid=?",
         { accountId, folder, uid }, rs);
     if (!q) return q;
@@ -384,13 +399,16 @@ UltraDbResult LocalStore::SetFlags(const std::string& accountId,
 
     uint32_t current = rs.Row(0)["flags"].AsU32();
     bool eligible = rs.Row(0)["eligible"].AsInt64() != 0;
+    int64_t mark = rs.Row(0)["answer_mark"].AsInt64();
     uint32_t updated = set ? (current | flags) : (current & ~flags);
-    bool needsAnswer = eligible && (updated & Flag_Answered) == 0;
+    // Answering a message the user marked "needs an answer" settles it.
+    if (set && (flags & Flag_Answered) && mark > 0) mark = 0;
+    bool needsAnswer = NeedsAnswerFor(eligible, updated, mark);
 
     return UltraDb_Exec(connection_,
-        "UPDATE messages SET flags=?, needs_answer=? "
+        "UPDATE messages SET flags=?, needs_answer=?, answer_mark=? "
         "WHERE account_id=? AND folder=? AND uid=?",
-        { updated, needsAnswer ? 1 : 0, accountId, folder, uid });
+        { updated, needsAnswer ? 1 : 0, mark, accountId, folder, uid });
 }
 
 UltraDbResult LocalStore::ReplaceFlags(const std::string& accountId,
@@ -398,20 +416,42 @@ UltraDbResult LocalStore::ReplaceFlags(const std::string& accountId,
                                        uint32_t flags) {
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_,
-        "SELECT eligible FROM messages "
+        "SELECT flags, eligible, answer_mark FROM messages "
         "WHERE account_id=? AND folder=? AND uid=?",
         { accountId, folder, uid }, rs);
     if (!q) return q;
     if (rs.Empty())
         return UltraDbResult::Error(UltraDbResultCode::NotFound, "message not found");
 
+    const uint32_t before = rs.Row(0)["flags"].AsU32();
     bool eligible = rs.Row(0)["eligible"].AsInt64() != 0;
-    bool needsAnswer = eligible && (flags & Flag_Answered) == 0;
+    int64_t mark = rs.Row(0)["answer_mark"].AsInt64();
+    // \Answered newly reported by the server (answered on another client)
+    // settles a "needs an answer" choice, as answering here does.
+    if (mark > 0 && (flags & Flag_Answered) && !(before & Flag_Answered)) mark = 0;
+    bool needsAnswer = NeedsAnswerFor(eligible, flags, mark);
 
     return UltraDb_Exec(connection_,
-        "UPDATE messages SET flags=?, needs_answer=? "
+        "UPDATE messages SET flags=?, needs_answer=?, answer_mark=? "
         "WHERE account_id=? AND folder=? AND uid=?",
-        { flags, needsAnswer ? 1 : 0, accountId, folder, uid });
+        { flags, needsAnswer ? 1 : 0, mark, accountId, folder, uid });
+}
+
+UltraDbResult LocalStore::SetNeedsAnswer(const std::string& accountId,
+                                         const std::string& folder, int64_t uid,
+                                         bool needsAnswer) {
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT 1 FROM messages WHERE account_id=? AND folder=? AND uid=?",
+        { accountId, folder, uid }, rs);
+    if (!q) return q;
+    if (rs.Empty())
+        return UltraDbResult::Error(UltraDbResultCode::NotFound, "message not found");
+    return UltraDb_Exec(connection_,
+        "UPDATE messages SET answer_mark=?, needs_answer=? "
+        "WHERE account_id=? AND folder=? AND uid=?",
+        { static_cast<int64_t>(needsAnswer ? 1 : -1), needsAnswer ? 1 : 0,
+          accountId, folder, uid });
 }
 
 UltraDbResult LocalStore::RemoveMessage(const std::string& accountId,

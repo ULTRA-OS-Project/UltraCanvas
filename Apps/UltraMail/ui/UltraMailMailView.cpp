@@ -164,6 +164,8 @@ public:
     const std::vector<MailRowState>* states = nullptr;
     const std::vector<SenderBadge>*  badges = nullptr;
     int   badgeColumn = -1;
+    // Columns from this one on (subject, date) are drawn bold for unread mail.
+    int   boldFromColumn = 2;
     float badgeSide   = 18.0f;
     Color unreadColor;
     Color readColor;
@@ -202,11 +204,16 @@ public:
                             (*states)[row].unread;
 
         ctx->SetFontSize(fontSize);
+        // Unread mail stands out: its subject and date are bold (the sender
+        // already carries the ● glyph and the darker colour).
+        ctx->SetFontWeight(unread && column >= boldFromColumn ? FontWeight::Bold
+                                                              : FontWeight::Normal);
         ctx->SetTextWrap(TextWrap::WrapNone);
         ctx->SetTextAlignment(option.columnAlignment);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->SetTextPaint(unread ? unreadColor : readColor);
         ctx->DrawTextInRect(text, Rect2Dd(textX, option.rect.y, availW, option.rect.height));
+        ctx->SetFontWeight(FontWeight::Normal);   // leave the context as found
     }
 
     int GetRowHeight(const IListModel*, int) const override { return rowHeight; }
@@ -468,18 +475,73 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
     UltraCanvasWindowBase* window = list_->GetWindow();
     if (!window) return;
     const MessageEnvelope m = messages_[static_cast<std::size_t>(row)];
-    if (m.fromAddr.empty()) return;   // no address: nothing to add or edit
+    const bool unread  = (m.flags & Flag_Seen) == 0;
+    const bool waiting = row < static_cast<int>(rowStates_.size()) &&
+                         rowStates_[static_cast<std::size_t>(row)].waiting;
 
-    rowMenu_ = std::make_shared<UltraCanvasMenu>("mailRow.ctx", 0, 0, 170, 0);
+    rowMenu_ = std::make_shared<UltraCanvasMenu>("mailRow.ctx", 0, 0, 200, 0);
     rowMenu_->SetMenuType(MenuType::PopupMenu);
-    if (contacts_.Contains(m.fromAddr)) {
-        rowMenu_->AddItem(MenuItemData::Action("Edit contact", [this, m]() {
-            if (onEditContact) onEditContact(m);
+
+    // Read state and the needs-an-answer list.
+    if (unread) {
+        rowMenu_->AddItem(MenuItemData::Action("Mark as read", [this, m]() {
+            if (onMarkRead) onMarkRead(m);
         }));
     } else {
-        rowMenu_->AddItem(MenuItemData::Action("Add to contacts", [this, m]() {
-            if (onAddContact) onAddContact(m);
+        rowMenu_->AddItem(MenuItemData::Action("Mark as unread", [this, m]() {
+            if (onMarkUnread) onMarkUnread(m);
         }));
+    }
+    rowMenu_->AddItem(MenuItemData::Action(
+        waiting ? "Doesn't need an answer" : "Needs an answer", [this, m, waiting]() {
+            if (onSetNeedsAnswer) onSetNeedsAnswer(m, !waiting);
+        }));
+    rowMenu_->AddItem(MenuItemData::Separator());
+
+    // Spam: out of the junk mailbox, or back to the inbox from it.
+    if (curFolderIsJunk_) {
+        rowMenu_->AddItem(MenuItemData::Action("Not spam", [this, m]() {
+            if (onNotJunk) onNotJunk(m);
+        }));
+    } else {
+        rowMenu_->AddItem(MenuItemData::Action("Mark as spam", [this, m]() {
+            if (onJunk) onJunk(m);
+        }));
+    }
+    rowMenu_->AddItem(MenuItemData::Action("Unsubscribe…", [this, m]() {
+        if (onUnsubscribe) onUnsubscribe(m);
+    }));
+
+    // Move to: every folder of the account that holds mail, except this one.
+    std::vector<MenuItemData> moveItems;
+    if (store_) {
+        std::vector<Folder> folders;
+        store_->ListFolders(m.accountId, folders);
+        for (const auto& f : folders) {
+            if (!f.selectable || f.name == m.folder) continue;
+            const std::string label = f.name == "INBOX" ? std::string("Inbox")
+                                                        : UltraNet_ImapUtf7Decode(f.name);
+            const std::string target = f.name;
+            moveItems.push_back(MenuItemData::Action(label, [this, m, target]() {
+                if (onMoveTo) onMoveTo(m, target);
+            }));
+        }
+    }
+    if (!moveItems.empty())
+        rowMenu_->AddItem(MenuItemData::Submenu("Move to folder", moveItems));
+
+    // The sender and the address book.
+    if (!m.fromAddr.empty()) {
+        rowMenu_->AddItem(MenuItemData::Separator());
+        if (contacts_.Contains(m.fromAddr)) {
+            rowMenu_->AddItem(MenuItemData::Action("Edit contact", [this, m]() {
+                if (onEditContact) onEditContact(m);
+            }));
+        } else {
+            rowMenu_->AddItem(MenuItemData::Action("Add to contacts", [this, m]() {
+                if (onAddContact) onAddContact(m);
+            }));
+        }
     }
     PopupElementSettings settings;
     rowMenu_->OpenMenu(event.pointerWindow, *window, settings);
@@ -711,8 +773,8 @@ void MailView::RefreshRowText(int row) {
     if (row < 0 || row >= static_cast<int>(messages_.size()) ||
         row >= static_cast<int>(rowStates_.size()))
         return;
-    std::string sender = UltraNet_MimeDecodeHeader(
-        messages_[row].fromName.empty() ? messages_[row].fromAddr : messages_[row].fromName);
+    std::string sender = SingleLine(UltraNet_MimeDecodeHeader(
+        messages_[row].fromName.empty() ? messages_[row].fromAddr : messages_[row].fromName));
     std::string state = std::string(rowStates_[row].unread ? "\xE2\x97\x8F " : "")
                       + (rowStates_[row].waiting ? "\xE2\x86\xA9 " : "");
     if (model_)
@@ -884,6 +946,13 @@ void MailView::DiffListFromStore(bool /*markTopRead*/) {
     for (const auto& f : fresh) {
         if (pos < messages_.size() && messages_[pos].uid == f.uid) {
             if (messages_[pos].flags != f.flags) UpdateRowFlags(static_cast<int>(pos), f.flags);
+            // The ↩ needs-an-answer glyph can change without a flag change
+            // (the user's own "needs an answer" choice).
+            const bool waiting = waitingUids.count(f.uid) > 0;
+            if (pos < rowStates_.size() && rowStates_[pos].waiting != waiting) {
+                rowStates_[pos].waiting = waiting;
+                RefreshRowText(static_cast<int>(pos));
+            }
             ++pos;
         } else {
             InsertMessageRowAt(static_cast<int>(pos), f, waitingUids);

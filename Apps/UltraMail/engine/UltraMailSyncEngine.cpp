@@ -120,11 +120,16 @@ std::string SanitizeFolder(const std::string& folder) {
 
 } // namespace
 
-std::string SyncEngine::BodyPath(const std::string& accountId,
-                                 const std::string& folder, int64_t uid) const {
-    fs::path p = PathFromUtf8(emlDir_) / accountId / SanitizeFolder(folder)
+std::string CachedBodyPath(const std::string& emlDir, const std::string& accountId,
+                           const std::string& folder, int64_t uid) {
+    fs::path p = PathFromUtf8(emlDir) / accountId / SanitizeFolder(folder)
                / (std::to_string(uid) + ".eml");
     return PathToUtf8(p);
+}
+
+std::string SyncEngine::BodyPath(const std::string& accountId,
+                                 const std::string& folder, int64_t uid) const {
+    return CachedBodyPath(emlDir_, accountId, folder, uid);
 }
 
 SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,

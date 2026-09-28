@@ -95,6 +95,14 @@ public:
     UltraDbResult ReplaceFlags(const std::string& accountId, const std::string& folder,
                                int64_t uid, uint32_t flags);
 
+    // The user's own "needs an answer" choice, overriding the automatic rule
+    // (addressed to me, in the inbox, not automated, not \Answered): true keeps
+    // the message on the list until it is answered, false keeps it off. Local
+    // only - IMAP has no standard flag for it. Answering it (MarkAnswered, or
+    // \Answered set from the server) ends a "true" choice.
+    UltraDbResult SetNeedsAnswer(const std::string& accountId, const std::string& folder,
+                                 int64_t uid, bool needsAnswer);
+
     // Convenience: mark a message answered (sets \Answered, clears needs-answer).
     UltraDbResult MarkAnswered(const std::string& accountId, const std::string& folder,
                                int64_t uid) {

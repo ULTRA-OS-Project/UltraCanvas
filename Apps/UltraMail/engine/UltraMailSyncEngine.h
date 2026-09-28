@@ -78,7 +78,8 @@ public:
                           int64_t uid, const std::string& serverUrl,
                           const UltraNetMailOptions& options);
 
-    // Path where a message body is (or would be) cached.
+    // Path where a message body is (or would be) cached; same as the free
+    // CachedBodyPath below.
     std::string BodyPath(const std::string& accountId, const std::string& folder,
                          int64_t uid) const;
 
@@ -116,5 +117,10 @@ private:
     IMailboxProtocolPlugin& mailbox_;
     std::string             emlDir_;
 };
+
+// Path where a message body is (or would be) cached under `emlDir`
+// (emlDir/<accountId>/<folder>/<uid>.eml), for callers without a SyncEngine.
+std::string CachedBodyPath(const std::string& emlDir, const std::string& accountId,
+                           const std::string& folder, int64_t uid);
 
 } // namespace UltraMail

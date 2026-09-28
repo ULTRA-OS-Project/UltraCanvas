@@ -28,7 +28,7 @@ Companion documents: [`Concept.md`](Concept.md) (the design),
 5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page; come
    back to UltraMail when it says you are done.
 6. The inbox is fetched right away. Later, every account is synced every
-   five minutes, and **Reload** syncs all of them now.
+   five minutes, and **Update** (the download icon) fetches the account on screen now.
 
 The three ways in:
 
@@ -330,9 +330,9 @@ in with …" dialog abandons the attempt; add the account again to retry.
 ## 4. On the machine
 
 - **Master password.** Asked for once per session, the first time a stored
-  password or sign-in is needed (adding an account, Reload, sending). Nothing
+  password or sign-in is needed (adding an account, Update, sending). Nothing
   syncs in the background while the vault is still locked; UltraMail says so
-  once, and Reload asks for the password.
+  once, and Update asks for the password.
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.
@@ -340,7 +340,7 @@ in with …" dialog abandons the attempt; add the account again to retry.
   `ultranet_imap` and `ultranet_smtp` plug-ins. UltraMail looks for them in
   `Plugins/UltraNet` next to the executable (or up to two levels above it,
   then in the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides. If they
-  are missing, Reload and the first sync of a new account say so and name the
+  are missing, Update and the first sync of a new account say so and name the
   folder that was searched.
 - **Changing the sign-in of an account.** Add the account again with the
   same address: the existing entry is updated, and whatever you provide this
@@ -404,7 +404,7 @@ check fails with "OAuth2 is set as the authentication method, but there is no
 OAuth2 sign-in for this account".
 
 The settings are **stored on the account**, so later syncs and sends never
-look them up again. The page also opens by itself when Reload finds an
+look them up again. The page also opens by itself when Update finds an
 account without known servers — for example one that was added before
 this version for a domain outside the table — and adding the same address
 again keeps the servers it already has.
@@ -422,7 +422,7 @@ Gmail, Outlook and Yahoo.
 | *No OAuth client is configured for Google / Microsoft* | This build was packaged without a baked-in OAuth client. Rebuild with one (section 3) or drop an `oauth.ini` in the data folder. |
 | *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
-| *Server settings for …* opens on Reload | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
+| *Server settings for …* opens on Update | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
 | *The sign-in at … did not succeed* on the settings page | The host, port, security or password is wrong, or the server is unreachable. Correct the page and Save again; *Save anyway* keeps the entry for a server that is only down right now. |
 | Any failure | The alert shows **Connection details** under the reason (on the settings page: the **Details** button): UltraMail and UltraNet versions, server and address, TLS mode, sign-in method, libcurl and TLS library versions, trusted roots, system. Copy that block into a bug report. |
 | *… security certificate is not valid …* with a reason in brackets | The reason is the TLS library's own: *unable to get local issuer certificate* (the server sends an incomplete chain, or a program such as a virus scanner intercepts the connection with its own certificate), *certificate has expired*, *self-signed certificate*, or *no alternative certificate subject name matches* (the certificate is for another host name — use the host it names). On Windows the reasons start with *schannel:* — *the certificate or certificate chain is based on an untrusted root* means Windows itself does not trust the server's root (a self-signed or company certificate: install its root in Windows' *Trusted Root Certification Authorities*); builds from before 2026-09-28 also said it for Let's Encrypt servers, because they checked against the bundled `cacert.pem` instead of Windows' own certificate store. |
@@ -430,4 +430,4 @@ Gmail, Outlook and Yahoo.
 | *New mail could not be fetched … host not found / connection refused* | A server name or port on the settings page is wrong. Add the account again with the same address and correct the page. |
 | *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days). Add the account again to sign in anew. |
 | *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |
-| *Your mail account passwords are locked* | Enter the master password — Reload, sending, or adding an account asks for it. |
+| *Your mail account passwords are locked* | Enter the master password — Update, sending, or adding an account asks for it. |

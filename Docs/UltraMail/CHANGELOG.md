@@ -4,12 +4,33 @@
   It stops, and leaves the space blank, when the app is idle. It is the new
   framework element `UltraCanvasBusyIndicator` (see
   `Docs/UltraCanvas/changelog.d/`).
-- **Right-click a message: "Add to contacts" / "Edit contact".** The menu
-  offers *Edit contact* when the sender's address is already in the address
-  book, else *Add to contacts* with the name and address filled in. Both open
-  the address book's contact editor. That editor also no longer drops a
-  contact's other addresses when you change the first one: it now edits only
-  the primary address.
+- **Unread mail is bold.** An unread message's subject and date are drawn
+  bold in the list, besides the ● and the darker colour it already had.
+- **Update button with a download icon.** *Reload* is now *Update*, with a
+  download icon; it reads *Updating…* while it runs and fetches the account on
+  screen now instead of waiting for the five-minute background check.
+- **Right-click menu on a message:**
+  - *Mark as read* or *Mark as unread*.
+  - *Needs an answer* or *Doesn't need an answer*: puts the message on the ↩
+    needs-an-answer list, or takes it off, whatever the automatic rule says.
+    The choice is kept across syncs and ends when you answer the message (here
+    or on another client). It is stored locally, because IMAP has no standard
+    flag for it.
+  - *Mark as spam* (moves it to the Junk folder) or, in the Junk folder,
+    *Not spam* (moves it back to the inbox).
+  - *Unsubscribe…*: leaves the mailing list the way its `List-Unsubscribe`
+    header asks, after a confirmation. It uses a one-click request with no
+    browser where the list offers one (RFC 8058), otherwise it opens the
+    list's unsubscribe page, or prepares the unsubscribe email for you to send.
+    A message in the spam folder gets a warning first, because unsubscribing
+    from real spam tells the sender that the address is read. The message is
+    downloaded first if its body is not cached yet.
+  - *Move to folder ▸*: every folder of the account that holds mail.
+  - *Add to contacts* when the sender's address is not in the address book,
+    else *Edit contact*. Both open the address book's contact editor, with the
+    name and address filled in for a new contact. That editor also no longer
+    drops a contact's other addresses when you change the first one: it now
+    edits only the primary address.
 - **A long subject no longer takes two rows in the message list.** Some
   senders (LinkedIn, for one) encode line breaks into the subject. The list
   now shows the sender and the subject on one line, with runs of spaces, tabs

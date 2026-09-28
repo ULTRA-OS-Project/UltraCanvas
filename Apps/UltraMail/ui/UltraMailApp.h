@@ -224,7 +224,17 @@ private:
     void RunMailboxAction(const std::string& accountId,
                           std::function<SyncOutcome(SyncEngine&, const std::string& serverUrl,
                                                     const UltraNetMailOptions&)> op,
-                          const std::string& actionName);
+                          const std::string& actionName,
+                          std::function<void()> onSuccess = nullptr);
+    // Message-list menu actions.
+    void HandleMoveMessage(const MessageEnvelope& env, const std::string& folder);
+    void HandleNotJunk(const MessageEnvelope& env);
+    void HandleSetNeedsAnswer(const MessageEnvelope& env, bool needsAnswer);
+    // Leave the mailing list a message came from, the way its List-Unsubscribe
+    // header asks (one-click POST, web page or a message to send); the body is
+    // downloaded first when it is not cached yet.
+    void HandleUnsubscribe(const MessageEnvelope& env);
+    void UnsubscribeWith(const MessageEnvelope& env, const std::string& raw);
     // Like RunMailboxAction, but for a passive, best-effort op: it does not
     // Refresh() on success (so the list selection is not bounced to the top) and
     // it stays silent on failure. Used by mark-read-on-open.

@@ -109,6 +109,13 @@ public:
     // store + server). Not raised for a message merely re-selected by a
     // background rebuild (see suppressAutoRead_).
     std::function<void(const MessageEnvelope&)> onMarkRead;
+    // The message list's right-click menu: put a message on or off the
+    // needs-an-answer list, take it out of the junk mailbox, leave its mailing
+    // list, or move it to another folder of the account.
+    std::function<void(const MessageEnvelope&, bool needsAnswer)> onSetNeedsAnswer;
+    std::function<void(const MessageEnvelope&)> onNotJunk;
+    std::function<void(const MessageEnvelope&)> onUnsubscribe;
+    std::function<void(const MessageEnvelope&, const std::string& folder)> onMoveTo;
     // The message list's right-click menu offers "Add to contacts" for a
     // sender not in the address book and "Edit contact" for one that is.
     std::function<void(const MessageEnvelope&)> onAddContact;

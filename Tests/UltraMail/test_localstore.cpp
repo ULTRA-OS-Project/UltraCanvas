@@ -213,6 +213,39 @@ TEST(mark_answered_drops_needs_answer) {
     REQUIRE_EQ(NeedsFor(s, "erika"), 1);
 }
 
+TEST(needs_answer_manual_mark_overrides_rule) {
+    LocalStore s = FreshStore("na4");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    // Not addressed to the user: the rule leaves it off the list.
+    REQUIRE(s.UpsertMessage(Incoming("erika", 1, "list@x.com", {"team@x.com"})).success);
+    // Addressed to the user: the rule puts it on.
+    REQUIRE(s.UpsertMessage(Incoming("erika", 2, "boss@x.com", {"erika@example.com"})).success);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 1);
+
+    REQUIRE(s.SetNeedsAnswer("erika", "INBOX", 1, true).success);    // on, by choice
+    REQUIRE(s.SetNeedsAnswer("erika", "INBOX", 2, false).success);   // off, by choice
+    std::vector<MessageEnvelope> na;
+    REQUIRE(s.ListNeedsAnswer("erika", na).success);
+    REQUIRE_EQ(na.size(), (size_t)1);
+    REQUIRE_EQ(na[0].uid, (int64_t)1);
+
+    // A header re-sync keeps both choices.
+    REQUIRE(s.UpsertMessage(Incoming("erika", 1, "list@x.com", {"team@x.com"})).success);
+    REQUIRE(s.UpsertMessage(Incoming("erika", 2, "boss@x.com", {"erika@example.com"})).success);
+    REQUIRE(s.ListNeedsAnswer("erika", na).success);
+    REQUIRE_EQ(na.size(), (size_t)1);
+    REQUIRE_EQ(na[0].uid, (int64_t)1);
+
+    // Answering settles the "needs an answer" choice for good: clearing
+    // \Answered again falls back to the rule, which leaves it off.
+    REQUIRE(s.MarkAnswered("erika", "INBOX", 1).success);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 0);
+    REQUIRE(s.SetFlags("erika", "INBOX", 1, Flag_Answered, false).success);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 0);
+
+    REQUIRE(!s.SetNeedsAnswer("erika", "INBOX", 99, true).success);   // unknown message
+}
+
 TEST(unread_counts_inbox_unseen) {
     LocalStore s = FreshStore("unread");
     AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
