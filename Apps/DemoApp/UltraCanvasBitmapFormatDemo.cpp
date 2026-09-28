@@ -10,6 +10,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasMediaViewerWindow.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasTextArea.h"
 #include "../dialogs/UltraCanvasImageExportDialog.h"
@@ -22,326 +23,20 @@
 
 namespace UltraCanvas {
 
-    class FullSizeImageViewerHandler {
-    private:
-        std::shared_ptr<UltraCanvasWindow> viewerWindow;
-        std::shared_ptr<UltraCanvasImageElement> imageElement;
-        std::shared_ptr<UltraCanvasSlider> zoomSlider;
-        std::string imagePath;
-        float currentZoom = 1.0f;
-        Point2Di panOffset = {0, 0};
-        Point2Di lastMousePos = {0, 0};
-        bool isPanning = false;
-
-    public:
-        FullSizeImageViewerHandler(const std::string& path) : imagePath(path) {}
-
-        void Show() {
-            if (viewerWindow) {
-                viewerWindow->Show();
-                return;
-            }
-            CreateViewerWindow();
-        }
-
-        void CreateViewerWindow() {
-            // Get screen dimensions (default to common resolution)
-            int screenWidth = 1920;
-            int screenHeight = 1080;
-
-            // Extract filename for title
-            std::string filename = imagePath;
-            size_t lastSlash = imagePath.find_last_of("/\\");
-            if (lastSlash != std::string::npos) {
-                filename = imagePath.substr(lastSlash + 1);
-            }
-
-            // Create window configuration
-            WindowConfig config;
-            config.title = "Image Viewer - " + filename;
-            config.width = screenWidth;
-            config.height = screenHeight;
-            config.x = 0;
-            config.y = 0;
-            config.type = WindowType::Fullscreen;
-            config.resizable = false;
-            config.backgroundColor = Color(32, 32, 32, 255);
-
-            // Create the viewer window
-            viewerWindow = CreateWindow(config);
-
-            // Create dark background container
-            auto bgContainer = std::make_shared<UltraCanvasContainer>(
-                    "ImageViewerBG", 0, 0, screenWidth, screenHeight
-            );
-            bgContainer->SetBackgroundColor(Color(32, 32, 32, 255));
-            viewerWindow->AddChild(bgContainer);
-
-            // Create image element (centered, with padding for toolbar)
-            int imageAreaHeight = screenHeight - 80;  // Leave space for toolbar
-            imageElement = std::make_shared<UltraCanvasImageElement>(
-                    "FullSizeImage",
-                    50, 60,
-                    screenWidth - 100, imageAreaHeight - 20
-            );
-            imageElement->LoadFromFile(imagePath);
-            imageElement->SetFitMode(ImageFitMode::Contain);
-            imageElement->SetBackgroundColor(Color(32, 32, 32, 255));
-            bgContainer->AddChild(imageElement);
-
-            // Create top toolbar container
-            auto toolbar = std::make_shared<UltraCanvasContainer>(
-                    "Toolbar", 0, 0, screenWidth, 50
-            );
-            toolbar->SetBackgroundColor(Color(45, 45, 45, 255));
-            bgContainer->AddChild(toolbar);
-
-            // Filename label
-            auto filenameLabel = std::make_shared<UltraCanvasLabel>(
-                    "FilenameLabel", 20, 12, 400, 26
-            );
-            filenameLabel->SetText(filename);
-            filenameLabel->SetFontSize(14);
-            filenameLabel->SetFontWeight(FontWeight::Bold);
-            filenameLabel->SetTextColor(Color(255, 255, 255, 255));
-            toolbar->AddChild(filenameLabel);
-
-            // Instructions label
-            auto instructionLabel = std::make_shared<UltraCanvasLabel>(
-                    "Instructions", screenWidth - 250, 12, 230, 26
-            );
-            instructionLabel->SetText("Press ESC to close");
-            instructionLabel->SetFontSize(12);
-            instructionLabel->SetTextColor(Color(180, 180, 180, 255));
-            instructionLabel->SetAlignment(TextAlignment::Right);
-            toolbar->AddChild(instructionLabel);
-
-            // Zoom controls container (center of toolbar)
-            int zoomControlsX = (screenWidth - 300) / 2;
-
-            // Zoom out button
-            auto zoomOutBtn = std::make_shared<UltraCanvasButton>(
-                    "ZoomOut", zoomControlsX, 10, 40, 30
-            );
-            zoomOutBtn->SetText("−");
-            zoomOutBtn->SetFontSize(18);
-            zoomOutBtn->SetColors(Color(60, 60, 60, 255), Color(80, 80, 80, 255));
-            zoomOutBtn->SetTextColors(Color(255, 255, 255, 255));
-            zoomOutBtn->SetCornerRadius(4);
-            zoomOutBtn->onClick = [this]() {
-                AdjustZoom(-0.1f);
-            };
-            toolbar->AddChild(zoomOutBtn);
-
-            // Zoom slider
-            zoomSlider = std::make_shared<UltraCanvasSlider>(
-                    "ZoomSlider", zoomControlsX + 50, 15, 150, 20
-            );
-            zoomSlider->SetRange(0.25f, 3.0f);
-            zoomSlider->SetValue(1.0f);
-            zoomSlider->SetStep(0.05f);
-            zoomSlider->onValueChanged = [this](float value) {
-                SetZoom(value);
-            };
-            toolbar->AddChild(zoomSlider);
-
-            // Zoom in button
-            auto zoomInBtn = std::make_shared<UltraCanvasButton>(
-                    "ZoomIn", zoomControlsX + 210, 10, 40, 30
-            );
-            zoomInBtn->SetText("+");
-            zoomInBtn->SetFontSize(18);
-            zoomInBtn->SetColors(Color(60, 60, 60, 255), Color(80, 80, 80, 255));
-            zoomInBtn->SetTextColors(Color(255, 255, 255, 255));
-            zoomInBtn->SetCornerRadius(4);
-            zoomInBtn->onClick = [this]() {
-                AdjustZoom(0.1f);
-            };
-            toolbar->AddChild(zoomInBtn);
-
-            // Fit to window button
-            auto fitBtn = std::make_shared<UltraCanvasButton>(
-                    "FitBtn", zoomControlsX + 260, 10, 60, 30
-            );
-            fitBtn->SetText("Fit");
-            fitBtn->SetFontSize(11);
-            fitBtn->SetColors(Color(60, 60, 60, 255), Color(80, 80, 80, 255));
-            fitBtn->SetTextColors(Color(255, 255, 255, 255));
-            fitBtn->SetCornerRadius(4);
-            fitBtn->onClick = [this]() {
-                ResetView();
-            };
-            toolbar->AddChild(fitBtn);
-
-            // Close button (top right)
-            auto closeBtn = std::make_shared<UltraCanvasButton>(
-                    "CloseBtn", screenWidth - 50, 10, 40, 30
-            );
-            closeBtn->SetText("✕");
-            closeBtn->SetFontSize(14);
-            closeBtn->SetColors(Color(180, 60, 60, 255), Color(220, 80, 80, 255));
-            closeBtn->SetTextColors(Color(255, 255, 255, 255));
-            closeBtn->SetCornerRadius(4);
-            closeBtn->onClick = [this]() {
-                CloseViewer();
-            };
-            toolbar->AddChild(closeBtn);
-
-            // Bottom info bar
-            auto infoBar = std::make_shared<UltraCanvasContainer>(
-                    "InfoBar", 0, screenHeight - 30, screenWidth, 30
-            );
-            infoBar->SetBackgroundColor(Color(45, 45, 45, 255));
-            bgContainer->AddChild(infoBar);
-
-            // Image info label
-            auto infoLabel = std::make_shared<UltraCanvasLabel>(
-                    "InfoLabel", 20, 6, 600, 18
-            );
-            infoLabel->SetText("Use mouse wheel to zoom, drag to pan");
-            infoLabel->SetFontSize(11);
-            infoLabel->SetTextColor(Color(150, 150, 150, 255));
-            infoBar->AddChild(infoLabel);
-
-            // Setup keyboard and mouse event handling
-            viewerWindow->SetEventCallback([this](const UCEvent& event) {
-                return HandleEvent(event);
-            });
-
-            // Show the window
-            viewerWindow->Show();
-        }
-
-        bool HandleEvent(const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::KeyUp:
-                    if (event.virtualKey == UCKeys::Escape) {
-                        CloseViewer();
-                        return true;
-                    }
-                    // Zoom shortcuts
-                    if (event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadPlus) {
-                        AdjustZoom(0.1f);
-                        return true;
-                    }
-                    if (event.virtualKey == UCKeys::Minus || event.virtualKey == UCKeys::NumPadMinus) {
-                        AdjustZoom(-0.1f);
-                        return true;
-                    }
-                    if (event.virtualKey == UCKeys::Key0 || event.virtualKey == UCKeys::NumPad0) {
-                        ResetView();
-                        return true;
-                    }
-                    break;
-
-                case UCEventType::MouseWheel:
-                    // Zoom with mouse wheel
-                    if (event.wheelDelta > 0) {
-                        AdjustZoom(0.1f);
-                    } else {
-                        AdjustZoom(-0.1f);
-                    }
-                    return true;
-
-                case UCEventType::MouseDown:
-                    if (event.button == UCMouseButton::Left || event.button == UCMouseButton::Middle) {
-                        isPanning = true;
-                        lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
-                        return true;
-                    }
-                    break;
-
-                case UCEventType::MouseUp:
-                    if (isPanning) {
-                        isPanning = false;
-                        return true;
-                    }
-                    break;
-
-                case UCEventType::MouseMove:
-                    if (isPanning) {
-                        int deltaX = event.pointer.x - lastMousePos.x;
-                        int deltaY = event.pointer.y - lastMousePos.y;
-                        panOffset.x += deltaX;
-                        panOffset.y += deltaY;
-                        lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
-                        UpdateImagePosition();
-                        return true;
-                    }
-                    break;
-
-                default:
-                    break;
-            }
-            return false;
-        }
-
-        void AdjustZoom(float delta) {
-            currentZoom = std::clamp(currentZoom + delta, 0.25f, 3.0f);
-            if (zoomSlider) {
-                zoomSlider->SetValue(currentZoom);
-            }
-            UpdateImageScale();
-        }
-
-        void SetZoom(float zoom) {
-            currentZoom = std::clamp(zoom, 0.25f, 3.0f);
-            UpdateImageScale();
-        }
-
-        void UpdateImageScale() {
-            if (imageElement) {
-                imageElement->SetScale(currentZoom, currentZoom);
-                imageElement->RequestRedraw();
-            }
-        }
-
-        void UpdateImagePosition() {
-            if (imageElement) {
-                // Apply pan offset to image position
-                int baseX = 50 + panOffset.x;
-                int baseY = 60 + panOffset.y;
-                imageElement->SetPosition(baseX, baseY);
-                imageElement->RequestRedraw();
-            }
-        }
-
-        void ResetView() {
-            currentZoom = 1.0f;
-            panOffset = {0, 0};
-            if (zoomSlider) {
-                zoomSlider->SetValue(1.0f);
-            }
-            if (imageElement) {
-                imageElement->SetScale(1.0f, 1.0f);
-                imageElement->SetPosition(50, 60);
-                imageElement->SetFitMode(ImageFitMode::Contain);
-                imageElement->RequestRedraw();
-            }
-        }
-
-        void CloseViewer() {
-            if (viewerWindow) {
-                viewerWindow->Close();
-                viewerWindow.reset();
-            }
-        }
-    };
-
-// ===== FULL-SIZE IMAGE VIEWER FUNCTION =====
-// Static map to keep viewer handlers alive
-    static std::unordered_map<std::string, std::shared_ptr<FullSizeImageViewerHandler>> g_imageViewers;
-
+// ===== FULL-SIZE VIEWER =====
+    // Every demo page that opens a sample "full size" - bitmaps, vector
+    // drawings, 3D models - comes here, and the file opens in one
+    // UltraCanvasMediaViewerWindow over the window the click came from (the
+    // demo's main window). The arrow keys walk the rest of the sample's
+    // folder; Escape closes it. The instance is allocated once and never
+    // destroyed: its destructor closes a window, which must not run during
+    // static teardown after the windowing system has shut down.
     void ShowFullSizeImageViewer(const std::string& imagePath) {
-        // Create or reuse viewer handler for this image
-        auto it = g_imageViewers.find(imagePath);
-        if (it != g_imageViewers.end() && it->second) {
-            it->second->Show();
-        } else {
-            auto handler = std::make_shared<FullSizeImageViewerHandler>(imagePath);
-            g_imageViewers[imagePath] = handler;
-            handler->Show();
-        }
+        if (imagePath.empty()) return;
+        static auto* viewerWindow = new UltraCanvasMediaViewerWindow();
+        UltraCanvasWindowBase* host = nullptr;
+        if (auto* app = UltraCanvasApplication::GetInstance()) host = app->GetFocusedWindow();
+        viewerWindow->Show(imagePath, host);
     }
 
 // ===== FORMAT INFO STRUCTURES =====
@@ -1126,8 +821,9 @@ namespace UltraCanvas {
         auto image = std::make_shared<UltraCanvasImageElement>("Image", 4, 4, 222, 162);
         image->LoadFromFile(sampleImagePath);
         image->SetFitMode(ImageFitMode::Contain);
-        image->SetClickable(true);
-        image->SetMouseCursor(UCMouseCursor::LookingGlass);
+        // Hand, not LookingGlass: Windows has no magnifier cursor and maps that
+        // one to a crosshair, which does not read as "click to open".
+        image->SetClickable(true);   // also sets the hand cursor
         image->onClick = [sampleImagePath]() {
             ShowFullSizeImageViewer(sampleImagePath);
         };
@@ -1153,7 +849,7 @@ namespace UltraCanvas {
         viewBtn->SetColors(info.accentColor, info.accentColor);
         viewBtn->SetTextColors(Color(255, 255, 255, 255));
         viewBtn->SetCornerRadius(6);
-        viewBtn->SetMouseCursor(UCMouseCursor::LookingGlass);
+        viewBtn->SetMouseCursor(UCMouseCursor::Hand);
         viewBtn->onClick = [sampleImagePath]() {
             ShowFullSizeImageViewer(sampleImagePath);
         };
