@@ -11,6 +11,13 @@
     for GB2312).
   - A byte that cannot be converted becomes U+FFFD, and the rest of the text
     is still converted.
+  - Labels iconv does not know under that name are mapped as well: the
+    Hebrew/Arabic `iso-8859-8-i` / `-e` variants, `unicode-1-1-utf-7`,
+    `x-mac-roman`, `x-mac-cyrillic`, `hz-gb-2312`, `tis-620` /
+    `windows-874`.
+  - A charset nobody can convert (`unknown-8bit`, `x-user-defined`, a typo)
+    no longer passes its bytes through as invalid UTF-8. Text that is
+    already UTF-8 is kept, and anything else is read as windows-1252.
   - Header text written in ISO-2022-JP without encoded-words (older Japanese
     mailers put the JIS escape sequences straight in the header) is
     recognised and converted too.

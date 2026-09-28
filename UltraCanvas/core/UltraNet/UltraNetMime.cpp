@@ -43,6 +43,31 @@ int HexVal(char c) {
     return -1;
 }
 
+// Well-formed UTF-8 (no overlongs, surrogates or values past U+10FFFF).
+bool IsValidUtf8(const std::string& s) {
+    std::size_t i = 0;
+    while (i < s.size()) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        std::size_t len; uint32_t cp;
+        if (c < 0x80) { ++i; continue; }
+        else if ((c >> 5) == 0x6) { len = 2; cp = c & 0x1F; }
+        else if ((c >> 4) == 0xE) { len = 3; cp = c & 0x0F; }
+        else if ((c >> 3) == 0x1E) { len = 4; cp = c & 0x07; }
+        else return false;
+        if (i + len > s.size()) return false;
+        for (std::size_t k = 1; k < len; ++k) {
+            const unsigned char d = static_cast<unsigned char>(s[i + k]);
+            if ((d >> 6) != 0x2) return false;
+            cp = (cp << 6) | (d & 0x3F);
+        }
+        if ((len == 2 && cp < 0x80) || (len == 3 && cp < 0x800) || (len == 4 && cp < 0x10000) ||
+            cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+            return false;
+        i += len;
+    }
+    return true;
+}
+
 // ISO-8859-1 / Windows-1252 byte stream -> UTF-8.
 std::string Latin1ToUtf8(const std::string& in) {
     std::string out; out.reserve(in.size());
@@ -110,6 +135,18 @@ std::vector<std::string> IconvNames(const std::string& cs) {
         return { "CP949", "EUC-KR" };
     if (cs == "big5" || cs == "x-big5")
         return { "BIG5-HKSCS", "BIG5", "CP950" };
+    // Hebrew / Arabic "logical" (-i) and "explicit" (-e) directionality
+    // variants: the same bytes as the base charset.
+    if (cs.size() > 2 && cs.rfind("iso-8859-", 0) == 0 &&
+        (cs.compare(cs.size() - 2, 2, "-i") == 0 || cs.compare(cs.size() - 2, 2, "-e") == 0))
+        return { cs.substr(0, cs.size() - 2) };
+    if (cs == "unicode-1-1-utf-7") return { "UTF-7" };
+    if (cs == "x-mac-roman" || cs == "mac" || cs == "x-mac") return { "MACINTOSH" };
+    if (cs == "x-mac-cyrillic" || cs == "x-mac-ukrainian")
+        return { "MAC-CYRILLIC", "MACCYRILLIC", "MACUKRAINIAN" };
+    if (cs == "hz-gb-2312") return { "HZ-GB-2312", "HZ" };
+    if (cs == "tis-620" || cs == "windows-874" || cs == "iso-8859-11")
+        return { cs, "CP874", "TIS-620" };
     return { cs };
 }
 
@@ -136,7 +173,16 @@ std::string CharsetToUtf8(const std::string& bytes, const std::string& charsetIn
     if (haveBest) return best;
 #endif
     if (cs == "windows-1252" || cs == "cp1252") return Latin1ToUtf8(bytes);
-    return bytes;   // best effort for charsets this build cannot convert
+    // A charset nobody can convert ("unknown-8bit", "x-user-defined", a
+    // typo): keep text that is already UTF-8, and read anything else as
+    // windows-1252 / Latin-1 - the commonest 8-bit mail - rather than handing
+    // on bytes that are not valid UTF-8.
+    if (IsValidUtf8(bytes)) return bytes;
+#if defined(ULTRANET_HAS_ICONV)
+    { std::string out; bool clean = false;
+      if (IconvToUtf8(bytes, "WINDOWS-1252", out, clean) && clean) return out; }
+#endif
+    return Latin1ToUtf8(bytes);
 }
 
 // ---- base64 ----------------------------------------------------------------

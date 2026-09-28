@@ -318,4 +318,23 @@ TEST(mime_header_other_charsets_via_iconv) {
     REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?x-unknown-cs?Q?abc?="), std::string("abc"));
 }
 
+TEST(mime_header_charset_label_aliases) {
+    // Hebrew "logical" label (what Outlook and Thunderbird send): shalom.
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?iso-8859-8-i?Q?=F9=EC=E5=ED?="),
+               std::string("\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D"));
+    // Classic Mac OS Roman: 0x8A is a-umlaut.
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?x-mac-roman?Q?=8A?="), std::string("\xC3\xA4"));
+    // UTF-7 under its old IANA name.
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?unicode-1-1-utf-7?Q?Hi_+AKM-1?="),
+               std::string("Hi \xC2\xA3" "1"));
+}
+
+TEST(mime_unknown_charset_never_yields_invalid_utf8) {
+    // "unknown-8bit" with Latin-1 bytes: read as windows-1252, not passed on raw.
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?unknown-8bit?Q?caf=E9?="), std::string("caf\xC3\xA9"));
+    // ... but text that already is UTF-8 stays as it is.
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?x-user-defined?Q?caf=C3=A9?="),
+               std::string("caf\xC3\xA9"));
+}
+
 #endif // ULTRANET_HAS_ICONV
