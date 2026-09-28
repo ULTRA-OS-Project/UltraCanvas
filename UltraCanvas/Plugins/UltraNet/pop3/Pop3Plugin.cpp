@@ -23,6 +23,7 @@
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetCurlMailAuth.h>
+#include <UltraNet/UltraNetCurlTls.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetUrl.h>
 
@@ -172,7 +173,13 @@ bool ParsePop3Url(const std::string& url,
     return true;
 }
 
+constexpr const char* kPluginVersion = "0.1.0";
+
 UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
+    // STARTTLS here is CURLUSESSL_TRY (below): an upgrade if the server offers one.
+    ultranet_curlmailauth::RecordContext(std::string("UltraNet POP3 plug-in ") + kPluginVersion,
+                                         opt, ultranet_curlmailauth::Protocol::Pop3,
+                                         implicitTls, /*startTlsRequired=*/false);
     if (UltraNetResult a = ultranet_curlmailauth::Apply(
             h, opt, ultranet_curlmailauth::Protocol::Pop3); !a)
         return a;
@@ -185,9 +192,8 @@ UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool 
         const std::string caBundle = UltraNet_ResolveCaBundlePath();
         if (!caBundle.empty())
             curl_easy_setopt(h, CURLOPT_CAINFO, caBundle.c_str());
-#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
-        curl_easy_setopt(h, CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
-#endif
+        // Windows: system certificate store + browser-style revocation check.
+        ultranet_curltls::Apply(h);
     }
     curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS,
                      static_cast<long>(opt.connectTimeoutMs));
@@ -203,7 +209,7 @@ UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool 
 class Pop3Plugin : public IMailProtocolPlugin {
 public:
     std::string GetName() const override   { return "UltraNet-POP3"; }
-    std::string GetVersion() const override { return "0.1.0"; }
+    std::string GetVersion() const override { return kPluginVersion; }
     std::vector<std::string> GetSupportedSchemes() const override {
         return {"pop3", "pop3s"};
     }
@@ -244,10 +250,10 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &listBody);
             if (UltraNetResult a = ApplyCommonOptions(h.get(), options, implicitTls); !a) return a;
 
-            std::string why;
-            CURLcode rc = ultranet_curlerror::Perform(h.get(), why);
+            std::string why, diagnostics;
+            CURLcode rc = ultranet_curlerror::Perform(h.get(), why, &diagnostics);
             if (rc != CURLE_OK) {
-                return UltraNetResult::Error(MapCurlError(rc), why);
+                return ultranet_curlerror::Error(MapCurlError(rc), why, diagnostics);
             }
             totalMessages = CountMessagesInListResponse(listBody);
         }

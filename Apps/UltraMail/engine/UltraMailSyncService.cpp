@@ -44,7 +44,7 @@ void SyncService::SyncInBackground(const std::string& accountId, const std::stri
         SyncOutcome result;
         UltraNetResult prepared = prepare ? prepare(opts) : UltraNetResult::Ok();
         result = prepared ? SyncNow(accountId, serverUrl, opts, std::move(onProgress))
-                          : SyncOutcome::Fail(prepared.message);
+                          : SyncOutcome::Fail(prepared);
         if (onDone) onDone(result);
     }).detach();
 }
@@ -60,7 +60,7 @@ void SyncService::SyncFolderInBackground(const std::string& accountId, const std
         SyncOutcome result = prepared
             ? engine_.SyncMessages(accountId, folder, serverUrl, opts,
                                    /*fetchBodies=*/true, onProgress)
-            : SyncOutcome::Fail(prepared.message);
+            : SyncOutcome::Fail(prepared);
         // Once the new mail is in, reconcile read/deleted state for the messages
         // we already had — this is what surfaces changes made on another client
         // (e.g. Gmail's web UI). It is non-fatal, so it never turns a successful

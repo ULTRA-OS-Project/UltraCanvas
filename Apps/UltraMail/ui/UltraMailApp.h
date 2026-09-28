@@ -113,9 +113,26 @@ private:
     // Same, by address — for the composer's From address; the provider table
     // when no account carries it.
     DiscoveryResult SettingsForEmail(const std::string& email) const;
-    // Fill an SMTP session's options for an account: username, TLS mode of
-    // its outgoing server, and the credentials (see ResolveCredentials).
-    UltraNetResult PrepareSmtp(const std::string& accountId, UltraNetMailOptions& options);
+    // Each account's address and servers, copied on the UI thread for a
+    // worker that sends mail: accounts_ belongs to the UI thread (Refresh()
+    // replaces it), so a worker reads this snapshot instead.
+    struct SmtpAccount {
+        std::string     email;
+        DiscoveryResult settings;
+    };
+    std::map<std::string, SmtpAccount> SmtpAccounts() const;
+    // Fill an SMTP session's options for an account from the snapshot:
+    // username, TLS mode and sign-in method of its outgoing server, and the
+    // credentials (see ResolveCredentials). Runs on the send worker.
+    UltraNetResult PrepareSmtp(const std::map<std::string, SmtpAccount>& accounts,
+                               const std::string& accountId, UltraNetMailOptions& options);
+    // Flush the outbox on a worker and call `onDone` on the UI thread. SMTP to
+    // a slow or failing server - connect and operation timeouts per queued
+    // message, an OAuth2 token refresh - used to run on the UI thread and hold
+    // the whole window. One flush at a time: two would pick up the same queued
+    // message and send it twice; a flush asked for meanwhile runs next.
+    void FlushOutboxInBackground(std::shared_ptr<IUltraNetPlugin> plugin,
+                                 std::function<void(const Outbox::FlushStats&)> onDone);
     // Browser sign-in for an OAuth2 provider ("google"): opens the consent page,
     // waits (with a cancellable dialog) for the redirect on a worker thread,
     // stores the tokens in the vault — which must be open — and runs the first
@@ -298,9 +315,27 @@ private:
     // entry point alerts instead of returning silently.
     std::string contactsError_;
     std::string outboxError_;
-    // Set once a background sync has alerted, so a broken server does not raise
-    // an alert on every timer tick.
-    bool syncErrorReported_ = false;
+    // Accounts whose failing sync has been alerted, so a broken server does not
+    // raise an alert on every timer tick - per account: one shared flag used to
+    // silence every other account's failures (and this account's, after
+    // another's) until some sync succeeded.
+    std::set<std::string> syncErrorReported_;
+    // The locked-vault warning, once per run of locked rounds.
+    bool vaultLockReported_ = false;
+    // The last sync failure per account ("Could not fetch mail for …: reason"),
+    // shown on the status line whenever that account is the selected one;
+    // cleared by its next successful sync.
+    std::map<std::string, std::string> accountError_;
+    // The status line for the selected account: its last failure if it has
+    // one, else "Up to date".
+    void ShowAccountStatus();
+    // Outbox flushing (FlushOutboxInBackground).
+    bool outboxFlushInFlight_ = false;
+    struct PendingFlush {
+        std::shared_ptr<IUltraNetPlugin>                 plugin;
+        std::function<void(const Outbox::FlushStats&)>   onDone;
+    };
+    std::vector<PendingFlush> pendingFlushes_;
 
     // App-wide view preferences (reading pane on/off), remembered between runs
     // in preferences.ini under the data directory.

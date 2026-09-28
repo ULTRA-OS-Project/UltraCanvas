@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNetHttpEasy.h"
+#include "UltraNet/UltraNetCurlTls.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -16,6 +17,7 @@
 
 #ifndef _WIN32
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #else
 #include <windows.h>
 #endif
@@ -53,6 +55,24 @@ namespace {
     }
 #endif
 
+#ifdef _WIN32
+    // True when libcurl's active TLS backend is Schannel. A multi-SSL build
+    // lists every backend in build order and puts the inactive ones in
+    // parentheses - "OpenSSL/3.3.1 (Schannel)" when OpenSSL is active,
+    // "(OpenSSL/3.3.1) Schannel" when Schannel is - so "Schannel" counts
+    // wherever it stands, unless an opening parenthesis comes right before it.
+    bool ActiveTlsIsSchannel() {
+        const curl_version_info_data* info = curl_version_info(CURLVERSION_NOW);
+        if (!info || !info->ssl_version) return false;
+        const std::string v = info->ssl_version;
+        for (std::size_t pos = v.find("Schannel"); pos != std::string::npos;
+             pos = v.find("Schannel", pos + 1)) {
+            if (pos == 0 || v[pos - 1] != '(') return true;
+        }
+        return false;
+    }
+#endif
+
     // CA trust anchors used when UltraNetConfig::caBundlePath is empty.
     // libcurl bakes the CA bundle location of the *build* machine into the
     // library; when the binary then runs on a distro that stores its bundle
@@ -81,6 +101,18 @@ namespace {
             }
 
 #ifdef _WIN32
+            // Schannel (the Windows TLS stack) verifies against the Windows
+            // certificate store - kept current by Windows Update, and holding
+            // the roots an organisation or a security suite installs. Handing
+            // it a CA file instead makes curl verify against THAT file only,
+            // following the chain exactly as the server sent it: a Let's
+            // Encrypt server still sending the chain through the retired
+            // "DST Root CA X3" then fails with "the certificate or certificate
+            // chain is based on an untrusted root" although Windows itself
+            // (Outlook, Edge) trusts it through ISRG Root X1. So with Schannel
+            // no bundle at all; the cacert.pem below is for an OpenSSL build.
+            if (ActiveTlsIsSchannel()) return t;
+
             // A cacert.pem shipped beside the app. The Windows system libcurl's
             // baked-in CA path points into the build machine's tree and does not
             // exist on an end user's box, so ship our own and find it relative to
@@ -392,12 +424,10 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
             curl_easy_setopt(easy, CURLOPT_CAPATH, trust.dir.c_str());
         }
     }
-#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
-    // Additionally trust the Windows system certificate store (auto-updated
-    // roots), on top of any bundle above — so verification still works if no
-    // cacert.pem was shipped and covers roots newer than a shipped bundle.
-    curl_easy_setopt(easy, CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
-#endif
+    // Windows: trust the system certificate store (auto-updated roots) on top
+    // of any bundle above, and check revocation the way browsers do (see
+    // UltraNetCurlTls.h). No-op elsewhere.
+    ultranet_curltls::Apply(easy);
 
     const UltraNetProxyConfig& proxy =
         opt.proxy.IsEnabled() ? opt.proxy : cfg.proxy;
@@ -553,4 +583,50 @@ UltraNetTransferStats ReadTransferStats(CURL* easy) {
 // (declared in UltraNet/UltraNetCore.h). Resolved once by DiscoverCaTrust.
 std::string UltraNet_ResolveCaBundlePath() {
     return ultranet_internal::DiscoverCaTrust().bundle;
+}
+
+std::string UltraNet_DescribeTrustRoots() {
+    const ultranet_internal::CaTrust& trust = ultranet_internal::DiscoverCaTrust();
+    std::string roots;
+    if (!trust.bundle.empty()) roots = trust.bundle;
+    if (!trust.dir.empty()) roots += (roots.empty() ? "" : " and ") + trust.dir;
+#ifdef _WIN32
+    // Every UltraNet handle sets CURLSSLOPT_NATIVE_CA (UltraNetCurlTls.h), and
+    // Schannel is given no file at all (DiscoverCaTrust).
+    roots += (roots.empty() ? "" : " and ") + std::string("the Windows certificate store");
+#endif
+    if (roots.empty()) roots = "libcurl's built-in default";
+    return roots;
+}
+
+std::string UltraNet_DescribePlatform() {
+#ifdef _WIN32
+    // RtlGetVersion, not GetVersionEx: the latter reports 6.2 to any program
+    // without a compatibility manifest, which is exactly the wrong answer here.
+    std::string out = "Windows";
+    using RtlGetVersionFn = LONG (WINAPI*)(OSVERSIONINFOW*);
+    if (HMODULE ntdll = GetModuleHandleW(L"ntdll.dll")) {
+        auto fn = reinterpret_cast<RtlGetVersionFn>(
+            reinterpret_cast<void*>(GetProcAddress(ntdll, "RtlGetVersion")));
+        OSVERSIONINFOW v{};
+        v.dwOSVersionInfoSize = sizeof(v);
+        if (fn && fn(&v) == 0) {
+            out += " " + std::to_string(v.dwMajorVersion) + "." + std::to_string(v.dwMinorVersion)
+                 + " build " + std::to_string(v.dwBuildNumber);
+        }
+    }
+    SYSTEM_INFO si{};
+    GetNativeSystemInfo(&si);
+    switch (si.wProcessorArchitecture) {
+        case PROCESSOR_ARCHITECTURE_AMD64: out += ", x64";   break;
+        case PROCESSOR_ARCHITECTURE_ARM64: out += ", ARM64"; break;
+        case PROCESSOR_ARCHITECTURE_INTEL: out += ", x86";   break;
+        default: break;
+    }
+    return out;
+#else
+    struct utsname u{};
+    if (::uname(&u) != 0) return "unknown";
+    return std::string(u.sysname) + " " + u.release + ", " + u.machine;
+#endif
 }

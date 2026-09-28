@@ -316,6 +316,9 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     auto bar = accountBar_.Build();
     accountBar_.onSelectAccount = [this](const std::string& accountId) {
         selectedAccount_ = accountId;
+        // Its last failure, if any, before Refresh() - whose folder fetch
+        // replaces it with "Opening …" while it runs.
+        ShowAccountStatus();
         Refresh();
     };
     accountView_->AddChild(bar);
@@ -358,6 +361,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // tree's chosen folder stays open.
     mailView_.onSelectAccount = [this](const std::string& accountId) {
         selectedAccount_ = accountId;
+        ShowAccountStatus();
         store_.ListAccounts(accounts_);
         store_.GetAccountStatus(status_);
         accountBar_.Rebuild(accounts_, status_, selectedAccount_);
@@ -398,6 +402,13 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
 
 void UltraMailApp::SetStatus(const std::string& text) {
     if (statusLabel_) statusLabel_->SetText(text.empty() ? "Ready" : text);
+}
+
+void UltraMailApp::ShowAccountStatus() {
+    // While something is still running its own progress text stays.
+    if (syncsInFlight_ > 0 || outboxFlushInFlight_) return;
+    auto it = accountError_.find(selectedAccount_);
+    SetStatus(it != accountError_.end() ? it->second : std::string("Up to date"));
 }
 
 void UltraMailApp::ResizeViews(float width, float height) {
@@ -565,7 +576,7 @@ void UltraMailApp::RunMailboxAction(
             // Success here and falls through to the plain error alert.
             UltraNetResultCode credCode = UltraNetResultCode::Success;
             if (!cred) {
-                outcome = SyncOutcome::Fail(cred.message);
+                outcome = SyncOutcome::Fail(cred);
                 credCode = cred.code;
             } else {
                 SyncEngine engine(store_, *imap, mailDir_);
@@ -582,7 +593,8 @@ void UltraMailApp::RunMailboxAction(
                                 RunMailboxAction(accountId, op, actionName);
                             }))
                         AlertError(window_ ? window_.get() : nullptr,
-                                   actionName + " could not be completed.", outcome.message);
+                                   actionName + " could not be completed.",
+                                   WithDiagnostics(outcome.message, outcome.diagnostics));
                     return;
                 }
                 Refresh();
@@ -795,27 +807,26 @@ void UltraMailApp::FlushAndReport(const Draft& draft,
                    "The SMTP plug-in is no longer loaded.");
         return;
     }
-    Outbox ob(outbox_);
-    auto stats = ob.Flush(*smtp, [this](const std::string& acc, UltraNetMailOptions& o) {
-        return PrepareSmtp(acc, o);
+    const std::string from = draft.fromAddr;
+    FlushOutboxInBackground(plugin, [this, parent, recipients, from](const Outbox::FlushStats& stats) {
+        if (stats.sent > 0) {
+            AlertSuccess(parent, "Message sent to " + recipients + ".");
+            return;
+        }
+        // Failed: say why. The reason came back from SMTP in stats.lastFailure
+        // and is also persisted as the outbox row's last_error.
+        const std::string why    = FriendlyMessage(stats.lastFailure);
+        const std::string detail = WithDiagnostics(DetailLine(stats.lastFailure),
+                                                   stats.lastFailure.diagnostics);
+        const std::string summary =
+            "The message could not be sent, so it is waiting in the outbox.\n" + why;
+        if (IsRetryable(stats.lastFailure)) {
+            AlertErrorRetry(parent, summary, detail,
+                            [this, from]() { RetryOutbox(from); });
+        } else {
+            AlertError(parent, summary, detail);
+        }
     });
-    if (stats.sent > 0) {
-        AlertSuccess(parent, "Message sent to " + recipients + ".");
-        return;
-    }
-    // Failed: say why. The reason came back from SMTP in stats.lastFailure
-    // and is also persisted as the outbox row's last_error.
-    const std::string why    = FriendlyMessage(stats.lastFailure);
-    const std::string detail = DetailLine(stats.lastFailure);
-    const std::string summary =
-        "The message could not be sent, so it is waiting in the outbox.\n" + why;
-    if (IsRetryable(stats.lastFailure)) {
-        const std::string from = draft.fromAddr;
-        AlertErrorRetry(parent, summary, detail,
-                        [this, from]() { RetryOutbox(from); });
-    } else {
-        AlertError(parent, summary, detail);
-    }
 }
 
 void UltraMailApp::RetryOutbox(const std::string& fromAddr) {
@@ -835,24 +846,58 @@ void UltraMailApp::RetryOutbox(const std::string& fromAddr) {
         return;
     }
 
-    Outbox ob(outbox_);
-    auto stats = ob.Flush(*smtp, [this](const std::string& acc, UltraNetMailOptions& o) {
-        return PrepareSmtp(acc, o);
+    FlushOutboxInBackground(plugin, [this, parent, fromAddr](const Outbox::FlushStats& stats) {
+        if (stats.failed == 0) {
+            AlertSuccess(parent, "The outbox was sent (" + std::to_string(stats.sent)
+                                 + " message" + (stats.sent == 1 ? "" : "s") + ").");
+            return;
+        }
+        const std::string why    = FriendlyMessage(stats.lastFailure);
+        const std::string detail = WithDiagnostics(DetailLine(stats.lastFailure),
+                                                   stats.lastFailure.diagnostics);
+        if (IsRetryable(stats.lastFailure)) {
+            AlertErrorRetry(parent, "Still could not send.\n" + why, detail,
+                            [this, fromAddr]() { RetryOutbox(fromAddr); });
+        } else {
+            AlertError(parent, "Still could not send.\n" + why, detail);
+        }
     });
-    if (stats.failed == 0) {
-        AlertSuccess(parent, "The outbox was sent (" + std::to_string(stats.sent)
-                             + " message" + (stats.sent == 1 ? "" : "s") + ").");
+}
+
+void UltraMailApp::FlushOutboxInBackground(std::shared_ptr<IUltraNetPlugin> plugin,
+                                           std::function<void(const Outbox::FlushStats&)> onDone) {
+    if (outboxFlushInFlight_) {
+        // One flush at a time: a second one would pick up the same queued
+        // message and send it twice. This one runs when the current one ends.
+        pendingFlushes_.push_back({std::move(plugin), std::move(onDone)});
         return;
     }
-    const std::string why = FriendlyMessage(stats.lastFailure);
-    if (IsRetryable(stats.lastFailure)) {
-        AlertErrorRetry(parent, "Still could not send.\n" + why,
-                        DetailLine(stats.lastFailure),
-                        [this, fromAddr]() { RetryOutbox(fromAddr); });
-    } else {
-        AlertError(parent, "Still could not send.\n" + why,
-                   DetailLine(stats.lastFailure));
-    }
+    auto* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
+    if (!smtp) return;
+    outboxFlushInFlight_ = true;
+    SetStatus("Sending…");
+
+    // Copied here, on the UI thread: the worker must not read accounts_.
+    auto accounts = std::make_shared<std::map<std::string, SmtpAccount>>(SmtpAccounts());
+    std::thread([this, plugin, smtp, accounts, onDone]() {
+        Outbox ob(outbox_);
+        Outbox::FlushStats stats = ob.Flush(*smtp,
+            [this, accounts](const std::string& acc, UltraNetMailOptions& o) {
+                return PrepareSmtp(*accounts, acc, o);
+            });
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, stats, onDone]() {
+            outboxFlushInFlight_ = false;
+            ShowAccountStatus();
+            if (onDone) onDone(stats);
+            if (!pendingFlushes_.empty()) {
+                PendingFlush next = std::move(pendingFlushes_.front());
+                pendingFlushes_.erase(pendingFlushes_.begin());
+                FlushOutboxInBackground(std::move(next.plugin), std::move(next.onDone));
+            }
+        });
+    }).detach();
 }
 
 void UltraMailApp::SeedDemoMail() {
@@ -1049,17 +1094,18 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                     if (reloadButton_) reloadButton_->SetText("Reload");
                 }
                 if (!outcome) {
-                    SetStatus("Could not reach the server");
-                    if (!syncErrorReported_) {
-                        syncErrorReported_ = true;
+                    accountError_[accountId] = "Could not fetch mail for " + who + ": " + outcome.message;
+                    if (last || accountId == selectedAccount_) ShowAccountStatus();
+                    if (syncErrorReported_.insert(accountId).second) {
                         AlertError(window_ ? window_.get() : nullptr,
                                    "That folder could not be fetched for " + who + ".",
-                                   outcome.message);
+                                   WithDiagnostics(outcome.message, outcome.diagnostics));
                     }
                     return;
                 }
-                syncErrorReported_ = false;
-                if (last) SetStatus("Up to date");
+                syncErrorReported_.erase(accountId);
+                accountError_.erase(accountId);
+                if (last) ShowAccountStatus();
                 Refresh();   // re-query the store; the open folder now shows its mail
             });
         },
@@ -1096,8 +1142,8 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
     // the user is doing. If the vault is still locked, skip this round and say
     // so once — the next send or account change prompts in the foreground.
     if (!vault_.IsUnlocked()) {
-        if (userInitiated || !syncErrorReported_) {
-            syncErrorReported_ = true;
+        if (userInitiated || !vaultLockReported_) {
+            vaultLockReported_ = true;
             AlertWarning(parent, "New mail is not being fetched yet.",
                          "Your mail account passwords are locked. Enter your "
                          "master password — sending a message or adding an "
@@ -1180,25 +1226,28 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                     if (reloadButton_) reloadButton_->SetText("Reload");
                 }
                 if (!outcome) {
-                    SetStatus("Could not reach the server");
+                    accountError_[aid] = "Could not fetch mail for " + who + ": " + outcome.message;
+                    if (last || aid == selectedAccount_) ShowAccountStatus();
                     // A dead OAuth sign-in offers Retry → re-sign-in (which
                     // re-syncs the account), but only when the user asked — a
                     // background timer must never pop a dialog.
                     if (userInitiated &&
                         MaybeOfferReauth(aid, *credCode, provider, nullptr)) {
-                        syncErrorReported_ = true;
+                        syncErrorReported_.insert(aid);
                         return;
                     }
-                    if (userInitiated || !syncErrorReported_) {
-                        syncErrorReported_ = true;
+                    const bool firstReport = syncErrorReported_.insert(aid).second;
+                    if (userInitiated || firstReport) {
                         AlertError(window_ ? window_.get() : nullptr,
                                    "New mail could not be fetched for " + who + ".",
-                                   outcome.message);
+                                   WithDiagnostics(outcome.message, outcome.diagnostics));
                     }
                     return;
                 }
-                syncErrorReported_ = false;   // recovered: arm the next report
-                if (last) SetStatus("Up to date");
+                syncErrorReported_.erase(aid);   // recovered: arm the next report
+                accountError_.erase(aid);
+                vaultLockReported_ = false;
+                if (last) ShowAccountStatus();
                 CollectContacts(aid, "INBOX");
                 Refresh();   // authoritative, correctly date-sorted final list
             });
@@ -1936,19 +1985,26 @@ DiscoveryResult UltraMailApp::SettingsForEmail(const std::string& email) const {
     return AutoDiscovery::FromPresets(email);
 }
 
-UltraNetResult UltraMailApp::PrepareSmtp(const std::string& accountId, UltraNetMailOptions& o) {
-    const Account* account = nullptr;
-    for (const auto& a : accounts_) if (a.accountId == accountId) account = &a;
-    if (!account)
+std::map<std::string, UltraMailApp::SmtpAccount> UltraMailApp::SmtpAccounts() const {
+    std::map<std::string, SmtpAccount> out;
+    for (const auto& a : accounts_) out[a.accountId] = SmtpAccount{a.email, SettingsFor(a)};
+    return out;
+}
+
+UltraNetResult UltraMailApp::PrepareSmtp(const std::map<std::string, SmtpAccount>& accounts,
+                                         const std::string& accountId, UltraNetMailOptions& o) {
+    auto it = accounts.find(accountId);
+    if (it == accounts.end())
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                      "the account of this message no longer exists");
-    const DiscoveryResult settings = SettingsFor(*account);
+    const SmtpAccount& account = it->second;
+    const DiscoveryResult& settings = account.settings;
     if (!settings.found)
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
-                                     "no outgoing (SMTP) server is known for " + account->email);
+                                     "no outgoing (SMTP) server is known for " + account.email);
     ApplyConnection(settings.smtp, o);
     const std::string username =
-        settings.smtp.username.empty() ? account->email : settings.smtp.username;
+        settings.smtp.username.empty() ? account.email : settings.smtp.username;
     return ResolveCredentials(accountId, username, OAuthProviderFor(settings), o.credentials);
 }
 

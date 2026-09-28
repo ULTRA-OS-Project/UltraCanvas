@@ -132,7 +132,7 @@ SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
                                     const UltraNetMailOptions& options) {
     std::vector<UltraNetMailFolder> folders;
     UltraNetResult r = mailbox_.ListFolders(serverUrl, folders, options);
-    if (!r) return SyncOutcome::Fail(r.message);
+    if (!r) return SyncOutcome::Fail(r);
 
     SyncOutcome out;
     for (const auto& f : folders) {
@@ -210,7 +210,7 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
                          "onMessageStored=%s ok=%d\n",
                  folder.c_str(), (long long)sinceUid, out.stats.messages,
                  onMessageStored ? "set" : "null", (int)(bool)r);
-    if (!r) return SyncOutcome::Fail(r.message);
+    if (!r) return SyncOutcome::Fail(r);
 
     // Fetch all new bodies over ONE reused connection (see
     // IMailboxProtocolPlugin::FetchMessageBodies) instead of reconnecting per
@@ -269,7 +269,7 @@ SyncOutcome SyncEngine::SetFlag(const std::string& accountId, const std::string&
     UltraNetResult r = mailbox_.StoreFlags(
         serverUrl, folder, static_cast<uint32_t>(uid),
         MapLocalFlagToNet(ultramailFlag), set, options);
-    if (!r) return SyncOutcome::Fail(r.message);
+    if (!r) return SyncOutcome::Fail(r);
 
     UltraDbResult lr = store_.SetFlags(accountId, folder, uid, ultramailFlag, set);
     if (!lr) return SyncOutcome::Fail(lr.message);
@@ -334,7 +334,7 @@ SyncOutcome SyncEngine::MoveMessage(const std::string& accountId,
                                     const UltraNetMailOptions& options) {
     UltraNetResult r = mailbox_.MoveMessage(
         serverUrl, srcFolder, static_cast<uint32_t>(uid), dstFolder, options);
-    if (!r) return SyncOutcome::Fail(r.message);
+    if (!r) return SyncOutcome::Fail(r);
 
     // The server moved it out of srcFolder; drop the local row so the list stops
     // showing it. The destination folder picks it up on its next sync.
