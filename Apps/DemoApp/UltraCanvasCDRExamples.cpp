@@ -18,144 +18,6 @@
 
 namespace UltraCanvas {
 
-// ===== CDR DEMO HANDLER =====
-    class CDRDemoHandler {
-    private:
-        std::shared_ptr<UltraCanvasWindow> fullscreenWindow;
-        std::string cdrFilePath;
-
-    public:
-        CDRDemoHandler(const std::string& filePath) : cdrFilePath(filePath) {}
-
-        void OnCDRClick() {
-            if (!fullscreenWindow) {
-                CreateFullscreenWindow();
-            }
-        }
-
-        void CreateFullscreenWindow() {
-            int screenWidth = 1920;
-            int screenHeight = 1080;
-
-            WindowConfig config;
-            config.title = "CDR Fullscreen Viewer";
-            config.width = screenWidth;
-            config.height = screenHeight;
-            config.x = 0;
-            config.y = 0;
-            config.type = WindowType::Fullscreen;
-            config.resizable = false;
-
-            fullscreenWindow = CreateWindow(config);
-            fullscreenWindow->SetBackgroundColor(Color(32, 32, 32, 255));
-
-            // Create fullscreen CDR element
-            auto fullscreenCDR = std::make_shared<UltraCanvasCDRElement>(
-                    "FullscreenCDR", 0, 50, screenWidth, screenHeight - 100);
-            fullscreenCDR->SetFitMode(CDRFitMode::FitPage);
-
-            if (!cdrFilePath.empty()) {
-                fullscreenCDR->LoadFromFile(cdrFilePath);
-            }
-
-            fullscreenWindow->AddChild(fullscreenCDR);
-
-            // Navigation buttons
-            auto btnPrev = std::make_shared<UltraCanvasButton>("BtnPrev", 10, 10, 80, 30);
-            btnPrev->SetText("◀ Prev");
-            btnPrev->SetColors(Color(60, 60, 65, 255));
-            btnPrev->SetTextColors(Colors::White);
-            btnPrev->onClick = [fullscreenCDR]() {
-                if (fullscreenCDR->IsLoaded()) {
-                    int current = fullscreenCDR->GetCurrentPage();
-                    if (current > 0) {
-                        fullscreenCDR->SetCurrentPage(current - 1);
-                    }
-                }
-            };
-            fullscreenWindow->AddChild(btnPrev);
-
-            auto btnNext = std::make_shared<UltraCanvasButton>("BtnNext", 100, 10, 80, 30);
-            btnNext->SetText("Next ▶");
-            btnNext->SetColors(Color(60, 60, 65, 255));
-            btnNext->SetTextColors(Colors::White);
-            btnNext->onClick = [fullscreenCDR]() {
-                if (fullscreenCDR->IsLoaded()) {
-                    int current = fullscreenCDR->GetCurrentPage();
-                    if (current < fullscreenCDR->GetPageCount() - 1) {
-                        fullscreenCDR->SetCurrentPage(current + 1);
-                    }
-                }
-            };
-            fullscreenWindow->AddChild(btnNext);
-
-            // Page info label
-            auto pageLabel = std::make_shared<UltraCanvasLabel>("PageLabel", 200, 10, 150, 30);
-            pageLabel->SetTextColor(Colors::White);
-            if (fullscreenCDR->IsLoaded()) {
-                pageLabel->SetText("Page 1/" + std::to_string(fullscreenCDR->GetPageCount()));
-            }
-            fullscreenWindow->AddChild(pageLabel);
-
-            // Update page label on page change
-            fullscreenCDR->onPageChanged = [pageLabel, fullscreenCDR = fullscreenCDR.get()](int page) {
-                pageLabel->SetText("Page " + std::to_string(page + 1) + "/" +
-                                   std::to_string(fullscreenCDR->GetPageCount()));
-            };
-
-            // Zoom buttons
-            auto btnZoomOut = std::make_shared<UltraCanvasButton>("BtnZoomOut", 400, 10, 40, 30);
-            btnZoomOut->SetText("−");
-            btnZoomOut->SetColors(Color(60, 60, 65, 255));
-            btnZoomOut->SetTextColors(Colors::White);
-            btnZoomOut->onClick = [fullscreenCDR]() {
-                fullscreenCDR->SetFitMode(CDRFitMode::FitNone);
-                fullscreenCDR->SetZoom(fullscreenCDR->GetZoom() / 1.25f);
-            };
-            fullscreenWindow->AddChild(btnZoomOut);
-
-            auto btnZoomIn = std::make_shared<UltraCanvasButton>("BtnZoomIn", 450, 10, 40, 30);
-            btnZoomIn->SetText("+");
-            btnZoomIn->SetColors(Color(60, 60, 65, 255));
-            btnZoomIn->SetTextColors(Colors::White);
-            btnZoomIn->onClick = [fullscreenCDR]() {
-                fullscreenCDR->SetFitMode(CDRFitMode::FitNone);
-                fullscreenCDR->SetZoom(fullscreenCDR->GetZoom() * 1.25f);
-            };
-            fullscreenWindow->AddChild(btnZoomIn);
-
-            auto btnFitPage = std::make_shared<UltraCanvasButton>("BtnFit", 500, 10, 80, 30);
-            btnFitPage->SetText("Fit Page");
-            btnFitPage->SetColors(Color(60, 60, 65, 255));
-            btnFitPage->SetTextColors(Colors::White);
-            btnFitPage->onClick = [fullscreenCDR]() {
-                fullscreenCDR->SetFitMode(CDRFitMode::FitPage);
-            };
-            fullscreenWindow->AddChild(btnFitPage);
-
-            // Instructions label
-            auto instructionLabel = std::make_shared<UltraCanvasLabel>(
-                    "Instructions", screenWidth - 200, 10, 190, 30);
-            instructionLabel->SetText("Press ESC to close");
-            instructionLabel->SetTextColor(Color(200, 200, 200, 255));
-            fullscreenWindow->AddChild(instructionLabel);
-
-            // ESC key handler
-            fullscreenWindow->SetEventCallback([this](const UCEvent& event) {
-                if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                    if (fullscreenWindow) {
-                        fullscreenWindow->Close();
-                        fullscreenWindow.reset();
-                    }
-                    return true;
-                }
-                return false;
-            });
-
-            fullscreenWindow->Show();
-        }
-    };
-
 // ===== "SAVE AS" BUTTON =====
     // A "Save as…" button for one CDR tile: native save dialog offering SVG
     // (working) and XAR (writer not finished yet), then export of the tile's
@@ -223,14 +85,14 @@ namespace UltraCanvas {
 
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("CDRTitle", 10, 10, 600, 30);
-        title->SetText("CorelDRAW CDR Graphics Demo - Click to View Fullscreen");
+        title->SetText("CorelDRAW CDR Graphics Demo - Click to Open in the Media Viewer");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
         // Description
         auto description = std::make_shared<UltraCanvasLabel>("CDRDescription", 10, 45, 700, 40);
-        description->SetText("Click on CDR images to open in fullscreen mode. Use navigation buttons for multi-page files.\n\"Save as…\" exports the shown page to SVG (XAR listed, writer not finished yet). Supports CDR, CMX, CCX, CDT.");
+        description->SetText("Click on CDR images to open them in the media viewer. Use navigation buttons for multi-page files.\n\"Save as…\" exports the shown page to SVG (XAR listed, writer not finished yet). Supports CDR, CMX, CCX, CDT.");
         description->SetFontSize(12);
         description->SetTextColor(Color(80, 80, 80, 255));
         container->AddChild(description);
@@ -319,12 +181,12 @@ namespace UltraCanvas {
             tile->AddChild(MakeCDRSaveAsButton(id + "Save", 232, 260, 58, 26,
                                                element, path, statusLabel));
 
-            auto handler = std::make_shared<CDRDemoHandler>(path);
-            element->SetEventCallback([handler, tile, statusLabel, path](const UCEvent& event) {
+            element->SetMouseCursor(UCMouseCursor::Hand);
+            element->SetEventCallback([tile = tile.get(), statusLabel, path](const UCEvent& event) {
                 switch (event.type) {
                     case UCEventType::MouseUp:
-                        handler->OnCDRClick();
-                        statusLabel->SetText("Opened fullscreen: " + path);
+                        ShowFullSizeImageViewer(path);
+                        statusLabel->SetText("Opened in the media viewer: " + path);
                         return true;
                     case UCEventType::MouseEnter:
                         tile->SetBordersColor(Color(0, 122, 204, 255));
@@ -402,7 +264,7 @@ namespace UltraCanvas {
                 "of the three at 725 draw calls.\n\n"
                 "All three are single-page, so the page arrows stay inert here;\n"
                 "zoom and fit work in place, a click opens the drawing\n"
-                "fullscreen, and \"Save as...\" writes the shown page out\n"
+                "in the media viewer, and \"Save as...\" writes the shown page out\n"
                 "through the plugin's SVG exporter."
         );
         howText->SetFontSize(11);
