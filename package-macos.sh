@@ -458,6 +458,38 @@ notarize_bundle() {
     echo "  Notarized: $(basename "$app_bundle")"
 }
 
+# ── Demo sample content ──────────────────────────────────────────────────────
+#
+# media/ is two things: what the framework and the apps read at run time
+# (icons, fonts, the MicroTeX fonts, OCR data, app icons, ...) and the DemoApp's
+# sample files - 3D models, videos, pictures, vector drawings, sound, e-books.
+# The samples are ~112 MB of media's ~121 MB, and every .app used to get its own
+# copy: six bundles made the macOS artifact 920 MB against Linux's 190 MB, which
+# ships media/ once (share/media). Only UltraCanvasDemo opens them, so only its
+# bundle carries them; nothing else in the tree reads these folders (checked
+# 2026-09-28 - the only other mentions are code comments).
+#
+# Listed here as exclusions rather than the runtime folders as inclusions, so a
+# runtime folder added later is shipped by default instead of silently missing.
+DEMO_SAMPLE_MEDIA=(3D videos images vector audios ebooks textsamples LaTex diagrams sample.pdf)
+
+# Copy media/ into $1; with $2 = "samples" the demo sample content comes too.
+copy_media() {
+    local dest="$1" with_samples="$2"
+    mkdir -p "$dest"
+    local entry name skip s
+    for entry in "$SCRIPT_DIR"/media/*; do
+        name="$(basename "$entry")"
+        skip=false
+        if [ "$with_samples" != "samples" ]; then
+            for s in "${DEMO_SAMPLE_MEDIA[@]}"; do
+                [ "$name" = "$s" ] && { skip=true; break; }
+            done
+        fi
+        $skip || cp -R "$entry" "$dest/"
+    done
+}
+
 # ── Build one app bundle ─────────────────────────────────────────────────────
 
 build_app_bundle() {
@@ -467,6 +499,7 @@ build_app_bundle() {
     local icon_src="$4"
     local category="$5"
     local extra_plist="$6"
+    local samples="${7:-}"   # "samples": the demo's sample media and sources
 
     local exe_path="$BUILD_DIR/$exe_name"
     if [ ! -f "$exe_path" ]; then
@@ -499,10 +532,15 @@ build_app_bundle() {
     chmod 755 "$contents_dir/MacOS/$exe_name"
     echo "  Copied executable"
 
-    # Copy media assets to Resources/media/
+    # Copy media assets to Resources/media/ (the sample content only for the
+    # demo - see DEMO_SAMPLE_MEDIA)
     if [ -d "$SCRIPT_DIR/media" ]; then
-        cp -R "$SCRIPT_DIR/media" "$contents_dir/Resources/media"
-        echo "  Copied media assets"
+        copy_media "$contents_dir/Resources/media" "$samples"
+        if [ "$samples" = "samples" ]; then
+            echo "  Copied media assets (with the demo samples)"
+        else
+            echo "  Copied media assets (without the demo samples)"
+        fi
     else
         echo "  Warning: media/ directory not found"
     fi
@@ -515,7 +553,8 @@ build_app_bundle() {
 
     # Copy demo example sources to Resources/DemoApp/ so the demo's
     # "View Source" can load them (paths registered in UltraCanvasDemo.cpp).
-    if ls "$SCRIPT_DIR"/Apps/DemoApp/*.cpp >/dev/null 2>&1; then
+    # The demo's alone: no other app has a "View Source".
+    if [ "$samples" = "samples" ] && ls "$SCRIPT_DIR"/Apps/DemoApp/*.cpp >/dev/null 2>&1; then
         mkdir -p "$contents_dir/Resources/DemoApp"
         cp "$SCRIPT_DIR"/Apps/DemoApp/*.cpp "$contents_dir/Resources/DemoApp/"
         echo "  Copied demo example sources"
@@ -657,7 +696,8 @@ build_app_bundle \
     "com.cloverleaf.UltraCanvasDemo" \
     "media/appicon/Demo.png" \
     "public.app-category.developer-tools" \
-    ""
+    "" \
+    samples
 
 # Document types for UltraViewer (universal media viewer). Viewer role, so
 # Finder offers it under "Open With" for the media it displays without
