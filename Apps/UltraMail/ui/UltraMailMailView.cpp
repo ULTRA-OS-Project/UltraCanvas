@@ -481,6 +481,11 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
 
     rowMenu_ = std::make_shared<UltraCanvasMenu>("mailRow.ctx", 0, 0, 200, 0);
     rowMenu_->SetMenuType(MenuType::PopupMenu);
+    // Whose message this is, as the menu's title: the sender's address.
+    if (!m.fromAddr.empty()) {
+        rowMenu_->AddItem(MenuItemData::Header(m.fromAddr));
+        rowMenu_->AddItem(MenuItemData::Separator());
+    }
 
     // Read state and the needs-an-answer list.
     if (unread) {
@@ -533,6 +538,25 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
     // The sender and the address book.
     if (!m.fromAddr.empty()) {
         rowMenu_->AddItem(MenuItemData::Separator());
+        std::vector<MenuItemData> places;
+        for (ContactSection s : { ContactSection::Family, ContactSection::Friends,
+                                  ContactSection::Work, ContactSection::Leisure,
+                                  ContactSection::Services, ContactSection::Other }) {
+            ContactPlace place; place.section = s;
+            places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
+                if (onAddToContactGroup) onAddToContactGroup(m, place);
+            }));
+        }
+        const std::vector<GroupCount> groups = contactGroups ? contactGroups()
+                                                             : std::vector<GroupCount>{};
+        if (!groups.empty()) places.push_back(MenuItemData::Separator());
+        for (const auto& g : groups) {
+            ContactPlace place; place.isGroup = true; place.group = g.name;
+            places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
+                if (onAddToContactGroup) onAddToContactGroup(m, place);
+            }));
+        }
+        rowMenu_->AddItem(MenuItemData::Submenu("Add to contact group", places));
         if (contacts_.Contains(m.fromAddr)) {
             rowMenu_->AddItem(MenuItemData::Action("Edit contact", [this, m]() {
                 if (onEditContact) onEditContact(m);

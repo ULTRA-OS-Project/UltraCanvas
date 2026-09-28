@@ -26,18 +26,6 @@
 
 namespace UltraMail {
 
-// What the sidebar has selected: a section, or one of the user's own groups.
-struct ContactPlace {
-    bool           isGroup = false;
-    ContactSection section = ContactSection::Friends;
-    std::string    group;
-
-    std::string Title() const { return isGroup ? group : DisplayName(section); }
-    bool operator==(const ContactPlace& o) const {
-        return isGroup == o.isGroup && (isGroup ? group == o.group : section == o.section);
-    }
-};
-
 class ContactsView {
 public:
     void SetStore(ContactStore* store) { store_ = store; }

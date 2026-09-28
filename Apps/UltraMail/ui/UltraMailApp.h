@@ -262,6 +262,8 @@ private:
     // contact editor for the message's sender, prefilled from the message
     // when new, loaded from the address book by address when not.
     void EditSenderContact(const MessageEnvelope& m, bool isNew);
+    // File a message's sender in a section or group (adding it first when new).
+    void AddSenderToContactGroup(const MessageEnvelope& m, const ContactPlace& place);
     // Flush the outbox with the vault open and report the outcome. Split out
     // of HandleSendDraft because unlocking is answered through a dialog, so the
     // send continues in a callback rather than in line.

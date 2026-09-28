@@ -358,6 +358,14 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.onJunk       = [this](const MessageEnvelope& e) { HandleJunkMessage(e); };
     mailView_.onMarkUnread = [this](const MessageEnvelope& e) { HandleMarkUnread(e); };
     mailView_.onMarkRead   = [this](const MessageEnvelope& e) { HandleMarkRead(e); };
+    mailView_.onAddToContactGroup = [this](const MessageEnvelope& e, const ContactPlace& p) {
+        AddSenderToContactGroup(e, p);
+    };
+    mailView_.contactGroups = [this]() {
+        std::vector<GroupCount> groups;
+        if (contacts_.IsOpen()) contacts_.ListGroups(groups);
+        return groups;
+    };
     mailView_.onNotJunk    = [this](const MessageEnvelope& e) { HandleNotJunk(e); };
     mailView_.onUnsubscribe = [this](const MessageEnvelope& e) { HandleUnsubscribe(e); };
     mailView_.onMoveTo     = [this](const MessageEnvelope& e, const std::string& folder) {
@@ -1540,6 +1548,37 @@ void UltraMailApp::EditSenderContact(const MessageEnvelope& m, bool isNew) {
         RefreshContactIndex();
         Refresh();   // badges: the sender is (still) in the address book
     });
+}
+
+void UltraMailApp::AddSenderToContactGroup(const MessageEnvelope& m,
+                                           const ContactPlace& place) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    if (!contacts_.IsOpen() || m.fromAddr.empty()) return;
+    Contact contact;
+    bool found = false;
+    UltraDbResult r = contacts_.FindByEmail(m.fromAddr, contact, found);
+    if (r && found) {
+        r = place.isGroup ? contacts_.MoveToGroup(contact.id, place.group)
+                          : contacts_.MoveToSection(contact.id, place.section);
+    } else if (r) {
+        // New: the sender's name and address, filed where asked.
+        contact = Contact{};
+        contact.displayName = UltraNet_MimeDecodeHeader(m.fromName);
+        if (contact.displayName.empty()) contact.displayName = m.fromAddr;
+        if (place.isGroup) contact.group = place.group;
+        else               contact.section = place.section;
+        ContactEmail e; e.address = m.fromAddr; e.primary = true;
+        contact.emails.push_back(e);
+        r = contacts_.Save(contact);
+    }
+    if (!r) {
+        AlertError(parent, m.fromAddr + " could not be added to " + place.Title() + ".",
+                   DetailLine(r));
+        return;
+    }
+    SetStatus(m.fromAddr + (found ? " moved to " : " added to ") + place.Title());
+    contactsView_.Refresh();   // no-op unless the Contacts window is open
+    Refresh();                 // re-reads the address book: the sender's badge
 }
 
 void UltraMailApp::OpenContacts() {

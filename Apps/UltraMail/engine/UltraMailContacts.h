@@ -67,6 +67,19 @@ struct GroupCount {
     int         count = 0;
 };
 
+// Where a contact is filed: a section, or one of the user's own groups (the
+// Contacts sidebar's selection, and the target of "Add to contact group").
+struct ContactPlace {
+    bool           isGroup = false;
+    ContactSection section = ContactSection::Friends;
+    std::string    group;
+
+    std::string Title() const { return isGroup ? group : DisplayName(section); }
+    bool operator==(const ContactPlace& o) const {
+        return isGroup == o.isGroup && (isGroup ? group == o.group : section == o.section);
+    }
+};
+
 // Count of contacts in one section, for the sidebar.
 struct SectionCount {
     ContactSection section;

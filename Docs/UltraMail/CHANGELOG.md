@@ -56,6 +56,10 @@
     from real spam tells the sender that the address is read. The message is
     downloaded first if its body is not cached yet.
   - *Move to folder ▸*: every folder of the account that holds mail.
+  - The menu is titled with the sender's address.
+  - *Add to contact group ▸*: every section and group of the address book.
+    It files the sender there, adding them to the address book first when
+    they are not in it yet.
   - *Add to contacts* when the sender's address is not in the address book,
     else *Edit contact*. Both open the address book's contact editor, with the
     name and address filled in for a new contact. That editor also no longer
