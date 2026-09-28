@@ -114,6 +114,7 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     auto makeActionButton = [&](const std::string& id, const std::string& text,
                                 const std::string& icon) {
         auto b = CreateButton(id, 0, 0, 84, 30, text);
+        Theme::FitToLabel(b, 84);
         Theme::StyleSecondary(b);
         if (!icon.empty()) {
             b->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/" + icon));

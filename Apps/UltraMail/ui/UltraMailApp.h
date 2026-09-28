@@ -9,6 +9,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCanvasBusyIndicator.h"
 #include "UltraMailStartPage.h"
 #include "UltraMailAccountBar.h"
 #include "UltraMailMailView.h"
@@ -167,6 +168,8 @@ private:
     void HandleReload();
     // Set the bottom status-line text (UI thread). Empty resets to "Ready".
     void SetStatus(const std::string& text);
+    // Runs the status-line ring while a sync, send or mailbox action is in flight.
+    void UpdateBusyIndicator();
     static std::string SlugFromEmail(const std::string& email);
     static std::string LocalPart(const std::string& email);
 
@@ -244,6 +247,10 @@ private:
     void HandleSendDraft(const Draft& draft);
     // Re-flush the outbox after a failed send (the Retry button's action).
     void RetryOutbox(const std::string& fromAddr);
+    // "Add to contacts" / "Edit contact" from the message list's menu: the
+    // contact editor for the message's sender, prefilled from the message
+    // when new, loaded from the address book by address when not.
+    void EditSenderContact(const MessageEnvelope& m, bool isNew);
     // Flush the outbox with the vault open and report the outcome. Split out
     // of HandleSendDraft because unlocking is answered through a dialog, so the
     // send continues in a callback rather than in line.
@@ -372,6 +379,8 @@ private:
     // A one-line status at the bottom of the account view saying what the app is
     // doing ("Checking <account>…", "Receiving messages… (N)", "Up to date").
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBusyIndicator> busyIndicator_;
+    int                                                mailboxActionsInFlight_ = 0;
     // Cumulative messages streamed in during the current run of syncs (for the
     // "Receiving messages… (N)" status); reset when the last sync ends.
     int                                                statusReceived_ = 0;

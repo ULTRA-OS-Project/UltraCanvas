@@ -208,6 +208,27 @@ UltraDbResult ContactStore::Search(const std::string& query,
     return UltraDbResult::Ok();
 }
 
+UltraDbResult ContactStore::FindByEmail(const std::string& address, Contact& out,
+                                        bool& found) const {
+    found = false;
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT c.id AS id, c.display_name AS display_name, "
+        "c.organization AS organization, c.notes AS notes, c.section AS section "
+        "FROM contacts c JOIN contact_emails e ON e.contact_id = c.id "
+        "WHERE LOWER(e.address) = LOWER(?) ORDER BY c.id LIMIT 1",
+        { address }, rs);
+    if (!q) return q;
+    if (rs.Empty()) return UltraDbResult::Ok();
+    Contact c;
+    FillContactRow(rs.Row(0), c);
+    UltraDbResult kids = LoadChildren(c);
+    if (!kids) return kids;
+    out = std::move(c);
+    found = true;
+    return UltraDbResult::Ok();
+}
+
 UltraDbResult ContactStore::GetSectionCounts(std::vector<SectionCount>& out) const {
     out.clear();
     UltraDbResultSet rs;

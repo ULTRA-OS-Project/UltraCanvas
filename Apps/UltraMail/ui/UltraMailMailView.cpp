@@ -212,6 +212,23 @@ public:
     int GetRowHeight(const IListModel*, int) const override { return rowHeight; }
 };
 
+// `text` on one line: every run of line breaks, tabs and other whitespace
+// becomes a single space, and the ends are trimmed.
+std::string SingleLine(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    bool pendingSpace = false;
+    for (unsigned char c : text) {
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f') {
+            pendingSpace = !out.empty();
+            continue;
+        }
+        if (pendingSpace) { out += ' '; pendingSpace = false; }
+        out += static_cast<char>(c);
+    }
+    return out;
+}
+
 } // namespace
 
 std::shared_ptr<UltraCanvasContainer> MailView::Build() {
@@ -320,6 +337,7 @@ void MailView::BuildListBox() {
         if (!rows.empty()) SelectRow(rows.front());
     };
     list_->onItemClicked = [this](int row) { SelectRow(row); };
+    list_->onContextMenu = [this](int row, const UCEvent& event) { ShowRowMenu(row, event); };
 
     FillWith(listBox_, list_);
 }
@@ -367,6 +385,7 @@ std::shared_ptr<UltraCanvasContainer> MailView::BuildBackBar() {
     bar->layout.SetFlexRow()
               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto back = CreateButton("mailBack", 0, 0, 150, Theme::kControlHeight, "\xE2\x86\x90 Back to list");
+    Theme::FitToLabel(back, 150);
     Theme::StyleSecondary(back);
     back->onClick = [this]() { ShowListInPlace(); };
     bar->AddChild(back);
@@ -439,8 +458,31 @@ void MailView::SetAccounts(std::vector<Account> accounts) {
 }
 
 void MailView::SetContacts(ContactIndex contacts) {
+    contacts_ = contacts;
     badges_.SetContacts(contacts);
     preview_.SetContacts(std::move(contacts));
+}
+
+void MailView::ShowRowMenu(int row, const UCEvent& event) {
+    if (row < 0 || row >= static_cast<int>(messages_.size()) || !list_) return;
+    UltraCanvasWindowBase* window = list_->GetWindow();
+    if (!window) return;
+    const MessageEnvelope m = messages_[static_cast<std::size_t>(row)];
+    if (m.fromAddr.empty()) return;   // no address: nothing to add or edit
+
+    rowMenu_ = std::make_shared<UltraCanvasMenu>("mailRow.ctx", 0, 0, 170, 0);
+    rowMenu_->SetMenuType(MenuType::PopupMenu);
+    if (contacts_.Contains(m.fromAddr)) {
+        rowMenu_->AddItem(MenuItemData::Action("Edit contact", [this, m]() {
+            if (onEditContact) onEditContact(m);
+        }));
+    } else {
+        rowMenu_->AddItem(MenuItemData::Action("Add to contacts", [this, m]() {
+            if (onAddContact) onAddContact(m);
+        }));
+    }
+    PopupElementSettings settings;
+    rowMenu_->OpenMenu(event.pointerWindow, *window, settings);
 }
 
 void MailView::SetIconCache(const SenderIconCache* cache) {
@@ -598,10 +640,14 @@ void MailView::BuildMessageRow(const MessageEnvelope& m, const std::set<int64_t>
 
     // Decode defensively: messages synced before header decoding are still
     // stored raw. Decoding already-decoded text is a no-op.
-    std::string sender  = UltraNet_MimeDecodeHeader(
-        m.fromName.empty() ? m.fromAddr : m.fromName);
+    // One line each: a list row has room for one, and word wrapping being off
+    // does not stop an explicit line break - a subject such as LinkedIn's
+    // "... storage.\n\nWe're partnering ..." (the break is in the encoded
+    // header itself) drew over two rows.
+    std::string sender  = SingleLine(UltraNet_MimeDecodeHeader(
+        m.fromName.empty() ? m.fromAddr : m.fromName));
     std::string subject = m.subject.empty()
-        ? std::string("(no subject)") : UltraNet_MimeDecodeHeader(m.subject);
+        ? std::string("(no subject)") : SingleLine(UltraNet_MimeDecodeHeader(m.subject));
 
     // State glyphs in front of the sender: ● unread, ↩ waiting for a reply.
     std::string state = std::string(isUnread ? "\xE2\x97\x8F " : "")

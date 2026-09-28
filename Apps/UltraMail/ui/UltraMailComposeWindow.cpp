@@ -139,17 +139,20 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
     auto sendBtn = CreateButton("cSend", 0, 0, 100, Theme::kControlHeight, "Send");
+    Theme::FitToLabel(sendBtn, 100);
     Theme::StylePrimary(sendBtn);
     sendBtn->onClick = [this]() { if (onSend) onSend(CollectDraft()); };
     toolbar->AddChild(sendBtn);
 
     auto attachBtn = CreateButton("cAttach", 0, 0, 120, Theme::kControlHeight, "Attach file…");
+    Theme::FitToLabel(attachBtn, 120);
     Theme::StyleSecondary(attachBtn);
     attachBtn->onClick = [this]() { ChooseFileToAttach(); };
     toolbar->AddChild(attachBtn);
 
     auto cloudBtn = CreateButton("cCloud", 0, 0, 192, Theme::kControlHeight,
                                  "Attach cloud link…");
+    Theme::FitToLabel(cloudBtn, 192);
     Theme::StyleSecondary(cloudBtn);
     cloudBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/cloud.svg"));
     cloudBtn->SetIconPosition(ButtonIconPosition::Left);
@@ -164,6 +167,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     toolbar->AddStretchSpacer(1);
 
     auto cancelBtn = CreateButton("cCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [this]() { if (onCancel) onCancel(); };
     toolbar->AddChild(cancelBtn);

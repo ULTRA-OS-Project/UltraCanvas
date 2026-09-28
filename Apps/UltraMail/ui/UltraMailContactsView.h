@@ -52,10 +52,16 @@ public:
 
     void SelectSection(ContactSection section);
 
+    // The contact editor ("Add contact" / "Edit contact"), usable without this
+    // view on screen - the mail list opens it for a message's sender. Saves to
+    // the store, refreshes this view when it is built, then calls `onSaved`.
+    // Only the primary address is edited; a contact's other addresses stay.
+    void EditContact(Contact contact, bool isNew, UltraCanvas::UltraCanvasWindowBase* parent,
+                     std::function<void(const Contact&)> onSaved = nullptr);
+
 private:
     void RebuildSidebar();
     void RebuildList();
-    void ShowContactDialog(Contact contact, bool isNew);
 
     ContactStore*  store_ = nullptr;
     ContactSection current_ = ContactSection::Friends;

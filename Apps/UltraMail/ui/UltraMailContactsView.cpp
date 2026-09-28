@@ -106,6 +106,16 @@ void ContactRow::ShowContextMenu(const UCEvent& event) {
     menu_->OpenMenu(event.pointerWindow, *window, settings);
 }
 
+namespace {
+bool SameAddress(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    for (std::size_t i = 0; i < a.size(); ++i)
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i]))) return false;
+    return true;
+}
+} // namespace
+
 // ---- ContactsView ----------------------------------------------------------
 
 std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
@@ -145,10 +155,11 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
     titleRow->AddChild(titleLabel_);
     titleLabel_->layoutItem.SetFlexGrow(1);
     auto addBtn = CreateButton("contactsAdd", 0, 0, 130, Theme::kControlHeight, "Add contact");
+    Theme::FitToLabel(addBtn, 130);
     Theme::StylePrimary(addBtn);
     addBtn->onClick = [this]() {
         Contact c; c.section = current_;
-        ShowContactDialog(c, /*isNew=*/true);
+        EditContact(c, /*isNew=*/true, root_ ? root_->GetWindow() : nullptr);
     };
     titleRow->AddChild(addBtn);
     main->AddChild(titleRow);
@@ -240,7 +251,7 @@ void ContactsView::RebuildList() {
 
     for (const auto& c : contacts) {
         const int64_t id = c.id;
-        auto onEdit = [this, c]() { ShowContactDialog(c, /*isNew=*/false); };
+        auto onEdit = [this, c]() { EditContact(c, /*isNew=*/false, root_ ? root_->GetWindow() : nullptr); };
         auto onDelete = [this, id]() { if (store_->Remove(id)) Refresh(); };
         auto row = std::make_shared<ContactRow>(
             "contact_" + std::to_string(id), 0, 0, 0, kRowH, c,
@@ -250,7 +261,8 @@ void ContactsView::RebuildList() {
     }
 }
 
-void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
+void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBase* parent,
+                               std::function<void(const Contact&)> onSaved) {
     if (!store_) return;
 
     DialogConfig config;
@@ -335,11 +347,13 @@ void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
     buttonRow->AddStretchSpacer(1);
 
     auto cancelBtn = CreateButton("cCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
 
     auto saveBtn = CreateButton("cSave", 0, 0, 100, Theme::kControlHeight, "Save");
+    Theme::FitToLabel(saveBtn, 100);
     Theme::StylePrimary(saveBtn);
     saveBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
     buttonRow->AddChild(saveBtn);
@@ -347,10 +361,9 @@ void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
     dialog->AddChild(buttonRow);
 
     // Capture by value; `contact` carries id + section through the callback.
-    UltraCanvas::UltraCanvasWindowBase* parent = root_ ? root_->GetWindow() : nullptr;
     UltraCanvasDialogManager::ShowDialog(
         dialog,
-        [this, contact, name, email, phone, org, notes, parent](DialogResult result) mutable {
+        [this, contact, name, email, phone, org, notes, parent, onSaved](DialogResult result) mutable {
             if (result != DialogResult::OK) return;
             contact.displayName = name->GetText();
             if (contact.displayName.empty()) {
@@ -363,12 +376,29 @@ void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
             contact.organization = org->GetText();
             contact.notes = notes->GetText();
 
+            // The field edits the primary address only (PrimaryEmail(): the
+            // one marked primary, else the first); every other address the
+            // contact has stays. Rebuilding the list from the field alone
+            // dropped them - including the one a message came from, when the
+            // editor was opened for that message's sender.
             const std::string addr = email->GetText();
+            std::size_t primaryIdx = 0;
+            for (std::size_t i = 0; i < contact.emails.size(); ++i)
+                if (contact.emails[i].primary) { primaryIdx = i; break; }
+            std::vector<ContactEmail> kept;
+            for (std::size_t i = 0; i < contact.emails.size(); ++i) {
+                if (i == primaryIdx) continue;
+                ContactEmail e = contact.emails[i];
+                if (SameAddress(e.address, addr)) continue;   // now the primary
+                e.primary = false;
+                kept.push_back(e);
+            }
             contact.emails.clear();
             if (!addr.empty()) {
                 ContactEmail e; e.address = addr; e.primary = true;
                 contact.emails.push_back(e);
             }
+            contact.emails.insert(contact.emails.end(), kept.begin(), kept.end());
 
             const std::string num = phone->GetText();
             contact.phones.clear();
@@ -378,7 +408,8 @@ void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
             }
 
             if (UltraDbResult saved = store_->Save(contact); saved) {
-                Refresh();
+                if (root_) Refresh();   // the Contacts window may never have been opened
+                if (onSaved) onSaved(contact);
             } else {
                 AlertError(parent, "\"" + contact.displayName + "\" could not be "
                            "saved to the address book.", DetailLine(saved));

@@ -1,3 +1,27 @@
+#### 2026-09-28 *0.10.7*
+- **A turning ring on the status line** while UltraMail works in the
+  background: a sync, a send, or a move, delete or flag change on the server.
+  It stops, and leaves the space blank, when the app is idle. It is the new
+  framework element `UltraCanvasBusyIndicator` (see
+  `Docs/UltraCanvas/changelog.d/`).
+- **Right-click a message: "Add to contacts" / "Edit contact".** The menu
+  offers *Edit contact* when the sender's address is already in the address
+  book, else *Add to contacts* with the name and address filled in. Both open
+  the address book's contact editor. That editor also no longer drops a
+  contact's other addresses when you change the first one: it now edits only
+  the primary address.
+- **A long subject no longer takes two rows in the message list.** Some
+  senders (LinkedIn, for one) encode line breaks into the subject. The list
+  now shows the sender and the subject on one line, with runs of spaces, tabs
+  and line breaks folded into a single space.
+- **Service icons without a frame.** A sender with a known service icon
+  (Gmail, Outlook, …) now shows the icon alone and at the full badge size,
+  in the list and in the reading pane. Senders without an icon keep the
+  framed initial.
+- **Buttons fit their labels.** Every button with text now sizes itself to
+  its label, with its old width as the minimum, so "Reloading…" and longer
+  translated labels are no longer cut off.
+
 #### 2026-09-28 *0.10.6*
 - **Sending no longer holds the window.** Send and the outbox's Retry ran
   SMTP on the UI thread, flushing every queued message - of every account -

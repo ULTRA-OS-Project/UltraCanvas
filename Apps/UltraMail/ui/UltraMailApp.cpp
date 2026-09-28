@@ -273,6 +273,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                           const std::string& icon, bool primary,
                           std::function<void()> onClick) {
         auto button = CreateButton(id, 0, 0, width, Theme::kControlHeight, text);
+        Theme::FitToLabel(button, width);
         if (primary) Theme::StylePrimary(button); else Theme::StyleSecondary(button);
         if (!icon.empty()) {
             button->SetIcon(IconPath(icon));
@@ -353,6 +354,11 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.onJunk       = [this](const MessageEnvelope& e) { HandleJunkMessage(e); };
     mailView_.onMarkUnread = [this](const MessageEnvelope& e) { HandleMarkUnread(e); };
     mailView_.onMarkRead   = [this](const MessageEnvelope& e) { HandleMarkRead(e); };
+    // The list's right-click menu: add the sender to the address book, or edit
+    // the contact that already holds its address. Either way the badges and the
+    // "known sender" state follow as soon as it is saved.
+    mailView_.onAddContact  = [this](const MessageEnvelope& e) { EditSenderContact(e, /*isNew=*/true); };
+    mailView_.onEditContact = [this](const MessageEnvelope& e) { EditSenderContact(e, /*isNew=*/false); };
     mailView_.onViewSource = [this](const std::string& subject, const std::string& raw) {
         OpenSourceViewer(subject, raw);
     };
@@ -391,17 +397,46 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.SetReadingPane(prefs_.showReadingPane);
 
     // ----- Status line: what the app is currently doing -----
-    statusLabel_ = Theme::MakeLine("umStatus", "Ready", Theme::kToolbarHeight * 0.75f,
+    // A turning ring left of the text while anything runs in the background
+    // (sync, send, mailbox action); blank when the app is idle.
+    const float statusHeight = Theme::kToolbarHeight * 0.75f;
+    auto statusRow = CreateContainer("umStatusRow", 0, 0, 0, statusHeight);
+    statusRow->layout.SetFlexRow()
+                     .SetFlexGap(Theme::kGap * 0.5f)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    if (auto style = statusRow->GetContainerStyle(); true) {
+        style.autoShowScrollbars = false;
+        statusRow->SetContainerStyle(style);
+    }
+    accountView_->AddChild(statusRow);
+    statusRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    busyIndicator_ = CreateBusyIndicator("umBusy", 0, 0, statusHeight * 0.6f);
+    BusyIndicatorStyle busyStyle = busyIndicator_->GetStyle();
+    busyStyle.arcColor = Theme::kAccent;
+    busyIndicator_->SetStyle(busyStyle);
+    busyIndicator_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    statusRow->AddChild(busyIndicator_);
+
+    statusLabel_ = Theme::MakeLine("umStatus", "Ready", statusHeight,
                                    Theme::kSizeSecondary, Theme::kTextSecondary);
-    accountView_->AddChild(statusLabel_);
-    statusLabel_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    statusRow->AddChild(statusLabel_);
+    statusLabel_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    UpdateBusyIndicator();
 
     return accountView_;
 }
 
 void UltraMailApp::SetStatus(const std::string& text) {
     if (statusLabel_) statusLabel_->SetText(text.empty() ? "Ready" : text);
+    UpdateBusyIndicator();
+}
+
+void UltraMailApp::UpdateBusyIndicator() {
+    if (!busyIndicator_) return;
+    busyIndicator_->SetRunning(syncsInFlight_ > 0 || outboxFlushInFlight_ ||
+                               mailboxActionsInFlight_ > 0);
 }
 
 void UltraMailApp::ShowAccountStatus() {
@@ -566,6 +601,8 @@ void UltraMailApp::RunMailboxAction(
 
         // The server op + local-store update run off the UI thread (a credential
         // refresh can make an HTTPS request); the result is marshalled back.
+        ++mailboxActionsInFlight_;
+        UpdateBusyIndicator();
         std::thread([this, accountId, serverUrl, opts, op, actionName,
                      username, provider, imap]() mutable {
             UltraNetResult cred = ResolveCredentials(accountId, username, provider,
@@ -585,6 +622,8 @@ void UltraMailApp::RunMailboxAction(
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) return;
             app->PostToUIThread([this, accountId, provider, outcome, actionName, credCode, op]() {
+                --mailboxActionsInFlight_;
+                UpdateBusyIndicator();
                 if (!outcome) {
                     // A dead OAuth sign-in offers Retry → re-sign-in → re-run the
                     // action. Anything else is the usual dead-end error.
@@ -889,6 +928,7 @@ void UltraMailApp::FlushOutboxInBackground(std::shared_ptr<IUltraNetPlugin> plug
         if (!app) return;
         app->PostToUIThread([this, stats, onDone]() {
             outboxFlushInFlight_ = false;
+            UpdateBusyIndicator();
             ShowAccountStatus();
             if (onDone) onDone(stats);
             if (!pendingFlushes_.empty()) {
@@ -1092,6 +1132,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                     syncsInFlight_ = 0;
                     statusReceived_ = 0;
                     if (reloadButton_) reloadButton_->SetText("Reload");
+                    UpdateBusyIndicator();
                 }
                 if (!outcome) {
                     accountError_[accountId] = "Could not fetch mail for " + who + ": " + outcome.message;
@@ -1224,6 +1265,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                     syncsInFlight_ = 0;
                     statusReceived_ = 0;
                     if (reloadButton_) reloadButton_->SetText("Reload");
+                    UpdateBusyIndicator();
                 }
                 if (!outcome) {
                     accountError_[aid] = "Could not fetch mail for " + who + ": " + outcome.message;
@@ -1308,6 +1350,36 @@ void UltraMailApp::RefreshContactIndex() {
     ContactIndex index;
     if (contacts_.IsOpen()) BuildContactIndex(contacts_, index);
     mailView_.SetContacts(std::move(index));
+}
+
+void UltraMailApp::EditSenderContact(const MessageEnvelope& m, bool isNew) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    if (!contacts_.IsOpen()) {
+        AlertError(parent, "The address book could not be opened.",
+                   contactsError_.empty() ? "UltraMail's contacts database is not available."
+                                          : contactsError_);
+        return;
+    }
+    Contact contact;
+    bool found = false;
+    if (!isNew) {
+        if (UltraDbResult r = contacts_.FindByEmail(m.fromAddr, contact, found); !r) {
+            AlertError(parent, "The contact could not be loaded.", DetailLine(r));
+            return;
+        }
+    }
+    if (!found) {
+        // New - or the index said "known" but the store no longer has it.
+        contact = Contact{};
+        contact.displayName = UltraNet_MimeDecodeHeader(m.fromName);
+        ContactEmail e; e.address = m.fromAddr; e.primary = true;
+        contact.emails.push_back(e);
+    }
+    contactsView_.SetStore(&contacts_);
+    contactsView_.EditContact(contact, /*isNew=*/!found, parent, [this](const Contact&) {
+        RefreshContactIndex();
+        Refresh();   // badges: the sender is (still) in the address book
+    });
 }
 
 void UltraMailApp::OpenContacts() {

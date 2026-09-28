@@ -18,6 +18,7 @@
 #include "UltraCanvasListView.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasMenu.h"
 
 #include "UltraMailMessagePreview.h"
 #include "UltraMailSenderBadge.h"
@@ -108,6 +109,10 @@ public:
     // store + server). Not raised for a message merely re-selected by a
     // background rebuild (see suppressAutoRead_).
     std::function<void(const MessageEnvelope&)> onMarkRead;
+    // The message list's right-click menu offers "Add to contacts" for a
+    // sender not in the address book and "Edit contact" for one that is.
+    std::function<void(const MessageEnvelope&)> onAddContact;
+    std::function<void(const MessageEnvelope&)> onEditContact;
     std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
 
     // The folder tree selected a folder under a different account: the app
@@ -181,6 +186,11 @@ private:
     std::string                  curAccount_;
     std::string                  curFolder_ = "INBOX";
     std::vector<MessageEnvelope> messages_;    // list rows, in list order
+    // The address book index (SetContacts): which menu entry a sender gets.
+    ContactIndex contacts_;
+    // The row's right-click menu; kept alive while it is open.
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> rowMenu_;
+    void ShowRowMenu(int row, const UltraCanvas::UCEvent& event);
     std::vector<MailRowState>    rowStates_;    // parallel to messages_ / list rows
     std::vector<SenderBadge>     rowBadges_;    // parallel to messages_ / list rows
     // The stored scan verdicts of the folder on screen, by UID — one query per

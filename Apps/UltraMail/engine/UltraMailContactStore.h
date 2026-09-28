@@ -39,6 +39,11 @@ public:
     // Free-text search across name / organization / email address.
     UltraDbResult Search(const std::string& query, std::vector<Contact>& out) const;
 
+    // The contact holding exactly `address` (case-insensitive), in any of its
+    // emails. `found` is false - and the result still Ok - when no contact has
+    // it; a failure is a database error.
+    UltraDbResult FindByEmail(const std::string& address, Contact& out, bool& found) const;
+
     // Per-section counts for the sidebar (every primary section present, even
     // when empty).
     UltraDbResult GetSectionCounts(std::vector<SectionCount>& out) const;

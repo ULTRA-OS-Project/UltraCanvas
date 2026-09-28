@@ -21,7 +21,6 @@ namespace {
 // The badge's own geometry, as fractions of its side, so it reads the same at
 // 18px in a list row and at 28px in the reading pane.
 constexpr float kRadiusFraction = 0.28f;
-constexpr float kIconInset      = 0.18f;
 constexpr float kBorderWidth    = 1.6f;
 
 Color FromRgb(uint32_t rgb) {
@@ -118,17 +117,15 @@ void DrawSenderBadge(IRenderContext* ctx, const Rect2Dd& rect, const SenderBadge
     const double side   = rect.width < rect.height ? rect.width : rect.height;
     const double radius = side * kRadiusFraction;
 
-    ctx->DrawFilledRectangle(rect, colors.fill, kBorderWidth, colors.border,
-                             static_cast<float>(radius));
-
+    // A brand icon is the badge on its own: no frame and no fill, drawn at the
+    // full cell so the logo reads at list size.
     if (!badge.iconPath.empty()) {
-        const double inset = side * kIconInset;
-        ctx->DrawImage(badge.iconPath,
-                       Rect2Dd(rect.x + inset, rect.y + inset,
-                               rect.width - inset * 2, rect.height - inset * 2),
-                       ImageFitMode::Contain);
+        ctx->DrawImage(badge.iconPath, rect, ImageFitMode::Contain);
         return;
     }
+
+    ctx->DrawFilledRectangle(rect, colors.fill, kBorderWidth, colors.border,
+                             static_cast<float>(radius));
 
     // No icon: the sender's initial, in the brand's colour when the address
     // belongs to a known service and in the verdict's colour otherwise.
@@ -148,8 +145,6 @@ MakeSenderBadgeElement(const std::string& id, const SenderBadge& badge, float si
     const BadgeColors colors = BadgeColorsFor(badge.cls);
 
     auto box = CreateContainer(id, 0, 0, side, side);
-    box->SetBackgroundColor(colors.fill);
-    box->SetBorders(kBorderWidth, colors.border, side * kRadiusFraction);
     box->layout.SetFlexRow()
                .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
@@ -159,9 +154,9 @@ MakeSenderBadgeElement(const std::string& id, const SenderBadge& badge, float si
         box->SetContainerStyle(style);
     }
 
-    const float inner = side * (1.0f - kIconInset * 2.0f);
+    // A brand icon stands alone, frameless and at the full badge size.
     if (!badge.iconPath.empty()) {
-        auto icon = CreateImageElement(id + ".icon", 0, 0, inner, inner);
+        auto icon = CreateImageElement(id + ".icon", 0, 0, side, side);
         icon->SetFitMode(ImageFitMode::Contain);
         if (icon->LoadFromFile(badge.iconPath)) {
             icon->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -169,8 +164,11 @@ MakeSenderBadgeElement(const std::string& id, const SenderBadge& badge, float si
             return box;
         }
         // A cached file the image loader cannot decode falls through to the
-        // monogram rather than leaving an empty square.
+        // framed monogram rather than leaving an empty square.
     }
+
+    box->SetBackgroundColor(colors.fill);
+    box->SetBorders(kBorderWidth, colors.border, side * kRadiusFraction);
 
     auto letter = Theme::MakeText(id + ".letter", badge.initial, side * 0.45f,
                                   colors.text, FontWeight::Bold);
