@@ -219,6 +219,35 @@ add_test(NAME FileLockTest COMMAND FileLockTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FileLockTest")
 
+# ===== ARCHIVE RUN TEST =====
+# "Extract and run" without a display or an archive: which entries count as
+# programs on each kind of host, the run folders (made, marked, removed, and
+# swept up after an owner that went away), and the watched launch - that a
+# program counts as running until it, and what it started, has ended.
+# Built from the module's own sources like the file-lock test above.
+message(STATUS "  Building ArchiveRunTest...")
+set(ARCHIVE_RUN_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ArchiveRunTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasArchiveRun.cpp
+)
+if(WIN32)
+    list(APPEND ARCHIVE_RUN_SOURCES
+        ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsArchiveRun.cpp)
+endif()
+add_executable(ArchiveRunTest ${ARCHIVE_RUN_SOURCES})
+target_include_directories(ArchiveRunTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ArchiveRunTest PRIVATE cxx_std_20)
+if(UNIX)
+    find_package(Threads REQUIRED)
+    target_link_libraries(ArchiveRunTest PRIVATE Threads::Threads)
+endif()
+set_target_properties(ArchiveRunTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ArchiveRunTest COMMAND ArchiveRunTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ArchiveRunTest")
+
 # ===== TRASH TEST =====
 # MoveToTrash's freedesktop.org backend (Linux, the BSDs), built from its own
 # sources like the file-lock test above and pointed at a private
