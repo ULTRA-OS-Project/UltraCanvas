@@ -1,3 +1,8 @@
+#### 2026-09-28 *0.2.2*
+- **The version is in the window title** — `AnchorPoint 0.2.2` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`).
+
 #### 2026-09-27 *0.2.1*
 - **A received file stays in the save folder.** The receiver joined the file
   name from the peer's Offer to the save folder as it came, so a peer that

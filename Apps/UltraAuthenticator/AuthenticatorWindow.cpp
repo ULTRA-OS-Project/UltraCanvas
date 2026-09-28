@@ -19,6 +19,14 @@
 #include <string>
 #include <utility>
 
+// ULTRAAUTHENTICATOR_VERSION comes from the build alone: CMake reads the first line of
+// Docs/UltraAuthenticator/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef ULTRAAUTHENTICATOR_VERSION
+#error "ULTRAAUTHENTICATOR_VERSION is not defined: build through CMake, which reads it from Docs/UltraAuthenticator/CHANGELOG.md"
+#endif
+
 namespace UltraCanvas {
 namespace Authenticator {
 
@@ -117,7 +125,7 @@ void AuthenticatorWindow::ShowTracked(const std::shared_ptr<Dialog>& dialog) {
 
 bool AuthenticatorWindow::Create() {
     WindowConfig cfg;
-    cfg.title     = "UltraAuthenticator";
+    cfg.title     = "UltraAuthenticator " ULTRAAUTHENTICATOR_VERSION;
     cfg.width     = kWindowWidth;
     cfg.height    = kWindowHeight;
     cfg.x         = 140;

@@ -12,13 +12,21 @@
 #include <filesystem>
 #include <system_error>
 
+// ULTRAVIEWER_VERSION comes from the build alone: CMake reads the first line of
+// Docs/UltraViewer/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef ULTRAVIEWER_VERSION
+#error "ULTRAVIEWER_VERSION is not defined: build through CMake, which reads it from Docs/UltraViewer/CHANGELOG.md"
+#endif
+
 namespace fs = std::filesystem;
 
 namespace UltraCanvas {
 
 bool UltraViewerWindow::Initialize(const std::vector<std::string>& paths) {
     WindowConfig config;
-    config.title = "UltraViewer";
+    config.title = "UltraViewer " ULTRAVIEWER_VERSION;
     config.width = 1200;
     config.height = 800;
     config.resizable = true;

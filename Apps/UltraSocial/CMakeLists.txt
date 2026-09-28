@@ -102,4 +102,8 @@ if(TARGET fmt::fmt)
     target_link_libraries(UltraSocial PRIVATE fmt::fmt)
 endif()
 target_compile_features(UltraSocial PRIVATE cxx_std_20)
+# The version shown in the window title: the first line of
+# Docs/UltraSocial/CHANGELOG.md (cmake/UltraCanvasVersion.cmake).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
+target_compile_definitions(UltraSocial PRIVATE ULTRASOCIAL_VERSION="${ULTRASOCIAL_VERSION}")
 message(STATUS "  [✓] UltraSocial GUI app - ENABLED (target: UltraSocial)")

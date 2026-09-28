@@ -270,6 +270,12 @@ number anywhere else, and never introduce a new literal copy of one:
   info window), `UltraCanvasTextEditor::version` (shown in Texter's splash) and
   `ULTRACLEANER_VERSION` (UltraCleaner's window title, header line and
   `--version`).
+- **Every app shows its version in its main window title** — `"UltraMail "
+  ULTRAMAIL_VERSION`, and `"<document> - UltraPaint " ULTRAPAINT_VERSION` where
+  the title follows the open document — so a screenshot or bug report names the
+  build. A new app passes its `<APP>_VERSION` as a compile definition from its
+  CMake target and guards it with `#ifndef … #error` rather than a fallback
+  string.
 - An app versions itself: it does not move when the framework releases, and a
   change to it belongs in its own file, not in the framework's. A framework
   change an app needs still goes in `Docs/UltraCanvas/CHANGELOG.md` — including

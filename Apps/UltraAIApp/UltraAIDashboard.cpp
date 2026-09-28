@@ -16,6 +16,14 @@
 #include <utility>
 #include <vector>
 
+// ULTRAAI_APP_VERSION comes from the build alone: CMake reads the first line of
+// Docs/UltraAI/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef ULTRAAI_APP_VERSION
+#error "ULTRAAI_APP_VERSION is not defined: build through CMake, which reads it from Docs/UltraAI/CHANGELOG.md"
+#endif
+
 namespace UltraAIApp {
 
 using namespace UltraCanvas;
@@ -24,7 +32,7 @@ UltraAIDashboard::UltraAIDashboard(UltraCanvasApplication& app) : app_(app) {}
 
 bool UltraAIDashboard::Create() {
     WindowConfig cfg;
-    cfg.title  = "UltraAI";
+    cfg.title  = "UltraAI " ULTRAAI_APP_VERSION;
     cfg.width  = kWindowWidth;
     cfg.height = kWindowHeight;
     cfg.x      = 120;

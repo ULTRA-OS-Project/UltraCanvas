@@ -1,3 +1,13 @@
+#### 2026-09-28 *0.10.5*
+- **The version is in the window title** — `UltraMail 0.10.5` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`).
+- **The setup guide matches the Gmail sign-in.** Gmail has signed in through
+  the browser only since 2026-09-23 (no password field in the wizard);
+  `Docs/UltraMail/AccountSetup.md` still described an app password as the
+  alternative and as the fallback for a build without a Google client. The
+  engine test that expected Gmail to take a typed password is corrected too.
+
 #### 2026-09-27 *0.10.4*
 - **An authentication method per server, as in Thunderbird.** The server
   settings page - during setup for an unknown domain and on every account's

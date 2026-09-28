@@ -9,6 +9,14 @@
 
 #include <cstdint>
 
+// ANCHORPOINT_VERSION comes from the build alone: CMake reads the first line of
+// Docs/AnchorPoint/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef ANCHORPOINT_VERSION
+#error "ANCHORPOINT_VERSION is not defined: build through CMake, which reads it from Docs/AnchorPoint/CHANGELOG.md"
+#endif
+
 using namespace UltraCanvas;
 
 namespace AnchorPoint {
@@ -75,7 +83,7 @@ AnchorPointGui::~AnchorPointGui() {
 
 bool AnchorPointGui::Build() {
     WindowConfig config;
-    config.title = "AnchorPoint";
+    config.title = "AnchorPoint " ANCHORPOINT_VERSION;
     config.width = 560;
     config.height = 560;
     config.resizable = true;

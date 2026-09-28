@@ -1,3 +1,8 @@
+#### 2026-09-28 *0.1.1*
+- **The version is in the window title** — `UltraWin Manager 0.1.1` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`).
+
 #### 2026-08-31 *0.1.0*
 - **UltraWin keeps its own changelog from here.** Everything up to and
   including this version shipped as part of a framework release and is recorded

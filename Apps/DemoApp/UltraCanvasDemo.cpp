@@ -350,7 +350,7 @@ namespace UltraCanvas {
 
         // Create main window using proper configuration
         WindowConfig config;
-        config.title = "UltraCanvas Framework - Component Demonstration";
+        config.title = "UltraCanvas Framework " ULTRACANVAS_DEMO_VERSION " - Component Demonstration";
         config.width = 1400;
         config.height = 880;
         config.resizable = true;

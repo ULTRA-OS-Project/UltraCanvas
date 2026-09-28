@@ -32,6 +32,14 @@
 #include <cstdio>
 #include <filesystem>
 
+// ULTRAPAINT_VERSION comes from the build alone: CMake reads the first line of
+// Docs/UltraPaint/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef ULTRAPAINT_VERSION
+#error "ULTRAPAINT_VERSION is not defined: build through CMake, which reads it from Docs/UltraPaint/CHANGELOG.md"
+#endif
+
 namespace fs = std::filesystem;
 
 namespace UltraCanvas {
@@ -184,7 +192,7 @@ std::string UltraPaintWindow::TexterIconPath(const std::string& file) const {
 
 bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     WindowConfig config;
-    config.title = "UltraPaint";
+    config.title = "UltraPaint " ULTRAPAINT_VERSION;
     config.width = 1280;
     config.height = 840;
     config.minWidth = 900;
@@ -1041,7 +1049,7 @@ void UltraPaintWindow::UpdateTitle() {
     if (!window) return;
     std::string t = document ? FileNameOf(document->GetFilePath()) : "Untitled";
     if (document && document->IsModified()) t = "*" + t;
-    window->SetWindowTitle(t + " - UltraPaint");
+    window->SetWindowTitle(t + " - UltraPaint " ULTRAPAINT_VERSION);
 }
 
 void UltraPaintWindow::UpdateStatus() {

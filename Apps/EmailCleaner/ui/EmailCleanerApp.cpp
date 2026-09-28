@@ -22,6 +22,14 @@
 #include <string>
 #include <vector>
 
+// EMAILCLEANER_VERSION comes from the build alone: CMake reads the first line of
+// Docs/EmailCleaner/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef EMAILCLEANER_VERSION
+#error "EMAILCLEANER_VERSION is not defined: build through CMake, which reads it from Docs/EmailCleaner/CHANGELOG.md"
+#endif
+
 using namespace UltraCanvas;
 
 namespace EmailCleaner {
@@ -182,7 +190,7 @@ void EmailCleanerApp::ImportAccounts() {
 
 std::shared_ptr<UltraCanvasWindow> EmailCleanerApp::CreateMainWindow() {
     WindowConfig config;
-    config.title  = "EmailCleaner";
+    config.title  = "EmailCleaner " EMAILCLEANER_VERSION;
     config.width  = static_cast<int>(kWindowW);
     config.height = static_cast<int>(kWindowH);
     window_ = CreateWindow(config);

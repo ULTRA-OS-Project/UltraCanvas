@@ -1,3 +1,8 @@
+#### 2026-09-28 *0.24.2*
+- **The version is in the window title** — `UltraFIBU 0.24.2` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`).
+
 #### 2026-09-27 *0.24.1*
 - **Mehrbenutzerbetrieb: die Anmeldung mit Passwort funktioniert.**
   `Store::OpenServer` nimmt das Passwort nur als UltraVault-Schluessel

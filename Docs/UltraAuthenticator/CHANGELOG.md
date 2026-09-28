@@ -1,3 +1,8 @@
+#### 2026-09-28 *0.2.3*
+- **The version is in the window title** — `UltraAuthenticator 0.2.3` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`).
+
 #### 2026-09-24 *0.2.2*
 - **The start screens show the app's logo.** The first-launch password screen
   and the lock screen now open with the UltraAuthenticator logo, centred, and

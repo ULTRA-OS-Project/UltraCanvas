@@ -1,3 +1,8 @@
+#### 2026-09-28 *0.1.6*
+- **The version is in the window title** — `UltraAI 0.1.6` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`).
+
 #### 2026-09-24 *0.1.5*
 - **The dashboard app reports this changelog's version.** `UltraAIApp`'s
   `ULTRAAI_APP_VERSION` was a literal `"0.1.0"` in `CMakeLists.txt`, and

@@ -1,3 +1,8 @@
+#### 2026-09-28 *0.3.3*
+- **The version is in the window title** — `EmailCleaner 0.3.3` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`).
+
 #### 2026-09-22 *0.3.2*
 - **EmailCleaner can read UltraMail's passwords again.** It opened UltraMail's
   credential vault and asked for each account's password without unlocking it
