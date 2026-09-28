@@ -95,7 +95,10 @@ private:
     std::shared_ptr<UltraCanvasLabel> BuildInlineRun(
         const std::vector<Node*>& run, const ComputedStyle& blockStyle,
         const std::string& markerPrefix);
-    std::shared_ptr<UltraCanvasUIElement> BuildImage(Node& element);
+    // An image on a line of its own, placed by the text-align it inherits.
+    // `linkHref` makes it clickable (an image inside <a href>).
+    std::shared_ptr<UltraCanvasUIElement> BuildImage(Node& element,
+                                                     const std::string& linkHref = "");
     std::shared_ptr<UltraCanvasUIElement> BuildRule(Node& element);
     std::shared_ptr<UltraCanvasContainer> BuildTable(Node& element);
     // Display-only render of a form control (input/textarea/button/select):

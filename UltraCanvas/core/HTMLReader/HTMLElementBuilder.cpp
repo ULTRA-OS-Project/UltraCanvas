@@ -7,6 +7,8 @@
 
 #include "HTMLReader/HTMLElementBuilder.h"
 
+#include <functional>
+
 #include "UltraCanvasImageElement.h"
 
 #include <algorithm>
@@ -392,6 +394,43 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             continue;
         }
 
+        // An inline element holding an image (<a href><img></a>, the banner
+        // and button of nearly every newsletter): a text run can only name
+        // the image by its alt text, so lift the images out onto lines of
+        // their own - clickable when inside a link - and keep the text
+        // around them in runs.
+        if (opts.enableImages && (child.FindFirst("img") || child.FindFirst("image"))) {
+            std::function<void(Node&, const std::string&)> lift =
+                [&](Node& node, const std::string& href) {
+                    for (const auto& grandPtr : node.children) {
+                        Node& g = *grandPtr;
+                        if (g.type == NodeType::Text) { inlineRun.push_back(&g); continue; }
+                        if (!g.IsElement()) continue;
+                        const ComputedStyle& gs = resolver.StyleOf(&g);
+                        if (gs.display == DisplayMode::Hidden) continue;
+                        std::string gHref = href;
+                        if (g.tag == "a" && g.HasAttribute("href")) gHref = g.GetAttribute("href");
+                        if (g.tag == "img" || g.tag == "image") {
+                            flushRun();
+                            if (auto image = BuildImage(g, gHref)) {
+                                RegisterAnchors(g, image);
+                                addFlowChild(image, gs.marginTop, gs.marginBottom);
+                            }
+                        } else if (g.FindFirst("img") || g.FindFirst("image")) {
+                            lift(g, gHref);
+                        } else {
+                            inlineRun.push_back(&g);
+                        }
+                    }
+                };
+            RegisterAnchors(child, std::static_pointer_cast<UltraCanvasUIElement>(
+                                       parent.shared_from_this()));
+            std::string href;
+            if (child.tag == "a" && child.HasAttribute("href")) href = child.GetAttribute("href");
+            lift(child, href);
+            continue;
+        }
+
         // Inline / inline-block content joins the current run.
         inlineRun.push_back(&child);
     }
@@ -540,7 +579,8 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 // REPLACED / SPECIAL ELEMENTS
 // ============================================================================
 
-std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element) {
+std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
+                                                                 const std::string& linkHref) {
     std::string src = element.GetAttribute("src");
     if (src.empty()) src = element.GetAttribute("href");        // SVG 2 <image>
     if (src.empty()) src = element.GetAttribute("xlink:href");  // SVG 1.1 <image>
@@ -568,11 +608,36 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element) 
     ApplyBoxStyle(*image, style, /*fillWidth=*/false);
     // Without explicit dimensions the element reports the image's natural
     // size through MeasureOwnContent. Cap at the column width so oversized
-    // images (covers, photos) shrink to fit instead of overflowing.
+    // images (covers, photos) shrink to fit instead of overflowing; a zero
+    // minimum lets the row below shrink it (its min-content is its natural
+    // width, which would otherwise pin it).
     CSSLayout::BoxConstraints constraints;
     constraints.maxWidth = CSSLayout::Dimension::Pct(100.f);
+    constraints.minWidth = CSSLayout::Dimension::Px(0.f);
     image->boxConstraints = constraints;
-    return image;
+    image->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
+    if (!linkHref.empty() && opts.onLinkActivated) {
+        image->SetClickable(true);
+        image->onClick = [activate = opts.onLinkActivated, linkHref]() { activate(linkHref); };
+        image->SetTooltip(linkHref);
+    }
+
+    // Block flow gives every child the full column width, and the image
+    // element draws its bitmap centred in whatever box it gets - so a bare
+    // image sat in the middle of the line. A full-width row around it keeps
+    // the image at its own size and places it the way a browser places an
+    // inline image: by the text-align it inherits (align="..." on it or its
+    // container, <center>, CSS), at the start of the line by default.
+    auto row = MakeContainer("imgline");
+    row->size.width = CSSLayout::Dimension::Pct(100.f);
+    CSSLayout::JustifyContent justify = CSSLayout::JustifyContent::FlexStart;
+    if (style.textAlign == TextAlignMode::Center)     justify = CSSLayout::JustifyContent::Center;
+    else if (style.textAlign == TextAlignMode::Right) justify = CSSLayout::JustifyContent::FlexEnd;
+    row->layout.SetFlexRow()
+               .SetFlexJustifyContent(justify)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    row->AddChild(image);
+    return row;
 }
 
 std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildRule(Node& element) {

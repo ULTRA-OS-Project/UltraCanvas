@@ -98,6 +98,7 @@ private:
 
     void ResolveElement(Node& element, const ComputedStyle& parentStyle);
     void ApplyUserAgentDefaults(const std::string& tag, ComputedStyle& style);
+    void ApplyAlignAttribute(const Node& element, ComputedStyle& style);
     void ApplyDeclaration(const Declaration& declaration, ComputedStyle& style,
                           const ComputedStyle& parentStyle);
     static bool SelectorMatches(const Selector& selector, const Node& element);

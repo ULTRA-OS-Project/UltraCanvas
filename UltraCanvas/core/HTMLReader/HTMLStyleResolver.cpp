@@ -5,6 +5,8 @@
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
+
+#include <cctype>
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
@@ -41,6 +43,28 @@ const ComputedStyle& StyleResolver::StyleOf(const Node* node) const {
 // RESOLUTION
 // ============================================================================
 
+// The presentational align="..." attribute, still everywhere in
+// email HTML. Applied before the author rules, so any CSS text-align wins, as
+// in a browser. On a block (and a table cell) it is the text alignment of
+// its content; on an <img> the builder uses it to place the image. A
+// <table align> centres the table itself, which is not text alignment, and is
+// left alone here.
+void StyleResolver::ApplyAlignAttribute(const Node& element, ComputedStyle& style) {
+    static const char* const kAlignable[] = {
+        "p", "div", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "img", "caption"
+    };
+    bool alignable = false;
+    for (const char* tag : kAlignable) if (element.tag == tag) { alignable = true; break; }
+    if (!alignable || !element.HasAttribute("align")) return;
+    std::string value = element.GetAttribute("align");
+    for (char& c : value) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (value == "left")         style.textAlign = TextAlignMode::Left;
+    else if (value == "right")   style.textAlign = TextAlignMode::Right;
+    else if (value == "center" || (value == "middle" && element.tag != "img"))
+                                 style.textAlign = TextAlignMode::Center;
+    else if (value == "justify") style.textAlign = TextAlignMode::Justify;
+}
+
 void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentStyle) {
     ComputedStyle style;
 
@@ -59,6 +83,7 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
     style.listMarker = parentStyle.listMarker;
 
     ApplyUserAgentDefaults(element.tag, style);
+    ApplyAlignAttribute(element, style);
 
     // Author rules, lowest specificity first so later Apply wins. !important
     // declarations are collected and re-applied last.
@@ -167,6 +192,7 @@ void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle
         if (tag == "figure") { marginsV(em); s.marginLeft = 2 * em; s.marginRight = 2 * em; }
     }
     else if (tag == "p") { block(); marginsV(em); }
+    else if (tag == "center") { block(); s.textAlign = TextAlignMode::Center; }
     else if (tag == "h1") heading(2.0f, 0.67f);
     else if (tag == "h2") heading(1.5f, 0.83f);
     else if (tag == "h3") heading(1.17f, 1.0f);
