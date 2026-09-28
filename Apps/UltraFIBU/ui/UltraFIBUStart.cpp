@@ -10,6 +10,14 @@
 
 #include "UltraFIBUStore.h"   // DateiExistiert
 
+// ULTRAFIBU_VERSION comes from the build alone: CMake reads the first line of
+// Docs/UltraFIBU/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef ULTRAFIBU_VERSION
+#error "ULTRAFIBU_VERSION is not defined: build through CMake, which reads it from Docs/UltraFIBU/CHANGELOG.md"
+#endif
+
 using namespace UltraCanvas;
 
 namespace UltraFIBU {
@@ -38,7 +46,7 @@ std::shared_ptr<UltraCanvasWindow> StartFenster::Bauen(const std::string& hinwei
     vorschlag_ = vorschlag;
 
     WindowConfig config;
-    config.title  = "UltraFIBU";
+    config.title  = "UltraFIBU " ULTRAFIBU_VERSION;
     config.width  = kBreite;
     config.height = kHoehe;
     fenster_ = CreateWindow(config);

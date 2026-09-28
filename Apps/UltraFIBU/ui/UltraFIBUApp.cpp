@@ -14,6 +14,14 @@
 
 #include <algorithm>
 
+// ULTRAFIBU_VERSION comes from the build alone: CMake reads the first line of
+// Docs/UltraFIBU/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef ULTRAFIBU_VERSION
+#error "ULTRAFIBU_VERSION is not defined: build through CMake, which reads it from Docs/UltraFIBU/CHANGELOG.md"
+#endif
+
 namespace UltraFIBU {
 
 using namespace UltraCanvas;
@@ -112,7 +120,7 @@ bool FibuApp::Initialisieren(const std::string& datenbank, std::string& fehler) 
 
 std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
     WindowConfig config;
-    config.title  = "UltraFIBU - Buchhaltung";
+    config.title  = "UltraFIBU " ULTRAFIBU_VERSION " - Buchhaltung";
     config.width  = static_cast<int>(kFensterB);
     config.height = static_cast<int>(kFensterH);
     fenster_ = CreateWindow(config);

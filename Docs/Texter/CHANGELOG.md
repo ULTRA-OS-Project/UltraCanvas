@@ -1,3 +1,8 @@
+#### 2026-09-28 *1.52*
+- **The version is in the window title** — `UltraTexter 1.52` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`). With a file open it reads `UltraTexter x.y.z - <path>`.
+
 #### 2026-09-27 *1.51*
 - **The program file is `Texter` (`Texter.exe`, `Texter.app`), no longer
   `UltraCanvasTexter`.** Update shortcuts and file associations that name the

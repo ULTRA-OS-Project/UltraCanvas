@@ -47,6 +47,14 @@
 #include <string>
 #include <thread>
 
+// ULTRAMAIL_VERSION comes from the build alone: CMake reads the first line of
+// Docs/UltraMail/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef ULTRAMAIL_VERSION
+#error "ULTRAMAIL_VERSION is not defined: build through CMake, which reads it from Docs/UltraMail/CHANGELOG.md"
+#endif
+
 using namespace UltraCanvas;
 
 namespace UltraMail {
@@ -158,7 +166,7 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
 
 std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     WindowConfig config;
-    config.title  = "UltraMail";
+    config.title  = "UltraMail " ULTRAMAIL_VERSION;
     config.width  = kWindowWidth;
     config.height = kWindowHeight;
     config.backgroundColor = Theme::kPageBackground;

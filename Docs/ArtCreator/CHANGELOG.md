@@ -1,3 +1,8 @@
+#### 2026-09-28 *0.6.2*
+- **The version is in the window title** — `ArtCreator 0.6.2` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`). With a drawing open it reads `drawing.svg - ArtCreator x.y.z`.
+
 #### 2026-09-26 *0.6.1*
 - **Right click sets the line colour.** A right click on a palette swatch
   under the colour picker now sets the line (background) colour of the

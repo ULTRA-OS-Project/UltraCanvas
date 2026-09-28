@@ -86,7 +86,11 @@ target_compile_features(EmailCleaner PRIVATE cxx_std_20)
 # app sets no icon of its own (UltraCanvasApplicationBase::Initialize), so the
 # two agreeing is what keeps a window from ever coming up unbranded. The PNG
 # is rendered from media/appicon/EmailCleaner.svg, the scalable half of the pair.
+# The version shown in the window title: the first line of
+# Docs/EmailCleaner/CHANGELOG.md (cmake/UltraCanvasVersion.cmake).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
 target_compile_definitions(EmailCleaner PRIVATE
+    EMAILCLEANER_VERSION="${EMAILCLEANER_VERSION}"
     UCAPP_ICON_PATH="media/appicon/EmailCleaner.png")
 
 # Embed the app icon in the .exe (Windows only). This is the icon Explorer and

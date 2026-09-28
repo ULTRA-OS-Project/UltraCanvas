@@ -1,3 +1,8 @@
+#### 2026-09-28 *0.1.3*
+- **The version is in the window title** — `UltraSocial 0.1.3` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`).
+
 #### 2026-09-22 *0.1.2*
 - **Account credentials are encrypted at rest.** UltraSocial's vault was a copy
   of UltraMail's original 0.1 format — secrets XOR-ed against a `vault.key`

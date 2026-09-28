@@ -25,7 +25,7 @@ Companion documents: [`Concept.md`](Concept.md) (the design),
 4. The first time, UltraMail asks you to **choose a master password**. It
    encrypts your account passwords and sign-ins on disk and is never stored
    itself — if you forget it, you enter your account passwords again.
-5. For Gmail and Outlook the browser opens the provider's sign-in page; come
+5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page; come
    back to UltraMail when it says you are done.
 6. The inbox is fetched right away. Later, every account is synced every
    five minutes, and **Reload** syncs all of them now.
@@ -52,19 +52,16 @@ type them. Every connection uses TLS.
 |---|---|
 | Incoming | `imap.gmail.com`, port 993, TLS |
 | Outgoing | `smtp.gmail.com`, port 465, TLS |
-| Sign-in | **Browser sign-in with Google** 
+| Sign-in | **Browser sign-in with Google only** (no password field) |
 
-Google rejects the normal account password in mail programs.
-
-- **Browser sign-in:**  UltraMail opens  Google's consent page in your browser with your address preselected; allow
-  UltraMail to read and send your mail. Released builds ship with a Google
-  OAuth client already configured, so there is nothing to set up. (If your build
-  was packaged without one, the wizard asks for an app password instead — see
-  [section 3](#3-oauth-clients-for-the-browser-sign-in) for packagers.)
-- **App password:** in your Google Account open *Security → 2-Step
-  Verification* (it must be on), then *App passwords*
-  (`myaccount.google.com/apppasswords`). Create one for "Mail", copy the
-  16-character password into the wizard's password field.
+Google rejects the normal account password in mail programs, and UltraMail
+signs in to Gmail through the browser only: the wizard shows no password
+field for a Gmail address. UltraMail opens Google's consent page in your
+browser with your address preselected; allow UltraMail to read and send your
+mail. Released builds ship with a Google OAuth client already configured, so
+there is nothing to set up. A build packaged without one says so in the
+wizard's hint and cannot add a Gmail account until one is configured — see
+[section 3](#3-oauth-clients-for-the-browser-sign-in) for packagers.
 
 ### Outlook.com, Hotmail, Live, Microsoft 365 (`outlook.com`, `hotmail.com`, `live.com`, `msn.com`, `office365.com`)
 
@@ -415,14 +412,14 @@ again keeps the servers it already has.
 Sign-in for these accounts is the account password, unless the provider
 says otherwise in its help page (some require an app password when
 two-factor authentication is on). The browser sign-in is available only for
-Gmail and Outlook.
+Gmail, Outlook and Yahoo.
 
 ## 6. When it does not work
 
 | UltraMail says | What to do |
 |---|---|
-| *New mail could not be fetched … authentication failed* | Gmail / Yahoo / iCloud: you typed the account password; use an app password (section 2). Outlook: passwords are not accepted; add the account again with the password empty. |
-| *No OAuth client is configured for Google / Microsoft* | This build was packaged without a baked-in OAuth client. Rebuild with one (section 3), drop an `oauth.ini` in the data folder, or — Gmail only — use an app password. |
+| *New mail could not be fetched … authentication failed* | iCloud: you typed the account password; use an app-specific password (section 2). Gmail, Outlook and Yahoo take no password: open the account's Settings and use *Sign in with …*. |
+| *No OAuth client is configured for Google / Microsoft* | This build was packaged without a baked-in OAuth client. Rebuild with one (section 3) or drop an `oauth.ini` in the data folder. |
 | *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
 | *Server settings for …* opens on Reload | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |

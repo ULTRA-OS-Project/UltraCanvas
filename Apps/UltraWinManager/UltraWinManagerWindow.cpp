@@ -11,6 +11,14 @@
 #include <cstdlib>
 #include <thread>
 
+// ULTRAWIN_VERSION comes from the build alone: CMake reads the first line of
+// Docs/Modules/UltraWin/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef ULTRAWIN_VERSION
+#error "ULTRAWIN_VERSION is not defined: build through CMake, which reads it from Docs/Modules/UltraWin/CHANGELOG.md"
+#endif
+
 namespace UltraWinManager {
 
 using namespace UltraCanvas;
@@ -41,7 +49,7 @@ ManagerWindow::~ManagerWindow() { alive_->store(false); }
 
 bool ManagerWindow::Create() {
     WindowConfig cfg;
-    cfg.title = "UltraWin Manager";
+    cfg.title = "UltraWin Manager " ULTRAWIN_VERSION;
     cfg.width = kW;
     cfg.height = kH;
     cfg.x = 140;

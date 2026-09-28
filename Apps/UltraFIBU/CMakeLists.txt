@@ -164,7 +164,11 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
     # this same file by name; UCAPP_ICON_PATH is the fallback the core applies
     # when an app sets no icon of its own, and the two agreeing is what keeps a
     # window from ever coming up unbranded.
+    # ULTRAFIBU_VERSION (the first line of Docs/UltraFIBU/CHANGELOG.md) is
+    # shown in the window title.
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
     target_compile_definitions(ultrafibu PRIVATE
+        ULTRAFIBU_VERSION="${ULTRAFIBU_VERSION}"
         UCAPP_ICON_PATH="media/appicon/UltraFIBU.png")
 
     # Embed the icon in the .exe (Windows only). Explorer and the Windows

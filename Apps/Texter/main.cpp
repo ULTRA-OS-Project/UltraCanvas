@@ -319,7 +319,7 @@ int main(int argc, char* argv[]) {
 
         // Create editor configuration
         TextEditorConfig editorConfig;
-        editorConfig.title = "UltraTexter";
+        editorConfig.title = "UltraTexter " + UltraCanvasTextEditor::version;
         editorConfig.showMenuBar = true;
         editorConfig.showToolbar = true;
         editorConfig.showStatusBar = true;

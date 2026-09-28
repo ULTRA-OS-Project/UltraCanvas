@@ -109,7 +109,7 @@ std::string ArtCreatorWindow::TexterIconPath(const std::string& file) const {
 
 bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     WindowConfig config;
-    config.title = "ArtCreator";
+    config.title = "ArtCreator " ARTCREATOR_VERSION;
     config.width = 1280;
     config.height = 840;
     config.minWidth = 900;
@@ -729,7 +729,7 @@ void ArtCreatorWindow::UpdateTitle() {
     if (!window) return;
     std::string t = FileNameOf(documentPath);
     if (modified) t = "*" + t;
-    window->SetWindowTitle(t + " - ArtCreator");
+    window->SetWindowTitle(t + " - ArtCreator " ARTCREATOR_VERSION);
 }
 
 void ArtCreatorWindow::UpdateStatus() {

@@ -23,6 +23,24 @@ on:
       - main
       - 'claude/**'
   workflow_dispatch:
+    inputs:
+      # Set only by changelog-fold.yml. Its "Changelog: x.y.z" commit is pushed
+      # with GITHUB_TOKEN, and GitHub starts no workflow for a push made with
+      # that token - so the fold dispatches this workflow instead, and this
+      # input makes that run the release build the push would have been. A
+      # dispatch by hand leaves it false: a validation run, as before.
+      release:
+        description: "Release build (signed, notarized artifacts) - main only"
+        type: boolean
+        default: false
+      # The exact commit to build - the fold passes its own version commit.
+      # Building "main" instead would take whatever head main has by the time
+      # the runner starts, which may already be a later merge. Must be on
+      # main (the gate checks); empty = the head of the ref dispatched on.
+      sha:
+        description: "Commit to build (empty = branch head)"
+        type: string
+        default: ""
 
 # Supersede in-flight runs for the same branch when newer commits arrive, so a
 # rapid series of pushes to an open PR costs one build rather than one each.
@@ -30,8 +48,12 @@ on:
 # `pull_request` runs (github.head_ref) and any `push`/dispatch run on it
 # (github.ref_name). Pushes to main are never cancelled — those runs produce the
 # signed, notarized release artifacts.
+#
+# A release dispatch is keyed by its commit as well: GitHub keeps only ONE
+# pending run per group, so with a shared key a third release dispatched while
+# one builds and one waits would silently replace the waiting one.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}${{ inputs.sha && format('-{0}', inputs.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -50,12 +72,30 @@ jobs:
       pending: ${{ steps.check.outputs.pending }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+      # A named commit is built only if main contains it, so a dispatch cannot
+      # sign and publish a commit that never landed.
+      - name: The commit to build is on main
+        if: inputs.sha != ''
+        shell: bash
+        run: |
+          if ! git merge-base --is-ancestor "${{ inputs.sha }}" origin/main; then
+            echo "::error::${{ inputs.sha }} is not on main - refusing to build it"
+            exit 1
+          fi
       - id: check
         shell: bash
         run: |
           count=$(find Docs/UltraCanvas/changelog.d -maxdepth 1 -name '*.md' \
                        ! -name 'README.md' 2>/dev/null | wc -l)
-          if [ "${{ github.event_name }}" = "push" ] && [ "$count" -gt 0 ]; then
+          # A release dispatch is gated like a push. It names the fold commit,
+          # so nothing is pending there - unless the fold had to rebase onto
+          # a merge that landed meanwhile: then that merge's entry is still
+          # unfolded in it, and that merge's own fold builds the release.
+          release="${{ github.event_name == 'push' || inputs.release == true }}"
+          if [ "$release" = "true" ] && [ "$count" -gt 0 ]; then
             echo "pending=true" >> "$GITHUB_OUTPUT"
             echo "::notice::$count changelog entr(y/ies) still pending - the release " \
                  "build runs on the fold commit that changelog-fold.yml is about to push."
@@ -114,12 +154,14 @@ jobs:
 
     # Is this run producing release artifacts, or checking a change?
     #
-    # Only a push to main is a release build. A pull_request run and a
+    # Only main builds releases: a push to it, or the release dispatch that
+    # changelog-fold.yml sends after its version commit (a push made with
+    # GITHUB_TOKEN starts no workflow). A pull_request run and a hand-started
     # workflow_dispatch validation run are not, and the macOS signing and
     # notarization steps below are skipped for them - see the comment on
     # "Package (macOS)" for why that matters.
     env:
-      RELEASE_BUILD: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      RELEASE_BUILD: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true) }}
 
       # ccache. There is no incremental state between runs on a hosted runner,
       # so without this every leg compiles all ~1136 objects from scratch even
@@ -148,6 +190,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          ref: ${{ inputs.sha }}   # the fold's version commit; empty = the event's commit
           submodules: recursive
           # Full history, not the default single commit. GitRepositoryTest
           # walks this repository's own commits, so under a shallow checkout it
@@ -469,6 +512,7 @@ jobs:
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
@@ -489,6 +533,7 @@ jobs:
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
@@ -614,6 +659,11 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure -R UltraNet
 
+      # ULTRACANVAS_BUILD_ULTRAMAIL_TESTS likewise (UltraMailEngine): it was
+      # built by nobody until 2026-09-28, and a test expecting Gmail to take a
+      # typed password had been failing unseen for five days. Its vault tests
+      # need libsodium, which every row installs.
+      #
       # ULTRACANVAS_BUILD_EMAILCLEANER_TESTS is on for every row, not just the
       # Linux one that runs ctest: the suite is headless (no display, no
       # network), so building it on macOS and Windows costs seconds and gates
@@ -859,6 +909,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha }}
 
       - name: Install host dependency headers
         run: |

@@ -1,3 +1,8 @@
+#### 2026-09-28 *1.0.2*
+- **The version is in the window title** — `UltraViewer 1.0.2` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`). The build also stops passing the framework's version as `ULTRAVIEWER_VERSION`: it is now UltraViewer's own, from this file.
+
 #### 2026-09-19 *1.0.1*
 - **UltraViewer has a new icon.** The four coloured arcs around a black play
   button (`media/appicon/UltraViewer.svg`) replace the purple picture-frame

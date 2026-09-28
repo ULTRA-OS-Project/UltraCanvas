@@ -238,7 +238,11 @@ endforeach()
 # same file by name; UCAPP_ICON_PATH is the fallback the core applies when an
 # app sets no icon of its own (UltraCanvasApplicationBase::Initialize), so the
 # two agreeing is what keeps a window from ever coming up unbranded.
+# The version shown in the window title: the first line of
+# Docs/UltraMail/CHANGELOG.md (cmake/UltraCanvasVersion.cmake).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
 target_compile_definitions(UltraMail PRIVATE
+        ULTRAMAIL_VERSION="${ULTRAMAIL_VERSION}"
         UCAPP_ICON_PATH="media/appicon/UltraMail.png")
 
 # Embed the app icon in the .exe (Windows only). This is the icon Explorer and

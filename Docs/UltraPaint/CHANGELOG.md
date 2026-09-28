@@ -1,3 +1,8 @@
+#### 2026-09-28 *0.2.8*
+- **The version is in the window title** — `UltraPaint 0.2.8` — so a screenshot or a
+  bug report says which build it came from. The number is this changelog's
+  first line, as everywhere else (`cmake/UltraCanvasVersion.cmake`). With a picture open it reads `picture.png - UltraPaint x.y.z`.
+
 #### 2026-09-26 *0.2.7*
 - **Right click on a palette swatch sets the background colour.** It used
   to do nothing; the background swatch and the paint background now follow.

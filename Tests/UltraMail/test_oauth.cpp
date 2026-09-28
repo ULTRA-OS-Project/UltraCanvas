@@ -58,6 +58,9 @@ TEST(oauth_provider_is_google_for_gmail_and_microsoft_for_outlook) {
 }
 
 TEST(app_password_needed_at_yahoo_icloud_and_oauth_providers) {
+    // "Needs an app password" describes the provider (a normal password is
+    // refused); whether UltraMail takes a typed password at all is
+    // ProviderAcceptsPassword below - only iCloud of these still does.
     REQUIRE(ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@yahoo.de")));
     REQUIRE(ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@icloud.com")));
     REQUIRE(ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@me.com")));
@@ -71,7 +74,10 @@ TEST(app_password_needed_at_yahoo_icloud_and_oauth_providers) {
     // Microsoft retired basic authentication: no password of any kind.
     REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@outlook.com")));
     REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@hotmail.com")));
-    REQUIRE(ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@gmail.com")));
+    // Google: the browser sign-in only (since 2026-09-23) - the wizard hides the
+    // password row, and the settings page offers "Sign in with Google" instead.
+    REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@gmail.com")));
+    REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@googlemail.com")));
     // Yahoo deprecated app passwords: OAuth-only, no typed password.
     REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@yahoo.com")));
     REQUIRE(ProviderAcceptsPassword(DiscoveryResult{}));

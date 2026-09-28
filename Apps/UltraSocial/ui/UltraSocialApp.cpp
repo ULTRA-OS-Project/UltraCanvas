@@ -22,6 +22,14 @@
 #include <filesystem>
 #include <thread>
 
+// ULTRASOCIAL_VERSION comes from the build alone: CMake reads the first line of
+// Docs/UltraSocial/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
+// compile definition. No fallback, so a build that lost it fails instead of
+// showing a wrong number in the window title.
+#ifndef ULTRASOCIAL_VERSION
+#error "ULTRASOCIAL_VERSION is not defined: build through CMake, which reads it from Docs/UltraSocial/CHANGELOG.md"
+#endif
+
 using namespace UltraCanvas;
 
 namespace UltraSocial {
@@ -48,7 +56,7 @@ bool UltraSocialApp::Initialize(const std::string& dataDir) {
 
 std::shared_ptr<UltraCanvasWindow> UltraSocialApp::CreateMainWindow() {
     WindowConfig config;
-    config.title  = "UltraSocial";
+    config.title  = "UltraSocial " ULTRASOCIAL_VERSION;
     config.width  = 990;
     config.height = 700;
     window_ = CreateWindow(config);

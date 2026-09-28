@@ -852,6 +852,10 @@ if(BUILD_ULTRAWIN_MANAGER AND TARGET UltraWin)
         ${ULTRACANVAS_LIBRARY}
         UltraWin
     )
+    # Shown in the window title: the first line of
+    # Docs/Modules/UltraWin/CHANGELOG.md (cmake/UltraCanvasVersion.cmake).
+    target_compile_definitions(UltraWinManager PRIVATE
+        ULTRAWIN_VERSION="${ULTRAWIN_VERSION}")
     message(STATUS "  [✓] UltraWinManager - ENABLED")
 endif()
 
@@ -1202,7 +1206,9 @@ if (BUILD_ULTRAVIEWER_APP)
     target_compile_features(UltraViewer PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraViewer PRIVATE
-            ULTRAVIEWER_VERSION="${PROJECT_VERSION}"
+            # UltraViewer versions itself (Docs/UltraViewer/CHANGELOG.md);
+            # PROJECT_VERSION here is the framework's.
+            ULTRAVIEWER_VERSION="${ULTRAVIEWER_VERSION}"
             UCAPP_ICON_PATH="media/appicon/UltraViewer.png"
             $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )

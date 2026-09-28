@@ -184,6 +184,11 @@ if(ANCHORPOINT_BUILD_GUI)
         endif()
 
         target_compile_features(AnchorPoint PRIVATE cxx_std_20)
+        # The version shown in the window title: the first line of
+        # Docs/AnchorPoint/CHANGELOG.md (cmake/UltraCanvasVersion.cmake).
+        include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/UltraCanvasVersion.cmake")
+        target_compile_definitions(AnchorPoint PRIVATE
+                ANCHORPOINT_VERSION="${ANCHORPOINT_VERSION}")
         set_target_properties(AnchorPoint PROPERTIES
                 OUTPUT_NAME "AnchorPoint"
                 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
