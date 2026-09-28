@@ -4,7 +4,7 @@
 // (UltraCanvasDWGDecoder) and each sample in media/vector/DXF is read
 // directly; both are built into a VectorStorage::VectorDocument by the DXF
 // reader and shown in an UltraCanvasVectorElement; a click opens the drawing
-// fullscreen with pan and zoom. The status line reports what the reader
+// in the demo's media viewer window. The status line reports what the reader
 // found and any entity types it skipped.
 // Version: 1.1.0
 // Last Modified: 2026-09-10
@@ -71,80 +71,6 @@ namespace {
         return buf;
     }
 
-// ===== FULLSCREEN VIEWER =====
-    class DWGDemoHandler {
-    private:
-        std::shared_ptr<UltraCanvasWindow> fullscreenWindow;
-        std::string filePath;
-        std::shared_ptr<VectorStorage::VectorDocument> document;
-
-    public:
-        DWGDemoHandler(std::string path, std::shared_ptr<VectorStorage::VectorDocument> doc)
-                : filePath(std::move(path)), document(std::move(doc)) {}
-
-        void OnClick() {
-            if (!fullscreenWindow) CreateFullscreenWindow();
-        }
-
-        void CreateFullscreenWindow() {
-            int screenWidth = 1920;
-            int screenHeight = 1080;
-
-            WindowConfig config;
-            config.title = "CAD Viewer - " + filePath;
-            config.width = screenWidth;
-            config.height = screenHeight;
-            config.x = 0;
-            config.y = 0;
-            config.type = WindowType::Fullscreen;
-            config.resizable = false;
-
-            fullscreenWindow = CreateWindow(config);
-            fullscreenWindow->SetBackgroundColor(Color(32, 32, 32, 255));
-
-            auto viewer = CreateVectorElement("FullscreenDWG", 0, 50, screenWidth, screenHeight - 100);
-            VectorElementOptions opts = viewer->GetOptions();
-            opts.InteractionMode = VectorInteractionMode::PanZoom;
-            opts.BackgroundColor = Colors::White;
-            opts.MinZoom = 0.05f;
-            opts.MaxZoom = 200.0f;
-            viewer->SetOptions(opts);
-            if (document) viewer->SetDocument(document);
-            fullscreenWindow->AddChild(viewer);
-
-            auto makeButton = [&](const std::string& id, int x, int w, const std::string& text,
-                                  std::function<void()> action) {
-                auto btn = std::make_shared<UltraCanvasButton>(id, x, 10, w, 30);
-                btn->SetText(text);
-                btn->SetColors(Color(60, 60, 65, 255));
-                btn->SetTextColors(Colors::White);
-                btn->onClick = std::move(action);
-                fullscreenWindow->AddChild(btn);
-            };
-            makeButton("BtnZoomOut", 400, 40, "−", [viewer]() { viewer->SetZoom(viewer->GetZoom() / 1.25f); });
-            makeButton("BtnZoomIn", 450, 40, "+", [viewer]() { viewer->SetZoom(viewer->GetZoom() * 1.25f); });
-            makeButton("BtnFit", 500, 80, "Fit Page", [viewer]() { viewer->ZoomToFit(); });
-
-            auto hint = std::make_shared<UltraCanvasLabel>("Instructions", screenWidth - 420, 10, 410, 30);
-            hint->SetText("Drag to pan, wheel to zoom, ESC to close");
-            hint->SetTextColor(Color(200, 200, 200, 255));
-            fullscreenWindow->AddChild(hint);
-
-            fullscreenWindow->SetEventCallback([this](const UCEvent& event) {
-                if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                    if (fullscreenWindow) {
-                        fullscreenWindow->Close();
-                        fullscreenWindow.reset();
-                    }
-                    return true;
-                }
-                return false;
-            });
-
-            fullscreenWindow->Show();
-        }
-    };
-
 }   // namespace
 
 // ===== DWG VECTOR EXAMPLES IMPLEMENTATION =====
@@ -153,20 +79,20 @@ namespace {
         container->SetBackgroundColor(Color(245, 245, 245, 255));
 
         auto title = std::make_shared<UltraCanvasLabel>("DWGTitle", 10, 10, 700, 30);
-        title->SetText("AutoCAD DWG and DXF Drawings - Click to View Fullscreen");
+        title->SetText("AutoCAD DWG and DXF Drawings - Click to Open in the Media Viewer");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
         auto description = std::make_shared<UltraCanvasLabel>("DWGDescription", 10, 45, 900, 40);
         description->SetText("Native DWG decoding (R13 to R2018) with no external tools, and the DXF reader it shares: blocks,\n"
-                             "layers, hatches, splines, dimensions and 3D meshes projected to plan view. Click a drawing to pan and zoom.");
+                             "layers, hatches, splines, dimensions and 3D meshes projected to plan view. Click a drawing to open it in the media viewer.");
         description->SetFontSize(12);
         description->SetTextColor(Color(80, 80, 80, 255));
         container->AddChild(description);
 
         auto statusLabel = std::make_shared<UltraCanvasLabel>("DWGStatus", 10, 712, 980, 60);
-        statusLabel->SetText("Ready. Click a drawing to view it fullscreen.");
+        statusLabel->SetText("Ready. Click a drawing to open it in the media viewer.");
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
@@ -206,11 +132,11 @@ namespace {
             label->SetFontSize(11);
             tile->AddChild(label);
 
-            auto handler = std::make_shared<DWGDemoHandler>(path, loaded.document);
-            element->SetEventCallback([handler, tile, statusLabel, summary](const UCEvent& event) {
+            element->SetMouseCursor(UCMouseCursor::Hand);
+            element->SetEventCallback([tile = tile.get(), statusLabel, summary, path](const UCEvent& event) {
                 switch (event.type) {
                     case UCEventType::MouseUp:
-                        handler->OnClick();
+                        ShowFullSizeImageViewer(path);
                         return true;
                     case UCEventType::MouseEnter:
                         tile->SetBordersColor(Color(0, 122, 204, 255));

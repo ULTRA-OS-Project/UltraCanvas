@@ -17,106 +17,27 @@
 
 namespace UltraCanvas {
 
-// ===== SVG DEMO IMPLEMENTATION =====
-    class SVGDemoHandler {
-    private:
-        std::shared_ptr<UltraCanvasWindow> fullscreenWindow;
-        std::string svgFilePath;
-
-    public:
-        SVGDemoHandler(const std::string& filePath)
-                : svgFilePath(filePath) {}
-
-        void OnSVGClick() {
-            if (!fullscreenWindow) {
-                CreateFullscreenWindow();
-            }
-        }
-
-        void CreateFullscreenWindow() {
-            // Get screen dimensions (you may need to implement GetScreenDimensions)
-            int screenWidth = 1920;  // Default HD resolution
-            int screenHeight = 1080;
-
-            // Create fullscreen window configuration
-            WindowConfig config;
-            config.title = "SVG Fullscreen Viewer";
-            config.width = screenWidth;
-            config.height = screenHeight;
-            config.x = 0;
-            config.y = 0;
-            config.type = WindowType::Fullscreen;
-            config.resizable = false;
-
-            // Create the fullscreen window
-            fullscreenWindow = CreateWindow(config);
-            fullscreenWindow->SetBackgroundColor(Color(32, 32, 32, 255));
-
-            // Create fullscreen SVG element
-            auto fullscreenSVG = std::make_shared<UltraCanvasImageElement>(
-                    "FullscreenSVG",
-                    0, 0,
-                    1900, 1000
-            );
-
-            // Load the same SVG file
-            if (!svgFilePath.empty()) {
-                fullscreenSVG->LoadFromFile(svgFilePath);
-            }
-
-            // Add SVG to fullscreen window
-            fullscreenWindow->AddChild(fullscreenSVG);
-
-            // Create instruction label
-            auto instructionLabel = std::make_shared<UltraCanvasLabel>(
-                    "Instructions",
-                    10, 10,
-                    300, 30
-            );
-            instructionLabel->SetText("Press ESC to close");
-            instructionLabel->SetTextColor(Color(200, 200, 200, 255));
-            instructionLabel->SetBackgroundColor(Color(50, 50, 50, 200));
-            instructionLabel->SetFontSize(14);
-            fullscreenWindow->AddChild(instructionLabel);
-
-            // Setup keyboard event handler for ESC key
-            fullscreenWindow->eventCallback = [this](const UCEvent& event) {
-                if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                    if (fullscreenWindow) {
-                        fullscreenWindow->Close();
-                        fullscreenWindow.reset();
-                    }
-                    return true;
-                }
-                return false;
-            };
-
-            // Show the window
-            fullscreenWindow->Show();
-        }
-    };
-
 // ===== VECTOR/SVG EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSVGVectorExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("VectorExamples", 0, 0, 1000, 780);
 
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("VectorTitle", 10, 10, 500, 30);
-        title->SetText("SVG Graphics Demo - Click to View Fullscreen");
+        title->SetText("SVG Graphics Demo - Click to Open in the Media Viewer");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
         // Description
         auto description = std::make_shared<UltraCanvasLabel>("Description", 10, 45, 600, 40);
-        description->SetText("Every .svg sample shipped under media/vector/SVG. Click a drawing to open it in fullscreen mode.\nPress ESC to close the fullscreen view.");
+        description->SetText("Every .svg sample shipped under media/vector/SVG. Click a drawing to open it in the media viewer.\nThe arrow keys step through the folder there; ESC closes it.");
         description->SetFontSize(12);
         description->SetTextColor(Color(80, 80, 80, 255));
         container->AddChild(description);
 
         // Status label for feedback
         auto statusLabel = std::make_shared<UltraCanvasLabel>("SVGStatus", 10, 700, 980, 60);
-        statusLabel->SetText("Ready. Click on an SVG file to view it fullscreen.");
+        statusLabel->SetText("Ready. Click on an SVG file to open it in the media viewer.");
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
@@ -141,12 +62,12 @@ namespace UltraCanvas {
             label->SetFontSize(11);
             tile->AddChild(label);
 
-            auto handler = std::make_shared<SVGDemoHandler>(path);
-            element->SetEventCallback([handler, tile, statusLabel, path](const UCEvent& event) {
+            element->SetMouseCursor(UCMouseCursor::Hand);
+            element->SetEventCallback([tile = tile.get(), statusLabel, path](const UCEvent& event) {
                 switch (event.type) {
                     case UCEventType::MouseUp:
-                        handler->OnSVGClick();
-                        statusLabel->SetText("Opened fullscreen: " + path);
+                        ShowFullSizeImageViewer(path);
+                        statusLabel->SetText("Opened in the media viewer: " + path);
                         return true;
                     case UCEventType::MouseEnter:
                         tile->SetBordersColor(Color(100, 149, 237, 255));
@@ -188,7 +109,7 @@ namespace UltraCanvas {
         infoText->SetText(
                 "• Load from file or string   • ViewBox transformation   • Auto-resize   • Basic shapes, paths and curves\n"
                 "• Text rendering   • Group hierarchies   • Style attributes\n"
-                "• Click any drawing for the fullscreen view, ESC to close"
+                "• Click any drawing to open it in the media viewer, ESC to close"
         );
         infoText->SetFontSize(12);
         infoText->SetTextColor(Color(60, 60, 60, 255));

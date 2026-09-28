@@ -16,131 +16,6 @@
 
 namespace UltraCanvas {
 
-// ===== XAR DEMO HANDLER =====
-    class XARDemoHandler {
-    private:
-        std::shared_ptr<UltraCanvasWindow> fullscreenWindow;
-        std::string xarFilePath;
-
-    public:
-        XARDemoHandler(const std::string& filePath) : xarFilePath(filePath) {}
-
-        void OnXARClick() {
-            if (!fullscreenWindow) {
-                CreateFullscreenWindow();
-            }
-        }
-
-        void CreateFullscreenWindow() {
-            int screenWidth = 1920;
-            int screenHeight = 1080;
-
-            WindowConfig config;
-            config.title = "XAR Fullscreen Viewer";
-            config.width = screenWidth;
-            config.height = screenHeight;
-            config.x = 0;
-            config.y = 0;
-            config.type = WindowType::Fullscreen;
-            config.resizable = false;
-
-            fullscreenWindow = CreateWindow(config);
-            fullscreenWindow->SetBackgroundColor(Color(32, 32, 32, 255));
-
-            auto fullscreenXAR = std::make_shared<UltraCanvasXARElement>(
-                    "FullscreenXAR", 0, 50, screenWidth, screenHeight - 100);
-            if (!xarFilePath.empty()) {
-                fullscreenXAR->LoadFromFile(xarFilePath);
-            }
-            fullscreenWindow->AddChild(fullscreenXAR);
-
-            // Page navigation (multi-page documents render one spread at a time)
-            auto btnPrev = std::make_shared<UltraCanvasButton>("BtnPrev", 10, 10, 80, 30);
-            btnPrev->SetText("◀ Prev");
-            btnPrev->SetColors(Color(60, 60, 65, 255));
-            btnPrev->SetTextColors(Colors::White);
-            btnPrev->onClick = [fullscreenXAR]() {
-                if (fullscreenXAR->IsLoaded()) {
-                    fullscreenXAR->SetCurrentPage(fullscreenXAR->GetCurrentPage() - 1);
-                }
-            };
-            fullscreenWindow->AddChild(btnPrev);
-
-            auto btnNext = std::make_shared<UltraCanvasButton>("BtnNext", 100, 10, 80, 30);
-            btnNext->SetText("Next ▶");
-            btnNext->SetColors(Color(60, 60, 65, 255));
-            btnNext->SetTextColors(Colors::White);
-            btnNext->onClick = [fullscreenXAR]() {
-                if (fullscreenXAR->IsLoaded()) {
-                    fullscreenXAR->SetCurrentPage(fullscreenXAR->GetCurrentPage() + 1);
-                }
-            };
-            fullscreenWindow->AddChild(btnNext);
-
-            auto pageLabel = std::make_shared<UltraCanvasLabel>("PageLabel", 200, 10, 150, 30);
-            pageLabel->SetTextColor(Colors::White);
-            if (fullscreenXAR->IsLoaded()) {
-                pageLabel->SetText("Page 1/" + std::to_string(fullscreenXAR->GetPageCount()));
-            }
-            fullscreenWindow->AddChild(pageLabel);
-
-            fullscreenXAR->onPageChanged = [pageLabel, fullscreenXAR = fullscreenXAR.get()](int page) {
-                pageLabel->SetText("Page " + std::to_string(page + 1) + "/" +
-                                   std::to_string(fullscreenXAR->GetPageCount()));
-            };
-
-            // Zoom buttons
-            auto btnZoomOut = std::make_shared<UltraCanvasButton>("BtnZoomOut", 400, 10, 40, 30);
-            btnZoomOut->SetText("−");
-            btnZoomOut->SetColors(Color(60, 60, 65, 255));
-            btnZoomOut->SetTextColors(Colors::White);
-            btnZoomOut->onClick = [fullscreenXAR]() {
-                fullscreenXAR->SetScale(fullscreenXAR->GetScale() / 1.25f);
-            };
-            fullscreenWindow->AddChild(btnZoomOut);
-
-            auto btnZoomIn = std::make_shared<UltraCanvasButton>("BtnZoomIn", 450, 10, 40, 30);
-            btnZoomIn->SetText("+");
-            btnZoomIn->SetColors(Color(60, 60, 65, 255));
-            btnZoomIn->SetTextColors(Colors::White);
-            btnZoomIn->onClick = [fullscreenXAR]() {
-                fullscreenXAR->SetScale(fullscreenXAR->GetScale() * 1.25f);
-            };
-            fullscreenWindow->AddChild(btnZoomIn);
-
-            auto btnFitPage = std::make_shared<UltraCanvasButton>("BtnFit", 500, 10, 80, 30);
-            btnFitPage->SetText("Fit Page");
-            btnFitPage->SetColors(Color(60, 60, 65, 255));
-            btnFitPage->SetTextColors(Colors::White);
-            btnFitPage->onClick = [fullscreenXAR]() {
-                fullscreenXAR->SetScale(1.0f);
-                fullscreenXAR->SetPreserveAspectRatio(true);
-            };
-            fullscreenWindow->AddChild(btnFitPage);
-
-            // Instructions label
-            auto instructionLabel = std::make_shared<UltraCanvasLabel>(
-                    "Instructions", screenWidth - 200, 10, 190, 30);
-            instructionLabel->SetText("Press ESC to close");
-            instructionLabel->SetTextColor(Color(200, 200, 200, 255));
-            fullscreenWindow->AddChild(instructionLabel);
-
-            // ESC key handler
-            fullscreenWindow->SetEventCallback([this](const UCEvent& event) {
-                if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                    if (fullscreenWindow) {
-                        fullscreenWindow->Close();
-                        fullscreenWindow.reset();
-                    }
-                    return true;
-                }
-                return false;
-            });
-
-            fullscreenWindow->Show();
-        }
-    };
-
 // ===== XAR VECTOR EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateXARVectorExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("XARExamples", 0, 0, 1000, 1080);
@@ -148,14 +23,14 @@ namespace UltraCanvas {
 
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("XARTitle", 10, 10, 600, 30);
-        title->SetText("Xara (.xar) Graphics Demo - Click to View Fullscreen");
+        title->SetText("Xara (.xar) Graphics Demo - Click to Open in the Media Viewer");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
         // Description
         auto description = std::make_shared<UltraCanvasLabel>("XARDescription", 10, 45, 700, 40);
-        description->SetText("Click a drawing to open it in fullscreen; use the page buttons for multi-page documents\nand the zoom buttons to inspect details. Press ESC to close the fullscreen view.");
+        description->SetText("Click a drawing to open it in the media viewer; zoom there to inspect details and use\nthe arrow keys to step through the folder. Press ESC to close the viewer.");
         description->SetFontSize(12);
         description->SetTextColor(Color(80, 80, 80, 255));
         container->AddChild(description);
@@ -189,12 +64,12 @@ namespace UltraCanvas {
             label->SetFontSize(11);
             tile->AddChild(label);
 
-            auto handler = std::make_shared<XARDemoHandler>(path);
-            element->SetEventCallback([handler, tile, statusLabel, path](const UCEvent& event) {
+            element->SetMouseCursor(UCMouseCursor::Hand);
+            element->SetEventCallback([tile = tile.get(), statusLabel, path](const UCEvent& event) {
                 switch (event.type) {
                     case UCEventType::MouseUp:
-                        handler->OnXARClick();
-                        statusLabel->SetText("Opened fullscreen: " + path);
+                        ShowFullSizeImageViewer(path);
+                        statusLabel->SetText("Opened in the media viewer: " + path);
                         return true;
                     case UCEventType::MouseEnter:
                         tile->SetBordersColor(Color(0, 122, 204, 255));
@@ -235,7 +110,7 @@ namespace UltraCanvas {
                 "✓ Text: fonts, justification, lists\n"
                 "✓ Embedded bitmaps with transparency\n"
                 "✓ Multi-page documents (spreads)\n"
-                "✓ Zoom and fullscreen viewing\n"
+                "✓ Opens in the media viewer\n"
         );
         infoText->SetFontSize(11);
         infoText->SetTextColor(Color(50, 50, 50, 255));

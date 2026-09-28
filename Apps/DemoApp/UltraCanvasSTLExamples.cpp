@@ -5,9 +5,9 @@
 // binary, auto-detected) and displayed in an UltraCanvasSTLElement: a shaded,
 // mouse-orbited 3D view on GL builds, a mesh info placeholder otherwise. The stats
 // panel reports what the parser found - triangles, vertices, bounds, encoding and
-// parse time - and the sample can be opened fullscreen.
-// Version: 1.1.0
-// Last Modified: 2026-09-17
+// parse time - and the sample can be opened in the media viewer window.
+// Version: 1.2.0
+// Last Modified: 2026-09-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -165,100 +165,6 @@ namespace {
         return btn;
     }
 
-// ===== FULLSCREEN VIEWER =====
-    // Holds the parsed samples so opening the fullscreen viewer re-uses the mesh
-    // already in memory instead of copying or re-parsing it.
-    class STLDemoHandler {
-    private:
-        std::shared_ptr<UltraCanvasWindow> fullscreenWindow;
-        std::shared_ptr<std::vector<StlSample>> samples;
-        std::shared_ptr<size_t> currentIndex;
-        size_t colorIndex = 0;
-        bool autoRotate = true;
-
-    public:
-        STLDemoHandler(std::shared_ptr<std::vector<StlSample>> loadedSamples,
-                       std::shared_ptr<size_t> index)
-                : samples(std::move(loadedSamples)), currentIndex(std::move(index)) {}
-
-        void OnClick() {
-            if (fullscreenWindow) return;
-            if (!samples || !currentIndex || *currentIndex >= samples->size()) return;
-            const StlSample& sample = (*samples)[*currentIndex];
-            if (!sample.loaded) return;
-            CreateFullscreenWindow(sample);
-        }
-
-        void CreateFullscreenWindow(const StlSample& sample) {
-            const int screenWidth = 1920;
-            const int screenHeight = 1080;
-
-            WindowConfig config;
-            config.title = "STL Viewer - " + sample.fileName;
-            config.width = screenWidth;
-            config.height = screenHeight;
-            config.x = 0;
-            config.y = 0;
-            config.type = WindowType::Fullscreen;
-            config.resizable = false;
-
-            fullscreenWindow = CreateWindow(config);
-            fullscreenWindow->SetBackgroundColor(Color(32, 32, 32, 255));
-
-            auto viewer = std::make_shared<UltraCanvasSTLElement>(
-                    "FullscreenSTL", 0, 50, static_cast<float>(screenWidth),
-                    static_cast<float>(screenHeight - 50));
-            viewer->SetMesh(sample.mesh);
-            viewer->SetModelColor(ModelColors()[colorIndex].second);
-            viewer->SetAutoRotate(autoRotate);
-            fullscreenWindow->AddChild(viewer);
-
-            auto rotateBtn = MakeToolButton("STLFsRotate", 10, 10, 130, "Auto-rotate: on", nullptr);
-            rotateBtn->onClick = [this, viewer, rotateBtn = rotateBtn.get()]() {
-                autoRotate = !autoRotate;
-                viewer->SetAutoRotate(autoRotate);
-                rotateBtn->SetText(autoRotate ? "Auto-rotate: on" : "Auto-rotate: off");
-            };
-            rotateBtn->SetText(autoRotate ? "Auto-rotate: on" : "Auto-rotate: off");
-            fullscreenWindow->AddChild(rotateBtn);
-
-            auto materialBtn = MakeToolButton("STLFsMaterial", 150, 10, 140,
-                                              "Material: " + ModelColors()[colorIndex].first, nullptr);
-            materialBtn->onClick = [this, viewer, materialBtn = materialBtn.get()]() {
-                colorIndex = (colorIndex + 1) % ModelColors().size();
-                viewer->SetModelColor(ModelColors()[colorIndex].second);
-                materialBtn->SetText("Material: " + ModelColors()[colorIndex].first);
-            };
-            fullscreenWindow->AddChild(materialBtn);
-
-            auto closeBtn = MakeToolButton("STLFsClose", 300, 10, 90, "Close",
-                                           [this]() { CloseFullscreenWindow(); });
-            fullscreenWindow->AddChild(closeBtn);
-
-            auto hint = std::make_shared<UltraCanvasLabel>("STLFsHint", 410, 10, 900, 30);
-            hint->SetText(sample.fileName + " - drag to orbit, wheel to zoom, ESC to close");
-            hint->SetTextColor(Color(200, 200, 200, 255));
-            hint->SetFontSize(12);
-            fullscreenWindow->AddChild(hint);
-
-            fullscreenWindow->SetEventCallback([this](const UCEvent& event) {
-                if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                    CloseFullscreenWindow();
-                    return true;
-                }
-                return false;
-            });
-
-            fullscreenWindow->Show();
-        }
-
-        void CloseFullscreenWindow() {
-            if (!fullscreenWindow) return;
-            fullscreenWindow->Close();
-            fullscreenWindow.reset();
-        }
-    };
-
 } // namespace
 
 // ===== STL DEMO PAGE =====
@@ -334,7 +240,6 @@ namespace {
         auto currentIndex = std::make_shared<size_t>(0);
         auto colorIndex = std::make_shared<size_t>(0);
         auto autoRotate = std::make_shared<bool>(true);
-        auto handler = std::make_shared<STLDemoHandler>(samples, currentIndex);
 
         auto showSample = [samples, files, currentIndex, viewer, nameLabel, statsText,
                            statusLabel](size_t index) {
@@ -374,8 +279,13 @@ namespace {
         };
         viewerPanel->AddChild(materialBtn);
 
-        auto fullscreenBtn = MakeToolButton("STLFullscreen", 290, 450, 150, "View Fullscreen",
-                                            [handler]() { handler->OnClick(); });
+        // The media viewer opens the file itself and walks the rest of
+        // media/3D/STL with the arrow keys.
+        auto fullscreenBtn = MakeToolButton("STLFullscreen", 290, 450, 150, "Open in Viewer",
+                                            [files, currentIndex]() {
+                                                if (*currentIndex < files.size())
+                                                    ShowFullSizeImageViewer(files[*currentIndex]);
+                                            });
         viewerPanel->AddChild(fullscreenBtn);
 
         if (files.size() > 1) {
