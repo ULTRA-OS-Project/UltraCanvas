@@ -10,6 +10,7 @@
 #pragma once
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetCurlError.h>   // Context, for RecordContext
 #include <UltraNet/UltraNetPlugins.h>
 
 #include <curl/curl.h>
@@ -70,6 +71,49 @@ inline UltraNetResult Apply(CURL* h, const UltraNetMailOptions& opt, Protocol pr
     if (const char* login = LoginOptions(opt.auth, protocol))
         curl_easy_setopt(h, CURLOPT_LOGIN_OPTIONS, login);
     return UltraNetResult::Ok();
+}
+
+// The authentication method as the server settings page names it.
+inline const char* MethodName(UltraNetMailAuth auth) {
+    switch (auth) {
+        case UltraNetMailAuth::Password:          return "Normal password";
+        case UltraNetMailAuth::EncryptedPassword: return "Encrypted password";
+        case UltraNetMailAuth::OAuth2:            return "OAuth2";
+        case UltraNetMailAuth::Kerberos:          return "Kerberos / GSSAPI";
+        case UltraNetMailAuth::NTLM:              return "NTLM";
+        case UltraNetMailAuth::None:              return "No authentication";
+        case UltraNetMailAuth::Any:
+        default:                                  return "Automatic";
+    }
+}
+
+// Records the connection about to run for the diagnostics of a failure
+// (ultranet_curlerror::CurrentContext): the component, how TLS starts, and
+// the sign-in - method, curl's login options, the kind of credential and the
+// user name (never the password or token). `startTlsRequired` is whether a
+// plain connection must upgrade (CURLUSESSL_ALL) or merely may (CURLUSESSL_TRY).
+inline void RecordContext(const std::string& component, const UltraNetMailOptions& opt,
+                          Protocol protocol, bool implicitTls, bool startTlsRequired) {
+    ultranet_curlerror::Context& ctx = ultranet_curlerror::CurrentContext();
+    ctx.component = component;
+
+    if (implicitTls)       ctx.tls = "implicit TLS from connect";
+    else if (!opt.useTls)  ctx.tls = "none - plain text";
+    else if (startTlsRequired) ctx.tls = "STARTTLS, required";
+    else                   ctx.tls = "STARTTLS if the server offers it";
+
+    const auto& cred = opt.credentials;
+    const bool bearer = !cred.token.empty() &&
+        (cred.type == UltraNetAuthType::OAuth2 || cred.type == UltraNetAuthType::Bearer);
+    std::string s = MethodName(opt.auth);
+    if (const char* login = LoginOptions(opt.auth, protocol)) s += std::string(" (") + login + ")";
+    if (opt.auth == UltraNetMailAuth::None) {
+        s += ", no credentials sent";
+    } else {
+        s += bearer ? ", OAuth2 token" : (cred.password.empty() ? ", no password" : ", password");
+        if (!cred.username.empty()) s += ", user " + cred.username;
+    }
+    ctx.signIn = s;
 }
 
 } // namespace ultranet_curlmailauth

@@ -36,9 +36,15 @@ struct SyncOutcome {
     bool        ok = true;
     std::string message;
     SyncStats   stats;
+    // On a network failure, the connection chain the plug-in reported
+    // (UltraNetResult::diagnostics): component, server, TLS, libraries, roots.
+    std::string diagnostics;
 
     explicit operator bool() const { return ok; }
-    static SyncOutcome Fail(const std::string& m) { return SyncOutcome{false, m, {}}; }
+    static SyncOutcome Fail(const std::string& m) { return SyncOutcome{false, m, {}, {}}; }
+    static SyncOutcome Fail(const UltraNetResult& r) {
+        return SyncOutcome{false, r.message, {}, r.diagnostics};
+    }
 };
 
 class SyncEngine {

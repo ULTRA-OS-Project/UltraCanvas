@@ -87,6 +87,11 @@ struct UltraNetResult {
     UltraNetResultCode code = UltraNetResultCode::Unknown;
     bool success = false;
     std::string message;
+    // On a failure, the chain of what was running, one "Name: value" line
+    // each - component and version, server, TLS mode, sign-in, library and
+    // TLS backend versions, trusted roots, system - for a "Details" view and
+    // bug reports (UltraNet/UltraNetCurlError.h). Empty when not known.
+    std::string diagnostics;
     std::string url;
     int httpStatus = 0;         // 0 if not HTTP
     double processingTime = 0;  // seconds
@@ -249,6 +254,17 @@ std::string    UltraNet_GetBackendInfo();
 // Windows, where the system libcurl's baked-in path does not exist on an end
 // user's machine.
 std::string    UltraNet_ResolveCaBundlePath();
+
+// The trust roots UltraNet's TLS connections verify against, for diagnostics:
+// "the Windows certificate store" (Schannel), "C:\...\cacert.pem and the
+// Windows certificate store" (OpenSSL on Windows), "/etc/ssl/certs/ca-
+// certificates.crt" - the same decision the HTTP client and the mail plug-ins
+// act on (UltraNet_ResolveCaBundlePath).
+std::string    UltraNet_DescribeTrustRoots();
+
+// The operating system, its version and the architecture, for diagnostics:
+// "Windows 10.0 build 26100, x64" / "Linux 6.8.0-45-generic, x86_64".
+std::string    UltraNet_DescribePlatform();
 
 // True if the linked libcurl was built with HTTP/3 (QUIC) support
 // (CURL_VERSION_HTTP3). Apps can probe this before setting

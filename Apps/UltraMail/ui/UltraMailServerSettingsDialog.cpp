@@ -431,6 +431,20 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         };
     }
 
+    // "Details" appears after a failed check that reported its connection
+    // chain (UltraNetResult::diagnostics): which component, server, TLS mode,
+    // sign-in, library versions and trusted roots were involved. The status
+    // line has room for the reason only; this is what a bug report needs.
+    auto diagnostics = std::make_shared<std::string>();
+    auto detailsBtn = CreateButton("srvDetails", 0, 0, 90, Theme::kControlHeight, "Details");
+    Theme::StyleSecondary(detailsBtn);
+    detailsBtn->SetVisible(false);
+    detailsBtn->onClick = [diagnostics, status]() {
+        AlertWarning(nullptr, "Connection details",
+                     WithDiagnostics(status->GetText(), *diagnostics));
+    };
+    buttonRow->AddChild(detailsBtn);
+
     // "Save anyway" appears after a failed check, for a server that is down
     // right now or a check that could not run (no plug-in).
     auto anywayBtn = CreateButton("srvSaveAnyway", 0, 0, 130, Theme::kControlHeight, "Save anyway");
@@ -454,7 +468,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // by the dialog still being alive.
     UltraCanvasButton* save   = saveBtn.get();
     UltraCanvasButton* anyway = anywayBtn.get();
-    saveBtn->onClick = [weak, collect, result, verify, status, save, anyway]() {
+    UltraCanvasButton* details = detailsBtn.get();
+    saveBtn->onClick = [weak, collect, result, verify, status, save, anyway, details, diagnostics]() {
         Result r;
         if (!collect(r)) return;
         auto dlg = weak.lock();
@@ -468,7 +483,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         status->SetText("Checking the sign-in at " + r.settings.imap.host + "…");
         save->SetDisabled(true);
         anyway->SetVisible(false);
-        verify(r, [weak, result, r, status, save, anyway](UltraNetResult outcome) {
+        details->SetVisible(false);
+        verify(r, [weak, result, r, status, save, anyway, details, diagnostics](UltraNetResult outcome) {
             auto dlg = weak.lock();
             if (!dlg) return;   // cancelled meanwhile
             if (outcome) {
@@ -483,6 +499,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                             + FriendlyMessage(outcome)
                             + (detail.empty() ? "" : " (" + detail + ")"));
             anyway->SetVisible(true);
+            *diagnostics = outcome.diagnostics;
+            details->SetVisible(!diagnostics->empty());
         });
     };
     buttonRow->AddChild(saveBtn);

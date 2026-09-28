@@ -35,6 +35,8 @@
 
 namespace {
 
+constexpr const char* kPluginVersion = "0.1.0";
+
 // ============================================================================
 // Message construction — delegates to the shared UltraNet MIME builder
 // (core UltraNet_MimeBuild) so the wire format lives in one place.
@@ -119,7 +121,7 @@ UltraNetResultCode MapCurlError(CURLcode rc) {
 class SmtpPlugin : public IMailProtocolPlugin {
 public:
     std::string GetName() const override   { return "UltraNet-SMTP"; }
-    std::string GetVersion() const override { return "0.1.0"; }
+    std::string GetVersion() const override { return kPluginVersion; }
     std::vector<std::string> GetSupportedSchemes() const override {
         return {"smtp", "smtps"};
     }
@@ -154,6 +156,12 @@ public:
 
         curl_easy_setopt(h.get(), CURLOPT_URL, options.serverUrl.c_str());
 
+        // TLS is required either way here (CURLUSESSL_ALL below).
+        ultranet_curlmailauth::RecordContext(
+            std::string("UltraNet SMTP plug-in ") + kPluginVersion, options,
+            ultranet_curlmailauth::Protocol::Smtp,
+            options.implicitTls || options.serverUrl.rfind("smtps://", 0) == 0,
+            /*startTlsRequired=*/true);
         if (UltraNetResult a = ultranet_curlmailauth::Apply(
                 h.get(), options, ultranet_curlmailauth::Protocol::Smtp); !a)
             return a;
@@ -209,10 +217,10 @@ public:
                          static_cast<long>(options.operationTimeoutMs));
         curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);
 
-        std::string why;
-        CURLcode rc = ultranet_curlerror::Perform(h.get(), why);
+        std::string why, diagnostics;
+        CURLcode rc = ultranet_curlerror::Perform(h.get(), why, &diagnostics);
         if (rc == CURLE_OK) return UltraNetResult::Ok();
-        return UltraNetResult::Error(MapCurlError(rc), why);
+        return ultranet_curlerror::Error(MapCurlError(rc), why, diagnostics);
     }
 
     UltraNetResult FetchMessages(const std::string&,

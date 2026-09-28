@@ -36,6 +36,13 @@ std::string FriendlyMessage(const UltraNetResult& result);
 std::string DetailLine(const UltraNetResult& result);
 std::string DetailLine(const UltraDbResult& result);
 
+// An alert's details for a failure that carries a connection chain
+// (UltraNetResult::diagnostics, SyncOutcome::diagnostics): the reason, then
+// the chain - component, server, TLS, sign-in, library versions, trusted
+// roots, system - as a code block, one line each, so it can be read and
+// copied into a bug report. Just `detail` when there is no chain.
+std::string WithDiagnostics(const std::string& detail, const std::string& diagnostics);
+
 // True when retrying the same operation could plausibly succeed (a transient
 // network condition rather than a wrong password or a missing plug-in).
 bool IsRetryable(const UltraNetResult& result);

@@ -565,7 +565,7 @@ void UltraMailApp::RunMailboxAction(
             // Success here and falls through to the plain error alert.
             UltraNetResultCode credCode = UltraNetResultCode::Success;
             if (!cred) {
-                outcome = SyncOutcome::Fail(cred.message);
+                outcome = SyncOutcome::Fail(cred);
                 credCode = cred.code;
             } else {
                 SyncEngine engine(store_, *imap, mailDir_);
@@ -582,7 +582,8 @@ void UltraMailApp::RunMailboxAction(
                                 RunMailboxAction(accountId, op, actionName);
                             }))
                         AlertError(window_ ? window_.get() : nullptr,
-                                   actionName + " could not be completed.", outcome.message);
+                                   actionName + " could not be completed.",
+                                   WithDiagnostics(outcome.message, outcome.diagnostics));
                     return;
                 }
                 Refresh();
@@ -1054,7 +1055,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                         syncErrorReported_ = true;
                         AlertError(window_ ? window_.get() : nullptr,
                                    "That folder could not be fetched for " + who + ".",
-                                   outcome.message);
+                                   WithDiagnostics(outcome.message, outcome.diagnostics));
                     }
                     return;
                 }
@@ -1193,7 +1194,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                         syncErrorReported_ = true;
                         AlertError(window_ ? window_.get() : nullptr,
                                    "New mail could not be fetched for " + who + ".",
-                                   outcome.message);
+                                   WithDiagnostics(outcome.message, outcome.diagnostics));
                     }
                     return;
                 }

@@ -1,3 +1,18 @@
+#### 2026-09-28 *0.10.6*
+- **Connection details for every failed sign-in or sync.** The alert for a
+  failed sync, move or flag change now shows, under the reason, a
+  *Connection details* block: UltraMail's and the framework's versions, the
+  UltraNet plug-in and its version, server, address, TLS mode, sign-in method,
+  libcurl and TLS library versions, trusted roots and the system - what a bug
+  report needs, and copyable. The server settings page gets a **Details**
+  button beside *Save anyway* after a failed check, showing the same.
+  Needs the framework's `UltraNetResult::diagnostics` (see
+  `Docs/UltraCanvas/changelog.d/`).
+- **Windows: mail servers are checked against the Windows certificate
+  store** (framework change, see `Docs/UltraCanvas/changelog.d/`), so a Let's
+  Encrypt server no longer fails with "the certificate or certificate chain is
+  based on an untrusted root".
+
 #### 2026-09-28 *0.10.5*
 - **The version is in the window title** — `UltraMail 0.10.5` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

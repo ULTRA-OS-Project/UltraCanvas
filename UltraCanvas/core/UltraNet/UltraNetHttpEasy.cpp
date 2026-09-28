@@ -17,6 +17,7 @@
 
 #ifndef _WIN32
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #else
 #include <windows.h>
 #endif
@@ -582,4 +583,50 @@ UltraNetTransferStats ReadTransferStats(CURL* easy) {
 // (declared in UltraNet/UltraNetCore.h). Resolved once by DiscoverCaTrust.
 std::string UltraNet_ResolveCaBundlePath() {
     return ultranet_internal::DiscoverCaTrust().bundle;
+}
+
+std::string UltraNet_DescribeTrustRoots() {
+    const ultranet_internal::CaTrust& trust = ultranet_internal::DiscoverCaTrust();
+    std::string roots;
+    if (!trust.bundle.empty()) roots = trust.bundle;
+    if (!trust.dir.empty()) roots += (roots.empty() ? "" : " and ") + trust.dir;
+#ifdef _WIN32
+    // Every UltraNet handle sets CURLSSLOPT_NATIVE_CA (UltraNetCurlTls.h), and
+    // Schannel is given no file at all (DiscoverCaTrust).
+    roots += (roots.empty() ? "" : " and ") + std::string("the Windows certificate store");
+#endif
+    if (roots.empty()) roots = "libcurl's built-in default";
+    return roots;
+}
+
+std::string UltraNet_DescribePlatform() {
+#ifdef _WIN32
+    // RtlGetVersion, not GetVersionEx: the latter reports 6.2 to any program
+    // without a compatibility manifest, which is exactly the wrong answer here.
+    std::string out = "Windows";
+    using RtlGetVersionFn = LONG (WINAPI*)(OSVERSIONINFOW*);
+    if (HMODULE ntdll = GetModuleHandleW(L"ntdll.dll")) {
+        auto fn = reinterpret_cast<RtlGetVersionFn>(
+            reinterpret_cast<void*>(GetProcAddress(ntdll, "RtlGetVersion")));
+        OSVERSIONINFOW v{};
+        v.dwOSVersionInfoSize = sizeof(v);
+        if (fn && fn(&v) == 0) {
+            out += " " + std::to_string(v.dwMajorVersion) + "." + std::to_string(v.dwMinorVersion)
+                 + " build " + std::to_string(v.dwBuildNumber);
+        }
+    }
+    SYSTEM_INFO si{};
+    GetNativeSystemInfo(&si);
+    switch (si.wProcessorArchitecture) {
+        case PROCESSOR_ARCHITECTURE_AMD64: out += ", x64";   break;
+        case PROCESSOR_ARCHITECTURE_ARM64: out += ", ARM64"; break;
+        case PROCESSOR_ARCHITECTURE_INTEL: out += ", x86";   break;
+        default: break;
+    }
+    return out;
+#else
+    struct utsname u{};
+    if (::uname(&u) != 0) return "unknown";
+    return std::string(u.sysname) + " " + u.release + ", " + u.machine;
+#endif
 }

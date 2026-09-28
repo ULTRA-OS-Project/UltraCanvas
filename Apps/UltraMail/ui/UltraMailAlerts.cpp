@@ -3,6 +3,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAlerts.h"
 
+#include "UltraCanvasUtils.h"   // UltraCanvas::versionString
+
 using namespace UltraCanvas;
 
 namespace UltraMail {
@@ -63,6 +65,21 @@ std::string DetailLine(const UltraNetResult& result) {
     if (result.message.empty()) return {};
     if (result.message == FriendlyMessage(result)) return {};
     return result.message;
+}
+
+std::string WithDiagnostics(const std::string& detail, const std::string& diagnostics) {
+    if (diagnostics.empty()) return detail;
+    std::string out = detail;
+    if (!out.empty()) out += "\n\n";
+    // The first link of the chain is the program itself: which UltraMail on
+    // which framework - the plug-in only knows itself.
+    out += "**Connection details**\n\n```\n";
+    out += std::string("Application: UltraMail ") + ULTRAMAIL_VERSION + ", UltraCanvas "
+         + UltraCanvas::versionString + "\n";
+    out += diagnostics;
+    if (out.back() != '\n') out += '\n';
+    out += "```";
+    return out;
 }
 
 std::string DetailLine(const UltraDbResult& result) {
