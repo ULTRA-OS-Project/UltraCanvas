@@ -1,7 +1,7 @@
 #!/bin/bash
 # package-macos.sh - Create macOS .app bundles for UltraCanvas applications
-# Packages Texter, UltraCanvasDemo, UltraNetMonitor and DeviceExplorer as
-# .app bundles with bundled dylibs, Info.plist and .icns icons, the `ultramsg`
+# Packages Texter, UltraCanvasDemo, UltraFiler, UltraViewer, UltraNetMonitor
+# and DeviceExplorer as .app bundles with bundled dylibs, Info.plist and .icns icons, the `ultramsg`
 # command-line tool as a bin/ + Frameworks/ folder, and an optional DMG.
 #
 # Usage: ./package-macos.sh [options]
@@ -658,6 +658,49 @@ build_app_bundle \
     "media/appicon/Demo.png" \
     "public.app-category.developer-tools" \
     ""
+
+# Document types for UltraViewer (universal media viewer). Viewer role, so
+# Finder offers it under "Open With" for the media it displays without
+# claiming to be their editor.
+VIEWER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Media Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.image</string>
+                <string>public.svg-image</string>
+                <string>public.movie</string>
+                <string>public.audio</string>
+                <string>com.adobe.pdf</string>
+                <string>org.idpf.epub-container</string>
+                <string>public.plain-text</string>
+            </array>
+        </dict>
+    </array>'
+
+# Package UltraFiler (file manager)
+build_app_bundle \
+    "UltraFiler" \
+    "UltraFiler" \
+    "com.cloverleaf.UltraFiler" \
+    "media/appicon/UltraFiler.png" \
+    "public.app-category.utilities" \
+    ""
+
+# Package UltraViewer (universal media viewer)
+build_app_bundle \
+    "UltraViewer" \
+    "UltraViewer" \
+    "com.cloverleaf.UltraViewer" \
+    "media/appicon/UltraViewer.png" \
+    "public.app-category.photography" \
+    "$VIEWER_DOC_TYPES"
 
 # Package UltraNetMonitor
 build_app_bundle \
