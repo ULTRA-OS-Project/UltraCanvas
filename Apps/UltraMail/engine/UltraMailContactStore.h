@@ -10,6 +10,7 @@
 #include "UltraMailContacts.h"
 
 #include <UltraDatabase/UltraDatabaseCore.h>
+#include <UltraDatabase/UltraDatabaseValue.h>
 
 #include <string>
 #include <vector>
@@ -32,9 +33,28 @@ public:
     UltraDbResult Get(int64_t id, Contact& out) const;
     UltraDbResult Remove(int64_t id);
 
-    // Contacts in a section, ordered by display name.
+    // Contacts filed in a section (not in a group of the user's own), ordered
+    // by display name.
     UltraDbResult ListBySection(ContactSection section,
                                 std::vector<Contact>& out) const;
+
+    // Contacts filed in the user's group `name`, ordered by display name.
+    UltraDbResult ListByGroup(const std::string& name, std::vector<Contact>& out) const;
+
+    // Every contact, sections and groups alike (the sender-badge index).
+    UltraDbResult ListAll(std::vector<Contact>& out) const;
+
+    // The user's own groups, by name, with their contact counts.
+    UltraDbResult ListGroups(std::vector<GroupCount>& out) const;
+    // Add an empty group. Refused when the name is empty or already taken by a
+    // group or a section ("Work").
+    UltraDbResult AddGroup(const std::string& name);
+    // Delete a group; its contacts go back to their sections.
+    UltraDbResult RemoveGroup(const std::string& name);
+
+    // File a contact in a section (leaving any group) or in a group.
+    UltraDbResult MoveToSection(int64_t id, ContactSection section);
+    UltraDbResult MoveToGroup(int64_t id, const std::string& group);
 
     // Free-text search across name / organization / email address.
     UltraDbResult Search(const std::string& query, std::vector<Contact>& out) const;
@@ -50,6 +70,10 @@ public:
 
 private:
     UltraDbResult LoadChildren(Contact& c) const;
+    // SELECT the contacts matching `where` (a clause over contacts, no alias)
+    // and their emails/phones in three queries rather than two per contact.
+    UltraDbResult ListWhere(const std::string& where, const UltraDbParams& params,
+                            std::vector<Contact>& out) const;
     UltraDbResult ReplaceChildren(UltraDbHandle tx, int64_t contactId,
                                   const Contact& c);
 

@@ -208,3 +208,70 @@ TEST(collect_sender_never_reclassifies_an_existing_contact) {
     REQUIRE_EQ(CountFor(s, ContactSection::Friends), 1);
     REQUIRE_EQ(CountFor(s, ContactSection::Services), 0);
 }
+
+TEST(list_batches_children_for_every_contact) {
+    ContactStore s = FreshStore("batch");
+    for (int i = 0; i < 30; ++i) {
+        Contact c = MakeContact("P" + std::to_string(i), ContactSection::Other,
+                                "p" + std::to_string(i) + "@x.example");
+        ContactEmail extra; extra.address = "alt" + std::to_string(i) + "@x.example";
+        c.emails.push_back(extra);
+        ContactPhone ph; ph.number = std::to_string(1000 + i); c.phones.push_back(ph);
+        REQUIRE(s.Save(c).success);
+    }
+    std::vector<Contact> all;
+    REQUIRE(s.ListBySection(ContactSection::Other, all).success);
+    REQUIRE_EQ(all.size(), (size_t)30);
+    for (const auto& c : all) {
+        REQUIRE_EQ(c.emails.size(), (size_t)2);
+        REQUIRE(c.emails.front().primary);                 // primary first
+        REQUIRE_EQ(c.phones.size(), (size_t)1);
+        // Each contact got its own children, not a neighbour's.
+        REQUIRE_EQ(c.emails.front().address,
+                   "p" + c.displayName.substr(1) + "@x.example");
+    }
+}
+
+TEST(groups_add_move_count_and_remove) {
+    ContactStore s = FreshStore("groups");
+    Contact a = MakeContact("Anna", ContactSection::Friends, "anna@x.example");
+    Contact b = MakeContact("Bert", ContactSection::Work, "bert@x.example");
+    REQUIRE(s.Save(a).success);
+    REQUIRE(s.Save(b).success);
+
+    REQUIRE(s.AddGroup("Choir").success);
+    REQUIRE(!s.AddGroup("choir").success);   // taken, whatever the case
+    REQUIRE(!s.AddGroup("Work").success);    // a section's name
+    REQUIRE(!s.AddGroup("").success);
+
+    REQUIRE(s.MoveToGroup(a.id, "Choir").success);
+    std::vector<GroupCount> groups;
+    REQUIRE(s.ListGroups(groups).success);
+    REQUIRE_EQ(groups.size(), (size_t)1);
+    REQUIRE_EQ(groups[0].name, std::string("Choir"));
+    REQUIRE_EQ(groups[0].count, 1);
+    REQUIRE_EQ(CountFor(s, ContactSection::Friends), 0);   // filed in the group now
+
+    std::vector<Contact> inGroup;
+    REQUIRE(s.ListByGroup("Choir", inGroup).success);
+    REQUIRE_EQ(inGroup.size(), (size_t)1);
+    REQUIRE(inGroup[0].section == ContactSection::Friends);   // kind unchanged
+    std::vector<Contact> all;
+    REQUIRE(s.ListAll(all).success);
+    REQUIRE_EQ(all.size(), (size_t)2);
+
+    // Saving an edited contact keeps its group.
+    Contact edited = inGroup[0];
+    edited.notes = "tenor";
+    REQUIRE(s.Save(edited).success);
+    REQUIRE(s.ListByGroup("Choir", inGroup).success);
+    REQUIRE_EQ(inGroup.size(), (size_t)1);
+
+    // Moving to a section leaves the group; deleting the group returns the rest.
+    REQUIRE(s.MoveToSection(b.id, ContactSection::Leisure).success);
+    REQUIRE_EQ(CountFor(s, ContactSection::Leisure), 1);
+    REQUIRE(s.RemoveGroup("Choir").success);
+    REQUIRE(s.ListGroups(groups).success);
+    REQUIRE(groups.empty());
+    REQUIRE_EQ(CountFor(s, ContactSection::Friends), 1);
+}

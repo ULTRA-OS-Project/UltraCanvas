@@ -4,6 +4,28 @@
   It stops, and leaves the space blank, when the app is idle. It is the new
   framework element `UltraCanvasBusyIndicator` (see
   `Docs/UltraCanvas/changelog.d/`).
+- **The Contacts window is fast.** Choosing a section with a thousand
+  contacts took most of a second, because each contact was built as its own
+  set of widgets after two database queries per contact. The list is now a
+  scrolling list view that draws only the visible rows, loaded in three
+  queries per section. The sender badges' address-book read after every sync
+  uses the same batched read.
+- **The Contacts window no longer closes unexpectedly.** Choosing a section
+  destroyed the sidebar entry that was still handling the click, and opening
+  Contacts a second time built a second panel on the same view as the first.
+  Choosing now only restyles the sidebar, and there is one Contacts window:
+  asking for it again brings it forward, and closing it releases it.
+- **Contacts window:**
+  - a scrollbar, and the window is 100 px wider (720 px);
+  - a filter field above the list (name, address, phone or organization);
+  - a bin icon at the end of each row to delete the contact, after a
+    confirmation;
+  - **Add group** under the sidebar, and a right-click menu on the sidebar
+    with *Add group* and *Delete group*. Deleting a group keeps its contacts:
+    they go back to their sections. The built-in sections cannot be deleted.
+  - a right-click menu on a contact with *Edit*, *Move to group ▸* (every
+    section and group) and *Delete*. A contact filed in a group keeps its
+    section, which still decides its sender-badge colour.
 - **Attachments open in UltraCanvas's media viewer.** Images, PDF,
   spreadsheets, text and source files, e-books, fonts, 3D models, audio and
   video open in a viewer window of UltraMail's own, the same on every

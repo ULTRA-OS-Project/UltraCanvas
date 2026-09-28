@@ -47,6 +47,10 @@ struct Contact {
     std::string    organization;
     std::string    notes;
     ContactSection section = ContactSection::Other;
+    // A group of the user's own ("Add group"); empty when the contact sits in
+    // its section. The section still says what kind of sender it is (the badge
+    // colour), whichever group it is filed under.
+    std::string    group;
     std::vector<ContactEmail> emails;
     std::vector<ContactPhone> phones;
 
@@ -55,6 +59,12 @@ struct Contact {
         for (const auto& e : emails) if (e.primary) return e.address;
         return emails.empty() ? std::string() : emails.front().address;
     }
+};
+
+// A group of the user's own and how many contacts are filed in it.
+struct GroupCount {
+    std::string name;
+    int         count = 0;
 };
 
 // Count of contacts in one section, for the sidebar.

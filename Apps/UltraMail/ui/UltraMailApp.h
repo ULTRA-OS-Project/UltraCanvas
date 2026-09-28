@@ -407,6 +407,8 @@ private:
     // sync workers' progress callbacks.
     FeedPublisher   feed_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
+    // The Contacts window while it is open (one at a time).
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> contactsWindow_;
     // Attachments open in the framework's media viewer (images, PDF, office
     // sheets, text, audio, video, fonts, …); one window, reused per attachment.
     std::unique_ptr<UltraCanvas::UltraCanvasMediaViewerWindow> attachmentViewer_;

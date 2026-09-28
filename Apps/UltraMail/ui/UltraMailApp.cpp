@@ -1551,21 +1551,36 @@ void UltraMailApp::OpenContacts() {
                        : contactsError_);
         return;
     }
+    // One Contacts window: asking again brings the open one forward instead of
+    // building a second panel over the same ContactsView.
+    if (contactsWindow_) {
+        contactsWindow_->RaiseAndFocus();
+        return;
+    }
     WindowConfig cfg;
     cfg.title  = "Contacts";
-    cfg.width  = 620;
-    cfg.height = 460;
+    cfg.width  = 720;
+    cfg.height = 520;
     cfg.backgroundColor = Theme::kPageBackground;
     auto win = CreateWindow(cfg);
 
     contactsView_.SetStore(&contacts_);
+    contactsView_.onChanged = [this]() { RefreshContactIndex(); Refresh(); };
     win->AddChild(contactsView_.Build());
     contactsView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
     win->onWindowResize = [this](int cw, int ch) {
         contactsView_.Resize(static_cast<float>(cw), static_cast<float>(ch));
     };
+    // Closed (by any means): drop the panel and the window, after the close
+    // has finished with them, so the next Contacts opens a fresh one.
+    win->onWindowClosed = [this]() {
+        contactsView_.Release();
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        auto drop = [this]() { contactsWindow_.reset(); };
+        if (app) app->PostToUIThread(drop); else drop();
+    };
+    contactsWindow_ = win;
     win->Show();
-    viewerWindows_.push_back(win);
 }
 
 // Earlier releases kept the cloud account secrets in obfuscated files under
@@ -1583,6 +1598,10 @@ void UltraMailApp::SeedDemoContacts() {
     if (contacts_.GetSectionCounts(counts)) {
         int total = 0;
         for (auto& c : counts) total += c.count;
+        // Contacts filed in the user's own groups count too.
+        std::vector<GroupCount> groups;
+        if (contacts_.ListGroups(groups))
+            for (auto& g : groups) total += g.count;
         if (total > 0) return;   // already seeded
     }
     auto add = [&](const std::string& name, ContactSection section,
