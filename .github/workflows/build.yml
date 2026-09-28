@@ -23,6 +23,16 @@ on:
       - main
       - 'claude/**'
   workflow_dispatch:
+    inputs:
+      # Set only by changelog-fold.yml. Its "Changelog: x.y.z" commit is pushed
+      # with GITHUB_TOKEN, and GitHub starts no workflow for a push made with
+      # that token - so the fold dispatches this workflow instead, and this
+      # input makes that run the release build the push would have been. A
+      # dispatch by hand leaves it false: a validation run, as before.
+      release:
+        description: "Release build (signed, notarized artifacts) - main only"
+        type: boolean
+        default: false
 
 # Supersede in-flight runs for the same branch when newer commits arrive, so a
 # rapid series of pushes to an open PR costs one build rather than one each.
@@ -55,7 +65,11 @@ jobs:
         run: |
           count=$(find Docs/UltraCanvas/changelog.d -maxdepth 1 -name '*.md' \
                        ! -name 'README.md' 2>/dev/null | wc -l)
-          if [ "${{ github.event_name }}" = "push" ] && [ "$count" -gt 0 ]; then
+          # A release dispatch is gated like a push: if another merge landed
+          # between the fold and this run, main's head carries an unfolded
+          # entry again, and that merge's own fold dispatches the release.
+          release="${{ github.event_name == 'push' || inputs.release == true }}"
+          if [ "$release" = "true" ] && [ "$count" -gt 0 ]; then
             echo "pending=true" >> "$GITHUB_OUTPUT"
             echo "::notice::$count changelog entr(y/ies) still pending - the release " \
                  "build runs on the fold commit that changelog-fold.yml is about to push."
@@ -114,12 +128,14 @@ jobs:
 
     # Is this run producing release artifacts, or checking a change?
     #
-    # Only a push to main is a release build. A pull_request run and a
+    # Only main builds releases: a push to it, or the release dispatch that
+    # changelog-fold.yml sends after its version commit (a push made with
+    # GITHUB_TOKEN starts no workflow). A pull_request run and a hand-started
     # workflow_dispatch validation run are not, and the macOS signing and
     # notarization steps below are skipped for them - see the comment on
     # "Package (macOS)" for why that matters.
     env:
-      RELEASE_BUILD: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      RELEASE_BUILD: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true) }}
 
       # ccache. There is no incremental state between runs on a hosted runner,
       # so without this every leg compiles all ~1136 objects from scratch even
@@ -469,6 +485,7 @@ jobs:
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
@@ -489,6 +506,7 @@ jobs:
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAMAIL_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
@@ -614,6 +632,11 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure -R UltraNet
 
+      # ULTRACANVAS_BUILD_ULTRAMAIL_TESTS likewise (UltraMailEngine): it was
+      # built by nobody until 2026-09-28, and a test expecting Gmail to take a
+      # typed password had been failing unseen for five days. Its vault tests
+      # need libsodium, which every row installs.
+      #
       # ULTRACANVAS_BUILD_EMAILCLEANER_TESTS is on for every row, not just the
       # Linux one that runs ctest: the suite is headless (no display, no
       # network), so building it on macOS and Windows costs seconds and gates

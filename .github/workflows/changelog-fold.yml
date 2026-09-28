@@ -14,7 +14,8 @@ name: Changelog fold
 # PREVIOUS release, and a release build there would package new code under an
 # already-published number. build.yml's `gate` job skips the release build for
 # exactly that commit and lets this one — which carries the right number —
-# produce the artifacts.
+# produce the artifacts, through the dispatch in the last step (the fold's own
+# push starts no workflow: it is made with GITHUB_TOKEN).
 #
 # If the push below is refused (branch protection, or a race with another
 # merge), nothing is lost: the entries stay pending and the next push to main
@@ -36,6 +37,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write   # dispatch build.yml for the release (see the last step)
 
 jobs:
   fold:
@@ -72,3 +74,15 @@ jobs:
           # push to main folds them.
           git pull --rebase --no-tags origin main
           git push origin HEAD:main
+
+      # The push above is made with GITHUB_TOKEN, and GitHub starts no workflow
+      # for such a push - so build.yml never ran on a fold commit, the merge
+      # commit before it is gated off, and main produced no release at all
+      # (0.9.72 to 0.9.75 were never built). A workflow_dispatch is the one
+      # event that token may still trigger; release=true makes it the release
+      # build the push would have been.
+      - name: Start the release build
+        if: steps.fold.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build.yml --repo "${{ github.repository }}" --ref main -f release=true
