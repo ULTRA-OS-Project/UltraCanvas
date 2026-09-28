@@ -267,6 +267,9 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
     // margins collapse to the larger one, like CSS margin collapsing.
     float pendingMargin = 0.f;
     bool anyFlowChild = false;
+    // Images in a block that also has text flow in that text; in a block of
+    // images alone each gets a line of its own (BuildImage).
+    const bool flowImages = opts.enableImages && HasInlineText(element);
     auto addFlowChild = [&](std::shared_ptr<UltraCanvasUIElement> child,
                             float topMargin, float bottomMargin) {
         float spacing = anyFlowChild ? std::max(pendingMargin, topMargin)
@@ -321,6 +324,10 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         const ComputedStyle& childStyle = resolver.StyleOf(&child);
         if (childStyle.display == DisplayMode::Hidden) continue;
 
+        if ((child.tag == "img" || child.tag == "image") && flowImages) {
+            inlineRun.push_back(&child);
+            continue;
+        }
         if (child.tag == "img" || child.tag == "image") {
             flushRun();
             if (opts.enableImages) {
@@ -399,7 +406,8 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         // the image by its alt text, so lift the images out onto lines of
         // their own - clickable when inside a link - and keep the text
         // around them in runs.
-        if (opts.enableImages && (child.FindFirst("img") || child.FindFirst("image"))) {
+        if (opts.enableImages && !flowImages &&
+            (child.FindFirst("img") || child.FindFirst("image"))) {
             std::function<void(Node&, const std::string&)> lift =
                 [&](Node& node, const std::string& href) {
                     for (const auto& grandPtr : node.children) {
@@ -449,6 +457,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     std::string markup;
     runPlain.clear();
     runLinks.clear();
+    runImages.clear();
     if (!markerPrefix.empty()) {
         markup += EscapeMarkup(markerPrefix);
         runPlain += markerPrefix;
@@ -470,6 +479,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
             link.startByte = std::max(0, link.startByte - static_cast<int>(begin));
             link.endByte -= static_cast<int>(begin);
         }
+        for (auto& image : runImages) image.byteOffset -= static_cast<int>(begin);
     }
     while (!markup.empty() && markup.back() == ' ') {
         markup.pop_back();
@@ -499,6 +509,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
         label->SetTextLinks(runLinks);
         label->onLinkActivated = opts.onLinkActivated;
     }
+    if (!runImages.empty()) label->SetInlineImages(runImages);
     return label;
 }
 
@@ -523,9 +534,39 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
         runPlain += '\n';
         return;
     }
-    if (node.tag == "img") {
-        // Inline images inside a text run are not supported yet; note the alt
-        // text so nothing silently disappears.
+    if (node.tag == "img" || node.tag == "image") {
+        // An image in running text: a U+FFFC placeholder the label reserves
+        // the image's box on and draws it into (UltraCanvasLabel inline images).
+        if (opts.enableImages && opts.resourceLoader) {
+            std::string src = node.GetAttribute("src");
+            if (src.empty()) src = node.GetAttribute("href");
+            if (src.empty()) src = node.GetAttribute("xlink:href");
+            std::vector<uint8_t> bytes = src.empty() ? std::vector<uint8_t>{}
+                                                     : opts.resourceLoader(src);
+            std::shared_ptr<UCImage> raster =
+                bytes.empty() ? nullptr : UCImageRaster::LoadFromMemory(bytes);
+            if (raster && raster->GetWidth() > 0 && raster->GetHeight() > 0) {
+                float w = static_cast<float>(raster->GetWidth());
+                float h = static_cast<float>(raster->GetHeight());
+                if (style.widthPx && style.heightPx) { w = *style.widthPx; h = *style.heightPx; }
+                else if (style.widthPx)  { h = h * *style.widthPx / w;  w = *style.widthPx; }
+                else if (style.heightPx) { w = w * *style.heightPx / h; h = *style.heightPx; }
+                if (w >= 1.f && h >= 1.f) {
+                    LabelInlineImage image;
+                    image.byteOffset = static_cast<int>(runPlain.size());
+                    image.width = w;
+                    image.height = h;
+                    image.image = raster;
+                    runImages.push_back(std::move(image));
+                    static const char kPlaceholder[] = "\xEF\xBF\xBC";   // U+FFFC
+                    out += kPlaceholder;
+                    runPlain += kPlaceholder;
+                    return;
+                }
+            }
+            if (!src.empty()) warnings.push_back("inline image not shown: " + src);
+        }
+        // No image: note the alt text so nothing silently disappears.
         std::string alt = node.GetAttribute("alt");
         if (!alt.empty()) {
             out += EscapeMarkup("[" + alt + "]");
@@ -578,6 +619,27 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 // ============================================================================
 // REPLACED / SPECIAL ELEMENTS
 // ============================================================================
+
+bool ElementBuilder::HasInlineText(const Node& element) const {
+    for (const auto& childPtr : element.children) {
+        const Node& child = *childPtr;
+        if (child.type == NodeType::Text) {
+            for (unsigned char c : child.text)
+                if (!std::isspace(c)) return true;
+            continue;
+        }
+        if (!child.IsElement()) continue;
+        const ComputedStyle& style = resolver.StyleOf(&child);
+        if (style.display == DisplayMode::Hidden) continue;
+        // Blocks, tables and list items are lines of their own, not this
+        // block's inline content; images and breaks carry no text.
+        if (IsBlockDisplay(style.display) || child.tag == "img" || child.tag == "image" ||
+            child.tag == "br")
+            continue;
+        if (HasInlineText(child)) return true;
+    }
+    return false;
+}
 
 std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
                                                                  const std::string& linkHref) {

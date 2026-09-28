@@ -14,8 +14,8 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
-// Version: 2.2.2
-// Last Modified: 2026-07-02
+// Version: 2.3.0 - inline images at U+FFFC placeholders (LabelInlineImage)
+// Last Modified: 2026-09-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabel.h"
@@ -158,12 +158,70 @@ namespace UltraCanvas {
         textLayout->SetWrap(style.wrap);
         textLayout->SetAlignment(style.horizontalAlign);
         textLayout->SetVerticalAlignment(style.verticalAlign);
+        // Reserve each inline image's box on its placeholder: it stands on the
+        // baseline (ascent = its height), and the line grows to hold it.
+        for (const auto& img : inlineImages) {
+            const Size2Df size = InlineImageSize(img);
+            auto shape = TextAttributeFactory::CreateShape(size.width, size.height, 0.0);
+            shape->SetRange(img.byteOffset, img.byteOffset + 3);   // U+FFFC is 3 bytes
+            textLayout->InsertAttribute(std::move(shape));
+        }
         return true;
+    }
+
+    // ===== INLINE IMAGES =====
+
+    void UltraCanvasLabel::SetInlineImages(std::vector<LabelInlineImage> images) {
+        inlineImages = std::move(images);
+        inlineFitWidth = -1.f;
+        textLayout.reset();
+        InvalidateLayout();
+        RequestRedraw();
+    }
+
+    Size2Df UltraCanvasLabel::InlineImageSize(const LabelInlineImage& image) const {
+        if (inlineFitWidth > 0.f && image.width > inlineFitWidth && image.width > 0.f) {
+            const float scale = inlineFitWidth / image.width;
+            return Size2Df(inlineFitWidth, image.height * scale);
+        }
+        return Size2Df(image.width, image.height);
+    }
+
+    void UltraCanvasLabel::FitInlineImages(float width) {
+        if (inlineImages.empty()) return;
+        const float fit = width > 0.f ? width : -1.f;
+        if (fit == inlineFitWidth) return;
+        bool changes = false;
+        for (const auto& img : inlineImages) {
+            const bool wasScaled = inlineFitWidth > 0.f && img.width > inlineFitWidth;
+            const bool isScaled  = fit > 0.f && img.width > fit;
+            if (wasScaled || isScaled) { changes = true; break; }
+        }
+        inlineFitWidth = fit;
+        if (changes) textLayout.reset();
+    }
+
+    Rect2Df UltraCanvasLabel::InlineImageRect(size_t index) {
+        if (index >= inlineImages.size()) return {};
+        if (!internalLayoutValid || !textLayout) {
+            UpdateInternalLayout(GetRenderContext());
+            if (!internalLayoutValid || !textLayout) return {};
+        }
+        const LabelInlineImage& img = inlineImages[index];
+        const Size2Df size = InlineImageSize(img);
+        const Rect2Di pos = textLayout->IndexToPos(img.byteOffset);
+        const double baseline = textLayout->IndexToBaseline(img.byteOffset);
+        const float x = static_cast<float>(GetBorderLeftWidth() + GetPaddingLeft() + pos.x);
+        const float y = static_cast<float>(GetBorderTopWidth() + GetPaddingTop() +
+                                           textLayout->GetLayoutVerticalOffset() +
+                                           baseline - size.height);
+        return Rect2Df(x, y, size.width, size.height);
     }
 
     // ===== Engine entry points =====
 
     void UltraCanvasLabel::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& /*ctx*/) {
+        FitInlineImages(-1.f);   // max-content: images at their own size
         if (!EnsureTextLayout()) {
             intrinsic.minContentWidth = intrinsic.maxContentWidth = 0;
             intrinsic.minContentHeight = intrinsic.maxContentHeight = 0;
@@ -200,6 +258,7 @@ namespace UltraCanvas {
 
     Size2Df UltraCanvasLabel::MeasureOwnContent(std::optional<float> definiteContentWidth,
                                                 const CSSLayout::LayoutContext& /*ctx*/) {
+        FitInlineImages(definiteContentWidth ? *definiteContentWidth : -1.f);
         if (!EnsureTextLayout()) {
             // No render context — report no own content; the block path then
             // sizes from size.*/constraints (matching the old base fallback).
@@ -332,9 +391,10 @@ namespace UltraCanvas {
 
     void UltraCanvasLabel::UpdateInternalLayout(IRenderContext *ctx) {
         // finalBounds is owned by the engine (set during Arrange).
+        auto crect = GetLocalContentRect();
+        FitInlineImages(crect.width);
         if (!EnsureTextLayout(ctx)) return;
 
-        auto crect = GetLocalContentRect();
         // When a non-zero content area exists, point the text layout at it.
         // Negative or zero collapses to "no explicit width" (max-content).
         textLayout->SetExplicitWidth(crect.width  > 0 ? crect.width  : -1);
@@ -369,6 +429,15 @@ namespace UltraCanvas {
 //            textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(style.textColor));
             ctx->SetCurrentPaint(IsDisabled() ? style.disabledTextColor : style.textColor);
             ctx->DrawTextLayout(*textLayout, Point2Di(contentX, contentY));
+
+            // Inline images, into the boxes their placeholders reserved.
+            for (size_t i = 0; i < inlineImages.size(); ++i) {
+                if (!inlineImages[i].image) continue;
+                const Rect2Df r = InlineImageRect(i);
+                if (r.width <= 0.f || r.height <= 0.f) continue;
+                ctx->DrawImage(*inlineImages[i].image,
+                               Rect2Dd(r.x, r.y, r.width, r.height), ImageFitMode::Fill);
+            }
         }
     }
 

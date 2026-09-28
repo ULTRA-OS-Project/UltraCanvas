@@ -17,6 +17,17 @@
     lines of their own, and one inside a link is clickable (it calls
     `BuildOptions::onLinkActivated` with the link's href). The text around
     them stays in its runs.
+  - **An image in the middle of a sentence flows in the text** instead of
+    taking a line of its own. Images in a block that also has text (`<p>Rated
+    <img> out of five</p>`) become inline images of the text run. A block of
+    images alone keeps one image per aligned line. The image stands on the
+    baseline, the line grows to hold it, it is scaled to the line when wider,
+    and inside a link it is part of the link.
+  - New in `UltraCanvasLabel`: `LabelInlineImage`, `SetInlineImages()` and
+    `InlineImageRect()`. An image is drawn at a U+FFFC placeholder in the
+    text, in a box reserved with `TextAttributeFactory::CreateShape`. See
+    `UltraCanvasLabelExamples.md`, *Inline Images*.
   - `ElementBuilder::BuildImage` takes an optional link href.
   - Test: `Tests/HTMLImageAlignTest.cpp` (headless builder + CSSLayout;
-    placement for each alignment source, an oversized image, a clicked link).
+    placement for each alignment source, an oversized image, a clicked link,
+    and an inline image laid out and drawn on an offscreen context).

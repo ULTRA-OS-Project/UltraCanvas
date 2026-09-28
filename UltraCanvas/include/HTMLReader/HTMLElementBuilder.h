@@ -82,6 +82,8 @@ private:
     // link ranges found in it.
     std::string runPlain;
     std::vector<LabelTextLink> runLinks;
+    // Images flowing in the current run, at U+FFFC placeholders of runPlain.
+    std::vector<LabelInlineImage> runImages;
 
     std::string MakeId(const std::string& hint);
 
@@ -95,6 +97,11 @@ private:
     std::shared_ptr<UltraCanvasLabel> BuildInlineRun(
         const std::vector<Node*>& run, const ComputedStyle& blockStyle,
         const std::string& markerPrefix);
+    // Whether a block's inline content has text of its own (not only images
+    // and whitespace): then its images flow in that text, as in a browser;
+    // otherwise each image gets a line of its own.
+    bool HasInlineText(const Node& element) const;
+
     // An image on a line of its own, placed by the text-align it inherits.
     // `linkHref` makes it clickable (an image inside <a href>).
     std::shared_ptr<UltraCanvasUIElement> BuildImage(Node& element,

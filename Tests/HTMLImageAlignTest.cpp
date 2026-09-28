@@ -2,10 +2,12 @@
 // Where the HTML reader places an <img> on its line: at the start by
 // default, like a browser, and centred or right-aligned only when text-align
 // (CSS, align="...", <center>) says so. Also: an image wider than the column
-// shrinks to it, keeping its aspect ratio.
+// shrinks to it, keeping its aspect ratio. And an image in the middle of a
+// sentence flows in the text, on its baseline, instead of taking a line.
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
-// with the CSSLayout engine - no window or display needed.
+// with the CSSLayout engine; inline images are laid out and drawn on an
+// offscreen render context - no window or display needed.
 // Version: 1.0.0
 // Last Modified: 2026-09-28
 // Author: UltraCanvas Framework
@@ -14,6 +16,10 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageElement.h"
 #include "CSSLayout/CSSLayout.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasRenderContext.h"
+
+#include <cairo.h>
 
 #include <cmath>
 #include <cstdint>
@@ -151,6 +157,81 @@ void ExpectPlacement(const char* name, const std::string& html, const char* wher
     CheckNear(b.x, expected, std::string("x on its line (") + where + ")");
 }
 
+// The first label carrying inline images.
+UltraCanvasLabel* FindInlineLabel(UltraCanvasUIElement* e) {
+    if (!e) return nullptr;
+    if (auto* label = dynamic_cast<UltraCanvasLabel*>(e))
+        if (!label->GetInlineImages().empty()) return label;
+    if (auto* c = dynamic_cast<UltraCanvasContainer*>(e))
+        for (auto& child : c->GetChildren())
+            if (auto* found = FindInlineLabel(child.get())) return found;
+    return nullptr;
+}
+
+// RGB of one pixel of an offscreen context.
+bool PixelAt(IRenderContext* ctx, int x, int y, int& r, int& g, int& b) {
+    auto* cr = static_cast<cairo_t*>(ctx->GetNativeContext());
+    if (!cr) return false;
+    cairo_surface_t* s = cairo_get_target(cr);
+    cairo_surface_flush(s);
+    if (x < 0 || y < 0 || x >= cairo_image_surface_get_width(s) ||
+        y >= cairo_image_surface_get_height(s)) return false;
+    const unsigned char* data = cairo_image_surface_get_data(s);
+    const uint32_t px = reinterpret_cast<const uint32_t*>(
+        data + y * cairo_image_surface_get_stride(s))[x];
+    r = (px >> 16) & 0xFF; g = (px >> 8) & 0xFF; b = px & 0xFF;
+    return true;
+}
+
+void TestInlineImageFlowsInText() {
+    std::printf("image in the middle of a sentence\n");
+    HTML::BuildOptions opts;
+    opts.enableImages = true;
+    opts.resourceLoader = [](const std::string& src) {
+        if (src == "big.png") return std::vector<uint8_t>(std::begin(kPng1000x100), std::end(kPng1000x100));
+        return std::vector<uint8_t>(std::begin(kPng160x60), std::end(kPng160x60));
+    };
+    HTML::ElementBuilder builder;
+    HTML::BuildResult r = builder.Build("<p>Before <img src=\"x\"> after the picture.</p>", opts);
+    Placed placed;
+    FindImage(r.root.get(), nullptr, placed);
+    Check(placed.image == nullptr, "no line of its own (no separate image element)");
+    UltraCanvasLabel* label = FindInlineLabel(r.root.get());
+    Check(label != nullptr, "the text run carries the image");
+    if (!label) return;
+
+    auto ctx = CreateRenderContext(Size2Di(640, 200), nullptr);
+    Check(ctx != nullptr, "offscreen render context");
+    if (!ctx) return;
+    if (auto* cr = static_cast<cairo_t*>(ctx->GetNativeContext())) {
+        cairo_set_source_rgb(cr, 1, 1, 1);
+        cairo_paint(cr);
+    }
+    label->SetBounds(Rect2Df(0, 0, 640, 200));
+    label->UpdateInternalLayout(ctx.get());
+    const Rect2Df box = label->InlineImageRect(0);
+    CheckNear(box.width, 160.f, "inline image width");
+    CheckNear(box.height, 60.f, "inline image height");
+    Check(box.x > 20.f && box.x < 200.f, "it follows the word before it on the same line");
+    label->Render(ctx.get(), Rect2Df(0, 0, 640, 200));
+    int red = 0, green = 0, blue = 0;
+    const bool read = PixelAt(ctx.get(), static_cast<int>(box.x + box.width / 2),
+                              static_cast<int>(box.y + box.height / 2), red, green, blue);
+    Check(read && std::abs(red - 40) < 8 && std::abs(green - 110) < 8 && std::abs(blue - 200) < 8,
+          "and is drawn there");
+
+    std::printf("inline image wider than the line\n");
+    HTML::BuildResult wide = builder.Build("<p>A <img src=\"big.png\"> B</p>", opts);
+    UltraCanvasLabel* wideLabel = FindInlineLabel(wide.root.get());
+    Check(wideLabel != nullptr, "the text run carries the image");
+    if (!wideLabel) return;
+    wideLabel->SetBounds(Rect2Df(0, 0, 300, 400));
+    wideLabel->UpdateInternalLayout(ctx.get());
+    const Rect2Df fitted = wideLabel->InlineImageRect(0);
+    Check(fitted.width <= 300.5f && fitted.width > 0.f, "scaled to the line");
+    CheckNear(fitted.height, fitted.width / 10.f, "keeps its 10:1 aspect ratio");
+}
+
 } // namespace
 
 int main() {
@@ -183,6 +264,8 @@ int main() {
             CheckNear(b.height, b.width / 10.f, "keeps its 10:1 aspect ratio");
         }
     }
+
+    TestInlineImageFlowsInText();
 
     std::printf("clicking a linked image\n");
     {
