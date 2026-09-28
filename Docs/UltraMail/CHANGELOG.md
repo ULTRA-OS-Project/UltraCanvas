@@ -87,6 +87,23 @@
     from real spam tells the sender that the address is read. The message is
     downloaded first if its body is not cached yet.
   - *Move to folder ▸*: every folder of the account that holds mail.
+  - *Show emails ▸* narrows the list to one kind of mail, with a check mark
+    on the active choice:
+    - *All messages*.
+    - *Same sender*.
+    - *Unread*.
+    - *Needs an answer*.
+    - *Spam*: the sender badge says spam or scam.
+    - *Social media*: social networks and messaging services from the
+      sender registry.
+    - *Payments & invoices*: payment services such as PayPal and Stripe, or
+      a subject about an invoice, a receipt, a bill or a payment, in
+      English, German, French, Spanish, Italian, Dutch or Portuguese.
+
+    The list title names the filter ("Inbox · Unread — 12 messages"). The
+    filter stays through syncs and is cleared by switching folder or
+    account. Right-clicking the empty area of the list offers *Show emails*
+    too, so a filter that leaves nothing to click can still be cleared.
   - The menu is titled with the sender's address.
   - *Add to contact group ▸*: every section and group of the address book.
     It files the sender there, adding them to the address book first when

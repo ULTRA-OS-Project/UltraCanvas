@@ -23,6 +23,7 @@
 #include "UltraMailMessagePreview.h"
 #include "UltraMailSenderBadge.h"
 #include "UltraMailLocalStore.h"
+#include "UltraMailMessageFilter.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -90,6 +91,12 @@ public:
     // opens in its place, with a "Back to list" button. Rebuilds the content.
     void SetReadingPane(bool on);
     bool ReadingPane() const { return readingPane_; }
+
+    // Narrow the list to one kind of mail ("Show emails ▸" in the row menu);
+    // a filter with kind All shows everything again. Switching folder or
+    // account clears it.
+    void SetFilter(MessageFilter filter);
+    const MessageFilter& Filter() const { return filter_; }
 
     // The folder currently shown (for Reload, which fetches it too).
     const std::string& CurrentFolder() const { return curFolder_; }
@@ -207,11 +214,19 @@ private:
     // The row's right-click menu; kept alive while it is open.
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> rowMenu_;
     void ShowRowMenu(int row, const UltraCanvas::UCEvent& event);
+    // "Show emails ▸" entries; `senderAddr` adds "Same sender".
+    std::vector<UltraCanvas::MenuItemData> ShowEmailsItems(const std::string& senderAddr);
     std::vector<MailRowState>    rowStates_;    // parallel to messages_ / list rows
     std::vector<SenderBadge>     rowBadges_;    // parallel to messages_ / list rows
     // The stored scan verdicts of the folder on screen, by UID — one query per
     // list rather than one per row.
     std::map<int64_t, MessageSecurity> security_;
+    MessageFilter                filter_;
+    // What the filter needs to know about a message beyond its envelope.
+    MessageFacts FactsFor(const MessageEnvelope& m, const std::set<int64_t>& waitingUids) const;
+    // Drop the messages the filter does not keep (no-op without a filter).
+    void ApplyFilter(std::vector<MessageEnvelope>& messages,
+                     const std::set<int64_t>& waitingUids) const;
     SenderBadgeResolver          badges_;
     bool                         curFolderIsJunk_ = false;
     int                          shownUnread_ = 0;

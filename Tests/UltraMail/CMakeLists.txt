@@ -12,6 +12,7 @@ set(ULTRAMAIL_TEST_SOURCES
     test_threatscan.cpp
     test_unsubscribe.cpp
     test_inlineimages.cpp
+    test_messagefilter.cpp
     test_syncengine.cpp
     test_discovery.cpp
     test_composer.cpp

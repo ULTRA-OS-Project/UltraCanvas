@@ -9,6 +9,7 @@
 #include "UltraMailMailView.h"
 
 #include "UltraMailTheme.h"
+#include "UltraMailSenderBrands.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
@@ -499,10 +500,41 @@ void MailView::SetContacts(ContactIndex contacts) {
     preview_.SetContacts(std::move(contacts));
 }
 
+std::vector<MenuItemData> MailView::ShowEmailsItems(const std::string& senderAddr) {
+    std::vector<MenuItemData> show;
+    auto option = [&](const std::string& label, MessageFilter f) {
+        const bool active = f.kind == filter_.kind &&
+            (f.kind != MessageFilterKind::SameSender || f.sender == filter_.sender);
+        show.push_back(MenuItemData::Radio(label, /*group=*/1, active,
+            [this, f]() { SetFilter(f); }));
+    };
+    option("All messages", {});
+    if (!senderAddr.empty())
+        option("Same sender (" + senderAddr + ")", {MessageFilterKind::SameSender, senderAddr});
+    else if (filter_.kind == MessageFilterKind::SameSender)
+        option("Same sender (" + filter_.sender + ")", filter_);
+    option("Unread", {MessageFilterKind::Unread, ""});
+    option("Needs an answer", {MessageFilterKind::NeedsAnswer, ""});
+    option("Spam", {MessageFilterKind::Spam, ""});
+    option("Social media", {MessageFilterKind::SocialMedia, ""});
+    option("Payments & invoices", {MessageFilterKind::Payments, ""});
+    return show;
+}
+
 void MailView::ShowRowMenu(int row, const UCEvent& event) {
-    if (row < 0 || row >= static_cast<int>(messages_.size()) || !list_) return;
+    if (!list_) return;
     UltraCanvasWindowBase* window = list_->GetWindow();
     if (!window) return;
+    // The empty area below the rows (or an empty, filtered list): only the
+    // view choices, so a filter that left nothing to click can be cleared.
+    if (row < 0 || row >= static_cast<int>(messages_.size())) {
+        rowMenu_ = std::make_shared<UltraCanvasMenu>("mailRow.ctx", 0, 0, 200, 0);
+        rowMenu_->SetMenuType(MenuType::PopupMenu);
+        rowMenu_->AddItem(MenuItemData::Submenu("Show emails", ShowEmailsItems("")));
+        PopupElementSettings settings;
+        rowMenu_->OpenMenu(event.pointerWindow, *window, settings);
+        return;
+    }
     const MessageEnvelope m = messages_[static_cast<std::size_t>(row)];
     const bool unread  = (m.flags & Flag_Seen) == 0;
     const bool waiting = row < static_cast<int>(rowStates_.size()) &&
@@ -515,6 +547,10 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
         rowMenu_->AddItem(MenuItemData::Header(m.fromAddr));
         rowMenu_->AddItem(MenuItemData::Separator());
     }
+
+    // Show emails ▸ - narrow the list; the active choice carries the check.
+    rowMenu_->AddItem(MenuItemData::Submenu("Show emails", ShowEmailsItems(m.fromAddr)));
+    rowMenu_->AddItem(MenuItemData::Separator());
 
     // Read state and the needs-an-answer list.
     if (unread) {
@@ -730,12 +766,13 @@ void MailView::SelectFolderNode(const std::string& accountId, const std::string&
 void MailView::ShowAccount(const std::string& accountId) {
     const bool sameAccount = (accountId == curAccount_);
     curAccount_ = accountId;
-    if (!sameAccount) curFolder_ = "INBOX";
+    if (!sameAccount) { curFolder_ = "INBOX"; filter_ = MessageFilter{}; }
     RebuildFolderTree();
     RebuildList();
 }
 
 void MailView::ShowFolder(const std::string& accountId, const std::string& folder) {
+    if (accountId != curAccount_ || folder != curFolder_) filter_ = MessageFilter{};
     curAccount_ = accountId;
     curFolder_  = folder;
     SelectFolderNode(accountId, folder);
@@ -874,12 +911,40 @@ void MailView::MarkRowRead(int row) {
 void MailView::UpdateListTitle() {
     if (!listBox_) return;
     std::string title = FriendlyLeaf(curFolder_, curFolder_);
+    if (filter_.Active()) title += " \xC2\xB7 " + Describe(filter_);   // "Inbox · Unread"
     if (!messages_.empty()) {
         title += " — " + std::to_string(messages_.size()) + " message"
                + (messages_.size() == 1 ? "" : "s");
         if (shownUnread_ > 0) title += ", " + std::to_string(shownUnread_) + " unread";
     }
+    else if (filter_.Active()) title += " \xE2\x80\x94 no messages";
     listBox_->SetTitle(title);
+}
+
+MessageFacts MailView::FactsFor(const MessageEnvelope& m,
+                                const std::set<int64_t>& waitingUids) const {
+    MessageFacts facts;
+    facts.unread = (m.flags & Flag_Seen) == 0;
+    facts.needsAnswer = waitingUids.count(m.uid) > 0;
+    const SenderClass cls = BadgeFor(m).cls;
+    facts.spam = cls == SenderClass::Spam || cls == SenderClass::Scam;
+    if (const SenderBrand* brand = BrandForAddress(m.fromAddr)) facts.brand = brand->category;
+    return facts;
+}
+
+void MailView::ApplyFilter(std::vector<MessageEnvelope>& messages,
+                           const std::set<int64_t>& waitingUids) const {
+    if (!filter_.Active()) return;
+    std::vector<MessageEnvelope> kept;
+    kept.reserve(messages.size());
+    for (auto& m : messages)
+        if (FilterMatches(filter_, m, FactsFor(m, waitingUids))) kept.push_back(std::move(m));
+    messages = std::move(kept);
+}
+
+void MailView::SetFilter(MessageFilter filter) {
+    filter_ = std::move(filter);
+    FullRebuild(/*markTopRead=*/false);
 }
 
 void MailView::RebuildList(bool markTopRead) {
@@ -929,6 +994,7 @@ void MailView::FullRebuild(bool markTopRead) {
     store_->ListNeedsAnswer(curAccount_, waiting);
     std::set<int64_t> waitingUids;
     for (const auto& w : waiting) if (w.folder == curFolder_) waitingUids.insert(w.uid);
+    ApplyFilter(messages_, waitingUids);
 
     for (const auto& m : messages_) AddMessageRow(m, waitingUids);
 
@@ -979,6 +1045,7 @@ void MailView::DiffListFromStore(bool /*markTopRead*/) {
     store_->ListNeedsAnswer(curAccount_, waiting);
     std::set<int64_t> waitingUids;
     for (const auto& w : waiting) if (w.folder == curFolder_) waitingUids.insert(w.uid);
+    ApplyFilter(fresh, waitingUids);
 
     // Measure the turnover; a near-total change (e.g. a UIDVALIDITY renumber) is
     // cheaper and cleaner as a full rebuild — which is what the user asked for.
