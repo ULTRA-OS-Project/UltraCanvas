@@ -126,6 +126,9 @@ public:
     std::function<void(const MessageEnvelope&)> onAddContact;
     std::function<void(const MessageEnvelope&)> onEditContact;
     std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
+    // Forwarded to the preview: which senders' remote images load without asking.
+    std::function<bool(const std::string& address)> remoteImagesAllowed;
+    std::function<void(const std::string& address)> onAlwaysAllowRemoteImages;
 
     // The folder tree selected a folder under a different account: the app
     // updates the selected account (and the account bar) without re-showing the

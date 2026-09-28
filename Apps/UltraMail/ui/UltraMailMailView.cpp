@@ -381,6 +381,12 @@ void MailView::BuildMessageBox() {
     };
     // A body read for the first time is also scanned for the first time: the
     // row's badge stops being "unscanned" the moment the pane knows better.
+    preview_.remoteImagesAllowed = [this](const std::string& addr) {
+        return remoteImagesAllowed && remoteImagesAllowed(addr);
+    };
+    preview_.onAlwaysAllowRemoteImages = [this](const std::string& addr) {
+        if (onAlwaysAllowRemoteImages) onAlwaysAllowRemoteImages(addr);
+    };
     preview_.onSecurityScanned = [this](const MessageEnvelope& m, const MessageSecurity& s) {
         RefreshRowBadge(m, s);
     };

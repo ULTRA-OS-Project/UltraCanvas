@@ -358,6 +358,16 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.onJunk       = [this](const MessageEnvelope& e) { HandleJunkMessage(e); };
     mailView_.onMarkUnread = [this](const MessageEnvelope& e) { HandleMarkUnread(e); };
     mailView_.onMarkRead   = [this](const MessageEnvelope& e) { HandleMarkRead(e); };
+    auto lowerAddr = [](std::string a) {
+        for (char& c : a) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return a;
+    };
+    mailView_.remoteImagesAllowed = [this, lowerAddr](const std::string& addr) {
+        return prefs_.remoteImageSenders.count(lowerAddr(addr)) > 0;
+    };
+    mailView_.onAlwaysAllowRemoteImages = [this, lowerAddr](const std::string& addr) {
+        if (prefs_.remoteImageSenders.insert(lowerAddr(addr)).second) prefs_.Save(prefsPath_);
+    };
     mailView_.onAddToContactGroup = [this](const MessageEnvelope& e, const ContactPlace& p) {
         AddSenderToContactGroup(e, p);
     };

@@ -18,12 +18,16 @@
 #include "UltraCanvasMenu.h"
 
 #include "UltraMailAttachmentStrip.h"
+#include "UltraMailInlineImages.h"
 #include "UltraMailComposer.h"   // SourceMessage
 #include "UltraMailSenderBadge.h"
 #include "UltraMailTypes.h"
 
+#include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -77,6 +81,14 @@ public:
     // Delegated to the app: open the raw .eml source in a read-only window.
     std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
 
+    // Remote images (http/https) are not loaded until the reader asks: a bar
+    // above the body offers "Show images" for this message and "Always from
+    // <sender>". `remoteImagesAllowed` answers whether a sender is on that
+    // list; `onAlwaysAllowRemoteImages` adds one. Images embedded in the
+    // message (cid:, data:) are always shown.
+    std::function<bool(const std::string& address)> remoteImagesAllowed;
+    std::function<void(const std::string& address)> onAlwaysAllowRemoteImages;
+
     // Raised when a body was scanned for the first time (the verdict has been
     // stored already): the message list refreshes that row's badge.
     std::function<void(const MessageEnvelope&, const MessageSecurity&)> onSecurityScanned;
@@ -85,6 +97,14 @@ private:
     // Render a body into bodyHost_: HTML through the HTMLReader element
     // builder (CSSLayout engine), plain text into a read-only text area.
     void RenderBody(const std::string& body, bool isHtml);
+
+    // The image loader behind RenderBody: embedded images from the message,
+    // remote ones from remoteCache_ (noted in blockedRemote_ when absent).
+    std::vector<uint8_t> LoadImage(const std::string& src);
+    // Show / hide the remote-images bar for the message on screen.
+    void UpdateRemoteBar();
+    // Download blockedRemote_ off the UI thread, then render the body again.
+    void FetchRemoteImages();
 
     // The stored verdict for a message, scanning (and storing) the cached body
     // the first time it is read. `raw` is the .eml text, empty when it has not
@@ -122,6 +142,21 @@ private:
     SourceMessage   current_;   // the shown message, for Reply / Forward
     MessageEnvelope curEnv_;    // the shown message's identity, for Delete / Junk / Mark-Unread
     std::string     curRaw_;    // the shown message's raw .eml, for View source
+
+    // Images of the shown HTML body.
+    std::string          curHtml_;             // the body, for a re-render
+    InlineImages         inlineImages_;        // parts of the message itself
+    std::set<std::string> blockedRemote_;      // remote images not (yet) loaded
+    bool                 remoteAllowed_ = false;   // load them without asking
+    bool                 remoteDangerous_ = false; // scam / spam: no "Always"
+    bool                 fetchingRemote_ = false;
+    uint64_t             showToken_ = 0;       // bumps per Show/Clear: stale fetches drop
+    // Downloaded remote images by URL, shared across messages (bounded).
+    std::map<std::string, std::vector<uint8_t>> remoteCache_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> remoteBar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     remoteText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    remoteShow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    remoteAlways_;
 };
 
 } // namespace UltraMail

@@ -8,6 +8,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include <set>
 #include <string>
 
 namespace UltraMail {
@@ -26,6 +27,10 @@ struct Preferences {
     // and only once each — never a lookup of a stranger's domain. Off means
     // the badge shows the sender's monogram in the brand's colour instead.
     bool fetchSenderIcons = true;
+
+    // Senders whose remote (web) images load without asking ("Always from
+    // <sender>" in the reading pane), lower-cased addresses.
+    std::set<std::string> remoteImageSenders;
 
     // Read `path`; missing file or keys keep the defaults. Returns false only
     // when the file exists but could not be opened.

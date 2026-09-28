@@ -34,6 +34,19 @@
   - a right-click menu on a contact with *Edit*, *Move to group ▸* (every
     section and group) and *Delete*. A contact filed in a group keeps its
     section, which still decides its sender-badge colour.
+- **Images in HTML mail.**
+  - Images carried inside the message (`cid:` parts of multipart/related
+    mail, `data:` URIs) are shown. Until now every image rendered empty.
+  - Images on the web are not loaded until you ask, because loading one
+    tells the sender that, when and where you opened the message (a
+    tracking pixel is exactly that). A bar above the body counts them and
+    offers *Show images* for this message, or *Always from <sender>*, which
+    is remembered in `preferences.ini` (`remote_images_from`).
+  - A message in the Junk folder or flagged as spam or scam never loads
+    them by itself and is never offered *Always*.
+  - Images download in the background (at most 60 per message, 5 MB each),
+    and the body is redrawn when they arrive.
+  - Links in HTML mail open in the browser (web and `mailto:` links only).
 - **Attachments open in UltraCanvas's media viewer.** Images, PDF,
   spreadsheets, text and source files, e-books, fonts, 3D models, audio and
   video open in a viewer window of UltraMail's own, the same on every
