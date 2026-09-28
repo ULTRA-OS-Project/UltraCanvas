@@ -20,6 +20,7 @@
 #include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetCurlMailAuth.h>
+#include <UltraNet/UltraNetCurlTls.h>
 #include <UltraNet/UltraNetMailAddr.h>
 
 #include <curl/curl.h>
@@ -170,9 +171,8 @@ public:
             const std::string caBundle = UltraNet_ResolveCaBundlePath();
             if (!caBundle.empty())
                 curl_easy_setopt(h.get(), CURLOPT_CAINFO, caBundle.c_str());
-#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
-            curl_easy_setopt(h.get(), CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
-#endif
+            // Windows: system certificate store + browser-style revocation check.
+            ultranet_curltls::Apply(h.get());
         }
 
         // The envelope (MAIL FROM / RCPT TO) takes the bare addr-spec only —

@@ -86,11 +86,15 @@ if [ -d ./build/Plugins/Elements ]; then
     echo "Copied Elements plugins"
 fi
 
-# TLS CA bundle. The MSYS2 libcurl we ship uses the OpenSSL backend, which needs
-# an external PEM bundle; its baked-in path points into the build tree and does
-# not exist on an end user's machine (every https:// then fails with "Problem
-# with the SSL CA cert"). Ship cacert.pem next to the exe -
-# UltraNet_ResolveCaBundlePath() probes exactly there.
+# TLS CA bundle, for a libcurl running on OpenSSL: that backend needs an
+# external PEM bundle, and its baked-in path points into the build tree, which
+# does not exist on an end user's machine (every https:// then fails with
+# "Problem with the SSL CA cert"). Ship cacert.pem next to the exe -
+# UltraNet_ResolveCaBundlePath() probes exactly there. The MSYS2 libcurl we ship
+# today runs on Schannel, though ("schannel: ..." in its errors), and there the
+# bundle is deliberately NOT used: Schannel verifies against the Windows
+# certificate store, and handed a CA file it would verify against that file
+# alone (UltraNetHttpEasy.cpp, DiscoverCaTrust).
 CACERT_DST="$DIST_DIR/cacert.pem"
 CACERT_SRC=""
 for cand in \

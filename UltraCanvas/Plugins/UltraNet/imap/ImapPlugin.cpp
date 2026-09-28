@@ -24,6 +24,7 @@
 #include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetCurlMailAuth.h>
+#include <UltraNet/UltraNetCurlTls.h>
 
 #include "ImapParse.h"
 
@@ -134,9 +135,8 @@ UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool 
         const std::string caBundle = UltraNet_ResolveCaBundlePath();
         if (!caBundle.empty())
             curl_easy_setopt(h, CURLOPT_CAINFO, caBundle.c_str());
-#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
-        curl_easy_setopt(h, CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
-#endif
+        // Windows: system certificate store + browser-style revocation check.
+        ultranet_curltls::Apply(h);
     }
     curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, static_cast<long>(opt.connectTimeoutMs));
     curl_easy_setopt(h, CURLOPT_TIMEOUT_MS,        static_cast<long>(opt.operationTimeoutMs));
