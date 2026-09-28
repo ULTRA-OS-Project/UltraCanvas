@@ -13,6 +13,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasUtilsUtf8.h"
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -370,7 +371,26 @@ void MailView::BuildListBox() {
     list_->onItemClicked = [this](int row) { SelectRow(row); };
     list_->onContextMenu = [this](int row, const UCEvent& event) { ShowRowMenu(row, event); };
 
-    FillWith(listBox_, list_);
+    // Search above the list, inside the same card.
+    auto column = CreateContainer("messageListColumn", 0, 0, 0, 0);
+    column->layout.SetFlexColumn()
+                  .SetFlexGap(Theme::kInnerGap)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    search_ = CreateTextInput("messageSearch", 0, 0, 0, Theme::kControlHeight);
+    search_->SetPlaceholder("Search sender or subject");
+    search_->SetShowClearButton(true);
+    Theme::StyleInput(search_);
+    search_->SetText(searchText_);   // a rebuilt pane keeps the search
+    search_->onTextChanged = [this](const std::string& text) {
+        if (text == searchText_) return;
+        searchText_ = text;
+        FullRebuild(/*markTopRead=*/false);
+    };
+    column->AddChild(search_);
+    search_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    column->AddChild(list_);
+    list_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    FillWith(listBox_, column);
 }
 
 void MailView::BuildMessageBox() {
@@ -912,12 +932,13 @@ void MailView::UpdateListTitle() {
     if (!listBox_) return;
     std::string title = FriendlyLeaf(curFolder_, curFolder_);
     if (filter_.Active()) title += " \xC2\xB7 " + Describe(filter_);   // "Inbox · Unread"
+    if (!searchText_.empty()) title += " \xC2\xB7 \xE2\x80\x9C" + searchText_ + "\xE2\x80\x9D";
     if (!messages_.empty()) {
         title += " — " + std::to_string(messages_.size()) + " message"
                + (messages_.size() == 1 ? "" : "s");
         if (shownUnread_ > 0) title += ", " + std::to_string(shownUnread_) + " unread";
     }
-    else if (filter_.Active()) title += " \xE2\x80\x94 no messages";
+    else if (filter_.Active() || !searchText_.empty()) title += " \xE2\x80\x94 no messages";
     listBox_->SetTitle(title);
 }
 
@@ -934,12 +955,36 @@ MessageFacts MailView::FactsFor(const MessageEnvelope& m,
 
 void MailView::ApplyFilter(std::vector<MessageEnvelope>& messages,
                            const std::set<int64_t>& waitingUids) const {
-    if (!filter_.Active()) return;
+    const bool searching = !searchText_.empty();
+    if (!filter_.Active() && !searching) return;
     std::vector<MessageEnvelope> kept;
     kept.reserve(messages.size());
-    for (auto& m : messages)
-        if (FilterMatches(filter_, m, FactsFor(m, waitingUids))) kept.push_back(std::move(m));
+    for (auto& m : messages) {
+        if (filter_.Active() && !FilterMatches(filter_, m, FactsFor(m, waitingUids))) continue;
+        if (searching && !SearchMatches(m)) continue;
+        kept.push_back(std::move(m));
+    }
     messages = std::move(kept);
+}
+
+bool MailView::SearchMatches(const MessageEnvelope& m) const {
+    // Decoded like the row shows them, so what can be read can be found.
+    const std::string name = UltraNet_MimeDecodeHeader(m.fromName);
+    const std::string subject = UltraNet_MimeDecodeHeader(m.subject);
+    std::size_t pos = 0;
+    while (pos < searchText_.size()) {
+        while (pos < searchText_.size() && searchText_[pos] == ' ') ++pos;
+        std::size_t end = searchText_.find(' ', pos);
+        if (end == std::string::npos) end = searchText_.size();
+        const std::string word = searchText_.substr(pos, end - pos);
+        pos = end;
+        if (word.empty()) continue;
+        // Unicode-aware, case-insensitive (Ü finds ü).
+        if (utf8_find(name, word, 0, false) < 0 && utf8_find(m.fromAddr, word, 0, false) < 0 &&
+            utf8_find(subject, word, 0, false) < 0)
+            return false;
+    }
+    return true;
 }
 
 void MailView::SetFilter(MessageFilter filter) {

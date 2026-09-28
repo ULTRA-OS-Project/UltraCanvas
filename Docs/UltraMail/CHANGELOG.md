@@ -94,13 +94,24 @@
     - *Unread*.
     - *Needs an answer*.
     - *Spam*: the sender badge says spam or scam.
-    - *Social media*: social networks and messaging services from the
-      sender registry.
+    - *Social media*: social networks and messaging services. That means
+      the sender registry, about fifty more social-network domains
+      (subdomains included), self-hosted networks (Mastodon, Pleroma,
+      Friendica, Lemmy, `social.` hosts), and notification subjects such
+      as "commented on your", "new follower" or "hat deinen Beitrag
+      kommentiert", in English, German, French, Spanish, Italian, Dutch
+      and Portuguese.
     - *Payments & invoices*: payment services such as PayPal and Stripe, or
       a subject about an invoice, a receipt, a bill or a payment, in
       English, German, French, Spanish, Italian, Dutch or Portuguese.
 
-    The list title names the filter ("Inbox · Unread — 12 messages"). The
+    A search field above the list narrows it further. Every word typed must
+    appear in the sender's name, the address or the subject. Matching
+    ignores case, including accented letters, so "ü" finds "Ü". The ×
+    clears it. The search works together with the *Show emails* choice.
+
+    The list title names the filter and the search ("Inbox · Unread ·
+    “invoice” — 3 messages"). The
     filter stays through syncs and is cleared by switching folder or
     account. Right-clicking the empty area of the list offers *Show emails*
     too, so a filter that leaves nothing to click can still be cleared.

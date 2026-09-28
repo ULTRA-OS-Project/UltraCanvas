@@ -19,6 +19,7 @@
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasTextInput.h"
 
 #include "UltraMailMessagePreview.h"
 #include "UltraMailSenderBadge.h"
@@ -222,6 +223,11 @@ private:
     // list rather than one per row.
     std::map<int64_t, MessageSecurity> security_;
     MessageFilter                filter_;
+    // The search field above the list and what it holds: every word must occur
+    // in the sender's name or address or in the subject (case-insensitive).
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> search_;
+    std::string                  searchText_;
+    bool SearchMatches(const MessageEnvelope& m) const;
     // What the filter needs to know about a message beyond its envelope.
     MessageFacts FactsFor(const MessageEnvelope& m, const std::set<int64_t>& waitingUids) const;
     // Drop the messages the filter does not keep (no-op without a filter).

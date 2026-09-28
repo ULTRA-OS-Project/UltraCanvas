@@ -44,6 +44,13 @@ struct MessageFacts {
 bool FilterMatches(const MessageFilter& filter, const MessageEnvelope& message,
                    const MessageFacts& facts);
 
+// Whether a message looks like a social network's notification even when the
+// sender is not in the brand registry: a domain of a social network, a
+// messaging or community service (including Mastodon / fediverse servers),
+// or a notification subject ("commented on your post", "new follower",
+// "mentioned you", "hat deinen Beitrag kommentiert", ...).
+bool LooksLikeSocialMedia(const std::string& fromAddr, const std::string& subject);
+
 // Whether a subject reads like an invoice, a receipt, a bill or a payment
 // notice (English, German, French, Spanish, Italian, Dutch, Portuguese).
 bool LooksLikePaymentSubject(const std::string& subject);
