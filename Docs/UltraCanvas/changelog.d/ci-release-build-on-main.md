@@ -8,6 +8,11 @@
   `workflow_dispatch` is the one event that token may still trigger), and
   `build.yml` treats that dispatch on main as the release build - gated the
   same way, signed and notarized. A dispatch by hand stays a validation run.
+  The dispatch names the fold commit (`sha`), and every checkout in
+  `build.yml` builds exactly that commit - not whatever head main has when
+  the runner starts, which could already be the next merge. A named commit
+  must be on main, and each release dispatch has its own concurrency group,
+  so a burst of merges cannot make GitHub drop a waiting release.
 - **The UltraMail engine suite runs in CI** (`ULTRACANVAS_BUILD_ULTRAMAIL_TESTS`
   on every row; ctest on Linux runs it). Nobody built it before, so a stale
   Gmail expectation had been failing unseen since 2026-09-23.

@@ -62,6 +62,7 @@ jobs:
           rm -f fold.log
 
       - name: Commit and push
+        id: push
         if: steps.fold.outputs.version != ''
         run: |
           git config user.name  "github-actions[bot]"
@@ -74,15 +75,20 @@ jobs:
           # push to main folds them.
           git pull --rebase --no-tags origin main
           git push origin HEAD:main
+          # The commit that carries the new number - built by the step below.
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # The push above is made with GITHUB_TOKEN, and GitHub starts no workflow
       # for such a push - so build.yml never ran on a fold commit, the merge
       # commit before it is gated off, and main produced no release at all
       # (0.9.72 to 0.9.75 were never built). A workflow_dispatch is the one
       # event that token may still trigger; release=true makes it the release
-      # build the push would have been.
+      # build the push would have been. It names the fold commit itself, so a
+      # merge that lands on main in the meantime cannot become this release.
       - name: Start the release build
         if: steps.fold.outputs.version != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run build.yml --repo "${{ github.repository }}" --ref main -f release=true
+        run: |
+          gh workflow run build.yml --repo "${{ github.repository }}" --ref main \
+            -f release=true -f sha=${{ steps.push.outputs.sha }}

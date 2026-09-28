@@ -33,6 +33,14 @@ on:
         description: "Release build (signed, notarized artifacts) - main only"
         type: boolean
         default: false
+      # The exact commit to build - the fold passes its own version commit.
+      # Building "main" instead would take whatever head main has by the time
+      # the runner starts, which may already be a later merge. Must be on
+      # main (the gate checks); empty = the head of the ref dispatched on.
+      sha:
+        description: "Commit to build (empty = branch head)"
+        type: string
+        default: ""
 
 # Supersede in-flight runs for the same branch when newer commits arrive, so a
 # rapid series of pushes to an open PR costs one build rather than one each.
@@ -40,8 +48,12 @@ on:
 # `pull_request` runs (github.head_ref) and any `push`/dispatch run on it
 # (github.ref_name). Pushes to main are never cancelled — those runs produce the
 # signed, notarized release artifacts.
+#
+# A release dispatch is keyed by its commit as well: GitHub keeps only ONE
+# pending run per group, so with a shared key a third release dispatched while
+# one builds and one waits would silently replace the waiting one.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}${{ inputs.sha && format('-{0}', inputs.sha) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -60,14 +72,28 @@ jobs:
       pending: ${{ steps.check.outputs.pending }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+      # A named commit is built only if main contains it, so a dispatch cannot
+      # sign and publish a commit that never landed.
+      - name: The commit to build is on main
+        if: inputs.sha != ''
+        shell: bash
+        run: |
+          if ! git merge-base --is-ancestor "${{ inputs.sha }}" origin/main; then
+            echo "::error::${{ inputs.sha }} is not on main - refusing to build it"
+            exit 1
+          fi
       - id: check
         shell: bash
         run: |
           count=$(find Docs/UltraCanvas/changelog.d -maxdepth 1 -name '*.md' \
                        ! -name 'README.md' 2>/dev/null | wc -l)
-          # A release dispatch is gated like a push: if another merge landed
-          # between the fold and this run, main's head carries an unfolded
-          # entry again, and that merge's own fold dispatches the release.
+          # A release dispatch is gated like a push. It names the fold commit,
+          # so nothing is pending there - unless the fold had to rebase onto
+          # a merge that landed meanwhile: then that merge's entry is still
+          # unfolded in it, and that merge's own fold builds the release.
           release="${{ github.event_name == 'push' || inputs.release == true }}"
           if [ "$release" = "true" ] && [ "$count" -gt 0 ]; then
             echo "pending=true" >> "$GITHUB_OUTPUT"
@@ -164,6 +190,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          ref: ${{ inputs.sha }}   # the fold's version commit; empty = the event's commit
           submodules: recursive
           # Full history, not the default single commit. GitRepositoryTest
           # walks this repository's own commits, so under a shallow checkout it
@@ -882,6 +909,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha }}
 
       - name: Install host dependency headers
         run: |
