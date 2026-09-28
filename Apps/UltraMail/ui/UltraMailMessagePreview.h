@@ -100,7 +100,7 @@ private:
 
     // The image loader behind RenderBody: embedded images from the message,
     // remote ones from remoteCache_ (noted in blockedRemote_ when absent).
-    std::vector<uint8_t> LoadImage(const std::string& src);
+    std::vector<uint8_t> LoadBodyImage(const std::string& src);
     // Show / hide the remote-images bar for the message on screen.
     void UpdateRemoteBar();
     // Download blockedRemote_ off the UI thread, then render the body again.

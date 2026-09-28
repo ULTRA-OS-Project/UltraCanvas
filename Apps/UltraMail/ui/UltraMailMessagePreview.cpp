@@ -337,7 +337,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         opts.style.baseFontSizePx = 12.0f;   // ≈ the 9pt UI font
         opts.enableImages = true;
         // Embedded images from the message; remote ones only once loaded.
-        opts.resourceLoader = [this](const std::string& src) { return LoadImage(src); };
+        opts.resourceLoader = [this](const std::string& src) { return LoadBodyImage(src); };
         // Links open in the browser (web and mail addresses only - never a
         // file: or javascript: target a message could carry).
         opts.onLinkActivated = [](const std::string& href) {
@@ -391,7 +391,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 }
 
-std::vector<uint8_t> MessagePreview::LoadImage(const std::string& src) {
+std::vector<uint8_t> MessagePreview::LoadBodyImage(const std::string& src) {
     switch (ClassifyImageSource(src, inlineImages_)) {
         case ImageSource::Embedded:
             return ResolveEmbeddedImage(src, inlineImages_);
