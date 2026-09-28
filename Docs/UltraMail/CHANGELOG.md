@@ -4,6 +4,12 @@
   It stops, and leaves the space blank, when the app is idle. It is the new
   framework element `UltraCanvasBusyIndicator` (see
   `Docs/UltraCanvas/changelog.d/`).
+- **Japanese (and other non-Latin) mail is readable.** Sender names,
+  subjects and message text in ISO-2022-JP showed as `$B3t<02q…(B`, and
+  Shift_JIS, GB2312, EUC-KR or KOI8-R text was garbled the same way. They are
+  now converted to UTF-8 (framework change, see `Docs/UltraCanvas/changelog.d/`).
+  Contacts already saved with such a name are repaired the next time
+  UltraMail starts.
 - **The Contacts window is fast.** Choosing a section with a thousand
   contacts took most of a second, because each contact was built as its own
   set of widgets after two database queries per contact. The list is now a

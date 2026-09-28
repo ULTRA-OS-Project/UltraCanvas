@@ -1,8 +1,11 @@
 // core/UltraNet/UltraNetMime.cpp
 // Implementation of the UltraNet MIME utility: transfer-encoding codecs,
 // RFC 2047 header words, message parsing into a decoded part tree, and message
-// building. Pure C++ / STL — no libcurl or platform dependency.
-// Version: 0.1.0
+// building. Pure C++ / STL — no libcurl or platform dependency; other
+// charsets than UTF-8 and Latin-1 go through iconv where the build has it
+// (ULTRANET_HAS_ICONV).
+// Version: 0.2.0 - every iconv charset (ISO-2022-JP, Shift_JIS, EUC-*, GB*,
+//                  KOI8-R, windows-125x, ...), and raw ISO-2022-JP header text.
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNet/UltraNetMime.h"
 
@@ -17,6 +20,11 @@
 #include <string>
 #include <vector>
 #include <UltraCanvasUtils.h>
+
+#if defined(ULTRANET_HAS_ICONV)
+#include <cerrno>
+#include <iconv.h>
+#endif
 
 namespace {
 
@@ -46,16 +54,89 @@ std::string Latin1ToUtf8(const std::string& in) {
     return out;
 }
 
+#if defined(ULTRANET_HAS_ICONV)
+// `bytes` in `charset` -> UTF-8 through iconv. Returns false when iconv does
+// not know the charset. `clean` says whether every byte converted; a byte
+// that did not becomes U+FFFD and the conversion carries on after it.
+bool IconvToUtf8(const std::string& bytes, const std::string& charset,
+                 std::string& out, bool& clean) {
+    iconv_t cd = iconv_open("UTF-8", charset.c_str());
+    if (cd == reinterpret_cast<iconv_t>(-1)) return false;
+    out.clear();
+    clean = true;
+    std::vector<char> buf(bytes.size() * 4 + 16);
+    char* in = const_cast<char*>(bytes.data());
+    size_t inLeft = bytes.size();
+    while (true) {
+        char* o = buf.data();
+        size_t oLeft = buf.size();
+        const size_t r = inLeft ? iconv(cd, &in, &inLeft, &o, &oLeft)
+                                : iconv(cd, nullptr, nullptr, &o, &oLeft);   // flush
+        out.append(buf.data(), buf.size() - oLeft);
+        if (r != static_cast<size_t>(-1)) {
+            if (inLeft == 0) {
+                // Emit any shift-back sequence the state still owes.
+                char* f = buf.data(); size_t fLeft = buf.size();
+                iconv(cd, nullptr, nullptr, &f, &fLeft);
+                out.append(buf.data(), buf.size() - fLeft);
+                break;
+            }
+            continue;
+        }
+        if (errno == E2BIG) continue;          // out holds the part so far
+        clean = false;
+        if (inLeft == 0) break;
+        out += "\xEF\xBF\xBD";                // EILSEQ / EINVAL: U+FFFD, skip a byte
+        ++in; --inLeft;
+        if (errno == EINVAL) break;            // truncated at the end
+    }
+    iconv_close(cd);
+    return true;
+}
+#endif
+
+// A charset label as mail clients write it -> the names iconv should try, in
+// order. The later ones are supersets for text the strict name refuses (a
+// Windows-extended Japanese mail labelled plain iso-2022-jp or shift_jis).
+std::vector<std::string> IconvNames(const std::string& cs) {
+    if (cs == "iso-2022-jp")
+        return { "ISO-2022-JP", "ISO-2022-JP-2", "ISO-2022-JP-3", "CP50221" };
+    if (cs == "shift_jis" || cs == "shift-jis" || cs == "sjis" || cs == "x-sjis" ||
+        cs == "ms_kanji" || cs == "windows-31j")
+        return { "SHIFT_JIS", "CP932" };
+    if (cs == "gb2312" || cs == "gbk" || cs == "x-gbk" || cs == "euc-cn")
+        return { "GB18030", "GBK" };
+    if (cs == "ks_c_5601-1987" || cs == "euc-kr" || cs == "korean")
+        return { "CP949", "EUC-KR" };
+    if (cs == "big5" || cs == "x-big5")
+        return { "BIG5-HKSCS", "BIG5", "CP950" };
+    return { cs };
+}
+
 std::string CharsetToUtf8(const std::string& bytes, const std::string& charsetIn) {
     std::string cs = Lower(UltraCanvas::Trim(charsetIn));
     auto star = cs.find('*');                 // strip RFC 2231 language tag
     if (star != std::string::npos) cs = cs.substr(0, star);
     if (cs.empty() || cs == "utf-8" || cs == "utf8" || cs == "us-ascii" || cs == "ascii")
         return bytes;
-    if (cs == "iso-8859-1" || cs == "iso8859-1" || cs == "latin1" ||
-        cs == "windows-1252" || cs == "cp1252")
-        return Latin1ToUtf8(bytes);
-    return bytes;   // best effort for other charsets
+    const bool latin1 = cs == "iso-8859-1" || cs == "iso8859-1" || cs == "latin1";
+    if (latin1) return Latin1ToUtf8(bytes);
+#if defined(ULTRANET_HAS_ICONV)
+    // iconv knows the rest (windows-1252 included: its 0x80-0x9F are not
+    // Latin-1). Take the first name that converts cleanly, else the first
+    // that converted at all.
+    std::string best;
+    bool haveBest = false;
+    for (const std::string& name : IconvNames(cs)) {
+        std::string out; bool clean = false;
+        if (!IconvToUtf8(bytes, name, out, clean)) continue;
+        if (clean) return out;
+        if (!haveBest) { best = std::move(out); haveBest = true; }
+    }
+    if (haveBest) return best;
+#endif
+    if (cs == "windows-1252" || cs == "cp1252") return Latin1ToUtf8(bytes);
+    return bytes;   // best effort for charsets this build cannot convert
 }
 
 // ---- base64 ----------------------------------------------------------------
@@ -150,7 +231,25 @@ bool TryEncodedWord(const std::string& s, std::size_t i, std::string& out, std::
     return true;
 }
 
-std::string DecodeHeaderImpl(const std::string& raw) {
+// Header text written in ISO-2022-JP without encoded-words (older Japanese
+// mailers): 7-bit, with ESC $ B / ESC $ @ shifting into JIS X 0208. Encoded-
+// words are plain ASCII, so converting the whole value first leaves them
+// intact for the decoder below.
+bool LooksLikeRawIso2022Jp(const std::string& s) {
+    bool esc = false;
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c >= 0x80) return false;
+        if (c == 0x1B && i + 2 < s.size() && s[i + 1] == '$' &&
+            (s[i + 2] == 'B' || s[i + 2] == '@'))
+            esc = true;
+    }
+    return esc;
+}
+
+std::string DecodeHeaderImpl(const std::string& rawIn) {
+    const std::string raw = LooksLikeRawIso2022Jp(rawIn) ? CharsetToUtf8(rawIn, "iso-2022-jp")
+                                                         : rawIn;
     std::string result;
     std::size_t i = 0, n = raw.size();
     bool lastWasWord = false;

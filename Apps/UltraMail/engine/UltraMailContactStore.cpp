@@ -4,6 +4,7 @@
 #include "UltraMailContactStore.h"
 
 #include <UltraDatabase/UltraDatabase.h>
+#include <UltraNet/UltraNetMime.h>
 
 #include <map>
 #include <string>
@@ -71,7 +72,28 @@ UltraDbResult ContactStore::Open(const std::string& connectionName,
           "ALTER TABLE contacts ADD COLUMN group_name TEXT NOT NULL DEFAULT '';"
           "CREATE INDEX idx_contacts_group ON contacts(group_name);" },
     };
-    return UltraDb_Migrate(connection_, steps);
+    UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
+    if (!migrated) return migrated;
+    RepairJisNames();
+    return migrated;
+}
+
+void ContactStore::RepairJisNames() {
+    // Names collected before UltraNet converted ISO-2022-JP were stored as the
+    // raw JIS bytes ("\x1b$B3t<02q...\x1b(B"). The header decoder converts that
+    // form now; run it over the stored names that still carry the escape.
+    UltraDbResultSet rs;
+    if (!UltraDb_Query(connection_,
+            "SELECT id, display_name FROM contacts "
+            "WHERE instr(display_name, char(27)) > 0", rs))
+        return;
+    for (const auto& row : rs) {
+        const std::string before = row["display_name"].AsString();
+        const std::string after = UltraNet_MimeDecodeHeader(before);
+        if (after.empty() || after == before) continue;   // this build cannot convert
+        UltraDb_Exec(connection_, "UPDATE contacts SET display_name=? WHERE id=?",
+                     { after, row["id"].AsInt64() });
+    }
 }
 
 UltraDbResult ContactStore::LoadChildren(Contact& c) const {

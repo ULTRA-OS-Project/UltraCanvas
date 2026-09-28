@@ -257,3 +257,65 @@ TEST(mime_build_with_attachment_roundtrip) {
     REQUIRE_EQ(atts[0].filename, std::string("data.bin"));
     REQUIRE(atts[0].data == a.data);
 }
+
+// ---- charsets beyond UTF-8 / Latin-1 (iconv) --------------------------------
+#if defined(ULTRANET_HAS_ICONV)
+
+namespace {
+// "株式会社テレシア" - a real sender name that arrived as ISO-2022-JP.
+const std::string kKabushikiUtf8 =
+    "\xE6\xA0\xAA\xE5\xBC\x8F\xE4\xBC\x9A\xE7\xA4\xBE"
+    "\xE3\x83\x86\xE3\x83\xAC\xE3\x82\xB7\xE3\x82\xA2";
+}
+
+TEST(mime_header_iso2022jp_encoded_word) {
+    const std::string raw = "=?ISO-2022-JP?B?GyRCM3Q8MDJxPFIlRiVsJTclIhsoQg==?= <info@x.example>";
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader(raw), kKabushikiUtf8 + " <info@x.example>");
+    // Lower-case charset label, as many mailers write it.
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?iso-2022-jp?B?GyRCM3Q8MDJxPFIlRiVsJTclIhsoQg==?="),
+               kKabushikiUtf8);
+}
+
+TEST(mime_header_raw_iso2022jp_escape_sequences) {
+    // No encoded-word at all: the JIS bytes straight in the header.
+    const std::string raw = "\x1b$B3t<02q<R%F%l%7%\"\x1b(B";
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader(raw), kKabushikiUtf8);
+    // Mixed with ASCII and with an ordinary encoded-word.
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("Re: \x1b$B$*CN$i$;\x1b(B =?UTF-8?Q?caf=C3=A9?="),
+               std::string("Re: \xE3\x81\x8A\xE7\x9F\xA5\xE3\x82\x89\xE3\x81\x9B caf\xC3\xA9"));
+    // Plain ASCII stays untouched.
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("Hello (B) $B"), std::string("Hello (B) $B"));
+}
+
+TEST(mime_body_iso2022jp_part) {
+    const std::string raw =
+        "From: a@x.example\r\n"
+        "Subject: =?ISO-2022-JP?B?GyRCM3Q8MDJxPFIlRiVsJTclIhsoQg==?=\r\n"
+        "MIME-Version: 1.0\r\n"
+        "Content-Type: text/plain; charset=\"ISO-2022-JP\"\r\n"
+        "Content-Transfer-Encoding: 7bit\r\n"
+        "\r\n"
+        "\x1b$B3t<02q<R%F%l%7%\"\x1b(B\r\n";
+    UltraNetMimeMessage msg;
+    REQUIRE(UltraNet_MimeParse(raw, msg));
+    REQUIRE_EQ(msg.subject, kKabushikiUtf8);
+    std::string body; bool html = true;
+    REQUIRE(UltraNet_MimeGetDisplayBody(msg, body, html));
+    REQUIRE(!html);
+    REQUIRE(body.find(kKabushikiUtf8) != std::string::npos);
+}
+
+TEST(mime_header_other_charsets_via_iconv) {
+    // Shift_JIS "日本" (Q-encoded bytes 93 FA 96 7B).
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?Shift_JIS?Q?=93=FA=96=7B?="),
+               std::string("\xE6\x97\xA5\xE6\x9C\xAC"));
+    // windows-1252 0x80 is the euro sign, not a C1 control.
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?windows-1252?Q?=80?="), std::string("\xE2\x82\xAC"));
+    // KOI8-R "Привет".
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?koi8-r?Q?=F0=D2=C9=D7=C5=D4?="),
+               std::string("\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82"));
+    // An unknown charset keeps the bytes rather than dropping the text.
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader("=?x-unknown-cs?Q?abc?="), std::string("abc"));
+}
+
+#endif // ULTRANET_HAS_ICONV

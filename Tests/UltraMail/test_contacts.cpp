@@ -9,6 +9,7 @@
 #include "UltraMailContactCollector.h"
 #include "UltraMailContactStore.h"
 
+#include <cstdio>
 #include <string>
 
 using namespace UltraMail;
@@ -275,3 +276,26 @@ TEST(groups_add_move_count_and_remove) {
     REQUIRE(groups.empty());
     REQUIRE_EQ(CountFor(s, ContactSection::Friends), 1);
 }
+
+#if defined(ULTRANET_HAS_ICONV)
+TEST(open_repairs_names_stored_as_raw_iso2022jp) {
+    const std::string path = "contacts-jis-repair.db";
+    std::remove(path.c_str());
+    {
+        ContactStore s;
+        REQUIRE(s.Open("contacts-jis-a", path).success);
+        Contact c = MakeContact("\x1b$B3t<02q<R%F%l%7%\"\x1b(B", ContactSection::Other,
+                                "wordpress@www.tereshia.com");
+        REQUIRE(s.Save(c).success);   // Save leaves the name as given
+    }
+    ContactStore again;
+    REQUIRE(again.Open("contacts-jis-b", path).success);
+    std::vector<Contact> all;
+    REQUIRE(again.ListAll(all).success);
+    REQUIRE_EQ(all.size(), (size_t)1);
+    REQUIRE_EQ(all[0].displayName,
+               std::string("\xE6\xA0\xAA\xE5\xBC\x8F\xE4\xBC\x9A\xE7\xA4\xBE"
+                           "\xE3\x83\x86\xE3\x83\xAC\xE3\x82\xB7\xE3\x82\xA2"));
+    std::remove(path.c_str());
+}
+#endif

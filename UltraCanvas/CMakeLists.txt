@@ -2351,6 +2351,18 @@ if(ULTRACANVAS_ENABLE_NET)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
             $<INSTALL_INTERFACE:include/ultracanvas>)
     target_link_libraries(UltraNet PUBLIC ${UC_CURL_LINK} Threads::Threads)
+    # iconv converts mail text in any charset (ISO-2022-JP, Shift_JIS, GB18030,
+    # KOI8-R, windows-125x, ...) to UTF-8. Part of the C library on glibc and
+    # Android; libiconv on macOS and MSYS2 (already installed for Texter).
+    # Without it UltraNet still handles UTF-8 and Latin-1, as it always did.
+    find_package(Iconv QUIET)
+    if(Iconv_FOUND)
+        message(STATUS "  [+] iconv - mail charsets beyond UTF-8 / Latin-1")
+        target_link_libraries(UltraNet PUBLIC Iconv::Iconv)
+        target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_ICONV=1)
+    else()
+        message(STATUS "  [−] iconv - not found (mail text limited to UTF-8 / Latin-1)")
+    endif()
     if(ULTRANET_HAS_CARES)
         target_compile_definitions(UltraNet PUBLIC ULTRANET_HAS_CARES=1)
         target_include_directories(UltraNet PRIVATE ${CARES_INCLUDE_DIRS})

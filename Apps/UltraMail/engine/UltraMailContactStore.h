@@ -70,6 +70,8 @@ public:
 
 private:
     UltraDbResult LoadChildren(Contact& c) const;
+    // One-time repair on open: names stored as raw ISO-2022-JP bytes.
+    void RepairJisNames();
     // SELECT the contacts matching `where` (a clause over contacts, no alias)
     // and their emails/phones in three queries rather than two per contact.
     UltraDbResult ListWhere(const std::string& where, const UltraDbParams& params,
