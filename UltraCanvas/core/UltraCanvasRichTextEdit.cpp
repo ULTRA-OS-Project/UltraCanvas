@@ -383,6 +383,55 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
     return pages.back().top + pageHeightPx + gap;
 }
 
+int UltraCanvasRichTextEdit::PageIndexAt(float contentY) const {
+    if (!pageView || pages.empty()) return 0;
+    for (size_t p = 0; p < pages.size(); p++) {
+        if (contentY < pages[p].top + pageHeightPx + style.pageGap * 0.5f) return static_cast<int>(p);
+    }
+    return static_cast<int>(pages.size()) - 1;
+}
+
+// Sets every page field in the body to the page its block is on. The value
+// lives in the run's text (the model's "value it was last shown with"), so
+// plain-text output and a save carry it too. Not an edit: no undo step, and
+// the document is not marked modified. True when any field changed.
+bool UltraCanvasRichTextEdit::UpdateBodyPageFields() {
+    const std::shared_ptr<UCRichDocument>& document = editor.GetDocument();
+    if (!document) return false;
+    const std::string count = std::to_string(std::max<size_t>(1, pages.size()));
+    bool changed = false;
+    for (size_t i = 0; i < document->blocks.size() && i < blockLayouts.size(); i++) {
+        RichDocBlock& block = document->blocks[i];
+        const std::string page = std::to_string(PageIndexAt(blockLayouts[i].bounds.y) + 1);
+        bool blockChanged = false;
+        auto fill = [&](std::vector<RichTextRun>& runs) {
+            for (RichTextRun& run : runs) {
+                const std::string* value = run.field == RichTextRun::Field::PageNumber ? &page
+                                         : run.field == RichTextRun::Field::PageCount ? &count : nullptr;
+                if (value && run.text != *value) {
+                    run.text = *value;
+                    blockChanged = true;
+                }
+            }
+        };
+        fill(block.runs);
+        for (RichTableRow& row : block.tableRows) {
+            for (RichTableCell& cell : row.cells) fill(cell.runs);
+        }
+        if (blockChanged) {
+            blockLayouts[i].valid = false;
+            changed = true;
+        }
+    }
+    if (changed) {
+        // A caret past a number that got shorter is brought back inside it.
+        const RichDocPosition caret = editor.GetCaret();
+        const RichDocPosition clamped = editor.ClampPosition(caret);
+        if (clamped != caret) editor.SetCaret(clamped, false);
+    }
+    return changed;
+}
+
 // Continuous view: one column, with the first page's header above the body
 // and its footer below it (so a letterhead still shows its bank lines).
 float UltraCanvasRichTextEdit::PlaceBlocksInColumn(IRenderContext* ctx) {
@@ -1175,6 +1224,16 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
         y += bl.bounds.height + GapAfterBlock(i);
     }
     y = pageView ? PlaceBlocksOnPages(ctx) : PlaceBlocksInColumn(ctx);
+    // A page number in the body shows the page its block landed on, which is
+    // only known now. Renumbering can change a block's width ("9" to "10"),
+    // so the renumbered blocks are laid out and the pages placed again.
+    if (pageView && UpdateBodyPageFields()) {
+        for (int i = 0; i < blockCount; i++) {
+            BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+            if (!bl.valid) BuildBlockLayout(ctx, i);
+        }
+        y = PlaceBlocksOnPages(ctx);
+    }
     contentHeight = std::max(0.0f, y);
     layoutsDirty = false;
 
@@ -2535,6 +2594,8 @@ UC_RTE_FORMAT_ACTION(OutdentList(), editor.OutdentList())
 UC_RTE_FORMAT_ACTION(ToggleBlockQuote(), editor.ToggleBlockQuote())
 UC_RTE_FORMAT_ACTION(ToggleCodeBlock(const std::string& language), editor.ToggleCodeBlock(language))
 UC_RTE_FORMAT_ACTION(ToggleCheckList(), editor.ToggleCheckList())
+UC_RTE_FORMAT_ACTION(InsertPageNumberField(), editor.InsertField(RichTextRun::Field::PageNumber))
+UC_RTE_FORMAT_ACTION(InsertPageCountField(), editor.InsertField(RichTextRun::Field::PageCount))
 UC_RTE_FORMAT_ACTION(InsertHorizontalRule(), editor.InsertHorizontalRule())
 UC_RTE_FORMAT_ACTION(InsertPageBreak(), editor.InsertPageBreak())
 

@@ -212,6 +212,11 @@ public:
     // Structure.
     void InsertHorizontalRule();
     void InsertPageBreak();
+    // A page number or page count field at the caret: in page view it shows
+    // the page it is on (or how many there are), and DOCX/ODT save it as a
+    // field, so a word processor numbers it too.
+    void InsertPageNumberField();
+    void InsertPageCountField();
     bool InsertImageFromFile(const std::string& path, const std::string& altText = "");
     void InsertImageFromMemory(const std::string& name, const std::string& mimeType,
                                const std::vector<uint8_t>& data,
@@ -428,6 +433,9 @@ private:
     float PlaceBlocksOnPages(IRenderContext* ctx);
     float PlaceBlocksInColumn(IRenderContext* ctx);
     void RenderPages(IRenderContext* ctx);
+    // Page view: which page a content y is on (0 outside page view).
+    int PageIndexAt(float contentY) const;
+    bool UpdateBodyPageFields();
     void RenderFurniture(IRenderContext* ctx, const FurnitureLayout& furniture, float top);
 
     // ===== RENDERING =====

@@ -936,6 +936,36 @@ int main() {
         TEST("Formulas keep their source", edit->GetPlainText().find("E = mc^2") != std::string::npos);
     }
 
+    // ===== PAGE FIELDS IN THE BODY =====
+    std::cerr << "\n--- Page fields ---" << std::endl;
+    {
+        edit->SetMarkdown("First page\n\nSecond page\n");
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 0));
+        edit->InsertPageBreak();
+        window->UpdateAndRender();
+        const int secondBlock = editor.GetBlockCount() - 1;
+        editor.SetCaret(editor.ContainerEnd(RichDocPosition(secondBlock, 0)));
+        edit->InsertText(" is page ");
+        edit->InsertPageNumberField();
+        edit->InsertText(" of ");
+        edit->InsertPageCountField();
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("Two pages", edit->GetPageCount() == 2);
+        const std::string text = editor.BlockText(secondBlock);
+        TEST("The body's page field numbers its own page: " + text,
+             text.find("is page 2 of 2") != std::string::npos);
+        TEST("Typing after a field is not part of it", [&]() {
+            for (const auto& r : editor.GetBlock(secondBlock).runs) {
+                if (r.field != RichTextRun::Field::Plain && r.text.find("of") != std::string::npos) return false;
+            }
+            return true;
+        }());
+        edit->SetPageView(false);
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

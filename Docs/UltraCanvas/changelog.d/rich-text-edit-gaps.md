@@ -29,3 +29,10 @@
 - **Fixed: inline images in the rich text element were drawn again at every
   relayout.** The block layout never cleared its list of placed pictures, so
   each edit or caret move added another copy of every picture in the block.
+- **Page number and page count fields in the body are numbered in page
+  view**, each with the page its paragraph is on; they used to keep the
+  number they were saved with. `InsertPageNumberField()` /
+  `InsertPageCountField()` on the element (`InsertField` on the editing
+  core) insert one. Text typed next to a field or an inline picture no longer
+  inherits being a field or a picture - it takes only the neighbour's
+  character formatting.

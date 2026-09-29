@@ -44107,6 +44107,13 @@ otherwise), with page number and page count fields
 top margin, or below the header when the header is taller than the margin
 leaves room for; the footer likewise.
 
+Page fields work in the body too: `InsertPageNumberField()` and
+`InsertPageCountField()` put one at the caret, and in page view each shows
+the page its paragraph landed on (the value is kept in the run's text, so a
+save or plain-text copy carries it; DOCX and ODT save it as a real field).
+Updating them is not an edit - no undo step, and the document stays
+unmodified.
+
 An editable page view marks the corners of each page's text area
 (`style.pageMarginGuideColor`) and shows page breaks as dashed rules; a
 read-only one shows neither.
@@ -44129,7 +44136,7 @@ Honest limits of this first version — none of them silently misbehave:
   pages (no widow/orphan control, no repeated table header rows), and a block
   taller than a page runs past its bottom margin.
 - **Headers and footers are shown, not edited.** The caret never enters
-  them; page number fields in the body keep the number they were saved with.
+  them.
 - **No zoom and no horizontal scrolling.** A page wider than the element is
   cut at the right.
 - **Images are not resized interactively** (insert and delete work).

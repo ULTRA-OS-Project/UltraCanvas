@@ -301,6 +301,9 @@ public:
                           const std::vector<uint8_t>& data,
                           const std::string& altText = "");
     void DeleteBlock(int blockIndex);
+    // Inserts a page number (Field::PageNumber) or page count field at the
+    // caret. Its text is a placeholder until a paged view numbers it.
+    bool InsertField(RichTextRun::Field field);
 
     // ===== TABLES =====
     // Cells are stored sparsely (see RichTableGrid), so a cell's index within

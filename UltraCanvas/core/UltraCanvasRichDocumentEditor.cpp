@@ -69,6 +69,15 @@ int RunSpan(const RichTextRun& run) {
     return (run.lineBreakBefore ? 1 : 0) + static_cast<int>(run.text.size());
 }
 
+// Clears what makes a run an object rather than formatted text: a picture's
+// media, a field's kind.
+void StripObjectIdentity(RichTextRun& run) {
+    run.mediaIndex = -1;
+    run.imageWidthPt = run.imageHeightPt = 0.0f;
+    run.imageAltText.clear();
+    run.field = RichTextRun::Field::Plain;
+}
+
 } // namespace
 
 // ===== RichCharFormatDelta =====
@@ -215,6 +224,11 @@ void UCRichDocumentEditor::InsertIntoRuns(std::vector<RichTextRun>& runs, int by
         inserted = *format;
     } else if (const RichTextRun* source = RunAtOffset(runs, byteOffset)) {
         inserted = *source;
+        // Typed text takes its neighbour's formatting, not what it IS: text
+        // typed after a picture is not a picture, and after a page number
+        // field it is not part of the number (which the next layout would
+        // overwrite).
+        StripObjectIdentity(inserted);
     }
     inserted.text = text;
     inserted.lineBreakBefore = lineBreakBefore;
@@ -1460,6 +1474,7 @@ RichTextRun UCRichDocumentEditor::FormatAt(const RichDocPosition& pos) const {
         RichTextRun copy = *run;
         copy.text.clear();
         copy.lineBreakBefore = false;
+        StripObjectIdentity(copy);      // a format, not the object it came from
         return copy;
     }
     return {};
@@ -2473,6 +2488,31 @@ int UCRichDocumentEditor::InsertInlineImage(const std::string& name,
     NotifyChanged();
     NotifySelectionChanged();
     return mediaIndex;
+}
+
+bool UCRichDocumentEditor::InsertField(RichTextRun::Field field) {
+    if (field == RichTextRun::Field::Plain) return false;
+    if (!IsTextContainer(caret)) return false;
+    RichDocRange selection = GetSelectionRange();
+    int first = selection.start.blockIndex;
+    int count = selection.end.blockIndex - first + 1;
+    {
+        EditScope scope(*this, first, count);
+        if (HasSelection()) DeleteRangeInternal(selection);
+        std::vector<RichTextRun>* runs = MutableRunsAt(caret);
+        if (!runs) return false;
+        RichTextRun run = FormatAt(caret);
+        run.field = field;
+        // The value until a paged view fills in the real one.
+        run.text = "1";
+        InsertIntoRuns(*runs, caret.byteOffset, run.text, &run);
+        caret.byteOffset += static_cast<int>(run.text.size());
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
 }
 
 int UCRichDocumentEditor::InsertImage(const std::string& name, const std::string& mimeType,
