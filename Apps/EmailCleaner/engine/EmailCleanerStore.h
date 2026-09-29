@@ -142,9 +142,10 @@ public:
     // ---- Messages moved away ------------------------------------------------
     // A message EmailCleaner moved to Trash leaves the analysis: its row, its
     // attachments and its keyword hits are deleted, and the move is recorded,
-    // because the body stays in the mail cache it was read from (UltraMail
-    // does not delete a cached .eml when a message leaves a folder) and the
-    // next scan would otherwise analyse it again. One transaction.
+    // because the body stays in the mail cache it was read from - UltraMail
+    // removes it only at its own next sync of the folder, and a cache copied
+    // over for analysis never - and the next scan would otherwise analyse it
+    // again. One transaction.
     UltraDbResult RecordMovedAway(const std::vector<AnalyzedMessage>& messages,
                                   int64_t movedAt = 0);
     // Whether this account/folder/uid was moved away, and the Message-ID it

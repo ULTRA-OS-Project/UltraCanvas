@@ -6,6 +6,8 @@
 
 #include "UltraMailThreatScan.h"
 
+#include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -168,8 +170,13 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
         status.uidValidity != 0) {
         int64_t stored = 0;
         store_.GetFolderUidValidity(accountId, folder, stored);
-        if (stored != 0 && stored != static_cast<int64_t>(status.uidValidity))
+        if (stored != 0 && stored != static_cast<int64_t>(status.uidValidity)) {
             store_.ClearFolderMessages(accountId, folder);   // drop stale cached UIDs
+            // ... and their bodies: every cached UID of the folder is stale, and
+            // the new numbering would overwrite some files and orphan the rest.
+            std::error_code ec;
+            fs::remove_all(PathFromUtf8(BodyPath(accountId, folder, 0)).parent_path(), ec);
+        }
         store_.SetFolderUidState(accountId, folder,
                                  static_cast<int64_t>(status.uidValidity),
                                  static_cast<int64_t>(status.uidNext));
@@ -339,13 +346,60 @@ SyncOutcome SyncEngine::ReconcileFlags(const std::string& accountId,
     // the expunge runs only when the server positively enumerated the folder.
     const bool enumerated = r && !(serverUids.empty() && !locals.empty());
     if (enumerated) {
+        std::unordered_set<int64_t> kept;
+        int64_t maxUid = 0;
         for (const auto& m : locals) {
-            if (!serverUids.count(m.uid) &&
-                store_.RemoveMessage(accountId, folder, m.uid))
+            maxUid = std::max(maxUid, m.uid);
+            if (serverUids.count(m.uid)) {
+                kept.insert(m.uid);
+                continue;
+            }
+            if (store_.RemoveMessage(accountId, folder, m.uid)) {
                 out.stats.expunged++;
+                std::error_code ec;
+                if (fs::remove(PathFromUtf8(BodyPath(accountId, folder, m.uid)), ec))
+                    out.stats.bodiesRemoved++;
+            }
         }
+        // Bodies an earlier version left behind when it dropped only the row.
+        // Only once the server has positively listed the folder, as above.
+        out.stats.bodiesRemoved += PruneBodies(accountId, folder, kept, maxUid);
     }
     return out;
+}
+
+UltraDbResult SyncEngine::ForgetMessage(const std::string& accountId,
+                                        const std::string& folder, int64_t uid) {
+    UltraDbResult r = store_.RemoveMessage(accountId, folder, uid);
+    if (!r) return r;
+    std::error_code ec;
+    fs::remove(PathFromUtf8(BodyPath(accountId, folder, uid)), ec);   // absent is fine
+    return r;
+}
+
+int SyncEngine::PruneBodies(const std::string& accountId, const std::string& folder,
+                            const std::unordered_set<int64_t>& keep, int64_t maxUid) {
+    if (maxUid <= 0) return 0;
+    const fs::path dir = PathFromUtf8(BodyPath(accountId, folder, 0)).parent_path();
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) return 0;
+
+    std::vector<fs::path> stale;
+    for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        if (ec) break;
+        if (!entry.is_regular_file(ec) || PathToUtf8(entry.path().extension()) != ".eml")
+            continue;
+        const std::string stem = PathToUtf8(entry.path().stem());
+        if (stem.empty() || stem.find_first_not_of("0123456789") != std::string::npos)
+            continue;   // not a cached body this engine wrote
+        const int64_t uid = std::strtoll(stem.c_str(), nullptr, 10);
+        if (uid <= maxUid && !keep.count(uid)) stale.push_back(entry.path());
+    }
+    int removed = 0;
+    for (const fs::path& p : stale) {
+        if (fs::remove(p, ec)) ++removed;
+    }
+    return removed;
 }
 
 SyncOutcome SyncEngine::MoveMessage(const std::string& accountId,
@@ -357,9 +411,10 @@ SyncOutcome SyncEngine::MoveMessage(const std::string& accountId,
         serverUrl, srcFolder, static_cast<uint32_t>(uid), dstFolder, options);
     if (!r) return SyncOutcome::Fail(r);
 
-    // The server moved it out of srcFolder; drop the local row so the list stops
-    // showing it. The destination folder picks it up on its next sync.
-    UltraDbResult lr = store_.RemoveMessage(accountId, srcFolder, uid);
+    // The server moved it out of srcFolder; drop the local row (and its cached
+    // body) so the list stops showing it. The destination folder picks it up on
+    // its next sync.
+    UltraDbResult lr = ForgetMessage(accountId, srcFolder, uid);
     if (!lr) return SyncOutcome::Fail(lr.message);
     return SyncOutcome{};
 }

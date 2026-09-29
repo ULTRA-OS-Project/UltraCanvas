@@ -5,6 +5,19 @@
   `UltraMailApp.cpp`). They are gone - and with them a data race: the
   per-batch trace read the selected account, which belongs to the UI thread,
   from the sync worker.
+- **The message cache no longer only grows.** Every message body UltraMail
+  downloads is kept as `mail/<account>/<folder>/<uid>.eml`, and none was ever
+  deleted: a message expunged on the server, moved to Trash or Junk, deleted,
+  or renumbered by a UIDVALIDITY reset lost its row in the index but kept its
+  file, so the mail folder grew by every message ever received - and
+  EmailCleaner, which reads the same cache, kept finding mail that was gone.
+  The body now goes with the row: `SyncEngine::MoveMessage`, the expunge in
+  `ReconcileFlags`, Delete without a Trash folder (`SyncEngine::ForgetMessage`)
+  and a UIDVALIDITY reset (the whole folder's files) remove it. And the first
+  reconcile of each folder prunes what earlier versions left behind - only
+  once the server has actually listed the folder (the same guard the expunge
+  has), and only up to the highest UID the index held when it started, so a
+  body a sync is writing at that moment is never touched.
 
 #### 2026-09-29 *0.10.8*
 - **Replies and forwards keep an HTML message's formatting.** Answering or

@@ -284,7 +284,8 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
         ++stats.filesSeen;
 
         // A message EmailCleaner moved to Trash is still in this cache - the
-        // cache is not ours to prune - so the move is looked up before
+        // cache is not ours to prune (UltraMail drops it at its next sync) -
+        // so the move is looked up before
         // anything else, on a re-analyse as much as on a scan.
         std::string movedId;
         const bool movedAway = uid != 0 &&

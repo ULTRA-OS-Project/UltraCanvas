@@ -27,8 +27,9 @@
 - **Mail moved to Trash leaves the map.** A message **Move to Trash** moved
   stayed in the analysis - the map, the counts, the message list - until the
   account was scanned again, and even that did not help: the body is still in
-  the mail cache it was read from (UltraMail does not delete a cached `.eml`
-  when a message leaves a folder), so the scan analysed it again. Now the
+  the mail cache it was read from (UltraMail kept every cached `.eml` for
+  good until its 0.10.9, and removes one only at its next sync of the folder
+  now), so the scan analysed it again. Now the
   moved messages are taken out of the analysis as soon as the moves come
   back, and the move is remembered (schema 5, `moved_messages`), so neither
   **Load mail** nor **Re-analyse** brings them back. The record keeps the

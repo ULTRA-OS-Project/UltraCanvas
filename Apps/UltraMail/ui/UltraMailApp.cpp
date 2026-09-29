@@ -749,10 +749,10 @@ void UltraMailApp::HandleDeleteMessage(const MessageEnvelope& env) {
             if (!trash.empty() && trash != env.folder)
                 return engine.MoveMessage(env.accountId, env.folder, env.uid, trash, url, opts);
             // No Trash mailbox (or already in it): flag \Deleted on the server and
-            // drop the local row so it leaves the list.
+            // drop the local row and its cached body so it leaves the list.
             SyncOutcome o = engine.SetFlag(env.accountId, env.folder, env.uid,
                                            Flag_Deleted, true, url, opts);
-            if (o) store_.RemoveMessage(env.accountId, env.folder, env.uid);
+            if (o) engine.ForgetMessage(env.accountId, env.folder, env.uid);
             return o;
         },
         "Delete");
