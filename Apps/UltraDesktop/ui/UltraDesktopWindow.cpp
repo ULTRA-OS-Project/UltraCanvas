@@ -27,7 +27,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
+#include <type_traits>
 
 #ifndef ULTRADESKTOP_VERSION
 #error "ULTRADESKTOP_VERSION is not defined: build through CMake, which reads it from Docs/UltraDesktop/CHANGELOG.md"
@@ -63,6 +65,16 @@ const Color kMarkerCount   (90, 90, 90, 255);    // grey pill for counts
 const Color kMarkerSaved   (60, 170, 90, 255);   // green: the screenshot landed
 
 const char* const kRunningPrefix = "win:";
+
+// The window's native handle as the id the desktop shell module takes: an
+// X11 Window is an integer, a HWND or NSWindow a pointer.
+uint64_t NativeHandleId(NativeWindowHandle handle) {
+    if constexpr (std::is_pointer_v<NativeWindowHandle>) {
+        return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(handle));
+    } else {
+        return static_cast<uint64_t>(handle);
+    }
+}
 
 std::string Shorten(const std::string& text, size_t max) {
     if (text.size() <= max) return text;
@@ -195,6 +207,23 @@ void UltraDesktopWindow::BuildLayout() {
     window_->onWindowResize = [this](int w, int h) {
         LayoutForSize(static_cast<float>(w), static_cast<float>(h));
     };
+    ReserveBarEdges();
+}
+
+void UltraDesktopWindow::ReserveBarEdges() {
+    if (!window_) return;
+    // The taskbar's edge and the right bar, in the physical pixels the window
+    // manager measures in. Through the module, so the desktop never touches
+    // the window system itself.
+    const int taskbar = window_->LogicalToPhysical(kBarThickness);
+    const int right = window_->LogicalToPhysical(kInfoPanelWidth);
+    const TaskbarEdge edge = settings_.taskbarEdge;
+    UltraCanvasDesktopShell::ReserveScreenEdges(
+            NativeHandleId(window_->GetNativeHandle()),
+            edge == TaskbarEdge::Left ? taskbar : 0,
+            right,
+            edge == TaskbarEdge::Top ? taskbar : 0,
+            edge == TaskbarEdge::Bottom ? taskbar : 0);
 }
 
 void UltraDesktopWindow::LayoutForSize(float width, float height) {

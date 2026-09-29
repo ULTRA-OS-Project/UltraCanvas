@@ -143,6 +143,13 @@ namespace UltraCanvas {
 
         // ===== THE SCREEN =====
         static bool GetScreenSize(int& width, int& height);
+        // Reserve strips along the screen's edges for `windowId` - a desktop's
+        // bars, a dock - so that maximised and tiled windows stop short of
+        // them (EWMH _NET_WM_STRUT_PARTIAL on X11). Widths in physical
+        // pixels, 0 for an edge that reserves nothing; the strip runs the
+        // whole length of its edge. Call it again to change or, with four
+        // zeros, to release. `windowId` is the window's native handle.
+        static bool ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom);
         // The whole screen, written as PNG to `pngPath`. The directory is
         // created. False with the reason in `error`.
         static bool CaptureScreen(const std::string& pngPath, std::string* error = nullptr);

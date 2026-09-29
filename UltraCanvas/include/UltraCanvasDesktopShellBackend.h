@@ -41,6 +41,7 @@ namespace DesktopShellBackend {
 
     // The screen.
     bool GetScreenSize(int& width, int& height);
+    bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom);
     bool CaptureScreen(const std::string& pngPath, std::string& error);
 
     // The parts of the device activity only the platform can read: audio

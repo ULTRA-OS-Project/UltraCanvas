@@ -5,7 +5,8 @@
   speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic, USB count,
   battery, keyboard layout) and the counts an application publishes for the
   desktop to show (`PublishNotice` / `ReadNotice`, one atomically written JSON
-  file per application). `UltraCanvasDesktopShellMonitor` reports window and
+  file per application), and `ReserveScreenEdges` to keep maximised windows
+  off a window's strips along the screen's edges (`_NET_WM_STRUT_PARTIAL`). `UltraCanvasDesktopShellMonitor` reports window and
   desktop changes on its own thread. Linux backend over EWMH, `XGetImage`,
   procfs and sysfs; a null backend elsewhere keeps the application list, the
   launcher and the notices working. The module the new UltraDesktop

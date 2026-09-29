@@ -58,6 +58,10 @@ separators:
 3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
    by default, in the file manager) and *UltraFiler*.
 
+The taskbar's edge and the right bar are reserved with the window manager
+(`ReserveScreenEdges` in the module), so maximised and tiled application
+windows stop short of the bars instead of covering them.
+
 ### Right bar
 
 - **Desktop organiser**: the virtual desktops as numbered toggles (three by

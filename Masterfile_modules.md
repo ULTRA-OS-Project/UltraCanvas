@@ -627,7 +627,9 @@ the backing implementation can be replaced without affecting callers.
   - `GetVirtualDesktopCount` / `GetCurrentVirtualDesktop` /
     `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
     `MoveWindowToVirtualDesktop`.
-  - `GetScreenSize`, `CaptureScreen` (PNG), `DefaultScreenshotPath`
+  - `GetScreenSize`, `ReserveScreenEdges` (a window's strips along the
+    screen's edges, `_NET_WM_STRUT_PARTIAL`, so maximised windows stop short
+    of a desktop's bars), `CaptureScreen` (PNG), `DefaultScreenshotPath`
     (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
   - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,

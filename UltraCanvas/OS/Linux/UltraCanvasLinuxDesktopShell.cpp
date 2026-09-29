@@ -516,6 +516,34 @@ bool GetScreenSize(int& width, int& height) {
     return width > 0 && height > 0;
 }
 
+bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
+    std::lock_guard<std::mutex> lock(g_queryMutex);
+    Display* d = QueryDisplay();
+    if (!d || id == 0) return false;
+    ScopedErrorHandler guard;
+    const int screen = DefaultScreen(d);
+    const long width = DisplayWidth(d, screen);
+    const long height = DisplayHeight(d, screen);
+    // _NET_WM_STRUT_PARTIAL: left, right, top, bottom, then the start and end
+    // coordinate of each strip along its edge. A strip that reserves nothing
+    // has 0..0. _NET_WM_STRUT (the four widths alone) is set as well, for a
+    // manager that reads only the older property.
+    long partial[12] = {
+        left, right, top, bottom,
+        left > 0 ? 0 : 0,  left > 0 ? height - 1 : 0,
+        right > 0 ? 0 : 0, right > 0 ? height - 1 : 0,
+        top > 0 ? 0 : 0,   top > 0 ? width - 1 : 0,
+        bottom > 0 ? 0 : 0, bottom > 0 ? width - 1 : 0,
+    };
+    const Window w = static_cast<Window>(id);
+    XChangeProperty(d, w, InternAtom(d, "_NET_WM_STRUT_PARTIAL"), XA_CARDINAL, 32, PropModeReplace,
+                    reinterpret_cast<unsigned char*>(partial), 12);
+    XChangeProperty(d, w, InternAtom(d, "_NET_WM_STRUT"), XA_CARDINAL, 32, PropModeReplace,
+                    reinterpret_cast<unsigned char*>(partial), 4);
+    XFlush(d);
+    return true;
+}
+
 bool CaptureScreen(const std::string& pngPath, std::string& error) {
     std::lock_guard<std::mutex> lock(g_queryMutex);
     Display* d = QueryDisplay();

@@ -176,6 +176,8 @@ int main() {
         Check(!UltraCanvasDesktopShell::SetCurrentVirtualDesktop(-1), "a negative desktop is refused");
         Check(!UltraCanvasDesktopShell::SetVirtualDesktopCount(0), "zero desktops is refused");
         Check(!UltraCanvasDesktopShell::ActivateWindow(0), "window 0 is refused");
+        Check(!UltraCanvasDesktopShell::ReserveScreenEdges(0, 52, 48, 0, 0), "reserving edges for window 0 is refused");
+        Check(!UltraCanvasDesktopShell::ReserveScreenEdges(1, -1, 0, 0, 0), "a negative edge is refused");
         const DesktopDeviceActivity activity = UltraCanvasDesktopShell::ReadDeviceActivity();
         Check(activity.batteryPercent >= -1 && activity.batteryPercent <= 100, "battery percentage is in range");
         std::string error;

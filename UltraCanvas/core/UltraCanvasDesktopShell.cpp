@@ -208,6 +208,11 @@ bool UltraCanvasDesktopShell::GetScreenSize(int& width, int& height) {
     return DesktopShellBackend::GetScreenSize(width, height);
 }
 
+bool UltraCanvasDesktopShell::ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom) {
+    if (windowId == 0 || left < 0 || right < 0 || top < 0 || bottom < 0) return false;
+    return DesktopShellBackend::ReserveScreenEdges(windowId, left, right, top, bottom);
+}
+
 bool UltraCanvasDesktopShell::CaptureScreen(const std::string& pngPath, std::string* error) {
     std::string reason;
     if (pngPath.empty()) {
@@ -539,6 +544,7 @@ namespace DesktopShellBackend {
     bool MoveWindowToVirtualDesktop(uint64_t, int) { return false; }
 
     bool GetScreenSize(int&, int&) { return false; }
+    bool ReserveScreenEdges(uint64_t, int, int, int, int) { return false; }
     bool CaptureScreen(const std::string&, std::string& error) {
         error = "Screenshots are not available on this platform yet.";
         return false;

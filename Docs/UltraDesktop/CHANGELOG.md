@@ -12,7 +12,9 @@
     Activate, Minimize, Move to desktop and Close, drag to reorder, and the
     group scrolls with the wheel when it is full — and the pinned RAM disc and
     UltraFiler at the bottom. The groups are joined by the S-curve
-    `UltraCanvasWaveSeparator`.
+    `UltraCanvasWaveSeparator`. The bars' edges are reserved with the window
+    manager (`UltraCanvasDesktopShell::ReserveScreenEdges`), so a maximised
+    application window stops short of them instead of covering them.
   - **Right bar**: the desktop organiser (virtual desktops 1–3, or as many
     as the settings say, the Stickerboard toggle, the clipboard history menu
     and the screenshot button) above the info panel with the devices and

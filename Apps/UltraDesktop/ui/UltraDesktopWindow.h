@@ -81,6 +81,8 @@ private:
     // ===== CONSTRUCTION =====
     void BuildLayout();
     void LayoutForSize(float width, float height);
+    // Tell the window manager where the bars are, so maximised windows stop short of them.
+    void ReserveBarEdges();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildTaskbar(bool vertical);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRightBar();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildWorkArea();
