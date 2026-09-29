@@ -2,7 +2,7 @@
 # Build configuration for the VideoFX module (video editing / conversion).
 # FFmpeg is optional: without it the same API is built from a stub whose calls
 # return VideoFXResult::NotAvailable, so consumers never need an #ifdef.
-# Version: 0.2.0
+# Version: 0.3.0
 # Last Modified: 2026-09-29
 # Author: UltraCanvas Framework
 
@@ -91,6 +91,7 @@ target_include_directories(VideoFX
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core
 )
+# The single source of VideoFX's version (VideoFX_GetVersion)
 target_compile_definitions(VideoFX PRIVATE VIDEOFX_VERSION_STRING="${PROJECT_VERSION}")
 set_target_properties(VideoFX PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

@@ -2,7 +2,7 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.2.0
+// Version: 0.3.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once

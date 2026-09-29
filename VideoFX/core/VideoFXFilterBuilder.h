@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXFilterBuilder.h
 // Internal: turns typed VideoFX effects into backend filter-graph text.
 // Pure string code with no FFmpeg dependency, so it is unit-tested directly.
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once

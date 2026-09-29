@@ -50,7 +50,7 @@ namespace VideoFX {
 // MODULE
 // ============================================================================
 
-// VideoFX's own version ("0.1.0")
+// VideoFX's own version, as set by project() in VideoFX/CMakeLists.txt
 std::string VideoFX_GetVersion();
 
 // The engine behind it, e.g. "FFmpeg 6.1.1 (libavformat 60.16.100)";

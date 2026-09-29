@@ -1,6 +1,6 @@
 // VideoFX/core/VideoFXFilterBuilder.cpp
 // Effect list -> filter-graph text, and the effect / segment / preset factories.
-// Version: 0.2.0
+// Version: 0.3.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 

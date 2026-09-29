@@ -12,7 +12,7 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
-// Version: 0.1.0
+// Version: 0.3.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 

@@ -10,7 +10,7 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.1.0
+// Version: 0.3.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 

@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXUnavailable.cpp
 // Built instead of the FFmpeg sources when FFmpeg is not found: the API links,
 // VideoFX_IsAvailable() says false, and every operation returns NotAvailable.
-// Version: 0.1.0
+// Version: 0.3.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
@@ -9,8 +9,10 @@
 
 namespace VideoFX {
 
+// The version has one home, project(VideoFX VERSION ...) in VideoFX/CMakeLists.txt,
+// which passes it in; no copy of the number lives in the code.
 #ifndef VIDEOFX_VERSION_STRING
-#define VIDEOFX_VERSION_STRING "0.3.0"
+#error "VIDEOFX_VERSION_STRING is set by VideoFX/CMakeLists.txt - build VideoFX through CMake"
 #endif
 
 namespace {

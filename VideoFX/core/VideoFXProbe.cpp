@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXProbe.cpp
 // Media inspection: VideoFX_Probe, frame and thumbnail extraction, saving a
 // frame as PNG / JPEG.
-// Version: 0.1.0
+// Version: 0.3.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 

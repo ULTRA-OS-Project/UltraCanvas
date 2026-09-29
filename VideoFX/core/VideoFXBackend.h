@@ -6,7 +6,7 @@
 // channel-layout API (AVChannelLayout, FFmpeg 5.1), the stream side-data move
 // (codecpar->coded_side_data, 6.1) and the supported-config query (7.1) are
 // wrapped here so the pipeline code does not care which one it runs on.
-// Version: 0.1.0
+// Version: 0.3.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once
