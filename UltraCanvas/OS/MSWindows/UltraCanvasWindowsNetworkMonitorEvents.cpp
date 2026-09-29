@@ -14,8 +14,8 @@
 // connid), bounds-checked. Compiled on CI; the first elevated run is its
 // acceptance test.
 //
-// Version: 0.5.0
-// Last Modified: 2026-09-23
+// Version: 0.8.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 
 #if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0A00
@@ -29,6 +29,7 @@
 
 #include "NetworkMonitor/NetworkMonitorAddress.h"
 #include "NetworkMonitor/NetworkMonitorEvents.h"
+#include "UltraCanvasWindowsProcessNames.h"
 
 #include <atomic>
 #include <cstring>
@@ -237,9 +238,13 @@ private:
         e.localPort = payload.localPort;
         e.remoteAddress = payload.remoteAddress;
         e.remotePort = payload.remotePort;
+        // The event carries the PID; the process list names it, no handle
+        // needed. The registry adds the path and user from the socket
+        // table where it has them; "pid N" only for a process already gone.
         ProcessIdentity process;
         process.pid = payload.pid;
-        process.displayName = "pid " + std::to_string(payload.pid);
+        process.displayName = NetworkMonitor_WindowsProcessName(payload.pid, true);
+        if (process.displayName.empty()) process.displayName = "pid " + std::to_string(payload.pid);
         e.process = process;
         if (kind == NetworkEventKind::Closed) {
             std::lock_guard<std::mutex> lock(totalsMutex_);
