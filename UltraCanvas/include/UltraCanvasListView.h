@@ -276,6 +276,7 @@ namespace UltraCanvas {
         void CreateScrollbar();
         void UpdateScrollbar();
         void SyncScrollbarBeforePaint();
+        void HideScrollbar();
         void ClampScrollOffset();
 
         // Geometry
