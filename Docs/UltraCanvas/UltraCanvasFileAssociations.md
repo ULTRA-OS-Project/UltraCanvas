@@ -182,7 +182,10 @@ code.
   process, and hard-error boxes are now off on that thread around every
   launch. When the default open still fails for a registered handler, the
   file is handed to `explorer.exe`, which activates the app from its own
-  process.
+  process. (Why the import failed at all - a packaged ImageMagick coder
+  named `mpr.dll` shadowing the system's - is a packaging bug, fixed the
+  same day; see [*"Entry point not found" in a Windows
+  DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).)
 - 1.2.1 (2026-09-12): macOS default open goes through Launch Services
   (`URLForApplicationToOpenURL:` + `openURLs:withApplicationAtURL:`) instead of
   spawning `/usr/bin/open`, so "nothing is registered for this file type" is
