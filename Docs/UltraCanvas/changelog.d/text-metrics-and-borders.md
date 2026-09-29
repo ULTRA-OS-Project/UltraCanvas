@@ -67,3 +67,12 @@
   suspecting a caller. A runtime change to the antialias, hint-style or
   hint-metrics setting logs the new options too, so the log stays true
   after it.
+- **The caret follows a DPI change.** When a window moved to a display with
+  another scale, the window, popup and tooltip contexts were rebuilt at
+  the new scale but the shared caret's was not: it is rebuilt only when
+  its size changes, and the caret's logical size is the same on both
+  displays, so it kept painting from a surface made at the old scale. The
+  window now drops it with the others. (Checked on the way: Windows,
+  macOS and Linux all reach the shared `HandleDeviceScaleChange`, which
+  makes a new render context, so the per-context font-metrics caches
+  start fresh on every platform.)
