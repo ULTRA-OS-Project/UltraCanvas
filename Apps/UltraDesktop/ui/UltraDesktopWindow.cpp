@@ -67,9 +67,12 @@ const Color kMarkerSaved   (60, 170, 90, 255);   // green: the screenshot landed
 const char* const kRunningPrefix = "win:";
 
 // The window's native handle as the id the desktop shell module takes: an
-// X11 Window is an integer, a HWND or NSWindow a pointer.
-uint64_t NativeHandleId(NativeWindowHandle handle) {
-    if constexpr (std::is_pointer_v<NativeWindowHandle>) {
+// X11 Window is an integer, a HWND or NSWindow a pointer. A template, so the
+// branch for the other kind is discarded rather than compiled: a static_cast
+// from HWND to an integer is an error, not merely dead code.
+template <typename Handle>
+uint64_t NativeHandleId(Handle handle) {
+    if constexpr (std::is_pointer_v<Handle>) {
         return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(handle));
     } else {
         return static_cast<uint64_t>(handle);
