@@ -24,6 +24,20 @@
   mail backend is now safe to use from that worker while an account is added
   or registered again on the UI thread (the account records were an unguarded
   map; ThreadSanitizer reported the race and is clean now).
+- **Mail moved to Trash leaves the map.** A message **Move to Trash** moved
+  stayed in the analysis - the map, the counts, the message list - until the
+  account was scanned again, and even that did not help: the body is still in
+  the mail cache it was read from (UltraMail does not delete a cached `.eml`
+  when a message leaves a folder), so the scan analysed it again. Now the
+  moved messages are taken out of the analysis as soon as the moves come
+  back, and the move is remembered (schema 5, `moved_messages`), so neither
+  **Load mail** nor **Re-analyse** brings them back. The record keeps the
+  Message-ID, so a UID the server hands to a different message after a
+  UIDVALIDITY reset is analysed again. And Trash folders are no longer
+  analysed at all - found by the server's folder role where UltraMail or
+  EmailCleaner knows it, and by name (`Trash`, `[Gmail]/Bin`, `Deleted Items`,
+  `Papierkorb`, ...) - so what was moved does not come back from there either;
+  rows an earlier scan stored for a Trash folder are removed.
 
 #### 2026-09-29 *0.4.0*
 - **EmailCleaner can have accounts of its own.** Until now every account came

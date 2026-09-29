@@ -173,6 +173,7 @@ versioned migrations:
 | `attachments` | Per-attachment metadata — filename, media type, size, inline, risky. Never the bytes. |
 | `keyword_hits` | The terms that fired, per message: the evidence behind a verdict. |
 | `ingest_state` | How far the ingest has got per account/folder. |
+| `moved_messages` | Messages EmailCleaner moved to Trash (account, folder, UID, Message-ID): they left the analysis, and a scan of the cache — where their bodies remain — skips them. |
 
 Attachments and hits are **derived data**: an upsert replaces them wholesale,
 so re-analysing after a rule change can never leave stale evidence behind. A

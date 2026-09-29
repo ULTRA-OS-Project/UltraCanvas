@@ -309,6 +309,14 @@ void EmailCleanerApp::ImportAccounts() {
                 for (const UltraMail::Account& account : mailAccounts) {
                     store_.UpsertAccount(ToStoredAccount(account, AccountSource::UltraMail));
                     ultraMailAccounts_[account.accountId] = account;
+                    std::vector<UltraMail::Folder> folders;
+                    if (mailStore.ListFolders(account.accountId, folders)) {
+                        for (const UltraMail::Folder& folder : folders) {
+                            if (folder.role == UltraMail::FolderRole::Trash)
+                                ultraMailTrashDirs_[account.accountId].insert(
+                                    CacheDirectoryName(account.accountId, folder.name));
+                        }
+                    }
                     ++imported;
                 }
             }
@@ -556,15 +564,35 @@ void EmailCleanerApp::FetchThenAnalyse(const std::vector<std::string>& accountId
     }).detach();
 }
 
+std::set<std::string> EmailCleanerApp::TrashDirsFor(const std::string& accountId) {
+    if (!IsOwnAccountId(accountId)) {
+        auto it = ultraMailTrashDirs_.find(accountId);
+        return it == ultraMailTrashDirs_.end() ? std::set<std::string>{} : it->second;
+    }
+    std::set<std::string> dirs;
+    std::vector<UltraMail::Folder> folders;
+    if (ownAccounts_.IsOpen() && ownAccounts_.Store().ListFolders(accountId, folders)) {
+        for (const UltraMail::Folder& folder : folders)
+            if (folder.role == UltraMail::FolderRole::Trash)
+                dirs.insert(CacheDirectoryName(accountId, folder.name));
+    }
+    return dirs;
+}
+
 void EmailCleanerApp::AnalyseCaches(bool skipExisting, const std::string& fetchReport) {
     IngestOptions options;
     options.skipExisting = skipExisting;
+    // Mail in Trash has been dealt with - including what the actions moved
+    // there - so it is not analysed: by the server's folder role where known,
+    // and by name for the rest.
+    options.skipTrash = true;
 
     IngestStats total;
     const std::string wanted = accountBar_.Filter().accountId;
     for (const StoredAccount& account : accounts_) {
         if (!wanted.empty() && account.accountId != wanted) continue;
         options.ownerAddress = account.email;
+        options.skipFolders  = TrashDirsFor(account.accountId);
         total.Add(ingestor_.IngestMailCache(CacheDirFor(account.accountId),
                                             account.accountId, options));
     }

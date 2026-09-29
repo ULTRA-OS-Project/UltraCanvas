@@ -105,6 +105,11 @@ private:
     std::string           vaultDir_;
 };
 
+// The directory a folder's bodies are cached in, under <cache>/<accountId>:
+// the IMAP path as the SyncEngine writes it ("[Gmail]/Bin" -> "[Gmail]_Bin"),
+// which is also the folder name the analysis stores for its messages.
+std::string CacheDirectoryName(const std::string& accountId, const std::string& folder);
+
 // The analysis database's view of a mail account.
 StoredAccount ToStoredAccount(const UltraMail::Account& account, AccountSource source);
 

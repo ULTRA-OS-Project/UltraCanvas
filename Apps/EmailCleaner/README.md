@@ -177,7 +177,10 @@ Three rules the panel will not bend:
 - **Deleting means moving to Trash**, resolved from the account's own folder
   list (the SPECIAL-USE role first, then `Trash` / `[Gmail]/Bin` /
   `Deleted Items` / `Papierkorb` / ...). If no Trash can be identified the move
-  is refused rather than guessed at.
+  is refused rather than guessed at. What reached Trash leaves the analysis
+  straight away, and stays out: the move is remembered, because the body is
+  still in the mail cache it was read from, and Trash folders are not
+  analysed at all.
 - **Blocking is local and reversible.** It changes what the map shows, never
   the server, and every entry can be taken back from **Blocked senders…**.
 

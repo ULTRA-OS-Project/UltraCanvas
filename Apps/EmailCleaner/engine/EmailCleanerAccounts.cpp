@@ -146,6 +146,12 @@ UltraMail::Account OwnAccounts::MakeAccount(const NewAccountRequest& request) {
 
 // ---- Free functions --------------------------------------------------------
 
+std::string CacheDirectoryName(const std::string& accountId, const std::string& folder) {
+    // Ask the SyncEngine's own path function rather than repeating its rule.
+    const std::string path = UltraMail::CachedBodyPath("cache", accountId, folder, 1);
+    return PathToUtf8(PathFromUtf8(path).parent_path().filename());
+}
+
 StoredAccount ToStoredAccount(const UltraMail::Account& account, AccountSource source) {
     StoredAccount stored;
     stored.accountId   = account.accountId;

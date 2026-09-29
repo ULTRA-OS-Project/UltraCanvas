@@ -278,7 +278,10 @@ void ActionsPanel::Apply(const ActionPlan& plan) {
     auto* app = UltraCanvasApplicationBase::GetCurrent();
     if (!ActionExecutor::HasRemoteSteps(plan) || !app) {
         // Nothing to wait on (or no loop to come back to): finish now.
-        if (ActionExecutor::HasRemoteSteps(plan)) executor->ExecuteRemote(plan, outcome);
+        if (ActionExecutor::HasRemoteSteps(plan)) {
+            executor->ExecuteRemote(plan, outcome);
+            executor->RecordMoves(outcome);
+        }
         Finish(outcome);
         return;
     }
@@ -305,8 +308,11 @@ void ActionsPanel::Apply(const ActionPlan& plan) {
     };
     std::thread([this, app, executor, plan, outcome]() mutable {
         executor->ExecuteRemote(plan, outcome);
-        app->PostToUIThread([this, outcome]() {
+        app->PostToUIThread([this, executor, outcome]() mutable {
             busy_ = false;
+            // Back where the database is used: what reached Trash leaves the
+            // analysis before the views are repainted.
+            executor->RecordMoves(outcome);
             Finish(outcome);
         });
     }).detach();
