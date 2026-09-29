@@ -131,7 +131,7 @@ namespace UltraCanvas {
                                             330, hlRowY, 290, 470);
         twoSliders->SetWheelStyle(ColorPickerWheelStyle::HueLightnessSliders);
         twoSliders->SetSliderStyle(ColorPickerSliderStyle::Thick);
-        twoSliders->SetSize(290, twoSliders->PreferredHeightForWidth(290));
+        twoSliders->SetElementSize(Size2Df(290, twoSliders->PreferredHeightForWidth(290)));
         container->AddChild(twoSliders);
 
         // --- 6: the field with the channel sliders collapsed, so the field

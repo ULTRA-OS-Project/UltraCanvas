@@ -180,7 +180,7 @@ picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessField);
 // Colour slider + intensity slider (white -> colour -> black); the bars are
 // short, so size the widget to fit what is left:
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessSliders);
-picker->SetSize(290, picker->PreferredHeightForWidth(290));
+picker->SetElementSize(UltraCanvas::Size2Df(290, picker->PreferredHeightForWidth(290)));
 
 // < and > stepper arrows inside the numeric value fields:
 picker->SetShowValueSpinners(true);

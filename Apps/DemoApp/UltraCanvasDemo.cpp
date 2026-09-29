@@ -2076,7 +2076,8 @@ namespace UltraCanvas {
 
         widgetsBuilder.AddItem("colorpicker", "Colour Picker",
                                "HSV colour wheel with saturation/value square, preview "
-                               "swatches, hex input, HSV/HSL/RGB channel sliders and alpha",
+                               "swatches, hex input, HSV/HSL/RGB channel sliders and alpha; "
+                               "hue x lightness field and colour + intensity slider styles",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateColorPickerExamples(); },
                                "DemoApp/UltraCanvasColorPickerExamples.cpp",
