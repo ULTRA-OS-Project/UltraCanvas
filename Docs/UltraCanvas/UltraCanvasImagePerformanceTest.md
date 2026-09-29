@@ -175,7 +175,7 @@ The benchmark wires up the following user-facing actions:
 |--------------------|----------------------|-------------------------------------------------------------------|
 | `chooseBtn`        | `onClick`             | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
 | `includeBmpCheckbox` | `onCheckedChanged`  | Rebuilds active codec set, re-runs benchmark                      |
-| Thumbnail per codec| `onClick`             | Opens `ShowFullSizeImageViewer(path)` at 1:1 zoom                 |
+| Thumbnail per codec| `onClick`             | Opens `ShowInMediaViewer(path)` at 1:1 zoom                 |
 | `chartElem`        | `onGeometryChanged`   | Repositions thumbnails under their bar groups when bounds shift   |
 
 Internally, the demo exposes two lambdas — `loadSourceImage` and `runBenchmark` — that callers can hook into if they want to drive the benchmark programmatically.
@@ -340,7 +340,7 @@ if (r.succeeded && globalIdx < static_cast<int>(state->thumbs.size())) {
         thumb->SetVisible(true);
         std::string slotPath = outPath;
         thumb->onClick = [slotPath]() {
-            ShowFullSizeImageViewer(slotPath);
+            ShowInMediaViewer(slotPath);
         };
         thumb->RequestRedraw();
     }

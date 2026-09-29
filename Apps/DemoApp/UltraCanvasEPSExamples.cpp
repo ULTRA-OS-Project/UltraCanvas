@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasEPSExamples.cpp
 // EPS (Encapsulated PostScript) vector graphics demo examples
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.0.1
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -64,7 +64,7 @@ namespace UltraCanvas {
             element->SetEventCallback([tile = tile.get(), statusLabel, path](const UCEvent& event) {
                 switch (event.type) {
                     case UCEventType::MouseUp:
-                        ShowFullSizeImageViewer(path);
+                        ShowInMediaViewer(path);
                         statusLabel->SetText("Opened in the media viewer: " + path);
                         return true;
                     case UCEventType::MouseEnter:
