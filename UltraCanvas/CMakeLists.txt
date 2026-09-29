@@ -530,6 +530,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElevatedFileOperations.cpp
+        # "Extract and run": a program inside an archive, unpacked to a run
+        # folder, started, and its folder removed once it has ended. POSIX
+        # launch in here; the Windows one (a job object) under OS/MSWindows/.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasArchiveRun.cpp
         # Mounted volumes + notification when that set changes. The platform
         # backend lives in OS/<Platform>/UltraCanvas*VolumeMonitor.* and is
         # picked up by the platform glob.

@@ -265,6 +265,16 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   window: a ring with the percentage, the file being handled and Cancel.
   Cancelling a pack removes the half-written archive; cancelling an unpack keeps
   what it already wrote.
+- **Programs inside archives:** a double-click on a program inside an archive
+  (or *Extract and Run* in its context menu) unpacks the archive into a
+  temporary run folder — on a RAM disc when one with room is mounted — and
+  starts the program there, with the files that came with it beside it. The
+  folder is deleted once the program, and whatever it started, has ended; one
+  left behind because UltraFiler closed first is removed at the next start.
+  On Windows that covers `.exe`, `.com`, `.bat`, `.cmd` and `.msi`, and a
+  downloaded archive's "from the internet" mark is carried over so
+  SmartScreen still checks the program; on Linux and macOS, entries the
+  archive marks executable and AppImages.
 - **File display:** everything `UltraCanvasFilerWidget` offers — sortable
   Details columns, thumbnail grids with async decoding, the size-bar and
   treemap views, hover icon menu, selection info bar, archive browsing
