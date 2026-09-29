@@ -179,3 +179,10 @@
   `IsRightToLeft`; right-to-left paragraphs start at the right, and Left/Right
   move visually through text with right-to-left letters. DOCX `w:bidi`, ODT
   `style:writing-mode` and HTML `dir` are read and written.
+- **Accessibility foundation.** New `UltraCanvasAccessibility.h`:
+  `AccessibleRole`, `IAccessibleText` (text, caret, selection, character
+  bounds, attributes, text units), `AccessibilityEvent` and listeners;
+  `UltraCanvasUIElement::GetAccessibleRole`/`GetAccessibleName`/
+  `GetAccessibleTextInterface`; the window announces focus changes.
+  `UltraCanvasRichTextEdit` implements the text interface and announces edits
+  and caret moves. Platform bridges (AT-SPI, UIA) are still to be written.

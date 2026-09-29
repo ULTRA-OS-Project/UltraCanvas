@@ -131,6 +131,16 @@ public:
     // An input method's composition is shown in the text, underlined, at the
     // caret (TextComposition events), not in a window of its own.
     bool DrawsTextComposition() const override { return !readOnly; }
+
+    // ===== ACCESSIBILITY =====
+    // A document to a screen reader: its text is the paragraphs one per line
+    // (a table's cells separated by tabs, its rows by line breaks), with the
+    // caret, selection, character positions and formatting (headings, lists,
+    // links, tracked changes, comments, spelling errors) of each part. Edits
+    // and caret moves are announced through UltraCanvasAccessibility.
+    AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Document; }
+    std::string GetAccessibleName() const override;
+    IAccessibleText* GetAccessibleTextInterface() override;
     const std::string& GetCompositionText() const { return preeditText; }
 
     // ===== DOCUMENT =====
@@ -743,6 +753,18 @@ private:
     std::string preeditText;
     int preeditCursor = 0;
     bool HandleComposition(const UCEvent& event);
+    // The accessible text, container by container (see GetAccessibleTextInterface).
+    struct AccessSegment {
+        RichDocPosition container;            // byteOffset 0
+        std::string text;
+        int charStart = 0;
+    };
+    class AccessibleText;
+    std::shared_ptr<AccessibleText> accessibleText;     // made on first request
+    std::vector<AccessSegment> AccessSegments(std::string* joined = nullptr) const;
+    int AccessOffsetOf(const RichDocPosition& position) const;
+    RichDocPosition AccessPositionOf(int offset) const;
+    void AnnounceAccessibility(AccessibilityEventType type);
     // Left/Right through text with right-to-left letters: one character the
     // way the arrow points. False when the text has none (logical steps do).
     bool VisualStep(const RichDocPosition& pos, int direction, RichDocPosition& out) const;

@@ -1567,6 +1567,47 @@ int main() {
         TEST("A paragraph marked right-to-left", edit->IsRightToLeft() && edit->GetCaretRectForTest().x > leftStart.x + 200.0f);
     }
 
+    // ===== ACCESSIBILITY =====
+    std::cerr << "\n--- Accessibility ---" << std::endl;
+    {
+        edit->SetMarkdown("# Title\n\nA **bold** caf\xC3\xA9 sentence. Another one.\n\n| a | b |\n|---|---|\n| c | d |\n");
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+        TEST("The element is a document", edit->GetAccessibleRole() == AccessibleRole::Document);
+        IAccessibleText* text = edit->GetAccessibleTextInterface();
+        TEST("It has a text interface", text != nullptr);
+        if (text) {
+            const std::string all = text->GetAccessibleText();
+            TEST("Its text is the paragraphs, a line each, cells tab-separated: " + all,
+                 all == "Title\nA bold caf\xC3\xA9 sentence. Another one.\na\tb\nc\td");
+            TEST("Offsets count characters", text->GetCharacterCount() == 48);
+            std::vector<AccessibilityEventType> events;
+            const int listener = UltraCanvasAccessibility::AddListener([&](const AccessibilityEvent& e) {
+                if (e.element == edit.get()) events.push_back(e.type);
+            });
+            text->SetCaretOffset(17);                       // after "café"
+            TEST("The caret maps to the document", editor.GetCaret() == RichDocPosition(1, 12) && text->GetCaretOffset() == 17);
+            TEST("...and moving it is announced", !events.empty() && events.back() == AccessibilityEventType::CaretMoved);
+            int start = 0, end = 0;
+            TEST("Words", text->GetTextAtOffset(14, AccessibleTextBoundary::Word, start, end) == "caf\xC3\xA9 " && start == 13);
+            TEST("Sentences", text->GetTextAtOffset(30, AccessibleTextBoundary::Sentence, start, end) == "Another one.\n"
+                 || text->GetTextAtOffset(30, AccessibleTextBoundary::Sentence, start, end) == "Another one.");
+            TEST("Lines as laid out", text->GetTextAtOffset(8, AccessibleTextBoundary::Line, start, end).find("bold") != std::string::npos);
+            AccessibleTextAttributes attributes = text->GetAttributesAt(8, start, end);
+            TEST("Formatting of a run", attributes.bold && start == 8 && end == 12);
+            TEST("A heading's level", text->GetAttributesAt(1, start, end).headingLevel == 1);
+            const Rect2Df box = text->GetCharacterBounds(8);
+            TEST("Character boxes are on the screen", box.height > 0.0f && box.width > 0.0f);
+            TEST("...and lead back to the character", text->GetOffsetAtPoint(Point2Df(box.x + box.width * 0.5f, box.y + box.height * 0.5f)) == 8);
+            TEST("Cells are addressable", text->SetSelection(41, 42) && editor.GetSelectionRange().start.InCell());
+            events.clear();
+            editor.SetCaret(RichDocPosition(1, 0));
+            edit->InsertText("x");
+            TEST("Edits are announced", std::find(events.begin(), events.end(), AccessibilityEventType::TextChanged) != events.end());
+            UltraCanvasAccessibility::RemoveListener(listener);
+        }
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

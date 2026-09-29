@@ -117,6 +117,7 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
 
     editor.onChanged = [this]() {
         layoutsDirty = true;
+        AnnounceAccessibility(AccessibilityEventType::TextChanged);
         // Editing a header or footer changes the document as it goes.
         if (furnitureEdit) SyncFurnitureToDocument();
         if (onDocumentChanged) onDocumentChanged();
@@ -127,6 +128,8 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
         // the visible ones in practice (see EnsureLayouts).
         layoutsDirty = true;
         caretMoved = true;
+        AnnounceAccessibility(editor.HasSelection() ? AccessibilityEventType::SelectionChanged
+                                                    : AccessibilityEventType::CaretMoved);
         if (onSelectionChanged) onSelectionChanged();
     };
     SetMouseCursor(UCMouseCursor::Text);
@@ -2521,6 +2524,203 @@ bool UltraCanvasRichTextEdit::VisualStep(const RichDocPosition& pos, int directi
     out = pos;
     out.byteOffset = std::clamp(index, 0, static_cast<int>(text.size()));
     return true;
+}
+
+// ===== ACCESSIBILITY =====
+
+std::vector<UltraCanvasRichTextEdit::AccessSegment> UltraCanvasRichTextEdit::AccessSegments(std::string* joined) const {
+    std::vector<AccessSegment> segments;
+    std::string text;
+    int characters = 0;
+    auto add = [&](const RichDocPosition& container, const std::string& content, const char* separator) {
+        segments.push_back({container, content, characters});
+        text += content;
+        characters += UltraCanvasAccessibility::CharacterCount(content);
+        if (separator && *separator) {
+            text += separator;
+            characters += 1;
+        }
+    };
+    const auto& blocks = editor.GetDocument()->blocks;
+    for (size_t b = 0; b < blocks.size(); b++) {
+        const RichDocBlock& block = blocks[b];
+        const bool last = b + 1 == blocks.size();
+        if (block.type == RichBlockType::Table) {
+            for (size_t r = 0; r < block.tableRows.size(); r++) {
+                const auto& cells = block.tableRows[r].cells;
+                for (size_t c = 0; c < cells.size(); c++) {
+                    const bool rowEnd = c + 1 == cells.size();
+                    const bool tableEnd = rowEnd && r + 1 == block.tableRows.size();
+                    add(RichDocPosition(static_cast<int>(b), static_cast<int>(r), static_cast<int>(c), 0),
+                        UCRichDocumentEditor::RunsText(cells[c].runs), tableEnd ? (last ? "" : "\n") : rowEnd ? "\n" : "\t");
+                }
+            }
+            continue;
+        }
+        add(RichDocPosition(static_cast<int>(b), 0), editor.BlockText(static_cast<int>(b)), last ? "" : "\n");
+    }
+    if (joined) *joined = std::move(text);
+    return segments;
+}
+
+int UltraCanvasRichTextEdit::AccessOffsetOf(const RichDocPosition& position) const {
+    for (const AccessSegment& segment : AccessSegments()) {
+        if (segment.container.SameContainer(position)) {
+            return segment.charStart + UltraCanvasAccessibility::CharacterOffsetOfByte(
+                                           segment.text, static_cast<size_t>(std::max(0, position.byteOffset)));
+        }
+    }
+    return 0;
+}
+
+RichDocPosition UltraCanvasRichTextEdit::AccessPositionOf(int offset) const {
+    const std::vector<AccessSegment> segments = AccessSegments();
+    if (segments.empty()) return RichDocPosition(0, 0);
+    size_t index = 0;
+    for (size_t i = 0; i < segments.size(); i++) {
+        if (segments[i].charStart <= offset) index = i;
+    }
+    const AccessSegment& segment = segments[index];
+    RichDocPosition position = segment.container;
+    const int within = std::clamp(offset - segment.charStart, 0, UltraCanvasAccessibility::CharacterCount(segment.text));
+    position.byteOffset = static_cast<int>(UltraCanvasAccessibility::ByteOffsetOfCharacter(segment.text, within));
+    return position;
+}
+
+void UltraCanvasRichTextEdit::AnnounceAccessibility(AccessibilityEventType type) {
+    if (!UltraCanvasAccessibility::HasListeners()) return;
+    AccessibilityEvent event;
+    event.type = type;
+    event.element = this;
+    if (type == AccessibilityEventType::CaretMoved || type == AccessibilityEventType::SelectionChanged) {
+        event.offset = AccessOffsetOf(editor.GetCaret());
+    }
+    UltraCanvasAccessibility::Notify(event);
+}
+
+std::string UltraCanvasRichTextEdit::GetAccessibleName() const {
+    const auto& document = editor.GetDocument();
+    if (document && !document->metadata.title.empty()) return document->metadata.title;
+    return GetIdentifier();
+}
+
+class UltraCanvasRichTextEdit::AccessibleText : public IAccessibleText {
+public:
+    explicit AccessibleText(UltraCanvasRichTextEdit& owner) : edit(owner) {}
+
+    std::string GetAccessibleText() const override {
+        std::string text;
+        edit.AccessSegments(&text);
+        return text;
+    }
+    int GetCharacterCount() const override { return UltraCanvasAccessibility::CharacterCount(GetAccessibleText()); }
+    int GetCaretOffset() const override { return edit.AccessOffsetOf(edit.editor.GetCaret()); }
+    bool SetCaretOffset(int offset) override {
+        edit.editor.SetCaret(edit.AccessPositionOf(offset));
+        edit.AfterSelectionChange();
+        return true;
+    }
+    bool GetSelection(int& start, int& end) const override {
+        if (!edit.editor.HasSelection()) {
+            start = end = GetCaretOffset();
+            return false;
+        }
+        const RichDocRange range = edit.editor.GetSelectionRange();
+        start = edit.AccessOffsetOf(range.start);
+        end = edit.AccessOffsetOf(range.end);
+        return true;
+    }
+    bool SetSelection(int start, int end) override {
+        edit.editor.SetSelection(edit.AccessPositionOf(start), edit.AccessPositionOf(end));
+        edit.AfterSelectionChange();
+        return true;
+    }
+    Rect2Df GetCharacterBounds(int offset) const override {
+        const RichDocPosition from = edit.AccessPositionOf(offset);
+        const Rect2Df caret = edit.ToElement(edit.PositionRect(from));
+        if (caret.height <= 0.0f) return Rect2Df(0, 0, 0, 0);
+        RichDocPosition next = edit.editor.NextCharacter(from);
+        float width = 0.0f;
+        if (next.SameContainer(from) && next.byteOffset > from.byteOffset) {
+            const Rect2Df after = edit.ToElement(edit.PositionRect(next));
+            if (std::abs(after.y - caret.y) < 0.5f) width = std::abs(after.x - caret.x);
+        }
+        const Point2Df origin = edit.GetPositionInWindow();
+        return Rect2Df(origin.x + caret.x, origin.y + caret.y, width, caret.height);
+    }
+    int GetOffsetAtPoint(const Point2Df& windowPoint) const override {
+        const Point2Df origin = edit.GetPositionInWindow();
+        const Point2Df local(windowPoint.x - origin.x, windowPoint.y - origin.y);
+        if (!edit.GetLocalBounds().Contains(local)) return -1;
+        return edit.AccessOffsetOf(edit.PositionFromPoint(edit.ToDocument(local)));
+    }
+    AccessibleTextAttributes GetAttributesAt(int offset, int& runStart, int& runEnd) const override {
+        AccessibleTextAttributes attributes;
+        const RichDocPosition position = edit.AccessPositionOf(offset);
+        runStart = runEnd = offset;
+        const auto& blocks = edit.editor.GetDocument()->blocks;
+        if (position.blockIndex < 0 || position.blockIndex >= static_cast<int>(blocks.size())) return attributes;
+        const RichDocBlock& block = blocks[static_cast<size_t>(position.blockIndex)];
+        attributes.headingLevel = block.type == RichBlockType::Heading ? block.headingLevel : 0;
+        attributes.listItem = block.type == RichBlockType::ListItem;
+        const std::vector<RichTextRun>* runs = &block.runs;
+        if (position.InCell()) {
+            runs = &block.tableRows[static_cast<size_t>(position.cellRow)].cells[static_cast<size_t>(position.cellColumn)].runs;
+        }
+        const int containerStart = offset - UltraCanvasAccessibility::CharacterOffsetOfByte(
+                                                UCRichDocumentEditor::RunsText(*runs), static_cast<size_t>(position.byteOffset));
+        std::string text = UCRichDocumentEditor::RunsText(*runs);
+        int byte = 0;
+        for (const RichTextRun& run : *runs) {
+            const int start = byte + (run.lineBreakBefore ? 1 : 0);
+            const int end = start + static_cast<int>(run.text.size());
+            byte = end;
+            if (position.byteOffset < start || (position.byteOffset >= end && &run != &runs->back())) continue;
+            attributes.bold = run.bold;
+            attributes.italic = run.italic;
+            attributes.underline = run.underline;
+            attributes.strikethrough = run.strikethrough;
+            attributes.superscript = run.superscript;
+            attributes.subscript = run.subscript;
+            attributes.fontFamily = run.fontFamily;
+            attributes.fontSizePt = run.fontSizePt;
+            attributes.color = run.color;
+            attributes.backgroundColor = run.highlightColor;
+            attributes.link = run.linkTarget;
+            attributes.inserted = run.change == RichTextRun::Change::Inserted;
+            attributes.deleted = run.change == RichTextRun::Change::Deleted;
+            attributes.commented = !run.commentIds.empty();
+            runStart = containerStart + UltraCanvasAccessibility::CharacterOffsetOfByte(text, static_cast<size_t>(start));
+            runEnd = containerStart + UltraCanvasAccessibility::CharacterOffsetOfByte(text, static_cast<size_t>(end));
+            break;
+        }
+        return attributes;
+    }
+    std::string GetTextAtOffset(int offset, AccessibleTextBoundary boundary, int& start, int& end) const override {
+        if (boundary != AccessibleTextBoundary::Line) return IAccessibleText::GetTextAtOffset(offset, boundary, start, end);
+        // A line as laid out: from its first character to the first of the
+        // next, found by walking the positions of the same height.
+        const std::string text = GetAccessibleText();
+        const int count = UltraCanvasAccessibility::CharacterCount(text);
+        offset = std::clamp(offset, 0, std::max(0, count - 1));
+        const float y = GetCharacterBounds(offset).y;
+        start = offset;
+        while (start > 0 && std::abs(GetCharacterBounds(start - 1).y - y) < 0.5f) start--;
+        end = offset;
+        while (end < count && std::abs(GetCharacterBounds(end).y - y) < 0.5f) end++;
+        if (end == offset) end = offset + 1;
+        const size_t from = UltraCanvasAccessibility::ByteOffsetOfCharacter(text, start);
+        const size_t to = UltraCanvasAccessibility::ByteOffsetOfCharacter(text, end);
+        return text.substr(from, to - from);
+    }
+
+private:
+    UltraCanvasRichTextEdit& edit;
+};
+
+IAccessibleText* UltraCanvasRichTextEdit::GetAccessibleTextInterface() {
+    if (!accessibleText) accessibleText = std::make_shared<AccessibleText>(*this);
+    return accessibleText.get();
 }
 
 bool UltraCanvasRichTextEdit::HandleComposition(const UCEvent& event) {

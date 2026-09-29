@@ -863,6 +863,17 @@ engine; these classes hold the pixels being edited and hand them to it.
   `SetAntialias`, and text outlines `AppendTextPath` /
   `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
   the Cairo backend implements all of it. Tested by `RenderContextTest`.
+- **UltraCanvasAccessibility** (`UltraCanvasAccessibility.h`) — the
+  platform-neutral accessibility layer: `AccessibleRole`,
+  `IAccessibleText` (text, caret, selection, character bounds, attributes,
+  `GetTextAtOffset` by character/word/line/sentence/paragraph),
+  `AccessibilityEvent`, and `UltraCanvasAccessibility::AddListener` /
+  `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
+  character-offset helpers. Elements answer through
+  `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
+  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
+  No platform bridge (AT-SPI, UIA) yet. See
+  `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with
   selectable text: `CreateFile(utf8Path, w, h, error)` /

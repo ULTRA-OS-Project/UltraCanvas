@@ -569,6 +569,17 @@ on the page. In a paragraph with right-to-left letters Left and Right move the
 caret the way the arrow points; Home/End and word steps stay logical. DOCX
 `w:bidi`, ODT `style:writing-mode` and HTML `dir="rtl"` carry the direction.
 
+## Accessibility
+
+The element describes itself to assistive technology through
+[`UltraCanvasAccessibility`](UltraCanvasAccessibility.md): role `Document`,
+the document's title as its name, and `GetAccessibleTextInterface()` - the
+paragraphs one per line (a table's cells tab-separated), caret and selection,
+character boxes, words, lines and sentences, and per-run formatting including
+headings, lists, links, tracked changes and comments. Edits, caret moves,
+selection changes and focus are announced to listeners. There is no platform
+bridge yet (AT-SPI, UI Automation), so a system screen reader does not see it.
+
 ## Drag and drop
 
 Press inside the selection and drag: the text moves to where the drop caret
@@ -876,6 +887,9 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
+- **No screen-reader bridge.** The accessibility model is there (see
+  Accessibility above); the AT-SPI / UI Automation bridges that hand it to the
+  operating system are not.
 - **The input method's candidate window** is placed by the input method, not
   next to the caret.
 

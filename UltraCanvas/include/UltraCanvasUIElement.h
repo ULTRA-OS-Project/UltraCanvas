@@ -15,6 +15,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasTooltipTypes.h"
+#include "UltraCanvasAccessibility.h"
 #include "CSSLayout/CSSLayout.h"
 #include <iostream>
 #include <string>
@@ -486,6 +487,14 @@ namespace UltraCanvas {
         bool IsFocused() const;
         virtual bool SetFocus(bool focus);
         virtual bool AcceptsFocus() const { return false; }
+        // ===== ACCESSIBILITY =====
+        // What a screen reader is told about the element (see
+        // UltraCanvasAccessibility.h): its role, its name, and for text its
+        // text interface (null for elements without text to navigate).
+        virtual AccessibleRole GetAccessibleRole() const { return AccessibleRole::Unknown; }
+        virtual std::string GetAccessibleName() const { return ""; }
+        virtual IAccessibleText* GetAccessibleTextInterface() { return nullptr; }
+
         // True for an element that shows an input method's pre-edit text in
         // place (TextComposition events). While one has focus the platform
         // input method leaves the composing to it; any other element gets the

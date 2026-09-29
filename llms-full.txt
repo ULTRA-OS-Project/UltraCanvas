@@ -1035,6 +1035,17 @@ engine; these classes hold the pixels being edited and hand them to it.
   `SetAntialias`, and text outlines `AppendTextPath` /
   `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
   the Cairo backend implements all of it. Tested by `RenderContextTest`.
+- **UltraCanvasAccessibility** (`UltraCanvasAccessibility.h`) — the
+  platform-neutral accessibility layer: `AccessibleRole`,
+  `IAccessibleText` (text, caret, selection, character bounds, attributes,
+  `GetTextAtOffset` by character/word/line/sentence/paragraph),
+  `AccessibilityEvent`, and `UltraCanvasAccessibility::AddListener` /
+  `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
+  character-offset helpers. Elements answer through
+  `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
+  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
+  No platform bridge (AT-SPI, UIA) yet. See
+  `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with
   selectable text: `CreateFile(utf8Path, w, h, error)` /
@@ -5141,6 +5152,80 @@ fallback route, not the private-data one.
 - [`UltraCanvasVectorRaster.md`](UltraCanvasVectorRaster.md) — the `UltraCanvasVectorElement` viewer
 - [`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) — the PDF viewer used for the fallback route
 - [`UltraCanvasEPSExamples.md`](UltraCanvasEPSExamples.md) — the PostScript interpreter, a separate engine for `.eps`
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasAccessibility.md
+==============================================================================
+
+# UltraCanvasAccessibility
+
+What assistive technology — screen readers, magnifiers, braille displays —
+needs to know about an element, in a form that does not depend on the
+platform: its **role**, its **name**, for text a **text interface** (content,
+caret, selection, character boxes, formatting, words, lines, sentences) and an
+**event stream** saying what changed. A platform bridge (AT-SPI on Linux, UI
+Automation on Windows, NSAccessibility on macOS) is the layer that hands this
+to the operating system; the bridges are not written yet, so today the layer
+serves tests, in-application readers (read aloud, a braille panel) and future
+bridges.
+
+Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
+
+## Elements
+
+```cpp
+AccessibleRole role = element->GetAccessibleRole();   // Unknown by default
+std::string name = element->GetAccessibleName();
+IAccessibleText* text = element->GetAccessibleTextInterface();   // null without text
+```
+
+An element describes itself by overriding these three virtuals of
+`UltraCanvasUIElement`. `UltraCanvasRichTextEdit` is the first to do so: role
+`Document`, name the document's title (else the element's identifier), and a
+text interface over the whole document.
+
+## Text
+
+Offsets count characters (Unicode code points), not bytes.
+
+```cpp
+std::string all = text->GetAccessibleText();
+int caret = text->GetCaretOffset();
+text->SetSelection(10, 20);
+int start = 0, end = 0;
+std::string word = text->GetTextAtOffset(caret, AccessibleTextBoundary::Word, start, end);
+AccessibleTextAttributes look = text->GetAttributesAt(caret, start, end);   // bold, heading level, link, ...
+Rect2Df box = text->GetCharacterBounds(caret);                              // window coordinates
+int under = text->GetOffsetAtPoint(Point2Df(120, 80));
+```
+
+Words, sentences and paragraphs come from the text
+(`UltraCanvasAccessibility::TextUnitAt`); an element can override
+`GetTextAtOffset` for units only its layout knows — the rich text element does
+so for lines. In the rich text element the text is the paragraphs one per line,
+a table's cells separated by tabs and its rows by line breaks; attributes include
+headings, list items, links, tracked insertions and deletions and comments.
+
+## Events
+
+```cpp
+int id = UltraCanvasAccessibility::AddListener([](const AccessibilityEvent& e) {
+    // e.type: FocusChanged, TextChanged, CaretMoved, SelectionChanged, NameChanged
+    // e.element, e.offset (caret for CaretMoved), e.length
+});
+UltraCanvasAccessibility::RemoveListener(id);
+```
+
+The window announces `FocusChanged` when an element gains the focus; the rich
+text element announces edits, caret moves and selection changes. Elements build
+events only while someone listens (`HasListeners()`), so the layer costs nothing
+otherwise. Listeners are called on the thread that made the change (the UI
+thread).
+
+## Helpers
+
+`CharacterCount`, `ByteOffsetOfCharacter` and `CharacterOffsetOfByte` convert
+between the characters of the accessibility API and UTF-8 byte offsets.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -44167,6 +44252,17 @@ on the page. In a paragraph with right-to-left letters Left and Right move the
 caret the way the arrow points; Home/End and word steps stay logical. DOCX
 `w:bidi`, ODT `style:writing-mode` and HTML `dir="rtl"` carry the direction.
 
+## Accessibility
+
+The element describes itself to assistive technology through
+[`UltraCanvasAccessibility`](UltraCanvasAccessibility.md): role `Document`,
+the document's title as its name, and `GetAccessibleTextInterface()` - the
+paragraphs one per line (a table's cells tab-separated), caret and selection,
+character boxes, words, lines and sentences, and per-run formatting including
+headings, lists, links, tracked changes and comments. Edits, caret moves,
+selection changes and focus are announced to listeners. There is no platform
+bridge yet (AT-SPI, UI Automation), so a system screen reader does not see it.
+
 ## Drag and drop
 
 Press inside the selection and drag: the text moves to where the drop caret
@@ -44474,6 +44570,9 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
+- **No screen-reader bridge.** The accessibility model is there (see
+  Accessibility above); the AT-SPI / UI Automation bridges that hand it to the
+  operating system are not.
 - **The input method's candidate window** is placed by the input method, not
   next to the caret.
 
