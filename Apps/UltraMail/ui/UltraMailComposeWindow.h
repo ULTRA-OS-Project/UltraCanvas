@@ -6,9 +6,10 @@
 // into the draft's attachments; "Attach cloud link" uploads through (or picks
 // from) an UltraCloud account and puts the share link into the body.
 // A draft with a formatted body (the reply or forward of an HTML message) is
-// edited in an UltraCanvasRichTextEdit with a small formatting row; any other
-// draft in a plain-text area.
-// Version: 0.5.0
+// edited in an UltraCanvasRichTextEdit with a formatting row (B / I / U,
+// lists, link, text colour, quote in / out); any other draft in a plain-text
+// area.
+// Version: 0.6.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -61,8 +62,12 @@ private:
     void ChooseCloudLink();
     // Rebuild the chips and show the attachment row only while there are any.
     void RefreshAttachments();
-    // Bold / italic / underline / lists for the formatted body.
+    // The formatted body's row: B / I / U, lists, link, colour, quote in / out.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildFormatRow();
+    // Asks for a link address for the selection (or inserts one at the caret).
+    void ChooseLink();
+    // `text` at the caret, linked to `url`.
+    void InsertLinkedText(const std::string& text, const std::string& url);
 
     Draft draft_;
     UltraCanvas::UltraCanvasWindowBase* parent_ = nullptr;

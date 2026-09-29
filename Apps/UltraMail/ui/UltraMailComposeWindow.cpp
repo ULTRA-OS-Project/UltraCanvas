@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.6.0 - the formatting row gains Link, a text colour list and quote
+//                  in / out
 // Version: 0.5.0 - a formatted draft is edited in a rich text editor with a B /
 //                  I / U / list row
 // Version: 0.4.0 - flex layout that follows the window: label · input rows,
@@ -12,6 +14,7 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 
@@ -231,8 +234,16 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::BuildFormatRow() {
     row->SetContainerStyle(rowStyle);
 
     auto add = [&](const std::string& id, const std::string& label, const std::string& tooltip,
-                   std::function<void(UltraCanvasRichTextEdit&)> action) {
+                   std::function<void(UltraCanvasRichTextEdit&)> action,
+                   const std::string& icon = "") {
         auto button = CreateButton(id, 0, 0, 32, Theme::kControlHeight, label);
+        if (!icon.empty()) {
+            button->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/" + icon));
+            button->SetIconPosition(ButtonIconPosition::Left);
+            button->SetIconSize(14, 14);
+            button->SetIconSpacing(4);
+            button->SetUseIconAsMask(true);
+        }
         Theme::FitToLabel(button, 32);
         Theme::StyleSecondary(button);
         button->SetTooltip(tooltip);
@@ -252,20 +263,74 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::BuildFormatRow() {
         [](UltraCanvasRichTextEdit& e) { e.ToggleBulletList(); });
     add("cNumbers", "1. List", "Numbered list",
         [](UltraCanvasRichTextEdit& e) { e.ToggleNumberedList(); });
+    add("cLink", "Link\xE2\x80\xA6", "Make the selection a link, change or remove its address",
+        [this](UltraCanvasRichTextEdit&) { ChooseLink(); }, "link.svg");
+
+    // Text colour: the few a mail needs, as a word processor's short palette.
+    // "Colour (auto)" takes the colour off again.
+    static const std::vector<std::pair<std::string, std::string>> kColours = {
+        {"Colour (auto)", ""},    {"Black", "#000000"}, {"Grey", "#808080"},
+        {"Red", "#CC0000"},       {"Orange", "#E07000"}, {"Green", "#1E7A1E"},
+        {"Blue", "#0066CC"},      {"Purple", "#7A2E9D"},
+    };
+    auto colour = CreateDropdown("cColour", 0, 0, 110, Theme::kControlHeight);
+    for (const auto& [name, hex] : kColours) colour->AddItem(name, hex);
+    colour->SetSelectedIndex(0, false);
+    Theme::StyleDropdown(colour);
+    colour->SetTooltip("Text colour of the selection");
+    colour->onSelectionChanged = [this](int index, const DropdownItem&) {
+        if (!rich_ || index < 0 || index >= static_cast<int>(kColours.size())) return;
+        rich_->SetTextColor(kColours[static_cast<size_t>(index)].second);
+        rich_->SetFocus(true);
+    };
+    row->AddChild(colour);
+    colour->layoutItem.SetFlexShrink(0);
+
+    // Quote levels: put a paragraph into the quote (or one deeper), or take
+    // it out - how a reply's answers are placed between quoted lines.
+    add("cQuoteIn", "+", "Quote: move the paragraph one quote level in",
+        [](UltraCanvasRichTextEdit& e) { e.IncreaseQuoteLevel(); }, "quote.svg");
+    add("cQuoteOut", "\xE2\x88\x92", "Unquote: move the paragraph one quote level out",
+        [](UltraCanvasRichTextEdit& e) { e.DecreaseQuoteLevel(); }, "quote.svg");
     return row;
+}
+
+void ComposeView::ChooseLink() {
+    if (!rich_) return;
+    const RichCharFormatState state = rich_->GetFormatState();
+    const std::string current = state.linkMixed ? std::string() : state.linkTarget;
+    UltraCanvasDialogManager::ShowInputDialog(
+        "Link address (leave empty to remove the link):", "Link",
+        current.empty() ? "https://" : current, InputType::URL,
+        [this](DialogResult result, const std::string& value) {
+            if (result != DialogResult::OK || !rich_) return;
+            std::string target = UltraCanvas::Trim(value);
+            if (target == "https://" || target == "http://") target.clear();
+            if (rich_->HasSelection()) {
+                rich_->SetLink(target);   // empty: the link is removed
+            } else if (!target.empty()) {
+                InsertLinkedText(target, target);   // nothing selected: the address itself
+            }
+            rich_->SetFocus(true);
+        },
+        parent_);
+}
+
+void ComposeView::InsertLinkedText(const std::string& text, const std::string& url) {
+    UCRichDocumentEditor& editor = rich_->GetEditor();
+    const RichDocPosition start = editor.GetCaret();
+    rich_->InsertText(text);
+    editor.SetSelection(start, editor.GetCaret());
+    rich_->SetLink(url);
+    editor.SetCaret(editor.GetSelectionRange().end);
+    rich_->InvalidateDocument();
 }
 
 void ComposeView::InsertLink(const std::string& name, const std::string& url) {
     if (rich_) {
         // At the caret, the address as a link.
         rich_->InsertText(name + ": ");
-        UCRichDocumentEditor& editor = rich_->GetEditor();
-        const RichDocPosition start = editor.GetCaret();
-        rich_->InsertText(url);
-        editor.SetSelection(start, editor.GetCaret());
-        rich_->SetLink(url);
-        editor.SetCaret(editor.GetSelectionRange().end);
-        rich_->InvalidateDocument();
+        InsertLinkedText(url, url);
         return;
     }
     if (!body_) return;

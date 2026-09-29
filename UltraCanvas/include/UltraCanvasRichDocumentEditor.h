@@ -15,7 +15,7 @@
 // to ITextLayout, so layout hit-testing maps to these offsets with no
 // translation step.
 //
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -279,6 +279,12 @@ public:
     void ToggleList(bool ordered);            // ... or back into paragraphs
     void IndentList();                        // deeper nesting (list blocks only)
     void OutdentList();
+    // One quote level more / less for every block the selection touches (a
+    // mail reply's quote bars; see RichDocBlock::quoteLevel). Unlike the
+    // paragraph commands this works in a table cell too: the level belongs
+    // to the whole table, and restyles none of its cells.
+    void IncreaseQuoteLevel();
+    void DecreaseQuoteLevel();
     void ToggleBlockQuote();
     void ToggleCodeBlock(const std::string& language = "");
 
@@ -447,6 +453,8 @@ private:
     void ApplyCharFormatToRangeInternal(const RichDocRange& range,
                                         const RichCharFormatDelta& delta);
     void SplitBlockInternal();
+    void ChangeQuoteLevel(int delta);
+    static constexpr int kMaxQuoteLevel = 8;
     void InsertStructuralBlock(RichBlockType type);
 
     void CommitStep(UndoStep step);

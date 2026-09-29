@@ -1,3 +1,16 @@
+#### 2026-09-29 *0.10.9*
+- **More formatting buttons when replying to or forwarding an HTML message.**
+  The row above the text gains:
+  - **Link…**: asks for an address and makes the selected text a link. With
+    nothing selected it inserts the address as a link, and an empty address
+    removes an existing link.
+  - **A text colour list**: Colour (auto), Black, Grey, Red, Orange, Green,
+    Blue and Purple. "Colour (auto)" removes the colour again.
+  - **Quote + / Quote −**: moves the paragraph at the caret, or every
+    selected paragraph, one quote level in or out. This is how an answer is
+    placed between quoted lines, or a quoted line taken out of the quote.
+    Each step can be undone.
+
 #### 2026-09-29 *0.10.8*
 - **Replies and forwards keep an HTML message's formatting.** Answering or
   forwarding an HTML mail used to turn it into plain text with "> " in front
