@@ -277,6 +277,17 @@ namespace UltraCanvas {
         // Absolute / Fixed children are skipped during in-flow stacking and are
         // laid out separately against this element's border-box.
         // Relative children are placed in-flow then offset post-hoc.
+        // An in-flow child's margin sits outside its border-box: the left/right
+        // margin narrows the width it is offered and shifts it right, the
+        // top/bottom margin adds to the stack. Margins do not collapse - two
+        // stacked siblings are separated by the sum of their facing margins, as
+        // in flex. Percentages resolve against the content width (CSS 2.1 §8.3).
+
+        // Narrow an inline constraint by a child's horizontal margins.
+        static AxisConstraint narrowByMargins(const AxisConstraint& ac, float marginH) {
+            if (ac.mode == ConstraintMode::Unbounded || marginH == 0.f) return ac;
+            return { ac.mode, std::max(0.f, ac.available - marginH) };
+        }
 
         void MeasureBlock(Element& e,
                           const MeasureConstraints& c,
@@ -312,14 +323,21 @@ namespace UltraCanvas {
             // create clipping behavior; CSS handles overflow separately.)
             MeasureConstraints childC{ childH, { ConstraintMode::Unbounded, INFINITY } };
 
+            // Percentage margins need a definite content width; with none, they
+            // resolve to 0 here, as an indefinite percentage does elsewhere.
+            float marginBasis = (childH.mode == ConstraintMode::Unbounded) ? 0.f : childH.available;
+
             float stackedHeight = 0.f;
             float maxChildWidth = 0.f;
             for (auto& kid : e.Children()) {
                 if (!kid) continue;
                 if (!isInFlow(*kid)) continue;
-                kid->Measure(childC, ctx);
-                stackedHeight += kid->measured.measuredHeight;
-                maxChildWidth  = std::max(maxChildWidth, kid->measured.measuredWidth);
+                auto m = resolveEdgeSizes(kid->box.margin, marginBasis, ctx);
+                MeasureConstraints kc{ narrowByMargins(childH, m.horizontal()), childC.vertical };
+                kid->Measure(kc, ctx);
+                stackedHeight += m.top + kid->measured.measuredHeight + m.bottom;
+                maxChildWidth  = std::max(maxChildWidth,
+                                          m.left + kid->measured.measuredWidth + m.right);
             }
 
             bool widthAuto  = !own.contentWidth.has_value();
@@ -403,16 +421,19 @@ namespace UltraCanvas {
                 if (!kid) continue;
                 if (!isInFlow(*kid)) continue;
 
-                // Re-measure to make the child's width Exact = contentW. The cache
-                // hit-rate stays high because the second-pass constraints typically
-                // match what the measure pass already used.
+                auto m = resolveEdgeSizes(kid->box.margin, contentW, ctx);
+
+                // Re-measure to make the child's width Exact = the content width
+                // less its horizontal margins. The cache hit-rate stays high
+                // because the second-pass constraints typically match what the
+                // measure pass already used.
                 MeasureConstraints kc{
-                    { ConstraintMode::Exact, contentW },
+                    { ConstraintMode::Exact, std::max(0.f, contentW - m.horizontal()) },
                     { ConstraintMode::Unbounded, INFINITY }
                 };
                 kid->Measure(kc, ctx);
 
-                Rect2Df kr{ localBaseX, cursorY,
+                Rect2Df kr{ localBaseX + m.left, cursorY + m.top,
                                kid->measured.measuredWidth,
                                kid->measured.measuredHeight };
                 if (kid->layoutItem.positionType == PositionType::Relative) {
@@ -421,7 +442,7 @@ namespace UltraCanvas {
                     kr.y += dy;
                 }
                 kid->Arrange(kr, ctx);
-                cursorY += kid->measured.measuredHeight;
+                cursorY += m.top + kid->measured.measuredHeight + m.bottom;
             }
 
             // Out-of-flow (absolute / fixed) children: lay each one out against
