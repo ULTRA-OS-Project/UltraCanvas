@@ -3,9 +3,10 @@
 // ones directly, DSOs through the host table UltraNet_RefreshPlugins hands to
 // their UltraNet_PluginInit. The registry maintains two indexes: by plug-in
 // name and by URL scheme.
-// Version: 0.5.0 - only UltraNet_PluginInit is loaded; the POSIX-only v1
-//                  entry is gone. 0.4.0: host ABI 2 - the core functions a
-//                  plug-in calls travel in the host table.
+// Version: 0.5.1 - plug-ins are loaded RTLD_LOCAL. 0.5.0: only
+//                  UltraNet_PluginInit is loaded (the POSIX-only v1 entry is
+//                  gone). 0.4.0: host ABI 2 - the core functions a plug-in
+//                  calls travel in the host table.
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetPlugins.h"
@@ -42,7 +43,14 @@ using UltraCanvas::PathToUtf8;
 #else
   #include <dlfcn.h>
   using PluginLibHandle = void*;
-  static PluginLibHandle PluginOpen(const char* path)   { return dlopen(path, RTLD_NOW | RTLD_GLOBAL); }
+  // RTLD_LOCAL: a plug-in takes nothing from the host's symbol table any more
+  // (everything comes through the host table), so nothing it exports needs to
+  // join the process-wide scope - where it would bind the symbols of every
+  // library loaded after it, another plug-in's included (two plug-ins built
+  // from the same helper source export the same names). The plug-in still
+  // resolves its own references against the host first, so the type
+  // information behind the host's dynamic_cast is unaffected.
+  static PluginLibHandle PluginOpen(const char* path)   { return dlopen(path, RTLD_NOW | RTLD_LOCAL); }
   static void*           PluginSym (PluginLibHandle h,
                                     const char* sym)    { return dlsym(h, sym); }
 #endif
