@@ -123,11 +123,15 @@ public:
     // The element shares ownership of the document, so an application can keep
     // holding it (to save it, or to re-emit blocks the editor never touched).
     void SetDocument(std::shared_ptr<UCRichDocument> document);
-    const std::shared_ptr<UCRichDocument>& GetDocument() const { return editor.GetDocument(); }
+    // The document - also while a header or footer is being edited, when the
+    // editing core (GetEditor) is working on that header's blocks instead.
+    const std::shared_ptr<UCRichDocument>& GetDocument() const {
+        return furnitureEdit ? furnitureEdit->bodyEditor.GetDocument() : editor.GetDocument();
+    }
     // Convenience for simple cases and for tests.
     void SetMarkdown(const std::string& markdown, const std::string& baseDirectory = "");
-    std::string GetMarkdown() const { return editor.GetMarkdown(); }
-    std::string GetPlainText() const { return editor.GetPlainText(); }
+    std::string GetMarkdown() const { return GetDocument()->ToMarkdown(); }
+    std::string GetPlainText() const { return GetDocument()->ToPlainText(); }
     void Clear();
 
     // The editing core, for callers that need positions or block access
@@ -139,8 +143,29 @@ public:
     // Drops the cached layout of one block (after an edit inside it).
     void InvalidateBlock(int blockIndex);
 
-    bool IsModified() const { return editor.IsModified(); }
-    void SetModified(bool modified) { editor.SetModified(modified); }
+    bool IsModified() const {
+        return editor.IsModified() || (furnitureEdit && furnitureEdit->bodyEditor.IsModified());
+    }
+    void SetModified(bool modified) {
+        editor.SetModified(modified);
+        if (furnitureEdit) furnitureEdit->bodyEditor.SetModified(modified);
+    }
+
+    // ===== HEADERS AND FOOTERS =====
+    // Double-click a page's header or footer (or its top or bottom margin, to
+    // make one) to edit it; Escape, or a click in the body, goes back. While
+    // it is edited the body is shown greyed, and everything - typing,
+    // formatting, pictures, tables, page fields, undo - acts on the header or
+    // footer. A document whose first page differs (firstPageDiffers) has two
+    // of each; page 0 edits the first page's. Changes go into the document as
+    // they are made. Outside page view, the one header and footer above and
+    // below the body can be edited the same way.
+    bool EditHeader(int pageIndex = 0);
+    bool EditFooter(int pageIndex = 0);
+    bool IsEditingHeaderOrFooter() const { return furnitureEdit != nullptr; }
+    bool IsEditingFooter() const { return furnitureEdit && furnitureEdit->footer; }
+    void FinishHeaderFooterEditing();
+    std::function<void(bool editing)> onHeaderFooterEditingChanged;
 
     // ===== MODE =====
     void SetReadOnly(bool value);
@@ -510,6 +535,27 @@ private:
     float FlowAroundFloats(IRenderContext* ctx, int index, float top, std::vector<PlacedFloat>& pageFloats);
     void DrawFloats(IRenderContext* ctx, bool behindText);
 
+    // ===== EDITING A HEADER OR FOOTER =====
+    // The body's editing state, parked while `editor` edits the furniture.
+    struct FurnitureEditState {
+        bool footer = false;
+        bool firstPage = false;               // the first page's own furniture
+        int pageIndex = 0;
+        UCRichDocumentEditor bodyEditor;
+        float bodyContentHeight = 0.0f;
+    };
+    std::unique_ptr<FurnitureEditState> furnitureEdit;
+    bool BeginFurnitureEditing(int pageIndex, bool footer);
+    // Writes the furniture being edited into the document.
+    void SyncFurnitureToDocument();
+    // Places the furniture's blocks where it sits on its page. Returns the
+    // content height (the body's).
+    float PlaceFurnitureBeingEdited(IRenderContext* ctx);
+    // The header (true) or footer region of the page under a content point,
+    // for a double-click; false outside both.
+    bool FurnitureRegionAt(float contentY, int& outPage, bool& outFooter) const;
+    void RenderBodyBackdrop(IRenderContext* ctx);
+
     // ===== PAGES =====
     // A header or footer as laid out for one page (its page number filled in).
     struct FurnitureLayout {
@@ -553,6 +599,8 @@ private:
 
     // ===== RENDERING =====
     void RenderBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl);
+    void RenderBlockPieces(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int blockIndex,
+                           const BlockLayout& bl, int selectionIndex);
     void RenderBlock(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int index,
                      const BlockLayout& bl, float originX, float originY, int blockIndex);
     void DrawInlineImages(IRenderContext* ctx, const BlockLayout& bl,
@@ -640,6 +688,10 @@ private:
     float pageWidthPx = 0.0f;
     float pageHeightPx = 0.0f;
     std::vector<PageFrame> pages;     // page view: every page; else one frame for the furniture
+    // The body's layout while a header or footer is edited (drawn greyed).
+    std::vector<BlockLayout> parkedLayouts;
+    std::vector<PageFrame> parkedPages;
+    std::vector<PlacedFloat> parkedFloats;
     // Header and footer layouts by furniture, page number and page count, so
     // scrolling does not re-lay them. Cleared with the block layouts.
     std::map<std::string, std::shared_ptr<FurnitureLayout>> furnitureCache;

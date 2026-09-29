@@ -100,3 +100,10 @@
   send such a PDF (or any payload a printer takes) through the print dialog.
   `RenderContextCairo::AttachSurface` lets a context draw onto a surface it
   did not create.
+- **Headers and footers can be edited.** Double-click one (or the page's top
+  or bottom margin, to create one), or call `EditHeader(page)` /
+  `EditFooter(page)`: the body is shown pale, and typing, formatting,
+  pictures, tables, fields and undo act on the header or footer, which is
+  written into the document as it changes (the body moves down as it grows).
+  Escape or a click in the body goes back. `IsEditingHeaderOrFooter`,
+  `FinishHeaderFooterEditing`, `onHeaderFooterEditingChanged`.

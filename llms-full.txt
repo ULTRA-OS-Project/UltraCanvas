@@ -44238,6 +44238,21 @@ otherwise), with page number and page count fields
 top margin, or below the header when the header is taller than the margin
 leaves room for; the footer likewise.
 
+**Editing a header or footer.** Double-click a page's header or footer - or
+its top or bottom margin, to make one - or call `EditHeader(page)` /
+`EditFooter(page)`. The body is then shown pale behind it, a dashed rule marks
+the header's edge, and everything (typing, formatting, pictures, tables, page
+fields, undo) acts on the header or footer; a header growing a line pushes the
+body down as it is typed. Escape, a click in the body or
+`FinishHeaderFooterEditing()` goes back. A document whose first page differs
+edits the first page's own header on page 0. The changes go into
+`UCRichDocument::pageFurniture` / `firstPageFurniture` as they are made, so
+`GetDocument()` (which is the document, not the header, during editing) can be
+saved at any moment; undo within the header works while it is edited, and the
+edit as a whole is not an undo step of the body. `onHeaderFooterEditingChanged`
+tells a host when to retarget its toolbar. Outside page view, the one header
+and footer above and below the body are edited the same way.
+
 Page fields work in the body too: `InsertPageNumberField()` and
 `InsertPageCountField()` put one at the caret, and in page view each shows
 the page its paragraph landed on (the value is kept in the run's text, so a
@@ -44287,8 +44302,6 @@ it. UltraTexter's zoom box sets a word-processing tab's zoom.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **Headers and footers are shown, not edited.** The caret never enters
-  them.
 - **No pre-edit (IME composition) display.** Committed text arrives correctly;
   an inline composition string needs an event the framework does not have yet
   (the same limit applies to every text widget today).

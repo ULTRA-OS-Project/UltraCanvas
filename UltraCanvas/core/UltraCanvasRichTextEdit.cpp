@@ -113,6 +113,8 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
 
     editor.onChanged = [this]() {
         layoutsDirty = true;
+        // Editing a header or footer changes the document as it goes.
+        if (furnitureEdit) SyncFurnitureToDocument();
         if (onDocumentChanged) onDocumentChanged();
     };
     editor.onSelectionChanged = [this]() {
@@ -142,6 +144,7 @@ UltraCanvasRichTextEdit::~UltraCanvasRichTextEdit() {
 // ===== DOCUMENT =====
 
 void UltraCanvasRichTextEdit::SetDocument(std::shared_ptr<UCRichDocument> document) {
+    if (furnitureEdit) FinishHeaderFooterEditing();
     editor.SetDocument(std::move(document));
     blockLayouts.clear();
     furnitureCache.clear();
@@ -186,6 +189,7 @@ void UltraCanvasRichTextEdit::SetReadOnly(bool value) {
 
 void UltraCanvasRichTextEdit::SetPageView(bool enabled) {
     if (pageView == enabled) return;
+    if (furnitureEdit) FinishHeaderFooterEditing();
     pageView = enabled;
     pages.clear();
     visibleAreaDirty = true;
@@ -1553,7 +1557,7 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
 
     for (int i = 0; i < blockCount; i++) {
         BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
-        bool visible = pageView || ((y + bl.bounds.height >= viewTop) && (y <= viewBottom));
+        bool visible = pageView || furnitureEdit || ((y + bl.bounds.height >= viewTop) && (y <= viewBottom));
         if (!bl.valid && visible) {
             BuildBlockLayout(ctx, i);
         } else if (!bl.valid) {
@@ -1566,11 +1570,12 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
         }
         y += bl.bounds.height + GapAfterBlock(i);
     }
-    y = pageView ? PlaceBlocksOnPages(ctx) : PlaceBlocksInColumn(ctx);
+    y = furnitureEdit ? PlaceFurnitureBeingEdited(ctx)
+                      : pageView ? PlaceBlocksOnPages(ctx) : PlaceBlocksInColumn(ctx);
     // A page number in the body shows the page its block landed on, which is
     // only known now. Renumbering can change a block's width ("9" to "10"),
     // so the renumbered blocks are laid out and the pages placed again.
-    if (pageView && UpdateBodyPageFields()) {
+    if (pageView && !furnitureEdit && UpdateBodyPageFields()) {
         for (int i = 0; i < blockCount; i++) {
             BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
             if (!bl.valid) BuildBlockLayout(ctx, i);
@@ -1624,6 +1629,7 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
         ctx->Translate(-visibleArea.x, -visibleArea.y);
     }
     RenderPages(ctx);
+    if (furnitureEdit) RenderBodyBackdrop(ctx);
     DrawFloats(ctx, /*behindText*/ true);
 
     float viewTop = scrollOffset;
@@ -1722,8 +1728,12 @@ void UltraCanvasRichTextEdit::RenderPages(IRenderContext* ctx) {
                 corner(right, foot, 1, 1);
             }
         }
-        if (frame.header) RenderFurniture(ctx, *frame.header, pageView ? frame.headerTop : 0.0f);
-        if (frame.footer) RenderFurniture(ctx, *frame.footer, frame.footerTop);
+        // The header or footer being edited is drawn live, as the blocks.
+        const bool editedPage = furnitureEdit && static_cast<int>(&frame - pages.data()) == furnitureEdit->pageIndex;
+        if (frame.header && !(editedPage && !furnitureEdit->footer)) {
+            RenderFurniture(ctx, *frame.header, pageView ? frame.headerTop : 0.0f);
+        }
+        if (frame.footer && !(editedPage && furnitureEdit->footer)) RenderFurniture(ctx, *frame.footer, frame.footerTop);
     }
 }
 
@@ -1738,9 +1748,16 @@ void UltraCanvasRichTextEdit::RenderFurniture(IRenderContext* ctx, const Furnitu
 
 void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
                                           const BlockLayout& bl) {
+    RenderBlockPieces(ctx, editor.GetDocument()->blocks, blockIndex, bl, blockIndex);
+}
+
+// A block at its place in the content, in however many page pieces it has.
+// `selectionIndex` is its index for selection and links, -1 for none.
+void UltraCanvasRichTextEdit::RenderBlockPieces(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
+                                                int blockIndex, const BlockLayout& bl, int selectionIndex) {
     if (bl.slices.empty()) {
-        RenderBlock(ctx, editor.GetDocument()->blocks, blockIndex, bl, ColumnLeft(),
-                    visibleArea.y + bl.bounds.y - scrollOffset, blockIndex);
+        RenderBlock(ctx, blocks, blockIndex, bl, ColumnLeft(),
+                    visibleArea.y + bl.bounds.y - scrollOffset, selectionIndex);
         return;
     }
     // A block running over pages: each piece drawn through a clip of its own,
@@ -1755,14 +1772,14 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
         if (slice.headerHeight > 0.0f) {
             ctx->PushState();
             ctx->ClipRect(Rect2Dd(left, visibleArea.y + slice.top - scrollOffset, width, slice.headerHeight));
-            RenderBlock(ctx, editor.GetDocument()->blocks, blockIndex, bl, ColumnLeft(),
-                        visibleArea.y + slice.top - scrollOffset, blockIndex);
+            RenderBlock(ctx, blocks, blockIndex, bl, ColumnLeft(),
+                        visibleArea.y + slice.top - scrollOffset, selectionIndex);
             ctx->PopState();
         }
         ctx->PushState();
         ctx->ClipRect(Rect2Dd(left, visibleArea.y + slice.top + slice.headerHeight - scrollOffset, width, height));
-        RenderBlock(ctx, editor.GetDocument()->blocks, blockIndex, bl, ColumnLeft(),
-                    visibleArea.y + slice.top + slice.headerHeight - slice.from - scrollOffset, blockIndex);
+        RenderBlock(ctx, blocks, blockIndex, bl, ColumnLeft(),
+                    visibleArea.y + slice.top + slice.headerHeight - slice.from - scrollOffset, selectionIndex);
         ctx->PopState();
     }
 }
@@ -2941,6 +2958,15 @@ bool UltraCanvasRichTextEdit::HandleFileDrop(const UCEvent& event) {
 bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
     if (!Contains(event.pointer)) return false;
 
+    // While a header or footer is edited, a click outside it leaves it and
+    // lands in the body as any click would.
+    if (furnitureEdit && !blockLayouts.empty()) {
+        const float contentY = ToDocument(event.pointer).y - visibleArea.y + scrollOffset;
+        const float top = blockLayouts.front().bounds.y - 8.0f;
+        const float bottom = blockLayouts.back().bounds.y + blockLayouts.back().bounds.height + 8.0f;
+        if (contentY < top || contentY > bottom) FinishHeaderFooterEditing();
+    }
+
     if (event.button == UCMouseButton::Right) {
         if (!IsFocused()) SetFocus(true);
         // A click inside the selection keeps it, so a host menu's Cut and Copy
@@ -3153,6 +3179,21 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
 
 bool UltraCanvasRichTextEdit::HandleDoubleClick(const UCEvent& event) {
     if (!Contains(event.pointer)) return false;
+    // A double-click on a header or footer (or the margin where one would
+    // be) edits it; one on the body while editing one goes back.
+    if (!readOnly) {
+        const float contentY = ToDocument(event.pointer).y - visibleArea.y + scrollOffset;
+        int page = 0;
+        bool footer = false;
+        const bool inFurniture = FurnitureRegionAt(contentY, page, footer);
+        if (!furnitureEdit && inFurniture && (pageView || !pages.empty())) {
+            if (BeginFurnitureEditing(page, footer)) return true;
+        }
+        if (furnitureEdit && !(inFurniture && page == furnitureEdit->pageIndex && footer == furnitureEdit->footer)) {
+            FinishHeaderFooterEditing();
+            return true;
+        }
+    }
     editor.SelectWordAt(PositionFromPoint(ToDocument(event.pointer)));
     AfterSelectionChange();
     return true;
@@ -3181,6 +3222,13 @@ bool UltraCanvasRichTextEdit::HandleKeyDown(const UCEvent& event) {
     const RichDocPosition caret = editor.GetCaret();
 
     switch (event.virtualKey) {
+        case UCKeys::Escape:
+            if (furnitureEdit) {
+                FinishHeaderFooterEditing();
+                return true;
+            }
+            handled = false;
+            break;
         case UCKeys::Left:
             editor.SetCaret(event.ctrl ? editor.PreviousWord(caret) : editor.PreviousCharacter(caret),
                             event.shift);
@@ -3544,6 +3592,204 @@ bool UltraCanvasRichTextEdit::InsertImageFromFile(const std::string& path,
     return true;
 }
 
+// ===== EDITING A HEADER OR FOOTER =====
+
+bool UltraCanvasRichTextEdit::EditHeader(int pageIndex) { return BeginFurnitureEditing(pageIndex, false); }
+bool UltraCanvasRichTextEdit::EditFooter(int pageIndex) { return BeginFurnitureEditing(pageIndex, true); }
+
+bool UltraCanvasRichTextEdit::BeginFurnitureEditing(int pageIndex, bool footer) {
+    if (readOnly) return false;
+    if (furnitureEdit) {
+        if (furnitureEdit->pageIndex == pageIndex && furnitureEdit->footer == footer) return true;
+        FinishHeaderFooterEditing();
+    }
+    // The pages must be laid out: which one is being edited, and where its
+    // header is, come from them.
+    if (pages.empty()) return false;
+    pageIndex = std::clamp(pageIndex, 0, static_cast<int>(pages.size()) - 1);
+    const std::shared_ptr<UCRichDocument> body = editor.GetDocument();
+    const bool firstPage = body->firstPageDiffers && pageIndex == 0;
+    const RichPageFurniture& furniture = firstPage ? body->firstPageFurniture : body->pageFurniture;
+
+    auto furnitureDoc = std::make_shared<UCRichDocument>();
+    furnitureDoc->blocks = footer ? furniture.footer : furniture.header;
+    furnitureDoc->media = body->media;          // pictures keep their indices
+    furnitureDoc->page = body->page;
+    furnitureDoc->defaultTabStopPt = body->defaultTabStopPt;
+
+    auto state = std::make_unique<FurnitureEditState>();
+    state->footer = footer;
+    state->firstPage = firstPage;
+    state->pageIndex = pageIndex;
+    state->bodyContentHeight = contentHeight;
+    state->bodyEditor = std::move(editor);
+    editor = UCRichDocumentEditor(furnitureDoc);
+    editor.onChanged = state->bodyEditor.onChanged;
+    editor.onSelectionChanged = state->bodyEditor.onSelectionChanged;
+    editor.SetAutoFormatEnabled(state->bodyEditor.IsAutoFormatEnabled());
+    editor.SetAutoFormatOptions(state->bodyEditor.GetAutoFormatOptions());
+    editor.SetMaxUndoSteps(state->bodyEditor.GetMaxUndoSteps());
+
+    parkedLayouts = std::move(blockLayouts);
+    blockLayouts.clear();
+    parkedPages = pages;
+    parkedFloats = placedFloats;
+    placedFloats.clear();
+    furnitureEdit = std::move(state);
+    editor.SetCaret(editor.DocumentEnd());
+
+    layoutsDirty = true;
+    caretMoved = true;
+    RequestRedraw();
+    if (onHeaderFooterEditingChanged) onHeaderFooterEditingChanged(true);
+    if (onSelectionChanged) onSelectionChanged();
+    return true;
+}
+
+void UltraCanvasRichTextEdit::SyncFurnitureToDocument() {
+    if (!furnitureEdit) return;
+    const std::shared_ptr<UCRichDocument>& body = furnitureEdit->bodyEditor.GetDocument();
+    const std::shared_ptr<UCRichDocument>& edited = editor.GetDocument();
+    RichPageFurniture& furniture = furnitureEdit->firstPage ? body->firstPageFurniture : body->pageFurniture;
+    std::vector<RichDocBlock>& target = furnitureEdit->footer ? furniture.footer : furniture.header;
+    // A header emptied of everything is no header at all.
+    const bool empty = edited->blocks.size() == 1 && edited->blocks[0].type == RichBlockType::Paragraph
+                       && UCRichDocumentEditor::RunsText(edited->blocks[0].runs).empty();
+    target = empty ? std::vector<RichDocBlock>{} : edited->blocks;
+    // Pictures inserted into it join the document's media.
+    for (size_t i = body->media.size(); i < edited->media.size(); i++) body->media.push_back(edited->media[i]);
+    furnitureEdit->bodyEditor.SetModified(true);
+    furnitureCache.clear();
+}
+
+void UltraCanvasRichTextEdit::FinishHeaderFooterEditing() {
+    if (!furnitureEdit) return;
+    SyncFurnitureToDocument();
+    const bool modified = editor.IsModified() || furnitureEdit->bodyEditor.IsModified();
+    editor = std::move(furnitureEdit->bodyEditor);
+    if (modified) editor.SetModified(true);
+    blockLayouts = std::move(parkedLayouts);
+    parkedLayouts.clear();
+    parkedPages.clear();
+    parkedFloats.clear();
+    furnitureEdit.reset();
+    // The header's new height moves the body; everything is laid out again.
+    InvalidateDocument();
+    caretMoved = true;
+    if (onHeaderFooterEditingChanged) onHeaderFooterEditingChanged(false);
+    if (onSelectionChanged) onSelectionChanged();
+}
+
+float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
+    // The body is placed again first, against the header as it now is (it is
+    // written into the document as it is edited): a header growing a line
+    // pushes the body down while it is typed, as it will once editing ends.
+    std::swap(editor, furnitureEdit->bodyEditor);
+    std::swap(blockLayouts, parkedLayouts);
+    const float bodyHeight = pageView ? PlaceBlocksOnPages(ctx) : PlaceBlocksInColumn(ctx);
+    parkedPages = pages;
+    parkedFloats = placedFloats;
+    std::swap(blockLayouts, parkedLayouts);
+    std::swap(editor, furnitureEdit->bodyEditor);
+    furnitureEdit->bodyContentHeight = bodyHeight;
+
+    pages = parkedPages;
+    placedFloats.clear();
+    const int count = editor.GetBlockCount();
+    float total = 0.0f;
+    for (int i = 0; i < count; i++) total += blockLayouts[static_cast<size_t>(i)].bounds.height + GapAfterBlock(i);
+    float y = 0.0f;
+    if (!pages.empty()) {
+        const PageFrame& frame = pages[static_cast<size_t>(std::clamp(furnitureEdit->pageIndex, 0,
+                                                                      static_cast<int>(pages.size()) - 1))];
+        if (furnitureEdit->footer) {
+            // A footer grows upwards from where it ends.
+            const float footerBottom = frame.footerTop + (frame.footer ? frame.footer->height : 0.0f);
+            y = footerBottom - total;
+        } else {
+            y = pageView ? frame.headerTop : 0.0f;
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+        bl.bounds.x = bl.textLeft;
+        bl.bounds.y = y;
+        y += bl.bounds.height + GapAfterBlock(i);
+    }
+    return std::max(furnitureEdit->bodyContentHeight, y);
+}
+
+bool UltraCanvasRichTextEdit::FurnitureRegionAt(float contentY, int& outPage, bool& outFooter) const {
+    const std::vector<PageFrame>& frames = furnitureEdit ? parkedPages : pages;
+    for (size_t p = 0; p < frames.size(); p++) {
+        const PageFrame& frame = frames[p];
+        if (pageView) {
+            if (contentY < frame.top || contentY > frame.top + pageHeightPx) continue;
+            outPage = static_cast<int>(p);
+            if (contentY < frame.bodyTop) { outFooter = false; return true; }
+            if (contentY > frame.bodyBottom) { outFooter = true; return true; }
+            return false;
+        }
+        // One column: the header above the body, the footer below it.
+        outPage = 0;
+        if (frame.header && contentY < frame.bodyTop) { outFooter = false; return true; }
+        if (frame.footer && contentY >= frame.footerTop) { outFooter = true; return true; }
+    }
+    return false;
+}
+
+// The body under the header being edited: drawn as it was, then washed pale,
+// as a word processor does.
+void UltraCanvasRichTextEdit::RenderBodyBackdrop(IRenderContext* ctx) {
+    const auto& blocks = furnitureEdit->bodyEditor.GetDocument()->blocks;
+    const float viewTop = scrollOffset, viewBottom = scrollOffset + visibleArea.height;
+    for (size_t i = 0; i < parkedLayouts.size() && i < blocks.size(); i++) {
+        const BlockLayout& bl = parkedLayouts[i];
+        if (!bl.valid || BlockVisualBottom(bl) < viewTop) continue;
+        if (bl.bounds.y > viewBottom) break;
+        RenderBlockPieces(ctx, blocks, static_cast<int>(i), bl, -1);
+    }
+    for (const PlacedFloat& placed : parkedFloats) {
+        if (!placed.image) continue;
+        ctx->DrawImage(*placed.image, Rect2Dd(ColumnLeft() + placed.rect.x, visibleArea.y + placed.rect.y - scrollOffset,
+                                              placed.rect.width, placed.rect.height), ImageFitMode::Contain);
+    }
+    // Pale over the body; the edited header or footer marked with a rule.
+    Color wash = pageView ? style.pageColor : style.backgroundColor;
+    wash.a = 150;
+    for (const PageFrame& frame : pages) {
+        const float top = pageView ? frame.top : 0.0f;
+        const float height = pageView ? pageHeightPx : contentHeight;
+        if (top + height < viewTop || top > viewBottom) continue;
+        const double x = pageView ? visibleArea.x + pageLeftX - hScrollOffset : visibleArea.x;
+        const double width = pageView ? pageWidthPx : visibleArea.width;
+        ctx->DrawFilledRectangle(Rect2Dd(x, visibleArea.y + top - scrollOffset, width, height), wash, 0.0f,
+                                 Colors::Transparent);
+    }
+    if (!blockLayouts.empty() && !pages.empty()) {
+        const BlockLayout& first = blockLayouts.front();
+        const BlockLayout& last = blockLayouts.back();
+        const float edge = furnitureEdit->footer ? first.bounds.y - 4.0f : last.bounds.y + last.bounds.height + 4.0f;
+        const double y = visibleArea.y + edge - scrollOffset;
+        ctx->PushState();
+        ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
+        ctx->DrawLine(Point2Dd(ColumnLeft(), y), Point2Dd(ColumnLeft() + ColumnWidth(), y), style.pageBreakColor);
+        ctx->PopState();
+        ctx->PushState();
+        FontStyle label = style.baseFont;
+        label.fontSize = std::max(7.0, style.baseFont.fontSize * 0.7);
+        ctx->SetFontStyle(label);
+        ctx->SetTextPaint(style.pageBreakColor);
+        const std::string name = std::string(furnitureEdit->firstPage ? "First Page " : "")
+                               + (furnitureEdit->footer ? "Footer" : "Header");
+        // At the rule's right end, on the header's side of it.
+        const double textY = furnitureEdit->footer ? y + 2.0 : y - label.fontSize * 1.6;
+        const double textX = ColumnLeft() + ColumnWidth() - ctx->GetTextLineWidth(name);
+        ctx->DrawText(name, Point2Dd(textX, textY));
+        ctx->PopState();
+    }
+}
+
 // ===== PDF =====
 
 bool UltraCanvasRichTextEdit::ExportToPdf(const std::string& utf8Path, std::string& error) {
@@ -3568,6 +3814,7 @@ bool UltraCanvasRichTextEdit::ExportToPdf(std::vector<uint8_t>& pdfBytes, std::s
 // text is measured with the fonts it is drawn with), and draws page after
 // page into it. The element's view state is put back afterwards.
 bool UltraCanvasRichTextEdit::ExportPdfPages(UltraCanvasPdfSurface& pdf, std::string& error) {
+    if (furnitureEdit) FinishHeaderFooterEditing();
     IRenderContext* ctx = pdf.GetContext();
     if (!ctx) {
         error = "The PDF has no page to draw on";

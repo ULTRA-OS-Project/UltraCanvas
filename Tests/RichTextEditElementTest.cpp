@@ -1171,6 +1171,48 @@ int main() {
         TEST("...and clicks still land in it", editor.GetCaret().blockIndex == 0);
     }
 
+    // ===== EDITING HEADERS AND FOOTERS =====
+    std::cerr << "\n--- Header and footer editing ---" << std::endl;
+    {
+        edit->SetMarkdown("Body text on the page.\n");
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("A header opens for editing", edit->EditHeader(0) && edit->IsEditingHeaderOrFooter());
+        window->UpdateAndRender();
+        edit->OnEvent(TextEvent("M"));
+        edit->OnEvent(TextEvent("y"));
+        edit->InsertText(" letterhead");
+        window->UpdateAndRender();
+        TEST("Typing goes into the header", edit->GetDocument()->pageFurniture.header.size() == 1
+             && UCRichDocument::ConcatenateRunText(edit->GetDocument()->pageFurniture.header[0].runs) == "My letterhead");
+        TEST("...not into the body", edit->GetDocument()->blocks.size() == 1
+             && edit->GetPlainText().find("Body text") != std::string::npos);
+        TEST("The document is modified", edit->IsModified());
+        edit->OnEvent(KeyEvent(UCKeys::Escape));
+        window->UpdateAndRender();
+        TEST("Escape goes back to the body", !edit->IsEditingHeaderOrFooter()
+             && editor.BlockText(0) == "Body text on the page.");
+        TEST("...keeping the header", !edit->GetDocument()->pageFurniture.header.empty());
+
+        // A double-click in the bottom margin of the page opens its footer.
+        window->UpdateAndRender();
+        const float pageTop = 16.0f;             // style.pageGap
+        const float footerY = 8.0f + pageTop + 1100.0f - 20.0f;   // near the page's foot
+        edit->SetScrollOffset(footerY - 300.0f);
+        window->UpdateAndRender();
+        const float y = footerY - edit->GetScrollOffset() ;
+        UCEvent click = MouseEvent(UCEventType::MouseDoubleClick, 300.0f, y);
+        edit->OnEvent(click);
+        window->UpdateAndRender();
+        TEST("A double-click in the bottom margin edits the footer", edit->IsEditingFooter());
+        edit->InsertText("Page footer");
+        edit->FinishHeaderFooterEditing();
+        TEST("...which the document now has", !edit->GetDocument()->pageFurniture.footer.empty());
+        edit->SetPageView(false);
+        edit->ScrollToTop();
+    }
+
     // ===== PAGE FIELDS IN THE BODY =====
     std::cerr << "\n--- Page fields ---" << std::endl;
     {
