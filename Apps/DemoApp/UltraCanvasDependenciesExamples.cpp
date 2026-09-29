@@ -652,7 +652,7 @@ namespace UltraCanvas {
         dep("No additional third party", "(core only)", "(core only)", "(core only)");
 
         header("IODeviceManager module");
-        dep("Printers", "CUPS (Apache 2) (optional)", "CUPS (Apache 2) (optional)", "Win32 (winspool, gdi32)\n(print spooler)");
+        dep("Printers", "CUPS (Apache 2) (optional)\nIPP (network, via UltraNet)", "CUPS (Apache 2) (optional)\nIPP (network, via UltraNet)", "Win32 (winspool, gdi32)\n(print spooler)\nIPP (network, via UltraNet)");
         dep("Scanners", "SANE (GPL 2) (optional)\neSCL (network, via UltraNet)", "eSCL (network, via UltraNet)\nICA (planned)", "eSCL (network, via UltraNet)\nWIA, TWAIN (planned)");
         dep("Cameras", "V4L2", "– (AVFoundation planned)", "– (Media Foundation planned)");
         dep("Hot-plug watching", "libudev (LGPL 2.1) (optional)", "– (no watcher yet)", "– (no watcher yet)");

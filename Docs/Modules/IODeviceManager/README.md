@@ -13,8 +13,9 @@ printing a document. Every device, whatever backend found it, is an `IODevice`
 with the same identity, lifecycle and error reporting, and every category adds
 its own operations on top (`ScannerDevice`, `CameraDevice`, `PrinterDevice`).
 
-Today that covers **printers** on Linux, macOS and Windows, **scanners** on
-Linux plus network (eSCL) scanners everywhere, and **webcams** on Linux. The
+Today that covers **printers** on Linux, macOS and Windows plus driverless
+network (IPP) printers everywhere, **scanners** on Linux plus network (eSCL)
+scanners everywhere, and **webcams** on Linux. The
 other categories and platform backends below are planned; the tables say which
 is which.
 
@@ -23,8 +24,8 @@ is which.
 ## Purpose
 
 - **One API per kind of device** — a scanner is a `ScannerDevice` whether SANE
-  or eSCL found it; a printer is a `PrinterDevice` whether CUPS or the Windows
-  spooler did. Application code does not branch on the backend.
+  or eSCL found it; a printer is a `PrinterDevice` whether CUPS, the Windows
+  spooler or IPP did. Application code does not branch on the backend.
 - **Several backends per category** — each backend registers an *enumerator*
   for one category, and the manager merges them: on Linux, SANE and eSCL both
   report scanners, and a scanner reachable through both is listed once.
@@ -113,7 +114,8 @@ if (camera && camera->Connect()) {
 
 A printer prints a file or a job, reports its status, queue and supply
 levels, and lets the application choose who renders the page: the platform's
-own driver, or GutenPrint.
+own driver, GutenPrint, or - for a driverless network printer - the printer
+itself, over IPP.
 
 ```cpp
 #include "IODeviceManager/UltraCanvasIODevicePrinter.h"
@@ -135,6 +137,20 @@ comma-separated list of base URLs:
 
 ```sh
 ULTRACANVAS_ESCL_SCANNERS=http://192.168.1.50/eSCL ./MyApp
+```
+
+### Network Printers
+
+IPP Everywhere, AirPrint and Mopria printers need no driver: they are found
+through mDNS, and a document the printer renders itself (PDF, JPEG) is sent
+as it is, while text and other images are drawn as PWG raster. On Linux and
+macOS a printer CUPS already offers is left to CUPS rather than listed twice.
+A printer on another subnet is named in `ULTRACANVAS_IPP_PRINTERS`, a
+comma-separated list of `ipp://`, `ipps://`, `http://` or `https://`
+addresses:
+
+```sh
+ULTRACANVAS_IPP_PRINTERS=ipp://192.168.1.20/ipp/print ./MyApp
 ```
 
 ### Your Own Devices
@@ -170,7 +186,7 @@ merging apply to it too.
 
 | Category | Examples | Status |
 |----------|----------|--------|
-| **Printer** | Inkjet, laser, label printers; local and network queues | ✅ Available — CUPS (Linux, macOS), Windows spooler; GutenPrint as an alternative renderer |
+| **Printer** | Inkjet, laser, label printers; local and network queues | ✅ Available — CUPS (Linux, macOS), Windows spooler, IPP driverless network printers (all platforms); GutenPrint as an alternative renderer |
 | **Scanner** | Flatbed, ADF, network scanners | 🚧 Partial — SANE (Linux) and eSCL network scanners (all platforms); no USB scanners on macOS or Windows yet |
 | **Camera** | Webcams | 🚧 Partial — V4L2 webcams on Linux; no camera backend on macOS or Windows; DSLRs and network cameras (RTSP/ONVIF) not yet |
 | **Custom** | Anything an application reaches through its own code | ✅ Available — `RegisterDevice()` / `RegisterEnumerator()` |
@@ -190,8 +206,8 @@ nothing else.
 
 | Category | Linux | Windows | macOS | Network |
 |----------|-------|---------|-------|---------|
-| **Printer** | ✅ CUPS | ✅ Windows spooler (GDI rendering) | 🚧 CUPS (no duplex; untested on hardware) | — (IPP discovery planned) |
-| **Printer renderer** | ✅ GutenPrint | 🚧 GutenPrint (works; its tools are not shipped) | ✅ GutenPrint | — |
+| **Printer** | ✅ CUPS | ✅ Windows spooler (GDI rendering) | 🚧 CUPS (no duplex; untested on hardware) | ✅ IPP (all platforms; tested against CUPS's reference printer, not yet a physical one) |
+| **Printer renderer** | ✅ GutenPrint | 🚧 GutenPrint (works; its tools are not shipped) | ✅ GutenPrint | ✅ IPP driverless (PWG raster, or the document as it is) |
 | **Scanner** | ✅ SANE | 📋 WIA, TWAIN | 📋 ICA | ✅ eSCL (all platforms) |
 | **Camera (webcam)** | ✅ V4L2 | 📋 Media Foundation | 📋 AVFoundation | — |
 | **Camera (DSLR)** | 📋 libgphoto2 | 📋 WIA | 📋 ImageCapture | — |
@@ -218,8 +234,9 @@ lists the packages.
   never goes stale.
 
 ### For Applications
-- **Backend independence** — the same code prints through CUPS on Linux and
-  the spooler on Windows, and scans through SANE or eSCL.
+- **Backend independence** — the same code prints through CUPS on Linux, the
+  spooler on Windows or IPP to a network printer anywhere, and scans through
+  SANE or eSCL.
 - **Room to grow** — a new backend is one enumerator; applications that
   already enumerate a category see its devices without changing.
 

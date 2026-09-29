@@ -842,6 +842,16 @@ wire name, so the backend does the parsing: see
 `Plugins/UltraNet/mdns/MdnsNames.h`, which holds that arithmetic with no
 platform in it so `Tests/MdnsNamesTest` can drive it anywhere.
 
+**A scanner is listed once however many ways it advertises itself.** One
+that offers TLS usually advertises both `_uscan._tcp` and `_uscans._tcp`, and
+since the device id is the scanner's URL, the two used to be two entries.
+Discovery now recognises a scanner by the `uuid` in its TXT record - the same
+in both advertisements - or by its host when it gives none
+(`EsclScannerIdentity`), keeps the plain-HTTP advertisement, and records the
+TLS address as the `escl-tls-url` attribute. Plain HTTP wins for the reason
+it does for IPP printers: the certificate is self-signed in all but a few
+cases, and TLS verification stays on.
+
 Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
 reach one on another subnet, since mDNS does not cross routers.
 
