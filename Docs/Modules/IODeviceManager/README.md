@@ -153,6 +153,30 @@ addresses:
 ULTRACANVAS_IPP_PRINTERS=ipp://192.168.1.20/ipp/print ./MyApp
 ```
 
+### Printer Status
+
+`GetStatus()` reports what a printer is doing — idle, printing or stopped, the
+reason (`media-empty`, `door-open`, `paused`), whether it accepts jobs and how
+many are queued — and `GetSupplyLevels()` its ink or toner, with a percentage
+where the printer gives one. Both need an open session and return nothing
+otherwise:
+
+```cpp
+if (printer->Connect()) {
+    IOPrinterStatus status = printer->GetStatus();
+    for (const IOSupplyLevel& supply : printer->GetSupplyLevels()) {
+        if (supply.IsLow()) { /* supply.description, supply.percentRemaining */ }
+    }
+    printer->Disconnect();
+}
+```
+
+CUPS, the Windows spooler and IPP all report status. Supply levels come from
+CUPS (`marker-*`) and IPP (`marker-*` and PWG's `printer-supply`); the Windows
+spooler has no levels to give — reading them there needs SNMP or a vendor SDK
+— so a spooler printer's list is empty rather than zero. DeviceExplorer shows
+both for the selected printer.
+
 ### Your Own Devices
 
 Hardware reached through an application's own code registers with the manager
