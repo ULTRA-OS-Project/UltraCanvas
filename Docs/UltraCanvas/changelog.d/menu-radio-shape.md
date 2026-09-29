@@ -56,3 +56,12 @@
   height the layout uses, and PageUp / PageDown, when the caret has no
   on-screen rectangle to measure a page from, move by the lines that fit
   the visible area instead of a fixed ten.
+- **The first-surface text-render diagnostic answers a measurement question
+  on its own.** It logged the Pango and Cairo resolutions, the device scale
+  and cairo's font options as bare enum numbers, read before the framework's
+  own options were applied. It now logs after they are, names every option
+  (antialias, hint style, hint metrics, subpixel order) for both the Pango
+  context and cairo, adds the surface size and the pinned resolution, and
+  measures the default font on that context: line height, baseline, cap
+  height and the width of an H, to compare across machines before
+  suspecting a caller.
