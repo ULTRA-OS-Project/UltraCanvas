@@ -14,7 +14,11 @@
   `IRenderContext::TextTopCentredOnCaps(row, font)` and
   `GetCapCentreOffset(font)`; the menu and the spinner use them. The cap
   height comes from `ITextLayout::GetCapHeight()`, measured once per font
-  from the ink of a capital H and cached, so no render pass measures twice.
+  from the ink of a capital H and cached on the render context, so no
+  render pass measures twice. The caches are per context, not process-wide,
+  and `IRenderContext::InvalidateFontMetricsCache()` clears them: the Cairo
+  backend calls it when a context's surface, resolution, hinting or
+  antialiasing changes, so a font is measured again under the new settings.
 - **TextInput: text, selection and caret share one cap-centred line box.**
   The field centred its text by the line height, placed the caret by
   1.2 × the font size and sized it by 1.4 ×, so the three drifted apart and

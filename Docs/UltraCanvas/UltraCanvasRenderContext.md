@@ -214,8 +214,13 @@ ctx->DrawText(label, Point2Di(x, y));
 ```
 
 The cap height is measured once per font from the ink of a capital H and
-cached, so asking per row costs a map lookup. A font with no measurable
-ink falls back to the line box's middle.
+cached, so asking per row costs a map lookup. The caches belong to the
+context (and, for layouts, to its Pango context), not to the process: two
+contexts can measure the same font differently, and a backend calls
+`InvalidateFontMetricsCache()` on a context whenever its resolution, font
+options, hinting or device scale change, so nothing measured under the old
+settings survives them. Callers never need to call it. A font with no
+measurable ink falls back to the line box's middle.
 
 ## Text outlines
 

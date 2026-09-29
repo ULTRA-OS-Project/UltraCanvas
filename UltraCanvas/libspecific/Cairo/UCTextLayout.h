@@ -183,6 +183,10 @@ namespace UltraCanvas {
 
         double GetBaseline() const override;
         double GetCapHeight() override;
+        // Drop the cap heights measured on `pangoCtx` (see GetCapHeight). The
+        // render context that owns it calls this when its resolution or font
+        // options change, so a font is measured again under the new settings.
+        static void InvalidateFontMetricsCache(PangoContext* pangoCtx);
         int GetLineCount() const override;
 
         // ===== HIT TESTING & POSITION =====

@@ -9,7 +9,6 @@
 
 #include "UCTextLayout.h"
 #include <unordered_map>
-#include <mutex>
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasRenderContext.h"
@@ -839,13 +838,37 @@ namespace UltraCanvas {
         return pango_layout_get_baseline(layout) / PANGO_SCALE_D;
     }
 
+    namespace {
+        // Cap heights measured on one PangoContext, keyed by font description.
+        // The map hangs off the context itself (GObject data), so it lives and
+        // dies with the context, never outlives it to be found by a reused
+        // pointer, and is per context: the same font can measure differently
+        // on two contexts (resolution, font options, device scale), and a
+        // change to one context's settings clears only that context's map.
+        using CapHeightCache = std::unordered_map<std::string, double>;
+        constexpr const char* kCapHeightCacheKey = "ultracanvas-cap-height-cache";
+
+        CapHeightCache* GetCapHeightCache(PangoContext* ctx) {
+            auto* cache = static_cast<CapHeightCache*>(g_object_get_data(G_OBJECT(ctx), kCapHeightCacheKey));
+            if (!cache) {
+                cache = new CapHeightCache();
+                g_object_set_data_full(G_OBJECT(ctx), kCapHeightCacheKey, cache,
+                                       [](gpointer data) { delete static_cast<CapHeightCache*>(data); });
+            }
+            return cache;
+        }
+    }
+
+    void UCTextLayout::InvalidateFontMetricsCache(PangoContext* pangoCtx) {
+        if (!pangoCtx) return;
+        // Setting the slot to null runs the destroy notify on the old map.
+        g_object_set_data(G_OBJECT(pangoCtx), kCapHeightCacheKey, nullptr);
+    }
+
     double UCTextLayout::GetCapHeight() {
         // Pango's font metrics carry no cap height, so it is measured once per
         // font from the ink of a capital H and kept: every layout in that
         // font asks for the same number, and a menu or list asks per row.
-        static std::unordered_map<std::string, double> cache;
-        static std::mutex cacheMutex;
-
         PangoContext* ctx = pango_layout_get_context(layout);
         const PangoFontDescription* desc = pango_layout_get_font_description(layout);
         if (!desc) desc = pango_context_get_font_description(ctx);
@@ -857,14 +880,10 @@ namespace UltraCanvas {
             key = descStr ? descStr : "";
             g_free(descStr);
         }
-        // The pixel size of a point-sized font follows the context's resolution.
-        key += '@' + std::to_string(pango_cairo_context_get_resolution(ctx));
 
-        {
-            std::lock_guard<std::mutex> lock(cacheMutex);
-            auto found = cache.find(key);
-            if (found != cache.end()) return found->second;
-        }
+        CapHeightCache* cache = GetCapHeightCache(ctx);
+        auto found = cache->find(key);
+        if (found != cache->end()) return found->second;
 
         double capHeight = 0;
         PangoLayout* probe = pango_layout_new(ctx);
@@ -879,8 +898,7 @@ namespace UltraCanvas {
             g_object_unref(probe);
         }
 
-        std::lock_guard<std::mutex> lock(cacheMutex);
-        cache.emplace(key, capHeight);
+        cache->emplace(key, capHeight);
         return capHeight;
     }
 

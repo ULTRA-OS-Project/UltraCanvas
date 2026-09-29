@@ -313,6 +313,8 @@ namespace UltraCanvas {
         static void SetTextHintMetrics(cairo_hint_metrics_t metrics);
         static cairo_hint_metrics_t GetTextHintMetrics();
         void ApplyPangoFontOptions();
+        // Also drops the cap heights cached on this context's PangoContext.
+        void InvalidateFontMetricsCache() override;
 
         // ===== CAIRO-SPECIFIC METHODS =====
         void SetCairoColor(const Color &color);

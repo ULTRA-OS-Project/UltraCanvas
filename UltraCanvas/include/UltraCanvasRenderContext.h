@@ -624,6 +624,14 @@ namespace UltraCanvas {
         // lands exactly on the rectangle's edge, on whole pixels, and the
         // outline stays inside the bounds it was given. The centre does not
         // move, so anything centred in the rectangle stays centred.
+    private:
+        // GetCapCentreOffset's per-font results for this context. Per context,
+        // not process-wide: two contexts can measure the same font differently
+        // (device scale, font options), and InvalidateFontMetricsCache clears
+        // just this one when its configuration changes.
+        std::unordered_map<std::string, double> capCentreCache;
+
+    public:
         // Distance from the top of a single line of `font`, as DrawText and
         // DrawTextLayout place it, to the middle of a capital letter (half-way
         // between the cap top and the baseline). Centring text on that point
@@ -636,6 +644,12 @@ namespace UltraCanvas {
         // Top y at which to DrawText a single line of `font` so that its
         // capitals are centred on `row`. Defined after ITextLayout below.
         int TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
+
+        // Forget every cached font measurement (GetCapCentreOffset and the
+        // text layouts' cap heights). A backend calls this whenever a font
+        // would measure differently from now on: its resolution, font
+        // options, hinting or device scale changed. Callers never need to.
+        virtual void InvalidateFontMetricsCache() { capCentreCache.clear(); }
 
         static Rect2Dd InsetForStroke(const Rect2Dd& rect, float strokeWidth) {
             double inset = strokeWidth / 2.0;
@@ -1048,7 +1062,7 @@ namespace UltraCanvas {
     inline double IRenderContext::GetCapCentreOffset(const FontStyle& font)
     {
         // One entry per font this context has drawn with; a handful in practice.
-        static std::unordered_map<std::string, double> cache;
+        auto& cache = capCentreCache;
         std::string key = font.fontFamily + '|' + std::to_string(font.fontSize) + '|' +
                           std::to_string(static_cast<int>(font.fontWeight)) + '|' +
                           std::to_string(static_cast<int>(font.fontSlant));

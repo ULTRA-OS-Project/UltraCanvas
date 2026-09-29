@@ -55,6 +55,14 @@ namespace UltraCanvas {
         cairo_font_options_set_hint_metrics(opts, g_TextHintMetrics);
         pango_cairo_context_set_font_options(pangoContext, opts);
         cairo_font_options_destroy(opts);
+        // Hinting and antialiasing change a glyph's ink, so every cap height
+        // measured so far is measured again under the new options.
+        InvalidateFontMetricsCache();
+    }
+
+    void RenderContextCairo::InvalidateFontMetricsCache() {
+        IRenderContext::InvalidateFontMetricsCache();
+        UCTextLayout::InvalidateFontMetricsCache(pangoContext);
     }
 
     void RenderContextCairo::SetTextAntialias(cairo_antialias_t mode) {
@@ -230,6 +238,9 @@ namespace UltraCanvas {
 
         // Pin Pango DPI before any layout uses this context.
         pango_cairo_context_set_resolution(pangoContext, g_PangoResolution);
+        // A new surface may carry a new device scale, and this is a new
+        // PangoContext: measurements made on the old one no longer apply.
+        InvalidateFontMetricsCache();
 
         // Belt-and-braces: also pin the cairo surface's fallback DPI and the
         // default Pango font map's resolution. Pango's draw-time
