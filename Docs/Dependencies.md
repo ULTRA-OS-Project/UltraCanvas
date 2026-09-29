@@ -249,16 +249,17 @@ for the full search order.
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| Printers | CUPS (optional) | CUPS (optional) | Win32 (winspool, gdi32) — the print spooler |
+| Printers | CUPS (optional); IPP network printers through UltraNet | CUPS (optional); IPP network printers through UltraNet | Win32 (winspool, gdi32) — the print spooler; IPP network printers through UltraNet |
 | Scanners | SANE (optional); eSCL network scanners through UltraNet | eSCL network scanners through UltraNet; ICA planned | eSCL network scanners through UltraNet; WIA, TWAIN planned |
 | Cameras | V4L2 | – (AVFoundation planned) | – (Media Foundation planned) |
 | Hot-plug watching | libudev (optional) | – (no watcher yet) | – (no watcher yet) |
 
 Only the backends `UltraCanvas/core/IODeviceManager/UltraCanvasIODeviceBackends.cpp`
 registers are listed; the ones marked *planned* have no code yet. eSCL
-(AirScan / Mopria) is a protocol the module speaks itself over HTTP, so it
-needs UltraNet rather than a third-party library, and it finds only network
-scanners. On macOS and Windows a USB scanner or any camera is therefore not
+(AirScan / Mopria) and IPP (IPP Everywhere / AirPrint / Mopria) are protocols
+the module speaks itself over HTTP, so they need UltraNet rather than a
+third-party library, and they find only network devices: eSCL network
+scanners, IPP driverless printers. On macOS and Windows a USB scanner or any camera is therefore not
 found yet.
 
 Hot-plug watching is what lets `IODeviceManager::StartMonitoring()` notice a
