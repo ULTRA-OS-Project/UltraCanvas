@@ -234,6 +234,13 @@ UltraDbResult AnalysisStore::Open(const std::string& connectionName,
           "  category TEXT NOT NULL,"
           "  reason TEXT,"
           "  added INTEGER DEFAULT 0);" },
+
+        { 4, "account source",
+          // 0.5. Accounts can be added in EmailCleaner itself now, beside the
+          // ones mirrored from UltraMail; the app reads each one's mail from a
+          // different cache, so the row has to say which list it came from.
+          // Every existing row was mirrored from UltraMail.
+          "ALTER TABLE accounts ADD COLUMN source TEXT DEFAULT 'ultramail';" },
     };
     // The list above must end at the version the header advertises.
     if (!steps.empty() && steps.back().version != kSchemaVersion) {
@@ -247,25 +254,35 @@ UltraDbResult AnalysisStore::Open(const std::string& connectionName,
 
 // ---- Accounts --------------------------------------------------------------
 
+std::string ToString(AccountSource source) {
+    return source == AccountSource::Own ? "own" : "ultramail";
+}
+
+AccountSource AccountSourceFromString(const std::string& s) {
+    return s == "own" ? AccountSource::Own : AccountSource::UltraMail;
+}
+
 UltraDbResult AnalysisStore::UpsertAccount(const StoredAccount& account) {
     if (account.accountId.empty())
         return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
                                     "account id must not be empty");
     return UltraDb_Exec(connection_,
-        "INSERT INTO accounts(account_id, display_name, email, short_name) "
-        "VALUES(?, ?, ?, ?) "
+        "INSERT INTO accounts(account_id, display_name, email, short_name, source) "
+        "VALUES(?, ?, ?, ?, ?) "
         "ON CONFLICT(account_id) DO UPDATE SET "
         "  display_name = excluded.display_name,"
         "  email = excluded.email,"
-        "  short_name = excluded.short_name",
-        { account.accountId, account.displayName, account.email, account.shortName });
+        "  short_name = excluded.short_name,"
+        "  source = excluded.source",
+        { account.accountId, account.displayName, account.email, account.shortName,
+          ToString(account.source) });
 }
 
 UltraDbResult AnalysisStore::ListAccounts(std::vector<StoredAccount>& out) const {
     out.clear();
     UltraDbResultSet rs;
     UltraDbResult r = UltraDb_Query(connection_,
-        "SELECT account_id, display_name, email, short_name FROM accounts "
+        "SELECT account_id, display_name, email, short_name, source FROM accounts "
         "ORDER BY email", rs);
     if (!r) return r;
     for (const UltraDbRow& row : rs) {
@@ -274,6 +291,7 @@ UltraDbResult AnalysisStore::ListAccounts(std::vector<StoredAccount>& out) const
         a.displayName = row["display_name"].AsString();
         a.email       = row["email"].AsString();
         a.shortName   = row["short_name"].AsString();
+        a.source      = AccountSourceFromString(row["source"].AsString());
         out.push_back(std::move(a));
     }
     return r;
