@@ -112,12 +112,26 @@ endif()
 # ============================================================================
 # COMMAND-LINE TOOL
 # ============================================================================
+# The target is videofx_cli, not videofx: on a case-insensitive file system
+# (macOS, Windows) "videofx" and the library "VideoFX" would share one
+# CMakeFiles/<target>.dir, and the Makefile build stops with "No rule to make
+# target VideoFX/CMakeFiles/VideoFX.dir/depend". For the same reason the
+# executable goes to bin/ rather than next to the build tree's VideoFX/ folder.
 if(VIDEOFX_BUILD_TOOL)
-    add_executable(videofx tools/videofx_cli.cpp)
-    target_link_libraries(videofx PRIVATE VideoFX::VideoFX)
+    add_executable(videofx_cli tools/videofx_cli.cpp)
+    set_target_properties(videofx_cli PROPERTIES
+        OUTPUT_NAME videofx
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    target_link_libraries(videofx_cli PRIVATE VideoFX::VideoFX)
     if(WIN32)
-        target_link_libraries(videofx PRIVATE shell32)   # CommandLineToArgvW: UTF-8 arguments
+        target_link_libraries(videofx_cli PRIVATE shell32)   # CommandLineToArgvW: UTF-8 arguments
     endif()
 endif()
 
-message(STATUS "VideoFX ${PROJECT_VERSION}: engine=${VIDEOFX_FFMPEG_FOUND}, tool=${VIDEOFX_BUILD_TOOL}")
+if(VIDEOFX_FFMPEG_FOUND)
+    set(VIDEOFX_ENGINE "FFmpeg")
+else()
+    set(VIDEOFX_ENGINE "stub (no FFmpeg)")
+endif()
+message(STATUS "VideoFX ${PROJECT_VERSION}: engine=${VIDEOFX_ENGINE}, tool=${VIDEOFX_BUILD_TOOL}")
