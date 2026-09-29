@@ -64,9 +64,11 @@ windows stop short of the bars instead of covering them.
 
 ### Right bar
 
-- **Desktop organiser**: the virtual desktops as numbered toggles (three by
-  default; the settings allow one to nine — the window manager is asked for
-  as many when one is chosen), the *Stickerboard* toggle, the *clipboard*
+- **Desktop organiser**: the virtual desktops as numbered toggles — as many
+  as the window manager has (read at start-up and followed when it changes),
+  the settings' count only where there is no window manager to ask; choosing
+  a count in the settings asks the window manager for that many — the
+  *Stickerboard* toggle, the *clipboard*
   (a menu of the last fifteen things copied; choosing one puts it back on
   the clipboard) and *screenshot* (the whole screen to
   `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a

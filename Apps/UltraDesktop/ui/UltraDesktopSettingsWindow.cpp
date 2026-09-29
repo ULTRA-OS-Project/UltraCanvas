@@ -99,7 +99,10 @@ void UltraDesktopSettingsWindow::Open() {
 
     desktops_ = CreateDropdown("dsDesktops", 0, 0, 120, 28);
     for (int i = 1; i <= 9; ++i) desktops_->AddItem(std::to_string(i), std::to_string(i));
-    desktops_->SetSelectedIndex(std::clamp(settings.virtualDesktops, 1, 9) - 1, false);
+    // What the organiser shows now - the window manager's count - not what
+    // the file says, so the page never claims three while the bar has four.
+    desktops_->SetSelectedIndex(std::clamp(desktop_->DesktopCount() > 0 ? desktop_->DesktopCount()
+                                                                        : settings.virtualDesktops, 1, 9) - 1, false);
     page->AddChild(MakeRow("dsDesktopsRow", "Virtual desktops", desktops_));
 
     status_ = CreateLabel("dsStatus", "");

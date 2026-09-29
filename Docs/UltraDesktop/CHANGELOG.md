@@ -15,8 +15,11 @@
     `UltraCanvasWaveSeparator`. The bars' edges are reserved with the window
     manager (`UltraCanvasDesktopShell::ReserveScreenEdges`), so a maximised
     application window stops short of them instead of covering them.
-  - **Right bar**: the desktop organiser (virtual desktops 1–3, or as many
-    as the settings say, the Stickerboard toggle, the clipboard history menu
+  - **Right bar**: the desktop organiser (the virtual desktops as the window
+    manager has them — its count is read at start-up and followed when it
+    changes; the settings' count where there is none to ask, and choosing a
+    count in the settings asks the manager for that many — the Stickerboard
+    toggle, the clipboard history menu
     and the screenshot button) above the info panel with the devices and
     services. A red marker means a device is on (webcam, microphone,
     Bluetooth; a link that is down), a yellow one activity (download, upload,

@@ -75,6 +75,9 @@ public:
     void ApplySettings();
 
     DesktopSettings& Settings() { return settings_; }
+    // How many desktops the organiser shows right now: the window manager's
+    // count where there is one, the settings' where there is none.
+    int DesktopCount() const { return desktopCount_; }
     void SaveSettings();
 
 private:
@@ -83,6 +86,7 @@ private:
     void LayoutForSize(float width, float height);
     // Tell the window manager where the bars are, so maximised windows stop short of them.
     void ReserveBarEdges();
+    int  DesiredDesktopCount() const;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildTaskbar(bool vertical);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRightBar();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildWorkArea();
@@ -137,6 +141,7 @@ private:
     std::map<uint64_t, std::string> runningTitles_;
     int currentDesktop_ = -1;
     int desktopCount_ = 0;
+    int requestedDesktops_ = 0;   // the settings' choice, for the rebuild that applies it
 
     UltraCanvas::UltraCanvasDesktopShellMonitor shellMonitor_;
     std::atomic<bool> windowsDirty_{true};

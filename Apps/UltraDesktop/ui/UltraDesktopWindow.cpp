@@ -346,7 +346,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
 
     // The desktop organiser: virtual desktops, then the board, clipboard, screenshot.
     organiser_ = MakeGroup("Organiser", true, true);
-    desktopCount_ = std::clamp(settings_.virtualDesktops, 1, 9);
+    desktopCount_ = std::clamp(DesiredDesktopCount(), 1, 9);
     for (int i = 0; i < desktopCount_; ++i) {
         const std::string id = "desktop" + std::to_string(i + 1);
         AddBarToggle(organiser_, id, "Desktop " + std::to_string(i + 1), "", std::to_string(i + 1),
@@ -503,6 +503,17 @@ void UltraDesktopWindow::ToggleStickerboard(bool visible) {
     SaveSettings();
 }
 
+int UltraDesktopWindow::DesiredDesktopCount() const {
+    // What the user just chose in the settings wins for the rebuild that
+    // follows it (the manager answers the request asynchronously); otherwise
+    // the window manager's own count, since it is the one that has the
+    // desktops; the settings value only where there is no manager to ask.
+    if (requestedDesktops_ > 0) return requestedDesktops_;
+    const int managed = UltraCanvasDesktopShell::GetVirtualDesktopCount();
+    if (managed > 0) return managed;
+    return settings_.virtualDesktops;
+}
+
 void UltraDesktopWindow::SwitchToDesktop(int index) {
     if (index < 0) return;
     // The window manager may offer fewer desktops than the organiser shows:
@@ -518,7 +529,15 @@ void UltraDesktopWindow::SwitchToDesktop(int index) {
 
 void UltraDesktopWindow::ApplySettings() {
     SaveSettings();
+    // The chosen number of desktops goes to the window manager, which owns
+    // them; the organiser is rebuilt with that number now and follows the
+    // manager afterwards, should it answer with another.
+    if (settings_.virtualDesktops != desktopCount_) {
+        UltraCanvasDesktopShell::SetVirtualDesktopCount(settings_.virtualDesktops);
+        requestedDesktops_ = settings_.virtualDesktops;
+    }
     BuildLayout();
+    requestedDesktops_ = 0;
     RefreshDesktops();
 }
 
@@ -565,6 +584,12 @@ void UltraDesktopWindow::OnTimer() {
 }
 
 void UltraDesktopWindow::RefreshDesktops() {
+    // The window manager added or removed a desktop (a keyboard shortcut,
+    // another pager, its own settings): the organiser follows it.
+    const int managed = UltraCanvasDesktopShell::GetVirtualDesktopCount();
+    if (managed > 0 && std::clamp(managed, 1, 9) != desktopCount_ && organiser_) {
+        BuildLayout();
+    }
     const int current = UltraCanvasDesktopShell::GetCurrentVirtualDesktop();
     if (current >= 0) currentDesktop_ = current;
     if (!organiser_) return;
