@@ -34432,7 +34432,7 @@ struct MenuStyle {
     int separatorHeight;     // Height of a separator row; the 1px line is centred in it
     int borderWidth;         // Border thickness
     int borderRadius;        // Corner radius
-    MenuRadioShape radioShape;  // Outline of a Radio item's indicator: Square (default) or Round
+    MenuRadioShape radioShape;  // Outline of a Radio item's indicator: Round (default) or Square
     
     // Submenu
     int submenuDelay;        // Hover delay before opening (ms)
@@ -34668,12 +34668,12 @@ viewMenu->AddItem(MenuItemData::Submenu("Zoom", {
 
 ### Radio Indicator Shape
 
-A `Radio` item draws a dot inside an outline. The outline is the same square
-box a `Checkbox` item gets unless the style asks for a circle:
+A `Radio` item draws a dot inside a round outline, as `UltraCanvasRadio`
+does. A style can ask for the same square box a `Checkbox` item gets instead:
 
 ```cpp
 MenuStyle style = MenuStyle::Default();
-style.radioShape = MenuRadioShape::Round;   // circle, as UltraCanvasRadio draws it
+style.radioShape = MenuRadioShape::Square;  // the earlier square box
 menu->SetStyle(style);
 ```
 
