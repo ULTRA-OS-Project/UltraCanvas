@@ -635,6 +635,31 @@ add_test(NAME RichTextEditorTest COMMAND RichTextEditorTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: RichTextEditorTest")
 
+# ===== HTML RICH IMPORT TEST =====
+# HTML → UCRichDocument (HTMLRichDocumentImporter), the blocks' quote level
+# and how the serializers and the editing core treat it - replying to and
+# forwarding an HTML mail. Parser, resolver, model and editor are UI-free.
+message(STATUS "  Building HTMLRichImportTest...")
+add_executable(HTMLRichImportTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/HTMLRichImportTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLRichDocumentImporter.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLDocument.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
+    ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLStyleResolver.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocumentEditor.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocument.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasTextUtils.cpp
+)
+target_include_directories(HTMLRichImportTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(HTMLRichImportTest PRIVATE cxx_std_20)
+set_target_properties(HTMLRichImportTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME HTMLRichImportTest COMMAND HTMLRichImportTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: HTMLRichImportTest")
+
 # ===== MIND MAP IO TEST =====
 # ===== LATEX DOCUMENT TEST =====
 # The LaTeX document-subset importer (UltraCanvasLaTeXDocumentReader →

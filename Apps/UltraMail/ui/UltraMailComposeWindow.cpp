@@ -14,6 +14,7 @@
 #include "UltraCanvasModalDialog.h"
 
 #include "UltraCloudPickerDialog.h"
+#include "UltraMailRichComposer.h"
 #include "UltraMailTheme.h"
 
 #include <sstream>
@@ -110,14 +111,33 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
 
     root_->AddChild(Theme::MakeDivider("cRule"));
 
-    // The body takes whatever height the fields and the toolbar leave.
-    body_ = std::make_shared<UltraCanvasTextArea>("cBody", 0, 0, 0, 0);
-    body_->SetEditingMode(TextAreaEditingMode::PlainText);
-    body_->SetWordWrap(true);
-    Theme::StyleTextArea(body_, /*bordered=*/false);
-    body_->SetText(draft_.body);
-    root_->AddChild(body_);
-    body_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The body takes whatever height the fields and the toolbar leave: the
+    // formatted document of a reply or forward, or plain text.
+    body_.reset();
+    rich_.reset();
+    if (draft_.richBody) {
+        auto formatRow = BuildFormatRow();
+        root_->AddChild(formatRow);
+        formatRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+        rich_ = CreateRichTextEdit("cRich", 0, 0, 0, 0);
+        RichTextEditStyle style = rich_->GetStyle();
+        style.baseFont.fontSize = Theme::kSizeBody + 1.0f;   // as the plain body
+        style.drawBorder = false;
+        rich_->SetStyle(style);
+        rich_->SetDocument(draft_.richBody);
+        rich_->GetEditor().SetCaret(RichDocPosition(0, 0));  // the empty line above the quote
+        root_->AddChild(rich_);
+        rich_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    } else {
+        body_ = std::make_shared<UltraCanvasTextArea>("cBody", 0, 0, 0, 0);
+        body_->SetEditingMode(TextAreaEditingMode::PlainText);
+        body_->SetWordWrap(true);
+        Theme::StyleTextArea(body_, /*bordered=*/false);
+        body_->SetText(draft_.body);
+        root_->AddChild(body_);
+        body_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    }
 
     // Attachment chips between the body and the toolbar; the row is shown
     // only while there is something to show (forwards carry the original's
@@ -199,7 +219,53 @@ bool ComposeView::AttachFile(const std::string& path) {
     return true;
 }
 
+std::shared_ptr<UltraCanvasContainer> ComposeView::BuildFormatRow() {
+    auto row = CreateContainer("cFormat", 0, 0, 0, Theme::kControlHeight);
+    row->layout.SetFlexRow()
+               .SetFlexGap(4.0f)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    ContainerStyle rowStyle;
+    rowStyle.autoShowScrollbars = false;
+    row->SetContainerStyle(rowStyle);
+
+    auto add = [&](const std::string& id, const std::string& label, const std::string& tooltip,
+                   std::function<void(UltraCanvasRichTextEdit&)> action) {
+        auto button = CreateButton(id, 0, 0, 32, Theme::kControlHeight, label);
+        Theme::FitToLabel(button, 32);
+        Theme::StyleSecondary(button);
+        button->SetTooltip(tooltip);
+        // The editor is looked up on each click, never captured: the row
+        // outlives neither the view nor its editor.
+        button->onClick = [this, action]() {
+            if (!rich_) return;
+            action(*rich_);
+            rich_->SetFocus(true);
+        };
+        row->AddChild(button);
+    };
+    add("cBold", "B", "Bold (Ctrl+B)", [](UltraCanvasRichTextEdit& e) { e.ToggleBold(); });
+    add("cItalic", "I", "Italic (Ctrl+I)", [](UltraCanvasRichTextEdit& e) { e.ToggleItalic(); });
+    add("cUnderline", "U", "Underline (Ctrl+U)", [](UltraCanvasRichTextEdit& e) { e.ToggleUnderline(); });
+    add("cBullets", "\xE2\x80\xA2 List", "Bulleted list",
+        [](UltraCanvasRichTextEdit& e) { e.ToggleBulletList(); });
+    add("cNumbers", "1. List", "Numbered list",
+        [](UltraCanvasRichTextEdit& e) { e.ToggleNumberedList(); });
+    return row;
+}
+
 void ComposeView::InsertLink(const std::string& name, const std::string& url) {
+    if (rich_) {
+        // At the caret, the address as a link.
+        rich_->InsertText(name + ": ");
+        UCRichDocumentEditor& editor = rich_->GetEditor();
+        const RichDocPosition start = editor.GetCaret();
+        rich_->InsertText(url);
+        editor.SetSelection(start, editor.GetCaret());
+        rich_->SetLink(url);
+        editor.SetCaret(editor.GetSelectionRange().end);
+        rich_->InvalidateDocument();
+        return;
+    }
     if (!body_) return;
     std::string text = body_->GetText();
     if (!text.empty() && text.back() != '\n') text += "\n";
@@ -239,6 +305,11 @@ Draft ComposeView::CollectDraft() const {
     if (cc_)      d.cc = Split(cc_->GetText());
     if (subject_) d.subject = subject_->GetText();
     if (body_)    d.body = body_->GetText();
+    if (rich_) {
+        // The edited document goes out as HTML with a plain-text version.
+        d.richBody = rich_->GetDocument();
+        RenderRichBody(d);
+    }
     return d;
 }
 

@@ -22,6 +22,14 @@
 // Plugin-facing data structures (declared here so plug-ins can implement the
 // specialised interfaces without dragging extra headers).
 // ============================================================================
+// A picture an HTML body shows through a cid: link, sent with the body.
+struct UltraNetMailInlinePart {
+    std::string contentId;              // without <>; the body says src="cid:<contentId>"
+    std::string filename;
+    std::string mediaType;              // e.g. "image/png"
+    std::vector<uint8_t> data;
+};
+
 struct UltraNetMailMessage {
     std::string from;
     std::vector<std::string> to;
@@ -30,6 +38,10 @@ struct UltraNetMailMessage {
     std::string subject;
     std::string body;
     std::string contentType;            // "text/plain" | "text/html"
+    // The plain-text version of an HTML body; sent beside it
+    // (multipart/alternative) for readers that show no HTML.
+    std::string alternativeText;
+    std::vector<UltraNetMailInlinePart> inlineParts;
     std::map<std::string, std::string> headers;
     std::vector<std::pair<std::string, std::vector<uint8_t>>> attachments; // (name, bytes)
 };

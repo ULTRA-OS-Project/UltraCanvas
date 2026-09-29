@@ -155,6 +155,13 @@ struct UltraNetMimeBuildInput {
     std::string body;                          // UTF-8 body text
     std::string bodyMediaType = "text/plain";  // "text/plain" | "text/html"
     std::string bodyCharset   = "utf-8";
+    // The plain-text version of an HTML body. When set, the message carries
+    // both as multipart/alternative (text first, as RFC 2046 orders them), so
+    // a reader that shows no HTML still has the text.
+    std::string alternativeText;
+    // Inline attachments with a contentId travel with an HTML body in a
+    // multipart/related part: they are the pictures its cid: links show.
+    // Every other attachment is an attachment of the message.
     std::vector<UltraNetMimeBuildAttachment> attachments;
     // Optional; generated when empty (tests may pin these for determinism).
     std::string date;
@@ -164,4 +171,13 @@ struct UltraNetMimeBuildInput {
 
 // Build a complete raw RFC 5322 message. A message with no attachments is flat;
 // otherwise a multipart/mixed wrapping the body and one part per attachment.
+// An HTML body with an alternativeText or with inline pictures is built as
+//   multipart/mixed          (only when there are attachments)
+//     multipart/alternative  (only with alternativeText)
+//       text/plain
+//       multipart/related    (only with inline pictures)
+//         text/html
+//         image/... (Content-ID)
+// with both text parts quoted-printable, since HTML lines outgrow the 998
+// characters SMTP allows a line.
 std::string UltraNet_MimeBuild(const UltraNetMimeBuildInput& input);

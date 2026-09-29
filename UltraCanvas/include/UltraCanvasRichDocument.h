@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -235,6 +236,14 @@ struct RichDocBlock {
     // on UCRichDocument::defaultTabStopPt.
     std::vector<RichTabStop> tabStops;
 
+    // How many quotes the block sits inside: 1 for the text of a mail being
+    // answered, 2 for what that mail quoted in turn. Unlike the BlockQuote
+    // type, which is one quoted paragraph, a level applies to any block - a
+    // quoted heading, list, table or picture stays what it is. Views draw a
+    // bar per level beside it; HTML output nests <blockquote>, the text
+    // serializers put "> " per level in front of its lines.
+    int quoteLevel = 0;
+
     bool HasParagraphGeometry() const {
         return leftIndentPt != 0.0f || rightIndentPt != 0.0f || firstLineIndentPt != 0.0f
             || spaceBeforePt >= 0.0f || spaceAfterPt >= 0.0f || lineSpacing > 0.0f
@@ -251,11 +260,13 @@ struct RichDocBlock {
             && paragraphBorderLeft == other.paragraphBorderLeft
             && paragraphBorderRight == other.paragraphBorderRight
             && paragraphBackground == other.paragraphBackground
-            && leftIndentPt == other.leftIndentPt && rightIndentPt == other.rightIndentPt;
+            && leftIndentPt == other.leftIndentPt && rightIndentPt == other.rightIndentPt
+            && quoteLevel == other.quoteLevel;
     }
-    // Copies indents, spacing, line spacing, frame and tab stops - what a
-    // paragraph split in two (Enter) gives the new half.
+    // Copies indents, spacing, line spacing, frame, tab stops and quote
+    // level - what a paragraph split in two (Enter) gives the new half.
     void CopyParagraphGeometry(const RichDocBlock& from) {
+        quoteLevel = from.quoteLevel;
         leftIndentPt = from.leftIndentPt;
         rightIndentPt = from.rightIndentPt;
         firstLineIndentPt = from.firstLineIndentPt;
@@ -407,6 +418,15 @@ struct RichPageFurniture {
     bool IsEmpty() const { return header.empty() && footer.empty(); }
 };
 
+// Options for UCRichDocument::ToHTML.
+struct RichDocumentHTMLOptions {
+    // The src a picture gets, given its index into UCRichDocument::media.
+    // Unset (the default): the picture's bytes inline, as a data: URI. A mail
+    // client returns "cid:<id>" instead and sends the bytes as a part of the
+    // message, which is how mail programs expect to find them.
+    std::function<std::string(int mediaIndex)> imageSource;
+};
+
 // Options for UCRichDocument::ToMarkdown. When imageDirectory is set, the
 // serializer writes each referenced media entry into that directory and the
 // markdown references the written files (absolute paths), which is what the
@@ -454,7 +474,8 @@ public:
 
     // Self-contained HTML fragment (images inlined as data: URIs) for the
     // HTMLConverter / read-only viewing path.
-    std::string ToHTML() const;
+    std::string ToHTML() const { return ToHTML(RichDocumentHTMLOptions{}); }
+    std::string ToHTML(const RichDocumentHTMLOptions& options) const;
 
     std::string ToPlainText() const;
     // A copy whose body holds the first page's header, a rule, the body, a

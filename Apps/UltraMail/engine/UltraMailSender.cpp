@@ -18,6 +18,11 @@ UltraNetResult MailSender::Send(const Draft& draft, const std::string& serverUrl
     m.body = draft.body;
     m.contentType = draft.bodyIsHtml ? "text/html; charset=utf-8"
                                      : "text/plain; charset=utf-8";
+    if (draft.bodyIsHtml) {
+        m.alternativeText = draft.textBody;
+        for (const auto& p : draft.inlineParts)
+            m.inlineParts.push_back({p.contentId, p.filename, p.mediaType, p.data});
+    }
     for (const auto& a : draft.attachments)
         m.attachments.emplace_back(a.filename, a.data);
 

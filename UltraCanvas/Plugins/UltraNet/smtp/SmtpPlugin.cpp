@@ -68,6 +68,16 @@ std::string BuildMessage(const UltraNetMailMessage& m) {
         }
     }
 
+    in.alternativeText = m.alternativeText;
+    for (const auto& part : m.inlineParts) {
+        UltraNetMimeBuildAttachment a;
+        a.filename = part.filename;
+        if (!part.mediaType.empty()) a.mediaType = part.mediaType;
+        a.data = part.data;
+        a.isInline = true;
+        a.contentId = part.contentId;
+        in.attachments.push_back(std::move(a));
+    }
     for (const auto& [name, bytes] : m.attachments) {
         UltraNetMimeBuildAttachment a;
         a.filename = name;

@@ -373,6 +373,9 @@ private:
     void ApplySelectionAttributes(ITextLayout* layout, int blockIndex,
                                   int cellRow = -1, int cellColumn = -1) const;
     float BlockIndentFor(const RichDocBlock& block) const;
+    float QuoteInset(const RichDocBlock& block) const;
+    void DrawQuoteBars(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int index,
+                       const BlockLayout& bl, float originX, float originY) const;
     FontStyle FontForBlock(const RichDocBlock& block) const;
     void RecalculateVisibleArea();
 
