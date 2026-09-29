@@ -1,3 +1,13 @@
+#### 2026-09-29 *1.58.0*
+- **The switch for a shared extension names both of its languages.** Under
+  *Settings > Display > Thumbnails > Text*, `cls` now reads "VBA / LaTeX", `m`
+  "MATLAB / Objective-C" and `pl` "Perl / Prolog", instead of only one
+  of the two languages.
+- **`.pl` files are named Perl or Prolog by what they hold.** Both languages
+  use `.pl`, and which one a file was called was left to chance. The Type
+  column now reads the file's first lines: a `#` line, `use`, `my` or POD is
+  "Perl Text"; a `%` comment or a `:-` rule is "Prolog Text". A file that
+  gives no clue is Perl.
 #### 2026-09-28 *1.57.0*
 - **Programs inside archives run.** A double-click on a program inside a zip
   (or any archive UltraFiler opens) used to do nothing: its path is virtual,
