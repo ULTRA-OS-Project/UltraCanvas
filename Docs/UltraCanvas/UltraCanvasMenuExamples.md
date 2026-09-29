@@ -422,8 +422,10 @@ style.radioShape = MenuRadioShape::Square;  // the earlier square box
 menu->SetStyle(style);
 ```
 
-Both shapes are `iconSize` wide and share their centre line with the label,
-so the indicator and the text stay level.
+Both shapes are `iconSize` wide and are centred on the row. The label is
+centred on the row by its cap height rather than by its line box (which
+holds the ascender and descender space too), so the indicator and the
+visible text sit on one centre line whatever the item height.
 
 ### Custom Styling
 

@@ -173,6 +173,23 @@ void SetAntialias(AntialiasMode mode);
 Geometry antialiasing for the fills and strokes that follow (text keeps
 its own hinting settings). `NoAntialias` is what a pixel-exact tool wants.
 
+### Crisp borders
+
+A stroke is centred on its path, so a 1px outline along a rectangle with
+whole-pixel edges lies half outside it and is antialiased over two rows of
+pixels on each side. `DrawFilledRectangle` and `DrawFilledCircle` therefore
+inset their path by half the border width: the outline sits on whole
+pixels, its outer edge is the rectangle's edge (or the circle's radius),
+and the centre does not move. A rounded corner keeps its outer radius. To
+stroke a path of your own the same way:
+
+```cpp
+Rect2Dd path = IRenderContext::InsetForStroke(rect, strokeWidth);
+ctx->Rect(path.x, path.y, path.width, path.height);
+ctx->SetStrokeWidth(strokeWidth);
+ctx->StrokePath();
+```
+
 ## Text outlines
 
 ```cpp

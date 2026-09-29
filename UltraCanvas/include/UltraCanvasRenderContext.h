@@ -18,6 +18,7 @@
 #include <mutex>
 #include <stack>
 #include <cmath>
+#include <algorithm>
 
 namespace UltraCanvas {
     class ITextLayout;
@@ -616,23 +617,52 @@ namespace UltraCanvas {
             );
         }
 
-        // Draw filled rectangle with border
+        // A stroke is centred on its path, so an outline of width w along a
+        // rectangle with whole-pixel edges lies half outside it and is smeared
+        // over two rows of pixels on each side: a 1px border came out as a
+        // 2px grey haze. Inset the path by w / 2 and the stroke's outer edge
+        // lands exactly on the rectangle's edge, on whole pixels, and the
+        // outline stays inside the bounds it was given. The centre does not
+        // move, so anything centred in the rectangle stays centred.
+        static Rect2Dd InsetForStroke(const Rect2Dd& rect, float strokeWidth) {
+            double inset = strokeWidth / 2.0;
+            double w = rect.width - 2.0 * inset;
+            double h = rect.height - 2.0 * inset;
+            if (w <= 0 || h <= 0) {
+                // Too small to hold the stroke: keep it centred on the rectangle's centre.
+                return Rect2Dd(rect.x + rect.width / 2.0, rect.y + rect.height / 2.0, 0, 0);
+            }
+            return Rect2Dd(rect.x + inset, rect.y + inset, w, h);
+        }
+
+        // Draw filled rectangle with border. The border is drawn inside the
+        // rectangle (see InsetForStroke), so the outline's outer edge is the
+        // rectangle's edge.
         void DrawFilledRectangle(const Rect2Dd& rect, const Color& fillColor,
                         float borderWidth = 1.0f, const Color& borderColor = Colors::Transparent, float borderRadius = 0.0f) {
 
             if (fillColor.a == 0 && borderColor.a == 0) return;
 
+            const bool stroked = borderWidth > 0 && borderColor.a > 0;
+            Rect2Dd path = stroked ? InsetForStroke(rect, borderWidth) : rect;
+            double radius = borderRadius;
+            if (stroked && radius > 0) {
+                // The outline's outer corner keeps borderRadius; the path runs
+                // half a stroke inside it.
+                radius = std::max(0.0, radius - borderWidth / 2.0);
+            }
+
             PushState();
-            if (borderRadius > 0) {
-                RoundedRect(rect.x, rect.y, rect.width, rect.height, borderRadius);
+            if (radius > 0) {
+                RoundedRect(path.x, path.y, path.width, path.height, radius);
             } else {
-                Rect(rect.x, rect.y, rect.width, rect.height);
+                Rect(path.x, path.y, path.width, path.height);
             }
             if (fillColor.a > 0) {
                 SetFillPaint(fillColor);
                 FillPathPreserve();
             }
-            if (borderWidth > 0 && borderColor.a > 0) {
+            if (stroked) {
                 SetStrokePaint(borderColor);
                 SetStrokeWidth(borderWidth);
                 StrokePathPreserve();
@@ -641,15 +671,24 @@ namespace UltraCanvas {
             PopState();
         }
 
+        // Draw a filled circle with border. As with DrawFilledRectangle the
+        // border is drawn inside the radius, so a ring of radius r spans
+        // exactly 2r pixels and does not overhang the box it was measured for.
         void DrawFilledCircle(const Point2Dd& center, float radius, const Color& fillColor, const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f) {
+            const bool stroked = borderWidth > 0 && borderColor.a > 0;
+            double pathRadius = radius;
+            if (stroked) {
+                pathRadius = std::max(0.0, pathRadius - borderWidth / 2.0);
+            }
+
             PushState();
             ClearPath();
-            Circle(center.x, center.y, radius);
+            Circle(center.x, center.y, pathRadius);
             if (fillColor.a > 0) {
                 SetFillPaint(fillColor);
                 FillPathPreserve();
             }
-            if (borderWidth > 0) {
+            if (stroked) {
                 SetStrokeWidth(borderWidth);
                 SetStrokePaint(borderColor);
                 StrokePathPreserve();
