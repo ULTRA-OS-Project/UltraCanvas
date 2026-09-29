@@ -1,6 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
-// Last Modified: 2026-09-23
+// Last Modified: 2026-09-29
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -134,6 +134,25 @@ namespace UltraCanvas {
         // a row from a decoded thumbnail).
         void InvalidateRowHeights();
 
+        // What the vertical scrollbar is computed from, as of now: the rows
+        // and their total height, the viewport the rows get, the resulting
+        // range, and where the scrollbar sits (element-local) and whether it
+        // shows. For diagnostics and tests; every value is what UpdateScrollbar
+        // would use if it ran at this moment.
+        struct ScrollMetrics {
+            int     rows = 0;
+            int     rowHeight = 0;         // uniform rows; 0 when the delegate sizes them
+            int     contentHeight = 0;     // every row
+            int     viewportHeight = 0;    // the rows area, header excluded
+            int     maxScroll = 0;         // contentHeight - viewportHeight, floored at 0
+            int     scrollOffset = 0;
+            bool    scrollbarVisible = false;
+            Rect2Di scrollbarBounds;
+            float   width = 0;             // the element's bounds
+            float   height = 0;
+        };
+        ScrollMetrics GetScrollMetrics() const;
+
         void SetShowHeader(bool show);
         bool GetShowHeader() const;
 
@@ -256,6 +275,7 @@ namespace UltraCanvas {
         // Internal methods
         void CreateScrollbar();
         void UpdateScrollbar();
+        void SyncScrollbarBeforePaint();
         void ClampScrollOffset();
 
         // Geometry

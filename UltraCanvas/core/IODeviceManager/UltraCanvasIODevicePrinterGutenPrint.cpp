@@ -273,13 +273,19 @@ IODeviceResult GutenPrintRenderer::Render(const IODeviceInfo& printer,
     // the limit to lift first if it is ever pointed at a book - by teaching
     // RunProcessCaptured to pull its input a block at a time, after which
     // only one page need exist at once.
+    //
+    // One sync word for the whole stream, then a header per page. A sync word
+    // per page - which is what this did - makes the filter read the second
+    // page's header four bytes out of step, and it stops there without an
+    // error: every multi-page job printed its first page only.
     std::vector<uint8_t> stream;
+    AppendCupsRasterSync(stream);
     for (int page : selected) {
         target.BeginPage();
         IODeviceResult drawn = pages->DrawPage(page, target);
         if (!drawn.success) return drawn;
 
-        if (!WriteCupsRasterPageHeader(raster, stream)) {
+        if (!AppendCupsRasterPageHeader(raster, stream)) {
             return IODeviceResult::Error(IODeviceResultCode::BackendError,
                                          "Could not describe the page to GutenPrint");
         }

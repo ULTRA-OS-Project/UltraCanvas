@@ -1,3 +1,280 @@
+#### 2026-09-29 *0.9.87*
+- **Every application's signal handler calls
+  `UltraCanvasApplicationBase::RequestExitFromSignal()`.** ArtCreator,
+  DeviceExplorer, Texter, UltraAI, UltraAuthenticator, UltraCleaner and the
+  demo application still called `RequestExit()` (which logs and runs a
+  callback) and `std::exit` from the handler, running the static
+  destructors under live threads. Each handler is now the one call, and
+  the main loop turns it into an orderly exit: `Run` returns and `main`
+  shuts down as on a closed window. The `g_app` globals the handlers
+  needed are gone.
+- **`UltraCanvasListView` checks its scrollbar before it paints.** The
+  scrollbar's range, visibility and bounds were computed only when the
+  model changed or the element was arranged; a paint that came between
+  the two (a model that grew while the element was still at an old size)
+  drew the rows with no scrollbar until the next arrange. `Render` now
+  recomputes what `UpdateScrollbar` would give for the current rows and
+  bounds, and when the scrollbar disagrees it logs one
+  `scrollbar was stale at paint` line to the debug stream and refreshes it
+  before drawing. `GetScrollMetrics()` returns the same numbers (rows, row
+  height, content and viewport height, range, offset, whether the scrollbar
+  shows and where) for diagnostics and tests.
+- **Windows: the kernel network ETW source names a process it cannot
+  open.** It reported `pid 4720` for every process that refused
+  `OpenProcess`, while the socket-table backend already named the same
+  process from the Toolhelp process list. The list is now one table
+  (`UltraCanvasWindowsProcessNames.h`, internal to `OS/MSWindows`): the
+  backend refreshes it with every snapshot, and the event source reads it
+  for each event, refreshing on a miss at most every two seconds, so a
+  connect event from the antivirus proxy reads `AvastSvc` like its row.
+  The registry completes the rest: an event whose source knew only the PID
+  (an empty executable path) takes the socket table's identity for that
+  PID - name, path and user - when the table has the socket.
+
+#### 2026-09-29 *0.9.86*
+- **GutenPrint printed only the first page of every multi-page job.** The CUPS
+  raster writer that feeds GutenPrint's filter put its `RaS3` sync word before
+  every page, where the format has it once, at the start of the stream. The
+  filter read the second one as the start of page 2's header, found every
+  field four bytes out of step, and stopped there - with exit status 0 and no
+  message, so the job reported success. Checked against GutenPrint's own
+  `rastertogutenprint`: one page printed from a three-page job before the
+  fix, three after.
+  - The sync word is its own call now, `AppendCupsRasterSync`, made once per
+    stream; `WriteCupsRasterPageHeader` became `AppendCupsRasterPageHeader`
+    and writes the header alone. Renamed rather than quietly changed, so a
+    caller still expecting the sync word fails to compile instead of
+    printing garbage.
+  - `Tests/IODevicePrinterTest` now builds a three-page stream and reads it
+    back the way the filter does. Nothing tested the writer before.
+- **The CUPS backend's comment on device ids described something that never
+  happened.** It said the printer's UUID made the same printer found by the
+  IPP backend collapse into one entry; `cupsGetDests2` does not return
+  `printer-uuid`, so ids are `cups:<queue>` and the IPP backend avoids the
+  double listing from its side. The comment now says so.
+- **Driverless printing over IPP, on Linux, macOS and Windows.** An IPP
+  Everywhere, AirPrint or Mopria printer now appears as a `PrinterDevice` with
+  no driver installed and no print system in between - which on Windows is the
+  first route to such a printer at all. One file in `core/IODeviceManager/`
+  serves all three platforms, as the eSCL scanner backend does: IPP is HTTP and
+  a binary encoding, and nothing in it is platform code.
+  - Found over DNS-SD (`_ipp._tcp`, `_ipps._tcp`) through UltraNet's mDNS
+    plugin, or named in `ULTRACANVAS_IPP_PRINTERS` for a printer on another
+    subnet. Registered as `urn:uuid:<uuid>` and shown by its DNS-SD instance
+    name, which is unique where the model name is not.
+  - A document the printer renders itself - PDF, JPEG, whatever it lists in
+    `document-format-supported` - is sent as it is. Text and other images are
+    drawn here and sent as **PWG raster**, which every IPP Everywhere printer
+    must accept: landscape pages turned onto the portrait sheet, and every
+    second side of a duplex job turned the way the printer's
+    `pwg-raster-document-sheet-back` asks, so no even page comes out upside
+    down. Copies and page ranges are said once, never twice. Pages are drawn
+    inside the printer's own margins, because a PWG raster page is printed
+    edge to edge as it is.
+  - A printer busy with one job refuses the next; the job waits and asks
+    again, as CUPS's IPP backend does, for up to three minutes.
+  - Refused by name rather than half-printed: a PDF to a printer that renders
+    none, a page range the printer cannot apply, a printer that takes neither
+    the document nor PWG raster.
+  - Capabilities, status, supplies (`marker-*` and PWG's `printer-supply`),
+    job queue, job status and cancel all work. An IPP 1.1 printer is asked
+    again in 1.1 and remembered.
+  - New: `UltraCanvasIODevicePrinterIPPProtocol.h` (RFC 8010 encoding both
+    ways, attribute mapping, the send-or-draw plan) and
+    `UltraCanvasIODevicePrinterPwgRaster.h` (PWG 5102.4 writer), both pure;
+    `Tests/IODevicePrinterIPPTest` covers them with 232 assertions, the PWG
+    compression checked by a decoder written from the specification.
+  - `Tests/IODevicePrinterIPPLiveTest` prints to CUPS's reference printer
+    `ippeveprinter`, which it starts itself, and is skipped where that is not
+    installed. Not yet run against a physical printer.
+- **Printing an image crashed a program that had never opened a window.**
+  `MakePageSourceForJob`, shared by the GutenPrint, GDI and IPP renderers,
+  decoded the image without starting the image library, and the library does
+  not fail when it is not started - it crashes. A command-line tool or a
+  server printing a PNG hit it; an application that had opened a window did
+  not. It now starts the library once, as the eSCL scanner backend already
+  did for its own decoding.
+- **A printer was going to be listed twice on Linux and macOS, and the design
+  that was meant to prevent it had never worked.** The CUPS backend keys a
+  queue on `printer-uuid` so the IPP backend could collapse into it - but
+  `cupsGetDests2` does not return that option, for CUPS's discovered queues or
+  configured ones (checked against CUPS 2.4.7). The IPP backend now matches
+  CUPS's queues itself, by the UUID in a `dnssd://` URI, the DNS-SD instance
+  name, or the same address, and leaves those printers to CUPS.
+
+#### 2026-09-29 *0.9.85*
+- **The dependency tables no longer claim IODeviceManager backends that do
+  not exist.** `Docs/Dependencies.md` and the DemoApp's in-app copy
+  (`UltraCanvasDependenciesExamples.cpp`) listed ICA and AVFoundation for macOS
+  and WIA, TWAIN and Media Foundation for Windows. None of them has a backend.
+  The one Windows device backend is the printer backend on the print spooler
+  (`OS/MSWindows/UltraCanvasWindowsIODevicePrinter.cpp`, winspool and gdi32).
+  The single "Scanners / cameras / print" row is now three, one per category,
+  listing only what `UltraCanvasIODeviceBackends.cpp` registers:
+  - Printers: CUPS on Linux and macOS, the Windows print spooler.
+  - Scanners: SANE on Linux, and the eSCL network backend (over UltraNet) on
+    all three.
+  - Cameras: V4L2 on Linux.
+
+  ICA, WIA, TWAIN, AVFoundation and Media Foundation are marked *planned*, and
+  a note says that on macOS and Windows a USB scanner or any camera is not
+  found yet. The Win32 row of the library-links table now names winspool.
+- **IODeviceManager's README describes the module that exists.** It marked
+  Scanner, Camera and NetworkCamera "Production" and listed WIA, TWAIN, ICA,
+  MediaFoundation, AVFoundation, ONVIF and RTSP backends that were never
+  written. Its examples called `DiscoverNetworkCameras()`, `CapturePhoto()`,
+  `SetPTZ()`, `AddeSCLScanner()`, `Scan(config, bytes)` and
+  `ScanColorMode::RGB`, none of which exist.
+  - The category and backend tables now carry each entry's real state, taken
+    from `Gaps.md`: printers available on all three platforms, scanners and
+    webcams partial, the rest planned.
+  - Microphone and Speaker are marked as the open decision `Gaps.md` records.
+    The categories that were never `IODeviceCategory` values are gone.
+  - Every example is rewritten against the headers and compiles: scanning
+    through `ScannerDevice::Scan(ScannedImage&)`, cameras through
+    `CaptureFrame` / `StartStream` / `SetControl`, printing through
+    `PrintFile`, eSCL scanners named in `ULTRACANVAS_ESCL_SCANNERS`, and a
+    custom device through `RegisterDevice`.
+  - `intro.md`, which the DemoApp shows as the module's introduction, no
+    longer claims TWAIN, WIA, ONVIF or libgpiod. `Gaps.md` says which
+    categories exist.
+- **CI now builds IODeviceManager's optional Linux backends.** The Linux jobs
+  install `libudev-dev`, `libcups2-dev` and `libsane-dev`, so configure reports
+  the udev hot-plug watcher, the CUPS printer backend and the SANE scanner
+  backend as ENABLED. `OS/Linux/UltraCanvasLinuxIODeviceWatcher.cpp`,
+  `core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp` and
+  `OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp` are now compiled on every pull
+  request. Until now no CI build had any of the three libraries, so these
+  files compiled to nothing and a compile error in them would have gone
+  unnoticed.
+  - `package-linux.sh` leaves `libudev.so` on the host instead of bundling it:
+    libudev reads the running udev's database, so it has to be the system's
+    own.
+  - libcups and libsane are bundled like every other library. Leaving them to
+    the host would stop every packaged application from starting on a system
+    without them, because the core library links both. The Linux package
+    therefore now prints through CUPS and scans through SANE, which it could
+    not before. The bundled SANE loader still uses the host's scanner
+    drivers: Debian's libsane reads `/etc/sane.d` and searches
+    `/usr/lib/<multiarch>/sane`, `/usr/lib/sane` and `/usr/lib64/sane`, which
+    covers the Debian, Arch and Fedora layouts.
+
+#### 2026-09-29 *0.9.84*
+- **DemoApp: `ShowFullSizeImageViewer` is now `ShowInMediaViewer`.** It has
+  opened far more than bitmaps since it moved onto
+  `UltraCanvasMediaViewerWindow` - vector drawings (SVG, EPS, XAR, CDR, DWG)
+  and 3D models (STL) go through it too - so the name now says what it does.
+  Every caller in the demo was updated.
+- **DemoApp: removed the dead `UltraCanvasBitmapExamples.cpp`.** Its eight
+  per-format pages (`CreatePNGExamples` ... `CreateBMPExamples`) had not been
+  reachable since the Bitmap menu switched to `CreateBitmapFormatDemoPage`,
+  and its two helpers (`ExtractImageMetadata`, `CreateImageInfoLabel`) were
+  used only by those pages. The declarations and the CMake entry went with it.
+
+#### 2026-09-29 *0.9.83*
+- **Windows: double-clicking a JPG in UltraFiler put up an "entry point not
+  found" box (`WNetGetConnectionW` in `daxexec.dll`) and did not open the
+  picture.** When Photos or another Store app is the default, the shell loads
+  its activation DLL into UltraFiler's own process. There that DLL failed to
+  resolve an import: the loader showed its modal box, and `ShellExecuteEx`
+  came back "access was denied".
+  - The loader's hard-error boxes are now off on the launching thread around
+    every default open and "Open with" launch.
+  - A registered handler that still fails to start is handed to
+    `explorer.exe`, which activates it from its own process, as a
+    double-click in Explorer would.
+
+#### 2026-09-29 *0.9.82*
+- **`.pl` is Perl or Prolog by what the file says, not by chance.** Perl and
+  Prolog both claim `.pl`, and the extension lookup walks an unordered map, so
+  which language a `.pl` file was highlighted as - and what the Filer called
+  it - depended on the hash order of the build.
+  - `SyntaxTokenizer::SharedExtensionLanguages(extension)` (new, static) lists
+    the languages a shared extension can be, the default first: `.cls` VBA /
+    LaTeX, `.m` MATLAB / Objective-C, `.pl` Perl / Prolog.
+    `SetLanguageByExtension` picks that default instead of the map's first
+    claimant.
+  - `SyntaxTokenizer::LanguageFromContent` also tells `.pl` apart: a `#` or
+    `#!` line, `use`, `my`, `our`, `sub`, `package`, `require` or POD is Perl;
+    a `%` or `/*` comment or a `:-` clause is Prolog.
+  - `UltraCanvasFilerWidget` names every shared extension after its content
+    ("Prolog Text"), and after the default when the file does not say.
+    `GetPreviewableFormats()` labels a shared extension with all of its
+    languages, so the Display > Thumbnails > Text switch reads "VBA / LaTeX",
+    "MATLAB / Objective-C" and "Perl / Prolog".
+
+#### 2026-09-29 *0.9.81*
+- **HTML can be opened in the WYSIWYG editor.** New
+  `HTMLReader/HTMLRichDocumentImporter.h`: `ImportHTMLToRichDocument` /
+  `AppendHTMLToRichDocument` turn an HTML page or fragment into a
+  `UCRichDocument`, through the HTML reader's own parser and style resolver.
+  - Mapped: paragraphs, headings, lists (nested, start numbers, letter and
+    Roman formats), rules and line breaks.
+  - Text formatting: bold, italic, underline, strike, sub/superscript, code,
+    links, text and highlight colours, and font families and sizes.
+  - Layout: alignment, left indents, and the space between blocks, collapsed
+    as CSS collapses margins.
+  - Pictures (`data:` URIs, or any other source through a `resolveImage`
+    callback) become a picture paragraph when alone in their block, else
+    sit inside the line.
+  - Tables with several columns keep spans, cell colours, borders, padding and
+    widths. One-column layout tables are unwrapped into the text flow, and
+    a table inside a cell becomes lines of that cell.
+- **Blocks carry a quote level.** New `RichDocBlock::quoteLevel`: how many
+  quotes a block sits inside. It applies to any kind of block, so a quoted
+  list or table stays one.
+  - `UltraCanvasRichTextEdit` draws a bar per level and indents the block.
+  - Enter keeps the level. Enter on an empty quoted line, or Backspace at the
+    start of a quoted block, steps one level out.
+  - `ToHTML` nests `<blockquote type="cite">`. `ToPlainText` and
+    `ToMarkdown` prefix the lines with `> `.
+- **`UCRichDocument::ToHTML(RichDocumentHTMLOptions)`**: an `imageSource` hook
+  decides a picture's `src`, for example `cid:` for mail; without it pictures
+  stay `data:` URIs.
+  - Pictures now carry their `width`/`height`.
+  - Headings and picture paragraphs keep their alignment.
+- **The HTML reader reads `<font color face size>`, `bgcolor` and
+  `<body text>`**, which much mail HTML is still written with. As in a
+  browser, CSS for the same property wins.
+- **An inline picture in the rich text editor no longer runs past the right
+  edge** of an indented or quoted paragraph: it is fitted to the line, not
+  the column.
+- **UltraNet can send HTML mail with a plain-text version and embedded
+  pictures.**
+  - New `UltraNetMimeBuildInput::alternativeText` builds
+    `multipart/alternative`.
+  - Inline attachments with a Content-ID travel with the HTML in
+    `multipart/related`.
+  - Both text parts are quoted-printable, so long HTML lines stay within
+    SMTP's 998-character limit.
+  - `UltraNetMailMessage` carries the same as `alternativeText` and
+    `inlineParts`, and the SMTP plug-in passes them on.
+
+#### 2026-09-29 *0.9.80*
+- **Programs inside archives can be run.** An entry inside an archive has a
+  virtual path, which no system can execute, so `UltraCanvasFilerWidget`
+  ignored a double-click on a program in a zip. `ExtractAndRunEntry` now
+  unpacks the archive holding it — the whole archive, so the program finds
+  its DLLs and data beside it — into a run folder, starts the program there
+  and deletes the folder once the program and everything it started have
+  ended. Double-click, Enter and `OpenEntryWithOS` do it for such an entry,
+  and the context menu offers it as *Extract and Run*.
+  - New `UltraCanvasArchiveRun.h`: `IsRunnableArchiveEntry` (Windows by
+    extension — `.exe`, `.com`, `.bat`, `.cmd`, `.msi`; POSIX by the execute
+    bit the archive recorded, or `.AppImage`), `LaunchWatchedProgram` (a
+    launch whose end can be waited for: a job object on Windows, so an
+    installer's second stage counts; a process group of its own on POSIX,
+    with a failed `exec` reported instead of lost), `CopyDownloadMarking`
+    (Windows: the archive's `Zone.Identifier` goes onto the unpacked files,
+    so SmartScreen still checks them) and the run folders — each with a
+    marker naming the processes using it, removed only when nothing holds a
+    file in it, and swept up by `SweepArchiveRunFolders` after an
+    application that closed while its program still ran.
+  - `FilerEntry::archiveExecutable` carries the execute bit an archive
+    recorded; `chooseArchiveRunRoot` lets the host pick where run folders go.
+  - `Tests/ArchiveRunTest.cpp` covers the rule, the run folders and the
+    watched launch, including a program that exits while its child runs on.
+
 #### 2026-09-29 *0.9.79*
 - **New element: `UltraCanvasBusyIndicator`**, the turning ring that says
   *working on it* when there is no percentage to show (a network call, a

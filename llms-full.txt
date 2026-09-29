@@ -565,6 +565,29 @@ the backing implementation can be replaced without affecting callers.
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
 
+- **UltraCanvasArchiveRun** (`UltraCanvasArchiveRun.h`) — "Extract and
+  run": what it takes to start a program that is inside an archive, whose
+  virtual path no system can execute. The run folders and the rule for which
+  entries are programs, plus the POSIX launch (Linux, the BSDs and macOS
+  alike), in `core/UltraCanvasArchiveRun.cpp`; the Windows launch (a job
+  object) and download mark in `OS/MSWindows/UltraCanvasWindowsArchiveRun.cpp`.
+  Public surface:
+  - `IsRunnableArchiveEntry(extension, executableBit[, host])` — Windows by
+    extension (`.exe` `.com` `.bat` `.cmd` `.msi`), POSIX by the execute bit
+    the archive recorded, or `.AppImage`.
+  - `LaunchWatchedProgram(path, workingDirectory, error)` → `WatchedProcess`
+    (`IsRunning()`, `GetProcessId()`) — a launch whose end can be waited for,
+    counting what the program started (its job on Windows, its process group
+    on POSIX); `IsProcessAlive(pid)`, `CurrentProcessId()`.
+  - `CopyDownloadMarking(archive, folder)` — Windows: the archive's
+    `Zone.Identifier` onto every unpacked file; 0 elsewhere.
+  - `DefaultArchiveRunRoot` / `CreateArchiveRunFolder` /
+    `RecordArchiveRunProcess` / `RemoveArchiveRunFolder` (only once nothing
+    holds a file in it) / `SweepArchiveRunFolders` (what an application that
+    closed while its program ran left behind).
+  `UltraCanvasFilerWidget::ExtractAndRunEntry` is the caller. See
+  `Docs/UltraCanvas/UltraCanvasFilerWidget.md`, *Programs inside archives*.
+
 - **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
   shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
   points at, the icon it is drawn with, and the command line it starts. Byte
@@ -891,6 +914,15 @@ the backing implementation can be replaced without affecting callers.
     GPL-2.0-or-later and this framework is MIT — so the renderer pipes a
     rasterised page through GutenPrint's own `rastertogutenprint` program and
     sends back what it gets, the same way UltraWin runs QEMU and Wine.
+  - **Driverless network devices** need no driver and no platform code, so
+    each is one file in `core/IODeviceManager/` serving Linux, macOS and
+    Windows: **eSCL** scanners (`...ScannerESCL.cpp`) and **IPP** printers -
+    IPP Everywhere, AirPrint, Mopria (`...PrinterIPP.cpp`). Both are found
+    over DNS-SD through UltraNet's mDNS plugin, or named in
+    `ULTRACANVAS_ESCL_SCANNERS` / `ULTRACANVAS_IPP_PRINTERS`. The IPP renderer
+    sends a document the printer renders as it is and draws text and images
+    as PWG raster otherwise; the encoding (`...PrinterIPPProtocol.h`) and the
+    page format (`...PrinterPwgRaster.h`) are pure and unit-tested.
   See `Docs/Modules/IODeviceManager/Architecture.md`.
 
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
@@ -2618,7 +2650,7 @@ their *License* is likewise marked **—** (OS component).
 | WGL | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/opengl/wgl-and-windows-reference) | — | — |
 | WIA | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/wia/-wia-startpage) | — | — |
 | wimlib | [wimlib.net](https://wimlib.net/) | [wimlib.net/git/wimlib](https://wimlib.net/git/wimlib) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
-| Win32 API (gdi32 / user32 / comdlg32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/) | — | — |
+| Win32 API (gdi32 / user32 / comdlg32 / winspool) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/) | — | — |
 | Wine (runtime, not linked) | [winehq.org](https://www.winehq.org/) | [gitlab.winehq.org/wine/wine](https://gitlab.winehq.org/wine/wine) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | winetricks (runtime, not linked) | [wiki.winehq.org/Winetricks](https://wiki.winehq.org/Winetricks) | [github.com/Winetricks/winetricks](https://github.com/Winetricks/winetricks) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | Winsock2 (ws2_32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-start-page-2) | — | — |
@@ -2736,8 +2768,17 @@ for the full search order.
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| Scanners / cameras / print (native OS) | SANE, V4L2, CUPS | ICA, AVFoundation | WIA, TWAIN, Media Foundation |
+| Printers | CUPS (optional) | CUPS (optional) | Win32 (winspool, gdi32) — the print spooler |
+| Scanners | SANE (optional); eSCL network scanners through UltraNet | eSCL network scanners through UltraNet; ICA planned | eSCL network scanners through UltraNet; WIA, TWAIN planned |
+| Cameras | V4L2 | – (AVFoundation planned) | – (Media Foundation planned) |
 | Hot-plug watching | libudev (optional) | – (no watcher yet) | – (no watcher yet) |
+
+Only the backends `UltraCanvas/core/IODeviceManager/UltraCanvasIODeviceBackends.cpp`
+registers are listed; the ones marked *planned* have no code yet. eSCL
+(AirScan / Mopria) is a protocol the module speaks itself over HTTP, so it
+needs UltraNet rather than a third-party library, and it finds only network
+scanners. On macOS and Windows a USB scanner or any camera is therefore not
+found yet.
 
 Hot-plug watching is what lets `IODeviceManager::StartMonitoring()` notice a
 device being plugged in or removed without the application rescanning.
@@ -19685,6 +19726,13 @@ code.
 
 ## Version
 
+- 1.2.2 (2026-09-29): Windows launches no longer put up the loader's modal
+  "entry point not found" box: the shell loads a packaged app's activation
+  DLL (`daxexec.dll`, for Photos and other Store apps) into the calling
+  process, and hard-error boxes are now off on that thread around every
+  launch. When the default open still fails for a registered handler, the
+  file is handed to `explorer.exe`, which activates the app from its own
+  process.
 - 1.2.1 (2026-09-12): macOS default open goes through Launch Services
   (`URLForApplicationToOpenURL:` + `openURLs:withApplicationAtURL:`) instead of
   spawning `/usr/bin/open`, so "nothing is registered for this file type" is
@@ -20142,6 +20190,7 @@ Open with      >  clicking the entry opens the selection with the OS default
                   registers for the selected files (default app first), then
                   entries added via AddOpenWithApp(), then "Other
                   application…" (file dialog)
+Extract and Run   (only on a program inside an archive — see below)
 ──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 ──────────         displays; the label is configurable)
@@ -20246,6 +20295,8 @@ Notes:
   Extract into the existing folder / Skip) when the destination folder name
   is already taken; `OpenExtractDialog()` opens the extract dialog the menu
   uses.
+- **Extract and Run** appears only when the one selected entry is a program
+  inside an archive — see [Programs inside archives](#programs-inside-archives).
 - **Display > Thumbnails** switches thumbnails on and off per file kind, and
   **Display > Detail view** does the same for the detail pane a host opens
   beside the display — see [Selective previews](#selective-previews). Both
@@ -20259,6 +20310,64 @@ Notes:
   appear on the file kinds they apply to (their values are probed lazily from
   the file headers and cached). Drive it in code with
   `SetDatasetField(FilerDatasetField::Size, true)` / `SetDatasetFields(mask)`.
+
+## Programs inside archives
+
+An entry inside an archive has a virtual path, and no system can execute a
+virtual path — Windows' own zip folders cannot start a program from one
+either. `ExtractAndRunEntry(entry)` does what it takes:
+
+1. It unpacks **the whole archive** the program is in (the innermost one, for
+   a zip inside a zip) into a new *run folder*, behind the usual progress
+   window with Cancel. The whole archive rather than the one file, because a
+   program's DLLs, data and configuration sit beside it; unpacking only the
+   `.exe` — what Explorer does — starts a program that then cannot find its
+   own files.
+2. On Windows it carries the archive's download mark (`Zone.Identifier`)
+   onto every unpacked file, as Explorer does, so SmartScreen still looks at
+   a program that came in a downloaded zip.
+3. It starts the program with its own folder as the working directory:
+   on Windows an `.exe` / `.com` directly (a console program gets a console),
+   a `.bat` / `.cmd` through `cmd.exe`, an `.msi` through `msiexec`, and a
+   program that asks for administrator rights through the UAC prompt; on
+   Linux and macOS the file itself.
+4. It deletes the run folder once the program **and everything it started**
+   have ended. On Windows the program runs in a job object, so a `setup.exe`
+   that hands over to a second stage and exits counts as running until the
+   second stage is done; on POSIX the program leads a process group of its
+   own. A folder is never removed while a file in it is still open (on
+   Windows it is renamed first, which fails while anything holds a file in
+   it), so a program that slipped out of the watch — an installer relaunched
+   elevated — keeps its files until it lets go of them.
+
+Double-click, Enter and `OpenEntryWithOS` do this for such an entry, and the
+context menu offers it as **Extract and Run**. `CanExtractAndRun(entry)`
+says which entries qualify: on Windows `.exe`, `.com`, `.bat`, `.cmd` and
+`.msi`; on Linux and macOS an entry the archive recorded as executable
+(`FilerEntry::archiveExecutable`) or an `.AppImage`. A file on disk is never
+one of them — it runs as it is.
+
+Run folders go under `DefaultArchiveRunRoot()` (`UltraCanvas-Run` in the
+system's temporary folder) unless the host answers `chooseArchiveRunRoot`
+with a folder of its own; UltraFiler picks a RAM disc when one with room is
+mounted. Each run folder has a marker beside it naming the processes using it,
+so `SweepArchiveRunFolders(root)` — run before every unpack, and by
+UltraFiler at start-up — removes what an application that closed while its
+program still ran had to leave behind, and nothing still in use. The pieces
+that are not UI live in `UltraCanvasArchiveRun.h`: `IsRunnableArchiveEntry`,
+`LaunchWatchedProgram` (a launch whose end can be waited for),
+`CopyDownloadMarking` and the run-folder functions.
+
+```cpp
+filer->chooseArchiveRunRoot = [](uint64_t bytesNeeded) -> std::string {
+    return bytesNeeded < (1ull << 30) ? "/mnt/ram/runs" : "";   // "" = default
+};
+// Double-click already does it; a host with its own activation calls:
+if (filer->CanExtractAndRun(entry)) filer->ExtractAndRunEntry(entry);
+```
+
+Needs the VirtualFS module (`ULTRACANVAS_HAS_VIRTUALFS`); without it
+`CanExtractAndRun` is always false. WebAssembly cannot start programs.
 
 ## Selective previews
 
@@ -20292,7 +20401,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
-| `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC, and a .cls / .m whose first lines are LaTeX / Objective-C is named so; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
+| `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
 | `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
@@ -27965,7 +28074,7 @@ The benchmark wires up the following user-facing actions:
 |--------------------|----------------------|-------------------------------------------------------------------|
 | `chooseBtn`        | `onClick`             | Opens native file dialog, calls `loadSourceImage`, auto-runs      |
 | `includeBmpCheckbox` | `onCheckedChanged`  | Rebuilds active codec set, re-runs benchmark                      |
-| Thumbnail per codec| `onClick`             | Opens `ShowFullSizeImageViewer(path)` at 1:1 zoom                 |
+| Thumbnail per codec| `onClick`             | Opens `ShowInMediaViewer(path)` at 1:1 zoom                 |
 | `chartElem`        | `onGeometryChanged`   | Repositions thumbnails under their bar groups when bounds shift   |
 
 Internally, the demo exposes two lambdas — `loadSourceImage` and `runBenchmark` — that callers can hook into if they want to drive the benchmark programmatically.
@@ -28130,7 +28239,7 @@ if (r.succeeded && globalIdx < static_cast<int>(state->thumbs.size())) {
         thumb->SetVisible(true);
         std::string slotPath = outPath;
         thumb->onClick = [slotPath]() {
-            ShowFullSizeImageViewer(slotPath);
+            ShowInMediaViewer(slotPath);
         };
         thumb->RequestRedraw();
     }
@@ -31754,6 +31863,19 @@ void EnsureRowVisible(int row);
 ```
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
+
+```cpp
+ScrollMetrics GetScrollMetrics() const;
+```
+
+The numbers the scrollbar is built from at this moment: `rows`, `rowHeight`
+(0 when the delegate sizes rows), `contentHeight`, `viewportHeight` (the
+rows area, header excluded), `maxScroll`, `scrollOffset`,
+`scrollbarVisible`, `scrollbarBounds`, and the element's `width` and
+`height`. For diagnostics and tests. The view also recomputes them before
+every paint and, if the scrollbar disagrees (a model that grew between an
+arrange and the paint), logs `scrollbar was stale at paint` to
+`debugOutput` and refreshes it first.
 
 ### Tooltips
 
@@ -43757,6 +43879,57 @@ UCWordDocumentIO::Save(savePath, *editor->GetDocument(), error);
 Because the element shares ownership of the document (`std::shared_ptr`), an
 application can keep holding it — to save it, to inspect blocks the user never
 touched, or to hand the same document to a read-only view.
+
+### From HTML, and back
+
+`HTMLRichDocumentImporter.h` turns HTML (a page, a fragment, a mail's HTML
+body) into a `UCRichDocument`, through the same parser and style resolver the
+HTML reader renders with, so `<style>` blocks, inline styles and the
+presentational attributes mail is still written with (`<font color face
+size>`, `bgcolor`, `align`) all count:
+
+```cpp
+#include "HTMLReader/HTMLRichDocumentImporter.h"
+
+HTMLRichImportOptions options;
+options.quoteLevel = 1;                                  // all of it inside a quote
+options.resolveImage = [&](const std::string& src, HTMLRichImportImage& out) {
+    out.data = BytesFor(src);                            // cid:, a file, a cached URL
+    return !out.data.empty();                            // false: alt text instead
+};
+auto document = std::make_shared<UCRichDocument>(ImportHTMLToRichDocument(html, options));
+editor->SetDocument(document);
+
+// ...and out again, pictures pointing wherever the caller keeps them.
+RichDocumentHTMLOptions out;
+out.imageSource = [](int mediaIndex) { return "cid:part" + std::to_string(mediaIndex); };
+std::string html = document->ToHTML(out);                // default: data: URIs
+```
+
+| HTML | becomes |
+|---|---|
+| `<p>`, `<div>`, `<h1>`–`<h6>`, `<hr>` | paragraphs, headings, rules; `<br>` a line break; the space between blocks is the elements' margins, collapsed as CSS does |
+| `<ul>`, `<ol start type>`, `<li value>` | list items with level, format and start number |
+| `<blockquote>` | the blocks' quote level (below) |
+| `<b> <i> <u> <s> <sub> <sup> <code> <a href>` | run formatting and links (`javascript:` links are dropped) |
+| colours, `background-color` on inline text, font family and size | run colour, highlight, font; text at the base size gets no size of its own |
+| `text-align`, `align`, `<center>`, left margin/padding | alignment and left indent |
+| `<img>` | a picture paragraph when it is alone in its block, else a picture in the line; sizes kept; 1×1 tracking pixels dropped |
+| `<table>` with several columns | a table (spans, cell colours, borders, padding, widths) |
+| a one-column `<table>` | unwrapped into the text flow: that is mail layout scaffolding |
+| a table inside a table cell | lines of that cell (the model has no nested tables) |
+
+### Quote levels
+
+`RichDocBlock::quoteLevel` says how many quotes a block sits inside - a mail
+reply's quoted text is level 1, what that mail quoted level 2. Unlike the
+`BlockQuote` block type (one quoted paragraph), a level applies to any block:
+a quoted heading, list, table or picture stays what it is. The element draws
+one bar per level at the block's left and indents it by `style.quoteIndent`
+per level; `ToHTML` nests `<blockquote type="cite">`, `ToPlainText` and
+`ToMarkdown` put `> ` per level in front of the lines. Editing follows mail
+programs: Enter keeps the level, Enter on an empty quoted line and Backspace
+at the start of a quoted block each step one level out (undoable).
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
 the reader produced, hands it to the element, and hands the same object back to
@@ -62189,7 +62362,7 @@ enum class IOPrintRenderer {
 |---|---|---|---|
 | `Native` | CUPS job ✅ | CUPS job ✅ | GDI drawing session ✅ |
 | `GutenPrint` | CUPS **raw** job (`application/vnd.cups-raw`) ✅ | CUPS **raw** job ✅ | `StartDocPrinter`, `pDatatype = "RAW"` ✅ |
-| `IPP` | IPP over HTTP | IPP over HTTP | IPP over HTTP |
+| `IPP` | IPP over HTTP ✅ | IPP over HTTP ✅ | IPP over HTTP ✅ |
 
 A transport declares what it can carry, and a renderer declares what it
 emits; `PrinterDevice` only offers the pairings that match. The checks are
@@ -62416,6 +62589,18 @@ wrong in ways which surface on one printer at one resolution; the raster goes
 down a pipe to a filter that reads it immediately, so the size costs nothing
 but a moment of memory.
 
+**The sync word comes once, at the start of the stream** - then a header and
+pixels per page. The writer used to put one before every page. The filter
+reads a second sync word as the first four bytes of the second page's header,
+every field after it lands four bytes out of step, and it stops there with
+exit status 0 and no message: a three-page job printed its first page,
+successfully. Checked with GutenPrint's own `rastertogutenprint`, which
+reports `PAGE:` once per page it prints - once for the old stream, three
+times for the same pages written correctly. `AppendCupsRasterSync` and
+`AppendCupsRasterPageHeader` are separate calls now so the two cannot be
+confused again, and `Tests/IODevicePrinterTest` reads a three-page stream
+back the filter's way.
+
 **Input and output are pumped together.** `RunProcessCaptured` polls the
 child's stdin, stdout and stderr in one loop with non-blocking pipe ends. This
 is not tidiness: `poll()` reporting the pipe writable means *one byte* is
@@ -62442,14 +62627,164 @@ takes the job.
 
 ### Enumeration double-counting
 
-CUPS already exposes IPP Everywhere queues, so a driverless printer is
-reachable through both the CUPS and the IPP enumerator. The registry's
-first-backend-wins rule collapses those only when both report the same device
-id, which they do not by default. The printer backends must therefore derive
-their device ids from something stable and shared — the device URI, or the
-printer's UUID from its IPP attributes — rather than from the queue name.
+CUPS already offers every driverless printer on the network as a queue, so a
+printer is reachable through both the CUPS and the IPP enumerator. The design
+this module started with was for the registry to collapse the two by device
+id: both backends would derive the id from the printer's own UUID, and the
+first-backend-wins rule would keep one.
 
----
+**That never worked, and cannot with what libcups hands back.** The CUPS
+backend asks for the `printer-uuid` destination option, and `cupsGetDests2`
+does not return one - not for the queues CUPS discovers itself
+(`ipps://Office%20Printer._ipps._tcp.local/`), and not for a queue configured
+with `lpadmin -m everywhere` either. That was checked against CUPS 2.4.7 with
+its reference printer, not assumed. So every CUPS queue is `cups:<name>`, and
+no id the IPP backend could choose would ever equal it.
+
+So the IPP backend does the matching itself. With CUPS compiled in, it asks
+libcups for its queues' `device-uri`s and leaves out any printer one of them
+already reaches - by the UUID a `dnssd://…?uuid=` URI carries, by the DNS-SD
+instance name CUPS's own discovered queues are addressed by, or by the same
+host, port and path (`IppCupsQueueReachesPrinter`, unit-tested). On Linux and
+macOS the IPP enumerator therefore adds only what CUPS does not see: a
+printer on a machine with no scheduler running, or one named in
+`ULTRACANVAS_IPP_PRINTERS`. A printer named there is listed even when CUPS
+has it, because naming it is asking for this route.
+
+On Windows there is nothing to defer to, and a driverless printer that has
+also been installed as a spooler queue is listed twice - once as
+`winspool:<name>`, once over IPP. Matching the two needs the queue's port
+address, which the Windows backend does not read yet (see Gaps).
+
+### Driverless printing: the IPP backend
+
+`core/IODeviceManager/UltraCanvasIODevicePrinterIPP.cpp`, one file for every
+platform, for the reason the eSCL scanner backend is: IPP is HTTP and a binary
+encoding, so nothing in it belongs under `OS/`. It is what makes a network
+printer usable where there is no print system to go through - Windows has no
+IPP client an application can drive, and a Linux or macOS build may have no
+CUPS.
+
+Three files, split the way the eSCL backend is split, so that everything that
+can be decided without a printer is decided somewhere a test can reach:
+
+| File | What it holds |
+|---|---|
+| `...PrinterIPPProtocol.{h,cpp}` | RFC 8010 encoding in both directions; printer attributes → `IOPrinterCapabilities`, status, supplies, jobs; options → job attributes; the pass-through-or-draw plan |
+| `...PrinterPwgRaster.{h,cpp}` | The PWG raster page format, its line compression, and the page turns landscape and duplex need |
+| `...PrinterIPP.cpp` | Discovery, the device, the transport, the renderer: the part that needs a network |
+
+**The renderer decides what the printer is sent.** A printer names the
+formats it renders itself in `document-format-supported`. A document in one of
+them is sent as it is - a PDF to a printer that renders PDF is printed by the
+engine that knows the printer best. Anything else the page sources can draw -
+plain text, and the images the imaging stack decodes - is drawn here with the
+same `RasterPageTarget` the GutenPrint path uses and sent as **PWG raster**,
+which every IPP Everywhere printer must accept. Plain text is always drawn,
+even to a printer that claims `text/plain`, because what a printer's own text
+path does with UTF-8 is anybody's guess and a page drawn here is the same page
+on every printer. What cannot be done either way is refused by name rather
+than half-printed: a PDF to a printer that takes none (nothing here paginates
+PDF yet), and a page range on a document the printer cannot select pages from.
+
+**The transport is one Print-Job request** - the IPP message with the
+document directly after it, POSTed with `Content-Type: application/ipp`. It
+carries documents only: `SupportsRaw()` and `SupportsPageSource()` are false,
+so the pairing checks `PrinterDevice` already makes keep GutenPrint and the
+GDI path off an IPP printer without a line of special-casing.
+
+Four things about PWG raster that a printer would otherwise get wrong on
+paper, each covered by `Tests/IODevicePrinterIPPTest`:
+
+- **The sync word comes once, at the start of the stream** - not once per
+  page. The pages that follow are a header and lines each.
+- **Copies are said once.** The header's `NumCopies` is 1 and the request
+  carries `copies`; saying it in both prints the job squared. Page ranges the
+  same way: selected pages are drawn and the range is not sent as well.
+- **Landscape is drawn landscape and turned onto the portrait sheet** - a
+  quarter turn counter-clockwise, clockwise for reverse landscape - because a
+  raster page is the sheet as it goes through the printer. `orientation-
+  requested` is sent only for a document the printer lays out itself.
+- **The back of a sheet is turned the way the printer asks.** A duplexer that
+  flips the sheet delivers its back upside down or mirrored, and
+  `pwg-raster-document-sheet-back` says which. Every second side is turned to
+  match, by the table CUPS applies, and the header's transform fields say so.
+
+- **The page is drawn inside the printer's margins.** A PWG raster page is
+  the whole sheet and the printer prints it as it is - unlike GutenPrint's
+  filter, it applies no margin of its own - so text drawn from the corner
+  loses its first letters to the unprintable border. The page is drawn inside
+  the largest margin each `media-*-margin-supported` lists (what CUPS does
+  for a driverless printer), or inside the job's own margins where those are
+  wider, then placed on the sheet; a borderless job on a printer that lists
+  zero on every edge is drawn to the edge.
+
+A page is drawn at the resolution nearest 300 dpi for Normal quality and at
+most 600 dpi for High, because it is held whole in memory: an A4 page at 1200
+dpi is 400 MB of RGB for detail nothing printed from here would show.
+
+**A printer that is busy is waited for.** A printer that holds one job at a
+time answers `server-error-busy` until the job in hand is on paper, and
+printing two documents back to back is ordinary, so Print-Job is sent again
+after a growing pause - which is what CUPS's own IPP backend does - for up to
+three minutes before `DeviceBusy` is returned.
+
+**Discovery** browses `_ipp._tcp` and `_ipps._tcp` through UltraNet's mDNS
+plugin, as eSCL browses `_uscan._tcp`, and builds the printer URI from the
+host, port and the TXT record's `rp`. A printer is registered as
+`urn:uuid:<uuid>` when its TXT record carries one - the form of its own
+`printer-uuid` - and `ipp:<uri>` otherwise. Its display name is the DNS-SD
+instance name, which is unique on the network, rather than `ty`, which two
+printers of one model share. The mDNS plugin reports the *full* service name
+("Office Printer._ipp._tcp.local"), readable from Avahi and Win32 and escaped
+from Bonjour, so the instance is cut out of it and unescaped
+(`IppInstanceFromServiceName`) before it is shown or compared.
+
+**A printer offering both is reached over plain IPP.** Printers' certificates
+are self-signed in all but a few cases, and UltraNet's rule is that TLS
+verification stays on, so the `ipps://` route would fail where the `ipp://`
+one works. The TLS address is kept in the device's attributes, and an
+`ipps://` failure says what probably happened rather than reading like a
+network fault. A printer that offers only `ipps://` with a self-signed
+certificate is therefore not reachable yet; the fix is trust on first use,
+not turning verification off (see Gaps).
+
+**IPP 1.1 printers** answer a 2.0 request with
+`server-error-version-not-supported`; the request is repeated as 1.1 and the
+printer remembered, so it costs one refused request per process rather than
+one per call - which matters for Print-Job, where the refused request carried
+the whole document.
+
+Connecting is `Get-Printer-Attributes`: IPP has no session, so connecting
+proves the printer is there and fetches the one description the renderer
+cannot work without. Status and supplies are further `Get-Printer-Attributes`
+calls asking only for what they need; supplies come from the `marker-*`
+attributes where a printer has them and from PWG's `printer-supply` where it
+does not, which is what IPP Everywhere printers report. Jobs are `Get-Jobs`,
+`Get-Job-Attributes` and `Cancel-Job`. A job the printer has already dropped
+from its history reads as completed, as under CUPS, with the state reason
+`not-in-printer-history` so a caller can tell.
+
+Printers on another subnet, where DNS-SD does not reach, are named in
+`ULTRACANVAS_IPP_PRINTERS` as a comma-separated list of `ipp://`, `ipps://`,
+`http://` or `https://` addresses.
+
+This was built and checked against CUPS's reference IPP Everywhere printer,
+`ippeveprinter`: discovered over Avahi, described, printed to in every shape
+above - including a second instance configured to ask for `rotated` backs -
+and the PWG raster it received decoded by a reader written separately from
+the writer and by cups-filters' own `pwgtopdf`. `Tests/IODevicePrinterIPPLiveTest`
+keeps that check: it starts `ippeveprinter` itself and is skipped where it is
+not installed. It has not met a physical printer yet.
+
+Running it found five things the unit tests could not, which is why it is a
+test and not a script that was thrown away: the plugin's `dn` is the full
+service name, so neither the display name nor the CUPS match worked; a busy
+printer refuses a job rather than queueing it; the text had no margins; and
+decoding an image for printing crashed a program that had never opened a
+window, because the image library was never started. That last one was in
+`MakePageSourceForJob`, which the GutenPrint and GDI renderers share, so it is
+fixed there for all three.
 
 ## Usage
 
@@ -62509,7 +62844,7 @@ compiling, tested and wired into CI before the next starts:
 | 8a ✅ | The OS print dialog wired to `PrinterDevice` on Linux, Windows and macOS, so the settings it collects reach the queue; page ranges carried end to end |
 | 9 | Windows and macOS backends for camera and scanner |
 | 10 | Hot-plug watchers for Windows and macOS; the permission model |
-| 11 🔨 | eSCL driverless scanning ✅ (all three platforms; Windows discovery still open); IPP driverless and network cameras to come |
+| 11 🔨 | eSCL driverless scanning ✅ and IPP driverless printing ✅, both one file in `core/` for all three platforms; network cameras to come |
 
 Slices 2 and 3 ship the switch and both transports. Adding GutenPrint is then
 a renderer class and nothing else: no change to `PrinterDevice`, and no change
@@ -62853,7 +63188,7 @@ backend now exist; the other four protocols do not.
 | ICA (macOS) | ❌ |
 | **eSCL / AirScan driverless network scanning** | ✅ one backend for Linux, macOS and Windows, because eSCL is plain HTTP and XML. Reads `ScannerCapabilities`, posts a `ScanJobs` document, collects pages from `NextDocument` and cancels with `DELETE`. Lives in `core/`, not under `OS/`, and sits alongside SANE rather than replacing it. |
 | eSCL: discovery on Windows | ✅ `Plugins/UltraNet/mdns` browses with `DnsServiceBrowse` and resolves each instance with `DnsServiceResolve`, so a Windows browse now yields host, port and TXT like the Avahi and Bonjour backends. The entry points are bound at run time, so on Windows older than 10 1703 the module still loads and falls back to the PTR-only query — names without addresses, which a caller skips. **Not yet run on Windows**: the name arithmetic is tested (`Tests/MdnsNamesTest`) and the translation unit compiles and links against `dnsapi`, but nobody has browsed a real network with it. Naming a scanner in `ULTRACANVAS_ESCL_SCANNERS` remains the way to reach one on another subnet. |
-| mDNS: `dn` differs between backends | ❌ Avahi and the Windows backend put the *unescaped* instance in `dn`; Bonjour passes through the escaped `fullname` it is given. Only cosmetic today — eSCL uses `dn` as a display fallback — but two platforms disagreeing about the same field will eventually catch someone. `Mdns::SplitInstanceName` is what macOS would use to match. |
+| mDNS: `dn` differs between backends | ❌ every backend puts the *full* service name in `dn` ("Office Printer._ipp._tcp.local"), not the instance alone - checked on Avahi against a live advertisement - but Avahi and the Windows backend give it readable while Bonjour passes through the escaped `fullname` it is given. The IPP backend copes with both (`IppInstanceFromServiceName`); eSCL still shows `dn` whole as its fallback name. `Mdns::SplitInstanceName` is what a backend-neutral fix would use. |
 | eSCL: PDF pages | ❌ JPEG and PNG are decoded; a scanner asked for `application/pdf` would need the PDF plugin to rasterise it. The backend asks for an image format it can decode rather than accepting one it cannot. |
 | eSCL: HTTPS with a self-signed certificate | ❌ `_uscans._tcp` is browsed and an `https://` base URL is built, but scanners generally present self-signed certificates and nothing yet opts into accepting them. |
 | Multi-page ADF, capability detection | ✅ |
@@ -62890,6 +63225,7 @@ absent.
 | CUPS transport, driver documents and raw streams | ✅ |
 | Option resolver in GutenPrint priority order | ✅ replaces the `FIXME` that returned its input unchanged |
 | **GutenPrint renderer** | ✅ run as a subprocess, never linked, so the framework stays MIT. Matches a printer to one of GutenPrint's ~3,500 models, gets that model's PPD from GutenPrint's own driver program, rasterises the page and pipes it through `rastertogutenprint`. Produces a device-native stream, so it travels as a raw job on all three platforms. |
+| GutenPrint: multi-page jobs | ✅ fixed. The CUPS raster writer put a sync word before every page instead of once per stream, so GutenPrint's filter stopped after page 1 without an error and every multi-page job printed its first page only. Confirmed with the real `rastertogutenprint` (1 page printed before, 3 after), and now tested. |
 | GutenPrint: colour separation to CMYK/KCMY | ❌ deliberately. GutenPrint is handed RGB and does its own separation against the ink set, which is better than anything we would do. Listed so the choice is visible, not because it is missing. |
 | GutenPrint: shipping the tools on Windows | ❌ the renderer works there and the RAW transport carries it, but nothing installs GutenPrint on Windows. Needs the binaries packaged beside the application and `ULTRACANVAS_GUTENPRINT_DRIVER`/`_FILTER` pointed at them. |
 | GutenPrint: streaming a long document | ❌ the whole rasterised document is held in memory before the filter runs, because `RunProcessCaptured` takes its input as one block. A page of RGB at 360 dpi is ~36 MB, so this suits letters and photographs and would not suit a book. Fixed by teaching the process runner to pull input a block at a time, after which one page need exist at once. |
@@ -62905,8 +63241,17 @@ absent.
 | Paper size recognition | ✅ by dimensions from the CUPS dest-info API, replacing the prior stub that returned A4 for every size a printer reported |
 | Page rendering (document/image → page raster) | ✅ `RasterPageTarget` draws an `IPrintPageSource` onto an off-screen surface — the same page sources the GDI path uses, so text wrapping and pagination are shared rather than reimplemented. |
 | Page ranges | ✅ `IOPrintJob::pageRange` had been declared since the module was written and read by nothing, so a range chosen in a print dialog was dropped between the dialog and the queue. It now reaches the payload, and from there the IPP `page-ranges` attribute under CUPS and the page loop on the GDI path. |
-| IPP: real mDNS/DNS-SD discovery | ❌ the prior version piggybacked on CUPS and only found what CUPS already knew |
-| IPP: full `Get-Printer-Attributes` parsing | ❌ |
+| **IPP driverless printing** | ✅ one backend for Linux, macOS and Windows (`core/`, like eSCL). Discovers `_ipp._tcp` and `_ipps._tcp` over DNS-SD, plus `ULTRACANVAS_IPP_PRINTERS`; sends a document the printer renders as it is, and draws text and images as PWG raster otherwise. Checked against CUPS's reference printer (`ippeveprinter`); **not yet run against a physical printer.** See [Architecture.md](Architecture.md#driverless-printing-the-ipp-backend). |
+| IPP: DNS-SD discovery | ✅ its own browse, no longer only what CUPS already knew. With CUPS compiled in, a printer a CUPS queue already reaches is left to CUPS rather than listed twice. |
+| IPP: `Get-Printer-Attributes` parsing | ✅ the full RFC 8010 decoder - every value type, collections to any sane depth, and a malformed reply refused rather than read past. Capabilities, status, supplies (`marker-*` and PWG's `printer-supply`) and jobs are read from it. |
+| IPP: device ids never matched CUPS's | ✅ found and worked around. The CUPS backend keys on `printer-uuid`, which `cupsGetDests2` does not return (checked, CUPS 2.4.7), so the registry could never collapse a printer found both ways. The IPP backend matches CUPS queues itself instead - see [Architecture.md](Architecture.md#enumeration-double-counting). |
+| IPP: the same printer twice on Windows | ❌ a driverless printer also installed as a spooler queue is listed as `winspool:<name>` and again over IPP. Matching them needs the queue's port address, which the Windows backend does not read yet. |
+| IPP: `ipps://` with a self-signed certificate | ❌ TLS verification stays on, so a printer offering *only* `ipps://` - with the self-signed certificate nearly every printer has - is not reachable. One offering both is reached over `ipp://`. The fix is trust on first use (pin the certificate seen at discovery), not turning verification off. |
+| IPP: authentication | ❌ a printer answering HTTP 401 is reported as `AccessDenied` by name; no credentials are sent. |
+| IPP: PDF to a printer that takes no PDF | ❌ refused by name. Needs the PDF plugin to paginate, the same seam the GDI renderer is waiting on. |
+| IPP: AirPrint's URF raster | ❌ not written. A printer taking URF but not PWG raster - older AirPrint-only models - still prints PDF and JPEG as they are; text and other images are refused by name. |
+| IPP: document streaming | ❌ the request and document go as one HTTP body, so a document is in memory whole. Fine for the PDFs and photos this path carries; PWG raster is the heavier case - an A4 page of text at 300 dpi in grey is about 1.3 MB, because anti-aliased glyphs defeat run-length compression - so a long raster job would want `Create-Job` / `Send-Document` with a chunked body. |
+| IPP: tested against a live printer | ✅ `Tests/IODevicePrinterIPPLiveTest` starts CUPS's reference printer `ippeveprinter` and prints to it through the public API: text as PWG raster, a page range, a PDF as it is, a refusal, jobs. Skipped where `ippeveprinter` is not installed (`cups-ipp-utils`) - which includes CI today; adding that package to the Linux legs' dependencies would run it there. |
 | SNMP supply/component monitoring | ⚠️ exists outside the tree; needs net-snmp declared, and should be reconsidered against UltraNet |
 | Maintenance (cleaning, alignment, nozzle check) | ⚠️ two competing architectures were written; pick one. Both shell out to `escputil` with the device path interpolated unquoted into `popen` — fix before landing. |
 | Cloud printing | ❌ architecture only |
@@ -62924,11 +63269,15 @@ absent.
 
 ## Categories not started
 
-`README.md` advertises 19. Beyond scanner, camera and printer:
+Beyond scanner, camera and printer, `IODeviceCategory` has these, and none
+has a backend (`README.md` lists them as planned):
 
-Storage · NetworkAdapter · Display · HID/Gamepad · GPIO · Serial ·
-Bluetooth · Barcode · RFID · Biometric · Keyboard · Mouse · Touchscreen ·
-Stylus
+Storage · NetworkAdapter · GPIO · Serial · Bluetooth · Barcode · Biometric
+
+The README once advertised 19 categories, including Display, HID/Gamepad,
+RFID, Keyboard, Mouse, Touchscreen and Stylus, which are not even
+`IODeviceCategory` values; it no longer does. Adding one is an enum value
+first, a backend second.
 
 ### ❓ Microphone and Speaker — a decision, not work
 
@@ -62981,198 +63330,275 @@ not compile against the tree costs more to review than it saves.
 FILE: Docs/Modules/IODeviceManager/README.md
 ==============================================================================
 
-# IODeviceManager - Universal Hardware Device Management for Modern Applications
+# IODeviceManager - One API for the Devices an Application Operates
 
-## Unify Every Device Behind a Single API
+## Scanners, Cameras and Printers Behind a Single Interface
 
-> **API contract and current build status: [Architecture.md](Architecture.md).**
-> This page is the overview; that one is what the code actually does today.
+> **API contract and design: [Architecture.md](Architecture.md). What is and
+> is not built yet: [Gaps.md](Gaps.md).** This page is the overview; where it
+> and those two disagree, they win.
 
-**IODeviceManager** is a comprehensive, cross-platform hardware abstraction layer that eliminates the complexity of working with diverse input/output devices. Whether you're building scanning workflows, imaging applications, document processing systems, or full-featured operating system services, IODeviceManager provides a single, unified API to discover, configure, and operate hardware across dozens of protocols and platforms.
+**IODeviceManager** is UltraCanvas' hardware layer for peripherals an
+application *operates*: it discovers devices, opens a session with one,
+configures it and does work with it — scanning a page, capturing a frame,
+printing a document. Every device, whatever backend found it, is an `IODevice`
+with the same identity, lifecycle and error reporting, and every category adds
+its own operations on top (`ScannerDevice`, `CameraDevice`, `PrinterDevice`).
+
+Today that covers **printers** on Linux, macOS and Windows, **scanners** on
+Linux plus network (eSCL) scanners everywhere, and **webcams** on Linux. The
+other categories and platform backends below are planned; the tables say which
+is which.
 
 ---
 
 ## Purpose
 
-Stop wrestling with platform-specific SDKs, proprietary drivers, and dozens of device APIs. IODeviceManager gives you:
-
-- **One API for Every Device** - Scanners, cameras, printers, audio devices, GPIO, and network hardware through a single, consistent interface
-- **Automatic Protocol Selection** - Native protocols (SANE, WIA, TWAIN, ICA, V4L2, AVFoundation, MediaFoundation, CUPS) selected transparently per platform
-- **Effortless Device Discovery** - Enumerate, hot-plug, and connect to local USB, network, and embedded devices automatically
-- **Cross-Platform Compatibility** - Same code runs on Linux, Windows, macOS, and ULTRA OS
+- **One API per kind of device** — a scanner is a `ScannerDevice` whether SANE
+  or eSCL found it; a printer is a `PrinterDevice` whether CUPS or the Windows
+  spooler did. Application code does not branch on the backend.
+- **Several backends per category** — each backend registers an *enumerator*
+  for one category, and the manager merges them: on Linux, SANE and eSCL both
+  report scanners, and a scanner reachable through both is listed once.
+- **Discovery and hot-plug** — `EnumerateDevices()` finds what is there now;
+  `StartMonitoring()` follows devices being plugged in and out where the
+  platform has a watcher (Linux, with libudev).
+- **Only what the build can do** — a backend whose library was not found at
+  configure time is simply not registered, and `GetRegisteredBackends()` says
+  which ones are.
 
 ---
 
 ## Key Functionality
 
-### Universal Device Enumeration
-Discover every connected device with one simple call. IODeviceManager automatically detects available hardware and applies the appropriate native driver:
+### Device Enumeration
+
+`Initialize()` registers the backends this build was compiled with;
+`EnumerateDevices()` runs every enumerator for a category and merges the
+results. Devices come back constructed but not connected.
 
 ```cpp
+#include "IODeviceManager/UltraCanvasIODeviceManager.h"
+using namespace UltraCanvas;
+
 auto& manager = IODeviceManager::GetInstance();
-manager.EnumerateDevices(IODeviceCategory::Scanner);
-manager.EnumerateDevices(IODeviceCategory::Camera);
-manager.EnumerateDevices(IODeviceCategory::Printer);
+manager.Initialize();
+manager.EnumerateAllDevices();            // or EnumerateDevices(IODeviceCategory::Scanner)
+
+for (const IODeviceInfo& info : manager.GetDeviceInfos(IODeviceCategory::Printer)) {
+    std::printf("%s (%s, %s)\n", info.name.c_str(), info.backend.c_str(),
+                IODeviceTransportToString(info.transport));
+}
 ```
 
-### Seamless Scanner Operation
-Acquire images from any scanner — flatbed, ADF, network — without writing protocol-specific code. Perfect for document workflows, archival, and capture pipelines:
+### Scanning
+
+`GetDevice()` returns the generic `IODevicePtr`; cast it to the category's
+class for its operations. `Scan()` acquires one page, `ScanPages()` runs the
+document feeder until it is empty.
 
 ```cpp
-auto scanner = manager.GetDevice(IODeviceCategory::Scanner, 0);
-scanner->Connect();
+#include "IODeviceManager/UltraCanvasIODeviceScanner.h"
 
-ScanConfiguration config;
-config.resolution = 300;
-config.colorMode = ScanColorMode::RGB;
+auto scanner = std::dynamic_pointer_cast<ScannerDevice>(
+    manager.GetDevice(IODeviceCategory::Scanner, 0));
+if (scanner && scanner->Connect()) {
+    ScanConfiguration config;
+    config.resolutionDpi = 300;
+    config.colorMode = ScanColorMode::Color;
+    scanner->SetConfiguration(config);
 
-std::vector<uint8_t> imageData;
-scanner->Scan(config, imageData);
+    ScannedImage page;
+    if (IODeviceResult result = scanner->Scan(page)) {
+        // page.data holds page.width x page.height pixels, page.channels per pixel
+    } else {
+        std::printf("Scan failed: %s\n", result.message.c_str());
+    }
+    scanner->Disconnect();
+}
 ```
 
-### Comprehensive Camera Support
-Stream video, capture stills, and control PTZ from webcams, DSLRs, and network cameras through one unified interface:
+### Cameras
+
+A camera captures single frames or streams them to a callback, and exposes
+its controls (brightness, focus, zoom, pan, tilt …) through one call pair.
 
 ```cpp
-// Webcams, DSLRs, IP cameras — all the same API
-auto camera = manager.GetDevice(IODeviceCategory::Camera, 0);
-camera->StartStream();
-camera->CapturePhoto("snapshot.jpg");
-camera->SetPTZ(pan, tilt, zoom);  // Network cameras
+#include "IODeviceManager/UltraCanvasIODeviceCamera.h"
+
+auto camera = std::dynamic_pointer_cast<CameraDevice>(
+    manager.GetDevice(IODeviceCategory::Camera, 0));
+if (camera && camera->Connect()) {
+    CameraFrame frame;
+    camera->CaptureFrame(frame);                       // one still
+
+    camera->StartStream([](const CameraFrame& f) {     // runs on the camera's thread
+        // f.data, f.resolution, f.format, f.frameNumber
+    });
+    camera->SetControl(CameraControl::Zoom, 150);      // where the device has the control
+    camera->StopStream();
+    camera->Disconnect();
+}
 ```
 
-### Network Device Discovery
-Automatically find and connect to network-based devices using mDNS, Bonjour, ONVIF, and UPnP — no manual IP configuration required:
+### Printing
+
+A printer prints a file or a job, reports its status, queue and supply
+levels, and lets the application choose who renders the page: the platform's
+own driver, or GutenPrint.
 
 ```cpp
-// Driverless network scanners (eSCL/AirPrint/Mopria)
-manager.AddeSCLScanner("192.168.1.50", 80);
+#include "IODeviceManager/UltraCanvasIODevicePrinter.h"
 
-// ONVIF network cameras with auto-discovery
-manager.DiscoverNetworkCameras();
+auto printer = std::dynamic_pointer_cast<PrinterDevice>(
+    manager.GetDevice(IODeviceCategory::Printer, 0));
+if (printer && printer->Connect()) {
+    printer->PrintFile("report.pdf", "Quarterly report");
+    printer->Disconnect();
+}
 ```
 
-### Extensible Plugin Architecture
-Add support for proprietary or specialized hardware without modifying core code:
+### Network Scanners
+
+eSCL (AirScan / Mopria) scanners are found through mDNS on the local network.
+A scanner mDNS cannot reach — on another subnet, since mDNS does not cross
+routers — is named in the `ULTRACANVAS_ESCL_SCANNERS` environment variable, a
+comma-separated list of base URLs:
+
+```sh
+ULTRACANVAS_ESCL_SCANNERS=http://192.168.1.50/eSCL ./MyApp
+```
+
+### Your Own Devices
+
+Hardware reached through an application's own code registers with the manager
+like any other device: derive from `IODevice` (or a category class), implement
+`DoConnect()` / `DoDisconnect()`, and register an instance. It then appears in
+`GetDevices()`, and in DeviceExplorer, alongside the built-in ones.
 
 ```cpp
-// Register your custom device handler
-auto customDevice = std::make_shared<MyDevicePlugin>();
-manager.RegisterDevice(customDevice);
+class MyDevice : public IODevice {
+public:
+    explicit MyDevice(const IODeviceInfo& info) : IODevice(info) {}
+protected:
+    IODeviceResult DoConnect() override { /* open it */ return IODeviceResult::Ok(); }
+    void DoDisconnect() override { /* close it */ }
+};
+
+IODeviceInfo info;
+info.deviceId = "my-device-1";
+info.name = "Bench power supply";
+info.category = IODeviceCategory::Custom;
+manager.RegisterDevice(std::make_shared<MyDevice>(info));
 ```
+
+A backend that discovers devices of its own registers an enumerator instead
+(`RegisterEnumerator(category, "MyBackend", ...)`), so rescans and hot-plug
+merging apply to it too.
 
 ---
 
-## Supported Device Categories
+## Device Categories
 
-| Category | Description | Examples | Status |
-|----------|-------------|----------|--------|
-| **Scanner** | Document and image scanners | Flatbed, ADF, film, network scanners | ✅ Production |
-| **Camera** | Still and video imaging devices | Webcams, DSLRs, IP cameras | ✅ Production |
-| **NetworkCamera** | IP-based cameras with PTZ | ONVIF, RTSP, HTTP cameras | ✅ Production |
-| **Printer** | Local and network printers, GutenPrint or native driver | Inkjet, laser, label, 3D printers | 🚧 In Progress |
-| **GPIO** | General purpose I/O pins | Raspberry Pi, Arduino, embedded boards | 🚧 In Progress |
-| **Microphone** | Audio input devices | USB mics, headset mics, XLR interfaces | 📋 Planned |
-| **Speaker** | Audio output devices | Speakers, headphones, monitors | 📋 Planned |
-| **Storage** | Removable storage media | USB drives, SD cards, optical drives | 📋 Planned |
-| **Keyboard** | Keyboard input devices | USB, Bluetooth, virtual keyboards | 📋 Planned |
-| **Mouse** | Pointing devices | Mice, trackpads, trackballs | 📋 Planned |
-| **Touchscreen** | Touch input surfaces | Capacitive, resistive displays | 📋 Planned |
-| **Stylus** | Pen and stylus input | Graphics tablets, digitizers | 📋 Planned |
-| **Gamepad** | Game controllers | Gamepads, joysticks, racing wheels | 📋 Planned |
-| **Serial** | Serial communication | COM ports, USB-Serial adapters | 📋 Planned |
-| **Bluetooth** | Bluetooth devices | BLE peripherals, classic Bluetooth | 📋 Planned |
-| **Barcode** | Barcode scanners | Handheld, embedded, 2D scanners | 📋 Planned |
-| **RFID** | RFID/NFC readers | Proximity, smart card readers | 📋 Planned |
-| **Biometric** | Biometric input devices | Fingerprint, face recognition | 📋 Planned |
-| **Custom** | User-defined devices | Plugin-based custom hardware | ✅ Available |
+| Category | Examples | Status |
+|----------|----------|--------|
+| **Printer** | Inkjet, laser, label printers; local and network queues | ✅ Available — CUPS (Linux, macOS), Windows spooler; GutenPrint as an alternative renderer |
+| **Scanner** | Flatbed, ADF, network scanners | 🚧 Partial — SANE (Linux) and eSCL network scanners (all platforms); no USB scanners on macOS or Windows yet |
+| **Camera** | Webcams | 🚧 Partial — V4L2 webcams on Linux; no camera backend on macOS or Windows; DSLRs and network cameras (RTSP/ONVIF) not yet |
+| **Custom** | Anything an application reaches through its own code | ✅ Available — `RegisterDevice()` / `RegisterEnumerator()` |
+| **Microphone**, **Speaker** | Audio input and output | ❓ Undecided — `UltraCanvasAudioDevices` already lists them; whether this module wraps it is an open decision in [Gaps.md](Gaps.md) |
+| **Storage** | USB drives, SD cards | 📋 Planned |
+| **NetworkAdapter**, **Serial**, **Bluetooth** | | 📋 Planned |
+| **GPIO** | Raspberry Pi and embedded boards | 📋 Planned |
+| **Barcode**, **Biometric** | Barcode readers, fingerprint readers | 📋 Planned |
+
+✅ is used as [Gaps.md](Gaps.md) uses it: in the tree, compiled and covered
+by a test. A planned category exists as an `IODeviceCategory` value and
+nothing else.
 
 ---
 
-## Supported Protocols by Device Category
+## Backends by Platform
 
-| Device Category | Linux | Windows | macOS | Network |
-|-----------------|-------|---------|-------|---------|
-| **Scanner** | SANE | WIA, TWAIN | ICA | eSCL (AirPrint/Mopria) |
-| **Camera (Webcam)** | V4L2 | MediaFoundation | AVFoundation | — |
-| **Camera (DSLR)** | libgphoto2 | WIA | ImageCapture | — |
-| **Network Camera** | RTSP, ONVIF | RTSP, ONVIF | RTSP, ONVIF | RTSP, ONVIF, mDNS, UPnP |
-| **Printer** | CUPS, GutenPrint | Windows Print API, GutenPrint | CUPS, GutenPrint | IPP, SNMP, Bonjour |
-| **Microphone** | ALSA, PulseAudio | WASAPI | CoreAudio | — |
-| **Speaker** | ALSA, PulseAudio | WASAPI | CoreAudio | — |
-| **Storage** | udev | Windows Storage API | DiskArbitration | — |
-| **Network Adapter** | NetworkManager | Windows Network API | SystemConfiguration | — |
-| **GPIO** | libgpiod, sysfs | — | — | — |
-| **Serial** | termios | Win32 Serial API | IOKit Serial | — |
-| **Bluetooth** | BlueZ | Windows Bluetooth API | CoreBluetooth | — |
+| Category | Linux | Windows | macOS | Network |
+|----------|-------|---------|-------|---------|
+| **Printer** | ✅ CUPS | ✅ Windows spooler (GDI rendering) | 🚧 CUPS (no duplex; untested on hardware) | — (IPP discovery planned) |
+| **Printer renderer** | ✅ GutenPrint | 🚧 GutenPrint (works; its tools are not shipped) | ✅ GutenPrint | — |
+| **Scanner** | ✅ SANE | 📋 WIA, TWAIN | 📋 ICA | ✅ eSCL (all platforms) |
+| **Camera (webcam)** | ✅ V4L2 | 📋 Media Foundation | 📋 AVFoundation | — |
+| **Camera (DSLR)** | 📋 libgphoto2 | 📋 WIA | 📋 ImageCapture | — |
+| **Camera (network)** | — | — | — | 📋 RTSP, ONVIF |
+| **Hot-plug watching** | ✅ udev (needs libudev) | 📋 | 📋 | — |
 
-*...and easily extensible for proprietary protocols and custom hardware*
+CUPS, SANE and libudev are optional at configure time: a build that did not
+find one has no backend for it. [Docs/Dependencies.md](../../Dependencies.md)
+lists the packages.
 
 ---
 
 ## Why IODeviceManager?
 
 ### For Developers
-- **Reduce Development Time** - Stop integrating dozens of vendor SDKs and platform APIs
-- **Single Source of Truth** - One module handles all hardware operations consistently
-- **Automatic Platform Routing** - Linux, Windows, macOS handled transparently
-- **Production-Grade Reliability** - Thread-safe, RAII-managed, with comprehensive error handling
+- **One lifecycle for every device** — `Connect()` / `Disconnect()`, a state
+  machine and a last-error slot owned by the base class, so no backend
+  reimplements them slightly differently.
+- **Results, not exceptions** — every blocking call returns an
+  `IODeviceResult` with a typed code, a message and the backend's own status
+  code, the same shape as `UltraNetResult` and `UltraDbResult`.
+- **Sessions survive a rescan** — re-enumerating keeps the existing object for
+  a device that is still present, so an `IODevicePtr` held by the application
+  never goes stale.
 
 ### For Applications
-- **Hardware Independence** - Same code works with any compatible device
-- **Future-Proof Architecture** - Plugin system adapts to new protocols and standards
-- **Enterprise Integration** - Network discovery, capability queries, hot-plug support
-- **Better Performance** - Optimized native protocols and efficient resource management
-
-### For Users
-- **Plug-and-Play Experience** - Devices detected and ready to use without configuration
-- **Universal Compatibility** - One application supports every scanner, camera, or printer they own
-- **Reliable Operation** - Robust error handling and automatic recovery
-- **Modern Features** - Network device support, driverless scanning, ONVIF cameras out of the box
-
----
-
-## Perfect For
-
-✅ **Document Management Systems** - Scan-to-file, OCR pipelines, digital archiving
-✅ **Imaging Applications** - Photo capture, multi-camera systems, video surveillance
-✅ **Print Services** - Local and network printing, supply monitoring, fleet management
-✅ **Industrial Software** - Embedded device control, GPIO automation, SCADA systems
-✅ **Operating System Services** - Device managers, hardware control panels, system monitors
-✅ **Enterprise Software** - Multi-platform business applications with diverse hardware needs
+- **Backend independence** — the same code prints through CUPS on Linux and
+  the spooler on Windows, and scans through SANE or eSCL.
+- **Room to grow** — a new backend is one enumerator; applications that
+  already enumerate a category see its devices without changing.
 
 ---
 
 ## Architecture Highlights
 
-- **Cross-Platform Abstraction** - Unified API in `/include/`, platform-specific implementations in `/OS/[Platform]/`
-- **Extensible Base Class** - `IODevice` base with category-specific derived classes (`ScannerDevice`, `CameraDevice`, `PrinterDevice`)
-- **Transparent Protocol Selection** - Right driver chosen automatically per platform
-- **Singleton Manager** - Single `IODeviceManager` instance manages all device categories
-- **Plugin-Based Drivers** - Add new protocols without touching core code
+- **Public headers** in `UltraCanvas/include/IODeviceManager/`,
+  platform-neutral code in `UltraCanvas/core/IODeviceManager/`, platform
+  backends in `UltraCanvas/OS/<Platform>/`.
+- **`IODevice` base** with category classes (`ScannerDevice`, `CameraDevice`,
+  `PrinterDevice`); backends implement protected `Do…` hooks.
+- **Enumerators, not per-category methods** — several backends can serve one
+  category on one platform without colliding at link time.
+- **Singleton manager** — `IODeviceManager::GetInstance()` holds the registry.
+- **Explicit backend registration** from `Initialize()`, not static
+  initialisers, so a static build does not silently lose its backends.
+
+See [Architecture.md](Architecture.md) for the reasoning behind each.
 
 ---
 
 ## Get Started
 
-IODeviceManager integrates seamlessly into any C++20 application:
-
 ```cpp
-// Initialize once
+#include "IODeviceManager/UltraCanvasIODeviceManager.h"
+using namespace UltraCanvas;
+
 auto& manager = IODeviceManager::GetInstance();
 manager.Initialize();
 
-// Discover devices
-manager.EnumerateDevices(IODeviceCategory::Scanner);
-
-// Use any compatible device
-auto device = manager.GetDevice(IODeviceCategory::Scanner, 0);
-if (device && device->Connect()) {
-    // Operate device through unified API
-    device->Disconnect();
+// What can this build find?
+for (const std::string& backend : manager.GetRegisteredBackends(IODeviceCategory::Scanner)) {
+    std::printf("scanner backend: %s\n", backend.c_str());
 }
 
-// Clean shutdown
+// Discover, then use a device through the generic interface.
+manager.EnumerateDevices(IODeviceCategory::Scanner);
+if (IODevicePtr device = manager.GetDevice(IODeviceCategory::Scanner, 0)) {
+    if (IODeviceResult result = device->Connect()) {
+        // ... cast to ScannerDevice for scanning, as above ...
+        device->Disconnect();
+    } else {
+        std::printf("%s\n", result.message.c_str());
+    }
+}
+
 manager.Shutdown();
 ```
 
@@ -63190,14 +63616,6 @@ changes through `StartMonitoring()` and has a headless `--list` mode. See
 
 ---
 
-## The Bottom Line
-
-**Stop managing hardware. Start building features.**
-
-IODeviceManager handles the complexity of device communication so you can focus on what makes your application unique. With comprehensive protocol support, automatic platform routing, and a simple unified API, IODeviceManager is the universal hardware management solution for modern C++ applications.
-
-**Universal. Unified. Cross-Platform.**
-
 *IODeviceManager - Part of the UltraCanvas Framework*
 
 ==============================================================================
@@ -63206,7 +63624,7 @@ FILE: Docs/Modules/IODeviceManager/intro.md
 
 # IODeviceManager
 
-The unified hardware abstraction layer for all input and output devices. Discover, connect, configure, and control scanners, cameras, printers, microphones, speakers, storage, serial ports, and GPIO across every platform through one consistent API. Under the hood it speaks SANE, TWAIN, WIA, ONVIF, V4L2, and libgpiod, so the same code reaches the same hardware on Windows, Linux, and macOS. Async callbacks report progress, completion, and errors.
+One API for the devices an application operates: discover, connect, configure and use scanners, cameras and printers, each behind the same `IODevice` lifecycle and error reporting. Printers work on Linux, macOS and Windows through CUPS and the Windows spooler, with GutenPrint as an alternative renderer; scanners work through SANE on Linux and eSCL network scanning on every platform; webcams work through V4L2 on Linux. Devices plugged in or out are followed on Linux when it is built with libudev. Microphones, speakers, storage, serial ports, GPIO and the remaining platform backends are planned — see Gaps.md for what is built.
 
 ==============================================================================
 FILE: Docs/Modules/NetworkMonitor/README.md
@@ -63653,7 +64071,11 @@ process token the user; a process the monitor may not open keeps its PID
 and is named from the Toolhelp process list (`CreateToolhelp32Snapshot`,
 read once per snapshot, no handle and no elevation needed) — an antivirus
 service reads as `AvastSvc`, not `pid 4720` — without a path or a user,
-and is counted in the notes. `allUsers` is whether
+and is counted in the notes. The kernel network ETW source names its
+events from the same list (`UltraCanvasWindowsProcessNames.h`, internal
+to `OS/MSWindows`; refreshed on a miss at most every two seconds), and the
+registry gives an event that carries only a PID the socket table's
+identity for it when the table has the socket. `allUsers` is whether
 the monitor's own token is elevated. Byte counters and events are the ETW
 work of a later increment.
 

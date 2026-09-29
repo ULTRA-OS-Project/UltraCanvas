@@ -1,3 +1,16 @@
+#### 2026-09-29 *1.54*
+- **Ctrl-C and SIGTERM exit in order.** The signal handler called
+  `RequestExit()` (which logs and runs a callback) and then `std::exit`,
+  running the static destructors under live threads. It now makes the one
+  call a handler may, `UltraCanvasApplicationBase::RequestExitFromSignal()`,
+  and the main loop turns it into the same shutdown as a closed window.
+
+#### 2026-09-29 *1.53*
+- **A Prolog `.pl` file is coloured as Prolog, a Perl one as Perl.** Both
+  languages use `.pl`, and which highlighting a file got was left to chance.
+  Texter now reads the first lines, as it already does for `.cls` and `.m`.
+  A `#` line, `use`, `my` or POD means Perl; a `%` comment or a `:-` rule
+  means Prolog. A file that gives no clue opens as Perl.
 #### 2026-09-28 *1.52*
 - **The version is in the window title** — `UltraTexter 1.52` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

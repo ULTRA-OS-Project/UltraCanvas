@@ -600,7 +600,6 @@ if(BUILD_DEMO_APP)
     # These files depend on libvips
     if(LIBVIPS_FOUND)
         list(APPEND DEMO_SOURCES
-            Apps/DemoApp/UltraCanvasBitmapExamples.cpp
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
             Apps/DemoApp/UltraCanvasPixelFXExamples.cpp
         )

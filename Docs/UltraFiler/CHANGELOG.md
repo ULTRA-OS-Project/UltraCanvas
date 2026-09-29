@@ -1,3 +1,31 @@
+#### 2026-09-29 *1.58.0*
+- **The switch for a shared extension names both of its languages.** Under
+  *Settings > Display > Thumbnails > Text*, `cls` now reads "VBA / LaTeX", `m`
+  "MATLAB / Objective-C" and `pl` "Perl / Prolog", instead of only one
+  of the two languages.
+- **`.pl` files are named Perl or Prolog by what they hold.** Both languages
+  use `.pl`, and which one a file was called was left to chance. The Type
+  column now reads the file's first lines: a `#` line, `use`, `my` or POD is
+  "Perl Text"; a `%` comment or a `:-` rule is "Prolog Text". A file that
+  gives no clue is Perl.
+#### 2026-09-28 *1.57.0*
+- **Programs inside archives run.** A double-click on a program inside a zip
+  (or any archive UltraFiler opens) used to do nothing: its path is virtual,
+  and Windows cannot start a program from inside a zip any more than
+  Explorer can. Now UltraFiler unpacks the archive into a temporary run
+  folder - on a RAM disc when one with room is mounted - and starts the
+  program there with the files that came with it beside it; *Extract and
+  Run* in the entry's context menu does the same. The folder is deleted once
+  the program and everything it started have ended (a setup that hands over
+  to a second stage counts as running until that is done too), and a folder
+  left behind because UltraFiler closed first is removed at the next start.
+  On Windows this covers `.exe`, `.com`, `.bat`, `.cmd` and `.msi`, a
+  program that needs administrator rights shows the UAC prompt, and a
+  downloaded archive's "from the internet" mark is carried over so
+  SmartScreen still checks the program; on Linux and macOS it covers
+  entries the archive marks executable, and AppImages. See the framework
+  changelog for the details.
+
 #### 2026-09-27 *1.56.1*
 - **No more "Illegal byte sequence" crash on Windows.** Opening a folder that
   holds a file or folder whose name has characters outside the Windows

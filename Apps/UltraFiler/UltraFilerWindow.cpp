@@ -761,6 +761,35 @@ namespace {
         return text;
     }
 
+    // Extract and Run's folders on a RAM disc. A dot name, so that browsing
+    // the disc on Linux and macOS does not show them.
+    std::string RamDiscRunRoot(const std::string& mountPath) {
+        return PathToUtf8(PathFromUtf8(mountPath) / ".UltraFiler-Run");
+    }
+
+    // Where a program unpacked by Extract and Run goes: a RAM disc when one
+    // is mounted with room for the whole archive and some to spare - the
+    // unpacking then never touches the disk, and nothing of it is left there
+    // - else the widget's default, the temporary folder. The Windows stand-in
+    // disc (a folder in %TEMP%) is not memory, and is passed over. An archive
+    // whose size is unknown goes to the temporary folder, which is not
+    // filled up by a surprise.
+    std::string ChooseArchiveRunRoot(uint64_t bytesNeeded) {
+        if (bytesNeeded == 0 || !UltraFilerRamDisks::Available()) return std::string();
+        const uint64_t wanted = bytesNeeded + bytesNeeded / 10 + (16ull << 20);
+        std::string best;
+        uintmax_t bestFree = 0;
+        for (const auto& disc : UltraFilerRamDisks::List()) {
+            if (!disc.trueRam) continue;
+            std::error_code ec;
+            const fs::space_info space = fs::space(PathFromUtf8(disc.mountPath), ec);
+            if (ec || space.available < wanted || space.available <= bestFree) continue;
+            bestFree = space.available;
+            best = RamDiscRunRoot(disc.mountPath);
+        }
+        return best;
+    }
+
 } // namespace
 
 // ===== INITIALIZATION =====
@@ -798,6 +827,20 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     window = CreateWindow(config);
     if (!window || !window->IsCreated()) return false;
+
+    // Programs started by Extract and Run in an earlier session whose
+    // folders could not be removed then (UltraFiler closed while they ran):
+    // gone now, unless they still run. Off the UI thread - it is a walk of
+    // folders that may be large - and on paths only, never on this window.
+    {
+        std::vector<std::string> runRoots{DefaultArchiveRunRoot()};
+        if (UltraFilerRamDisks::Available())
+            for (const auto& disc : UltraFilerRamDisks::List())
+                runRoots.push_back(RamDiscRunRoot(disc.mountPath));
+        std::thread([runRoots]() {
+            for (const std::string& root : runRoots) SweepArchiveRunFolders(root);
+        }).detach();
+    }
 
     window->layout.SetFlexColumn()
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -4413,7 +4456,9 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
             // Not previewable: run it / open it, Explorer-style. The widget
             // launches executables directly (scripts through its Run-or-Open
             // dialog) and everything else with the OS default application;
-            // archive entries (virtual paths) are ignored there.
+            // a program inside an archive is unpacked and run from there
+            // (Extract and Run), and any other archive entry - a virtual
+            // path no application can open - is ignored.
             if (tab->filer) tab->filer->OpenEntryWithOS(entry);
             return;
         }
@@ -4476,6 +4521,9 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     };
     tab->filer->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
+    };
+    tab->filer->chooseArchiveRunRoot = [](uint64_t bytesNeeded) {
+        return ChooseArchiveRunRoot(bytesNeeded);
     };
     tab->filer->onOpenPath = [this](const FilerEntry& entry) {
         const std::string parent = PathToUtf8(PathFromUtf8(entry.path).parent_path());

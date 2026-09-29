@@ -136,7 +136,7 @@ namespace {
             element->SetEventCallback([tile = tile.get(), statusLabel, summary, path](const UCEvent& event) {
                 switch (event.type) {
                     case UCEventType::MouseUp:
-                        ShowFullSizeImageViewer(path);
+                        ShowInMediaViewer(path);
                         return true;
                     case UCEventType::MouseEnter:
                         tile->SetBordersColor(Color(0, 122, 204, 255));

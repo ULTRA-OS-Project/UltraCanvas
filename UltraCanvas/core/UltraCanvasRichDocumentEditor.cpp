@@ -7,7 +7,7 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocumentEditor.h"
@@ -1208,6 +1208,7 @@ void UCRichDocumentEditor::SplitBlockInternal() {
     if (!IsTextBlockType(block.type)) {
         RichDocBlock paragraph;
         paragraph.type = RichBlockType::Paragraph;
+        paragraph.quoteLevel = block.quoteLevel;   // typing after a quoted picture stays in the quote
         doc->blocks.insert(doc->blocks.begin() + caret.blockIndex + 1, paragraph);
         caret = RichDocPosition(caret.blockIndex + 1, 0);
         anchor = caret;
@@ -1229,12 +1230,23 @@ void UCRichDocumentEditor::SplitBlockInternal() {
         return;
     }
 
+    // Enter on an empty quoted line steps out of the quote, one level at a
+    // time: how a reply interleaves its answers with the quoted text.
+    if (block.quoteLevel > 0 && block.type != RichBlockType::ListItem
+        && RunsText(block.runs).empty()) {
+        block.quoteLevel--;
+        caret.byteOffset = 0;
+        anchor = caret;
+        return;
+    }
+
     int textLength = static_cast<int>(RunsText(block.runs).size());
     std::vector<RichTextRun> tailRuns = SliceRuns(block.runs, caret.byteOffset, textLength);
     EraseRunRange(block.runs, caret.byteOffset, textLength);
 
     RichDocBlock next;
     next.align = block.align;
+    next.quoteLevel = block.quoteLevel;   // also after a heading, whose geometry is not copied
     switch (block.type) {
         case RichBlockType::ListItem:
             next.type = RichBlockType::ListItem;
@@ -1306,6 +1318,16 @@ bool UCRichDocumentEditor::DeleteBackward() {
             return true;
         }
         return false;
+    }
+    // At the start of a quoted block Backspace takes it out of its innermost
+    // quote first; joining it onto the block above comes after.
+    if (doc->blocks[caret.blockIndex].quoteLevel > 0) {
+        {
+            EditScope scope(*this, caret.blockIndex, 1);
+            doc->blocks[caret.blockIndex].quoteLevel--;
+        }
+        NotifyChanged();
+        return true;
     }
     if (caret.blockIndex == 0) return false;
 

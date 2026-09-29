@@ -1,3 +1,10 @@
+#### 2026-09-29 *0.56*
+- **Ctrl-C and SIGTERM exit in order.** The signal handler called
+  `RequestExit()` (which logs and runs a callback) and then `std::exit`,
+  running the static destructors under live threads. It now makes the one
+  call a handler may, `UltraCanvasApplicationBase::RequestExitFromSignal()`,
+  and the main loop turns it into the same shutdown as a closed window.
+
 #### 2026-09-20 *0.55*
 - **One version number, one place.** This changelog's first line is now the
   only place UltraCleaner's version lives: the build reads it
