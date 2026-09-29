@@ -1085,6 +1085,39 @@ int main() {
         TEST("...addressed by its place in the text", edit->GetSelectedImage() == RichDocPosition(0, 0));
     }
 
+    // ===== BLOCKS RUNNING OVER PAGES =====
+    std::cerr << "\n--- Page splitting ---" << std::endl;
+    {
+        // One paragraph longer than a page: it continues on the next page
+        // instead of running past the first one's bottom margin.
+        std::string words;
+        for (int i = 0; i < 700; i++) words += "word" + std::to_string(i) + " ";
+        edit->SetMarkdown(words + "\n");
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("A paragraph taller than a page runs onto the next: " + std::to_string(edit->GetPageCount()) + " pages",
+             edit->GetPageCount() >= 2);
+        // The caret at its end is on the last page: scrolling to it goes down.
+        editor.SetCaret(editor.DocumentEnd());
+        edit->ScrollToCaret();
+        TEST("The caret at its end is scrolled to on a later page", edit->GetScrollOffset() > 600.0f);
+        // Typing there lands in the same paragraph.
+        edit->InsertText("END");
+        window->UpdateAndRender();
+        TEST("...and typing there continues it", editor.GetBlockCount() == 1
+             && editor.BlockText(0).find("END") != std::string::npos);
+
+        // A long table with a header row continues on the next page too.
+        std::string table = "| Item | Qty |\n|---|---|\n";
+        for (int r = 0; r < 80; r++) table += "| row " + std::to_string(r) + " | " + std::to_string(r) + " |\n";
+        edit->SetMarkdown(table);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("A table longer than a page runs over pages", edit->GetPageCount() >= 2);
+        edit->SetPageView(false);
+    }
+
     // ===== PAGE FIELDS IN THE BODY =====
     std::cerr << "\n--- Page fields ---" << std::endl;
     {

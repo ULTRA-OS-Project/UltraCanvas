@@ -404,6 +404,21 @@ private:
         // beside this block (pixels); set by the placement pass.
         float intrudeLeft = 0.0f;
         float intrudeRight = 0.0f;
+        // Page view: the pieces of a block that runs over a page end, one per
+        // page - layout y range [from, to) drawn at content y `top`, below a
+        // repeat of the table's header rows `headerHeight` tall. Empty = the
+        // block is whole, at bounds.y.
+        struct PageSlice {
+            float from = 0.0f;
+            float to = 0.0f;
+            float top = 0.0f;
+            float headerHeight = 0.0f;
+        };
+        std::vector<PageSlice> slices;
+        // Tables: layout y of each row boundary a page may break at (no cell
+        // spans across it), and the height of the leading header rows.
+        std::vector<float> rowBreaks;
+        float headerRowsHeight = 0.0f;
         bool valid = false;
     };
 
@@ -501,6 +516,14 @@ private:
     float PlaceBlocksOnPages(IRenderContext* ctx);
     float PlaceBlocksInColumn(IRenderContext* ctx);
     void RenderPages(IRenderContext* ctx);
+    // Page view slicing. Where a block's layout y is drawn, and back; the
+    // bottom of its last piece.
+    float BlockToContentY(const BlockLayout& bl, float layoutY) const;
+    float ContentToBlockY(const BlockLayout& bl, float contentY) const;
+    float BlockVisualBottom(const BlockLayout& bl) const;
+    // Layout y's at which block `index` may continue on the next page, with
+    // widow and orphan control (two lines at least either side), ascending.
+    std::vector<float> PageBreakCandidates(int index) const;
     // Page view: which page a content y is on (0 outside page view).
     int PageIndexAt(float contentY) const;
     bool UpdateBodyPageFields();
@@ -512,7 +535,7 @@ private:
                      const BlockLayout& bl, float originX, float originY, int blockIndex);
     void DrawInlineImages(IRenderContext* ctx, const BlockLayout& bl,
                           float originX, float originY) const;
-    void DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl);
+    void DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl, float originY);
     void DrawScrollbar(IRenderContext* ctx);
     void UpdateCaret();
 

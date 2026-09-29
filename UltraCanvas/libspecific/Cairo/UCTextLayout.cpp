@@ -928,6 +928,26 @@ namespace UltraCanvas {
         return ranges;
     }
 
+    std::vector<LayoutLineExtent> UCTextLayout::GetLineExtents() const {
+        std::vector<LayoutLineExtent> extents;
+        if (!layout) return extents;
+        PangoLayoutIter* iter = pango_layout_get_iter(layout);
+        if (!iter) return extents;
+        do {
+            PangoLayoutLine* line = pango_layout_iter_get_line_readonly(iter);
+            int y0 = 0, y1 = 0;
+            pango_layout_iter_get_line_yrange(iter, &y0, &y1);
+            LayoutLineExtent extent;
+            extent.startByte = line ? line->start_index : 0;
+            extent.lengthBytes = line ? line->length : 0;
+            extent.top = static_cast<float>(y0) / PANGO_SCALE;
+            extent.height = static_cast<float>(y1 - y0) / PANGO_SCALE;
+            extents.push_back(extent);
+        } while (pango_layout_iter_next_line(iter));
+        pango_layout_iter_free(iter);
+        return extents;
+    }
+
     std::string FontStyle::ToFontDesc() {
         std::string slant = "Normal";
         std::string weight = "Regular";

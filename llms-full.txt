@@ -44204,10 +44204,19 @@ Page view draws the document's pages (`UCRichDocument::page`: size,
 margins, header and footer distances - A4 with 2 cm margins when the
 document states none) on a desk (`style.deskColor`), centred, `style.pageGap`
 apart. The text column is the page's, between its side margins, so a table
-sized for the page's column fills it. Blocks go onto pages in order: one
-that does not fit in what is left of a page moves whole to the next, and a
-page break starts one. The space between two blocks is dropped at the top
-of a page.
+sized for the page's column fills it. Blocks go onto pages in order, and a
+page break starts a new one. A paragraph that does not fit in what is left of
+a page continues on the next, broken between lines with widow and orphan
+control (at least two lines stay together at the foot of one page and the
+top of the next; a paragraph of three lines or fewer moves whole). A table
+continues between rows - never through a cell spanning rows - and its
+leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
+ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at
+the top of each page it continues on. A heading is kept with the start of the
+paragraph after it. A block taller than a whole page is still broken, between
+any two lines. The space between two blocks is dropped at the top of a page.
+Caret, clicks, selection, spell marks and pictures all follow a block's pieces
+across the page gap.
 
 Each page carries its header and footer (`UCRichDocument::FurnitureForPage`:
 `firstPageFurniture` on page one when `firstPageDiffers`, `pageFurniture`
@@ -44234,9 +44243,6 @@ header and footer are drawn above and below the body.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **Page view moves whole blocks.** A paragraph or table is not split across
-  pages (no widow/orphan control, no repeated table header rows), and a block
-  taller than a page runs past its bottom margin.
 - **Headers and footers are shown, not edited.** The caret never enters
   them.
 - **No zoom and no horizontal scrolling.** A page wider than the element is

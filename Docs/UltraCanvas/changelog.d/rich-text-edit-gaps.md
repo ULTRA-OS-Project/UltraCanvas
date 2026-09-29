@@ -77,3 +77,11 @@
   output floats them. The element places a floating picture at its
   paragraph's top and wraps the text round it a paragraph at a time: beside a
   square one, above and below a top-and-bottom one, under or over the others.
+- **Page view breaks paragraphs and tables across pages.** A paragraph that
+  does not fit continues on the next page, broken between lines with widow
+  and orphan control; a table continues between rows (never through a
+  row-spanning cell), repeating its header rows on every page; a heading is
+  kept with what follows it. They used to move to the next page whole, and a
+  block taller than a page ran past the bottom margin. Caret, hit testing,
+  selection, scrolling, spell marks and pictures follow the pieces.
+- **`ITextLayout::GetLineExtents()`**: every line's bytes and vertical extent.

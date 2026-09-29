@@ -772,6 +772,15 @@ namespace UltraCanvas {
         int lengthBytes; // length in bytes
     };
 
+    // A laid-out line's bytes and its vertical extent, in layout pixels (the
+    // same coordinates IndexToPos uses), line spacing included.
+    struct LayoutLineExtent {
+        int startByte = 0;
+        int lengthBytes = 0;
+        float top = 0.0f;
+        float height = 0.0f;
+    };
+
     // ===== UCTextAttribute =====
 
     class ITextAttribute {
@@ -982,6 +991,8 @@ namespace UltraCanvas {
 
         // ===== LINE ACCESS =====
         virtual std::vector<LayoutLineRange> GetLineByteRanges() const = 0;
+        // Every line's bytes and vertical extent, top to bottom.
+        virtual std::vector<LayoutLineExtent> GetLineExtents() const = 0;
 
         // ===== ITERATOR =====
 //        UCTextLayoutIter GetIter() const = 0;
