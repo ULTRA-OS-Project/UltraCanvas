@@ -1,7 +1,7 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
-// Version: 1.3.1
-// Last Modified: 2026-09-26
+// Version: 1.4.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -227,9 +227,20 @@ namespace UltraCanvas {
         // around: the height at which the ring gets the whole inner width.
         float wheelAreaH = 0.0f;
         if (showColorWheel) {
-            wheelAreaH = (wheelStyle == ColorPickerWheelStyle::Ring)
-                         ? innerW
-                         : std::max(40.0f, innerW * 0.75f) + gap + Scaled(style.hueBarHeight);
+            switch (wheelStyle) {
+                case ColorPickerWheelStyle::Ring:
+                    wheelAreaH = innerW;
+                    break;
+                case ColorPickerWheelStyle::Bar:
+                    wheelAreaH = std::max(40.0f, innerW * 0.75f) + gap + Scaled(style.hueBarHeight);
+                    break;
+                case ColorPickerWheelStyle::HueLightnessField:
+                    wheelAreaH = std::max(40.0f, innerW * 0.75f);
+                    break;
+                case ColorPickerWheelStyle::HueLightnessSliders:
+                    wheelAreaH = 2.0f * Scaled(style.hueBarHeight) + gap;
+                    break;
+            }
         }
         return pad + wheelAreaH + gap + ControlsHeight() + pad;
     }
@@ -266,7 +277,27 @@ namespace UltraCanvas {
                 float sq = ringInner * 1.41421356f * 0.86f;   // inscribed square (with margin)
                 svRect = Rect2Df(wheelCenter.x - sq * 0.5f, wheelCenter.y - sq * 0.5f, sq, sq);
                 hueBarRect = Rect2Df();
+                hlFieldRect = lightBarRect = Rect2Df();
                 cursorY = wheelRect.y + wheelSize + pad;
+            } else if (wheelStyle == ColorPickerWheelStyle::HueLightnessField) {
+                // The field takes the whole area above the controls.
+                hlFieldRect = Rect2Df(x0, pad, innerW, std::max(40.0f, wheelAreaH));
+                svRect = hueBarRect = lightBarRect = Rect2Df();
+                wheelRect = Rect2Df();
+                wheelCenter = Point2Df();
+                ringOuter = ringInner = 0;
+                cursorY = hlFieldRect.y + hlFieldRect.height + pad;
+            } else if (wheelStyle == ColorPickerWheelStyle::HueLightnessSliders) {
+                // Two bars at the top; they need no more height than their own,
+                // so the controls follow straight after them.
+                float barH = Scaled(style.hueBarHeight);
+                hueBarRect = Rect2Df(x0, pad, innerW, barH);
+                lightBarRect = Rect2Df(x0, hueBarRect.y + barH + gap, innerW, barH);
+                svRect = hlFieldRect = Rect2Df();
+                wheelRect = Rect2Df();
+                wheelCenter = Point2Df();
+                ringOuter = ringInner = 0;
+                cursorY = lightBarRect.y + barH + pad;
             } else {
                 // Bar style: the SV rectangle grows to the full inner width
                 // (with the padding as margin) and the hue range sits under it
@@ -275,6 +306,7 @@ namespace UltraCanvas {
                 float svH = std::max(40.0f, wheelAreaH - hueH - gap);
                 svRect = Rect2Df(x0, pad, innerW, svH);
                 hueBarRect = Rect2Df(x0, svRect.y + svRect.height + gap, innerW, hueH);
+                hlFieldRect = lightBarRect = Rect2Df();
                 wheelRect = Rect2Df();
                 wheelCenter = Point2Df();
                 ringOuter = ringInner = 0;
@@ -284,6 +316,7 @@ namespace UltraCanvas {
             wheelRect = Rect2Df();
             svRect = Rect2Df();
             hueBarRect = Rect2Df();
+            hlFieldRect = lightBarRect = Rect2Df();
             cursorY = pad;
         }
 
@@ -587,14 +620,13 @@ namespace UltraCanvas {
         ctx->DrawCircle(mp, mr + 1.5f);
     }
 
-    void UltraCanvasColorPicker::RenderHueBar(IRenderContext* ctx) {
-        // Full hue range painted inside a thick bar; the control point travels
+    void UltraCanvasColorPicker::RenderGradientBar(IRenderContext* ctx, const Rect2Df& rect,
+                                                   const std::vector<GradientStop>& stops,
+                                                   float t, const Color& handleColor) {
+        // A gradient painted inside a thick bar; the control point travels
         // inside the bar (Slider-demo palette style).
-        Rect2Dd bar(hueBarRect.x, hueBarRect.y, hueBarRect.width, hueBarRect.height);
+        Rect2Dd bar(rect.x, rect.y, rect.width, rect.height);
         double radius = bar.height * 0.5;
-        std::vector<GradientStop> stops;
-        for (int i = 0; i <= 6; ++i)
-            stops.emplace_back(i / 6.0, HSV(i * 60.0f, 1.0f, 1.0f));
         auto grad = ctx->CreateLinearGradientPattern(bar.x, bar.y, bar.x + bar.width, bar.y, stops);
         ctx->SetFillPaint(grad);
         ctx->FillRoundedRectangle(bar, radius);
@@ -604,14 +636,80 @@ namespace UltraCanvas {
 
         // Handle inside the bar
         float hr = std::max(3.0f, (float)radius - Scaled(2.0f));
-        float t = std::clamp(hue / 360.0f, 0.0f, 1.0f);
-        float cx = hueBarRect.x + radius + t * (hueBarRect.width - 2.0f * radius);
-        float cy = hueBarRect.y + hueBarRect.height * 0.5f;
-        ctx->SetFillPaint(HSV(hue, 1.0f, 1.0f));
+        t = std::clamp(t, 0.0f, 1.0f);
+        float cx = rect.x + radius + t * (rect.width - 2.0f * radius);
+        float cy = rect.y + rect.height * 0.5f;
+        ctx->SetFillPaint(handleColor);
         ctx->FillCircle(Point2Dd(cx, cy), hr);
         ctx->SetStrokePaint(style.markerColor);
         ctx->SetStrokeWidth(2.0);
         ctx->DrawCircle(Point2Dd(cx, cy), hr);
+        ctx->SetStrokePaint(style.markerOutline);
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawCircle(Point2Dd(cx, cy), hr + 1.5f);
+    }
+
+    float UltraCanvasColorPicker::GradientBarPosition(const Rect2Df& rect, const Point2Df& p) const {
+        // Match the handle travel used in RenderGradientBar (end caps excluded).
+        float radius = rect.height * 0.5f;
+        float span = std::max(1.0f, rect.width - 2.0f * radius);
+        return std::clamp((p.x - rect.x - radius) / span, 0.0f, 1.0f);
+    }
+
+    void UltraCanvasColorPicker::RenderHueBar(IRenderContext* ctx) {
+        std::vector<GradientStop> stops;
+        for (int i = 0; i <= 6; ++i)
+            stops.emplace_back(i / 6.0, HSV(i * 60.0f, 1.0f, 1.0f));
+        RenderGradientBar(ctx, hueBarRect, stops, hue / 360.0f, HSV(hue, 1.0f, 1.0f));
+    }
+
+    void UltraCanvasColorPicker::RenderLightnessBar(IRenderContext* ctx) {
+        // Intensity: white (left) through the pure hue (middle) to black (right).
+        std::vector<GradientStop> stops = {
+            GradientStop(0.0, Colors::White),
+            GradientStop(0.5, HSV(hue, 1.0f, 1.0f)),
+            GradientStop(1.0, Colors::Black)
+        };
+        Color handle = GetColor();
+        handle.a = 255;
+        RenderGradientBar(ctx, lightBarRect, stops, 1.0f - CurrentLightness(), handle);
+    }
+
+    void UltraCanvasColorPicker::RenderHueLightnessField(IRenderContext* ctx) {
+        Rect2Dd f(hlFieldRect.x, hlFieldRect.y, hlFieldRect.width, hlFieldRect.height);
+
+        // Base: the full hue range, top to bottom, at full saturation.
+        std::vector<GradientStop> hueStops;
+        for (int i = 0; i <= 6; ++i)
+            hueStops.emplace_back(i / 6.0, HSV(i * 60.0f, 1.0f, 1.0f));
+        ctx->SetFillPaint(ctx->CreateLinearGradientPattern(f.x, f.y, f.x, f.y + f.height, hueStops));
+        ctx->FillRectangle(f);
+
+        // Lightness (HSL, S = 1): the left half mixes the pure colour with
+        // black (L 0 -> 0.5), the right half with white (L 0.5 -> 1).
+        double halfW = f.width * 0.5;
+        ctx->SetFillPaint(ctx->CreateLinearGradientPattern(
+                f.x, f.y, f.x + halfW, f.y,
+                {GradientStop(0.0, Color(0, 0, 0, 255)), GradientStop(1.0, Color(0, 0, 0, 0))}));
+        ctx->FillRectangle(Rect2Dd(f.x, f.y, halfW, f.height));
+        ctx->SetFillPaint(ctx->CreateLinearGradientPattern(
+                f.x + halfW, f.y, f.x + f.width, f.y,
+                {GradientStop(0.0, Color(255, 255, 255, 0)), GradientStop(1.0, Color(255, 255, 255, 255))}));
+        ctx->FillRectangle(Rect2Dd(f.x + halfW, f.y, f.width - halfW, f.height));
+
+        ctx->SetStrokePaint(style.borderColor);
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawRectangle(f);
+
+        // Selection marker
+        float mx = hlFieldRect.x + CurrentLightness() * hlFieldRect.width;
+        float my = hlFieldRect.y + (hue / 360.0f) * hlFieldRect.height;
+        ctx->SetStrokePaint(style.markerColor);
+        ctx->SetStrokeWidth(2.0);
+        ctx->DrawCircle(Point2Dd(mx, my), Scaled(6.0f));
+        ctx->SetStrokePaint(style.markerOutline);
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawCircle(Point2Dd(mx, my), Scaled(7.5f));
     }
 
     void UltraCanvasColorPicker::RenderSVSquare(IRenderContext* ctx) {
@@ -1024,12 +1122,23 @@ namespace UltraCanvas {
         ctx->FillRectangle(Rect2Dd(0, 0, GetWidth(), GetHeight()));
 
         if (showColorWheel) {
-            if (wheelStyle == ColorPickerWheelStyle::Ring) {
-                RenderHueRing(ctx);
-            } else {
-                RenderHueBar(ctx);
+            switch (wheelStyle) {
+                case ColorPickerWheelStyle::Ring:
+                    RenderHueRing(ctx);
+                    RenderSVSquare(ctx);
+                    break;
+                case ColorPickerWheelStyle::Bar:
+                    RenderHueBar(ctx);
+                    RenderSVSquare(ctx);
+                    break;
+                case ColorPickerWheelStyle::HueLightnessField:
+                    RenderHueLightnessField(ctx);
+                    break;
+                case ColorPickerWheelStyle::HueLightnessSliders:
+                    RenderHueBar(ctx);
+                    RenderLightnessBar(ctx);
+                    break;
             }
-            RenderSVSquare(ctx);
             RenderSwatches(ctx);
             RenderScreenPickButton(ctx);
         }
@@ -1132,7 +1241,22 @@ namespace UltraCanvas {
                 return true;
             }
 
-            if (wheelStyle == ColorPickerWheelStyle::Ring) {
+            if (wheelStyle == ColorPickerWheelStyle::HueLightnessField) {
+                if (hlFieldRect.Contains(p)) {
+                    if (adjust) BeginBackgroundEdit();
+                    dragTarget = DragTarget::HLField;
+                    UpdateHLFromPoint(p);
+                    Changed(false);
+                    return true;
+                }
+            } else if (wheelStyle == ColorPickerWheelStyle::HueLightnessSliders &&
+                       lightBarRect.Contains(p)) {
+                if (adjust) BeginBackgroundEdit();
+                dragTarget = DragTarget::LightnessBar;
+                UpdateLightnessFromBar(p);
+                Changed(false);
+                return true;
+            } else if (wheelStyle == ColorPickerWheelStyle::Ring) {
                 float dx = p.x - wheelCenter.x;
                 float dy = p.y - wheelCenter.y;
                 float dist = std::sqrt(dx * dx + dy * dy);
@@ -1150,7 +1274,7 @@ namespace UltraCanvas {
                 Changed(false);
                 return true;
             }
-            if (svRect.Contains(p)) {
+            if (!IsHueLightnessStyle() && svRect.Contains(p)) {
                 if (adjust) BeginBackgroundEdit();
                 dragTarget = DragTarget::SVSquare;
                 UpdateSVFromPoint(p);
@@ -1370,6 +1494,8 @@ namespace UltraCanvas {
             case DragTarget::HueRing:  UpdateHueFromPoint(p); break;
             case DragTarget::HueBar:   UpdateHueFromBar(p); break;
             case DragTarget::SVSquare: UpdateSVFromPoint(p); break;
+            case DragTarget::HLField:  UpdateHLFromPoint(p); break;
+            case DragTarget::LightnessBar: UpdateLightnessFromBar(p); break;
             case DragTarget::Channel0:
             case DragTarget::Channel1:
             case DragTarget::Channel2: {
@@ -1402,11 +1528,36 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasColorPicker::UpdateHueFromBar(const Point2Df& p) {
-        // Match the handle travel used in RenderHueBar (end caps excluded).
-        float radius = hueBarRect.height * 0.5f;
-        float span = std::max(1.0f, hueBarRect.width - 2.0f * radius);
-        float t = std::clamp((p.x - hueBarRect.x - radius) / span, 0.0f, 1.0f);
-        hue = t * 360.0f;
+        float h = GradientBarPosition(hueBarRect, p) * 360.0f;
+        if (wheelStyle == ColorPickerWheelStyle::HueLightnessSliders) {
+            // No saturation control here: the colour slider always yields the
+            // saturated colour at the current intensity.
+            SetHueLightness(h, CurrentLightness());
+        } else {
+            hue = h;
+        }
+    }
+
+    void UltraCanvasColorPicker::UpdateLightnessFromBar(const Point2Df& p) {
+        // White is on the left, black on the right.
+        SetHueLightness(hue, 1.0f - GradientBarPosition(lightBarRect, p));
+    }
+
+    void UltraCanvasColorPicker::UpdateHLFromPoint(const Point2Df& p) {
+        float l = (p.x - hlFieldRect.x) / std::max(1.0f, hlFieldRect.width);
+        float h = (p.y - hlFieldRect.y) / std::max(1.0f, hlFieldRect.height) * 360.0f;
+        SetHueLightness(std::clamp(h, 0.0f, 360.0f), l);
+    }
+
+    void UltraCanvasColorPicker::SetHueLightness(float h, float l) {
+        // HSL (h, 1, l) -> HSV. The hue is kept even at black and white, so
+        // the markers stay on the chosen colour at the ends of the scale.
+        l = std::clamp(l, 0.0f, 1.0f);
+        float v = l + std::min(l, 1.0f - l);
+        hue = (h >= 360.0f) ? 359.999f : std::max(0.0f, h);
+        val = v;
+        sat = (v <= 1e-6f) ? 0.0f : 2.0f * (1.0f - l / v);
+        sat = std::clamp(sat, 0.0f, 1.0f);
     }
 
     void UltraCanvasColorPicker::UpdateSVFromPoint(const Point2Df& p) {

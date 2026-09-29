@@ -13918,8 +13918,8 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.2.0
-**Last Modified**: 2026-07-20
+**Version**: 1.4.0
+**Last Modified**: 2026-09-29
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -13928,6 +13928,17 @@ natively with the framework's `IRenderContext` primitives.
 - ✅ **Hue bar** — alternative `Bar` wheel style: the SV rectangle grows to the
   maximum available area (with margin) and the full hue range is shown as a
   thick bar underneath it, without the ring.
+- ✅ **Hue × lightness field** — `HueLightnessField` wheel style: one
+  rectangle with the hue running top (red) to bottom through the spectrum and
+  the lightness left (black) through the pure colour to right (white). A
+  single click or drag picks colour and intensity together.
+- ✅ **Colour + intensity sliders** — `HueLightnessSliders` wheel style: a
+  colour (hue) bar and an intensity bar running from white through the pure
+  colour to black. Compact: the bars take only their own height, so size the
+  widget with `PreferredHeightForWidth`.
+  Both hue × lightness styles pick at **full saturation** (HSL S = 1); the
+  hue is kept at black and white so the markers stay on the chosen colour,
+  and the channel sliders below still edit any colour.
 - ✅ **Saturation / Value area** — drag inside the square (Ring) or the
   maximised rectangle (Bar).
 - ✅ **Preview swatches** — foreground (current) vs. background (previous) colour,
@@ -13994,7 +14005,7 @@ namespace UltraCanvas {
     enum class ColorPickerModel        { HSV, HSL, RGB };
     enum class ColorPickerModeSelector { TabBar, Dropdown };  // mutually exclusive
     enum class ColorPickerSliderStyle  { Thin, Thick };
-    enum class ColorPickerWheelStyle   { Ring, Bar };
+    enum class ColorPickerWheelStyle   { Ring, Bar, HueLightnessField, HueLightnessSliders };
 
     class UltraCanvasColorPicker : public UltraCanvasUIElement {
     public:
@@ -14012,7 +14023,7 @@ namespace UltraCanvas {
         // Presentation choices
         void SetModeSelector(ColorPickerModeSelector s); // tab bar OR dropdown
         void SetSliderStyle(ColorPickerSliderStyle s);   // thin / thick bars
-        void SetWheelStyle(ColorPickerWheelStyle s);     // hue ring / hue bar
+        void SetWheelStyle(ColorPickerWheelStyle s);     // ring / bar / hue x lightness
         void SetShowValueSpinners(bool show);            // < > arrows in value box
         void SetSlidersCollapsible(bool collapsible, bool expanded = true);
         void SetSlidersExpanded(bool expanded);
@@ -14070,6 +14081,14 @@ picker->SetSliderStyle(UltraCanvas::ColorPickerSliderStyle::Thick);
 // Replace the hue ring with a maximised SV rectangle + hue bar underneath:
 picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::Bar);
 
+// Hue x lightness field (hue top -> bottom, black -> colour -> white):
+picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessField);
+
+// Colour slider + intensity slider (white -> colour -> black); the bars are
+// short, so size the widget to fit what is left:
+picker->SetWheelStyle(UltraCanvas::ColorPickerWheelStyle::HueLightnessSliders);
+picker->SetSize(290, picker->PreferredHeightForWidth(290));
+
 // < and > stepper arrows inside the numeric value fields:
 picker->SetShowValueSpinners(true);
 
@@ -14106,6 +14125,8 @@ Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 |--------|--------|
 | Drag on the hue ring / hue bar | Sets hue |
 | Drag inside the SV area | Sets saturation & value |
+| Drag inside the hue × lightness field | Sets hue (vertical) and lightness (horizontal) at full saturation |
+| Drag the intensity bar | Sets lightness: white (left) → pure colour → black (right) |
 | Hover a swatch | Floods the whole widget surface with that colour for a big-area preview |
 | Click background (previous) swatch | Reverts to the background colour |
 | Click the corner swap symbol | Swaps foreground and background colours |
@@ -56554,7 +56575,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 
 | You need | Element | Header |
 |---|---|---|
-| Colour | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
+| Colour (wheel, SV area, hue × lightness field or colour + intensity sliders) | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
