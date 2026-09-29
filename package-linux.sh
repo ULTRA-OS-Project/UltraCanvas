@@ -61,6 +61,10 @@ EXCLUDE_PATTERNS=(
     'libGL.so' 'libGLX' 'libGLdispatch' 'libEGL' 'libGLESv1' 'libGLESv2'
     'libOpenGL' 'libglapi' 'libgbm' 'libdrm'
     'libX11' 'libxcb' 'libX11-xcb' 'libwayland'
+    # libudev reads the running udev's database under /run/udev, so it has to
+    # be the host's own (systemd's, or eudev's on non-systemd distros); every
+    # desktop distro ships libudev.so.1.
+    'libudev.so'
 )
 
 # --- helpers -----------------------------------------------------------------

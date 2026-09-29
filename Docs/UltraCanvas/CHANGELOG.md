@@ -34,6 +34,13 @@
   - `intro.md`, which the DemoApp shows as the module's introduction, no
     longer claims TWAIN, WIA, ONVIF or libgpiod. `Gaps.md` says which
     categories exist.
+- **CI now builds the Linux hot-plug watcher.** The Linux jobs install
+  `libudev-dev`, so configure reports `udev: ... - hot-plug watching ENABLED`
+  and `OS/Linux/UltraCanvasLinuxIODeviceWatcher.cpp` is compiled on every
+  pull request. Until now no CI build had libudev, so a compile error in the
+  watcher would have gone unnoticed. `package-linux.sh` leaves `libudev.so`
+  on the host instead of bundling it: libudev reads the running udev's
+  database, so it has to be the system's own.
 
 #### 2026-09-29 *0.9.82*
 - **`.pl` is Perl or Prolog by what the file says, not by chance.** Perl and

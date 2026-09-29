@@ -316,6 +316,10 @@ jobs:
           # Build dependencies of the patched libcdr in UltraCanvas/third_party/libcdr.
           sudo apt-get install -y libboost-dev liblcms2-dev libicu-dev
           sudo apt-get install -y libzbar-dev
+          # IODeviceManager's hot-plug watcher (OS/Linux/UltraCanvasLinuxIODeviceWatcher.cpp)
+          # is compiled only when configure finds libudev; without this the
+          # watcher is never built by CI and a compile error in it goes unseen.
+          sudo apt-get install -y libudev-dev
           # UltraWin RemoteApp client (VM tier): FreeRDP is optional but
           # CI should compile it. 22.04 ships freerdp2; newer runners
           # will pick freerdp3-dev automatically once available.
