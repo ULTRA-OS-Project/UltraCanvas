@@ -33352,7 +33352,9 @@ button again closes it. Left / Right keep browsing, and the panel follows
 to the next file.
 
 The text is small so a metadata table fits a preview pane: 11 pt, or 10 pt
-when the panel is narrower than 360 px, with headings only a step larger.
+when the panel is narrower than 360 px, with headings only a step larger,
+table rows 1 px apart (`MarkdownHybridStyle::tableRowPadding`) and a thin rule
+under each header row (`tableSeparatorHeight`).
 `SetDetailsFontSize()` sets a size of your own; 0 goes back to the automatic
 choice.
 

@@ -137,7 +137,12 @@ namespace UltraCanvas {
         // Table styling
         Color tableBorderColor = Color(200, 200, 200);
         Color tableHeaderBackground = Color(240, 240, 240);
-        float tableCellPadding = 4.0f;
+        float tableCellPadding = 4.0f;      // left / right of the text in a cell
+        float tableRowPadding = 4.0f;       // above / below the text in a row
+        // Height of the "| --- |" row under the header. 0 = one text line,
+        // which keeps the line-number gutter's numbers apart; a compact
+        // table (no line numbers) can make it a few pixels.
+        float tableSeparatorHeight = 0.0f;
 
         // Strikethrough
         Color strikethroughColor = Color(120, 120, 120);

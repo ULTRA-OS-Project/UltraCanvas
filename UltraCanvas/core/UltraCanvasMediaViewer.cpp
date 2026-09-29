@@ -1238,6 +1238,10 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
             // preview pane, and every line spent on a heading is a row less.
             MarkdownHybridStyle md = dv->GetMarkdownStyle();
             md.headerSizeMultipliers = {1.3f, 1.2f, 1.08f, 1.0f, 1.0f, 1.0f};
+            // Rows close together: 1 px above and below the text instead of
+            // 4, and a thin rule under the header instead of a whole line.
+            md.tableRowPadding = 1.0f;
+            md.tableSeparatorHeight = 5.0f;
             dv->SetMarkdownStyle(md);
         }
         dv->SetWordWrap(true);

@@ -1078,8 +1078,8 @@ namespace UltraCanvas {
     // paths absorb any rounding delta into the last column so the row width matches the viewport
     // exactly. Per-column alignment from the separator row is copied + applied to every row.
     void UltraCanvasTextArea::NormalizeTableGroupWidths(int startLine, int endLine) {
-        constexpr int cellPadding = 4;
-        constexpr int rowVerticalPad = 4;
+        const int cellPadding = std::max(0, static_cast<int>(markdownStyle.tableCellPadding));
+        const int rowVerticalPad = std::max(0, static_cast<int>(markdownStyle.tableRowPadding));
         const float availWidth = std::max(100.0f, visibleTextArea.width);
 
         int colCount = 0;
@@ -1204,6 +1204,8 @@ namespace UltraCanvas {
             int lh = computedLineHeight > 0
                      ? computedLineHeight
                      : static_cast<int>(style.fontStyle.fontSize * 1.3f);
+            if (markdownStyle.tableSeparatorHeight > 0)
+                lh = std::max(2, static_cast<int>(markdownStyle.tableSeparatorHeight));
             tbl->bounds.height = isSep ? lh : (maxCellHeight + 2 * rowVerticalPad);
         }
     }
