@@ -18,7 +18,7 @@
 // Connection events come from the event sources: the snapshot differ
 // unless --no-diff, and the platform's own (nf_conntrack as root on
 // Linux, the kernel network ETW provider elevated on Windows).
-// Version: 0.9.0
+// Version: 0.10.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 // Before the window header: on Linux that one reaches X11, whose `None`
@@ -108,6 +108,8 @@ void PrintUsage(const char* programName) {
         "                      that pass through it; point the system resolver at it\n"
         "      --upstream <ip> The resolver to forward to (default: the system's)\n"
         "  --no-rdns           Do not look up names by reverse DNS\n"
+        "  --debug-layout      Log the Live tab's lists (bounds, rows, scrollbar) after every\n"
+        "                      snapshot to the framework's debug stream (ULTRACANVAS_DEBUG_LOG)\n"
         "  --no-diff           Do not diff snapshots for events (only the platform's own)\n"
         "  --diff-interval <ms>\n"
         "                      The differ's interval (default 250); shorter connections\n"
@@ -732,6 +734,7 @@ int main(int argc, char* argv[]) {
     bool capabilities = false;
     bool confirmed = false;
     bool resolve = false;
+    bool debugLayout = false;
     NameSettings names;
     std::string storePath;
     std::string csvPath;
@@ -773,6 +776,8 @@ int main(int argc, char* argv[]) {
             resolve = true;
         } else if (arg == "--no-rdns") {
             names.reverseDns = false;
+        } else if (arg == "--debug-layout") {
+            debugLayout = true;
         } else if (arg == "--dns-proxy") {
             names.dnsProxy = true;
             const std::string port = OptionalPath(argc, argv, i);
@@ -893,6 +898,7 @@ int main(int argc, char* argv[]) {
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
         UltraNetMonitor::UltraNetMonitorWindow window;
+        window.SetLayoutDebug(debugLayout);
         if (!window.Initialize(nameNotes)) {
             debugOutput << "Failed to create the UltraNetMonitor window" << std::endl;
             return EXIT_FAILURE;

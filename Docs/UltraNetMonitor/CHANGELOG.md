@@ -1,3 +1,17 @@
+#### 2026-09-29 *0.12*
+- **`--debug-layout` logs the Live tab's lists.** After every snapshot the
+  window writes each list's bounds, row count, row height, content and
+  viewport height, scroll range and offset, and whether its scrollbar shows
+  and where, to the framework's debug stream - a file when
+  `ULTRACANVAS_DEBUG_LOG=<path>` is set, which a Windows build has no
+  console for. It is for the report of a connection list without a
+  scrollbar (framework: the list view now also refreshes a stale scrollbar
+  before it paints, and says so in the same stream).
+- **Windows: events name the process the socket table names.** A connect
+  or close event from a process the monitor may not open read `pid 4720`
+  on the Events tab while the Live tab said `AvastSvc`; both now come from
+  the same process list (framework change).
+
 #### 2026-09-23 *0.11*
 - **The Events tab shows the loopback chain.** A *Via* column on the events
   (NetworkMonitor 0.9, with the framework change that gives connection

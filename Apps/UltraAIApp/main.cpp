@@ -42,12 +42,11 @@ using namespace UltraAIApp;
 
 namespace {
 
-UltraCanvasApplication* g_app = nullptr;
-
 #ifdef __linux__
-void OnSignal(int sig) {
-    if (g_app) g_app->RequestExit();
-    std::exit(sig == SIGTERM ? EXIT_SUCCESS : EXIT_FAILURE);
+// The one call a signal handler may make: it sets a flag the main loop
+// turns into RequestExit, so main returns and the destructors run in order.
+void OnSignal(int) {
+    UltraCanvasApplicationBase::RequestExitFromSignal();
 }
 #endif
 
@@ -78,7 +77,6 @@ int main(int argc, char* argv[]) {
 #endif
 
     UltraCanvasApplication app;
-    g_app = &app;
 
     try {
         if (!app.Initialize("UltraAI")) {
@@ -129,7 +127,6 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    g_app = nullptr;
     return EXIT_SUCCESS;
 }
 

@@ -1,11 +1,12 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.cpp
-// Version: 0.9.0
+// Version: 0.10.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorWindow.h"
 
 #include "UltraNetMonitorPaths.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasDebug.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 
@@ -539,6 +540,7 @@ void UltraNetMonitorWindow::ApplyPendingSnapshot() {
         processModel_->Replace(std::move(summaries));
         connectionModel_->Replace(std::move(connections));
         ReapplyProcessSelection();
+        if (layoutDebug_) LogLayout();
         // The Names tab follows the sources while it is in front, every
         // other snapshot - a name table is cheap to list, not free.
         ++snapshotsApplied_;
@@ -551,6 +553,30 @@ void UltraNetMonitorWindow::ApplyPendingSnapshot() {
     // each snapshot, so the capabilities are re-read here, not once.
     capabilities_ = NetworkMonitor_GetCapabilities();
     RefreshStatus();
+}
+
+// --debug-layout: one line per list, the numbers the scrollbar is computed
+// from, so a list without one can be read off a log from any machine.
+void UltraNetMonitorWindow::LogLayout() {
+    auto describe = [](const char* name, const std::shared_ptr<UltraCanvasListView>& view) {
+        if (!view) return;
+        const auto b = view->GetBounds();
+        const auto m = view->GetScrollMetrics();
+        debugOutput << "layout " << name << ": bounds " << b.x << "," << b.y << " " << b.width << "x" << b.height
+                    << " · rows " << m.rows << " × " << m.rowHeight << " = " << m.contentHeight
+                    << " · viewport " << m.viewportHeight << " · range " << m.maxScroll
+                    << " · offset " << m.scrollOffset << " · scrollbar " << (m.scrollbarVisible ? "shown" : "hidden")
+                    << " at " << m.scrollbarBounds.x << "," << m.scrollbarBounds.y << " "
+                    << m.scrollbarBounds.width << "x" << m.scrollbarBounds.height << std::endl;
+    };
+    if (split_) {
+        const auto b = split_->GetBounds();
+        debugOutput << "layout split: bounds " << b.x << "," << b.y << " " << b.width << "x" << b.height
+                    << " · window " << (window_ ? window_->GetWidth() : 0) << "x"
+                    << (window_ ? window_->GetHeight() : 0) << std::endl;
+    }
+    describe("processes", processView_);
+    describe("connections", connectionView_);
 }
 
 void UltraNetMonitorWindow::RefreshStatus() {

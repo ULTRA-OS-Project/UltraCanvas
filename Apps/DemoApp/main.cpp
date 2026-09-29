@@ -73,15 +73,11 @@ void HandleFatalError(const std::string& error) {
 
 // ===== SIGNAL HANDLERS =====
 #ifdef __linux__
-void SignalHandler(int signal) {
-    debugOutput << "\nReceived signal " << signal << " - shutting down gracefully..." << std::endl;
-
-    if (g_demoApp) {
-        g_demoApp->Shutdown();
-        g_demoApp.reset();
-    }
-
-    std::exit(EXIT_SUCCESS);
+// The one call a signal handler may make: it sets a flag the main loop
+// turns into RequestExit, so Run returns and main shuts the app down in
+// order. Logging, Shutdown and std::exit are not async-signal-safe.
+void SignalHandler(int) {
+    UltraCanvasApplicationBase::RequestExitFromSignal();
 }
 #endif
 

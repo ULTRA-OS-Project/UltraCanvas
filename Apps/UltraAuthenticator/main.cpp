@@ -62,15 +62,14 @@ using namespace UltraCanvas::Authenticator;
 
 namespace {
 
-UltraCanvasApplication* g_app = nullptr;
-
 // Kept alive for as long as it is on screen; there is no window to own it yet.
 std::shared_ptr<NewVaultDialog> g_newVaultDialog;
 
 #ifdef __linux__
-void OnSignal(int sig) {
-    if (g_app) g_app->RequestExit();
-    std::exit(sig == SIGTERM ? EXIT_SUCCESS : EXIT_FAILURE);
+// The one call a signal handler may make: it sets a flag the main loop
+// turns into RequestExit, so main returns and the destructors run in order.
+void OnSignal(int) {
+    UltraCanvasApplicationBase::RequestExitFromSignal();
 }
 #endif
 
@@ -206,7 +205,6 @@ int main(int argc, char* argv[]) {
 #endif
 
     UltraCanvasApplication app;
-    g_app = &app;
 
     AccountStore store;
     std::shared_ptr<AuthenticatorWindow> window;
@@ -242,7 +240,6 @@ int main(int argc, char* argv[]) {
     }
 
     store.Close();
-    g_app = nullptr;
     return EXIT_SUCCESS;
 }
 

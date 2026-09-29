@@ -439,7 +439,11 @@ process token the user; a process the monitor may not open keeps its PID
 and is named from the Toolhelp process list (`CreateToolhelp32Snapshot`,
 read once per snapshot, no handle and no elevation needed) — an antivirus
 service reads as `AvastSvc`, not `pid 4720` — without a path or a user,
-and is counted in the notes. `allUsers` is whether
+and is counted in the notes. The kernel network ETW source names its
+events from the same list (`UltraCanvasWindowsProcessNames.h`, internal
+to `OS/MSWindows`; refreshed on a miss at most every two seconds), and the
+registry gives an event that carries only a PID the socket table's
+identity for it when the table has the socket. `allUsers` is whether
 the monitor's own token is elevated. Byte counters and events are the ETW
 work of a later increment.
 

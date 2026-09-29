@@ -1,3 +1,10 @@
+#### 2026-09-29 *0.1.1*
+- **Ctrl-C and SIGTERM exit in order.** The signal handler called
+  `RequestExit()` (which logs and runs a callback) and then `std::exit`,
+  running the static destructors under live threads. It now makes the one
+  call a handler may, `UltraCanvasApplicationBase::RequestExitFromSignal()`,
+  and the main loop turns it into the same shutdown as a closed window.
+
 #### 2026-09-23 *0.1.0*
 - **First release.** DeviceExplorer (`Apps/DeviceExplorer`) shows the
   devices connected to this computer as the IODeviceManager module finds

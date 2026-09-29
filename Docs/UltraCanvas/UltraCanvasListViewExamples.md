@@ -151,6 +151,19 @@ void EnsureRowVisible(int row);
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
 
+```cpp
+ScrollMetrics GetScrollMetrics() const;
+```
+
+The numbers the scrollbar is built from at this moment: `rows`, `rowHeight`
+(0 when the delegate sizes rows), `contentHeight`, `viewportHeight` (the
+rows area, header excluded), `maxScroll`, `scrollOffset`,
+`scrollbarVisible`, `scrollbarBounds`, and the element's `width` and
+`height`. For diagnostics and tests. The view also recomputes them before
+every paint and, if the scrollbar disagrees (a model that grew between an
+arrange and the paint), logs `scrollbar was stale at paint` to
+`debugOutput` and refreshes it first.
+
 ### Tooltips
 
 ```cpp
