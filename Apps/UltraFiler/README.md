@@ -375,8 +375,9 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   folder) and modification date in aligned columns, folders first — with a
   count and the total size at the end. *Folder tree content* draws the
   folder and everything below it with line characters, the way the `tree`
-  command does (`├──`, `└──`, `│`), folders marked with a trailing `/`, and
-  ends with the number of folders and files. Links and junctions are shown
+  command does (`├──`, `└──`, `│`), folders marked with a trailing `/` and
+  each file followed by its size (`notes.txt  (1.2 KB)`), and ends with the
+  number of folders and files and the files' total size. Links and junctions are shown
   with their target (`name -> target`) but never entered, a folder that
   cannot be read says so in its place, hidden entries are left out unless
   the display shows hidden files, and a tree stops after 200 000 entries.

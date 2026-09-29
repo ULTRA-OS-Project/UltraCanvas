@@ -1,3 +1,8 @@
+#### 2026-09-29 *1.60.0*
+- **The folder tree export shows file sizes.** In *Extras > Export > Folder
+  tree content* every file line now ends with the file's size
+  (`notes.txt  (1.2 KB)`), and the closing line adds the files' total size
+  to the folder and file counts.
 #### 2026-09-29 *1.59.0*
 - **A folder can be exported as text.** *Extras > Export* in the file
   context menu has two new entries. *Folder content* lists what the selected

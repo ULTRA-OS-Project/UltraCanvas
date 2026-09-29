@@ -204,6 +204,7 @@ namespace {
         const std::atomic<bool>* cancelled = nullptr;
         size_t folders = 0;
         size_t files = 0;
+        uint64_t bytes = 0;   // the files' sizes, summed for the last line
         bool truncated = false;
         std::string text;
 
@@ -215,7 +216,8 @@ namespace {
         // "│   " / "    " columns of the levels above.
         void Walk(const fs::path& dir, const std::string& prefix) {
             std::vector<ExportItem> items;
-            if (!ReadFolder(dir, includeHidden, false, cancelled, items)) {
+            // With details: every file line carries its size.
+            if (!ReadFolder(dir, includeHidden, true, cancelled, items)) {
                 text += prefix + kLastBranch + "[cannot read this folder]\n";
                 return;
             }
@@ -233,6 +235,8 @@ namespace {
                     ++folders;
                 } else {
                     ++files;
+                    bytes += item.size;
+                    line += "  (" + FormatFileSize(static_cast<size_t>(item.size)) + ")";
                 }
                 if (item.isLink) line += LinkSuffix(item);
                 text += line + "\n";
@@ -257,7 +261,8 @@ namespace {
         else if (cancelled && cancelled->load())
             walk.text += "... (stopped)\n";
         walk.text += "\n" + CountText(walk.folders, "folder", "folders") + ", " +
-                     CountText(walk.files, "file", "files") + "\n";
+                     CountText(walk.files, "file", "files") + ", " +
+                     FormatFileSize(static_cast<size_t>(walk.bytes)) + "\n";
         return walk.text;
     }
 
