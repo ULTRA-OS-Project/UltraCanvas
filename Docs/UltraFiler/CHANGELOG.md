@@ -1,3 +1,14 @@
+#### 2026-09-29 *1.59.0*
+- **A folder can be exported as text.** *Extras > Export* in the file
+  context menu has two new entries. *Folder content* lists what the selected
+  folder (or the shown one, while nothing is selected) holds - name, size and
+  modification date in aligned columns, with a count and total at the end.
+  *Folder tree content* draws the folder and everything below it with line
+  characters, the way the `tree` command does (`├──`, `└──`, `│`). Either
+  opens in a text window with a **Save…** button that writes it to a `.txt`
+  file. The walk runs in the background and closing the window stops it;
+  links are shown with their target but never entered, hidden entries follow
+  the display's *Show hidden files*, and a tree stops after 200 000 entries.
 #### 2026-09-29 *1.58.0*
 - **The switch for a shared extension names both of its languages.** Under
   *Settings > Display > Thumbnails > Text*, `cls` now reads "VBA / LaTeX", `m`
