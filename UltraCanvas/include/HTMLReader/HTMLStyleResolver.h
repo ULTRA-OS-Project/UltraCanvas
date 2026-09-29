@@ -3,8 +3,8 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -104,6 +104,7 @@ private:
     void ResolveElement(Node& element, const ComputedStyle& parentStyle);
     void ApplyUserAgentDefaults(const std::string& tag, ComputedStyle& style);
     void ApplyAlignAttribute(const Node& element, ComputedStyle& style);
+    void ApplyLegacyAttributes(const Node& element, ComputedStyle& style);
     void ApplyDeclaration(const Declaration& declaration, ComputedStyle& style,
                           const ComputedStyle& parentStyle);
     static bool SelectorMatches(const Selector& selector, const Node& element);

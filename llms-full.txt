@@ -43754,6 +43754,57 @@ Because the element shares ownership of the document (`std::shared_ptr`), an
 application can keep holding it — to save it, to inspect blocks the user never
 touched, or to hand the same document to a read-only view.
 
+### From HTML, and back
+
+`HTMLRichDocumentImporter.h` turns HTML (a page, a fragment, a mail's HTML
+body) into a `UCRichDocument`, through the same parser and style resolver the
+HTML reader renders with, so `<style>` blocks, inline styles and the
+presentational attributes mail is still written with (`<font color face
+size>`, `bgcolor`, `align`) all count:
+
+```cpp
+#include "HTMLReader/HTMLRichDocumentImporter.h"
+
+HTMLRichImportOptions options;
+options.quoteLevel = 1;                                  // all of it inside a quote
+options.resolveImage = [&](const std::string& src, HTMLRichImportImage& out) {
+    out.data = BytesFor(src);                            // cid:, a file, a cached URL
+    return !out.data.empty();                            // false: alt text instead
+};
+auto document = std::make_shared<UCRichDocument>(ImportHTMLToRichDocument(html, options));
+editor->SetDocument(document);
+
+// ...and out again, pictures pointing wherever the caller keeps them.
+RichDocumentHTMLOptions out;
+out.imageSource = [](int mediaIndex) { return "cid:part" + std::to_string(mediaIndex); };
+std::string html = document->ToHTML(out);                // default: data: URIs
+```
+
+| HTML | becomes |
+|---|---|
+| `<p>`, `<div>`, `<h1>`–`<h6>`, `<hr>` | paragraphs, headings, rules; `<br>` a line break; the space between blocks is the elements' margins, collapsed as CSS does |
+| `<ul>`, `<ol start type>`, `<li value>` | list items with level, format and start number |
+| `<blockquote>` | the blocks' quote level (below) |
+| `<b> <i> <u> <s> <sub> <sup> <code> <a href>` | run formatting and links (`javascript:` links are dropped) |
+| colours, `background-color` on inline text, font family and size | run colour, highlight, font; text at the base size gets no size of its own |
+| `text-align`, `align`, `<center>`, left margin/padding | alignment and left indent |
+| `<img>` | a picture paragraph when it is alone in its block, else a picture in the line; sizes kept; 1×1 tracking pixels dropped |
+| `<table>` with several columns | a table (spans, cell colours, borders, padding, widths) |
+| a one-column `<table>` | unwrapped into the text flow: that is mail layout scaffolding |
+| a table inside a table cell | lines of that cell (the model has no nested tables) |
+
+### Quote levels
+
+`RichDocBlock::quoteLevel` says how many quotes a block sits inside - a mail
+reply's quoted text is level 1, what that mail quoted level 2. Unlike the
+`BlockQuote` block type (one quoted paragraph), a level applies to any block:
+a quoted heading, list, table or picture stays what it is. The element draws
+one bar per level at the block's left and indents it by `style.quoteIndent`
+per level; `ToHTML` nests `<blockquote type="cite">`, `ToPlainText` and
+`ToMarkdown` put `> ` per level in front of the lines. Editing follows mail
+programs: Enter keeps the level, Enter on an empty quoted line and Backspace
+at the start of a quoted block each step one level out (undoable).
+
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
 the reader produced, hands it to the element, and hands the same object back to
 `UCWordDocumentIO::Save` — no conversion in either direction. See
