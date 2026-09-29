@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -78,6 +79,11 @@ struct RichTextRun {
 
     bool IsFloatingImage() const { return IsInlineImage() && imageWrap != ImageWrap::Inline; }
 
+    // The named character style (UCRichDocument::styles) this run was given,
+    // "" for none. Its properties are already in the run's own fields; the
+    // name is what lets a change to the style reach the run.
+    std::string characterStyleId;
+
     // A field whose text depends on where it is drawn: a header's "Page 3
     // of 7". `text` holds the value it was last shown with, which is what
     // plain-text output and a view without pages use.
@@ -98,7 +104,7 @@ struct RichTextRun {
             && subscript == other.subscript && superscript == other.superscript
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
-            && highlightColor == other.highlightColor
+            && highlightColor == other.highlightColor && characterStyleId == other.characterStyleId
             && field == Field::Plain && other.field == Field::Plain;   // a field stays its own run
     }
 };
@@ -246,6 +252,11 @@ struct RichDocBlock {
     // item's text (see UCRichDocument::ReadCheckboxPrefixes).
     bool checkbox = false;
     bool checked = false;
+
+    // The named paragraph style (UCRichDocument::styles) the block has, "" =
+    // the document's default ("Normal"). Like a run's character style, its
+    // properties are already in the block's own fields and its runs'.
+    std::string styleId;
 
     // Paragraph geometry (Paragraph, Heading, BlockQuote, CodeBlock; list
     // items keep the view's own list indentation and use only the spacing).
@@ -415,6 +426,52 @@ private:
     std::vector<Counter>& LevelsOf(const std::string& listKey);
 };
 
+// ===== NAMED STYLES =====
+// What a named style sets: every property is optional, and one it leaves
+// unset comes from the style it is based on (or is left alone).
+struct RichStyleCharacter {
+    std::optional<bool> bold, italic, underline, strikethrough, code;
+    std::optional<std::string> fontFamily;
+    std::optional<float> fontSizePt;
+    std::optional<std::string> color;
+    std::optional<std::string> highlightColor;
+
+    bool IsEmpty() const {
+        return !bold && !italic && !underline && !strikethrough && !code && !fontFamily
+            && !fontSizePt && !color && !highlightColor;
+    }
+    // Sets `run`'s properties to the ones stated here.
+    void ApplyTo(RichTextRun& run) const;
+    // Takes every property `over` states.
+    void Overlay(const RichStyleCharacter& over);
+};
+
+struct RichStyleParagraph {
+    std::optional<int> headingLevel;        // 1..6 = a heading (outline level); 0 = body text
+    std::optional<RichTextAlign> align;
+    std::optional<float> leftIndentPt, rightIndentPt, firstLineIndentPt;
+    std::optional<float> spaceBeforePt, spaceAfterPt;
+    std::optional<float> lineSpacing;
+
+    bool IsEmpty() const {
+        return !headingLevel && !align && !leftIndentPt && !rightIndentPt && !firstLineIndentPt
+            && !spaceBeforePt && !spaceAfterPt && !lineSpacing;
+    }
+    void ApplyTo(RichDocBlock& block) const;
+    void Overlay(const RichStyleParagraph& over);
+};
+
+struct RichStyle {
+    enum class Kind { Paragraph, Character };
+    std::string id;                 // stable key: "Heading1", "Quote", "Emphasis"
+    std::string name;               // shown to the user: "Heading 1"
+    Kind kind = Kind::Paragraph;
+    std::string basedOn;            // id of the style this one inherits from
+    std::string nextStyle;          // paragraph: the next paragraph's style after Enter ("" = the same)
+    RichStyleCharacter character;   // what the text of it looks like
+    RichStyleParagraph paragraph;   // paragraph styles only
+};
+
 struct RichDocumentMetadata {
     std::string title;
     std::string author;
@@ -479,6 +536,21 @@ public:
     }
 
     bool IsEmpty() const { return blocks.empty(); }
+
+    // ===== NAMED STYLES =====
+    // Paragraph and character styles. A document read from a file has the
+    // file's; UCRichDocument::DefaultStyles() is a word processor's basic set.
+    std::vector<RichStyle> styles;
+    const RichStyle* FindStyle(const std::string& id) const;
+    // A style with its basedOn chain folded in: every property it ends up
+    // with, from itself or an ancestor.
+    RichStyle ResolveStyle(const std::string& id) const;
+    // True when `id` is `ancestorId` or based on it, however indirectly.
+    bool StyleDerivesFrom(const std::string& id, const std::string& ancestorId) const;
+    // Normal, Title, Subtitle, Heading 1-6, Quote, Code; Strong, Emphasis,
+    // Code (character). Readers without styles of their own leave `styles`
+    // empty; the editing core adds these on first use.
+    static std::vector<RichStyle> DefaultStyles();
 
     // Adds (or reuses an identical) media entry and returns its index.
     int AddMedia(std::string name, std::string mimeType, std::vector<uint8_t> data);

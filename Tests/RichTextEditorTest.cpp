@@ -1506,6 +1506,92 @@ static void TestAutoFormat() {
     }
 }
 
+static void TestNamedStyles() {
+    std::cout << "\n--- Named styles ---\n";
+    UCRichDocumentEditor ed(MakeDocument({"Chapter one", "Body text here", "More body"}));
+
+    // A heading style makes a heading, with its look.
+    ed.SetCaret(RichDocPosition(0, 3));
+    CHECK(ed.ApplyParagraphStyle("Heading1"));
+    CHECK(ed.GetBlock(0).type == RichBlockType::Heading && ed.GetBlock(0).headingLevel == 1);
+    CHECK(ed.GetBlock(0).runs[0].bold && ed.GetBlock(0).runs[0].fontSizePt == 20.0f);
+    CHECK_EQ(ed.CurrentParagraphStyle(), std::string("Heading1"));
+    CHECK(!ed.GetDocument()->styles.empty());
+
+    // A word formatted directly keeps its own value when the style changes.
+    ed.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 7));
+    ed.SetFontSize(30.0f);
+    RichStyle heading = *ed.GetDocument()->FindStyle("Heading1");
+    heading.character.fontSizePt = 24.0f;
+    heading.character.color = "#AA0000";
+    CHECK(ed.UpdateStyle(heading));
+    const RichDocBlock& h = ed.GetBlock(0);
+    bool sawDirect = false, sawStyled = false;
+    for (const auto& run : h.runs) {
+        if (run.text == "Chapter") { sawDirect = run.fontSizePt == 30.0f && run.color == "#AA0000"; }
+        if (run.text == " one") { sawStyled = run.fontSizePt == 24.0f && run.color == "#AA0000"; }
+    }
+    CHECK(sawDirect);
+    CHECK(sawStyled);
+    // One undo takes back the style and the text together.
+    CHECK(ed.Undo());
+    CHECK(ed.GetDocument()->FindStyle("Heading1")->character.fontSizePt.value_or(0) == 20.0f);
+    for (const auto& run : ed.GetBlock(0).runs) CHECK(run.color.empty());
+    CHECK(ed.Redo());
+
+    // Enter after a heading gives body text in the Normal style.
+    ed.SetCaret(ed.ContainerEnd(RichDocPosition(0, 0)));
+    ed.SplitBlock();
+    CHECK(ed.GetBlock(1).type == RichBlockType::Paragraph && ed.GetBlock(1).styleId.empty());
+
+    // Back to Normal: the heading's look is taken back, the direct size kept.
+    ed.SetCaret(RichDocPosition(0, 2));
+    CHECK(ed.ApplyParagraphStyle("Normal"));
+    CHECK(ed.GetBlock(0).type == RichBlockType::Paragraph);
+    for (const auto& run : ed.GetBlock(0).runs) {
+        CHECK(!run.bold);
+        if (run.text == " one") CHECK(run.fontSizePt == 0.0f && run.color.empty());
+    }
+
+    // A style based on another follows a change to it.
+    RichStyle derived;
+    derived.id = "Chapter";
+    derived.name = "Chapter";
+    derived.basedOn = "Heading1";
+    derived.character.italic = true;
+    CHECK(ed.UpdateStyle(derived));
+    ed.SetCaret(RichDocPosition(2, 0));
+    CHECK(ed.ApplyParagraphStyle("Chapter"));
+    CHECK(ed.GetBlock(2).type == RichBlockType::Heading && ed.GetBlock(2).runs[0].italic);
+    RichStyle base = *ed.GetDocument()->FindStyle("Heading1");
+    base.character.underline = true;
+    CHECK(ed.UpdateStyle(base));
+    CHECK(ed.GetBlock(2).runs[0].underline && ed.GetBlock(2).runs[0].italic);
+
+    // Character styles.
+    ed.SetSelection(RichDocPosition(3, 0), RichDocPosition(3, 4));
+    CHECK(ed.ApplyCharacterStyle("Strong"));
+    CHECK(ed.GetBlock(3).runs[0].bold && ed.GetBlock(3).runs[0].characterStyleId == "Strong");
+    RichStyle strong = *ed.GetDocument()->FindStyle("Strong");
+    strong.character.color = "#0000FF";
+    CHECK(ed.UpdateStyle(strong));
+    CHECK_EQ(ed.GetBlock(3).runs[0].color, std::string("#0000FF"));
+    ed.SetSelection(RichDocPosition(3, 0), RichDocPosition(3, 4));
+    CHECK(ed.ApplyCharacterStyle(""));
+    CHECK(!ed.GetBlock(3).runs[0].bold && ed.GetBlock(3).runs[0].color.empty());
+
+    // Deleting a style: its paragraphs take the one it was based on.
+    CHECK(ed.DeleteStyle("Chapter"));
+    CHECK_EQ(ed.GetBlock(2).styleId, std::string("Heading1"));
+    CHECK(!ed.GetBlock(2).runs[0].italic);
+    CHECK(!ed.ApplyParagraphStyle("NoSuchStyle"));
+
+    // A style from the caret's paragraph.
+    ed.SetCaret(RichDocPosition(2, 1));
+    const RichStyle captured = ed.StyleFromCaret("Mine", "My Style");
+    CHECK(captured.paragraph.headingLevel.value_or(0) == 1 && captured.character.bold.value_or(false));
+}
+
 int main() {
     TestPositionsAndNavigation();
     TestTypingAndDeleting();
@@ -1528,6 +1614,7 @@ int main() {
     TestCellSelection();
     TestMoveRange();
     TestAutoFormat();
+    TestNamedStyles();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

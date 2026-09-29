@@ -20,6 +20,10 @@
   header rows repeated. *View > Page Layout (documents)* switches back to one
   column (remembered). Double-click a header or footer (or the page's top or
   bottom margin) to edit it; Escape returns to the body.
+- **Styles in word-processing tabs.** The right-click menu has *Paragraph
+  Style* and *Character Style* submenus with the document's styles, *New Style
+  from Paragraph...* and *Update Style to Match Paragraph*; changing a style
+  changes every paragraph that has it.
 - **The zoom box zooms a word-processing tab** (and a page wider than the
   window scrolls sideways). It used to change the font size of plain-text tabs
   only.

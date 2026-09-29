@@ -226,6 +226,19 @@ public:
     void OutdentList();
     void ToggleBlockQuote();
     void ToggleCodeBlock(const std::string& language = "");
+    // Named styles (UCRichDocument::styles; a word processor's basic set
+    // when the document has none). See UCRichDocumentEditor for the rules.
+    std::vector<RichStyle> GetStyles() const { return editor.GetStyles(); }
+    bool ApplyParagraphStyle(const std::string& id);
+    bool ApplyCharacterStyle(const std::string& id);
+    bool UpdateStyle(const RichStyle& style);
+    bool DeleteStyle(const std::string& id);
+    // Makes the caret paragraph's formatting into a new style and gives the
+    // paragraph that style; or redefines its current style to match it.
+    bool NewStyleFromCaret(const std::string& name);
+    bool UpdateStyleFromCaret();
+    std::string GetCurrentParagraphStyle() const { return editor.CurrentParagraphStyle(); }
+    std::string GetCurrentCharacterStyle() const { return editor.CurrentCharacterStyle(); }
     // Check lists: a box in place of the bullet, ticked by clicking it (or by
     // ToggleCheckedAtCaret, for a keyboard shortcut).
     void ToggleCheckList();

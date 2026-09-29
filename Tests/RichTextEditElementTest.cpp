@@ -1213,6 +1213,25 @@ int main() {
         edit->ScrollToTop();
     }
 
+    // ===== NAMED STYLES =====
+    std::cerr << "\n--- Named styles ---" << std::endl;
+    {
+        edit->SetMarkdown("Title text\n\nBody text\n");
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 2));
+        const float before = edit->GetContentHeight();
+        TEST("A paragraph takes the Title style", edit->ApplyParagraphStyle("Title")
+             && edit->GetCurrentParagraphStyle() == "Title");
+        window->UpdateAndRender();
+        TEST("...and grows with its larger text", edit->GetContentHeight() > before);
+        TEST("A new style from the paragraph", edit->NewStyleFromCaret("My Title")
+             && edit->GetCurrentParagraphStyle() == "MyTitle");
+        TEST("The styles list has it", [&]() {
+            for (const auto& s : edit->GetStyles()) if (s.id == "MyTitle" && s.name == "My Title") return true;
+            return false;
+        }());
+    }
+
     // ===== PAGE FIELDS IN THE BODY =====
     std::cerr << "\n--- Page fields ---" << std::endl;
     {

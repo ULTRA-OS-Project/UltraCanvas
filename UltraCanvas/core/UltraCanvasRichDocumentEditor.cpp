@@ -64,6 +64,14 @@ bool IsTextBlockType(RichBlockType type) {
     }
 }
 
+// A block's style id as the style system reads it: none is Normal, and a
+// heading that names none is its level's heading style.
+std::string EffectiveStyleId(const RichDocBlock& block) {
+    if (!block.styleId.empty()) return block.styleId;
+    if (block.type == RichBlockType::Heading) return "Heading" + std::to_string(std::clamp(block.headingLevel, 1, 6));
+    return "Normal";
+}
+
 // Byte length a run contributes to its block's text.
 int RunSpan(const RichTextRun& run) {
     return (run.lineBreakBefore ? 1 : 0) + static_cast<int>(run.text.size());
@@ -280,6 +288,11 @@ UCRichDocumentEditor::EditScope::~EditScope() {
     step.caretAfter = ed.caret;
     step.anchorAfter = ed.anchor;
     step.typing = typing;
+    if (captureStyles) {
+        step.stylesChanged = true;
+        step.stylesBefore = std::move(stylesBefore);
+        step.stylesAfter = ed.doc->styles;
+    }
     ed.CommitStep(std::move(step));
 }
 
@@ -868,7 +881,7 @@ void UCRichDocumentEditor::CommitStep(UndoStep step) {
 
     if (coalescing && step.typing && !undoStack.empty()) {
         UndoStep& last = undoStack.back();
-        if (last.typing && last.firstBlock == step.firstBlock
+        if (last.typing && !last.stylesChanged && !step.stylesChanged && last.firstBlock == step.firstBlock
             && last.after.size() == step.before.size()) {
             // Same span, still typing: fold this keystroke into the open step
             // so a typed word undoes in one go.
@@ -899,6 +912,7 @@ bool UCRichDocumentEditor::Undo() {
                          static_cast<int>(doc->blocks.size()) - first);
     doc->blocks.erase(doc->blocks.begin() + first, doc->blocks.begin() + first + count);
     doc->blocks.insert(doc->blocks.begin() + first, step.before.begin(), step.before.end());
+    if (step.stylesChanged) doc->styles = step.stylesBefore;
     EnsureNotEmpty();
     caret = ClampPosition(step.caretBefore);
     anchor = ClampPosition(step.anchorBefore);
@@ -924,6 +938,7 @@ bool UCRichDocumentEditor::Redo() {
                          static_cast<int>(doc->blocks.size()) - first);
     doc->blocks.erase(doc->blocks.begin() + first, doc->blocks.begin() + first + count);
     doc->blocks.insert(doc->blocks.begin() + first, step.after.begin(), step.after.end());
+    if (step.stylesChanged) doc->styles = step.stylesAfter;
     EnsureNotEmpty();
     caret = ClampPosition(step.caretAfter);
     anchor = ClampPosition(step.anchorAfter);
@@ -1456,6 +1471,15 @@ void UCRichDocumentEditor::SplitBlockInternal() {
     // indents, spacing and tab stops. Not so after a heading, whose
     // continuation is body text.
     if (next.type == block.type) next.CopyParagraphGeometry(block);
+    // A named style says what follows it (a heading: body text).
+    if (!block.styleId.empty()) {
+        const RichStyle* style = doc->FindStyle(block.styleId);
+        next.styleId = style && !style->nextStyle.empty() ? style->nextStyle : block.styleId;
+        if (next.styleId == "Normal") next.styleId.clear();
+        if (next.styleId != block.styleId) {
+            RestyleBlock(next, doc->ResolveStyle(block.styleId), doc->ResolveStyle(EffectiveStyleId(next)), true);
+        }
+    }
     next.runs = std::move(tailRuns);
     doc->blocks.insert(doc->blocks.begin() + caret.blockIndex + 1, next);
     caret = RichDocPosition(caret.blockIndex + 1, 0);
@@ -2114,6 +2138,294 @@ bool UCRichDocumentEditor::ToggleChecked(int blockIndex) {
     coalescing = false;
     NotifyChanged();
     return true;
+}
+
+// ===== NAMED STYLES =====
+
+namespace {
+
+// Sets property `value` to what `after` states, or takes back what `before`
+// stated: with force, `after`'s value is set regardless; otherwise only a
+// value still equal to `before`'s (not formatted directly) changes.
+template <typename T, typename D>
+void Restyle(T& value, const std::optional<D>& before, const std::optional<D>& after, bool force, const T& none) {
+    const bool following = before ? value == static_cast<T>(*before) : false;
+    if (after) {
+        if (force || following || !before) value = static_cast<T>(*after);
+    } else if (following) {
+        value = none;
+    }
+}
+
+void RestyleRun(RichTextRun& run, const RichStyleCharacter& before, const RichStyleCharacter& after, bool force) {
+    if (run.IsInlineImage()) return;
+    Restyle(run.bold, before.bold, after.bold, force, false);
+    Restyle(run.italic, before.italic, after.italic, force, false);
+    Restyle(run.underline, before.underline, after.underline, force, false);
+    Restyle(run.strikethrough, before.strikethrough, after.strikethrough, force, false);
+    Restyle(run.code, before.code, after.code, force, false);
+    Restyle(run.fontFamily, before.fontFamily, after.fontFamily, force, std::string());
+    Restyle(run.fontSizePt, before.fontSizePt, after.fontSizePt, force, 0.0f);
+    Restyle(run.color, before.color, after.color, force, std::string());
+    Restyle(run.highlightColor, before.highlightColor, after.highlightColor, force, std::string());
+}
+
+} // namespace
+
+void UCRichDocumentEditor::RestyleBlock(RichDocBlock& block, const RichStyle& before, const RichStyle& after,
+                                        bool force) const {
+    const RichStyleParagraph& a = after.paragraph;
+    const RichStyleParagraph& b = before.paragraph;
+    if (block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading) {
+        // Headings are a style's outline level.
+        int level = block.type == RichBlockType::Heading ? block.headingLevel : 0;
+        Restyle(level, b.headingLevel, a.headingLevel, force, 0);
+        if (level >= 1 && level <= 6) {
+            block.type = RichBlockType::Heading;
+            block.headingLevel = level;
+        } else {
+            block.type = RichBlockType::Paragraph;
+            block.headingLevel = 0;
+        }
+    }
+    Restyle(block.align, b.align, a.align, force, RichTextAlign::Default);
+    Restyle(block.leftIndentPt, b.leftIndentPt, a.leftIndentPt, force, 0.0f);
+    Restyle(block.rightIndentPt, b.rightIndentPt, a.rightIndentPt, force, 0.0f);
+    Restyle(block.firstLineIndentPt, b.firstLineIndentPt, a.firstLineIndentPt, force, 0.0f);
+    Restyle(block.spaceBeforePt, b.spaceBeforePt, a.spaceBeforePt, force, -1.0f);
+    Restyle(block.spaceAfterPt, b.spaceAfterPt, a.spaceAfterPt, force, -1.0f);
+    Restyle(block.lineSpacing, b.lineSpacing, a.lineSpacing, force, 0.0f);
+    for (RichTextRun& run : block.runs) {
+        // A run with a character style of its own keeps that style's look.
+        if (!run.characterStyleId.empty()) continue;
+        RestyleRun(run, before.character, after.character, force);
+    }
+}
+
+void UCRichDocumentEditor::EnsureStyles() {
+    if (doc->styles.empty()) doc->styles = UCRichDocument::DefaultStyles();
+}
+
+std::vector<RichStyle> UCRichDocumentEditor::GetStyles() const {
+    return doc->styles.empty() ? UCRichDocument::DefaultStyles() : doc->styles;
+}
+
+bool UCRichDocumentEditor::ApplyParagraphStyle(const std::string& id) {
+    if (caret.InCell()) return false;
+    const bool hadStyles = !doc->styles.empty();
+    if (!hadStyles && !UCRichDocument::DefaultStyles().empty()) {
+        // Checked against the defaults before they are added, so an unknown
+        // id changes nothing.
+        bool known = false;
+        for (const RichStyle& style : UCRichDocument::DefaultStyles()) known = known || style.id == id;
+        if (!known) return false;
+    } else if (!doc->FindStyle(id)) {
+        return false;
+    }
+    int first = 0, last = 0;
+    SelectedBlockRange(first, last);
+    {
+        EditScope scope(*this, first, last - first + 1);
+        if (!hadStyles) {
+            scope.CaptureStyles();
+            EnsureStyles();
+        }
+        const RichStyle after = doc->ResolveStyle(id);
+        if (after.kind != RichStyle::Kind::Paragraph) return false;
+        for (int b = first; b <= last && b < GetBlockCount(); b++) {
+            RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            if (!IsTextBlockType(block.type)) continue;
+            const RichStyle before = doc->ResolveStyle(EffectiveStyleId(block));
+            RestyleBlock(block, before, after, /*force*/ true);
+            block.styleId = id == "Normal" ? std::string() : id;
+        }
+    }
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::ApplyCharacterStyle(const std::string& id) {
+    if (!id.empty()) {
+        const RichStyle* known = doc->FindStyle(id);
+        if (!known && doc->styles.empty()) {
+            for (const RichStyle& style : UCRichDocument::DefaultStyles()) {
+                if (style.id == id) { known = &style; break; }
+            }
+            if (!known) return false;
+        } else if (!known) {
+            return false;
+        }
+    }
+    if (!HasSelection()) return false;
+    const RichDocRange range = GetSelectionRange();
+    {
+        EditScope scope(*this, range.start.blockIndex, range.end.blockIndex - range.start.blockIndex + 1);
+        if (doc->styles.empty() && !id.empty()) {
+            scope.CaptureStyles();
+            EnsureStyles();
+        }
+        const RichStyle after = id.empty() ? RichStyle{} : doc->ResolveStyle(id);
+        auto restyle = [&](std::vector<RichTextRun>& runs, int from, int to) {
+            if (from >= to) return;
+            const int startIdx = SplitRunAt(runs, from);
+            const int endIdx = SplitRunAt(runs, to);
+            for (int i = startIdx; i < endIdx && i < static_cast<int>(runs.size()); i++) {
+                RichTextRun& run = runs[static_cast<size_t>(i)];
+                const RichStyle before = run.characterStyleId.empty() ? RichStyle{}
+                                                                      : doc->ResolveStyle(run.characterStyleId);
+                RestyleRun(run, before.character, after.character, /*force*/ true);
+                run.characterStyleId = id;
+            }
+            CoalesceRuns(runs);
+        };
+        int top = 0, left = 0, bottom = 0, right = 0;
+        if (CellRectBetween(range.start, range.end, top, left, bottom, right)) {
+            for (const RichDocPosition& cell : SelectedCells()) {
+                std::vector<RichTextRun>* runs = MutableRunsAt(cell);
+                if (runs) restyle(*runs, 0, static_cast<int>(RunsText(*runs).size()));
+            }
+        } else if (range.start.InCell()) {
+            if (std::vector<RichTextRun>* runs = MutableRunsAt(range.start)) {
+                restyle(*runs, range.start.byteOffset, range.end.byteOffset);
+            }
+        } else {
+            for (int b = range.start.blockIndex; b <= range.end.blockIndex && b < GetBlockCount(); b++) {
+                RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+                if (!IsTextBlockType(block.type)) continue;
+                const int length = static_cast<int>(RunsText(block.runs).size());
+                const int from = b == range.start.blockIndex ? range.start.byteOffset : 0;
+                const int to = b == range.end.blockIndex ? range.end.byteOffset : length;
+                restyle(block.runs, std::clamp(from, 0, length), std::clamp(to, 0, length));
+            }
+        }
+    }
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::UpdateStyle(const RichStyle& style) {
+    if (style.id.empty()) return false;
+    {
+        EditScope scope(*this, 0, GetBlockCount());
+        scope.CaptureStyles();
+        EnsureStyles();
+        // What every style resolves to now, for each one the change reaches.
+        std::vector<std::pair<std::string, RichStyle>> before;
+        for (const RichStyle& existing : doc->styles) {
+            if (doc->StyleDerivesFrom(existing.id, style.id)) before.emplace_back(existing.id, doc->ResolveStyle(existing.id));
+        }
+        bool replaced = false;
+        for (RichStyle& existing : doc->styles) {
+            if (existing.id == style.id) {
+                existing = style;
+                replaced = true;
+            }
+        }
+        if (!replaced) doc->styles.push_back(style);
+        auto resolvedBefore = [&](const std::string& id) -> const RichStyle* {
+            for (const auto& [known, resolved] : before) if (known == id) return &resolved;
+            return nullptr;
+        };
+        for (RichDocBlock& block : doc->blocks) {
+            const std::string id = EffectiveStyleId(block);
+            if (const RichStyle* old = resolvedBefore(id); old && style.kind == RichStyle::Kind::Paragraph) {
+                RestyleBlock(block, *old, doc->ResolveStyle(id), /*force*/ false);
+            }
+            auto runsOf = [&](std::vector<RichTextRun>& runs) {
+                for (RichTextRun& run : runs) {
+                    if (run.characterStyleId.empty()) continue;
+                    if (const RichStyle* old = resolvedBefore(run.characterStyleId)) {
+                        RestyleRun(run, old->character, doc->ResolveStyle(run.characterStyleId).character, false);
+                    }
+                }
+            };
+            runsOf(block.runs);
+            for (RichTableRow& row : block.tableRows) {
+                for (RichTableCell& cell : row.cells) runsOf(cell.runs);
+            }
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::DeleteStyle(const std::string& id) {
+    const RichStyle* existing = doc->FindStyle(id);
+    if (!existing || id == "Normal") return false;
+    const std::string parent = existing->basedOn;
+    const RichStyle::Kind kind = existing->kind;
+    {
+        EditScope scope(*this, 0, GetBlockCount());
+        scope.CaptureStyles();
+        const RichStyle before = doc->ResolveStyle(id);
+        doc->styles.erase(std::remove_if(doc->styles.begin(), doc->styles.end(),
+                                         [&](const RichStyle& s) { return s.id == id; }),
+                          doc->styles.end());
+        // Styles based on it are based on its parent now.
+        for (RichStyle& other : doc->styles) {
+            if (other.basedOn == id) other.basedOn = parent;
+        }
+        const RichStyle after = parent.empty() ? RichStyle{} : doc->ResolveStyle(parent);
+        for (RichDocBlock& block : doc->blocks) {
+            if (kind == RichStyle::Kind::Paragraph && block.styleId == id) {
+                RestyleBlock(block, before, after, false);
+                block.styleId = parent == "Normal" ? std::string() : parent;
+            }
+            auto runsOf = [&](std::vector<RichTextRun>& runs) {
+                for (RichTextRun& run : runs) {
+                    if (run.characterStyleId != id) continue;
+                    RestyleRun(run, before.character, after.character, false);
+                    run.characterStyleId = kind == RichStyle::Kind::Character ? parent : std::string();
+                }
+            };
+            runsOf(block.runs);
+            for (RichTableRow& row : block.tableRows) {
+                for (RichTableCell& cell : row.cells) runsOf(cell.runs);
+            }
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+RichStyle UCRichDocumentEditor::StyleFromCaret(const std::string& id, const std::string& name) const {
+    RichStyle style;
+    style.id = id;
+    style.name = name.empty() ? id : name;
+    style.basedOn = "Normal";
+    if (caret.InCell() || caret.blockIndex < 0 || caret.blockIndex >= GetBlockCount()) return style;
+    const RichDocBlock& block = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+    if (block.align != RichTextAlign::Default) style.paragraph.align = block.align;
+    if (block.leftIndentPt != 0.0f) style.paragraph.leftIndentPt = block.leftIndentPt;
+    if (block.rightIndentPt != 0.0f) style.paragraph.rightIndentPt = block.rightIndentPt;
+    if (block.firstLineIndentPt != 0.0f) style.paragraph.firstLineIndentPt = block.firstLineIndentPt;
+    if (block.spaceBeforePt >= 0.0f) style.paragraph.spaceBeforePt = block.spaceBeforePt;
+    if (block.spaceAfterPt >= 0.0f) style.paragraph.spaceAfterPt = block.spaceAfterPt;
+    if (block.lineSpacing > 0.0f) style.paragraph.lineSpacing = block.lineSpacing;
+    if (block.type == RichBlockType::Heading) style.paragraph.headingLevel = block.headingLevel;
+    const RichTextRun format = FormatAt(caret);
+    if (format.bold) style.character.bold = true;
+    if (format.italic) style.character.italic = true;
+    if (format.underline) style.character.underline = true;
+    if (format.strikethrough) style.character.strikethrough = true;
+    if (!format.fontFamily.empty()) style.character.fontFamily = format.fontFamily;
+    if (format.fontSizePt > 0.0f) style.character.fontSizePt = format.fontSizePt;
+    if (!format.color.empty()) style.character.color = format.color;
+    return style;
+}
+
+std::string UCRichDocumentEditor::CurrentParagraphStyle() const {
+    if (caret.blockIndex < 0 || caret.blockIndex >= GetBlockCount()) return "Normal";
+    return EffectiveStyleId(doc->blocks[static_cast<size_t>(caret.blockIndex)]);
+}
+
+std::string UCRichDocumentEditor::CurrentCharacterStyle() const {
+    const std::vector<RichTextRun>* runs = RunsAt(caret);
+    if (!runs) return {};
+    const RichTextRun* run = RunAtOffset(*runs, caret.byteOffset);
+    return run ? run->characterStyleId : std::string();
 }
 
 // ===== STRUCTURE =====

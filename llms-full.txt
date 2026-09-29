@@ -43783,6 +43783,38 @@ Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
 
+### Named styles
+
+```cpp
+editor->ApplyParagraphStyle("Heading2");        // a heading, with its look
+editor->ApplyCharacterStyle("Emphasis");        // on the selection; "" removes it
+RichStyle callout;                              // add one, or change one
+callout.id = "Callout"; callout.name = "Call Out"; callout.basedOn = "Normal";
+callout.character.bold = true;
+callout.paragraph.leftIndentPt = 20.0f;
+editor->UpdateStyle(callout);
+editor->NewStyleFromCaret("My Title");          // from the paragraph at the caret
+editor->UpdateStyleFromCaret();                 // its style redefined to match it
+for (const RichStyle& s : editor->GetStyles()) { /* a style box */ }
+```
+
+`UCRichDocument::styles` holds the document's paragraph and character styles
+(`RichStyle`: id, display name, `basedOn`, `nextStyle`, and optional character
+and paragraph properties). A block names its paragraph style in `styleId`, a
+run its character style in `characterStyleId`. The formatting itself stays on
+the blocks and runs - every view, serializer and writer keeps working as before
+- and the style is what lets a change reach them: `UpdateStyle` changes every
+paragraph and run that has the style, or a style based on it, except in a
+property formatted directly (one whose value is not what the style used to
+give it). Styles and text change as one undo step. A heading style makes a
+heading (`headingLevel`); Enter after a paragraph gives the next one the
+style's `nextStyle` (body text after a heading). A document without styles gets
+`UCRichDocument::DefaultStyles()` - Normal, Title, Subtitle, Heading 1-6,
+Quote, Code; Strong, Emphasis, Source Text - the first time one is applied.
+DOCX (`styles.xml`, `w:pStyle`, `w:rStyle`) and ODT (`office:styles`, text and
+paragraph style names, Writer's "Standard" and "Heading_20_N" read as Normal
+and HeadingN) keep them both ways.
+
 ### Tables
 
 The caret goes inside table cells: click into one, type, select, format, and

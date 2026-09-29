@@ -308,6 +308,25 @@ private:
                 if (std::string(Attr(style, "w:default")) == "1") defaultTableStyle_ = id;
                 continue;
             }
+            // The document's named paragraph and character styles.
+            const std::string type = Attr(style, "w:type");
+            if (!id.empty() && (type == "paragraph" || type == "character")) {
+                RichStyle named;
+                named.id = id;
+                named.name = name ? Attr(name, "w:val") : id;
+                named.kind = type == "character" ? RichStyle::Kind::Character : RichStyle::Kind::Paragraph;
+                if (auto* basedOn = style->FirstChildElement("w:basedOn")) named.basedOn = Attr(basedOn, "w:val");
+                if (auto* next = style->FirstChildElement("w:next")) named.nextStyle = Attr(next, "w:val");
+                named.character = ReadStyleCharacter(style->FirstChildElement("w:rPr"));
+                if (named.kind == RichStyle::Kind::Paragraph) {
+                    named.paragraph = ReadStyleParagraph(style->FirstChildElement("w:pPr"));
+                    // Word's heading styles by name, whether or not they state
+                    // an outline level.
+                    const int level = HeadingLevelForStyle(id);
+                    if (level > 0) named.paragraph.headingLevel = level;
+                }
+                doc_->styles.push_back(std::move(named));
+            }
             if (id.empty() || std::string(Attr(style, "w:type")) != "paragraph") continue;
             StyleGeometry entry;
             if (auto* basedOn = style->FirstChildElement("w:basedOn")) entry.basedOn = Attr(basedOn, "w:val");
@@ -558,6 +577,83 @@ private:
     }
 
     // Returns 1..6 when the paragraph style is a heading, else 0.
+    // The named paragraph style a paragraph has ("" = the default one).
+    std::string ParagraphStyleId(tinyxml2::XMLElement* p) const {
+        auto* pPr = p ? p->FirstChildElement("w:pPr") : nullptr;
+        auto* pStyle = pPr ? pPr->FirstChildElement("w:pStyle") : nullptr;
+        const std::string id = pStyle ? Attr(pStyle, "w:val") : "";
+        if (id.empty() || id == defaultParagraphStyle_ || !doc_->FindStyle(id)) return "";
+        return id;
+    }
+
+    // What a paragraph's style (and the default style under it) gives its text.
+    RichStyleCharacter ParagraphStyleCharacter(tinyxml2::XMLElement* p) const {
+        auto* pPr = p ? p->FirstChildElement("w:pPr") : nullptr;
+        auto* pStyle = pPr ? pPr->FirstChildElement("w:pStyle") : nullptr;
+        const std::string id = pStyle ? Attr(pStyle, "w:val") : defaultParagraphStyle_;
+        RichStyleCharacter character = doc_->ResolveStyle(id).character;
+        // Sizes and fonts reach the text through the paragraph's own font
+        // (paragraphFontSizePt / paragraphFontFamily), as before.
+        character.fontSizePt.reset();
+        character.fontFamily.reset();
+        return character;
+    }
+
+    // A w:style's character properties.
+    static RichStyleCharacter ReadStyleCharacter(tinyxml2::XMLElement* rPr) {
+        RichStyleCharacter character;
+        if (!rPr) return character;
+        if (rPr->FirstChildElement("w:b")) character.bold = ToggleOn(rPr, "w:b");
+        if (rPr->FirstChildElement("w:i")) character.italic = ToggleOn(rPr, "w:i");
+        if (rPr->FirstChildElement("w:u")) character.underline = ToggleOn(rPr, "w:u");
+        if (rPr->FirstChildElement("w:strike")) character.strikethrough = ToggleOn(rPr, "w:strike");
+        if (auto* sz = rPr->FirstChildElement("w:sz")) character.fontSizePt = sz->FloatAttribute("w:val", 0.0f) / 2.0f;
+        if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
+            const std::string family = Attr(fonts, "w:ascii");
+            if (!family.empty()) character.fontFamily = family;
+        }
+        if (auto* color = rPr->FirstChildElement("w:color")) {
+            const std::string v = Attr(color, "w:val");
+            if (v.size() == 6 && v != "auto") character.color = "#" + v;
+        }
+        return character;
+    }
+
+    // A w:style's paragraph properties.
+    static RichStyleParagraph ReadStyleParagraph(tinyxml2::XMLElement* pPr) {
+        RichStyleParagraph paragraph;
+        if (!pPr) return paragraph;
+        if (auto* jc = pPr->FirstChildElement("w:jc")) {
+            const std::string v = Attr(jc, "w:val");
+            paragraph.align = v == "center" ? RichTextAlign::Center
+                            : (v == "right" || v == "end") ? RichTextAlign::Right
+                            : (v == "both" || v == "distribute") ? RichTextAlign::Justify : RichTextAlign::Left;
+        }
+        if (auto* ind = pPr->FirstChildElement("w:ind")) {
+            for (const char* name : {"w:left", "w:start"}) {
+                if (ind->Attribute(name)) paragraph.leftIndentPt = static_cast<float>(ind->IntAttribute(name, 0)) / 20.0f;
+            }
+            for (const char* name : {"w:right", "w:end"}) {
+                if (ind->Attribute(name)) paragraph.rightIndentPt = static_cast<float>(ind->IntAttribute(name, 0)) / 20.0f;
+            }
+            if (ind->Attribute("w:firstLine")) paragraph.firstLineIndentPt = static_cast<float>(ind->IntAttribute("w:firstLine", 0)) / 20.0f;
+            if (ind->Attribute("w:hanging")) paragraph.firstLineIndentPt = -static_cast<float>(ind->IntAttribute("w:hanging", 0)) / 20.0f;
+        }
+        if (auto* spacing = pPr->FirstChildElement("w:spacing")) {
+            if (spacing->Attribute("w:before")) paragraph.spaceBeforePt = static_cast<float>(spacing->IntAttribute("w:before", 0)) / 20.0f;
+            if (spacing->Attribute("w:after")) paragraph.spaceAfterPt = static_cast<float>(spacing->IntAttribute("w:after", 0)) / 20.0f;
+            const std::string rule = Attr(spacing, "w:lineRule");
+            if (spacing->Attribute("w:line") && (rule.empty() || rule == "auto")) {
+                paragraph.lineSpacing = static_cast<float>(spacing->IntAttribute("w:line", 240)) / 240.0f;
+            }
+        }
+        if (auto* outline = pPr->FirstChildElement("w:outlineLvl")) {
+            const int level = outline->IntAttribute("w:val", 9) + 1;
+            if (level >= 1 && level <= 6) paragraph.headingLevel = level;
+        }
+        return paragraph;
+    }
+
     int HeadingLevelForStyle(const std::string& styleId) const {
         std::string name;
         auto it = styleNames_.find(styleId);
@@ -609,6 +705,8 @@ private:
         std::string fieldInstruction;
         bool inFieldResult = false;
         RichTextRun::Field field = RichTextRun::Field::Plain;
+        // What the paragraph's style gives its text, under each run's own.
+        RichStyleCharacter paragraphCharacter;
     };
 
     // PAGE -> page number, NUMPAGES / SECTIONPAGES -> page count.
@@ -638,10 +736,19 @@ private:
 
     void ParseRunProperties(tinyxml2::XMLElement* rPr, RichTextRun& run) const {
         if (!rPr) return;
-        run.bold = ToggleOn(rPr, "w:b");
-        run.italic = ToggleOn(rPr, "w:i");
-        run.strikethrough = ToggleOn(rPr, "w:strike");
-        run.underline = ToggleOn(rPr, "w:u");
+        // A character style first; the run's own properties then override it.
+        if (auto* rStyle = rPr->FirstChildElement("w:rStyle")) {
+            const std::string id = Attr(rStyle, "w:val");
+            if (doc_->FindStyle(id)) {
+                run.characterStyleId = id;
+                doc_->ResolveStyle(id).character.ApplyTo(run);
+            }
+        }
+        // Only what is stated: the paragraph's style may have given the rest.
+        if (rPr->FirstChildElement("w:b")) run.bold = ToggleOn(rPr, "w:b");
+        if (rPr->FirstChildElement("w:i")) run.italic = ToggleOn(rPr, "w:i");
+        if (rPr->FirstChildElement("w:strike")) run.strikethrough = ToggleOn(rPr, "w:strike");
+        if (rPr->FirstChildElement("w:u")) run.underline = ToggleOn(rPr, "w:u");
         if (auto* vertAlign = rPr->FirstChildElement("w:vertAlign")) {
             std::string v = Attr(vertAlign, "w:val");
             run.superscript = (v == "superscript");
@@ -765,6 +872,7 @@ private:
                   InlineContext& ctx) {
         RichTextRun props;
         props.linkTarget = linkTarget;
+        ctx.paragraphCharacter.ApplyTo(props);
         ParseRunProperties(runElem->FirstChildElement("w:rPr"), props);
 
         for (auto* child = runElem->FirstChildElement(); child;
@@ -969,6 +1077,14 @@ private:
         }
 
         InlineContext ctx;
+        // Formatting a heading, quote or code block has by its kind (heading
+        // bold, quote italics) stays the block's, not its runs' - as the ODT
+        // reader does, so Markdown does not double it up.
+        if (block.type != RichBlockType::Heading && block.type != RichBlockType::BlockQuote
+            && block.type != RichBlockType::CodeBlock) {
+            ctx.paragraphCharacter = ParagraphStyleCharacter(p);
+        }
+        block.styleId = ParagraphStyleId(p);
         ParseInlineContainer(p, "", ctx);
         block.runs = std::move(ctx.runs);
         ApplyParagraphMark(block, p->FirstChildElement("w:pPr"));
@@ -1126,6 +1242,7 @@ private:
                 for (auto* p = tc->FirstChildElement("w:p"); p;
                      p = p->NextSiblingElement("w:p")) {
                     if (!firstParagraph) ctx.pendingLineBreak = true;
+                    ctx.paragraphCharacter = ParagraphStyleCharacter(p);
                     // Alignment is a paragraph property; the cell takes its
                     // first paragraph's, and its frame where the cell has none.
                     if (firstParagraph) {
@@ -1419,14 +1536,46 @@ private:
         return static_cast<int>(hyperlinks_.size()) - 1;
     }
 
-    static void WriteRunProperties(std::ostringstream& xml, const RichTextRun& run,
-                                   bool asHyperlink) {
+    // What the styles of the paragraph being written give its text: a run
+    // that is *not* bold where they are must say so, or Word shows it bold.
+    RichStyleCharacter paragraphBase_;
+
+    RichStyleCharacter ParagraphBase(const RichDocBlock& block) const {
+        std::string id = block.styleId;
+        if (id.empty() || !doc_->FindStyle(id)) {
+            id = block.type == RichBlockType::Heading ? "Heading" + std::to_string(std::clamp(block.headingLevel, 1, 6))
+               : block.type == RichBlockType::BlockQuote ? "Quote" : "Normal";
+        }
+        if (doc_->FindStyle(id)) {
+            RichStyleCharacter base = doc_->ResolveStyle(id).character;
+            // A heading's bold and a quote's italics belong to the block's
+            // kind (its runs are read without them): never switched off here.
+            if (block.type == RichBlockType::Heading) base.bold.reset();
+            if (block.type == RichBlockType::BlockQuote) base.italic.reset();
+            return base;
+        }
+        return RichStyleCharacter{};              // the writer's own styles: nothing to undo
+    }
+
+    void WriteRunProperties(std::ostringstream& xml, const RichTextRun& run, bool asHyperlink) const {
+        RichStyleCharacter base = paragraphBase_;
+        if (!run.characterStyleId.empty() && doc_->FindStyle(run.characterStyleId)) {
+            base.Overlay(doc_->ResolveStyle(run.characterStyleId).character);
+        }
+        const bool boldOff = !run.bold && base.bold.value_or(false);
+        const bool italicOff = !run.italic && base.italic.value_or(false);
+        const bool strikeOff = !run.strikethrough && base.strikethrough.value_or(false);
+        const bool underlineOff = !run.underline && !asHyperlink && base.underline.value_or(false);
         bool hasProps = run.bold || run.italic || run.underline || run.strikethrough
                         || run.code || run.subscript || run.superscript
                         || !run.color.empty() || !run.fontFamily.empty()
-                        || run.fontSizePt > 0 || !run.highlightColor.empty() || asHyperlink;
+                        || run.fontSizePt > 0 || !run.highlightColor.empty() || asHyperlink
+                        || !run.characterStyleId.empty() || boldOff || italicOff || strikeOff || underlineOff;
         if (!hasProps) return;
         xml << "<w:rPr>";
+        // The character style first (CT_RPr's order); the run's own
+        // properties after it are what it looks like in any case.
+        if (!run.characterStyleId.empty()) xml << "<w:rStyle w:val=\"" << EscapeXml(run.characterStyleId) << "\"/>";
         if (run.code) {
             xml << "<w:rFonts w:ascii=\"Courier New\" w:hAnsi=\"Courier New\"/>";
         } else if (!run.fontFamily.empty()) {
@@ -1436,8 +1585,11 @@ private:
         // In the order CT_RPr requires: b, i, strike, color, sz, u, shd,
         // vertAlign (Word rejects a run whose properties are out of order).
         if (run.bold) xml << "<w:b/>";
+        else if (boldOff) xml << "<w:b w:val=\"0\"/>";
         if (run.italic) xml << "<w:i/>";
+        else if (italicOff) xml << "<w:i w:val=\"0\"/>";
         if (run.strikethrough) xml << "<w:strike/>";
+        else if (strikeOff) xml << "<w:strike w:val=\"0\"/>";
         if (!run.color.empty()) {
             std::string hex = run.color;
             if (!hex.empty() && hex[0] == '#') hex = hex.substr(1);
@@ -1450,6 +1602,7 @@ private:
                 << "<w:szCs w:val=\"" << static_cast<int>(run.fontSizePt * 2 + 0.5f) << "\"/>";
         }
         if (run.underline || asHyperlink) xml << "<w:u w:val=\"single\"/>";
+        else if (underlineOff) xml << "<w:u w:val=\"none\"/>";
         // Any highlight colour, as character shading (w:highlight knows only
         // sixteen named colours).
         if (run.highlightColor.size() == 7) {
@@ -1585,9 +1738,14 @@ private:
     }
 
     void WriteParagraph(std::ostringstream& xml, const RichDocBlock& block) {
+        paragraphBase_ = ParagraphBase(block);
         xml << "<w:p>";
         std::ostringstream pPr;
-        if (block.type == RichBlockType::Heading) {
+        // The paragraph's own named style, when it has one the file carries.
+        const bool named = !block.styleId.empty() && doc_->FindStyle(block.styleId);
+        if (named && block.type != RichBlockType::ListItem && block.type != RichBlockType::HorizontalRule) {
+            pPr << "<w:pStyle w:val=\"" << EscapeXml(block.styleId) << "\"/>";
+        } else if (block.type == RichBlockType::Heading) {
             pPr << "<w:pStyle w:val=\"Heading" << std::clamp(block.headingLevel, 1, 6)
                 << "\"/>";
         } else if (block.type == RichBlockType::BlockQuote) {
@@ -1877,6 +2035,7 @@ private:
                 if (row.header) {
                     for (auto& run : runs) run.bold = true;
                 }
+                paragraphBase_ = ParagraphBase(RichDocBlock{});     // a cell's paragraph is Normal
                 WriteRuns(xml, runs);
                 xml << "</w:p></w:tc>";
             }
@@ -2112,18 +2271,80 @@ private:
         return xml.str();
     }
 
-    static std::string BuildStylesXml() {
+    // One named style as Word writes it: name, what it is based on and what
+    // follows it, then its paragraph and character properties, each in the
+    // element order the schema requires.
+    static void WriteNamedStyle(std::ostringstream& xml, const RichStyle& style, bool isDefault) {
+        const bool paragraph = style.kind == RichStyle::Kind::Paragraph;
+        xml << "<w:style w:type=\"" << (paragraph ? "paragraph" : "character") << "\""
+            << (isDefault ? " w:default=\"1\"" : "") << " w:styleId=\"" << EscapeXml(style.id) << "\">"
+            << "<w:name w:val=\"" << EscapeXml(style.name.empty() ? style.id : style.name) << "\"/>";
+        if (!style.basedOn.empty()) xml << "<w:basedOn w:val=\"" << EscapeXml(style.basedOn) << "\"/>";
+        if (paragraph && !style.nextStyle.empty()) xml << "<w:next w:val=\"" << EscapeXml(style.nextStyle) << "\"/>";
+        if (paragraph && !style.paragraph.IsEmpty()) {
+            const RichStyleParagraph& p = style.paragraph;
+            xml << "<w:pPr>";
+            if (p.headingLevel && *p.headingLevel > 0) xml << "<w:keepNext/>";
+            if (p.spaceBeforePt || p.spaceAfterPt || p.lineSpacing) {
+                xml << "<w:spacing";
+                if (p.spaceBeforePt) xml << " w:before=\"" << Twips(*p.spaceBeforePt) << "\"";
+                if (p.spaceAfterPt) xml << " w:after=\"" << Twips(*p.spaceAfterPt) << "\"";
+                if (p.lineSpacing) xml << " w:line=\"" << std::lround(*p.lineSpacing * 240.0f) << "\" w:lineRule=\"auto\"";
+                xml << "/>";
+            }
+            if (p.leftIndentPt || p.rightIndentPt || p.firstLineIndentPt) {
+                xml << "<w:ind";
+                if (p.leftIndentPt) xml << " w:left=\"" << Twips(*p.leftIndentPt) << "\"";
+                if (p.rightIndentPt) xml << " w:right=\"" << Twips(*p.rightIndentPt) << "\"";
+                if (p.firstLineIndentPt && *p.firstLineIndentPt >= 0.0f) xml << " w:firstLine=\"" << Twips(*p.firstLineIndentPt) << "\"";
+                if (p.firstLineIndentPt && *p.firstLineIndentPt < 0.0f) xml << " w:hanging=\"" << Twips(-*p.firstLineIndentPt) << "\"";
+                xml << "/>";
+            }
+            if (p.align && *p.align != RichTextAlign::Default) {
+                const char* jc = *p.align == RichTextAlign::Center ? "center" : *p.align == RichTextAlign::Right ? "right"
+                               : *p.align == RichTextAlign::Justify ? "both" : "left";
+                xml << "<w:jc w:val=\"" << jc << "\"/>";
+            }
+            if (p.headingLevel && *p.headingLevel > 0) xml << "<w:outlineLvl w:val=\"" << (*p.headingLevel - 1) << "\"/>";
+            xml << "</w:pPr>";
+        }
+        if (!style.character.IsEmpty()) {
+            const RichStyleCharacter& c = style.character;
+            xml << "<w:rPr>";
+            const std::string family = c.code && *c.code ? std::string("Courier New") : c.fontFamily.value_or("");
+            if (!family.empty()) xml << "<w:rFonts w:ascii=\"" << EscapeXml(family) << "\" w:hAnsi=\"" << EscapeXml(family) << "\"/>";
+            if (c.bold) xml << (*c.bold ? "<w:b/>" : "<w:b w:val=\"0\"/>");
+            if (c.italic) xml << (*c.italic ? "<w:i/>" : "<w:i w:val=\"0\"/>");
+            if (c.strikethrough) xml << (*c.strikethrough ? "<w:strike/>" : "<w:strike w:val=\"0\"/>");
+            if (c.color && c.color->size() == 7) xml << "<w:color w:val=\"" << EscapeXml(c.color->substr(1)) << "\"/>";
+            if (c.fontSizePt && *c.fontSizePt > 0.0f) {
+                const long half = std::lround(*c.fontSizePt * 2.0f);
+                xml << "<w:sz w:val=\"" << half << "\"/><w:szCs w:val=\"" << half << "\"/>";
+            }
+            if (c.underline) xml << (*c.underline ? "<w:u w:val=\"single\"/>" : "<w:u w:val=\"none\"/>");
+            xml << "</w:rPr>";
+        }
+        xml << "</w:style>\n";
+    }
+
+    std::string BuildStylesXml() const {
         std::ostringstream xml;
+        // The styles the writer names itself, unless the document has its own
+        // of that name - then the document's is written instead.
+        auto documentHas = [&](const std::string& id) { return doc_->FindStyle(id) != nullptr; };
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">\n"
             << "<w:docDefaults><w:rPrDefault><w:rPr>"
                "<w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\"/>"
                "<w:sz w:val=\"22\"/><w:szCs w:val=\"22\"/>"
-               "</w:rPr></w:rPrDefault></w:docDefaults>\n"
-            << "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\">"
-               "<w:name w:val=\"Normal\"/></w:style>\n";
+               "</w:rPr></w:rPrDefault></w:docDefaults>\n";
+        if (!documentHas("Normal")) {
+            xml << "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\">"
+                   "<w:name w:val=\"Normal\"/></w:style>\n";
+        }
         static const int headingSizesHalfPt[6] = {36, 32, 28, 26, 24, 22};
         for (int level = 1; level <= 6; ++level) {
+            if (documentHas("Heading" + std::to_string(level))) continue;
             xml << "<w:style w:type=\"paragraph\" w:styleId=\"Heading" << level << "\">"
                 << "<w:name w:val=\"heading " << level << "\"/>"
                 << "<w:basedOn w:val=\"Normal\"/>"
@@ -2133,19 +2354,26 @@ private:
                 << "\"/><w:szCs w:val=\"" << headingSizesHalfPt[level - 1]
                 << "\"/></w:rPr></w:style>\n";
         }
-        xml << "<w:style w:type=\"paragraph\" w:styleId=\"Quote\">"
-               "<w:name w:val=\"Quote\"/><w:basedOn w:val=\"Normal\"/>"
-               "<w:pPr><w:ind w:left=\"567\" w:right=\"567\"/></w:pPr>"
-               "<w:rPr><w:i/></w:rPr></w:style>\n"
-            << "<w:style w:type=\"paragraph\" w:styleId=\"CodeBlock\">"
-               "<w:name w:val=\"Code Block\"/><w:basedOn w:val=\"Normal\"/>"
-               "<w:pPr><w:ind w:left=\"284\"/></w:pPr>"
-               "<w:rPr><w:rFonts w:ascii=\"Courier New\" w:hAnsi=\"Courier New\"/>"
-               "<w:sz w:val=\"20\"/></w:rPr></w:style>\n"
-            << "<w:style w:type=\"paragraph\" w:styleId=\"ListParagraph\">"
-               "<w:name w:val=\"List Paragraph\"/><w:basedOn w:val=\"Normal\"/>"
-               "<w:pPr><w:ind w:left=\"720\"/><w:contextualSpacing/></w:pPr></w:style>\n"
-            << "<w:style w:type=\"table\" w:styleId=\"TableGrid\">"
+        if (!documentHas("Quote")) {
+            xml << "<w:style w:type=\"paragraph\" w:styleId=\"Quote\">"
+                   "<w:name w:val=\"Quote\"/><w:basedOn w:val=\"Normal\"/>"
+                   "<w:pPr><w:ind w:left=\"567\" w:right=\"567\"/></w:pPr>"
+                   "<w:rPr><w:i/></w:rPr></w:style>\n";
+        }
+        if (!documentHas("CodeBlock")) {
+            xml << "<w:style w:type=\"paragraph\" w:styleId=\"CodeBlock\">"
+                   "<w:name w:val=\"Code Block\"/><w:basedOn w:val=\"Normal\"/>"
+                   "<w:pPr><w:ind w:left=\"284\"/></w:pPr>"
+                   "<w:rPr><w:rFonts w:ascii=\"Courier New\" w:hAnsi=\"Courier New\"/>"
+                   "<w:sz w:val=\"20\"/></w:rPr></w:style>\n";
+        }
+        if (!documentHas("ListParagraph")) {
+            xml << "<w:style w:type=\"paragraph\" w:styleId=\"ListParagraph\">"
+                   "<w:name w:val=\"List Paragraph\"/><w:basedOn w:val=\"Normal\"/>"
+                   "<w:pPr><w:ind w:left=\"720\"/><w:contextualSpacing/></w:pPr></w:style>\n";
+        }
+        for (const RichStyle& style : doc_->styles) WriteNamedStyle(xml, style, style.id == "Normal");
+        xml << "<w:style w:type=\"table\" w:styleId=\"TableGrid\">"
                "<w:name w:val=\"Table Grid\"/></w:style>\n"
             << "</w:styles>\n";
         return xml.str();

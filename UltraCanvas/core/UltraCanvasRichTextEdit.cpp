@@ -3520,6 +3520,69 @@ bool UltraCanvasRichTextEdit::CanSplitCurrentCell() const {
     return std::max(1, cell.columnSpan) > 1 || std::max(1, cell.rowSpan) > 1;
 }
 
+bool UltraCanvasRichTextEdit::ApplyParagraphStyle(const std::string& id) {
+    if (readOnly || !editor.ApplyParagraphStyle(id)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::ApplyCharacterStyle(const std::string& id) {
+    if (readOnly || !editor.ApplyCharacterStyle(id)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::UpdateStyle(const RichStyle& style) {
+    if (readOnly || !editor.UpdateStyle(style)) return false;
+    InvalidateDocument();
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::DeleteStyle(const std::string& id) {
+    if (readOnly || !editor.DeleteStyle(id)) return false;
+    InvalidateDocument();
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::NewStyleFromCaret(const std::string& name) {
+    if (readOnly || name.empty()) return false;
+    // An id from the name, unique among the document's styles.
+    std::string base;
+    for (char c : name) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || static_cast<unsigned char>(c) >= 0x80) base += c;
+    }
+    if (base.empty()) base = "Style";
+    std::string id = base;
+    const std::vector<RichStyle> styles = editor.GetStyles();
+    for (int n = 2; std::any_of(styles.begin(), styles.end(), [&](const RichStyle& s) { return s.id == id; }); n++) {
+        id = base + std::to_string(n);
+    }
+    RichStyle style = editor.StyleFromCaret(id, name);
+    if (!editor.UpdateStyle(style)) return false;
+    editor.ApplyParagraphStyle(id);
+    InvalidateDocument();
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::UpdateStyleFromCaret() {
+    if (readOnly) return false;
+    const std::string id = editor.CurrentParagraphStyle();
+    const std::vector<RichStyle> styles = editor.GetStyles();
+    auto existing = std::find_if(styles.begin(), styles.end(), [&](const RichStyle& s) { return s.id == id; });
+    if (existing == styles.end()) return false;
+    RichStyle style = editor.StyleFromCaret(id, existing->name);
+    style.basedOn = existing->basedOn;
+    style.nextStyle = existing->nextStyle;
+    // The caret's formatting on top of what the style already said.
+    RichStyle merged = *existing;
+    merged.character.Overlay(style.character);
+    merged.paragraph.Overlay(style.paragraph);
+    return UpdateStyle(merged);
+}
+
 bool UltraCanvasRichTextEdit::ToggleCheckedAtCaret() {
     if (readOnly || editor.GetCaret().InCell()) return false;
     if (!editor.ToggleChecked(editor.GetCaret().blockIndex)) return false;

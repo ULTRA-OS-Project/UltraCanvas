@@ -774,7 +774,11 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
             case RichBlockType::Heading: {
                 blockSeparator();
                 int level = std::clamp(block.headingLevel, 1, 6);
-                md << std::string(level, '#') << ' ' << RunsToMarkdown(block.runs, false, &mediaPaths) << "\n";
+                // A heading is bold already: a heading style's bold on its runs
+                // would otherwise come out as "# **Title**".
+                std::vector<RichTextRun> runs = block.runs;
+                for (RichTextRun& run : runs) run.bold = false;
+                md << std::string(level, '#') << ' ' << RunsToMarkdown(runs, false, &mediaPaths) << "\n";
                 break;
             }
             case RichBlockType::ListItem: {
@@ -1347,6 +1351,165 @@ int RichDocOrderedItemNumber(const std::vector<RichDocBlock>& blocks, size_t ind
         number++;
     }
     return number;
+}
+
+// ===== NAMED STYLES =====
+
+void RichStyleCharacter::ApplyTo(RichTextRun& run) const {
+    if (bold) run.bold = *bold;
+    if (italic) run.italic = *italic;
+    if (underline) run.underline = *underline;
+    if (strikethrough) run.strikethrough = *strikethrough;
+    if (code) run.code = *code;
+    if (fontFamily) run.fontFamily = *fontFamily;
+    if (fontSizePt) run.fontSizePt = *fontSizePt;
+    if (color) run.color = *color;
+    if (highlightColor) run.highlightColor = *highlightColor;
+}
+
+void RichStyleCharacter::Overlay(const RichStyleCharacter& over) {
+    if (over.bold) bold = over.bold;
+    if (over.italic) italic = over.italic;
+    if (over.underline) underline = over.underline;
+    if (over.strikethrough) strikethrough = over.strikethrough;
+    if (over.code) code = over.code;
+    if (over.fontFamily) fontFamily = over.fontFamily;
+    if (over.fontSizePt) fontSizePt = over.fontSizePt;
+    if (over.color) color = over.color;
+    if (over.highlightColor) highlightColor = over.highlightColor;
+}
+
+void RichStyleParagraph::ApplyTo(RichDocBlock& block) const {
+    if (headingLevel && (block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading)) {
+        if (*headingLevel >= 1 && *headingLevel <= 6) {
+            block.type = RichBlockType::Heading;
+            block.headingLevel = *headingLevel;
+        } else {
+            block.type = RichBlockType::Paragraph;
+            block.headingLevel = 0;
+        }
+    }
+    if (align) block.align = *align;
+    if (leftIndentPt) block.leftIndentPt = *leftIndentPt;
+    if (rightIndentPt) block.rightIndentPt = *rightIndentPt;
+    if (firstLineIndentPt) block.firstLineIndentPt = *firstLineIndentPt;
+    if (spaceBeforePt) block.spaceBeforePt = *spaceBeforePt;
+    if (spaceAfterPt) block.spaceAfterPt = *spaceAfterPt;
+    if (lineSpacing) block.lineSpacing = *lineSpacing;
+}
+
+void RichStyleParagraph::Overlay(const RichStyleParagraph& over) {
+    if (over.headingLevel) headingLevel = over.headingLevel;
+    if (over.align) align = over.align;
+    if (over.leftIndentPt) leftIndentPt = over.leftIndentPt;
+    if (over.rightIndentPt) rightIndentPt = over.rightIndentPt;
+    if (over.firstLineIndentPt) firstLineIndentPt = over.firstLineIndentPt;
+    if (over.spaceBeforePt) spaceBeforePt = over.spaceBeforePt;
+    if (over.spaceAfterPt) spaceAfterPt = over.spaceAfterPt;
+    if (over.lineSpacing) lineSpacing = over.lineSpacing;
+}
+
+const RichStyle* UCRichDocument::FindStyle(const std::string& id) const {
+    for (const RichStyle& style : styles) {
+        if (style.id == id) return &style;
+    }
+    return nullptr;
+}
+
+RichStyle UCRichDocument::ResolveStyle(const std::string& id) const {
+    // The chain from the root down, then folded root first so the style's own
+    // properties win. Bounded: a cycle in a file's basedOn cannot hang it.
+    std::vector<const RichStyle*> chain;
+    for (const RichStyle* style = FindStyle(id); style && chain.size() < 16;
+         style = style->basedOn.empty() || style->basedOn == style->id ? nullptr : FindStyle(style->basedOn)) {
+        chain.push_back(style);
+    }
+    RichStyle resolved;
+    if (chain.empty()) {
+        resolved.id = id;
+        return resolved;
+    }
+    resolved = *chain.front();
+    resolved.character = RichStyleCharacter{};
+    resolved.paragraph = RichStyleParagraph{};
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+        resolved.character.Overlay((*it)->character);
+        resolved.paragraph.Overlay((*it)->paragraph);
+    }
+    return resolved;
+}
+
+bool UCRichDocument::StyleDerivesFrom(const std::string& id, const std::string& ancestorId) const {
+    std::string current = id;
+    for (int depth = 0; depth < 16 && !current.empty(); ++depth) {
+        if (current == ancestorId) return true;
+        const RichStyle* style = FindStyle(current);
+        if (!style || style->basedOn == current) return false;
+        current = style->basedOn;
+    }
+    return false;
+}
+
+std::vector<RichStyle> UCRichDocument::DefaultStyles() {
+    std::vector<RichStyle> out;
+    auto paragraph = [&](const std::string& id, const std::string& name, const std::string& basedOn) -> RichStyle& {
+        RichStyle style;
+        style.id = id;
+        style.name = name;
+        style.basedOn = basedOn;
+        out.push_back(style);
+        return out.back();
+    };
+    paragraph("Normal", "Normal", "");
+    {
+        RichStyle& title = paragraph("Title", "Title", "Normal");
+        title.character.fontSizePt = 26.0f;
+        title.character.bold = true;
+        title.paragraph.spaceAfterPt = 6.0f;
+        title.nextStyle = "Normal";
+    }
+    {
+        RichStyle& subtitle = paragraph("Subtitle", "Subtitle", "Normal");
+        subtitle.character.fontSizePt = 15.0f;
+        subtitle.character.color = "#595959";
+        subtitle.nextStyle = "Normal";
+    }
+    static const float headingSizes[6] = {20.0f, 16.0f, 14.0f, 12.0f, 11.0f, 11.0f};
+    for (int level = 1; level <= 6; level++) {
+        RichStyle& heading = paragraph("Heading" + std::to_string(level), "Heading " + std::to_string(level), "Normal");
+        heading.paragraph.headingLevel = level;
+        heading.paragraph.spaceBeforePt = level <= 2 ? 12.0f : 8.0f;
+        heading.paragraph.spaceAfterPt = 4.0f;
+        heading.character.bold = true;
+        heading.character.fontSizePt = headingSizes[level - 1];
+        heading.nextStyle = "Normal";
+    }
+    {
+        RichStyle& quote = paragraph("Quote", "Quote", "Normal");
+        quote.character.italic = true;
+        quote.paragraph.leftIndentPt = 36.0f;
+        quote.paragraph.rightIndentPt = 36.0f;
+    }
+    {
+        RichStyle& code = paragraph("CodeBlock", "Code", "Normal");
+        code.character.code = true;
+        code.character.fontFamily = "Courier New";
+    }
+    auto character = [&](const std::string& id, const std::string& name) -> RichStyle& {
+        RichStyle style;
+        style.id = id;
+        style.name = name;
+        style.kind = RichStyle::Kind::Character;
+        out.push_back(style);
+        return out.back();
+    };
+    character("Strong", "Strong").character.bold = true;
+    character("Emphasis", "Emphasis").character.italic = true;
+    {
+        RichStyle& code = character("SourceText", "Source Text");
+        code.character.code = true;
+    }
+    return out;
 }
 
 const char* RichBorderStyleWordName(RichBorderStyle style) {

@@ -459,6 +459,17 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
     items.push_back(MenuItemData::ActionWithShortcut("Select All", "Ctrl+A",
         [this]() { OnEditSelectAll(); }));
 
+    // Named styles: the paragraph's (a radio group) and the text's.
+    if (richEdit && editable) {
+        items.push_back(MenuItemData::Separator());
+        items.push_back(MenuItemData::Submenu("Paragraph Style", [this]() {
+            return BuildStyleMenuItems(static_cast<int>(RichStyle::Kind::Paragraph));
+        }));
+        items.push_back(MenuItemData::Submenu("Character Style", [this]() {
+            return BuildStyleMenuItems(static_cast<int>(RichStyle::Kind::Character));
+        }));
+    }
+
     // A right-clicked picture is selected by the element before this runs, so
     // its items apply to the picture under the pointer.
     if (richEdit && richEdit->HasSelectedImage()) {
@@ -510,6 +521,48 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
         return BuildSpellingMenuItems();
     }));
 
+    return items;
+}
+
+std::vector<MenuItemData> UltraCanvasTextEditor::BuildStyleMenuItems(int kindValue) {
+    const RichStyle::Kind kind = static_cast<RichStyle::Kind>(kindValue);
+    std::vector<MenuItemData> items;
+    UltraCanvasRichTextEdit* richEdit = GetActiveRichEdit();
+    if (!richEdit) return items;
+    const std::string current = kind == RichStyle::Kind::Paragraph ? richEdit->GetCurrentParagraphStyle()
+                                                                   : richEdit->GetCurrentCharacterStyle();
+    const int group = kind == RichStyle::Kind::Paragraph ? 7101 : 7102;
+    if (kind == RichStyle::Kind::Character) {
+        items.push_back(MenuItemData::Radio("(None)", group, current.empty(), [this]() {
+            if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->ApplyCharacterStyle("");
+        }));
+    }
+    for (const RichStyle& style : richEdit->GetStyles()) {
+        if (style.kind != kind) continue;
+        const std::string id = style.id;
+        items.push_back(MenuItemData::Radio(style.name.empty() ? id : style.name, group, id == current, [this, id, kind]() {
+            UltraCanvasRichTextEdit* edit = GetActiveRichEdit();
+            if (!edit) return;
+            if (kind == RichStyle::Kind::Paragraph) edit->ApplyParagraphStyle(id);
+            else edit->ApplyCharacterStyle(id);
+            UpdateMarkdownToolbarState();
+        }));
+    }
+    if (kind == RichStyle::Kind::Paragraph) {
+        items.push_back(MenuItemData::Separator());
+        items.push_back(MenuItemData::Action("New Style from Paragraph...", [this]() {
+            UltraCanvasDialogManager::ShowInputDialog(
+                "Name of the new paragraph style:", "New Style", "", InputType::Text,
+                [this](DialogResult result, const std::string& name) {
+                    if (result != DialogResult::OK || name.empty()) return;
+                    if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->NewStyleFromCaret(name);
+                },
+                GetWindow());
+        }));
+        items.push_back(MenuItemData::Action("Update Style to Match Paragraph", [this]() {
+            if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->UpdateStyleFromCaret();
+        }));
+    }
     return items;
 }
 

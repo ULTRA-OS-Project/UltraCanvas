@@ -846,6 +846,76 @@ int main(int argc, char** argv) {
         CHECK(!WordFormatInternal::ParagraphIsOneInlineImage({lone}, promoted));
     }
 
+    // ===== 5g5. Named styles survive ODT and DOCX =====
+    {
+        auto styled = std::make_shared<UCRichDocument>();
+        styled->styles = UCRichDocument::DefaultStyles();
+        RichStyle callout;
+        callout.id = "Callout";
+        callout.name = "Call Out";
+        callout.basedOn = "Normal";
+        callout.nextStyle = "Normal";
+        callout.character.bold = true;
+        callout.character.color = "#AA0000";
+        callout.paragraph.leftIndentPt = 20.0f;
+        callout.paragraph.align = RichTextAlign::Center;
+        styled->styles.push_back(callout);
+        RichStyle term;
+        term.id = "KeyTerm";
+        term.name = "Key Term";
+        term.kind = RichStyle::Kind::Character;
+        term.character.italic = true;
+        styled->styles.push_back(term);
+
+        RichDocBlock heading;
+        heading.type = RichBlockType::Heading;
+        heading.headingLevel = 2;
+        heading.styleId = "Heading2";
+        RichTextRun run;
+        run.text = "Styled heading";
+        heading.runs = {run};
+        styled->blocks.push_back(heading);
+
+        UCRichDocumentEditor editor;
+        editor.SetDocument(styled);
+        editor.SetCaret(RichDocPosition(0, editor.BlockTextLength(0)));
+        editor.SplitBlock();
+        editor.InsertText("A callout with a key term inside");
+        CHECK(editor.ApplyParagraphStyle("Callout"));
+        editor.SetSelection(RichDocPosition(1, 17), RichDocPosition(1, 25));
+        CHECK(editor.ApplyCharacterStyle("KeyTerm"));
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("styles.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *styled, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const RichStyle* readCallout = back.FindStyle("Callout");
+            CHECK_MSG(readCallout, ext);
+            if (readCallout) {
+                CHECK_MSG(readCallout->name == "Call Out" && readCallout->basedOn == "Normal"
+                          && readCallout->nextStyle == "Normal", ext);
+                CHECK_MSG(readCallout->character.bold.value_or(false) && readCallout->character.color.value_or("") == "#AA0000"
+                          && Near(readCallout->paragraph.leftIndentPt.value_or(0), 20.0f), ext);
+            }
+            const RichStyle* readTerm = back.FindStyle("KeyTerm");
+            CHECK_MSG(readTerm && readTerm->kind == RichStyle::Kind::Character
+                      && readTerm->character.italic.value_or(false), ext);
+            const RichDocBlock* paragraph = FindBlock(back, "A callout");
+            CHECK_MSG(paragraph && paragraph->styleId == "Callout" && paragraph->align == RichTextAlign::Center, ext);
+            bool termRun = false;
+            if (paragraph) {
+                for (const auto& r : paragraph->runs) {
+                    if (r.text == "key term") termRun = r.characterStyleId == "KeyTerm" && r.italic && r.bold;
+                }
+            }
+            CHECK_MSG(termRun, ext);
+            const RichDocBlock* h = FindBlock(back, "Styled heading");
+            CHECK_MSG(h && h->type == RichBlockType::Heading && h->headingLevel == 2 && h->styleId == "Heading2", ext);
+        }
+    }
+
     // ===== 5h. List labels: formats, templates, editing =====
     {
         CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");

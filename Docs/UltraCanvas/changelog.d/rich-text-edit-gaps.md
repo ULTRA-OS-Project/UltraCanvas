@@ -107,3 +107,13 @@
   written into the document as it changes (the body moves down as it grows).
   Escape or a click in the body goes back. `IsEditingHeaderOrFooter`,
   `FinishHeaderFooterEditing`, `onHeaderFooterEditingChanged`.
+- **Named styles.** `UCRichDocument::styles` (`RichStyle`: paragraph or
+  character, `basedOn`, `nextStyle`, optional properties), `RichDocBlock::styleId`
+  and `RichTextRun::characterStyleId`. The editing core applies, changes
+  (propagating to the text that follows the style, sparing direct formatting),
+  creates and deletes them in undoable steps; the element passes them through
+  and adds `NewStyleFromCaret` / `UpdateStyleFromCaret`. DOCX and ODT read and
+  write them (they were flattened into direct formatting on load and could not
+  be saved), and the DOCX reader now gives runs their paragraph and character
+  styles' bold, italics, underline and colour, which it used to drop. A
+  heading's bold no longer appears as `**...**` in its Markdown.

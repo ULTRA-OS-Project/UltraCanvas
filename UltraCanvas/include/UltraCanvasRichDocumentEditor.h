@@ -326,6 +326,32 @@ public:
     // Ticks or unticks one check list item. False when it is not one.
     bool ToggleChecked(int blockIndex);
 
+    // ===== NAMED STYLES =====
+    // The document's styles; a document without any gets
+    // UCRichDocument::DefaultStyles() the first time one is applied.
+    std::vector<RichStyle> GetStyles() const;
+    // Gives the selected paragraphs style `id`: its paragraph and character
+    // properties are applied (a heading style makes them headings), and the
+    // properties the old style set that the new one does not are taken back
+    // where the text still has them. One undo step.
+    bool ApplyParagraphStyle(const std::string& id);
+    // Gives the selected text character style `id` ("" removes it).
+    bool ApplyCharacterStyle(const std::string& id);
+    // Adds a style, or changes one: every paragraph and run that has it (or
+    // a style based on it) follows, except in a property formatted directly
+    // (one whose value is not what the style used to give it). Styles and
+    // text change as one undo step.
+    bool UpdateStyle(const RichStyle& style);
+    // Removes a style; what had it takes the style it was based on.
+    bool DeleteStyle(const std::string& id);
+    // A new style from the paragraph at the caret: its alignment, indents and
+    // spacing, and its first run's character formatting.
+    RichStyle StyleFromCaret(const std::string& id, const std::string& name) const;
+    // The caret paragraph's style ("Normal" when it states none; a heading
+    // without one reads as its heading style).
+    std::string CurrentParagraphStyle() const;
+    std::string CurrentCharacterStyle() const;
+
     // ===== STRUCTURE =====
     void InsertHorizontalRule();
     void InsertPageBreak();
@@ -503,6 +529,9 @@ private:
         RichDocPosition caretBefore, anchorBefore;
         RichDocPosition caretAfter, anchorAfter;
         bool typing = false;        // eligible to absorb the next keystroke
+        // Set when the step also changed the document's named styles.
+        bool stylesChanged = false;
+        std::vector<RichStyle> stylesBefore, stylesAfter;
     };
 
     // Records the blocks about to change, and on close records what they
@@ -518,8 +547,12 @@ private:
         std::vector<RichDocBlock> before;
         RichDocPosition caretBefore, anchorBefore;
         bool typing = false;
+        bool captureStyles = false;
+        std::vector<RichStyle> stylesBefore;
         EditScope(UCRichDocumentEditor& e, int first, int count, bool isTyping = false);
         ~EditScope();
+        // The step also records the named styles (a style edit).
+        void CaptureStyles() { captureStyles = true; stylesBefore = ed.doc->styles; }
     };
     friend struct EditScope;
 
@@ -544,6 +577,12 @@ private:
     void InsertStructuralBlock(RichBlockType type);
 
     void CommitStep(UndoStep step);
+    // Puts `id`'s properties onto a block and its runs, taking back those of
+    // `previousId` it still carries. force: the new style's properties are set
+    // everywhere (applying a style); otherwise only where the text still had
+    // the old value (a style being changed).
+    void RestyleBlock(RichDocBlock& block, const RichStyle& before, const RichStyle& after, bool force) const;
+    void EnsureStyles();
     void NotifyChanged();
     void NotifySelectionChanged();
     void EnsureNotEmpty();

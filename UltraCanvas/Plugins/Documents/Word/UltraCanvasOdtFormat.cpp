@@ -23,6 +23,7 @@
 #include <vector>
 #include <cstring>
 #include <map>
+#include <set>
 #include <locale>
 #include <iomanip>
 #include <sstream>
@@ -57,6 +58,7 @@ struct OdtTextProps {
     bool bottomBorder = false;                      // paragraph styles only
     bool pageBreakBefore = false;                   // paragraph styles only
     int headingLevel = 0;                           // derived from heading style names
+    std::string characterStyle;                     // the named text style a span has (model id)
     // Paragraph geometry (paragraph styles only). NaN = not set by this style.
     float marginLeft = kUnsetLength;
     float marginRight = kUnsetLength;
@@ -112,8 +114,38 @@ struct OdtTextProps {
         bottomBorder = bottomBorder || parent.bottomBorder;
         pageBreakBefore = pageBreakBefore || parent.pageBreakBefore;
         if (headingLevel == 0) headingLevel = parent.headingLevel;
+        if (characterStyle.empty()) characterStyle = parent.characterStyle;
     }
 };
+
+// ODF style names and the model's style ids: Writer's default paragraph
+// style "Standard" is the model's "Normal", and "Heading_20_3" its "Heading3",
+// so a document moved between ODT and DOCX keeps one set of names.
+std::string OdfNameToStyleId(const std::string& name) {
+    if (name == "Standard") return "Normal";
+    const std::string prefix = "Heading_20_";
+    if (name.size() == prefix.size() + 1 && name.compare(0, prefix.size(), prefix) == 0
+        && name.back() >= '1' && name.back() <= '9') {
+        return "Heading" + name.substr(prefix.size());
+    }
+    return name;
+}
+
+std::string StyleIdToOdfName(const std::string& id) {
+    if (id == "Normal") return "Standard";
+    if (id.size() == 8 && id.compare(0, 7, "Heading") == 0 && id.back() >= '1' && id.back() <= '9') {
+        return "Heading_20_" + id.substr(7);
+    }
+    // An NCName: spaces spelt as ODF does, anything else outside it dropped.
+    std::string out;
+    for (char c : id) {
+        if (c == ' ') out += "_20_";
+        else if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.'
+                 || static_cast<unsigned char>(c) >= 0x80) out += c;
+    }
+    if (out.empty() || std::isdigit(static_cast<unsigned char>(out[0])) || out[0] == '-' || out[0] == '.') out = "S" + out;
+    return out;
+}
 
 // Matches "Heading_20_3" / "Heading 3" / "heading3" style names (ODF encodes
 // a space in style names as "_20_"). Returns 1..6 or 0.
@@ -193,6 +225,7 @@ public:
                 CollectFontFaces(stylesRoot->FirstChildElement("office:font-face-decls"));
                 CollectDefaultStyle(stylesRoot->FirstChildElement("office:styles"));
                 CollectStyles(stylesRoot->FirstChildElement("office:styles"));
+                CollectNamedStyles(stylesRoot->FirstChildElement("office:styles"));
                 CollectStyles(stylesRoot->FirstChildElement("office:automatic-styles"));
                 CollectListStyles(stylesRoot->FirstChildElement("office:styles"));
                 CollectListStyles(stylesRoot->FirstChildElement("office:automatic-styles"));
@@ -272,6 +305,7 @@ private:
     // so break emission is gated on this flag.
     bool inMainFlow_ = true;
     std::map<std::string, OdtTextProps> styles_;
+    std::set<std::string> namedStyles_;          // ODF names of the office:styles styles
     // list style name -> (level -> ordered?)
     std::map<std::string, std::map<int, bool>> listStyles_;
     // list style name -> (level -> how its label reads)
@@ -613,6 +647,67 @@ private:
         }
     }
 
+    // The document's named styles (office:styles, not automatic ones) as
+    // model styles. CollectStyles has read their properties already.
+    void CollectNamedStyles(tinyxml2::XMLElement* container) {
+        if (!container) return;
+        for (auto* style = container->FirstChildElement("style:style"); style;
+             style = style->NextSiblingElement("style:style")) {
+            const std::string family = Attr(style, "style:family");
+            if (family != "paragraph" && family != "text") continue;
+            const std::string name = Attr(style, "style:name");
+            auto found = styles_.find(name);
+            if (name.empty() || found == styles_.end()) continue;
+            const OdtTextProps& own = found->second;
+            RichStyle named;
+            named.id = OdfNameToStyleId(name);
+            const std::string display = Attr(style, "style:display-name");
+            named.name = display.empty() ? named.id : display;
+            if (name == "Standard" && display.empty()) named.name = "Normal";
+            named.kind = family == "text" ? RichStyle::Kind::Character : RichStyle::Kind::Paragraph;
+            const std::string parent = Attr(style, "style:parent-style-name");
+            if (!parent.empty()) named.basedOn = OdfNameToStyleId(parent);
+            const std::string next = Attr(style, "style:next-style-name");
+            if (!next.empty() && family == "paragraph") named.nextStyle = OdfNameToStyleId(next);
+            RichStyleCharacter& c = named.character;
+            if (own.bold >= 0) c.bold = own.bold == 1;
+            if (own.italic >= 0) c.italic = own.italic == 1;
+            if (own.underline >= 0) c.underline = own.underline == 1;
+            if (own.strike >= 0) c.strikethrough = own.strike == 1;
+            if (!own.color.empty()) c.color = own.color;
+            if (!own.fontFamily.empty()) c.fontFamily = own.fontFamily;
+            if (own.fontSizePt > 0.0f) c.fontSizePt = own.fontSizePt;
+            if (named.kind == RichStyle::Kind::Paragraph) {
+                RichStyleParagraph& p = named.paragraph;
+                if (own.align != RichTextAlign::Default) p.align = own.align;
+                if (!std::isnan(own.marginLeft)) p.leftIndentPt = own.marginLeft;
+                if (!std::isnan(own.marginRight)) p.rightIndentPt = own.marginRight;
+                if (!std::isnan(own.textIndent)) p.firstLineIndentPt = own.textIndent;
+                if (!std::isnan(own.marginTop)) p.spaceBeforePt = own.marginTop;
+                if (!std::isnan(own.marginBottom)) p.spaceAfterPt = own.marginBottom;
+                if (!std::isnan(own.lineSpacing) && own.lineSpacing > 0.0f) p.lineSpacing = own.lineSpacing;
+                const int outline = style->IntAttribute("style:default-outline-level", 0);
+                const int level = outline > 0 ? outline : own.headingLevel;
+                if (level >= 1 && level <= 6) p.headingLevel = level;
+            }
+            namedStyles_.insert(name);
+            doc_->styles.push_back(std::move(named));
+        }
+    }
+
+    // The named style a paragraph or span has: its own style when that is a
+    // named one, else the named style its automatic style is based on. As a
+    // model id; "" for none.
+    std::string NamedStyleFor(const std::string& styleName) const {
+        if (styleName.empty()) return "";
+        if (namedStyles_.count(styleName)) return OdfNameToStyleId(styleName);
+        auto found = styles_.find(styleName);
+        if (found != styles_.end() && namedStyles_.count(found->second.parentStyleName)) {
+            return OdfNameToStyleId(found->second.parentStyleName);
+        }
+        return "";
+    }
+
     void CollectListStyles(tinyxml2::XMLElement* container) {
         if (!container) return;
         for (auto* ls = container->FirstChildElement("text:list-style"); ls;
@@ -681,6 +776,7 @@ private:
     }
 
     void ApplyPropsToRun(RichTextRun& run, const OdtTextProps& props) const {
+        run.characterStyleId = props.characterStyle;
         if (props.bold == 1) run.bold = true;
         if (props.italic == 1) run.italic = true;
         if (props.underline == 1) run.underline = true;
@@ -880,7 +976,9 @@ private:
             if (!elem) continue;
             std::string tag = elem->Name() ? elem->Name() : "";
             if (tag == "text:span") {
-                OdtTextProps spanProps = ResolveStyle(Attr(elem, "text:style-name"));
+                const std::string spanStyle = Attr(elem, "text:style-name");
+                OdtTextProps spanProps = ResolveStyle(spanStyle);
+                spanProps.characterStyle = NamedStyleFor(spanStyle);
                 spanProps.MergeParent(props);
                 ParseInlineNodes(elem, spanProps, linkTarget, ctx);
             } else if (tag == "text:a") {
@@ -935,6 +1033,8 @@ private:
     void EmitParagraphBlock(tinyxml2::XMLElement* elem, RichDocBlock block) {
         std::string styleName = Attr(elem, "text:style-name");
         OdtTextProps paraProps = ResolveStyle(styleName);
+        block.styleId = NamedStyleFor(styleName);
+        if (block.styleId == "Normal") block.styleId.clear();
         block.align = paraProps.align;
         ApplyGeometry(block, paraProps);
 
@@ -1732,6 +1832,17 @@ private:
     }
 
     std::string ParagraphStyleFor(const RichDocBlock& block) {
+        // The paragraph's own named style; an automatic one based on it when
+        // the paragraph also has formatting of its own.
+        if (!block.styleId.empty() && doc_->FindStyle(block.styleId)
+            && (block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading)) {
+            const std::string parent = StyleIdToOdfName(block.styleId);
+            if (block.HasParagraphGeometry() || block.align != RichTextAlign::Default
+                || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
+                return GeometryStyleFor(block, parent);
+            }
+            return parent;
+        }
         switch (block.type) {
             case RichBlockType::BlockQuote: return "PQuote";
             case RichBlockType::CodeBlock: return "PCode";
@@ -1753,7 +1864,7 @@ private:
 
     // One automatic paragraph style per distinct geometry (with alignment,
     // since an automatic style cannot inherit from another automatic one).
-    std::string GeometryStyleFor(const RichDocBlock& block) {
+    std::string GeometryStyleFor(const RichDocBlock& block, const std::string& parent = "Standard") {
         std::ostringstream props;
         if (const char* align = AlignValue(block.align)) props << " fo:text-align=\"" << align << "\"";
         if (block.leftIndentPt != 0.0f) props << " fo:margin-left=\"" << Pt(block.leftIndentPt) << "\"";
@@ -1797,13 +1908,13 @@ private:
         if (block.paragraphFontSizePt > 0.0f) font << " fo:font-size=\"" << Pt(block.paragraphFontSizePt) << "\"";
         if (!block.paragraphFontFamily.empty()) font << " fo:font-family=\"" << EscapeXml(block.paragraphFontFamily) << "\"";
         const std::string textProps = font.str().empty() ? "" : "<style:text-properties" + font.str() + "/>";
-        const std::string key = props.str() + tabs.str() + textProps;
+        const std::string key = parent + "|" + props.str() + tabs.str() + textProps;
         auto it = geometryStyleNames_.find(key);
         if (it != geometryStyleNames_.end()) return it->second;
         const std::string name = "PG" + std::to_string(geometryStyleNames_.size() + 1);
         geometryStyleNames_[key] = name;
         geometryStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\" "
-                           "style:parent-style-name=\"Standard\"><style:paragraph-properties"
+                           "style:parent-style-name=\"" + EscapeXml(parent) + "\"><style:paragraph-properties"
                          + props.str() + (tabs.str().empty() ? "/>" : ">" + tabs.str() + "</style:paragraph-properties>")
                          + textProps + "</style:style>\n";
         return name;
@@ -2134,10 +2245,12 @@ private:
             const RichDocBlock& block = blocks[i];
             switch (block.type) {
                 case RichBlockType::Heading:
-                    body << "<text:h text:style-name=\"Heading_20_"
-                         << std::clamp(block.headingLevel, 1, 6)
-                         << "\" text:outline-level=\"" << std::clamp(block.headingLevel, 1, 6)
-                         << "\">";
+                    if (!block.styleId.empty() && doc_->FindStyle(block.styleId)) {
+                        body << "<text:h text:style-name=\"" << EscapeXml(ParagraphStyleFor(block)) << "\"";
+                    } else {
+                        body << "<text:h text:style-name=\"Heading_20_" << std::clamp(block.headingLevel, 1, 6) << "\"";
+                    }
+                    body << " text:outline-level=\"" << std::clamp(block.headingLevel, 1, 6) << "\">";
                     WriteRuns(body, block.runs);
                     body << "</text:h>\n";
                     ++i;
@@ -2229,8 +2342,12 @@ private:
         std::ostringstream xml;
         for (size_t s = 0; s < textStyles_.size(); ++s) {
             const RichTextRun& t = textStyles_[s];
-            xml << "<style:style style:name=\"T" << (s + 1)
-                << "\" style:family=\"text\"><style:text-properties";
+            xml << "<style:style style:name=\"T" << (s + 1) << "\" style:family=\"text\"";
+            // A run with a character style: its automatic style is based on it.
+            if (!t.characterStyleId.empty() && doc_->FindStyle(t.characterStyleId)) {
+                xml << " style:parent-style-name=\"" << EscapeXml(StyleIdToOdfName(t.characterStyleId)) << "\"";
+            }
+            xml << "><style:text-properties";
             if (t.bold) xml << " fo:font-weight=\"bold\"";
             if (t.italic) xml << " fo:font-style=\"italic\"";
             if (t.underline) xml << " style:text-underline-style=\"solid\"";
@@ -2364,10 +2481,13 @@ private:
         }
         // Paragraphs that state no spacing (a document built from Markdown)
         // keep a small gap below, as the view gives them.
-        xml << "<style:style style:name=\"Standard\" style:family=\"paragraph\">"
-               "<style:paragraph-properties fo:margin-bottom=\"6pt\"/></style:style>\n";
+        if (!doc_->FindStyle("Normal")) {
+            xml << "<style:style style:name=\"Standard\" style:family=\"paragraph\">"
+                   "<style:paragraph-properties fo:margin-bottom=\"6pt\"/></style:style>\n";
+        }
         static const float headingSizesPt[6] = {18.0f, 16.0f, 14.0f, 12.0f, 11.0f, 10.5f};
         for (int level = 1; level <= 6; ++level) {
+            if (doc_->FindStyle("Heading" + std::to_string(level))) continue;
             xml << "<style:style style:name=\"Heading_20_" << level
                 << "\" style:display-name=\"Heading " << level
                 << "\" style:family=\"paragraph\" style:parent-style-name=\"Standard\" "
@@ -2377,6 +2497,7 @@ private:
                 << "<style:text-properties fo:font-weight=\"bold\" fo:font-size=\""
                 << headingSizesPt[level - 1] << "pt\"/></style:style>\n";
         }
+        for (const RichStyle& style : doc_->styles) WriteNamedStyle(xml, style);
         xml << "</office:styles>\n";
         if (!masterStyles.empty()) {
             xml << "<office:automatic-styles>\n" << AutomaticStylesXml() << pageLayout_
@@ -2384,6 +2505,51 @@ private:
         }
         xml << "</office:document-styles>\n";
         return xml.str();
+    }
+
+    // A named style in office:styles, with the ODF name of its id.
+    void WriteNamedStyle(std::ostringstream& xml, const RichStyle& style) const {
+        const bool paragraph = style.kind == RichStyle::Kind::Paragraph;
+        xml << "<style:style style:name=\"" << EscapeXml(StyleIdToOdfName(style.id)) << "\"";
+        if (!style.name.empty() && style.name != style.id) xml << " style:display-name=\"" << EscapeXml(style.name) << "\"";
+        xml << " style:family=\"" << (paragraph ? "paragraph" : "text") << "\"";
+        if (!style.basedOn.empty()) xml << " style:parent-style-name=\"" << EscapeXml(StyleIdToOdfName(style.basedOn)) << "\"";
+        if (paragraph && !style.nextStyle.empty()) {
+            xml << " style:next-style-name=\"" << EscapeXml(StyleIdToOdfName(style.nextStyle)) << "\"";
+        }
+        if (paragraph && style.paragraph.headingLevel && *style.paragraph.headingLevel > 0) {
+            xml << " style:default-outline-level=\"" << *style.paragraph.headingLevel << "\"";
+        }
+        xml << ">";
+        if (paragraph && !style.paragraph.IsEmpty()) {
+            const RichStyleParagraph& p = style.paragraph;
+            xml << "<style:paragraph-properties";
+            if (p.align) {
+                if (const char* align = AlignValue(*p.align)) xml << " fo:text-align=\"" << align << "\"";
+            }
+            if (p.leftIndentPt) xml << " fo:margin-left=\"" << Pt(*p.leftIndentPt) << "\"";
+            if (p.rightIndentPt) xml << " fo:margin-right=\"" << Pt(*p.rightIndentPt) << "\"";
+            if (p.firstLineIndentPt) xml << " fo:text-indent=\"" << Pt(*p.firstLineIndentPt) << "\"";
+            if (p.spaceBeforePt) xml << " fo:margin-top=\"" << Pt(*p.spaceBeforePt) << "\"";
+            if (p.spaceAfterPt) xml << " fo:margin-bottom=\"" << Pt(*p.spaceAfterPt) << "\"";
+            if (p.lineSpacing) xml << " fo:line-height=\"" << std::lround(*p.lineSpacing * 100.0f) << "%\"";
+            xml << "/>";
+        }
+        if (!style.character.IsEmpty()) {
+            const RichStyleCharacter& c = style.character;
+            xml << "<style:text-properties";
+            if (c.bold) xml << " fo:font-weight=\"" << (*c.bold ? "bold" : "normal") << "\"";
+            if (c.italic) xml << " fo:font-style=\"" << (*c.italic ? "italic" : "normal") << "\"";
+            if (c.underline) xml << " style:text-underline-style=\"" << (*c.underline ? "solid" : "none") << "\"";
+            if (c.strikethrough) xml << " style:text-line-through-style=\"" << (*c.strikethrough ? "solid" : "none") << "\"";
+            if (c.code && *c.code) xml << " style:font-name=\"Courier New\" fo:font-family=\"'Courier New'\"";
+            else if (c.fontFamily) xml << " fo:font-family=\"" << EscapeXml(*c.fontFamily) << "\"";
+            if (c.color) xml << " fo:color=\"" << EscapeXml(*c.color) << "\"";
+            if (c.fontSizePt && *c.fontSizePt > 0.0f) xml << " fo:font-size=\"" << Pt(*c.fontSizePt) << "\"";
+            if (c.highlightColor) xml << " fo:background-color=\"" << EscapeXml(*c.highlightColor) << "\"";
+            xml << "/>";
+        }
+        xml << "</style:style>\n";
     }
 
     std::string BuildMetaXml() const {
