@@ -393,6 +393,29 @@ the backing implementation can be replaced without affecting callers.
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
 
+- **UltraCanvasArchiveRun** (`UltraCanvasArchiveRun.h`) — "Extract and
+  run": what it takes to start a program that is inside an archive, whose
+  virtual path no system can execute. The run folders and the rule for which
+  entries are programs, plus the POSIX launch (Linux, the BSDs and macOS
+  alike), in `core/UltraCanvasArchiveRun.cpp`; the Windows launch (a job
+  object) and download mark in `OS/MSWindows/UltraCanvasWindowsArchiveRun.cpp`.
+  Public surface:
+  - `IsRunnableArchiveEntry(extension, executableBit[, host])` — Windows by
+    extension (`.exe` `.com` `.bat` `.cmd` `.msi`), POSIX by the execute bit
+    the archive recorded, or `.AppImage`.
+  - `LaunchWatchedProgram(path, workingDirectory, error)` → `WatchedProcess`
+    (`IsRunning()`, `GetProcessId()`) — a launch whose end can be waited for,
+    counting what the program started (its job on Windows, its process group
+    on POSIX); `IsProcessAlive(pid)`, `CurrentProcessId()`.
+  - `CopyDownloadMarking(archive, folder)` — Windows: the archive's
+    `Zone.Identifier` onto every unpacked file; 0 elsewhere.
+  - `DefaultArchiveRunRoot` / `CreateArchiveRunFolder` /
+    `RecordArchiveRunProcess` / `RemoveArchiveRunFolder` (only once nothing
+    holds a file in it) / `SweepArchiveRunFolders` (what an application that
+    closed while its program ran left behind).
+  `UltraCanvasFilerWidget::ExtractAndRunEntry` is the caller. See
+  `Docs/UltraCanvas/UltraCanvasFilerWidget.md`, *Programs inside archives*.
+
 - **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
   shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
   points at, the icon it is drawn with, and the command line it starts. Byte

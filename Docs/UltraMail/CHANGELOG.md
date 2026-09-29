@@ -1,3 +1,29 @@
+#### 2026-09-29 *0.10.8*
+- **Replies and forwards keep an HTML message's formatting.** Answering or
+  forwarding an HTML mail used to turn it into plain text with "> " in front
+  of every line. Headings, bold and italic, colours, links, lists, tables and
+  pictures were lost.
+  - The composer now opens the message as formatted text in the rich text
+    editor, with an empty line at the top to write in.
+  - A reply shows the original below "On <date>, <sender> wrote:", marked
+    as a quote by a bar at its left.
+  - A forward shows the forwarded-message header, then the original as it
+    was.
+  - Pictures embedded in the message come along. Remote pictures come along
+    only if the reading pane has already loaded them, so composing never
+    contacts the sender's server.
+  - A row above the text has Bold, Italic, Underline and the two list
+    buttons.
+  - To answer between two quoted lines, press Enter on an empty quoted line
+    to step out of the quote, or press Backspace at the start of a quoted
+    paragraph.
+  - A plain-text message is still answered as before.
+- **Formatted replies are sent as HTML with a plain-text version.** The
+  pictures travel as parts of the message (`cid:`), so the recipient's mail
+  program shows them without downloading anything.
+  - The outbox keeps the plain-text version and the pictures (outbox
+    migration 2), so a message queued while offline goes out complete.
+
 #### 2026-09-28 *0.10.7*
 - **A turning ring on the status line** while UltraMail works in the
   background: a sync, a send, or a move, delete or flag change on the server.

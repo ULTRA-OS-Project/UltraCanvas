@@ -1,11 +1,12 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.6.0 - Reply / Forward hand over the HTML body and its pictures
 // Version: 0.5.0 - sender badge instead of the initial avatar; the cached body
 //                  is scanned on first read and the verdict stored, with a
 //                  warning strip above suspicious and scam messages.
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-09-19
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -138,18 +139,39 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
             if (a.accountId == curAccount_) { selfName = a.displayName; selfAddr = a.email; }
     };
 
+    // The message as a reply or forward sees it, with its pictures: the
+    // message's own, and remote ones only when already loaded - composing
+    // never fetches anything. Used while the reply is built, which happens
+    // before the handler returns.
+    auto source = [this]() {
+        SourceMessage src = current_;
+        src.image = [this](const std::string& url) -> std::vector<uint8_t> {
+            switch (ClassifyImageSource(url, inlineImages_)) {
+                case ImageSource::Embedded:
+                    return ResolveEmbeddedImage(url, inlineImages_);
+                case ImageSource::Remote:
+                    if (auto it = remoteCache_.find(url); it != remoteCache_.end()) return it->second;
+                    return {};
+                case ImageSource::Other:
+                    break;
+            }
+            return {};
+        };
+        return src;
+    };
+
     auto replyBtn = makeActionButton("prevReply", "Reply", "undo.svg");
-    replyBtn->onClick = [this, selfIdentity]() {
+    replyBtn->onClick = [this, selfIdentity, source]() {
         if (!onReply || !hasMessage_) return;
         std::string selfName, selfAddr; selfIdentity(selfName, selfAddr);
-        onReply(current_, selfName, selfAddr);
+        onReply(source(), selfName, selfAddr);
     };
 
     auto forwardBtn = makeActionButton("prevForward", "Forward", "redo.svg");
-    forwardBtn->onClick = [this, selfIdentity]() {
+    forwardBtn->onClick = [this, selfIdentity, source]() {
         if (!onForward || !hasMessage_) return;
         std::string selfName, selfAddr; selfIdentity(selfName, selfAddr);
-        onForward(current_, selfName, selfAddr);
+        onForward(source(), selfName, selfAddr);
     };
 
     junkBtn_ = makeActionButton("prevJunk", "Junk", "circle-stop.svg");
@@ -642,8 +664,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         pendingHtml = pm.bodyIsHtml;
         havePending = true;
         attachmentStrip_.SetAttachments(pm.attachments);
-        // Reply quoting works from text; reduce HTML to text for the captured copy.
+        // The text for a plain reply, and the HTML a formatted one is built
+        // from (UltraMailRichComposer).
         current_.body = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
+        current_.bodyHtml = pm.bodyIsHtml ? pm.body : std::string();
         current_.attachments = pm.attachments;
     }
 

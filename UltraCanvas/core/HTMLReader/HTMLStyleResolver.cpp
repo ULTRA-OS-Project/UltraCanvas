@@ -1,7 +1,7 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -79,6 +79,47 @@ void StyleResolver::ApplyAlignAttribute(const Node& element, ComputedStyle& styl
     else if (value == "justify") style.textAlign = TextAlignMode::Justify;
 }
 
+// The presentational attributes mail HTML is still written with - by Outlook,
+// by older clients, by newsletter templates: <font color face size>, bgcolor
+// on the page and on tables, <body text>. Applied before the author rules,
+// so any CSS for the same property wins, as in a browser.
+void StyleResolver::ApplyLegacyAttributes(const Node& element, ComputedStyle& style) {
+    const bool colorsAllowed = !opts.overrideAuthorColors;
+    if (element.tag == "font") {
+        if (colorsAllowed) {
+            if (auto color = CssColor::Parse(TrimLower(element.GetAttribute("color")))) style.color = *color;
+        }
+        std::string face = element.GetAttribute("face");
+        if (size_t comma = face.find(','); comma != std::string::npos) face = face.substr(0, comma);
+        face = Trim(face);
+        if (TrimLower(face) == "monospace") style.monospace = true;
+        else if (!face.empty()) style.fontFamily = face;
+        // size="1".."7" (3 is the normal size), or relative: "+1", "-2".
+        std::string size = Trim(element.GetAttribute("size"));
+        if (!size.empty()) {
+            static const float kSizes[] = {10.f, 13.f, 16.f, 18.f, 24.f, 32.f, 48.f};   // at a 16px base
+            int step = 3;
+            try {
+                const int number = std::stoi(size);
+                step = (size[0] == '+' || size[0] == '-') ? 3 + number : number;
+                step = std::clamp(step, 1, 7);
+                style.fontSizePx = kSizes[step - 1] * opts.baseFontSizePx / 16.f;
+            } catch (...) {
+                // Not a number: the size stays inherited.
+            }
+        }
+    }
+    if (colorsAllowed && element.HasAttribute("bgcolor")
+        && (element.tag == "body" || element.tag == "table" || element.tag == "tr"
+            || element.tag == "td" || element.tag == "th")) {
+        if (auto color = CssColor::Parse(TrimLower(element.GetAttribute("bgcolor"))))
+            style.backgroundColor = *color;
+    }
+    if (colorsAllowed && element.tag == "body" && element.HasAttribute("text")) {
+        if (auto color = CssColor::Parse(TrimLower(element.GetAttribute("text")))) style.color = *color;
+    }
+}
+
 void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentStyle) {
     ComputedStyle style;
 
@@ -98,6 +139,7 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
 
     ApplyUserAgentDefaults(element.tag, style);
     ApplyAlignAttribute(element, style);
+    ApplyLegacyAttributes(element, style);
 
     // Author rules, lowest specificity first so later Apply wins. !important
     // declarations are collected and re-applied last.

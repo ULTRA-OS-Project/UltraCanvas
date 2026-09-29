@@ -10,8 +10,8 @@
 //
 // This is the canonical reference implementation for the
 // I<Category>ProtocolPlugin plug-in contract.
-// Version: 0.1.1
-// Last Modified: 2026-07-05
+// Version: 0.2.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
@@ -68,6 +68,16 @@ std::string BuildMessage(const UltraNetMailMessage& m) {
         }
     }
 
+    in.alternativeText = m.alternativeText;
+    for (const auto& part : m.inlineParts) {
+        UltraNetMimeBuildAttachment a;
+        a.filename = part.filename;
+        if (!part.mediaType.empty()) a.mediaType = part.mediaType;
+        a.data = part.data;
+        a.isInline = true;
+        a.contentId = part.contentId;
+        in.attachments.push_back(std::move(a));
+    }
     for (const auto& [name, bytes] : m.attachments) {
         UltraNetMimeBuildAttachment a;
         a.filename = name;
