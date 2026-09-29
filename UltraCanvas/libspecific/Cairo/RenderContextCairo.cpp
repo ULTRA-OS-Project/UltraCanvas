@@ -65,15 +65,22 @@ namespace UltraCanvas {
         UCTextLayout::InvalidateFontMetricsCache(pangoContext);
     }
 
+    // The one place that knows what a change to the process-wide text font
+    // options invalidates: the shared layout cache, whose layouts keep their
+    // extents, and then every context, which takes the new options and drops
+    // its own font measurements (ApplyPangoFontOptions ends in
+    // InvalidateFontMetricsCache). The three setters below all come here.
+    void RenderContextCairo::InvalidateAllFontMetricsCaches() {
+        g_TextLayoutsCache.ClearCache();
+        for (auto* instance : g_Instances) {
+            instance->ApplyPangoFontOptions();
+        }
+    }
+
     void RenderContextCairo::SetTextAntialias(cairo_antialias_t mode) {
         if (g_TextAntialias != mode) {
             g_TextAntialias = mode;
-//            g_TextSurfacesCache.ClearCache();
-//            g_TextDimensionsCache.ClearCache();
-            g_TextLayoutsCache.ClearCache();
-            for (auto* instance : g_Instances) {
-                instance->ApplyPangoFontOptions();
-            }
+            InvalidateAllFontMetricsCaches();
         }
     }
 
@@ -84,12 +91,7 @@ namespace UltraCanvas {
     void RenderContextCairo::SetTextHintStyle(cairo_hint_style_t style) {
         if (g_TextHintStyle != style) {
             g_TextHintStyle = style;
-//            g_TextSurfacesCache.ClearCache();
-//            g_TextDimensionsCache.ClearCache();
-            g_TextLayoutsCache.ClearCache();
-            for (auto* instance : g_Instances) {
-                instance->ApplyPangoFontOptions();
-            }
+            InvalidateAllFontMetricsCaches();
         }
     }
 
@@ -100,12 +102,7 @@ namespace UltraCanvas {
     void RenderContextCairo::SetTextHintMetrics(cairo_hint_metrics_t metrics) {
         if (g_TextHintMetrics != metrics) {
             g_TextHintMetrics = metrics;
-//            g_TextSurfacesCache.ClearCache();
-//            g_TextDimensionsCache.ClearCache
-            g_TextLayoutsCache.ClearCache();
-            for (auto* instance : g_Instances) {
-                instance->ApplyPangoFontOptions();
-            }
+            InvalidateAllFontMetricsCaches();
         }
     }
 

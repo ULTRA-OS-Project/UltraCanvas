@@ -19,6 +19,10 @@
   and `IRenderContext::InvalidateFontMetricsCache()` clears them: the Cairo
   backend calls it when a context's surface, resolution, hinting or
   antialiasing changes, so a font is measured again under the new settings.
+  The antialias, hint-style and hint-metrics setters, which each cleared
+  the shared layout cache and re-applied the options by hand, now share
+  one `InvalidateAllFontMetricsCaches`, the single place that knows what
+  a font-settings change invalidates.
 - **TextInput: text, selection and caret share one cap-centred line box.**
   The field centred its text by the line height, placed the caret by
   1.2 × the font size and sized it by 1.4 ×, so the three drifted apart and
