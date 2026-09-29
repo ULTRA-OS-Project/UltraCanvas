@@ -103,11 +103,18 @@ namespace UltraCanvas {
     }
 
 
-    void RenderContextCairo::ApplyPangoFontOptions() {
+    // The process-wide text font options as one cairo object, for applying
+    // to a Pango context and for the log. The caller destroys it.
+    static cairo_font_options_t* CreateTextFontOptions() {
         cairo_font_options_t *opts = cairo_font_options_create();
         cairo_font_options_set_antialias(opts, g_TextAntialias);
         cairo_font_options_set_hint_style(opts, g_TextHintStyle);
         cairo_font_options_set_hint_metrics(opts, g_TextHintMetrics);
+        return opts;
+    }
+
+    void RenderContextCairo::ApplyPangoFontOptions() {
+        cairo_font_options_t *opts = CreateTextFontOptions();
         pango_cairo_context_set_font_options(pangoContext, opts);
         cairo_font_options_destroy(opts);
         // Hinting and antialiasing change a glyph's ink, so every cap height
@@ -126,6 +133,15 @@ namespace UltraCanvas {
     // its own font measurements (ApplyPangoFontOptions ends in
     // InvalidateFontMetricsCache). The three setters below all come here.
     void RenderContextCairo::InvalidateAllFontMetricsCaches() {
+        // The first-surface diagnostic logged the options text started with;
+        // this line keeps the log true after a runtime change to them.
+        {
+            cairo_font_options_t* opts = CreateTextFontOptions();
+            debugOutput << "UC text-render diag: font options changed, contexts=" << g_Instances.size()
+                        << " pango_font_options=" << DescribeFontOptions(opts)
+                        << " (layout and font-metrics caches cleared)" << std::endl;
+            cairo_font_options_destroy(opts);
+        }
         g_TextLayoutsCache.ClearCache();
         for (auto* instance : g_Instances) {
             instance->ApplyPangoFontOptions();

@@ -64,4 +64,6 @@
   context and cairo, adds the surface size and the pinned resolution, and
   measures the default font on that context: line height, baseline, cap
   height and the width of an H, to compare across machines before
-  suspecting a caller.
+  suspecting a caller. A runtime change to the antialias, hint-style or
+  hint-metrics setting logs the new options too, so the log stays true
+  after it.
