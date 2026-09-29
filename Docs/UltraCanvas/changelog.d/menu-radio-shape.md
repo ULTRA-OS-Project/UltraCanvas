@@ -15,6 +15,12 @@
   `GetCapCentreOffset(font)`; the menu and the spinner use them. The cap
   height comes from `ITextLayout::GetCapHeight()`, measured once per font
   from the ink of a capital H and cached, so no render pass measures twice.
+- **TextInput: text, selection and caret share one cap-centred line box.**
+  The field centred its text by the line height, placed the caret by
+  1.2 × the font size and sized it by 1.4 ×, so the three drifted apart and
+  the text sat below a button or checkbox beside the field. One line box
+  (`GetTextLineBox`) now positions all three, with the font's capitals on
+  the field's centre line and the caret spanning the font's line height.
 - **`DrawFilledRectangle` / `DrawFilledCircle` keep the border inside the
   shape.** A stroke is centred on its path, so a 1px outline on a rectangle
   with whole-pixel edges was smeared over two rows of pixels on each side
