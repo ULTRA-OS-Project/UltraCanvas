@@ -1,3 +1,98 @@
+#### 2026-09-29 *0.9.79*
+- **New element: `UltraCanvasBusyIndicator`**, the turning ring that says
+  *working on it* when there is no percentage to show (a network call, a
+  sync, a scan). `CreateBusyIndicator(id, x, y, size)` makes one, and
+  `Start()` / `Stop()` / `SetRunning(bool)` control it. By default a stopped
+  indicator draws nothing and runs no timer, so it can stay in a status line
+  permanently. The angle comes from elapsed time, so a late timer tick never
+  slows the ring. `BusyIndicatorStyle` sets the arc and track colours, the
+  thickness, the arc length, the speed and the frame interval. Docs:
+  `Docs/UltraCanvas/UltraCanvasBusyIndicator.md`; it is listed in the element
+  catalogue. UltraMail's status line is the first user.
+- **HTML reader: images sit where a browser puts them, and linked images are
+  shown.**
+  - An `<img>` in a block (`<p><img></p>`) was drawn in the middle of the
+    line. Block flow gave its element the full column width, and the image
+    element draws its bitmap centred in its box. Each image now sits on a
+    full-width line of its own at its natural size (still capped at the column
+    width, keeping its aspect ratio). It is placed at the start of the line,
+    or centred or right-aligned by the `text-align` it inherits.
+  - That `text-align` now also comes from the presentational
+    `align="left|center|right|justify"` attribute on `p`, `div`, `td`, `th`,
+    `h1`–`h6`, `caption` and `img`, and from `<center>`, which is now a block
+    element. All of these are still common in email HTML. CSS `text-align`
+    still wins over the attribute.
+  - An image inside an inline element was replaced by its `[alt]` text. This
+    covers `<a href><img></a>`, the banner and button of nearly every
+    newsletter, and `<span><img></span>`. Such images are now lifted onto
+    lines of their own, and one inside a link is clickable (it calls
+    `BuildOptions::onLinkActivated` with the link's href). The text around
+    them stays in its runs.
+  - **An image in the middle of a sentence flows in the text** instead of
+    taking a line of its own. Images in a block that also has text (`<p>Rated
+    <img> out of five</p>`) become inline images of the text run. A block of
+    images alone keeps one image per aligned line. The image stands on the
+    baseline, the line grows to hold it, it is scaled to the line when wider,
+    and inside a link it is part of the link.
+  - Inline images honour vertical alignment: CSS `vertical-align`
+    (`baseline`, `middle`, `top`/`text-top`, `bottom`/`text-bottom`) and the
+    `<img align>` values `middle`/`absmiddle`, `top`/`texttop` and
+    `bottom`/`absbottom`.
+  - New in `UltraCanvasLabel`: `LabelInlineImage` (with
+    `LabelInlineImageAlign`), `SetInlineImages()` and `InlineImageRect()`. An image is drawn at a U+FFFC placeholder in the
+    text, in a box reserved with `TextAttributeFactory::CreateShape`. See
+    `UltraCanvasLabelExamples.md`, *Inline Images*.
+  - `ElementBuilder::BuildImage` takes an optional link href.
+  - Test: `Tests/HTMLImageAlignTest.cpp` (headless builder + CSSLayout;
+    placement for each alignment source, an oversized image, a clicked link,
+    an inline image laid out and drawn on an offscreen context, and each
+    vertical alignment measured against a baseline image in the same line).
+- **UltraNet decodes mail in every charset, not just UTF-8 and Latin-1.**
+  `UltraNet_MimeDecodeHeader`, `UltraNet_MimeParse` and
+  `UltraNet_MimeGetDisplayBody` passed any other charset through as raw
+  bytes. Japanese mail in ISO-2022-JP therefore showed as
+  `$B3t<02q<R%F%l%7%"(B` where "株式会社テレシア" was meant, and Shift_JIS,
+  GB2312, EUC-KR, KOI8-R and windows-1251 text was garbled the same way.
+  - Text in any charset iconv knows is now converted to UTF-8. Common mail
+    labels are mapped to the names iconv expects (for example `x-sjis`,
+    `ks_c_5601-1987`), and a charset that fails strictly is retried with its
+    Windows superset (CP932 for Shift_JIS, CP50221 for ISO-2022-JP, GB18030
+    for GB2312).
+  - A byte that cannot be converted becomes U+FFFD, and the rest of the text
+    is still converted.
+  - Labels iconv does not know under that name are mapped as well: the
+    Hebrew/Arabic `iso-8859-8-i` / `-e` variants, `unicode-1-1-utf-7`,
+    `x-mac-roman`, `x-mac-cyrillic`, `hz-gb-2312`, `tis-620` /
+    `windows-874`.
+  - A charset nobody can convert (`unknown-8bit`, `x-user-defined`, a typo)
+    no longer passes its bytes through as invalid UTF-8. Text that is
+    already UTF-8 is kept, and anything else is read as windows-1252.
+  - Header text written in ISO-2022-JP without encoded-words (older Japanese
+    mailers put the JIS escape sequences straight in the header) is
+    recognised and converted too.
+  - Unlabelled 8-bit header text (raw bytes in `Subject:` / `From:` with no
+    encoded-word, which many mailers still send) is decoded as well:
+    - It is kept when it is UTF-8 (RFC 6532).
+    - Otherwise it is read in the charset of the message body, which is
+      what `UltraNet_MimeParse` passes as the hint. The new overload
+      `UltraNet_MimeDecodeHeader(raw, fallbackCharset)` takes one directly.
+    - Without a usable hint, it is read in whichever charset gives the most
+      plausible text in its own script: Western, Japanese, Chinese
+      (GB/Big5), Korean, Cyrillic (windows-1251/KOI8-R), Central European,
+      Greek, Arabic or Hebrew.
+    - The result is always valid UTF-8, and decoding it again leaves it
+      unchanged.
+  - Shift_JIS is read as CP932 first. Strict SHIFT_JIS turned every `\`
+    into `¥` and every `~` into `‾`, breaking paths and URLs.
+  - `windows-1252` now maps 0x80–0x9F correctly (€, „, …) instead of treating
+    it as Latin-1.
+  - Build: UltraNet links `Iconv::Iconv` when CMake finds it (part of glibc,
+    libiconv on macOS, and MSYS2's `libiconv` on Windows, which CI already
+    installs) and defines `ULTRANET_HAS_ICONV`. Without iconv the old UTF-8 /
+    Latin-1 behaviour remains.
+  - Tests: `Tests/UltraNet/test_mime.cpp`, with the real ISO-2022-JP sender
+    name above.
+
 #### 2026-09-28 *0.9.78*
 - **The macOS package shrinks by about 560 MB.** `package-macos.sh` copied all
   of `media/` (121 MB) into every `.app`, and with six bundles the artifact
