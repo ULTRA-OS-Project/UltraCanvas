@@ -274,7 +274,7 @@ struct VideoFXOverlay {
 // zoom 1.25 shows 80% of that. Centres are the point looked at, as fractions
 // of the image's width / height; the view never leaves the image.
 enum class VideoFXMotionStyle {
-    Still,                          // no motion; fitted like video (VideoFXExportSettings::fitMode)
+    Still,                          // no motion
     ZoomIn, ZoomOut,                // centred, 1 -> 1.25 / 1.25 -> 1
     PanLeft, PanRight,              // camera moves across at zoom 1.2
     PanUp, PanDown,
@@ -304,6 +304,16 @@ struct VideoFXImageMotion {
     }
 };
 
+// How a still image whose shape differs from the frame's is framed
+enum class VideoFXImageFit {
+    Auto,                           // Cover; BlurredBackground for an image much taller than
+                                    // the frame (a portrait photo in a 16:9 video)
+    Cover,                          // fill the frame, crop the overflow
+    Contain,                        // the whole image, black bars
+    BlurredBackground               // the whole image; the bars filled with a blurred,
+                                    // darkened, enlarged copy of it
+};
+
 // ============================================================================
 // TIMELINE SEGMENTS (VideoFX_Export)
 // ============================================================================
@@ -325,6 +335,7 @@ struct VideoFXSegment {
     std::vector<VideoFXOverlay> overlays;   // drawn after effects, over the output frame
     VideoFXTransition transitionIn;         // from the previous segment into this one
     VideoFXImageMotion motion;              // Image: camera movement over the still
+    VideoFXImageFit imageFit = VideoFXImageFit::Auto;   // Image: framing when its shape differs
     VideoFXFrame image;                     // Image: pixels in memory, used instead of `path` when valid
 
     static VideoFXSegment FromFile(const std::string& path, double start = 0.0, double end = 0.0);
@@ -407,6 +418,7 @@ struct VideoFXSlideshowOptions {
     double secondsPerImage = 4.0;               // on screen, transitions included
     VideoFXTransition transition = VideoFXTransition::Crossfade(1.0);   // between images; Cut for none
     VideoFXImageMotion motion;                  // Auto: a different move per image
+    VideoFXImageFit imageFit = VideoFXImageFit::Auto;   // Auto: portraits on a blurred background
     std::vector<std::string> captions;          // optional, one per image ("" = none), bottom centre
     bool fadeInOut = true;                      // fade from and to black at the ends
 };

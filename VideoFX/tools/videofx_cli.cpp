@@ -12,6 +12,7 @@
 //   videofx slideshow <out> <image1> <image2> ... [--seconds S] [--motion M]
 //                     [--caption TEXT]... [--transition NAME[:SECONDS]]
 // motion: auto still zoomin zoomout panleft panright panup pandown
+// fit (--fit): auto cover contain blur
 //
 // options: --width N --height N --fps F --quality 0..100 --speed S
 //          --transition NAME[:SECONDS]   between joined files (concat)
@@ -77,7 +78,7 @@ int Usage() {
         "       videofx concat <out> <in1> <in2> ... [options]\n"
         "       videofx effects <in> <out> <effect[=value]>... [options]\n"
         "       videofx testclip <out> <seconds> [width height fps]\n"
-        "       videofx slideshow <out> <image>... [--seconds S] [--motion M] [--caption TEXT]...\n"
+        "       videofx slideshow <out> <image>... [--seconds S] [--motion M] [--fit F] [--caption TEXT]...\n"
         "options: --width N --height N --fps F --quality 0..100 --speed S\n"
         "         --transition NAME[:SECONDS] --title TEXT --watermark IMAGE --font FONTFILE\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
@@ -201,6 +202,13 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--seconds" && next(v)) o.slideshow.secondsPerImage = NumberOr(v, -1.0);
         else if (a == "--motion" && next(v)) { if (!ParseMotion(v, o.slideshow.motion)) return false; }
         else if (a == "--caption" && next(v)) o.slideshow.captions.push_back(v);
+        else if (a == "--fit" && next(v)) {
+            if (v == "auto") o.slideshow.imageFit = VideoFXImageFit::Auto;
+            else if (v == "cover") o.slideshow.imageFit = VideoFXImageFit::Cover;
+            else if (v == "contain") o.slideshow.imageFit = VideoFXImageFit::Contain;
+            else if (v == "blur") o.slideshow.imageFit = VideoFXImageFit::BlurredBackground;
+            else return false;
+        }
         else if (a == "--title" && next(v)) {
             VideoFXOverlay t = VideoFXOverlay::Text(v, VideoFXAnchor::Bottom, 0.06);
             t.box = true;

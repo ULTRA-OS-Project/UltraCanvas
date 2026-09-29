@@ -160,10 +160,22 @@ The **motion** (`VideoFXImageMotion`) is a slow camera move across the photo:
 | `ZoomIn`, `ZoomOut` | Centred, 1 to 1.25 and back |
 | `PanLeft`, `PanRight`, `PanUp`, `PanDown` | Across the whole photo at zoom 1.2 |
 | `Custom` | `VideoFXImageMotion::Custom(startZoom, startX, startY, endZoom, endX, endY)`: zoom 1..4, centres as 0..1 fractions of the photo |
-| `Still` | No motion; the photo is fitted like video, by `fitMode` (letterboxed by default) |
+| `Still` | No motion |
 
-Zoom 1 shows the largest part of the photo that fills the frame; the view
-never leaves the photo. Moves start and end gently (`easeInOut`), and the
+**Framing** (`imageFit`, on the segment and in `VideoFXSlideshowOptions`)
+decides what happens when a photo's shape differs from the frame's:
+
+| `VideoFXImageFit` | Framing |
+|---|---|
+| `Auto` (default) | `Cover`, except for a photo much taller than the frame — a portrait in a 16:9 video — which gets `BlurredBackground` instead of losing two thirds of itself. A 4:3 or 3:2 photo still fills the frame, and a panorama still pans |
+| `Cover` | Fill the frame, crop the overflow |
+| `Contain` | The whole photo, black bars |
+| `BlurredBackground` | The whole photo, the bars filled with a blurred, darkened, enlarged copy of it |
+
+With `Cover`, zoom 1 shows the largest part of the photo that fills the frame
+and the view never leaves the photo. With `Contain` and `BlurredBackground`
+zoom 1 shows the whole photo, and the motion moves the sharp photo in front
+of its backdrop. Moves start and end gently (`easeInOut`), and the
 zoom runs at a steady-looking speed. Every frame is resampled from the photo
 at sub-pixel positions, so the camera glides — without the stepping FFmpeg's
 own `zoompan` shows. A large photo is shrunk once to what the closest zoom
@@ -180,7 +192,7 @@ VideoFX_CreateSlideshow({ "a.jpg", "b.jpg", "c.png" }, "trip.mp4", options);
 ```
 
 It fades in from and out to black (`fadeInOut`), gives each photo its own
-`Auto` move, and without a size in the settings makes 1920x1080 at 30 fps.
+`Auto` move, shows portrait photos whole on a blurred background, and without a size in the settings makes 1920x1080 at 30 fps.
 Length: `n x secondsPerImage - (n - 1) x transition`.
 
 ---
@@ -410,6 +422,7 @@ videofx transcode talk.mp4 titled.mp4 --title "Opening keynote" --font BrandSans
 videofx testclip pattern.mp4 5 1280 720 30
 videofx slideshow trip.mp4 a.jpg b.jpg c.png --seconds 4 --caption Arrival --caption "" --caption "Old town"
 videofx slideshow trip.mp4 *.jpg --motion zoomin --transition dissolve:1.5
+videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on its blurred copy
 ```
 
 ---

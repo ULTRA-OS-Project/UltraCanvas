@@ -274,18 +274,36 @@ static void TestKenBurnsMath() {
     CHECK(y >= 0 && y + h <= 3000 + 1e-9, "inside the image");
     ViewRect(KenBurnsView{2.0, 0.0, 0.0}, 4000, 3000, 1920, 1080, x, y, w, h);
     CHECK(Near(w, 2000, 1e-6) && Near(x, 0, 1e-9) && Near(y, 0, 1e-9), "zoom 2 in the corner: half size, clamped");
-    StillRect(VideoFXFitMode::Letterbox, 1000, 1000, 1920, 1080, x, y, w, h);
-    CHECK(x < 0 && Near(y, 0, 1e-9) && Near(h, 1000, 1e-9), "letterbox: whole square image, bars at the sides");
+    ContainViewRect(KenBurnsView{}, 1000, 1000, 1920, 1080, x, y, w, h);
+    CHECK(x < 0 && Near(y, 0, 1e-9) && Near(h, 1000, 1e-9), "contain: whole square image, bars at the sides");
+    ContainViewRect(KenBurnsView{2.0, 0.5, 0.0}, 1000, 1000, 1920, 1080, x, y, w, h);
+    CHECK(Near(x, (1000 - w) / 2, 1e-9) && Near(y, 0, 1e-9), "zoomed contain: centred across, follows the view down");
+    CHECK(ResolveImageFit(VideoFXImageFit::Auto, 3000, 4000, 1920, 1080) == VideoFXImageFit::BlurredBackground,
+          "Auto: a portrait photo in 16:9 is shown whole, on a blurred background");
+    CHECK(ResolveImageFit(VideoFXImageFit::Auto, 4000, 3000, 1920, 1080) == VideoFXImageFit::Cover,
+          "Auto: a 4:3 photo still fills the frame");
+    CHECK(ResolveImageFit(VideoFXImageFit::Auto, 6000, 2000, 1920, 1080) == VideoFXImageFit::Cover,
+          "Auto: a panorama fills it too (and pans)");
+    CHECK(ResolveImageFit(VideoFXImageFit::Contain, 3000, 4000, 1920, 1080) == VideoFXImageFit::Contain,
+          "an explicit fit is kept");
 
     // Renderer: colour kept, black outside the image, transparency on black
     const VideoFXFrame red = SolidFrame(8, 8, 255, 0, 0);
     std::vector<uint8_t> out(16 * 9 * 4);
     RenderView(red, 0, 0, 8, 4.5, 16, 9, out.data(), 16 * 4, 1);
     CHECK(out[0] == 255 && out[1] == 0 && out[3] == 255, "solid image renders solid");
-    StillRect(VideoFXFitMode::Letterbox, 8, 8, 16, 9, x, y, w, h);
+    ContainViewRect(KenBurnsView{}, 8, 8, 16, 9, x, y, w, h);
     RenderView(red, x, y, w, h, 16, 9, out.data(), 16 * 4, 1);
     CHECK(out[0] == 0 && out[3] == 255, "letterbox bar is black");
     CHECK(out[(4 * 16 + 8) * 4] == 255, "centre is the image");
+    std::vector<uint8_t> backdrop(16 * 9 * 4, 0);
+    for (size_t i = 1; i < backdrop.size(); i += 4) backdrop[i] = 200;          // green
+    RenderView(red, x, y, w, h, 16, 9, out.data(), 16 * 4, 1, backdrop.data());
+    CHECK(out[0] == 0 && out[1] == 200, "with a background, the bar shows it");
+    CHECK(out[(4 * 16 + 8) * 4] == 255 && out[(4 * 16 + 8) * 4 + 1] == 0, "and the image stays in front");
+    MakeBlurredBackdrop(red, 64, 36, backdrop);
+    CHECK(backdrop.size() == 64u * 36 * 4 && backdrop[0] > 100 && backdrop[0] < 200 && backdrop[1] < 20,
+          "blurred backdrop: the image's colour, darkened");
     const VideoFXFrame clear = SolidFrame(8, 8, 255, 255, 255, 0);
     RenderView(clear, 0, 0, 8, 4.5, 16, 9, out.data(), 16 * 4, 1);
     CHECK(out[0] == 0 && out[3] == 255, "transparent pixels come out black");
@@ -854,6 +872,28 @@ static void TestStillImages(const VideoFXExportSettings& base) {
     VideoFX_ExtractFrame(show, 0.0, f);
     CentreColour(f, r, g, b);
     CHECK(r < 40 && g < 40 && b < 40, "fades in from black");
+
+    // ---- a portrait photo in a landscape frame: whole, on a blurred copy ----
+    const std::string portrait = TempPath("portrait.mkv");
+    VideoFXSegment tall = VideoFXSegment::FromImageFrame(SolidFrame(100, 200, 255, 0, 0), 1.0,
+                                                         VideoFXImageMotion::Make(VideoFXMotionStyle::Still));
+    CHECK_OK(VideoFX_Export({tall}, portrait, s), "portrait photo, Auto fit");
+    VideoFX_ExtractFrame(portrait, 0.5, f);
+    int pr, pg, pb;
+    PixelAt(f, f.width / 2, 3, pr, pg, pb);
+    CHECK(pr > 200, "the whole height is shown (top edge is the photo)");
+    PixelAt(f, 4, f.height / 2, pr, pg, pb);
+    CHECK(pr > 90 && pr < 200 && pg < 40, "the side is its blurred, darkened copy - not black, not cropped");
+    tall.imageFit = VideoFXImageFit::Contain;
+    CHECK_OK(VideoFX_Export({tall}, portrait, s), "portrait photo, Contain");
+    VideoFX_ExtractFrame(portrait, 0.5, f);
+    PixelAt(f, 4, f.height / 2, pr, pg, pb);
+    CHECK(pr < 30, "Contain: black bars");
+    tall.imageFit = VideoFXImageFit::Cover;
+    CHECK_OK(VideoFX_Export({tall}, portrait, s), "portrait photo, Cover");
+    VideoFX_ExtractFrame(portrait, 0.5, f);
+    PixelAt(f, 4, f.height / 2, pr, pg, pb);
+    CHECK(pr > 200, "Cover: fills the frame");
 
     // ---- errors ----
     CHECK(VideoFX_CreateSlideshow({}, TempPath("x.mkv")) == VideoFXResult::InvalidArgument, "no images");

@@ -1349,6 +1349,7 @@ VideoFXResult Exporter::RunImageSegment(const SegmentPlan& plan, size_t index) {
 
     const VideoFXImageMotion motion = ResolveMotion(plan.segment.motion, image.width, image.height,
                                                     width, height, index);
+    const VideoFXImageFit fit = ResolveImageFit(plan.segment.imageFit, image.width, image.height, width, height);
     // Shrink once so that at the closest zoom the image is still about one
     // image pixel per output pixel: sharp, no aliasing, little memory
     const double closest = motion.style == VideoFXMotionStyle::Still
@@ -1362,6 +1363,9 @@ VideoFXResult Exporter::RunImageSegment(const SegmentPlan& plan, size_t index) {
         if ((r = ScaleRgba(image, w, h, smaller)) != VideoFXResult::Ok) return r;
         image = std::move(smaller);
     }
+
+    std::vector<uint8_t> backdrop;              // made once, reused for every frame
+    if (fit == VideoFXImageFit::BlurredBackground) MakeBlurredBackdrop(image, width, height, backdrop);
 
     std::vector<GraphSource> sources = {
         {"in", VideoSourceArgs(width, height, AV_PIX_FMT_RGBA, venc->time_base, AVRational{1, 1}, frameRate)}};
@@ -1385,13 +1389,11 @@ VideoFXResult Exporter::RunImageSegment(const SegmentPlan& plan, size_t index) {
         int err = av_frame_get_buffer(f.get(), 0);
         if (err < 0) return Fail(VideoFXResult::EncodeError, "Out of memory", err);
         double x, y, w, h;
-        if (motion.style == VideoFXMotionStyle::Still) {
-            StillRect(settings.fitMode, image.width, image.height, width, height, x, y, w, h);
-        } else {
-            const double fraction = frames > 1 ? static_cast<double>(k) / (frames - 1) : 0.0;
-            ViewRect(ViewAt(motion, fraction), image.width, image.height, width, height, x, y, w, h);
-        }
-        RenderView(image, x, y, w, h, width, height, f->data[0], f->linesize[0], settings.threads);
+        const KenBurnsView view = ViewAt(motion, frames > 1 ? static_cast<double>(k) / (frames - 1) : 0.0);
+        if (fit == VideoFXImageFit::Cover) ViewRect(view, image.width, image.height, width, height, x, y, w, h);
+        else ContainViewRect(view, image.width, image.height, width, height, x, y, w, h);
+        RenderView(image, x, y, w, h, width, height, f->data[0], f->linesize[0], settings.threads,
+                   backdrop.empty() ? nullptr : backdrop.data());
         f->pts = k;
         err = av_buffersrc_add_frame_flags(g.src, f.get(), 0);
         if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the image", err);
@@ -1800,6 +1802,7 @@ VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths
     segments.reserve(imagePaths.size());
     for (size_t i = 0; i < imagePaths.size(); ++i) {
         VideoFXSegment s = VideoFXSegment::FromImage(imagePaths[i], options.secondsPerImage, options.motion);
+        s.imageFit = options.imageFit;
         if (i > 0) s.transitionIn = options.transition;
         if (i < options.captions.size() && !options.captions[i].empty()) {
             VideoFXOverlay caption = VideoFXOverlay::Text(options.captions[i], VideoFXAnchor::Bottom, 0.055);

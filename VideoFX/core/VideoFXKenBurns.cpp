@@ -97,30 +97,74 @@ void ViewRect(const KenBurnsView& view, int imageW, int imageH, int outW, int ou
     y = std::clamp(view.centerY * imageH - h / 2.0, 0.0, imageH - h);
 }
 
-void StillRect(VideoFXFitMode fit, int imageW, int imageH, int outW, int outH,
-               double& x, double& y, double& w, double& h) {
+VideoFXImageFit ResolveImageFit(VideoFXImageFit fit, int imageW, int imageH, int outW, int outH) {
+    if (fit != VideoFXImageFit::Auto) return fit;
+    const double imageAspect = imageH > 0 ? static_cast<double>(imageW) / imageH : 1.0;
+    const double frameAspect = outH > 0 ? static_cast<double>(outW) / outH : 1.0;
+    // Much taller than the frame (a portrait in 16:9 would lose two thirds):
+    // show it whole. A 4:3 or 3:2 photo, or a panorama, still fills the frame.
+    return imageAspect < frameAspect / 1.4 ? VideoFXImageFit::BlurredBackground : VideoFXImageFit::Cover;
+}
+
+void ContainViewRect(const KenBurnsView& view, int imageW, int imageH, int outW, int outH,
+                     double& x, double& y, double& w, double& h) {
     const double frameAspect = static_cast<double>(outW) / outH;
     const double imageAspect = static_cast<double>(imageW) / imageH;
-    switch (fit) {
-        case VideoFXFitMode::Stretch:
-            x = 0; y = 0; w = imageW; h = imageH;
-            return;
-        case VideoFXFitMode::Fill:
-            ViewRect(KenBurnsView{}, imageW, imageH, outW, outH, x, y, w, h);
-            return;
-        default:
-            // Whole image visible: the window is frame-shaped and at least as
-            // big as the image in both directions
-            if (imageAspect > frameAspect) { w = imageW; h = imageW / frameAspect; }
-            else { h = imageH; w = imageH * frameAspect; }
-            x = (imageW - w) / 2.0;
-            y = (imageH - h) / 2.0;
-            return;
+    double baseW, baseH;
+    if (imageAspect > frameAspect) { baseW = imageW; baseH = imageW / frameAspect; }
+    else { baseH = imageH; baseW = imageH * frameAspect; }
+    w = baseW / std::max(1.0, view.zoom);
+    h = baseH / std::max(1.0, view.zoom);
+    x = w >= imageW ? (imageW - w) / 2.0 : std::clamp(view.centerX * imageW - w / 2.0, 0.0, imageW - w);
+    y = h >= imageH ? (imageH - h) / 2.0 : std::clamp(view.centerY * imageH - h / 2.0, 0.0, imageH - h);
+}
+
+void MakeBlurredBackdrop(const VideoFXFrame& image, int outW, int outH, std::vector<uint8_t>& rgba) {
+    // Cover the frame at 1/12 size, blur that, scale it back up: cheap, and
+    // a blur this wide needs no detail anyway
+    const int sw = std::max(8, outW / 12), sh = std::max(8, outH / 12);
+    VideoFXFrame small;
+    small.width = sw;
+    small.height = sh;
+    small.pixels.resize(static_cast<size_t>(sw) * sh * 4);
+    double x, y, w, h;
+    ViewRect(KenBurnsView{}, image.width, image.height, sw, sh, x, y, w, h);
+    RenderView(image, x, y, w, h, sw, sh, small.pixels.data(), sw * 4, 1);
+
+    // Three box-blur passes each way approximate a Gaussian
+    std::vector<float> buf(small.pixels.begin(), small.pixels.end()), tmp(buf.size());
+    const int radius = 2;
+    for (int pass = 0; pass < 3; ++pass) {
+        for (int dir = 0; dir < 2; ++dir) {
+            const int len = dir == 0 ? sw : sh, lines = dir == 0 ? sh : sw;
+            for (int line = 0; line < lines; ++line) {
+                for (int i = 0; i < len; ++i) {
+                    float sum[4] = {0, 0, 0, 0};
+                    for (int k = -radius; k <= radius; ++k) {
+                        const int j = std::clamp(i + k, 0, len - 1);
+                        const size_t p = dir == 0 ? (static_cast<size_t>(line) * sw + j) * 4
+                                                  : (static_cast<size_t>(j) * sw + line) * 4;
+                        for (int c = 0; c < 4; ++c) sum[c] += buf[p + c];
+                    }
+                    const size_t o = dir == 0 ? (static_cast<size_t>(line) * sw + i) * 4
+                                              : (static_cast<size_t>(i) * sw + line) * 4;
+                    for (int c = 0; c < 4; ++c) tmp[o + c] = sum[c] / (2 * radius + 1);
+                }
+            }
+            std::swap(buf, tmp);
+        }
     }
+    // Darkened, so the sharp picture in front stands out
+    for (size_t i = 0; i < buf.size(); i += 4) {
+        for (int c = 0; c < 3; ++c) small.pixels[i + c] = static_cast<uint8_t>(std::clamp(buf[i + c] * 0.6f, 0.0f, 255.0f));
+        small.pixels[i + 3] = 255;
+    }
+    rgba.assign(static_cast<size_t>(outW) * outH * 4, 0);
+    RenderView(small, 0, 0, sw, sh, outW, outH, rgba.data(), outW * 4);
 }
 
 void RenderView(const VideoFXFrame& image, double x, double y, double w, double h,
-                int outW, int outH, uint8_t* dst, int dstStride, int threads) {
+                int outW, int outH, uint8_t* dst, int dstStride, int threads, const uint8_t* background) {
     const int iw = image.width, ih = image.height;
     const uint8_t* src = image.pixels.data();
     const double sx = w / outW, sy = h / outH;
@@ -142,9 +186,16 @@ void RenderView(const VideoFXFrame& image, double x, double y, double w, double 
     auto renderRows = [&](int from, int to) {
         for (int j = from; j < to; ++j) {
             uint8_t* out = dst + static_cast<ptrdiff_t>(j) * dstStride;
+            const uint8_t* back = background ? background + static_cast<size_t>(j) * outW * 4 : nullptr;
+            auto fillOutside = [&](int i) {
+                uint8_t* o = out + 4 * i;
+                if (back) { o[0] = back[4 * i]; o[1] = back[4 * i + 1]; o[2] = back[4 * i + 2]; }
+                else { o[0] = o[1] = o[2] = 0; }
+                o[3] = 255;
+            };
             const double py = y + (j + 0.5) * sy - 0.5;
             if (py < -0.5 || py > ih - 0.5) {
-                for (int i = 0; i < outW; ++i) { out[4 * i] = out[4 * i + 1] = out[4 * i + 2] = 0; out[4 * i + 3] = 255; }
+                for (int i = 0; i < outW; ++i) fillOutside(i);
                 continue;
             }
             const double cy = std::clamp(py, 0.0, static_cast<double>(ih - 1));
@@ -156,7 +207,7 @@ void RenderView(const VideoFXFrame& image, double x, double y, double w, double 
             for (int i = 0; i < outW; ++i) {
                 const Tap& t = cols[static_cast<size_t>(i)];
                 uint8_t* o = out + 4 * i;
-                if (!t.inside) { o[0] = o[1] = o[2] = 0; o[3] = 255; continue; }
+                if (!t.inside) { fillOutside(i); continue; }
                 const uint8_t* a = r0 + 4 * t.x0; const uint8_t* b = r0 + 4 * t.x1;
                 const uint8_t* c = r1 + 4 * t.x0; const uint8_t* d = r1 + 4 * t.x1;
                 float v[4];
@@ -165,11 +216,12 @@ void RenderView(const VideoFXFrame& image, double x, double y, double w, double 
                     const float bottom = c[k] + (d[k] - c[k]) * t.fx;
                     v[k] = top + (bottom - top) * fy;
                 }
-                // Transparent parts of a PNG come out black, as on a black frame
+                // Transparent parts of a PNG show the background (black by default)
                 const float alpha = v[3] / 255.0f;
-                o[0] = static_cast<uint8_t>(v[0] * alpha + 0.5f);
-                o[1] = static_cast<uint8_t>(v[1] * alpha + 0.5f);
-                o[2] = static_cast<uint8_t>(v[2] * alpha + 0.5f);
+                for (int k = 0; k < 3; ++k) {
+                    const float under = back ? back[4 * i + k] : 0.0f;
+                    o[k] = static_cast<uint8_t>(v[k] * alpha + under * (1.0f - alpha) + 0.5f);
+                }
                 o[3] = 255;
             }
         }

@@ -1704,7 +1704,7 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
-  `VideoFXMotionStyle`, `VideoFXSlideshowOptions`
+  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -1723,7 +1723,7 @@ automatically (VideoToolbox, Media Foundation), project files.
   `FadeOut`, `Volume`, `NormalizeAudio`
 - Segments (`VideoFXSegment::`): `FromFile`, `FromImage`, `FromImageFrame`,
   `SolidColor`, `TestPattern`; fields `effects`, `overlays`, `transitionIn`,
-  `motion`, `image`
+  `motion`, `imageFit`, `image`
 - Image motion (`VideoFXImageMotion::`): `Make`, `Custom`
 - Transitions (`VideoFXTransition::`): `Make`, `Crossfade`; 30
   `VideoFXTransitionType`s (blends, wipes, pushes, shapes)
@@ -1735,8 +1735,9 @@ automatically (VideoToolbox, Media Foundation), project files.
   TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
-  ValidateMotion, ResolveMotion, ViewAt, ViewRect, StillRect, RenderView}`
-  (the last six in `core/VideoFXKenBurns.h`, no FFmpeg dependency)
+  ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
+  ContainViewRect, MakeBlurredBackdrop, RenderView}`
+  (the last eight in `core/VideoFXKenBurns.h`, no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 
