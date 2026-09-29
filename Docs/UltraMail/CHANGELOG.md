@@ -1,3 +1,11 @@
+#### 2026-09-29 *0.10.9*
+- **Syncing no longer writes debug lines to the terminal.** Four `[UMSTREAM]`
+  traces left over from the streaming-inbox work printed to stderr on every
+  folder sync, flag reconcile and received message (`UltraMailSyncEngine.cpp`,
+  `UltraMailApp.cpp`). They are gone - and with them a data race: the
+  per-batch trace read the selected account, which belongs to the UI thread,
+  from the sync worker.
+
 #### 2026-09-29 *0.10.8*
 - **Replies and forwards keep an HTML message's formatting.** Answering or
   forwarding an HTML mail used to turn it into plain text with "> " in front
