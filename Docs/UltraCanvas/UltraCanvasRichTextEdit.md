@@ -654,6 +654,23 @@ read-only one shows neither.
 Outside page view the text fills the element, and a document's first-page
 header and footer are drawn above and below the body.
 
+## PDF and printing
+
+```cpp
+std::string error;
+editor->ExportToPdf("/home/me/report.pdf", error);    // or ExportToPdf(bytes, error)
+```
+
+The document goes out as page view lays it out - whether or not the element is
+in page view - with headers, footers, page numbers, floating pictures and
+formulas, as vectors with real (selectable, searchable) text, and without
+anything that belongs to editing: no selection, caret, margin corners, dashed
+page breaks or borderless-cell guides. The element needs no window for it.
+`UltraCanvasPdfSurface` (the PDF writer behind it) draws any element into a
+PDF, and `PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window)`
+prints one - which is what UltraTexter's Print does for a word-processing tab,
+and File > Export as PDF writes.
+
 ## Zoom and scrolling sideways
 
 ```cpp

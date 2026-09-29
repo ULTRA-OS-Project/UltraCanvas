@@ -1,7 +1,9 @@
 #### 2026-09-29 *1.53*
 - **Printing a word-processing tab (.docx, .odt, .doc) printed a blank page.**
   File > Print read the tab's text area, which a word-processing tab keeps
-  detached and empty; it now prints the document's text.
+  detached and empty. It now prints the document as it looks - its pages as a
+  PDF, with fonts, pictures, tables, headers and page numbers - and
+  **File > Export as PDF...** saves that PDF.
 - **The Checklist button works in a word-processing tab.** It used to be
   greyed out there, because the document model had no check list; it now
   turns the paragraphs into check list items, whose boxes tick on a click.

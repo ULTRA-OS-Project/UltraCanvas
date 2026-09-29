@@ -90,3 +90,13 @@
   rewraps to the zoomed width. A page wider than the view - landscape, or
   zoomed in - gets a horizontal scrollbar (Shift+wheel, the caret brings the
   view along) instead of being cut at the right.
+- **PDF export.** `UltraCanvasRichTextEdit::ExportToPdf(path | bytes, error)`
+  writes the document's pages - headers, footers, page numbers, pictures,
+  formulas - as a vector PDF with real text, without selection, caret or
+  editing guides, from an element that need never have been shown. It is built
+  on the new **`UltraCanvasPdfSurface`**, which draws any element into a PDF
+  through the ordinary render context (Cairo's PDF surface; UTF-8 paths on
+  every platform), and **`PrintDocumentWithDialog`** / `PrintDocumentWithSettings`
+  send such a PDF (or any payload a printer takes) through the print dialog.
+  `RenderContextCairo::AttachSurface` lets a context draw onto a surface it
+  did not create.

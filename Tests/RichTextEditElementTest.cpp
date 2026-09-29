@@ -1151,6 +1151,26 @@ int main() {
         window->UpdateAndRender();
     }
 
+    // ===== PDF =====
+    std::cerr << "\n--- PDF export ---" << std::endl;
+    {
+        std::string words;
+        for (int i = 0; i < 700; i++) words += "word" + std::to_string(i) + " ";
+        edit->SetMarkdown("# Report\n\n" + words + "\n");
+        window->UpdateAndRender();
+        editor.SetSelection(RichDocPosition(1, 0), RichDocPosition(1, 20));
+        std::vector<uint8_t> pdf;
+        std::string error;
+        TEST("The document exports as a PDF: " + error, edit->ExportToPdf(pdf, error));
+        TEST("...which is a PDF", pdf.size() > 1000 && std::string(pdf.begin(), pdf.begin() + 5) == "%PDF-");
+        TEST("Exporting leaves the view as it was", !edit->IsPageView() && edit->HasSelection());
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 20, 20));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 20, 20));
+        window->UpdateAndRender();
+        TEST("...and clicks still land in it", editor.GetCaret().blockIndex == 0);
+    }
+
     // ===== PAGE FIELDS IN THE BODY =====
     std::cerr << "\n--- Page fields ---" << std::endl;
     {

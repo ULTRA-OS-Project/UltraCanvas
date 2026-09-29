@@ -863,6 +863,19 @@ engine; these classes hold the pixels being edited and hand them to it.
   `SetAntialias`, and text outlines `AppendTextPath` /
   `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
   the Cairo backend implements all of it. Tested by `RenderContextTest`.
+- **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
+  through the ordinary `IRenderContext` (units: points), as vectors with
+  selectable text: `CreateFile(utf8Path, w, h, error)` /
+  `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
+  `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
+  work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
+- **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent)`,
+  `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
+  dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+- **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
+  extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
+  one line.
 
 ### **2. UltraAI**
 

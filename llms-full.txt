@@ -1035,6 +1035,19 @@ engine; these classes hold the pixels being edited and hand them to it.
   `SetAntialias`, and text outlines `AppendTextPath` /
   `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
   the Cairo backend implements all of it. Tested by `RenderContextTest`.
+- **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
+  through the ordinary `IRenderContext` (units: points), as vectors with
+  selectable text: `CreateFile(utf8Path, w, h, error)` /
+  `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
+  `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
+  work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
+- **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent)`,
+  `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
+  dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+- **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
+  extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
+  one line.
 
 ### **2. UltraAI**
 
@@ -44238,6 +44251,23 @@ read-only one shows neither.
 
 Outside page view the text fills the element, and a document's first-page
 header and footer are drawn above and below the body.
+
+## PDF and printing
+
+```cpp
+std::string error;
+editor->ExportToPdf("/home/me/report.pdf", error);    // or ExportToPdf(bytes, error)
+```
+
+The document goes out as page view lays it out - whether or not the element is
+in page view - with headers, footers, page numbers, floating pictures and
+formulas, as vectors with real (selectable, searchable) text, and without
+anything that belongs to editing: no selection, caret, margin corners, dashed
+page breaks or borderless-cell guides. The element needs no window for it.
+`UltraCanvasPdfSurface` (the PDF writer behind it) draws any element into a
+PDF, and `PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window)`
+prints one - which is what UltraTexter's Print does for a word-processing tab,
+and File > Export as PDF writes.
 
 ## Zoom and scrolling sideways
 

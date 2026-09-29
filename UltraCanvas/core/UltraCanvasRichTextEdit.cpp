@@ -15,6 +15,7 @@
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasPdfSurface.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1138,6 +1139,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
 
 bool UltraCanvasRichTextEdit::CaretWithin(int blockIndex, int cellRow, int cellColumn,
                                           int start, int end) const {
+    if (printing) return false;               // output shows formulas typeset
     auto inside = [&](const RichDocPosition& p) {
         return p.blockIndex == blockIndex && p.cellRow == cellRow && p.cellColumn == cellColumn
             && p.byteOffset > start && p.byteOffset < end;
@@ -1149,7 +1151,7 @@ bool UltraCanvasRichTextEdit::CaretWithin(int blockIndex, int cellRow, int cellC
 
 void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int blockIndex,
                                                        int cellRow, int cellColumn) const {
-    if (!layout || !editor.HasSelection()) return;
+    if (!layout || !editor.HasSelection() || printing) return;
     RichDocRange range = editor.GetSelectionRange();
     if (blockIndex < range.start.blockIndex || blockIndex > range.end.blockIndex) return;
 
@@ -1462,7 +1464,8 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
 
         default: {
             if (block.type == RichBlockType::MathBlock && blockIndex >= 0
-                && editor.GetCaret().blockIndex != blockIndex && editor.GetAnchor().blockIndex != blockIndex
+                && (printing || (editor.GetCaret().blockIndex != blockIndex
+                                 && editor.GetAnchor().blockIndex != blockIndex))
                 && UltraCanvasInlineMath::IsAvailable()) {
                 std::string source = UCRichDocumentEditor::RunsText(block.runs);
                 std::replace(source.begin(), source.end(), '\n', ' ');
@@ -1695,11 +1698,14 @@ void UltraCanvasRichTextEdit::RenderPages(IRenderContext* ctx) {
             if (frame.top > viewBottom) break;
             const double x = visibleArea.x + pageLeftX - hScrollOffset;
             const double y = visibleArea.y + frame.top - scrollOffset;
-            ctx->DrawFilledRectangle(Rect2Dd(x + 3.0, y + 3.0, pageWidthPx, pageHeightPx),
-                                     style.pageShadowColor, 0.0f, Colors::Transparent);
+            if (!printing) {
+                ctx->DrawFilledRectangle(Rect2Dd(x + 3.0, y + 3.0, pageWidthPx, pageHeightPx),
+                                         style.pageShadowColor, 0.0f, Colors::Transparent);
+            }
             ctx->DrawFilledRectangle(Rect2Dd(x, y, pageWidthPx, pageHeightPx),
-                                     style.pageColor, 1.0f, style.borderColor);
-            if (!readOnly) {
+                                     style.pageColor, printing ? 0.0f : 1.0f,
+                                     printing ? Colors::Transparent : style.borderColor);
+            if (ShowsEditingMarks()) {
                 // Writer's text boundaries: a corner mark at each corner of
                 // the text area.
                 const double left = ColumnLeft(), right = left + ColumnWidth();
@@ -1778,7 +1784,7 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
         case RichBlockType::PageBreak: {
             // In page view the break is the page's end; only an editable
             // view marks where it sits.
-            if (pageView && readOnly) return;
+            if (pageView && !ShowsEditingMarks()) return;
             float centerY = originY + bl.bounds.height / 2.0f;
             ctx->PushState();
             ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
@@ -1811,7 +1817,8 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
         case RichBlockType::Table: {
             // A block of selected cells: each one filled whole, under its text.
             std::vector<RichDocPosition> selectedCells;
-            if (blockIndex >= 0 && editor.HasCellSelection() && editor.GetCaret().blockIndex == blockIndex) {
+            if (blockIndex >= 0 && !printing && editor.HasCellSelection()
+                && editor.GetCaret().blockIndex == blockIndex) {
                 selectedCells = editor.SelectedCells();
             }
             for (size_t i = 0; i < bl.cells.size(); i++) {
@@ -1920,7 +1927,7 @@ void UltraCanvasRichTextEdit::DrawDocumentCellFrame(IRenderContext* ctx, const R
     auto side = [&](const RichBorder& border, const Point2Dd& from, const Point2Dd& to) {
         if (border.IsVisible()) {
             DrawBorderLine(ctx, border, from, to, ParseHexColor(border.color, style.textColor));
-        } else if (!readOnly) {
+        } else if (ShowsEditingMarks()) {
             ctx->PushState();
             ctx->SetStrokeWidth(1.0);
             ctx->DrawLine(from, to, style.tableGuideColor);
@@ -1973,7 +1980,7 @@ void UltraCanvasRichTextEdit::DrawSelectionForNonTextBlock(IRenderContext* ctx, 
                                                             const BlockLayout& bl, float originY) {
     // Blocks with no text cannot carry a selection attribute, so a selection
     // that swallows one is shown as a translucent wash over its box.
-    if (!editor.HasSelection()) return;
+    if (!editor.HasSelection() || printing) return;
     // A selected picture shows its frame and handles instead.
     if (HasSelectedImage() && !selectedImage.InCell() && selectedImage.blockIndex == blockIndex) return;
     RichDocRange range = editor.GetSelectionRange();
@@ -2210,7 +2217,7 @@ bool UltraCanvasRichTextEdit::SetSelectedImageAltText(const std::string& altText
 }
 
 void UltraCanvasRichTextEdit::DrawImageSelection(IRenderContext* ctx) {
-    if (!HasSelectedImage()) return;
+    if (!HasSelectedImage() || printing) return;
     Rect2Df rect;
     if (resizeHandle >= 0) {
         rect = resizePreview;
@@ -3534,6 +3541,96 @@ bool UltraCanvasRichTextEdit::InsertImageFromFile(const std::string& path,
     size_t slash = name.find_last_of("/\\");
     if (slash != std::string::npos) name = name.substr(slash + 1);
     InsertImageFromMemory(name, UCRichDocument::MimeTypeForImageName(name), data, altText);
+    return true;
+}
+
+// ===== PDF =====
+
+bool UltraCanvasRichTextEdit::ExportToPdf(const std::string& utf8Path, std::string& error) {
+    const RichPageSetup page = EffectivePageSetup();
+    auto pdf = UltraCanvasPdfSurface::CreateFile(utf8Path, page.widthPt, page.heightPt, error);
+    if (!pdf) return false;
+    if (!ExportPdfPages(*pdf, error)) return false;
+    return pdf->Finish(error);
+}
+
+bool UltraCanvasRichTextEdit::ExportToPdf(std::vector<uint8_t>& pdfBytes, std::string& error) {
+    const RichPageSetup page = EffectivePageSetup();
+    auto pdf = UltraCanvasPdfSurface::CreateInMemory(page.widthPt, page.heightPt, error);
+    if (!pdf) return false;
+    if (!ExportPdfPages(*pdf, error)) return false;
+    if (!pdf->Finish(error)) return false;
+    pdfBytes = pdf->GetBytes();
+    return true;
+}
+
+// Lays the document out as page view does, with the PDF's own context (its
+// text is measured with the fonts it is drawn with), and draws page after
+// page into it. The element's view state is put back afterwards.
+bool UltraCanvasRichTextEdit::ExportPdfPages(UltraCanvasPdfSurface& pdf, std::string& error) {
+    IRenderContext* ctx = pdf.GetContext();
+    if (!ctx) {
+        error = "The PDF has no page to draw on";
+        return false;
+    }
+    const std::shared_ptr<UCRichDocument>& document = editor.GetDocument();
+    if (document) pdf.SetMetadata(document->metadata.title, document->metadata.author, document->metadata.description);
+
+    const bool savedPageView = pageView;
+    const float savedZoom = zoom, savedScroll = scrollOffset, savedHScroll = hScrollOffset;
+    const Rect2Df savedArea = visibleArea;
+
+    printing = true;
+    pageView = true;
+    zoom = 1.0f;
+    hScrollOffset = 0.0f;
+    RecalculateVisibleArea();
+    // Tall enough that no block of a page is culled while it is drawn.
+    const RichPageSetup page = EffectivePageSetup();
+    visibleArea.height = std::max(visibleArea.height, Px(page.heightPt) + 2.0f * style.pageGap);
+    blockLayouts.clear();
+    furnitureCache.clear();
+    layoutsDirty = true;
+    EnsureLayouts(ctx);
+
+    const float pointsPerPixel = 1.0f / kPixelsPerPoint;
+    for (size_t index = 0; index < pages.size(); index++) {
+        if (index > 0) pdf.NextPage();
+        const PageFrame& frame = pages[index];
+        scrollOffset = frame.top;
+        ctx->PushState();
+        ctx->Scale(pointsPerPixel, pointsPerPixel);
+        // The page's top-left corner to the PDF page's origin.
+        ctx->Translate(-(visibleArea.x + pageLeftX), -visibleArea.y);
+        ctx->ClipRect(Rect2Dd(visibleArea.x + pageLeftX, visibleArea.y, pageWidthPx, pageHeightPx));
+        const std::vector<PageFrame> onePage{frame};
+        std::vector<PageFrame> allPages;
+        allPages.swap(pages);
+        pages = onePage;
+        RenderPages(ctx);
+        pages.swap(allPages);
+        DrawFloats(ctx, true);
+        const float top = frame.top, bottom = frame.top + pageHeightPx;
+        for (int i = 0; i < static_cast<int>(blockLayouts.size()); i++) {
+            const BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+            if (BlockVisualBottom(bl) < top) continue;
+            if (bl.bounds.y > bottom) break;
+            RenderBlock(ctx, i, bl);
+        }
+        DrawFloats(ctx, false);
+        ctx->PopState();
+    }
+
+    // Back to the screen: its own context lays everything out again.
+    printing = false;
+    pageView = savedPageView;
+    zoom = savedZoom;
+    scrollOffset = savedScroll;
+    hScrollOffset = savedHScroll;
+    visibleArea = savedArea;
+    visibleAreaDirty = true;
+    pages.clear();
+    InvalidateDocument();
     return true;
 }
 

@@ -18,6 +18,7 @@
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasNativeDialogs.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 #include "UltraCanvasFileLoader.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasClipboard.h"
@@ -631,6 +632,9 @@ namespace {
                         // ── ADD THESE TWO LINES ──
                         MenuItemData::ActionWithShortcut("Print...", "Ctrl+P", [this]() {
                             OnFilePrint();
+                        }),
+                        MenuItemData::Action("Export as PDF...", [this]() {
+                            OnFileExportPdf();
                         }),                        MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", NormalizePath(GetResourcesDir() + "media/icons/texter/close_tab.svg"), [this]() {
                             OnFileClose();
@@ -3670,19 +3674,64 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
+    // A word-processing tab as a PDF of its pages (what Print sends to the
+    // printer). Other tabs have no page layout to export.
+    void UltraCanvasTextEditor::OnFileExportPdf() {
+        auto doc = GetActiveDocument();
+        if (!doc) return;
+        if (!doc->IsRichDocument() || !doc->richEdit) {
+            UltraCanvasDialogManager::ShowError(
+                "Export as PDF works on word-processing documents (.docx, .odt, .doc, .md opened as a document).",
+                "Export as PDF", nullptr, GetWindow());
+            return;
+        }
+        std::string stem = doc->fileName.empty() ? std::string("Untitled") : doc->fileName;
+        const size_t dot = stem.find_last_of('.');
+        if (dot != std::string::npos && dot > 0) stem = stem.substr(0, dot);
+
+        FileDialogOptions opts;
+        opts.title = "Export as PDF";
+        opts.filters = {FileFilter("PDF document", std::vector<std::string>{"pdf"})};
+        opts.initialDirectory = lastOpenedDirectory;
+        opts.defaultFileName = stem + ".pdf";
+        opts.parentWindow = GetWindow();
+        const int documentId = doc->documentId;
+        UltraCanvasFileLoader::SaveFileDialog(
+                opts,
+                [this, documentId](DialogResult result, const std::string& filePath) {
+                    if (result != DialogResult::OK || filePath.empty()) return;
+                    const int index = FindDocumentIndexById(documentId);
+                    if (index < 0 || !documents[static_cast<size_t>(index)]->richEdit) return;
+                    std::string error;
+                    if (!documents[static_cast<size_t>(index)]->richEdit->ExportToPdf(filePath, error)) {
+                        UltraCanvasDialogManager::ShowError(error, "Export as PDF", nullptr, GetWindow());
+                    }
+                });
+    }
+
     void UltraCanvasTextEditor::OnFilePrint() {
         auto doc = GetActiveDocument();
         if (!doc) return;
 
         std::string docName = doc->fileName.empty() ? "Untitled" : doc->fileName;
-        // A word-processing tab keeps its text in the rich editor; its text
-        // area is detached and empty, so reading it printed a blank page.
-        std::string content;
+        // A word-processing tab prints as what it looks like: its pages as a
+        // PDF, fonts, pictures, tables, headers and page numbers included.
+        // (Its text area is detached and empty, which is why reading that
+        // once printed a blank page.)
         if (doc->IsRichDocument() && doc->richEdit) {
-            content = doc->richEdit->GetPlainText();
-        } else if (doc->textArea) {
-            content = doc->textArea->GetText();
+            std::vector<uint8_t> pdf;
+            std::string error;
+            if (!doc->richEdit->ExportToPdf(pdf, error)) {
+                UltraCanvasDialogManager::ShowError(error, "Print Failed", nullptr, GetWindow());
+                return;
+            }
+            const IODeviceResult printed = PrintDocumentWithDialog(docName, pdf, "application/pdf", GetWindow());
+            if (!printed.success && printed.code != IODeviceResultCode::Cancelled) {
+                UltraCanvasDialogManager::ShowError(printed.message, "Print Failed", nullptr, GetWindow());
+            }
+            return;
         }
+        std::string content = doc->textArea ? doc->textArea->GetText() : "";
 
         // Retrieve the native window handle for modal parenting
         UltraCanvasNativeDialogs::ShowPrintDialog(docName, content, GetWindow());

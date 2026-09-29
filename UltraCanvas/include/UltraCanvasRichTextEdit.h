@@ -322,6 +322,16 @@ public:
     // click was not on a flagged word, so a host can show its own menu.
     bool ShowSpellSuggestionMenu(const UCEvent& event);
 
+    // ===== PDF =====
+    // The document as a PDF: its pages as page view lays them out (whether or
+    // not the element is in page view), with headers, footers and page
+    // numbers, as vectors with real text - and without anything that belongs
+    // to editing (selection, caret, margin marks, table guides). Works on an
+    // element that has never been shown.
+    bool ExportToPdf(const std::string& utf8Path, std::string& error);
+    // The same, into memory (for printing, attaching, uploading).
+    bool ExportToPdf(std::vector<uint8_t>& pdfBytes, std::string& error);
+
     // ===== ZOOM =====
     // 1 = 100%. Everything is drawn scaled - text, pictures, pages - and
     // outside page view the text rewraps to the zoomed width, as a word
@@ -651,6 +661,10 @@ private:
     bool caretMoved = false;
 
     bool readOnly = false;
+    // Drawing for output (PDF, print): no selection, caret, guides or marks.
+    bool printing = false;
+    bool ShowsEditingMarks() const { return !readOnly && !printing; }
+    bool ExportPdfPages(class UltraCanvasPdfSurface& pdf, std::string& error);
     bool selecting = false;           // mouse drag in progress
     // Drag and drop of the selection: a press inside it arms a drag, which
     // starts once the pointer has moved a few pixels (a press and release

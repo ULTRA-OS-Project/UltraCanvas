@@ -433,6 +433,7 @@ namespace UltraCanvas {
         void OnFileCloseAll();
         void OnFileQuit();
         void OnFilePrint();
+        void OnFileExportPdf();
 
         void OnEditUndo();
         void OnEditRedo();

@@ -199,7 +199,20 @@ namespace UltraCanvas {
         }
 
         surfaceSize = sz;
+        return InitializeForSurface(oldCairoSurface);
+    }
 
+    bool RenderContextCairo::AttachSurface(cairo_surface_t* target, const Size2Di& sz) {
+        if (!target || cairo_surface_status(target) != CAIRO_STATUS_SUCCESS) return false;
+        auto oldCairoSurface = surface;
+        surface = target;
+        surfaceSize = sz;
+        return InitializeForSurface(oldCairoSurface);
+    }
+
+    // The cairo and Pango contexts for `surface`, replacing any earlier ones
+    // (and releasing `oldCairoSurface`).
+    bool RenderContextCairo::InitializeForSurface(cairo_surface_t* oldCairoSurface) {
         if (pangoContext) {
             g_object_unref(pangoContext);
             pangoContext = nullptr;
