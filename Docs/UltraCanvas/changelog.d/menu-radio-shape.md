@@ -25,6 +25,10 @@
   the text sat below a button or checkbox beside the field. One line box
   (`GetTextLineBox`) now positions all three, with the font's capitals on
   the field's centre line and the caret spanning the font's line height.
+  `UltraCanvasAutoComplete` inherits it. The text area's lines flow from
+  the top and its caret follows the layout, which is right for a
+  multi-line editor; its one single-line label, the placeholder for a
+  missing markdown image, is now cap-centred in its box too.
 - **`DrawFilledRectangle` / `DrawFilledCircle` keep the border inside the
   shape.** A stroke is centred on its path, so a 1px outline on a rectangle
   with whole-pixel edges was smeared over two rows of pixels on each side

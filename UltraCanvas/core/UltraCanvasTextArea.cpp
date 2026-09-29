@@ -3741,13 +3741,11 @@ namespace UltraCanvas {
                     ctx->SetFontStyle(style.fontStyle);
                     ctx->SetTextPaint(markdownStyle.imagePlaceholderTextColor);
                     float tw = static_cast<float>(ctx->GetTextLineWidth(label));
-                    int lh = computedLineHeight > 0
-                             ? computedLineHeight
-                             : static_cast<int>(style.fontStyle.fontSize * 1.3f);
                     float tx = static_cast<float>(dst.x) +
                                std::max(0.0f, (static_cast<float>(dst.width) - tw) / 2.0f);
-                    float ty = static_cast<float>(dst.y) +
-                               std::max(0.0f, (static_cast<float>(dst.height) - lh) / 2.0f);
+                    // A single line centred in the box: on its capitals, as every
+                    // other single-line label in the framework is.
+                    float ty = static_cast<float>(ctx->TextTopCentredOnCaps(dst, style.fontStyle));
                     ctx->DrawText(label, Point2Dd(tx, ty));
                     ctx->PopState();
                 }
