@@ -29,10 +29,13 @@
 
 #include "UltraMailDiscovery.h"
 #include "UltraMailLocalStore.h"
+#include "UltraMailOAuth.h"
 #include "UltraMailSyncEngine.h"
 
 #include <UltraNet/UltraNetPlugins.h>
 
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -119,5 +122,23 @@ UltraMail::SyncOutcome FetchMailbox(UltraMail::LocalStore& store,
                                     const std::string& mailCacheDir,
                                     const UltraMail::Account& account,
                                     const UltraNetMailOptions& options);
+
+// The session step (MailAccountAccess::prepareSession) for an UltraMail
+// account that signed in through its provider's browser login (OAuth2) rather
+// than with a password. It holds the account's token set - read once from
+// UltraMail's vault - and before each server call puts a current access token
+// into the session's credentials (XOAUTH2), refreshing it through the provider
+// with UltraMail's own OAuth client when it has expired (MailOAuth::EnsureFresh).
+//
+// A refreshed token set stays in memory: EmailCleaner never writes to
+// UltraMail's vault, and the refresh token it read stays valid for UltraMail.
+// When the sign-in cannot be renewed (no refresh token, or the provider
+// refused it) the call fails with the provider's reason - sign in again in
+// UltraMail. `hooks` and `now` are test seams; `now` returns epoch seconds.
+std::function<UltraNetResult(UltraNetMailOptions&)> MakeOAuthSessionPreparer(
+    const std::string& providerId, const std::string& username,
+    const UltraMail::OAuthTokens& tokens,
+    UltraMail::OAuthHooks hooks = {},
+    std::function<int64_t()> now = {});
 
 } // namespace EmailCleaner

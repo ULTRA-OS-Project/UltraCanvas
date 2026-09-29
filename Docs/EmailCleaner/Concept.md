@@ -80,8 +80,10 @@ EmailCleaner's data directory. So there is still one IMAP implementation —
 only a second place its results are kept. An own account's id is
 `ec-<address slug>`, which cannot collide with UltraMail's id for the same
 address, and adding an address UltraMail already shares is refused rather
-than loading one mailbox twice. Sign-in is password-only (an app password at
-Gmail, Outlook and Yahoo); an OAuth sign-in stays UltraMail's.
+than loading one mailbox twice. Adding an account there is password-only (an
+app password at Gmail, Outlook and Yahoo); a browser (OAuth) sign-in is still
+set up in UltraMail — and such an UltraMail account can be acted on from here
+(0.4.1): EmailCleaner reads its token set and renews it itself.
 
 ### Layers
 
@@ -238,9 +240,12 @@ touches the server. Every entry can be seen and taken back from **Blocked
 senders…**, because a block the user cannot undo is not a block, it is a
 mistake waiting.
 
-The mail half needs UltraNet's IMAP plug-in and the account's password — from
-UltraMail's vault, or from EmailCleaner's own for an account added there. When
-either is missing the panel says which, and the local half still
+The mail half needs UltraNet's IMAP plug-in and a way to sign in: the
+account's password — from UltraMail's vault, or from EmailCleaner's own for an
+account added there — or the OAuth2 token set of an UltraMail account that
+signed in through its provider's browser login, renewed before each server
+call with UltraMail's OAuth client and kept in memory (UltraMail's vault is
+only ever read). When either is missing the panel says which, and the local half still
 works — that is the normal state on a machine where UltraMail has not been set
 up, not an error.
 

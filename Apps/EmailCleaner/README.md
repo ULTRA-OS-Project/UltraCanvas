@@ -178,10 +178,16 @@ Three rules the panel will not bend:
 - **Blocking is local and reversible.** It changes what the map shows, never
   the server, and every entry can be taken back from **Blocked senders…**.
 
-The mail half needs UltraNet's IMAP plug-in and the account's password — from
-UltraMail's vault, or from EmailCleaner's own for an account added under
-**Accounts…**. Without them the panel says which is missing and the local
-half still works.
+The mail half needs UltraNet's IMAP plug-in and a way to sign in: the
+account's password — from UltraMail's vault, or from EmailCleaner's own for an
+account added under **Accounts…** — or, for an UltraMail account that signed
+in through its provider's browser login (Gmail, Outlook, Yahoo), its OAuth2
+token set. EmailCleaner renews that token itself before each server call,
+with UltraMail's OAuth client (the same environment, baked-in client and
+`oauth.ini`), and keeps the renewed one in memory: it only ever reads
+UltraMail's vault. When the sign-in can no longer be renewed, the action says
+so — sign in again in UltraMail. Without any of this the panel says what is
+missing and the local half still works.
 
 ## Correcting a verdict
 

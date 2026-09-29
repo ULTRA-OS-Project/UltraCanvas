@@ -55,6 +55,16 @@ MailAccountAccess* MailBackend::Find(const std::string& accountId) {
     return it == accounts_.end() ? nullptr : &it->second;
 }
 
+bool MailBackend::PrepareSession(MailAccountAccess& access, std::string& outError) {
+    if (!access.prepareSession) return true;
+    const UltraNetResult r = access.prepareSession(access.options);
+    if (!r) {
+        outError = "could not sign in: " + r.message;
+        return false;
+    }
+    return true;
+}
+
 std::string MailBackend::ResolvedTrash(const std::string& accountId) const {
     auto it = accounts_.find(accountId);
     return it == accounts_.end() ? std::string() : it->second.trashFolder;
@@ -89,6 +99,7 @@ bool MailBackend::MoveToTrash(const std::string& accountId, const std::string& f
         outError = "account '" + accountId + "' has no mail connection configured";
         return false;
     }
+    if (!PrepareSession(*access, outError)) return false;
 
     if (access->trashFolder.empty()) {
         access->trashFolder = ResolveTrashFolder(*access, outError);
@@ -164,6 +175,7 @@ bool MailBackend::SendUnsubscribeMail(const std::string& accountId,
         outError = "the account has no address to unsubscribe with";
         return false;
     }
+    if (!PrepareSession(*access, outError)) return false;
 
     UltraNetMailMessage message;
     message.from        = access->ownerAddress;

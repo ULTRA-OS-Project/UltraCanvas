@@ -15,6 +15,7 @@
 #include "UltraMailDiscovery.h"
 #include "UltraMailLocalStore.h"
 #include "UltraMailLoginCheck.h"
+#include "UltraMailOAuth.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 #include <UltraNet/UltraNetPlugins.h>
@@ -119,6 +120,13 @@ bool EmailCleanerApp::Initialize(const std::string& dataDir,
     UltraNet_SetPluginDirectory(pluginDir_);
     UltraNet_RefreshPlugins();
 
+    // The OAuth client UltraMail signs in as. An UltraMail account that signed
+    // in through its provider's browser login holds a refresh token issued to
+    // that client, so renewing it has to go through the same one: the
+    // environment and the build's baked-in client are shared already, and
+    // this adds the oauth.ini in UltraMail's data folder, as UltraMail does.
+    UltraMail::OAuthApps::LoadFile(mailDataDir + "/oauth.ini");
+
     LoadRules();
     ImportAccounts();
     store_.ListAccounts(accounts_);
@@ -165,11 +173,12 @@ int EmailCleanerApp::RegisterUltraMailAccounts(std::string& problem) {
         if (account.source == AccountSource::UltraMail) any = true;
     if (!any) return 0;
 
-    // One entry per account: where its server is, and the password UltraMail
-    // already holds. An account with neither is simply not registered, and the
-    // backend then refuses its messages by name rather than failing obscurely.
-    // The vault is UltraMail's, unlocked with the device key UltraMail keeps
-    // beside it; until it is unlocked every Retrieve() says "no password".
+    // One entry per account: where its server is, and how it signs in - the
+    // password UltraMail holds, or, for an account that signed in through its
+    // provider's browser login, its OAuth2 token set. An account with neither
+    // is simply not registered, and the backend then refuses its messages by
+    // name rather than failing obscurely. The vault is UltraMail's, unlocked
+    // with the device key UltraMail keeps beside it, and only ever read.
     UltraMail::CredentialVault vault(mailDataDir_ + "/vault");
     if (!vault.TryAutoUnlock()) {
         problem = vault.Exists()
@@ -193,21 +202,32 @@ int EmailCleanerApp::RegisterUltraMailAccounts(std::string& problem) {
         const UltraMail::DiscoveryResult discovered = UltraMail::AutoDiscovery::ForAccount(record);
         if (!discovered.imap.Valid()) continue;
 
-        std::string password;
-        if (!vault.Retrieve(account.accountId, password) || password.empty()) continue;
-
         MailAccountAccess access;
         access.accountId    = account.accountId;
         access.serverUrl    = UltraMail::AutoDiscovery::ImapServerUrl(discovered.imap);
         access.ownerAddress = account.email;
-        access.options.credentials.username =
+        const std::string username =
             discovered.imap.username.empty() ? account.email : discovered.imap.username;
-        access.options.credentials.password = password;
+        access.options.credentials.username = username;
         UltraMail::ApplyConnection(discovered.imap, access.options);
+
+        UltraMail::OAuthTokens tokens;
+        if (vault.RetrieveOAuthTokens(account.accountId, tokens)) {
+            // Browser sign-in: a fresh bearer token before every server call,
+            // renewed through the provider when it has expired.
+            const std::string provider = UltraMail::OAuthProviderFor(discovered);
+            if (provider.empty()) continue;   // cannot renew without knowing whom to ask
+            access.prepareSession =
+                MakeOAuthSessionPreparer(provider, username, tokens);
+        } else {
+            std::string password;
+            if (!vault.Retrieve(account.accountId, password) || password.empty()) continue;
+            access.options.credentials.password = password;
+        }
         mailBackend_->SetAccount(access);
         ++usable;
     }
-    vault.Lock();   // the passwords are in the backend now; drop the key
+    vault.Lock();   // the secrets are in the backend now; drop the key
     return usable;
 }
 

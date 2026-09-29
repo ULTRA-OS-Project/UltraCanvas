@@ -21,6 +21,7 @@
 
 #include <UltraNet/UltraNetPlugins.h>
 
+#include <functional>
 #include <map>
 #include <string>
 
@@ -33,6 +34,13 @@ struct MailAccountAccess {
     std::string ownerAddress;           // the account's own address, for the From
     UltraNetMailOptions options;        // credentials, TLS, timeouts
     std::string trashFolder;            // resolved lazily when empty
+
+    // Run before every call to the server, to put current credentials into
+    // `options` - an account that signs in with OAuth2 gets a fresh access
+    // token here, refreshed through its provider when the last one expired.
+    // Empty for a password account, whose credentials never change. A
+    // failure is the call's failure: nothing is sent to the server.
+    std::function<UltraNetResult(UltraNetMailOptions& options)> prepareSession;
 };
 
 class MailBackend : public IActionBackend {
@@ -64,6 +72,8 @@ public:
 
 private:
     MailAccountAccess* Find(const std::string& accountId);
+    // Run the account's prepareSession, if it has one.
+    static bool PrepareSession(MailAccountAccess& access, std::string& outError);
 
     IMailboxProtocolPlugin&                mailbox_;
     std::map<std::string, MailAccountAccess> accounts_;

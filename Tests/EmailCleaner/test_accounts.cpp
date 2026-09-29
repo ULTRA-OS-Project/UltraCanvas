@@ -9,6 +9,7 @@
 
 #include "EmailCleanerAccounts.h"
 #include "EmailCleanerIngest.h"
+#include "EmailCleanerMailBackend.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <UltraDatabase/UltraDatabase.h>
@@ -53,7 +54,10 @@ public:
     std::map<std::string, std::map<uint32_t, std::string>> messages;   // folder -> uid -> raw
     bool failListFolders = false;
     std::vector<std::string> fetchedFolders;
-    std::string lastUsername, lastPassword;
+    std::string lastUsername, lastPassword, lastToken;
+    UltraNetAuthType lastAuthType = UltraNetAuthType::None;
+    int listFolderCalls = 0;
+    int moveCalls = 0;
 
     std::string GetName() const override { return "FakeMailbox"; }
     std::string GetVersion() const override { return "0.0.1"; }
@@ -70,8 +74,11 @@ public:
     }
     UltraNetResult ListFolders(const std::string&, std::vector<UltraNetMailFolder>& out,
                                const UltraNetMailOptions& options) override {
+        ++listFolderCalls;
         lastUsername = options.credentials.username;
         lastPassword = options.credentials.password;
+        lastToken    = options.credentials.token;
+        lastAuthType = options.credentials.type;
         if (failListFolders)
             return UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,
                                          "wrong password");
@@ -112,6 +119,7 @@ public:
     }
     UltraNetResult MoveMessage(const std::string&, const std::string&, uint32_t,
                                const std::string&, const UltraNetMailOptions&) override {
+        ++moveCalls;
         return UltraNetResult::Ok();
     }
     UltraNetResult AppendMessage(const std::string&, const std::string&, const std::string&,
@@ -333,4 +341,144 @@ TEST(Accounts_FetchMailboxReportsASignInFailure) {
     REQUIRE(!outcome.ok);
     REQUIRE(outcome.message.find("wrong password") != std::string::npos);
     REQUIRE(mailbox.fetchedFolders.empty());
+}
+
+// ---- UltraMail accounts that signed in through the browser (OAuth2) ---------
+
+namespace {
+
+UltraMail::OAuthApp GoogleTestApp() {
+    UltraMail::OAuthApp app;
+    app.clientId     = "client-123.apps.googleusercontent.com";
+    app.clientSecret = "shh";
+    return app;
+}
+
+} // namespace
+
+TEST(Accounts_OAuthPreparerSignsInWithTheStoredTokenWhileItIsValid) {
+    UltraMail::OAuthApps::Clear();
+    UltraMail::OAuthApps::Set("google", GoogleTestApp());
+    int refreshCalls = 0;
+    UltraMail::OAuthHooks hooks;
+    hooks.refresh = [&](const UltraNetOAuth2Config&, const std::string&, UltraNetOAuth2Token&) {
+        ++refreshCalls;
+        return UltraNetResult::Ok();
+    };
+    UltraMail::OAuthTokens tokens;
+    tokens.accessToken = "a1"; tokens.refreshToken = "r1"; tokens.expiresAt = 2000;
+
+    auto prepare = MakeOAuthSessionPreparer("google", "someone@gmail.com", tokens, hooks,
+                                            [] { return int64_t(1000); });
+    UltraNetMailOptions options;
+    options.credentials.password = "stale";
+    REQUIRE(prepare(options));
+    REQUIRE(options.credentials.type == UltraNetAuthType::OAuth2);
+    REQUIRE_EQ(options.credentials.token, std::string("a1"));
+    REQUIRE_EQ(options.credentials.username, std::string("someone@gmail.com"));
+    REQUIRE(options.credentials.password.empty());   // no password rides along
+    REQUIRE(options.auth == UltraNetMailAuth::OAuth2);
+    REQUIRE_EQ(refreshCalls, 0);
+    UltraMail::OAuthApps::Clear();
+}
+
+TEST(Accounts_OAuthPreparerRenewsAnExpiredTokenOnceForEveryCopy) {
+    UltraMail::OAuthApps::Clear();
+    UltraMail::OAuthApps::Set("google", GoogleTestApp());
+    int refreshCalls = 0;
+    UltraMail::OAuthHooks hooks;
+    hooks.refresh = [&](const UltraNetOAuth2Config&, const std::string& refreshToken,
+                        UltraNetOAuth2Token& out) {
+        ++refreshCalls;
+        REQUIRE_EQ(refreshToken, std::string("r1"));
+        out.accessToken = "a2"; out.expiresInSeconds = 3600;
+        return UltraNetResult::Ok();
+    };
+    UltraMail::OAuthTokens tokens;
+    tokens.accessToken = "a1"; tokens.refreshToken = "r1"; tokens.expiresAt = 1000;
+
+    auto prepare = MakeOAuthSessionPreparer("google", "someone@gmail.com", tokens, hooks,
+                                            [] { return int64_t(1500); });
+    auto copy = prepare;   // MailBackend keeps its own copy of the access record
+
+    UltraNetMailOptions first, second;
+    REQUIRE(prepare(first));
+    REQUIRE(copy(second));
+    REQUIRE_EQ(first.credentials.token, std::string("a2"));
+    REQUIRE_EQ(second.credentials.token, std::string("a2"));
+    REQUIRE_EQ(refreshCalls, 1);
+    UltraMail::OAuthApps::Clear();
+}
+
+TEST(Accounts_OAuthPreparerSaysWhenTheSignInCannotBeRenewed) {
+    UltraMail::OAuthApps::Clear();
+    UltraMail::OAuthApps::Set("google", GoogleTestApp());
+    UltraMail::OAuthTokens dead;
+    dead.accessToken = "old"; dead.expiresAt = 1;   // expired, no refresh token
+
+    auto prepare = MakeOAuthSessionPreparer("google", "someone@gmail.com", dead, {},
+                                            [] { return int64_t(5); });
+    UltraNetMailOptions options;
+    const UltraNetResult r = prepare(options);
+    REQUIRE(!r);
+    REQUIRE(r.code == UltraNetResultCode::AuthenticationRequired);
+    REQUIRE(r.message.find("UltraMail") != std::string::npos);
+    UltraMail::OAuthApps::Clear();
+}
+
+TEST(Accounts_MailBackendSignsInThroughThePreparerBeforeEveryCall) {
+    FakeMailbox mailbox;
+    mailbox.folders = { MailFolder("INBOX", "inbox"), MailFolder("Trash", "trash") };
+
+    MailAccountAccess access;
+    access.accountId = "someone-gmail-com";
+    access.serverUrl = "imaps://imap.gmail.com:993/";
+    access.ownerAddress = "someone@gmail.com";
+    int prepared = 0;
+    access.prepareSession = [&prepared](UltraNetMailOptions& options) {
+        ++prepared;
+        options.credentials.type  = UltraNetAuthType::OAuth2;
+        options.credentials.token = "token-" + std::to_string(prepared);
+        return UltraNetResult::Ok();
+    };
+
+    MailBackend backend(mailbox);
+    backend.SetAccount(access);
+    std::string error;
+    REQUIRE(backend.MoveToTrash("someone-gmail-com", "INBOX", 7, error));
+    REQUIRE_EQ(prepared, 1);
+    REQUIRE(mailbox.lastAuthType == UltraNetAuthType::OAuth2);
+    REQUIRE_EQ(mailbox.lastToken, std::string("token-1"));
+    REQUIRE_EQ(mailbox.moveCalls, 1);
+
+    // The next call asks again - an hour later the token may have expired.
+    REQUIRE(backend.MoveToTrash("someone-gmail-com", "INBOX", 8, error));
+    REQUIRE_EQ(prepared, 2);
+}
+
+TEST(Accounts_MailBackendSendsNothingWhenTheSignInFails) {
+    FakeMailbox mailbox;
+    mailbox.folders = { MailFolder("INBOX", "inbox"), MailFolder("Trash", "trash") };
+
+    MailAccountAccess access;
+    access.accountId = "someone-gmail-com";
+    access.serverUrl = "imaps://imap.gmail.com:993/";
+    access.ownerAddress = "someone@gmail.com";
+    access.prepareSession = [](UltraNetMailOptions&) {
+        return UltraNetResult::Error(UltraNetResultCode::AuthenticationRequired,
+                                     "the Google sign-in has expired");
+    };
+
+    MailBackend backend(mailbox);
+    backend.SetAccount(access);
+    std::string error;
+    REQUIRE(!backend.MoveToTrash("someone-gmail-com", "INBOX", 7, error));
+    REQUIRE(error.find("could not sign in") != std::string::npos);
+    REQUIRE(error.find("expired") != std::string::npos);
+    REQUIRE_EQ(mailbox.listFolderCalls, 0);
+    REQUIRE_EQ(mailbox.moveCalls, 0);
+
+    REQUIRE(!backend.SendUnsubscribeMail("someone-gmail-com", "unsub@list.example",
+                                         "unsubscribe", error));
+    REQUIRE(error.find("could not sign in") != std::string::npos);
 }

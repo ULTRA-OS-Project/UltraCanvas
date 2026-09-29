@@ -1,3 +1,18 @@
+#### 2026-09-29 *0.4.1*
+- **UltraMail accounts that signed in through the browser can be acted on.**
+  An account set up in UltraMail with its provider's browser login (OAuth2 -
+  Gmail, Outlook, Yahoo) keeps a token set in UltraMail's vault, not a
+  password, and EmailCleaner only ever looked for a password: such an account
+  was analysed but never registered with the mail backend, so **Move to
+  Trash** and the unsubscribe mail refused its messages. EmailCleaner now reads
+  the token set too and, before every call to the server, signs in with a
+  current access token (XOAUTH2), renewing it through the provider when it has
+  expired - with UltraMail's own OAuth client, whose refresh token it is
+  (environment, baked-in client, and now UltraMail's `oauth.ini` as well). The
+  renewed token stays in memory: UltraMail's vault is only ever read. When the
+  sign-in cannot be renewed the action fails before anything reaches the
+  server, and says to sign in again in UltraMail.
+
 #### 2026-09-29 *0.4.0*
 - **EmailCleaner can have accounts of its own.** Until now every account came
   from UltraMail, so a mailbox could only be cleaned after it had been set up
