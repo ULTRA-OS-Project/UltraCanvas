@@ -68685,7 +68685,10 @@ ABI), to the host's table in `core/UltraNet/UltraNetPlugins.cpp` and to the
 shim, and uses only header-only UltraCanvas helpers. The macOS and Windows
 linkers reject a plug-in that calls the core directly; on Linux the
 `UltraNetPluginHostImports` test (`scripts/check_ultranet_plugin_imports.py`)
-does, reading every built plug-in's undefined symbols.
+does, reading every built plug-in's undefined symbols. `UltraNet_PluginInit(host)`
+is the only entry point the loader accepts: the old POSIX-only v1 entry,
+`UltraNet_PluginRegister()`, which reached into the host's symbol table, is
+refused (`plugin_loader_refuses_a_v1_only_plugin`).
 
 ---
 
