@@ -217,11 +217,16 @@ fi
 # Is this DLL base name one Windows itself uses? Windows keys the modules of
 # a process by base name, so a DLL of ours with a system DLL's name shadows
 # the real one for every later import of that name once it is in the
-# process (see the ImageMagick coders below). The two names known to bite
-# are fixed here; System32 answers for the rest when it can be seen.
+# process (see the ImageMagick coders below). The names known to collide on
+# Windows 10 and 11 are fixed here, so every packaging machine produces the
+# same package; System32 answers for anything new when it can be seen.
+#   mpr.dll  Multiple Provider Router (network drives) - the one that bit
+#   url.dll  Internet Shortcut shell extension
+#   dpx.dll  Delta Package Expander (servicing stack)
+#   vid.dll  Hyper-V virtualization infrastructure
 is_system_dll_name() {
     case "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" in
-        mpr.dll|url.dll) return 0 ;;
+        mpr.dll|url.dll|dpx.dll|vid.dll) return 0 ;;
     esac
     [ -n "$SYSTEM32" ] && [ -f "$SYSTEM32/$1" ]
 }
@@ -262,31 +267,54 @@ if [ -d "$IM_LIB_DIR" ]; then
     # Shipping every coder keeps what the demo advertises in sync with what it
     # can actually decode.
     #
-    # Every coder but the ones named like a Windows system DLL, that is:
-    # mpr.dll (the MPR: in-memory image registry) and url.dll (fetch over
-    # HTTP). ImageMagick loads every coder into the process the first time
-    # libvips asks whether it recognises a file, and Windows keys loaded
-    # modules by base name: from then on any system DLL that imports
-    # "MPR.dll" by name is bound to the coder module instead, and its import
-    # fails - "The procedure entry point WNetGetConnectionW could not be
-    # located in pcacli.dll" on UltraFiler's "Delete as administrator"
-    # (pcacli.dll is what the shell loads for the runas verb), the same box
-    # naming daxexec.dll when a Store app is the default for a double-click.
-    # Neither pseudo-format is of any use here. See "Entry point not found
-    # in a Windows DLL" in Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md.
+    # But no coder may reach the process under a Windows system DLL's name.
+    # ImageMagick loads every coder the first time libvips asks whether it
+    # recognises a file, and Windows keys loaded modules by base name: with
+    # the coder mpr.dll (the MPR: in-memory image registry) in the process,
+    # any system DLL that imports "MPR.dll" by name was bound to the coder
+    # instead, and its import failed - "The procedure entry point
+    # WNetGetConnectionW could not be located in pcacli.dll" on UltraFiler's
+    # "Delete as administrator" (pcacli.dll is what the shell loads for the
+    # runas verb), the same box naming daxexec.dll when a Store app is the
+    # default for a double-click. See "Entry point not found in a Windows
+    # DLL" in Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md.
+    #
+    # mpr and url (fetch over HTTP) are pseudo-formats of no use here and are
+    # dropped. A real format whose name collides (dpx: SMPTE DPX, which the
+    # export dialog offers; vid) ships under another file name. ImageMagick
+    # reaches a coder through its .la file, whose dlname line says which DLL
+    # to load, so the rename is invisible to it; the process then holds
+    # "dpx-coder.dll", a name no system DLL has. The .la travels with its
+    # DLL either way, and stays behind with a dropped one, so ImageMagick
+    # never lists a coder it cannot open.
     for coder in "$IM_LIB_DIR/modules-Q16HDRI/coders/"*.dll; do
         [ -e "$coder" ] || continue
         coder_name=$(basename "$coder")
-        if is_system_dll_name "$coder_name"; then
-            echo "  Not shipping coder $coder_name: a Windows system DLL has that name"
+        coder_la="${coder%.dll}.la"
+        if ! is_system_dll_name "$coder_name"; then
+            cp "$coder" "$CODERS_DEST/"
+            [ -f "$coder_la" ] && cp "$coder_la" "$CODERS_DEST/"
             continue
         fi
-        cp "$coder" "$CODERS_DEST/"
-        # ImageMagick opens a coder through libltdl, which goes by the .la
-        # file next to it; the .la travels with its DLL and stays behind
-        # with it, so a coder that is not shipped is not listed either.
-        coder_la="${coder%.dll}.la"
-        [ -f "$coder_la" ] && cp "$coder_la" "$CODERS_DEST/"
+        case "$(printf '%s' "$coder_name" | tr 'A-Z' 'a-z')" in
+            mpr.dll|url.dll)
+                echo "  Not shipping coder $coder_name: a Windows system DLL has that name"
+                continue ;;
+        esac
+        if [ ! -f "$coder_la" ]; then
+            echo "Error: coder $coder_name needs another file name (a Windows system DLL has this one) but has no .la beside it to carry the new name" >&2
+            exit 1
+        fi
+        renamed="${coder_name%.dll}-coder.dll"
+        cp "$coder" "$CODERS_DEST/$renamed"
+        sed -e "s/^dlname='[^']*'/dlname='$renamed'/" \
+            -e "s/^library_names='[^']*'/library_names='$renamed'/" \
+            "$coder_la" > "$CODERS_DEST/$(basename "$coder_la")"
+        if ! grep -q "^dlname='$renamed'" "$CODERS_DEST/$(basename "$coder_la")"; then
+            echo "Error: could not point $(basename "$coder_la") at $renamed" >&2
+            exit 1
+        fi
+        echo "  Coder $coder_name ships as $renamed: a Windows system DLL has that name"
     done
     if [ -d "$IM_LIB_DIR/config-Q16HDRI" ]; then
         cp -r "$IM_LIB_DIR/config-Q16HDRI" "$DIST_DIR/lib/$IM_BASENAME/"

@@ -9,10 +9,15 @@
   `MPR.dll` by name - `pcacli.dll`, which the shell loads for the `runas`
   verb, `daxexec.dll`, which activates a Store app - was bound to the coder
   instead of to the real one, and its import failed.
-  - `package-win.sh` no longer ships a coder whose name Windows also uses
-    (`mpr.dll`, `url.dll`, and anything else in `System32`; the `.la` beside
-    it stays behind with it), and refuses to build a package that has a DLL
-    of such a name anywhere in it, with the file named.
+  - `package-win.sh` lets no coder into the package under a Windows system
+    DLL's name. `mpr.dll` and `url.dll` (fetch over HTTP), pseudo-formats of
+    no use here, are dropped with their `.la` files. A real format whose
+    name collides - `dpx.dll` (SMPTE DPX, which the export dialog offers)
+    and `vid.dll` on Windows 10 and 11, plus anything the packaging
+    machine's `System32` turns up - ships as `<name>-coder.dll`, with its
+    `.la` pointing at the new file; ImageMagick opens coders through the
+    `.la`, so nothing changes for it. The build then refuses any DLL of a
+    system DLL's name anywhere in the package, with the file named.
   - `uc-diagnose.ps1` lists the DLLs of an installed package that carry a
     system DLL's name, so an older extraction can be fixed by deleting them.
   - The elevated-delete backend turns the loader's hard-error boxes off on

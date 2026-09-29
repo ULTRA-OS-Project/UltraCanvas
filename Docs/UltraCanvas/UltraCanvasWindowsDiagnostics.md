@@ -436,9 +436,15 @@ Windows loader keys the modules of a process by base name: a later import of
 wherever it came from, and the coder has no `WNetGetConnectionW` to offer.
 Explorer never shows the box because Explorer never loads that coder.
 
-`package-win.sh` no longer ships a coder whose name Windows also uses
-(`mpr.dll`, `url.dll`, and anything else found in `System32`), and refuses to
-build a package that carries such a name anywhere. For a package already
+`package-win.sh` lets no coder into the package under such a name. `mpr.dll`
+and `url.dll` are pseudo-formats of no use here and are dropped, with their
+`.la` files. A real format whose name collides - `dpx.dll` (SMPTE DPX) and
+`vid.dll` on Windows 10 and 11, plus whatever else the packaging machine's
+`System32` turns up - ships as `<name>-coder.dll`, and its `.la` is rewritten
+to point there: ImageMagick opens a coder through the `.la` (`dlname=` names
+the file to load), so the rename costs it nothing, and the process holds a
+module called `dpx-coder.dll`, a name no system DLL has. The build then refuses
+a package that carries a system DLL's name anywhere. For a package already
 extracted, `uc-diagnose.ps1 -CheckOnly` lists the offending files under *DLLs
 named like Windows system DLLs*; deleting them (with the `.la` beside each)
 fixes that installation, and so does extracting a newer package into a fresh
