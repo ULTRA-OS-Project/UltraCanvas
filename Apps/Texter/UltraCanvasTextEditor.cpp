@@ -3070,11 +3070,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         bool show = (IsMarkdownMode() || isRich) && config.showMarkdownToolbar;
         markdownToolbar->SetVisible(show);
 
-        // One button still has no rich-document counterpart: a checkbox list
-        // item is not part of UCRichDocument. Disabling beats a button that
-        // quietly does nothing.
+        // Every button has a rich-document counterpart now; a tab switched
+        // from an older state keeps whatever it was left with, so clear it.
         if (auto btn = markdownToolbar->GetWidget("md-checklist")) {
-            btn->SetDisabled(isRich);
+            btn->SetDisabled(false);
         }
         // Insert Table works in both modes now, so it is never disabled here;
         // clearing it matters because a tab switched from Markdown to a word
@@ -3127,9 +3126,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 else InsertMarkdownLinePrefix("1. ", "list item");
                 break;
             case FormatCommand::Checklist:
-                // UCRichDocument has no checkbox list item, so the nearest
-                // thing a word-processing document can hold is a bullet.
-                if (rich) rich->ToggleBulletList();
+                if (rich) rich->ToggleCheckList();
                 else InsertMarkdownLinePrefix("- [ ] ", "list item");
                 break;
             case FormatCommand::Quote:
@@ -3676,7 +3673,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (!doc) return;
 
         std::string docName = doc->fileName.empty() ? "Untitled" : doc->fileName;
-        std::string content = doc->textArea ? doc->textArea->GetText() : "";
+        // A word-processing tab keeps its text in the rich editor; its text
+        // area is detached and empty, so reading it printed a blank page.
+        std::string content;
+        if (doc->IsRichDocument() && doc->richEdit) {
+            content = doc->richEdit->GetPlainText();
+        } else if (doc->textArea) {
+            content = doc->textArea->GetText();
+        }
 
         // Retrieve the native window handle for modal parenting
         UltraCanvasNativeDialogs::ShowPrintDialog(docName, content, GetWindow());
@@ -5857,15 +5861,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             const RichBlockType blockType = rich->GetCurrentBlockType();
             const RichDocPosition caret = rich->GetEditor().GetCaret();
-            bool ordered = false;
+            bool ordered = false, checklist = false;
             if (blockType == RichBlockType::ListItem
                 && caret.blockIndex >= 0
                 && caret.blockIndex < rich->GetEditor().GetBlockCount()) {
                 ordered = rich->GetEditor().GetBlock(caret.blockIndex).orderedList;
+                checklist = rich->GetEditor().GetBlock(caret.blockIndex).checkbox;
             }
-            setChecked("md-ul", blockType == RichBlockType::ListItem && !ordered);
+            setChecked("md-ul", blockType == RichBlockType::ListItem && !ordered && !checklist);
             setChecked("md-ol", blockType == RichBlockType::ListItem && ordered);
-            setChecked("md-checklist", false);
+            setChecked("md-checklist", checklist);
             setChecked("md-quote", blockType == RichBlockType::BlockQuote);
 
             const int level = rich->GetCurrentHeadingLevel();

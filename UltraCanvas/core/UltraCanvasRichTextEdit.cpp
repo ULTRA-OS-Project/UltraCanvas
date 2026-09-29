@@ -54,6 +54,42 @@ Color ParseHexColor(const std::string& hex, const Color& fallback) {
     return Color(v[0] * 16 + v[1], v[2] * 16 + v[3], v[4] * 16 + v[5]);
 }
 
+// One border line in its style: a dotted or dashed stroke, or for a double
+// border two thin lines a line's width apart, together as wide as the border.
+void DrawBorderLine(IRenderContext* ctx, const RichBorder& border, const Point2Dd& from,
+                    const Point2Dd& to, const Color& color) {
+    const double width = std::max(1.0, static_cast<double>(Px(border.widthPt)));
+    ctx->PushState();
+    switch (border.style) {
+        case RichBorderStyle::Double: {
+            const double line = std::max(1.0, width / 3.0);
+            const double offset = std::max(1.0, width / 3.0);
+            // Perpendicular to the line: sides are horizontal or vertical.
+            const bool horizontal = std::abs(to.y - from.y) < std::abs(to.x - from.x);
+            const double dx = horizontal ? 0.0 : offset, dy = horizontal ? offset : 0.0;
+            ctx->SetStrokeWidth(line);
+            ctx->DrawLine(Point2Dd(from.x - dx, from.y - dy), Point2Dd(to.x - dx, to.y - dy), color);
+            ctx->DrawLine(Point2Dd(from.x + dx, from.y + dy), Point2Dd(to.x + dx, to.y + dy), color);
+            break;
+        }
+        case RichBorderStyle::Dotted:
+            ctx->SetStrokeWidth(width);
+            ctx->SetLineDash(UCDashPattern({width, width * 1.5}));
+            ctx->DrawLine(from, to, color);
+            break;
+        case RichBorderStyle::Dashed:
+            ctx->SetStrokeWidth(width);
+            ctx->SetLineDash(UCDashPattern({std::max(4.0, width * 3.0), std::max(3.0, width * 2.0)}));
+            ctx->DrawLine(from, to, color);
+            break;
+        default:
+            ctx->SetStrokeWidth(width);
+            ctx->DrawLine(from, to, color);
+            break;
+    }
+    ctx->PopState();
+}
+
 TextAlignment ToTextAlignment(RichTextAlign align) {
     switch (align) {
         case RichTextAlign::Center:  return TextAlignment::Center;
@@ -408,6 +444,37 @@ FontStyle UltraCanvasRichTextEdit::MarkerFontFor(const RichDocBlock& block) cons
     return font;
 }
 
+Rect2Df UltraCanvasRichTextEdit::CheckboxRect(const RichDocBlock& block, const BlockLayout& bl) const {
+    const float size = std::max(8.0f, Px(static_cast<float>(MarkerFontFor(block).fontSize)) * 0.7f);
+    float lineHeight = size * 1.4f;
+    if (bl.layout) {
+        const int first = bl.layout->GetCursorPos(0).strongPos.height;
+        if (first > 0) lineHeight = static_cast<float>(first);
+    }
+    const float gap = std::max(4.0f, size * 0.5f);
+    const float x = std::max(0.0f, std::min(bl.markerLeft, bl.textLeft - gap - size));
+    return Rect2Df(x, std::max(0.0f, (lineHeight - size) * 0.5f), size, size);
+}
+
+int UltraCanvasRichTextEdit::CheckboxAtPoint(const Point2Df& localPoint) const {
+    const float contentY = localPoint.y - visibleArea.y + scrollOffset;
+    const float contentX = localPoint.x - ColumnLeft();
+    const auto& blocks = editor.GetDocument()->blocks;
+    for (size_t i = 0; i < blockLayouts.size() && i < blocks.size(); i++) {
+        const BlockLayout& bl = blockLayouts[i];
+        if (!bl.checkbox || !bl.valid) continue;
+        if (contentY < bl.bounds.y - 4.0f || contentY > bl.bounds.y + bl.bounds.height) continue;
+        Rect2Df box = CheckboxRect(blocks[i], bl);
+        // A little slack around the box: it is small, and a near miss should
+        // still tick it rather than put the caret before the text.
+        if (contentX >= box.x - 3.0f && contentX <= box.x + box.width + 3.0f
+            && contentY >= bl.bounds.y + box.y - 3.0f && contentY <= bl.bounds.y + box.y + box.height + 3.0f) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
 // Width of the widest label among the ordered items of `blockIndex`'s list
 // level - the siblings before and after it in the same list, up to a
 // shallower item or the end of the list. Bounded, so a very long list costs
@@ -560,7 +627,8 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                                                   const std::vector<RichTextRun>& runs,
                                                   std::vector<RichTextHitRect>* outHits,
                                                   int blockIndex,
-                                                  std::vector<BlockLayout::InlineImage>* outInlineImages) const {
+                                                  std::vector<BlockLayout::InlineImage>* outInlineImages,
+                                                  int cellRow, int cellColumn) const {
     if (!layout) return;
 
     int position = 0;
@@ -608,6 +676,40 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                 outInlineImages->push_back(std::move(placed));
             }
             continue;       // a picture carries no text formatting
+        }
+
+        // A formula: typeset, and the run's source hidden behind it - unless
+        // the caret is in it, when the source is what is being edited.
+        if (run.math && blockIndex >= 0 && !CaretWithin(blockIndex, cellRow, cellColumn, start, end)
+            && UltraCanvasInlineMath::IsAvailable()) {
+            const float sizePt = run.fontSizePt > 0.0f ? run.fontSizePt
+                               : static_cast<float>(FontForBlock(block).fontSize);
+            const Color color = run.color.empty() ? style.textColor : ParseHexColor(run.color, style.textColor);
+            std::shared_ptr<UltraCanvasInlineMath> math =
+                UltraCanvasInlineMath::Typeset(run.text, Px(sizePt), color, false);
+            if (math) {
+                const std::string& text = layout->GetText();
+                const int firstEnd = std::min(end, UCRichDocumentEditor::NextCharOffset(text, start));
+                auto shape = TextAttributeFactory::CreateShape(math->GetWidth(), math->GetAscent(),
+                                                               math->GetDescent());
+                shape->SetRange(start, firstEnd);
+                layout->InsertAttribute(std::move(shape));
+                if (firstEnd < end) {
+                    auto hidden = TextAttributeFactory::CreateShape(0.0, 0.0, 0.0);
+                    hidden->SetRange(firstEnd, end);
+                    layout->InsertAttribute(std::move(hidden));
+                }
+                add(TextAttributeFactory::CreateAllowBreaks(false));
+                if (outInlineImages) {
+                    BlockLayout::InlineImage placed;
+                    placed.byteOffset = start;
+                    placed.width = math->GetWidth();
+                    placed.height = math->GetHeight();
+                    placed.math = math;
+                    outInlineImages->push_back(std::move(placed));
+                }
+                continue;
+            }
         }
 
         if (run.bold)          add(TextAttributeFactory::CreateFontWeight(FontWeight::Bold));
@@ -669,6 +771,17 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
     }
 }
 
+bool UltraCanvasRichTextEdit::CaretWithin(int blockIndex, int cellRow, int cellColumn,
+                                          int start, int end) const {
+    auto inside = [&](const RichDocPosition& p) {
+        return p.blockIndex == blockIndex && p.cellRow == cellRow && p.cellColumn == cellColumn
+            && p.byteOffset > start && p.byteOffset < end;
+    };
+    // At either edge the caret is beside the formula, not in it; only a
+    // caret strictly inside opens the source.
+    return inside(editor.GetCaret()) || inside(editor.GetAnchor());
+}
+
 void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int blockIndex,
                                                        int cellRow, int cellColumn) const {
     if (!layout || !editor.HasSelection()) return;
@@ -696,7 +809,8 @@ void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int 
 std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
         IRenderContext* ctx, const RichDocBlock& block, const std::vector<RichTextRun>& runs,
         float wrapWidth, std::vector<RichTextHitRect>* outHits, int blockIndex,
-        std::vector<BlockLayout::InlineImage>* outInlineImages, float paragraphOriginX) const {
+        std::vector<BlockLayout::InlineImage>* outInlineImages, float paragraphOriginX,
+        int cellRow, int cellColumn) const {
     std::string text = UCRichDocumentEditor::RunsText(runs);
     auto layout = ctx->CreateTextLayout(text, false);
     layout->SetFontStyle(FontForBlock(block));
@@ -710,7 +824,7 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     if (paragraphOriginX >= 0.0f) {
         ApplyParagraphGeometry(layout.get(), block, text, paragraphOriginX, wrapWidth);
     }
-    ApplyRunAttributes(layout.get(), block, runs, outHits, blockIndex, outInlineImages);
+    ApplyRunAttributes(layout.get(), block, runs, outHits, blockIndex, outInlineImages, cellRow, cellColumn);
     return layout;
 }
 
@@ -729,7 +843,10 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
     bl.cellRows.clear();
     bl.hitRects.clear();
     bl.markerText.clear();
+    bl.checkbox = bl.checked = false;
     bl.image.reset();
+    bl.displayMath.reset();
+    bl.inlineImages.clear();
 
     float indent = BlockIndentFor(block);
     bl.markerLeft = std::max(0.0f, indent - style.listIndent * 0.8f);
@@ -891,7 +1008,8 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                     auto cell = std::make_unique<BlockLayout>();
                     cell->layout = MakeRunsLayout(ctx, cellBlock, modelCell.runs,
                                                   std::max(1.0f, cellWidth - padLeft - padRight), nullptr,
-                                                  blockIndex, &cell->inlineImages);
+                                                  blockIndex, &cell->inlineImages, -1.0f,
+                                                  static_cast<int>(r), static_cast<int>(cellIndex));
                     ApplySelectionAttributes(cell->layout.get(), blockIndex,
                                              static_cast<int>(r), static_cast<int>(cellIndex));
                     const float textHeight = static_cast<float>(cell->layout->GetLayoutHeight());
@@ -954,6 +1072,19 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
         }
 
         default: {
+            if (block.type == RichBlockType::MathBlock && blockIndex >= 0
+                && editor.GetCaret().blockIndex != blockIndex && editor.GetAnchor().blockIndex != blockIndex
+                && UltraCanvasInlineMath::IsAvailable()) {
+                std::string source = UCRichDocumentEditor::RunsText(block.runs);
+                std::replace(source.begin(), source.end(), '\n', ' ');
+                bl.displayMath = UltraCanvasInlineMath::Typeset(
+                    source, Px(static_cast<float>(FontForBlock(block).fontSize)), style.textColor, true);
+                if (bl.displayMath) {
+                    bl.bounds.width = columnSpan;
+                    bl.bounds.height = bl.displayMath->GetHeight() + 8.0f;
+                    break;
+                }
+            }
             bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth,
                                        blockIndex >= 0 ? &bl.hitRects : nullptr, blockIndex,
                                        &bl.inlineImages, bl.textLeft);
@@ -963,7 +1094,10 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
             if (block.type == RichBlockType::ListItem) {
                 // The document's own label ("b)", "1.2.", "(iv)") or bullet
                 // when it has one; the view's otherwise.
-                if (block.orderedList) {
+                if (block.checkbox && !block.orderedList) {
+                    bl.checkbox = true;
+                    bl.checked = block.checked;
+                } else if (block.orderedList) {
                     bl.markerText = RichDocListLabel(blocks, static_cast<size_t>(index));
                 } else if (!block.bulletText.empty()) {
                     bl.markerText = block.bulletText;
@@ -1110,6 +1244,11 @@ void UltraCanvasRichTextEdit::DrawInlineImages(IRenderContext* ctx, const BlockL
     if (bl.inlineImages.empty() || !bl.layout) return;
     for (const BlockLayout::InlineImage& placed : bl.inlineImages) {
         Rect2Di box = bl.layout->IndexToPos(placed.byteOffset);
+        if (placed.math) {
+            placed.math->Draw(ctx, originX + static_cast<double>(box.x),
+                              originY + bl.layout->IndexToBaseline(placed.byteOffset));
+            continue;
+        }
         Rect2Dd target(originX + static_cast<double>(box.x),
                        originY + static_cast<double>(box.y),
                        placed.width, placed.height);
@@ -1265,7 +1404,22 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
                                  style.codeBackgroundColor, 1.0f, style.codeBorderColor);
     }
 
-    if (!bl.markerText.empty()) {
+    if (bl.checkbox) {
+        const Rect2Df box = CheckboxRect(block, bl);
+        const Rect2Dd rect(originX + box.x, originY + box.y, box.width, box.height);
+        ctx->DrawFilledRectangle(rect, style.backgroundColor, 1.0f, style.listMarkerColor, 2.0f);
+        if (bl.checked) {
+            // A tick: down to the lower third, then up to the far corner.
+            ctx->PushState();
+            ctx->SetStrokeWidth(std::max(1.5, box.width / 7.0));
+            const Point2Dd a(rect.x + rect.width * 0.22, rect.y + rect.height * 0.52);
+            const Point2Dd b(rect.x + rect.width * 0.42, rect.y + rect.height * 0.74);
+            const Point2Dd c(rect.x + rect.width * 0.80, rect.y + rect.height * 0.28);
+            ctx->DrawLine(a, b, style.listMarkerColor);
+            ctx->DrawLine(b, c, style.listMarkerColor);
+            ctx->PopState();
+        }
+    } else if (!bl.markerText.empty()) {
         const FontStyle markerFont = MarkerFontFor(block);
         ctx->PushState();
         ctx->SetFontStyle(markerFont);
@@ -1282,6 +1436,11 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
         ctx->PopState();
     }
 
+    if (bl.displayMath) {
+        const double width = bl.displayMath->GetWidth();
+        const double x = originX + std::max(0.0, (static_cast<double>(ColumnWidth()) - width) * 0.5);
+        bl.displayMath->Draw(ctx, x, originY + 4.0 + bl.displayMath->GetAscent());
+    }
     if (bl.layout) {
         ctx->SetCurrentPaint(style.textColor);
         ctx->DrawTextLayout(*bl.layout, Point2Dd(textX, originY));
@@ -1303,10 +1462,7 @@ void UltraCanvasRichTextEdit::DrawDocumentCellFrame(IRenderContext* ctx, const R
     const double right = rect.x + rect.width, bottom = rect.y + rect.height;
     auto side = [&](const RichBorder& border, const Point2Dd& from, const Point2Dd& to) {
         if (border.IsVisible()) {
-            ctx->PushState();
-            ctx->SetStrokeWidth(std::max(1.0, static_cast<double>(Px(border.widthPt))));
-            ctx->DrawLine(from, to, ParseHexColor(border.color, style.textColor));
-            ctx->PopState();
+            DrawBorderLine(ctx, border, from, to, ParseHexColor(border.color, style.textColor));
         } else if (!readOnly) {
             ctx->PushState();
             ctx->SetStrokeWidth(1.0);
@@ -1348,10 +1504,7 @@ void UltraCanvasRichTextEdit::DrawParagraphFrame(IRenderContext* ctx, const std:
     }
     auto line = [&](const RichBorder& border, const Point2Dd& from, const Point2Dd& to) {
         if (!border.IsVisible()) return;
-        ctx->PushState();
-        ctx->SetStrokeWidth(std::max(1.0, static_cast<double>(Px(border.widthPt))));
-        ctx->DrawLine(from, to, ParseHexColor(border.color, style.textColor));
-        ctx->PopState();
+        DrawBorderLine(ctx, border, from, to, ParseHexColor(border.color, style.textColor));
     };
     if (!withPrevious) line(block.paragraphBorderTop, Point2Dd(left, top), Point2Dd(right, top));
     if (!withNext) line(block.paragraphBorderBottom, Point2Dd(left, bottom), Point2Dd(right, bottom));
@@ -2092,6 +2245,14 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
     }
     if (!IsFocused()) SetFocus(true);
 
+    if (!readOnly) {
+        const int box = CheckboxAtPoint(event.pointer);
+        if (box >= 0 && editor.ToggleChecked(box)) {
+            AfterEdit();
+            return true;
+        }
+    }
+
     if (const RichTextHitRect* link = LinkAtPoint(event.pointer)) {
         // Ctrl+click follows a link; a plain click places the caret, so a link
         // stays editable text rather than a trap.
@@ -2373,6 +2534,7 @@ UC_RTE_FORMAT_ACTION(IndentList(), editor.IndentList())
 UC_RTE_FORMAT_ACTION(OutdentList(), editor.OutdentList())
 UC_RTE_FORMAT_ACTION(ToggleBlockQuote(), editor.ToggleBlockQuote())
 UC_RTE_FORMAT_ACTION(ToggleCodeBlock(const std::string& language), editor.ToggleCodeBlock(language))
+UC_RTE_FORMAT_ACTION(ToggleCheckList(), editor.ToggleCheckList())
 UC_RTE_FORMAT_ACTION(InsertHorizontalRule(), editor.InsertHorizontalRule())
 UC_RTE_FORMAT_ACTION(InsertPageBreak(), editor.InsertPageBreak())
 
@@ -2446,6 +2608,13 @@ bool UltraCanvasRichTextEdit::CanSplitCurrentCell() const {
     if (caret.cellColumn < 0 || caret.cellColumn >= static_cast<int>(row.cells.size())) return false;
     const RichTableCell& cell = row.cells[static_cast<size_t>(caret.cellColumn)];
     return std::max(1, cell.columnSpan) > 1 || std::max(1, cell.rowSpan) > 1;
+}
+
+bool UltraCanvasRichTextEdit::ToggleCheckedAtCaret() {
+    if (readOnly || editor.GetCaret().InCell()) return false;
+    if (!editor.ToggleChecked(editor.GetCaret().blockIndex)) return false;
+    AfterEdit();
+    return true;
 }
 
 RichBlockType UltraCanvasRichTextEdit::GetCurrentBlockType() const {

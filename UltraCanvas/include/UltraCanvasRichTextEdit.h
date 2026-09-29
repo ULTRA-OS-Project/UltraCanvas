@@ -29,6 +29,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasRichDocumentEditor.h"
 #include "UltraCanvasSpellChecker.h"
+#include "UltraCanvasInlineMath.h"
 
 #include <array>
 #include <atomic>
@@ -200,6 +201,10 @@ public:
     void OutdentList();
     void ToggleBlockQuote();
     void ToggleCodeBlock(const std::string& language = "");
+    // Check lists: a box in place of the bullet, ticked by clicking it (or by
+    // ToggleCheckedAtCaret, for a keyboard shortcut).
+    void ToggleCheckList();
+    bool ToggleCheckedAtCaret();
     // The block type at the caret, for a style dropdown.
     RichBlockType GetCurrentBlockType() const;
     int GetCurrentHeadingLevel() const;
@@ -314,6 +319,8 @@ private:
         float textLeft = 0.0f;                    // indent of the text inside bounds
         float markerLeft = 0.0f;                  // list bullet / number position
         std::string markerText;
+        bool checkbox = false;                    // check list item: a box instead of markerText
+        bool checked = false;
         std::vector<RichTextHitRect> hitRects;
         // Table blocks: one layout per cell, plus the geometry to draw them.
         std::vector<std::unique_ptr<BlockLayout>> cells;
@@ -335,8 +342,14 @@ private:
             float height = 0.0f;
             std::shared_ptr<UCImage> image;
             std::string altText;
+            // A typeset formula (a math run) instead of a picture: drawn with
+            // its baseline on the line's, over the run's first character.
+            std::shared_ptr<UltraCanvasInlineMath> math;
         };
         std::vector<InlineImage> inlineImages;
+        // A display formula (MathBlock) typeset whole, centred in the column;
+        // set only while the caret is elsewhere - editing shows the source.
+        std::shared_ptr<UltraCanvasInlineMath> displayMath;
         bool valid = false;
     };
 
@@ -355,12 +368,18 @@ private:
                                                 std::vector<RichTextHitRect>* outHits,
                                                 int blockIndex,
                                                 std::vector<BlockLayout::InlineImage>* outInlineImages = nullptr,
-                                                float paragraphOriginX = -1.0f) const;
+                                                float paragraphOriginX = -1.0f,
+                                                int cellRow = -1, int cellColumn = -1) const;
     void ApplyParagraphGeometry(ITextLayout* layout, const RichDocBlock& block,
                                 const std::string& text, float originX, float wrapWidth) const;
     float GapAfterBlock(int index) const;
     float GapAfterBlock(const std::vector<RichDocBlock>& blocks, int index) const;
     FontStyle MarkerFontFor(const RichDocBlock& block) const;
+    // A check list item's box, relative to the block's origin (content x of
+    // the column, top of the block).
+    Rect2Df CheckboxRect(const RichDocBlock& block, const BlockLayout& bl) const;
+    // The check list item whose box is under an element-local point, or -1.
+    int CheckboxAtPoint(const Point2Df& localPoint) const;
     float WidestSiblingLabel(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int index) const;
     void DrawDocumentCellFrame(IRenderContext* ctx, const RichTableCell& cell, const Rect2Dd& rect) const;
     void DrawParagraphFrame(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int index,
@@ -368,7 +387,12 @@ private:
     void ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                             const std::vector<RichTextRun>& runs,
                             std::vector<RichTextHitRect>* outHits, int blockIndex,
-                            std::vector<BlockLayout::InlineImage>* outInlineImages = nullptr) const;
+                            std::vector<BlockLayout::InlineImage>* outInlineImages = nullptr,
+                            int cellRow = -1, int cellColumn = -1) const;
+    // True when the caret (or a selection end) sits inside [start, end) of
+    // the container {blockIndex, cellRow, cellColumn}: a formula being
+    // edited shows its source.
+    bool CaretWithin(int blockIndex, int cellRow, int cellColumn, int start, int end) const;
     // cellRow/cellColumn identify a table cell's layout; -1/-1 is a block's own.
     void ApplySelectionAttributes(ITextLayout* layout, int blockIndex,
                                   int cellRow = -1, int cellColumn = -1) const;

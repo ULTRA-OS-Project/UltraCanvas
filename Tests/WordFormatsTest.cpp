@@ -682,6 +682,111 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== 5g2. Border line styles survive ODT and DOCX =====
+    {
+        CHECK(RichBorderStyleFromName("double") == RichBorderStyle::Double);
+        CHECK(RichBorderStyleFromName("thinThickSmallGap") == RichBorderStyle::Double);
+        CHECK(RichBorderStyleFromName("dotDash") == RichBorderStyle::Dashed);
+        CHECK(RichBorderStyleFromName("dotted") == RichBorderStyle::Dotted);
+        CHECK(RichBorderStyleFromName("single") == RichBorderStyle::Solid);
+
+        UCRichDocument styled;
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        table.tableBordersFromDocument = true;
+        table.tableRows.resize(1);
+        RichTableCell cell;
+        cell.borderTop = {1.5f, "#000000", RichBorderStyle::Double};
+        cell.borderBottom = {1.0f, "#000000", RichBorderStyle::Dotted};
+        cell.borderLeft = {1.0f, "#000000", RichBorderStyle::Dashed};
+        cell.borderRight = {1.0f, "#000000", RichBorderStyle::Solid};
+        RichTextRun run;
+        run.text = "styled border cell";
+        cell.runs.push_back(run);
+        table.tableRows[0].cells = {cell};
+        styled.blocks.push_back(table);
+        RichDocBlock para;
+        para.type = RichBlockType::Paragraph;
+        para.paragraphBorderBottom = {1.0f, "#000000", RichBorderStyle::Dashed};
+        run.text = "framed paragraph";
+        para.runs.push_back(run);
+        styled.blocks.push_back(para);
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("borderstyles.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, styled, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const RichTableCell* found = FindCell(back, "styled border cell");
+            CHECK_MSG(found, ext);
+            if (found) {
+                CHECK_MSG(found->borderTop.style == RichBorderStyle::Double, ext);
+                CHECK_MSG(found->borderBottom.style == RichBorderStyle::Dotted, ext);
+                CHECK_MSG(found->borderLeft.style == RichBorderStyle::Dashed, ext);
+                CHECK_MSG(found->borderRight.style == RichBorderStyle::Solid, ext);
+            }
+            const RichDocBlock* framed = FindBlock(back, "framed paragraph");
+            CHECK_MSG(framed && framed->paragraphBorderBottom.style == RichBorderStyle::Dashed, ext);
+        }
+    }
+
+    // ===== 5g3. Check lists: Markdown, ODT, DOCX, editing =====
+    {
+        UCRichDocument md = UCRichDocument::FromMarkdown("- [ ] buy milk\n- [x] pay rent\n- plain bullet\n");
+        CHECK(md.blocks.size() == 3);
+        if (md.blocks.size() == 3) {
+            CHECK(md.blocks[0].checkbox && !md.blocks[0].checked);
+            CHECK(md.blocks[1].checkbox && md.blocks[1].checked);
+            CHECK(!md.blocks[2].checkbox);
+            CHECK(UCRichDocument::ConcatenateRunText(md.blocks[0].runs) == "buy milk");
+        }
+        const std::string back = md.ToMarkdown();
+        CHECK_MSG(back.find("- [ ] buy milk") != std::string::npos && back.find("- [x] pay rent") != std::string::npos, back);
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("checklist.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, md, err), err);
+            UCRichDocument loaded;
+            CHECK_MSG(UCWordDocumentIO::Load(path, loaded, err), err);
+            const RichDocBlock* milk = FindBlock(loaded, "buy milk");
+            const RichDocBlock* rent = FindBlock(loaded, "pay rent");
+            const RichDocBlock* plain = FindBlock(loaded, "plain bullet");
+            CHECK_MSG(milk && milk->checkbox && !milk->checked
+                      && UCRichDocument::ConcatenateRunText(milk->runs) == "buy milk", ext);
+            CHECK_MSG(rent && rent->checkbox && rent->checked, ext);
+            CHECK_MSG(plain && !plain->checkbox, ext);
+        }
+
+        // A Word check box: a paragraph opening with the box glyph.
+        UCRichDocument word;
+        RichDocBlock para;
+        RichTextRun run;
+        run.text = "\xE2\x98\x92 done already";
+        para.runs.push_back(run);
+        word.blocks.push_back(para);
+        CHECK(word.ReadCheckboxPrefixes() == 1);
+        CHECK(word.blocks[0].type == RichBlockType::ListItem && word.blocks[0].checkbox && word.blocks[0].checked);
+        CHECK(UCRichDocument::ConcatenateRunText(word.blocks[0].runs) == "done already");
+
+        auto editDoc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("one\n\ntwo\n"));
+        UCRichDocumentEditor editor;
+        editor.SetDocument(editDoc);
+        editor.SelectAll();
+        editor.ToggleCheckList();
+        CHECK(editDoc->blocks[0].checkbox && editDoc->blocks[1].checkbox);
+        CHECK(editor.ToggleChecked(1) && editDoc->blocks[1].checked);
+        editor.Undo();
+        CHECK(!editDoc->blocks[1].checked);
+        editor.SetCaret(RichDocPosition(0, 3));
+        editor.SplitBlock();
+        CHECK(editDoc->blocks[1].checkbox && !editDoc->blocks[1].checked);
+        editor.SelectAll();
+        editor.ToggleCheckList();
+        CHECK(editDoc->blocks[0].type == RichBlockType::Paragraph && !editDoc->blocks[0].checkbox);
+    }
+
     // ===== 5h. List labels: formats, templates, editing =====
     {
         CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");

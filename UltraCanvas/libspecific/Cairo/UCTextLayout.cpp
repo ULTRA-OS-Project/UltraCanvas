@@ -293,6 +293,10 @@ namespace UltraCanvas {
             return std::make_unique<UCTextAttribute>(pango_attr_insert_hyphens_new(enable ? TRUE : FALSE));
         }
 
+        std::unique_ptr<ITextAttribute> CreateAllowBreaks(bool allow) {
+            return std::make_unique<UCTextAttribute>(pango_attr_allow_breaks_new(allow ? TRUE : FALSE));
+        }
+
         std::unique_ptr<ITextAttribute> CreateLanguage(const std::string &lang) {
             PangoLanguage *language = pango_language_from_string(lang.c_str());
             return std::make_unique<UCTextAttribute>(pango_attr_language_new(language));

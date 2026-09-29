@@ -281,6 +281,11 @@ public:
     void OutdentList();
     void ToggleBlockQuote();
     void ToggleCodeBlock(const std::string& language = "");
+    // Check lists: turns the selected blocks into unticked check list items,
+    // or, when they all are check list items already, back into paragraphs.
+    void ToggleCheckList();
+    // Ticks or unticks one check list item. False when it is not one.
+    bool ToggleChecked(int blockIndex);
 
     // ===== STRUCTURE =====
     void InsertHorizontalRule();
@@ -380,6 +385,11 @@ public:
     bool Undo();
     bool Redo();
     void ClearUndoHistory();
+    // How many steps Undo can go back (default 200). The oldest steps are
+    // dropped past it; 0 = no limit. A step costs the blocks it touched, so a
+    // long history of typing is cheap, one of whole-document replaces is not.
+    void SetMaxUndoSteps(size_t steps);
+    size_t GetMaxUndoSteps() const { return maxUndoSteps; }
     // Ends the current typing run, so the next keystroke starts a new undo
     // step. Call it when the caret moves by any means other than typing.
     void BreakUndoCoalescing() { coalescing = false; }

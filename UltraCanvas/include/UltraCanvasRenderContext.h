@@ -838,6 +838,10 @@ namespace UltraCanvas {
         // hyphens on/off
         std::unique_ptr<ITextAttribute> CreateHypenation(bool enable);
 
+        // false: no line break inside the range (a formula, a word that must
+        // stay whole)
+        std::unique_ptr<ITextAttribute> CreateAllowBreaks(bool allow);
+
         // Language tag (e.g. "en-US")
         std::unique_ptr<ITextAttribute> CreateLanguage(const std::string& lang);
 

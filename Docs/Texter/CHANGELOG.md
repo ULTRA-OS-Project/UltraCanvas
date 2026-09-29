@@ -1,3 +1,12 @@
+#### 2026-09-29 *1.53*
+- **Printing a word-processing tab (.docx, .odt, .doc) printed a blank page.**
+  File > Print read the tab's text area, which a word-processing tab keeps
+  detached and empty; it now prints the document's text.
+- **The Checklist button works in a word-processing tab.** It used to be
+  greyed out there, because the document model had no check list; it now
+  turns the paragraphs into check list items, whose boxes tick on a click.
+  See `Docs/UltraCanvas/changelog.d/rich-text-edit-gaps.md`.
+
 #### 2026-09-28 *1.52*
 - **The version is in the window title** — `UltraTexter 1.52` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

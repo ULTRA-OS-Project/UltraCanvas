@@ -348,7 +348,9 @@ private:
             else if (!lower.empty() && (std::isdigit(static_cast<unsigned char>(lower[0])) || lower[0] == '.')) {
                 width = ParseLengthPt(token);
             }
-            // solid, double, dotted, dashed, ...: drawn as a solid line.
+            else if (std::isalpha(static_cast<unsigned char>(lower[0]))) {
+                border.style = RichBorderStyleFromName(lower);   // solid, double, dotted, ...
+            }
         }
         if (!none) border.widthPt = width >= 0.0f ? width : (value.empty() ? 0.0f : 0.75f);
         if (border.widthPt <= 0.0f) border = RichBorder{};
@@ -1725,7 +1727,8 @@ private:
 
     static std::string BorderValue(const RichBorder& border) {
         if (!border.IsVisible()) return "none";
-        return Pt(border.widthPt) + " solid " + (border.color.empty() ? std::string("#000000") : border.color);
+        return Pt(border.widthPt) + " " + RichBorderStyleOdfName(border.style) + " "
+             + (border.color.empty() ? std::string("#000000") : border.color);
     }
 
     // The automatic table-cell style for a cell's frame and fill, shared by
@@ -2352,12 +2355,19 @@ bool UCWordDocumentIO::LoadOdt(const std::string& filePath, UCRichDocument& outD
                                std::string& outError) {
     outDocument = UCRichDocument{};
     OdtReader reader;
-    return reader.Load(filePath, outDocument, outError);
+    if (!reader.Load(filePath, outDocument, outError)) return false;
+    outDocument.ReadCheckboxPrefixes();
+    return true;
 }
 
 bool UCWordDocumentIO::SaveOdt(const std::string& filePath, const UCRichDocument& document,
                                std::string& outError) {
     OdtWriter writer;
+    // The format has no check list: its items go out as a ballot box
+    // opening their text, which is what reads back in.
+    for (const RichDocBlock& block : document.blocks) {
+        if (block.checkbox) return writer.Save(filePath, document.WithCheckboxesAsPrefixes(), outError);
+    }
     return writer.Save(filePath, document, outError);
 }
 

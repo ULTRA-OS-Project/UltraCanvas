@@ -704,7 +704,7 @@ void UCRichDocumentEditor::CommitStep(UndoStep step) {
     }
 
     undoStack.push_back(std::move(step));
-    if (undoStack.size() > maxUndoSteps) {
+    if (maxUndoSteps > 0 && undoStack.size() > maxUndoSteps) {
         undoStack.erase(undoStack.begin());
     }
     redoStack.clear();
@@ -759,6 +759,14 @@ bool UCRichDocumentEditor::Redo() {
     NotifyChanged();
     NotifySelectionChanged();
     return true;
+}
+
+void UCRichDocumentEditor::SetMaxUndoSteps(size_t steps) {
+    maxUndoSteps = steps;
+    if (maxUndoSteps > 0 && undoStack.size() > maxUndoSteps) {
+        undoStack.erase(undoStack.begin(),
+                        undoStack.begin() + static_cast<long>(undoStack.size() - maxUndoSteps));
+    }
 }
 
 void UCRichDocumentEditor::ClearUndoHistory() {
@@ -1223,6 +1231,7 @@ void UCRichDocumentEditor::SplitBlockInternal() {
         } else {
             block.type = RichBlockType::Paragraph;
             block.orderedList = false;
+            block.checkbox = block.checked = false;
         }
         caret.byteOffset = 0;
         anchor = caret;
@@ -1243,6 +1252,8 @@ void UCRichDocumentEditor::SplitBlockInternal() {
             next.numberFormat = block.numberFormat;
             next.numberTemplate = block.numberTemplate;
             next.bulletText = block.bulletText;
+            // The next item of a check list is another box, not yet ticked.
+            next.checkbox = block.checkbox;
             break;
         case RichBlockType::BlockQuote:
             next.type = RichBlockType::BlockQuote;
@@ -1665,6 +1676,7 @@ void UCRichDocumentEditor::SetBlockType(RichBlockType type, int headingLevel) {
             if (type != RichBlockType::ListItem) {
                 block.orderedList = false;
                 block.listLevel = 0;
+                block.checkbox = block.checked = false;
             }
             if (type != RichBlockType::CodeBlock) block.codeLanguage.clear();
         }
@@ -1718,6 +1730,7 @@ void UCRichDocumentEditor::SetListStyle(bool ordered) {
             }
             block.type = RichBlockType::ListItem;
             block.orderedList = ordered;
+            block.checkbox = block.checked = false;
             AdoptListLevelFormat(doc->blocks, static_cast<size_t>(b));
         }
     }
@@ -1737,7 +1750,7 @@ void UCRichDocumentEditor::ToggleList(bool ordered) {
     for (int b = first; b <= last && b < GetBlockCount(); b++) {
         const RichDocBlock& block = doc->blocks[b];
         if (!IsTextBlockType(block.type)) continue;
-        if (block.type != RichBlockType::ListItem || block.orderedList != ordered) {
+        if (block.type != RichBlockType::ListItem || block.orderedList != ordered || block.checkbox) {
             allSameList = false;
             break;
         }
@@ -1791,6 +1804,7 @@ void UCRichDocumentEditor::OutdentList() {
             } else {
                 block.type = RichBlockType::Paragraph;
                 block.orderedList = false;
+                block.checkbox = block.checked = false;
             }
         }
     }
@@ -1829,6 +1843,52 @@ void UCRichDocumentEditor::ToggleCodeBlock(const std::string& language) {
         }
     }
     NotifyChanged();
+}
+
+void UCRichDocumentEditor::ToggleCheckList() {
+    if (caret.InCell()) return;
+    int first = 0, last = 0;
+    SelectedBlockRange(first, last);
+    bool allChecklist = true;
+    for (int b = first; b <= last && b < GetBlockCount(); b++) {
+        const RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+        if (!IsTextBlockType(block.type)) continue;
+        if (block.type != RichBlockType::ListItem || !block.checkbox) { allChecklist = false; break; }
+    }
+    if (allChecklist) {
+        SetBlockType(RichBlockType::Paragraph);
+        return;
+    }
+    {
+        EditScope scope(*this, first, last - first + 1);
+        for (int b = first; b <= last && b < GetBlockCount(); b++) {
+            RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            if (!IsTextBlockType(block.type)) continue;
+            if (block.type != RichBlockType::ListItem) {
+                block.listLevel = 0;
+                block.headingLevel = 0;
+            }
+            block.type = RichBlockType::ListItem;
+            block.orderedList = false;
+            if (!block.checkbox) block.checked = false;
+            block.checkbox = true;
+        }
+    }
+    NotifyChanged();
+}
+
+bool UCRichDocumentEditor::ToggleChecked(int blockIndex) {
+    if (blockIndex < 0 || blockIndex >= GetBlockCount()) return false;
+    const RichDocBlock& current = doc->blocks[static_cast<size_t>(blockIndex)];
+    if (current.type != RichBlockType::ListItem || !current.checkbox) return false;
+    {
+        EditScope scope(*this, blockIndex, 1);
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(blockIndex)];
+        block.checked = !block.checked;
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
 }
 
 // ===== STRUCTURE =====

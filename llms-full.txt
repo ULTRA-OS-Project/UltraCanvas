@@ -43852,6 +43852,30 @@ not its column**. `BuildTableGrid()` (in `UltraCanvasRichDocument.h`) resolves
 which cell occupies each slot, and is what both the layout and these operations
 use; positions keep addressing cells as `{row, index-within-row}`.
 
+### Check lists
+
+```cpp
+editor->ToggleCheckList();        // the selected paragraphs become to-do items
+editor->ToggleCheckedAtCaret();   // tick / untick (a click on the box does the same)
+```
+
+A check list item is an unordered `ListItem` with `RichDocBlock::checkbox`
+set, ticked when `checked`. The element draws a box where the bullet would
+be; clicking it toggles the tick as one undo step. Enter continues the list
+with an unticked box. Markdown spells it `- [ ]` / `- [x]`; ODT and DOCX have
+no check list, so they carry a ☐ or ☒ in front of the text, which
+`UCRichDocument::ReadCheckboxPrefixes()` (run by every reader) turns back into
+a check list item - Word's own check box content controls read the same way.
+
+### Formulas
+
+A run with `RichTextRun::math` holds LaTeX source and is drawn typeset
+(through `UltraCanvasInlineMath`, on the line's baseline, never broken over
+two lines). Put the caret inside it and the source appears in its place for
+editing; move the caret away and it is typeset again. A `MathBlock` is typeset
+in display style and centred until the caret enters it. Without the LaTeX
+module, both show their source.
+
 ### Structure
 
 ```cpp
@@ -43965,6 +43989,9 @@ if (editor->CanUndo()) editor->Undo();
 editor->GetEditor().BreakUndoCoalescing();   // force a new step
 ```
 
+Undo goes back 200 steps by default; `GetEditor().SetMaxUndoSteps(n)` changes
+that (0 = unlimited).
+
 ## Clipboard
 
 Copy puts the selection's plain text on the system clipboard and keeps the
@@ -44036,6 +44063,10 @@ out:
   guide when editable. Tables from Markdown or built in the editor keep the
   `style.tableBorderColor` grid. Rows and columns inserted into a framed table
   copy their neighbour's frame and fill.
+- **Border line styles:** each `RichBorder` has a `style` - `Solid`,
+  `Dotted`, `Dashed` or `Double` - read from and written to ODT and DOCX
+  (read from DOC). A double border is drawn as two thin lines together as
+  wide as the border.
 
 Lengths are points and are drawn at 96/72 pixels per point - the scale run
 font sizes get from Pango at the 96 DPI every context is pinned to - so
@@ -44094,8 +44125,6 @@ Honest limits of this first version — none of them silently misbehave:
   selection model holds a range inside one container, and widening it is a
   piece of work in its own right — rendering, hit testing and copying all
   change with it.
-- **Border line styles draw solid.** A double, dotted or dashed cell border
-  from a document is drawn as a solid line of its width.
 - **Page view moves whole blocks.** A paragraph or table is not split across
   pages (no widow/orphan control, no repeated table header rows), and a block
   taller than a page runs past its bottom margin.
@@ -44104,9 +44133,6 @@ Honest limits of this first version — none of them silently misbehave:
 - **No zoom and no horizontal scrolling.** A page wider than the element is
   cut at the right.
 - **Images are not resized interactively** (insert and delete work).
-- **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
-  typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
-  TextArea's Markdown mode and is the intended path.
 - **No pre-edit (IME composition) display.** Committed text arrives correctly;
   an inline composition string needs an event the framework does not have yet
   (the same limit applies to every text widget today).

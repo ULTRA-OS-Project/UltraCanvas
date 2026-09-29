@@ -133,15 +133,27 @@ struct RichTabStop {
 
 enum class RichVerticalAlign { Top, Middle, Bottom };
 
+// How a border line is drawn. Formats name many more (Word has ~25 line
+// types); these are the ones a reader keeps apart, and every other type maps
+// to the nearest of them (thick-thin pairs to Double, dash-dot to Dashed).
+enum class RichBorderStyle { Solid, Dotted, Dashed, Double };
+
 // One side of a table cell's frame. widthPt 0 = no line.
 struct RichBorder {
     float widthPt = 0.0f;
     std::string color;              // "#RRGGBB"; empty = automatic (black)
+    RichBorderStyle style = RichBorderStyle::Solid;
     bool IsVisible() const { return widthPt > 0.0f; }
     bool operator==(const RichBorder& other) const {
-        return widthPt == other.widthPt && color == other.color;
+        return widthPt == other.widthPt && color == other.color && style == other.style;
     }
 };
+
+// Word's w:val / ODF's line keyword for a style, and back. Unknown names read
+// as the nearest drawable style, so "thinThickSmallGap" is still a double line.
+const char* RichBorderStyleWordName(RichBorderStyle style);     // "single", "dotted", ...
+const char* RichBorderStyleOdfName(RichBorderStyle style);      // "solid", "dotted", ...
+RichBorderStyle RichBorderStyleFromName(const std::string& name);
 
 struct RichTableCell {
     std::vector<RichTextRun> runs;
@@ -203,6 +215,13 @@ struct RichDocBlock {
     // Unordered ListItem: the document's bullet (UTF-8, e.g. "–", "✓"). Empty
     // = the view's bullet for the level.
     std::string bulletText;
+    // Unordered ListItem: a to-do item. The view draws a box in place of the
+    // bullet, ticked when `checked`. Markdown spells it "- [ ]" / "- [x]";
+    // ODT and DOCX have no check list of their own, so they carry it the way
+    // Word's check boxes read in any word processor: a ☐ or ☒ opening the
+    // item's text (see UCRichDocument::ReadCheckboxPrefixes).
+    bool checkbox = false;
+    bool checked = false;
 
     // Paragraph geometry (Paragraph, Heading, BlockQuote, CodeBlock; list
     // items keep the view's own list indentation and use only the spacing).
@@ -460,6 +479,16 @@ public:
     // A copy whose body holds the first page's header, a rule, the body, a
     // rule and the footer - what the text serializers write.
     UCRichDocument WithFirstPageFurnitureInline() const;
+
+    // ===== CHECK LISTS IN FORMATS WITHOUT THEM =====
+    // A list item or paragraph whose text opens with a ballot box (☐ U+2610,
+    // ☑ U+2611, ☒ U+2612 - what Word's check box content control shows)
+    // becomes a check list item, the box removed from its text. Readers call
+    // it last. Returns how many blocks it converted.
+    int ReadCheckboxPrefixes();
+    // A copy in which every check list item carries its box as the first
+    // character of its text, for writers of formats without check lists.
+    UCRichDocument WithCheckboxesAsPrefixes() const;
 
     // ===== HELPERS SHARED BY FORMAT READERS/WRITERS =====
     static std::string MimeTypeForImageName(const std::string& fileName);

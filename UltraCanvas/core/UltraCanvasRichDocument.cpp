@@ -671,6 +671,73 @@ UCRichDocument UCRichDocument::WithFirstPageFurnitureInline() const {
     return flat;
 }
 
+namespace {
+const char* const kBallotBox = "\xE2\x98\x90";          // ☐ U+2610
+const char* const kBallotBoxChecked = "\xE2\x98\x92";   // ☒ U+2612
+const char* const kBallotBoxTicked = "\xE2\x98\x91";    // ☑ U+2611
+const char* const kNoBreakSpace = "\xC2\xA0";
+} // namespace
+
+int UCRichDocument::ReadCheckboxPrefixes() {
+    int converted = 0;
+    for (RichDocBlock& block : blocks) {
+        if (block.checkbox) continue;
+        if (block.type != RichBlockType::ListItem && block.type != RichBlockType::Paragraph) continue;
+        if (block.type == RichBlockType::ListItem && block.orderedList) continue;
+        // The box is the first visible character; a picture or a break first
+        // means it is not a check box.
+        size_t first = 0;
+        while (first < block.runs.size() && block.runs[first].text.empty()
+               && !block.runs[first].lineBreakBefore && !block.runs[first].IsInlineImage()) {
+            ++first;
+        }
+        if (first >= block.runs.size()) continue;
+        RichTextRun& run = block.runs[first];
+        if (run.IsInlineImage() || run.lineBreakBefore || run.text.size() < 3) continue;
+        const std::string box = run.text.substr(0, 3);
+        const bool ticked = box == kBallotBoxChecked || box == kBallotBoxTicked;
+        if (!ticked && box != kBallotBox) continue;
+        size_t cut = 3;
+        // The space Word puts between the box and the text goes with it.
+        while (cut < run.text.size() && (run.text[cut] == ' ' || run.text[cut] == '\t')) ++cut;
+        if (run.text.compare(cut, 2, kNoBreakSpace) == 0) cut += 2;
+        run.text.erase(0, cut);
+        if (run.text.empty() && block.runs.size() > 1) block.runs.erase(block.runs.begin() + static_cast<long>(first));
+        if (block.type == RichBlockType::Paragraph) {
+            block.type = RichBlockType::ListItem;
+            block.listLevel = 0;
+        }
+        block.orderedList = false;
+        block.checkbox = true;
+        block.checked = ticked;
+        if (block.bulletText == kNoBreakSpace) block.bulletText.clear();
+        ++converted;
+    }
+    return converted;
+}
+
+UCRichDocument UCRichDocument::WithCheckboxesAsPrefixes() const {
+    UCRichDocument out = *this;
+    for (RichDocBlock& block : out.blocks) {
+        if (!block.checkbox || block.type != RichBlockType::ListItem) continue;
+        RichTextRun box;
+        if (!block.runs.empty() && !block.runs.front().IsInlineImage()) {
+            box = block.runs.front();       // the text's own font and size
+            box.linkTarget.clear();
+            box.lineBreakBefore = false;
+            box.field = RichTextRun::Field::Plain;
+        }
+        box.text = std::string(block.checked ? kBallotBoxChecked : kBallotBox) + " ";
+        block.runs.insert(block.runs.begin(), box);
+        // The box stands where the bullet would; a bullet beside it would be
+        // two markers for one item.
+        block.bulletText = kNoBreakSpace;
+        block.checkbox = false;
+        block.checked = false;
+    }
+    return out;
+}
+
 std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& options) const {
     // Text output has no pages: the first page's header and footer go before
     // and after the body, set off by rules.
@@ -719,7 +786,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
                    // A list that starts at N (or runs on past an interruption)
                    // spells N on its item: Markdown starts a list at its first
                    // number and counts on from there.
-                   << (!block.orderedList ? std::string("- ")
+                   << (!block.orderedList ? std::string(block.checkbox ? (block.checked ? "- [x] " : "- [ ] ") : "- ")
                        : std::to_string(block.listStartNumber > 0 ? block.listStartNumber : 1) + ". ")
                    << RunsToMarkdown(block.runs, false, &mediaPaths) << "\n";
                 break;
@@ -951,7 +1018,16 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
                 block.type = RichBlockType::ListItem;
                 block.orderedList = info.ordered;
                 block.listLevel = info.level;
-                parseInlineToBlock(info.content, block);
+                // GitHub task list: "- [ ] todo" / "- [x] done".
+                std::string content = info.content;
+                if (!info.ordered && content.size() >= 3 && content[0] == '['
+                    && (content[1] == ' ' || content[1] == 'x' || content[1] == 'X') && content[2] == ']'
+                    && (content.size() == 3 || content[3] == ' ')) {
+                    block.checkbox = true;
+                    block.checked = content[1] != ' ';
+                    content.erase(0, std::min<size_t>(4, content.size()));
+                }
+                parseInlineToBlock(content, block);
                 doc.blocks.push_back(std::move(block));
                 continue;
             }
@@ -1050,7 +1126,8 @@ std::string CellFrameCss(const RichTableCell& cell) {
     auto side = [&](const char* name, const RichBorder& border) {
         css << "border-" << name << ":";
         if (border.IsVisible()) {
-            css << border.widthPt << "pt solid " << (border.color.empty() ? "#000000" : border.color) << ";";
+            // CSS names the four line styles as ODF does.
+            css << border.widthPt << "pt " << RichBorderStyleOdfName(border.style) << " " << (border.color.empty() ? "#000000" : border.color) << ";";
         } else {
             css << "none;";
         }
@@ -1124,6 +1201,10 @@ std::string UCRichDocument::ToHTML() const {
                     html << "<li value=\"" << block.listStartNumber << "\">";
                 } else {
                     html << "<li>";
+                }
+                if (block.checkbox) {
+                    html << (block.checked ? "<input type=\"checkbox\" disabled checked> "
+                                           : "<input type=\"checkbox\" disabled> ");
                 }
                 html << RunsToHtml(block.runs, &media) << "</li>\n";
                 break;
@@ -1231,6 +1312,7 @@ std::string UCRichDocument::ToPlainText() const {
                 text << "----------\n";
                 break;
             default:
+                if (block.checkbox) text << (block.checked ? "[x] " : "[ ] ");
                 text << RunsToReadableText(block.runs) << "\n";
                 break;
         }
@@ -1256,6 +1338,36 @@ int RichDocOrderedItemNumber(const std::vector<RichDocBlock>& blocks, size_t ind
         number++;
     }
     return number;
+}
+
+const char* RichBorderStyleWordName(RichBorderStyle style) {
+    switch (style) {
+        case RichBorderStyle::Dotted: return "dotted";
+        case RichBorderStyle::Dashed: return "dashed";
+        case RichBorderStyle::Double: return "double";
+        default:                      return "single";
+    }
+}
+
+const char* RichBorderStyleOdfName(RichBorderStyle style) {
+    switch (style) {
+        case RichBorderStyle::Dotted: return "dotted";
+        case RichBorderStyle::Dashed: return "dashed";
+        case RichBorderStyle::Double: return "double";
+        default:                      return "solid";
+    }
+}
+
+RichBorderStyle RichBorderStyleFromName(const std::string& name) {
+    const std::string lower = ToLowerCopy(name);
+    if (lower.find("double") != std::string::npos || lower.find("triple") != std::string::npos
+        || lower.find("thinthick") != std::string::npos || lower.find("thickthin") != std::string::npos) {
+        return RichBorderStyle::Double;
+    }
+    // "dotDash" and "dotDotDash" read as dashes: the dash is what the eye sees.
+    if (lower.find("dash") != std::string::npos) return RichBorderStyle::Dashed;
+    if (lower.find("dot") != std::string::npos) return RichBorderStyle::Dotted;
+    return RichBorderStyle::Solid;
 }
 
 std::string FormatListNumber(int number, RichNumberFormat format) {

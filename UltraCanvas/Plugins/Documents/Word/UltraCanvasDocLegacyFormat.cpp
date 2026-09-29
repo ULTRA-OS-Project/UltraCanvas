@@ -441,6 +441,15 @@ struct DocParaProps {
 // Word's 16-colour palette index as "#RRGGBB" (declared below).
 std::string IcoColor(uint8_t ico);
 
+// brcType ([MS-DOC] 2.9.16): 3 double, 6 dotted, 7/8/9/22/23 dashes and
+// dash-dots, 10-20 the thick-thin pairs; everything else is drawn solid.
+RichBorderStyle BrcStyle(uint8_t type) {
+    if (type == 3 || (type >= 10 && type <= 21)) return RichBorderStyle::Double;
+    if (type == 6) return RichBorderStyle::Dotted;
+    if (type == 7 || type == 8 || type == 9 || type == 22 || type == 23) return RichBorderStyle::Dashed;
+    return RichBorderStyle::Solid;
+}
+
 // Brc80 (4 bytes): line width in eighths of a point, line type, palette
 // colour. 0xFFFFFFFF is "no border"; a zero type draws nothing.
 RichBorder ReadBrc80(const std::vector<uint8_t>& data, size_t at) {
@@ -449,6 +458,7 @@ RichBorder ReadBrc80(const std::vector<uint8_t>& data, size_t at) {
     const uint8_t width = data[at], type = data[at + 1], ico = data[at + 2];
     if (type == 0 || type == 0xFF) return border;
     border.widthPt = std::max(0.25f, static_cast<float>(width) / 8.0f);
+    border.style = BrcStyle(type);
     border.color = IcoColor(ico);
     return border;
 }
@@ -459,6 +469,7 @@ RichBorder ReadBrc(const std::vector<uint8_t>& data, size_t at) {
     const uint8_t width = data[at + 4], type = data[at + 5];
     if (type == 0 || type == 0xFF) return border;
     border.widthPt = std::max(0.25f, static_cast<float>(width) / 8.0f);
+    border.style = BrcStyle(type);
     if (data[at + 3] != 0xFF) {                       // 0xFF000000 = automatic
         static const char* digits = "0123456789ABCDEF";
         border.color = "#";
@@ -2010,6 +2021,7 @@ bool UCWordDocumentIO::LoadDoc(const std::string& filePath, UCRichDocument& outD
         outError = "No text could be extracted from the document";
         return false;
     }
+    outDocument.ReadCheckboxPrefixes();
     return true;
 }
 

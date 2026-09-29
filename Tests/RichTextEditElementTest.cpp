@@ -884,6 +884,58 @@ int main() {
         }());
     }
 
+    // ===== CHECK LISTS =====
+    std::cerr << "\n--- Check lists ---" << std::endl;
+    {
+        edit->SetMarkdown("- [ ] first task\n- [x] second task\n");
+        window->UpdateAndRender();
+        TEST("Two check list items", editor.GetBlockCount() == 2 && editor.GetBlock(0).checkbox);
+        // The box sits left of the text, inside the list indent.
+        const float y = 4.0f + 8.0f + 6.0f;       // padding + half a line
+        edit->SetFocus(true);
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 8.0f + 10.0f, y));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 8.0f + 10.0f, y));
+        window->UpdateAndRender();
+        TEST("Clicking the box ticks it", editor.GetBlock(0).checked);
+        TEST("...and does not tick the other", editor.GetBlock(1).checked);
+        TEST("Undo takes the tick back", edit->Undo() && !editor.GetBlock(0).checked);
+        editor.SetCaret(RichDocPosition(1, 3));
+        TEST("Ticking from the keyboard", edit->ToggleCheckedAtCaret() && !editor.GetBlock(1).checked);
+        TEST("The Markdown keeps the boxes", edit->GetMarkdown().find("- [ ] first task") != std::string::npos);
+    }
+
+    // ===== MATH =====
+    std::cerr << "\n--- Math ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichDocBlock paragraph;
+        RichTextRun before, formula, after;
+        before.text = "Energy ";
+        formula.text = "E = mc^2";
+        formula.math = true;
+        after.text = " holds.";
+        paragraph.runs = {before, formula, after};
+        document->blocks.push_back(paragraph);
+        RichDocBlock display;
+        display.type = RichBlockType::MathBlock;
+        RichTextRun source;
+        source.text = "\\int_0^1 x\\,dx";
+        display.runs.push_back(source);
+        document->blocks.push_back(display);
+        edit->SetDocument(document);
+        editor.SetCaret(RichDocPosition(0, 0));
+        window->UpdateAndRender();
+        TEST("A document with formulas lays out", edit->GetContentHeight() > 0.0f);
+        std::cerr << "  (math engine " << (UltraCanvasInlineMath::IsAvailable() ? "loaded" : "not available")
+                  << ")" << std::endl;
+        // Wherever the caret goes, the formula's source stays the text.
+        editor.SetCaret(RichDocPosition(0, 9));
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(1, 2));
+        window->UpdateAndRender();
+        TEST("Formulas keep their source", edit->GetPlainText().find("E = mc^2") != std::string::npos);
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

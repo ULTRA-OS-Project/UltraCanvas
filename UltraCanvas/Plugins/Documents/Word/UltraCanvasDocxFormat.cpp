@@ -155,6 +155,7 @@ private:
         const std::string val = Attr(e, "w:val");
         if (val == "nil" || val == "none" || val.empty()) return spec;
         spec.border.widthPt = std::max(0.25f, static_cast<float>(e->IntAttribute("w:sz", 4)) / 8.0f);
+        spec.border.style = RichBorderStyleFromName(val);
         const std::string color = Attr(e, "w:color");
         if (color.size() == 6 && color != "auto") spec.border.color = "#" + color;
         return spec;
@@ -1479,7 +1480,7 @@ private:
                 if (!border.IsVisible()) return;
                 const long eighths = std::max(2L, std::lround(border.widthPt * 8.0f));
                 const std::string color = border.color.size() == 7 ? border.color.substr(1) : "auto";
-                pPr << "<w:" << name << " w:val=\"single\" w:sz=\"" << std::to_string(eighths)
+                pPr << "<w:" << name << " w:val=\"" << RichBorderStyleWordName(border.style) << "\" w:sz=\"" << std::to_string(eighths)
                     << "\" w:space=\"4\" w:color=\"" << EscapeXml(color) << "\"/>";
             };
             if (block.paragraphBorderTop.IsVisible() || block.paragraphBorderBottom.IsVisible()
@@ -1658,7 +1659,7 @@ private:
             }
             const long eighths = std::max(2L, std::lround(border.widthPt * 8.0f));
             const std::string color = border.color.size() == 7 ? border.color.substr(1) : "auto";
-            xml << "<w:" << name << " w:val=\"single\" w:sz=\"" << std::to_string(eighths)
+            xml << "<w:" << name << " w:val=\"" << RichBorderStyleWordName(border.style) << "\" w:sz=\"" << std::to_string(eighths)
                 << "\" w:space=\"0\" w:color=\"" << EscapeXml(color) << "\"/>";
         };
         side("top", cell.borderTop);
@@ -2156,12 +2157,19 @@ bool UCWordDocumentIO::LoadDocx(const std::string& filePath, UCRichDocument& out
                                 std::string& outError) {
     outDocument = UCRichDocument{};
     DocxReader reader;
-    return reader.Load(filePath, outDocument, outError);
+    if (!reader.Load(filePath, outDocument, outError)) return false;
+    outDocument.ReadCheckboxPrefixes();
+    return true;
 }
 
 bool UCWordDocumentIO::SaveDocx(const std::string& filePath, const UCRichDocument& document,
                                 std::string& outError) {
     DocxWriter writer;
+    // The format has no check list: its items go out as a ballot box
+    // opening their text, which is what reads back in.
+    for (const RichDocBlock& block : document.blocks) {
+        if (block.checkbox) return writer.Save(filePath, document.WithCheckboxesAsPrefixes(), outError);
+    }
     return writer.Save(filePath, document, outError);
 }
 
