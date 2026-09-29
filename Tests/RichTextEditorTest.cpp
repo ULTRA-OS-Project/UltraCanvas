@@ -1710,6 +1710,77 @@ static void TestSections() {
     CHECK(ed.GetDocument()->HasColumns());
 }
 
+static void TestHtmlImport() {
+    std::cout << "\n--- HTML import (rich paste) ---\n";
+    // A browser's selection.
+    UCRichDocument doc = UCRichDocument::FromHTML(
+        "<html><head><style>p{color:red}</style><title>x</title></head><body>"
+        "<h2>Section &amp; title</h2>"
+        "<p style=\"text-align:center\">Some <b>bold</b>, <i>italic</i> and <span style=\"color:rgb(255, 0, 0);font-weight:700\">red bold</span>"
+        " text with a <a href=\"https://example.com\">link</a>.</p>"
+        "<ul><li>first</li><li>second<ul><li>nested</li></ul></li></ul>"
+        "<ol><li><p>numbered</p></li></ol>"
+        "<blockquote><p>quoted</p></blockquote>"
+        "<pre>line one\nline two</pre>"
+        "<table><thead><tr><th>Name</th><th>Qty</th></tr></thead><tbody><tr><td>apple</td><td colspan=\"1\">3</td></tr></tbody></table>"
+        "<hr><p>caf&eacute; &#8212; &#x263A; x&nbsp;&nbsp;y</p>"
+        "<script>alert('no')</script></body></html>");
+    CHECK(doc.blocks.size() >= 10);
+    if (doc.blocks.size() < 10) return;
+    CHECK(doc.blocks[0].type == RichBlockType::Heading && doc.blocks[0].headingLevel == 2);
+    CHECK_EQ(UCRichDocument::ConcatenateRunText(doc.blocks[0].runs), std::string("Section & title"));
+    const RichDocBlock& para = doc.blocks[1];
+    CHECK(para.align == RichTextAlign::Center);
+    CHECK_EQ(UCRichDocument::ConcatenateRunText(para.runs), std::string("Some bold, italic and red bold text with a link."));
+    bool bold = false, italic = false, red = false, link = false;
+    for (const auto& r : para.runs) {
+        bold = bold || (r.text == "bold" && r.bold);
+        italic = italic || (r.text == "italic" && r.italic);
+        red = red || (r.text == "red bold" && r.bold && r.color == "#FF0000");
+        link = link || (r.text == "link" && r.linkTarget == "https://example.com");
+    }
+    CHECK(bold && italic && red && link);
+    CHECK(doc.blocks[2].type == RichBlockType::ListItem && !doc.blocks[2].orderedList && doc.blocks[2].listLevel == 0);
+    CHECK(doc.blocks[4].type == RichBlockType::ListItem && doc.blocks[4].listLevel == 1
+          && UCRichDocument::ConcatenateRunText(doc.blocks[4].runs) == "nested");
+    CHECK(doc.blocks[5].type == RichBlockType::ListItem && doc.blocks[5].orderedList
+          && UCRichDocument::ConcatenateRunText(doc.blocks[5].runs) == "numbered");
+    CHECK(doc.blocks[6].type == RichBlockType::BlockQuote);
+    CHECK(doc.blocks[7].type == RichBlockType::CodeBlock
+          && UCRichDocument::ConcatenateRunText(doc.blocks[7].runs) == "line one\nline two");
+    const RichDocBlock& table = doc.blocks[8];
+    CHECK(table.type == RichBlockType::Table && table.tableRows.size() == 2 && table.tableRows[0].header
+          && table.tableRows[0].cells.size() == 2 && table.tableRows[0].cells[0].runs[0].bold
+          && UCRichDocument::ConcatenateRunText(table.tableRows[1].cells[0].runs) == "apple");
+    CHECK(doc.blocks[9].type == RichBlockType::HorizontalRule);
+    CHECK(doc.blocks.size() > 10 && UCRichDocument::ConcatenateRunText(doc.blocks[10].runs) == "caf\xC3\xA9 \xE2\x80\x94 \xE2\x98\xBA x  y");
+    CHECK(UCRichDocument::ConcatenateRunText(doc.blocks.back().runs).find("alert") == std::string::npos);
+
+    // Word's clipboard: list numbers in mso-list:Ignore spans, conditional
+    // comments, o:p tags, a style in points.
+    UCRichDocument word = UCRichDocument::FromHTML(
+        "<p class=MsoListParagraph style='mso-list:l0 level1 lfo1'><![if !supportLists]><span style='mso-list:Ignore'>1.<span>&nbsp;&nbsp;</span></span><![endif]>"
+        "<span style='font-size:14.0pt;font-family:\"Arial\",sans-serif'>Word item<o:p></o:p></span></p>");
+    CHECK(word.blocks.size() == 1);
+    if (!word.blocks.empty()) {
+        CHECK_EQ(UCRichDocument::ConcatenateRunText(word.blocks[0].runs), std::string("Word item"));
+        CHECK(!word.blocks[0].runs.empty() && word.blocks[0].runs.back().fontSizePt == 14.0f
+              && word.blocks[0].runs.back().fontFamily == "Arial");
+    }
+
+    // A picture inlined as a data: URI, and our own HTML read back.
+    const std::string png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+    UCRichDocument pictured = UCRichDocument::FromHTML("<p>see <img src=\"data:image/png;base64," + png + "\" alt=\"dot\" width=\"40\"></p>");
+    CHECK(pictured.media.size() == 1 && pictured.blocks.size() == 1);
+    if (!pictured.blocks.empty()) {
+        const auto& runs = pictured.blocks[0].runs;
+        CHECK(runs.size() == 2 && runs[1].IsInlineImage() && runs[1].imageAltText == "dot" && runs[1].imageWidthPt == 30.0f);
+    }
+    UCRichDocument ours = UCRichDocument::FromMarkdown("# Title\n\nA **bold** word and *italics*.\n\n- one\n- two\n");
+    UCRichDocument back = UCRichDocument::FromHTML(ours.ToHTML());
+    CHECK_EQ(back.ToMarkdown(), ours.ToMarkdown());
+}
+
 static void TestNamedStyles() {
     std::cout << "\n--- Named styles ---\n";
     UCRichDocumentEditor ed(MakeDocument({"Chapter one", "Body text here", "More body"}));
@@ -1823,6 +1894,7 @@ int main() {
     TestComments();
     TestTrackedChanges();
     TestSections();
+    TestHtmlImport();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

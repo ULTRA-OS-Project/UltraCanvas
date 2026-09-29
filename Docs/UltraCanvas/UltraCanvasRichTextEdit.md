@@ -629,15 +629,21 @@ that (0 = unlimited).
 
 ## Clipboard
 
-Copy puts the selection's plain text on the system clipboard and keeps the
-styled blocks in a process-local buffer. A paste whose clipboard text still
-matches what was copied restores the formatting too, so copy/paste **inside the
-application preserves formatting**; a paste from another application arrives as
-plain text.
+Copy puts the selection on the system clipboard twice: as HTML (formatting,
+lists, tables, pictures inlined as `data:` URIs) and as plain text, so a word
+processor, browser or mail client pastes it formatted and a terminal pastes
+the text. The element also keeps the styled blocks in a process-local buffer:
+a paste whose clipboard text still matches what was copied uses them, so
+copy/paste **inside the application loses nothing** (between two documents the
+pictures come along; notes, comments and bookmarks stay behind).
 
-Full cross-application rich paste needs per-MIME clipboard transport
-(`text/html`), which `UltraCanvasClipboardBackend` does not carry yet — see
-[`WYSIWYGElementInvestigation.md`](WYSIWYGElementInvestigation.md) §4.
+A paste from another application uses its HTML when it offers some
+(`UCRichDocument::FromHTML`: paragraphs, headings, lists, quotes, code,
+tables, rules, links, inlined pictures and character formatting from tags and
+CSS, Word's list-number spans and conditional comments dropped), and its plain
+text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
+(`UltraCanvasClipboard.h`): `text/html` on X11 (UTF-16 from Firefox is
+converted), `HTML Format` on Windows; other platforms fall back to plain text.
 
 ## Style
 
@@ -847,7 +853,6 @@ Honest limits of this first version — none of them silently misbehave:
 - **No pre-edit (IME composition) display.** Committed text arrives correctly;
   an inline composition string needs an event the framework does not have yet
   (the same limit applies to every text widget today).
-- **Cross-application rich paste** — see Clipboard above.
 
 ## Related
 

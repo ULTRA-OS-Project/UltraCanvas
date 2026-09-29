@@ -160,3 +160,10 @@
   editor and the element. Page view flows a section's text column by column.
   DOCX `w:sectPr` section breaks with `w:cols` and ODT `text:section` columns are
   read and written (both used to be read as one column).
+- **Rich copy and paste between applications.** `UCRichDocument::FromHTML`
+  reads HTML as browsers, Word and LibreOffice put it on the clipboard; the
+  clipboard gains an HTML flavour (`UltraCanvasClipboardBackend::
+  SetClipboardHtml`/`GetClipboardHtml`, `SetClipboardHtml`/`GetClipboardHtml`:
+  `text/html` on X11, `HTML Format` on Windows). `UltraCanvasRichTextEdit`
+  copies HTML next to the text and pastes another application's HTML
+  formatted; a paste into another document brings the pictures along.

@@ -922,6 +922,14 @@ private:
     // flavours that UltraCanvasClipboardBackend does not carry yet.
     static std::vector<RichDocBlock> internalClipboard;
     static std::string internalClipboardText;
+    // The document the copy came from, and its pictures (a paste into
+    // another document takes the pictures along).
+    static const UCRichDocument* internalClipboardSource;
+    static std::vector<RichDocMedia> internalClipboardMedia;
+    // Blocks from another document made this one's: pictures added to its
+    // media, and what points into the other document (notes, comments,
+    // tracked-change authors, bookmarks) dropped.
+    void AdoptForeignBlocks(std::vector<RichDocBlock>& blocks, const std::vector<RichDocMedia>& media);
 };
 
 // ===== FACTORY =====

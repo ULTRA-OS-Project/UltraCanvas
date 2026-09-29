@@ -48,6 +48,10 @@
   menu sets the text in one, two or three columns and inserts section breaks;
   newsletters and papers set in columns in .docx and .odt files now show their
   columns in page layout.
+- **Formatted copy and paste with other programs.** Text copied from a
+  word-processing tab pastes into a word processor, browser or mail with its
+  formatting, tables and pictures, and text copied from a web page, Word or
+  Writer pastes into a word-processing tab formatted instead of as plain text.
 - Ctrl+click on a link to a place inside the document (a "#bookmark" link)
   now goes there instead of trying to open it in a browser.
 - **The zoom box zooms a word-processing tab** (and a page wider than the

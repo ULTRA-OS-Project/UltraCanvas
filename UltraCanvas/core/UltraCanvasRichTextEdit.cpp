@@ -27,6 +27,8 @@ namespace UltraCanvas {
 
 std::vector<RichDocBlock> UltraCanvasRichTextEdit::internalClipboard;
 std::string UltraCanvasRichTextEdit::internalClipboardText;
+const UCRichDocument* UltraCanvasRichTextEdit::internalClipboardSource = nullptr;
+std::vector<RichDocMedia> UltraCanvasRichTextEdit::internalClipboardMedia;
 
 namespace {
 
@@ -3597,7 +3599,55 @@ void UltraCanvasRichTextEdit::Copy() {
     RichDocRange range = editor.GetSelectionRange();
     internalClipboard = editor.ExtractRange(range);
     internalClipboardText = editor.RangeToPlainText(range);
-    SetClipboardText(internalClipboardText);
+    internalClipboardSource = editor.GetDocument().get();
+    internalClipboardMedia = editor.GetDocument()->media;
+    // Other applications get it formatted, as HTML (pictures inlined), next
+    // to the plain text.
+    UCRichDocument fragment;
+    fragment.blocks = internalClipboard;
+    fragment.media = internalClipboardMedia;
+    for (RichDocBlock& block : fragment.blocks) {
+        for (RichTextRun& run : block.runs) run.noteIndex = -1;
+    }
+    SetClipboardHtml(fragment.ToHTML(), internalClipboardText);
+}
+
+void UltraCanvasRichTextEdit::AdoptForeignBlocks(std::vector<RichDocBlock>& blocks, const std::vector<RichDocMedia>& media) {
+    UCRichDocument& document = *editor.GetDocument();
+    std::map<int, int> mapped;
+    auto remap = [&](int& index) {
+        if (index < 0) return;
+        if (index >= static_cast<int>(media.size())) {
+            index = -1;
+            return;
+        }
+        auto found = mapped.find(index);
+        if (found == mapped.end()) {
+            const RichDocMedia& source = media[static_cast<size_t>(index)];
+            found = mapped.emplace(index, document.AddMedia(source.name, source.mimeType, source.data)).first;
+        }
+        index = found->second;
+    };
+    auto adopt = [&](std::vector<RichTextRun>& runs) {
+        // A reference whose note stayed behind would be a bare number.
+        runs.erase(std::remove_if(runs.begin(), runs.end(), [](const RichTextRun& r) { return r.IsNoteReference(); }),
+                   runs.end());
+        for (RichTextRun& run : runs) {
+            remap(run.mediaIndex);
+            run.commentIds.clear();
+            run.revision = -1;
+            // Text deleted there is not text here; inserted text simply is.
+            run.change = RichTextRun::Change::Unchanged;
+        }
+    };
+    for (RichDocBlock& block : blocks) {
+        remap(block.mediaIndex);
+        block.bookmarks.clear();
+        adopt(block.runs);
+        for (RichTableRow& row : block.tableRows) {
+            for (RichTableCell& cell : row.cells) adopt(cell.runs);
+        }
+    }
 }
 
 void UltraCanvasRichTextEdit::Cut() {
@@ -3616,10 +3666,28 @@ void UltraCanvasRichTextEdit::Paste() {
     // clipboard carries the plain text, and when it still matches what was
     // copied the richer payload is used instead.
     if (!internalClipboard.empty() && text == internalClipboardText) {
-        editor.InsertBlocks(internalClipboard);
-    } else if (!text.empty()) {
-        editor.InsertText(text);
+        if (internalClipboardSource == editor.GetDocument().get()) {
+            editor.InsertBlocks(internalClipboard);
+        } else {
+            std::vector<RichDocBlock> blocks = internalClipboard;
+            AdoptForeignBlocks(blocks, internalClipboardMedia);
+            editor.InsertBlocks(blocks);
+        }
+        AfterEdit();
+        return;
     }
+    // From another application: its HTML, when it put some there.
+    std::string html;
+    if (GetClipboardHtml(html) && !html.empty()) {
+        UCRichDocument pasted = UCRichDocument::FromHTML(html);
+        if (!pasted.blocks.empty()) {
+            AdoptForeignBlocks(pasted.blocks, pasted.media);
+            editor.InsertBlocks(pasted.blocks);
+            AfterEdit();
+            return;
+        }
+    }
+    if (!text.empty()) editor.InsertText(text);
     AfterEdit();
 }
 

@@ -709,6 +709,14 @@ public:
     // Self-contained HTML fragment (images inlined as data: URIs) for the
     // HTMLConverter / read-only viewing path.
     std::string ToHTML() const;
+    // Reads HTML as other applications put it on the clipboard (browsers,
+    // Word, LibreOffice, mail clients): paragraphs, headings, lists, quotes,
+    // preformatted text, tables, rules, links, pictures inlined as data:
+    // URIs, and character formatting from tags and CSS (bold, italic,
+    // underline, strike-through, sub/superscript, colour, highlight, font,
+    // size). Anything else (scripts, styles, forms, unknown markup) is
+    // skipped, its text kept.
+    static UCRichDocument FromHTML(const std::string& html);
 
     std::string ToPlainText() const;
     // A copy whose body holds the first page's header, a rule, the body, a

@@ -14,6 +14,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasClipboard.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1470,6 +1471,40 @@ int main() {
         editor.SetCaret(RichDocPosition(second > 1 ? second : 2, 0));
         window->UpdateAndRender();
         TEST("Outside page view the text is one column", edit->GetCaretRectForTest().x < first.x + 100.0f);
+    }
+
+    // ===== RICH PASTE =====
+    std::cerr << "\n--- Rich copy and paste ---" << std::endl;
+    {
+        edit->SetMarkdown("Some **bold** text.\n");
+        window->UpdateAndRender();
+        editor.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 14));
+        edit->Copy();
+        std::string html;
+        TEST("Copy puts HTML on the clipboard", GetClipboardHtml(html) && html.find("<b>bold</b>") != std::string::npos);
+        // Into another document: formatted, pictures and all.
+        auto other = std::make_shared<UltraCanvasRichTextEdit>("Other", 0, 0, 300, 200);
+        window->AddChild(other);
+        other->SetMarkdown("\n");
+        window->UpdateAndRender();
+        other->Paste();
+        bool bold = false;
+        for (const auto& r : other->GetEditor().GetBlock(0).runs) bold = bold || (r.text == "bold" && r.bold);
+        TEST("...and another document pastes it formatted", bold);
+        // From another application: only its HTML and text.
+        SetClipboardHtml("<p>From <i>elsewhere</i> with <span style=\"color:#00ff00\">green</span></p>",
+                         "From elsewhere with green");
+        other->SetMarkdown("\n");
+        window->UpdateAndRender();
+        other->Paste();
+        bool italic = false, green = false;
+        for (const auto& r : other->GetEditor().GetBlock(0).runs) {
+            italic = italic || (r.text == "elsewhere" && r.italic);
+            green = green || (r.text == "green" && r.color == "#00FF00");
+        }
+        TEST("HTML from another application pastes formatted: " + other->GetEditor().BlockText(0),
+             italic && green && other->GetEditor().BlockText(0) == "From elsewhere with green");
+        window->RemoveChild(other);
     }
 
     std::cerr << "\n========================================" << std::endl;

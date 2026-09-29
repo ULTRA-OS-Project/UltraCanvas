@@ -98,6 +98,18 @@ public:
     virtual bool GetClipboardFiles(std::vector<std::string>& filePaths) = 0;
     virtual bool SetClipboardFiles(const std::vector<std::string>& filePaths) = 0;
 
+    // Rich text: HTML next to its plain-text form, so another application
+    // pastes it formatted (text/html on X11, "HTML Format" on Windows). A
+    // backend without it puts the plain text only, and reads none.
+    virtual bool SetClipboardHtml(const std::string& html, const std::string& plainText) {
+        (void)html;
+        return SetClipboardText(plainText);
+    }
+    virtual bool GetClipboardHtml(std::string& html) {
+        (void)html;
+        return false;
+    }
+
     // Cut/copy-aware file clipboard operations. File managers mark a "cut"
     // (move-on-paste) on the clipboard next to the file list
     // (x-special/gnome-copied-files on Linux, "Preferred DropEffect" on
@@ -153,6 +165,9 @@ public:
     // ===== CLIPBOARD OPERATIONS =====
     bool GetText(std::string& text);
     bool SetText(const std::string& text);
+    // HTML with its plain text (see UltraCanvasClipboardBackend).
+    bool GetHtml(std::string& html);
+    bool SetHtml(const std::string& html, const std::string& plainText);
     bool GetImage(std::vector<uint8_t>& imageData, std::string& format);
     bool SetImage(const std::vector<uint8_t>& imageData, const std::string& format);
     bool GetFiles(std::vector<std::string>& filePaths);
@@ -203,6 +218,8 @@ UltraCanvasClipboard* GetClipboard();
 // Convenience functions for quick access
 bool GetClipboardText(std::string& text);
 bool SetClipboardText(const std::string& text);
+bool GetClipboardHtml(std::string& html);
+bool SetClipboardHtml(const std::string& html, const std::string& plainText);
 void AddClipboardEntry(const ClipboardData& entry);
 
 } // namespace UltraCanvas

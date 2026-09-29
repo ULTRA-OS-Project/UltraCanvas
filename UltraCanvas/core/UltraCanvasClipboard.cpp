@@ -155,6 +155,21 @@ bool UltraCanvasClipboard::SetText(const std::string& text) {
     return success;
 }
 
+bool UltraCanvasClipboard::GetHtml(std::string& html) {
+    if (!backend) return false;
+    return backend->GetClipboardHtml(html);
+}
+
+bool UltraCanvasClipboard::SetHtml(const std::string& html, const std::string& plainText) {
+    if (!backend) return false;
+    const bool success = backend->SetClipboardHtml(html, plainText);
+    if (success) {
+        lastClipboardContent = plainText;
+        backend->ResetChangeState();
+    }
+    return success;
+}
+
 bool UltraCanvasClipboard::GetImage(std::vector<uint8_t>& imageData, std::string& format) {
     if (!backend) return false;
     return backend->GetClipboardImage(imageData, format);
@@ -493,6 +508,14 @@ bool SetClipboardText(const std::string& text) {
         return g_clipboard->SetText(text);
     }
     return false;
+}
+
+bool GetClipboardHtml(std::string& html) {
+    return g_clipboard && g_clipboard->GetHtml(html);
+}
+
+bool SetClipboardHtml(const std::string& html, const std::string& plainText) {
+    return g_clipboard && g_clipboard->SetHtml(html, plainText);
 }
 
 void AddClipboardEntry(const ClipboardData& entry) {
