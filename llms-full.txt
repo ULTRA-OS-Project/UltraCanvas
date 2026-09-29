@@ -44349,6 +44349,19 @@ otherwise), with page number and page count fields
 top margin, or below the header when the header is taller than the margin
 leaves room for; the footer likewise.
 
+**Sections and columns.** `InsertSectionBreak(newPage)` starts a new section
+at the caret (`RichDocBlock::sectionStart`, its setup in
+`RichDocBlock::section`; the first section's is `UCRichDocument::firstSection`)
+and `SetSectionColumns(n, gapPt)` sets the caret's section in columns. In page
+view a section's text fills its first column to the foot of the page, then the
+next column from the section's top, then the next page; a continuous section
+starts below the longest column of the one before, a new-page one on a new
+page. A paragraph moves whole to the next column (columns are not balanced, and
+a paragraph taller than a column is not broken across columns); outside page
+view the text is one column. DOCX section breaks (`w:sectPr` in a paragraph,
+`w:cols`, `w:type`) and ODT sections (`text:section` with `style:columns`) are
+read and written.
+
 **Editing a header or footer.** Double-click a page's header or footer - or
 its top or bottom margin, to make one - or call `EditHeader(page)` /
 `EditFooter(page)`. The body is then shown pale behind it, a dashed rule marks

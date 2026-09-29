@@ -1114,6 +1114,38 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== 5g10. Sections and columns survive ODT and DOCX =====
+    {
+        auto doc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown(
+            "Intro across the page.\n\nColumn text one.\n\nColumn text two.\n\nBack to one column.\n"));
+        doc->blocks[1].sectionStart = true;
+        doc->blocks[1].section.columns = 2;
+        doc->blocks[1].section.columnGapPt = 18.0f;
+        doc->blocks[3].sectionStart = true;
+        doc->blocks[3].section.columns = 1;
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("sections.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            int columnBlock = -1, afterBlock = -1, introBlock = -1;
+            for (size_t i = 0; i < back.blocks.size(); i++) {
+                const std::string text = UCRichDocument::ConcatenateRunText(back.blocks[i].runs);
+                if (text == "Column text one.") columnBlock = static_cast<int>(i);
+                if (text == "Back to one column.") afterBlock = static_cast<int>(i);
+                if (text == "Intro across the page.") introBlock = static_cast<int>(i);
+            }
+            CHECK_MSG(columnBlock >= 0 && afterBlock >= 0 && introBlock >= 0, ext);
+            if (columnBlock < 0 || afterBlock < 0 || introBlock < 0) continue;
+            CHECK_MSG(back.SectionFor(introBlock).columns == 1, ext);
+            CHECK_MSG(back.SectionFor(columnBlock).columns == 2 && Near(back.SectionFor(columnBlock).columnGapPt, 18.0f),
+                      std::string(ext) + " columns " + std::to_string(back.SectionFor(columnBlock).columns));
+            CHECK_MSG(back.SectionFor(columnBlock + 1).columns == 2, ext);
+            CHECK_MSG(back.SectionFor(afterBlock).columns == 1, ext);
+        }
+    }
+
     // ===== 5h. List labels: formats, templates, editing =====
     {
         CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");

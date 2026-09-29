@@ -1688,6 +1688,28 @@ static void TestTrackedChanges() {
     CHECK(plain);
 }
 
+static void TestSections() {
+    std::cout << "\n--- Sections ---\n";
+    UCRichDocumentEditor ed(MakeDocument({"Title", "Body one", "Body two", "After"}));
+    CHECK(ed.CurrentSection().columns == 1);
+    ed.SetCaret(RichDocPosition(1, 0));
+    CHECK(ed.InsertSectionBreak(false));
+    CHECK(ed.GetBlockCount() == 4 && ed.GetBlock(1).sectionStart);
+    CHECK(ed.SetSectionColumns(2, 18.0f));
+    CHECK(ed.GetBlock(1).section.columns == 2 && ed.GetDocument()->SectionFor(2).columns == 2);
+    CHECK(ed.GetDocument()->SectionFor(0).columns == 1);
+    // A break in mid-paragraph splits it; the new section is like the old.
+    ed.SetCaret(RichDocPosition(3, 2));
+    CHECK(ed.InsertSectionBreak(true));
+    CHECK(ed.GetBlockCount() == 5 && ed.BlockText(3) == "Af" && ed.BlockText(4) == "ter");
+    CHECK(ed.GetBlock(4).sectionStart && ed.GetBlock(4).section.newPage && ed.GetBlock(4).section.columns == 2);
+    CHECK(ed.SetSectionColumns(1));
+    CHECK(ed.GetDocument()->SectionFor(4).columns == 1 && ed.GetDocument()->SectionFor(3).columns == 2);
+    ed.Undo();
+    CHECK(ed.GetDocument()->SectionFor(4).columns == 2);
+    CHECK(ed.GetDocument()->HasColumns());
+}
+
 static void TestNamedStyles() {
     std::cout << "\n--- Named styles ---\n";
     UCRichDocumentEditor ed(MakeDocument({"Chapter one", "Body text here", "More body"}));
@@ -1800,6 +1822,7 @@ int main() {
     TestFieldsAndContents();
     TestComments();
     TestTrackedChanges();
+    TestSections();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

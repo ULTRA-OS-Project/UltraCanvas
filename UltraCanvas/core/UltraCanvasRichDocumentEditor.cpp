@@ -3179,6 +3179,52 @@ int UCRichDocumentEditor::NoteAt(const RichDocPosition& pos) const {
     return -1;
 }
 
+// ===== SECTIONS =====
+
+bool UCRichDocumentEditor::InsertSectionBreak(bool newPage) {
+    if (caret.InCell()) return false;
+    const RichSectionSetup current = CurrentSection();
+    {
+        EditScope scope(*this, caret.blockIndex, 1);
+        if (HasSelection()) DeleteRangeInternal(GetSelectionRange());
+        const bool atStart = caret.byteOffset == 0 && caret.blockIndex > 0;
+        if (!atStart) SplitBlockInternal();
+        RichDocBlock& start = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+        start.sectionStart = true;
+        start.section = current;
+        start.section.newPage = newPage;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SetSectionColumns(int columns, float gapPt) {
+    columns = std::clamp(columns, 1, 9);
+    int start = -1;
+    for (int i = std::min(caret.blockIndex, GetBlockCount() - 1); i >= 0; i--) {
+        if (doc->blocks[static_cast<size_t>(i)].sectionStart) { start = i; break; }
+    }
+    if (start < 0) {
+        // The first section's setup is the document's: not an undo step.
+        doc->firstSection.columns = columns;
+        doc->firstSection.columnGapPt = gapPt;
+        modified = true;
+    } else {
+        EditScope scope(*this, start, 1);
+        doc->blocks[static_cast<size_t>(start)].section.columns = columns;
+        doc->blocks[static_cast<size_t>(start)].section.columnGapPt = gapPt;
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+RichSectionSetup UCRichDocumentEditor::CurrentSection() const {
+    return doc->SectionFor(caret.blockIndex);
+}
+
 // ===== TRACKED CHANGES =====
 
 void UCRichDocumentEditor::SetTrackChanges(bool enabled) {

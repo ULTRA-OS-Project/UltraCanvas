@@ -478,6 +478,26 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
         items.push_back(MenuItemData::Submenu("References", [this]() {
             return BuildReferenceMenuItems();
         }));
+        items.push_back(MenuItemData::Submenu("Columns and Sections", [this]() {
+            std::vector<MenuItemData> section;
+            UltraCanvasRichTextEdit* edit = GetActiveRichEdit();
+            if (!edit) return section;
+            const int current = edit->GetCurrentSection().columns;
+            for (int count = 1; count <= 3; count++) {
+                const char* labels[] = {"", "One Column", "Two Columns", "Three Columns"};
+                section.push_back(MenuItemData::Radio(labels[count], 7301, current == count, [this, count]() {
+                    if (UltraCanvasRichTextEdit* target = GetActiveRichEdit()) target->SetSectionColumns(count);
+                }));
+            }
+            section.push_back(MenuItemData::Separator());
+            section.push_back(MenuItemData::Action("Insert Section Break (Continuous)", [this]() {
+                if (UltraCanvasRichTextEdit* target = GetActiveRichEdit()) target->InsertSectionBreak(false);
+            }));
+            section.push_back(MenuItemData::Action("Insert Section Break (New Page)", [this]() {
+                if (UltraCanvasRichTextEdit* target = GetActiveRichEdit()) target->InsertSectionBreak(true);
+            }));
+            return section;
+        }));
         items.push_back(MenuItemData::Submenu("Track Changes", [this]() {
             std::vector<MenuItemData> review;
             UltraCanvasRichTextEdit* edit = GetActiveRichEdit();

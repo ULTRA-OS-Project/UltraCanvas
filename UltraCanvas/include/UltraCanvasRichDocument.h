@@ -188,6 +188,17 @@ struct RichTabStop {
     RichTabKind kind = RichTabKind::Left;
 };
 
+// A section of a document: its text in `columns` columns, `columnGapPt`
+// apart, starting on a new page or (continuous) below the section before.
+struct RichSectionSetup {
+    int columns = 1;
+    float columnGapPt = 36.0f;
+    bool newPage = false;
+    bool operator==(const RichSectionSetup& other) const {
+        return columns == other.columns && columnGapPt == other.columnGapPt && newPage == other.newPage;
+    }
+};
+
 enum class RichVerticalAlign { Top, Middle, Bottom };
 
 // How a border line is drawn. Formats name many more (Word has ~25 line
@@ -284,6 +295,12 @@ struct RichDocBlock {
     // that cross-references (RichTextRun::Field::Reference/PageReference)
     // and links to "#name" point at.
     std::vector<std::string> bookmarks;
+    // This block starts a new section, laid out as `section` says; the
+    // section runs to the next block that starts one. The first section's
+    // setup is UCRichDocument::firstSection.
+    bool sectionStart = false;
+    RichSectionSetup section;
+
     // An entry of the table of contents, for a heading of this level (1..9);
     // 0 = an ordinary block. UCRichDocument::UpdateTableOfContents rebuilds
     // the entries.
@@ -589,6 +606,11 @@ public:
     // 0 = the view's default. ODF: style:tab-stop-distance; Word: defaultTabStop.
     float defaultTabStopPt = 0.0f;
     RichPageSetup page;
+    // The first section's setup (until a block with sectionStart).
+    RichSectionSetup firstSection;
+    // The setup of the section block `index` is in.
+    const RichSectionSetup& SectionFor(int index) const;
+    bool HasColumns() const;
     // Header and footer of every page, and of the first one when it differs
     // (firstPageDiffers). Plain-text, Markdown and HTML output write the
     // first page's header before the body and its footer after it.

@@ -112,6 +112,7 @@ public:
                 pageMarginLeftPt_ = static_cast<float>(margins->IntAttribute("w:left", 1440)) / 20.0f;
             }
         }
+        parsingBody_ = true;
         for (auto* elem = body->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
             std::string tag = elem->Name() ? elem->Name() : "";
             if (tag == "w:p") ParseParagraph(elem);
@@ -130,6 +131,8 @@ public:
             }
         }
         pendingBookmarks_.clear();
+        parsingBody_ = false;
+        ApplySections(body->FirstChildElement("w:sectPr"));
         LoadSection(body->FirstChildElement("w:sectPr"));
         LoadNotes(RichNote::Kind::Footnote);
         LoadNotes(RichNote::Kind::Endnote);
@@ -251,6 +254,38 @@ private:
     std::map<std::string, int> noteIndexById_;
     // Bookmarks started between paragraphs, for the next one.
     std::vector<std::string> pendingBookmarks_;
+    // Sections: each paragraph w:sectPr ends one, after the block index given.
+    struct SectionEnd { int lastBlock; RichSectionSetup setup; };
+    std::vector<SectionEnd> sectionEnds_;
+    bool parsingBody_ = false;
+
+    static RichSectionSetup ReadSectionSetup(tinyxml2::XMLElement* sectPr) {
+        RichSectionSetup setup;
+        if (!sectPr) return setup;
+        if (auto* cols = sectPr->FirstChildElement("w:cols")) {
+            setup.columns = std::clamp(cols->IntAttribute("w:num", 1), 1, 9);
+            setup.columnGapPt = static_cast<float>(cols->IntAttribute("w:space", 720)) / 20.0f;
+        }
+        const std::string type = sectPr->FirstChildElement("w:type") ? Attr(sectPr->FirstChildElement("w:type"), "w:val") : "";
+        setup.newPage = type != "continuous";
+        return setup;
+    }
+
+    // The sections, now that the body is read: the first one's setup is the
+    // document's, each later one starts at the block after the one before
+    // ended.
+    void ApplySections(tinyxml2::XMLElement* bodySectPr) {
+        std::vector<SectionEnd> sections = sectionEnds_;
+        sections.push_back({static_cast<int>(doc_->blocks.size()) - 1, ReadSectionSetup(bodySectPr)});
+        doc_->firstSection = sections.front().setup;
+        for (size_t k = 1; k < sections.size(); k++) {
+            const int start = sections[k - 1].lastBlock + 1;
+            if (start <= 0 || start >= static_cast<int>(doc_->blocks.size())) continue;
+            RichDocBlock& block = doc_->blocks[static_cast<size_t>(start)];
+            block.sectionStart = true;
+            block.section = sections[k].setup;
+        }
+    }
     // Comments: w:id -> index into doc_->comments, and those whose range the
     // text being read is inside (ranges may cross paragraphs).
     std::map<std::string, int> commentIndexById_;
@@ -1258,6 +1293,19 @@ private:
                 }
             }
         }
+        // A section ends with this paragraph.
+        tinyxml2::XMLElement* endsSection = nullptr;
+        if (auto* pPr = p->FirstChildElement("w:pPr")) endsSection = pPr->FirstChildElement("w:sectPr");
+        struct SectionEndGuard {
+            DocxReader* reader;
+            tinyxml2::XMLElement* sectPr;
+            ~SectionEndGuard() {
+                if (sectPr && reader->parsingBody_) {
+                    reader->sectionEnds_.push_back({static_cast<int>(reader->doc_->blocks.size()) - 1,
+                                                    ReadSectionSetup(sectPr)});
+                }
+            }
+        } sectionEndGuard{this, endsSection};
         // Bookmarks started in the paragraph (or just before it) mark it.
         block.bookmarks = std::move(pendingBookmarks_);
         pendingBookmarks_.clear();
@@ -2135,6 +2183,8 @@ private:
             }
             pPr << "</w:rPr>";
         }
+        pPr << pendingSectPr_;                // the section this paragraph ends
+        pendingSectPr_.clear();
         std::string pPrStr = pPr.str();
         if (!pPrStr.empty()) xml << "<w:pPr>" << pPrStr << "</w:pPr>";
         for (const std::string& name : block.bookmarks) {
@@ -2420,6 +2470,13 @@ private:
             if (block.type == RichBlockType::ListItem && WordFormatInternal::StartsNewList(blocks, index)) {
                 currentListNumId_ = AddListDefinition(index);
             }
+            // The last block of a section carries the section's properties;
+            // a table or picture cannot, so a paragraph after it does.
+            const bool endsSection = &blocks == &doc_->blocks && index + 1 < blocks.size()
+                                     && blocks[index + 1].sectionStart;
+            const bool viaParagraph = block.type != RichBlockType::Table && block.type != RichBlockType::Image
+                                      && block.type != RichBlockType::PageBreak;
+            if (endsSection && viaParagraph) pendingSectPr_ = SectionBreakXml(doc_->SectionFor(static_cast<int>(index)));
             switch (block.type) {
                 case RichBlockType::Table:
                     WriteTable(body, block);
@@ -2440,9 +2497,52 @@ private:
                     WriteParagraph(body, block);
                     break;
             }
+            if (endsSection && !viaParagraph) {
+                body << "<w:p><w:pPr>" << SectionBreakXml(doc_->SectionFor(static_cast<int>(index))) << "</w:pPr></w:p>\n";
+            }
+            pendingSectPr_.clear();
         }
         blocks_ = savedBlocks;
         return body.str();
+    }
+
+    // Sections: a paragraph's w:sectPr ends one. Its type says how the section
+    // it ends began (on a new page or continuing the page).
+    std::string pendingSectPr_;               // for the paragraph being written
+
+    static std::string SectionColumnsXml(const RichSectionSetup& section) {
+        if (section.columns <= 1) return "";
+        return "<w:cols w:num=\"" + std::to_string(section.columns) + "\" w:space=\""
+             + std::to_string(std::lround(section.columnGapPt * 20.0f)) + "\"/>";
+    }
+
+    static std::string SectionTypeXml(const RichSectionSetup& section) {
+        return std::string("<w:type w:val=\"") + (section.newPage ? "nextPage" : "continuous") + "\"/>";
+    }
+
+    std::string SectionBreakXml(const RichSectionSetup& section) const {
+        return "<w:sectPr>" + SectionTypeXml(section) + PageGeometryXml() + SectionColumnsXml(section) + "</w:sectPr>";
+    }
+
+    // The page size and margins, Word's defaults (A4, 2 cm margins) where
+    // the document states no page.
+    std::string PageGeometryXml() const {
+        const RichPageSetup& page = doc_->page;
+        auto twips = [](float pt) { return std::lround(pt * 20.0f); };
+        const bool hasPage = page.HasPage();
+        std::ostringstream xml;
+        xml << "<w:pgSz w:w=\"" << (hasPage ? twips(page.widthPt) : 11906)
+            << "\" w:h=\"" << (hasPage ? twips(page.heightPt) : 16838) << "\""
+            << (hasPage && page.widthPt > page.heightPt ? " w:orient=\"landscape\"" : "") << "/>";
+        const float headerTop = page.headerTopPt > 0.0f ? page.headerTopPt : 35.45f;
+        const float footerBottom = page.footerBottomPt > 0.0f ? page.footerBottomPt : 35.45f;
+        xml << "<w:pgMar w:top=\"" << (hasPage ? twips(page.marginTopPt) : 1134)
+            << "\" w:right=\"" << (hasPage ? twips(page.marginRightPt) : 1134)
+            << "\" w:bottom=\"" << (hasPage ? twips(page.marginBottomPt) : 1134)
+            << "\" w:left=\"" << (hasPage ? twips(page.marginLeftPt) : 1134)
+            << "\" w:header=\"" << twips(headerTop) << "\" w:footer=\"" << twips(footerBottom)
+            << "\" w:gutter=\"0\"/>";
+        return xml.str();
     }
 
     static constexpr const char* kPartNamespaces =
@@ -2533,23 +2633,14 @@ private:
         part(doc.pageFurniture.footer, "footer", "default");
         if (doc.firstPageDiffers) part(doc.firstPageFurniture.footer, "footer", "first");
 
-        // Word's defaults (A4, 2 cm margins) where the document states no page.
-        const RichPageSetup& page = doc.page;
-        auto twips = [](float pt) { return std::lround(pt * 20.0f); };
-        const bool hasPage = page.HasPage();
+        // The last section's: the one the body's own w:sectPr ends.
+        const RichSectionSetup& last = doc.SectionFor(static_cast<int>(doc.blocks.size()) - 1);
+        const bool sectioned = doc.HasColumns() || std::any_of(doc.blocks.begin(), doc.blocks.end(),
+                                                               [](const RichDocBlock& b) { return b.sectionStart; });
         std::ostringstream xml;
         xml << "<w:sectPr>" << refs.str();
-        xml << "<w:pgSz w:w=\"" << (hasPage ? twips(page.widthPt) : 11906)
-            << "\" w:h=\"" << (hasPage ? twips(page.heightPt) : 16838) << "\""
-            << (hasPage && page.widthPt > page.heightPt ? " w:orient=\"landscape\"" : "") << "/>";
-        const float headerTop = page.headerTopPt > 0.0f ? page.headerTopPt : 35.45f;
-        const float footerBottom = page.footerBottomPt > 0.0f ? page.footerBottomPt : 35.45f;
-        xml << "<w:pgMar w:top=\"" << (hasPage ? twips(page.marginTopPt) : 1134)
-            << "\" w:right=\"" << (hasPage ? twips(page.marginRightPt) : 1134)
-            << "\" w:bottom=\"" << (hasPage ? twips(page.marginBottomPt) : 1134)
-            << "\" w:left=\"" << (hasPage ? twips(page.marginLeftPt) : 1134)
-            << "\" w:header=\"" << twips(headerTop) << "\" w:footer=\"" << twips(footerBottom)
-            << "\" w:gutter=\"0\"/>";
+        if (sectioned) xml << SectionTypeXml(last);
+        xml << PageGeometryXml() << SectionColumnsXml(last);
         if (doc.firstPageDiffers) xml << "<w:titlePg/>";
         xml << "</w:sectPr>";
         return xml.str();

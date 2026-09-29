@@ -292,6 +292,7 @@ public:
         }
         LoadTrackedChanges(text->FirstChildElement("text:tracked-changes"));
         ParseBlockContainer(text, 0, "");
+        ApplySections();
         if (!doc_->notes.empty()) doc_->UpdateNoteMarks();
         LoadMetadata();
         return true;
@@ -307,6 +308,27 @@ private:
     // so break emission is gated on this flag.
     bool inMainFlow_ = true;
     bool inTableOfContents_ = false;           // paragraphs are contents entries
+    std::map<std::string, RichSectionSetup> sectionStyles_;   // section style -> columns
+    struct SectionRange { size_t start; size_t end; RichSectionSetup setup; };
+    std::vector<SectionRange> sectionRanges_;
+
+    // Sections in columns become the model's sections: one starting at the
+    // section's first block, and a single-column one after it.
+    void ApplySections() {
+        for (const SectionRange& range : sectionRanges_) {
+            RichSectionSetup setup = range.setup;
+            setup.newPage = false;
+            if (range.start == 0) doc_->firstSection = setup;
+            else {
+                doc_->blocks[range.start].sectionStart = true;
+                doc_->blocks[range.start].section = setup;
+            }
+            if (range.end < doc_->blocks.size() && !doc_->blocks[range.end].sectionStart) {
+                doc_->blocks[range.end].sectionStart = true;
+                doc_->blocks[range.end].section = RichSectionSetup{};
+            }
+        }
+    }
 
     // A paragraph of a table of contents: its level (from a "Contents N"
     // style, else its indent), and the page number after its tab made a page
@@ -611,6 +633,19 @@ private:
         if (!container) return;
         for (auto* style = container->FirstChildElement("style:style"); style;
              style = style->NextSiblingElement("style:style")) {
+            if (std::string(Attr(style, "style:family")) == "section") {
+                // A section's columns.
+                RichSectionSetup setup;
+                if (auto* sp = style->FirstChildElement("style:section-properties")) {
+                    if (auto* cols = sp->FirstChildElement("style:columns")) {
+                        setup.columns = std::clamp(cols->IntAttribute("fo:column-count", 1), 1, 9);
+                        const char* gap = Attr(cols, "fo:column-gap");
+                        if (gap && *gap) setup.columnGapPt = ParseLengthPt(gap);
+                    }
+                }
+                sectionStyles_[Attr(style, "style:name")] = setup;
+                continue;
+            }
             OdtTextProps props;
             props.parentStyleName = Attr(style, "style:parent-style-name");
             props.masterPageName = Attr(style, "style:master-page-name");
@@ -1613,7 +1648,15 @@ private:
                 // Sections switched off in the source document (template
                 // machinery like optional payment blocks) must not render.
                 if (std::string(Attr(elem, "text:display")) != "none") {
+                    // A section in columns starts a section of the model's,
+                    // and the text after it goes back to one column.
+                    auto columns = sectionStyles_.find(Attr(elem, "text:style-name"));
+                    const size_t start = doc_->blocks.size();
                     ParseBlockContainer(elem, listLevel, listStyleName);
+                    if (inMainFlow_ && columns != sectionStyles_.end() && columns->second.columns > 1
+                        && doc_->blocks.size() > start) {
+                        sectionRanges_.push_back({start, doc_->blocks.size(), columns->second});
+                    }
                 }
             } else if (tag == "draw:frame") {
                 // Page-anchored frame sitting directly in the text flow.
@@ -2589,12 +2632,39 @@ private:
     }
 
     // The blocks as ODF text elements.
+    // A section in columns, as a text:section with a section style. Only
+    // the body has sections.
+    std::string sectionStylesXml_;
+    int sectionCount_ = 0;
+    bool sectionOpen_ = false;
+
+    void UpdateSection(std::ostringstream& body, const std::vector<RichDocBlock>& blocks, size_t i) {
+        if (&blocks != &doc_->blocks) return;
+        if (i > 0 && !blocks[i].sectionStart) return;
+        if (sectionOpen_) {
+            body << "</text:section>\n";
+            sectionOpen_ = false;
+        }
+        const RichSectionSetup& setup = i == 0 ? (blocks[0].sectionStart ? blocks[0].section : doc_->firstSection)
+                                               : blocks[i].section;
+        if (i > 0 && setup.newPage) body << "<text:p text:style-name=\"PPageBreak\"/>\n";
+        if (setup.columns <= 1) return;
+        const std::string name = "Sect" + std::to_string(++sectionCount_);
+        sectionStylesXml_ += "<style:style style:name=\"" + name + "\" style:family=\"section\">"
+                             "<style:section-properties text:dont-balance-text-columns=\"true\">"
+                             "<style:columns fo:column-count=\"" + std::to_string(setup.columns)
+                           + "\" fo:column-gap=\"" + Pt(setup.columnGapPt) + "\"/></style:section-properties></style:style>\n";
+        body << "<text:section text:style-name=\"" << name << "\" text:name=\"Section" << sectionCount_ << "\">\n";
+        sectionOpen_ = true;
+    }
+
     std::string WriteBlocks(const std::vector<RichDocBlock>& blocks) {
         const std::vector<RichDocBlock>* savedBlocks = blocks_;
         blocks_ = &blocks;
         std::ostringstream body;
         size_t i = 0;
         while (i < blocks.size()) {
+            UpdateSection(body, blocks, i);
             const RichDocBlock& block = blocks[i];
             if (block.tocLevel > 0 && block.type == RichBlockType::Paragraph) {
                 // A table of contents: its entries as the index's text.
@@ -2611,6 +2681,8 @@ private:
                 body << "</text:index-body></text:table-of-content>\n";
                 continue;
             }
+            // A list or a table of contents is written as one: a section
+            // starting inside it starts after it.
             switch (block.type) {
                 case RichBlockType::Heading:
                     if (!block.styleId.empty() && doc_->FindStyle(block.styleId)) {
@@ -2678,6 +2750,10 @@ private:
                     break;
             }
         }
+        if (&blocks == &doc_->blocks && sectionOpen_) {
+            body << "</text:section>\n";
+            sectionOpen_ = false;
+        }
         blocks_ = savedBlocks;
         return body.str();
     }
@@ -2736,7 +2812,7 @@ private:
             xml << "/></style:style>\n";
         }
 
-        xml << columnStyles_ << cellStyles_ << geometryStyles_ << graphicStylesXml_;
+        xml << columnStyles_ << cellStyles_ << geometryStyles_ << graphicStylesXml_ << sectionStylesXml_;
         xml << "<style:style style:name=\"PCenter\" style:family=\"paragraph\" "
                "style:parent-style-name=\"Standard\">"
                "<style:paragraph-properties fo:text-align=\"center\"/></style:style>\n"

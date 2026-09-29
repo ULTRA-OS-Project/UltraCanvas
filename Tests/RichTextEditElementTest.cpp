@@ -1438,6 +1438,40 @@ int main() {
         edit->SetTrackChanges(false);
     }
 
+    // ===== COLUMNS =====
+    std::cerr << "\n--- Sections in columns ---" << std::endl;
+    {
+        std::string md = "Intro.\n\n";
+        for (int i = 0; i < 30; i++) md += "Paragraph " + std::to_string(i) + " with some words to fill a narrow column of text in two.\n\n";
+        edit->SetMarkdown(md);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(1, 0));
+        TEST("A section break", edit->InsertSectionBreak(false));
+        TEST("...in two columns", edit->SetSectionColumns(2) && edit->GetCurrentSection().columns == 2);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        // The section fills the first column, then the second.
+        editor.SetCaret(RichDocPosition(1, 0));
+        window->UpdateAndRender();
+        const Rect2Df first = edit->GetCaretRectForTest();
+        int second = -1;
+        Rect2Df secondRect;
+        for (int i = 2; i < editor.GetBlockCount(); i++) {
+            editor.SetCaret(RichDocPosition(i, 0));
+            window->UpdateAndRender();
+            const Rect2Df r = edit->GetCaretRectForTest();
+            if (r.x > first.x + 100.0f) { second = i; secondRect = r; break; }
+        }
+        TEST("Later paragraphs go into the second column", second > 1);
+        TEST("...which starts level with the first", second > 1 && std::abs(secondRect.y - first.y) < 60.0f);
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(second > 1 ? second : 2, 0));
+        window->UpdateAndRender();
+        TEST("Outside page view the text is one column", edit->GetCaretRectForTest().x < first.x + 100.0f);
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

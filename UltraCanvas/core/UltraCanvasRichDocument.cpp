@@ -1604,6 +1604,21 @@ std::string ShownText(const std::vector<RichTextRun>& runs) {
 
 } // namespace
 
+const RichSectionSetup& UCRichDocument::SectionFor(int index) const {
+    for (int i = std::min(index, static_cast<int>(blocks.size()) - 1); i >= 0; i--) {
+        if (blocks[static_cast<size_t>(i)].sectionStart) return blocks[static_cast<size_t>(i)].section;
+    }
+    return firstSection;
+}
+
+bool UCRichDocument::HasColumns() const {
+    if (firstSection.columns > 1) return true;
+    for (const RichDocBlock& block : blocks) {
+        if (block.sectionStart && block.section.columns > 1) return true;
+    }
+    return false;
+}
+
 bool UCRichDocument::HasTrackedChanges() const {
     bool any = false;
     ForEachBodyRuns(blocks, [&](const std::vector<RichTextRun>& runs, int) {

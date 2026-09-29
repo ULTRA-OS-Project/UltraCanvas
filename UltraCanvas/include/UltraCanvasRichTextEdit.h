@@ -450,6 +450,15 @@ public:
         editor.SetRevisionAuthor(name, CurrentIsoTime());
     }
 
+    // ===== SECTIONS =====
+    // A section break at the caret, and the caret's section in columns. In
+    // page view a section's text fills its columns one after the other, each
+    // to the foot of the page (a paragraph moves whole to the next column);
+    // outside page view the text is one column.
+    bool InsertSectionBreak(bool newPage);
+    bool SetSectionColumns(int columns, float gapPt = 36.0f);
+    RichSectionSetup GetCurrentSection() const { return editor.CurrentSection(); }
+
     // ===== TRACKED CHANGES =====
     // See UCRichDocumentEditor::SetTrackChanges. Inserted text is shown
     // underlined (style.insertionColor), deleted text struck through
@@ -470,6 +479,9 @@ public:
     void SetShowComments(bool show);
     bool IsShowingComments() const { return showComments; }
     bool IsCommentPaneVisible() const { return commentPaneShown; }
+    // The caret's rectangle, element coordinates (for tests and hosts that
+    // place a popup at the caret); empty when it is not laid out.
+    Rect2Df GetCaretRectForTest() const { return ToElement(CaretRect()); }
     // Drag and drop: on by default. A drag moves the selection; with Ctrl held
     // at the drop it copies it.
     bool enableDragAndDrop = true;
@@ -494,6 +506,11 @@ private:
     struct BlockLayout {
         std::unique_ptr<ITextLayout> layout;      // null for image/rule/break/table
         Rect2Df bounds{0, 0, 0, 0};
+        // In a section of several columns (page view): how far right of the
+        // text column's left edge its column is, and the width it was laid
+        // out at (0 = the whole column).
+        float columnX = 0.0f;
+        float builtWidth = -1.0f;
         float textLeft = 0.0f;                    // indent of the text inside bounds
         float markerLeft = 0.0f;                  // list bullet / number position
         std::string markerText;
@@ -700,7 +717,15 @@ private:
     void UpdateColumnGeometry();
     // The text column: its left edge in element coordinates and its width.
     float ColumnLeft() const { return visibleArea.x + columnOffsetX - hScrollOffset; }
-    float ColumnWidth() const { return columnWidth; }
+    float ColumnWidth() const { return columnWidthOverride > 0.0f ? columnWidthOverride : columnWidth; }
+    // Page view with multi-column sections: each body block's column width
+    // (0 = the whole text column), and whether any section has columns.
+    std::vector<float> blockColumnWidths;
+    bool hasColumns = false;
+    mutable float columnWidthOverride = 0.0f;
+    bool placingParkedBody = false;           // PlaceFurnitureBeingEdited placing the body
+    // Where a body block's column starts, in element coordinates.
+    float BlockLeft(const BlockLayout& bl) const { return ColumnLeft() + bl.columnX; }
     std::shared_ptr<FurnitureLayout> LayoutFurniture(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
                                                      int pageNumber, int pageCount);
     // Positions every block: on pages in page view, one column otherwise.

@@ -44,6 +44,10 @@
   rejects them one at a time or all at once. Insertions show underlined,
   deletions struck through, as in Word and Writer, and changes tracked in a
   .docx or .odt file now show instead of being quietly accepted.
+- **Columns in word-processing tabs.** *Columns and Sections* in the right-click
+  menu sets the text in one, two or three columns and inserts section breaks;
+  newsletters and papers set in columns in .docx and .odt files now show their
+  columns in page layout.
 - Ctrl+click on a link to a place inside the document (a "#bookmark" link)
   now goes there instead of trying to open it in a browser.
 - **The zoom box zooms a word-processing tab** (and a page wider than the

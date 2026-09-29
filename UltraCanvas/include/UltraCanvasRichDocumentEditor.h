@@ -388,6 +388,15 @@ public:
     // the reference just before or after the position.
     int NoteAt(const RichDocPosition& pos) const;
 
+    // ===== SECTIONS =====
+    // A section break before the caret's paragraph (splitting it at the
+    // caret first when the caret is inside it): what follows is a new
+    // section, like the one it was in, starting on a new page or not.
+    bool InsertSectionBreak(bool newPage);
+    // The caret's section in `columns` columns, `gapPt` apart.
+    bool SetSectionColumns(int columns, float gapPt = 36.0f);
+    RichSectionSetup CurrentSection() const;
+
     // ===== TRACKED CHANGES =====
     // With tracking on, typed and pasted text is marked inserted, and deleted
     // text stays, marked deleted, until the change is accepted (deleted text

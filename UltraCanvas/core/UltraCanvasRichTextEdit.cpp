@@ -435,17 +435,58 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
         placedFloats.clear();
         noteAreas.clear();
         std::vector<PlacedFloat> pageFloats;      // floats of the current page
+        // Sections of columns: blocks fill a column to the foot of the page,
+        // then the next column from the section's top, then the next page.
+        RichSectionSetup section = document.firstSection;
+        int columns = hasColumns ? std::max(1, section.columns) : 1;
+        int column = 0;
+        float columnTop = y;                      // where this page's columns of the section start
+        float sectionBottom = y;                  // the lowest any of them reaches
+        bool sectionFresh = false;                // at a section's top: no space before its first block
+        auto columnX = [&]() {
+            if (columns <= 1) return 0.0f;
+            const float gap = Px(section.columnGapPt);
+            const float width = (columnWidth - gap * static_cast<float>(columns - 1)) / static_cast<float>(columns);
+            return static_cast<float>(column) * (width + gap);
+        };
         auto newPage = [&]() {
             placedFloats.insert(placedFloats.end(), pageFloats.begin(), pageFloats.end());
             pageFloats.clear();
             pages.push_back(frameFor(static_cast<int>(pages.size()), count));
             y = pages.back().bodyTop;
             pageEmpty = true;
+            column = 0;
+            columnTop = sectionBottom = y;
+        };
+        auto nextColumn = [&]() {
+            if (column + 1 < columns) {
+                column++;
+                y = columnTop;
+                pageEmpty = true;
+            } else {
+                newPage();
+            }
         };
         for (int i = 0; i < blockCount; i++) {
             BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
             bl.slices.clear();
-            const float before = (!pageEmpty && i > 0) ? GapAfterBlock(i - 1) : 0.0f;
+            const RichDocBlock& sourceBlock = editor.GetBlock(i);
+            if (i > 0 && sourceBlock.sectionStart) {
+                // A new section: on a new page, or below all of the last one.
+                section = sourceBlock.section;
+                columns = hasColumns ? std::max(1, section.columns) : 1;
+                column = 0;
+                if (section.newPage && !pageEmpty) {
+                    breakPending = true;
+                } else {
+                    // Every column of the section starts at the same height.
+                    y = std::max(y, sectionBottom) + (pageEmpty ? 0.0f : GapAfterBlock(i - 1));
+                    columnTop = sectionBottom = y;
+                    sectionFresh = true;
+                }
+            }
+            const float before = (!pageEmpty && !sectionFresh && i > 0) ? GapAfterBlock(i - 1) : 0.0f;
+            sectionFresh = false;
             // Fitted round this page's pictures first: that can change its
             // height, and so whether it fits.
             float top = pageEmpty ? y : y + before;
@@ -467,7 +508,16 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
                 keepWithNext = GapAfterBlock(i) + (next.empty() ? std::min(nextHeight, pageHeightPx * 0.25f) : next.front());
             }
             const float bodyBottom = pages.back().bodyBottom;
-            if (top + bl.bounds.height + keepWithNext > bodyBottom) {
+            if (columns > 1 && top + bl.bounds.height > bodyBottom) {
+                // In columns a block moves whole to the next column, or on
+                // to the next page; one taller than a whole column stays at
+                // the top of a page's first column and runs past its foot.
+                for (int guard = 0; guard < 2 * columns + 2 && top + bl.bounds.height > pages.back().bodyBottom
+                                    && !(column == 0 && std::abs(y - pages.back().bodyTop) < 0.5f); guard++) {
+                    nextColumn();
+                    top = FlowAroundFloats(ctx, i, y, pageFloats);
+                }
+            } else if (top + bl.bounds.height + keepWithNext > bodyBottom) {
                 std::vector<float> candidates = keepWithNext > 0.0f ? std::vector<float>{} : PageBreakCandidates(i);
                 const float available = bodyBottom - top;
                 const bool someFits = !candidates.empty() && candidates.front() <= available;
@@ -517,11 +567,15 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
             }
             bl.bounds.y = bl.slices.empty() ? top : bl.slices.front().top;
             bl.bounds.x = bl.textLeft;
+            bl.columnX = columnX();
             y = BlockVisualBottom(bl);
+            sectionBottom = std::max(sectionBottom, y);
             pageEmpty = false;
             if (editor.GetBlock(i).type == RichBlockType::PageBreak) breakPending = true;
         }
-        // Endnotes after the body, going on to further pages as they need.
+        // Endnotes after the body (below all of its columns), going on to
+        // further pages as they need.
+        y = std::max(y, sectionBottom);
         const std::vector<std::string> marks = document.NoteMarks();
         std::vector<bool> placed(document.notes.size(), false);
         const float ruleSpace = NoteRuleSpace();
@@ -772,6 +826,7 @@ float UltraCanvasRichTextEdit::PlaceBlocksInColumn(IRenderContext* ctx) {
         BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
         y = FlowAroundFloats(ctx, i, y, floats);
         bl.bounds.x = bl.textLeft;
+        bl.columnX = 0.0f;
         bl.bounds.y = y;
         y += bl.bounds.height + GapAfterBlock(i);
     }
@@ -844,6 +899,7 @@ int UltraCanvasRichTextEdit::CheckboxAtPoint(const Point2Df& localPoint) const {
         if (!bl.checkbox || !bl.valid) continue;
         if (contentY < bl.bounds.y - 4.0f || contentY > bl.bounds.y + bl.bounds.height) continue;
         Rect2Df box = CheckboxRect(blocks[i], bl);
+        box.x += bl.columnX;
         // A little slack around the box: it is small, and a near miss should
         // still tick it rather than put the caret before the text.
         if (contentX >= box.x - 3.0f && contentX <= box.x + box.width + 3.0f
@@ -1264,8 +1320,15 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
 }
 
 void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockIndex) {
+    // A block in a section of columns is laid out at its column's width.
+    const bool bodyBlock = !furnitureEdit || placingParkedBody;
+    const float width = bodyBlock && static_cast<size_t>(blockIndex) < blockColumnWidths.size()
+                      ? blockColumnWidths[static_cast<size_t>(blockIndex)] : 0.0f;
+    columnWidthOverride = width;
     BuildBlockLayout(ctx, editor.GetDocument()->blocks, blockIndex,
                      blockLayouts[static_cast<size_t>(blockIndex)], blockIndex);
+    columnWidthOverride = 0.0f;
+    blockLayouts[static_cast<size_t>(blockIndex)].builtWidth = width;
 }
 
 void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
@@ -1630,6 +1693,31 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
         if (clamped != caret) editor.SetCaret(clamped, false);
     }
 
+    // Sections of several columns (page view only): each block's width.
+    // (The body's, also while a header or note is edited over it.)
+    blockColumnWidths.clear();
+    const UCRichDocument* body = furnitureEdit ? furnitureEdit->bodyEditor.GetDocument().get()
+                                               : editor.GetDocument().get();
+    hasColumns = pageView && body && body->HasColumns();
+    if (hasColumns) {
+        const UCRichDocument& document = *body;
+        blockColumnWidths.resize(document.blocks.size(), 0.0f);
+        RichSectionSetup section = document.firstSection;
+        for (size_t i = 0; i < document.blocks.size(); i++) {
+            if (document.blocks[i].sectionStart) section = document.blocks[i].section;
+            if (section.columns > 1) {
+                const float gap = Px(section.columnGapPt);
+                blockColumnWidths[i] = std::max(24.0f, (columnWidth - gap * static_cast<float>(section.columns - 1))
+                                                           / static_cast<float>(section.columns));
+            }
+        }
+    }
+    for (int i = 0; i < blockCount && !furnitureEdit; i++) {
+        BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+        const float want = static_cast<size_t>(i) < blockColumnWidths.size() ? blockColumnWidths[static_cast<size_t>(i)] : 0.0f;
+        if (bl.valid && std::abs(bl.builtWidth - want) > 0.5f) bl.valid = false;
+    }
+
     // Continuous view: full layouts only for the blocks near the viewport.
     // Blocks outside it keep the height they had (or an estimate), so a long
     // document never pays for layouts nobody is looking at. Page view needs
@@ -1720,7 +1808,7 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
     for (int i = 0; i < static_cast<int>(blockLayouts.size()); i++) {
         const BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
         if (BlockVisualBottom(bl) < viewTop) continue;
-        if (bl.bounds.y > viewBottom) break;
+        if (bl.bounds.y > viewBottom) { if (hasColumns) continue; break; }
         RenderBlock(ctx, i, bl);
     }
     DrawFloats(ctx, /*behindText*/ false);
@@ -1842,7 +1930,7 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
 void UltraCanvasRichTextEdit::RenderBlockPieces(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
                                                 int blockIndex, const BlockLayout& bl, int selectionIndex) {
     if (bl.slices.empty()) {
-        RenderBlock(ctx, blocks, blockIndex, bl, ColumnLeft(),
+        RenderBlock(ctx, blocks, blockIndex, bl, BlockLeft(bl),
                     visibleArea.y + bl.bounds.y - scrollOffset, selectionIndex);
         return;
     }
@@ -1858,13 +1946,13 @@ void UltraCanvasRichTextEdit::RenderBlockPieces(IRenderContext* ctx, const std::
         if (slice.headerHeight > 0.0f) {
             ctx->PushState();
             ctx->ClipRect(Rect2Dd(left, visibleArea.y + slice.top - scrollOffset, width, slice.headerHeight));
-            RenderBlock(ctx, blocks, blockIndex, bl, ColumnLeft(),
+            RenderBlock(ctx, blocks, blockIndex, bl, BlockLeft(bl),
                         visibleArea.y + slice.top - scrollOffset, selectionIndex);
             ctx->PopState();
         }
         ctx->PushState();
         ctx->ClipRect(Rect2Dd(left, visibleArea.y + slice.top + slice.headerHeight - scrollOffset, width, height));
-        RenderBlock(ctx, blocks, blockIndex, bl, ColumnLeft(),
+        RenderBlock(ctx, blocks, blockIndex, bl, BlockLeft(bl),
                     visibleArea.y + slice.top + slice.headerHeight - slice.from - scrollOffset, selectionIndex);
         ctx->PopState();
     }
@@ -2093,7 +2181,7 @@ void UltraCanvasRichTextEdit::DrawSelectionForNonTextBlock(IRenderContext* ctx, 
     wash.a = 110;
     // At `originY`, where this call draws the block: for a block running over
     // pages that is shifted per piece, and clipped to it.
-    ctx->DrawFilledRectangle(Rect2Dd(ColumnLeft(), originY, ColumnWidth(), bl.bounds.height),
+    ctx->DrawFilledRectangle(Rect2Dd(BlockLeft(bl), originY, bl.builtWidth > 0.0f ? bl.builtWidth : ColumnWidth(), bl.bounds.height),
                              wash, 0.0f, Colors::Transparent);
 }
 
@@ -2186,13 +2274,13 @@ void UltraCanvasRichTextEdit::ForEachImage(
         if (top > visibleArea.y + visibleArea.height || bottom < visibleArea.y) continue;
         const int index = static_cast<int>(i);
         if (blocks[i].type == RichBlockType::Image) {
-            visit(RichDocPosition(index, 0), Rect2Df(ColumnLeft() + bl.textLeft, top, bl.bounds.width, bl.bounds.height));
+            visit(RichDocPosition(index, 0), Rect2Df(BlockLeft(bl) + bl.textLeft, top, bl.bounds.width, bl.bounds.height));
             continue;
         }
-        inlineImages(bl, bl, ColumnLeft() + bl.textLeft, 0.0f, RichDocPosition(index, 0));
+        inlineImages(bl, bl, BlockLeft(bl) + bl.textLeft, 0.0f, RichDocPosition(index, 0));
         for (size_t c = 0; c < bl.cells.size(); c++) {
             const BlockLayout& cell = *bl.cells[c];
-            inlineImages(bl, cell, ColumnLeft() + cell.bounds.x + cell.textLeft, cell.bounds.y + cell.textTop,
+            inlineImages(bl, cell, BlockLeft(bl) + cell.bounds.x + cell.textLeft, cell.bounds.y + cell.textTop,
                          RichDocPosition(index, bl.cellRows[c], bl.cellColumns[c], 0));
         }
     }
@@ -2346,7 +2434,7 @@ Rect2Df UltraCanvasRichTextEdit::PositionRect(const RichDocPosition& position) c
         return Rect2Df(0, 0, 0, 0);
     }
     const BlockLayout& bl = blockLayouts[static_cast<size_t>(position.blockIndex)];
-    float x = ColumnLeft() + bl.textLeft;
+    float x = BlockLeft(bl) + bl.textLeft;
     float y = visibleArea.y + bl.bounds.y - scrollOffset;
 
     // Inside a table the caret belongs to a cell's layout, positioned at that
@@ -2354,7 +2442,7 @@ Rect2Df UltraCanvasRichTextEdit::PositionRect(const RichDocPosition& position) c
     if (const BlockLayout* cell = CellLayoutFor(position)) {
         // Where the cell's text starts, as it is drawn (padding, vertical
         // alignment).
-        const float cellX = ColumnLeft() + cell->bounds.x + cell->textLeft;
+        const float cellX = BlockLeft(bl) + cell->bounds.x + cell->textLeft;
         const float cellTop = cell->bounds.y + cell->textTop;          // in the table's layout
         if (!cell->layout) {
             return Rect2Df(cellX, visibleArea.y + BlockToContentY(bl, cell->bounds.y) - scrollOffset,
@@ -2406,18 +2494,35 @@ RichDocPosition UltraCanvasRichTextEdit::PositionFromPoint(const Point2Df& local
     float contentX = localPoint.x - ColumnLeft();
 
     int blockIndex = static_cast<int>(blockLayouts.size()) - 1;
-    for (int i = 0; i < static_cast<int>(blockLayouts.size()); i++) {
-        const BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
-        // The gap below a block belongs half to it, half to the next one.
-        const float bottom = BlockVisualBottom(bl);
-        const float nextTop = i + 1 < static_cast<int>(blockLayouts.size())
-                ? blockLayouts[static_cast<size_t>(i + 1)].bounds.y : bottom;
-        if (contentY < (bottom + nextTop) * 0.5f || contentY < bottom) {
-            blockIndex = i;
-            break;
+    if (hasColumns) {
+        // Blocks side by side in columns: the nearest one, across and down.
+        float best = -1.0f;
+        for (int i = 0; i < static_cast<int>(blockLayouts.size()); i++) {
+            const BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+            const float width = bl.builtWidth > 0.0f ? bl.builtWidth : columnWidth;
+            const float dx = std::max(0.0f, std::max(bl.columnX - contentX, contentX - (bl.columnX + width)));
+            const float dy = std::max(0.0f, std::max(bl.bounds.y - contentY, contentY - BlockVisualBottom(bl)));
+            const float distance = dx * dx * 4.0f + dy * dy;
+            if (best < 0.0f || distance < best) {
+                best = distance;
+                blockIndex = i;
+            }
+        }
+    } else {
+        for (int i = 0; i < static_cast<int>(blockLayouts.size()); i++) {
+            const BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+            // The gap below a block belongs half to it, half to the next one.
+            const float bottom = BlockVisualBottom(bl);
+            const float nextTop = i + 1 < static_cast<int>(blockLayouts.size())
+                    ? blockLayouts[static_cast<size_t>(i + 1)].bounds.y : bottom;
+            if (contentY < (bottom + nextTop) * 0.5f || contentY < bottom) {
+                blockIndex = i;
+                break;
+            }
         }
     }
     const BlockLayout& bl = blockLayouts[static_cast<size_t>(blockIndex)];
+    contentX -= bl.columnX;
 
     // A table has no layout of its own; the click lands in one of its cells.
     // The nearest cell wins, so a click in the padding between cells still puts
@@ -2471,7 +2576,7 @@ const RichTextHitRect* UltraCanvasRichTextEdit::LinkAtPoint(const Point2Df& loca
     for (const BlockLayout& bl : blockLayouts) {
         if (contentY < bl.bounds.y || contentY > BlockVisualBottom(bl)) continue;
         for (const RichTextHitRect& hit : bl.hitRects) {
-            Rect2Df box(bl.textLeft + hit.bounds.x, BlockToContentY(bl, hit.bounds.y),
+            Rect2Df box(bl.columnX + bl.textLeft + hit.bounds.x, BlockToContentY(bl, hit.bounds.y),
                         hit.bounds.width, hit.bounds.height);
             if (contentX >= box.x && contentX <= box.x + box.width
                 && contentY >= box.y && contentY <= box.y + box.height) {
@@ -2885,7 +2990,7 @@ std::vector<Rect2Df> UltraCanvasRichTextEdit::BlockRangeRects(int blockIndex,
     const BlockLayout& bl = blockLayouts[static_cast<size_t>(blockIndex)];
     if (!bl.layout || endByte <= startByte) return rects;
 
-    const float originX = ColumnLeft() + bl.textLeft;
+    const float originX = BlockLeft(bl) + bl.textLeft;
 
     for (const LayoutLineRange& line : bl.layout->GetLineByteRanges()) {
         const int from = std::max(startByte, line.startByte);
@@ -2937,7 +3042,7 @@ void UltraCanvasRichTextEdit::DrawSpellErrorMarks(IRenderContext* ctx) {
         // Blocks outside the viewport have no built layout to measure against.
         const BlockLayout& bl = blockLayouts[static_cast<size_t>(start.blockIndex)];
         if (!bl.valid || BlockVisualBottom(bl) < viewTop) continue;
-        if (bl.bounds.y > viewBottom) break;
+        if (bl.bounds.y > viewBottom) { if (hasColumns) continue; break; }
 
         for (const Rect2Df& wordBounds :
              BlockRangeRects(start.blockIndex, start.byteOffset, end.byteOffset)) {
@@ -3974,7 +4079,9 @@ float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
     // pushes the body down while it is typed, as it will once editing ends.
     std::swap(editor, furnitureEdit->bodyEditor);
     std::swap(blockLayouts, parkedLayouts);
+    placingParkedBody = true;
     const float bodyHeight = PlaceBody(ctx);
+    placingParkedBody = false;
     parkedPages = pages;
     parkedFloats = placedFloats;
     std::swap(blockLayouts, parkedLayouts);
@@ -4040,7 +4147,7 @@ void UltraCanvasRichTextEdit::RenderBodyBackdrop(IRenderContext* ctx) {
     for (size_t i = 0; i < parkedLayouts.size() && i < blocks.size(); i++) {
         const BlockLayout& bl = parkedLayouts[i];
         if (!bl.valid || BlockVisualBottom(bl) < viewTop) continue;
-        if (bl.bounds.y > viewBottom) break;
+        if (bl.bounds.y > viewBottom) { if (hasColumns) continue; break; }
         RenderBlockPieces(ctx, blocks, static_cast<int>(i), bl, -1);
     }
     for (const PlacedFloat& placed : parkedFloats) {
@@ -4333,6 +4440,24 @@ void UltraCanvasRichTextEdit::RenderNotes(IRenderContext* ctx) {
 }
 
 // ===== COMMENTS =====
+
+// ===== SECTIONS =====
+
+bool UltraCanvasRichTextEdit::InsertSectionBreak(bool newPage) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    if (!editor.InsertSectionBreak(newPage)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::SetSectionColumns(int columns, float gapPt) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    if (!editor.SetSectionColumns(columns, gapPt)) return false;
+    AfterEdit();
+    return true;
+}
 
 // ===== TRACKED CHANGES =====
 

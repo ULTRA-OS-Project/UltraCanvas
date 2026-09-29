@@ -154,3 +154,9 @@
   and ODT tracked changes are read and written - DOCX deletions used to vanish
   and insertions to be accepted on load. Text exports leave deleted text out.
   `UCRichDocumentEditor::InsertIntoRuns` is no longer static.
+- **Sections and multi-column layout.** `RichSectionSetup` (columns, gap, new
+  page), `RichDocBlock::sectionStart`/`section`, `UCRichDocument::firstSection`,
+  `SectionFor`, `HasColumns`; `InsertSectionBreak` and `SetSectionColumns` on the
+  editor and the element. Page view flows a section's text column by column.
+  DOCX `w:sectPr` section breaks with `w:cols` and ODT `text:section` columns are
+  read and written (both used to be read as one column).
