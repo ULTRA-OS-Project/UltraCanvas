@@ -34,13 +34,26 @@
   - `intro.md`, which the DemoApp shows as the module's introduction, no
     longer claims TWAIN, WIA, ONVIF or libgpiod. `Gaps.md` says which
     categories exist.
-- **CI now builds the Linux hot-plug watcher.** The Linux jobs install
-  `libudev-dev`, so configure reports `udev: ... - hot-plug watching ENABLED`
-  and `OS/Linux/UltraCanvasLinuxIODeviceWatcher.cpp` is compiled on every
-  pull request. Until now no CI build had libudev, so a compile error in the
-  watcher would have gone unnoticed. `package-linux.sh` leaves `libudev.so`
-  on the host instead of bundling it: libudev reads the running udev's
-  database, so it has to be the system's own.
+- **CI now builds IODeviceManager's optional Linux backends.** The Linux jobs
+  install `libudev-dev`, `libcups2-dev` and `libsane-dev`, so configure reports
+  the udev hot-plug watcher, the CUPS printer backend and the SANE scanner
+  backend as ENABLED. `OS/Linux/UltraCanvasLinuxIODeviceWatcher.cpp`,
+  `core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp` and
+  `OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp` are now compiled on every pull
+  request. Until now no CI build had any of the three libraries, so these
+  files compiled to nothing and a compile error in them would have gone
+  unnoticed.
+  - `package-linux.sh` leaves `libudev.so` on the host instead of bundling it:
+    libudev reads the running udev's database, so it has to be the system's
+    own.
+  - libcups and libsane are bundled like every other library. Leaving them to
+    the host would stop every packaged application from starting on a system
+    without them, because the core library links both. The Linux package
+    therefore now prints through CUPS and scans through SANE, which it could
+    not before. The bundled SANE loader still uses the host's scanner
+    drivers: Debian's libsane reads `/etc/sane.d` and searches
+    `/usr/lib/<multiarch>/sane`, `/usr/lib/sane` and `/usr/lib64/sane`, which
+    covers the Debian, Arch and Fedora layouts.
 
 #### 2026-09-29 *0.9.82*
 - **`.pl` is Perl or Prolog by what the file says, not by chance.** Perl and

@@ -316,10 +316,13 @@ jobs:
           # Build dependencies of the patched libcdr in UltraCanvas/third_party/libcdr.
           sudo apt-get install -y libboost-dev liblcms2-dev libicu-dev
           sudo apt-get install -y libzbar-dev
-          # IODeviceManager's hot-plug watcher (OS/Linux/UltraCanvasLinuxIODeviceWatcher.cpp)
-          # is compiled only when configure finds libudev; without this the
-          # watcher is never built by CI and a compile error in it goes unseen.
-          sudo apt-get install -y libudev-dev
+          # IODeviceManager's optional backends are compiled only when configure
+          # finds their library; without these CI never builds them and a
+          # compile error in one goes unseen. libudev: the hot-plug watcher
+          # (OS/Linux/UltraCanvasLinuxIODeviceWatcher.cpp). libcups: the CUPS
+          # printer backend (core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp).
+          # libsane: the SANE scanner backend (OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp).
+          sudo apt-get install -y libudev-dev libcups2-dev libsane-dev
           # UltraWin RemoteApp client (VM tier): FreeRDP is optional but
           # CI should compile it. 22.04 ships freerdp2; newer runners
           # will pick freerdp3-dev automatically once available.
