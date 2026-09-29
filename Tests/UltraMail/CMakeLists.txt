@@ -16,6 +16,7 @@ set(ULTRAMAIL_TEST_SOURCES
     test_syncengine.cpp
     test_discovery.cpp
     test_composer.cpp
+    test_richcomposer.cpp
     test_outbox.cpp
     test_scheduler.cpp
     test_oauth.cpp
