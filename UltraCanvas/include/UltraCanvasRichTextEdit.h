@@ -18,7 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 #pragma once
 

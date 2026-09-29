@@ -1,9 +1,11 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.5.0 - a formatted draft is edited in a rich text editor with a B /
+//                  I / U / list row
 // Version: 0.4.0 - flex layout that follows the window: label · input rows,
 //                  a body that takes the remaining height, an attachment row
 //                  shown only while there are attachments, and a bottom
 //                  toolbar (Send primary, Attach…, Cancel on the right).
-// Last Modified: 2026-09-09
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8

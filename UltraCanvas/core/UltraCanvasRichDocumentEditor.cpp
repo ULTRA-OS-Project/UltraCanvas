@@ -7,7 +7,7 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocumentEditor.h"

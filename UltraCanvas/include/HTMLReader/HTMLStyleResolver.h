@@ -3,8 +3,8 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once
 

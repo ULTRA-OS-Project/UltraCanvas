@@ -1,11 +1,12 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.6.0 - Reply / Forward hand over the HTML body and its pictures
 // Version: 0.5.0 - sender badge instead of the initial avatar; the cached body
 //                  is scanned on first read and the verdict stored, with a
 //                  warning strip above suspicious and scam messages.
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-09-19
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8

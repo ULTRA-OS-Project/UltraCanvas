@@ -4,6 +4,8 @@
 // building. Pure C++ / STL — no libcurl or platform dependency; other
 // charsets than UTF-8 and Latin-1 go through iconv where the build has it
 // (ULTRANET_HAS_ICONV).
+// Version: 0.3.0 - HTML messages with a text alternative and cid: pictures
+//                  (multipart/alternative + related)
 // Version: 0.2.0 - every iconv charset (ISO-2022-JP, Shift_JIS, EUC-*, GB*,
 //                  KOI8-R, windows-125x, ...), and raw ISO-2022-JP header text.
 // Author: UltraCanvas Framework / ULTRA OS

@@ -1,7 +1,8 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.8 - replies and forwards of HTML mail keep the formatting
 // Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
 //                  style, no master-password prompt); old vaults migrate once
-// Last Modified: 2026-09-13
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 

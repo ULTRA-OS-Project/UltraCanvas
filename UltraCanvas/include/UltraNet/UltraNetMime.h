@@ -11,7 +11,7 @@
 //
 // Owns structure + encodings only; presentation policy (which body to show,
 // remote-image handling, mapping attachments to viewers) stays with the caller.
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

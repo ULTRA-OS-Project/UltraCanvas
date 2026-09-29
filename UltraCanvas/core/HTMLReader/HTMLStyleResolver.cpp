@@ -1,7 +1,7 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"

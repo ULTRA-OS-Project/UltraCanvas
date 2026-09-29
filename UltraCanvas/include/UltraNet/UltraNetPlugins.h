@@ -3,7 +3,7 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
-// Version: 0.3.0 (Stage 3)
+// Version: 0.4.0 (Stage 3)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

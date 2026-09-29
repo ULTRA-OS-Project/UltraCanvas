@@ -10,8 +10,8 @@
 //
 // This is the canonical reference implementation for the
 // I<Category>ProtocolPlugin plug-in contract.
-// Version: 0.1.1
-// Last Modified: 2026-07-05
+// Version: 0.2.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>

@@ -1,5 +1,6 @@
 // Apps/UltraMail/engine/UltraMailOutbox.cpp
-// Version: 0.2.0 (Phase 2)
+// Version: 0.3.0 - keeps an HTML draft's text version and inline pictures
+//                  (migration 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOutbox.h"
 

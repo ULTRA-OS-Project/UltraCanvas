@@ -1,5 +1,6 @@
 // Apps/UltraMail/engine/UltraMailSender.cpp
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 - sends the text alternative and inline pictures of an HTML
+//                  draft
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSender.h"
 

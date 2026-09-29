@@ -2,8 +2,8 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
-// Version: 1.1.0
-// Last Modified: 2026-09-09
+// Version: 1.2.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocument.h"

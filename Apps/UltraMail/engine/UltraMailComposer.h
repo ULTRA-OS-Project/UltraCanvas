@@ -3,7 +3,8 @@
 // logic: subject prefixes (Re:/Fwd:), quoted bodies, In-Reply-To / References
 // threading headers and reply-all recipient derivation. Sending is handled
 // separately by MailSender.
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 - drafts carry a formatted body (richBody), its text version
+//                  and cid: parts; sources carry the HTML body and its pictures
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
