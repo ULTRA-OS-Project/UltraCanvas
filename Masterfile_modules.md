@@ -605,6 +605,59 @@ the backing implementation can be replaced without affecting callers.
   zoom and pan over a dark lightbox; this is the general one.
   See `Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md`.
 
+- **UltraCanvasDesktopShell** (`UltraCanvasDesktopShell.h`) — the running
+  desktop as a shell sees it: the windows other applications have open and
+  which is active, the virtual desktops, the installed applications a launcher
+  lists, a screenshot, the live state of the devices an info panel shows, and
+  the counts an application publishes for the desktop (UltraMail's unread
+  total). The module the ULTRA OS desktop (`Apps/UltraDesktop`) is built on,
+  so any application gets the same window list and the same virtual-desktop
+  switch. Reports what is *happening* (a window opened, the microphone in
+  use) and acts on windows, never on devices - which is what separates it
+  from **UltraCanvasHardwareInfo** (describes the machine; this module reads
+  its network, USB and Bluetooth lists) and **IODeviceManager** (operates
+  peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
+  (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` behind the internal
+  `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. Public surface:
+  - `ListWindows` (`DesktopWindowInfo`: id, title, WM class, icon file
+    resolved through the icon themes, desktop, pid, active, minimized,
+    skipTaskbar), `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`,
+    `CloseWindow` (through the window manager, never kill).
+  - `GetVirtualDesktopCount` / `GetCurrentVirtualDesktop` /
+    `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
+    `MoveWindowToVirtualDesktop`.
+  - `GetScreenSize`, `CaptureScreen` (PNG), `DefaultScreenshotPath`
+    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
+  - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
+    speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
+    USB device count, battery, keyboard layout, plus `warnings`.
+  - `ListApplications` (menu-visible desktop entries, user overrides system,
+    icons resolved), `LaunchApplication`, `LaunchProgram` / `FindProgram`
+    (next to this executable first, then `PATH`).
+  - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
+    `NoticesDirectory` - one atomically written JSON file per application
+    under `$XDG_RUNTIME_DIR/ultraos/notices`.
+  - `UltraCanvasDesktopShellMonitor` - `Start(onChanged)` / `Stop()` (joins),
+    `IsRunning`, `IsNative`: window list, active window and desktop changes,
+    reported on the monitor's thread.
+  See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+
+- **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
+  between two groups on one bar; one group's colour up to the curve, the next
+  group's after it. `SetColors`, `SetFlipped`, `SetVerticalBar`, `SetLength`,
+  `CreateWaveSeparator`. See `Docs/UltraCanvas/UltraCanvasWaveSeparator.md`.
+
+- **UltraCanvasToolbar item badges, reordering and scrolling**
+  (`UltraCanvasToolbar.h`, 1.5.0) — `SetItemBadge` / `SetItemBadgeCount` /
+  `SetItemBadgeDot` / `ClearItemBadge` / `GetItemBadge` anchor an
+  `UltraCanvasBadge` to an item; `EnableItemReordering` lets the user drag an
+  item along the bar (`onItemReordered(from, to)` on release) and `MoveItem` /
+  `GetItemIndex` / `GetItemOrder` / `GetItems` do the same from code;
+  `ToolbarOverflowMode::Scroll` keeps items at their size and scrolls a full
+  bar with the mouse wheel. `WindowType::Desktop` (`UltraCanvasWindow.h`) is
+  the screen-sized window at the bottom of the stack a desktop draws into.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.

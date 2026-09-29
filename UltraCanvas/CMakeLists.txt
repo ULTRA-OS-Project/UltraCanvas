@@ -470,6 +470,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasStepper.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasChip.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveSeparator.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopShell.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBusyIndicator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorSwatchBar.cpp
