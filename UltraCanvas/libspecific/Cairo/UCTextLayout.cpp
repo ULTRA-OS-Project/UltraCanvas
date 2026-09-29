@@ -8,6 +8,8 @@
 // Author: UltraCanvas Framework
 
 #include "UCTextLayout.h"
+#include <unordered_map>
+#include <mutex>
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasRenderContext.h"
@@ -555,14 +557,22 @@ namespace UltraCanvas {
                 // the visible glyphs and the extra space sits above the text, so
                 // box-centering pushed single-line labels to the top of buttons.
                 //
-                // For a single line, center the font's actual ascent+descent
-                // band instead: solve for the offset that places the baseline at
-                //   (H - (ascent + descent)) / 2 + ascent
-                // This is tight, content-independent and matches across platforms.
+                // For a single line, centre the capitals instead: put the
+                // middle of a capital letter (half-way between the cap top
+                // and the baseline) on the middle of the box. That is tight,
+                // content-independent, the same for every label in the font
+                // and matches across platforms, and it is the line a checkbox
+                // or icon centred beside the text sits on. Without a cap
+                // height to measure, centre the ascent + descent band, which
+                // is close.
+                const bool singleLine = (pango_layout_get_line_count(layout) <= 1);
+                const double capHeight = singleLine ? GetCapHeight() : 0;
                 const double ascent  = cachedAscentPU  / PANGO_SCALE_D;
                 const double descent = cachedDescentPU / PANGO_SCALE_D;
-                const bool singleLine = (pango_layout_get_line_count(layout) <= 1);
-                if (singleLine && ascent > 0 && descent > 0) {
+                if (singleLine && capHeight > 0) {
+                    const double baseline = pango_layout_get_baseline(layout) / PANGO_SCALE_D;
+                    offset = explicitHeight / 2.0 + capHeight / 2.0 - baseline;
+                } else if (singleLine && ascent > 0 && descent > 0) {
                     const double baseline = pango_layout_get_baseline(layout) / PANGO_SCALE_D;
                     offset = (explicitHeight - (ascent + descent)) / 2.0 + ascent - baseline;
                 } else {
@@ -827,6 +837,51 @@ namespace UltraCanvas {
 
     double UCTextLayout::GetBaseline() const {
         return pango_layout_get_baseline(layout) / PANGO_SCALE_D;
+    }
+
+    double UCTextLayout::GetCapHeight() {
+        // Pango's font metrics carry no cap height, so it is measured once per
+        // font from the ink of a capital H and kept: every layout in that
+        // font asks for the same number, and a menu or list asks per row.
+        static std::unordered_map<std::string, double> cache;
+        static std::mutex cacheMutex;
+
+        PangoContext* ctx = pango_layout_get_context(layout);
+        const PangoFontDescription* desc = pango_layout_get_font_description(layout);
+        if (!desc) desc = pango_context_get_font_description(ctx);
+        if (!desc) return 0;
+
+        std::string key;
+        {
+            gchar* descStr = pango_font_description_to_string(desc);
+            key = descStr ? descStr : "";
+            g_free(descStr);
+        }
+        // The pixel size of a point-sized font follows the context's resolution.
+        key += '@' + std::to_string(pango_cairo_context_get_resolution(ctx));
+
+        {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            auto found = cache.find(key);
+            if (found != cache.end()) return found->second;
+        }
+
+        double capHeight = 0;
+        PangoLayout* probe = pango_layout_new(ctx);
+        if (probe) {
+            pango_layout_set_font_description(probe, desc);
+            pango_layout_set_text(probe, "H", 1);
+            PangoRectangle ink, logical;
+            pango_layout_get_extents(probe, &ink, &logical);
+            if (ink.height > 0) {
+                capHeight = (pango_layout_get_baseline(probe) - ink.y) / PANGO_SCALE_D;
+            }
+            g_object_unref(probe);
+        }
+
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        cache.emplace(key, capHeight);
+        return capHeight;
     }
 
 //    int UCTextLayout::GetBaselinePangoUnits() const {

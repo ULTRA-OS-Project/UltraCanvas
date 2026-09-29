@@ -392,7 +392,8 @@ namespace UltraCanvas {
         Point2Di textSize = ctx->GetTextDimension(text);
         int innerLeft  = fieldRect.x + static_cast<int>(style.textPaddingH);
         int innerRight = fieldRect.x + fieldRect.width - static_cast<int>(style.textPaddingH);
-        int textY = fieldRect.y + (fieldRect.height - textSize.y) / 2;
+        // Centre the capitals on the field, as the framework's other single-line text is.
+        int textY = ctx->TextTopCentredOnCaps(fieldRect, style.fontStyle);
 
         int textX = innerLeft;
         switch (textAlignment) {

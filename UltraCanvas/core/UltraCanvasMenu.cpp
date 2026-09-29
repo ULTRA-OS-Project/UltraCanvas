@@ -8,7 +8,6 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasApplication.h"
-#include <cmath>
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasTooltipManager.h"
@@ -559,10 +558,10 @@ namespace UltraCanvas {
         ctx->SetFontStyle(item.font.value_or(style.font));
 
         int currentX = itemBounds.x + style.paddingLeft;
-        int textY = TextTopForRow(itemBounds, item.font.value_or(style.font), ctx);
+        int textY = ctx->TextTopCentredOnCaps(itemBounds, item.font.value_or(style.font));
 
         // Render checkbox/radio. The indicator is centred on the row, the same
-        // line the label's capitals are centred on (TextTopForRow), so the box
+        // line the label's capitals are centred on (TextTopCentredOnCaps), so the box
         // and the text stay level whatever the item height. It used to be
         // nudged one pixel up, which read as the box floating above the text.
         if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
@@ -768,36 +767,10 @@ namespace UltraCanvas {
         ctx->SetFontStyle(headerFont);
 
         int textX = bounds.x + style.paddingLeft;
-        int textY = TextTopForRow(bounds, headerFont, ctx);
+        int textY = ctx->TextTopCentredOnCaps(bounds, headerFont);
 
         ctx->SetTextPaint(style.headerTextColor);
         ctx->DrawText(item.label, Point2Di(textX, textY));
-    }
-
-    int UltraCanvasMenu::TextTopForRow(const Rect2Di &row, const FontStyle &font, IRenderContext *ctx) {
-        // Centre the capitals, not the line box. The line box holds the
-        // ascender and descender space too, and its centre sits above the
-        // visible glyphs of a mixed-case label, which then hung a shade below
-        // the indicator beside it. The cap height is the same for every label
-        // in a font, so the rows stay level with each other as well.
-        const double rowCentre = row.y + row.height / 2.0;
-
-        auto probe = ctx->CreateTextLayout("H", false);
-        if (probe) {
-            probe->SetFontStyle(font);
-            UCLayoutExtents ext = probe->GetLayoutExtents();
-            if (ext.ink.height > 0) {
-                // Top of the layout to the middle of a capital, in the layout's
-                // own coordinates, plus the offset DrawTextLayout adds.
-                double capCentre = (probe->GetBaseline() + ext.ink.y) / 2.0 + probe->GetLayoutVerticalOffset();
-                return static_cast<int>(std::lround(rowCentre - capCentre));
-            }
-        }
-
-        // No ink to measure (an icon font, an empty face): fall back to the line box.
-        ctx->SetFontStyle(font);
-        int fontHeight = ctx->GetTextDimension("H").y;
-        return row.y + (row.height - fontHeight) / 2;
     }
 
     void UltraCanvasMenu::RenderCheckbox(const MenuItemData &item, const Point2Di &position, IRenderContext *ctx) {

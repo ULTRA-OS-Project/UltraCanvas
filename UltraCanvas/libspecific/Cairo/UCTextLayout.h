@@ -182,6 +182,7 @@ namespace UltraCanvas {
         double GetLayoutVerticalOffset() override;
 
         double GetBaseline() const override;
+        double GetCapHeight() override;
         int GetLineCount() const override;
 
         // ===== HIT TESTING & POSITION =====

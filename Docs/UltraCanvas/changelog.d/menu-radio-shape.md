@@ -5,6 +5,16 @@
   descender space too and so put a mixed-case label a shade lower than the
   indicator. The radio dot is a filled disc rather than a stroked ring, and
   the mark greys with a disabled item.
+- **Single-line text centres on its capitals, everywhere.** A layout drawn
+  with `VerticalAlignment::Middle` in a box of known height - a button
+  label, a list-view cell, a dropdown, a tab - now puts the middle of a
+  capital letter on the middle of the box instead of the middle of the
+  font's ascent + descent band, which sat up to a pixel higher on fonts
+  with tall ascenders. Text drawn at a point gets the same line through
+  `IRenderContext::TextTopCentredOnCaps(row, font)` and
+  `GetCapCentreOffset(font)`; the menu and the spinner use them. The cap
+  height comes from `ITextLayout::GetCapHeight()`, measured once per font
+  from the ink of a capital H and cached, so no render pass measures twice.
 - **`DrawFilledRectangle` / `DrawFilledCircle` keep the border inside the
   shape.** A stroke is centred on its path, so a 1px outline on a rectangle
   with whole-pixel edges was smeared over two rows of pixels on each side

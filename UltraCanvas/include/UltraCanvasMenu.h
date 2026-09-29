@@ -373,8 +373,6 @@ namespace UltraCanvas {
         void RenderSeparator(const Rect2Di& bounds, IRenderContext* ctx);
         void RenderHeader(const MenuItemData& item, const Rect2Di& bounds, IRenderContext* ctx);
         void RenderCheckbox(const MenuItemData& item, const Point2Di& position, IRenderContext* ctx);
-        // Top-left y for text in `font` so its capitals are centred on the row.
-        int TextTopForRow(const Rect2Di& row, const FontStyle& font, IRenderContext* ctx);
         void RenderSubmenuArrow(const Point2Di& position, IRenderContext* ctx);
         void RenderIcon(const std::string& iconPath, const Point2Di& position, IRenderContext* ctx);
         void RenderShadow(IRenderContext* ctx);

@@ -190,6 +190,33 @@ ctx->SetStrokeWidth(strokeWidth);
 ctx->Stroke();
 ```
 
+## Centring text on its capitals
+
+```cpp
+double GetCapCentreOffset(const FontStyle& font);                    // layout top → middle of a capital
+int    TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
+double ITextLayout::GetCapHeight();                                  // baseline → cap top, pixels
+```
+
+A line box holds the ascender and descender space, so centring it (or the
+font's ascent + descent band) puts a mixed-case label a shade below a box
+or icon centred beside it. The framework centres single-line text on the
+middle of a capital letter instead: half-way between the cap top and the
+baseline. A layout drawn with `VerticalAlignment::Middle` into a box of
+known height does this by itself, which covers `DrawTextInRect` and so
+buttons, list cells, dropdowns and tabs. Text placed at a point with
+`DrawText` gets the same line from `TextTopCentredOnCaps`:
+
+```cpp
+ctx->SetFontStyle(font);
+int y = ctx->TextTopCentredOnCaps(rowRect, font);   // same centre line as a box centred on rowRect
+ctx->DrawText(label, Point2Di(x, y));
+```
+
+The cap height is measured once per font from the ink of a capital H and
+cached, so asking per row costs a map lookup. A font with no measurable
+ink falls back to the line box's middle.
+
 ## Text outlines
 
 ```cpp

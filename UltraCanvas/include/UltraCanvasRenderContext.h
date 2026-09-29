@@ -624,6 +624,19 @@ namespace UltraCanvas {
         // lands exactly on the rectangle's edge, on whole pixels, and the
         // outline stays inside the bounds it was given. The centre does not
         // move, so anything centred in the rectangle stays centred.
+        // Distance from the top of a single line of `font`, as DrawText and
+        // DrawTextLayout place it, to the middle of a capital letter (half-way
+        // between the cap top and the baseline). Centring text on that point
+        // rather than on its line box - which holds the ascender and descender
+        // space too - puts a mixed-case label level with a box or icon centred
+        // beside it, and the same for every label in the font, so rows stay
+        // level with each other. Measured once per font and cached.
+        double GetCapCentreOffset(const FontStyle& font);
+
+        // Top y at which to DrawText a single line of `font` so that its
+        // capitals are centred on `row`. Defined after ITextLayout below.
+        int TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
+
         static Rect2Dd InsetForStroke(const Rect2Dd& rect, float strokeWidth) {
             double inset = strokeWidth / 2.0;
             double w = rect.width - 2.0 * inset;
@@ -1002,6 +1015,10 @@ namespace UltraCanvas {
 //        void GetSize(int& widthPangoUnits, int& heightPangoUnits) const = 0;
         virtual double GetBaseline() const = 0;
 //        int GetBaselinePangoUnits() const = 0;
+        // Height of a capital letter in the layout's font, baseline to cap
+        // top, in pixels. Measured from the font once and cached, so it is
+        // the same for every layout in that font whatever text it holds.
+        virtual double GetCapHeight() = 0;
         virtual int GetLineCount() const = 0;
 
         // ===== HIT TESTING & POSITION =====
@@ -1026,6 +1043,39 @@ namespace UltraCanvas {
     inline std::unique_ptr<ITextLayout> IRenderContext::CreateTextLayout()
     {
         return CreateTextLayout("", false);
+    }
+
+    inline double IRenderContext::GetCapCentreOffset(const FontStyle& font)
+    {
+        // One entry per font this context has drawn with; a handful in practice.
+        static std::unordered_map<std::string, double> cache;
+        std::string key = font.fontFamily + '|' + std::to_string(font.fontSize) + '|' +
+                          std::to_string(static_cast<int>(font.fontWeight)) + '|' +
+                          std::to_string(static_cast<int>(font.fontSlant));
+        auto found = cache.find(key);
+        if (found != cache.end()) return found->second;
+
+        double capCentre = 0;
+        auto probe = CreateTextLayout("H", false);
+        if (probe) {
+            probe->SetFontStyle(font);
+            double capHeight = probe->GetCapHeight();
+            if (capHeight > 0) {
+                // Layout top to the middle of a capital, plus the offset
+                // DrawTextLayout adds when it places the layout.
+                capCentre = probe->GetBaseline() - capHeight / 2.0 + probe->GetLayoutVerticalOffset();
+            } else {
+                // Nothing to measure (an icon font, an empty face): the line box's middle.
+                capCentre = probe->GetLayoutHeight() / 2.0 + probe->GetLayoutVerticalOffset();
+            }
+        }
+        cache.emplace(key, capCentre);
+        return capCentre;
+    }
+
+    inline int IRenderContext::TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font)
+    {
+        return static_cast<int>(std::lround(row.y + row.height / 2.0 - GetCapCentreOffset(font)));
     }
 
     // factory
