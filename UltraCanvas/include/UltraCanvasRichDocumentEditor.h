@@ -386,6 +386,25 @@ public:
     // the reference just before or after the position.
     int NoteAt(const RichDocPosition& pos) const;
 
+    // ===== BOOKMARKS, CROSS-REFERENCES, CAPTIONS, CONTENTS =====
+    // A bookmark on the caret's paragraph (the table's, in a cell). False
+    // when the name is empty or taken.
+    bool AddBookmark(const std::string& name);
+    bool RemoveBookmark(const std::string& name);
+    // A field at the caret showing the bookmark's text (Field::Reference:
+    // "Figure 3" for a caption) or its page (Field::PageReference).
+    bool InsertCrossReference(const std::string& bookmark, RichTextRun::Field kind);
+    // A numbered caption - "Figure 2: text", the number a Sequence field - as
+    // a paragraph after the caret's block (a picture's or a table's), in the
+    // Caption style when the document has one. It is bookmarked, so it can be
+    // referred to; the bookmark's name is returned ("" on failure).
+    std::string InsertCaption(const std::string& label, const std::string& text);
+    // A table of contents of the headings of level 1..maxLevel, before the
+    // caret's paragraph (in its place when it is empty); and the same rebuilt
+    // where it is. Page numbers are PageReference fields a paged view fills.
+    bool InsertTableOfContents(int maxLevel = 3);
+    bool UpdateTableOfContents(int maxLevel = 3);
+
     // Inserts a page number (Field::PageNumber) or page count field at the
     // caret. Its text is a placeholder until a paged view numbers it.
     bool InsertField(RichTextRun::Field field);

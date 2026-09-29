@@ -485,6 +485,7 @@ namespace UltraCanvas {
         // Rows, columns, merge and split for the table the caret is in.
         std::vector<MenuItemData> BuildTableMenuItems();
         std::vector<MenuItemData> BuildStyleMenuItems(int kind);   // RichStyle::Kind
+        std::vector<MenuItemData> BuildReferenceMenuItems();
         std::vector<MenuItemData> BuildDictionaryMenuItems();
 
         // Every open editor window, so the singleton spell service can reach

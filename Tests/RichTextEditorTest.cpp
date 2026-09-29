@@ -1506,6 +1506,80 @@ static void TestAutoFormat() {
     }
 }
 
+static void TestFieldsAndContents() {
+    std::cout << "\n--- Bookmarks, captions, cross-references, contents ---\n";
+    UCRichDocumentEditor ed(MakeDocument({"Introduction", "A picture follows.", "Results", "See above."}));
+    ed.SetCaret(RichDocPosition(0, 0));
+    CHECK(ed.ApplyParagraphStyle("Heading1"));
+    ed.SetCaret(RichDocPosition(2, 0));
+    CHECK(ed.ApplyParagraphStyle("Heading2"));
+
+    // Captions number themselves in document order.
+    ed.SetCaret(RichDocPosition(1, 3));
+    const std::string second = ed.InsertCaption("Figure", "Later one");
+    ed.SetCaret(RichDocPosition(0, 2));
+    const std::string first = ed.InsertCaption("Figure", "Earlier one");
+    CHECK(!first.empty() && !second.empty() && first != second);
+    CHECK_EQ(ed.BlockText(1), std::string("Figure 1: Earlier one"));
+    CHECK_EQ(ed.BlockText(3), std::string("Figure 2: Later one"));
+    CHECK_EQ(ed.GetBlock(1).styleId, std::string("Caption"));
+
+    // A cross-reference shows the caption's label and number.
+    const int last = ed.GetBlockCount() - 1;
+    ed.SetCaret(RichDocPosition(last, ed.BlockTextLength(last)));
+    ed.InsertText(" ");
+    CHECK(ed.InsertCrossReference(second, RichTextRun::Field::Reference));
+    CHECK_EQ(ed.BlockText(last), std::string("See above. Figure 2"));
+    CHECK(!ed.InsertCrossReference("no-such-bookmark", RichTextRun::Field::Reference));
+
+    // A bookmark by name; a reference to a plain paragraph shows its text.
+    ed.SetCaret(RichDocPosition(2, 0));
+    CHECK(ed.AddBookmark("intro-text"));
+    CHECK(!ed.AddBookmark("intro-text"));
+    ed.SetCaret(RichDocPosition(last, ed.BlockTextLength(last)));
+    ed.InsertText(", ");
+    CHECK(ed.InsertCrossReference("intro-text", RichTextRun::Field::Reference));
+    CHECK(ed.BlockText(last).find("A picture follows.") != std::string::npos);
+
+    // A table of contents at the top: one entry per heading.
+    ed.SetCaret(RichDocPosition(0, 0));
+    CHECK(ed.InsertTableOfContents());
+    CHECK(ed.GetBlock(0).tocLevel == 1 && ed.GetBlock(1).tocLevel == 2);
+    CHECK(ed.BlockText(0).rfind("Introduction\t", 0) == 0);
+    CHECK(ed.BlockText(1).rfind("Results\t", 0) == 0);
+    CHECK(ed.GetBlock(2).tocLevel == 0);
+    // The entry's page number points at a bookmark on its heading.
+    const std::string target = ed.GetBlock(0).runs.back().fieldArgument;
+    CHECK(ed.GetBlock(0).runs.back().field == RichTextRun::Field::PageReference);
+    const int heading = ed.GetDocument()->FindBookmark(target);
+    CHECK(heading >= 0 && ed.GetBlock(heading).type == RichBlockType::Heading);
+    std::vector<int> pages(static_cast<size_t>(ed.GetBlockCount()), 1);
+    pages[static_cast<size_t>(heading)] = 4;
+    CHECK(ed.GetDocument()->UpdatePageReferences(pages));
+    CHECK(ed.BlockText(0) == "Introduction\t4");
+
+    // A heading added later appears when the contents are updated.
+    const int end = ed.GetBlockCount() - 1;
+    ed.SetCaret(RichDocPosition(end, ed.BlockTextLength(end)));
+    ed.SplitBlock();
+    ed.InsertText("Conclusion");
+    CHECK(ed.ApplyParagraphStyle("Heading1"));
+    CHECK(ed.UpdateTableOfContents());
+    CHECK(ed.GetBlock(2).tocLevel == 1 && ed.BlockText(2).rfind("Conclusion", 0) == 0);
+    ed.Undo();
+    CHECK(ed.GetBlock(2).tocLevel == 0);
+
+    // A pasted copy of a bookmarked paragraph does not take the bookmark.
+    const int bookmarked = ed.GetDocument()->FindBookmark("intro-text");
+    ed.SetSelection(RichDocPosition(bookmarked, 0), RichDocPosition(bookmarked + 1, 0));
+    const std::vector<RichDocBlock> copied = ed.ExtractRange(ed.GetSelectionRange());
+    ed.SetCaret(RichDocPosition(ed.GetBlockCount() - 1, 0));
+    ed.InsertBlocks(copied);
+    int count = 0;
+    for (const auto& b : ed.GetDocument()->Bookmarks()) count += b.name == "intro-text" ? 1 : 0;
+    CHECK(count == 1);
+}
+
 static void TestNamedStyles() {
     std::cout << "\n--- Named styles ---\n";
     UCRichDocumentEditor ed(MakeDocument({"Chapter one", "Body text here", "More body"}));
@@ -1615,6 +1689,7 @@ int main() {
     TestMoveRange();
     TestAutoFormat();
     TestNamedStyles();
+    TestFieldsAndContents();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

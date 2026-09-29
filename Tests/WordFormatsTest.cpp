@@ -982,6 +982,66 @@ int main(int argc, char** argv) {
         CHECK(fromMd.notes.size() == 2);
     }
 
+    // ===== 5g7. Bookmarks, captions, cross-references and contents survive ODT and DOCX =====
+    {
+        auto doc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown(
+            "# Introduction\n\nThe method.\n\n## Results\n\nSee the figure.\n"));
+        UCRichDocumentEditor editor;
+        editor.SetDocument(doc);
+        editor.SetCaret(RichDocPosition(1, 0));
+        const std::string caption = editor.InsertCaption("Figure", "The setup");
+        editor.SetCaret(RichDocPosition(editor.GetBlockCount() - 1, editor.BlockTextLength(editor.GetBlockCount() - 1)));
+        editor.InsertText(" ");
+        CHECK(editor.InsertCrossReference(caption, RichTextRun::Field::Reference));
+        editor.InsertText(" on page ");
+        CHECK(editor.InsertCrossReference(caption, RichTextRun::Field::PageReference));
+        editor.SetCaret(RichDocPosition(0, 0));
+        CHECK(editor.InsertTableOfContents());
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("fields.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            int tocEntries = 0, tocLevel2 = 0;
+            for (const auto& b : back.blocks) {
+                if (b.tocLevel > 0) tocEntries++;
+                if (b.tocLevel == 2) tocLevel2++;
+            }
+            CHECK_MSG(tocEntries == 2 && tocLevel2 == 1, std::string(ext) + " toc entries " + std::to_string(tocEntries));
+            const RichDocBlock* captionBlock = FindBlock(back, "Figure 1");
+            CHECK_MSG(captionBlock && !captionBlock->bookmarks.empty() && captionBlock->bookmarks[0] == caption, ext);
+            bool sequence = false;
+            if (captionBlock) {
+                for (const auto& r : captionBlock->runs) {
+                    sequence = sequence || (r.field == RichTextRun::Field::Sequence && r.fieldArgument == "Figure" && r.text == "1");
+                }
+            }
+            CHECK_MSG(sequence, ext);
+            const RichDocBlock* seeBlock = FindBlock(back, "See the figure.");
+            bool reference = false, pageReference = false;
+            if (seeBlock) {
+                for (const auto& r : seeBlock->runs) {
+                    reference = reference || (r.field == RichTextRun::Field::Reference && r.fieldArgument == caption
+                                              && r.text == "Figure 1");
+                    pageReference = pageReference || (r.field == RichTextRun::Field::PageReference && r.fieldArgument == caption);
+                }
+            }
+            CHECK_MSG(reference && pageReference, ext);
+            // The contents' page numbers still point at the headings.
+            bool entryPoints = false;
+            for (const auto& b : back.blocks) {
+                if (b.tocLevel != 1 || b.runs.empty()) continue;
+                const RichTextRun& number = b.runs.back();
+                const int target = back.FindBookmark(number.fieldArgument);
+                entryPoints = number.field == RichTextRun::Field::PageReference && target >= 0
+                              && back.blocks[static_cast<size_t>(target)].type == RichBlockType::Heading;
+            }
+            CHECK_MSG(entryPoints, ext);
+        }
+    }
+
     // ===== 5h. List labels: formats, templates, editing =====
     {
         CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");

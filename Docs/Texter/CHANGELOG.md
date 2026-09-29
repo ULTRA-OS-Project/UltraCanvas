@@ -29,6 +29,12 @@
   double-click on a note or its number opens it again. Footnotes sit at the
   foot of their page, and notes in .docx and .odt files now open as notes
   (ODT ones used to appear in brackets in the text) and save back as notes.
+- **Contents, captions and cross-references in word-processing tabs.** The
+  right-click menu's *References* submenu inserts and updates a table of
+  contents (its page numbers follow the pages), inserts a numbered Figure or
+  Table caption, adds a bookmark, and inserts a cross-reference to a caption or
+  bookmark - its text or its page. Ctrl+click on a contents entry goes to the
+  heading.
 - **The zoom box zooms a word-processing tab** (and a page wider than the
   window scrolls sideways). It used to change the font size of plain-text tabs
   only.

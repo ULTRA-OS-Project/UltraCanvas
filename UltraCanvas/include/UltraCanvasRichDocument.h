@@ -93,8 +93,15 @@ struct RichTextRun {
     // A field whose text depends on where it is drawn: a header's "Page 3
     // of 7". `text` holds the value it was last shown with, which is what
     // plain-text output and a view without pages use.
-    enum class Field { Plain, PageNumber, PageCount };
+    //   Sequence       a caption's number: the Nth `fieldArgument` ("Figure")
+    //                  of the document (UCRichDocument::UpdateFields)
+    //   Reference      the text of the bookmark `fieldArgument` - "Figure 3"
+    //                  when the bookmark is on a caption, else its paragraph
+    //   PageReference  the page the bookmark `fieldArgument` is on (a paged
+    //                  view fills it in; a table of contents' page numbers)
+    enum class Field { Plain, PageNumber, PageCount, Sequence, Reference, PageReference };
     Field field = Field::Plain;
+    std::string fieldArgument;
 
     static constexpr const char* kObjectReplacement = "\xEF\xBF\xBC";   // U+FFFC
 
@@ -259,6 +266,15 @@ struct RichDocBlock {
     // item's text (see UCRichDocument::ReadCheckboxPrefixes).
     bool checkbox = false;
     bool checked = false;
+
+    // Bookmarks at the start of this block: names, unique in the document,
+    // that cross-references (RichTextRun::Field::Reference/PageReference)
+    // and links to "#name" point at.
+    std::vector<std::string> bookmarks;
+    // An entry of the table of contents, for a heading of this level (1..9);
+    // 0 = an ordinary block. UCRichDocument::UpdateTableOfContents rebuilds
+    // the entries.
+    int tocLevel = 0;
 
     // The named paragraph style (UCRichDocument::styles) the block has, "" =
     // the document's default ("Normal"). Like a run's character style, its
@@ -572,6 +588,30 @@ public:
     // Sets every reference run's text to its note's mark. True when any
     // changed.
     bool UpdateNoteMarks();
+
+    // ===== BOOKMARKS, CAPTIONS, CROSS-REFERENCES, CONTENTS =====
+    struct BookmarkInfo {
+        std::string name;
+        int blockIndex = 0;
+    };
+    std::vector<BookmarkInfo> Bookmarks() const;
+    // The block a bookmark is on, or -1.
+    int FindBookmark(const std::string& name) const;
+    // `base`, or `base` with a number added, that no bookmark has yet.
+    std::string UniqueBookmarkName(const std::string& base) const;
+    // Numbers every Sequence field (per label, in document order) and sets
+    // every Reference field's text from its bookmark. True when any changed.
+    bool UpdateFields();
+    // Sets every PageReference field from the page (1-based) each body block
+    // is on. True when any changed.
+    bool UpdatePageReferences(const std::vector<int>& blockPages);
+    // The table of contents entries for the document's headings of level
+    // 1..maxLevel, each linked to its heading (headings without a bookmark
+    // are given one) and ending in its page number (a PageReference field).
+    std::vector<RichDocBlock> BuildTableOfContents(int maxLevel = 3);
+    // Replaces the first run of table of contents entries with fresh ones.
+    // False when the document has none.
+    bool UpdateTableOfContents(int maxLevel = 3);
 
     // ===== NAMED STYLES =====
     // Paragraph and character styles. A document read from a file has the

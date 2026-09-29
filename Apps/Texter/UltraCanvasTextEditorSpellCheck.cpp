@@ -475,6 +475,9 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
         items.push_back(MenuItemData::Action("Insert Endnote", [this]() {
             if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->InsertEndnote();
         }));
+        items.push_back(MenuItemData::Submenu("References", [this]() {
+            return BuildReferenceMenuItems();
+        }));
     }
 
     // A right-clicked picture is selected by the element before this runs, so
@@ -622,6 +625,80 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildTableMenuItems() {
            row + 1 < rows);
     action("Split Cell", run(&UltraCanvasRichTextEdit::SplitCurrentCell),
            richEdit->CanSplitCurrentCell());
+    return items;
+}
+
+// Contents, captions, bookmarks and cross-references for a word-processing
+// tab. A caption is a Figure under a picture and a Table under a table.
+std::vector<MenuItemData> UltraCanvasTextEditor::BuildReferenceMenuItems() {
+    std::vector<MenuItemData> items;
+    UltraCanvasRichTextEdit* richEdit = GetActiveRichEdit();
+    if (!richEdit) return items;
+    bool hasContents = false;
+    for (const RichDocBlock& block : richEdit->GetDocument()->blocks) hasContents = hasContents || block.tocLevel > 0;
+    items.push_back(MenuItemData::Action("Insert Table of Contents", [this]() {
+        if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->InsertTableOfContents();
+    }));
+    MenuItemData update = MenuItemData::Action("Update Table of Contents", [this]() {
+        if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->UpdateTableOfContents();
+    });
+    update.enabled = hasContents;
+    items.push_back(std::move(update));
+    items.push_back(MenuItemData::Separator());
+
+    const RichDocPosition caret = richEdit->GetEditor().GetCaret();
+    const bool onTable = caret.InCell() || (caret.blockIndex >= 0 && caret.blockIndex < richEdit->GetEditor().GetBlockCount()
+                                            && richEdit->GetEditor().GetBlock(caret.blockIndex).type == RichBlockType::Table);
+    const std::string label = onTable ? "Table" : "Figure";
+    items.push_back(MenuItemData::Action("Insert Caption (" + label + ")...", [this, label]() {
+        UltraCanvasDialogManager::ShowInputDialog(
+            "Caption text (the number is added and kept in order):", "Insert Caption", "", InputType::Text,
+            [this, label](DialogResult result, const std::string& text) {
+                if (result != DialogResult::OK) return;
+                if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->InsertCaption(label, text);
+            },
+            GetWindow());
+    }));
+    items.push_back(MenuItemData::Action("Add Bookmark...", [this]() {
+        UltraCanvasDialogManager::ShowInputDialog(
+            "Name for a bookmark on this paragraph:", "Add Bookmark", "", InputType::Text,
+            [this](DialogResult result, const std::string& name) {
+                if (result != DialogResult::OK) return;
+                if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->AddBookmark(name);
+            },
+            GetWindow());
+    }));
+
+    // Cross-references: the document's bookmarks and captions (not the
+    // contents' own heading marks), each as its text or its page.
+    std::vector<MenuItemData> targets;
+    const auto& document = richEdit->GetDocument();
+    for (const UCRichDocument::BookmarkInfo& bookmark : document->Bookmarks()) {
+        if (bookmark.name.rfind("_Toc", 0) == 0) continue;
+        std::string shown = bookmark.name;
+        if (shown.rfind("_Ref", 0) == 0) {
+            shown = UCRichDocument::ConcatenateRunText(document->blocks[static_cast<size_t>(bookmark.blockIndex)].runs);
+            if (shown.size() > 40) shown = shown.substr(0, 40) + "...";
+        }
+        const std::string name = bookmark.name;
+        targets.push_back(MenuItemData::Submenu(shown, [this, name]() {
+            std::vector<MenuItemData> kinds;
+            kinds.push_back(MenuItemData::Action("Its Text", [this, name]() {
+                if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->InsertCrossReference(name, false);
+            }));
+            kinds.push_back(MenuItemData::Action("Its Page Number", [this, name]() {
+                if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->InsertCrossReference(name, true);
+            }));
+            return kinds;
+        }));
+    }
+    if (targets.empty()) {
+        MenuItemData none = MenuItemData::Action("Insert Cross-Reference", []() {});
+        none.enabled = false;
+        items.push_back(std::move(none));
+    } else {
+        items.push_back(MenuItemData::Submenu("Insert Cross-Reference", targets));
+    }
     return items;
 }
 

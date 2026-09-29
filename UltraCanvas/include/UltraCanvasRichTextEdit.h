@@ -257,6 +257,21 @@ public:
     RichBlockType GetCurrentBlockType() const;
     int GetCurrentHeadingLevel() const;
 
+    // ===== BOOKMARKS, CROSS-REFERENCES, CAPTIONS, CONTENTS =====
+    // See UCRichDocumentEditor. Cross-references, caption numbers and the
+    // table of contents' page numbers keep themselves up to date as the
+    // document changes (page numbers in page view).
+    std::vector<UCRichDocument::BookmarkInfo> GetBookmarks() const { return GetDocument()->Bookmarks(); }
+    bool AddBookmark(const std::string& name);
+    bool RemoveBookmark(const std::string& name);
+    bool InsertCrossReference(const std::string& bookmark, bool pageNumber = false);
+    std::string InsertCaption(const std::string& label, const std::string& text = "");
+    bool InsertTableOfContents(int maxLevel = 3);
+    bool UpdateTableOfContents(int maxLevel = 3);
+    // Puts the caret at a bookmark and scrolls it into view. Ctrl+click on a
+    // cross-reference, a table of contents entry or a link to "#name" does it.
+    bool GoToBookmark(const std::string& name);
+
     // Structure.
     void InsertHorizontalRule();
     void InsertPageBreak();
@@ -612,6 +627,7 @@ private:
     std::vector<NoteArea> noteAreas;
     std::vector<float> pageFootnoteRoom;      // per page: height the footnotes take
     bool BeginNoteEditing(int noteIndex);
+    std::string BookmarkTargetAt(const RichDocPosition& position) const;
     bool InsertNoteOf(RichNote::Kind kind);
     // Room above the first note of a page (or of the endnotes) for its rule.
     float NoteRuleSpace() const { return static_cast<float>(style.baseFont.fontSize) * 1.2f; }

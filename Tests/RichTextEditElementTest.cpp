@@ -1329,6 +1329,42 @@ int main() {
         TEST("Outside page view the notes follow the body", edit->GetContentHeight() > 0.0f);
     }
 
+    // ===== CONTENTS AND CROSS-REFERENCES =====
+    std::cerr << "\n--- Contents and cross-references ---" << std::endl;
+    {
+        std::string words;
+        for (int i = 0; i < 500; i++) words += "word" + std::to_string(i) + " ";
+        edit->SetMarkdown("# First\n\n" + words + "\n\n# Second\n\n" + words + "\n\n# Third\n\nEnd.\n");
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 0));
+        TEST("A table of contents is inserted", edit->InsertTableOfContents());
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const std::string third = editor.BlockText(2);
+        TEST("Its page numbers are the headings' pages: " + editor.BlockText(0) + " | " + third,
+             editor.BlockText(0) == "First\t1" && third.rfind("Third\t", 0) == 0 && third != "Third\t1");
+        TEST("Several pages", edit->GetPageCount() >= 2);
+        // Ctrl+click on an entry goes to its heading: tried down the top of
+        // the first page until the third entry is hit.
+        bool reached = false;
+        for (float y = 40.0f; y < 320.0f && !reached; y += 4.0f) {
+            edit->ScrollToTop();
+            editor.SetCaret(RichDocPosition(0, 0));
+            window->UpdateAndRender();
+            UCEvent click = MouseEvent(UCEventType::MouseDown, 300.0f, y);
+            click.ctrl = true;
+            edit->OnEvent(click);
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 300.0f, y));
+            const int caretBlock = editor.GetCaret().blockIndex;
+            reached = editor.GetBlock(caretBlock).type == RichBlockType::Heading && editor.BlockText(caretBlock) == "Third";
+        }
+        TEST("Ctrl+click on an entry goes to its heading", reached);
+        window->UpdateAndRender();
+        TEST("...scrolled into view", edit->GetScrollOffset() > 100.0f);
+        edit->SetPageView(false);
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

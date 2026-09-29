@@ -126,3 +126,14 @@
   PDF export includes them. DOCX and ODT read and write them - ODT footnotes
   used to be flattened into the text in parentheses, DOCX ones were dropped -
   and Markdown reads and writes `[^1]` footnotes.
+- **Table of contents, captions, bookmarks and cross-references.** New
+  field kinds `RichTextRun::Field::Sequence`, `Reference` and `PageReference`
+  (with `fieldArgument`), paragraph bookmarks (`RichDocBlock::bookmarks`) and
+  contents entries (`RichDocBlock::tocLevel`); `UCRichDocument::UpdateFields`,
+  `UpdatePageReferences`, `BuildTableOfContents`, `UpdateTableOfContents`;
+  editor and element `InsertTableOfContents`, `UpdateTableOfContents`,
+  `InsertCaption`, `InsertCrossReference`, `AddBookmark`, `RemoveBookmark`, and
+  `UltraCanvasRichTextEdit::GoToBookmark` (Ctrl+click on an entry or a
+  reference). Caption numbers and references keep up with edits, and page view
+  fills in the pages. DOCX and ODT read and write them; the default styles
+  gain *Caption*.

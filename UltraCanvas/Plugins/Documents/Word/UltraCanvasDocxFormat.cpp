@@ -116,7 +116,20 @@ public:
             std::string tag = elem->Name() ? elem->Name() : "";
             if (tag == "w:p") ParseParagraph(elem);
             else if (tag == "w:tbl") ParseTable(elem);
+            else if (tag == "w:bookmarkStart" && std::string(Attr(elem, "w:name")) != "_GoBack") {
+                pendingBookmarks_.push_back(Attr(elem, "w:name"));
+            } else if (tag == "w:sdt") {
+                // A content control round the table of contents: its paragraphs.
+                if (auto* content = elem->FirstChildElement("w:sdtContent")) {
+                    for (auto* inner = content->FirstChildElement(); inner; inner = inner->NextSiblingElement()) {
+                        std::string innerTag = inner->Name() ? inner->Name() : "";
+                        if (innerTag == "w:p") ParseParagraph(inner);
+                        else if (innerTag == "w:tbl") ParseTable(inner);
+                    }
+                }
+            }
         }
+        pendingBookmarks_.clear();
         LoadSection(body->FirstChildElement("w:sectPr"));
         LoadNotes(RichNote::Kind::Footnote);
         LoadNotes(RichNote::Kind::Endnote);
@@ -235,6 +248,8 @@ private:
     // index into doc_->notes. Their text is read from the notes parts after
     // the body.
     std::map<std::string, int> noteIndexById_;
+    // Bookmarks started between paragraphs, for the next one.
+    std::vector<std::string> pendingBookmarks_;
 
     static const char* Attr(const tinyxml2::XMLElement* e, const char* name) {
         const char* v = e->Attribute(name);
@@ -712,19 +727,38 @@ private:
         std::string fieldInstruction;
         bool inFieldResult = false;
         RichTextRun::Field field = RichTextRun::Field::Plain;
+        std::string fieldArgument;           // SEQ's label, REF's / PAGEREF's bookmark
         // What the paragraph's style gives its text, under each run's own.
         RichStyleCharacter paragraphCharacter;
     };
 
-    // PAGE -> page number, NUMPAGES / SECTIONPAGES -> page count.
-    static RichTextRun::Field FieldForInstruction(const std::string& instruction) {
+    // PAGE -> page number, NUMPAGES / SECTIONPAGES -> page count, SEQ label
+    // -> caption number, REF / PAGEREF bookmark -> cross-reference. The
+    // label or bookmark goes to `argument`.
+    static RichTextRun::Field FieldForInstruction(const std::string& instruction,
+                                                  std::string* argument = nullptr) {
+        std::vector<std::string> words;
         std::string word;
-        for (char c : instruction) {
-            if (c == ' ' || c == '\t') { if (!word.empty()) break; continue; }
-            word.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+        for (char c : instruction + " ") {
+            if (c == ' ' || c == '\t') {
+                if (!word.empty()) words.push_back(word);
+                word.clear();
+                continue;
+            }
+            word.push_back(c);
         }
-        if (word == "PAGE") return RichTextRun::Field::PageNumber;
-        if (word == "NUMPAGES" || word == "SECTIONPAGES") return RichTextRun::Field::PageCount;
+        if (words.empty()) return RichTextRun::Field::Plain;
+        std::string name = words[0];
+        for (char& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        if (argument) argument->clear();
+        if (name == "PAGE") return RichTextRun::Field::PageNumber;
+        if (name == "NUMPAGES" || name == "SECTIONPAGES") return RichTextRun::Field::PageCount;
+        const bool sequence = name == "SEQ", reference = name == "REF", pageReference = name == "PAGEREF";
+        if ((sequence || reference || pageReference) && words.size() > 1 && words[1][0] != '\\') {
+            if (argument) *argument = words[1];
+            return sequence ? RichTextRun::Field::Sequence
+                 : reference ? RichTextRun::Field::Reference : RichTextRun::Field::PageReference;
+        }
         return RichTextRun::Field::Plain;
     }
 
@@ -892,7 +926,7 @@ private:
                     ctx.inFieldResult = false;
                     ctx.field = RichTextRun::Field::Plain;
                 } else if (type == "separate") {
-                    ctx.field = FieldForInstruction(ctx.fieldInstruction);
+                    ctx.field = FieldForInstruction(ctx.fieldInstruction, &ctx.fieldArgument);
                     ctx.inFieldResult = true;
                 } else if (type == "end") {
                     ctx.inFieldResult = false;
@@ -902,7 +936,10 @@ private:
                 if (child->GetText()) ctx.fieldInstruction += child->GetText();
             } else if (tag == "w:t") {
                 RichTextRun run = props;
-                if (ctx.inFieldResult || ctx.field != RichTextRun::Field::Plain) run.field = ctx.field;
+                if (ctx.inFieldResult || ctx.field != RichTextRun::Field::Plain) {
+                    run.field = ctx.field;
+                    if (run.field != RichTextRun::Field::Plain) run.fieldArgument = ctx.fieldArgument;
+                }
                 run.text = child->GetText() ? child->GetText() : "";
                 for (size_t at; (at = run.text.find(kKeptSpaceMarker)) != std::string::npos;) {
                     run.text.replace(at, 3, " ");
@@ -996,9 +1033,11 @@ private:
             } else if (tag == "w:fldSimple") {
                 // <w:fldSimple w:instr="PAGE"><w:r><w:t>3</w:t></w:r></w:fldSimple>
                 const RichTextRun::Field saved = ctx.field;
-                ctx.field = FieldForInstruction(Attr(child, "w:instr"));
+                const std::string savedArgument = ctx.fieldArgument;
+                ctx.field = FieldForInstruction(Attr(child, "w:instr"), &ctx.fieldArgument);
                 ParseInlineContainer(child, linkTarget, ctx);
                 ctx.field = saved;
+                ctx.fieldArgument = savedArgument;
             } else if (tag == "w:ins" || tag == "w:smartTag" || tag == "w:sdt"
                        || tag == "w:sdtContent") {
                 // Accepted tracked insertions and content-control wrappers.
@@ -1104,7 +1143,46 @@ private:
             ctx.paragraphCharacter = ParagraphStyleCharacter(p);
         }
         block.styleId = ParagraphStyleId(p);
+        // A table of contents entry: Word's "TOC 1".."TOC 9" styles (which
+        // a file may use without defining).
+        std::string rawStyle;
+        if (auto* pPr = p->FirstChildElement("w:pPr")) {
+            if (auto* pStyle = pPr->FirstChildElement("w:pStyle")) rawStyle = Attr(pStyle, "w:val");
+        }
+        if (!rawStyle.empty()) {
+            const std::string styleName = ToLower(styleNames_.count(rawStyle) ? styleNames_[rawStyle] : rawStyle);
+            for (const std::string& candidate : {styleName, ToLower(rawStyle)}) {
+                if (candidate.rfind("toc", 0) == 0) {
+                    const size_t digit = candidate.find_first_of("123456789");
+                    if (digit != std::string::npos && candidate.find_first_not_of(" 0123456789", 3) == std::string::npos) {
+                        block.tocLevel = candidate[digit] - '0';
+                        break;
+                    }
+                }
+            }
+        }
+        // Bookmarks started in the paragraph (or just before it) mark it.
+        block.bookmarks = std::move(pendingBookmarks_);
+        pendingBookmarks_.clear();
+        for (auto* child = p->FirstChildElement("w:bookmarkStart"); child;
+             child = child->NextSiblingElement("w:bookmarkStart")) {
+            const std::string name = Attr(child, "w:name");
+            if (!name.empty() && name != "_GoBack") block.bookmarks.push_back(name);
+        }
         ParseInlineContainer(p, "", ctx);
+        // A field's result may come in several runs ("Figure " "3"); the
+        // model's field is one run, whose text an update replaces whole.
+        for (size_t r = 1; r < ctx.runs.size();) {
+            RichTextRun& previous = ctx.runs[r - 1];
+            const RichTextRun& run = ctx.runs[r];
+            if (run.field != RichTextRun::Field::Plain && run.field == previous.field
+                && run.fieldArgument == previous.fieldArgument && !run.lineBreakBefore) {
+                previous.text += run.text;
+                ctx.runs.erase(ctx.runs.begin() + static_cast<std::ptrdiff_t>(r));
+            } else {
+                r++;
+            }
+        }
         block.runs = std::move(ctx.runs);
         ApplyParagraphMark(block, p->FirstChildElement("w:pPr"));
 
@@ -1610,6 +1688,8 @@ private:
         return "word/media/image" + std::to_string(mediaIndex + 1) + "." + ext;
     }
 
+    int bookmarkId_ = 0;
+
     int HyperlinkRelIndex(const std::string& url) {
         for (size_t i = 0; i < hyperlinks_.size(); ++i) {
             if (hyperlinks_[i] == url) return static_cast<int>(i);
@@ -1712,18 +1792,30 @@ private:
         flush();
     }
 
+    static std::string FieldInstruction(const RichTextRun& run) {
+        switch (run.field) {
+            case RichTextRun::Field::PageNumber: return " PAGE ";
+            case RichTextRun::Field::PageCount: return " NUMPAGES ";
+            case RichTextRun::Field::Sequence: return " SEQ " + run.fieldArgument + " \\* ARABIC ";
+            case RichTextRun::Field::Reference: return " REF " + run.fieldArgument + " \\h ";
+            case RichTextRun::Field::PageReference: return " PAGEREF " + run.fieldArgument + " \\h ";
+            default: return "";
+        }
+    }
+
     void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
         for (const auto& run : runs) {
             bool isLink = !run.linkTarget.empty();
-            if (isLink) {
+            if (isLink && run.linkTarget[0] == '#') {
+                // A link inside the document, to a bookmark.
+                xml << "<w:hyperlink w:anchor=\"" << EscapeXml(run.linkTarget.substr(1)) << "\">";
+            } else if (isLink) {
                 xml << "<w:hyperlink r:id=\"rIdLink"
                     << (HyperlinkRelIndex(run.linkTarget) + 1) << "\">";
             }
             if (run.field != RichTextRun::Field::Plain) {
                 // A page number or count: a simple field showing its last value.
-                xml << "<w:fldSimple w:instr=\""
-                    << (run.field == RichTextRun::Field::PageNumber ? " PAGE " : " NUMPAGES ")
-                    << "\"><w:r>";
+                xml << "<w:fldSimple w:instr=\"" << EscapeXml(FieldInstruction(run)) << "\"><w:r>";
                 WriteRunProperties(xml, run, false);
                 WriteRunText(xml, run.text);
                 xml << "</w:r></w:fldSimple>";
@@ -1840,6 +1932,8 @@ private:
         const bool named = !block.styleId.empty() && doc_->FindStyle(block.styleId);
         if (named && block.type != RichBlockType::ListItem && block.type != RichBlockType::HorizontalRule) {
             pPr << "<w:pStyle w:val=\"" << EscapeXml(block.styleId) << "\"/>";
+        } else if (block.tocLevel > 0 && block.type == RichBlockType::Paragraph) {
+            pPr << "<w:pStyle w:val=\"TOC" << std::clamp(block.tocLevel, 1, 9) << "\"/>";
         } else if (block.type == RichBlockType::Heading) {
             pPr << "<w:pStyle w:val=\"Heading" << std::clamp(block.headingLevel, 1, 6)
                 << "\"/>";
@@ -1875,6 +1969,11 @@ private:
         }
         std::string pPrStr = pPr.str();
         if (!pPrStr.empty()) xml << "<w:pPr>" << pPrStr << "</w:pPr>";
+        for (const std::string& name : block.bookmarks) {
+            const int id = ++bookmarkId_;
+            xml << "<w:bookmarkStart w:id=\"" << id << "\" w:name=\"" << EscapeXml(name)
+                << "\"/><w:bookmarkEnd w:id=\"" << id << "\"/>";
+        }
 
         if (block.type == RichBlockType::CodeBlock) {
             // Collapse per-line runs into one monospace run with breaks.

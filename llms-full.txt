@@ -43815,6 +43815,37 @@ DOCX (`styles.xml`, `w:pStyle`, `w:rStyle`) and ODT (`office:styles`, text and
 paragraph style names, Writer's "Standard" and "Heading_20_N" read as Normal
 and HeadingN) keep them both ways.
 
+### Contents, captions, bookmarks and cross-references
+
+```cpp
+editor->InsertTableOfContents();                 // headings 1-3, before the caret's paragraph
+std::string fig = editor->InsertCaption("Figure", "The test rig");   // under the picture at the caret
+editor->InsertCrossReference(fig);               // "Figure 1" - renumbers with the captions
+editor->InsertCrossReference(fig, /*pageNumber*/ true);
+editor->AddBookmark("method");                   // on the caret's paragraph
+editor->GoToBookmark("method");
+editor->UpdateTableOfContents();                 // after headings were added or renamed
+```
+
+A caption is a paragraph ("Figure 2: text", in the *Caption* style) whose
+number is a `RichTextRun::Field::Sequence` field: captions number themselves
+per label in document order, and a new one before the others moves them all
+on. A cross-reference (`Field::Reference`) shows its bookmark's caption label
+and number, or the bookmarked paragraph's text; `Field::PageReference` shows
+its page. A table of contents is a run of paragraphs with
+`RichDocBlock::tocLevel`, one per heading, each ending in a page reference to
+a bookmark on its heading (headings without one are given one): in page view
+the numbers are the pages the headings are on, and they follow every edit.
+`UpdateTableOfContents()` rebuilds the entries (new, renamed or removed
+headings); it is one undo step. Ctrl+click on an entry, a cross-reference or a
+link to `#name` goes there. Bookmarks (`RichDocBlock::bookmarks`) are
+paragraph-level; a pasted copy of a bookmarked paragraph does not take its
+bookmark. DOCX (`SEQ`, `REF`, `PAGEREF`, `w:bookmarkStart`, TOC-styled
+paragraphs, `w:hyperlink w:anchor`) and ODT (`text:sequence`,
+`text:bookmark-ref`, `text:bookmark`, `text:table-of-content`) read and write
+all of it; a LibreOffice table of contents' page numbers become page
+references to its headings on the way in.
+
 ### Tables
 
 The caret goes inside table cells: click into one, type, select, format, and

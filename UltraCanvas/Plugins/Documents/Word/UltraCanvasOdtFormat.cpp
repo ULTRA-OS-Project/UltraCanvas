@@ -305,6 +305,49 @@ private:
     // not start a new page (ODF/CSS fragmentation applies to in-flow boxes),
     // so break emission is gated on this flag.
     bool inMainFlow_ = true;
+    bool inTableOfContents_ = false;           // paragraphs are contents entries
+
+    // A paragraph of a table of contents: its level (from a "Contents N"
+    // style, else its indent), and the page number after its tab made a page
+    // reference to the heading its link points at, so it keeps itself right.
+    void MakeContentsEntry(RichDocBlock& block, const std::string& styleName) {
+        int level = 0;
+        for (const std::string& candidate : {WordFormatInternal::ToLower(styleName),
+                                             WordFormatInternal::ToLower(ParentStyleName(styleName))}) {
+            if (candidate.find("contents") == std::string::npos && candidate.find("toc") == std::string::npos) continue;
+            const size_t digit = candidate.find_last_of("123456789");
+            if (digit != std::string::npos) { level = candidate[digit] - '0'; break; }
+        }
+        if (level <= 0) level = 1 + static_cast<int>(std::lround(std::max(0.0f, block.leftIndentPt) / 12.0f));
+        block.tocLevel = std::clamp(level, 1, 9);
+        std::string target;
+        for (const RichTextRun& run : block.runs) {
+            if (run.linkTarget.size() > 1 && run.linkTarget[0] == '#') target = run.linkTarget.substr(1);
+            if (run.field == RichTextRun::Field::PageReference) return;
+        }
+        if (target.empty() || block.runs.empty()) return;
+        RichTextRun& last = block.runs.back();
+        std::string digits = last.text;
+        const size_t tab = digits.find_last_of('\t');
+        std::string before;
+        if (tab != std::string::npos) {
+            before = digits.substr(0, tab + 1);
+            digits = digits.substr(tab + 1);
+        }
+        if (digits.empty() || digits.find_first_not_of("0123456789") != std::string::npos) return;
+        RichTextRun number = last;
+        number.text = digits;
+        number.field = RichTextRun::Field::PageReference;
+        number.fieldArgument = target;
+        number.linkTarget.clear();
+        number.lineBreakBefore = before.empty() && last.lineBreakBefore;
+        if (before.empty()) {
+            last = number;
+        } else {
+            last.text = before;
+            block.runs.push_back(number);
+        }
+    }
     std::map<std::string, OdtTextProps> styles_;
     std::set<std::string> namedStyles_;          // ODF names of the office:styles styles
     // list style name -> (level -> ordered?)
@@ -696,6 +739,11 @@ private:
         }
     }
 
+    std::string ParentStyleName(const std::string& styleName) const {
+        auto found = styles_.find(styleName);
+        return found != styles_.end() ? found->second.parentStyleName : "";
+    }
+
     // The named style a paragraph or span has: its own style when that is a
     // named one, else the named style its automatic style is based on. As a
     // model id; "" for none.
@@ -816,6 +864,7 @@ private:
         std::vector<tinyxml2::XMLElement*> textBoxes;
         bool pendingLineBreak = false;
         bool endsInCollapsibleSpace = false;   // last text ended in XML whitespace
+        std::vector<std::string> bookmarks;    // text:bookmark(-start) names met
     };
 
     // ODF white-space handling (ODF 1.3 part 3, 6.1.2) for character data
@@ -1004,6 +1053,28 @@ private:
                 }
             } else if (tag == "text:line-break") {
                 ctx.pendingLineBreak = true;
+            } else if (tag == "text:bookmark" || tag == "text:bookmark-start") {
+                const std::string name = Attr(elem, "text:name");
+                if (!name.empty()) ctx.bookmarks.push_back(name);
+            } else if (tag == "text:bookmark-end") {
+                // The bookmark is the paragraph's; where it ends is not kept.
+            } else if (tag == "text:sequence" || tag == "text:bookmark-ref") {
+                // A caption number, or a cross-reference to a bookmark's text
+                // or page.
+                std::string shown = ElementText(elem);
+                if (shown.empty()) shown = "1";
+                AppendRun(ctx, shown, props, linkTarget);
+                if (!ctx.runs.empty()) {
+                    RichTextRun& run = ctx.runs.back();
+                    if (tag == "text:sequence") {
+                        run.field = RichTextRun::Field::Sequence;
+                        run.fieldArgument = Attr(elem, "text:name");
+                    } else {
+                        run.field = std::string(Attr(elem, "text:reference-format")) == "page"
+                                  ? RichTextRun::Field::PageReference : RichTextRun::Field::Reference;
+                        run.fieldArgument = Attr(elem, "text:ref-name");
+                    }
+                }
             } else if (tag == "draw:frame") {
                 ParseFrame(elem, props, linkTarget, ctx);
             } else if (tag == "text:note") {
@@ -1046,6 +1117,16 @@ private:
     }
 
     // Emits a paragraph-family block plus any images found within it.
+    // An element's text, nested spans included.
+    static std::string ElementText(tinyxml2::XMLElement* elem) {
+        std::string text;
+        for (auto* node = elem->FirstChild(); node; node = node->NextSibling()) {
+            if (auto* textNode = node->ToText()) text += textNode->Value() ? textNode->Value() : "";
+            else if (auto* child = node->ToElement()) text += ElementText(child);
+        }
+        return text;
+    }
+
     void EmitParagraphBlock(tinyxml2::XMLElement* elem, RichDocBlock block) {
         std::string styleName = Attr(elem, "text:style-name");
         OdtTextProps paraProps = ResolveStyle(styleName);
@@ -1084,6 +1165,8 @@ private:
         InlineContext ctx;
         ParseInlineNodes(elem, runBase, "", ctx);
         block.runs = std::move(ctx.runs);
+        block.bookmarks = std::move(ctx.bookmarks);
+        if (inTableOfContents_ && block.type == RichBlockType::Paragraph) MakeContentsEntry(block, styleName);
 
         bool pageBreak = inMainFlow_ && paraProps.pageBreakBefore;
         if (pageBreak) {
@@ -1449,7 +1532,10 @@ private:
                 // element) and the text it was last built into (index-body).
                 // The body is what the document shows.
                 if (auto* indexBody = elem->FirstChildElement("text:index-body")) {
+                    const bool saved = inTableOfContents_;
+                    inTableOfContents_ = tag == "text:table-of-content";
                     ParseBlockContainer(indexBody, listLevel, listStyleName);
+                    inTableOfContents_ = saved;
                 }
             } else if (tag == "text:index-title") {
                 ParseBlockContainer(elem, listLevel, listStyleName);
@@ -1699,6 +1785,7 @@ private:
     UCZipPackageWriter zip_;
     const UCRichDocument* doc_ = nullptr;
     int noteCounter_ = 0;                 // text:note ids, ftn1 / edn2 ...
+    int tocCount_ = 0;
     const std::vector<RichDocBlock>* blocks_ = nullptr;   // the blocks being written (body or furniture)
     int tableCount_ = 0;
     std::string pageLayout_;                // style:page-layout for the master page
@@ -1853,6 +1940,15 @@ private:
                 body = "<text:page-number text:select-page=\"current\">" + body + "</text:page-number>";
             } else if (run.field == RichTextRun::Field::PageCount) {
                 body = "<text:page-count>" + body + "</text:page-count>";
+            } else if (run.field == RichTextRun::Field::Sequence) {
+                const std::string name = EscapeXml(run.fieldArgument);
+                body = "<text:sequence text:name=\"" + name + "\" text:formula=\"ooow:" + name
+                     + "+1\" style:num-format=\"1\">" + body + "</text:sequence>";
+            } else if (run.field == RichTextRun::Field::Reference
+                       || run.field == RichTextRun::Field::PageReference) {
+                body = std::string("<text:bookmark-ref text:reference-format=\"")
+                     + (run.field == RichTextRun::Field::PageReference ? "page" : "text")
+                     + "\" text:ref-name=\"" + EscapeXml(run.fieldArgument) + "\">" + body + "</text:bookmark-ref>";
             }
             if (!styleName.empty()) {
                 body = "<text:span text:style-name=\"" + styleName + "\">" + body + "</text:span>";
@@ -2015,8 +2111,13 @@ private:
         }
     }
 
+    static void WriteBookmarks(std::ostringstream& xml, const RichDocBlock& block) {
+        for (const std::string& name : block.bookmarks) xml << "<text:bookmark text:name=\"" << EscapeXml(name) << "\"/>";
+    }
+
     void WriteParagraph(std::ostringstream& xml, const RichDocBlock& block) {
         xml << "<text:p text:style-name=\"" << ParagraphStyleFor(block) << "\">";
+        WriteBookmarks(xml, block);
         WriteRuns(xml, block.runs);
         xml << "</text:p>\n";
     }
@@ -2277,6 +2378,21 @@ private:
         size_t i = 0;
         while (i < blocks.size()) {
             const RichDocBlock& block = blocks[i];
+            if (block.tocLevel > 0 && block.type == RichBlockType::Paragraph) {
+                // A table of contents: its entries as the index's text.
+                size_t end = i;
+                int deepest = 1;
+                while (end < blocks.size() && blocks[end].tocLevel > 0 && blocks[end].type == RichBlockType::Paragraph) {
+                    deepest = std::max(deepest, blocks[end].tocLevel);
+                    ++end;
+                }
+                body << "<text:table-of-content text:name=\"Table of Contents" << ++tocCount_
+                     << "\"><text:table-of-content-source text:outline-level=\"" << deepest
+                     << "\"/><text:index-body>\n";
+                for (; i < end; ++i) WriteParagraph(body, blocks[i]);
+                body << "</text:index-body></text:table-of-content>\n";
+                continue;
+            }
             switch (block.type) {
                 case RichBlockType::Heading:
                     if (!block.styleId.empty() && doc_->FindStyle(block.styleId)) {
@@ -2285,6 +2401,7 @@ private:
                         body << "<text:h text:style-name=\"Heading_20_" << std::clamp(block.headingLevel, 1, 6) << "\"";
                     }
                     body << " text:outline-level=\"" << std::clamp(block.headingLevel, 1, 6) << "\">";
+                    WriteBookmarks(body, block);
                     WriteRuns(body, block.runs);
                     body << "</text:h>\n";
                     ++i;

@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <locale>
+#include <map>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -1568,6 +1569,168 @@ bool UCRichDocument::UpdateNoteMarks() {
     return changed;
 }
 
+// ===== BOOKMARKS, CAPTIONS, CROSS-REFERENCES, CONTENTS =====
+
+namespace {
+
+// Every run list of the body (paragraphs and table cells) with its block.
+template <typename Blocks, typename Visit>
+void ForEachBodyRuns(Blocks& blocks, Visit visit) {
+    for (size_t b = 0; b < blocks.size(); b++) {
+        visit(blocks[b].runs, static_cast<int>(b));
+        for (auto& row : blocks[b].tableRows) {
+            for (auto& cell : row.cells) visit(cell.runs, static_cast<int>(b));
+        }
+    }
+}
+
+// A paragraph's text as a reference or a contents entry shows it: no object
+// placeholders, no line breaks, trimmed.
+std::string ShownText(const std::vector<RichTextRun>& runs) {
+    std::string text;
+    for (const RichTextRun& run : runs) {
+        if (run.IsInlineImage() || run.IsNoteReference()) continue;
+        if (run.lineBreakBefore && !text.empty()) text += ' ';
+        text += run.text;
+    }
+    for (size_t at; (at = text.find('\t')) != std::string::npos;) text[at] = ' ';
+    const size_t first = text.find_first_not_of(' ');
+    if (first == std::string::npos) return "";
+    return text.substr(first, text.find_last_not_of(' ') - first + 1);
+}
+
+} // namespace
+
+std::vector<UCRichDocument::BookmarkInfo> UCRichDocument::Bookmarks() const {
+    std::vector<BookmarkInfo> out;
+    for (size_t b = 0; b < blocks.size(); b++) {
+        for (const std::string& name : blocks[b].bookmarks) out.push_back({name, static_cast<int>(b)});
+    }
+    return out;
+}
+
+int UCRichDocument::FindBookmark(const std::string& name) const {
+    if (name.empty()) return -1;
+    for (size_t b = 0; b < blocks.size(); b++) {
+        for (const std::string& mark : blocks[b].bookmarks) {
+            if (mark == name) return static_cast<int>(b);
+        }
+    }
+    return -1;
+}
+
+std::string UCRichDocument::UniqueBookmarkName(const std::string& base) const {
+    if (!base.empty() && FindBookmark(base) < 0) return base;
+    for (int n = 1;; n++) {
+        const std::string name = base + std::to_string(n);
+        if (FindBookmark(name) < 0) return name;
+    }
+}
+
+bool UCRichDocument::UpdateFields() {
+    bool changed = false;
+    std::map<std::string, int> counters;
+    std::map<int, std::string> captions;          // block -> "Figure 3"
+    ForEachBodyRuns(blocks, [&](std::vector<RichTextRun>& runs, int block) {
+        for (RichTextRun& run : runs) {
+            if (run.field != RichTextRun::Field::Sequence) continue;
+            const std::string number = std::to_string(++counters[run.fieldArgument]);
+            if (run.text != number) {
+                run.text = number;
+                changed = true;
+            }
+            if (!captions.count(block)) captions[block] = run.fieldArgument + " " + number;
+        }
+    });
+    ForEachBodyRuns(blocks, [&](std::vector<RichTextRun>& runs, int) {
+        for (RichTextRun& run : runs) {
+            if (run.field != RichTextRun::Field::Reference) continue;
+            const int target = FindBookmark(run.fieldArgument);
+            if (target < 0) continue;              // left as last shown
+            auto caption = captions.find(target);
+            std::string value = caption != captions.end() ? caption->second
+                                                           : ShownText(blocks[static_cast<size_t>(target)].runs);
+            if (value.empty()) value = run.fieldArgument;
+            if (run.text != value) {
+                run.text = value;
+                changed = true;
+            }
+        }
+    });
+    return changed;
+}
+
+bool UCRichDocument::UpdatePageReferences(const std::vector<int>& blockPages) {
+    bool changed = false;
+    ForEachBodyRuns(blocks, [&](std::vector<RichTextRun>& runs, int) {
+        for (RichTextRun& run : runs) {
+            if (run.field != RichTextRun::Field::PageReference) continue;
+            const int target = FindBookmark(run.fieldArgument);
+            if (target < 0 || target >= static_cast<int>(blockPages.size())) continue;
+            const std::string page = std::to_string(blockPages[static_cast<size_t>(target)]);
+            if (run.text != page) {
+                run.text = page;
+                changed = true;
+            }
+        }
+    });
+    return changed;
+}
+
+std::vector<RichDocBlock> UCRichDocument::BuildTableOfContents(int maxLevel) {
+    std::vector<RichDocBlock> entries;
+    // The page numbers line up at the text column's right edge.
+    const float columnPt = page.HasPage() ? page.widthPt - page.marginLeftPt - page.marginRightPt
+                                          : 595.3f - 2.0f * 56.7f;
+    for (RichDocBlock& block : blocks) {
+        if (block.type != RichBlockType::Heading || block.tocLevel > 0) continue;
+        if (block.headingLevel < 1 || block.headingLevel > maxLevel) continue;
+        const std::string text = ShownText(block.runs);
+        if (text.empty()) continue;
+        if (block.bookmarks.empty()) block.bookmarks.push_back(UniqueBookmarkName("_Toc"));
+        const std::string target = block.bookmarks.front();
+
+        RichDocBlock entry;
+        entry.tocLevel = block.headingLevel;
+        const std::string style = "TOC" + std::to_string(block.headingLevel);
+        if (FindStyle(style)) entry.styleId = style;
+        entry.leftIndentPt = 12.0f * static_cast<float>(block.headingLevel - 1);
+        entry.tabStops.push_back({std::max(columnPt, 72.0f), RichTabKind::Right});
+        RichTextRun title;
+        title.text = text;
+        RichTextRun tab;
+        tab.text = "\t";
+        RichTextRun pageNumber;
+        pageNumber.field = RichTextRun::Field::PageReference;
+        pageNumber.fieldArgument = target;
+        pageNumber.text = "1";
+        entry.runs = {title, tab, pageNumber};
+        entries.push_back(std::move(entry));
+    }
+    if (entries.empty()) {
+        // Kept as a one-line placeholder, so the next update finds its place.
+        RichDocBlock entry;
+        entry.tocLevel = 1;
+        RichTextRun note;
+        note.text = "No headings found.";
+        entry.runs = {note};
+        entries.push_back(std::move(entry));
+    }
+    return entries;
+}
+
+bool UCRichDocument::UpdateTableOfContents(int maxLevel) {
+    size_t first = 0;
+    while (first < blocks.size() && blocks[first].tocLevel <= 0) first++;
+    if (first == blocks.size()) return false;
+    size_t end = first;
+    while (end < blocks.size() && blocks[end].tocLevel > 0) end++;
+    std::vector<RichDocBlock> entries = BuildTableOfContents(maxLevel);
+    blocks.erase(blocks.begin() + static_cast<std::ptrdiff_t>(first), blocks.begin() + static_cast<std::ptrdiff_t>(end));
+    blocks.insert(blocks.begin() + static_cast<std::ptrdiff_t>(first), entries.begin(), entries.end());
+    return true;
+}
+
 // ===== NAMED STYLES =====
 
 void RichStyleCharacter::ApplyTo(RichTextRun& run) const {
@@ -1709,6 +1872,12 @@ std::vector<RichStyle> UCRichDocument::DefaultStyles() {
         RichStyle& code = paragraph("CodeBlock", "Code", "Normal");
         code.character.code = true;
         code.character.fontFamily = "Courier New";
+    }
+    {
+        RichStyle& caption = paragraph("Caption", "Caption", "Normal");
+        caption.character.italic = true;
+        caption.character.fontSizePt = 9.0f;
+        caption.paragraph.spaceAfterPt = 10.0f;
     }
     auto character = [&](const std::string& id, const std::string& name) -> RichStyle& {
         RichStyle style;

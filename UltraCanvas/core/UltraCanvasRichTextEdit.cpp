@@ -734,6 +734,13 @@ bool UltraCanvasRichTextEdit::UpdateBodyPageFields() {
             changed = true;
         }
     }
+    // Cross-references to a page, and the table of contents' page numbers.
+    std::vector<int> blockPages(std::min(document->blocks.size(), blockLayouts.size()));
+    for (size_t i = 0; i < blockPages.size(); i++) blockPages[i] = PageIndexAt(blockLayouts[i].bounds.y) + 1;
+    if (document->UpdatePageReferences(blockPages)) {
+        for (size_t i = 0; i < blockLayouts.size(); i++) blockLayouts[i].valid = false;
+        changed = true;
+    }
     if (changed) {
         // A caret past a number that got shorter is brought back inside it.
         const RichDocPosition caret = editor.GetCaret();
@@ -1584,8 +1591,11 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
 
     // Note marks number themselves in document order; a reference added,
     // moved or removed renumbers the others.
-    if (!furnitureEdit && editor.GetDocument() && !editor.GetDocument()->notes.empty()
-        && editor.GetDocument()->UpdateNoteMarks()) {
+    // So do caption numbers and cross-references.
+    bool fieldsChanged = false;
+    if (!furnitureEdit && editor.GetDocument()) fieldsChanged = editor.GetDocument()->UpdateFields();
+    if (!furnitureEdit && editor.GetDocument()
+        && ((!editor.GetDocument()->notes.empty() && editor.GetDocument()->UpdateNoteMarks()) || fieldsChanged)) {
         for (auto& bl : blockLayouts) bl.valid = false;
         const RichDocPosition caret = editor.GetCaret();
         const RichDocPosition clamped = editor.ClampPosition(caret);
@@ -3094,8 +3104,15 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
 
     if (const RichTextHitRect* link = LinkAtPoint(ToDocument(event.pointer))) {
         // Ctrl+click follows a link; a plain click places the caret, so a link
-        // stays editable text rather than a trap.
+        // stays editable text rather than a trap. A link to "#name" inside
+        // the document goes to that bookmark unless the host takes it.
         if (event.ctrl && onLinkClicked && onLinkClicked(link->linkTarget)) return true;
+        if (event.ctrl && link->linkTarget.size() > 1 && link->linkTarget[0] == '#'
+            && GoToBookmark(link->linkTarget.substr(1))) return true;
+    }
+    if (event.ctrl && !furnitureEdit) {
+        const std::string target = BookmarkTargetAt(PositionFromPoint(ToDocument(event.pointer)));
+        if (!target.empty() && GoToBookmark(target)) return true;
     }
 
     RichDocPosition position = PositionFromPoint(ToDocument(event.pointer));
@@ -3584,6 +3601,90 @@ bool UltraCanvasRichTextEdit::ApplyParagraphStyle(const std::string& id) {
     if (readOnly || !editor.ApplyParagraphStyle(id)) return false;
     AfterEdit();
     return true;
+}
+
+bool UltraCanvasRichTextEdit::AddBookmark(const std::string& name) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    if (!editor.AddBookmark(name)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::RemoveBookmark(const std::string& name) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    if (!editor.RemoveBookmark(name)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::InsertCrossReference(const std::string& bookmark, bool pageNumber) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    if (!editor.InsertCrossReference(bookmark, pageNumber ? RichTextRun::Field::PageReference
+                                                          : RichTextRun::Field::Reference)) return false;
+    AfterEdit();
+    return true;
+}
+
+std::string UltraCanvasRichTextEdit::InsertCaption(const std::string& label, const std::string& text) {
+    if (readOnly) return "";
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    const std::string name = editor.InsertCaption(label, text);
+    if (!name.empty()) AfterEdit();
+    return name;
+}
+
+bool UltraCanvasRichTextEdit::InsertTableOfContents(int maxLevel) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    if (!editor.InsertTableOfContents(maxLevel)) return false;
+    InvalidateDocument();
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::UpdateTableOfContents(int maxLevel) {
+    if (readOnly) return false;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    if (!editor.UpdateTableOfContents(maxLevel)) return false;
+    InvalidateDocument();
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::GoToBookmark(const std::string& name) {
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    const int block = editor.GetDocument()->FindBookmark(name);
+    if (block < 0) return false;
+    editor.SetCaret(RichDocPosition(block, 0));
+    caretMoved = true;
+    AfterSelectionChange();
+    RequestRedraw();
+    return true;
+}
+
+// The bookmark a Ctrl+click at `position` leads to: a cross-reference's, or
+// that of the table of contents entry clicked; "" for none.
+std::string UltraCanvasRichTextEdit::BookmarkTargetAt(const RichDocPosition& position) const {
+    if (position.InCell() || position.blockIndex < 0 || position.blockIndex >= editor.GetBlockCount()) return "";
+    const RichDocBlock& block = editor.GetBlock(position.blockIndex);
+    int offset = 0;
+    for (const RichTextRun& run : block.runs) {
+        const int start = offset + (run.lineBreakBefore ? 1 : 0);
+        const int end = start + static_cast<int>(run.text.size());
+        const bool reference = run.field == RichTextRun::Field::Reference
+                            || run.field == RichTextRun::Field::PageReference;
+        if (reference && position.byteOffset >= start && position.byteOffset <= end) return run.fieldArgument;
+        offset = end;
+    }
+    if (block.tocLevel > 0) {
+        for (const RichTextRun& run : block.runs) {
+            if (run.field == RichTextRun::Field::PageReference) return run.fieldArgument;
+        }
+    }
+    return "";
 }
 
 bool UltraCanvasRichTextEdit::ApplyCharacterStyle(const std::string& id) {

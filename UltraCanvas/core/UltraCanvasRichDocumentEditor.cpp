@@ -84,6 +84,7 @@ void StripObjectIdentity(RichTextRun& run) {
     run.imageWidthPt = run.imageHeightPt = 0.0f;
     run.imageAltText.clear();
     run.field = RichTextRun::Field::Plain;
+    run.fieldArgument.clear();
     // A note mark is raised because it is a mark; the text next to it is not.
     if (run.noteIndex >= 0) run.superscript = false;
     run.noteIndex = -1;
@@ -3148,6 +3149,141 @@ int UCRichDocumentEditor::NoteAt(const RichDocPosition& pos) const {
     return -1;
 }
 
+bool UCRichDocumentEditor::AddBookmark(const std::string& name) {
+    if (name.empty() || doc->FindBookmark(name) >= 0) return false;
+    const int block = ClampPosition(caret).blockIndex;
+    if (block < 0 || block >= static_cast<int>(doc->blocks.size())) return false;
+    {
+        EditScope scope(*this, block, 1);
+        doc->blocks[static_cast<size_t>(block)].bookmarks.push_back(name);
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::RemoveBookmark(const std::string& name) {
+    const int block = doc->FindBookmark(name);
+    if (block < 0) return false;
+    {
+        EditScope scope(*this, block, 1);
+        std::vector<std::string>& marks = doc->blocks[static_cast<size_t>(block)].bookmarks;
+        marks.erase(std::remove(marks.begin(), marks.end(), name), marks.end());
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::InsertCrossReference(const std::string& bookmark, RichTextRun::Field kind) {
+    if (kind != RichTextRun::Field::Reference && kind != RichTextRun::Field::PageReference) return false;
+    if (doc->FindBookmark(bookmark) < 0 || !IsTextContainer(caret)) return false;
+    RichDocRange selection = GetSelectionRange();
+    const int first = selection.start.blockIndex;
+    // The whole document: filling the field in may touch any block.
+    {
+        EditScope scope(*this, 0, static_cast<int>(doc->blocks.size()));
+        if (HasSelection()) DeleteRangeInternal(selection);
+        std::vector<RichTextRun>* runs = MutableRunsAt(caret);
+        if (!runs) return false;
+        RichTextRun run = FormatAt(caret);
+        run.field = kind;
+        run.fieldArgument = bookmark;
+        run.text = "1";
+        InsertIntoRuns(*runs, caret.byteOffset, run.text, &run);
+        doc->UpdateFields();
+        // After the field, whatever it now says.
+        int position = 0;
+        for (const RichTextRun& r : *runs) {
+            position += (r.lineBreakBefore ? 1 : 0) + static_cast<int>(r.text.size());
+            if (r.field == kind && r.fieldArgument == bookmark && position > caret.byteOffset) break;
+        }
+        caret.byteOffset = position;
+        anchor = caret;
+    }
+    (void)first;
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+std::string UCRichDocumentEditor::InsertCaption(const std::string& label, const std::string& text) {
+    if (label.empty()) return "";
+    const int block = ClampPosition(caret).blockIndex;
+    if (block < 0 || block >= static_cast<int>(doc->blocks.size())) return "";
+    const std::string name = doc->UniqueBookmarkName("_Ref" + label);
+    {
+        EditScope scope(*this, 0, static_cast<int>(doc->blocks.size()));
+        RichDocBlock caption;
+        caption.bookmarks.push_back(name);
+        RichTextRun lead;
+        lead.text = label + " ";
+        RichTextRun number;
+        number.field = RichTextRun::Field::Sequence;
+        number.fieldArgument = label;
+        number.text = "1";
+        caption.runs = {lead, number};
+        if (!text.empty()) {
+            RichTextRun tail;
+            tail.text = ": " + text;
+            caption.runs.push_back(tail);
+        }
+        if (doc->FindStyle("Caption")) {
+            caption.styleId = "Caption";
+            const RichStyle style = doc->ResolveStyle("Caption");
+            style.paragraph.ApplyTo(caption);
+            for (RichTextRun& run : caption.runs) style.character.ApplyTo(run);
+        } else {
+            for (RichTextRun& run : caption.runs) run.italic = true;
+        }
+        doc->blocks.insert(doc->blocks.begin() + block + 1, caption);
+        doc->UpdateFields();
+        caret = ClampPosition({block + 1, BlockTextLength(block + 1)});
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return name;
+}
+
+bool UCRichDocumentEditor::InsertTableOfContents(int maxLevel) {
+    int block = ClampPosition(caret).blockIndex;
+    if (block < 0 || block >= static_cast<int>(doc->blocks.size())) return false;
+    {
+        EditScope scope(*this, 0, static_cast<int>(doc->blocks.size()));
+        const std::vector<RichDocBlock> entries = doc->BuildTableOfContents(maxLevel);
+        const RichDocBlock& here = doc->blocks[static_cast<size_t>(block)];
+        const bool emptyParagraph = here.type == RichBlockType::Paragraph && RunsText(here.runs).empty()
+                                    && here.bookmarks.empty();
+        if (emptyParagraph) doc->blocks.erase(doc->blocks.begin() + block);
+        doc->blocks.insert(doc->blocks.begin() + block, entries.begin(), entries.end());
+        const int after = block + static_cast<int>(entries.size());
+        if (after >= static_cast<int>(doc->blocks.size())) doc->blocks.emplace_back();
+        caret = ClampPosition({after, 0});
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::UpdateTableOfContents(int maxLevel) {
+    bool updated = false;
+    {
+        EditScope scope(*this, 0, static_cast<int>(doc->blocks.size()));
+        updated = doc->UpdateTableOfContents(maxLevel);
+        caret = ClampPosition(caret);
+        anchor = ClampPosition(anchor);
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return updated;
+}
+
 bool UCRichDocumentEditor::InsertField(RichTextRun::Field field) {
     if (field == RichTextRun::Field::Plain) return false;
     if (!IsTextContainer(caret)) return false;
@@ -3659,8 +3795,17 @@ void UCRichDocumentEditor::InsertBlocks(const std::vector<RichDocBlock>& blocks)
     NotifySelectionChanged();
 }
 
-void UCRichDocumentEditor::InsertBlocksInternal(const std::vector<RichDocBlock>& blocks) {
-    if (blocks.empty()) return;
+void UCRichDocumentEditor::InsertBlocksInternal(const std::vector<RichDocBlock>& incoming) {
+    if (incoming.empty()) return;
+    // A pasted copy of a bookmarked paragraph does not take its bookmark:
+    // names are unique, and references stay with the original.
+    std::vector<RichDocBlock> blocks = incoming;
+    for (RichDocBlock& block : blocks) {
+        auto& marks = block.bookmarks;
+        marks.erase(std::remove_if(marks.begin(), marks.end(),
+                                   [this](const std::string& name) { return doc->FindBookmark(name) >= 0; }),
+                    marks.end());
+    }
     {
         if (caret.InCell()) {
             InsertBlocksIntoCellInternal(blocks);
