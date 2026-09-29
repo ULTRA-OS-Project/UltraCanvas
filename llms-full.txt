@@ -777,6 +777,59 @@ the backing implementation can be replaced without affecting callers.
   zoom and pan over a dark lightbox; this is the general one.
   See `Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md`.
 
+- **UltraCanvasDesktopShell** (`UltraCanvasDesktopShell.h`) — the running
+  desktop as a shell sees it: the windows other applications have open and
+  which is active, the virtual desktops, the installed applications a launcher
+  lists, a screenshot, the live state of the devices an info panel shows, and
+  the counts an application publishes for the desktop (UltraMail's unread
+  total). The module the ULTRA OS desktop (`Apps/UltraDesktop`) is built on,
+  so any application gets the same window list and the same virtual-desktop
+  switch. Reports what is *happening* (a window opened, the microphone in
+  use) and acts on windows, never on devices - which is what separates it
+  from **UltraCanvasHardwareInfo** (describes the machine; this module reads
+  its network, USB and Bluetooth lists) and **IODeviceManager** (operates
+  peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
+  (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` behind the internal
+  `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. Public surface:
+  - `ListWindows` (`DesktopWindowInfo`: id, title, WM class, icon file
+    resolved through the icon themes, desktop, pid, active, minimized,
+    skipTaskbar), `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`,
+    `CloseWindow` (through the window manager, never kill).
+  - `GetVirtualDesktopCount` / `GetCurrentVirtualDesktop` /
+    `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
+    `MoveWindowToVirtualDesktop`.
+  - `GetScreenSize`, `CaptureScreen` (PNG), `DefaultScreenshotPath`
+    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
+  - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
+    speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
+    USB device count, battery, keyboard layout, plus `warnings`.
+  - `ListApplications` (menu-visible desktop entries, user overrides system,
+    icons resolved), `LaunchApplication`, `LaunchProgram` / `FindProgram`
+    (next to this executable first, then `PATH`).
+  - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
+    `NoticesDirectory` - one atomically written JSON file per application
+    under `$XDG_RUNTIME_DIR/ultraos/notices`.
+  - `UltraCanvasDesktopShellMonitor` - `Start(onChanged)` / `Stop()` (joins),
+    `IsRunning`, `IsNative`: window list, active window and desktop changes,
+    reported on the monitor's thread.
+  See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+
+- **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
+  between two groups on one bar; one group's colour up to the curve, the next
+  group's after it. `SetColors`, `SetFlipped`, `SetVerticalBar`, `SetLength`,
+  `CreateWaveSeparator`. See `Docs/UltraCanvas/UltraCanvasWaveSeparator.md`.
+
+- **UltraCanvasToolbar item badges, reordering and scrolling**
+  (`UltraCanvasToolbar.h`, 1.5.0) — `SetItemBadge` / `SetItemBadgeCount` /
+  `SetItemBadgeDot` / `ClearItemBadge` / `GetItemBadge` anchor an
+  `UltraCanvasBadge` to an item; `EnableItemReordering` lets the user drag an
+  item along the bar (`onItemReordered(from, to)` on release) and `MoveItem` /
+  `GetItemIndex` / `GetItemOrder` / `GetItems` do the same from code;
+  `ToolbarOverflowMode::Scroll` keeps items at their size and scrolls a full
+  bar with the mouse wheel. `WindowType::Desktop` (`UltraCanvasWindow.h`) is
+  the screen-sized window at the bottom of the stack a desktop draws into.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.
@@ -16259,6 +16312,150 @@ points `XDG_DATA_HOME` at it, so what it asserts about the lookup does not
 depend on what the machine running it has installed. It also covers the
 localized keys, the `[Desktop Action]` group, `Type=Link`, the `Exec=` field
 codes and the files that end in `.desktop` without being entries.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasDesktopShell.md
+==============================================================================
+
+# UltraCanvasDesktopShell
+
+The running desktop as a shell sees it: the windows other applications have
+open and which one is active, the virtual desktops, the installed applications
+a launcher lists, a screenshot of the screen, the live state of the devices an
+info panel shows, and the counts an application publishes for the desktop to
+show beside its icon.
+
+```cpp
+#include "UltraCanvasDesktopShell.h"
+
+for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows())
+    if (!w.skipTaskbar) taskbar->AddToggleButton(std::to_string(w.id), "", w.iconFile, ...);
+
+UltraCanvasDesktopShell::ActivateWindow(id);
+UltraCanvasDesktopShell::SetCurrentVirtualDesktop(2);
+UltraCanvasDesktopShell::CaptureScreen(UltraCanvasDesktopShell::DefaultScreenshotPath());
+DesktopDeviceActivity now = UltraCanvasDesktopShell::ReadDeviceActivity();
+
+UltraCanvasDesktopShellMonitor monitor;
+monitor.Start([this]() { windowsDirty.store(true); });   // background thread!
+```
+
+This is the module the ULTRA OS desktop ([UltraDesktop](../UltraDesktop/README.md))
+is built on, and the reason it is a module rather than desktop code: any
+application that wants a window list, a virtual-desktop switch or a screenshot
+gets the same one, and a second implementation of the window-manager protocol
+cannot disagree with the first about which windows exist.
+
+Headers: `UltraCanvasDesktopShell.h` (the data and the API);
+`UltraCanvasDesktopShellBackend.h` is the internal contract with the platform
+backends and is not for applications.
+
+## Why this is neither UltraCanvasHardwareInfo nor IODeviceManager
+
+[UltraCanvasHardwareInfo](UltraCanvasHardwareInfo.md) *describes the machine*:
+which interfaces, adapters and devices it has. [IODeviceManager](../Modules/IODeviceManager/Architecture.md)
+*operates peripherals*: opens a camera, scans a page. This module reports what is
+*happening on the desktop right now* — a window opened, the microphone in use,
+bytes flowing — and acts on **windows**, never on devices. Where the answer is
+already in the hardware inventory (the Wi-Fi association, the USB device list,
+the Bluetooth adapters) it reads it from there, so a desktop and the hardware
+panel never disagree about an interface.
+
+## API
+
+### Windows
+
+| Call | Meaning |
+|---|---|
+| `ListWindows()` | Every managed window in stacking order, bottom first, as `DesktopWindowInfo { id, title, appClass, appName, iconFile, virtualDesktop, processId, active, minimized, skipTaskbar }`. Docks, panels, the desktop and tooltips are included with `skipTaskbar` true so a caller can tell them apart; a taskbar lists the rest. `iconFile` is the application's own icon, resolved from `appClass` through the icon themes ([UltraCanvasDesktopEntry](UltraCanvasDesktopEntry.md)) — for the applications this repository ships, `StartupWMClass` and `Icon=` carry the same name. |
+| `GetActiveWindow()` | The focused window's id, 0 if none. |
+| `ActivateWindow(id)` | Raise, un-minimize and focus; switches to the window's desktop first. |
+| `MinimizeWindow(id)` | Iconify. |
+| `CloseWindow(id)` | Ask the window to close through the window manager (`WM_DELETE_WINDOW`), never kill. |
+
+### Virtual desktops
+
+`GetVirtualDesktopCount()`, `GetCurrentVirtualDesktop()` (0-based, −1 when
+unknown), `SetCurrentVirtualDesktop(i)`, `SetVirtualDesktopCount(n)` (1..32)
+and `MoveWindowToVirtualDesktop(id, i)` (−1 = on every desktop).
+
+### The screen
+
+| Call | Meaning |
+|---|---|
+| `GetScreenSize(w, h)` | The default screen's size in pixels. |
+| `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
+| `DefaultScreenshotPath()` | `<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png` — the user's Pictures folder from `GetWellKnownUserFolders`, the home directory when there is none. Dots in the time, since a colon is not a file-name character on Windows. |
+
+### Devices
+
+`ReadDeviceActivity()` returns a `DesktopDeviceActivity`, every field
+best-effort and `warnings` saying in words what could not be read:
+
+| Field | Source (Linux) |
+|---|---|
+| `webcamInUse` | a process of the user's holds a `/dev/video*` descriptor (`/proc/<pid>/fd`) |
+| `microphoneInUse`, `speakerPlaying` | `/proc/asound/card*/pcm*c/sub*/status` (capture) and `pcm*p` (playback) say `state: RUNNING` — no sound-server dependency |
+| `bluetoothPresent`, `bluetoothPowered`, `bluetoothConnectedDevices` | `UltraCanvasHardwareInfo::ListBluetoothAdapters` |
+| `wifiPresent`, `wifiConnected`, `wifiSsid`, `lanConnected`, `vpnConnected`, `internetInterfaceUp` | `UltraCanvasHardwareInfo::ListNetworkInterfaces`; a tunnel is the `Tunnel` link type or a `tun`/`tap`/`wg`/`ppp`/`vpn`/`tailscale`… name |
+| `bytesReceived`, `bytesSent` | running totals over every non-loopback interface — keep the previous reading and show the difference |
+| `usbDeviceCount` | `UltraCanvasHardwareInfo::ListUSBDevices`, hubs not counted |
+| `batteryPresent`, `batteryPercent`, `batteryCharging` | `/sys/class/power_supply/*` of type `Battery` |
+| `keyboardLayout` | the XKB layout list the server was configured with, indexed by the group in effect |
+
+It costs one procfs/sysfs walk and one hardware listing; polling it every
+second or two is fine.
+
+### Applications
+
+| Call | Meaning |
+|---|---|
+| `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. |
+| `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. |
+| `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. |
+
+### Notices
+
+A count an application publishes for the desktop to show: UltraMail publishes
+its unread total under `"UltraMail"`, the desktop shows it as the badge on the
+mail icon. The transport is one small JSON file per application in
+`NoticesDirectory()` (`$XDG_RUNTIME_DIR/ultraos/notices`, else
+`$XDG_CACHE_HOME`, else `~/.cache`), written atomically, so a publisher needs
+no link to the desktop and the desktop none to the publisher.
+
+`PublishNotice(app, count, text)`, `RemoveNotice(app)`, `ReadNotices()`,
+`ReadNotice(app)` (a `DesktopNotice { application, count, text,
+updatedUnixSeconds }`; `updatedUnixSeconds` 0 means nobody published).
+
+### The monitor
+
+`UltraCanvasDesktopShellMonitor::Start(onChanged)` reports when the window
+list, the active window, the current desktop or the number of desktops
+changes; `Stop()` joins, so no callback runs after it returns. The callback
+runs on the monitor's thread and must only hand the news over — set an
+atomic, post to the UI thread. One change can produce several callbacks; the
+receiver coalesces. Where the platform cannot notify, `Start()` succeeds and
+nothing is ever reported: `IsNative()` says which.
+
+## Backends
+
+| Platform | Backend |
+|---|---|
+| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window, written by cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
+| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen` fails with a reason; the application list, launcher and notices still work. |
+
+The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
+`UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
+fallback when it is absent.
+
+## See also
+
+- [UltraDesktop](../UltraDesktop/README.md) — the desktop built on this.
+- [UltraCanvasWaveSeparator](UltraCanvasWaveSeparator.md) and the
+  [toolbar's item badges and reordering](UltraCanvasToolbarExamples.md) — the
+  elements the desktop's bars are made of.
+- `WindowType::Desktop` in `UltraCanvasWindow.h` — the screen-sized window at
+  the bottom of the stack a desktop draws into.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDiagramRouting.md
@@ -54455,7 +54652,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.1.0
+**Version:** 1.5.0
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -54468,8 +54665,9 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 - **Overflow Handling**: Wrap, overflow menu, scroll, or hide
 - **Builder API**: Fluent `UltraCanvasToolbarBuilder`
 - **Preset Factories**: One-call construction of common toolbar shapes
-- **Item Badges and Tooltips**: Visual notification badges and hover tooltips
-- **Auto-Hide and Drag Modes**: Optional auto-hide and drag-to-move / drag-to-reorder
+- **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves
+- **Auto-Hide and Drag Modes**: optional auto-hide, drag-to-move the toolbar (`ToolbarDragMode::Movable`) and drag-to-reorder its items (`EnableItemReordering`)
+- **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel
 
 ## Header Include
 
@@ -54503,19 +54701,42 @@ const ToolbarAppearance& GetAppearance() const;
 
 ### Item Management
 
+The toolbar is a facade over its flex children: every `Add*` creates a real
+widget and adds it as a child; removal works by id or by index. A badge set on
+an item is a child too — an absolutely positioned overlay anchored to the item —
+but never an *item*: the item helpers below skip it.
+
 ```cpp
-void AddItem(const ToolbarItemDescriptor& descriptor);
-void AddItem(std::shared_ptr<UltraCanvasToolbarItem> item);
-void InsertItem(int index, const ToolbarItemDescriptor& descriptor);
-void InsertItem(int index, std::shared_ptr<UltraCanvasToolbarItem> item);
 void RemoveItem(const std::string& identifier);
 void RemoveItemAt(int index);
 void ClearItems();
 
-std::shared_ptr<UltraCanvasToolbarItem> GetItem(const std::string& identifier);
-std::shared_ptr<UltraCanvasToolbarItem> GetItemAt(int index);
-int GetItemCount() const;
+std::shared_ptr<UltraCanvasUIElement> GetWidget(const std::string& identifier);
+std::shared_ptr<UltraCanvasUIElement> GetWidgetAt(int index);   // items only
+int GetItemCount() const;                                        // items only
+std::vector<std::shared_ptr<UltraCanvasUIElement>> GetItems() const;
+int GetItemIndex(const std::string& identifier) const;           // -1 if none
+bool MoveItem(int fromIndex, int toIndex);                       // fires onItemReordered
+std::vector<std::string> GetItemOrder() const;                   // ids in order, "" for unnamed
 ```
+
+### Item Badges
+
+```cpp
+std::shared_ptr<UltraCanvasBadge> SetItemBadge(const std::string& id, const std::string& text,
+                                               std::optional<Color> color = std::nullopt);
+std::shared_ptr<UltraCanvasBadge> SetItemBadgeCount(const std::string& id, int count,
+                                                    std::optional<Color> color = std::nullopt);
+std::shared_ptr<UltraCanvasBadge> SetItemBadgeDot(const std::string& id, const Color& color);
+std::shared_ptr<UltraCanvasBadge> GetItemBadge(const std::string& id);
+void ClearItemBadge(const std::string& id);
+void SetItemBadgeCorner(BadgeCorner corner, float offsetX = -7, float offsetY = 7);
+```
+
+Each call replaces what the item showed before; a count of 0 hides the badge
+(the `UltraCanvasBadge` rule), `ClearItemBadge` removes it. The badge follows
+its item through reorders and scrolling. The returned badge is the real
+[`UltraCanvasBadge`](UltraCanvasBadge.md) for any further styling.
 
 ### Convenience Methods
 
@@ -54552,11 +54773,20 @@ bool IsAutoHidden() const;
 ### Drag and Drop
 
 ```cpp
-void EnableItemReordering(bool enable);
-void BeginDrag(const Point2Di& startPos);
-void UpdateDrag(const Point2Di& currentPos);
-void EndDrag();
+void EnableItemReordering(bool enable);   // the user drags items into a new order
+bool IsItemReorderingEnabled() const;
+bool IsReorderingItem() const;            // a drag is in progress right now
+void SetDragMode(ToolbarDragMode mode);   // Movable: drag the whole toolbar
 ```
+
+With reordering on, a press on an item followed by a drag of six pixels along
+the toolbar picks the item up; it moves past its neighbours as the pointer
+does and `onItemReordered(from, to)` fires once on release when the order
+changed. A plain click still clicks. Spacers and separators are not dragged
+(they take no events). The toolbar watches the window's pointer events for
+this — an item's button consumes the press before the toolbar would see it —
+so the watch is installed when the toolbar reaches a window and removed with
+it.
 
 ## Enumerations
 
@@ -54586,16 +54816,6 @@ enum class ToolbarStyle {
 };
 ```
 
-### ToolbarItemType
-
-```cpp
-enum class ToolbarItemType {
-    Button, ToggleButton, DropdownButton, SplitButton,
-    Separator, Spacer, Label, TextInput, Dropdown,
-    Checkbox, RadioButton, CustomWidget, ButtonGroup, SearchBox
-};
-```
-
 ### ToolbarOverflowMode
 
 ```cpp
@@ -54603,6 +54823,12 @@ enum class ToolbarOverflowMode {
     OverflowNone, Wrap, Menu, Scroll, Hide
 };
 ```
+
+`Scroll` is the one that does something today: items keep their size instead
+of shrinking to fit (`flex-shrink: 0`), the ones past the edge are laid out
+beyond it, and the mouse wheel scrolls them into view along the toolbar's
+axis — no scrollbar is shown. A desktop taskbar's running-apps group is the
+case: it must not squeeze twenty icons into the room for eight.
 
 ### ToolbarIconSize
 
@@ -54665,58 +54891,14 @@ struct ToolbarAppearance {
 };
 ```
 
-## ToolbarItemDescriptor
+## Items are widgets
 
-A declarative description that the toolbar turns into a concrete item.
-
-```cpp
-struct ToolbarItemDescriptor {
-    ToolbarItemType type = ToolbarItemType::Button;
-    std::string identifier;
-    std::string text;
-    std::string iconPath;
-    std::string tooltip;
-
-    bool isToggle  = false;
-    bool isChecked = false;
-    bool isEnabled = true;
-    bool isVisible = true;
-
-    int visibilityPriority = 0;   // Higher = stays visible longer in overflow
-
-    std::vector<std::string> dropdownItems;
-
-    std::function<void()>                    onClick;
-    std::function<void(bool)>                onToggle;
-    std::function<void(const std::string&)>  onDropdownSelect;
-    std::function<void(const std::string&)>  onTextChange;
-
-    int   minWidth   = 0;
-    int   maxWidth   = 0;
-    int   fixedWidth = 0;
-    float stretch    = 0.0f;
-
-    // Badge
-    bool        hasBadge   = false;
-    std::string badgeText;
-    Color       badgeColor = Color(255, 0, 0, 255);
-
-    // Factory methods
-    static ToolbarItemDescriptor CreateButton(const std::string& id, const std::string& text,
-                                              const std::string& icon = "",
-                                              std::function<void()> onClick = nullptr);
-    static ToolbarItemDescriptor CreateToggleButton(const std::string& id, const std::string& text,
-                                                    const std::string& icon = "",
-                                                    std::function<void(bool)> onToggle = nullptr);
-    static ToolbarItemDescriptor CreateDropdown(const std::string& id, const std::string& text,
-                                                const std::vector<std::string>& items,
-                                                std::function<void(const std::string&)> onSelect = nullptr);
-    static ToolbarItemDescriptor CreateSeparator(const std::string& id = "");
-    static ToolbarItemDescriptor CreateSpacer(int size = 8);
-    static ToolbarItemDescriptor CreateFlexSpacer(float stretch = 1.0f);
-    static ToolbarItemDescriptor CreateLabel(const std::string& id, const std::string& text);
-};
-```
+There is no descriptor type: an item is the widget `AddButton`,
+`AddToggleButton`, `AddDropdownButton`, `AddSeparator`, `AddSpacer`,
+`AddStretch`, `AddLabel`, `AddSearchBox` or `AddAutoComplete` returns, and it
+is configured on that widget — a tooltip with `SetTooltip`, a style with
+`SetStyle`, a badge with the toolbar's `SetItemBadge*` calls. Anything the
+convenience methods do not cover is done on the returned `shared_ptr`.
 
 ## Events and Callbacks
 
@@ -54729,7 +54911,7 @@ std::function<void(int, int)>               onItemReordered;
 std::function<void(ToolbarPosition)>        onPositionChanged;
 ```
 
-Per-item callbacks live on the descriptors or the typed item objects (`UltraCanvasToolbarButton::SetOnClick`, `SetOnToggle`, etc.).
+Per-item callbacks live on the widgets themselves (`UltraCanvasButton::onClick`, `onToggle`, `onContextMenu`, …).
 
 ## Builder Pattern
 
@@ -54898,23 +55080,26 @@ auto ribbonToolbar = UltraCanvasToolbarBuilder("RibbonToolbar")
     .Build();
 ```
 
-### Item Descriptor with Badge
+### Badges and Reordering — a Taskbar
 
 ```cpp
-ToolbarItemDescriptor notif = ToolbarItemDescriptor::CreateButton(
-    "notifications", "", "media/icons/bell-icon.png",
-    [](){ /* open notifications */ });
-notif.hasBadge   = true;
-notif.badgeText  = "3";
-notif.badgeColor = Color(255, 0, 0, 255);
+auto running = std::make_shared<UltraCanvasToolbar>("Running", 0, 0, 0, 0);
+running->SetOrientation(ToolbarOrientation::Vertical);
+running->SetOverflowMode(ToolbarOverflowMode::Scroll);   // wheel-scrolls when full
+running->EnableItemReordering(true);                     // drag to reorder
+running->onItemReordered = [](int from, int to) { /* remember the order */ };
 
-toolbar->AddItem(notif);
+auto mail = running->AddButton("mail", "", "media/icons/desktop/mail.svg", [](){});
+mail->SetTooltip("Email");
+running->SetItemBadgeCount("mail", 14, Color(90, 90, 90, 255));   // a grey "14" pill
+running->SetItemBadgeDot("webcam", Color(220, 30, 30, 255));      // a red dot: on
+running->ClearItemBadge("webcam");                                // off again
 ```
 
 ## Implementation Notes
 
 - Use `UltraCanvasToolbarBuilder` for fluent construction; for one-off items, the convenience methods on the toolbar itself are equivalent.
-- `AddSpacer(size)` inserts a fixed-width spacer; `AddStretch(weight)` (or `ToolbarItemDescriptor::CreateFlexSpacer`) inserts a flexible spacer that consumes remaining space.
+- `AddSpacer(size)` inserts a fixed-width spacer; `AddStretch(weight)` inserts a flexible spacer that consumes remaining space.
 - `AddSeparator()` adds a thin visual divider that adapts to the toolbar's orientation.
 - Horizontal and vertical orientations are fully supported by all styles.
 - Built-in styles: `Standard`, `Flat`, `Docked` (macOS dock), `Ribbon`, `Sidebar`, `StatusBar`.
@@ -56491,8 +56676,9 @@ formats, and does not re-decode on every frame the way an ad-hoc
 | Resizable panes | `UltraCanvasSplitPane`, `UltraCanvasSplitter` | `UltraCanvasSplitPane.h` |
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
-| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them | `UltraCanvasToolbar.h` |
+| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel | `UltraCanvasToolbar.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
+| The S-curve between two groups on one bar (a taskbar's system group flowing into its running apps) — one group's colour up to the curve, the next group's after it ([doc](UltraCanvasWaveSeparator.md)) | `UltraCanvasWaveSeparator` | `UltraCanvasWaveSeparator.h` |
 
 Positioning inside a container is the CSS layout engine's job (`layout` /
 `layoutItem` — see [CSSLayout.md](../CSSLayout.md)), not manual arithmetic on
@@ -58831,6 +59017,63 @@ The WaterfallChartElement integrates seamlessly with:
 - [UltraCanvasBarChart](./UltraCanvasBarChart.md)
 - [UltraCanvasLineChart](./UltraCanvasLineChart.md)
 - [UltraCanvas Charts Overview](./ChartsOverview.md)
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasWaveSeparator.md
+==============================================================================
+
+# UltraCanvasWaveSeparator
+
+The S-curve transition between two groups on one bar: a desktop taskbar's
+system group flowing into its running-apps group, a side panel's organiser
+flowing into its info panel. One group's colour fills the part of the
+separator on its side of the curve, the next group's colour the rest, so the
+groups read as carved into one bar rather than boxed side by side.
+
+**Header:** `UltraCanvasWaveSeparator.h` · **Base:** `UltraCanvasUIElement`
+
+```cpp
+#include "UltraCanvasWaveSeparator.h"
+
+auto bar = CreateContainer("Taskbar", 0, 0, 0, 0);
+bar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+bar->AddChild(systemGroup);                                    // bar colour
+bar->AddChild(CreateWaveSeparator("Wave1", /*verticalBar=*/true, barColor, insetColor));
+bar->AddChild(runningGroup);                                   // inset colour
+bar->AddChild(CreateWaveSeparator("Wave2", true, insetColor, barColor));
+bar->AddChild(pinnedGroup);                                    // bar colour
+```
+
+## What it is
+
+A flex child like [`UltraCanvasSeparator`](UltraCanvasUIElements.md), only
+shaped. On a vertical bar it spans the bar's width and takes `length` px (36
+by default) of its height; on a horizontal bar the other way round. It takes
+no events and no focus and publishes its own size, so a flex container needs
+nothing beyond the `AddChild`.
+
+The curve is a cubic whose control points sit halfway along the main axis on
+the two edges — the classic S. It enters and leaves the neighbours at a
+tangent, so the transition has no corner at either end, and it is drawn as
+two fills (the far colour under everything, the near colour up to the curve)
+so there is never a seam against either neighbour whatever the pixel
+rounding.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `UltraCanvasWaveSeparator(id, verticalBar, length = 36)` | The bar's direction and how much of its main axis the curve takes. |
+| `CreateWaveSeparator(id, verticalBar, before, after, length = 36)` | The same, with the colours set. |
+| `SetColors(before, after)` | The colour of the group before the separator (above on a vertical bar, left on a horizontal one) and of the group after it. |
+| `SetFlipped(bool)` | Mirror the curve: from the right edge at the top to the left edge at the bottom. Purely visual; alternating the flip on a bar's separators reads as one continuous wave. |
+| `SetVerticalBar(bool)`, `SetLength(px)` | Re-shape after construction (a taskbar moved from the left edge to the top). |
+
+## See also
+
+- [UltraDesktop](../UltraDesktop/README.md) — where the bars it joins live.
+- [UltraCanvasToolbar](UltraCanvasToolbarExamples.md) — the groups on either side.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasWaveformElement.md
@@ -71018,3 +71261,158 @@ workstation  (3 devices, grouped by Category)
 | *Cameras (0)* on Linux | No `/dev/video*` node the user can open — check membership of the `video` group. |
 | A device stays after it was unplugged, or a new one does not appear | No hot-plug watcher: on Linux the framework was built without libudev (install `libudev-dev` and reconfigure), on macOS and Windows there is none yet. Press **Rescan**. |
 | A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |
+
+==============================================================================
+FILE: Docs/UltraDesktop/README.md
+==============================================================================
+
+# UltraDesktop
+
+## Overview
+
+UltraDesktop is the ULTRA OS desktop: the taskbar with the running
+applications, the desktop organiser with the virtual desktops, the
+Stickerboard, the clipboard and the screenshot, and the info panel with the
+devices and services — on one screen-sized window under everything else. It
+is built from UltraCanvas elements on the
+[UltraCanvasDesktopShell](../UltraCanvas/UltraCanvasDesktopShell.md) module,
+which is where every question about windows, desktops, devices and installed
+applications is answered, so the desktop itself never touches the window
+system.
+
+- Source: [`Apps/UltraDesktop`](../../Apps/UltraDesktop/README.md)
+- Version: its own, from the first line of [`CHANGELOG.md`](CHANGELOG.md).
+  `cmake/UltraCanvasVersion.cmake` reads it into `ULTRADESKTOP_VERSION`,
+  which the window title and `--version` print. The app does not move when
+  the framework releases.
+- Build option: `BUILD_ULTRADESKTOP` (on by default); target and binary
+  `UltraDesktop`.
+
+## Layout
+
+```
+┌────┬──────────────────────────────────────────────────────────────┬────┐
+│ ⚙  │                                                              │ 1  │  desktop
+│ ⋮⋮ │                                                              │ 2  │  organiser
+│╲   │                                                              │ 3  │
+│ ╲  │                                                              │ 📌 │  Stickerboard
+│ ▣  │                     wallpaper                                │ 📋 │  clipboard
+│ ▣  │            (application windows float above)                 │ 📷 │  screenshot
+│ ▣  │                                                              │╱   │
+│ ▣  │                                                              │    │
+│  ╲ │                                                              │ ✉14│  info panel
+│   ╲│                                                              │ ⇧⇩ │  (devices and
+│ ▤  │                                                              │ ⌨ ●│   services)
+│ 📁 │                                                              │ 🔋 │
+└────┴──────────────────────────────────────────────────────────────┴────┘
+ taskbar                                                               right bar
+```
+
+### Taskbar
+
+On the left by default; the settings move it to the top or bottom edge, and
+`--edge top` does so for one run. Three groups, joined by the S-curve wave
+separators:
+
+1. **System** — *ULTRA OS settings* and the *app starter*.
+2. **Running applications** — one button per open window on the current
+   desktop, with the application's own icon (resolved from its desktop
+   entry; the first letter of its class when it has none). The active
+   window's button is highlighted. A click activates the window or minimizes
+   it if it already is active; a right-click offers *Activate*, *Minimize*,
+   *Move to desktop …* and *Close window*. Drag a button to reorder; when
+   the group is full it scrolls with the mouse wheel. New windows join next
+   to their application's other windows.
+3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
+   by default, in the file manager) and *UltraFiler*.
+
+### Right bar
+
+- **Desktop organiser**: the virtual desktops as numbered toggles (three by
+  default; the settings allow one to nine — the window manager is asked for
+  as many when one is chosen), the *Stickerboard* toggle, the *clipboard*
+  (a menu of the last fifteen things copied; choosing one puts it back on
+  the clipboard) and *screenshot* (the whole screen to
+  `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
+  green dot for three seconds and its tooltip names the file).
+- **Info panel**, anchored to the bottom: Email, Upload, Download,
+  Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
+  Loudspeaker, Battery and Task Manager. The markers:
+
+  | Marker | Meaning | On |
+  |---|---|---|
+  | red dot | a device is on, or a link is down | webcam in use, microphone recording, Bluetooth powered; Internet/LAN with no link, Wi-Fi present but not joined |
+  | yellow dot | activity | download or upload traffic (more than 4 KB in two seconds), loudspeaker playing, VPN up |
+  | grey pill | a count or a value | Email unread (from UltraMail), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
+
+  The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
+  1.2 MB/s", "Battery: 84%, charging"). Clicking opens what the icon is
+  about: Email starts UltraMail, the network icons UltraNetMonitor, USB,
+  keyboard and webcam DeviceExplorer, the rest the Task Manager.
+
+### Windows the desktop opens
+
+- **Applications** (app starter): every installed application from its
+  desktop entry as an icon tile, a filter box above them, one click to
+  start. What the application menu of any other desktop shows, so an
+  application installed by its package appears without being told about
+  ULTRA OS.
+- **Task Manager**: the open windows with *Activate* and *Close* on the
+  first tab, the machine — CPU load and temperature, memory, storage, the
+  interfaces — on the framework's hardware panel on the second.
+- **ULTRA OS settings**, the desktop's page: the taskbar's edge, the
+  wallpaper (Browse… opens the file dialog), the RAM disc path, the file
+  manager program, the number of virtual desktops. *Apply* writes the
+  settings and rebuilds the bars in place.
+- **Stickerboard**: sticky notes over the wallpaper. *+* in the corner adds
+  one; each note is edited in place, dragged by its top bar, cycled through
+  six paper colours and closed with ×. Notes come back where they were.
+
+## Command line
+
+```
+UltraDesktop                    open the desktop
+UltraDesktop --edge bottom      taskbar on the bottom edge for this run
+UltraDesktop --settings <file>  another settings file
+UltraDesktop --windows          print the open windows and exit
+UltraDesktop --apps             print the installed applications and exit
+UltraDesktop --devices          print the device activity and exit
+UltraDesktop --screenshot [f]   capture the screen (default: the Pictures folder)
+UltraDesktop --version | --help
+```
+
+The headless modes print what the module sees, which makes it checkable over
+ssh (`--windows` needs a display; `--apps` and `--devices` do not).
+
+## Settings file
+
+`~/.config/ultraos/desktop.json` (`$XDG_CONFIG_HOME` when set):
+
+```json
+{
+  "taskbarEdge": "left",
+  "wallpaper": "",
+  "ramDiscPath": "/dev/shm",
+  "filerProgram": "UltraFiler",
+  "virtualDesktops": 3,
+  "stickerboardVisible": false,
+  "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ]
+}
+```
+
+An empty wallpaper shows the framework's `media/images/landscape.jpg`.
+
+## How the mail count gets there
+
+UltraMail publishes its unread total through
+`UltraCanvasDesktopShell::PublishNotice("UltraMail", count, text)` whenever
+its account bar refreshes; the desktop reads that notice every five seconds.
+Any application can publish a count the same way, and the desktop will show
+the ones it has an icon for.
+
+## Platform
+
+The window list, the virtual desktops, the screenshot and the device markers
+need the module's X11 backend (Linux, the BSDs). Elsewhere the desktop still
+runs — application list, launcher, settings and Stickerboard work — but the
+running-apps group stays empty and the Task Manager says so.

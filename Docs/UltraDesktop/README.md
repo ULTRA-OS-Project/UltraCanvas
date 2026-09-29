@@ -1,0 +1,150 @@
+# UltraDesktop
+
+## Overview
+
+UltraDesktop is the ULTRA OS desktop: the taskbar with the running
+applications, the desktop organiser with the virtual desktops, the
+Stickerboard, the clipboard and the screenshot, and the info panel with the
+devices and services — on one screen-sized window under everything else. It
+is built from UltraCanvas elements on the
+[UltraCanvasDesktopShell](../UltraCanvas/UltraCanvasDesktopShell.md) module,
+which is where every question about windows, desktops, devices and installed
+applications is answered, so the desktop itself never touches the window
+system.
+
+- Source: [`Apps/UltraDesktop`](../../Apps/UltraDesktop/README.md)
+- Version: its own, from the first line of [`CHANGELOG.md`](CHANGELOG.md).
+  `cmake/UltraCanvasVersion.cmake` reads it into `ULTRADESKTOP_VERSION`,
+  which the window title and `--version` print. The app does not move when
+  the framework releases.
+- Build option: `BUILD_ULTRADESKTOP` (on by default); target and binary
+  `UltraDesktop`.
+
+## Layout
+
+```
+┌────┬──────────────────────────────────────────────────────────────┬────┐
+│ ⚙  │                                                              │ 1  │  desktop
+│ ⋮⋮ │                                                              │ 2  │  organiser
+│╲   │                                                              │ 3  │
+│ ╲  │                                                              │ 📌 │  Stickerboard
+│ ▣  │                     wallpaper                                │ 📋 │  clipboard
+│ ▣  │            (application windows float above)                 │ 📷 │  screenshot
+│ ▣  │                                                              │╱   │
+│ ▣  │                                                              │    │
+│  ╲ │                                                              │ ✉14│  info panel
+│   ╲│                                                              │ ⇧⇩ │  (devices and
+│ ▤  │                                                              │ ⌨ ●│   services)
+│ 📁 │                                                              │ 🔋 │
+└────┴──────────────────────────────────────────────────────────────┴────┘
+ taskbar                                                               right bar
+```
+
+### Taskbar
+
+On the left by default; the settings move it to the top or bottom edge, and
+`--edge top` does so for one run. Three groups, joined by the S-curve wave
+separators:
+
+1. **System** — *ULTRA OS settings* and the *app starter*.
+2. **Running applications** — one button per open window on the current
+   desktop, with the application's own icon (resolved from its desktop
+   entry; the first letter of its class when it has none). The active
+   window's button is highlighted. A click activates the window or minimizes
+   it if it already is active; a right-click offers *Activate*, *Minimize*,
+   *Move to desktop …* and *Close window*. Drag a button to reorder; when
+   the group is full it scrolls with the mouse wheel. New windows join next
+   to their application's other windows.
+3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
+   by default, in the file manager) and *UltraFiler*.
+
+### Right bar
+
+- **Desktop organiser**: the virtual desktops as numbered toggles (three by
+  default; the settings allow one to nine — the window manager is asked for
+  as many when one is chosen), the *Stickerboard* toggle, the *clipboard*
+  (a menu of the last fifteen things copied; choosing one puts it back on
+  the clipboard) and *screenshot* (the whole screen to
+  `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
+  green dot for three seconds and its tooltip names the file).
+- **Info panel**, anchored to the bottom: Email, Upload, Download,
+  Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
+  Loudspeaker, Battery and Task Manager. The markers:
+
+  | Marker | Meaning | On |
+  |---|---|---|
+  | red dot | a device is on, or a link is down | webcam in use, microphone recording, Bluetooth powered; Internet/LAN with no link, Wi-Fi present but not joined |
+  | yellow dot | activity | download or upload traffic (more than 4 KB in two seconds), loudspeaker playing, VPN up |
+  | grey pill | a count or a value | Email unread (from UltraMail), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
+
+  The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
+  1.2 MB/s", "Battery: 84%, charging"). Clicking opens what the icon is
+  about: Email starts UltraMail, the network icons UltraNetMonitor, USB,
+  keyboard and webcam DeviceExplorer, the rest the Task Manager.
+
+### Windows the desktop opens
+
+- **Applications** (app starter): every installed application from its
+  desktop entry as an icon tile, a filter box above them, one click to
+  start. What the application menu of any other desktop shows, so an
+  application installed by its package appears without being told about
+  ULTRA OS.
+- **Task Manager**: the open windows with *Activate* and *Close* on the
+  first tab, the machine — CPU load and temperature, memory, storage, the
+  interfaces — on the framework's hardware panel on the second.
+- **ULTRA OS settings**, the desktop's page: the taskbar's edge, the
+  wallpaper (Browse… opens the file dialog), the RAM disc path, the file
+  manager program, the number of virtual desktops. *Apply* writes the
+  settings and rebuilds the bars in place.
+- **Stickerboard**: sticky notes over the wallpaper. *+* in the corner adds
+  one; each note is edited in place, dragged by its top bar, cycled through
+  six paper colours and closed with ×. Notes come back where they were.
+
+## Command line
+
+```
+UltraDesktop                    open the desktop
+UltraDesktop --edge bottom      taskbar on the bottom edge for this run
+UltraDesktop --settings <file>  another settings file
+UltraDesktop --windows          print the open windows and exit
+UltraDesktop --apps             print the installed applications and exit
+UltraDesktop --devices          print the device activity and exit
+UltraDesktop --screenshot [f]   capture the screen (default: the Pictures folder)
+UltraDesktop --version | --help
+```
+
+The headless modes print what the module sees, which makes it checkable over
+ssh (`--windows` needs a display; `--apps` and `--devices` do not).
+
+## Settings file
+
+`~/.config/ultraos/desktop.json` (`$XDG_CONFIG_HOME` when set):
+
+```json
+{
+  "taskbarEdge": "left",
+  "wallpaper": "",
+  "ramDiscPath": "/dev/shm",
+  "filerProgram": "UltraFiler",
+  "virtualDesktops": 3,
+  "stickerboardVisible": false,
+  "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ]
+}
+```
+
+An empty wallpaper shows the framework's `media/images/landscape.jpg`.
+
+## How the mail count gets there
+
+UltraMail publishes its unread total through
+`UltraCanvasDesktopShell::PublishNotice("UltraMail", count, text)` whenever
+its account bar refreshes; the desktop reads that notice every five seconds.
+Any application can publish a count the same way, and the desktop will show
+the ones it has an icon for.
+
+## Platform
+
+The window list, the virtual desktops, the screenshot and the device markers
+need the module's X11 backend (Linux, the BSDs). Elsewhere the desktop still
+runs — application list, launcher, settings and Stickerboard work — but the
+running-apps group stays empty and the Task Manager says so.
