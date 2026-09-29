@@ -1074,6 +1074,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPrompt.cpp
             Apps/UltraFiler/UltraFilerRunWindowsDialog.cpp
             Apps/UltraFiler/UltraFilerFindTextDialog.cpp
+            Apps/UltraFiler/UltraFilerFolderExport.cpp
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp

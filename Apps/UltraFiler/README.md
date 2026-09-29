@@ -366,6 +366,25 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   display shows hidden files. Local folders only — the
   item is disabled on a remote drive and in the History, Favorites and
   Computer views.
+- **Extras > Export > Folder content / Folder tree content** (in the file
+  context menu's Extras submenu): writes a folder out as text and opens it
+  in a text window with **Save…** and **Close**. The folder is the selected
+  one, or the shown folder while nothing is selected; the items are disabled
+  for any other selection, on a remote drive and inside an archive.
+  *Folder content* lists what the folder holds — name, size (`<DIR>` for a
+  folder) and modification date in aligned columns, folders first — with a
+  count and the total size at the end. *Folder tree content* draws the
+  folder and everything below it with line characters, the way the `tree`
+  command does (`├──`, `└──`, `│`), folders marked with a trailing `/`, and
+  ends with the number of folders and files. Links and junctions are shown
+  with their target (`name -> target`) but never entered, a folder that
+  cannot be read says so in its place, hidden entries are left out unless
+  the display shows hidden files, and a tree stops after 200 000 entries.
+  The text is built in the background — the window says *Reading …* until it
+  is ready — and closing the window stops it. The text is shown in a
+  fixed-width font and can be edited before **Save…** writes it (UTF-8) to
+  a file of your choosing, proposed as `<folder> - content.txt` /
+  `<folder> - tree.txt`. Several export windows can be open at once.
 - **Extras > Open prompt** (in the file context menu's Extras submenu):
   starts the operating system's command line program
   in the folder of the active tab, detached from UltraFiler (closing the file
