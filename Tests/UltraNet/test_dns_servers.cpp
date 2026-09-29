@@ -189,3 +189,88 @@ TEST(dns_resolve_ptr_with_a_server_asks_for_the_reverse_name) {
     REQUIRE(!outcome->ok);
     REQUIRE_EQ(outcome->count, std::size_t(0));
 }
+
+// The reverse lookup takes the same options: the deadline, and servers.
+
+namespace {
+
+std::optional<Outcome> ReverseWithin(const std::string& ip, const UltraNetDnsOptions& options,
+                                     std::chrono::milliseconds budget) {
+    auto slot = std::make_shared<std::promise<Outcome>>();
+    std::future<Outcome> answer = slot->get_future();
+    std::thread([ip, options, slot]() {
+        std::string host;
+        const UltraNetResult r = UltraNet_DnsReverseLookup(ip, host, options);
+        slot->set_value(Outcome{bool(r), r.code, host.empty() ? 0u : 1u, r.message});
+    }).detach();
+    if (answer.wait_for(budget) != std::future_status::ready) return std::nullopt;
+    return answer.get();
+}
+
+} // namespace
+
+TEST(dns_reverse_lookup_with_options_validates_before_asking_anyone) {
+    UltraNet_Initialize();
+    UltraNetDnsOptions options;
+    options.timeoutMs = 500;
+    std::string host = "stale";
+    UltraNetResult r = UltraNet_DnsReverseLookup("", host, options);
+    REQUIRE(!r);
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
+    REQUIRE(host.empty());
+    r = UltraNet_DnsReverseLookup("example.com", host, options);
+    REQUIRE(!r);
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
+    // A bad server entry is refused the same way the forward lookup refuses it.
+    options.servers = {"dns.quad9.net"};
+    r = UltraNet_DnsReverseLookup("127.0.0.1", host, options);
+    REQUIRE(!r);
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
+    REQUIRE(r.message.find("dns.quad9.net") != std::string::npos);
+    REQUIRE(host.empty());
+}
+
+TEST(dns_reverse_lookup_at_a_silent_server_comes_back_at_its_deadline) {
+    UltraNet_Initialize();
+    SilentServer silent;
+    if (!silent.Ok()) SKIP("cannot open a loopback UDP socket");
+    UltraNetDnsOptions options;
+    options.servers   = {silent.entry};
+    options.timeoutMs = 1500;
+    const auto started = std::chrono::steady_clock::now();
+    const auto outcome = ReverseWithin("127.0.0.1", options, 30s);
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+    REQUIRE(outcome.has_value());
+    REQUIRE(!outcome->ok);
+    REQUIRE_EQ(outcome->count, std::size_t(0));   // no host name came back
+    REQUIRE(elapsed < 20s);
+#ifdef ULTRANET_HAS_CARES
+    REQUIRE_EQ(outcome->code, UltraNetResultCode::Timeout);
+    REQUIRE(elapsed < 10s);
+#else
+    REQUIRE(outcome->code == UltraNetResultCode::Timeout
+            || outcome->code == UltraNetResultCode::Unsupported);
+#endif
+}
+
+TEST(dns_reverse_lookup_without_servers_answers_under_its_deadline) {
+    UltraNet_Initialize();
+    // The system resolver, the hosts file included, under a deadline: the
+    // loopback's name comes back or the host has no reverse record - either
+    // way the call returns, and well inside the watchdog.
+    UltraNetDnsOptions options;
+    options.timeoutMs = 5000;
+    const auto outcome = ReverseWithin("127.0.0.1", options, 30s);
+    REQUIRE(outcome.has_value());
+    if (!outcome->ok) {
+        REQUIRE(outcome->code == UltraNetResultCode::HostNotFound
+                || outcome->code == UltraNetResultCode::Timeout);
+        SKIP("127.0.0.1 has no reverse record on this host");
+    }
+    REQUIRE_EQ(outcome->count, std::size_t(1));
+    // The int overload is the same call.
+    std::string host;
+    const UltraNetResult same = UltraNet_DnsReverseLookup("127.0.0.1", host, 5000);
+    REQUIRE(same);
+    REQUIRE(!host.empty());
+}

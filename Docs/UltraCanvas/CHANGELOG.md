@@ -1,3 +1,26 @@
+#### 2026-09-29 *0.9.95*
+- **`UltraNet_DnsReverseLookup` honours its deadline and takes per-call name
+  servers.** It ignored its `timeoutMs` (a getnameinfo call has no clock) and
+  had no way to name a server, so a reverse lookup could hang for as long as
+  the system resolver liked and always asked the system's servers, while the
+  forward lookups had both since 0.9.49.
+  - New overload `UltraNet_DnsReverseLookup(ip, outHostname, const
+    UltraNetDnsOptions&)`. Without servers it is the system resolver - the
+    hosts file included - run on a thread of its own under the deadline:
+    `Timeout` when it passes, the lookup abandoned and its state freed by the
+    thread when it finishes. With `options.servers` it is a PTR query for the
+    address's reverse name at those servers, through the platform backend,
+    which bounds itself by the deadline; a bad entry is refused as
+    `InvalidUrl` before any query. The `int timeoutMs` form delegates to it.
+  - `UltraNet_DnsResolve(..., UltraNetDnsType::PTR, options)` is that call:
+    PTR is routed through the reverse lookup whatever the backend and the
+    options, so the two entry points cannot drift.
+  - Tests (`Tests/UltraNet/test_dns_servers.cpp`): validation through the
+    options overload, a reverse lookup at a silent loopback server comes back
+    at its deadline with no host name (`Timeout` under c-ares), and the
+    system form answers under its deadline. The `UltraNet_DnsReverseLookup`
+    probe covers the per-call server form the same way.
+
 #### 2026-09-29 *0.9.94*
 - **UltraNet plug-ins reach the core only through the host table, so they
   load on a static core and link on Windows without one.** A plug-in DSO used

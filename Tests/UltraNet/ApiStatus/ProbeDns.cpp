@@ -173,8 +173,41 @@ ULTRANET_PROBE(kArea, UltraNet_DnsReverseLookup) {
                            "reverse record on this host (" + r.message + ")");
     }
     PROBE_EXPECT(!host.empty());
+
+    // The options overload: with servers, a PTR query for the reverse name at
+    // those servers, so a server that never answers is only ever the deadline.
+    UltraNetSocketOptions socketOptions;
+    socketOptions.bindAddress = "127.0.0.1";
+    const UltraNetHandle silent = UltraNet_UdpOpen(0, socketOptions);
+    UltraNetEndpoint local;
+    if (silent == UltraNetInvalidHandle || !UltraNet_SocketLocalEndpoint(silent, local)) {
+        return Working("127.0.0.1 -> \"" + host + "\"; empty and non-IP input "
+                       "rejected as InvalidUrl (no loopback UDP socket to test "
+                       "the per-call server form)");
+    }
+    UltraNetDnsOptions options;
+    options.servers   = {"127.0.0.1:" + std::to_string(local.port)};
+    options.timeoutMs = 1500;
+    std::string viaServer;
+    const auto started = std::chrono::steady_clock::now();
+    const UltraNetResult atSilent = UltraNet_DnsReverseLookup("127.0.0.1", viaServer, options);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started);
+    UltraNet_SocketClose(silent);
+    if (atSilent) {
+        return Broken("a reverse lookup pointed at a server that never answers "
+                      "resolved to \"" + viaServer + "\", so the per-call server "
+                      "list was not applied");
+    }
+    PROBE_EXPECT(viaServer.empty());
+    if (kHasCares) {
+        PROBE_EXPECT_MSG(atSilent.code == UltraNetResultCode::Timeout, atSilent.message);
+        PROBE_EXPECT(elapsed.count() < 10000);
+    }
     return Working("127.0.0.1 -> \"" + host + "\"; empty and non-IP input "
-                   "rejected as InvalidUrl");
+                   "rejected as InvalidUrl; a 1.5 s lookup at a silent server "
+                   "came back after " + std::to_string(elapsed.count()) + " ms ("
+                   + atSilent.message + ")");
 }
 
 ULTRANET_PROBE(kArea, UltraNet_DnsClearCache) {
