@@ -70,6 +70,8 @@ public:
     // Reload accounts + status, rebuild the account bar and the mail view, and
     // switch between the start page and the account view.
     void Refresh();
+    // The unread total, published for the desktop's mail badge on every Refresh.
+    void PublishUnreadNotice();
 
 private:
     // Build the account view (everything shown once an account exists).

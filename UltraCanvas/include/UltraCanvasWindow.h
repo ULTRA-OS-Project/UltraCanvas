@@ -32,7 +32,13 @@ namespace UltraCanvas {
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
         Standard, Dialog, Popup, Tool, 
-        Fullscreen, Borderless, Overlay
+        Fullscreen, Borderless, Overlay,
+        // The desktop itself: undecorated, the size of the screen, kept below
+        // every other window, on every virtual desktop and out of taskbars
+        // (_NET_WM_WINDOW_TYPE_DESKTOP on X11). The window a desktop shell
+        // draws its wallpaper and bars in. Where the platform has no such
+        // notion it is a borderless window the size of the screen.
+        Desktop
     };
 
     enum class WindowState {

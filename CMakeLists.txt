@@ -435,6 +435,19 @@ if(BUILD_ULTRANETMONITOR)
     add_subdirectory(Apps/UltraNetMonitor)
 endif()
 
+# ===== ULTRADESKTOP =====
+# The ULTRA OS desktop: taskbar with the running applications, desktop
+# organiser (virtual desktops, Stickerboard, clipboard, screenshot) and the
+# info panel with the devices and services, on one screen-sized window under
+# everything else. Built on the UltraCanvasDesktopShell module; headless
+# --windows / --apps / --devices / --screenshot modes for the command line.
+option(BUILD_ULTRADESKTOP "Build the UltraDesktop application" ON)
+if(BUILD_ULTRADESKTOP)
+    message(STATUS "")
+    message(STATUS "── Building UltraDesktop ──")
+    add_subdirectory(Apps/UltraDesktop)
+endif()
+
 # ===== DEVICEEXPLORER =====
 # Shows the devices connected to this computer - printers, scanners, cameras -
 # as the IODeviceManager module finds them: a tree grouped by category,

@@ -343,6 +343,10 @@ namespace UltraCanvas {
 
         // Application icon
         void SetDefaultWindowIcon(const std::string& iconPath) { defaultWindowIconPath = iconPath; }
+        // The name Initialize() was given ("UltraFiler"). On X11 it becomes
+        // every window's WM_CLASS, which is how a taskbar matches a window to
+        // the application's desktop entry (StartupWMClass) and icon.
+        const std::string& GetAppName() const { return appName; }
         std::string GetDefaultWindowIcon() const { return defaultWindowIconPath; }
 
         void Run();

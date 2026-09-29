@@ -28,6 +28,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
@@ -1799,11 +1800,27 @@ void UltraMailApp::Refresh() {
     accountBar_.Rebuild(accounts_, status_, selectedAccount_);
     mailView_.SetAccounts(accounts_);
     mailView_.ShowAccount(selectedAccount_);
+    PublishUnreadNotice();
 
     // No account yet → only the start page; otherwise only the account view.
     const bool firstRun = accounts_.empty();
     if (auto page = startPage_.Container()) page->SetVisible(firstRun);
     if (accountView_) accountView_->SetVisible(!firstRun);
+}
+
+// The desktop's mail icon shows the unread total as a badge. It reads the
+// notice UltraCanvasDesktopShell keeps (one small file per application), so
+// the desktop never links UltraMail and UltraMail never knows the desktop.
+void UltraMailApp::PublishUnreadNotice() {
+    int unread = 0;
+    int today = 0;
+    for (const auto& st : status_) {
+        unread += st.unread;
+        today += st.unreadToday;
+    }
+    std::string text = std::to_string(unread) + " unread";
+    if (today > 0) text += ", " + std::to_string(today) + " today";
+    UltraCanvasDesktopShell::PublishNotice("UltraMail", unread, text);
 }
 
 void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,

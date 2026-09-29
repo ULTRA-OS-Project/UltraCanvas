@@ -12,6 +12,8 @@
 #include <iostream>
 #include <cstring>
 #include <cstdlib>
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <X11/Xresource.h>
 #include <X11/extensions/Xrandr.h>
@@ -56,6 +58,13 @@ namespace UltraCanvas {
         if (!CreateXWindow()) {
             debugOutput << "UltraCanvas Linux: Failed to create X11 window" << std::endl;
             return false;
+        }
+        // A desktop window took the screen's size in CreateXWindow, after the
+        // base had already sized this container from the config it was given:
+        // follow, or the bars and wallpaper are laid out for the smaller box
+        // and the rest of the screen stays unpainted.
+        if (config_.type == WindowType::Desktop) {
+            SetBounds(Rect2Di(0, 0, config_.width, config_.height));
         }
 
         // Apply window icon
@@ -110,8 +119,19 @@ namespace UltraCanvas {
             return false;
         }
 
+        // The desktop window is the screen: whatever size was asked for, it
+        // covers the whole of it, from the top-left corner.
+        if (config_.type == WindowType::Desktop) {
+            RefreshDeviceScale();
+            config_.x = 0;
+            config_.y = 0;
+            config_.width  = std::max(1, PhysicalToLogical(DisplayWidth(display, screen)));
+            config_.height = std::max(1, PhysicalToLogical(DisplayHeight(display, screen)));
+            config_.resizable = false;
+        }
+
         // Validate dimensions
-        if (config_.width <= 0 || config_.height <= 0 || config_.width > 4096 || config_.height > 4096) {
+        if (config_.width <= 0 || config_.height <= 0 || config_.width > 16384 || config_.height > 16384) {
             debugOutput << "UltraCanvas Linux: Invalid window dimensions: "
                       << config_.width << "x" << config_.height << std::endl;
             return false;
@@ -175,6 +195,25 @@ namespace UltraCanvas {
         SetWindowTitle(config_.title);
         SetWindowHints();
 
+        // WM_CLASS: the application's name, which is what a taskbar (ours,
+        // or any other desktop's) matches against StartupWMClass= to find the
+        // application's desktop entry and icon. The instance is the lower-case
+        // form, as the convention has it; the class the name as given.
+        {
+            std::string className = application->GetAppName();
+            if (className.empty()) className = "UltraCanvas";
+            std::string instanceName = className;
+            std::transform(instanceName.begin(), instanceName.end(), instanceName.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            XClassHint* classHint = XAllocClassHint();
+            if (classHint) {
+                classHint->res_name = const_cast<char*>(instanceName.c_str());
+                classHint->res_class = const_cast<char*>(className.c_str());
+                XSetClassHint(display, xWindow, classHint);
+                XFree(classHint);
+            }
+        }
+
         // Tell the WM this is a dialog so it stacks and places it like one.
         if (config_.type == WindowType::Dialog) {
             Atom windowTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
@@ -187,8 +226,29 @@ namespace UltraCanvas {
             SetTransientParent(config_.parentWindow);
         }
 
+        // The desktop window: typed so the manager keeps it at the bottom of
+        // the stack, on every desktop and out of the taskbar, and undecorated
+        // like a borderless window below.
+        if (config_.type == WindowType::Desktop) {
+            Atom windowTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+            Atom desktopTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+            XChangeProperty(display, xWindow, windowTypeAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(&desktopTypeAtom), 1);
+            Atom stateAtom = XInternAtom(display, "_NET_WM_STATE", False);
+            Atom states[4] = {
+                XInternAtom(display, "_NET_WM_STATE_SKIP_TASKBAR", False),
+                XInternAtom(display, "_NET_WM_STATE_SKIP_PAGER", False),
+                XInternAtom(display, "_NET_WM_STATE_STICKY", False),
+                XInternAtom(display, "_NET_WM_STATE_BELOW", False),
+            };
+            XChangeProperty(display, xWindow, stateAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(states), 4);
+        }
+
         // Apply borderless style if requested (remove window decorations)
-        if (config_.type == WindowType::Borderless) {
+        if (config_.type == WindowType::Borderless || config_.type == WindowType::Desktop) {
             struct {
                 unsigned long flags;
                 unsigned long functions;

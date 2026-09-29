@@ -3218,6 +3218,32 @@ endif()
 
 message(STATUS "")
 
+# ===== DESKTOP SHELL TEST =====
+# The platform-neutral half of UltraCanvasDesktopShell: the notices an
+# application publishes for the desktop, the program lookup, the application
+# list from desktop entries, the screenshot file name, and the monitor's
+# lifetime. Points XDG_RUNTIME_DIR and XDG_DATA_HOME at a throwaway directory,
+# so it never depends on what the machine has installed and needs no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DesktopShellTest...")
+    add_executable(DesktopShellTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DesktopShellTest.cpp
+    )
+    target_include_directories(DesktopShellTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DesktopShellTest PRIVATE cxx_std_20)
+    target_link_libraries(DesktopShellTest PRIVATE UltraCanvas)
+    set_target_properties(DesktopShellTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DesktopShellTest COMMAND DesktopShellTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DesktopShellTest")
+else()
+    message(STATUS "  DesktopShellTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== MAC BUNDLE TEST =====
 # The property-list reader (both encodings) and the macOS application bundles
 # and web locations built on it. Builds a bundle directory in a temp folder,
