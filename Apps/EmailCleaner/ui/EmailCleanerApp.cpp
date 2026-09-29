@@ -644,8 +644,12 @@ void EmailCleanerApp::AddOwnAccount(const NewAccountRequest& request,
                                                                   credentials);
         OnUiThread([this, signIn, account, password, done]() {
             if (!signIn) {
+                // The app-password hint only when the server turned the
+                // password down — not for a host that could not be reached.
+                const bool refused = signIn.code == UltraNetResultCode::AuthenticationFailed ||
+                                     signIn.code == UltraNetResultCode::AuthenticationRequired;
                 done("The sign-in failed: " + signIn.message +
-                     (account.imap.auth == UltraNetMailAuth::Any && !account.providerName.empty()
+                     (refused && !account.providerName.empty()
                           ? " — for " + account.providerName + ", use an app password."
                           : "."));
                 return;
