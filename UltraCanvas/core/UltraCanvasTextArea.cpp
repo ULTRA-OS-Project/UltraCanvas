@@ -739,7 +739,7 @@ namespace UltraCanvas {
             LineColumnIndex hit = PosToLineColumn({curRect.x, targetY});
             if (hit.lineIndex >= 0) newPos = hit;
         } else if (cursorPosition.lineIndex > 0) {
-            newPos.lineIndex  = std::max(0, cursorPosition.lineIndex - 10);
+            newPos.lineIndex  = std::max(0, cursorPosition.lineIndex - PageLineCount());
             newPos.columnIndex = std::min(cursorPosition.columnIndex,
                                           GetLineVisibleLength(newPos.lineIndex));
         } else {
@@ -767,7 +767,7 @@ namespace UltraCanvas {
             LineColumnIndex hit = PosToLineColumn({curRect.x, targetY});
             if (hit.lineIndex >= 0) newPos = hit;
         } else if (cursorPosition.lineIndex < (int)lines.size() - 1) {
-            newPos.lineIndex  = std::min((int)lines.size() - 1, cursorPosition.lineIndex + 10);
+            newPos.lineIndex  = std::min((int)lines.size() - 1, cursorPosition.lineIndex + PageLineCount());
             newPos.columnIndex = std::min(cursorPosition.columnIndex,
                                           GetLineVisibleLength(newPos.lineIndex));
         } else {
@@ -1777,7 +1777,6 @@ namespace UltraCanvas {
                 hexFirstVisibleRow = std::min(maxFirstRow, hexFirstVisibleRow + scrollAmount);
             }
         } else {
-            float h = std::max(1.0f, computedLineHeight);
             if (event.wheelDelta > 0) {
                 ScrollUp(3);
             } else {
@@ -2400,9 +2399,11 @@ namespace UltraCanvas {
         return std::max(0.0f, static_cast<float>(maxLineWidth) - visibleTextArea.width);
     }
 
-    // The wheel and the page keys come through here, so both glide. Consecutive
-    // steps chain onto the pending target, which is what turns a held-down
-    // PageDown into one continuous move instead of a series of jumps.
+    // The wheel, Ctrl+Up/Down and the drag autoscroll come through here, so
+    // all of them glide. Consecutive steps chain onto the pending target,
+    // which is what turns a held-down key into one continuous move instead
+    // of a series of jumps. (The page keys move the caret by a page and let
+    // the view follow it: see MoveCursorPageUp / PageLineCount.)
     // One step is one line as laid out (computedLineHeight, the measured
     // font line height times style.lineHeight), so a wheel notch moves the
     // text by whole lines. It used to guess 1.3 x the font size, which
@@ -2412,6 +2413,16 @@ namespace UltraCanvas {
     // in until it is.
     float UltraCanvasTextArea::ScrollStepHeight() const {
         return computedLineHeight > 0 ? computedLineHeight : style.fontStyle.fontSize * 1.3f;
+    }
+
+    // Lines that fit the visible text area: what one PageUp / PageDown moves
+    // by when the caret has no on-screen rectangle to measure a page from
+    // (before the first layout, or with the caret in a collapsed line). It
+    // was a fixed ten, which is most of a small area and a fraction of a
+    // tall one. Never less than one line, so the keys always move.
+    int UltraCanvasTextArea::PageLineCount() const {
+        float step = std::max(1.0f, ScrollStepHeight());
+        return std::max(1, static_cast<int>(visibleTextArea.height / step));
     }
 
     void UltraCanvasTextArea::ScrollUp(int lineCount) {

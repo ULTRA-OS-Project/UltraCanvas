@@ -53,4 +53,6 @@
   keys stepped by 1.3 x the font size, an estimate that drifted from the
   real line height by a few pixels a notch and left the top line cut
   part-way through after a few turns. They now step by the measured line
-  height the layout uses.
+  height the layout uses, and PageUp / PageDown, when the caret has no
+  on-screen rectangle to measure a page from, move by the lines that fit
+  the visible area instead of a fixed ten.
