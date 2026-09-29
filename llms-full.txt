@@ -62337,6 +62337,18 @@ wrong in ways which surface on one printer at one resolution; the raster goes
 down a pipe to a filter that reads it immediately, so the size costs nothing
 but a moment of memory.
 
+**The sync word comes once, at the start of the stream** - then a header and
+pixels per page. The writer used to put one before every page. The filter
+reads a second sync word as the first four bytes of the second page's header,
+every field after it lands four bytes out of step, and it stops there with
+exit status 0 and no message: a three-page job printed its first page,
+successfully. Checked with GutenPrint's own `rastertogutenprint`, which
+reports `PAGE:` once per page it prints - once for the old stream, three
+times for the same pages written correctly. `AppendCupsRasterSync` and
+`AppendCupsRasterPageHeader` are separate calls now so the two cannot be
+confused again, and `Tests/IODevicePrinterTest` reads a three-page stream
+back the filter's way.
+
 **Input and output are pumped together.** `RunProcessCaptured` polls the
 child's stdin, stdout and stderr in one loop with non-blocking pipe ends. This
 is not tidiness: `poll()` reporting the pipe writable means *one byte* is
@@ -62961,6 +62973,7 @@ absent.
 | CUPS transport, driver documents and raw streams | ✅ |
 | Option resolver in GutenPrint priority order | ✅ replaces the `FIXME` that returned its input unchanged |
 | **GutenPrint renderer** | ✅ run as a subprocess, never linked, so the framework stays MIT. Matches a printer to one of GutenPrint's ~3,500 models, gets that model's PPD from GutenPrint's own driver program, rasterises the page and pipes it through `rastertogutenprint`. Produces a device-native stream, so it travels as a raw job on all three platforms. |
+| GutenPrint: multi-page jobs | ✅ fixed. The CUPS raster writer put a sync word before every page instead of once per stream, so GutenPrint's filter stopped after page 1 without an error and every multi-page job printed its first page only. Confirmed with the real `rastertogutenprint` (1 page printed before, 3 after), and now tested. |
 | GutenPrint: colour separation to CMYK/KCMY | ❌ deliberately. GutenPrint is handed RGB and does its own separation against the ink set, which is better than anything we would do. Listed so the choice is visible, not because it is missing. |
 | GutenPrint: shipping the tools on Windows | ❌ the renderer works there and the RAW transport carries it, but nothing installs GutenPrint on Windows. Needs the binaries packaged beside the application and `ULTRACANVAS_GUTENPRINT_DRIVER`/`_FILTER` pointed at them. |
 | GutenPrint: streaming a long document | ❌ the whole rasterised document is held in memory before the filter runs, because `RunProcessCaptured` takes its input as one block. A page of RGB at 360 dpi is ~36 MB, so this suits letters and photographs and would not suit a book. Fixed by teaching the process runner to pull input a block at a time, after which one page need exist at once. |

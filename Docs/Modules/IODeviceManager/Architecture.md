@@ -389,6 +389,18 @@ wrong in ways which surface on one printer at one resolution; the raster goes
 down a pipe to a filter that reads it immediately, so the size costs nothing
 but a moment of memory.
 
+**The sync word comes once, at the start of the stream** - then a header and
+pixels per page. The writer used to put one before every page. The filter
+reads a second sync word as the first four bytes of the second page's header,
+every field after it lands four bytes out of step, and it stops there with
+exit status 0 and no message: a three-page job printed its first page,
+successfully. Checked with GutenPrint's own `rastertogutenprint`, which
+reports `PAGE:` once per page it prints - once for the old stream, three
+times for the same pages written correctly. `AppendCupsRasterSync` and
+`AppendCupsRasterPageHeader` are separate calls now so the two cannot be
+confused again, and `Tests/IODevicePrinterTest` reads a three-page stream
+back the filter's way.
+
 **Input and output are pumped together.** `RunProcessCaptured` polls the
 child's stdin, stdout and stderr in one loop with non-blocking pipe ends. This
 is not tidiness: `poll()` reporting the pipe writable means *one byte* is

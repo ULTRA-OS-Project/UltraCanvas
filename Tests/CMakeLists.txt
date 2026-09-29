@@ -3796,6 +3796,8 @@ add_executable(IODevicePrinterTest
     # The renderer that uses them rasterises pages and needs the imaging
     # stack; this half is string work and links here without it.
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterGutenPrintModels.cpp
+    # The CUPS raster writer GutenPrint's filter reads: pure byte layout.
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterRaster.cpp
     # Finding the tools asks the filesystem whether they are there, through
     # PathFromUtf8 - which exists so that a path a user's own files live under
     # opens on Windows too, whatever the active code page.
