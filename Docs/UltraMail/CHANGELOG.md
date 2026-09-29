@@ -18,6 +18,16 @@
   once the server has actually listed the folder (the same guard the expunge
   has), and only up to the highest UID the index held when it started, so a
   body a sync is writing at that moment is never touched.
+- **Opened attachments no longer pile up.** Opening an attachment writes a
+  copy for the viewer, and those copies were never deleted - straight into the
+  `cache` folder, for good. They now go to `cache/attachments`, which is pruned
+  at every start (before any viewer has a file open): what was not opened for
+  a week goes, then the oldest until the rest fits in 256 MB. Opening an
+  attachment again marks its copy as new. The loose copies earlier versions
+  left in `cache` are cleared once; the sender icons, in their own folder
+  there, are untouched. `AttachmentCache` also builds its paths through
+  `PathFromUtf8` now, so an attachment named in Thai or with an emoji is
+  written where it should be on Windows too.
 
 #### 2026-09-29 *0.10.8*
 - **Replies and forwards keep an HTML message's formatting.** Answering or
