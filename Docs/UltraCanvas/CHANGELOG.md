@@ -1,3 +1,36 @@
+#### 2026-09-29 *0.9.88*
+- **An eSCL scanner that offers TLS was listed twice.** Such a scanner
+  advertises both `_uscan._tcp` and `_uscans._tcp`, and discovery keyed each
+  entry on its URL, which differs between the two - so the scanner appeared
+  once as `escl:http://...` and again as `escl:https://...`. It is now
+  recognised by the `uuid` in its TXT record (compared without regard to case
+  or a `urn:uuid:` prefix), or by its host when it gives none, and listed
+  once: over plain HTTP, since its certificate is almost always self-signed
+  and TLS verification stays on, with the TLS address kept in the
+  `escl-tls-url` attribute. Checked against one scanner advertised both ways
+  over Avahi: two entries before, one after. `EsclScannerIdentity` is new and
+  tested in `IODeviceScannerESCLTest`.
+  - A stale comment went with it: `ULTRACANVAS_ESCL_SCANNERS` was described
+    as the only way to reach a scanner on Windows, which stopped being true
+    when the mDNS plugin learned to resolve there.
+- **The IODeviceManager backend tables now list IPP printing.** The IPP
+  driverless printer backend and the rewrite of those tables to list only
+  backends that exist merged one after the other, so the tables said nothing
+  of IPP - and the README still marked it "IPP discovery planned". The
+  Printers rows of `Docs/Dependencies.md` and the DemoApp's copy of it, the
+  module README's overview and backend tables, and `intro.md` now say that
+  driverless network printers work over IPP on every platform, and the README
+  gains a *Network Printers* section showing `ULTRACANVAS_IPP_PRINTERS`, next
+  to the one for eSCL scanners.
+- **The changelog check never ran on a pending entry.** `changelog.yml`
+  triggered on `CHANGELOG.md`, the version cmake file, the script and itself,
+  but not on `Docs/UltraCanvas/changelog.d/**` - and since the framework's
+  number moved to `main`, a pending entry is how nearly every pull request
+  records its change. So `check_changelog.py`'s rule that a pending entry
+  carries no `####` header was never enforced in CI; #579's two entries, for
+  one, merged without the check running. The workflow now triggers on that
+  directory too.
+
 #### 2026-09-29 *0.9.87*
 - **Every application's signal handler calls
   `UltraCanvasApplicationBase::RequestExitFromSignal()`.** ArtCreator,
