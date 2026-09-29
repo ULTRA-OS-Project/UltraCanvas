@@ -43075,7 +43075,7 @@ stroke a path of your own the same way:
 Rect2Dd path = IRenderContext::InsetForStroke(rect, strokeWidth);
 ctx->Rect(path.x, path.y, path.width, path.height);
 ctx->SetStrokeWidth(strokeWidth);
-ctx->StrokePath();
+ctx->Stroke();
 ```
 
 ## Text outlines
