@@ -176,6 +176,13 @@ code.
 
 ## Version
 
+- 1.2.2 (2026-09-29): Windows launches no longer put up the loader's modal
+  "entry point not found" box: the shell loads a packaged app's activation
+  DLL (`daxexec.dll`, for Photos and other Store apps) into the calling
+  process, and hard-error boxes are now off on that thread around every
+  launch. When the default open still fails for a registered handler, the
+  file is handed to `explorer.exe`, which activates the app from its own
+  process.
 - 1.2.1 (2026-09-12): macOS default open goes through Launch Services
   (`URLForApplicationToOpenURL:` + `openURLs:withApplicationAtURL:`) instead of
   spawning `/usr/bin/open`, so "nothing is registered for this file type" is
