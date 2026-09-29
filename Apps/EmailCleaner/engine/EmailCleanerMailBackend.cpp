@@ -47,12 +47,16 @@ bool MailBackend::LooksLikeTrash(const std::string& folderName) {
 
 void MailBackend::SetAccount(const MailAccountAccess& access) {
     if (access.accountId.empty()) return;
+    std::lock_guard<std::mutex> lock(mutex_);
     accounts_[access.accountId] = access;
 }
 
-MailAccountAccess* MailBackend::Find(const std::string& accountId) {
+bool MailBackend::Snapshot(const std::string& accountId, MailAccountAccess& out) const {
+    std::lock_guard<std::mutex> lock(mutex_);
     auto it = accounts_.find(accountId);
-    return it == accounts_.end() ? nullptr : &it->second;
+    if (it == accounts_.end()) return false;
+    out = it->second;
+    return true;
 }
 
 bool MailBackend::PrepareSession(MailAccountAccess& access, std::string& outError) {
@@ -66,6 +70,7 @@ bool MailBackend::PrepareSession(MailAccountAccess& access, std::string& outErro
 }
 
 std::string MailBackend::ResolvedTrash(const std::string& accountId) const {
+    std::lock_guard<std::mutex> lock(mutex_);
     auto it = accounts_.find(accountId);
     return it == accounts_.end() ? std::string() : it->second.trashFolder;
 }
@@ -94,25 +99,32 @@ std::string MailBackend::ResolveTrashFolder(const MailAccountAccess& access,
 
 bool MailBackend::MoveToTrash(const std::string& accountId, const std::string& folder,
                               int64_t uid, std::string& outError) {
-    MailAccountAccess* access = Find(accountId);
-    if (!access) {
+    MailAccountAccess access;
+    if (!Snapshot(accountId, access)) {
         outError = "account '" + accountId + "' has no mail connection configured";
         return false;
     }
-    if (!PrepareSession(*access, outError)) return false;
+    if (!PrepareSession(access, outError)) return false;
 
-    if (access->trashFolder.empty()) {
-        access->trashFolder = ResolveTrashFolder(*access, outError);
-        if (access->trashFolder.empty()) return false;   // outError already set
+    if (access.trashFolder.empty()) {
+        access.trashFolder = ResolveTrashFolder(access, outError);
+        if (access.trashFolder.empty()) return false;   // outError already set
+        // Remember it for the next message - unless the account was replaced
+        // meanwhile, whose record is the newer one.
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = accounts_.find(accountId);
+        if (it != accounts_.end() && it->second.trashFolder.empty() &&
+            it->second.serverUrl == access.serverUrl)
+            it->second.trashFolder = access.trashFolder;
     }
 
     // Moving a message that is already in Trash would be a no-op at best and
     // an error at worst; treat it as done.
-    if (folder == access->trashFolder) return true;
+    if (folder == access.trashFolder) return true;
 
-    const UltraNetResult r = mailbox_.MoveMessage(access->serverUrl, folder,
+    const UltraNetResult r = mailbox_.MoveMessage(access.serverUrl, folder,
                                                   static_cast<uint32_t>(uid),
-                                                  access->trashFolder, access->options);
+                                                  access.trashFolder, access.options);
     if (!r) {
         outError = r.message;
         return false;
@@ -164,27 +176,27 @@ bool MailBackend::SendUnsubscribeMail(const std::string& accountId,
         outError = "no unsubscribe address";
         return false;
     }
-    MailAccountAccess* access = Find(accountId);
-    if (!access) {
+    MailAccountAccess access;
+    if (!Snapshot(accountId, access)) {
         outError = "account '" + accountId + "' has no mail connection configured";
         return false;
     }
-    if (access->ownerAddress.empty()) {
+    if (access.ownerAddress.empty()) {
         // The list identifies the subscriber by the From address; sending
         // without one would be answered by nothing.
         outError = "the account has no address to unsubscribe with";
         return false;
     }
-    if (!PrepareSession(*access, outError)) return false;
+    if (!PrepareSession(access, outError)) return false;
 
     UltraNetMailMessage message;
-    message.from        = access->ownerAddress;
+    message.from        = access.ownerAddress;
     message.to          = { address };
     message.subject     = subject;
     message.body        = "Please remove this address from the list.";
     message.contentType = "text/plain";
 
-    const UltraNetResult r = mailbox_.SendMail(message, access->options);
+    const UltraNetResult r = mailbox_.SendMail(message, access.options);
     if (!r) {
         outError = r.message;
         return false;

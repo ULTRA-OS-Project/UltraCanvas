@@ -23,6 +23,7 @@
 
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 
 namespace EmailCleaner {
@@ -71,11 +72,16 @@ public:
     static bool LooksLikeTrash(const std::string& folderName);
 
 private:
-    MailAccountAccess* Find(const std::string& accountId);
+    // A copy of the account's record, taken under the lock: the calls above
+    // may run on a worker thread (EmailCleaner runs its actions there) while
+    // the UI thread registers an account, and the network is talked to
+    // outside the lock. False when the account is not registered.
+    bool Snapshot(const std::string& accountId, MailAccountAccess& out) const;
     // Run the account's prepareSession, if it has one.
     static bool PrepareSession(MailAccountAccess& access, std::string& outError);
 
     IMailboxProtocolPlugin&                mailbox_;
+    mutable std::mutex                     mutex_;      // guards accounts_
     std::map<std::string, MailAccountAccess> accounts_;
 };
 

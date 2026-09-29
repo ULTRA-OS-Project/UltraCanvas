@@ -181,6 +181,12 @@ std::string ActionOutcome::Describe() const {
 }
 
 ActionOutcome ActionExecutor::Execute(const ActionPlan& plan) {
+    ActionOutcome outcome = ExecuteLocal(plan);
+    ExecuteRemote(plan, outcome);
+    return outcome;
+}
+
+ActionOutcome ActionExecutor::ExecuteLocal(const ActionPlan& plan) {
     ActionOutcome outcome;
     if (plan.Empty()) return outcome;
 
@@ -202,6 +208,12 @@ ActionOutcome ActionExecutor::Execute(const ActionPlan& plan) {
             outcome.errors.push_back("could not block: " + r.message);
         }
     }
+
+    return outcome;
+}
+
+void ActionExecutor::ExecuteRemote(const ActionPlan& plan, ActionOutcome& outcome) {
+    if (plan.Empty()) return;
 
     // ---- Unsubscribe -------------------------------------------------------
     if (plan.willUnsubscribe) {
@@ -268,8 +280,6 @@ ActionOutcome ActionExecutor::Execute(const ActionPlan& plan) {
             }
         }
     }
-
-    return outcome;
 }
 
 } // namespace EmailCleaner

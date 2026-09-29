@@ -160,8 +160,26 @@ public:
         : store_(store), backend_(backend) {}
 
     // Run a plan. Blocking happens first (it is local and cannot fail
-    // outward), then unsubscribing, then the moves.
+    // outward), then unsubscribing, then the moves. The same as ExecuteLocal()
+    // followed by ExecuteRemote().
     ActionOutcome Execute(const ActionPlan& plan);
+
+    // The two halves, for a caller that must not wait on the network on the
+    // thread it runs the local half on (the UI).
+    //
+    // ExecuteLocal: the blocklist - the only step that writes the analysis
+    // database. Quick; run it where the database is used.
+    ActionOutcome ExecuteLocal(const ActionPlan& plan);
+    // ExecuteRemote: the unsubscribe request and the moves - every step that
+    // talks to a server, through the backend only; it never touches the store,
+    // so it may run on a worker thread (the backend must be safe to call from
+    // it; MailBackend is). Adds to `outcome`. onProgress is called from here.
+    void ExecuteRemote(const ActionPlan& plan, ActionOutcome& outcome);
+
+    // True when the plan has a step ExecuteRemote would carry out.
+    static bool HasRemoteSteps(const ActionPlan& plan) {
+        return plan.willUnsubscribe || plan.willDelete;
+    }
 
     // Called once per moved message, for a progress bar.
     std::function<void(int done, int total)> onProgress;

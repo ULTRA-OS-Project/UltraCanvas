@@ -12,6 +12,18 @@
   renewed token stays in memory: UltraMail's vault is only ever read. When the
   sign-in cannot be renewed the action fails before anything reaches the
   server, and says to sign in again in UltraMail.
+- **Acting on mail no longer freezes the window.** **Apply** ran every step on
+  the UI thread: the unsubscribe request, a sign-in (and now possibly a token
+  refresh), and one IMAP round trip per message moved to Trash - so moving a
+  few hundred messages left the window unresponsive until the last one was
+  done. The block, which is local and instant, still happens at once; the
+  steps that talk to a server run on a worker, the status line counts the
+  messages as they move ("Moving to Trash… 40 of 212"), and the outcome and
+  any warning appear when they are done. **Apply** stays disabled until then,
+  so a second plan cannot start against messages that are still moving. The
+  mail backend is now safe to use from that worker while an account is added
+  or registered again on the UI thread (the account records were an unguarded
+  map; ThreadSanitizer reported the race and is clean now).
 
 #### 2026-09-29 *0.4.0*
 - **EmailCleaner can have accounts of its own.** Until now every account came

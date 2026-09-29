@@ -161,7 +161,10 @@ Selecting a block on the map arms the actions strip above the message list:
 **Block sender**, **Unsubscribe** and **Move to Trash**, in any combination.
 The strip shows the resulting plan as you tick — how many messages, from where,
 and every warning — and **Apply** repeats the whole thing in a confirmation
-before anything happens.
+before anything happens. The block is applied at once; the steps that talk to
+the server (the unsubscribe request, the moves) run in the background with a
+count on the status line, so the window keeps answering, and **Apply** waits
+until they are done.
 
 Three rules the panel will not bend:
 

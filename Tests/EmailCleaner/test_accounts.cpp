@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace EmailCleaner;
@@ -481,4 +482,39 @@ TEST(Accounts_MailBackendSendsNothingWhenTheSignInFails) {
     REQUIRE(!backend.SendUnsubscribeMail("someone-gmail-com", "unsub@list.example",
                                          "unsubscribe", error));
     REQUIRE(error.find("could not sign in") != std::string::npos);
+}
+
+TEST(Accounts_MailBackendCanBeUsedFromAWorkerWhileAccountsChange) {
+    // EmailCleaner moves mail on a worker thread while the UI thread may add
+    // or re-register an account. Each call works on its own copy of the record.
+    FakeMailbox mailbox;
+    mailbox.folders = { MailFolder("INBOX", "inbox"), MailFolder("Trash", "trash") };
+
+    MailAccountAccess access;
+    access.accountId = "erika";
+    access.serverUrl = "imaps://mail.example:993/";
+    access.ownerAddress = "erika@example.com";
+
+    MailBackend backend(mailbox);
+    backend.SetAccount(access);
+
+    int moved = 0;
+    std::thread worker([&]() {
+        for (int uid = 1; uid <= 200; ++uid) {
+            std::string error;
+            if (backend.MoveToTrash("erika", "INBOX", uid, error)) ++moved;
+        }
+    });
+    for (int i = 0; i < 200; ++i) {
+        MailAccountAccess other = access;
+        other.accountId = "account-" + std::to_string(i % 5);
+        backend.SetAccount(other);
+        backend.SetAccount(access);   // the same account, registered again
+    }
+    worker.join();
+
+    REQUIRE_EQ(moved, 200);
+    REQUIRE_EQ(mailbox.moveCalls, 200);
+    REQUIRE_EQ(backend.ResolvedTrash("erika").empty() ||
+               backend.ResolvedTrash("erika") == "Trash", true);
 }
