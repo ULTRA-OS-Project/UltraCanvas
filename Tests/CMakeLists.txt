@@ -2042,6 +2042,26 @@ add_test(NAME VirtualFSPathTest COMMAND VirtualFSPathTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VirtualFSPathTest")
 
+# ===== VIDEOFX TEST =====
+# Effect -> filter text translation always; with FFmpeg the engine end to end
+# on clips it generates itself (probe, frames, trim, speed, joins, GIF / WAV,
+# lossless cut, cancel, background job, UTF-8 names, error codes).
+if(TARGET VideoFX)
+    message(STATUS "  Building VideoFXTest...")
+    add_executable(VideoFXTest ${CMAKE_CURRENT_SOURCE_DIR}/VideoFXTest.cpp)
+    target_include_directories(VideoFXTest PRIVATE
+        ${ULTRACANVAS_ROOT}/VideoFX/core          # VideoFXFilterBuilder.h (internal)
+        ${ULTRACANVAS_INCLUDE_DIR}                # UltraCanvasPathUtf8.h (header-only)
+    )
+    target_link_libraries(VideoFXTest PRIVATE VideoFX::VideoFX)
+    set_target_properties(VideoFXTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VideoFXTest COMMAND VideoFXTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VideoFXTest")
+endif()
+
 # ===== VIRTUALFS DELETE TEST =====
 # Regression test for batched archive-entry deletion (single rewrite pass).
 # Needs libarchive; the vendored miniz additionally enables the ZIP raw-copy

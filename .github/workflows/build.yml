@@ -363,6 +363,9 @@ jobs:
           # packages". Installing it explicitly lets apt resolve the set.
           sudo apt-get install -y libunwind-dev
           sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+          # VideoFX's engine (FFmpeg 4.4 on 22.04). Without it the module builds
+          # from its stub and VideoFXTest checks only the filter-text half.
+          sudo apt-get install -y libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev
           # Optional audio codecs (FLAC/OGG/Opus/MP3 encode, OGG/Opus decode)
           sudo apt-get install -y libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libmp3lame-dev
           # libopusenc-dev is not packaged for Ubuntu 22.04 (added in 24.04),
@@ -769,6 +772,24 @@ jobs:
             fi
           done
           echo "multi-user acceptance test and server-login test are registered and ran"
+
+      # VideoFX builds from a stub when FFmpeg is missing, and its test then
+      # passes on the filter-text checks alone - a green run that exercised no
+      # engine. Make the Linux rows prove the engine was built and tested.
+      - name: Verify the VideoFX engine was built and tested (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "VideoFX: FFmpeg .* found - engine enabled" configure.log; then
+            echo "::error::VideoFX was configured without FFmpeg - are the libav*-dev packages installed?"
+            exit 1
+          fi
+          if ! grep -qE "VideoFXTest[ .]" build/ctest.log; then
+            echo "::error::VideoFXTest did not run"
+            exit 1
+          fi
+          echo "VideoFX engine built and VideoFXTest ran"
 
       # AnchorPoint is its own CMake project and not part of the build above,
       # so nothing here built it: its standalone link broke (UltraCrypt had

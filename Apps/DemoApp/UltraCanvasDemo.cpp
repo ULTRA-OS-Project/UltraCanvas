@@ -2025,11 +2025,12 @@ namespace UltraCanvas {
                                "as single native windows (Wine tier)",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraWin"); });
-        // Specification only — no VideoFX sources, no build target and no consumer;
-        // the timeline / effects / export engine in Docs/Modules/VideoFX/README.md
-        // is a design document. "Planned", not "PartiallyImplemented".
+        // Built module (VideoFX/, target VideoFX, on FFmpeg) at stage 1 of its
+        // roadmap: probe, frames, trim / speed / effects / joins, export, the
+        // videofx CLI and VideoFXTest. No application calls it yet, and
+        // transitions, overlays and keyframes are still to come - partial.
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
-                               ImplementationStatus::Planned,
+                               ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
         // Built module (VirtualFS/, target VirtualFS) reaching applications through
         // the core: UltraCanvasFilerWidget browses archive interiors via

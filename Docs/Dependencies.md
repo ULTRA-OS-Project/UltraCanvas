@@ -487,7 +487,17 @@ configure time naming what is missing.
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| Video effects / transcode | FFmpeg | FFmpeg | FFmpeg |
+| Probe, decode, effects (libavfilter), encode, mux | FFmpeg ≥ 4.4 — libavformat, libavcodec, libavfilter, libavutil, libswscale (optional) | FFmpeg (optional) | FFmpeg (optional) |
+
+> Found through pkg-config and linked as shared system libraries, never
+> vendored; no FFmpeg type appears in a VideoFX public header. Without it the
+> module builds from a stub (`VideoFX_IsAvailable()` is false, every call
+> returns `NotAvailable`). Which codecs can be *written* depends on the FFmpeg
+> build: H.264 needs libx264 or a platform encoder (VideoToolbox, Media
+> Foundation), H.265 libx265, VP8/VP9 libvpx, AV1 SVT-AV1 / libaom / rav1e;
+> MPEG-4, MJPEG, ProRes, FFV1, GIF, AAC, FLAC and PCM are FFmpeg's own.
+> FFmpeg is LGPL 2.1+, but a `--enable-gpl` build (Debian / Ubuntu packages,
+> anything with libx264 / libx265) is GPL — see `THIRD_PARTY_LICENSES.md`.
 
 ### VirtualFS module
 

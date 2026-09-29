@@ -698,7 +698,8 @@ namespace UltraCanvas {
         dep("VM tier: RemoteApp client", "FreeRDP (Apache 2)\n(optional, linked)", "– (module not built)", "– (module not built)");
 
         header("VideoFX module");
-        dep("Video effects / transcode", "FFmpeg (LGPL 2.1)", "FFmpeg (LGPL 2.1)", "FFmpeg (LGPL 2.1)");
+        dep("Probe, effects, encode, mux", "FFmpeg (LGPL 2.1) (optional)\n(GPL when built --enable-gpl)",
+            "FFmpeg (LGPL 2.1) (optional)", "FFmpeg (LGPL 2.1) (optional)");
 
         header("VirtualFS module");
         dep("Archive formats", "libarchive (BSD 2)", "libarchive (BSD 2)", "libarchive (BSD 2)");
