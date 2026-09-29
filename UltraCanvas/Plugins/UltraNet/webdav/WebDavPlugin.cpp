@@ -154,7 +154,7 @@ void ParseMultistatus(const std::string& body,
                       std::vector<UltraNetFtpEntry>& out) {
     for (const auto& resp : SplitResponses(body)) {
         UltraNetFtpEntry e;
-        std::string href = UltraCanvas::Trim(ExtractTag(resp, "href"));
+        std::string href = UltraCanvas::TrimWhitespace(ExtractTag(resp, "href"));
         if (href.empty()) continue;
         // The href is URL-encoded; decode the last path segment as the name.
         std::string decodedHref = UltraNet_UrlDecode(href);
@@ -170,7 +170,7 @@ void ParseMultistatus(const std::string& body,
         }
         if (name.empty() || name == "." || name == "..") continue;
 
-        const std::string display = UltraCanvas::Trim(ExtractTag(resp, "displayname"));
+        const std::string display = UltraCanvas::TrimWhitespace(ExtractTag(resp, "displayname"));
         if (!display.empty()) name = display;
         e.name     = name;
         e.fullPath = listUrl + name;
@@ -184,9 +184,9 @@ void ParseMultistatus(const std::string& body,
         } else {
             e.type = UltraNetFtpEntryType::File;
         }
-        const std::string size = UltraCanvas::Trim(ExtractTag(resp, "getcontentlength"));
+        const std::string size = UltraCanvas::TrimWhitespace(ExtractTag(resp, "getcontentlength"));
         if (!size.empty()) e.size = std::atoll(size.c_str());
-        e.modificationTime = UltraCanvas::Trim(ExtractTag(resp, "getlastmodified"));
+        e.modificationTime = UltraCanvas::TrimWhitespace(ExtractTag(resp, "getlastmodified"));
 
         out.push_back(std::move(e));
     }

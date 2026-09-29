@@ -2,10 +2,16 @@
 // Plugin registry. Plug-ins register themselves via UltraNet_RegisterPlugin
 // at static-init time (or at runtime via the future RefreshPlugins loader).
 // The registry maintains two indexes: by plug-in name and by URL scheme.
-// Version: 0.3.1 (Stage 3)
+// Version: 0.3.2 - keeps the core functions plug-ins call back into linked
+//                  into every host, static core or shared
+
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetPlugins.h"
+#include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetHttp.h"
+#include "UltraNet/UltraNetMime.h"
+#include "UltraNet/UltraNetUrl.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
@@ -70,7 +76,58 @@ static UltraNetPluginHost g_pluginHost = {
     &UltraNet_RegisterPlugin
 };
 
+// ---- The core functions plug-ins call back into ----------------------------
+// A plug-in DSO calls a few core functions (URL parsing, the CA bundle, MIME
+// building, HTTP for JMAP) and resolves them from the host when it is loaded:
+// from libUltraCanvas when the core is shared, and from the executable itself
+// (-rdynamic / ENABLE_EXPORTS) when it is static. A static core only puts the
+// objects the executable itself uses into it, though — EmailCleaner, which
+// never parses a URL, lacked UltraNet_ParseUrl and UltraNet_UrlEncode, so
+// dlopen(RTLD_NOW) refused the IMAP plug-in and the app reported it missing.
+// This table names every such function, and UltraNet_RefreshPlugins() takes
+// its address: any host that can load a plug-in therefore links all of them.
+//
+// NB: when a plug-in starts calling another core function, add it here — a
+// shared build (Linux CI) resolves it anyway and will not notice. Check with
+//   nm -D --undefined-only Plugins/UltraNet/*.so
+// against a static-core build. Plug-ins must not call UltraCanvas UI or
+// utility code that is not header-only (a static core may not carry it).
 namespace {
+
+struct PluginHostImports {
+    void           (*registerPlugin)(std::shared_ptr<IUltraNetPlugin>);
+    UltraNetResult (*parseUrl)(const std::string&, UltraNetUrlComponents&);
+    std::string    (*urlEncode)(const std::string&);
+    std::string    (*urlDecode)(const std::string&);
+    std::string    (*resolveCaBundlePath)();
+    std::string    (*describeTrustRoots)();
+    std::string    (*describePlatform)();
+    std::string    (*mimeBuild)(const UltraNetMimeBuildInput&);
+    UltraNetResult (*httpGet)(const std::string&, UltraNetResponse&, const UltraNetHttpOptions&);
+    UltraNetResult (*httpRequest)(const UltraNetHttpRequest&, UltraNetResponse&);
+    void           (UltraNetHttpHeaders::*setHeader)(const std::string&, const std::string&);
+};
+
+const PluginHostImports kPluginHostImports = {
+    &UltraNet_RegisterPlugin,
+    &UltraNet_ParseUrl,
+    &UltraNet_UrlEncode,
+    &UltraNet_UrlDecode,
+    &UltraNet_ResolveCaBundlePath,
+    &UltraNet_DescribeTrustRoots,
+    &UltraNet_DescribePlatform,
+    &UltraNet_MimeBuild,
+    &UltraNet_HttpGet,
+    &UltraNet_HttpRequest,
+    &UltraNetHttpHeaders::Set,
+};
+
+// Take the table's address where the optimiser cannot drop it, so neither
+// the compiler nor --gc-sections / -dead_strip discards the references.
+void KeepPluginHostImports() {
+    const PluginHostImports* volatile keep = &kPluginHostImports;
+    (void)keep;
+}
 
 struct Registry {
     std::mutex mutex;
@@ -152,6 +209,7 @@ std::vector<std::shared_ptr<IUltraNetPlugin>> UltraNet_GetAllPlugins() {
 }
 
 void UltraNet_RefreshPlugins() {
+    KeepPluginHostImports();
     Registry& r = Reg();
 
     std::string dir;

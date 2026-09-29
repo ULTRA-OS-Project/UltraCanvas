@@ -70,6 +70,21 @@ is purely a libcurl build option.
 `I<Category>ProtocolPlugin` interface in
 `UltraNet/UltraNetPlugins.h`.
 
+A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
+`UltraNet_RefreshPlugins()`, and the few core functions it calls back into —
+`UltraNet_ParseUrl`, `UltraNet_UrlEncode` / `UrlDecode`,
+`UltraNet_ResolveCaBundlePath`, `UltraNet_MimeBuild`, `UltraNet_HttpGet` /
+`HttpRequest`, ... — are resolved from the host when it loads. With a
+**static** core the executable only carries the objects it uses itself, so
+`kPluginHostImports` in `core/UltraNet/UltraNetPlugins.cpp` names every such
+function and `UltraNet_RefreshPlugins()` takes its address: any app that
+loads plug-ins links all of them, static core or shared. A plug-in that
+starts calling another core function adds it to that table (and uses only
+header-only UltraCanvas helpers, never `UltraCanvasUtils` code); the
+`UltraNetPluginHostImports` test (`scripts/check_ultranet_plugin_imports.py`)
+reads the built plug-ins' undefined symbols and fails on one the table
+misses — a shared-core build would otherwise resolve it and hide the gap.
+
 ---
 
 ## Architecture

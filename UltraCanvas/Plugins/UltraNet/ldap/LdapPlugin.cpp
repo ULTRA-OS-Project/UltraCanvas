@@ -87,7 +87,7 @@ void ParseLdif(const std::string& body,
         std::size_t valStart = colon + 1;
         if (valStart < line.size() && line[valStart] == ':') ++valStart;     // ::
         std::string value = (valStart < line.size())
-                                ? UltraCanvas::Trim(line.substr(valStart))
+                                ? UltraCanvas::TrimWhitespace(line.substr(valStart))
                                 : std::string{};
 
         std::string lower; lower.reserve(name.size());
