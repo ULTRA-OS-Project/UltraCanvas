@@ -216,6 +216,27 @@ public:
     bool HasSelection() const { return caret != anchor; }
     RichDocRange GetSelectionRange() const { return RichDocRange(anchor, caret); }
 
+    // ===== CELL SELECTION =====
+    // When the anchor and the caret are in two different cells of one table,
+    // the selection is not a run of text but a block of whole cells: the
+    // smallest grid rectangle holding both cells, grown until no merged cell
+    // sticks out of it. Deleting clears those cells, formatting applies to all
+    // of their text, typing replaces them, copying copies them as a table, and
+    // MergeSelectedCells() merges them.
+    bool HasCellSelection() const;
+    // The rectangle in grid rows and columns, inclusive. False without a cell
+    // selection.
+    bool GetCellSelectionRect(int& top, int& left, int& bottom, int& right) const;
+    // The model cells in it, as {block, row, cellIndex, 0} positions in
+    // document order.
+    std::vector<RichDocPosition> SelectedCells() const;
+    // Selects grid rectangle [top..bottom] x [left..right] of a table (grown
+    // over merged cells as above).
+    bool SelectCellRange(int blockIndex, int top, int left, int bottom, int right);
+    // Merges every selected cell into the top-left one. False without a cell
+    // selection, or when the rectangle cannot be one cell.
+    bool MergeSelectedCells();
+
     // ===== NAVIGATION (positions only; no mutation) =====
     RichDocPosition ClampPosition(const RichDocPosition& pos) const;
     RichDocPosition NextCharacter(const RichDocPosition& pos) const;   // crosses blocks
@@ -455,6 +476,13 @@ private:
     void DeleteRangeInternal(const RichDocRange& range);
     void InsertTextInternal(const std::string& utf8);
     RichDocPosition ClampToAnchorContainer(const RichDocPosition& pos) const;
+    // Clears the text of every selected cell; the caret goes to the start of
+    // the top-left one. No undo step of its own.
+    void ClearSelectedCellsInternal();
+    void InsertBlocksIntoCellInternal(const std::vector<RichDocBlock>& blocks);
+    // Grid rectangle of a cell selection between two cell positions.
+    bool CellRectBetween(const RichDocPosition& a, const RichDocPosition& b,
+                         int& top, int& left, int& bottom, int& right) const;
     void InsertLineBreakInternal();
     void ReplaceRangeInternal(const RichDocRange& range, const std::string& utf8);
     void ApplyCharFormatToRangeInternal(const RichDocRange& range,

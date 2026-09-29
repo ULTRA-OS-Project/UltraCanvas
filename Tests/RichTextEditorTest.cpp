@@ -772,12 +772,12 @@ static void TestTableCellEditing() {
     CHECK(ed.Undo());
     CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 1, 0)), std::string("beta"));
 
-    // --- a selection never spans two cells ---
+    // --- a selection across two cells is a block of cells, never text ---
     ed.SetSelection(RichDocPosition(1, 0, 0, 0), RichDocPosition(1, 1, 1, 5));
-    CHECK(ed.GetSelectionRange().start.SameContainer(ed.GetSelectionRange().end));
-    // ...nor out of a cell into a following block.
+    CHECK(ed.HasCellSelection());
+    // ...and out of a cell into a following block it stops at the table.
     ed.SetSelection(RichDocPosition(1, 0, 0, 0), RichDocPosition(2, 5));
-    CHECK(ed.GetSelectionRange().start.SameContainer(ed.GetSelectionRange().end));
+    CHECK(ed.GetSelectionRange().end.InCell() && ed.GetSelectionRange().end.blockIndex == 1);
     // Ordinary block-to-block selections still span freely.
     ed.SetSelection(RichDocPosition(0, 0), RichDocPosition(2, 5));
     CHECK(!ed.GetSelectionRange().start.SameContainer(ed.GetSelectionRange().end));
@@ -1305,6 +1305,97 @@ static void TestInlineImages() {
           || match.start.byteOffset >= 0);   // finding it is harmless; crashing is not
 }
 
+static void TestCellSelection() {
+    std::cout << "\n--- Cell selection ---\n";
+
+    UCRichDocumentEditor ed(BuildTableDocument());   // "before" | alpha beta / gamma delta | "after"
+    // Dragging from one cell into another selects cells, not text.
+    ed.SetCaret(RichDocPosition(1, 0, 0, 2));
+    ed.SetCaret(RichDocPosition(1, 1, 1, 1), /*extend*/ true);
+    CHECK(ed.HasCellSelection());
+    int top = -1, left = -1, bottom = -1, right = -1;
+    CHECK(ed.GetCellSelectionRect(top, left, bottom, right));
+    CHECK_EQ(top, 0);
+    CHECK_EQ(left, 0);
+    CHECK_EQ(bottom, 1);
+    CHECK_EQ(right, 1);
+    CHECK_EQ(ed.SelectedCells().size(), size_t(4));
+
+    // Formatting applies to every selected cell.
+    ed.ToggleBold();
+    CHECK(ed.GetBlock(1).tableRows[0].cells[0].runs[0].bold);
+    CHECK(ed.GetBlock(1).tableRows[1].cells[1].runs[0].bold);
+    CHECK(RichCharFormatState::IsOn(ed.GetFormatState().bold));
+
+    // Copy gives a table of the selected cells, plain text as tab/newline.
+    std::vector<RichDocBlock> copied = ed.ExtractRange(ed.GetSelectionRange());
+    CHECK_EQ(copied.size(), size_t(1));
+    CHECK(copied[0].type == RichBlockType::Table && copied[0].tableRows.size() == 2);
+    CHECK_EQ(ed.RangeToPlainText(ed.GetSelectionRange()), std::string("alpha\tbeta\ngamma\tdelta\n"));
+
+    // Alignment in a cell selection is each cell's own.
+    ed.SetAlignment(RichTextAlign::Right);
+    CHECK(ed.GetBlock(1).tableRows[0].cells[1].align == RichTextAlign::Right);
+
+    // Delete empties the cells; the table keeps its shape.
+    CHECK(ed.DeleteSelection());
+    CHECK_EQ(ed.GetBlockCount(), 3);
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 0, 0)), std::string(""));
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 1, 0)), std::string(""));
+    CHECK(ed.GetCaret() == RichDocPosition(1, 0, 0, 0));
+    CHECK(ed.Undo());
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 1, 0)), std::string("delta"));
+
+    // Pasting a copied table into a cell fills the grid from there.
+    ed.SetCaret(RichDocPosition(1, 0, 0, 0));
+    ed.SetCaret(RichDocPosition(1, 0, 1, 0), true);   // alpha, beta
+    std::vector<RichDocBlock> row = ed.ExtractRange(ed.GetSelectionRange());
+    ed.SetCaret(RichDocPosition(1, 1, 0, 0));
+    ed.InsertBlocks(row);
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 0, 0)), std::string("alpha"));
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 1, 0)), std::string("beta"));
+    CHECK(ed.Undo());
+
+    // Pasting paragraphs into a cell keeps them in the cell, as lines.
+    ed.SetCaret(RichDocPosition(1, 0, 0, 5));
+    ed.InsertBlocks(ed.ExtractRange(RichDocRange(RichDocPosition(0, 0), RichDocPosition(2, 5))));
+    CHECK_EQ(ed.GetBlockCount(), 3);
+    CHECK(ed.TextAt(RichDocPosition(1, 0, 0, 0)).find("alphabefore the table\n") == 0);
+    CHECK(ed.Undo());
+
+    // Typing over a cell selection replaces it, in the first cell.
+    ed.SetCaret(RichDocPosition(1, 0, 0, 0));
+    ed.SetCaret(RichDocPosition(1, 0, 1, 2), true);
+    ed.InsertText("X");
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 0, 0)), std::string("X"));
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 1, 0)), std::string(""));
+    CHECK(ed.Undo());
+
+    // Merge the selection into one cell, the others' text appended.
+    ed.SelectCellRange(1, 0, 0, 1, 0);          // alpha over gamma
+    CHECK(ed.HasCellSelection());
+    CHECK(ed.MergeSelectedCells());
+    CHECK_EQ(ed.GetBlock(1).tableRows[0].cells[0].rowSpan, 2);
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 0, 0)), std::string("alpha\ngamma"));
+    CHECK(!ed.HasSelection());
+    CHECK(ed.Undo());
+
+    // Out of the table from a cell: the selection stops at the table's edge.
+    ed.SetCaret(RichDocPosition(1, 0, 1, 1));
+    ed.SetCaret(RichDocPosition(2, 3), true);
+    CHECK(ed.HasCellSelection());
+    CHECK(ed.GetCaret().SameContainer(RichDocPosition(1, 1, 1, 0)));
+
+    // Into a table from outside: the table is taken whole.
+    ed.SetCaret(RichDocPosition(0, 2));
+    ed.SetCaret(RichDocPosition(1, 0, 0, 1), true);
+    CHECK(!ed.HasCellSelection());
+    CHECK(ed.GetCaret() == RichDocPosition(2, 0));
+    // ...and backing out of it again leaves it.
+    ed.SetCaret(RichDocPosition(1, 1, 1, 3), true);
+    CHECK(ed.GetCaret().blockIndex == 0);
+}
+
 int main() {
     TestPositionsAndNavigation();
     TestTypingAndDeleting();
@@ -1324,6 +1415,7 @@ int main() {
     TestTableMergeAndSplit();
     TestTableCaretFollowsStructure();
     TestInlineImages();
+    TestCellSelection();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

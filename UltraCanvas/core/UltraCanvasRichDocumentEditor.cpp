@@ -526,15 +526,178 @@ RichDocPosition UCRichDocumentEditor::ClampPosition(const RichDocPosition& pos) 
     return out;
 }
 
-// Keeps a selection inside one text container. Extending out of a table cell
-// (or into one) would produce a range no edit can honour — cells cannot be
-// merged by deleting the text between them — so the moving end is held at the
-// edge of the anchor's container instead. Multi-cell selection is its own
-// phase; see the element's documentation.
+// Shapes the moving end of a selection so the range is one an edit can honour.
+// Text between two cells cannot be deleted - cells are not joined by it - so:
+// - both ends in cells of one table: kept, and the selection is a block of
+//   cells (see HasCellSelection);
+// - from a cell out of its table: held at the table's first or last cell, a
+//   cell selection reaching the table's edge;
+// - from outside a table into it: the table is taken whole, the end moving
+//   past it (or, travelling back towards the anchor, before it).
 RichDocPosition UCRichDocumentEditor::ClampToAnchorContainer(const RichDocPosition& pos) const {
     if (pos.SameContainer(anchor)) return pos;
     if (!pos.InCell() && !anchor.InCell()) return pos;    // ordinary block selection
-    return (anchor < pos) ? ContainerEnd(anchor) : ContainerStart(anchor);
+    if (pos.InCell() && anchor.InCell() && pos.blockIndex == anchor.blockIndex) return pos;
+
+    if (anchor.InCell()) {
+        RichDocPosition edge;
+        const bool forward = anchor < pos;
+        if (forward ? LastContainerOfBlock(*this, anchor.blockIndex, edge)
+                    : FirstContainerOfBlock(*this, anchor.blockIndex, edge)) {
+            return forward ? ContainerEnd(edge) : ContainerStart(edge);
+        }
+        return anchor;
+    }
+
+    // The anchor is outside the table the moving end reached.
+    const int table = pos.blockIndex;
+    const bool anchorBefore = anchor.blockIndex < table;
+    // Coming back towards the anchor from the far side of the table stops
+    // short of it; otherwise the table is included.
+    const bool retreating = anchorBefore ? caret.blockIndex > table : caret.blockIndex < table;
+    auto afterTable = [&]() {
+        // The first container past the table's last cell.
+        RichDocPosition probe;
+        if (LastContainerOfBlock(*this, table, probe) && NextContainer(probe) && probe.blockIndex != table) {
+            return probe;
+        }
+        return RichDocPosition(table, 0);
+    };
+    auto beforeTable = [&]() {
+        RichDocPosition first;
+        if (FirstContainerOfBlock(*this, table, first)) {
+            RichDocPosition previous = first;
+            if (PreviousContainer(previous) && previous.blockIndex != table) return ContainerEnd(previous);
+        }
+        return RichDocPosition(table, 0);
+    };
+    if (anchorBefore) return retreating ? beforeTable() : afterTable();
+    return retreating ? afterTable() : beforeTable();
+}
+
+// ===== CELL SELECTION =====
+
+bool UCRichDocumentEditor::CellRectBetween(const RichDocPosition& a, const RichDocPosition& b,
+                                           int& top, int& left, int& bottom, int& right) const {
+    if (!a.InCell() || !b.InCell() || a.blockIndex != b.blockIndex || a.SameContainer(b)) return false;
+    if (a.blockIndex < 0 || a.blockIndex >= GetBlockCount()) return false;
+    const RichDocBlock& table = doc->blocks[static_cast<size_t>(a.blockIndex)];
+    const RichTableGrid grid = BuildTableGrid(table);
+    int aRow = 0, aColumn = 0, bRow = 0, bColumn = 0;
+    if (!grid.OriginOf(a.cellRow, a.cellColumn, aRow, aColumn)) return false;
+    if (!grid.OriginOf(b.cellRow, b.cellColumn, bRow, bColumn)) return false;
+    top = std::min(aRow, bRow);
+    bottom = std::max(aRow, bRow);
+    left = std::min(aColumn, bColumn);
+    right = std::max(aColumn, bColumn);
+    // Grow until every cell the rectangle touches lies inside it: half of a
+    // merged cell cannot be selected.
+    for (bool grown = true; grown;) {
+        grown = false;
+        for (int r = top; r <= bottom; ++r) {
+            for (int c = left; c <= right; ++c) {
+                const RichTableGridSlot& slot = grid.At(r, c);
+                if (!slot.Occupied()) continue;
+                int originRow = 0, originColumn = 0;
+                if (!grid.OriginOf(slot.row, slot.cellIndex, originRow, originColumn)) continue;
+                const RichTableCell& cell = table.tableRows[static_cast<size_t>(slot.row)]
+                                                .cells[static_cast<size_t>(slot.cellIndex)];
+                const int lastRow = std::min(grid.rowCount - 1, originRow + std::max(1, cell.rowSpan) - 1);
+                const int lastColumn = std::min(grid.columnCount - 1, originColumn + std::max(1, cell.columnSpan) - 1);
+                if (originRow < top) { top = originRow; grown = true; }
+                if (originColumn < left) { left = originColumn; grown = true; }
+                if (lastRow > bottom) { bottom = lastRow; grown = true; }
+                if (lastColumn > right) { right = lastColumn; grown = true; }
+            }
+        }
+    }
+    return true;
+}
+
+bool UCRichDocumentEditor::HasCellSelection() const {
+    return anchor.InCell() && caret.InCell() && anchor.blockIndex == caret.blockIndex
+        && !anchor.SameContainer(caret);
+}
+
+bool UCRichDocumentEditor::GetCellSelectionRect(int& top, int& left, int& bottom, int& right) const {
+    return CellRectBetween(anchor, caret, top, left, bottom, right);
+}
+
+namespace {
+// The model cells whose top-left slot lies in the rectangle, row by row.
+std::vector<RichDocPosition> CellsInRect(const RichDocBlock& table, int blockIndex,
+                                         int top, int left, int bottom, int right) {
+    std::vector<RichDocPosition> cells;
+    const RichTableGrid grid = BuildTableGrid(table);
+    for (int r = top; r <= bottom; ++r) {
+        for (int c = left; c <= right; ++c) {
+            const RichTableGridSlot& slot = grid.At(r, c);
+            if (slot.Occupied() && slot.origin) cells.emplace_back(blockIndex, slot.row, slot.cellIndex, 0);
+        }
+    }
+    return cells;
+}
+} // namespace
+
+std::vector<RichDocPosition> UCRichDocumentEditor::SelectedCells() const {
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (!GetCellSelectionRect(top, left, bottom, right)) return {};
+    return CellsInRect(doc->blocks[static_cast<size_t>(caret.blockIndex)], caret.blockIndex,
+                       top, left, bottom, right);
+}
+
+bool UCRichDocumentEditor::SelectCellRange(int blockIndex, int top, int left, int bottom, int right) {
+    const RichTableGrid grid = TableGrid(blockIndex);
+    if (grid.rowCount == 0) return false;
+    top = std::clamp(top, 0, grid.rowCount - 1);
+    bottom = std::clamp(bottom, 0, grid.rowCount - 1);
+    left = std::clamp(left, 0, grid.columnCount - 1);
+    right = std::clamp(right, 0, grid.columnCount - 1);
+    int fromRow = 0, fromCell = 0, toRow = 0, toCell = 0;
+    if (!grid.CellAt(std::min(top, bottom), std::min(left, right), fromRow, fromCell)) return false;
+    if (!grid.CellAt(std::max(top, bottom), std::max(left, right), toRow, toCell)) return false;
+    anchor = RichDocPosition(blockIndex, fromRow, fromCell, 0);
+    caret = RichDocPosition(blockIndex, toRow, toCell, 0);
+    if (anchor.SameContainer(caret)) caret = ContainerEnd(caret);
+    coalescing = false;
+    pendingFormatValid = false;
+    NotifySelectionChanged();
+    return true;
+}
+
+void UCRichDocumentEditor::ClearSelectedCellsInternal() {
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (!GetCellSelectionRect(top, left, bottom, right)) return;
+    const int blockIndex = caret.blockIndex;
+    RichDocBlock& table = doc->blocks[static_cast<size_t>(blockIndex)];
+    const std::vector<RichDocPosition> cells = CellsInRect(table, blockIndex, top, left, bottom, right);
+    for (const RichDocPosition& cell : cells) {
+        std::vector<RichTextRun>& runs = table.tableRows[static_cast<size_t>(cell.cellRow)]
+                                             .cells[static_cast<size_t>(cell.cellColumn)].runs;
+        // The first run stays, empty, so what is typed next keeps its look.
+        if (runs.empty()) continue;
+        runs.resize(1);
+        runs[0].text.clear();
+        runs[0].lineBreakBefore = false;
+        if (runs[0].IsInlineImage() || runs[0].field != RichTextRun::Field::Plain) runs[0] = RichTextRun{};
+    }
+    caret = cells.empty() ? ClampPosition(caret) : cells.front();
+    anchor = caret;
+}
+
+bool UCRichDocumentEditor::MergeSelectedCells() {
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (!GetCellSelectionRect(top, left, bottom, right)) return false;
+    const int blockIndex = caret.blockIndex;
+    const RichTableGrid grid = TableGrid(blockIndex);
+    int row = 0, cellIndex = 0;
+    if (!grid.CellAt(top, left, row, cellIndex)) return false;
+    const RichTableCell& origin = doc->blocks[static_cast<size_t>(blockIndex)]
+                                      .tableRows[static_cast<size_t>(row)].cells[static_cast<size_t>(cellIndex)];
+    const int extraColumns = right - (left + std::max(1, origin.columnSpan) - 1);
+    const int extraRows = bottom - (top + std::max(1, origin.rowSpan) - 1);
+    if (extraColumns < 0 || extraRows < 0 || (extraColumns == 0 && extraRows == 0)) return false;
+    return MergeTableCells(blockIndex, row, cellIndex, extraColumns, extraRows);
 }
 
 void UCRichDocumentEditor::SetCaret(const RichDocPosition& pos, bool extend) {
@@ -821,6 +984,14 @@ void UCRichDocumentEditor::DeleteRange(const RichDocRange& range) {
 
 void UCRichDocumentEditor::DeleteRangeInternal(const RichDocRange& range) {
     if (range.IsEmpty()) return;
+    // Two cells of one table: the cells between them are emptied, not joined.
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (CellRectBetween(range.start, range.end, top, left, bottom, right)) {
+        caret = range.end;
+        anchor = range.start;
+        ClearSelectedCellsInternal();
+        return;
+    }
     int firstBlock = range.start.blockIndex;
     int lastBlock = std::min(range.end.blockIndex, GetBlockCount() - 1);
 
@@ -1399,6 +1570,18 @@ void UCRichDocumentEditor::ApplyCharFormatToRangeInternal(const RichDocRange& ra
                                                           const RichCharFormatDelta& delta) {
     if (delta.IsEmpty() || range.IsEmpty()) return;
 
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (CellRectBetween(range.start, range.end, top, left, bottom, right)) {
+        RichDocBlock& table = doc->blocks[static_cast<size_t>(range.start.blockIndex)];
+        for (const RichDocPosition& cell : CellsInRect(table, range.start.blockIndex, top, left, bottom, right)) {
+            std::vector<RichTextRun>& runs = table.tableRows[static_cast<size_t>(cell.cellRow)]
+                                                 .cells[static_cast<size_t>(cell.cellColumn)].runs;
+            for (RichTextRun& run : runs) delta.ApplyTo(run);
+            CoalesceRuns(runs);
+        }
+        return;
+    }
+
     if (range.start.InCell()) {
         std::vector<RichTextRun>* runs = MutableRunsAt(range.start);
         if (!runs) return;
@@ -1522,8 +1705,23 @@ RichCharFormatState UCRichDocumentEditor::GetFormatState() const {
     RichDocRange range = GetSelectionRange();
     bool first = true;
 
-    // A selection never spans containers once a cell is involved, so a cell
-    // selection is read straight off that cell's runs.
+    // A block of cells: every run of every cell in it.
+    if (HasCellSelection()) {
+        for (const RichDocPosition& cell : SelectedCells()) {
+            if (const std::vector<RichTextRun>* cellRuns = RunsAt(cell)) {
+                for (const auto& run : *cellRuns) {
+                    if (run.text.empty() && !run.lineBreakBefore && cellRuns->size() > 1) continue;
+                    absorb(run, first);
+                    first = false;
+                }
+            }
+        }
+        if (first) absorb(FormatAt(range.start), true);
+        return state;
+    }
+
+    // Otherwise a selection involving a cell stays inside that cell, so it
+    // is read straight off that cell's runs.
     if (range.start.InCell()) {
         if (const std::vector<RichTextRun>* cellRuns = RunsAt(range.start)) {
             int pos = 0;
@@ -1708,12 +1906,24 @@ void UCRichDocumentEditor::SetHeadingLevel(int level) {
 }
 
 void UCRichDocumentEditor::SetAlignment(RichTextAlign align) {
-    // A table cell holds runs and nothing else: RichTableCell carries no
-    // paragraph properties, so there is nowhere to record a heading, a list, an
-    // alignment or a quote for one. Applying the command to the enclosing table
-    // block instead would silently re-align or restyle the whole table, which
-    // is not what a caret sitting in one cell asks for.
-    if (caret.InCell()) return;
+    // In a table the alignment is the cell's own (RichTableCell::align): the
+    // caret's cell, or every cell of a cell selection.
+    if (caret.InCell()) {
+        std::vector<RichDocPosition> cells = HasCellSelection() ? SelectedCells()
+                                                                 : std::vector<RichDocPosition>{caret};
+        {
+            EditScope scope(*this, caret.blockIndex, 1);
+            RichDocBlock& table = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+            for (const RichDocPosition& cell : cells) {
+                if (cell.cellRow < 0 || cell.cellRow >= static_cast<int>(table.tableRows.size())) continue;
+                RichTableRow& row = table.tableRows[static_cast<size_t>(cell.cellRow)];
+                if (cell.cellColumn < 0 || cell.cellColumn >= static_cast<int>(row.cells.size())) continue;
+                row.cells[static_cast<size_t>(cell.cellColumn)].align = align;
+            }
+        }
+        NotifyChanged();
+        return;
+    }
     int first = 0, last = 0;
     SelectedBlockRange(first, last);
     {
@@ -2581,6 +2791,38 @@ std::vector<RichDocBlock> UCRichDocumentEditor::ExtractRange(const RichDocRange&
     std::vector<RichDocBlock> out;
     if (range.IsEmpty()) return out;
 
+    // A block of cells copies as a table of just those cells.
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (CellRectBetween(range.start, range.end, top, left, bottom, right)) {
+        const RichDocBlock& source = doc->blocks[static_cast<size_t>(range.start.blockIndex)];
+        const RichTableGrid grid = BuildTableGrid(source);
+        RichDocBlock table = source;
+        table.tableRows.clear();
+        for (int r = top; r <= bottom; ++r) {
+            RichTableRow row;
+            row.header = source.tableRows[static_cast<size_t>(r)].header;
+            for (int c = left; c <= right; ++c) {
+                const RichTableGridSlot& slot = grid.At(r, c);
+                if (slot.Occupied() && slot.origin) {
+                    row.cells.push_back(source.tableRows[static_cast<size_t>(slot.row)]
+                                            .cells[static_cast<size_t>(slot.cellIndex)]);
+                }
+            }
+            table.tableRows.push_back(std::move(row));
+        }
+        if (static_cast<int>(source.tableColumnWidths.size()) == grid.columnCount) {
+            table.tableColumnWidths.assign(source.tableColumnWidths.begin() + left,
+                                           source.tableColumnWidths.begin() + right + 1);
+        } else {
+            table.tableColumnWidths.clear();
+        }
+        // A copied part of a table is as wide as its own columns, not the page.
+        table.tableWidthPt = 0.0f;
+        table.tableWidthPercent = 0.0f;
+        out.push_back(std::move(table));
+        return out;
+    }
+
     // Copying inside a cell yields the selected run slice as a paragraph, so it
     // pastes as ordinary text wherever it lands.
     if (range.start.InCell()) {
@@ -2628,6 +2870,68 @@ std::string UCRichDocumentEditor::RangeToPlainText(const RichDocRange& range) co
     return out;
 }
 
+// Pasting into a table cell. A cell holds runs, not blocks, so:
+// - a table pastes cell by cell into the grid from the caret's cell on, as a
+//   spreadsheet does (cells past the table's edge are dropped);
+// - anything else flows into the cell, one line per pasted paragraph.
+void UCRichDocumentEditor::InsertBlocksIntoCellInternal(const std::vector<RichDocBlock>& blocks) {
+    RichDocBlock& table = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+    if (blocks.size() == 1 && blocks[0].type == RichBlockType::Table) {
+        const RichTableGrid target = BuildTableGrid(table);
+        const RichTableGrid source = BuildTableGrid(blocks[0]);
+        int originRow = 0, originColumn = 0;
+        if (!target.OriginOf(caret.cellRow, caret.cellColumn, originRow, originColumn)) return;
+        for (int r = 0; r < source.rowCount; ++r) {
+            for (int c = 0; c < source.columnCount; ++c) {
+                const RichTableGridSlot& from = source.At(r, c);
+                if (!from.Occupied() || !from.origin) continue;
+                int row = 0, cellIndex = 0;
+                if (!target.CellAt(originRow + r, originColumn + c, row, cellIndex)) continue;
+                const RichTableGridSlot& to = target.At(originRow + r, originColumn + c);
+                if (!to.origin) continue;       // inside a merged cell: its origin already took one
+                table.tableRows[static_cast<size_t>(row)].cells[static_cast<size_t>(cellIndex)].runs =
+                    blocks[0].tableRows[static_cast<size_t>(from.row)].cells[static_cast<size_t>(from.cellIndex)].runs;
+            }
+        }
+        caret = ClampPosition(ContainerEnd(caret));
+        anchor = caret;
+        return;
+    }
+
+    std::vector<RichTextRun> flowing;
+    for (const RichDocBlock& block : blocks) {
+        std::vector<RichTextRun> runs;
+        if (IsTextBlockType(block.type)) {
+            runs = block.runs;
+        } else if (block.type == RichBlockType::Table) {
+            // A table's text, a cell per tab and a row per line.
+            for (const RichTableRow& row : block.tableRows) {
+                RichTextRun line;
+                line.lineBreakBefore = !runs.empty();
+                for (size_t c = 0; c < row.cells.size(); ++c) {
+                    if (c) line.text += '\t';
+                    line.text += RunsText(row.cells[c].runs);
+                }
+                runs.push_back(line);
+            }
+        } else {
+            continue;
+        }
+        if (runs.empty()) runs.emplace_back();
+        runs.front().lineBreakBefore = !flowing.empty();
+        flowing.insert(flowing.end(), runs.begin(), runs.end());
+    }
+    if (flowing.empty()) return;
+    std::vector<RichTextRun>* target = MutableRunsAt(caret);
+    if (!target) return;
+    const int at = SplitRunAt(*target, caret.byteOffset);
+    target->insert(target->begin() + at, flowing.begin(), flowing.end());
+    CoalesceRuns(*target);
+    caret.byteOffset += static_cast<int>(RunsText(flowing).size());
+    caret = ClampPosition(caret);
+    anchor = caret;
+}
+
 void UCRichDocumentEditor::InsertBlocks(const std::vector<RichDocBlock>& blocks) {
     if (blocks.empty()) return;
     RichDocRange selection = GetSelectionRange();
@@ -2637,7 +2941,9 @@ void UCRichDocumentEditor::InsertBlocks(const std::vector<RichDocBlock>& blocks)
         EditScope scope(*this, first, count);
         if (HasSelection()) DeleteRangeInternal(selection);
 
-        if (blocks.size() == 1 && IsTextBlockType(blocks[0].type)
+        if (caret.InCell()) {
+            InsertBlocksIntoCellInternal(blocks);
+        } else if (blocks.size() == 1 && IsTextBlockType(blocks[0].type)
             && IsTextBlock(caret.blockIndex)) {
             // A single-paragraph paste flows into the current paragraph,
             // keeping its own run formatting.

@@ -253,7 +253,13 @@ public:
     // cut in half to do it.
     bool MergeWithCellRight();
     bool MergeWithCellBelow();
-    bool CanSplitCurrentCell() const;
+    // A selection dragged (or Shift+arrowed) from one cell into another is a
+    // block of whole cells: Delete empties them, formatting and alignment
+    // apply to all of them, Copy copies them as a table, and this merges them
+    // into one. False without such a selection.
+    bool HasCellSelection() const { return editor.HasCellSelection(); }
+    bool MergeSelectedCells();
+        bool CanSplitCurrentCell() const;
     bool SplitCurrentCell();
 
     // ===== SEARCH =====

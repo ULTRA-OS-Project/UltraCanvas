@@ -43852,6 +43852,26 @@ not its column**. `BuildTableGrid()` (in `UltraCanvasRichDocument.h`) resolves
 which cell occupies each slot, and is what both the layout and these operations
 use; positions keep addressing cells as `{row, index-within-row}`.
 
+#### Selecting a block of cells
+
+Drag (or Shift+arrow) from one cell into another and the selection becomes a
+block of whole cells - the smallest grid rectangle holding both, grown until no
+merged cell sticks out of it - drawn filled, without a caret:
+
+```cpp
+if (editor->HasCellSelection()) editor->MergeSelectedCells();   // "merge these six"
+editor->GetEditor().SelectCellRange(tableBlock, /*top*/ 0, /*left*/ 0, /*bottom*/ 1, /*right*/ 2);
+```
+
+On a cell selection Delete and Backspace empty the cells (the table keeps its
+shape), typing replaces them from the top-left cell, character formatting and
+`SetAlignment` apply to every cell, and Copy copies the cells as a table (plain
+text: a tab between cells, a line per row). Pasting a copied table into a cell
+fills the grid from that cell on, as a spreadsheet does; pasting paragraphs
+into a cell keeps them in the cell, a line each. Extending a selection out of
+a table stops at its edge; extending one into a table from outside takes the
+whole table.
+
 ### Check lists
 
 ```cpp
@@ -44125,13 +44145,6 @@ header and footer are drawn above and below the body.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **A selection cannot span several cells.** Rows, columns, merging and
-  splitting are all there (see *Editing a table's structure*), but they act on
-  the cell the caret is in: there is no drag-select across a block of cells, so
-  "merge these six" has to be done as a merge right and a merge down. The
-  selection model holds a range inside one container, and widening it is a
-  piece of work in its own right — rendering, hit testing and copying all
-  change with it.
 - **Page view moves whole blocks.** A paragraph or table is not split across
   pages (no widow/orphan control, no repeated table header rows), and a block
   taller than a page runs past its bottom margin.

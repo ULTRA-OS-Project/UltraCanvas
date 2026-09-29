@@ -36,3 +36,14 @@
   core) insert one. Text typed next to a field or an inline picture no longer
   inherits being a field or a picture - it takes only the neighbour's
   character formatting.
+- **A selection can span table cells.** Dragging or Shift+arrowing from one
+  cell into another selects a block of whole cells (grown to cover merged
+  cells). Delete empties them, typing replaces them, formatting and alignment
+  apply to all of them (`SetAlignment` in a table now sets the cells' own
+  alignment rather than doing nothing), Copy copies them as a table, and
+  `MergeSelectedCells()` merges them in one step. Pasting a table into a cell
+  fills the grid from there; pasting paragraphs into a cell keeps them in it.
+  A selection dragged out of a table stops at its edge, one dragged into a
+  table from outside takes the whole table. Editing core: `HasCellSelection`,
+  `GetCellSelectionRect`, `SelectedCells`, `SelectCellRange`,
+  `MergeSelectedCells`.

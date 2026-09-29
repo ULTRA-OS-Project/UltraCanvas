@@ -936,6 +936,26 @@ int main() {
         TEST("Formulas keep their source", edit->GetPlainText().find("E = mc^2") != std::string::npos);
     }
 
+    // ===== CELL SELECTION =====
+    std::cerr << "\n--- Cell selection ---" << std::endl;
+    {
+        edit->SetMarkdown("| a | b |\n|---|---|\n| c | d |\n");
+        window->UpdateAndRender();
+        // Drag from the first cell to the last.
+        editor.SetCaret(RichDocPosition(0, 0, 0, 0));
+        window->UpdateAndRender();
+        const RichDocPosition last(0, 1, 1, 1);
+        editor.SetCaret(last, true);
+        window->UpdateAndRender();
+        TEST("A drag across cells is a cell selection", edit->HasCellSelection());
+        TEST("Copy of a cell selection is tab separated",
+             edit->GetSelectedText() == "a\tb\nc\td\n");
+        TEST("The selected cells merge into one", edit->MergeSelectedCells()
+             && editor.GetBlock(0).tableRows[0].cells[0].columnSpan == 2
+             && editor.GetBlock(0).tableRows[0].cells[0].rowSpan == 2);
+        window->UpdateAndRender();
+    }
+
     // ===== PAGE FIELDS IN THE BODY =====
     std::cerr << "\n--- Page fields ---" << std::endl;
     {

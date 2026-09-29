@@ -837,8 +837,11 @@ void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int 
     RichDocRange range = editor.GetSelectionRange();
     if (blockIndex < range.start.blockIndex || blockIndex > range.end.blockIndex) return;
 
-    // A cell's layout only carries the highlight when the selection is in that
-    // cell — and a selection never spans cells, so start and end agree.
+    // A block of whole cells is shown as a wash over each cell (see
+    // RenderBlock), not as highlighted text.
+    if (editor.HasCellSelection()) return;
+    // Otherwise a cell's layout only carries the highlight when the selection
+    // is in that cell - the selection is inside it, so start and end agree.
     const bool wantCell = (cellRow >= 0 && cellColumn >= 0);
     if (wantCell != range.start.InCell()) return;
     if (wantCell && (range.start.cellRow != cellRow || range.start.cellColumn != cellColumn)) return;
@@ -1286,7 +1289,8 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
     DrawSpellErrorMarks(ctx);
     ctx->PopState();
 
-    if (IsFocused() && !readOnly) {
+    // A block of selected cells has no caret, as in a word processor.
+    if (IsFocused() && !readOnly && !editor.HasCellSelection()) {
         UpdateCaret();
     } else {
         UltraCanvasCaret::GetInstance().Hide(this);
@@ -1423,6 +1427,11 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
             return;
         }
         case RichBlockType::Table: {
+            // A block of selected cells: each one filled whole, under its text.
+            std::vector<RichDocPosition> selectedCells;
+            if (blockIndex >= 0 && editor.HasCellSelection() && editor.GetCaret().blockIndex == blockIndex) {
+                selectedCells = editor.SelectedCells();
+            }
             for (size_t i = 0; i < bl.cells.size(); i++) {
                 const BlockLayout* cell = bl.cells[i].get();
                 if (!cell || !cell->layout) continue;
@@ -1441,11 +1450,18 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
                 } else {
                     ctx->DrawFilledRectangle(cellRect, Colors::Transparent, 1.0f, style.tableBorderColor);
                 }
+                for (const RichDocPosition& selected : selectedCells) {
+                    if (selected.cellRow == bl.cellRows[i] && selected.cellColumn == bl.cellColumns[i]) {
+                        ctx->DrawFilledRectangle(cellRect, style.selectionColor, 0.0f, Colors::Transparent);
+                        break;
+                    }
+                }
                 ctx->SetCurrentPaint(style.textColor);
                 const Point2Dd textAt(cellRect.x + cell->textLeft, cellRect.y + cell->textTop);
                 ctx->DrawTextLayout(*cell->layout, textAt);
                 DrawInlineImages(ctx, *cell, static_cast<float>(textAt.x), static_cast<float>(textAt.y));
             }
+
             if (blockIndex >= 0) DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
             return;
         }
@@ -2631,6 +2647,7 @@ UC_RTE_TABLE_ACTION(MergeWithCellRight(),
 UC_RTE_TABLE_ACTION(MergeWithCellBelow(),
                     editor.MergeTableCells(block, editor.GetCaret().cellRow,
                                            editor.GetCaret().cellColumn, 0, 1))
+UC_RTE_TABLE_ACTION(MergeSelectedCells(), editor.MergeSelectedCells())
 UC_RTE_TABLE_ACTION(SplitCurrentCell(),
                     editor.SplitTableCell(block, editor.GetCaret().cellRow,
                                           editor.GetCaret().cellColumn))
