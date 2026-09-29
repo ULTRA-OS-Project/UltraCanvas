@@ -18,10 +18,13 @@
 #include "UltraCanvasListView.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasMenu.h"
+#include "UltraCanvasTextInput.h"
 
 #include "UltraMailMessagePreview.h"
 #include "UltraMailSenderBadge.h"
 #include "UltraMailLocalStore.h"
+#include "UltraMailMessageFilter.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -40,6 +43,7 @@ namespace UltraMail {
 struct MailRowState {
     bool unread  = false;
     bool waiting = false;
+    int  attachments = 0;   // > 0: a paperclip at the right of the subject
 };
 
 class MailView {
@@ -89,6 +93,12 @@ public:
     void SetReadingPane(bool on);
     bool ReadingPane() const { return readingPane_; }
 
+    // Narrow the list to one kind of mail ("Show emails ▸" in the row menu);
+    // a filter with kind All shows everything again. Switching folder or
+    // account clears it.
+    void SetFilter(MessageFilter filter);
+    const MessageFilter& Filter() const { return filter_; }
+
     // The folder currently shown (for Reload, which fetches it too).
     const std::string& CurrentFolder() const { return curFolder_; }
 
@@ -108,7 +118,26 @@ public:
     // store + server). Not raised for a message merely re-selected by a
     // background rebuild (see suppressAutoRead_).
     std::function<void(const MessageEnvelope&)> onMarkRead;
+    // The message list's right-click menu: put a message on or off the
+    // needs-an-answer list, take it out of the junk mailbox, leave its mailing
+    // list, or move it to another folder of the account.
+    std::function<void(const MessageEnvelope&, bool needsAnswer)> onSetNeedsAnswer;
+    std::function<void(const MessageEnvelope&)> onNotJunk;
+    std::function<void(const MessageEnvelope&)> onUnsubscribe;
+    std::function<void(const MessageEnvelope&, const std::string& folder)> onMoveTo;
+    // The message list's right-click menu offers "Add to contacts" for a
+    // sender not in the address book and "Edit contact" for one that is.
+    // "Add to contact group ▸": file the sender (added to the address book
+    // first when new) in a section or one of the user's groups, which
+    // `contactGroups` lists.
+    std::function<void(const MessageEnvelope&, const ContactPlace&)> onAddToContactGroup;
+    std::function<std::vector<GroupCount>()> contactGroups;
+    std::function<void(const MessageEnvelope&)> onAddContact;
+    std::function<void(const MessageEnvelope&)> onEditContact;
     std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
+    // Forwarded to the preview: which senders' remote images load without asking.
+    std::function<bool(const std::string& address)> remoteImagesAllowed;
+    std::function<void(const std::string& address)> onAlwaysAllowRemoteImages;
 
     // The folder tree selected a folder under a different account: the app
     // updates the selected account (and the account bar) without re-showing the
@@ -181,11 +210,29 @@ private:
     std::string                  curAccount_;
     std::string                  curFolder_ = "INBOX";
     std::vector<MessageEnvelope> messages_;    // list rows, in list order
+    // The address book index (SetContacts): which menu entry a sender gets.
+    ContactIndex contacts_;
+    // The row's right-click menu; kept alive while it is open.
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> rowMenu_;
+    void ShowRowMenu(int row, const UltraCanvas::UCEvent& event);
+    // "Show emails ▸" entries; `senderAddr` adds "Same sender".
+    std::vector<UltraCanvas::MenuItemData> ShowEmailsItems(const std::string& senderAddr);
     std::vector<MailRowState>    rowStates_;    // parallel to messages_ / list rows
     std::vector<SenderBadge>     rowBadges_;    // parallel to messages_ / list rows
     // The stored scan verdicts of the folder on screen, by UID — one query per
     // list rather than one per row.
     std::map<int64_t, MessageSecurity> security_;
+    MessageFilter                filter_;
+    // The search field above the list and what it holds: every word must occur
+    // in the sender's name or address or in the subject (case-insensitive).
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> search_;
+    std::string                  searchText_;
+    bool SearchMatches(const MessageEnvelope& m) const;
+    // What the filter needs to know about a message beyond its envelope.
+    MessageFacts FactsFor(const MessageEnvelope& m, const std::set<int64_t>& waitingUids) const;
+    // Drop the messages the filter does not keep (no-op without a filter).
+    void ApplyFilter(std::vector<MessageEnvelope>& messages,
+                     const std::set<int64_t>& waitingUids) const;
     SenderBadgeResolver          badges_;
     bool                         curFolderIsJunk_ = false;
     int                          shownUnread_ = 0;

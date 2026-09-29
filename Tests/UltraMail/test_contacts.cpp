@@ -9,6 +9,7 @@
 #include "UltraMailContactCollector.h"
 #include "UltraMailContactStore.h"
 
+#include <cstdio>
 #include <string>
 
 using namespace UltraMail;
@@ -208,3 +209,100 @@ TEST(collect_sender_never_reclassifies_an_existing_contact) {
     REQUIRE_EQ(CountFor(s, ContactSection::Friends), 1);
     REQUIRE_EQ(CountFor(s, ContactSection::Services), 0);
 }
+
+TEST(list_batches_children_for_every_contact) {
+    ContactStore s = FreshStore("batch");
+    for (int i = 0; i < 30; ++i) {
+        Contact c = MakeContact("P" + std::to_string(i), ContactSection::Other,
+                                "p" + std::to_string(i) + "@x.example");
+        ContactEmail extra; extra.address = "alt" + std::to_string(i) + "@x.example";
+        c.emails.push_back(extra);
+        ContactPhone ph; ph.number = std::to_string(1000 + i); c.phones.push_back(ph);
+        REQUIRE(s.Save(c).success);
+    }
+    std::vector<Contact> all;
+    REQUIRE(s.ListBySection(ContactSection::Other, all).success);
+    REQUIRE_EQ(all.size(), (size_t)30);
+    for (const auto& c : all) {
+        REQUIRE_EQ(c.emails.size(), (size_t)2);
+        REQUIRE(c.emails.front().primary);                 // primary first
+        REQUIRE_EQ(c.phones.size(), (size_t)1);
+        // Each contact got its own children, not a neighbour's.
+        REQUIRE_EQ(c.emails.front().address,
+                   "p" + c.displayName.substr(1) + "@x.example");
+    }
+}
+
+TEST(groups_add_move_count_and_remove) {
+    ContactStore s = FreshStore("groups");
+    Contact a = MakeContact("Anna", ContactSection::Friends, "anna@x.example");
+    Contact b = MakeContact("Bert", ContactSection::Work, "bert@x.example");
+    REQUIRE(s.Save(a).success);
+    REQUIRE(s.Save(b).success);
+
+    REQUIRE(s.AddGroup("Choir").success);
+    REQUIRE(!s.AddGroup("choir").success);   // taken, whatever the case
+    REQUIRE(!s.AddGroup("Work").success);    // a section's name
+    REQUIRE(!s.AddGroup("").success);
+
+    REQUIRE(s.MoveToGroup(a.id, "Choir").success);
+    std::vector<GroupCount> groups;
+    REQUIRE(s.ListGroups(groups).success);
+    REQUIRE_EQ(groups.size(), (size_t)1);
+    REQUIRE_EQ(groups[0].name, std::string("Choir"));
+    REQUIRE_EQ(groups[0].count, 1);
+    REQUIRE_EQ(CountFor(s, ContactSection::Friends), 0);   // filed in the group now
+
+    std::vector<Contact> inGroup;
+    REQUIRE(s.ListByGroup("Choir", inGroup).success);
+    REQUIRE_EQ(inGroup.size(), (size_t)1);
+    REQUIRE(inGroup[0].section == ContactSection::Friends);   // kind unchanged
+    std::vector<Contact> all;
+    REQUIRE(s.ListAll(all).success);
+    REQUIRE_EQ(all.size(), (size_t)2);
+
+    // Saving an edited contact keeps its group.
+    Contact edited = inGroup[0];
+    edited.notes = "tenor";
+    REQUIRE(s.Save(edited).success);
+    REQUIRE(s.ListByGroup("Choir", inGroup).success);
+    REQUIRE_EQ(inGroup.size(), (size_t)1);
+
+    // Moving to a section leaves the group; deleting the group returns the rest.
+    REQUIRE(s.MoveToSection(b.id, ContactSection::Leisure).success);
+    REQUIRE_EQ(CountFor(s, ContactSection::Leisure), 1);
+    REQUIRE(s.RemoveGroup("Choir").success);
+    REQUIRE(s.ListGroups(groups).success);
+    REQUIRE(groups.empty());
+    REQUIRE_EQ(CountFor(s, ContactSection::Friends), 1);
+}
+
+#if defined(ULTRANET_HAS_ICONV)
+TEST(open_repairs_names_stored_as_raw_bytes) {
+    const std::string path = "contacts-jis-repair.db";
+    std::remove(path.c_str());
+    {
+        ContactStore s;
+        REQUIRE(s.Open("contacts-jis-a", path).success);
+        Contact c = MakeContact("\x1b$B3t<02q<R%F%l%7%\"\x1b(B", ContactSection::Other,
+                                "wordpress@www.tereshia.com");
+        REQUIRE(s.Save(c).success);   // Save leaves the name as given
+        // A Latin-1 name stored raw, and a UTF-8 one that must stay as it is.
+        Contact latin = MakeContact("Andr\xE9 M\xFCller", ContactSection::Other, "am@x.example");
+        REQUIRE(s.Save(latin).success);
+        Contact ok = MakeContact("J\xC3\xBCrgen", ContactSection::Other, "j@x.example");
+        REQUIRE(s.Save(ok).success);
+    }
+    ContactStore again;
+    REQUIRE(again.Open("contacts-jis-b", path).success);
+    std::vector<Contact> all;
+    REQUIRE(again.ListAll(all).success);
+    REQUIRE_EQ(all.size(), (size_t)3);
+    REQUIRE_EQ(all[0].displayName, std::string("Andr\xC3\xA9 M\xC3\xBCller"));   // sorted by name
+    REQUIRE_EQ(all[1].displayName, std::string("J\xC3\xBCrgen"));
+    REQUIRE_EQ(all[2].displayName,
+               std::string("\xE6\xA0\xAA\xE5\xBC\x8F\xE4\xBC\x9A\xE7\xA4\xBE"
+                           "\xE3\x83\x86\xE3\x83\xAC\xE3\x82\xB7\xE3\x82\xA2"));
+    std::remove(path.c_str());
+}
+#endif

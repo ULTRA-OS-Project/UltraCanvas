@@ -1496,6 +1496,18 @@ if (BUILD_TESTS)
     add_test(NAME EBookViewerTest COMMAND EBookViewerTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # Where the HTML reader places an <img> on its line (builder + CSSLayout,
+    # headless; links the full library for the image decoder).
+    add_executable(HTMLImageAlignTest Tests/HTMLImageAlignTest.cpp)
+    target_include_directories(HTMLImageAlignTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLImageAlignTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLImageAlignTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLImageAlignTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLImageAlignTest COMMAND HTMLImageAlignTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # UltraCanvasJSON unit tests (DataFormats section). Compiles only the JSON
     # module and its vendored engine, so it runs headless without the UI stack.
     add_executable(JSONTests

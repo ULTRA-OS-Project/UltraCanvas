@@ -78,7 +78,8 @@ public:
                           int64_t uid, const std::string& serverUrl,
                           const UltraNetMailOptions& options);
 
-    // Path where a message body is (or would be) cached.
+    // Path where a message body is (or would be) cached; same as the free
+    // CachedBodyPath below.
     std::string BodyPath(const std::string& accountId, const std::string& folder,
                          int64_t uid) const;
 
@@ -86,6 +87,12 @@ public:
     // failure or empty input). Shared by FetchBody and the batched body sync.
     std::string WriteBody(const std::string& accountId, const std::string& folder,
                           int64_t uid, const std::string& raw) const;
+
+    // Count the attachments of cached bodies that have no count yet (at most
+    // `limit`, newest first) - for mail downloaded before counting existed.
+    // Runs at the end of SyncMessages. Returns how many were counted.
+    int CountStoredAttachments(const std::string& accountId, const std::string& folder,
+                               int limit = 300);
 
     // Set/clear a flag on the server (UID STORE) and in the local index.
     SyncOutcome SetFlag(const std::string& accountId, const std::string& folder,
@@ -116,5 +123,10 @@ private:
     IMailboxProtocolPlugin& mailbox_;
     std::string             emlDir_;
 };
+
+// Path where a message body is (or would be) cached under `emlDir`
+// (emlDir/<accountId>/<folder>/<uid>.eml), for callers without a SyncEngine.
+std::string CachedBodyPath(const std::string& emlDir, const std::string& accountId,
+                           const std::string& folder, int64_t uid);
 
 } // namespace UltraMail

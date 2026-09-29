@@ -147,11 +147,13 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     buttonRow->AddStretchSpacer(1);
 
     auto cancelBtn = CreateButton("wizCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
 
     auto continueBtn = CreateButton("wizContinue", 0, 0, 110, Theme::kControlHeight, "Continue");
+    Theme::FitToLabel(continueBtn, 110);
     Theme::StylePrimary(continueBtn);
     continueBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
     buttonRow->AddChild(continueBtn);

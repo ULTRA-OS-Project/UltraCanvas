@@ -1,3 +1,141 @@
+#### 2026-09-28 *0.10.7*
+- **A turning ring on the status line** while UltraMail works in the
+  background: a sync, a send, or a move, delete or flag change on the server.
+  It stops, and leaves the space blank, when the app is idle. It is the new
+  framework element `UltraCanvasBusyIndicator` (see
+  `Docs/UltraCanvas/changelog.d/`).
+- **Japanese (and other non-Latin) mail is readable.** Sender names,
+  subjects and message text in ISO-2022-JP showed as `$B3t<02q…(B`, and
+  Shift_JIS, GB2312, EUC-KR or KOI8-R text was garbled the same way. They are
+  now converted to UTF-8 (framework change, see `Docs/UltraCanvas/changelog.d/`).
+  Subjects and names sent as raw 8-bit bytes with no charset label are now
+  decoded too. They are read in the message's own charset when there is
+  one; otherwise UltraMail guesses the most likely one. Contacts already
+  saved with such a name are repaired the next time UltraMail starts.
+- **The Contacts window is fast.** Choosing a section with a thousand
+  contacts took most of a second, because each contact was built as its own
+  set of widgets after two database queries per contact. The list is now a
+  scrolling list view that draws only the visible rows, loaded in three
+  queries per section. The sender badges' address-book read after every sync
+  uses the same batched read.
+- **The Contacts window no longer closes unexpectedly.** Choosing a section
+  destroyed the sidebar entry that was still handling the click, and opening
+  Contacts a second time built a second panel on the same view as the first.
+  Choosing now only restyles the sidebar, and there is one Contacts window:
+  asking for it again brings it forward, and closing it releases it.
+- **Contacts window:**
+  - a scrollbar, and the window is 100 px wider (720 px);
+  - a filter field above the list (name, address, phone or organization);
+  - a bin icon at the end of each row to delete the contact, after a
+    confirmation;
+  - **Add group** under the sidebar, and a right-click menu on the sidebar
+    with *Add group* and *Delete group*. Deleting a group keeps its contacts:
+    they go back to their sections. The built-in sections cannot be deleted.
+  - a right-click menu on a contact with *Edit*, *Move to group ▸* (every
+    section and group) and *Delete*. A contact filed in a group keeps its
+    section, which still decides its sender-badge colour.
+- **Images in HTML mail.**
+  - Images carried inside the message (`cid:` parts of multipart/related
+    mail, `data:` URIs) are shown. Until now every image rendered empty.
+  - Images on the web are not loaded until you ask, because loading one
+    tells the sender that, when and where you opened the message (a
+    tracking pixel is exactly that). A bar above the body counts them and
+    offers *Show images* for this message, or *Always from <sender>*, which
+    is remembered in `preferences.ini` (`remote_images_from`).
+  - A message in the Junk folder or flagged as spam or scam never loads
+    them by itself and is never offered *Always*.
+  - Images download in the background (at most 60 per message, 5 MB each),
+    and the body is redrawn when they arrive.
+  - Links in HTML mail open in the browser (web and `mailto:` links only).
+- **Attachments open in UltraCanvas's media viewer.** Images, PDF,
+  spreadsheets, text and source files, e-books, fonts, 3D models, audio and
+  video open in a viewer window of UltraMail's own, the same on every
+  platform. Only a kind the viewer does not know goes to the system's default
+  application, or is offered for saving as before.
+- **View source is colour-coded as HTML.** The message source window
+  highlights tags, attributes and values, so an HTML mail's structure is
+  readable. The headers stay plain text.
+- **A paperclip marks mail with attachments.** It sits at the right end of
+  the subject cell, and the row's tooltip says how many attachments there
+  are.
+  - The count is taken when the message body is downloaded, from the same
+    parts the reading pane shows as attachment chips. Inline images of the
+    body do not count.
+  - It is stored beside the message's security verdict, so the list needs no
+    extra work to show it.
+  - Mail downloaded by an earlier version is counted during the next syncs
+    (300 per folder per sync, newest first), or as soon as it is opened.
+- **Unread mail is bold.** An unread message's subject and date are drawn
+  bold in the list, besides the ● and the darker colour it already had.
+- **Update button with a download icon.** *Reload* is now *Update*, with a
+  download icon; it reads *Updating…* while it runs and fetches the account on
+  screen now instead of waiting for the five-minute background check.
+- **Right-click menu on a message:**
+  - *Mark as read* or *Mark as unread*.
+  - *Needs an answer* or *Doesn't need an answer*: puts the message on the ↩
+    needs-an-answer list, or takes it off, whatever the automatic rule says.
+    The choice is kept across syncs and ends when you answer the message (here
+    or on another client). It is stored locally, because IMAP has no standard
+    flag for it.
+  - *Mark as spam* (moves it to the Junk folder) or, in the Junk folder,
+    *Not spam* (moves it back to the inbox).
+  - *Unsubscribe…*: leaves the mailing list the way its `List-Unsubscribe`
+    header asks, after a confirmation. It uses a one-click request with no
+    browser where the list offers one (RFC 8058), otherwise it opens the
+    list's unsubscribe page, or prepares the unsubscribe email for you to send.
+    A message in the spam folder gets a warning first, because unsubscribing
+    from real spam tells the sender that the address is read. The message is
+    downloaded first if its body is not cached yet.
+  - *Move to folder ▸*: every folder of the account that holds mail.
+  - *Show emails ▸* narrows the list to one kind of mail, with a check mark
+    on the active choice:
+    - *All messages*.
+    - *Same sender*.
+    - *Unread*.
+    - *Needs an answer*.
+    - *Spam*: the sender badge says spam or scam.
+    - *Social media*: social networks and messaging services. That means
+      the sender registry, about fifty more social-network domains
+      (subdomains included), self-hosted networks (Mastodon, Pleroma,
+      Friendica, Lemmy, `social.` hosts), and notification subjects such
+      as "commented on your", "new follower" or "hat deinen Beitrag
+      kommentiert", in English, German, French, Spanish, Italian, Dutch
+      and Portuguese.
+    - *Payments & invoices*: payment services such as PayPal and Stripe, or
+      a subject about an invoice, a receipt, a bill or a payment, in
+      English, German, French, Spanish, Italian, Dutch or Portuguese.
+
+    A search field above the list narrows it further. Every word typed must
+    appear in the sender's name, the address or the subject. Matching
+    ignores case, including accented letters, so "ü" finds "Ü". The ×
+    clears it. The search works together with the *Show emails* choice.
+
+    The list title names the filter and the search ("Inbox · Unread ·
+    “invoice” — 3 messages"). The
+    filter stays through syncs and is cleared by switching folder or
+    account. Right-clicking the empty area of the list offers *Show emails*
+    too, so a filter that leaves nothing to click can still be cleared.
+  - The menu is titled with the sender's address.
+  - *Add to contact group ▸*: every section and group of the address book.
+    It files the sender there, adding them to the address book first when
+    they are not in it yet.
+  - *Add to contacts* when the sender's address is not in the address book,
+    else *Edit contact*. Both open the address book's contact editor, with the
+    name and address filled in for a new contact. That editor also no longer
+    drops a contact's other addresses when you change the first one: it now
+    edits only the primary address.
+- **A long subject no longer takes two rows in the message list.** Some
+  senders (LinkedIn, for one) encode line breaks into the subject. The list
+  now shows the sender and the subject on one line, with runs of spaces, tabs
+  and line breaks folded into a single space.
+- **Service icons without a frame.** A sender with a known service icon
+  (Gmail, Outlook, …) now shows the icon alone and at the full badge size,
+  in the list and in the reading pane. Senders without an icon keep the
+  framed initial.
+- **Buttons fit their labels.** Every button with text now sizes itself to
+  its label, with its old width as the minimum, so "Reloading…" and longer
+  translated labels are no longer cut off.
+
 #### 2026-09-28 *0.10.6*
 - **Sending no longer holds the window.** Send and the outbox's Retry ran
   SMTP on the UI thread, flushing every queued message - of every account -

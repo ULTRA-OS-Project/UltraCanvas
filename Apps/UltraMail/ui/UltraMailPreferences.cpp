@@ -45,6 +45,18 @@ bool Preferences::Load(const std::string& path) {
         const std::string value = trimmed.substr(eq + 1);
         if (key == "reading_pane")       showReadingPane  = ParseBool(value);
         if (key == "fetch_sender_icons") fetchSenderIcons = ParseBool(value);
+        if (key == "remote_images_from") {
+            // Comma-separated addresses.
+            std::size_t start = 0;
+            while (start <= value.size()) {
+                std::size_t comma = value.find(',', start);
+                if (comma == std::string::npos) comma = value.size();
+                std::string addr = Trim(value.substr(start, comma - start));
+                for (char& c : addr) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (!addr.empty()) remoteImageSenders.insert(addr);
+                start = comma + 1;
+            }
+        }
     }
     return true;
 }
@@ -55,6 +67,13 @@ bool Preferences::Save(const std::string& path) const {
     file << "# UltraMail preferences — view options remembered between runs.\n";
     file << "reading_pane = " << (showReadingPane ? "true" : "false") << "\n";
     file << "fetch_sender_icons = " << (fetchSenderIcons ? "true" : "false") << "\n";
+    file << "remote_images_from = ";
+    bool first = true;
+    for (const auto& addr : remoteImageSenders) {
+        file << (first ? "" : ", ") << addr;
+        first = false;
+    }
+    file << "\n";
     return static_cast<bool>(file);
 }
 

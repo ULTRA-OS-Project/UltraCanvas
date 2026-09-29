@@ -9,6 +9,11 @@
 #include "UltraMailMailView.h"
 
 #include "UltraMailTheme.h"
+#include "UltraMailSenderBrands.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasImage.h"
+#include "UltraCanvasUtils.h"
+#include "UltraCanvasUtilsUtf8.h"
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -164,6 +169,11 @@ public:
     const std::vector<MailRowState>* states = nullptr;
     const std::vector<SenderBadge>*  badges = nullptr;
     int   badgeColumn = -1;
+    // Columns from this one on (subject, date) are drawn bold for unread mail.
+    int   boldFromColumn = 2;
+    // The subject column, which ends in a paperclip for mail with attachments.
+    int   subjectColumn = 2;
+    std::string clipIcon;
     float badgeSide   = 18.0f;
     Color unreadColor;
     Color readColor;
@@ -195,22 +205,60 @@ public:
         if (text.empty()) return;
 
         const int textX  = option.columnX + textPadding;
-        const int availW = option.columnWidth - textPadding * 2;
+        int availW = option.columnWidth - textPadding * 2;
         if (availW <= 0) return;
 
-        const bool unread = states && row >= 0 && row < static_cast<int>(states->size()) &&
-                            (*states)[row].unread;
+        const bool haveState = states && row >= 0 && row < static_cast<int>(states->size());
+        const bool unread = haveState && (*states)[row].unread;
+
+        // Attachments: a paperclip at the right end of the subject cell; the
+        // subject text stops short of it.
+        if (column == subjectColumn && haveState && (*states)[row].attachments > 0) {
+            const double side = std::min(14.0, option.rect.height - 6.0);
+            if (side > 4.0 && availW > side + 8) {
+                if (auto clip = UCImage::Get(clipIcon)) {
+                    ctx->DrawMask(unread ? unreadColor : readColor, *clip,
+                                  Rect2Dd(option.columnX + option.columnWidth - textPadding - side,
+                                          option.rect.y + (option.rect.height - side) / 2.0,
+                                          side, side),
+                                  ImageFitMode::Contain);
+                }
+                availW -= static_cast<int>(side) + 6;
+            }
+        }
 
         ctx->SetFontSize(fontSize);
+        // Unread mail stands out: its subject and date are bold (the sender
+        // already carries the ● glyph and the darker colour).
+        ctx->SetFontWeight(unread && column >= boldFromColumn ? FontWeight::Bold
+                                                              : FontWeight::Normal);
         ctx->SetTextWrap(TextWrap::WrapNone);
         ctx->SetTextAlignment(option.columnAlignment);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->SetTextPaint(unread ? unreadColor : readColor);
         ctx->DrawTextInRect(text, Rect2Dd(textX, option.rect.y, availW, option.rect.height));
+        ctx->SetFontWeight(FontWeight::Normal);   // leave the context as found
     }
 
     int GetRowHeight(const IListModel*, int) const override { return rowHeight; }
 };
+
+// `text` on one line: every run of line breaks, tabs and other whitespace
+// becomes a single space, and the ends are trimmed.
+std::string SingleLine(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    bool pendingSpace = false;
+    for (unsigned char c : text) {
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f') {
+            pendingSpace = !out.empty();
+            continue;
+        }
+        if (pendingSpace) { out += ' '; pendingSpace = false; }
+        out += static_cast<char>(c);
+    }
+    return out;
+}
 
 } // namespace
 
@@ -313,6 +361,7 @@ void MailView::BuildListBox() {
     d->readColor   = Theme::kTextSecondary;
     d->fontSize    = Theme::kSizeBody;
     d->rowHeight   = kRowHeight;
+    d->clipIcon    = NormalizePath(GetResourcesDir() + "media/icons/paperclip.svg");
     delegate_ = d;
     list_->SetDelegate(delegate_);
 
@@ -320,8 +369,28 @@ void MailView::BuildListBox() {
         if (!rows.empty()) SelectRow(rows.front());
     };
     list_->onItemClicked = [this](int row) { SelectRow(row); };
+    list_->onContextMenu = [this](int row, const UCEvent& event) { ShowRowMenu(row, event); };
 
-    FillWith(listBox_, list_);
+    // Search above the list, inside the same card.
+    auto column = CreateContainer("messageListColumn", 0, 0, 0, 0);
+    column->layout.SetFlexColumn()
+                  .SetFlexGap(Theme::kInnerGap)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    search_ = CreateTextInput("messageSearch", 0, 0, 0, Theme::kControlHeight);
+    search_->SetPlaceholder("Search sender or subject");
+    search_->SetShowClearButton(true);
+    Theme::StyleInput(search_);
+    search_->SetText(searchText_);   // a rebuilt pane keeps the search
+    search_->onTextChanged = [this](const std::string& text) {
+        if (text == searchText_) return;
+        searchText_ = text;
+        FullRebuild(/*markTopRead=*/false);
+    };
+    column->AddChild(search_);
+    search_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    column->AddChild(list_);
+    list_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    FillWith(listBox_, column);
 }
 
 void MailView::BuildMessageBox() {
@@ -356,6 +425,12 @@ void MailView::BuildMessageBox() {
     };
     // A body read for the first time is also scanned for the first time: the
     // row's badge stops being "unscanned" the moment the pane knows better.
+    preview_.remoteImagesAllowed = [this](const std::string& addr) {
+        return remoteImagesAllowed && remoteImagesAllowed(addr);
+    };
+    preview_.onAlwaysAllowRemoteImages = [this](const std::string& addr) {
+        if (onAlwaysAllowRemoteImages) onAlwaysAllowRemoteImages(addr);
+    };
     preview_.onSecurityScanned = [this](const MessageEnvelope& m, const MessageSecurity& s) {
         RefreshRowBadge(m, s);
     };
@@ -367,6 +442,7 @@ std::shared_ptr<UltraCanvasContainer> MailView::BuildBackBar() {
     bar->layout.SetFlexRow()
               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto back = CreateButton("mailBack", 0, 0, 150, Theme::kControlHeight, "\xE2\x86\x90 Back to list");
+    Theme::FitToLabel(back, 150);
     Theme::StyleSecondary(back);
     back->onClick = [this]() { ShowListInPlace(); };
     bar->AddChild(back);
@@ -439,8 +515,145 @@ void MailView::SetAccounts(std::vector<Account> accounts) {
 }
 
 void MailView::SetContacts(ContactIndex contacts) {
+    contacts_ = contacts;
     badges_.SetContacts(contacts);
     preview_.SetContacts(std::move(contacts));
+}
+
+std::vector<MenuItemData> MailView::ShowEmailsItems(const std::string& senderAddr) {
+    std::vector<MenuItemData> show;
+    auto option = [&](const std::string& label, MessageFilter f) {
+        const bool active = f.kind == filter_.kind &&
+            (f.kind != MessageFilterKind::SameSender || f.sender == filter_.sender);
+        show.push_back(MenuItemData::Radio(label, /*group=*/1, active,
+            [this, f]() { SetFilter(f); }));
+    };
+    option("All messages", {});
+    if (!senderAddr.empty())
+        option("Same sender (" + senderAddr + ")", {MessageFilterKind::SameSender, senderAddr});
+    else if (filter_.kind == MessageFilterKind::SameSender)
+        option("Same sender (" + filter_.sender + ")", filter_);
+    option("Unread", {MessageFilterKind::Unread, ""});
+    option("Needs an answer", {MessageFilterKind::NeedsAnswer, ""});
+    option("Spam", {MessageFilterKind::Spam, ""});
+    option("Social media", {MessageFilterKind::SocialMedia, ""});
+    option("Payments & invoices", {MessageFilterKind::Payments, ""});
+    return show;
+}
+
+void MailView::ShowRowMenu(int row, const UCEvent& event) {
+    if (!list_) return;
+    UltraCanvasWindowBase* window = list_->GetWindow();
+    if (!window) return;
+    // The empty area below the rows (or an empty, filtered list): only the
+    // view choices, so a filter that left nothing to click can be cleared.
+    if (row < 0 || row >= static_cast<int>(messages_.size())) {
+        rowMenu_ = std::make_shared<UltraCanvasMenu>("mailRow.ctx", 0, 0, 200, 0);
+        rowMenu_->SetMenuType(MenuType::PopupMenu);
+        rowMenu_->AddItem(MenuItemData::Submenu("Show emails", ShowEmailsItems("")));
+        PopupElementSettings settings;
+        rowMenu_->OpenMenu(event.pointerWindow, *window, settings);
+        return;
+    }
+    const MessageEnvelope m = messages_[static_cast<std::size_t>(row)];
+    const bool unread  = (m.flags & Flag_Seen) == 0;
+    const bool waiting = row < static_cast<int>(rowStates_.size()) &&
+                         rowStates_[static_cast<std::size_t>(row)].waiting;
+
+    rowMenu_ = std::make_shared<UltraCanvasMenu>("mailRow.ctx", 0, 0, 200, 0);
+    rowMenu_->SetMenuType(MenuType::PopupMenu);
+    // Whose message this is, as the menu's title: the sender's address.
+    if (!m.fromAddr.empty()) {
+        rowMenu_->AddItem(MenuItemData::Header(m.fromAddr));
+        rowMenu_->AddItem(MenuItemData::Separator());
+    }
+
+    // Show emails ▸ - narrow the list; the active choice carries the check.
+    rowMenu_->AddItem(MenuItemData::Submenu("Show emails", ShowEmailsItems(m.fromAddr)));
+    rowMenu_->AddItem(MenuItemData::Separator());
+
+    // Read state and the needs-an-answer list.
+    if (unread) {
+        rowMenu_->AddItem(MenuItemData::Action("Mark as read", [this, m]() {
+            if (onMarkRead) onMarkRead(m);
+        }));
+    } else {
+        rowMenu_->AddItem(MenuItemData::Action("Mark as unread", [this, m]() {
+            if (onMarkUnread) onMarkUnread(m);
+        }));
+    }
+    rowMenu_->AddItem(MenuItemData::Action(
+        waiting ? "Doesn't need an answer" : "Needs an answer", [this, m, waiting]() {
+            if (onSetNeedsAnswer) onSetNeedsAnswer(m, !waiting);
+        }));
+    rowMenu_->AddItem(MenuItemData::Separator());
+
+    // Spam: out of the junk mailbox, or back to the inbox from it.
+    if (curFolderIsJunk_) {
+        rowMenu_->AddItem(MenuItemData::Action("Not spam", [this, m]() {
+            if (onNotJunk) onNotJunk(m);
+        }));
+    } else {
+        rowMenu_->AddItem(MenuItemData::Action("Mark as spam", [this, m]() {
+            if (onJunk) onJunk(m);
+        }));
+    }
+    rowMenu_->AddItem(MenuItemData::Action("Unsubscribe…", [this, m]() {
+        if (onUnsubscribe) onUnsubscribe(m);
+    }));
+
+    // Move to: every folder of the account that holds mail, except this one.
+    std::vector<MenuItemData> moveItems;
+    if (store_) {
+        std::vector<Folder> folders;
+        store_->ListFolders(m.accountId, folders);
+        for (const auto& f : folders) {
+            if (!f.selectable || f.name == m.folder) continue;
+            const std::string label = f.name == "INBOX" ? std::string("Inbox")
+                                                        : UltraNet_ImapUtf7Decode(f.name);
+            const std::string target = f.name;
+            moveItems.push_back(MenuItemData::Action(label, [this, m, target]() {
+                if (onMoveTo) onMoveTo(m, target);
+            }));
+        }
+    }
+    if (!moveItems.empty())
+        rowMenu_->AddItem(MenuItemData::Submenu("Move to folder", moveItems));
+
+    // The sender and the address book.
+    if (!m.fromAddr.empty()) {
+        rowMenu_->AddItem(MenuItemData::Separator());
+        std::vector<MenuItemData> places;
+        for (ContactSection s : { ContactSection::Family, ContactSection::Friends,
+                                  ContactSection::Work, ContactSection::Leisure,
+                                  ContactSection::Services, ContactSection::Other }) {
+            ContactPlace place; place.section = s;
+            places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
+                if (onAddToContactGroup) onAddToContactGroup(m, place);
+            }));
+        }
+        const std::vector<GroupCount> groups = contactGroups ? contactGroups()
+                                                             : std::vector<GroupCount>{};
+        if (!groups.empty()) places.push_back(MenuItemData::Separator());
+        for (const auto& g : groups) {
+            ContactPlace place; place.isGroup = true; place.group = g.name;
+            places.push_back(MenuItemData::Action(place.Title(), [this, m, place]() {
+                if (onAddToContactGroup) onAddToContactGroup(m, place);
+            }));
+        }
+        rowMenu_->AddItem(MenuItemData::Submenu("Add to contact group", places));
+        if (contacts_.Contains(m.fromAddr)) {
+            rowMenu_->AddItem(MenuItemData::Action("Edit contact", [this, m]() {
+                if (onEditContact) onEditContact(m);
+            }));
+        } else {
+            rowMenu_->AddItem(MenuItemData::Action("Add to contacts", [this, m]() {
+                if (onAddContact) onAddContact(m);
+            }));
+        }
+    }
+    PopupElementSettings settings;
+    rowMenu_->OpenMenu(event.pointerWindow, *window, settings);
 }
 
 void MailView::SetIconCache(const SenderIconCache* cache) {
@@ -465,6 +678,8 @@ void MailView::RefreshRowBadge(const MessageEnvelope& message,
         if (messages_[row].uid != message.uid) continue;
         if (row >= rowBadges_.size()) break;
         rowBadges_[row] = BadgeFor(messages_[row]);
+        if (row < rowStates_.size())
+            rowStates_[row].attachments = security.attachments > 0 ? security.attachments : 0;
         // Writing the cell tooltip also notifies the view, which redraws the row.
         model_->SetData(ListIndex{static_cast<int>(row), 1}, ListDataRole::ToolTipRole,
                         rowBadges_[row].tooltip);
@@ -571,12 +786,13 @@ void MailView::SelectFolderNode(const std::string& accountId, const std::string&
 void MailView::ShowAccount(const std::string& accountId) {
     const bool sameAccount = (accountId == curAccount_);
     curAccount_ = accountId;
-    if (!sameAccount) curFolder_ = "INBOX";
+    if (!sameAccount) { curFolder_ = "INBOX"; filter_ = MessageFilter{}; }
     RebuildFolderTree();
     RebuildList();
 }
 
 void MailView::ShowFolder(const std::string& accountId, const std::string& folder) {
+    if (accountId != curAccount_ || folder != curFolder_) filter_ = MessageFilter{};
     curAccount_ = accountId;
     curFolder_  = folder;
     SelectFolderNode(accountId, folder);
@@ -598,23 +814,32 @@ void MailView::BuildMessageRow(const MessageEnvelope& m, const std::set<int64_t>
 
     // Decode defensively: messages synced before header decoding are still
     // stored raw. Decoding already-decoded text is a no-op.
-    std::string sender  = UltraNet_MimeDecodeHeader(
-        m.fromName.empty() ? m.fromAddr : m.fromName);
+    // One line each: a list row has room for one, and word wrapping being off
+    // does not stop an explicit line break - a subject such as LinkedIn's
+    // "... storage.\n\nWe're partnering ..." (the break is in the encoded
+    // header itself) drew over two rows.
+    std::string sender  = SingleLine(UltraNet_MimeDecodeHeader(
+        m.fromName.empty() ? m.fromAddr : m.fromName));
     std::string subject = m.subject.empty()
-        ? std::string("(no subject)") : UltraNet_MimeDecodeHeader(m.subject);
+        ? std::string("(no subject)") : SingleLine(UltraNet_MimeDecodeHeader(m.subject));
 
     // State glyphs in front of the sender: ● unread, ↩ waiting for a reply.
     std::string state = std::string(isUnread ? "\xE2\x97\x8F " : "")
                       + (isWaiting ? "\xE2\x86\xA9 " : "");
     outBadge = BadgeFor(m);
     outItem = MultiColumnListItem({ state + sender, "", subject, FormatListDate(m.date) });
+    int attachments = 0;
+    if (auto it = security_.find(m.uid); it != security_.end() && it->second.attachments > 0)
+        attachments = it->second.attachments;
     outItem.tooltip = sender + " <" + m.fromAddr + ">"
                  + (isUnread ? " — unread" : "") + (isWaiting ? " — waiting for reply" : "")
+                 + (attachments == 1 ? " — 1 attachment"
+                    : attachments > 1 ? " — " + std::to_string(attachments) + " attachments" : "")
                  + "\n" + FormatShortDate(m.date);
     // The badge cell explains itself rather than repeating the row tooltip:
     // what the sender is, and — when the content scan found something — why.
     outItem.SetCellTooltip(1, outBadge.tooltip);
-    outState = { isUnread, isWaiting };
+    outState = { isUnread, isWaiting, attachments };
 }
 
 void MailView::AddMessageRow(const MessageEnvelope& m,
@@ -665,8 +890,8 @@ void MailView::RefreshRowText(int row) {
     if (row < 0 || row >= static_cast<int>(messages_.size()) ||
         row >= static_cast<int>(rowStates_.size()))
         return;
-    std::string sender = UltraNet_MimeDecodeHeader(
-        messages_[row].fromName.empty() ? messages_[row].fromAddr : messages_[row].fromName);
+    std::string sender = SingleLine(UltraNet_MimeDecodeHeader(
+        messages_[row].fromName.empty() ? messages_[row].fromAddr : messages_[row].fromName));
     std::string state = std::string(rowStates_[row].unread ? "\xE2\x97\x8F " : "")
                       + (rowStates_[row].waiting ? "\xE2\x86\xA9 " : "");
     if (model_)
@@ -706,12 +931,65 @@ void MailView::MarkRowRead(int row) {
 void MailView::UpdateListTitle() {
     if (!listBox_) return;
     std::string title = FriendlyLeaf(curFolder_, curFolder_);
+    if (filter_.Active()) title += " \xC2\xB7 " + Describe(filter_);   // "Inbox · Unread"
+    if (!searchText_.empty()) title += " \xC2\xB7 \xE2\x80\x9C" + searchText_ + "\xE2\x80\x9D";
     if (!messages_.empty()) {
         title += " — " + std::to_string(messages_.size()) + " message"
                + (messages_.size() == 1 ? "" : "s");
         if (shownUnread_ > 0) title += ", " + std::to_string(shownUnread_) + " unread";
     }
+    else if (filter_.Active() || !searchText_.empty()) title += " \xE2\x80\x94 no messages";
     listBox_->SetTitle(title);
+}
+
+MessageFacts MailView::FactsFor(const MessageEnvelope& m,
+                                const std::set<int64_t>& waitingUids) const {
+    MessageFacts facts;
+    facts.unread = (m.flags & Flag_Seen) == 0;
+    facts.needsAnswer = waitingUids.count(m.uid) > 0;
+    const SenderClass cls = BadgeFor(m).cls;
+    facts.spam = cls == SenderClass::Spam || cls == SenderClass::Scam;
+    if (const SenderBrand* brand = BrandForAddress(m.fromAddr)) facts.brand = brand->category;
+    return facts;
+}
+
+void MailView::ApplyFilter(std::vector<MessageEnvelope>& messages,
+                           const std::set<int64_t>& waitingUids) const {
+    const bool searching = !searchText_.empty();
+    if (!filter_.Active() && !searching) return;
+    std::vector<MessageEnvelope> kept;
+    kept.reserve(messages.size());
+    for (auto& m : messages) {
+        if (filter_.Active() && !FilterMatches(filter_, m, FactsFor(m, waitingUids))) continue;
+        if (searching && !SearchMatches(m)) continue;
+        kept.push_back(std::move(m));
+    }
+    messages = std::move(kept);
+}
+
+bool MailView::SearchMatches(const MessageEnvelope& m) const {
+    // Decoded like the row shows them, so what can be read can be found.
+    const std::string name = UltraNet_MimeDecodeHeader(m.fromName);
+    const std::string subject = UltraNet_MimeDecodeHeader(m.subject);
+    std::size_t pos = 0;
+    while (pos < searchText_.size()) {
+        while (pos < searchText_.size() && searchText_[pos] == ' ') ++pos;
+        std::size_t end = searchText_.find(' ', pos);
+        if (end == std::string::npos) end = searchText_.size();
+        const std::string word = searchText_.substr(pos, end - pos);
+        pos = end;
+        if (word.empty()) continue;
+        // Unicode-aware, case-insensitive (Ü finds ü).
+        if (utf8_find(name, word, 0, false) < 0 && utf8_find(m.fromAddr, word, 0, false) < 0 &&
+            utf8_find(subject, word, 0, false) < 0)
+            return false;
+    }
+    return true;
+}
+
+void MailView::SetFilter(MessageFilter filter) {
+    filter_ = std::move(filter);
+    FullRebuild(/*markTopRead=*/false);
 }
 
 void MailView::RebuildList(bool markTopRead) {
@@ -761,6 +1039,7 @@ void MailView::FullRebuild(bool markTopRead) {
     store_->ListNeedsAnswer(curAccount_, waiting);
     std::set<int64_t> waitingUids;
     for (const auto& w : waiting) if (w.folder == curFolder_) waitingUids.insert(w.uid);
+    ApplyFilter(messages_, waitingUids);
 
     for (const auto& m : messages_) AddMessageRow(m, waitingUids);
 
@@ -811,6 +1090,7 @@ void MailView::DiffListFromStore(bool /*markTopRead*/) {
     store_->ListNeedsAnswer(curAccount_, waiting);
     std::set<int64_t> waitingUids;
     for (const auto& w : waiting) if (w.folder == curFolder_) waitingUids.insert(w.uid);
+    ApplyFilter(fresh, waitingUids);
 
     // Measure the turnover; a near-total change (e.g. a UIDVALIDITY renumber) is
     // cheaper and cleaner as a full rebuild — which is what the user asked for.
@@ -838,6 +1118,21 @@ void MailView::DiffListFromStore(bool /*markTopRead*/) {
     for (const auto& f : fresh) {
         if (pos < messages_.size() && messages_[pos].uid == f.uid) {
             if (messages_[pos].flags != f.flags) UpdateRowFlags(static_cast<int>(pos), f.flags);
+            // The ↩ needs-an-answer glyph can change without a flag change
+            // (the user's own "needs an answer" choice).
+            const bool waiting = waitingUids.count(f.uid) > 0;
+            if (pos < rowStates_.size() && rowStates_[pos].waiting != waiting) {
+                rowStates_[pos].waiting = waiting;
+                RefreshRowText(static_cast<int>(pos));
+            }
+            // The paperclip, once the sync has counted a body already listed.
+            int attachments = 0;
+            if (auto it = security_.find(f.uid); it != security_.end() && it->second.attachments > 0)
+                attachments = it->second.attachments;
+            if (pos < rowStates_.size() && rowStates_[pos].attachments != attachments) {
+                rowStates_[pos].attachments = attachments;
+                RefreshRowText(static_cast<int>(pos));   // notifies the view: the row redraws
+            }
             ++pos;
         } else {
             InsertMessageRowAt(static_cast<int>(pos), f, waitingUids);

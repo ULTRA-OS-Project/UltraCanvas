@@ -38,9 +38,18 @@ std::string UltraNet_QuotedPrintableDecode(const std::string& text);
 // RFC 2047 encoded-word header fields ("=?UTF-8?Q?...?=")
 // ============================================================================
 
-// Decode any encoded-words in a header value to UTF-8 (UTF-8, US-ASCII and
-// ISO-8859-1 / Windows-1252 charsets are transcoded; others pass through).
+// Decode a header value to UTF-8: RFC 2047 encoded-words in any charset
+// (every charset iconv knows when the build has it - ULTRANET_HAS_ICONV -
+// else UTF-8, US-ASCII and ISO-8859-1 / Windows-1252), raw ISO-2022-JP
+// escape sequences, and unlabelled 8-bit text. The last is kept when it is
+// UTF-8 (RFC 6532) and otherwise read in `fallbackCharset` when that fits -
+// pass the message body's charset, which the same mailer used - else in the
+// charset whose reading looks most like real text (Western, Japanese,
+// Chinese, Korean, Cyrillic, Central European, Greek, Arabic, Hebrew).
+// Already-decoded UTF-8 comes back unchanged, so decoding twice is safe.
 std::string UltraNet_MimeDecodeHeader(const std::string& raw);
+std::string UltraNet_MimeDecodeHeader(const std::string& raw,
+                                      const std::string& fallbackCharset);
 
 // Encode a UTF-8 header value as a single encoded-word if it contains
 // non-ASCII; otherwise returns it unchanged. Uses Q-encoding by default.

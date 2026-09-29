@@ -94,11 +94,13 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
     buttonRow->AddStretchSpacer(1);
 
     auto cancelBtn = CreateButton("oauthCodeCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
 
     auto okBtn = CreateButton("oauthCodeOk", 0, 0, 140, Theme::kControlHeight, "Continue");
+    Theme::FitToLabel(okBtn, 140);
     Theme::StylePrimary(okBtn);
     okBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
     buttonRow->AddChild(okBtn);

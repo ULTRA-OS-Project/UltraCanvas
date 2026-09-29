@@ -95,15 +95,12 @@ bool ContactIndex::Lookup(const std::string& address, ContactSection& outSection
 bool BuildContactIndex(const ContactStore& store, ContactIndex& out) {
     out.Clear();
     if (!store.IsOpen()) return false;
-    bool ok = true;
-    for (ContactSection section : { ContactSection::Family, ContactSection::Friends,
-                                    ContactSection::Work, ContactSection::Leisure,
-                                    ContactSection::Services, ContactSection::Other }) {
-        std::vector<Contact> contacts;
-        if (!store.ListBySection(section, contacts)) { ok = false; continue; }
-        for (const auto& c : contacts)
-            for (const auto& e : c.emails) out.Add(e.address, c.section);
-    }
+    // Every contact in one batched read - sections and the user's own groups
+    // alike (a contact filed in a group keeps its section).
+    std::vector<Contact> contacts;
+    const bool ok = store.ListAll(contacts).success;
+    for (const auto& c : contacts)
+        for (const auto& e : c.emails) out.Add(e.address, c.section);
     return ok;
 }
 

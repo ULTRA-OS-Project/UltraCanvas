@@ -217,6 +217,47 @@ void SetShadow(bool enabled,
 ```
 Configures text shadow effects.
 
+### Inline Images
+
+An image can flow in a label's text the way a browser flows an inline
+`<img>`. Put a U+FFFC placeholder (`"\xEF\xBF\xBC"`, 3 bytes) in the text
+where the image goes, and give the label the image, its display size and the
+placeholder's byte offset in the *rendered* text. In markup mode, that is the
+text after the markup is removed.
+
+```cpp
+const std::string text = "Rated \xEF\xBF\xBC out of five";
+label->SetText(text);
+
+LabelInlineImage star;
+star.byteOffset = 6;                    // where the placeholder starts
+star.width = 48;  star.height = 18;     // display size in px
+star.image = UCImageRaster::Load("star.png");
+label->SetInlineImages({ star });
+```
+
+- The label reserves the image's box on the placeholder
+  (`TextAttributeFactory::CreateShape`) and draws the image there. A line
+  holding an image grows to fit it.
+- `align` (`LabelInlineImageAlign`) says where the image sits against the
+  text of its line, like CSS `vertical-align`:
+  - `Baseline` (the default): it stands on the baseline.
+  - `Middle`: centred on the x-height.
+  - `Top`: its top at the top of the text.
+  - `Bottom`: its bottom at the bottom of the text, just under the baseline.
+
+  The text's ascent and descent are measured from the label's own font.
+- An image wider than the label's line is scaled down to fit, keeping its
+  aspect ratio.
+- `InlineImageRect(i)` returns where image `i` is drawn, in label-local
+  coordinates.
+- A placeholder inside a `SetTextLinks` range is part of that link, so
+  clicking the image activates it.
+
+The HTML reader (`HTMLElementBuilder`) uses this for an `<img>` inside running
+text. An image in a block that has no text of its own still gets a line of
+its own, placed by `text-align`.
+
 ## Event Callbacks
 
 UltraCanvasLabel supports several event callbacks:

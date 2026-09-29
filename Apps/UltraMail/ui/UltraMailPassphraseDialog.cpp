@@ -108,12 +108,14 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
     buttonRow->AddStretchSpacer(1);
 
     auto cancelBtn = CreateButton("passCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
 
     auto okBtn = CreateButton("passOk", 0, 0, 140, Theme::kControlHeight,
                               firstRun ? "Set password" : "Unlock");
+    Theme::FitToLabel(okBtn, 140);
     Theme::StylePrimary(okBtn);
     okBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
     buttonRow->AddChild(okBtn);

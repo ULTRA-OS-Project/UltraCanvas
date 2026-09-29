@@ -53,6 +53,7 @@ std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
     // The single call to action: a primary button with an envelope icon.
     auto add = CreateButton("startAddAccount", 0, 0, kButtonWidth, kButtonHeight,
                             "Add email account");
+    Theme::FitToLabel(add, kButtonWidth);
     Theme::StylePrimary(add);
     add->SetFontSize(kButtonFont);
     add->SetCornerRadius(kButtonRadius);

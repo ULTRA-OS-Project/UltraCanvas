@@ -59,6 +59,23 @@ namespace UltraCanvas {
         std::string href;
     };
 
+    // An image flowing in the text, like a browser's inline <img>: it stands on
+    // the line's baseline at the place of a U+FFFC placeholder character in
+    // the rendered text, and the line grows to hold it. Wider than the line,
+    // it is scaled down to fit, keeping its aspect ratio.
+    // Where an inline image sits against the text of its line (CSS
+    // vertical-align): standing on the baseline, centred on the x-height, its
+    // top at the text's top, or its bottom at the text's bottom.
+    enum class LabelInlineImageAlign { Baseline, Middle, Top, Bottom };
+
+    struct LabelInlineImage {
+        int   byteOffset = 0;       // of the U+FFFC placeholder in the rendered text
+        float width = 0.f;          // display size in px (before any fit-to-line)
+        float height = 0.f;
+        std::shared_ptr<UCImage> image;
+        LabelInlineImageAlign align = LabelInlineImageAlign::Baseline;
+    };
+
 // ===== LABEL COMPONENT =====
     class UltraCanvasLabel : public UltraCanvasUIElement {
     private:
@@ -67,6 +84,9 @@ namespace UltraCanvas {
         LabelStyle style;
         std::vector<LabelTextLink> textLinks;
         int hoveredLink = -1;
+        std::vector<LabelInlineImage> inlineImages;
+        float inlineFitWidth = -1.f;   // line width the image shapes were sized for; -1 = none
+        std::vector<float> inlineAscents;   // per image: its top above the baseline, as laid out
 
         // ===== COMPUTED LAYOUT =====
         Rect2Di textArea;
@@ -108,6 +128,14 @@ namespace UltraCanvas {
         const std::vector<LabelTextLink> &GetTextLinks() const { return textLinks; }
         // Index into GetTextLinks() of the link at a label-local point, or -1.
         int LinkIndexAtPoint(const Point2Di& localPoint);
+
+        // ===== INLINE IMAGES =====
+        // Images drawn at U+FFFC placeholders of the text (see LabelInlineImage).
+        void SetInlineImages(std::vector<LabelInlineImage> images);
+        const std::vector<LabelInlineImage>& GetInlineImages() const { return inlineImages; }
+        // Where an inline image is drawn, label-local; empty before the first
+        // layout or for an index out of range.
+        Rect2Df InlineImageRect(size_t index);
 
         // ===== STYLE MANAGEMENT =====
         void SetStyle(const LabelStyle &newStyle);
@@ -183,6 +211,13 @@ namespace UltraCanvas {
         // label rendered into an offscreen surface, where the element has no
         // window to ask and only the caller knows the context.
         bool EnsureTextLayout(IRenderContext* ctx = nullptr);
+
+    private:
+        // The display size of an inline image on a line `inlineFitWidth` wide.
+        Size2Df InlineImageSize(const LabelInlineImage& image) const;
+        // Size the images for a line `width` wide (-1: unbounded); drops the
+        // text layout when that changes an image's box, so it is rebuilt.
+        void FitInlineImages(float width);
     };
 
 

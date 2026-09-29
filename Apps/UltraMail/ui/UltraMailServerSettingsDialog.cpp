@@ -363,6 +363,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         std::function<void()> onDelete = account.onDelete;
         auto deleteBtn = CreateButton("srvDelete", 0, 0, 130, Theme::kControlHeight,
                                       "Delete account");
+        Theme::FitToLabel(deleteBtn, 130);
         Theme::StyleDanger(deleteBtn);
         deleteBtn->onClick = [dlg, onDelete]() {
             dlg->CloseDialog(DialogResult::Cancel);
@@ -373,6 +374,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
 
     buttonRow->AddStretchSpacer(1);
     auto cancelBtn = CreateButton("srvCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
@@ -437,6 +439,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // line has room for the reason only; this is what a bug report needs.
     auto diagnostics = std::make_shared<std::string>();
     auto detailsBtn = CreateButton("srvDetails", 0, 0, 90, Theme::kControlHeight, "Details");
+    Theme::FitToLabel(detailsBtn, 90);
     Theme::StyleSecondary(detailsBtn);
     detailsBtn->SetVisible(false);
     detailsBtn->onClick = [diagnostics, status]() {
@@ -448,6 +451,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // "Save anyway" appears after a failed check, for a server that is down
     // right now or a check that could not run (no plug-in).
     auto anywayBtn = CreateButton("srvSaveAnyway", 0, 0, 130, Theme::kControlHeight, "Save anyway");
+    Theme::FitToLabel(anywayBtn, 130);
     Theme::StyleSecondary(anywayBtn);
     anywayBtn->SetVisible(false);
     anywayBtn->onClick = [dlg, collect, result]() {
@@ -459,6 +463,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     buttonRow->AddChild(anywayBtn);
 
     auto saveBtn = CreateButton("srvSave", 0, 0, 110, Theme::kControlHeight, "Save");
+    Theme::FitToLabel(saveBtn, 110);
     Theme::StylePrimary(saveBtn);
     // The check's answer may arrive after the page was cancelled: hold the
     // dialog weakly and drop the answer when it is gone.

@@ -10849,6 +10849,86 @@ described on:
   three-variable comparison and glossy bubble styling.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasBusyIndicator.md
+==============================================================================
+
+# UltraCanvas BusyIndicator Documentation
+
+## Overview
+
+**UltraCanvasBusyIndicator** is the turning ring that says *working on it*
+when there is no percentage to show: a mail fetch, a network call, a folder
+scan. A partial arc turns over a faint full track while the indicator runs.
+When it stops, the space is left blank by default. The element can therefore
+sit permanently in a status line and costs nothing while idle, because no
+timer runs.
+
+**File Location**: `include/UltraCanvasBusyIndicator.h`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+It is not the right element for:
+
+- a known fraction: use `UltraCanvasGaugeDiagramElement` in
+  `GaugeMode::LinearBar`, or `UltraCanvasProgressDialog`;
+- a number with up/down arrows: use `UltraCanvasSpinner`, which is a spin box
+  despite its name.
+
+## Features
+
+- ✅ `Start()` / `Stop()` / `SetRunning(bool)` / `IsRunning()`, all idempotent
+- ✅ The angle is computed from elapsed time, so a late timer tick never slows
+  the ring down
+- ✅ The timer runs only while the indicator turns; the destructor stops it
+- ✅ Style: arc colour, track colour (alpha 0 means no track), thickness, arc
+  length, revolutions per second, frame interval, and whether a stopped
+  indicator stays visible
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasBusyIndicator.h"
+using namespace UltraCanvas;
+
+auto busy = CreateBusyIndicator("statusBusy", 0, 0, 14);   // 14 px square
+busy->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+statusRow->AddChild(busy);
+
+busy->Start();   // work begins
+// ...
+busy->Stop();    // work done: the ring disappears
+```
+
+## Style
+
+```cpp
+BusyIndicatorStyle st = busy->GetStyle();
+st.arcColor   = Color(0, 120, 215, 255);
+st.trackColor = Color(0, 0, 0, 0);   // no track
+st.thickness  = 2.0f;                // default: side / 8
+st.arcDegrees = 270.0f;
+st.revolutionsPerSecond = 1.0f;
+st.hideWhenStopped = true;           // false: show a still ring when idle
+busy->SetStyle(st);
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `arcColor` | blue `#0078D7` | the turning arc |
+| `trackColor` | black at alpha 28 | the full ring behind it; alpha 0 means none |
+| `thickness` | `0` → side / 8 (at least 1.5 px) | stroke width |
+| `arcDegrees` | `270` | arc length, clamped to 10–350 |
+| `revolutionsPerSecond` | `1.0` | speed |
+| `frameIntervalMs` | `33` | redraw period while running |
+| `hideWhenStopped` | `true` | draw nothing while stopped |
+
+## Threading
+
+`Start()` and `Stop()` use the application timer, so call them on the UI
+thread. From a worker thread, hand the call over with
+`UltraCanvasApplicationBase::GetCurrent()->PostToUIThread(...)`.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 ==============================================================================
 
@@ -29703,6 +29783,47 @@ void SetShadow(bool enabled,
                 const Point2Di& offset = Point2Di(1, 1))
 ```
 Configures text shadow effects.
+
+### Inline Images
+
+An image can flow in a label's text the way a browser flows an inline
+`<img>`. Put a U+FFFC placeholder (`"\xEF\xBF\xBC"`, 3 bytes) in the text
+where the image goes, and give the label the image, its display size and the
+placeholder's byte offset in the *rendered* text. In markup mode, that is the
+text after the markup is removed.
+
+```cpp
+const std::string text = "Rated \xEF\xBF\xBC out of five";
+label->SetText(text);
+
+LabelInlineImage star;
+star.byteOffset = 6;                    // where the placeholder starts
+star.width = 48;  star.height = 18;     // display size in px
+star.image = UCImageRaster::Load("star.png");
+label->SetInlineImages({ star });
+```
+
+- The label reserves the image's box on the placeholder
+  (`TextAttributeFactory::CreateShape`) and draws the image there. A line
+  holding an image grows to fit it.
+- `align` (`LabelInlineImageAlign`) says where the image sits against the
+  text of its line, like CSS `vertical-align`:
+  - `Baseline` (the default): it stands on the baseline.
+  - `Middle`: centred on the x-height.
+  - `Top`: its top at the top of the text.
+  - `Bottom`: its bottom at the bottom of the text, just under the baseline.
+
+  The text's ascent and descent are measured from the label's own font.
+- An image wider than the label's line is scaled down to fit, keeping its
+  aspect ratio.
+- `InlineImageRect(i)` returns where image `i` is drawn, in label-local
+  coordinates.
+- A placeholder inside a `SetTextLinks` range is part of that link, so
+  clicking the image activates it.
+
+The HTML reader (`HTMLElementBuilder`) uses this for an `<img>` inside running
+text. An image in a block that has no text of its own still gets a line of
+its own, placed by `text-align`.
 
 ## Event Callbacks
 
@@ -56266,6 +56387,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
+| "Working on it" with no percentage — a turning ring for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
@@ -67675,7 +67797,7 @@ is purely a libcurl build option.
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
-| MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build | `UltraNet/UltraNetMime.h` |
+| MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build; text in any charset iconv knows (ISO-2022-JP - also raw in headers -, Shift_JIS, GB18030, KOI8-R, windows-125x, ...) converted to UTF-8, UTF-8 and Latin-1 without iconv; unlabelled 8-bit header text read in the body's charset or the best-scoring guess | `UltraNet/UltraNetMime.h` |
 
 ### Plugin-supplied (Tier 2/3)
 

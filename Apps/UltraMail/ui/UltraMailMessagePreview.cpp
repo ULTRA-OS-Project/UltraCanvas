@@ -16,10 +16,13 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextArea.h"
 #include "HTMLReader/HTMLElementBuilder.h"
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasUtils.h"      // OpenURL
 
 #include "UltraMailMimeCodec.h"
 #include "UltraMailTheme.h"
 
+#include <UltraNet/UltraNetHttp.h>
 #include <UltraNet/UltraNetMime.h>
 
 #include <cctype>
@@ -27,6 +30,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -114,6 +118,7 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     auto makeActionButton = [&](const std::string& id, const std::string& text,
                                 const std::string& icon) {
         auto b = CreateButton(id, 0, 0, 84, 30, text);
+        Theme::FitToLabel(b, 84);
         Theme::StyleSecondary(b);
         if (!icon.empty()) {
             b->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/" + icon));
@@ -249,6 +254,46 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     warning_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     warning_->SetVisible(false);
 
+    // The remote-images bar: hidden unless the HTML body references images on
+    // the web that have not been loaded (see RenderBody / UpdateRemoteBar).
+    // Text above, buttons below: the pane can be narrow and the sender's
+    // address long, and a row would push the buttons out of sight.
+    remoteBar_ = CreateContainer("prevRemoteBar", 0, 0, 0, 0);
+    remoteBar_->layout.SetFlexColumn()
+                      .SetFlexGap(6)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    remoteBar_->SetPadding(6.0f, 10.0f);
+    remoteBar_->SetBackgroundColor(Theme::kSidebar);
+    remoteBar_->SetBorders(1.0f, Theme::kCardBorder, Theme::kControlRadius);
+    remoteText_ = Theme::MakeText("prevRemoteText", "", Theme::kSizeSecondary,
+                                  Theme::kTextSecondary);
+    remoteText_->SetWrap(TextWrap::WrapWord);
+    remoteBar_->AddChild(remoteText_);
+    remoteText_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto remoteButtons = CreateContainer("prevRemoteButtons", 0, 0, 0, Theme::kControlHeight);
+    remoteButtons->layout.SetFlexRow()
+                         .SetFlexGap(Theme::kInnerGap)
+                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    remoteBar_->AddChild(remoteButtons);
+    remoteShow_ = CreateButton("prevRemoteShow", 0, 0, 100, Theme::kControlHeight, "Show images");
+    Theme::FitToLabel(remoteShow_, 100);
+    Theme::StyleSecondary(remoteShow_);
+    remoteShow_->onClick = [this]() { FetchRemoteImages(); };
+    remoteButtons->AddChild(remoteShow_);
+    remoteAlways_ = CreateButton("prevRemoteAlways", 0, 0, 120, Theme::kControlHeight,
+                                 "Always from this sender");
+    Theme::FitToLabel(remoteAlways_, 120);
+    Theme::StyleSecondary(remoteAlways_);
+    remoteAlways_->onClick = [this]() {
+        if (onAlwaysAllowRemoteImages && !curEnv_.fromAddr.empty())
+            onAlwaysAllowRemoteImages(curEnv_.fromAddr);
+        FetchRemoteImages();
+    };
+    remoteButtons->AddChild(remoteAlways_);
+    root_->AddChild(remoteBar_);
+    remoteBar_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    remoteBar_->SetVisible(false);
+
     // Body host: takes the remaining height; RenderBody() fills it with either
     // a read-only text area (plain text) or the HTMLReader-built element tree.
     bodyHost_ = CreateContainer("prevBodyHost", 0, 0, 0, 0);
@@ -291,8 +336,17 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         HTML::BuildOptions opts;
         opts.style.baseFontSizePx = 12.0f;   // ≈ the 9pt UI font
         opts.enableImages = true;
-        // No remote fetch in the preview: images resolve to empty (placeholder).
-        opts.resourceLoader = [](const std::string&) { return std::vector<uint8_t>{}; };
+        // Embedded images from the message; remote ones only once loaded.
+        opts.resourceLoader = [this](const std::string& src) { return LoadBodyImage(src); };
+        // Links open in the browser (web and mail addresses only - never a
+        // file: or javascript: target a message could carry).
+        opts.onLinkActivated = [](const std::string& href) {
+            std::string lower = href;
+            for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0 ||
+                lower.rfind("mailto:", 0) == 0)
+                UltraCanvas::OpenURL(href);
+        };
         HTML::ElementBuilder builder;
         HTML::BuildResult r = builder.Build(body, opts);
         if (r.root) {
@@ -337,19 +391,111 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 }
 
+std::vector<uint8_t> MessagePreview::LoadBodyImage(const std::string& src) {
+    switch (ClassifyImageSource(src, inlineImages_)) {
+        case ImageSource::Embedded:
+            return ResolveEmbeddedImage(src, inlineImages_);
+        case ImageSource::Remote:
+            if (auto it = remoteCache_.find(src); it != remoteCache_.end()) return it->second;
+            blockedRemote_.insert(src);
+            return {};
+        case ImageSource::Other:
+            break;
+    }
+    return {};
+}
+
+void MessagePreview::UpdateRemoteBar() {
+    if (!remoteBar_) return;
+    const bool show = hasMessage_ && !blockedRemote_.empty() && !remoteAllowed_;
+    remoteBar_->SetVisible(show || fetchingRemote_);
+    if (!show && !fetchingRemote_) return;
+    if (fetchingRemote_) {
+        remoteText_->SetText("Loading images\xE2\x80\xA6");
+        remoteShow_->SetVisible(false);
+        remoteAlways_->SetVisible(false);
+        return;
+    }
+    const std::size_t n = blockedRemote_.size();
+    std::string text = std::to_string(n) + (n == 1 ? " image is" : " images are") +
+                       " on the web and not loaded, so the sender cannot see that you "
+                       "opened this message.";
+    if (remoteDangerous_) text += " This message looks suspicious.";
+    remoteText_->SetText(text);
+    remoteShow_->SetVisible(true);
+    // Never offer to trust a sender whose message looks like spam or a scam.
+    remoteAlways_->SetVisible(!remoteDangerous_ && !curEnv_.fromAddr.empty());
+    if (!remoteDangerous_ && !curEnv_.fromAddr.empty())
+        remoteAlways_->SetText("Always from " + curEnv_.fromAddr);
+}
+
+void MessagePreview::FetchRemoteImages() {
+    if (fetchingRemote_ || blockedRemote_.empty()) return;
+    // At most this many per message: a newsletter rarely has more, and a
+    // message with hundreds is not one to fetch blindly.
+    constexpr std::size_t kMaxImages = 60;
+    std::vector<std::string> urls;
+    for (const auto& u : blockedRemote_) {
+        if (urls.size() >= kMaxImages) break;
+        urls.push_back(u);
+    }
+    fetchingRemote_ = true;
+    UpdateRemoteBar();
+    const uint64_t token = showToken_;
+    std::thread([this, urls, token]() {
+        auto results = std::make_shared<std::map<std::string, std::vector<uint8_t>>>();
+        for (const auto& src : urls) {
+            const std::string url = src.rfind("//", 0) == 0 ? "https:" + src : src;
+            UltraNetHttpOptions options;
+            options.timeoutMs = 15000;
+            options.connectTimeoutMs = 8000;
+            options.maxReceiveSize = 5 * 1024 * 1024;   // an image, not a download
+            UltraNetResponse response;
+            if (UltraNet_HttpGet(url, response, options) && response.statusCode >= 200 &&
+                response.statusCode < 300 && !response.body.empty())
+                (*results)[src] = std::move(response.body);
+            else
+                (*results)[src] = {};   // tried: do not ask again for this message
+        }
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, results, token]() {
+            fetchingRemote_ = false;
+            if (remoteCache_.size() + results->size() > 400) remoteCache_.clear();
+            for (auto& [src, bytes] : *results) remoteCache_[src] = std::move(bytes);
+            if (token != showToken_) return;          // another message is on screen
+            blockedRemote_.clear();
+            remoteAllowed_ = true;                   // for this message, from now on
+            RenderBody(curHtml_, true);
+            UpdateRemoteBar();
+        });
+    }).detach();
+}
+
 MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
                                             const std::string& raw) {
     MessageSecurity sec;
     if (store_) store_->GetSecurity(env.accountId, env.folder, env.uid, sec);
-    if (sec.Scanned() || raw.empty()) return sec;
+    if (raw.empty()) return sec;
+    bool changed = false;
 
     // First read of this message: scan the cached body once and keep the
     // verdict, so the list can colour the row without parsing every .eml.
-    const ThreatReport report = ScanRawMessage(raw);
-    sec.level  = report.level;
-    sec.score  = report.score;
-    sec.bulk   = report.bulk;
-    sec.reason = report.Summary();
+    if (!sec.Scanned()) {
+        const ThreatReport report = ScanRawMessage(raw);
+        sec.level  = report.level;
+        sec.score  = report.score;
+        sec.bulk   = report.bulk;
+        sec.reason = report.Summary();
+        changed = true;
+    }
+    // And its attachment count, for the list's paperclip, when the body was
+    // downloaded before counts were kept.
+    if (sec.attachments < 0) {
+        sec.attachments = MimeCodec::CountAttachments(raw);
+        changed = true;
+    }
+    if (!changed) return sec;
     if (store_) store_->SetSecurity(env.accountId, env.folder, env.uid, sec);
     if (onSecurityScanned) onSecurityScanned(env, sec);
     return sec;
@@ -385,6 +531,13 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
 
 void MessagePreview::Clear() {
     hasMessage_ = false;
+    ++showToken_;
+    curHtml_.clear();
+    inlineImages_ = InlineImages{};
+    blockedRemote_.clear();
+    remoteAllowed_ = false;
+    fetchingRemote_ = false;
+    if (remoteBar_) remoteBar_->SetVisible(false);
     current_ = SourceMessage{};
     curEnv_ = MessageEnvelope{};
     curRaw_.clear();
@@ -409,6 +562,12 @@ void MessagePreview::Clear() {
 
 void MessagePreview::Show(const MessageEnvelope& env) {
     hasMessage_ = true;
+    ++showToken_;
+    curHtml_.clear();
+    inlineImages_ = InlineImages{};
+    blockedRemote_.clear();
+    remoteAllowed_ = false;
+    fetchingRemote_ = false;
     curAccount_ = env.accountId;
     curEnv_     = env;   // identity for Delete / Junk / Mark-Unread
 
@@ -450,6 +609,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     // The badge (and the warning strip) need the scan verdict, which needs the
     // body — so both are filled in after it has been loaded, below.
     std::string raw;
+    std::string pendingBody;
+    bool pendingHtml = false, havePending = false;
 
     // Load the cached body (.eml) and decode it.
     fs::path path = PathFromUtf8(mailDir_) / env.accountId / SanitizeFolder(env.folder)
@@ -476,7 +637,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         raw.assign(loaded.bytes.begin(), loaded.bytes.end());
         curRaw_ = raw;   // kept for "View source"
         ParsedMessage pm = MimeCodec::Parse(raw);
-        RenderBody(pm.body, pm.bodyIsHtml);
+        // Rendered below, once the verdict says whether remote images may load.
+        pendingBody = pm.body;
+        pendingHtml = pm.bodyIsHtml;
+        havePending = true;
         attachmentStrip_.SetAttachments(pm.attachments);
         // Reply quoting works from text; reduce HTML to text for the captured copy.
         current_.body = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
@@ -501,6 +665,24 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         from_->SetTooltip(tip);
     }
     ShowSecurityWarning(status, security);
+
+    // The body, with its images: the message's own always, remote ones when
+    // the reader has allowed this sender - never for a suspicious message.
+    if (havePending) {
+        remoteDangerous_ = status.Dangerous() || junkFolder_;
+        remoteAllowed_ = !remoteDangerous_ && remoteImagesAllowed &&
+                         !env.fromAddr.empty() && remoteImagesAllowed(env.fromAddr);
+        if (pendingHtml) {
+            curHtml_ = pendingBody;
+            inlineImages_ = CollectInlineImages(raw);
+        }
+        RenderBody(pendingBody, pendingHtml);
+        if (remoteAllowed_ && !blockedRemote_.empty()) {
+            remoteAllowed_ = false;      // FetchRemoteImages sets it once loaded
+            FetchRemoteImages();
+        }
+    }
+    UpdateRemoteBar();
 
     // Capture the selection for a possible Reply (decoded, so the quoted reply
     // header and Re: subject read correctly).

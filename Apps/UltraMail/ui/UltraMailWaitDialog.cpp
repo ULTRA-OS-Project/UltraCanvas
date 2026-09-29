@@ -47,6 +47,7 @@ std::shared_ptr<UltraCanvasModalDialog> WaitDialog::Show(
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
     auto cancelBtn = CreateButton("waitCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);

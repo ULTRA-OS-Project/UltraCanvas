@@ -39,6 +39,10 @@ public:
     // Parse a raw RFC 5322 message. Never throws; a message with no text part
     // yields an empty body, and one with no attachments yields an empty list.
     static ParsedMessage Parse(const std::string& rawMessage);
+
+    // How many attachments Parse() would list (inline images of the body
+    // excluded), without keeping their bytes.
+    static int CountAttachments(const std::string& rawMessage);
 };
 
 } // namespace UltraMail

@@ -30,6 +30,9 @@ struct MessageSecurity {
     bool        bulk  = false;
     std::string reason;
     int64_t     scannedAt = 0;   // epoch seconds
+    // Attachments the message carries (what the reading pane lists as
+    // chips), counted from the body; -1 while no body has been counted.
+    int         attachments = -1;
 
     bool Scanned() const { return level != ThreatLevel::Unscanned; }
 };
@@ -95,6 +98,14 @@ public:
     UltraDbResult ReplaceFlags(const std::string& accountId, const std::string& folder,
                                int64_t uid, uint32_t flags);
 
+    // The user's own "needs an answer" choice, overriding the automatic rule
+    // (addressed to me, in the inbox, not automated, not \Answered): true keeps
+    // the message on the list until it is answered, false keeps it off. Local
+    // only - IMAP has no standard flag for it. Answering it (MarkAnswered, or
+    // \Answered set from the server) ends a "true" choice.
+    UltraDbResult SetNeedsAnswer(const std::string& accountId, const std::string& folder,
+                                 int64_t uid, bool needsAnswer);
+
     // Convenience: mark a message answered (sets \Answered, clears needs-answer).
     UltraDbResult MarkAnswered(const std::string& accountId, const std::string& folder,
                                int64_t uid) {
@@ -127,6 +138,16 @@ public:
     // list rather than one per row.
     UltraDbResult ListSecurity(const std::string& accountId, const std::string& folder,
                                std::map<int64_t, MessageSecurity>& out) const;
+
+    // Record a message's attachment count (see MessageSecurity::attachments)
+    // without touching its scan verdict; creates the row when there is none.
+    UltraDbResult SetAttachmentCount(const std::string& accountId, const std::string& folder,
+                                     int64_t uid, int count);
+    // Messages of a folder whose attachments have not been counted yet, newest
+    // first, at most `limit`.
+    UltraDbResult ListUncountedAttachments(const std::string& accountId,
+                                           const std::string& folder, int limit,
+                                           std::vector<int64_t>& uids) const;
 
     // ---- Rollups (account bar) --------------------------------------------
     // One row per account: short name, email, unread (total / today / older)

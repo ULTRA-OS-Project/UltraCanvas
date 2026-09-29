@@ -9,6 +9,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCanvasBusyIndicator.h"
+#include "UltraCanvasMediaViewerWindow.h"
 #include "UltraMailStartPage.h"
 #include "UltraMailAccountBar.h"
 #include "UltraMailMailView.h"
@@ -167,6 +169,8 @@ private:
     void HandleReload();
     // Set the bottom status-line text (UI thread). Empty resets to "Ready".
     void SetStatus(const std::string& text);
+    // Runs the status-line ring while a sync, send or mailbox action is in flight.
+    void UpdateBusyIndicator();
     static std::string SlugFromEmail(const std::string& email);
     static std::string LocalPart(const std::string& email);
 
@@ -221,7 +225,17 @@ private:
     void RunMailboxAction(const std::string& accountId,
                           std::function<SyncOutcome(SyncEngine&, const std::string& serverUrl,
                                                     const UltraNetMailOptions&)> op,
-                          const std::string& actionName);
+                          const std::string& actionName,
+                          std::function<void()> onSuccess = nullptr);
+    // Message-list menu actions.
+    void HandleMoveMessage(const MessageEnvelope& env, const std::string& folder);
+    void HandleNotJunk(const MessageEnvelope& env);
+    void HandleSetNeedsAnswer(const MessageEnvelope& env, bool needsAnswer);
+    // Leave the mailing list a message came from, the way its List-Unsubscribe
+    // header asks (one-click POST, web page or a message to send); the body is
+    // downloaded first when it is not cached yet.
+    void HandleUnsubscribe(const MessageEnvelope& env);
+    void UnsubscribeWith(const MessageEnvelope& env, const std::string& raw);
     // Like RunMailboxAction, but for a passive, best-effort op: it does not
     // Refresh() on success (so the list selection is not bounced to the top) and
     // it stays silent on failure. Used by mark-read-on-open.
@@ -244,6 +258,12 @@ private:
     void HandleSendDraft(const Draft& draft);
     // Re-flush the outbox after a failed send (the Retry button's action).
     void RetryOutbox(const std::string& fromAddr);
+    // "Add to contacts" / "Edit contact" from the message list's menu: the
+    // contact editor for the message's sender, prefilled from the message
+    // when new, loaded from the address book by address when not.
+    void EditSenderContact(const MessageEnvelope& m, bool isNew);
+    // File a message's sender in a section or group (adding it first when new).
+    void AddSenderToContactGroup(const MessageEnvelope& m, const ContactPlace& place);
     // Flush the outbox with the vault open and report the outcome. Split out
     // of HandleSendDraft because unlocking is answered through a dialog, so the
     // send continues in a callback rather than in line.
@@ -372,6 +392,8 @@ private:
     // A one-line status at the bottom of the account view saying what the app is
     // doing ("Checking <account>…", "Receiving messages… (N)", "Up to date").
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBusyIndicator> busyIndicator_;
+    int                                                mailboxActionsInFlight_ = 0;
     // Cumulative messages streamed in during the current run of syncs (for the
     // "Receiving messages… (N)" status); reset when the last sync ends.
     int                                                statusReceived_ = 0;
@@ -387,6 +409,11 @@ private:
     // sync workers' progress callbacks.
     FeedPublisher   feed_;
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
+    // The Contacts window while it is open (one at a time).
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> contactsWindow_;
+    // Attachments open in the framework's media viewer (images, PDF, office
+    // sheets, text, audio, video, fonts, …); one window, reused per attachment.
+    std::unique_ptr<UltraCanvas::UltraCanvasMediaViewerWindow> attachmentViewer_;
 };
 
 } // namespace UltraMail

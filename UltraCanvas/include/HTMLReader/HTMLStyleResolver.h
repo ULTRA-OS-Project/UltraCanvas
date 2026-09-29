@@ -30,6 +30,10 @@ enum class DisplayMode {
 
 enum class TextAlignMode { Left, Right, Center, Justify };
 
+// vertical-align, as far as an inline image uses it: where the image sits
+// against the text of its line.
+enum class VerticalAlignMode { Baseline, Middle, Top, Bottom };
+
 enum class ListMarker {
     Disc, Circle, Square,
     Decimal, LowerAlpha, UpperAlpha, LowerRoman, UpperRoman,
@@ -62,6 +66,7 @@ struct ComputedStyle {
     std::optional<float> widthPx;
     std::optional<float> heightPx;
     std::optional<float> widthPercent;   // width given in % (builder maps to Dimension::Pct)
+    VerticalAlignMode verticalAlign = VerticalAlignMode::Baseline;   // not inherited
 
     // links
     bool isLink = false;
@@ -98,6 +103,7 @@ private:
 
     void ResolveElement(Node& element, const ComputedStyle& parentStyle);
     void ApplyUserAgentDefaults(const std::string& tag, ComputedStyle& style);
+    void ApplyAlignAttribute(const Node& element, ComputedStyle& style);
     void ApplyDeclaration(const Declaration& declaration, ComputedStyle& style,
                           const ComputedStyle& parentStyle);
     static bool SelectorMatches(const Selector& selector, const Node& element);

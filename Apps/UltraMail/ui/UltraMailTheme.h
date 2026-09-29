@@ -170,6 +170,21 @@ inline void StyleDanger(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& b
     if (b) b->SetStyle(DangerButton());
 }
 
+// Every button sizes to its label: its width follows the text (and icon), so
+// a longer label - a translation, "Reloading…" - is never cut to "Reloa…".
+// `minWidth` keeps the old fixed width as a floor, so short English labels
+// look as they did. The same rule as UltraCanvasModalDialog::SizeButtonToLabel.
+inline void FitToLabel(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& b,
+                       float minWidth = 0.0f) {
+    if (!b) return;
+    b->size.width = UltraCanvas::CSSLayout::Dimension::Auto();
+    UltraCanvas::CSSLayout::BoxConstraints limits =
+        b->boxConstraints.value_or(UltraCanvas::CSSLayout::BoxConstraints{});
+    if (minWidth > 0.0f) limits.minWidth = UltraCanvas::CSSLayout::Dimension::Px(minWidth);
+    b->boxConstraints = limits;
+    b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+}
+
 // A white card: the surface every content block sits on.
 inline void ApplyCard(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>& c,
                       float radius = kCardRadius) {
