@@ -4,6 +4,8 @@
 // building. Pure C++ / STL — no libcurl or platform dependency; other
 // charsets than UTF-8 and Latin-1 go through iconv where the build has it
 // (ULTRANET_HAS_ICONV).
+// Version: 0.3.0 - HTML messages with a text alternative and cid: pictures
+//                  (multipart/alternative + related)
 // Version: 0.2.0 - every iconv charset (ISO-2022-JP, Shift_JIS, EUC-*, GB*,
 //                  KOI8-R, windows-125x, ...), and raw ISO-2022-JP header text.
 // Author: UltraCanvas Framework / ULTRA OS
@@ -754,8 +756,11 @@ void WalkAttachments(const UltraNetMimePart& part, std::vector<UltraNetMimeAttac
         return;
     }
     const bool isText = part.mediaType.rfind("text/", 0) == 0;
+    // A part marked inline that carries a Content-ID is a picture of the HTML
+    // body (its cid: link), even with a file name - not an attachment.
+    const bool bodyPicture = part.disposition == "inline" && !part.contentId.empty();
     bool isAttachment = (part.disposition == "attachment") ||
-                        (!part.filename.empty() && !isText);
+                        (!part.filename.empty() && !isText && !bodyPicture);
     bool isInline = (part.disposition == "inline") || (!part.contentId.empty() && !isText);
     if (isAttachment || (isInline && includeInline)) {
         UltraNetMimeAttachmentView v;
@@ -1050,6 +1055,71 @@ void UltraNet_MimeCollectAttachments(const UltraNetMimeMessage& message,
     WalkAttachments(message.root, out, includeInline);
 }
 
+namespace {
+
+// One attachment as a MIME entity (headers, blank line, base64 content).
+std::string AttachmentEntity(const UltraNetMimeBuildAttachment& a) {
+    const std::string ct = a.mediaType.empty() ? "application/octet-stream" : a.mediaType;
+    std::ostringstream os;
+    os << "Content-Type: " << ct << "; name=\"" << a.filename << "\"\r\n"
+       << "Content-Disposition: " << (a.isInline ? "inline" : "attachment")
+       << "; filename=\"" << a.filename << "\"\r\n";
+    if (!a.contentId.empty()) os << "Content-ID: <" << a.contentId << ">\r\n";
+    os << "Content-Transfer-Encoding: base64\r\n\r\n"
+       << UltraCanvas::Base64Encode(a.data, true);
+    return os.str();
+}
+
+// A text part, quoted-printable.
+std::string TextEntity(const std::string& contentType, const std::string& text) {
+    return "Content-Type: " + contentType + "\r\n"
+           "Content-Transfer-Encoding: quoted-printable\r\n\r\n"
+           + QpEncodeImpl(text) + "\r\n";
+}
+
+std::string MultipartEntity(const std::string& subtype, const std::string& boundary,
+                            const std::vector<std::string>& parts, const std::string& extra = "") {
+    std::ostringstream os;
+    os << "Content-Type: multipart/" << subtype << "; boundary=\"" << boundary << "\"" << extra
+       << "\r\n\r\n";
+    for (const auto& part : parts) os << "--" << boundary << "\r\n" << part << "\r\n";
+    os << "--" << boundary << "--\r\n";
+    return os.str();
+}
+
+// The body of an HTML message with a text alternative and/or inline
+// pictures (the tree is in the header), wrapped in multipart/mixed when
+// there are attachments besides.
+std::string BuildRichBody(const UltraNetMimeBuildInput& in, const std::string& bodyCt,
+                          const std::string& boundary) {
+    std::vector<std::string> relatedParts;
+    std::vector<std::string> attachmentParts;
+    relatedParts.push_back(TextEntity(bodyCt, in.body));
+    for (const auto& a : in.attachments) {
+        if (a.isInline && !a.contentId.empty()) relatedParts.push_back(AttachmentEntity(a));
+        else attachmentParts.push_back(AttachmentEntity(a));
+    }
+    // The inner boundaries lead with their own word: one that began with the
+    // outer boundary would contain its delimiter line ("--B" in "--B_rel"),
+    // which RFC 2046 forbids and a parser splits on.
+    const std::string html = relatedParts.size() > 1
+        ? MultipartEntity("related", "rel_" + boundary, relatedParts, "; type=\"text/html\"")
+        : relatedParts.front();
+
+    std::string body = html;
+    if (!in.alternativeText.empty()) {
+        std::string textCt = "text/plain";
+        if (!in.bodyCharset.empty()) textCt += "; charset=" + in.bodyCharset;
+        body = MultipartEntity("alternative", "alt_" + boundary,
+                               {TextEntity(textCt, in.alternativeText), html});
+    }
+    if (attachmentParts.empty()) return body;
+    attachmentParts.insert(attachmentParts.begin(), body);
+    return MultipartEntity("mixed", boundary, attachmentParts);
+}
+
+} // namespace
+
 std::string UltraNet_MimeBuild(const UltraNetMimeBuildInput& in) {
     std::ostringstream os;
     const bool hasAtt = !in.attachments.empty();
@@ -1082,6 +1152,14 @@ std::string UltraNet_MimeBuild(const UltraNetMimeBuildInput& in) {
 
     for (const auto& [name, value] : in.extraHeaders)
         if (!ReservedHeader(name)) os << name << ": " << value << "\r\n";
+
+    bool hasRelated = false;
+    for (const auto& a : in.attachments)
+        if (a.isInline && !a.contentId.empty()) hasRelated = true;
+    if (in.bodyMediaType == "text/html" && (!in.alternativeText.empty() || hasRelated)) {
+        os << BuildRichBody(in, bodyCt, boundary);
+        return os.str();
+    }
 
     if (!hasAtt) {
         os << "Content-Type: " << bodyCt << "\r\n"

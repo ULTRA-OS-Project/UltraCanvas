@@ -1,5 +1,6 @@
 // Apps/UltraMail/engine/UltraMailOutbox.cpp
-// Version: 0.2.0 (Phase 2)
+// Version: 0.3.0 - keeps an HTML draft's text version and inline pictures
+//                  (migration 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOutbox.h"
 
@@ -61,6 +62,12 @@ UltraDbResult OutboxStore::Open(const std::string& connectionName,
           "  media_type TEXT,"
           "  data BLOB);"
           "CREATE INDEX idx_outbox_att ON outbox_attachments(outbox_id);" },
+        // An HTML message's plain-text version, and the pictures its cid:
+        // links show (stored with the attachments, marked inline).
+        { 2, "html alternative and inline parts",
+          "ALTER TABLE outbox ADD COLUMN text_body TEXT;"
+          "ALTER TABLE outbox_attachments ADD COLUMN content_id TEXT;"
+          "ALTER TABLE outbox_attachments ADD COLUMN is_inline INTEGER DEFAULT 0;" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -73,18 +80,26 @@ UltraDbResult OutboxStore::Enqueue(const std::string& accountId, const std::stri
 
     UltraDbResult ins = UltraDb_ExecInTx(tx,
         "INSERT INTO outbox(account_id, server_url, from_name, from_addr, to_addrs, "
-        "cc_addrs, bcc_addrs, subject, body, body_is_html, attempts, created_at) "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))",
+        "cc_addrs, bcc_addrs, subject, body, body_is_html, text_body, attempts, created_at) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))",
         { accountId, serverUrl, d.fromName, d.fromAddr, Join(d.to, '\n'),
-          Join(d.cc, '\n'), Join(d.bcc, '\n'), d.subject, d.body, d.bodyIsHtml ? 1 : 0 });
+          Join(d.cc, '\n'), Join(d.bcc, '\n'), d.subject, d.body, d.bodyIsHtml ? 1 : 0,
+          d.textBody });
     if (!ins) { UltraDb_Rollback(tx); return ins; }
     outId = ins.lastInsertId;
 
+    auto insertPart = [&](const Attachment& a, bool isInline) {
+        return UltraDb_ExecInTx(tx,
+            "INSERT INTO outbox_attachments(outbox_id, filename, media_type, data, content_id, is_inline) "
+            "VALUES(?, ?, ?, ?, ?, ?)",
+            { outId, a.filename, a.mediaType, a.data, a.contentId, isInline ? 1 : 0 });
+    };
     for (const auto& a : d.attachments) {
-        UltraDbResult ar = UltraDb_ExecInTx(tx,
-            "INSERT INTO outbox_attachments(outbox_id, filename, media_type, data) "
-            "VALUES(?, ?, ?, ?)",
-            { outId, a.filename, a.mediaType, a.data });
+        UltraDbResult ar = insertPart(a, false);
+        if (!ar) { UltraDb_Rollback(tx); return ar; }
+    }
+    for (const auto& p : d.inlineParts) {
+        UltraDbResult ar = insertPart(p, true);
         if (!ar) { UltraDb_Rollback(tx); return ar; }
     }
     return UltraDb_Commit(tx);
@@ -93,7 +108,8 @@ UltraDbResult OutboxStore::Enqueue(const std::string& accountId, const std::stri
 UltraDbResult OutboxStore::LoadAttachments(OutboxItem& item) const {
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_,
-        "SELECT filename, media_type, data FROM outbox_attachments WHERE outbox_id=? ORDER BY id",
+        "SELECT filename, media_type, data, content_id, is_inline FROM outbox_attachments "
+        "WHERE outbox_id=? ORDER BY id",
         { item.id }, rs);
     if (!q) return q;
     for (const auto& row : rs) {
@@ -101,7 +117,9 @@ UltraDbResult OutboxStore::LoadAttachments(OutboxItem& item) const {
         a.filename = row["filename"].AsString();
         a.mediaType = row["media_type"].AsString();
         a.data = row["data"].AsBlob();
-        item.draft.attachments.push_back(std::move(a));
+        a.contentId = row["content_id"].AsString();
+        a.isInline = row["is_inline"].AsInt64() != 0;
+        (a.isInline ? item.draft.inlineParts : item.draft.attachments).push_back(std::move(a));
     }
     return UltraDbResult::Ok();
 }
@@ -111,7 +129,7 @@ UltraDbResult OutboxStore::ListPending(std::vector<OutboxItem>& out) const {
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_,
         "SELECT id, account_id, server_url, from_name, from_addr, to_addrs, cc_addrs, "
-        "bcc_addrs, subject, body, body_is_html, attempts, last_error "
+        "bcc_addrs, subject, body, body_is_html, text_body, attempts, last_error "
         "FROM outbox ORDER BY id", rs);
     if (!q) return q;
     for (const auto& row : rs) {
@@ -129,6 +147,7 @@ UltraDbResult OutboxStore::ListPending(std::vector<OutboxItem>& out) const {
         it.draft.subject = row["subject"].AsString();
         it.draft.body = row["body"].AsString();
         it.draft.bodyIsHtml = row["body_is_html"].AsInt64() != 0;
+        it.draft.textBody = row["text_body"].AsString();
         UltraDbResult ar = LoadAttachments(it);
         if (!ar) return ar;
         out.push_back(std::move(it));

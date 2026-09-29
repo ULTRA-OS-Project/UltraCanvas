@@ -100,6 +100,7 @@
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasFileLock.h"
 #include "UltraCanvasElevatedFileOperations.h"
+#include "UltraCanvasArchiveRun.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTextWrapping.h"
 #include "UltraCanvasTimer.h"
@@ -399,6 +400,10 @@ namespace UltraCanvas {
         bool isReadOnly  = false;
         bool isSymlink   = false;
         bool isArchive   = false;    // browsable archive (zip / 7z / ...)
+        // An entry inside an archive whose recorded Unix mode carries an
+        // execute bit - what makes it a program on a POSIX host (see
+        // IsRunnableArchiveEntry). Always false for a file on disk.
+        bool archiveExecutable = false;
         // A Windows shortcut (.lnk) the widget could read: `linkTarget` is
         // the file it points at as THIS host opens it, empty when the target
         // is not on this machine (or is a shell item rather than a file).
@@ -1306,9 +1311,37 @@ namespace UltraCanvas {
         // runs — a native binary (or AppImage) directly, a script through
         // the Run / Open / Cancel dialog — and everything else opens with
         // the OS default application. Hosts with their own onFileActivated
-        // call this for the "launch it" part of their handling. Entries
-        // inside archives (virtual paths) are ignored.
+        // call this for the "launch it" part of their handling. A program
+        // inside an archive goes to ExtractAndRunEntry; any other entry
+        // inside an archive (a virtual path no application can open) is
+        // ignored.
         void OpenEntryWithOS(const FilerEntry& e);
+
+        // ===== EXTRACT AND RUN =====
+        // A program inside an archive cannot be started where it is: its
+        // path is virtual, and the system only runs files. This unpacks the
+        // archive holding it - the whole archive, because a program's DLLs
+        // and data sit beside it - into a run folder of its own, behind the
+        // usual progress window; starts the program there, with that folder
+        // as its working directory; and deletes the folder once the program
+        // and everything it started have ended (see UltraCanvasArchiveRun.h).
+        // On Windows a downloaded archive's "from the internet" mark is
+        // carried onto what was unpacked, so SmartScreen still checks it.
+        //
+        // Double-click, Enter and OpenEntryWithOS do this for such an entry;
+        // the context menu offers it as "Extract and Run". Does nothing for
+        // an entry CanExtractAndRun refuses.
+        void ExtractAndRunEntry(const FilerEntry& e);
+        // Whether `e` is a program inside an archive that this system can
+        // run once it is unpacked (a .exe on Windows, an executable entry on
+        // Linux and macOS). False without the VirtualFS module.
+        bool CanExtractAndRun(const FilerEntry& e) const;
+        // Where the run folders go. Asked with the size the archive unpacks
+        // to, on the UI thread; return a folder, or an empty string for the
+        // default (DefaultArchiveRunRoot(): a folder in the system's
+        // temporary folder). UltraFiler answers with a RAM disc when one with
+        // room is mounted.
+        std::function<std::string(uint64_t bytesNeeded)> chooseArchiveRunRoot;
 
         // ===== CALLBACKS =====
         std::function<void(const FilerEntry&)> onFileActivated;   // double-click / Enter on a file
@@ -3238,6 +3271,23 @@ namespace UltraCanvas {
         // Processes archives until a taken destination folder name needs the
         // dialog (which resumes it) or the queue is done.
         void ContinuePendingExtract();
+
+        // ===== EXTRACT AND RUN: PROGRAMS STARTED FROM A RUN FOLDER =====
+        // One program started by ExtractAndRunEntry, and the folder it was
+        // unpacked to. `process` is dropped once it has ended; the entry goes
+        // once the folder is gone - which, on Windows, can be later: a folder
+        // is not removed while anything holds a file in it.
+        struct ArchiveRun {
+            std::unique_ptr<WatchedProcess> process;
+            std::string folder;
+        };
+        std::vector<ArchiveRun> archiveRuns;
+        TimerId archiveRunTimer = InvalidTimerId;
+        // Starts the unpacked program and adds it to archiveRuns; on failure
+        // reports why and removes the folder.
+        void StartExtractedProgram(const std::string& folder,
+                                   const std::string& programPath);
+        void PollArchiveRuns();     // UI timer: ended programs, removable folders
         void FinishPendingExtract();
         // Starts the extraction of the archive at `next` (KeepBoth renames the
         // destination, Replace merges into the existing folder, Skip does not

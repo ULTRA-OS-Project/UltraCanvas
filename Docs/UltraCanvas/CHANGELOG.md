@@ -1,4 +1,4 @@
-#### 2026-09-29 *0.9.80*
+#### 2026-09-29 *0.9.82*
 - **The dependency tables no longer claim IODeviceManager backends that do
   not exist.** `Docs/Dependencies.md` and the DemoApp's in-app copy
   (`UltraCanvasDependenciesExamples.cpp`) listed ICA and AVFoundation for macOS
@@ -34,6 +34,78 @@
   - `intro.md`, which the DemoApp shows as the module's introduction, no
     longer claims TWAIN, WIA, ONVIF or libgpiod. `Gaps.md` says which
     categories exist.
+
+#### 2026-09-29 *0.9.81*
+- **HTML can be opened in the WYSIWYG editor.** New
+  `HTMLReader/HTMLRichDocumentImporter.h`: `ImportHTMLToRichDocument` /
+  `AppendHTMLToRichDocument` turn an HTML page or fragment into a
+  `UCRichDocument`, through the HTML reader's own parser and style resolver.
+  - Mapped: paragraphs, headings, lists (nested, start numbers, letter and
+    Roman formats), rules and line breaks.
+  - Text formatting: bold, italic, underline, strike, sub/superscript, code,
+    links, text and highlight colours, and font families and sizes.
+  - Layout: alignment, left indents, and the space between blocks, collapsed
+    as CSS collapses margins.
+  - Pictures (`data:` URIs, or any other source through a `resolveImage`
+    callback) become a picture paragraph when alone in their block, else
+    sit inside the line.
+  - Tables with several columns keep spans, cell colours, borders, padding and
+    widths. One-column layout tables are unwrapped into the text flow, and
+    a table inside a cell becomes lines of that cell.
+- **Blocks carry a quote level.** New `RichDocBlock::quoteLevel`: how many
+  quotes a block sits inside. It applies to any kind of block, so a quoted
+  list or table stays one.
+  - `UltraCanvasRichTextEdit` draws a bar per level and indents the block.
+  - Enter keeps the level. Enter on an empty quoted line, or Backspace at the
+    start of a quoted block, steps one level out.
+  - `ToHTML` nests `<blockquote type="cite">`. `ToPlainText` and
+    `ToMarkdown` prefix the lines with `> `.
+- **`UCRichDocument::ToHTML(RichDocumentHTMLOptions)`**: an `imageSource` hook
+  decides a picture's `src`, for example `cid:` for mail; without it pictures
+  stay `data:` URIs.
+  - Pictures now carry their `width`/`height`.
+  - Headings and picture paragraphs keep their alignment.
+- **The HTML reader reads `<font color face size>`, `bgcolor` and
+  `<body text>`**, which much mail HTML is still written with. As in a
+  browser, CSS for the same property wins.
+- **An inline picture in the rich text editor no longer runs past the right
+  edge** of an indented or quoted paragraph: it is fitted to the line, not
+  the column.
+- **UltraNet can send HTML mail with a plain-text version and embedded
+  pictures.**
+  - New `UltraNetMimeBuildInput::alternativeText` builds
+    `multipart/alternative`.
+  - Inline attachments with a Content-ID travel with the HTML in
+    `multipart/related`.
+  - Both text parts are quoted-printable, so long HTML lines stay within
+    SMTP's 998-character limit.
+  - `UltraNetMailMessage` carries the same as `alternativeText` and
+    `inlineParts`, and the SMTP plug-in passes them on.
+
+#### 2026-09-29 *0.9.80*
+- **Programs inside archives can be run.** An entry inside an archive has a
+  virtual path, which no system can execute, so `UltraCanvasFilerWidget`
+  ignored a double-click on a program in a zip. `ExtractAndRunEntry` now
+  unpacks the archive holding it — the whole archive, so the program finds
+  its DLLs and data beside it — into a run folder, starts the program there
+  and deletes the folder once the program and everything it started have
+  ended. Double-click, Enter and `OpenEntryWithOS` do it for such an entry,
+  and the context menu offers it as *Extract and Run*.
+  - New `UltraCanvasArchiveRun.h`: `IsRunnableArchiveEntry` (Windows by
+    extension — `.exe`, `.com`, `.bat`, `.cmd`, `.msi`; POSIX by the execute
+    bit the archive recorded, or `.AppImage`), `LaunchWatchedProgram` (a
+    launch whose end can be waited for: a job object on Windows, so an
+    installer's second stage counts; a process group of its own on POSIX,
+    with a failed `exec` reported instead of lost), `CopyDownloadMarking`
+    (Windows: the archive's `Zone.Identifier` goes onto the unpacked files,
+    so SmartScreen still checks them) and the run folders — each with a
+    marker naming the processes using it, removed only when nothing holds a
+    file in it, and swept up by `SweepArchiveRunFolders` after an
+    application that closed while its program still ran.
+  - `FilerEntry::archiveExecutable` carries the execute bit an archive
+    recorded; `chooseArchiveRunRoot` lets the host pick where run folders go.
+  - `Tests/ArchiveRunTest.cpp` covers the rule, the run folders and the
+    watched launch, including a program that exits while its child runs on.
 
 #### 2026-09-29 *0.9.79*
 - **New element: `UltraCanvasBusyIndicator`**, the turning ring that says

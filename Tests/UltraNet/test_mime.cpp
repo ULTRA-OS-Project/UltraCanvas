@@ -259,6 +259,81 @@ TEST(mime_build_with_attachment_roundtrip) {
     REQUIRE(atts[0].data == a.data);
 }
 
+// An HTML reply: the text alternative, the HTML with the picture its cid:
+// link shows (multipart/related), and an attachment besides.
+TEST(mime_build_html_with_alternative_and_inline_picture) {
+    UltraNetMimeBuildInput in;
+    in.from = "me@x.com";
+    in.to = {"you@y.com"};
+    in.subject = "Re: plan";
+    // One line far longer than the 998 characters SMTP allows.
+    in.body = "<p>Grüße <img src=\"cid:logo@x\"> " + std::string(1500, 'a') + "</p>";
+    in.bodyMediaType = "text/html";
+    in.alternativeText = "Grüße\n\n> quoted";
+    in.date = "Tue, 01 Jan 2026 00:00:00 +0000"; in.messageId = "<id@x>"; in.boundary = "B";
+    UltraNetMimeBuildAttachment logo;
+    logo.filename = "logo.png";
+    logo.mediaType = "image/png";
+    logo.data = {0x89, 'P', 'N', 'G', 1, 2, 3};
+    logo.isInline = true;
+    logo.contentId = "logo@x";
+    in.attachments.push_back(logo);
+    UltraNetMimeBuildAttachment file;
+    file.filename = "plan.pdf";
+    file.mediaType = "application/pdf";
+    file.data = {'%', 'P', 'D', 'F'};
+    in.attachments.push_back(file);
+
+    const std::string raw = UltraNet_MimeBuild(in);
+    CHECK(raw.find("multipart/mixed; boundary=\"B\"") != std::string::npos);
+    CHECK(raw.find("multipart/alternative; boundary=\"alt_B\"") != std::string::npos);
+    CHECK(raw.find("multipart/related; boundary=\"rel_B\"") != std::string::npos);
+    CHECK(raw.find("Content-ID: <logo@x>") != std::string::npos);
+    // The text part comes before the HTML one.
+    CHECK(raw.find("text/plain") < raw.find("text/html"));
+    std::size_t lineStart = 0, longest = 0;
+    for (std::size_t i = 0; i <= raw.size(); ++i) {
+        if (i == raw.size() || raw[i] == '\n') { longest = std::max(longest, i - lineStart); lineStart = i + 1; }
+    }
+    CHECK(longest <= 998);
+
+    UltraNetMimeMessage msg;
+    REQUIRE(UltraNet_MimeParse(raw, msg));
+    std::string body; bool html = false;
+    REQUIRE(UltraNet_MimeGetDisplayBody(msg, body, html));
+    REQUIRE(html);
+    CHECK(body.find("cid:logo@x") != std::string::npos);
+    CHECK(body.find("Grüße") != std::string::npos);
+    CHECK(body.find(std::string(1500, 'a')) != std::string::npos);
+    std::vector<UltraNetMimeAttachmentView> atts;
+    UltraNet_MimeCollectAttachments(msg, atts, false);
+    REQUIRE_EQ(atts.size(), (size_t)1);
+    REQUIRE_EQ(atts[0].filename, std::string("plan.pdf"));
+    UltraNet_MimeCollectAttachments(msg, atts, true);
+    REQUIRE_EQ(atts.size(), (size_t)2);
+}
+
+// Without pictures or attachments: just the two alternatives.
+TEST(mime_build_html_with_alternative_only) {
+    UltraNetMimeBuildInput in;
+    in.from = "me@x.com";
+    in.to = {"you@y.com"};
+    in.subject = "hi";
+    in.body = "<p>Hi</p>";
+    in.bodyMediaType = "text/html";
+    in.alternativeText = "Hi";
+    in.date = "Tue, 01 Jan 2026 00:00:00 +0000"; in.messageId = "<id@x>"; in.boundary = "B";
+    const std::string raw = UltraNet_MimeBuild(in);
+    CHECK(raw.find("multipart/mixed") == std::string::npos);
+    CHECK(raw.find("multipart/related") == std::string::npos);
+    CHECK(raw.find("multipart/alternative") != std::string::npos);
+    UltraNetMimeMessage msg;
+    REQUIRE(UltraNet_MimeParse(raw, msg));
+    std::string body; bool html = false;
+    REQUIRE(UltraNet_MimeGetDisplayBody(msg, body, html));
+    CHECK(html && body.find("<p>Hi</p>") != std::string::npos);
+}
+
 // ---- charsets beyond UTF-8 / Latin-1 (iconv) --------------------------------
 #if defined(ULTRANET_HAS_ICONV)
 
