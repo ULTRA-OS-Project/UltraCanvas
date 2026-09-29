@@ -12,7 +12,9 @@
 // facing margins of two siblings add up (the engine does not collapse
 // margins); horizontal margins narrow an auto-width child and resolve a
 // percentage against the content width; an auto-sized parent grows to include
-// its children's margins.
+// its children's margins; and multi-line text wraps at the width left after
+// its margins - in the measure pass and the arrange pass alike - so its height
+// and the position of everything below it agree.
 //
 // No UI stack: the layout engine is pure geometry.
 //
@@ -22,9 +24,11 @@
 
 #include "CSSLayout/CSSLayout.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <optional>
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::CSSLayout;
@@ -51,6 +55,28 @@ static std::shared_ptr<Element> Box(float w, float h) {
     e->size.height = Dimension::Px(h);
     return e;
 }
+
+// Multi-line text: a run of fixed-width glyphs that wraps at whatever width it
+// is given, one 20px line per wrapped row - the way a wrapping label reports
+// its size through MeasureOwnContent().
+struct WrappingTextStub : Element {
+    float textWidth = 0.0f;
+    static constexpr float kLineHeight = 20.0f;
+
+    explicit WrappingTextStub(float totalWidth) : textWidth(totalWidth) {}
+
+    void ComputeIntrinsicSizes(const LayoutContext&) override {
+        intrinsic.valid = true;
+        intrinsic.minContentWidth  = 10.0f;
+        intrinsic.maxContentWidth  = textWidth;
+        intrinsic.minContentHeight = intrinsic.maxContentHeight = kLineHeight;
+    }
+    Size2Df MeasureOwnContent(std::optional<float> width, const LayoutContext&) override {
+        if (!width.has_value() || *width >= textWidth) return { textWidth, kLineHeight };
+        float lines = std::ceil(textWidth / std::max(1.0f, *width));
+        return { *width, lines * kLineHeight };
+    }
+};
 
 static void LayOut(const std::shared_ptr<Element>& root, MeasureConstraints mc, float w, float h) {
     LayoutContext ctx;
@@ -119,10 +145,42 @@ static void ShrinkToFitParent() {
     CheckNear(child->finalBounds.x, 12, "child x");
 }
 
+// A wrapping text block with side margins, followed by a sibling.
+static void WrappedTextWithMargins() {
+    std::printf("Multi-line text\n");
+    auto root = std::make_shared<Element>();
+    // 500px of text in a 300px column: two lines without margins, three once
+    // 50px margins leave it 200px.
+    auto text = std::make_shared<WrappingTextStub>(500.0f);
+    text->box.margin = Margins(6, 50, 6, 50);
+    auto below = Box(100, 20);
+    root->AddChild(text);
+    root->AddChild(below);
+
+    LayOut(root, { { ConstraintMode::Exact, 300 }, { ConstraintMode::Unbounded, INFINITY } }, 300, 600);
+
+    CheckNear(text->finalBounds.x, 50, "text x");
+    CheckNear(text->finalBounds.width, 200, "text wraps at the width inside its margins");
+    CheckNear(text->finalBounds.height, 60, "three lines at 200px");
+    CheckNear(below->finalBounds.y, 6 + 60 + 6, "sibling sits below all three lines");
+    CheckNear(root->measured.measuredHeight, 6 + 60 + 6 + 20,
+              "parent measured with the same three lines");
+
+    // Same text in a shrink-to-fit parent capped at 300px.
+    auto fitRoot = std::make_shared<Element>();
+    auto fitText = std::make_shared<WrappingTextStub>(500.0f);
+    fitText->box.margin = Margins(0, 50, 0, 50);
+    fitRoot->AddChild(fitText);
+    LayOut(fitRoot, { { ConstraintMode::AtMost, 300 }, { ConstraintMode::Unbounded, INFINITY } }, 300, 600);
+    CheckNear(fitRoot->measured.measuredWidth, 300, "auto-width parent fills its cap");
+    CheckNear(fitText->finalBounds.height, 60, "text still three lines there");
+}
+
 int main() {
     StackedSiblings();
     HorizontalMargins();
     ShrinkToFitParent();
+    WrappedTextWithMargins();
     if (g_failures) {
         std::printf("%d check(s) failed\n", g_failures);
         return 1;
