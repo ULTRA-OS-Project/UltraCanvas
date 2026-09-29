@@ -286,6 +286,23 @@ private:
     // table-column style name -> column width in points
     std::map<std::string, float> columnWidths_;
     std::map<std::string, RichTableCell> cellStyles_;          // table-cell style -> borders, fill
+    // Graphic styles: how a frame wraps and where it sits. Empty = not stated
+    // (then the parent style's, then Writer's defaults).
+    struct GraphicPlacement {
+        std::string parent, wrap, runThrough, horizontalPos;
+    };
+    std::map<std::string, GraphicPlacement> graphicStyles_;
+    std::string GraphicAttribute(const std::string& styleName,
+                                 std::string GraphicPlacement::*field) const {
+        std::string name = styleName;
+        for (int depth = 0; depth < 8 && !name.empty(); ++depth) {
+            auto it = graphicStyles_.find(name);
+            if (it == graphicStyles_.end()) break;
+            if (!(it->second.*field).empty()) return it->second.*field;
+            name = it->second.parent;
+        }
+        return "";
+    }
     struct TablePlacement {
         float widthPt = 0.0f;
         float widthPercent = 0.0f;
@@ -573,6 +590,14 @@ private:
             if (auto* cellProps = style->FirstChildElement("style:table-cell-properties")) {
                 if (!name.empty()) cellStyles_[name] = ReadCellFormat(cellProps);
             }
+            if (auto* graphic = style->FirstChildElement("style:graphic-properties")) {
+                GraphicPlacement placement;
+                placement.parent = Attr(style, "style:parent-style-name");
+                placement.wrap = Attr(graphic, "style:wrap");
+                placement.runThrough = Attr(graphic, "style:run-through");
+                placement.horizontalPos = Attr(graphic, "style:horizontal-pos");
+                if (!name.empty()) graphicStyles_[name] = placement;
+            }
             if (auto* cp = style->FirstChildElement("style:table-column-properties")) {
                 // Absolute width wins; a relative "1234*" width is still a
                 // valid proportion among the table's columns.
@@ -779,16 +804,42 @@ private:
         const float heightPt = ParseLengthPt(Attr(frame, "svg:height"));
         const std::string altText = Attr(frame, "draw:name");
 
-        // text:anchor-type="as-char" is a picture anchored *in* the text, which
-        // belongs in the run stream. Every other anchoring (paragraph, page,
-        // frame) floats and stays a block of its own.
-        if (std::string(Attr(frame, "text:anchor-type")) == "as-char") {
+        // text:anchor-type="as-char" is a picture anchored *in* the text;
+        // "paragraph" and "char" anchor a floating one to its paragraph. Both
+        // belong in the run stream. A frame anchored to the page or to another
+        // frame has no paragraph to travel with and stays a block of its own.
+        const std::string anchorType = Attr(frame, "text:anchor-type");
+        if (anchorType == "as-char" || anchorType == "paragraph" || anchorType == "char") {
             RichTextRun run;
             run.text = RichTextRun::kObjectReplacement;
             run.mediaIndex = mediaIndex;
             run.imageWidthPt = widthPt;
             run.imageHeightPt = heightPt;
             run.imageAltText = altText;
+            if (anchorType != "as-char") {
+                const std::string style = Attr(frame, "draw:style-name");
+                const std::string wrap = GraphicAttribute(style, &GraphicPlacement::wrap);
+                if (wrap == "none") {
+                    run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+                } else if (wrap == "run-through") {
+                    run.imageWrap = GraphicAttribute(style, &GraphicPlacement::runThrough) == "background"
+                        ? RichTextRun::ImageWrap::BehindText : RichTextRun::ImageWrap::InFrontOfText;
+                } else {
+                    run.imageWrap = RichTextRun::ImageWrap::Square;   // parallel, left, right, dynamic, biggest
+                }
+                const std::string position = GraphicAttribute(style, &GraphicPlacement::horizontalPos);
+                if (position == "right" || position == "outside") {
+                    run.imageFloatAlign = RichTextAlign::Right;
+                } else if (position == "center") {
+                    run.imageFloatAlign = RichTextAlign::Center;
+                } else if (position == "from-left" || position == "from-inside") {
+                    run.imageFloatAlign = RichTextAlign::Default;
+                    run.imageOffsetXPt = std::max(0.0f, ParseLengthPt(Attr(frame, "svg:x")));
+                } else {
+                    run.imageFloatAlign = RichTextAlign::Left;
+                }
+                run.imageOffsetYPt = std::max(0.0f, ParseLengthPt(Attr(frame, "svg:y")));
+            }
             run.lineBreakBefore = ctx.pendingLineBreak;
             ctx.pendingLineBreak = false;
             ctx.runs.push_back(std::move(run));
@@ -1538,6 +1589,8 @@ private:
     std::string columnStyles_;              // automatic table-column styles
     std::string geometryStyles_;            // automatic paragraph styles with geometry
     std::string cellStyles_;                // automatic table-cell styles (frames, fills)
+    std::string graphicStylesXml_;          // automatic graphic styles (floating pictures)
+    std::map<std::string, std::string> floatingFrameStyles_;   // wrap|through|position -> name
     std::string listStyles_;                // automatic list styles with the document's labels
     int customListStyleCount_ = 0;
     std::map<std::string, std::string> cellStyleNames_;       // properties -> style name
@@ -1614,12 +1667,43 @@ private:
             }
         }
         xml << "<draw:frame draw:name=\""
-            << EscapeXml(run.imageAltText.empty() ? std::string("Image") : run.imageAltText)
-            << "\" text:anchor-type=\"as-char\" svg:width=\"" << widthPt
-            << "pt\" svg:height=\"" << heightPt << "pt\">"
+            << EscapeXml(run.imageAltText.empty() ? std::string("Image") : run.imageAltText) << "\"";
+        if (run.IsFloatingImage()) {
+            xml << " draw:style-name=\"" << FloatingFrameStyle(run) << "\" text:anchor-type=\"paragraph\"";
+            if (run.imageFloatAlign == RichTextAlign::Default) xml << " svg:x=\"" << Pt(run.imageOffsetXPt) << "\"";
+            xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+        } else {
+            xml << " text:anchor-type=\"as-char\"";
+        }
+        xml << " svg:width=\"" << Pt(widthPt) << "\" svg:height=\"" << Pt(heightPt) << "\">"
             << "<draw:image xlink:href=\"" << PictureHref(run.mediaIndex)
             << "\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>"
             << "</draw:frame>";
+    }
+
+    // An automatic graphic style saying how a floating picture wraps and
+    // where it sits; one per distinct combination.
+    std::string FloatingFrameStyle(const RichTextRun& run) {
+        using Wrap = RichTextRun::ImageWrap;
+        std::string wrap = "parallel", runThrough = "foreground";
+        if (run.imageWrap == Wrap::TopAndBottom) wrap = "none";
+        else if (run.imageWrap == Wrap::BehindText) { wrap = "run-through"; runThrough = "background"; }
+        else if (run.imageWrap == Wrap::InFrontOfText) wrap = "run-through";
+        const std::string position = run.imageFloatAlign == RichTextAlign::Right ? "right"
+                                   : run.imageFloatAlign == RichTextAlign::Center ? "center"
+                                   : run.imageFloatAlign == RichTextAlign::Default ? "from-left" : "left";
+        const std::string key = wrap + "|" + runThrough + "|" + position;
+        auto found = floatingFrameStyles_.find(key);
+        if (found != floatingFrameStyles_.end()) return found->second;
+        const std::string name = "fr" + std::to_string(floatingFrameStyles_.size() + 1);
+        floatingFrameStyles_[key] = name;
+        graphicStylesXml_ += "<style:style style:name=\"" + name + "\" style:family=\"graphic\">"
+                             "<style:graphic-properties style:wrap=\"" + wrap + "\" style:run-through=\""
+                             + runThrough + "\" style:horizontal-pos=\"" + position
+                             + "\" style:horizontal-rel=\"paragraph\" style:vertical-pos=\"from-top\""
+                               " style:vertical-rel=\"paragraph\" fo:margin-left=\"0.32cm\""
+                               " fo:margin-right=\"0.32cm\"/></style:style>\n";
+        return name;
     }
 
     void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
@@ -2162,7 +2246,7 @@ private:
             xml << "/></style:style>\n";
         }
 
-        xml << columnStyles_ << cellStyles_ << geometryStyles_;
+        xml << columnStyles_ << cellStyles_ << geometryStyles_ << graphicStylesXml_;
         xml << "<style:style style:name=\"PCenter\" style:family=\"paragraph\" "
                "style:parent-style-name=\"Standard\">"
                "<style:paragraph-properties fo:text-align=\"center\"/></style:style>\n"

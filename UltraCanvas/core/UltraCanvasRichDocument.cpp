@@ -1088,7 +1088,16 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
             if (media && run.mediaIndex >= 0
                 && run.mediaIndex < static_cast<int>(media->size())) {
                 const RichDocMedia& m = (*media)[static_cast<size_t>(run.mediaIndex)];
-                out += "<img alt=\"" + alt + "\" src=\"data:" + m.mimeType
+                // A floating picture floats in HTML too, at its side.
+                std::string floatStyle;
+                if (run.IsFloatingImage() && run.imageWrap == RichTextRun::ImageWrap::Square) {
+                    floatStyle = run.imageFloatAlign == RichTextAlign::Right
+                        ? " style=\"float:right;margin:0 0 0.5em 1em\""
+                        : " style=\"float:left;margin:0 1em 0.5em 0\"";
+                } else if (run.IsFloatingImage() && run.imageWrap == RichTextRun::ImageWrap::TopAndBottom) {
+                    floatStyle = " style=\"display:block\"";
+                }
+                out += "<img alt=\"" + alt + "\"" + floatStyle + " src=\"data:" + m.mimeType
                      + ";base64," + Base64Encode(m.data) + "\"/>";
             } else {
                 out += "[" + alt + "]";

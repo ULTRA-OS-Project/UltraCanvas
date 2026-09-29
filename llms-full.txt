@@ -43891,6 +43891,33 @@ editor->SelectImage(RichDocPosition(imageBlock, 0));
 edit.GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
 ```
 
+### Floating pictures
+
+A picture run with `imageWrap` other than `Inline` floats: its placeholder stays
+where it is anchored in the text (so it moves with its paragraph and a
+selection or Backspace covers it), but it takes no room in the line. It is
+placed at its paragraph's top plus `imageOffsetYPt`, at the column's left or
+right edge, centred, or `imageOffsetXPt` from the left (`imageFloatAlign`
+`Left` / `Right` / `Center` / `Default`), and text treats it as `imageWrap`
+says:
+
+| `imageWrap` | Text |
+|---|---|
+| `Square` | flows beside it; paragraphs level with it are narrowed |
+| `TopAndBottom` (or a centred `Square`) | stops above it and resumes below |
+| `BehindText` / `InFrontOfText` | ignores it; it is drawn under / over the text |
+
+DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
+offset from the paragraph) and ODT frames anchored to a paragraph or character
+(`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
+write back out; HTML output floats them with CSS. A floating picture is
+selected, resized and described like any other. In a table cell or a header
+it stays in the line.
+
+The wrap works a paragraph at a time: a paragraph that starts beside a picture
+is narrowed as a whole, so a long one beside a short picture stays narrow below
+it too.
+
 ### Check lists
 
 ```cpp

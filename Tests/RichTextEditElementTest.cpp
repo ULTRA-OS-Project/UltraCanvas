@@ -1057,6 +1057,34 @@ int main() {
         }());
     }
 
+    // ===== FLOATING PICTURES =====
+    std::cerr << "\n--- Floating pictures ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichDocBlock paragraph;
+        RichTextRun picture;
+        picture.text = RichTextRun::kObjectReplacement;
+        picture.mediaIndex = document->AddMedia("dot.png", "image/png", kDotPng);
+        picture.imageWidthPt = 60.0f;          // 80 x 53 px
+        picture.imageHeightPt = 40.0f;
+        picture.imageWrap = RichTextRun::ImageWrap::Square;
+        picture.imageFloatAlign = RichTextAlign::Right;
+        RichTextRun words;
+        words.text = std::string(400, 'x').replace(0, 400, 400 / 5, 'w') + " "
+                   + std::string("the quick brown fox jumps over the lazy dog ") + "the quick brown fox";
+        paragraph.runs = {picture, words};
+        document->blocks.push_back(paragraph);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        // The picture sits at the column's right edge, the text beside it.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 740, 30));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 740, 30));
+        window->UpdateAndRender();
+        TEST("A floating picture sits at the right edge, where a click selects it", edit->HasSelectedImage());
+        TEST("...addressed by its place in the text", edit->GetSelectedImage() == RichDocPosition(0, 0));
+    }
+
     // ===== PAGE FIELDS IN THE BODY =====
     std::cerr << "\n--- Page fields ---" << std::endl;
     {

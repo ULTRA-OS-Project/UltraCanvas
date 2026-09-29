@@ -54,6 +54,30 @@ struct RichTextRun {
     float imageHeightPt = 0.0f;
     std::string imageAltText;
 
+    // ===== FLOATING PICTURE =====
+    // A picture anchored to its paragraph instead of sitting in the line -
+    // Word's <wp:anchor>, ODF's paragraph- or character-anchored frame. Its
+    // placeholder stays in the text where it was anchored (so it moves with
+    // its paragraph and a selection still covers it), but it takes no room in
+    // the line: it is placed at the paragraph's top, at the column's left or
+    // right edge (or imageOffsetXPt from the left), and the text wraps round
+    // it as imageWrap says.
+    enum class ImageWrap {
+        Inline,         // in the line (not floating)
+        Square,         // text flows beside it
+        TopAndBottom,   // text stops above it and resumes below it
+        BehindText,     // drawn under the text, which ignores it
+        InFrontOfText   // drawn over the text, which ignores it
+    };
+    ImageWrap imageWrap = ImageWrap::Inline;
+    // Left / Right / Center of the text column; Default = imageOffsetXPt from
+    // its left edge.
+    RichTextAlign imageFloatAlign = RichTextAlign::Left;
+    float imageOffsetXPt = 0.0f;
+    float imageOffsetYPt = 0.0f;        // from the top of its paragraph
+
+    bool IsFloatingImage() const { return IsInlineImage() && imageWrap != ImageWrap::Inline; }
+
     // A field whose text depends on where it is drawn: a header's "Page 3
     // of 7". `text` holds the value it was last shown with, which is what
     // plain-text output and a view without pages use.

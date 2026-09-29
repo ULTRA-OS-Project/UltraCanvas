@@ -66,3 +66,14 @@
   `HasSelectedImage`, `SelectImage`, `SetSelectedImageSize`,
   `Get/SetSelectedImageAltText` on the element; `IsImageAt`, `GetImageInfo`,
   `SetImageSize`, `SetImageAltText` on the editing core.
+- **Floating pictures with text wrap.** `RichTextRun` gains `imageWrap`
+  (`Square`, `TopAndBottom`, `BehindText`, `InFrontOfText`),
+  `imageFloatAlign` and `imageOffsetXPt` / `imageOffsetYPt`. The DOCX reader
+  used to flatten every `<wp:anchor>` picture into a separate image paragraph
+  after its paragraph, losing the wrap; it now keeps it in the paragraph as a
+  floating picture with its wrap and position, and the ODT reader does the
+  same for paragraph- and character-anchored frames. Both writers write them
+  back as anchored pictures (DOCX `wp:anchor`, ODT graphic styles); HTML
+  output floats them. The element places a floating picture at its
+  paragraph's top and wraps the text round it a paragraph at a time: beside a
+  square one, above and below a top-and-bottom one, under or over the others.

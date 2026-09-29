@@ -388,11 +388,22 @@ private:
             // A typeset formula (a math run) instead of a picture: drawn with
             // its baseline on the line's, over the run's first character.
             std::shared_ptr<UltraCanvasInlineMath> math;
+            // A floating picture: no room in the line; placed by the page
+            // layout (see PlacedFloat) at its paragraph's top.
+            bool floating = false;
+            RichTextRun::ImageWrap wrap = RichTextRun::ImageWrap::Inline;
+            RichTextAlign floatAlign = RichTextAlign::Left;
+            float offsetX = 0.0f;                 // pixels
+            float offsetY = 0.0f;
         };
         std::vector<InlineImage> inlineImages;
         // A display formula (MathBlock) typeset whole, centred in the column;
         // set only while the caret is elsewhere - editing shows the source.
         std::shared_ptr<UltraCanvasInlineMath> displayMath;
+        // Room taken from the column's left and right by floating pictures
+        // beside this block (pixels); set by the placement pass.
+        float intrudeLeft = 0.0f;
+        float intrudeRight = 0.0f;
         bool valid = false;
     };
 
@@ -442,6 +453,25 @@ private:
     float BlockIndentFor(const RichDocBlock& block) const;
     FontStyle FontForBlock(const RichDocBlock& block) const;
     void RecalculateVisibleArea();
+
+    // ===== FLOATING PICTURES =====
+    // A floating picture where the placement pass put it: x from the text
+    // column's left edge, y in content coordinates.
+    struct PlacedFloat {
+        int blockIndex = 0;
+        int byteOffset = 0;
+        Rect2Df rect{0, 0, 0, 0};
+        RichTextRun::ImageWrap wrap = RichTextRun::ImageWrap::Square;
+        bool beside = true;                       // text flows beside it (else above and below)
+        std::shared_ptr<UCImage> image;
+    };
+    std::vector<PlacedFloat> placedFloats;
+    // Places block `index`'s floats at `top` and fits the block round the
+    // floats placed so far (moving it below a top-and-bottom one, narrowing it
+    // beside a square one - relaying it out when that changes). Returns the
+    // block's top.
+    float FlowAroundFloats(IRenderContext* ctx, int index, float top, std::vector<PlacedFloat>& pageFloats);
+    void DrawFloats(IRenderContext* ctx, bool behindText);
 
     // ===== PAGES =====
     // A header or footer as laid out for one page (its page number filled in).

@@ -787,6 +787,65 @@ int main(int argc, char** argv) {
         CHECK(editDoc->blocks[0].type == RichBlockType::Paragraph && !editDoc->blocks[0].checkbox);
     }
 
+    // ===== 5g4. Floating pictures keep their wrap and place =====
+    {
+        UCRichDocument floating;
+        const std::vector<uint8_t> png(kTinyPng, kTinyPng + sizeof(kTinyPng));
+        const int media = floating.AddMedia("dot.png", "image/png", png);
+        auto paragraph = [&](RichTextRun::ImageWrap wrap, RichTextAlign align, float offsetX,
+                             const std::string& text) {
+            RichDocBlock block;
+            RichTextRun picture;
+            picture.text = RichTextRun::kObjectReplacement;
+            picture.mediaIndex = media;
+            picture.imageWidthPt = 60.0f;
+            picture.imageHeightPt = 40.0f;
+            picture.imageAltText = "dot";
+            picture.imageWrap = wrap;
+            picture.imageFloatAlign = align;
+            picture.imageOffsetXPt = offsetX;
+            picture.imageOffsetYPt = 12.0f;
+            RichTextRun words;
+            words.text = text;
+            block.runs = {picture, words};
+            return block;
+        };
+        floating.blocks.push_back(paragraph(RichTextRun::ImageWrap::Square, RichTextAlign::Right, 0, "square right"));
+        floating.blocks.push_back(paragraph(RichTextRun::ImageWrap::TopAndBottom, RichTextAlign::Left, 0, "top bottom"));
+        floating.blocks.push_back(paragraph(RichTextRun::ImageWrap::BehindText, RichTextAlign::Default, 100, "behind"));
+        floating.blocks.push_back(paragraph(RichTextRun::ImageWrap::InFrontOfText, RichTextAlign::Center, 0, "in front"));
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("floating.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, floating, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            auto pictureIn = [&](const std::string& text) -> const RichTextRun* {
+                const RichDocBlock* block = FindBlock(back, text);
+                if (!block) return nullptr;
+                for (const auto& run : block->runs) if (run.IsInlineImage()) return &run;
+                return nullptr;
+            };
+            const RichTextRun* square = pictureIn("square right");
+            CHECK_MSG(square && square->imageWrap == RichTextRun::ImageWrap::Square
+                      && square->imageFloatAlign == RichTextAlign::Right, ext);
+            CHECK_MSG(square && Near(square->imageOffsetYPt, 12.0f) && Near(square->imageWidthPt, 60.0f), ext);
+            const RichTextRun* topBottom = pictureIn("top bottom");
+            CHECK_MSG(topBottom && topBottom->imageWrap == RichTextRun::ImageWrap::TopAndBottom, ext);
+            const RichTextRun* behind = pictureIn("behind");
+            CHECK_MSG(behind && behind->imageWrap == RichTextRun::ImageWrap::BehindText
+                      && behind->imageFloatAlign == RichTextAlign::Default && Near(behind->imageOffsetXPt, 100.0f), ext);
+            const RichTextRun* front = pictureIn("in front");
+            CHECK_MSG(front && front->imageWrap == RichTextRun::ImageWrap::InFrontOfText
+                      && front->imageFloatAlign == RichTextAlign::Center, ext);
+        }
+        // A floating picture alone in its paragraph stays floating there.
+        RichDocBlock promoted;
+        RichTextRun lone = floating.blocks[0].runs[0];
+        CHECK(!WordFormatInternal::ParagraphIsOneInlineImage({lone}, promoted));
+    }
+
     // ===== 5h. List labels: formats, templates, editing =====
     {
         CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");
