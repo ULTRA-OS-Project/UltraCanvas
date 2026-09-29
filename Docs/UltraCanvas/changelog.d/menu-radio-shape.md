@@ -45,3 +45,8 @@
   default, as `UltraCanvasRadio` draws it) or `MenuRadioShape::Square`, the
   old look. UltraMail's "Show emails" filter menu uses the default and so
   gets the circle.
+- **TextArea: a scroll step is one laid-out line.** The wheel and the page
+  keys stepped by 1.3 x the font size, an estimate that drifted from the
+  real line height by a few pixels a notch and left the top line cut
+  part-way through after a few turns. They now step by the measured line
+  height the layout uses.
