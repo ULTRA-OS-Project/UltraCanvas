@@ -162,7 +162,7 @@ enum class IOPrintRenderer {
 |---|---|---|---|
 | `Native` | CUPS job ✅ | CUPS job ✅ | GDI drawing session ✅ |
 | `GutenPrint` | CUPS **raw** job (`application/vnd.cups-raw`) ✅ | CUPS **raw** job ✅ | `StartDocPrinter`, `pDatatype = "RAW"` ✅ |
-| `IPP` | IPP over HTTP | IPP over HTTP | IPP over HTTP |
+| `IPP` | IPP over HTTP ✅ | IPP over HTTP ✅ | IPP over HTTP ✅ |
 
 A transport declares what it can carry, and a renderer declares what it
 emits; `PrinterDevice` only offers the pairings that match. The checks are
@@ -415,14 +415,135 @@ takes the job.
 
 ### Enumeration double-counting
 
-CUPS already exposes IPP Everywhere queues, so a driverless printer is
-reachable through both the CUPS and the IPP enumerator. The registry's
-first-backend-wins rule collapses those only when both report the same device
-id, which they do not by default. The printer backends must therefore derive
-their device ids from something stable and shared — the device URI, or the
-printer's UUID from its IPP attributes — rather than from the queue name.
+CUPS already offers every driverless printer on the network as a queue, so a
+printer is reachable through both the CUPS and the IPP enumerator. The design
+this module started with was for the registry to collapse the two by device
+id: both backends would derive the id from the printer's own UUID, and the
+first-backend-wins rule would keep one.
 
----
+**That never worked, and cannot with what libcups hands back.** The CUPS
+backend asks for the `printer-uuid` destination option, and `cupsGetDests2`
+does not return one - not for the queues CUPS discovers itself
+(`ipps://Office%20Printer._ipps._tcp.local/`), and not for a queue configured
+with `lpadmin -m everywhere` either. That was checked against CUPS 2.4.7 with
+its reference printer, not assumed. So every CUPS queue is `cups:<name>`, and
+no id the IPP backend could choose would ever equal it.
+
+So the IPP backend does the matching itself. With CUPS compiled in, it asks
+libcups for its queues' `device-uri`s and leaves out any printer one of them
+already reaches - by the UUID a `dnssd://…?uuid=` URI carries, by the DNS-SD
+instance name CUPS's own discovered queues are addressed by, or by the same
+host, port and path (`IppCupsQueueReachesPrinter`, unit-tested). On Linux and
+macOS the IPP enumerator therefore adds only what CUPS does not see: a
+printer on a machine with no scheduler running, or one named in
+`ULTRACANVAS_IPP_PRINTERS`. A printer named there is listed even when CUPS
+has it, because naming it is asking for this route.
+
+On Windows there is nothing to defer to, and a driverless printer that has
+also been installed as a spooler queue is listed twice - once as
+`winspool:<name>`, once over IPP. Matching the two needs the queue's port
+address, which the Windows backend does not read yet (see Gaps).
+
+### Driverless printing: the IPP backend
+
+`core/IODeviceManager/UltraCanvasIODevicePrinterIPP.cpp`, one file for every
+platform, for the reason the eSCL scanner backend is: IPP is HTTP and a binary
+encoding, so nothing in it belongs under `OS/`. It is what makes a network
+printer usable where there is no print system to go through - Windows has no
+IPP client an application can drive, and a Linux or macOS build may have no
+CUPS.
+
+Three files, split the way the eSCL backend is split, so that everything that
+can be decided without a printer is decided somewhere a test can reach:
+
+| File | What it holds |
+|---|---|
+| `...PrinterIPPProtocol.{h,cpp}` | RFC 8010 encoding in both directions; printer attributes → `IOPrinterCapabilities`, status, supplies, jobs; options → job attributes; the pass-through-or-draw plan |
+| `...PrinterPwgRaster.{h,cpp}` | The PWG raster page format, its line compression, and the page turns landscape and duplex need |
+| `...PrinterIPP.cpp` | Discovery, the device, the transport, the renderer: the part that needs a network |
+
+**The renderer decides what the printer is sent.** A printer names the
+formats it renders itself in `document-format-supported`. A document in one of
+them is sent as it is - a PDF to a printer that renders PDF is printed by the
+engine that knows the printer best. Anything else the page sources can draw -
+plain text, and the images the imaging stack decodes - is drawn here with the
+same `RasterPageTarget` the GutenPrint path uses and sent as **PWG raster**,
+which every IPP Everywhere printer must accept. Plain text is always drawn,
+even to a printer that claims `text/plain`, because what a printer's own text
+path does with UTF-8 is anybody's guess and a page drawn here is the same page
+on every printer. What cannot be done either way is refused by name rather
+than half-printed: a PDF to a printer that takes none (nothing here paginates
+PDF yet), and a page range on a document the printer cannot select pages from.
+
+**The transport is one Print-Job request** - the IPP message with the
+document directly after it, POSTed with `Content-Type: application/ipp`. It
+carries documents only: `SupportsRaw()` and `SupportsPageSource()` are false,
+so the pairing checks `PrinterDevice` already makes keep GutenPrint and the
+GDI path off an IPP printer without a line of special-casing.
+
+Four things about PWG raster that a printer would otherwise get wrong on
+paper, each covered by `Tests/IODevicePrinterIPPTest`:
+
+- **The sync word comes once, at the start of the stream** - not once per
+  page. The pages that follow are a header and lines each.
+- **Copies are said once.** The header's `NumCopies` is 1 and the request
+  carries `copies`; saying it in both prints the job squared. Page ranges the
+  same way: selected pages are drawn and the range is not sent as well.
+- **Landscape is drawn landscape and turned onto the portrait sheet** - a
+  quarter turn counter-clockwise, clockwise for reverse landscape - because a
+  raster page is the sheet as it goes through the printer. `orientation-
+  requested` is sent only for a document the printer lays out itself.
+- **The back of a sheet is turned the way the printer asks.** A duplexer that
+  flips the sheet delivers its back upside down or mirrored, and
+  `pwg-raster-document-sheet-back` says which. Every second side is turned to
+  match, by the table CUPS applies, and the header's transform fields say so.
+
+A page is drawn at the resolution nearest 300 dpi for Normal quality and at
+most 600 dpi for High, because it is held whole in memory: an A4 page at 1200
+dpi is 400 MB of RGB for detail nothing printed from here would show.
+
+**Discovery** browses `_ipp._tcp` and `_ipps._tcp` through UltraNet's mDNS
+plugin, as eSCL browses `_uscan._tcp`, and builds the printer URI from the
+host, port and the TXT record's `rp`. A printer is registered as
+`urn:uuid:<uuid>` when its TXT record carries one - the form of its own
+`printer-uuid` - and `ipp:<uri>` otherwise. Its display name is the DNS-SD
+instance name, which is unique on the network, rather than `ty`, which two
+printers of one model share.
+
+**A printer offering both is reached over plain IPP.** Printers' certificates
+are self-signed in all but a few cases, and UltraNet's rule is that TLS
+verification stays on, so the `ipps://` route would fail where the `ipp://`
+one works. The TLS address is kept in the device's attributes, and an
+`ipps://` failure says what probably happened rather than reading like a
+network fault. A printer that offers only `ipps://` with a self-signed
+certificate is therefore not reachable yet; the fix is trust on first use,
+not turning verification off (see Gaps).
+
+**IPP 1.1 printers** answer a 2.0 request with
+`server-error-version-not-supported`; the request is repeated as 1.1 and the
+printer remembered, so it costs one refused request per process rather than
+one per call - which matters for Print-Job, where the refused request carried
+the whole document.
+
+Connecting is `Get-Printer-Attributes`: IPP has no session, so connecting
+proves the printer is there and fetches the one description the renderer
+cannot work without. Status and supplies are further `Get-Printer-Attributes`
+calls asking only for what they need; supplies come from the `marker-*`
+attributes where a printer has them and from PWG's `printer-supply` where it
+does not, which is what IPP Everywhere printers report. Jobs are `Get-Jobs`,
+`Get-Job-Attributes` and `Cancel-Job`. A job the printer has already dropped
+from its history reads as completed, as under CUPS, with the state reason
+`not-in-printer-history` so a caller can tell.
+
+Printers on another subnet, where DNS-SD does not reach, are named in
+`ULTRACANVAS_IPP_PRINTERS` as a comma-separated list of `ipp://`, `ipps://`,
+`http://` or `https://` addresses.
+
+This was built and checked against CUPS's reference IPP Everywhere printer,
+`ippeveprinter`: discovered over Avahi, described, printed to in every shape
+above, and the PWG raster it received decoded by a reader written separately
+from the writer and by cups-filters' own `pwgtopdf`. It has not met a
+physical printer yet.
 
 ## Usage
 
@@ -482,7 +603,7 @@ compiling, tested and wired into CI before the next starts:
 | 8a ✅ | The OS print dialog wired to `PrinterDevice` on Linux, Windows and macOS, so the settings it collects reach the queue; page ranges carried end to end |
 | 9 | Windows and macOS backends for camera and scanner |
 | 10 | Hot-plug watchers for Windows and macOS; the permission model |
-| 11 🔨 | eSCL driverless scanning ✅ (all three platforms; Windows discovery still open); IPP driverless and network cameras to come |
+| 11 🔨 | eSCL driverless scanning ✅ and IPP driverless printing ✅, both one file in `core/` for all three platforms; network cameras to come |
 
 Slices 2 and 3 ship the switch and both transports. Adding GutenPrint is then
 a renderer class and nothing else: no change to `PrinterDevice`, and no change

@@ -3565,6 +3565,31 @@ add_test(NAME IODeviceScannerESCLTest COMMAND IODeviceScannerESCLTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: IODeviceScannerESCLTest")
 
+# ===== IPP DRIVERLESS PRINTING TEST =====
+# The IPP encoding, reading a printer's description, a job's attributes, the
+# pass-through-or-draw decision and the PWG raster writer - everything the IPP
+# printer backend decides without a network, so it runs on every platform in
+# the matrix. Links no UltraCanvas: the two sources are pure.
+message(STATUS "  Building IODevicePrinterIPPTest...")
+add_executable(IODevicePrinterIPPTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODevicePrinterIPPTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterPwgRaster.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterTypes.cpp
+)
+target_include_directories(IODevicePrinterIPPTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODevicePrinterIPPTest PRIVATE cxx_std_20)
+set_target_properties(IODevicePrinterIPPTest PROPERTIES
+    OUTPUT_NAME "IODevicePrinterIPPTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME IODevicePrinterIPPTest COMMAND IODevicePrinterIPPTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: IODevicePrinterIPPTest")
+
 # ===== VECTOR RASTERIZER TEST =====
 # UltraCanvasVectorRaster: a vector file's natural size, and rasterizing it
 # into a raster layer at a chosen pixel size (the path a bitmap editor takes
