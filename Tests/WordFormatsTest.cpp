@@ -916,6 +916,72 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== 5g6. Footnotes and endnotes survive ODT and DOCX =====
+    {
+        auto noted = std::make_shared<UCRichDocument>();
+        RichDocBlock paragraph;
+        RichTextRun run;
+        run.text = "A claim that needs support.";
+        paragraph.runs = {run};
+        noted->blocks.push_back(paragraph);
+        run.text = "Closing words.";
+        paragraph.runs = {run};
+        noted->blocks.push_back(paragraph);
+
+        UCRichDocumentEditor editor;
+        editor.SetDocument(noted);
+        editor.SetCaret(RichDocPosition(0, 7));                 // after "A claim"
+        const int footnote = editor.InsertNote(RichNote::Kind::Footnote);
+        editor.SetCaret(RichDocPosition(1, editor.BlockTextLength(1)));
+        const int endnote = editor.InsertNote(RichNote::Kind::Endnote);
+        CHECK(footnote == 0 && endnote == 1);
+        RichTextRun noteText;
+        noteText.text = "See the appendix.";
+        noted->notes[0].blocks[0].runs = {noteText};
+        noteText.text = "Written in 2026.";
+        noted->notes[1].blocks[0].runs = {noteText};
+        RichDocBlock second;
+        noteText.text = "A second paragraph of the note.";
+        second.runs = {noteText};
+        noted->notes[0].blocks.push_back(second);
+        CHECK(editor.BlockText(0) == "A claim1 that needs support.");
+        CHECK(editor.BlockText(1) == "Closing words.i");
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("notes.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *noted, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            CHECK_MSG(back.notes.size() == 2, ext);
+            const RichDocBlock* claim = FindBlock(back, "A claim");
+            int footnoteIndex = -1, endnoteIndex = -1;
+            if (claim) {
+                for (const auto& r : claim->runs) if (r.IsNoteReference()) footnoteIndex = r.noteIndex;
+            }
+            const RichDocBlock* closing = FindBlock(back, "Closing");
+            if (closing) {
+                for (const auto& r : closing->runs) if (r.IsNoteReference()) endnoteIndex = r.noteIndex;
+            }
+            CHECK_MSG(claim && UCRichDocument::ConcatenateRunText(claim->runs) == "A claim1 that needs support.", ext);
+            CHECK_MSG(footnoteIndex >= 0 && endnoteIndex >= 0 && footnoteIndex != endnoteIndex, ext);
+            if (footnoteIndex >= 0 && endnoteIndex >= 0 && back.notes.size() == 2) {
+                const RichNote& f = back.notes[static_cast<size_t>(footnoteIndex)];
+                const RichNote& e = back.notes[static_cast<size_t>(endnoteIndex)];
+                CHECK_MSG(f.kind == RichNote::Kind::Footnote && e.kind == RichNote::Kind::Endnote, ext);
+                CHECK_MSG(f.blocks.size() == 2 && UCRichDocument::ConcatenateRunText(f.blocks[0].runs) == "See the appendix."
+                          && UCRichDocument::ConcatenateRunText(f.blocks[1].runs) == "A second paragraph of the note.",
+                          std::string(ext) + ": " + (f.blocks.empty() ? "" : UCRichDocument::ConcatenateRunText(f.blocks[0].runs)));
+                CHECK_MSG(!e.blocks.empty() && UCRichDocument::ConcatenateRunText(e.blocks[0].runs) == "Written in 2026.", ext);
+            }
+        }
+        // Markdown: footnote syntax both ways.
+        const std::string md = noted->ToMarkdown();
+        CHECK_MSG(md.find("A claim[^1] that") != std::string::npos && md.find("[^1]: See the appendix.") != std::string::npos, md);
+        UCRichDocument fromMd = UCRichDocument::FromMarkdown(md);
+        CHECK(fromMd.notes.size() == 2);
+    }
+
     // ===== 5h. List labels: formats, templates, editing =====
     {
         CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");

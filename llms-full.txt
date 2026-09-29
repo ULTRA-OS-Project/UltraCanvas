@@ -44285,6 +44285,22 @@ edit as a whole is not an undo step of the body. `onHeaderFooterEditingChanged`
 tells a host when to retarget its toolbar. Outside page view, the one header
 and footer above and below the body are edited the same way.
 
+**Footnotes and endnotes.** `InsertFootnote()` / `InsertEndnote()` put a
+reference at the caret and open the new note for typing (it is edited the way
+a header is: body pale behind it, Escape or a click in the body goes back);
+double-clicking a note, or its reference, opens it again, and `EditNote(i)`
+does the same from code. The marks number themselves in document order -
+footnotes 1, 2, 3, endnotes i, ii, iii - and renumber when a reference is
+added, moved or deleted. In page view a footnote sits at the foot of the page
+its reference is on, under a short rule, and the page's text makes room for
+it (the reference's line never ends up below its own note); endnotes follow
+the body, onto further pages as they need. Outside page view both follow the
+body. PDF export prints them. In the model a note is `UCRichDocument::notes`
+(`RichNote`: kind and blocks) and its reference a run with `noteIndex`; DOCX
+(`footnotes.xml` / `endnotes.xml`), ODT (`text:note`) and Markdown (`[^1]`
+references with `[^1]: ...` definitions) read and write them, and HTML and
+plain text put them after the body.
+
 Page fields work in the body too: `InsertPageNumberField()` and
 `InsertPageCountField()` put one at the caret, and in page view each shows
 the page its paragraph landed on (the value is kept in the run's text, so a

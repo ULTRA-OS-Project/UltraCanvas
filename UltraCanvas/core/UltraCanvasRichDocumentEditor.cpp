@@ -84,6 +84,9 @@ void StripObjectIdentity(RichTextRun& run) {
     run.imageWidthPt = run.imageHeightPt = 0.0f;
     run.imageAltText.clear();
     run.field = RichTextRun::Field::Plain;
+    // A note mark is raised because it is a mark; the text next to it is not.
+    if (run.noteIndex >= 0) run.superscript = false;
+    run.noteIndex = -1;
 }
 
 } // namespace
@@ -692,7 +695,9 @@ void UCRichDocumentEditor::ClearSelectedCellsInternal() {
         runs.resize(1);
         runs[0].text.clear();
         runs[0].lineBreakBefore = false;
-        if (runs[0].IsInlineImage() || runs[0].field != RichTextRun::Field::Plain) runs[0] = RichTextRun{};
+        if (runs[0].IsInlineImage() || runs[0].field != RichTextRun::Field::Plain || runs[0].IsNoteReference()) {
+            runs[0] = RichTextRun{};
+        }
     }
     caret = cells.empty() ? ClampPosition(caret) : cells.front();
     anchor = caret;
@@ -3089,6 +3094,58 @@ bool UCRichDocumentEditor::SetImageAltText(const RichDocPosition& image, const s
     coalescing = false;
     NotifyChanged();
     return true;
+}
+
+int UCRichDocumentEditor::InsertNote(RichNote::Kind kind) {
+    if (!IsTextContainer(caret)) return -1;
+    RichNote note;
+    note.kind = kind;
+    note.blocks.emplace_back();
+    const int noteIndex = static_cast<int>(doc->notes.size());
+    doc->notes.push_back(std::move(note));
+    RichDocRange selection = GetSelectionRange();
+    int first = selection.start.blockIndex;
+    int count = selection.end.blockIndex - first + 1;
+    {
+        EditScope scope(*this, first, count);
+        if (HasSelection()) DeleteRangeInternal(selection);
+        std::vector<RichTextRun>* runs = MutableRunsAt(caret);
+        if (!runs) return -1;
+        RichTextRun reference = FormatAt(caret);
+        reference.noteIndex = noteIndex;
+        reference.superscript = true;
+        reference.text = "*";                 // numbered just below
+        InsertIntoRuns(*runs, caret.byteOffset, reference.text, &reference);
+        // Every mark after it moves on by one.
+        doc->UpdateNoteMarks();
+        caret = ClampPosition(caret);
+        // After the mark, whatever its length turned out to be.
+        const std::vector<RichTextRun>* after = RunsAt(caret);
+        int position = 0;
+        for (const RichTextRun& run : *after) {
+            position += (run.lineBreakBefore ? 1 : 0) + static_cast<int>(run.text.size());
+            if (run.noteIndex == noteIndex) break;
+        }
+        caret.byteOffset = position;
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return noteIndex;
+}
+
+int UCRichDocumentEditor::NoteAt(const RichDocPosition& pos) const {
+    const std::vector<RichTextRun>* runs = RunsAt(pos);
+    if (!runs) return -1;
+    int position = 0;
+    for (const RichTextRun& run : *runs) {
+        const int start = position + (run.lineBreakBefore ? 1 : 0);
+        const int end = start + static_cast<int>(run.text.size());
+        if (run.noteIndex >= 0 && pos.byteOffset >= start && pos.byteOffset <= end) return run.noteIndex;
+        position = end;
+    }
+    return -1;
 }
 
 bool UCRichDocumentEditor::InsertField(RichTextRun::Field field) {

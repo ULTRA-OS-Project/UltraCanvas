@@ -379,6 +379,13 @@ public:
     bool SetImageSize(const RichDocPosition& image, float widthPt, float heightPt);
     // Sets the description a screen reader or a text export gives for it.
     bool SetImageAltText(const RichDocPosition& image, const std::string& altText);
+    // Inserts a footnote or endnote reference at the caret, with a new note
+    // holding one empty paragraph. Returns the note's index, or -1.
+    int InsertNote(RichNote::Kind kind);
+    // The note a reference at `pos` (the caret, typically) points to, or -1:
+    // the reference just before or after the position.
+    int NoteAt(const RichDocPosition& pos) const;
+
     // Inserts a page number (Field::PageNumber) or page count field at the
     // caret. Its text is a placeholder until a paged view numbers it.
     bool InsertField(RichTextRun::Field field);

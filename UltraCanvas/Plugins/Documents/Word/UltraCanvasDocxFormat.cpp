@@ -14,6 +14,7 @@
 
 #include "tinyxml2.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <map>
@@ -117,6 +118,8 @@ public:
             else if (tag == "w:tbl") ParseTable(elem);
         }
         LoadSection(body->FirstChildElement("w:sectPr"));
+        LoadNotes(RichNote::Kind::Footnote);
+        LoadNotes(RichNote::Kind::Endnote);
         LoadMetadata();
         return true;
     }
@@ -228,6 +231,10 @@ private:
     RichListNumbering numbering_;
     std::map<std::string, int> mediaByTarget_;              // package path -> media index
     bool pendingPageBreak_ = false;
+    // Footnote and endnote references met in the body: "f<id>" / "e<id>" ->
+    // index into doc_->notes. Their text is read from the notes parts after
+    // the body.
+    std::map<std::string, int> noteIndexById_;
 
     static const char* Attr(const tinyxml2::XMLElement* e, const char* name) {
         const char* v = e->Attribute(name);
@@ -932,7 +939,19 @@ private:
                 ctx.runs.push_back(std::move(run));
             } else if (tag == "w:drawing" || tag == "w:pict") {
                 ParseDrawing(child, ctx);
+            } else if (tag == "w:footnoteReference" || tag == "w:endnoteReference") {
+                const bool endnote = tag == "w:endnoteReference";
+                RichTextRun run = props;
+                run.noteIndex = NoteFor(endnote ? RichNote::Kind::Endnote : RichNote::Kind::Footnote,
+                                        Attr(child, "w:id"));
+                run.superscript = true;
+                run.text = "*";                       // numbered once all are read
+                run.lineBreakBefore = ctx.pendingLineBreak;
+                ctx.pendingLineBreak = false;
+                ctx.runs.push_back(std::move(run));
             }
+            // w:footnoteRef / w:endnoteRef, the mark inside a note's own
+            // text, is drawn by the view: nothing to keep.
         }
     }
 
@@ -1439,6 +1458,69 @@ private:
         while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
     }
 
+    int NoteFor(RichNote::Kind kind, const std::string& id) {
+        const std::string key = (kind == RichNote::Kind::Endnote ? "e" : "f") + id;
+        auto found = noteIndexById_.find(key);
+        if (found != noteIndexById_.end()) return found->second;
+        RichNote note;
+        note.kind = kind;
+        doc_->notes.push_back(std::move(note));
+        const int index = static_cast<int>(doc_->notes.size()) - 1;
+        noteIndexById_[key] = index;
+        return index;
+    }
+
+    // word/footnotes.xml or word/endnotes.xml: each referenced note's
+    // paragraphs, read like the body's.
+    void LoadNotes(RichNote::Kind kind) {
+        const bool endnote = kind == RichNote::Kind::Endnote;
+        const char* prefix = endnote ? "e" : "f";
+        bool any = false;
+        for (const auto& [key, index] : noteIndexById_) any = any || key[0] == prefix[0];
+        if (!any) return;
+        std::string partName = endnote ? "word/endnotes.xml" : "word/footnotes.xml";
+        for (const auto& [id, rel] : relationships_) {
+            const std::string file = endnote ? "endnotes.xml" : "footnotes.xml";
+            if (!rel.external && rel.target.size() >= file.size()
+                && rel.target.compare(rel.target.size() - file.size(), file.size(), file) == 0) {
+                partName = ResolvePartPath(rel.target);
+            }
+        }
+        std::string xml;
+        if (!zip_.ReadEntry(partName, xml)) return;
+        ProtectWhitespaceRuns(xml);
+        tinyxml2::XMLDocument part;
+        if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        auto* root = part.RootElement();
+        if (!root) return;
+        const char* noteTag = endnote ? "w:endnote" : "w:footnote";
+        for (auto* note = root->FirstChildElement(noteTag); note; note = note->NextSiblingElement(noteTag)) {
+            auto found = noteIndexById_.find(prefix + std::string(Attr(note, "w:id")));
+            if (found == noteIndexById_.end()) continue;     // separators, unreferenced notes
+            const size_t start = doc_->blocks.size();
+            for (auto* elem = note->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
+                std::string tag = elem->Name() ? elem->Name() : "";
+                if (tag == "w:p") ParseParagraph(elem);
+                else if (tag == "w:tbl") ParseTable(elem);
+            }
+            std::vector<RichDocBlock> blocks(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                                             std::make_move_iterator(doc_->blocks.end()));
+            doc_->blocks.resize(start);
+            // The space Word puts after the note's own mark.
+            if (!blocks.empty() && !blocks.front().runs.empty()) {
+                std::string& text = blocks.front().runs.front().text;
+                const size_t lead = text.find_first_not_of(' ');
+                text.erase(0, lead == std::string::npos ? text.size() : lead);
+                if (text.empty()) blocks.front().runs.erase(blocks.front().runs.begin());
+            }
+            if (blocks.empty()) blocks.emplace_back();
+            if (found->second < static_cast<int>(doc_->notes.size())) {
+                doc_->notes[static_cast<size_t>(found->second)].blocks = std::move(blocks);
+            }
+        }
+        doc_->UpdateNoteMarks();
+    }
+
     void LoadMetadata() {
         std::string coreXml;
         if (!zip_.ReadEntry("docProps/core.xml", coreXml)) return;
@@ -1645,6 +1727,19 @@ private:
                 WriteRunProperties(xml, run, false);
                 WriteRunText(xml, run.text);
                 xml << "</w:r></w:fldSimple>";
+                if (isLink) xml << "</w:hyperlink>";
+                continue;
+            }
+            if (run.IsNoteReference()) {
+                auto id = noteIds_.find(run.noteIndex);
+                if (id != noteIds_.end()) {
+                    const bool endnote = doc_->notes[static_cast<size_t>(run.noteIndex)].kind == RichNote::Kind::Endnote;
+                    xml << "<w:r>";
+                    WriteRunProperties(xml, run, false);
+                    if (run.lineBreakBefore) xml << "<w:br/>";
+                    xml << (endnote ? "<w:endnoteReference w:id=\"" : "<w:footnoteReference w:id=\"")
+                        << id->second << "\"/></w:r>";
+                }
                 if (isLink) xml << "</w:hyperlink>";
                 continue;
             }
@@ -2092,6 +2187,64 @@ private:
     struct FurniturePart { std::string name; std::string kind; std::string type; std::string xml; };
     std::vector<FurniturePart> furnitureParts_;
 
+    // Footnote and endnote ids by note, from 1 in the order the references
+    // appear (0 and -1 are Word's separator notes). Only notes something
+    // refers to are written.
+    std::map<int, int> noteIds_;
+    void NumberNotes() {
+        int footnotes = 0, endnotes = 0;
+        for (const UCRichDocument::NoteReference& reference : doc_->NoteReferences()) {
+            if (noteIds_.count(reference.noteIndex)) continue;
+            const bool endnote = doc_->notes[static_cast<size_t>(reference.noteIndex)].kind == RichNote::Kind::Endnote;
+            noteIds_[reference.noteIndex] = endnote ? ++endnotes : ++footnotes;
+        }
+    }
+
+    // footnotes.xml / endnotes.xml, as parts beside the headers.
+    void AddNotesPart(RichNote::Kind kind) {
+        const bool endnote = kind == RichNote::Kind::Endnote;
+        const std::string element = endnote ? "endnote" : "footnote";
+        std::vector<std::pair<int, int>> ordered;     // id, note
+        for (const auto& [note, id] : noteIds_) {
+            if (doc_->notes[static_cast<size_t>(note)].kind == kind) ordered.emplace_back(id, note);
+        }
+        if (ordered.empty()) return;
+        std::sort(ordered.begin(), ordered.end());
+        std::ostringstream xml;
+        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:" << element << "s "
+            << kPartNamespaces << ">"
+            << "<w:" << element << " w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:"
+            << element << ">"
+            << "<w:" << element << " w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:r>"
+               "<w:continuationSeparator/></w:r></w:p></w:" << element << ">";
+        for (const auto& [id, note] : ordered) {
+            std::vector<RichDocBlock> blocks = doc_->notes[static_cast<size_t>(note)].blocks;
+            if (blocks.empty()) blocks.emplace_back();
+            std::string body = WriteBlocks(blocks);
+            // The note's own mark opens its first paragraph, after its
+            // properties.
+            const std::string mark = "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:" + element
+                                   + "Ref/></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r>";
+            size_t at = std::string::npos;
+            for (size_t p = body.find("<w:p"); p != std::string::npos; p = body.find("<w:p", p + 1)) {
+                const char next = p + 4 < body.size() ? body[p + 4] : '\0';
+                if (next == '>' || next == ' ') { at = p; break; }
+            }
+            if (at != std::string::npos) {
+                size_t insert = body.find('>', at) + 1;
+                if (body.compare(insert, 7, "<w:pPr>") == 0) insert = body.find("</w:pPr>", insert) + 8;
+                body.insert(insert, mark);
+            }
+            xml << "<w:" << element << " w:id=\"" << id << "\">" << body << "</w:" << element << ">";
+        }
+        xml << "</w:" << element << "s>\n";
+        FurniturePart part;
+        part.kind = element + "s";
+        part.name = element + "s.xml";
+        part.xml = xml.str();
+        furnitureParts_.push_back(std::move(part));
+    }
+
     std::string SectionPropertiesXml() {
         const UCRichDocument& doc = *doc_;
         std::ostringstream refs;
@@ -2136,8 +2289,11 @@ private:
     }
 
     std::string BuildDocumentXml() {
+        NumberNotes();
         const std::string body = WriteBlocks(doc_->blocks);
         const std::string sectPr = SectionPropertiesXml();
+        AddNotesPart(RichNote::Kind::Footnote);
+        AddNotesPart(RichNote::Kind::Endnote);
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<w:document "

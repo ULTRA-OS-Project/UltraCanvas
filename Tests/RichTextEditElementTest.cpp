@@ -1262,6 +1262,73 @@ int main() {
         edit->SetPageView(false);
     }
 
+    // ===== FOOTNOTES AND ENDNOTES =====
+    std::cerr << "\n--- Footnotes and endnotes ---" << std::endl;
+    {
+        edit->SetMarkdown("Alpha beta gamma.\n\nSecond paragraph.\n");
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 5));             // after "Alpha"
+        TEST("A footnote is inserted and opened", edit->InsertFootnote() && edit->IsEditingNote());
+        window->UpdateAndRender();
+        edit->InsertText("The first note.");
+        window->UpdateAndRender();
+        edit->OnEvent(KeyEvent(UCKeys::Escape));
+        window->UpdateAndRender();
+        const auto doc = edit->GetDocument();
+        TEST("Escape goes back to the body", !edit->IsEditingNote());
+        TEST("The note holds what was typed", doc->notes.size() == 1 && !doc->notes[0].blocks.empty()
+             && UCRichDocument::ConcatenateRunText(doc->notes[0].blocks[0].runs) == "The first note.");
+        TEST("The reference is marked 1: " + editor.BlockText(0), editor.BlockText(0) == "Alpha1 beta gamma.");
+
+        // One before it takes 1; the first becomes 2.
+        editor.SetCaret(RichDocPosition(0, 0));
+        edit->InsertFootnote();
+        edit->InsertText("Earlier note.");
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        TEST("Marks renumber in document order: " + editor.BlockText(0), editor.BlockText(0) == "1Alpha2 beta gamma.");
+
+        editor.SetCaret(editor.ContainerEnd(RichDocPosition(1, 0)));
+        edit->InsertEndnote();
+        edit->InsertText("An endnote.");
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        TEST("An endnote is marked i: " + editor.BlockText(1), editor.BlockText(1) == "Second paragraph.i");
+        TEST("The plain text carries the notes", edit->GetPlainText().find("An endnote.") != std::string::npos);
+        TEST("Markdown carries them as footnotes", edit->GetMarkdown().find("[^2]: The first note.") != std::string::npos);
+        TEST("Typing after a mark is not raised", [&]() {
+            editor.SetCaret(editor.ContainerEnd(RichDocPosition(1, 0)));
+            edit->InsertText("!");
+            const auto& runs = editor.GetBlock(1).runs;
+            return !runs.empty() && runs.back().text == "!" && !runs.back().superscript && runs.back().noteIndex < 0;
+        }());
+        TEST("A note can be opened again", edit->EditNote(0) && edit->IsEditingNote());
+        edit->FinishHeaderFooterEditing();
+
+        // A long document: the footnote stays on its reference's page, and
+        // the page's text makes room for it.
+        std::string words;
+        for (int i = 0; i < 900; i++) words += "word" + std::to_string(i) + " ";
+        edit->SetMarkdown(words + "\n");
+        window->UpdateAndRender();
+        const int pagesBefore = edit->GetPageCount();
+        editor.SetCaret(RichDocPosition(0, 40));
+        edit->InsertFootnote();
+        std::string longNote;
+        for (int i = 0; i < 60; i++) longNote += "note" + std::to_string(i) + " ";
+        edit->InsertText(longNote);
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        TEST("A long footnote pushes text on to more pages", edit->GetPageCount() >= pagesBefore);
+        std::vector<uint8_t> pdf;
+        std::string error;
+        TEST("A document with notes exports as a PDF: " + error, edit->ExportToPdf(pdf, error) && pdf.size() > 1000);
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+        TEST("Outside page view the notes follow the body", edit->GetContentHeight() > 0.0f);
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

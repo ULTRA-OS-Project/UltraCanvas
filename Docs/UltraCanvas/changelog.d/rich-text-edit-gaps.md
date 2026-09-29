@@ -117,3 +117,12 @@
   be saved), and the DOCX reader now gives runs their paragraph and character
   styles' bold, italics, underline and colour, which it used to drop. A
   heading's bold no longer appears as `**...**` in its Markdown.
+- **Footnotes and endnotes.** `UCRichDocument::notes` (`RichNote`) with
+  reference runs (`RichTextRun::noteIndex`) that number themselves (footnotes
+  1, 2, 3, endnotes i, ii); `UCRichDocumentEditor::InsertNote`/`NoteAt`; and in
+  `UltraCanvasRichTextEdit`, `InsertFootnote`, `InsertEndnote` and `EditNote`
+  (double-click a note or its reference). Page view puts footnotes at the foot
+  of their reference's page, making room for them, and endnotes after the body;
+  PDF export includes them. DOCX and ODT read and write them - ODT footnotes
+  used to be flattened into the text in parentheses, DOCX ones were dropped -
+  and Markdown reads and writes `[^1]` footnotes.

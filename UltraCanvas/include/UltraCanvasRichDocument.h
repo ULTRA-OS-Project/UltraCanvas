@@ -79,6 +79,12 @@ struct RichTextRun {
 
     bool IsFloatingImage() const { return IsInlineImage() && imageWrap != ImageWrap::Inline; }
 
+    // A footnote or endnote reference: the note is UCRichDocument::notes
+    // [noteIndex]. `text` is the mark as last shown ("3", "iv"), superscript;
+    // views and writers number the references in document order.
+    int noteIndex = -1;
+    bool IsNoteReference() const { return noteIndex >= 0; }
+
     // The named character style (UCRichDocument::styles) this run was given,
     // "" for none. Its properties are already in the run's own fields; the
     // name is what lets a change to the style reach the run.
@@ -105,7 +111,8 @@ struct RichTextRun {
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
             && highlightColor == other.highlightColor && characterStyleId == other.characterStyleId
-            && field == Field::Plain && other.field == Field::Plain;   // a field stays its own run
+            && field == Field::Plain && other.field == Field::Plain   // a field stays its own run
+            && noteIndex < 0 && other.noteIndex < 0;                  // and so does a note mark
     }
 };
 
@@ -426,6 +433,15 @@ private:
     std::vector<Counter>& LevelsOf(const std::string& listKey);
 };
 
+// ===== FOOTNOTES AND ENDNOTES =====
+// A note's text, referenced from the body by a run with noteIndex. Footnotes
+// go at the foot of the page the reference is on, endnotes after the body.
+struct RichNote {
+    enum class Kind { Footnote, Endnote };
+    Kind kind = Kind::Footnote;
+    std::vector<RichDocBlock> blocks;
+};
+
 // ===== NAMED STYLES =====
 // What a named style sets: every property is optional, and one it leaves
 // unset comes from the style it is based on (or is left alone).
@@ -536,6 +552,26 @@ public:
     }
 
     bool IsEmpty() const { return blocks.empty(); }
+
+    // ===== NOTES =====
+    std::vector<RichNote> notes;
+    // Every note reference in document order (body blocks and table cells):
+    // {block, cell row, cell index, run index}. Cells use -1 for the body.
+    struct NoteReference {
+        int blockIndex = 0;
+        int cellRow = -1;
+        int cellIndex = -1;
+        int runIndex = 0;
+        int noteIndex = 0;
+    };
+    std::vector<NoteReference> NoteReferences() const;
+    // The mark each note shows - footnotes 1, 2, 3 and endnotes i, ii, iii,
+    // each counted in the order their references first appear - indexed by
+    // note; "" for a note nothing refers to.
+    std::vector<std::string> NoteMarks() const;
+    // Sets every reference run's text to its note's mark. True when any
+    // changed.
+    bool UpdateNoteMarks();
 
     // ===== NAMED STYLES =====
     // Paragraph and character styles. A document read from a file has the

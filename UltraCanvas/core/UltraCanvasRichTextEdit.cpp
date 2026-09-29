@@ -411,6 +411,10 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
             frame.footerTop = footerBottom - frame.footer->height;
             frame.bodyBottom = std::min(frame.bodyBottom, frame.footerTop - spacing);
         }
+        // The page's footnotes sit at the foot of its text area.
+        if (index < static_cast<int>(pageFootnoteRoom.size())) {
+            frame.bodyBottom -= pageFootnoteRoom[static_cast<size_t>(index)];
+        }
         // A page always keeps some room for text, whatever its furniture.
         frame.bodyBottom = std::max(frame.bodyBottom, frame.bodyTop + 24.0f);
         return frame;
@@ -426,6 +430,7 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
         bool pageEmpty = true;
         bool breakPending = false;
         placedFloats.clear();
+        noteAreas.clear();
         std::vector<PlacedFloat> pageFloats;      // floats of the current page
         auto newPage = [&]() {
             placedFloats.insert(placedFloats.end(), pageFloats.begin(), pageFloats.end());
@@ -512,6 +517,34 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
             y = BlockVisualBottom(bl);
             pageEmpty = false;
             if (editor.GetBlock(i).type == RichBlockType::PageBreak) breakPending = true;
+        }
+        // Endnotes after the body, going on to further pages as they need.
+        const std::vector<std::string> marks = document.NoteMarks();
+        std::vector<bool> placed(document.notes.size(), false);
+        const float ruleSpace = NoteRuleSpace();
+        bool firstEndnote = true;
+        for (const UCRichDocument::NoteReference& reference : document.NoteReferences()) {
+            const size_t note = static_cast<size_t>(reference.noteIndex);
+            if (placed[note] || document.notes[note].kind != RichNote::Kind::Endnote) continue;
+            placed[note] = true;
+            NoteArea area;
+            area.noteIndex = reference.noteIndex;
+            area.layout = LayoutNote(ctx, reference.noteIndex, marks[note]);
+            if (!area.layout) continue;
+            area.ruleAbove = firstEndnote;
+            const float above = firstEndnote ? ruleSpace : style.blockSpacing;
+            float top = pageEmpty ? y : y + above;
+            if (breakPending || (!pageEmpty && top + area.layout->height > pages.back().bodyBottom)) {
+                newPage();
+                breakPending = false;
+                top = y + (firstEndnote ? ruleSpace : 0.0f);
+            }
+            area.page = static_cast<int>(pages.size()) - 1;
+            area.top = top;
+            y = top + area.layout->height;
+            pageEmpty = false;
+            firstEndnote = false;
+            noteAreas.push_back(std::move(area));
         }
         placedFloats.insert(placedFloats.end(), pageFloats.begin(), pageFloats.end());
         if (static_cast<int>(pages.size()) == count) break;
@@ -735,6 +768,9 @@ float UltraCanvasRichTextEdit::PlaceBlocksInColumn(IRenderContext* ctx) {
     // The column ends below its last picture too.
     for (const PlacedFloat& placed : floats) y = std::max(y, placed.rect.y + placed.rect.height);
     placedFloats = std::move(floats);
+    // Footnotes and endnotes follow the text.
+    noteAreas.clear();
+    y = PlaceEndnotes(ctx, y, /*footnotesToo*/ true);
     frame.bodyBottom = y;
     if (frame.footer) {
         frame.footerTop = y + separation;
@@ -1546,6 +1582,16 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
 
     if (!layoutsDirty) return;
 
+    // Note marks number themselves in document order; a reference added,
+    // moved or removed renumbers the others.
+    if (!furnitureEdit && editor.GetDocument() && !editor.GetDocument()->notes.empty()
+        && editor.GetDocument()->UpdateNoteMarks()) {
+        for (auto& bl : blockLayouts) bl.valid = false;
+        const RichDocPosition caret = editor.GetCaret();
+        const RichDocPosition clamped = editor.ClampPosition(caret);
+        if (clamped != caret) editor.SetCaret(clamped, false);
+    }
+
     // Continuous view: full layouts only for the blocks near the viewport.
     // Blocks outside it keep the height they had (or an estimate), so a long
     // document never pays for layouts nobody is looking at. Page view needs
@@ -1570,8 +1616,7 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
         }
         y += bl.bounds.height + GapAfterBlock(i);
     }
-    y = furnitureEdit ? PlaceFurnitureBeingEdited(ctx)
-                      : pageView ? PlaceBlocksOnPages(ctx) : PlaceBlocksInColumn(ctx);
+    y = furnitureEdit ? PlaceFurnitureBeingEdited(ctx) : PlaceBody(ctx);
     // A page number in the body shows the page its block landed on, which is
     // only known now. Renumbering can change a block's width ("9" to "10"),
     // so the renumbered blocks are laid out and the pages placed again.
@@ -1580,7 +1625,7 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
             BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
             if (!bl.valid) BuildBlockLayout(ctx, i);
         }
-        y = PlaceBlocksOnPages(ctx);
+        y = PlaceBody(ctx);
     }
     contentHeight = std::max(0.0f, y);
     layoutsDirty = false;
@@ -1641,6 +1686,7 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
         RenderBlock(ctx, i, bl);
     }
     DrawFloats(ctx, /*behindText*/ false);
+    if (!furnitureEdit) RenderNotes(ctx);
     DrawSpellErrorMarks(ctx);
     DrawImageSelection(ctx);
     if (draggingText) {
@@ -1729,7 +1775,8 @@ void UltraCanvasRichTextEdit::RenderPages(IRenderContext* ctx) {
             }
         }
         // The header or footer being edited is drawn live, as the blocks.
-        const bool editedPage = furnitureEdit && static_cast<int>(&frame - pages.data()) == furnitureEdit->pageIndex;
+        const bool editedPage = furnitureEdit && furnitureEdit->noteIndex < 0
+                                && static_cast<int>(&frame - pages.data()) == furnitureEdit->pageIndex;
         if (frame.header && !(editedPage && !furnitureEdit->footer)) {
             RenderFurniture(ctx, *frame.header, pageView ? frame.headerTop : 0.0f);
         }
@@ -3186,12 +3233,25 @@ bool UltraCanvasRichTextEdit::HandleDoubleClick(const UCEvent& event) {
         int page = 0;
         bool footer = false;
         const bool inFurniture = FurnitureRegionAt(contentY, page, footer);
-        if (!furnitureEdit && inFurniture && (pageView || !pages.empty())) {
-            if (BeginFurnitureEditing(page, footer)) return true;
+        // A note, or a note's reference, opens the note.
+        const int noteArea = NoteAreaAt(contentY);
+        if (!furnitureEdit) {
+            const int referenced = noteArea >= 0 ? noteArea : editor.NoteAt(PositionFromPoint(ToDocument(event.pointer)));
+            if (referenced >= 0 && EditNote(referenced)) return true;
         }
-        if (furnitureEdit && !(inFurniture && page == furnitureEdit->pageIndex && footer == furnitureEdit->footer)) {
-            FinishHeaderFooterEditing();
-            return true;
+        if (IsEditingNote()) {
+            if (noteArea != furnitureEdit->noteIndex) {
+                FinishHeaderFooterEditing();
+                return true;
+            }
+        } else {
+            if (!furnitureEdit && inFurniture && (pageView || !pages.empty())) {
+                if (BeginFurnitureEditing(page, footer)) return true;
+            }
+            if (furnitureEdit && !(inFurniture && page == furnitureEdit->pageIndex && footer == furnitureEdit->footer)) {
+                FinishHeaderFooterEditing();
+                return true;
+            }
         }
     }
     editor.SelectWordAt(PositionFromPoint(ToDocument(event.pointer)));
@@ -3663,7 +3723,8 @@ bool UltraCanvasRichTextEdit::EditFooter(int pageIndex) { return BeginFurnitureE
 bool UltraCanvasRichTextEdit::BeginFurnitureEditing(int pageIndex, bool footer) {
     if (readOnly) return false;
     if (furnitureEdit) {
-        if (furnitureEdit->pageIndex == pageIndex && furnitureEdit->footer == footer) return true;
+        if (furnitureEdit->noteIndex < 0 && furnitureEdit->pageIndex == pageIndex
+            && furnitureEdit->footer == footer) return true;
         FinishHeaderFooterEditing();
     }
     // The pages must be laid out: which one is being edited, and where its
@@ -3684,9 +3745,15 @@ bool UltraCanvasRichTextEdit::BeginFurnitureEditing(int pageIndex, bool footer) 
     state->footer = footer;
     state->firstPage = firstPage;
     state->pageIndex = pageIndex;
+    StartEditingPart(std::move(furnitureDoc), std::move(state));
+    return true;
+}
+
+void UltraCanvasRichTextEdit::StartEditingPart(std::shared_ptr<UCRichDocument> part,
+                                               std::unique_ptr<FurnitureEditState> state) {
     state->bodyContentHeight = contentHeight;
     state->bodyEditor = std::move(editor);
-    editor = UCRichDocumentEditor(furnitureDoc);
+    editor = UCRichDocumentEditor(std::move(part));
     editor.onChanged = state->bodyEditor.onChanged;
     editor.onSelectionChanged = state->bodyEditor.onSelectionChanged;
     editor.SetAutoFormatEnabled(state->bodyEditor.IsAutoFormatEnabled());
@@ -3706,13 +3773,21 @@ bool UltraCanvasRichTextEdit::BeginFurnitureEditing(int pageIndex, bool footer) 
     RequestRedraw();
     if (onHeaderFooterEditingChanged) onHeaderFooterEditingChanged(true);
     if (onSelectionChanged) onSelectionChanged();
-    return true;
 }
 
 void UltraCanvasRichTextEdit::SyncFurnitureToDocument() {
     if (!furnitureEdit) return;
     const std::shared_ptr<UCRichDocument>& body = furnitureEdit->bodyEditor.GetDocument();
     const std::shared_ptr<UCRichDocument>& edited = editor.GetDocument();
+    if (furnitureEdit->noteIndex >= 0) {
+        if (furnitureEdit->noteIndex < static_cast<int>(body->notes.size())) {
+            body->notes[static_cast<size_t>(furnitureEdit->noteIndex)].blocks = edited->blocks;
+        }
+        for (size_t i = body->media.size(); i < edited->media.size(); i++) body->media.push_back(edited->media[i]);
+        furnitureEdit->bodyEditor.SetModified(true);
+        furnitureCache.clear();
+        return;
+    }
     RichPageFurniture& furniture = furnitureEdit->firstPage ? body->firstPageFurniture : body->pageFurniture;
     std::vector<RichDocBlock>& target = furnitureEdit->footer ? furniture.footer : furniture.header;
     // A header emptied of everything is no header at all.
@@ -3749,7 +3824,7 @@ float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
     // pushes the body down while it is typed, as it will once editing ends.
     std::swap(editor, furnitureEdit->bodyEditor);
     std::swap(blockLayouts, parkedLayouts);
-    const float bodyHeight = pageView ? PlaceBlocksOnPages(ctx) : PlaceBlocksInColumn(ctx);
+    const float bodyHeight = PlaceBody(ctx);
     parkedPages = pages;
     parkedFloats = placedFloats;
     std::swap(blockLayouts, parkedLayouts);
@@ -3762,7 +3837,13 @@ float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
     float total = 0.0f;
     for (int i = 0; i < count; i++) total += blockLayouts[static_cast<size_t>(i)].bounds.height + GapAfterBlock(i);
     float y = 0.0f;
-    if (!pages.empty()) {
+    if (furnitureEdit->noteIndex >= 0) {
+        // A note is edited where it is shown.
+        y = furnitureEdit->bodyContentHeight;
+        for (const NoteArea& area : noteAreas) {
+            if (area.noteIndex == furnitureEdit->noteIndex) { y = area.top; break; }
+        }
+    } else if (!pages.empty()) {
         const PageFrame& frame = pages[static_cast<size_t>(std::clamp(furnitureEdit->pageIndex, 0,
                                                                       static_cast<int>(pages.size()) - 1))];
         if (furnitureEdit->footer) {
@@ -3817,6 +3898,7 @@ void UltraCanvasRichTextEdit::RenderBodyBackdrop(IRenderContext* ctx) {
         ctx->DrawImage(*placed.image, Rect2Dd(ColumnLeft() + placed.rect.x, visibleArea.y + placed.rect.y - scrollOffset,
                                               placed.rect.width, placed.rect.height), ImageFitMode::Contain);
     }
+    RenderNotes(ctx);
     // Pale over the body; the edited header or footer marked with a rule.
     Color wash = pageView ? style.pageColor : style.backgroundColor;
     wash.a = 150;
@@ -3832,7 +3914,8 @@ void UltraCanvasRichTextEdit::RenderBodyBackdrop(IRenderContext* ctx) {
     if (!blockLayouts.empty() && !pages.empty()) {
         const BlockLayout& first = blockLayouts.front();
         const BlockLayout& last = blockLayouts.back();
-        const float edge = furnitureEdit->footer ? first.bounds.y - 4.0f : last.bounds.y + last.bounds.height + 4.0f;
+        const bool below = furnitureEdit->footer || furnitureEdit->noteIndex >= 0;
+        const float edge = below ? first.bounds.y - 4.0f : last.bounds.y + last.bounds.height + 4.0f;
         const double y = visibleArea.y + edge - scrollOffset;
         ctx->PushState();
         ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
@@ -3843,13 +3926,259 @@ void UltraCanvasRichTextEdit::RenderBodyBackdrop(IRenderContext* ctx) {
         label.fontSize = std::max(7.0, style.baseFont.fontSize * 0.7);
         ctx->SetFontStyle(label);
         ctx->SetTextPaint(style.pageBreakColor);
-        const std::string name = std::string(furnitureEdit->firstPage ? "First Page " : "")
-                               + (furnitureEdit->footer ? "Footer" : "Header");
+        std::string name = std::string(furnitureEdit->firstPage ? "First Page " : "")
+                         + (furnitureEdit->footer ? "Footer" : "Header");
+        if (furnitureEdit->noteIndex >= 0) {
+            const UCRichDocument& body = *furnitureEdit->bodyEditor.GetDocument();
+            const size_t note = static_cast<size_t>(furnitureEdit->noteIndex);
+            const std::vector<std::string> marks = body.NoteMarks();
+            const std::string mark = note < marks.size() ? marks[note] : "";
+            name = (note < body.notes.size() && body.notes[note].kind == RichNote::Kind::Endnote
+                        ? "Endnote " : "Footnote ") + mark;
+            // The note's mark, in front of its first line.
+            if (!mark.empty()) {
+                const double markX = ColumnLeft() - ctx->GetTextLineWidth(mark) - 4.0;
+                ctx->DrawText(mark, Point2Dd(std::max<double>(visibleArea.x, markX),
+                                             visibleArea.y + first.bounds.y - scrollOffset));
+            }
+        }
         // At the rule's right end, on the header's side of it.
-        const double textY = furnitureEdit->footer ? y + 2.0 : y - label.fontSize * 1.6;
+        const double textY = below ? y + 2.0 : y - label.fontSize * 1.6;
         const double textX = ColumnLeft() + ColumnWidth() - ctx->GetTextLineWidth(name);
         ctx->DrawText(name, Point2Dd(textX, textY));
         ctx->PopState();
+    }
+}
+
+// ===== FOOTNOTES AND ENDNOTES =====
+
+bool UltraCanvasRichTextEdit::InsertFootnote() { return InsertNoteOf(RichNote::Kind::Footnote); }
+bool UltraCanvasRichTextEdit::InsertEndnote() { return InsertNoteOf(RichNote::Kind::Endnote); }
+
+bool UltraCanvasRichTextEdit::InsertNoteOf(RichNote::Kind kind) {
+    if (readOnly) return false;
+    // A note's reference goes into the body, never into a header or a note.
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    const int noteIndex = editor.InsertNote(kind);
+    if (noteIndex < 0) return false;
+    furnitureCache.clear();                 // the notes moved in memory
+    AfterEdit();
+    return EditNote(noteIndex);
+}
+
+bool UltraCanvasRichTextEdit::EditNote(int noteIndex) { return BeginNoteEditing(noteIndex); }
+
+bool UltraCanvasRichTextEdit::BeginNoteEditing(int noteIndex) {
+    if (readOnly) return false;
+    if (furnitureEdit) {
+        if (furnitureEdit->noteIndex == noteIndex) return true;
+        FinishHeaderFooterEditing();
+    }
+    const std::shared_ptr<UCRichDocument> body = editor.GetDocument();
+    if (!body || noteIndex < 0 || noteIndex >= static_cast<int>(body->notes.size())) return false;
+
+    auto noteDoc = std::make_shared<UCRichDocument>();
+    noteDoc->blocks = body->notes[static_cast<size_t>(noteIndex)].blocks;
+    if (noteDoc->blocks.empty()) noteDoc->blocks.emplace_back();
+    noteDoc->media = body->media;
+    noteDoc->page = body->page;
+    noteDoc->defaultTabStopPt = body->defaultTabStopPt;
+    noteDoc->styles = body->styles;
+
+    auto state = std::make_unique<FurnitureEditState>();
+    state->noteIndex = noteIndex;
+    for (const NoteArea& area : noteAreas) {
+        if (area.noteIndex == noteIndex) state->pageIndex = area.page;
+    }
+    StartEditingPart(std::move(noteDoc), std::move(state));
+    return true;
+}
+
+std::shared_ptr<UltraCanvasRichTextEdit::FurnitureLayout> UltraCanvasRichTextEdit::LayoutNote(
+        IRenderContext* ctx, int noteIndex, const std::string& mark) {
+    const UCRichDocument& document = *editor.GetDocument();
+    if (noteIndex < 0 || noteIndex >= static_cast<int>(document.notes.size())) return nullptr;
+    if (furnitureCacheWidth != ColumnWidth()) {
+        furnitureCache.clear();
+        furnitureCacheWidth = ColumnWidth();
+    }
+    const RichNote& note = document.notes[static_cast<size_t>(noteIndex)];
+    const std::string key = "note|" + std::to_string(noteIndex) + "|" + mark + "|"
+                          + std::to_string(reinterpret_cast<uintptr_t>(&note.blocks));
+    auto found = furnitureCache.find(key);
+    if (found != furnitureCache.end()) return found->second;
+
+    auto layout = std::make_shared<FurnitureLayout>();
+    layout->blocks = note.blocks;
+    if (layout->blocks.empty()) layout->blocks.emplace_back();
+    // The mark in front of the note's first line, raised, then a space.
+    RichDocBlock& first = layout->blocks.front();
+    const bool hasText = first.type == RichBlockType::Paragraph || first.type == RichBlockType::Heading
+                      || first.type == RichBlockType::ListItem || first.type == RichBlockType::BlockQuote;
+    if (!mark.empty() && hasText) {
+        RichTextRun look = first.runs.empty() ? RichTextRun{} : first.runs.front();
+        look.text.clear();
+        look.lineBreakBefore = false;
+        look.mediaIndex = -1;
+        look.math = false;
+        look.code = false;
+        look.linkTarget.clear();
+        look.field = RichTextRun::Field::Plain;
+        look.noteIndex = -1;
+        look.subscript = false;
+        RichTextRun raised = look;
+        raised.superscript = true;
+        raised.text = mark;
+        look.superscript = false;
+        look.text = " ";
+        first.runs.insert(first.runs.begin(), {raised, look});
+    }
+    layout->layouts.resize(layout->blocks.size());
+    float y = 0.0f;
+    for (size_t i = 0; i < layout->blocks.size(); i++) {
+        BlockLayout& bl = layout->layouts[i];
+        BuildBlockLayout(ctx, layout->blocks, static_cast<int>(i), bl, -1);
+        bl.bounds.x = bl.textLeft;
+        bl.bounds.y = y;
+        y += bl.bounds.height + GapAfterBlock(layout->blocks, static_cast<int>(i));
+    }
+    layout->height = y;
+    furnitureCache[key] = layout;
+    return layout;
+}
+
+bool UltraCanvasRichTextEdit::PlaceFootnotes(IRenderContext* ctx) {
+    const UCRichDocument& document = *editor.GetDocument();
+    std::vector<float> room(pages.size(), 0.0f);
+    std::vector<std::vector<NoteArea>> perPage(pages.size());
+    const std::vector<std::string> marks = document.NoteMarks();
+    std::vector<bool> placed(document.notes.size(), false);
+
+    // Where a reference sits: the middle of its line (a reference in a table
+    // counts from the table's top).
+    auto referenceY = [&](const UCRichDocument::NoteReference& reference) {
+        const BlockLayout& bl = blockLayouts[static_cast<size_t>(reference.blockIndex)];
+        if (reference.cellRow >= 0 || !bl.layout) return bl.bounds.y;
+        const std::vector<RichTextRun>& runs = document.blocks[static_cast<size_t>(reference.blockIndex)].runs;
+        int offset = 0;
+        for (int r = 0; r <= reference.runIndex && r < static_cast<int>(runs.size()); r++) {
+            offset += runs[static_cast<size_t>(r)].lineBreakBefore ? 1 : 0;
+            if (r < reference.runIndex) offset += static_cast<int>(runs[static_cast<size_t>(r)].text.size());
+        }
+        const Rect2Di box = bl.layout->IndexToPos(offset);
+        return BlockToContentY(bl, static_cast<float>(box.y) + static_cast<float>(box.height) * 0.5f);
+    };
+    for (const UCRichDocument::NoteReference& reference : document.NoteReferences()) {
+        const size_t note = static_cast<size_t>(reference.noteIndex);
+        if (placed[note] || document.notes[note].kind != RichNote::Kind::Footnote) continue;
+        if (reference.blockIndex >= static_cast<int>(blockLayouts.size())) continue;
+        placed[note] = true;
+        NoteArea area;
+        area.noteIndex = reference.noteIndex;
+        area.layout = LayoutNote(ctx, reference.noteIndex, marks[note]);
+        if (!area.layout) continue;
+        area.page = std::clamp(PageIndexAt(referenceY(reference)), 0, static_cast<int>(pages.size()) - 1);
+        perPage[static_cast<size_t>(area.page)].push_back(std::move(area));
+    }
+    const float ruleSpace = NoteRuleSpace();
+    const float gap = Px(2.0f);
+    for (size_t p = 0; p < perPage.size(); p++) {
+        std::vector<NoteArea>& areas = perPage[p];
+        if (areas.empty()) continue;
+        float height = ruleSpace;
+        for (size_t k = 0; k < areas.size(); k++) height += areas[k].layout->height + (k > 0 ? gap : 0.0f);
+        // No more than two thirds of the page's text area.
+        const float old = p < pageFootnoteRoom.size() ? pageFootnoteRoom[p] : 0.0f;
+        const float textArea = pages[p].bodyBottom + old - pages[p].bodyTop;
+        room[p] = std::min(height, textArea * 0.66f);
+        float top = pages[p].bodyBottom + old - height + ruleSpace;
+        for (size_t k = 0; k < areas.size(); k++) {
+            areas[k].top = top;
+            areas[k].ruleAbove = k == 0;
+            top += areas[k].layout->height + gap;
+            noteAreas.push_back(std::move(areas[k]));
+        }
+    }
+    bool changed = room.size() != pageFootnoteRoom.size();
+    for (size_t p = 0; !changed && p < room.size(); p++) changed = std::abs(room[p] - pageFootnoteRoom[p]) > 0.5f;
+    pageFootnoteRoom = std::move(room);
+    return changed;
+}
+
+float UltraCanvasRichTextEdit::PlaceEndnotes(IRenderContext* ctx, float y, bool footnotesToo) {
+    const UCRichDocument& document = *editor.GetDocument();
+    if (document.notes.empty()) return y;
+    const std::vector<std::string> marks = document.NoteMarks();
+    const std::vector<UCRichDocument::NoteReference> references = document.NoteReferences();
+    std::vector<bool> placed(document.notes.size(), false);
+    bool first = true;
+    for (RichNote::Kind kind : {RichNote::Kind::Footnote, RichNote::Kind::Endnote}) {
+        if (kind == RichNote::Kind::Footnote && !footnotesToo) continue;
+        for (const UCRichDocument::NoteReference& reference : references) {
+            const size_t note = static_cast<size_t>(reference.noteIndex);
+            if (placed[note] || document.notes[note].kind != kind) continue;
+            placed[note] = true;
+            NoteArea area;
+            area.noteIndex = reference.noteIndex;
+            area.layout = LayoutNote(ctx, reference.noteIndex, marks[note]);
+            if (!area.layout) continue;
+            area.ruleAbove = first;
+            area.top = y + (first ? NoteRuleSpace() + style.blockSpacing : Px(2.0f));
+            y = area.top + area.layout->height;
+            first = false;
+            noteAreas.push_back(std::move(area));
+        }
+    }
+    return y;
+}
+
+// Page view: the pages are placed, then the footnotes of each page, and -
+// since their room shortens the page's text - the pages again, until the
+// footnotes stay on the pages they were given room on.
+float UltraCanvasRichTextEdit::PlaceBody(IRenderContext* ctx) {
+    if (!pageView) return PlaceBlocksInColumn(ctx);
+    pageFootnoteRoom.clear();
+    float height = PlaceBlocksOnPages(ctx);
+    const bool hasNotes = editor.GetDocument() && !editor.GetDocument()->notes.empty();
+    if (!hasNotes) return height;
+    for (int pass = 0; pass < 4; pass++) {
+        const std::vector<float> before = pageFootnoteRoom;
+        if (!PlaceFootnotes(ctx)) return height;
+        // A reference going back and forth over a page break settles on the
+        // larger room.
+        if (pass >= 2) {
+            for (size_t p = 0; p < pageFootnoteRoom.size() && p < before.size(); p++) {
+                pageFootnoteRoom[p] = std::max(pageFootnoteRoom[p], before[p]);
+            }
+        }
+        height = PlaceBlocksOnPages(ctx);
+    }
+    PlaceFootnotes(ctx);
+    return height;
+}
+
+int UltraCanvasRichTextEdit::NoteAreaAt(float contentY) const {
+    for (const NoteArea& area : noteAreas) {
+        if (!area.layout) continue;
+        if (contentY >= area.top - 2.0f && contentY < area.top + area.layout->height + 2.0f) return area.noteIndex;
+    }
+    return -1;
+}
+
+void UltraCanvasRichTextEdit::RenderNotes(IRenderContext* ctx) {
+    const float viewTop = scrollOffset, viewBottom = scrollOffset + visibleArea.height;
+    for (const NoteArea& area : noteAreas) {
+        if (!area.layout) continue;
+        if (area.top + area.layout->height < viewTop || area.top - NoteRuleSpace() > viewBottom) continue;
+        if (area.ruleAbove) {
+            // The short rule a word processor puts above the notes.
+            const double y = visibleArea.y + area.top - NoteRuleSpace() * 0.5f - scrollOffset;
+            const double length = std::min<double>(ColumnWidth() / 3.0, Px(144.0f));
+            ctx->DrawLine(Point2Dd(ColumnLeft(), y), Point2Dd(ColumnLeft() + length, y), style.textColor);
+        }
+        // The note being edited is drawn live, as the blocks.
+        if (IsEditingNote() && area.noteIndex == furnitureEdit->noteIndex) continue;
+        RenderFurniture(ctx, *area.layout, area.top);
     }
 }
 
@@ -3928,6 +4257,7 @@ bool UltraCanvasRichTextEdit::ExportPdfPages(UltraCanvasPdfSurface& pdf, std::st
             RenderBlock(ctx, i, bl);
         }
         DrawFloats(ctx, false);
+        RenderNotes(ctx);
         ctx->PopState();
     }
 

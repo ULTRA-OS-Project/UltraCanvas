@@ -144,6 +144,8 @@ std::string RunsToReadableText(const std::vector<RichTextRun>& runs) {
         if (run.lineBreakBefore) out += '\n';
         if (run.IsInlineImage()) {
             out += "[" + (run.imageAltText.empty() ? std::string("image") : run.imageAltText) + "]";
+        } else if (run.IsNoteReference()) {
+            out += "[" + run.text + "]";
         } else {
             out += run.text;
         }
@@ -166,6 +168,9 @@ std::string RunToMarkdown(const RichTextRun& run, bool inTableCell,
         }
         return "[" + alt + "]";
     }
+
+    // A note reference is Markdown's footnote reference.
+    if (run.IsNoteReference()) return "[^" + run.text + "]";
 
     std::string lead, core, trail;
     SplitEdgeWhitespace(run.text, lead, core, trail);
@@ -253,6 +258,10 @@ size_t FindClosingMarker(const std::string& text, size_t from, const std::string
 
 void ParseInlineMarkdown(const std::string& text, const InlineStyleState& style,
                          std::vector<RichTextRun>& runs);
+
+// Footnote labels met while FromMarkdown reads a document, in order: a
+// reference's noteIndex is its label's place here. Null outside that.
+thread_local std::vector<std::string>* gMarkdownNoteLabels = nullptr;
 
 // Handles a *...* / **...** / ***...*** / ~~...~~ span. Returns true and
 // advances pos past the span when a well-formed closing marker exists.
@@ -352,6 +361,24 @@ void ParseInlineMarkdown(const std::string& text, const InlineStyleState& style,
                     pos = closeParen + 1;
                     continue;
                 }
+            }
+        }
+        // A footnote reference "[^label]", while a document is being read.
+        if (c == '[' && gMarkdownNoteLabels && pos + 2 < text.size() && text[pos + 1] == '^') {
+            const size_t close = text.find(']', pos + 2);
+            if (close != std::string::npos && close > pos + 2 && text.find(' ', pos + 2) > close) {
+                AppendTextRun(runs, pending, style);
+                pending.clear();
+                const std::string label = text.substr(pos + 2, close - pos - 2);
+                auto found = std::find(gMarkdownNoteLabels->begin(), gMarkdownNoteLabels->end(), label);
+                RichTextRun reference;
+                reference.noteIndex = static_cast<int>(found - gMarkdownNoteLabels->begin());
+                if (found == gMarkdownNoteLabels->end()) gMarkdownNoteLabels->push_back(label);
+                reference.text = label;
+                reference.superscript = true;
+                runs.push_back(reference);
+                pos = close + 1;
+                continue;
             }
         }
         if (c == '[' && TryParseLink(text, pos, style, runs, pending)) {
@@ -861,6 +888,30 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
             }
         }
     }
+    // The notes, as footnote definitions after the body - footnotes, then
+    // endnotes, each once, in the order of their first reference. A note of
+    // several paragraphs continues indented.
+    const std::vector<std::string> marks = NoteMarks();
+    const std::vector<NoteReference> references = NoteReferences();
+    std::vector<bool> written(notes.size(), false);
+    bool firstNote = true;
+    for (RichNote::Kind kind : {RichNote::Kind::Footnote, RichNote::Kind::Endnote}) {
+        for (const NoteReference& reference : references) {
+            const size_t index = static_cast<size_t>(reference.noteIndex);
+            const RichNote& note = notes[index];
+            if (note.kind != kind || written[index] || marks[index].empty()) continue;
+            written[index] = true;
+            md << (firstNote ? "\n" : "") << "[^" << marks[index] << "]: ";
+            firstNote = false;
+            bool firstParagraph = true;
+            for (const RichDocBlock& noteBlock : note.blocks) {
+                if (!firstParagraph) md << "\n    ";
+                md << RunsToMarkdown(noteBlock.runs, false, &mediaPaths);
+                firstParagraph = false;
+            }
+            md << "\n";
+        }
+    }
     return md.str();
 }
 
@@ -888,6 +939,41 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
             start = nl + 1;
         }
     }
+
+    // Footnote definitions - "[^label]: text", continued by indented lines -
+    // are taken out of the flow first; references anywhere then find them.
+    std::vector<std::pair<std::string, std::vector<std::string>>> noteDefinitions;
+    {
+        std::vector<std::string> kept;
+        for (size_t li = 0; li < lines.size(); ++li) {
+            const std::string& line = lines[li];
+            const size_t close = line.find("]:");
+            if (line.rfind("[^", 0) == 0 && close != std::string::npos && close > 2
+                && line.find(' ', 2) > close) {
+                std::vector<std::string> paragraphs{line.substr(close + 2)};
+                while (li + 1 < lines.size()
+                       && (lines[li + 1].rfind("    ", 0) == 0 || lines[li + 1].rfind("\t", 0) == 0)) {
+                    ++li;
+                    const size_t text = lines[li].find_first_not_of(" \t");
+                    paragraphs.push_back(text == std::string::npos ? std::string() : lines[li].substr(text));
+                }
+                for (std::string& paragraph : paragraphs) {
+                    const size_t text = paragraph.find_first_not_of(" \t");
+                    paragraph = text == std::string::npos ? std::string() : paragraph.substr(text);
+                }
+                noteDefinitions.emplace_back(line.substr(2, close - 2), std::move(paragraphs));
+                continue;
+            }
+            kept.push_back(line);
+        }
+        lines = std::move(kept);
+    }
+    std::vector<std::string> noteLabels;
+    for (const auto& definition : noteDefinitions) noteLabels.push_back(definition.first);
+    struct LabelScope {
+        explicit LabelScope(std::vector<std::string>* labels) { gMarkdownNoteLabels = labels; }
+        ~LabelScope() { gMarkdownNoteLabels = nullptr; }
+    } labelScope(&noteLabels);
 
     auto parseInlineToBlock = [](const std::string& text, RichDocBlock& block) {
         ParseInlineMarkdown(text, InlineStyleState{}, block.runs);
@@ -1075,6 +1161,24 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
         doc.blocks.push_back(std::move(block));
     }
 
+    // One note per label, in the order labels were met; a definition's text
+    // becomes its paragraphs (a reference inside a note stays text).
+    gMarkdownNoteLabels = nullptr;
+    for (const std::string& label : noteLabels) {
+        RichNote note;
+        for (const auto& [defined, paragraphs] : noteDefinitions) {
+            if (defined != label) continue;
+            for (const std::string& paragraph : paragraphs) {
+                RichDocBlock block;
+                ParseInlineMarkdown(paragraph, InlineStyleState{}, block.runs);
+                note.blocks.push_back(std::move(block));
+            }
+            break;
+        }
+        if (note.blocks.empty()) note.blocks.emplace_back();
+        doc.notes.push_back(std::move(note));
+    }
+    if (!doc.notes.empty()) doc.UpdateNoteMarks();
     return doc;
 }
 
@@ -1087,6 +1191,11 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
     std::string out;
     for (const auto& run : MergeAdjacentRuns(runs)) {
         if (run.lineBreakBefore && !out.empty()) out += "<br/>";
+        if (run.IsNoteReference()) {
+            const std::string mark = EscapeHtml(run.text);
+            out += "<sup><a href=\"#note-" + mark + "\">" + mark + "</a></sup>";
+            continue;
+        }
         if (run.IsInlineImage()) {
             const std::string alt = EscapeHtml(run.imageAltText);
             if (media && run.mediaIndex >= 0
@@ -1293,6 +1402,28 @@ std::string UCRichDocument::ToHTML() const {
         }
     }
     closeListsTo(-1);
+    // The notes after the body, each with the mark its references link to.
+    const std::vector<std::string> marks = NoteMarks();
+    std::vector<bool> written(notes.size(), false);
+    bool opened = false;
+    for (RichNote::Kind kind : {RichNote::Kind::Footnote, RichNote::Kind::Endnote}) {
+        for (const NoteReference& reference : NoteReferences()) {
+            const size_t index = static_cast<size_t>(reference.noteIndex);
+            if (notes[index].kind != kind || written[index] || marks[index].empty()) continue;
+            written[index] = true;
+            if (!opened) {
+                html << "<section class=\"notes\"><hr/>\n";
+                opened = true;
+            }
+            const std::string mark = EscapeHtml(marks[index]);
+            html << "<div id=\"note-" << mark << "\"><sup>" << mark << "</sup> ";
+            for (const RichDocBlock& noteBlock : notes[index].blocks) {
+                html << "<p>" << RunsToHtml(noteBlock.runs, &media) << "</p>";
+            }
+            html << "</div>\n";
+        }
+    }
+    if (opened) html << "</section>\n";
     return html.str();
 }
 
@@ -1330,6 +1461,29 @@ std::string UCRichDocument::ToPlainText() const {
                 break;
         }
     }
+    // The notes after a rule: "[1] text".
+    const std::vector<std::string> marks = NoteMarks();
+    std::vector<bool> written(notes.size(), false);
+    bool ruled = false;
+    for (RichNote::Kind kind : {RichNote::Kind::Footnote, RichNote::Kind::Endnote}) {
+        for (const NoteReference& reference : NoteReferences()) {
+            const size_t index = static_cast<size_t>(reference.noteIndex);
+            if (notes[index].kind != kind || written[index] || marks[index].empty()) continue;
+            written[index] = true;
+            if (!ruled) {
+                text << "\n----------\n";
+                ruled = true;
+            }
+            text << "[" << marks[index] << "] ";
+            bool firstParagraph = true;
+            for (const RichDocBlock& noteBlock : notes[index].blocks) {
+                if (!firstParagraph) text << "\n    ";
+                text << RunsToReadableText(noteBlock.runs);
+                firstParagraph = false;
+            }
+            text << "\n";
+        }
+    }
     return text.str();
 }
 
@@ -1351,6 +1505,67 @@ int RichDocOrderedItemNumber(const std::vector<RichDocBlock>& blocks, size_t ind
         number++;
     }
     return number;
+}
+
+// ===== NOTES =====
+
+std::vector<UCRichDocument::NoteReference> UCRichDocument::NoteReferences() const {
+    std::vector<NoteReference> out;
+    auto scan = [&](const std::vector<RichTextRun>& runs, int block, int row, int cell) {
+        for (size_t r = 0; r < runs.size(); r++) {
+            if (runs[r].noteIndex >= 0 && runs[r].noteIndex < static_cast<int>(notes.size())) {
+                out.push_back({block, row, cell, static_cast<int>(r), runs[r].noteIndex});
+            }
+        }
+    };
+    for (size_t b = 0; b < blocks.size(); b++) {
+        const RichDocBlock& block = blocks[b];
+        scan(block.runs, static_cast<int>(b), -1, -1);
+        for (size_t r = 0; r < block.tableRows.size(); r++) {
+            for (size_t c = 0; c < block.tableRows[r].cells.size(); c++) {
+                scan(block.tableRows[r].cells[c].runs, static_cast<int>(b), static_cast<int>(r), static_cast<int>(c));
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<std::string> UCRichDocument::NoteMarks() const {
+    std::vector<std::string> marks(notes.size());
+    int footnotes = 0, endnotes = 0;
+    for (const NoteReference& reference : NoteReferences()) {
+        std::string& mark = marks[static_cast<size_t>(reference.noteIndex)];
+        if (!mark.empty()) continue;            // referred to again: same mark
+        if (notes[static_cast<size_t>(reference.noteIndex)].kind == RichNote::Kind::Endnote) {
+            mark = FormatListNumber(++endnotes, RichNumberFormat::LowerRoman);
+        } else {
+            mark = std::to_string(++footnotes);
+        }
+    }
+    return marks;
+}
+
+bool UCRichDocument::UpdateNoteMarks() {
+    const std::vector<std::string> marks = NoteMarks();
+    bool changed = false;
+    auto update = [&](std::vector<RichTextRun>& runs) {
+        for (RichTextRun& run : runs) {
+            if (run.noteIndex < 0 || run.noteIndex >= static_cast<int>(marks.size())) continue;
+            const std::string& mark = marks[static_cast<size_t>(run.noteIndex)];
+            if (!mark.empty() && run.text != mark) {
+                run.text = mark;
+                changed = true;
+            }
+            run.superscript = true;
+        }
+    };
+    for (RichDocBlock& block : blocks) {
+        update(block.runs);
+        for (RichTableRow& row : block.tableRows) {
+            for (RichTableCell& cell : row.cells) update(cell.runs);
+        }
+    }
+    return changed;
 }
 
 // ===== NAMED STYLES =====

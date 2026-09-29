@@ -162,6 +162,16 @@ public:
     // below the body can be edited the same way.
     bool EditHeader(int pageIndex = 0);
     bool EditFooter(int pageIndex = 0);
+    // Footnotes and endnotes. Footnotes are drawn at the foot of the page
+    // their reference is on (below a short rule; the page's text makes room),
+    // endnotes after the body - outside page view, both after the body.
+    // Inserting one puts its reference at the caret and opens the note for
+    // typing; double-clicking a note (or its reference) edits it, Escape goes
+    // back. The marks number themselves: footnotes 1, 2, 3, endnotes i, ii.
+    bool InsertFootnote();
+    bool InsertEndnote();
+    bool EditNote(int noteIndex);
+    bool IsEditingNote() const { return furnitureEdit && furnitureEdit->noteIndex >= 0; }
     bool IsEditingHeaderOrFooter() const { return furnitureEdit != nullptr; }
     bool IsEditingFooter() const { return furnitureEdit && furnitureEdit->footer; }
     void FinishHeaderFooterEditing();
@@ -554,11 +564,14 @@ private:
         bool footer = false;
         bool firstPage = false;               // the first page's own furniture
         int pageIndex = 0;
+        int noteIndex = -1;                   // >= 0: a note is edited, not a header
         UCRichDocumentEditor bodyEditor;
         float bodyContentHeight = 0.0f;
     };
     std::unique_ptr<FurnitureEditState> furnitureEdit;
     bool BeginFurnitureEditing(int pageIndex, bool footer);
+    // Parks the body and hands `editor` a document of `part`'s blocks.
+    void StartEditingPart(std::shared_ptr<UCRichDocument> part, std::unique_ptr<FurnitureEditState> state);
     // Writes the furniture being edited into the document.
     void SyncFurnitureToDocument();
     // Places the furniture's blocks where it sits on its page. Returns the
@@ -585,6 +598,37 @@ private:
         std::shared_ptr<FurnitureLayout> header;
         std::shared_ptr<FurnitureLayout> footer;
     };
+    // ===== NOTES =====
+    // A footnote or endnote laid out where it is drawn: `top` in content
+    // coordinates; `ruleAbove` for the first footnote of a page and the first
+    // endnote, which get the short separating rule.
+    struct NoteArea {
+        int noteIndex = -1;
+        int page = 0;
+        float top = 0.0f;
+        bool ruleAbove = false;
+        std::shared_ptr<FurnitureLayout> layout;
+    };
+    std::vector<NoteArea> noteAreas;
+    std::vector<float> pageFootnoteRoom;      // per page: height the footnotes take
+    bool BeginNoteEditing(int noteIndex);
+    bool InsertNoteOf(RichNote::Kind kind);
+    // Room above the first note of a page (or of the endnotes) for its rule.
+    float NoteRuleSpace() const { return static_cast<float>(style.baseFont.fontSize) * 1.2f; }
+    // The note laid out at the column's width, its mark in front.
+    std::shared_ptr<FurnitureLayout> LayoutNote(IRenderContext* ctx, int noteIndex, const std::string& mark);
+    // Page view: sets each page's footnotes below its text, returning true
+    // when the room they take changed (the pages must then be placed again).
+    bool PlaceFootnotes(IRenderContext* ctx);
+    // Endnotes (and, outside page view, footnotes too) from `y` on. Returns
+    // the y below the last one.
+    float PlaceEndnotes(IRenderContext* ctx, float y, bool footnotesToo);
+    // Places the body (pages, footnotes, endnotes); the content height.
+    float PlaceBody(IRenderContext* ctx);
+    // The note under a content point, or -1.
+    int NoteAreaAt(float contentY) const;
+    void RenderNotes(IRenderContext* ctx);
+
     bool PageViewActive() const { return pageView; }
     RichPageSetup EffectivePageSetup() const;
     void UpdateColumnGeometry();

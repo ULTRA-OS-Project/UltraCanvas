@@ -291,6 +291,7 @@ public:
             doc_->firstPageFurniture = RichPageFurniture{};
         }
         ParseBlockContainer(text, 0, "");
+        if (!doc_->notes.empty()) doc_->UpdateNoteMarks();
         LoadMetadata();
         return true;
     }
@@ -1006,18 +1007,33 @@ private:
             } else if (tag == "draw:frame") {
                 ParseFrame(elem, props, linkTarget, ctx);
             } else if (tag == "text:note") {
-                // Keep footnote content inline in parentheses so it is not lost.
+                // A footnote or endnote: its body's paragraphs become the
+                // note, the citation a reference run numbered once all are
+                // read.
+                RichNote note;
+                note.kind = std::string(Attr(elem, "text:note-class")) == "endnote"
+                          ? RichNote::Kind::Endnote : RichNote::Kind::Footnote;
                 if (auto* noteBody = elem->FirstChildElement("text:note-body")) {
-                    InlineContext noteCtx;
-                    for (auto* p = noteBody->FirstChildElement("text:p"); p;
-                         p = p->NextSiblingElement("text:p")) {
-                        ParseInlineNodes(p, props, linkTarget, noteCtx);
-                    }
-                    std::string noteText = UCRichDocument::ConcatenateRunText(noteCtx.runs);
-                    if (!noteText.empty()) {
-                        AppendRun(ctx, " (" + noteText + ")", props, linkTarget);
-                    }
+                    const size_t start = doc_->blocks.size();
+                    const bool savedFlow = inMainFlow_;
+                    inMainFlow_ = false;
+                    ParseBlockContainer(noteBody, 0, "");
+                    inMainFlow_ = savedFlow;
+                    note.blocks.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                                       std::make_move_iterator(doc_->blocks.end()));
+                    doc_->blocks.resize(start);
                 }
+                if (note.blocks.empty()) note.blocks.emplace_back();
+                doc_->notes.push_back(std::move(note));
+                RichTextRun reference;
+                ApplyPropsToRun(reference, props);
+                reference.noteIndex = static_cast<int>(doc_->notes.size()) - 1;
+                reference.superscript = true;
+                reference.text = "*";
+                reference.lineBreakBefore = ctx.pendingLineBreak;
+                ctx.pendingLineBreak = false;
+                ctx.endsInCollapsibleSpace = false;
+                ctx.runs.push_back(std::move(reference));
             } else if (tag == "text:soft-page-break" || tag == "office:annotation"
                        || tag == "text:tracked-changes" || tag == "text:sequence-decls") {
                 // Non-content markup.
@@ -1682,6 +1698,7 @@ public:
 private:
     UCZipPackageWriter zip_;
     const UCRichDocument* doc_ = nullptr;
+    int noteCounter_ = 0;                 // text:note ids, ftn1 / edn2 ...
     const std::vector<RichDocBlock>* blocks_ = nullptr;   // the blocks being written (body or furniture)
     int tableCount_ = 0;
     std::string pageLayout_;                // style:page-layout for the master page
@@ -1806,11 +1823,28 @@ private:
         return name;
     }
 
+    // A note is written where it is referenced: its citation and its body.
+    void WriteNote(std::ostringstream& xml, const RichTextRun& run) {
+        if (run.noteIndex >= static_cast<int>(doc_->notes.size())) return;
+        const RichNote& note = doc_->notes[static_cast<size_t>(run.noteIndex)];
+        const bool endnote = note.kind == RichNote::Kind::Endnote;
+        std::vector<RichDocBlock> blocks = note.blocks;
+        if (blocks.empty()) blocks.emplace_back();
+        xml << "<text:note text:id=\"" << (endnote ? "edn" : "ftn") << (++noteCounter_)
+            << "\" text:note-class=\"" << (endnote ? "endnote" : "footnote") << "\">"
+            << "<text:note-citation>" << OdtText(run.text) << "</text:note-citation><text:note-body>"
+            << WriteBlocks(blocks) << "</text:note-body></text:note>";
+    }
+
     void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
         for (const auto& run : runs) {
             if (run.lineBreakBefore) xml << "<text:line-break/>";
             if (run.IsInlineImage()) {
                 WriteInlineImage(xml, run);
+                continue;
+            }
+            if (run.IsNoteReference()) {
+                WriteNote(xml, run);
                 continue;
             }
             std::string styleName = TextStyleNameFor(run);

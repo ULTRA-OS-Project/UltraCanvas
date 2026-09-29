@@ -468,6 +468,13 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
         items.push_back(MenuItemData::Submenu("Character Style", [this]() {
             return BuildStyleMenuItems(static_cast<int>(RichStyle::Kind::Character));
         }));
+        // Notes: the reference goes at the caret and the note opens for typing.
+        items.push_back(MenuItemData::Action("Insert Footnote", [this]() {
+            if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->InsertFootnote();
+        }));
+        items.push_back(MenuItemData::Action("Insert Endnote", [this]() {
+            if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->InsertEndnote();
+        }));
     }
 
     // A right-clicked picture is selected by the element before this runs, so
