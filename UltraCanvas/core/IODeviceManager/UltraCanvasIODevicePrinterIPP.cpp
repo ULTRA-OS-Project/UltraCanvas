@@ -41,11 +41,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
 #include <mutex>
 #include <sstream>
+#include <thread>
 
 namespace UltraCanvas {
 
@@ -55,6 +57,14 @@ namespace {
 // and some printers hold the connection until they have rendered it.
 constexpr int kMetadataTimeoutMs = 10000;
 constexpr int kPrintTimeoutMs = 300000;
+
+// How long a job waits for a printer that says it is busy. A printer that
+// holds one job at a time answers server-error-busy until the job in hand is
+// on paper, and printing two documents back to back is ordinary, so the job
+// waits and asks again - which is what CUPS's own IPP backend does - rather
+// than failing on the second document. Bounded, because Print() is a
+// blocking call and a printer that stays busy for minutes is stuck, not busy.
+constexpr int kBusyWaitMs = 180000;
 
 uint32_t NextRequestId() {
     static std::atomic<uint32_t> next{1};
@@ -258,6 +268,26 @@ IODeviceResult DrawPwgRaster(const IOPrintJob& job, const IppDocumentSupport& do
     const int heightPixels =
         static_cast<int>(static_cast<long long>(sheet.heightHundredthsMM) * dpi.dpiY / 2540);
 
+    // The page is drawn inside the margins and placed on the sheet
+    // afterwards. PWG raster is the whole sheet and the printer prints it as
+    // it is, so without this the first letters of every line would fall in
+    // its unprintable border. (GutenPrint's filter applies the margin itself;
+    // a driverless printer does not.)
+    const IOPageMargins margins = IppDrawingMargins(documents, options.page);
+    auto dots = [](int hundredthsMM, int perInch) {
+        return static_cast<int>(static_cast<long long>(hundredthsMM) * perInch / 2540);
+    };
+    const int left = dots(margins.leftHundredthsMM, dpi.dpiX);
+    const int top = dots(margins.topHundredthsMM, dpi.dpiY);
+    const int printableWidth = widthPixels - left - dots(margins.rightHundredthsMM, dpi.dpiX);
+    const int printableHeight = heightPixels - top - dots(margins.bottomHundredthsMM, dpi.dpiY);
+    if (printableWidth <= 0 || printableHeight <= 0) {
+        return IODeviceResult::Error(IODeviceResultCode::InvalidArgument,
+                                     "The margins leave nothing of the page to print on");
+    }
+    const bool hasMargins = left > 0 || top > 0 || printableWidth < widthPixels ||
+                            printableHeight < heightPixels;
+
     // Landscape is drawn on a landscape page and turned onto the portrait
     // sheet: a quarter turn counter-clockwise for landscape, clockwise for
     // reverse landscape - the rotations IPP's orientation-requested names.
@@ -269,8 +299,8 @@ IODeviceResult DrawPwgRaster(const IOPrintJob& job, const IppDocumentSupport& do
         case IOPrintOrientation::ReverseLandscape: quarterTurns = 3; sideways = true; break;
         case IOPrintOrientation::ReversePortrait: quarterTurns = 2; break;
     }
-    const int drawWidth = sideways ? heightPixels : widthPixels;
-    const int drawHeight = sideways ? widthPixels : heightPixels;
+    const int drawWidth = sideways ? printableHeight : printableWidth;
+    const int drawHeight = sideways ? printableWidth : printableHeight;
 
     RasterPageTarget target(drawWidth, drawHeight, sideways ? dpi.dpiY : dpi.dpiX,
                             sideways ? dpi.dpiX : dpi.dpiY);
@@ -338,15 +368,29 @@ IODeviceResult DrawPwgRaster(const IOPrintJob& job, const IppDocumentSupport& do
                                          "Could not read the drawn page back");
         }
 
+        // Turned onto the sheet's orientation, then placed inside the
+        // margins, then - for the back of a sheet - mirrored whole. The
+        // mirror comes last because it is about the physical sheet, margins
+        // included, not about what is drawn on it.
+        int width = drawWidth;
+        int height = drawHeight;
+        if (quarterTurns != 0) {
+            pixels = IOPwgTransformPixels(pixels, width, height, channels, quarterTurns,
+                                          false, false);
+        }
+        if (hasMargins) {
+            pixels = IOPwgPlaceOnSheet(pixels, width, height, channels, widthPixels,
+                                       heightPixels, left, top);
+            width = widthPixels;
+            height = heightPixels;
+        }
+
         // Every second side of a two-sided job is a back.
         const bool back = header.duplex && (i % 2 == 1);
         const bool mirrorX = back && backSide.mirrorCrossFeed;
         const bool mirrorY = back && backSide.mirrorFeed;
-        if (quarterTurns != 0 || mirrorX || mirrorY) {
-            int width = drawWidth;
-            int height = drawHeight;
-            pixels = IOPwgTransformPixels(pixels, width, height, channels, quarterTurns,
-                                          mirrorX, mirrorY);
+        if (mirrorX || mirrorY) {
+            pixels = IOPwgTransformPixels(pixels, width, height, channels, 0, mirrorX, mirrorY);
         }
 
         header.crossFeedMirrored = mirrorX;
@@ -479,8 +523,26 @@ public:
                           payload.contentType == "image/pwg-raster");
 
         IppMessage response;
-        IODeviceResult sent =
-            SendIpp(uri, request, &document, kPrintTimeoutMs, response, printer.deviceId);
+        IODeviceResult sent;
+        const auto started = std::chrono::steady_clock::now();
+        int pauseMs = 1000;
+        for (;;) {
+            request.requestId = NextRequestId();
+            sent = SendIpp(uri, request, &document, kPrintTimeoutMs, response, printer.deviceId);
+            if (sent.success || !IppStatusIsRetryable(static_cast<uint16_t>(sent.backendCode))) {
+                break;
+            }
+            const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now() - started)
+                                    .count();
+            if (waited + pauseMs > kBusyWaitMs) {
+                sent.message += " - still refusing after " + std::to_string(waited / 1000) +
+                                " seconds of asking";
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(pauseMs));
+            pauseMs = std::min(pauseMs * 2, 10000);
+        }
         if (!sent.success) return sent;
 
         outJobId = 0;
@@ -805,7 +867,8 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
             // The instance name, which is unique on the network and is what
             // every print dialog shows - two printers of one model share a
             // "ty", and would be indistinguishable by it.
-            info.name = entry.dn.empty() ? IppTxtValue(txt, "ty") : entry.dn;
+            const std::string instance = IppInstanceFromServiceName(entry.dn);
+            info.name = instance.empty() ? IppTxtValue(txt, "ty") : instance;
             if (info.name.empty()) info.name = uri;
             info.model = IppTxtValue(txt, "ty");
             info.manufacturer = IppTxtValue(txt, "usb_MFG");
@@ -817,7 +880,7 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
             info.connectionPath = uri;
             info.attributes["discovery"] = "mdns";
             info.attributes["host"] = host->second[0];
-            info.attributes["mdns-instance"] = entry.dn;
+            info.attributes["mdns-name"] = entry.dn;
             if (!uuid.empty()) info.attributes["uuid"] = uuid;
             const std::string formats = IppTxtValue(txt, "pdl");
             if (!formats.empty()) info.attributes["pdl"] = formats;

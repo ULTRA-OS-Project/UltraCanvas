@@ -224,6 +224,15 @@ enum class IppOperation : uint16_t {
 constexpr uint16_t kIppStatusOk = 0x0000;
 constexpr uint16_t kIppStatusNotFound = 0x0406;
 constexpr uint16_t kIppStatusVersionNotSupported = 0x0503;
+constexpr uint16_t kIppStatusTemporaryError = 0x0505;
+constexpr uint16_t kIppStatusBusy = 0x0507;
+
+// Whether a refusal means "not now" rather than "no": the printer is busy
+// with another job, or has a passing problem. A job refused this way is worth
+// sending again after a pause; one refused for anything else is not.
+inline bool IppStatusIsRetryable(uint16_t status) {
+    return status == kIppStatusBusy || status == kIppStatusTemporaryError;
+}
 
 // 0x0000-0x00FF are all success. Several of them mean "done, but I changed
 // something" - a printer substituting an option it does not support is the
@@ -273,14 +282,25 @@ std::string IppUriFromMdns(const std::string& host, int port,
 std::string IppTxtValue(const std::vector<std::string>& txt,
                         const std::string& key);
 
+// The instance name - "Office Printer" - out of the DNS-SD name the mDNS
+// plugin reports as an entry's `dn`. Every backend of that plugin reports the
+// *full* service name there ("Office Printer._ipp._tcp.local"), and they
+// differ in escaping: Avahi and Win32 hand it back readable, Bonjour in DNS
+// presentation form ("Office\032Printer._ipp._tcp.local."). So the service
+// type and domain are cut at the last "._ipp._tcp" or "._ipps._tcp", and DNS
+// escapes are undone. A name with no service type in it is taken to be the
+// instance already.
+std::string IppInstanceFromServiceName(const std::string& serviceName);
+
 // The device id a printer is registered under: "urn:uuid:<uuid>" when its
 // UUID is known - the form its own printer-uuid attribute takes, so the id
 // is the same however the printer was found - and "ipp:<uri>" otherwise.
 std::string IppDeviceIdFor(const std::string& uuid, const std::string& printerUri);
 
 // Whether a CUPS queue whose device-uri is `cupsDeviceUri` already reaches
-// the printer that was discovered as DNS-SD instance `instanceName`, with
-// UUID `uuid`, at `printerUri`.
+// the printer that was discovered under DNS-SD name `serviceName` (as the
+// mDNS plugin reports it - see IppInstanceFromServiceName), with UUID `uuid`,
+// at `printerUri`.
 //
 // CUPS finds driverless printers itself and offers each as a queue, so on a
 // machine running CUPS the same printer would otherwise be listed twice. The
@@ -298,7 +318,7 @@ std::string IppDeviceIdFor(const std::string& uuid, const std::string& printerUr
 // arrive in: percent-encoding in the URI, and DNS escapes (`\032`, `\.`) in
 // the name Bonjour hands back.
 bool IppCupsQueueReachesPrinter(const std::string& cupsDeviceUri,
-                                const std::string& instanceName,
+                                const std::string& serviceName,
                                 const std::string& uuid,
                                 const std::string& printerUri);
 
@@ -341,10 +361,26 @@ struct IppDocumentSupport {
     std::string rasterSheetBack = "normal";         // pwg-raster-document-sheet-back
     bool pageRanges = false;                        // page-ranges-supported
 
+    // The margin the printer can print within on every medium it takes: the
+    // largest value each media-*-margin-supported lists, which is how CUPS
+    // lays out a page for a driverless printer. A PWG raster page is printed
+    // as it is, edge to edge, so anything drawn inside this is lost to the
+    // printer's unprintable border. A printer that lists no margins is given
+    // CUPS's default: 12.7 mm top and bottom, 6.35 mm at the sides.
+    IOPageMargins margins{635, 1270, 635, 1270};
+
+    // Every edge lists a zero margin, so the printer can print to the edge.
+    bool borderless = false;
+
     bool Accepts(const std::string& mimeType) const;
 };
 
 IppDocumentSupport IppDocumentSupportFromAttributes(const IppGroup& printer);
+
+// The margins a page is drawn within: on each edge, the larger of what the
+// job asks for and what the printer needs - or what the job asks for alone
+// when it asks for borderless printing on a printer that can do it.
+IOPageMargins IppDrawingMargins(const IppDocumentSupport& printer, const IOPageSetup& page);
 
 // ============================================================================
 // WHAT A JOB CARRIES

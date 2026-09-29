@@ -14,7 +14,11 @@
     must accept: landscape pages turned onto the portrait sheet, and every
     second side of a duplex job turned the way the printer's
     `pwg-raster-document-sheet-back` asks, so no even page comes out upside
-    down. Copies and page ranges are said once, never twice.
+    down. Copies and page ranges are said once, never twice. Pages are drawn
+    inside the printer's own margins, because a PWG raster page is printed
+    edge to edge as it is.
+  - A printer busy with one job refuses the next; the job waits and asks
+    again, as CUPS's IPP backend does, for up to three minutes.
   - Refused by name rather than half-printed: a PDF to a printer that renders
     none, a page range the printer cannot apply, a printer that takes neither
     the document nor PWG raster.
@@ -24,10 +28,18 @@
   - New: `UltraCanvasIODevicePrinterIPPProtocol.h` (RFC 8010 encoding both
     ways, attribute mapping, the send-or-draw plan) and
     `UltraCanvasIODevicePrinterPwgRaster.h` (PWG 5102.4 writer), both pure;
-    `Tests/IODevicePrinterIPPTest` covers them with 211 assertions, the PWG
+    `Tests/IODevicePrinterIPPTest` covers them with 232 assertions, the PWG
     compression checked by a decoder written from the specification.
-  - Checked end to end against CUPS's reference printer `ippeveprinter`; not
-    yet against a physical one.
+  - `Tests/IODevicePrinterIPPLiveTest` prints to CUPS's reference printer
+    `ippeveprinter`, which it starts itself, and is skipped where that is not
+    installed. Not yet run against a physical printer.
+- **Printing an image crashed a program that had never opened a window.**
+  `MakePageSourceForJob`, shared by the GutenPrint, GDI and IPP renderers,
+  decoded the image without starting the image library, and the library does
+  not fail when it is not started - it crashes. A command-line tool or a
+  server printing a PNG hit it; an application that had opened a window did
+  not. It now starts the library once, as the eSCL scanner backend already
+  did for its own decoding.
 - **A printer was going to be listed twice on Linux and macOS, and the design
   that was meant to prevent it had never worked.** The CUPS backend keys a
   queue on `printer-uuid` so the IPP backend could collapse into it - but

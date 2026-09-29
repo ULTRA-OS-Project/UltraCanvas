@@ -257,4 +257,29 @@ std::vector<uint8_t> IOPwgTransformPixels(const std::vector<uint8_t>& pixels,
     return out;
 }
 
+std::vector<uint8_t> IOPwgPlaceOnSheet(const std::vector<uint8_t>& content,
+                                       int contentWidth, int contentHeight,
+                                       int bytesPerPixel, int sheetWidth, int sheetHeight,
+                                       int left, int top) {
+    const size_t bpp = static_cast<size_t>(bytesPerPixel);
+    std::vector<uint8_t> sheet(static_cast<size_t>(sheetWidth) *
+                                   static_cast<size_t>(sheetHeight) * bpp,
+                               255);
+    if (left < 0 || top < 0) return sheet;
+
+    const int rows = std::min(contentHeight, sheetHeight - top);
+    const int columns = std::min(contentWidth, sheetWidth - left);
+    if (rows <= 0 || columns <= 0) return sheet;
+
+    for (int y = 0; y < rows; ++y) {
+        const uint8_t* from = content.data() + static_cast<size_t>(y) *
+                                                   static_cast<size_t>(contentWidth) * bpp;
+        uint8_t* to = sheet.data() +
+                      (static_cast<size_t>(top + y) * static_cast<size_t>(sheetWidth) +
+                       static_cast<size_t>(left)) * bpp;
+        std::memcpy(to, from, static_cast<size_t>(columns) * bpp);
+    }
+    return sheet;
+}
+
 }  // namespace UltraCanvas

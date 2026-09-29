@@ -498,9 +498,24 @@ paper, each covered by `Tests/IODevicePrinterIPPTest`:
   `pwg-raster-document-sheet-back` says which. Every second side is turned to
   match, by the table CUPS applies, and the header's transform fields say so.
 
+- **The page is drawn inside the printer's margins.** A PWG raster page is
+  the whole sheet and the printer prints it as it is - unlike GutenPrint's
+  filter, it applies no margin of its own - so text drawn from the corner
+  loses its first letters to the unprintable border. The page is drawn inside
+  the largest margin each `media-*-margin-supported` lists (what CUPS does
+  for a driverless printer), or inside the job's own margins where those are
+  wider, then placed on the sheet; a borderless job on a printer that lists
+  zero on every edge is drawn to the edge.
+
 A page is drawn at the resolution nearest 300 dpi for Normal quality and at
 most 600 dpi for High, because it is held whole in memory: an A4 page at 1200
 dpi is 400 MB of RGB for detail nothing printed from here would show.
+
+**A printer that is busy is waited for.** A printer that holds one job at a
+time answers `server-error-busy` until the job in hand is on paper, and
+printing two documents back to back is ordinary, so Print-Job is sent again
+after a growing pause - which is what CUPS's own IPP backend does - for up to
+three minutes before `DeviceBusy` is returned.
 
 **Discovery** browses `_ipp._tcp` and `_ipps._tcp` through UltraNet's mDNS
 plugin, as eSCL browses `_uscan._tcp`, and builds the printer URI from the
@@ -508,7 +523,10 @@ host, port and the TXT record's `rp`. A printer is registered as
 `urn:uuid:<uuid>` when its TXT record carries one - the form of its own
 `printer-uuid` - and `ipp:<uri>` otherwise. Its display name is the DNS-SD
 instance name, which is unique on the network, rather than `ty`, which two
-printers of one model share.
+printers of one model share. The mDNS plugin reports the *full* service name
+("Office Printer._ipp._tcp.local"), readable from Avahi and Win32 and escaped
+from Bonjour, so the instance is cut out of it and unescaped
+(`IppInstanceFromServiceName`) before it is shown or compared.
 
 **A printer offering both is reached over plain IPP.** Printers' certificates
 are self-signed in all but a few cases, and UltraNet's rule is that TLS
@@ -541,9 +559,20 @@ Printers on another subnet, where DNS-SD does not reach, are named in
 
 This was built and checked against CUPS's reference IPP Everywhere printer,
 `ippeveprinter`: discovered over Avahi, described, printed to in every shape
-above, and the PWG raster it received decoded by a reader written separately
-from the writer and by cups-filters' own `pwgtopdf`. It has not met a
-physical printer yet.
+above - including a second instance configured to ask for `rotated` backs -
+and the PWG raster it received decoded by a reader written separately from
+the writer and by cups-filters' own `pwgtopdf`. `Tests/IODevicePrinterIPPLiveTest`
+keeps that check: it starts `ippeveprinter` itself and is skipped where it is
+not installed. It has not met a physical printer yet.
+
+Running it found five things the unit tests could not, which is why it is a
+test and not a script that was thrown away: the plugin's `dn` is the full
+service name, so neither the display name nor the CUPS match worked; a busy
+printer refuses a job rather than queueing it; the text had no margins; and
+decoding an image for printing crashed a program that had never opened a
+window, because the image library was never started. That last one was in
+`MakePageSourceForJob`, which the GutenPrint and GDI renderers share, so it is
+fixed there for all three.
 
 ## Usage
 

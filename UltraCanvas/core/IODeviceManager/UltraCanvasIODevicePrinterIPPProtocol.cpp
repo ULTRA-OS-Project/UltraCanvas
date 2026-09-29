@@ -579,14 +579,31 @@ int DefaultPortFor(const std::string& scheme) {
     return -1;
 }
 
+// Where the service type starts in a DNS-SD name: the last "._ipp._tcp" or
+// "._ipps._tcp" that is followed by a dot or ends the name. The last, because
+// an instance may itself contain those characters; the real type is the one
+// nearest the domain. npos when there is none.
+size_t ServiceTypeStart(const std::string& name) {
+    const std::string lower = Lower(name);
+    size_t best = std::string::npos;
+    for (const char* type : {"._ipp._tcp", "._ipps._tcp"}) {
+        const std::string marker = type;
+        size_t at = lower.rfind(marker);
+        while (at != std::string::npos) {
+            const size_t after = at + marker.size();
+            if (at > 0 && (after == lower.size() || lower[after] == '.')) break;
+            at = at == 0 ? std::string::npos : lower.rfind(marker, at - 1);
+        }
+        if (at != std::string::npos && (best == std::string::npos || at > best)) best = at;
+    }
+    return best;
+}
+
 // "Office Printer._ipp._tcp.local" -> "Office Printer". Empty for a host
 // name that is not a DNS-SD service name.
 std::string InstanceFromServiceHost(const std::string& host) {
-    for (const char* type : {"._ipp._tcp.", "._ipps._tcp.", "._ipp-tls._tcp."}) {
-        const size_t at = Lower(host).find(type);
-        if (at != std::string::npos && at > 0) return host.substr(0, at);
-    }
-    return std::string();
+    const size_t at = ServiceTypeStart(host);
+    return at == std::string::npos ? std::string() : host.substr(0, at);
 }
 
 std::string StripUuidPrefix(const std::string& uuid) {
@@ -1108,6 +1125,11 @@ std::string IppUriFromMdns(const std::string& host, int port,
            std::to_string(port) + "/" + path;
 }
 
+std::string IppInstanceFromServiceName(const std::string& serviceName) {
+    const size_t at = ServiceTypeStart(serviceName);
+    return DnsUnescape(at == std::string::npos ? serviceName : serviceName.substr(0, at));
+}
+
 std::string IppDeviceIdFor(const std::string& uuid, const std::string& printerUri) {
     const std::string bare = StripUuidPrefix(uuid);
     if (!bare.empty()) return "urn:uuid:" + Lower(bare);
@@ -1115,7 +1137,7 @@ std::string IppDeviceIdFor(const std::string& uuid, const std::string& printerUr
 }
 
 bool IppCupsQueueReachesPrinter(const std::string& cupsDeviceUri,
-                                const std::string& instanceName,
+                                const std::string& serviceName,
                                 const std::string& uuid,
                                 const std::string& printerUri) {
     UriParts queue;
@@ -1140,8 +1162,8 @@ bool IppCupsQueueReachesPrinter(const std::string& cupsDeviceUri,
     // 2. The DNS-SD instance name, which is the host part of the URI CUPS
     //    uses for a printer it discovered: "ipps://Office%20Printer._ipps._tcp.local/".
     const std::string queueInstance = InstanceFromServiceHost(PercentDecode(queue.host));
-    if (!queueInstance.empty() && !instanceName.empty() &&
-        queueInstance == DnsUnescape(instanceName)) {
+    const std::string instance = IppInstanceFromServiceName(serviceName);
+    if (!queueInstance.empty() && !instance.empty() && queueInstance == instance) {
         return true;
     }
 
@@ -1481,7 +1503,41 @@ IppDocumentSupport IppDocumentSupportFromAttributes(const IppGroup& printer) {
     if (const IppAttribute* ranges = printer.Find("page-ranges-supported")) {
         support.pageRanges = ranges->BooleanOr(false);
     }
+
+    // Each edge's list, largest value kept; zero in all four is borderless.
+    struct Edge { const char* name; int IOPageMargins::*field; };
+    const Edge edges[] = {{"media-left-margin-supported", &IOPageMargins::leftHundredthsMM},
+                          {"media-top-margin-supported", &IOPageMargins::topHundredthsMM},
+                          {"media-right-margin-supported", &IOPageMargins::rightHundredthsMM},
+                          {"media-bottom-margin-supported", &IOPageMargins::bottomHundredthsMM}};
+    int zeroEdges = 0;
+    for (const Edge& edge : edges) {
+        const IppAttribute* margins = printer.Find(edge.name);
+        if (!margins) continue;
+        int largest = -1;
+        bool zero = false;
+        for (const IppValue& value : margins->values) {
+            if (value.tag != IppTag::Integer || value.integer < 0) continue;
+            largest = std::max(largest, value.integer);
+            if (value.integer == 0) zero = true;
+        }
+        if (largest >= 0) support.margins.*edge.field = largest;
+        if (zero) ++zeroEdges;
+    }
+    support.borderless = zeroEdges == 4;
     return support;
+}
+
+IOPageMargins IppDrawingMargins(const IppDocumentSupport& printer, const IOPageSetup& page) {
+    const IOPageMargins hardware =
+        (page.borderless && printer.borderless) ? IOPageMargins() : printer.margins;
+    IOPageMargins margins;
+    margins.leftHundredthsMM = std::max(page.margins.leftHundredthsMM, hardware.leftHundredthsMM);
+    margins.topHundredthsMM = std::max(page.margins.topHundredthsMM, hardware.topHundredthsMM);
+    margins.rightHundredthsMM = std::max(page.margins.rightHundredthsMM, hardware.rightHundredthsMM);
+    margins.bottomHundredthsMM =
+        std::max(page.margins.bottomHundredthsMM, hardware.bottomHundredthsMM);
+    return margins;
 }
 
 // ============================================================================

@@ -130,4 +130,14 @@ std::vector<uint8_t> IOPwgTransformPixels(const std::vector<uint8_t>& pixels,
                                           int bytesPerPixel, int quarterTurns,
                                           bool mirrorX, bool mirrorY);
 
+// A white sheet `sheetWidth` x `sheetHeight` with `content` placed on it,
+// its top-left corner at (`left`, `top`). Content that would run off the
+// sheet is cut at the edge rather than wrapped. How a page drawn inside the
+// printable area gets its margins back: PWG raster describes the whole sheet,
+// and the printer prints it as it is.
+std::vector<uint8_t> IOPwgPlaceOnSheet(const std::vector<uint8_t>& content,
+                                       int contentWidth, int contentHeight,
+                                       int bytesPerPixel, int sheetWidth, int sheetHeight,
+                                       int left, int top);
+
 }  // namespace UltraCanvas

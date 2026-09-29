@@ -404,6 +404,10 @@ void TestStatus() {
           "busy reads as DeviceBusy");
     Check(IppStatusToResultCode(0x0402) == IODeviceResultCode::AccessDenied,
           "not-authenticated reads as AccessDenied");
+    Check(IppStatusIsRetryable(0x0507) && IppStatusIsRetryable(0x0505),
+          "busy and temporary-error mean 'not now', so a job is sent again");
+    Check(!IppStatusIsRetryable(0x0506) && !IppStatusIsRetryable(0x040A),
+          "  not-accepting-jobs and a format refusal mean 'no', so it is not");
 }
 
 // ============================================================================
@@ -458,6 +462,27 @@ void TestAddresses() {
     CheckEqual(IppNormalizePrinterUri("smb://h/q"), std::string(), "an smb address is refused");
 }
 
+void TestInstanceNames() {
+    std::cout << "\n=== The instance, out of the name the mDNS plugin reports ===\n";
+    // Every backend of the plugin reports the full service name; they differ
+    // only in escaping. These are the three forms, as each one gives them.
+    CheckEqual(IppInstanceFromServiceName("UC Test Printer._ipp._tcp.local"),
+               std::string("UC Test Printer"), "Avahi's form: readable, type and domain cut");
+    CheckEqual(IppInstanceFromServiceName("UC\\032Test\\032Printer._ipps._tcp.local."),
+               std::string("UC Test Printer"), "Bonjour's form: escaped, root dot and all");
+    CheckEqual(IppInstanceFromServiceName("Lab\\.Printer._ipp._tcp.local."),
+               std::string("Lab.Printer"), "  an escaped dot in the instance is a dot");
+    CheckEqual(IppInstanceFromServiceName("Lab.Printer._ipp._tcp.local"),
+               std::string("Lab.Printer"), "a readable dot in the instance stays");
+    CheckEqual(IppInstanceFromServiceName("Front Desk._IPP._TCP.local"),
+               std::string("Front Desk"), "the service type in capitals");
+    CheckEqual(IppInstanceFromServiceName("my._ipp._tcp printer._ipp._tcp.local"),
+               std::string("my._ipp._tcp printer"),
+               "  the last service type is the real one, whatever the instance contains");
+    CheckEqual(IppInstanceFromServiceName("Just A Name"), std::string("Just A Name"),
+               "a name with no service type is already the instance");
+}
+
 void TestCupsMatching() {
     std::cout << "\n=== Is this printer already a CUPS queue? ===\n";
     const std::string uuid = "08100DFC-2E86-3D01-41F2-FFD1D6E14E27";
@@ -473,6 +498,12 @@ void TestCupsMatching() {
     Check(IppCupsQueueReachesPrinter("ipps://UC%20Test%20Printer._ipps._tcp.local/",
                                      "UC\\032Test\\032Printer", "", uri),
           "  with the instance name as Bonjour escapes it");
+    Check(IppCupsQueueReachesPrinter("ipps://UC%20Test%20Printer._ipps._tcp.local/",
+                                     "UC Test Printer._ipp._tcp.local", "", uri),
+          "  and given the full service name, as the mDNS plugin reports it on Linux");
+    Check(IppCupsQueueReachesPrinter("ipps://UC%20Test%20Printer._ipps._tcp.local/",
+                                     "UC\\032Test\\032Printer._ipp._tcp.local.", "", uri),
+          "  and on macOS");
     Check(!IppCupsQueueReachesPrinter("ipps://Another%20One._ipps._tcp.local/",
                                       "UC Test Printer", "", uri),
           "  and not another printer's");
@@ -626,6 +657,57 @@ void TestDocumentSupport() {
           "a resolution in dots per centimetre is converted: 118 dpcm is 300 dpi");
     CheckEqual(metricDocs.rasterSheetBack, std::string("rotated"), "a sheet-back keyword, lowered");
     Check(!metricDocs.pageRanges, "page ranges not said, so not assumed");
+
+    std::cout << "\n=== Margins ===\n";
+    // ippeveprinter's own lists: bottom 0,1168; sides 340,635; top 0,102.
+    IppGroup margins;
+    margins.tag = IppTag::PrinterGroup;
+    margins.Set("media-bottom-margin-supported",
+                std::vector<IppValue>{IppValue::Integer(0), IppValue::Integer(1168)});
+    margins.Set("media-left-margin-supported",
+                std::vector<IppValue>{IppValue::Integer(340), IppValue::Integer(635)});
+    margins.Set("media-right-margin-supported",
+                std::vector<IppValue>{IppValue::Integer(340), IppValue::Integer(635)});
+    margins.Set("media-top-margin-supported",
+                std::vector<IppValue>{IppValue::Integer(0), IppValue::Integer(102)});
+    const IppDocumentSupport marginDocs = IppDocumentSupportFromAttributes(margins);
+    Check(marginDocs.margins.leftHundredthsMM == 635 &&
+              marginDocs.margins.rightHundredthsMM == 635 &&
+              marginDocs.margins.topHundredthsMM == 102 &&
+              marginDocs.margins.bottomHundredthsMM == 1168,
+          "each edge's largest margin: the one every medium can print within");
+    Check(!marginDocs.borderless, "zero on only two edges is not borderless");
+
+    IOPageSetup page;
+    IOPageMargins drawn = IppDrawingMargins(marginDocs, page);
+    Check(drawn.leftHundredthsMM == 635 && drawn.bottomHundredthsMM == 1168,
+          "a page with no margins of its own is drawn inside the printer's");
+    page.margins = {2000, 0, 0, 0};
+    drawn = IppDrawingMargins(marginDocs, page);
+    Check(drawn.leftHundredthsMM == 2000 && drawn.rightHundredthsMM == 635,
+          "  a wider margin asked for wins on its edge only");
+    page = IOPageSetup();
+    page.borderless = true;
+    drawn = IppDrawingMargins(marginDocs, page);
+    Check(drawn.leftHundredthsMM == 635,
+          "  borderless on a printer that cannot print to every edge keeps its margins");
+
+    for (const char* edge : {"media-bottom-margin-supported", "media-left-margin-supported",
+                             "media-right-margin-supported", "media-top-margin-supported"}) {
+        margins.Set(edge, std::vector<IppValue>{IppValue::Integer(0), IppValue::Integer(500)});
+    }
+    const IppDocumentSupport edgeToEdge = IppDocumentSupportFromAttributes(margins);
+    Check(edgeToEdge.borderless, "zero on all four edges is borderless");
+    drawn = IppDrawingMargins(edgeToEdge, page);
+    Check(drawn.leftHundredthsMM == 0 && drawn.topHundredthsMM == 0 &&
+              drawn.rightHundredthsMM == 0 && drawn.bottomHundredthsMM == 0,
+          "  and a borderless page is drawn to the edge");
+
+    IppGroup silent;
+    silent.tag = IppTag::PrinterGroup;
+    const IppDocumentSupport silentDocs = IppDocumentSupportFromAttributes(silent);
+    Check(silentDocs.margins.topHundredthsMM == 1270 && silentDocs.margins.leftHundredthsMM == 635,
+          "a printer that names no margins gets CUPS's default, not zero");
 }
 
 // ============================================================================
@@ -1026,6 +1108,18 @@ void TestTransforms() {
                "turned, then mirrored: the mirror applies to the turned page");
     CheckEqual(turn(4, false, false, w, h), std::string("abcdef"), "four quarter turns are none");
 
+    // Placed on a 5 x 4 sheet one in from the left, two down.
+    const std::vector<uint8_t> sheet = IOPwgPlaceOnSheet(page, 3, 2, 1, 5, 4, 1, 2);
+    const std::string placed(sheet.begin(), sheet.end());
+    const std::string white(5, static_cast<char>(255));
+    const char W = static_cast<char>(255);
+    CheckEqual(placed, white + white + std::string{W, 'a', 'b', 'c', W} +
+                           std::string{W, 'd', 'e', 'f', W},
+               "a page is placed on the sheet inside its margins, white around it");
+    const std::vector<uint8_t> cut = IOPwgPlaceOnSheet(page, 3, 2, 1, 3, 2, 1, 1);
+    CheckEqual(std::string(cut.begin(), cut.end()), std::string{W, W, W, W, 'a', 'b'},
+               "  and cut at the sheet's edge rather than wrapped");
+
     std::cout << "\n=== The back of a sheet ===\n";
     auto back = [](const char* keyword, bool shortEdge) {
         const IOPwgBackSide b = IOPwgBackSideTransform(keyword, shortEdge);
@@ -1052,6 +1146,7 @@ int main() {
     TestMalformed();
     TestStatus();
     TestAddresses();
+    TestInstanceNames();
     TestCupsMatching();
     TestMediaNames();
     TestCapabilities();
