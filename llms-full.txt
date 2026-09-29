@@ -2540,7 +2540,7 @@ their *License* is likewise marked **—** (OS component).
 | WGL | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/opengl/wgl-and-windows-reference) | — | — |
 | WIA | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/wia/-wia-startpage) | — | — |
 | wimlib | [wimlib.net](https://wimlib.net/) | [wimlib.net/git/wimlib](https://wimlib.net/git/wimlib) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
-| Win32 API (gdi32 / user32 / comdlg32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/) | — | — |
+| Win32 API (gdi32 / user32 / comdlg32 / winspool) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/) | — | — |
 | Wine (runtime, not linked) | [winehq.org](https://www.winehq.org/) | [gitlab.winehq.org/wine/wine](https://gitlab.winehq.org/wine/wine) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | winetricks (runtime, not linked) | [wiki.winehq.org/Winetricks](https://wiki.winehq.org/Winetricks) | [github.com/Winetricks/winetricks](https://github.com/Winetricks/winetricks) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | Winsock2 (ws2_32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-start-page-2) | — | — |
@@ -2658,8 +2658,17 @@ for the full search order.
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| Scanners / cameras / print (native OS) | SANE, V4L2, CUPS | ICA, AVFoundation | WIA, TWAIN, Media Foundation |
+| Printers | CUPS (optional) | CUPS (optional) | Win32 (winspool, gdi32) — the print spooler |
+| Scanners | SANE (optional); eSCL network scanners through UltraNet | eSCL network scanners through UltraNet; ICA planned | eSCL network scanners through UltraNet; WIA, TWAIN planned |
+| Cameras | V4L2 | – (AVFoundation planned) | – (Media Foundation planned) |
 | Hot-plug watching | libudev (optional) | – (no watcher yet) | – (no watcher yet) |
+
+Only the backends `UltraCanvas/core/IODeviceManager/UltraCanvasIODeviceBackends.cpp`
+registers are listed; the ones marked *planned* have no code yet. eSCL
+(AirScan / Mopria) is a protocol the module speaks itself over HTTP, so it
+needs UltraNet rather than a third-party library, and it finds only network
+scanners. On macOS and Windows a USB scanner or any camera is therefore not
+found yet.
 
 Hot-plug watching is what lets `IODeviceManager::StartMonitoring()` notice a
 device being plugged in or removed without the application rescanning.

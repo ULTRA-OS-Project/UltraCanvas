@@ -1,3 +1,21 @@
+#### 2026-09-29 *0.9.80*
+- **The dependency tables no longer claim IODeviceManager backends that do
+  not exist.** `Docs/Dependencies.md` and the DemoApp's in-app copy
+  (`UltraCanvasDependenciesExamples.cpp`) listed ICA and AVFoundation for macOS
+  and WIA, TWAIN and Media Foundation for Windows. None of them has a backend.
+  The one Windows device backend is the printer backend on the print spooler
+  (`OS/MSWindows/UltraCanvasWindowsIODevicePrinter.cpp`, winspool and gdi32).
+  The single "Scanners / cameras / print" row is now three, one per category,
+  listing only what `UltraCanvasIODeviceBackends.cpp` registers:
+  - Printers: CUPS on Linux and macOS, the Windows print spooler.
+  - Scanners: SANE on Linux, and the eSCL network backend (over UltraNet) on
+    all three.
+  - Cameras: V4L2 on Linux.
+
+  ICA, WIA, TWAIN, AVFoundation and Media Foundation are marked *planned*, and
+  a note says that on macOS and Windows a USB scanner or any camera is not
+  found yet. The Win32 row of the library-links table now names winspool.
+
 #### 2026-09-29 *0.9.79*
 - **New element: `UltraCanvasBusyIndicator`**, the turning ring that says
   *working on it* when there is no percentage to show (a network call, a
