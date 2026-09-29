@@ -43,5 +43,41 @@ bool BuildAudioEffectChain(const std::vector<VideoFXEffect>& effects, double seg
 // Append `filter` to a comma-joined chain
 void AppendFilter(std::string& chain, const std::string& filter);
 
+// ===== transitions =====
+
+// The xfade transition name ("fade", "wipeleft", ...); "" for Cut
+std::string TransitionName(VideoFXTransitionType type);
+
+// ===== overlays =====
+
+// Check an overlay's values; `segmentDuration` 0 = unknown
+bool ValidateOverlay(const VideoFXOverlay& overlay, double segmentDuration, std::string& error);
+
+// The "enable" timeline expression for [start, end) ("" = always on)
+std::string OverlayEnableExpr(const VideoFXOverlay& overlay, double segmentDuration);
+
+// Opacity over time as an expression of t: fades in and out, times `opacity`
+std::string OverlayAlphaExpr(const VideoFXOverlay& overlay, double segmentDuration);
+
+// x / y position expressions for an anchor. `frameW`/`frameH` and
+// `itemW`/`itemH` are the variable names the filter uses for the frame and
+// the overlaid item (drawtext: w, h, text_w, text_h; overlay: W, H, w, h).
+void OverlayPosition(const VideoFXOverlay& overlay, int outHeight,
+                     const std::string& frameW, const std::string& frameH,
+                     const std::string& itemW, const std::string& itemH,
+                     std::string& x, std::string& y);
+
+// drawtext filter for a text overlay on a frame of outWidth x outHeight.
+// `fontFile` empty = select by fontconfig name ("Sans").
+std::string BuildTextOverlayFilter(const VideoFXOverlay& overlay, int outWidth, int outHeight,
+                                   double segmentDuration, const std::string& fontFile);
+
+// Image overlay: `inputChain` prepares the image stream (scale, opacity, loop
+// to a timed stream at `frameRate`, fades), `overlayFilter` places it on the
+// frame. `imageHeight` is the source image's pixel height.
+void BuildImageOverlayFilters(const VideoFXOverlay& overlay, int outWidth, int outHeight, int imageHeight,
+                              const std::string& frameRate, double segmentDuration,
+                              std::string& inputChain, std::string& overlayFilter);
+
 } // namespace Internal
 } // namespace VideoFX

@@ -10,7 +10,7 @@
 namespace VideoFX {
 
 #ifndef VIDEOFX_VERSION_STRING
-#define VIDEOFX_VERSION_STRING "0.1.0"
+#define VIDEOFX_VERSION_STRING "0.2.0"
 #endif
 
 namespace {
@@ -24,6 +24,7 @@ bool VideoFX_IsAvailable() { return false; }
 std::string VideoFX_GetLastError() { return kReason; }
 bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec) { return false; }
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec) { return false; }
+bool VideoFX_IsTextOverlayAvailable() { return false; }
 void VideoFX_SetVerboseLogging(bool) {}
 
 const char* VideoFX_ResultToString(VideoFXResult result) {

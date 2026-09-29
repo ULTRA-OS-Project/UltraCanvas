@@ -1,6 +1,6 @@
 // VideoFX/core/VideoFXFilterBuilder.cpp
 // Effect list -> filter-graph text, and the effect / segment / preset factories.
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
@@ -67,6 +67,33 @@ VideoFXEffect VideoFXEffect::Crop(int x, int y, int width, int height) {
     e.width = width;
     e.height = height;
     return e;
+}
+
+VideoFXOverlay VideoFXOverlay::Text(const std::string& text, VideoFXAnchor anchor, double fontSize) {
+    VideoFXOverlay o;
+    o.kind = VideoFXOverlayKind::Text;
+    o.text = text;
+    o.anchor = anchor;
+    o.fontSize = fontSize;
+    return o;
+}
+
+VideoFXOverlay VideoFXOverlay::Image(const std::string& path, VideoFXAnchor anchor, double heightFraction) {
+    VideoFXOverlay o;
+    o.kind = VideoFXOverlayKind::Image;
+    o.imagePath = path;
+    o.anchor = anchor;
+    o.imageHeight = heightFraction;
+    return o;
+}
+
+VideoFXOverlay VideoFXOverlay::ImageFromFrame(const VideoFXFrame& frame, VideoFXAnchor anchor, double heightFraction) {
+    VideoFXOverlay o;
+    o.kind = VideoFXOverlayKind::Image;
+    o.image = frame;
+    o.anchor = anchor;
+    o.imageHeight = heightFraction;
+    return o;
 }
 
 VideoFXSegment VideoFXSegment::FromFile(const std::string& path, double start, double end) {
@@ -381,6 +408,205 @@ bool BuildAudioEffectChain(const std::vector<VideoFXEffect>& effects, double seg
         }
     }
     return true;
+}
+
+// ============================================================================
+// TRANSITIONS
+// ============================================================================
+
+std::string TransitionName(VideoFXTransitionType type) {
+    // Only names present in FFmpeg 4.4's xfade (the oldest supported)
+    switch (type) {
+        case VideoFXTransitionType::Crossfade:           return "fade";
+        case VideoFXTransitionType::Dissolve:            return "dissolve";
+        case VideoFXTransitionType::FadeThroughBlack:    return "fadeblack";
+        case VideoFXTransitionType::FadeThroughWhite:    return "fadewhite";
+        case VideoFXTransitionType::WipeLeft:            return "wipeleft";
+        case VideoFXTransitionType::WipeRight:           return "wiperight";
+        case VideoFXTransitionType::WipeUp:              return "wipeup";
+        case VideoFXTransitionType::WipeDown:            return "wipedown";
+        case VideoFXTransitionType::SlideLeft:           return "slideleft";
+        case VideoFXTransitionType::SlideRight:          return "slideright";
+        case VideoFXTransitionType::SlideUp:             return "slideup";
+        case VideoFXTransitionType::SlideDown:           return "slidedown";
+        case VideoFXTransitionType::SmoothLeft:          return "smoothleft";
+        case VideoFXTransitionType::SmoothRight:         return "smoothright";
+        case VideoFXTransitionType::SmoothUp:            return "smoothup";
+        case VideoFXTransitionType::SmoothDown:          return "smoothdown";
+        case VideoFXTransitionType::CircleOpen:          return "circleopen";
+        case VideoFXTransitionType::CircleClose:         return "circleclose";
+        case VideoFXTransitionType::CircleCrop:          return "circlecrop";
+        case VideoFXTransitionType::RectCrop:            return "rectcrop";
+        case VideoFXTransitionType::Radial:              return "radial";
+        case VideoFXTransitionType::Pixelize:            return "pixelize";
+        case VideoFXTransitionType::Blur:                return "hblur";
+        case VideoFXTransitionType::Distance:            return "distance";
+        case VideoFXTransitionType::DiagonalTopLeft:     return "diagtl";
+        case VideoFXTransitionType::DiagonalTopRight:    return "diagtr";
+        case VideoFXTransitionType::DiagonalBottomLeft:  return "diagbl";
+        case VideoFXTransitionType::DiagonalBottomRight: return "diagbr";
+        case VideoFXTransitionType::SqueezeHorizontal:   return "squeezeh";
+        case VideoFXTransitionType::SqueezeVertical:     return "squeezev";
+        case VideoFXTransitionType::Cut:                 return "";
+    }
+    return "";
+}
+
+// ============================================================================
+// OVERLAYS
+// ============================================================================
+
+namespace {
+    // End of the overlay on the segment timeline, 0 = open-ended
+    double OverlayEnd(const VideoFXOverlay& o, double segmentDuration) {
+        if (o.end > 0.0) return segmentDuration > 0.0 ? std::min(o.end, segmentDuration) : o.end;
+        return segmentDuration;
+    }
+
+    std::string HexColor(uint32_t rgb) {
+        static const char* digits = "0123456789ABCDEF";
+        std::string s = "0x";
+        for (int shift = 20; shift >= 0; shift -= 4) s += digits[(rgb >> shift) & 0xF];
+        return s;
+    }
+}
+
+bool ValidateOverlay(const VideoFXOverlay& o, double segmentDuration, std::string& error) {
+    (void)segmentDuration;
+    if (o.kind == VideoFXOverlayKind::Text) {
+        if (o.text.empty()) { error = "Text overlay has no text"; return false; }
+        if (!InRange(o.fontSize, 0.005, 1.0)) { error = "Text size must be 0.005..1 of the frame height"; return false; }
+        if (!InRange(o.boxOpacity, 0.0, 1.0)) { error = "Box opacity must be 0..1"; return false; }
+    } else {
+        if (!o.image.IsValid() && o.imagePath.empty()) { error = "Image overlay has no image"; return false; }
+        if (!InRange(o.imageHeight, 0.0, 1.0)) { error = "Image height must be 0..1 of the frame height"; return false; }
+    }
+    if (!InRange(o.opacity, 0.0, 1.0)) { error = "Overlay opacity must be 0..1"; return false; }
+    if (!InRange(o.margin, 0.0, 0.5)) { error = "Overlay margin must be 0..0.5"; return false; }
+    if (o.anchor == VideoFXAnchor::Custom && (!InRange(o.x, -1.0, 1.0) || !InRange(o.y, -1.0, 1.0))) {
+        error = "Overlay position must be -1..1";
+        return false;
+    }
+    if (!InRange(o.start, 0.0, 1e6) || !InRange(o.end, 0.0, 1e6) || (o.end > 0.0 && o.end <= o.start)) {
+        error = "Overlay times must be start >= 0 and end > start";
+        return false;
+    }
+    if (!InRange(o.fadeIn, 0.0, 3600.0) || !InRange(o.fadeOut, 0.0, 3600.0)) {
+        error = "Overlay fades must be >= 0";
+        return false;
+    }
+    return true;
+}
+
+std::string OverlayEnableExpr(const VideoFXOverlay& o, double segmentDuration) {
+    const double end = OverlayEnd(o, segmentDuration);
+    const bool fromStart = o.start <= 0.0;
+    if (fromStart && end <= 0.0) return "";
+    if (end <= 0.0) return "gte(t," + FormatNumber(o.start) + ")";
+    if (fromStart) return "lt(t," + FormatNumber(end) + ")";
+    return "between(t," + FormatNumber(o.start) + "," + FormatNumber(end) + ")";
+}
+
+std::string OverlayAlphaExpr(const VideoFXOverlay& o, double segmentDuration) {
+    const double end = OverlayEnd(o, segmentDuration);
+    std::string expr = "1";
+    if (o.fadeIn > 0.0) {
+        expr = "min(1,max(0,(t-" + FormatNumber(o.start) + ")/" + FormatNumber(o.fadeIn) + "))";
+    }
+    if (o.fadeOut > 0.0 && end > 0.0) {
+        const std::string out = "min(1,max(0,(" + FormatNumber(end) + "-t)/" + FormatNumber(o.fadeOut) + "))";
+        expr = expr == "1" ? out : "min(" + expr + "," + out + ")";
+    }
+    if (o.opacity < 1.0) expr = expr == "1" ? FormatNumber(o.opacity) : FormatNumber(o.opacity) + "*" + expr;
+    return expr;
+}
+
+void OverlayPosition(const VideoFXOverlay& o, int outHeight,
+                     const std::string& W, const std::string& H, const std::string& w, const std::string& h,
+                     std::string& x, std::string& y) {
+    if (o.anchor == VideoFXAnchor::Custom) {
+        x = FormatNumber(o.x) + "*" + W;
+        y = FormatNumber(o.y) + "*" + H;
+        return;
+    }
+    const std::string m = std::to_string(static_cast<int>(std::lround(o.margin * outHeight)));
+    int col = 1, row = 1;                       // 0 left/top, 1 centre, 2 right/bottom
+    switch (o.anchor) {
+        case VideoFXAnchor::TopLeft:     col = 0; row = 0; break;
+        case VideoFXAnchor::Top:         col = 1; row = 0; break;
+        case VideoFXAnchor::TopRight:    col = 2; row = 0; break;
+        case VideoFXAnchor::Left:        col = 0; row = 1; break;
+        case VideoFXAnchor::Center:      col = 1; row = 1; break;
+        case VideoFXAnchor::Right:       col = 2; row = 1; break;
+        case VideoFXAnchor::BottomLeft:  col = 0; row = 2; break;
+        case VideoFXAnchor::Bottom:      col = 1; row = 2; break;
+        case VideoFXAnchor::BottomRight: col = 2; row = 2; break;
+        case VideoFXAnchor::Custom:      break;
+    }
+    x = col == 0 ? m : col == 1 ? "(" + W + "-" + w + ")/2" : W + "-" + w + "-" + m;
+    y = row == 0 ? m : row == 1 ? "(" + H + "-" + h + ")/2" : H + "-" + h + "-" + m;
+}
+
+std::string BuildTextOverlayFilter(const VideoFXOverlay& o, int outWidth, int outHeight,
+                                   double segmentDuration, const std::string& fontFile) {
+    (void)outWidth;
+    const int size = std::max(4, static_cast<int>(std::lround(o.fontSize * outHeight)));
+    std::string x, y;
+    OverlayPosition(o, outHeight, "w", "h", "text_w", "text_h", x, y);
+
+    // expansion=none: the text is literal, '%' included
+    std::string f = "drawtext=expansion=none:text=" + EscapeFilterValue(o.text);
+    f += fontFile.empty() ? ":font=Sans" : ":fontfile=" + EscapeFilterValue(fontFile);
+    f += ":fontsize=" + std::to_string(size) + ":fontcolor=" + HexColor(o.textColor);
+    f += ":x=" + EscapeFilterValue(x) + ":y=" + EscapeFilterValue(y);
+    if (o.shadow) {
+        const int d = std::max(1, size / 18);
+        f += ":shadowcolor=" + EscapeFilterValue("black@0.6") + ":shadowx=" + std::to_string(d) +
+             ":shadowy=" + std::to_string(d);
+    }
+    if (o.box) {
+        f += ":box=1:boxcolor=" + EscapeFilterValue(HexColor(o.boxColor) + "@" + FormatNumber(o.boxOpacity)) +
+             ":boxborderw=" + std::to_string(std::max(2, size / 3));
+    }
+    const std::string alpha = OverlayAlphaExpr(o, segmentDuration);
+    if (alpha != "1") f += ":alpha=" + EscapeFilterValue(alpha);
+    const std::string enable = OverlayEnableExpr(o, segmentDuration);
+    if (!enable.empty()) f += ":enable=" + EscapeFilterValue(enable);
+    return f;
+}
+
+void BuildImageOverlayFilters(const VideoFXOverlay& o, int outWidth, int outHeight, int imageHeight,
+                              const std::string& frameRate, double segmentDuration,
+                              std::string& inputChain, std::string& overlayFilter) {
+    (void)outWidth;
+    inputChain = "format=rgba";
+    if (o.imageHeight > 0.0) {
+        const int h = std::max(2, static_cast<int>(std::lround(o.imageHeight * outHeight)));
+        if (h != imageHeight) AppendFilter(inputChain, "scale=-1:" + std::to_string(h));
+    }
+    if (o.opacity < 1.0) AppendFilter(inputChain, "colorchannelmixer=aa=" + FormatNumber(o.opacity));
+
+    // A still becomes a timed stream so fades can animate it. It never ends
+    // by itself; the overlay's shortest=1 ends it with the picture below.
+    const double end = OverlayEnd(o, segmentDuration);
+    const bool fades = o.fadeIn > 0.0 || (o.fadeOut > 0.0 && end > 0.0);
+    if (fades) {
+        AppendFilter(inputChain, "loop=loop=-1:size=1,setpts=N/(" + frameRate + ")/TB");
+        if (o.fadeIn > 0.0)
+            AppendFilter(inputChain, "fade=t=in:st=" + FormatNumber(o.start) + ":d=" + FormatNumber(o.fadeIn) + ":alpha=1");
+        if (o.fadeOut > 0.0 && end > 0.0) {
+            const double d = std::min(o.fadeOut, std::max(0.0, end - o.start));
+            AppendFilter(inputChain, "fade=t=out:st=" + FormatNumber(end - d) + ":d=" + FormatNumber(d) + ":alpha=1");
+        }
+    }
+
+    std::string x, y;
+    OverlayPosition(o, outHeight, "W", "H", "w", "h", x, y);
+    // A single still without fades: eof_action=repeat holds it for the whole segment
+    overlayFilter = "overlay=x=" + EscapeFilterValue(x) + ":y=" + EscapeFilterValue(y) +
+                    (fades ? ":shortest=1" : ":eof_action=repeat");
+    const std::string enable = OverlayEnableExpr(o, segmentDuration);
+    if (!enable.empty()) overlayFilter += ":enable=" + EscapeFilterValue(enable);
 }
 
 } // namespace Internal

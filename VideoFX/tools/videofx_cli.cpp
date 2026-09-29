@@ -11,6 +11,14 @@
 //   videofx testclip <out> <seconds> [width height fps]
 //
 // options: --width N --height N --fps F --quality 0..100 --speed S
+//          --transition NAME[:SECONDS]   between joined files (concat)
+//          --title TEXT                  caption at the bottom, faded in and out
+//          --watermark IMAGE             logo in the top-right corner
+// transitions: crossfade dissolve fadeblack fadewhite wipeleft wiperight
+//          wipeup wipedown slideleft slideright slideup slidedown smoothleft
+//          smoothright smoothup smoothdown circleopen circleclose circlecrop
+//          rectcrop radial pixelize blur distance diagtl diagtr diagbl diagbr
+//          squeezeh squeezev
 //          --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none
 //          --acodec aac|mp3|opus|vorbis|flac|pcm|none
 // effects: brightness=v contrast=v saturation=v gamma=v exposure=v hue=deg
@@ -66,6 +74,7 @@ int Usage() {
         "       videofx effects <in> <out> <effect[=value]>... [options]\n"
         "       videofx testclip <out> <seconds> [width height fps]\n"
         "options: --width N --height N --fps F --quality 0..100 --speed S\n"
+        "         --transition NAME[:SECONDS] --title TEXT --watermark IMAGE\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
         "         --acodec aac|mp3|opus|vorbis|flac|pcm|none\n";
     return 2;
@@ -103,8 +112,52 @@ bool ParseAudioCodec(const std::string& s, VideoFXAudioCodec& c) {
     return false;
 }
 
+struct Options {
+    VideoFXExportSettings settings;
+    double speed = 1.0;
+    bool lossless = false;
+    VideoFXTransition transition;
+    std::vector<VideoFXOverlay> overlays;
+};
+
+bool ParseTransition(const std::string& spec, VideoFXTransition& t) {
+    static const std::pair<const char*, VideoFXTransitionType> names[] = {
+        {"crossfade", VideoFXTransitionType::Crossfade}, {"dissolve", VideoFXTransitionType::Dissolve},
+        {"fadeblack", VideoFXTransitionType::FadeThroughBlack}, {"fadewhite", VideoFXTransitionType::FadeThroughWhite},
+        {"wipeleft", VideoFXTransitionType::WipeLeft}, {"wiperight", VideoFXTransitionType::WipeRight},
+        {"wipeup", VideoFXTransitionType::WipeUp}, {"wipedown", VideoFXTransitionType::WipeDown},
+        {"slideleft", VideoFXTransitionType::SlideLeft}, {"slideright", VideoFXTransitionType::SlideRight},
+        {"slideup", VideoFXTransitionType::SlideUp}, {"slidedown", VideoFXTransitionType::SlideDown},
+        {"smoothleft", VideoFXTransitionType::SmoothLeft}, {"smoothright", VideoFXTransitionType::SmoothRight},
+        {"smoothup", VideoFXTransitionType::SmoothUp}, {"smoothdown", VideoFXTransitionType::SmoothDown},
+        {"circleopen", VideoFXTransitionType::CircleOpen}, {"circleclose", VideoFXTransitionType::CircleClose},
+        {"circlecrop", VideoFXTransitionType::CircleCrop}, {"rectcrop", VideoFXTransitionType::RectCrop},
+        {"radial", VideoFXTransitionType::Radial}, {"pixelize", VideoFXTransitionType::Pixelize},
+        {"blur", VideoFXTransitionType::Blur}, {"distance", VideoFXTransitionType::Distance},
+        {"diagtl", VideoFXTransitionType::DiagonalTopLeft}, {"diagtr", VideoFXTransitionType::DiagonalTopRight},
+        {"diagbl", VideoFXTransitionType::DiagonalBottomLeft}, {"diagbr", VideoFXTransitionType::DiagonalBottomRight},
+        {"squeezeh", VideoFXTransitionType::SqueezeHorizontal}, {"squeezev", VideoFXTransitionType::SqueezeVertical}};
+    const size_t colon = spec.find(':');
+    const std::string name = spec.substr(0, colon);
+    t.duration = colon == std::string::npos ? 1.0 : NumberOr(spec.substr(colon + 1), -1.0);
+    for (const auto& n : names) {
+        if (name == n.first) { t.type = n.second; return true; }
+    }
+    return false;
+}
+
+// Speed, overlays and (after the first) the transition, on every segment
+void Decorate(VideoFXSegment& s, const Options& o, bool first) {
+    s.speed = o.speed;
+    s.overlays = o.overlays;
+    if (!first) s.transitionIn = o.transition;
+}
+
 // Pulls --options out of args; what remains are positional arguments
-bool ParseOptions(std::vector<std::string>& args, VideoFXExportSettings& settings, double& speed, bool& lossless) {
+bool ParseOptions(std::vector<std::string>& args, Options& o) {
+    VideoFXExportSettings& settings = o.settings;
+    double& speed = o.speed;
+    bool& lossless = o.lossless;
     std::vector<std::string> rest;
     for (size_t i = 0; i < args.size(); ++i) {
         const std::string& a = args[i];
@@ -122,6 +175,18 @@ bool ParseOptions(std::vector<std::string>& args, VideoFXExportSettings& setting
         else if (a == "--speed" && next(v)) speed = NumberOr(v, 1.0);
         else if (a == "--vcodec" && next(v)) { if (!ParseVideoCodec(v, settings.videoCodec)) return false; }
         else if (a == "--acodec" && next(v)) { if (!ParseAudioCodec(v, settings.audioCodec)) return false; }
+        else if (a == "--transition" && next(v)) { if (!ParseTransition(v, o.transition)) return false; }
+        else if (a == "--title" && next(v)) {
+            VideoFXOverlay t = VideoFXOverlay::Text(v, VideoFXAnchor::Bottom, 0.06);
+            t.box = true;
+            t.fadeIn = 0.5;
+            t.fadeOut = 0.5;
+            o.overlays.push_back(t);
+        } else if (a == "--watermark" && next(v)) {
+            VideoFXOverlay w = VideoFXOverlay::Image(v, VideoFXAnchor::TopRight, 0.12);
+            w.opacity = 0.85;
+            o.overlays.push_back(w);
+        }
         else if (a.rfind("--", 0) == 0) return false;
         else rest.push_back(a);
     }
@@ -243,10 +308,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    VideoFXExportSettings settings;
-    double speed = 1.0;
-    bool lossless = false;
-    if (!ParseOptions(args, settings, speed, lossless)) return Usage();
+    Options options;
+    if (!ParseOptions(args, options)) return Usage();
+    const VideoFXExportSettings& settings = options.settings;
 
     if (cmd == "info" && args.size() == 1) return Info(args[0]);
 
@@ -261,26 +325,30 @@ int main(int argc, char** argv) {
 
     if (cmd == "transcode" && args.size() == 2) {
         VideoFXSegment s = VideoFXSegment::FromFile(args[0]);
-        s.speed = speed;
+        Decorate(s, options, true);
         return Report(VideoFX_Export({s}, args[1], settings, Progress));
     }
 
     if (cmd == "trim" && args.size() == 4) {
         const double start = NumberOr(args[2], -1.0), end = NumberOr(args[3], -1.0);
-        if (lossless) return Report(VideoFX_TrimLossless(args[0], args[1], start, end, Progress));
+        if (options.lossless) return Report(VideoFX_TrimLossless(args[0], args[1], start, end, Progress));
         VideoFXSegment s = VideoFXSegment::FromFile(args[0], start, end);
-        s.speed = speed;
+        Decorate(s, options, true);
         return Report(VideoFX_Export({s}, args[1], settings, Progress));
     }
 
     if (cmd == "concat" && args.size() >= 3) {
-        std::vector<std::string> inputs(args.begin() + 1, args.end());
-        return Report(VideoFX_Concatenate(inputs, args[0], settings, Progress));
+        std::vector<VideoFXSegment> segments;
+        for (size_t i = 1; i < args.size(); ++i) {
+            segments.push_back(VideoFXSegment::FromFile(args[i]));
+            Decorate(segments.back(), options, i == 1);
+        }
+        return Report(VideoFX_Export(segments, args[0], settings, Progress));
     }
 
     if (cmd == "effects" && args.size() >= 3) {
         VideoFXSegment s = VideoFXSegment::FromFile(args[0]);
-        s.speed = speed;
+        Decorate(s, options, true);
         for (size_t i = 2; i < args.size(); ++i) {
             VideoFXEffect e;
             if (!ParseEffect(args[i], e)) {

@@ -1,7 +1,7 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once
@@ -70,6 +70,9 @@ const char* VideoFX_ResultToString(VideoFXResult result);
 // Whether this build can encode the codec (e.g. H.265 needs libx265)
 bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec codec);
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec codec);
+
+// Whether text overlays can be drawn (FFmpeg built with libfreetype)
+bool VideoFX_IsTextOverlayAvailable();
 
 // Backend diagnostics to stderr: false (default) = errors only
 void VideoFX_SetVerboseLogging(bool verbose);

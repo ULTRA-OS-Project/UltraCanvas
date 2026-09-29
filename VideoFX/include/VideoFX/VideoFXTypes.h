@@ -2,7 +2,7 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once
@@ -179,6 +179,94 @@ struct VideoFXEffect {
 };
 
 // ============================================================================
+// TRANSITIONS (between two segments)
+// ============================================================================
+// Set on the segment a transition leads INTO (VideoFXSegment::transitionIn);
+// the first segment's is ignored. The two segments overlap by `duration`, so
+// the export gets shorter by that much, and their sound is cross-faded over
+// the same span.
+enum class VideoFXTransitionType {
+    Cut,                            // no transition (default)
+    Crossfade,                      // picture blends from one to the other
+    Dissolve,                       // random-pixel dissolve
+    FadeThroughBlack, FadeThroughWhite,
+    WipeLeft, WipeRight, WipeUp, WipeDown,
+    SlideLeft, SlideRight, SlideUp, SlideDown,
+    SmoothLeft, SmoothRight, SmoothUp, SmoothDown,
+    CircleOpen, CircleClose, CircleCrop, RectCrop,
+    Radial, Pixelize, Blur, Distance,
+    DiagonalTopLeft, DiagonalTopRight, DiagonalBottomLeft, DiagonalBottomRight,
+    SqueezeHorizontal, SqueezeVertical
+};
+
+struct VideoFXTransition {
+    VideoFXTransitionType type = VideoFXTransitionType::Cut;
+    double duration = 1.0;          // seconds of overlap, 0.04..10
+
+    static VideoFXTransition Make(VideoFXTransitionType type, double seconds = 1.0) {
+        VideoFXTransition t;
+        t.type = type;
+        t.duration = seconds;
+        return t;
+    }
+    static VideoFXTransition Crossfade(double seconds = 1.0) { return Make(VideoFXTransitionType::Crossfade, seconds); }
+    bool IsCut() const { return type == VideoFXTransitionType::Cut; }
+};
+
+// ============================================================================
+// OVERLAYS (text and images on top of a segment)
+// ============================================================================
+// Placed on the OUTPUT frame, so a title sits in the same spot whatever the
+// source's size. Sizes and margins are fractions of the output height, which
+// keeps a layout the same at 480p and 4K.
+enum class VideoFXOverlayKind { Text, Image };
+
+enum class VideoFXAnchor {
+    TopLeft, Top, TopRight,
+    Left, Center, Right,
+    BottomLeft, Bottom, BottomRight,
+    Custom                          // x, y below: top-left corner as fractions of the frame
+};
+
+struct VideoFXOverlay {
+    VideoFXOverlayKind kind = VideoFXOverlayKind::Text;
+
+    // ---- text ----
+    std::string text;               // UTF-8; '\n' breaks lines
+    std::string fontPath;           // .ttf / .otf / .ttc; empty = a default system sans font
+    double fontSize = 0.06;         // fraction of output height (0.06 = 65 px at 1080p)
+    uint32_t textColor = 0xFFFFFF;  // 0xRRGGBB
+    bool shadow = true;             // soft drop shadow for legibility
+    bool box = false;               // a band behind the text
+    uint32_t boxColor = 0x000000;
+    double boxOpacity = 0.5;
+
+    // ---- image ----
+    std::string imagePath;          // PNG (alpha kept) / JPEG / anything FFmpeg decodes
+    VideoFXFrame image;             // or pixels in memory - used when valid
+    double imageHeight = 0.0;       // fraction of output height, 0 = the image's own pixel size
+
+    // ---- placement ----
+    VideoFXAnchor anchor = VideoFXAnchor::Bottom;
+    double margin = 0.05;           // distance from the frame edge, fraction of output height
+    double x = 0.0, y = 0.0;        // Custom anchor only, fractions of output width / height
+    double opacity = 1.0;           // 0..1
+
+    // ---- timing, in the segment's output seconds (after speed) ----
+    double start = 0.0;
+    double end = 0.0;               // 0 = until the segment ends
+    double fadeIn = 0.0;            // seconds
+    double fadeOut = 0.0;
+
+    static VideoFXOverlay Text(const std::string& text, VideoFXAnchor anchor = VideoFXAnchor::Bottom,
+                               double fontSize = 0.06);
+    static VideoFXOverlay Image(const std::string& path, VideoFXAnchor anchor = VideoFXAnchor::TopRight,
+                                double heightFraction = 0.12);
+    static VideoFXOverlay ImageFromFrame(const VideoFXFrame& frame, VideoFXAnchor anchor = VideoFXAnchor::TopRight,
+                                         double heightFraction = 0.12);
+};
+
+// ============================================================================
 // TIMELINE SEGMENTS (VideoFX_Export)
 // ============================================================================
 // An export is a list of segments played one after another. A segment is a
@@ -195,6 +283,8 @@ struct VideoFXSegment {
     double speed = 1.0;             // 0.25..4; 2 = twice as fast (audio keeps pitch)
     bool mute = false;              // drop this segment's audio (silence instead)
     std::vector<VideoFXEffect> effects;
+    std::vector<VideoFXOverlay> overlays;   // drawn after effects, over the output frame
+    VideoFXTransition transitionIn;         // from the previous segment into this one
 
     static VideoFXSegment FromFile(const std::string& path, double start = 0.0, double end = 0.0);
     static VideoFXSegment SolidColor(uint32_t rgb, double seconds);

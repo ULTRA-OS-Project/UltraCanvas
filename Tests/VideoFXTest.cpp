@@ -160,6 +160,64 @@ static void TestEffectChains() {
     CHECK(!BuildAudioEffectChain({VideoFXEffect::NormalizeAudio(0.0)}, 5.0, chain, error), "0 LUFS refused");
 }
 
+static void TestTransitionAndOverlayText() {
+    std::printf("Transitions / overlays (filter text)\n");
+    CHECK_EQ(TransitionName(VideoFXTransitionType::Crossfade), "fade", "crossfade = xfade fade");
+    CHECK_EQ(TransitionName(VideoFXTransitionType::FadeThroughBlack), "fadeblack", "through black");
+    CHECK_EQ(TransitionName(VideoFXTransitionType::Cut), "", "a cut has no filter");
+    CHECK(!TransitionName(VideoFXTransitionType::SqueezeVertical).empty(), "every type has a name");
+
+    VideoFXOverlay o = VideoFXOverlay::Text("x");
+    CHECK_EQ(OverlayEnableExpr(o, 5.0), "lt(t,5)", "whole segment: until its end");
+    CHECK_EQ(OverlayEnableExpr(o, 0.0), "", "unknown length: always on");
+    o.start = 1.0;
+    o.end = 3.0;
+    CHECK_EQ(OverlayEnableExpr(o, 5.0), "between(t,1,3)", "a window");
+    o.end = 9.0;
+    CHECK_EQ(OverlayEnableExpr(o, 5.0), "between(t,1,5)", "end clamped to the segment");
+    o.end = 3.0;
+    CHECK_EQ(OverlayAlphaExpr(o, 5.0), "1", "no fades: opaque");
+    o.fadeIn = 0.5;
+    o.fadeOut = 1.0;
+    o.opacity = 0.5;
+    CHECK_EQ(OverlayAlphaExpr(o, 5.0), "0.5*min(min(1,max(0,(t-1)/0.5)),min(1,max(0,(3-t)/1)))",
+             "fade in, fade out, times opacity");
+
+    VideoFXOverlay t = VideoFXOverlay::Text("a:b, 'c' 100%", VideoFXAnchor::Bottom, 0.1);
+    const std::string dt = BuildTextOverlayFilter(t, 640, 360, 4.0, "");
+    CHECK(dt.rfind("drawtext=expansion=none:text=", 0) == 0, "drawtext, literal text");
+    CHECK(dt.find("a\\\\:b\\, \\\\\\'c\\\\\\' 100%") != std::string::npos, "':' ',' and quotes escaped, '%' literal");
+    CHECK(dt.find(":font=Sans") != std::string::npos, "no font file: fontconfig Sans");
+    CHECK(dt.find(":fontsize=36") != std::string::npos, "size 0.1 of 360 px");
+    CHECK(dt.find(":x=(w-text_w)/2:y=h-text_h-18") != std::string::npos, "bottom centre, 5% margin");
+    CHECK(dt.find("fontfile=") == std::string::npos, "no fontfile without a path");
+    CHECK(BuildTextOverlayFilter(t, 640, 360, 4.0, "C:/Fonts/a.ttf").find("fontfile=C\\\\:/Fonts/a.ttf") !=
+              std::string::npos, "font path escaped");
+
+    VideoFXOverlay img = VideoFXOverlay::Image("logo.png", VideoFXAnchor::TopRight, 0.25);
+    std::string chain, ov;
+    BuildImageOverlayFilters(img, 640, 360, 50, "25/1", 4.0, chain, ov);
+    CHECK_EQ(chain, "format=rgba,scale=-1:90", "image scaled to 25% of the height");
+    CHECK(ov.find("overlay=x=W-w-18:y=18") == 0 && ov.find("eof_action=repeat") != std::string::npos,
+          "still image top right, held for the segment");
+    img.fadeIn = 1.0;
+    BuildImageOverlayFilters(img, 640, 360, 50, "25/1", 4.0, chain, ov);
+    CHECK(chain.find("loop=loop=-1:size=1,setpts=N/(25/1)/TB,fade=t=in:st=0:d=1:alpha=1") != std::string::npos,
+          "faded image becomes a timed stream");
+    CHECK(ov.find("shortest=1") != std::string::npos, "and ends with the picture below it");
+
+    std::string error;
+    CHECK(!ValidateOverlay(VideoFXOverlay::Text(""), 5.0, error), "empty text refused");
+    VideoFXOverlay bad = VideoFXOverlay::Text("x");
+    bad.opacity = 2.0;
+    CHECK(!ValidateOverlay(bad, 5.0, error), "opacity 2 refused");
+    bad = VideoFXOverlay::Text("x");
+    bad.start = 3.0;
+    bad.end = 2.0;
+    CHECK(!ValidateOverlay(bad, 5.0, error), "end before start refused");
+    CHECK(!ValidateOverlay(VideoFXOverlay::Image(""), 5.0, error), "image without a picture refused");
+}
+
 // ============================================================================
 // PART 2 - ENGINE
 // ============================================================================
@@ -198,10 +256,17 @@ static void CentreColour(const VideoFXFrame& f, double& r, double& g, double& b)
     r /= n; g /= n; b /= n;
 }
 
+static void PixelAt(const VideoFXFrame& f, int x, int y, int& r, int& g, int& b) {
+    const uint8_t* p = &f.pixels[(static_cast<size_t>(y) * f.width + x) * 4];
+    r = p[0]; g = p[1]; b = p[2];
+}
+
 static double StreamDuration(const VideoFXMediaInfo& info, VideoFXStreamKind kind) {
     for (const auto& s : info.streams) if (s.kind == kind) return s.duration;
     return -1.0;
 }
+
+static void TestTransitionsAndOverlays(const VideoFXExportSettings& base);
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -408,8 +473,173 @@ static void TestEngine() {
         CHECK(VideoFX_GetLastError().find("LUT") != std::string::npos, "reason names the LUT");
     }
 
+    TestTransitionsAndOverlays(base);
+
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
+}
+
+static void TestTransitionsAndOverlays(const VideoFXExportSettings& base) {
+    std::printf("Engine: transitions and overlays\n");
+    VideoFXExportSettings s = base;
+    s.width = 160;
+    s.height = 120;
+    s.frameRate = 25.0;
+    VideoFXFrame f;
+    VideoFXMediaInfo info;
+    double r, g, b;
+    int pr, pg, pb;
+
+    // ---- red -> blue, 2 s each, 1 s cross-fade ----
+    VideoFXSegment red = VideoFXSegment::SolidColor(0xFF0000, 2.0);
+    VideoFXSegment blue = VideoFXSegment::SolidColor(0x0000FF, 2.0);
+    blue.transitionIn = VideoFXTransition::Crossfade(1.0);
+    const std::string xf = TempPath("xfade.mkv");
+    CHECK_OK(VideoFX_Export({red, blue}, xf, s), "cross-fade red -> blue");
+    CHECK_OK(VideoFX_Probe(xf, info), "probe cross-fade");
+    CHECK(Near(info.duration, 3.0, 0.1), "2 + 2 - 1 s overlap = 3 s");
+    VideoFX_ExtractFrame(xf, 0.5, f);
+    CentreColour(f, r, g, b);
+    CHECK(r > 200 && b < 60, "before the transition: red");
+    VideoFX_ExtractFrame(xf, 1.5, f);
+    CentreColour(f, r, g, b);
+    CHECK(r > 70 && r < 190 && b > 70 && b < 190, "half-way: red and blue mixed");
+    VideoFX_ExtractFrame(xf, 2.5, f);
+    CentreColour(f, r, g, b);
+    CHECK(b > 200 && r < 60, "after the transition: blue");
+
+    // ---- sound is cross-faded over the same span ----
+    VideoFXSegment t1 = VideoFXSegment::TestPattern(2.0);
+    VideoFXSegment t2 = VideoFXSegment::TestPattern(2.0);
+    t2.transitionIn = VideoFXTransition::Make(VideoFXTransitionType::Dissolve, 1.0);
+    // MP4 records per-stream durations (MKV does not)
+    const std::string av = TempPath("xfade-av.mp4");
+    VideoFXExportSettings mp4 = s;
+    mp4.container = VideoFXContainer::MP4;
+    CHECK_OK(VideoFX_Export({t1, t2}, av, mp4), "dissolve with sound");
+    CHECK_OK(VideoFX_Probe(av, info), "probe dissolve");
+    CHECK(Near(StreamDuration(info, VideoFXStreamKind::Video), 3.0, 0.1) &&
+          Near(StreamDuration(info, VideoFXStreamKind::Audio), 3.0, 0.1), "picture and sound both 3 s");
+    const std::string wav = TempPath("xfade.wav");
+    CHECK_OK(VideoFX_Export({t1, t2}, wav, VideoFXExportSettings::AudioOnlyWAV()), "cross-fade, sound only");
+    CHECK_OK(VideoFX_Probe(wav, info), "probe WAV cross-fade");
+    CHECK(Near(info.duration, 3.0, 0.06), "sound-only overlap is not lost");
+
+    // ---- a wipe: two halves ----
+    blue.transitionIn = VideoFXTransition::Make(VideoFXTransitionType::WipeLeft, 1.0);
+    const std::string wipe = TempPath("wipe.mkv");
+    CHECK_OK(VideoFX_Export({red, blue}, wipe, s), "wipe left");
+    VideoFX_ExtractFrame(wipe, 1.5, f);
+    PixelAt(f, 5, f.height / 2, pr, pg, pb);
+    const bool leftRed = pr > 200 && pb < 60;
+    PixelAt(f, f.width - 5, f.height / 2, pr, pg, pb);
+    const bool rightBlue = pb > 200 && pr < 60;
+    CHECK(leftRed != rightBlue || (leftRed && rightBlue), "mid-wipe the two edges differ");
+    CHECK(leftRed || rightBlue, "one edge still shows a pure colour");
+
+    // ---- transition longer than the next clip: the overlap shrinks ----
+    VideoFXSegment brief = VideoFXSegment::SolidColor(0x00FF00, 0.5);
+    brief.transitionIn = VideoFXTransition::Crossfade(2.0);
+    const std::string shortOut = TempPath("short.mkv");
+    CHECK_OK(VideoFX_Export({red, brief}, shortOut, s), "2 s fade into a 0.5 s clip");
+    CHECK_OK(VideoFX_Probe(shortOut, info), "probe short");
+    CHECK(Near(info.duration, 2.0, 0.1), "overlap limited to the shorter clip");
+
+    // ---- a transition on the first segment is ignored ----
+    VideoFXSegment first = red;
+    first.transitionIn = VideoFXTransition::Crossfade(1.0);
+    const std::string firstOut = TempPath("first.mkv");
+    CHECK_OK(VideoFX_Export({first}, firstOut, s), "first segment with a transition");
+    CHECK_OK(VideoFX_Probe(firstOut, info), "probe first");
+    CHECK(Near(info.duration, 2.0, 0.1), "nothing to overlap with");
+
+    // ---- GIF: transitions before the palette ----
+    blue.transitionIn = VideoFXTransition::Crossfade(1.0);
+    const std::string gif = TempPath("xfade.gif");
+    CHECK_OK(VideoFX_Export({red, blue}, gif, VideoFXExportSettings::AnimatedGif(80, 10.0)), "GIF with a cross-fade");
+    CHECK_OK(VideoFX_Probe(gif, info), "probe GIF");
+    CHECK(Near(info.duration, 3.0, 0.15), "GIF 3 s");
+    VideoFX_ExtractFrame(gif, 1.5, f);
+    CentreColour(f, r, g, b);
+    CHECK(r > 60 && b > 60, "GIF mid-fade has both colours");
+
+    // ---- bad transitions ----
+    blue.transitionIn = VideoFXTransition::Crossfade(9.0);
+    CHECK(VideoFX_Export({red, blue}, TempPath("x.mkv"), s) == VideoFXResult::InvalidArgument, "9 s transition refused");
+    blue.transitionIn = VideoFXTransition{};
+
+    // ---- an image overlay from memory, from 1 s on ----
+    VideoFXFrame green;
+    green.width = 40;
+    green.height = 40;
+    green.pixels.assign(40 * 40 * 4, 0);
+    for (size_t i = 0; i < green.pixels.size(); i += 4) { green.pixels[i + 1] = 255; green.pixels[i + 3] = 255; }
+    VideoFXSegment card = VideoFXSegment::SolidColor(0x0000FF, 2.0);
+    VideoFXOverlay logo = VideoFXOverlay::ImageFromFrame(green, VideoFXAnchor::TopLeft, 0.0);
+    logo.margin = 0.0;
+    logo.start = 1.0;
+    card.overlays = {logo};
+    const std::string imgOut = TempPath("image.mkv");
+    CHECK_OK(VideoFX_Export({card}, imgOut, s), "image overlay from memory");
+    VideoFX_ExtractFrame(imgOut, 0.5, f);
+    PixelAt(f, 10, 10, pr, pg, pb);
+    CHECK(pb > 200 && pg < 60, "before its start: no image");
+    VideoFX_ExtractFrame(imgOut, 1.5, f);
+    PixelAt(f, 10, 10, pr, pg, pb);
+    CHECK(pg > 200 && pb < 60, "after: the image, top left, native size");
+    PixelAt(f, 100, 100, pr, pg, pb);
+    CHECK(pb > 200 && pg < 60, "the rest of the frame untouched");
+
+    // ---- faded, half-transparent image from a PNG file, bottom right ----
+    const std::string png = TempPath("green.png");
+    CHECK_OK(VideoFX_SaveFrameImage(green, png), "write the overlay PNG");
+    VideoFXOverlay faded = VideoFXOverlay::Image(png, VideoFXAnchor::BottomRight, 0.25);
+    faded.margin = 0.0;
+    faded.fadeIn = 0.5;
+    faded.opacity = 0.5;
+    card.overlays = {faded};
+    const std::string fadeOut = TempPath("image-fade.mkv");
+    CHECK_OK(VideoFX_Export({card}, fadeOut, s), "faded image overlay from a file");
+    CHECK_OK(VideoFX_Probe(fadeOut, info), "probe faded overlay");
+    CHECK(Near(info.duration, 2.0, 0.1), "a looping overlay still ends with its segment");
+    VideoFX_ExtractFrame(fadeOut, 1.5, f);
+    PixelAt(f, f.width - 5, f.height - 5, pr, pg, pb);
+    CHECK(pg > 70 && pb > 70, "half-transparent: green over blue");
+    VideoFX_ExtractFrame(fadeOut, 0.0, f);
+    PixelAt(f, f.width - 5, f.height - 5, pr, pg, pb);
+    CHECK(pg < 40, "fully faded out at the start");
+
+    // ---- text ----
+    if (VideoFX_IsTextOverlayAvailable()) {
+        VideoFXOverlay title = VideoFXOverlay::Text("VFX", VideoFXAnchor::Center, 0.5);
+        title.start = 1.0;
+        title.shadow = false;
+        card.overlays = {title, VideoFXOverlay::Text("a:b, 'c' [d]; 100% \\ done", VideoFXAnchor::Top, 0.08)};
+        const std::string textOut = TempPath("text.mkv");
+        CHECK_OK(VideoFX_Export({card}, textOut, s), "text overlays (with every special character)");
+        auto whitePixels = [](const VideoFXFrame& fr) {
+            int n = 0;
+            for (size_t i = 0; i < fr.pixels.size(); i += 4)
+                if (fr.pixels[i] > 200 && fr.pixels[i + 1] > 200 && fr.pixels[i + 2] > 200) ++n;
+            return n;
+        };
+        VideoFX_ExtractFrame(textOut, 0.5, f);
+        const int before = whitePixels(f);
+        VideoFX_ExtractFrame(textOut, 1.5, f);
+        const int after = whitePixels(f);
+        CHECK(after > before + 200, "the big title appears at its start time");
+        VideoFXOverlay missingFont = VideoFXOverlay::Text("x");
+        missingFont.fontPath = TempPath("none.ttf");
+        card.overlays = {missingFont};
+        CHECK(VideoFX_Export({card}, TempPath("x.mkv"), s) == VideoFXResult::FileNotFound, "missing font file");
+    } else {
+        std::printf("  SKIP  text overlays (this FFmpeg has no drawtext)\n");
+    }
+
+    card.overlays = {VideoFXOverlay::Image(TempPath("none.png"))};
+    CHECK(VideoFX_Export({card}, TempPath("x.mkv"), s) == VideoFXResult::FileNotFound, "missing overlay image");
+    card.overlays = {VideoFXOverlay::Text("")};
+    CHECK(VideoFX_Export({card}, TempPath("x.mkv"), s) == VideoFXResult::InvalidArgument, "empty text");
 }
 
 #else
@@ -429,6 +659,7 @@ int main() {
     TestEscaping();
     TestTempoAndRotation();
     TestEffectChains();
+    TestTransitionAndOverlayText();
     TestEngine();
     if (failures) {
         std::printf("\n%d check(s) FAILED\n", failures);

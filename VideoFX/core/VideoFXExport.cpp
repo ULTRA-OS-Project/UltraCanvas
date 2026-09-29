@@ -26,6 +26,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <deque>
 #include <filesystem>
 #include <set>
 
@@ -122,6 +123,7 @@ struct SegmentPlan {
     int displayHeight = 0;
     std::string videoEffects;       // filter chains built from segment.effects
     std::string audioEffects;
+    std::vector<VideoFXFrame> overlayImages;   // per overlay; empty for text overlays
 };
 
 // Output frame size of a segment after its geometric effects
@@ -143,6 +145,165 @@ void ApplyEffectGeometry(const std::vector<VideoFXEffect>& effects, int& w, int&
 }
 
 int EvenDown(int v) { return std::max(2, v & ~1); }
+
+struct GraphSource {
+    std::string name;                   // label in the description: "in", "ov0", "a", "b" ...
+    std::string args;                   // buffer / abuffer arguments
+};
+
+struct Graph {
+    FilterGraphPtr graph;
+    AVFilterContext* src = nullptr;     // the source named "in", if any
+    std::vector<std::pair<std::string, AVFilterContext*>> sources;
+    AVFilterContext* sink = nullptr;
+    bool eof = false;
+
+    AVFilterContext* Source(const std::string& name) const {
+        for (const auto& s : sources) if (s.first == name) return s.second;
+        return nullptr;
+    }
+};
+
+// Build `g` from `desc`. Each source becomes a buffer (video) / abuffer
+// (audio) filter the description refers to by its [name]; a description with
+// no sources starts with its own source filter. The output is [out].
+VideoFXResult BuildGraph(Graph& g, bool video, const std::vector<GraphSource>& sources, const std::string& desc) {
+    g = Graph{};
+    g.graph.reset(avfilter_graph_alloc());
+    if (!g.graph) return Fail(VideoFXResult::FilterError, "Out of memory");
+    g.graph->nb_threads = 0;
+    int err;
+    AVFilterInOut* outputs = nullptr;
+    AVFilterInOut** tail = &outputs;
+    for (const GraphSource& src : sources) {
+        AVFilterContext* ctx = nullptr;
+        err = avfilter_graph_create_filter(&ctx, avfilter_get_by_name(video ? "buffer" : "abuffer"), src.name.c_str(),
+                                           src.args.c_str(), nullptr, g.graph.get());
+        if (err < 0) {
+            avfilter_inout_free(&outputs);
+            return Fail(VideoFXResult::FilterError, "Cannot create the filter source " + src.name, err);
+        }
+        g.sources.emplace_back(src.name, ctx);
+        if (src.name == "in") g.src = ctx;
+        AVFilterInOut* io = avfilter_inout_alloc();
+        io->name = av_strdup(src.name.c_str());
+        io->filter_ctx = ctx;
+        io->pad_idx = 0;
+        io->next = nullptr;
+        *tail = io;
+        tail = &io->next;
+    }
+    err = avfilter_graph_create_filter(&g.sink, avfilter_get_by_name(video ? "buffersink" : "abuffersink"), "out",
+                                       nullptr, nullptr, g.graph.get());
+    if (err < 0) {
+        avfilter_inout_free(&outputs);
+        return Fail(VideoFXResult::FilterError, "Cannot create the filter sink", err);
+    }
+    AVFilterInOut* inputs = avfilter_inout_alloc();
+    inputs->name = av_strdup("out");
+    inputs->filter_ctx = g.sink;
+    inputs->pad_idx = 0;
+    inputs->next = nullptr;
+
+    err = avfilter_graph_parse_ptr(g.graph.get(), desc.c_str(), &inputs, &outputs, nullptr);
+    avfilter_inout_free(&inputs);
+    avfilter_inout_free(&outputs);
+    if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot build the effect chain \"" + desc + "\"", err);
+    err = avfilter_graph_config(g.graph.get(), nullptr);
+    if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot configure the effect chain \"" + desc + "\"", err);
+    return VideoFXResult::Ok;
+}
+
+std::string Rational(AVRational r) { return std::to_string(r.num) + "/" + std::to_string(r.den); }
+
+std::string VideoSourceArgs(int w, int h, int pixFmt, AVRational timeBase, AVRational sar = AVRational{1, 1},
+                            AVRational frameRate = AVRational{0, 1}) {
+    std::string args = "video_size=" + std::to_string(w) + "x" + std::to_string(h) +
+                       ":pix_fmt=" + std::to_string(pixFmt) + ":time_base=" + Rational(timeBase) +
+                       ":pixel_aspect=" + Rational(sar);
+    if (frameRate.num > 0) args += ":frame_rate=" + Rational(frameRate);
+    return args;
+}
+
+// Pull everything the sink has
+template <class Emit>
+VideoFXResult PullGraph(Graph& g, AVFrame* scratch, Emit emit) {
+    if (!g.sink || g.eof) return VideoFXResult::Ok;
+    while (true) {
+        int err = av_buffersink_get_frame(g.sink, scratch);
+        if (err == AVERROR(EAGAIN)) return VideoFXResult::Ok;
+        if (err == AVERROR_EOF) { g.eof = true; return VideoFXResult::Ok; }
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Effect processing failed", err);
+        VideoFXResult r = emit(scratch);
+        av_frame_unref(scratch);
+        if (r != VideoFXResult::Ok) return r;
+    }
+}
+
+// Linear cross-fade of `n` samples: `a` fades out while `b` fades in, the
+// result written over `a`. Done here rather than with acrossfade, whose
+// behaviour at an exact-length overlap differs between FFmpeg versions.
+template <class T>
+void MixSamples(T* a, const T* b, int n, int stride, double offset) {
+    for (int i = 0; i < n; ++i) {
+        const double w = (i + 0.5) / n;
+        const double va = static_cast<double>(a[static_cast<size_t>(i) * stride]) - offset;
+        const double vb = static_cast<double>(b[static_cast<size_t>(i) * stride]) - offset;
+        a[static_cast<size_t>(i) * stride] = static_cast<T>(std::llround(va * (1.0 - w) + vb * w + offset));
+    }
+}
+
+template <>
+void MixSamples<float>(float* a, const float* b, int n, int stride, double) {
+    for (int i = 0; i < n; ++i) {
+        const float w = (i + 0.5f) / n;
+        a[static_cast<size_t>(i) * stride] = a[static_cast<size_t>(i) * stride] * (1.0f - w) + b[static_cast<size_t>(i) * stride] * w;
+    }
+}
+
+template <>
+void MixSamples<double>(double* a, const double* b, int n, int stride, double) {
+    for (int i = 0; i < n; ++i) {
+        const double w = (i + 0.5) / n;
+        a[static_cast<size_t>(i) * stride] = a[static_cast<size_t>(i) * stride] * (1.0 - w) + b[static_cast<size_t>(i) * stride] * w;
+    }
+}
+
+void CrossfadeSamples(AVFrame* a, const AVFrame* b, int n, int channels, AVSampleFormat fmt) {
+    const bool planar = av_sample_fmt_is_planar(fmt) != 0;
+    const AVSampleFormat packed = av_get_packed_sample_fmt(fmt);
+    const int planes = planar ? channels : 1;
+    const int stride = planar ? 1 : channels;
+    const int lanes = planar ? 1 : channels;          // interleaved channels within a plane
+    for (int p = 0; p < planes; ++p) {
+        for (int c = 0; c < lanes; ++c) {
+            uint8_t* pa = a->extended_data[p];
+            const uint8_t* pb = b->extended_data[p];
+            switch (packed) {
+                case AV_SAMPLE_FMT_U8:
+                    MixSamples(pa + c, pb + c, n, stride, 128.0);
+                    break;
+                case AV_SAMPLE_FMT_S16:
+                    MixSamples(reinterpret_cast<int16_t*>(pa) + c, reinterpret_cast<const int16_t*>(pb) + c, n, stride, 0.0);
+                    break;
+                case AV_SAMPLE_FMT_S32:
+                    MixSamples(reinterpret_cast<int32_t*>(pa) + c, reinterpret_cast<const int32_t*>(pb) + c, n, stride, 0.0);
+                    break;
+                case AV_SAMPLE_FMT_S64:
+                    MixSamples(reinterpret_cast<int64_t*>(pa) + c, reinterpret_cast<const int64_t*>(pb) + c, n, stride, 0.0);
+                    break;
+                case AV_SAMPLE_FMT_FLT:
+                    MixSamples(reinterpret_cast<float*>(pa) + c, reinterpret_cast<const float*>(pb) + c, n, stride, 0.0);
+                    break;
+                case AV_SAMPLE_FMT_DBL:
+                    MixSamples(reinterpret_cast<double*>(pa) + c, reinterpret_cast<const double*>(pb) + c, n, stride, 0.0);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+}
 
 // ============================================================================
 // EXPORTER
@@ -166,15 +327,28 @@ private:
     VideoFXResult OpenOutput();
 
     // ---- per segment ----
-    VideoFXResult ProcessSegment(const SegmentPlan& plan);
+    VideoFXResult ProcessSegment(size_t index);
     VideoFXResult ProcessFileSegment(const SegmentPlan& plan);
     VideoFXResult RunGeneratorGraphs(const SegmentPlan& plan, bool video, bool audio);
-    std::string VideoTail(bool firstFrameSarNotSquare) const;
+    std::string FitChain(bool sarNotSquare) const;
+    std::string SegmentVideoGraph(const SegmentPlan& plan, const std::string& head, bool sarNotSquare,
+                                  std::vector<GraphSource>& sources) const;
+    VideoFXResult FeedOverlayImages(Graph& g, const SegmentPlan& plan);
     std::string AudioTail() const;
 
-    // ---- encoding ----
+    // ---- the output stage: transitions hold frames back here ----
     VideoFXResult EmitVideo(AVFrame* filtered, AVRational sinkTb);
     VideoFXResult EmitAudio(AVFrame* filtered);
+    VideoFXResult AcceptVideo(AVFrame* frame);      // a frame on the timeline, pts set
+    VideoFXResult PassVideo(AVFrame* frame);        // past any transition head
+    VideoFXResult OutputVideo(AVFrame* frame);      // to the encoder, via the GIF palette
+    VideoFXResult QueueAudio(AVFrame* frame);       // into the encoder FIFO
+    VideoFXResult RunVideoTransition();
+    VideoFXResult RunAudioTransition();
+    VideoFXResult HoldTailAudio();
+    FramePtr MakeAudioFrame(int samples) const;
+
+    // ---- encoding ----
     VideoFXResult EncodeVideo(AVFrame* frame);
     VideoFXResult EncodeAudio(AVFrame* frame);
     VideoFXResult DrainAudioFifo(bool final);
@@ -208,8 +382,11 @@ private:
     AVStream* ast = nullptr;
     int width = 0, height = 0;
     AVRational frameRate{30, 1};
-    AVPixelFormat pixFmt = AV_PIX_FMT_YUV420P;
+    AVPixelFormat pixFmt = AV_PIX_FMT_YUV420P;     // what the encoder takes
+    AVPixelFormat stageFmt = AV_PIX_FMT_YUV420P;   // what segments produce (RGB24 before the GIF palette)
     bool gif = false;
+    Graph gifGraph;                                // per-frame palette, GIF only
+    std::string fontFile;                          // for text overlays, "" = fontconfig
     int sampleRate = 48000, channels = 2;
     AVSampleFormat sampleFmt = AV_SAMPLE_FMT_FLTP;
     int audioFrameSize = 1024;
@@ -223,6 +400,21 @@ private:
     int64_t audioSamplesEncoded = 0;
     double segmentStart = 0.0;
     double progressDone = 0.0;          // seconds of finished segments
+
+    // transitions: the last D seconds of a segment are held back (tail) until
+    // the first D seconds of the next (head) are in, then blended
+    size_t tailHoldFrames = 0;
+    int64_t tailHoldSamples = 0;
+    std::deque<FramePtr> tailFrames;                // rolling, this segment
+    std::deque<FramePtr> transitionTail;            // the previous segment's, being blended
+    FramePtr transitionTailAudio;
+    std::vector<FramePtr> headFrames;
+    size_t headNeedFrames = 0;
+    int64_t headNeedSamples = 0;
+    AudioFifoPtr headFifo;
+    bool videoTransitionPending = false;
+    bool audioTransitionPending = false;
+    VideoFXTransitionType transitionType = VideoFXTransitionType::Cut;
     std::chrono::steady_clock::time_point lastReport{};
     bool cancelled = false;
 };
@@ -287,10 +479,67 @@ VideoFXResult Exporter::PlanSegments(const std::vector<VideoFXSegment>& segments
             if (e.type == VideoFXEffectType::LUT && !std::filesystem::exists(UltraCanvas::PathFromUtf8(e.path), ec))
                 return Fail(VideoFXResult::FileNotFound, "LUT file not found: " + e.path);
         }
+
+        // Transition into this segment (none into the first)
+        if (plans.empty()) p.segment.transitionIn = VideoFXTransition{};
+        if (!p.segment.transitionIn.IsCut()) {
+            const double d = p.segment.transitionIn.duration;
+            if (!(d >= 0.04 && d <= 5.0))
+                return Fail(VideoFXResult::InvalidArgument, "Transition length must be 0.04..5 seconds");
+            if (TransitionName(p.segment.transitionIn.type).empty())
+                return Fail(VideoFXResult::InvalidArgument, "Unknown transition type");
+            if (!avfilter_get_by_name("xfade"))
+                return Fail(VideoFXResult::NotAvailable, "Transitions need FFmpeg 4.3 or newer (xfade filter)");
+            totalDuration -= d;
+        }
+
+        // Overlays: values checked, images decoded now so a bad file fails early
+        for (const VideoFXOverlay& o : seg.overlays) {
+            if (!ValidateOverlay(o, p.outDuration, error)) return Fail(VideoFXResult::InvalidArgument, error);
+            VideoFXFrame image;
+            if (o.kind == VideoFXOverlayKind::Text) {
+                if (!avfilter_get_by_name("drawtext"))
+                    return Fail(VideoFXResult::NotAvailable, "This FFmpeg build has no text rendering (drawtext)");
+                std::error_code ec;
+                if (!o.fontPath.empty() && !std::filesystem::exists(UltraCanvas::PathFromUtf8(o.fontPath), ec))
+                    return Fail(VideoFXResult::FileNotFound, "Font file not found: " + o.fontPath);
+            } else if (o.image.IsValid()) {
+                image = o.image;
+            } else {
+                VideoFXResult r = VideoFX_ExtractFrame(o.imagePath, 0.0, image);
+                if (r != VideoFXResult::Ok) {
+                    const std::string reason = VideoFX_GetLastError();
+                    return Fail(r, "Overlay image " + o.imagePath + ": " + reason);
+                }
+            }
+            p.overlayImages.push_back(std::move(image));
+        }
         totalDuration += p.outDuration;
         plans.push_back(std::move(p));
     }
     return VideoFXResult::Ok;
+}
+
+// A default sans font for text overlays with no fontPath. "" lets drawtext
+// ask fontconfig for "Sans" instead (the Linux and MSYS2 builds have it).
+std::string DefaultFontFile() {
+    static const char* candidates[] = {
+#if defined(_WIN32)
+        "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf",
+#elif defined(__APPLE__)
+        "/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/Library/Fonts/Arial.ttf",
+#else
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/noto/NotoSans-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+#endif
+    };
+    for (const char* c : candidates) {
+        std::error_code ec;
+        if (std::filesystem::exists(UltraCanvas::PathFromUtf8(c), ec)) return c;
+    }
+    return "";
 }
 
 VideoFXResult Exporter::PlanOutput() {
@@ -505,6 +754,20 @@ VideoFXResult Exporter::OpenVideoEncoder() {
     if (err < 0) return Fail(VideoFXResult::EncodeError, "Cannot set up the video stream", err);
     vst->time_base = c->time_base;
     vst->avg_frame_rate = frameRate;
+
+    // Segments, transitions and overlays work in stageFmt; a GIF gets its
+    // palette at the very end, one per frame (no whole-file buffering, and a
+    // cross-fade gets colours of its own rather than either side's).
+    stageFmt = gif ? AV_PIX_FMT_RGB24 : pixFmt;
+    if (gif) {
+        VideoFXResult r = BuildGraph(gifGraph, true,
+                                     {{"in", VideoSourceArgs(width, height, stageFmt, c->time_base, AVRational{1, 1},
+                                                             frameRate)}},
+                                     "[in]split[vfxg0][vfxg1];[vfxg0]palettegen=stats_mode=single[vfxpal];"
+                                     "[vfxg1][vfxpal]paletteuse=new=1:dither=bayer:bayer_scale=5[out]");
+        if (r != VideoFXResult::Ok) return r;
+    }
+    fontFile = DefaultFontFile();
     return VideoFXResult::Ok;
 }
 
@@ -576,10 +839,10 @@ VideoFXResult Exporter::OpenOutput() {
 // filter text shared by every segment
 // ---------------------------------------------------------------------------
 
-// Fit to the output size, output rate and pixel format
-std::string Exporter::VideoTail(bool sarNotSquare) const {
+// Fit to the output rate and size
+std::string Exporter::FitChain(bool sarNotSquare) const {
     const std::string W = std::to_string(width), H = std::to_string(height);
-    std::string tail = "fps=" + std::to_string(frameRate.num) + "/" + std::to_string(frameRate.den);
+    std::string tail = "fps=" + Rational(frameRate);
     if (sarNotSquare) AppendFilter(tail, "scale=trunc(iw*sar/2)*2:ih,setsar=1");
     switch (settings.fitMode) {
         case VideoFXFitMode::Fill:
@@ -594,13 +857,64 @@ std::string Exporter::VideoTail(bool sarNotSquare) const {
             break;
     }
     AppendFilter(tail, "setsar=1");
-    if (gif) {
-        AppendFilter(tail, "split[vfxpal0][vfxpal1];[vfxpal0]palettegen=stats_mode=diff[vfxpal];"
-                           "[vfxpal1][vfxpal]paletteuse=dither=bayer:bayer_scale=5");
-    } else {
-        AppendFilter(tail, std::string("format=") + av_get_pix_fmt_name(pixFmt));
-    }
     return tail;
+}
+
+// The whole video description of a segment: `head` (its source or trim /
+// speed / effects), the fit to the output frame, the overlays in order (text
+// drawn in the chain, images from their own [ovN] sources), and the stage
+// pixel format. Image sources are added to `sources`.
+std::string Exporter::SegmentVideoGraph(const SegmentPlan& plan, const std::string& head, bool sarNotSquare,
+                                        std::vector<GraphSource>& sources) const {
+    std::string done;                   // finished chains, ';'-terminated
+    std::string chain = head;
+    AppendFilter(chain, FitChain(sarNotSquare));
+    int label = 0;
+    for (size_t k = 0; k < plan.segment.overlays.size(); ++k) {
+        const VideoFXOverlay& o = plan.segment.overlays[k];
+        if (o.kind == VideoFXOverlayKind::Text) {
+            AppendFilter(chain, BuildTextOverlayFilter(o, width, height, plan.outDuration, fontFile));
+            continue;
+        }
+        const VideoFXFrame& image = plan.overlayImages[k];
+        std::string imageChain, overlayFilter;
+        BuildImageOverlayFilters(o, width, height, image.height, Rational(frameRate), plan.outDuration,
+                                 imageChain, overlayFilter);
+        const std::string name = "ov" + std::to_string(k);
+        const std::string base = "vfxbase" + std::to_string(label), ov = "vfxov" + std::to_string(label);
+        ++label;
+        done += chain + "[" + base + "];[" + name + "]" + imageChain + "[" + ov + "];";
+        chain = "[" + base + "][" + ov + "]" + overlayFilter;
+        sources.push_back({name, VideoSourceArgs(image.width, image.height, AV_PIX_FMT_RGBA,
+                                                 av_inv_q(frameRate))});
+    }
+    AppendFilter(chain, std::string("format=") + av_get_pix_fmt_name(stageFmt));
+    return done + chain + "[out]";
+}
+
+// Each image source gets its picture once, then end-of-stream
+VideoFXResult Exporter::FeedOverlayImages(Graph& g, const SegmentPlan& plan) {
+    for (size_t k = 0; k < plan.overlayImages.size(); ++k) {
+        const VideoFXFrame& image = plan.overlayImages[k];
+        if (!image.IsValid()) continue;
+        AVFilterContext* src = g.Source("ov" + std::to_string(k));
+        if (!src) continue;
+        FramePtr f = MakeFrame();
+        f->format = AV_PIX_FMT_RGBA;
+        f->width = image.width;
+        f->height = image.height;
+        f->sample_aspect_ratio = AVRational{1, 1};
+        int err = av_frame_get_buffer(f.get(), 0);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Out of memory", err);
+        for (int y = 0; y < image.height; ++y)
+            std::copy_n(&image.pixels[static_cast<size_t>(y) * image.width * 4], static_cast<size_t>(image.width) * 4,
+                        f->data[0] + static_cast<ptrdiff_t>(y) * f->linesize[0]);
+        f->pts = 0;
+        err = av_buffersrc_add_frame_flags(src, f.get(), 0);
+        if (err >= 0) err = av_buffersrc_add_frame_flags(src, nullptr, 0);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed an overlay image", err);
+    }
+    return VideoFXResult::Ok;
 }
 
 std::string Exporter::AudioTail() const {
@@ -614,52 +928,6 @@ std::string Exporter::AudioTail() const {
 // ---------------------------------------------------------------------------
 // graphs
 // ---------------------------------------------------------------------------
-
-struct Graph {
-    FilterGraphPtr graph;
-    AVFilterContext* src = nullptr;     // nullptr for generator graphs
-    AVFilterContext* sink = nullptr;
-    bool eof = false;
-};
-
-// Build `graph` from `desc`, fed by a buffer source created from `srcArgs`
-// (empty = the description starts with its own source filter)
-VideoFXResult BuildGraph(Graph& g, bool video, const std::string& srcArgs, const std::string& desc) {
-    g.graph.reset(avfilter_graph_alloc());
-    if (!g.graph) return Fail(VideoFXResult::FilterError, "Out of memory");
-    g.graph->nb_threads = 0;
-    int err;
-    if (!srcArgs.empty()) {
-        err = avfilter_graph_create_filter(&g.src, avfilter_get_by_name(video ? "buffer" : "abuffer"), "in",
-                                           srcArgs.c_str(), nullptr, g.graph.get());
-        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot create the filter source", err);
-    }
-    err = avfilter_graph_create_filter(&g.sink, avfilter_get_by_name(video ? "buffersink" : "abuffersink"), "out",
-                                       nullptr, nullptr, g.graph.get());
-    if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot create the filter sink", err);
-
-    AVFilterInOut* outputs = nullptr;
-    if (g.src) {
-        outputs = avfilter_inout_alloc();
-        outputs->name = av_strdup("in");
-        outputs->filter_ctx = g.src;
-        outputs->pad_idx = 0;
-        outputs->next = nullptr;
-    }
-    AVFilterInOut* inputs = avfilter_inout_alloc();
-    inputs->name = av_strdup("out");
-    inputs->filter_ctx = g.sink;
-    inputs->pad_idx = 0;
-    inputs->next = nullptr;
-
-    err = avfilter_graph_parse_ptr(g.graph.get(), desc.c_str(), &inputs, &outputs, nullptr);
-    avfilter_inout_free(&inputs);
-    avfilter_inout_free(&outputs);
-    if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot build the effect chain \"" + desc + "\"", err);
-    err = avfilter_graph_config(g.graph.get(), nullptr);
-    if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot configure the effect chain \"" + desc + "\"", err);
-    return VideoFXResult::Ok;
-}
 
 // ---------------------------------------------------------------------------
 // encoding
@@ -693,42 +961,203 @@ VideoFXResult Exporter::EncodeAudio(AVFrame* frame) {
 VideoFXResult Exporter::EmitVideo(AVFrame* f, AVRational sinkTb) {
     const int64_t rel = f->pts == AV_NOPTS_VALUE ? nextVideoPts - segmentVideoBase
                                                  : av_rescale_q(f->pts, sinkTb, venc->time_base);
-    const int64_t pts = segmentVideoBase + rel;
-    if (pts < nextVideoPts) return VideoFXResult::Ok;     // duplicate timestamp: drop
-    f->pts = pts;
+    f->pts = segmentVideoBase + rel;
     f->pict_type = AV_PICTURE_TYPE_NONE;
-    VideoFXResult r = EncodeVideo(f);
+    VideoFXResult r = AcceptVideo(f);
     if (r != VideoFXResult::Ok) return r;
-    nextVideoPts = pts + 1;
-    if (!lastVideoFrame) lastVideoFrame = MakeFrame();
-    av_frame_unref(lastVideoFrame.get());
-    av_frame_ref(lastVideoFrame.get(), f);
     if (!ReportProgress(static_cast<double>(nextVideoPts) * av_q2d(venc->time_base) - segmentStart))
         return Fail(VideoFXResult::Cancelled, "Export cancelled");
     return VideoFXResult::Ok;
 }
 
+VideoFXResult Exporter::AcceptVideo(AVFrame* f) {
+    if (f->pts < nextVideoPts) return VideoFXResult::Ok;     // duplicate timestamp: drop
+    nextVideoPts = f->pts + 1;
+    if (videoTransitionPending) {
+        headFrames.push_back(FramePtr(av_frame_clone(f)));
+        if (!headFrames.back()) return Fail(VideoFXResult::EncodeError, "Out of memory");
+        return headFrames.size() >= headNeedFrames ? RunVideoTransition() : VideoFXResult::Ok;
+    }
+    return PassVideo(f);
+}
+
+VideoFXResult Exporter::PassVideo(AVFrame* f) {
+    if (!lastVideoFrame) lastVideoFrame = MakeFrame();
+    av_frame_unref(lastVideoFrame.get());
+    av_frame_ref(lastVideoFrame.get(), f);
+    if (tailHoldFrames == 0) return OutputVideo(f);
+    // Keep the newest tailHoldFrames; older ones are final
+    tailFrames.push_back(FramePtr(av_frame_clone(f)));
+    if (!tailFrames.back()) return Fail(VideoFXResult::EncodeError, "Out of memory");
+    while (tailFrames.size() > tailHoldFrames) {
+        VideoFXResult r = OutputVideo(tailFrames.front().get());
+        tailFrames.pop_front();
+        if (r != VideoFXResult::Ok) return r;
+    }
+    return VideoFXResult::Ok;
+}
+
+VideoFXResult Exporter::OutputVideo(AVFrame* f) {
+    if (!gif) return EncodeVideo(f);
+    int err = av_buffersrc_add_frame_flags(gifGraph.src, f, AV_BUFFERSRC_FLAG_KEEP_REF);
+    if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot build the GIF palette", err);
+    FramePtr scratch = MakeFrame();
+    const AVRational tb = av_buffersink_get_time_base(gifGraph.sink);
+    return PullGraph(gifGraph, scratch.get(), [&](AVFrame* out) {
+        out->pts = av_rescale_q(out->pts, tb, venc->time_base);
+        out->pict_type = AV_PICTURE_TYPE_NONE;
+        return EncodeVideo(out);
+    });
+}
+
+// Blend the held tail of the previous segment with the head of this one.
+// Runs when the head is complete, or when this segment ended first (then
+// the blend is as long as the shorter of the two).
+VideoFXResult Exporter::RunVideoTransition() {
+    videoTransitionPending = false;
+    const size_t n = std::min(transitionTail.size(), headFrames.size());
+    const size_t before = transitionTail.size() - n;
+    VideoFXResult r;
+    for (size_t i = 0; i < before; ++i) {
+        if ((r = PassVideo(transitionTail[i].get())) != VideoFXResult::Ok) return r;
+    }
+    if (n > 0) {
+        const int64_t base = transitionTail[before]->pts;
+        const AVRational tb = venc->time_base;
+        const std::string args = VideoSourceArgs(width, height, stageFmt, tb, AVRational{1, 1}, frameRate);
+        const std::string desc = "[a][b]xfade=transition=" + TransitionName(transitionType) +
+                                 ":duration=" + FormatNumber(n * av_q2d(tb)) + ":offset=0,format=" +
+                                 av_get_pix_fmt_name(stageFmt) + "[out]";
+        Graph g;
+        if ((r = BuildGraph(g, true, {{"a", args}, {"b", args}}, desc)) != VideoFXResult::Ok) return r;
+        AVFilterContext* a = g.Source("a");
+        AVFilterContext* b = g.Source("b");
+        FramePtr scratch = MakeFrame();
+        int64_t k = 0;
+        auto emit = [&](AVFrame* out) {
+            out->pts = base + k++;
+            out->pict_type = AV_PICTURE_TYPE_NONE;
+            return PassVideo(out);
+        };
+        // Interleaved, so the graph never queues more than a frame or two
+        for (size_t i = 0; i < n; ++i) {
+            transitionTail[before + i]->pts = static_cast<int64_t>(i);
+            headFrames[i]->pts = static_cast<int64_t>(i);
+            int err = av_buffersrc_add_frame_flags(a, transitionTail[before + i].get(), 0);
+            if (err >= 0) err = av_buffersrc_add_frame_flags(b, headFrames[i].get(), 0);
+            if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the transition", err);
+            if ((r = PullGraph(g, scratch.get(), emit)) != VideoFXResult::Ok) return r;
+        }
+        int err = av_buffersrc_add_frame_flags(a, nullptr, 0);
+        if (err >= 0) err = av_buffersrc_add_frame_flags(b, nullptr, 0);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the transition", err);
+        if ((r = PullGraph(g, scratch.get(), emit)) != VideoFXResult::Ok) return r;
+        nextVideoPts = std::max(nextVideoPts, base + static_cast<int64_t>(n));
+    }
+    for (size_t i = n; i < headFrames.size(); ++i) {       // (only when the tail was empty)
+        if ((r = PassVideo(headFrames[i].get())) != VideoFXResult::Ok) return r;
+    }
+    transitionTail.clear();
+    headFrames.clear();
+    return VideoFXResult::Ok;
+}
+
+FramePtr Exporter::MakeAudioFrame(int samples) const {
+    FramePtr frame = MakeFrame();
+    frame->nb_samples = samples;
+    frame->format = sampleFmt;
+    frame->sample_rate = sampleRate;
+    SetFrameChannels(frame.get(), aenc.get());
+    if (av_frame_get_buffer(frame.get(), 0) < 0) return nullptr;
+    return frame;
+}
+
 VideoFXResult Exporter::EmitAudio(AVFrame* f) {
-    int err = av_audio_fifo_write(fifo.get(), reinterpret_cast<void**>(f->extended_data), f->nb_samples);
-    if (err < f->nb_samples) return Fail(VideoFXResult::EncodeError, "Audio buffer overflow", err < 0 ? err : 0);
-    audioSamplesQueued += f->nb_samples;
-    VideoFXResult r = DrainAudioFifo(false);
+    VideoFXResult r;
+    if (audioTransitionPending) {
+        if (av_audio_fifo_write(headFifo.get(), reinterpret_cast<void**>(f->extended_data), f->nb_samples) < f->nb_samples)
+            return Fail(VideoFXResult::EncodeError, "Audio buffer overflow");
+        r = av_audio_fifo_size(headFifo.get()) >= headNeedSamples ? RunAudioTransition() : VideoFXResult::Ok;
+    } else {
+        r = QueueAudio(f);
+    }
     if (r != VideoFXResult::Ok) return r;
     if (!outVideo && !ReportProgress(static_cast<double>(audioSamplesQueued) / sampleRate - segmentStart))
         return Fail(VideoFXResult::Cancelled, "Export cancelled");
     return VideoFXResult::Ok;
 }
 
+VideoFXResult Exporter::QueueAudio(AVFrame* f) {
+    int err = av_audio_fifo_write(fifo.get(), reinterpret_cast<void**>(f->extended_data), f->nb_samples);
+    if (err < f->nb_samples) return Fail(VideoFXResult::EncodeError, "Audio buffer overflow", err < 0 ? err : 0);
+    audioSamplesQueued += f->nb_samples;
+    return DrainAudioFifo(false);
+}
+
+// Take the last tailHoldSamples queued (the sound under the held frames) out
+// of the FIFO for the next transition
+VideoFXResult Exporter::HoldTailAudio() {
+    transitionTailAudio.reset();
+    const int size = av_audio_fifo_size(fifo.get());
+    const int take = static_cast<int>(std::min<int64_t>(tailHoldSamples, size));
+    if (take <= 0) return VideoFXResult::Ok;
+    FramePtr all = MakeAudioFrame(size);
+    FramePtr tail = MakeAudioFrame(take);
+    if (!all || !tail) return Fail(VideoFXResult::EncodeError, "Out of memory");
+    if (av_audio_fifo_read(fifo.get(), reinterpret_cast<void**>(all->extended_data), size) < size)
+        return Fail(VideoFXResult::EncodeError, "Audio buffer underrun");
+    if (size > take &&
+        av_audio_fifo_write(fifo.get(), reinterpret_cast<void**>(all->extended_data), size - take) < size - take)
+        return Fail(VideoFXResult::EncodeError, "Audio buffer overflow");
+    av_samples_copy(tail->extended_data, all->extended_data, 0, size - take, take, channels, sampleFmt);
+    audioSamplesQueued -= take;
+    transitionTailAudio = std::move(tail);
+    return VideoFXResult::Ok;
+}
+
+VideoFXResult Exporter::RunAudioTransition() {
+    audioTransitionPending = false;
+    const int tailSize = transitionTailAudio ? transitionTailAudio->nb_samples : 0;
+    const int headSize = static_cast<int>(std::min<int64_t>(av_audio_fifo_size(headFifo.get()), headNeedSamples));
+    const int n = std::min(tailSize, headSize);
+    VideoFXResult r;
+
+    // Tail samples before the overlap go out as they are
+    if (tailSize > n) {
+        FramePtr before = MakeAudioFrame(tailSize - n);
+        if (!before) return Fail(VideoFXResult::EncodeError, "Out of memory");
+        av_samples_copy(before->extended_data, transitionTailAudio->extended_data, 0, 0, tailSize - n, channels, sampleFmt);
+        if ((r = QueueAudio(before.get())) != VideoFXResult::Ok) return r;
+    }
+    if (n > 0) {
+        FramePtr a = MakeAudioFrame(n);
+        FramePtr b = MakeAudioFrame(n);
+        if (!a || !b) return Fail(VideoFXResult::EncodeError, "Out of memory");
+        av_samples_copy(a->extended_data, transitionTailAudio->extended_data, 0, tailSize - n, n, channels, sampleFmt);
+        if (av_audio_fifo_read(headFifo.get(), reinterpret_cast<void**>(b->extended_data), n) < n)
+            return Fail(VideoFXResult::EncodeError, "Audio buffer underrun");
+        CrossfadeSamples(a.get(), b.get(), n, channels, sampleFmt);
+        if ((r = QueueAudio(a.get())) != VideoFXResult::Ok) return r;
+    }
+    // What came in past the overlap follows it
+    const int rest = av_audio_fifo_size(headFifo.get());
+    if (rest > 0) {
+        FramePtr after = MakeAudioFrame(rest);
+        if (!after) return Fail(VideoFXResult::EncodeError, "Out of memory");
+        av_audio_fifo_read(headFifo.get(), reinterpret_cast<void**>(after->extended_data), rest);
+        if ((r = QueueAudio(after.get())) != VideoFXResult::Ok) return r;
+    }
+    transitionTailAudio.reset();
+    return VideoFXResult::Ok;
+}
+
 VideoFXResult Exporter::DrainAudioFifo(bool final) {
-    while (av_audio_fifo_size(fifo.get()) >= audioFrameSize || (final && av_audio_fifo_size(fifo.get()) > 0)) {
+    // While a transition's tail is being held, keep that much sound back
+    const int reserve = final ? 0 : static_cast<int>(tailHoldSamples);
+    while (av_audio_fifo_size(fifo.get()) - reserve >= audioFrameSize || (final && av_audio_fifo_size(fifo.get()) > 0)) {
         const int n = std::min(audioFrameSize, av_audio_fifo_size(fifo.get()));
-        FramePtr frame = MakeFrame();
-        frame->nb_samples = n;
-        frame->format = sampleFmt;
-        frame->sample_rate = sampleRate;
-        SetFrameChannels(frame.get(), aenc.get());
-        int err = av_frame_get_buffer(frame.get(), 0);
-        if (err < 0) return Fail(VideoFXResult::EncodeError, "Out of memory", err);
+        FramePtr frame = MakeAudioFrame(n);
+        if (!frame) return Fail(VideoFXResult::EncodeError, "Out of memory");
         if (av_audio_fifo_read(fifo.get(), reinterpret_cast<void**>(frame->extended_data), n) < n)
             return Fail(VideoFXResult::EncodeError, "Audio buffer underrun");
         frame->pts = audioSamplesEncoded;
@@ -742,20 +1171,12 @@ VideoFXResult Exporter::DrainAudioFifo(bool final) {
 VideoFXResult Exporter::PadAudioSilence(int64_t samples) {
     while (samples > 0) {
         const int n = static_cast<int>(std::min<int64_t>(samples, 4096));
-        FramePtr frame = MakeFrame();
-        frame->nb_samples = n;
-        frame->format = sampleFmt;
-        frame->sample_rate = sampleRate;
-        SetFrameChannels(frame.get(), aenc.get());
-        int err = av_frame_get_buffer(frame.get(), 0);
-        if (err < 0) return Fail(VideoFXResult::EncodeError, "Out of memory", err);
+        FramePtr frame = MakeAudioFrame(n);
+        if (!frame) return Fail(VideoFXResult::EncodeError, "Out of memory");
         av_samples_set_silence(frame->extended_data, 0, n, channels, sampleFmt);
-        if (av_audio_fifo_write(fifo.get(), reinterpret_cast<void**>(frame->extended_data), n) < n)
-            return Fail(VideoFXResult::EncodeError, "Audio buffer overflow");
-        audioSamplesQueued += n;
-        samples -= n;
-        VideoFXResult r = DrainAudioFifo(false);
+        VideoFXResult r = QueueAudio(frame.get());
         if (r != VideoFXResult::Ok) return r;
+        samples -= n;
     }
     return VideoFXResult::Ok;
 }
@@ -770,13 +1191,13 @@ VideoFXResult Exporter::PadTo(double seconds) {
                 av_frame_ref(hold.get(), lastVideoFrame.get());
             } else {
                 // Nothing shown yet: black
-                hold->format = pixFmt;
+                hold->format = stageFmt;
                 hold->width = width;
                 hold->height = height;
                 if (av_frame_get_buffer(hold.get(), 0) < 0) return Fail(VideoFXResult::EncodeError, "Out of memory");
                 const ptrdiff_t lines[4] = {hold->linesize[0], hold->linesize[1], hold->linesize[2], hold->linesize[3]};
-                if (av_image_fill_black(hold->data, lines, pixFmt,
-                                        pixFmt == AV_PIX_FMT_YUVJ420P ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG,
+                if (av_image_fill_black(hold->data, lines, stageFmt,
+                                        stageFmt == AV_PIX_FMT_YUVJ420P ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG,
                                         width, height) < 0) {
                     for (int p = 0; p < 4 && hold->data[p]; ++p)
                         std::fill_n(hold->data[p], static_cast<size_t>(hold->linesize[p]) * height, 0);
@@ -785,9 +1206,9 @@ VideoFXResult Exporter::PadTo(double seconds) {
             while (nextVideoPts < target) {
                 FramePtr copy = MakeFrame();
                 av_frame_ref(copy.get(), hold.get());
-                copy->pts = nextVideoPts++;
+                copy->pts = nextVideoPts;
                 copy->pict_type = AV_PICTURE_TYPE_NONE;
-                VideoFXResult r = EncodeVideo(copy.get());
+                VideoFXResult r = AcceptVideo(copy.get());   // advances nextVideoPts
                 if (r != VideoFXResult::Ok) return r;
             }
         }
@@ -814,21 +1235,6 @@ bool Exporter::ReportProgress(double segmentSeconds) {
 // segments
 // ---------------------------------------------------------------------------
 
-// Pull everything the sink has; `flush` after EOF was sent to the source
-template <class Emit>
-VideoFXResult PullGraph(Graph& g, AVFrame* scratch, Emit emit) {
-    if (!g.sink || g.eof) return VideoFXResult::Ok;
-    while (true) {
-        int err = av_buffersink_get_frame(g.sink, scratch);
-        if (err == AVERROR(EAGAIN)) return VideoFXResult::Ok;
-        if (err == AVERROR_EOF) { g.eof = true; return VideoFXResult::Ok; }
-        if (err < 0) return Fail(VideoFXResult::FilterError, "Effect processing failed", err);
-        VideoFXResult r = emit(scratch);
-        av_frame_unref(scratch);
-        if (r != VideoFXResult::Ok) return r;
-    }
-}
-
 VideoFXResult Exporter::RunGeneratorGraphs(const SegmentPlan& plan, bool video, bool audio) {
     const double d = plan.outDuration;
     const std::string dur = FormatNumber(d);
@@ -846,15 +1252,22 @@ VideoFXResult Exporter::RunGeneratorGraphs(const SegmentPlan& plan, bool video, 
                                                                             ? plan.segment.color : 0));
             desc = std::string("color=c=") + color + ":s=" + size + ":r=" + rate + ":d=" + dur;
         }
-        AppendFilter(desc, plan.segment.kind == VideoFXSourceKind::File ? "" : plan.videoEffects);
-        AppendFilter(desc, VideoTail(false));
-        if ((r = BuildGraph(vg, true, "", desc)) != VideoFXResult::Ok) return r;
+        std::vector<GraphSource> sources;
+        if (plan.segment.kind == VideoFXSourceKind::File) {
+            // black filler for a picture-less file: no effects, no overlays
+            desc += "," + FitChain(false) + ",format=" + av_get_pix_fmt_name(stageFmt) + "[out]";
+        } else {
+            AppendFilter(desc, plan.videoEffects);
+            desc = SegmentVideoGraph(plan, desc, false, sources);
+        }
+        if ((r = BuildGraph(vg, true, sources, desc)) != VideoFXResult::Ok) return r;
+        if ((r = FeedOverlayImages(vg, plan)) != VideoFXResult::Ok) return r;
     }
     if (audio) {
         std::string desc = "sine=frequency=1000:sample_rate=" + std::to_string(sampleRate) + ":duration=" + dur;
         AppendFilter(desc, plan.audioEffects);
         AppendFilter(desc, AudioTail());
-        if ((r = BuildGraph(ag, false, "", desc)) != VideoFXResult::Ok) return r;
+        if ((r = BuildGraph(ag, false, {}, desc + "[out]")) != VideoFXResult::Ok) return r;
     }
     FramePtr scratch = MakeFrame();
     const AVRational vtb = vg.sink ? av_buffersink_get_time_base(vg.sink) : AVRational{1, 1};
@@ -938,16 +1351,15 @@ VideoFXResult Exporter::ProcessFileSegment(const SegmentPlan& plan) {
         AVStream* st = fmt->streams[vIndex];
         if (!vg.graph) {
             const AVRational sar = frame->sample_aspect_ratio.num > 0 ? frame->sample_aspect_ratio : AVRational{1, 1};
-            const std::string args = "video_size=" + std::to_string(frame->width) + "x" + std::to_string(frame->height) +
-                                     ":pix_fmt=" + std::to_string(frame->format) +
-                                     ":time_base=" + std::to_string(st->time_base.num) + "/" + std::to_string(st->time_base.den) +
-                                     ":pixel_aspect=" + std::to_string(sar.num) + "/" + std::to_string(sar.den);
-            std::string desc = "trim=" + trimArgs + ",setpts=PTS-STARTPTS";
-            AppendFilter(desc, AutoRotateChain(plan.rotation));
-            if (std::fabs(speed - 1.0) > 1e-6) AppendFilter(desc, "setpts=PTS/" + FormatNumber(speed));
-            AppendFilter(desc, plan.videoEffects);
-            AppendFilter(desc, VideoTail(sar.num != sar.den));
-            VideoFXResult br = BuildGraph(vg, true, args, desc);
+            std::vector<GraphSource> sources = {
+                {"in", VideoSourceArgs(frame->width, frame->height, frame->format, st->time_base, sar)}};
+            std::string head = "[in]trim=" + trimArgs + ",setpts=PTS-STARTPTS";
+            AppendFilter(head, AutoRotateChain(plan.rotation));
+            if (std::fabs(speed - 1.0) > 1e-6) AppendFilter(head, "setpts=PTS/" + FormatNumber(speed));
+            AppendFilter(head, plan.videoEffects);
+            const std::string desc = SegmentVideoGraph(plan, head, sar.num != sar.den, sources);
+            VideoFXResult br = BuildGraph(vg, true, sources, desc);
+            if (br == VideoFXResult::Ok) br = FeedOverlayImages(vg, plan);
             if (br != VideoFXResult::Ok) return br;
             vsinkTb = av_buffersink_get_time_base(vg.sink);
             graphW = frame->width;
@@ -981,11 +1393,11 @@ VideoFXResult Exporter::ProcessFileSegment(const SegmentPlan& plan) {
         AVStream* st = fmt->streams[aIndex];
         const AVRational tb{1, frame->sample_rate};
         if (!ag.graph) {
-            std::string desc = "atrim=" + trimArgs + ",asetpts=PTS-STARTPTS";
+            std::string desc = "[in]atrim=" + trimArgs + ",asetpts=PTS-STARTPTS";
             AppendFilter(desc, AtempoChain(speed));
             AppendFilter(desc, plan.audioEffects);
             AppendFilter(desc, AudioTail());
-            VideoFXResult br = BuildGraph(ag, false, AudioBufferSourceArgs(frame, tb), desc);
+            VideoFXResult br = BuildGraph(ag, false, {{"in", AudioBufferSourceArgs(frame, tb)}}, desc + "[out]");
             if (br != VideoFXResult::Ok) return br;
         }
         const int64_t ts = frame->best_effort_timestamp;
@@ -1064,11 +1476,24 @@ VideoFXResult Exporter::ProcessFileSegment(const SegmentPlan& plan) {
     return VideoFXResult::Ok;
 }
 
-VideoFXResult Exporter::ProcessSegment(const SegmentPlan& plan) {
+VideoFXResult Exporter::ProcessSegment(size_t index) {
+    const SegmentPlan& plan = plans[index];
+    const bool transitionNext = index + 1 < plans.size() && !plans[index + 1].segment.transitionIn.IsCut();
+
     // Line both streams up at the segment start
     VideoFXResult r = PadTo(segmentStart);
     if (r != VideoFXResult::Ok) return r;
     segmentVideoBase = nextVideoPts;
+
+    // Hold back the last D seconds for the transition into the next segment
+    tailFrames.clear();
+    tailHoldFrames = 0;
+    tailHoldSamples = 0;
+    if (transitionNext) {
+        const double d = plans[index + 1].segment.transitionIn.duration;
+        if (outVideo) tailHoldFrames = std::max<size_t>(1, static_cast<size_t>(std::llround(d / av_q2d(venc->time_base))));
+        if (outAudio) tailHoldSamples = std::llround(d * sampleRate);
+    }
 
     if (plan.segment.kind == VideoFXSourceKind::File) {
         r = ProcessFileSegment(plan);
@@ -1078,13 +1503,56 @@ VideoFXResult Exporter::ProcessSegment(const SegmentPlan& plan) {
     }
     if (r != VideoFXResult::Ok) return r;
 
-    // The next segment starts where the longer stream ended
+    // A transition into this segment still waiting for its head: the segment
+    // was shorter than the transition, blend what there is
+    if (videoTransitionPending && (r = RunVideoTransition()) != VideoFXResult::Ok) return r;
+    if (audioTransitionPending && (r = RunAudioTransition()) != VideoFXResult::Ok) return r;
+
+    const double videoEnd = outVideo ? nextVideoPts * av_q2d(venc->time_base) : 0.0;
     double end = segmentStart;
-    if (outVideo) end = std::max(end, nextVideoPts * av_q2d(venc->time_base));
+    if (outVideo) end = std::max(end, videoEnd);
     if (outAudio) end = std::max(end, static_cast<double>(audioSamplesQueued) / sampleRate);
     if (end <= segmentStart && plan.outDuration > 0.0) end = segmentStart + plan.outDuration;
     progressDone += plan.outDuration > 0.0 ? plan.outDuration : end - segmentStart;
-    segmentStart = end;
+
+    if (!transitionNext) {
+        segmentStart = end;
+        return VideoFXResult::Ok;
+    }
+
+    // Hand the held tail to the next segment, which starts where it starts
+    transitionType = plans[index + 1].segment.transitionIn.type;
+    transitionTail = std::move(tailFrames);
+    tailFrames.clear();
+    headFrames.clear();
+    headNeedFrames = transitionTail.size();
+    videoTransitionPending = outVideo && headNeedFrames > 0;
+    double overlapStart = end;
+    if (videoTransitionPending) {
+        overlapStart = transitionTail.front()->pts * av_q2d(venc->time_base);
+        nextVideoPts = transitionTail.front()->pts;        // the head re-uses these timestamps
+    }
+    if (outAudio) {
+        // Sound under the held frames: up to the picture's end, then the same span
+        if (outVideo) {
+            const int64_t target = std::llround(videoEnd * sampleRate);
+            if (target > audioSamplesQueued && (r = PadAudioSilence(target - audioSamplesQueued)) != VideoFXResult::Ok)
+                return r;
+            if (videoTransitionPending)
+                tailHoldSamples = std::llround(transitionTail.size() * av_q2d(venc->time_base) * sampleRate);
+        }
+        if ((r = HoldTailAudio()) != VideoFXResult::Ok) return r;
+        headNeedSamples = transitionTailAudio ? transitionTailAudio->nb_samples : 0;
+        audioTransitionPending = headNeedSamples > 0;
+        if (audioTransitionPending) {
+            headFifo.reset(av_audio_fifo_alloc(sampleFmt, channels, static_cast<int>(headNeedSamples) + audioFrameSize));
+            if (!headFifo) return Fail(VideoFXResult::EncodeError, "Out of memory");
+        }
+        if (!outVideo) overlapStart = static_cast<double>(audioSamplesQueued) / sampleRate;
+    }
+    tailHoldFrames = 0;
+    tailHoldSamples = 0;
+    segmentStart = overlapStart;
     return VideoFXResult::Ok;
 }
 
@@ -1101,6 +1569,19 @@ VideoFXResult Exporter::Finish() {
         if ((r = DrainAudioFifo(true)) != VideoFXResult::Ok) return r;
         if ((r = EncodeAudio(nullptr)) != VideoFXResult::Ok) return r;
     }
+    if (outVideo && gif) {
+        // The palette stage holds nothing back, but drain it all the same
+        int err = av_buffersrc_add_frame_flags(gifGraph.src, nullptr, 0);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the GIF palette", err);
+        FramePtr scratch = MakeFrame();
+        const AVRational tb = av_buffersink_get_time_base(gifGraph.sink);
+        r = PullGraph(gifGraph, scratch.get(), [&](AVFrame* out) {
+            out->pts = av_rescale_q(out->pts, tb, venc->time_base);
+            out->pict_type = AV_PICTURE_TYPE_NONE;
+            return EncodeVideo(out);
+        });
+        if (r != VideoFXResult::Ok) return r;
+    }
     if (outVideo && (r = EncodeVideo(nullptr)) != VideoFXResult::Ok) return r;
     int err = av_write_trailer(oc);
     if (err < 0) return Fail(VideoFXResult::WriteError, "Cannot finish " + outputPath, err);
@@ -1115,6 +1596,10 @@ VideoFXResult Exporter::Finish() {
 }
 
 void Exporter::Close() {
+    gifGraph = Graph{};
+    tailFrames.clear();
+    transitionTail.clear();
+    headFrames.clear();
     venc.reset();
     aenc.reset();
     if (oc) {
@@ -1134,7 +1619,7 @@ VideoFXResult Exporter::Run(const std::vector<VideoFXSegment>& segments) {
     if (r != VideoFXResult::Ok) return r;      // nothing written yet
 
     r = OpenOutput();
-    for (size_t i = 0; r == VideoFXResult::Ok && i < plans.size(); ++i) r = ProcessSegment(plans[i]);
+    for (size_t i = 0; r == VideoFXResult::Ok && i < plans.size(); ++i) r = ProcessSegment(i);
     if (r == VideoFXResult::Ok) r = Finish();
 
     if (r != VideoFXResult::Ok) {

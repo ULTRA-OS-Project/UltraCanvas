@@ -1688,22 +1688,25 @@ FFmpeg header or type appears in a public header. FFmpeg is optional at build
 time: without it the same API links from a stub whose calls return
 `VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 8.x.
 
-**Implementation status:** Stage 1 — probe, frames, the segment timeline with
-26 effect types, speed, joins, GIF / audio-only outputs, lossless cut,
-background job, `videofx` command-line tool. Planned: transitions between
-segments, keyframed parameters, text / image overlays, multi-track audio
-mixing, hardware encoders beyond the platform ones picked automatically
-(VideoToolbox, Media Foundation), project files.
+**Implementation status:** Stages 1 and 2 — probe, frames, the segment
+timeline with 26 effect types, speed, joins, 30 transitions between segments
+(picture via xfade, sound cross-faded), text and image overlays on the output
+frame, GIF / audio-only outputs, lossless cut, background job, `videofx`
+command-line tool. Planned: picture-in-picture, keyframed parameters,
+multi-track audio mixing, hardware encoders beyond the platform ones picked
+automatically (VideoToolbox, Media Foundation), project files.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
   `VideoFXSegment`, `VideoFXSourceKind`, `VideoFXExportSettings`,
   `VideoFXContainer`, `VideoFXVideoCodec`, `VideoFXAudioCodec`,
-  `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`
+  `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
+  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
+  `VideoFXOverlayKind`, `VideoFXAnchor`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
-  `VideoFX_SetVerboseLogging`
+  `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetVerboseLogging`
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
@@ -1714,11 +1717,17 @@ mixing, hardware encoders beyond the platform ones picked automatically
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
   `Rotate270`, `Rotate`, `FlipHorizontal`, `FlipVertical`, `Crop`, `FadeIn`,
   `FadeOut`, `Volume`, `NormalizeAudio`
-- Segments (`VideoFXSegment::`): `FromFile`, `SolidColor`, `TestPattern`
+- Segments (`VideoFXSegment::`): `FromFile`, `SolidColor`, `TestPattern`;
+  fields `effects`, `overlays`, `transitionIn`
+- Transitions (`VideoFXTransition::`): `Make`, `Crossfade`; 30
+  `VideoFXTransitionType`s (blends, wipes, pushes, shapes)
+- Overlays (`VideoFXOverlay::`): `Text`, `Image`, `ImageFromFrame`
 - Presets (`VideoFXExportSettings::`): `WebMP4`, `WebM`, `AnimatedGif`,
   `MasterProRes`, `AudioOnlyMP3`, `AudioOnlyWAV`
 - Internal: `VideoFX::Internal::{FormatNumber, EscapeFilterValue,
-  AutoRotateChain, AtempoChain, BuildVideoEffectChain, BuildAudioEffectChain}`
+  AutoRotateChain, AtempoChain, BuildVideoEffectChain, BuildAudioEffectChain,
+  TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
+  OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters}`
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 

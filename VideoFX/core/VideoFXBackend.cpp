@@ -20,7 +20,7 @@
 namespace VideoFX {
 
 #ifndef VIDEOFX_VERSION_STRING
-#define VIDEOFX_VERSION_STRING "0.1.0"
+#define VIDEOFX_VERSION_STRING "0.2.0"
 #endif
 
 namespace Internal {
@@ -304,6 +304,10 @@ bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec codec) {
 
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec codec) {
     return Internal::FindAudioEncoder(codec) != nullptr;
+}
+
+bool VideoFX_IsTextOverlayAvailable() {
+    return avfilter_get_by_name("drawtext") != nullptr;
 }
 
 void VideoFX_SetVerboseLogging(bool verbose) {

@@ -1860,22 +1860,25 @@ FFmpeg header or type appears in a public header. FFmpeg is optional at build
 time: without it the same API links from a stub whose calls return
 `VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 8.x.
 
-**Implementation status:** Stage 1 — probe, frames, the segment timeline with
-26 effect types, speed, joins, GIF / audio-only outputs, lossless cut,
-background job, `videofx` command-line tool. Planned: transitions between
-segments, keyframed parameters, text / image overlays, multi-track audio
-mixing, hardware encoders beyond the platform ones picked automatically
-(VideoToolbox, Media Foundation), project files.
+**Implementation status:** Stages 1 and 2 — probe, frames, the segment
+timeline with 26 effect types, speed, joins, 30 transitions between segments
+(picture via xfade, sound cross-faded), text and image overlays on the output
+frame, GIF / audio-only outputs, lossless cut, background job, `videofx`
+command-line tool. Planned: picture-in-picture, keyframed parameters,
+multi-track audio mixing, hardware encoders beyond the platform ones picked
+automatically (VideoToolbox, Media Foundation), project files.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
   `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
   `VideoFXSegment`, `VideoFXSourceKind`, `VideoFXExportSettings`,
   `VideoFXContainer`, `VideoFXVideoCodec`, `VideoFXAudioCodec`,
-  `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`
+  `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
+  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
+  `VideoFXOverlayKind`, `VideoFXAnchor`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
-  `VideoFX_SetVerboseLogging`
+  `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetVerboseLogging`
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
@@ -1886,11 +1889,17 @@ mixing, hardware encoders beyond the platform ones picked automatically
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
   `Rotate270`, `Rotate`, `FlipHorizontal`, `FlipVertical`, `Crop`, `FadeIn`,
   `FadeOut`, `Volume`, `NormalizeAudio`
-- Segments (`VideoFXSegment::`): `FromFile`, `SolidColor`, `TestPattern`
+- Segments (`VideoFXSegment::`): `FromFile`, `SolidColor`, `TestPattern`;
+  fields `effects`, `overlays`, `transitionIn`
+- Transitions (`VideoFXTransition::`): `Make`, `Crossfade`; 30
+  `VideoFXTransitionType`s (blends, wipes, pushes, shapes)
+- Overlays (`VideoFXOverlay::`): `Text`, `Image`, `ImageFromFrame`
 - Presets (`VideoFXExportSettings::`): `WebMP4`, `WebM`, `AnimatedGif`,
   `MasterProRes`, `AudioOnlyMP3`, `AudioOnlyWAV`
 - Internal: `VideoFX::Internal::{FormatNumber, EscapeFilterValue,
-  AutoRotateChain, AtempoChain, BuildVideoEffectChain, BuildAudioEffectChain}`
+  AutoRotateChain, AtempoChain, BuildVideoEffectChain, BuildAudioEffectChain,
+  TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
+  OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters}`
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 
@@ -69318,10 +69327,11 @@ size, and encode the result as MP4, WebM, MOV, MKV, an animated GIF or an
 audio file. One call, `VideoFX_Export`, does all of it from a list of
 segments.
 
-> **Status: stage 1 implemented.** Probe, frames, the segment timeline with
-> 26 effects, speed, joins, GIF and audio-only output, lossless cut, the
+> **Status: stages 1 and 2 implemented.** Probe, frames, the segment
+> timeline with 26 effects, speed, joins, 30 transitions between segments,
+> text and image overlays, GIF and audio-only output, lossless cut, the
 > background job and the `videofx` command-line tool work today, on FFmpeg
-> 4.4 to 8.x. Transitions, keyframes, overlays, multi-track mixing and project
+> 4.4 to 8.x. Picture-in-picture, keyframes, multi-track mixing and project
 > files are planned (see *Roadmap*).
 
 ---
@@ -69468,6 +69478,78 @@ with `InvalidArgument` before anything is written.
 
 ---
 
+## Transitions
+
+A segment's `transitionIn` blends the previous segment into it. The two
+overlap by the transition's length, so the export is that much shorter, and
+their sound is cross-faded over the same span.
+
+```cpp
+VideoFXSegment a = VideoFXSegment::FromFile("a.mp4");
+VideoFXSegment b = VideoFXSegment::FromFile("b.mp4");
+b.transitionIn = VideoFXTransition::Crossfade(1.0);             // a -> b, 1 s
+
+VideoFXSegment c = VideoFXSegment::FromFile("c.mp4");
+c.transitionIn = VideoFXTransition::Make(VideoFXTransitionType::WipeLeft, 0.5);
+
+VideoFX_Export({ a, b, c }, "joined.mp4");   // length: a + b + c - 1.5 s
+```
+
+| Family | `VideoFXTransitionType` |
+|---|---|
+| Blends | `Crossfade`, `Dissolve`, `FadeThroughBlack`, `FadeThroughWhite`, `Blur`, `Distance`, `Pixelize` |
+| Wipes | `WipeLeft`, `WipeRight`, `WipeUp`, `WipeDown`, `DiagonalTopLeft`, `DiagonalTopRight`, `DiagonalBottomLeft`, `DiagonalBottomRight` |
+| Pushes | `SlideLeft`, `SlideRight`, `SlideUp`, `SlideDown`, `SmoothLeft`, `SmoothRight`, `SmoothUp`, `SmoothDown`, `SqueezeHorizontal`, `SqueezeVertical` |
+| Shapes | `CircleOpen`, `CircleClose`, `CircleCrop`, `RectCrop`, `Radial` |
+
+- `Cut` (the default) is no transition. The first segment's `transitionIn`
+  is ignored — fade a start in with the `FadeIn` effect instead.
+- Length 0.04 to 5 seconds. When either neighbour is shorter than that, the
+  overlap shrinks to the shorter one.
+- The frames of the overlap are held in memory at output size: a 1 s
+  transition at 1080p30 holds about 180 MB for its duration.
+- Transitions need FFmpeg 4.3 or newer (its `xfade` filter); they work in
+  every output, GIF and audio-only included.
+
+---
+
+## Overlays: titles and logos
+
+`VideoFXSegment::overlays` draws text and images over a segment, after its
+effects, on the **output** frame — a title sits in the same place whatever
+the source's size. Sizes and margins are fractions of the output height, so
+a layout looks the same at 480p and 4K.
+
+```cpp
+VideoFXSegment clip = VideoFXSegment::FromFile("talk.mp4");
+
+VideoFXOverlay title = VideoFXOverlay::Text("Opening keynote", VideoFXAnchor::Bottom, 0.07);
+title.box = true;                    // a dark band behind it
+title.start = 0.5;                   // seconds into the segment
+title.end = 5.0;
+title.fadeIn = 0.5;
+title.fadeOut = 0.5;
+
+VideoFXOverlay logo = VideoFXOverlay::Image("logo.png", VideoFXAnchor::TopRight, 0.10);
+logo.opacity = 0.8;
+
+clip.overlays = { title, logo };
+```
+
+| Field | Meaning |
+|---|---|
+| `anchor`, `margin` | One of nine positions, `margin` from the edge (fraction of height); `Custom` uses `x`, `y` (fractions of width / height) |
+| `start`, `end` | Segment seconds after speed; `end` 0 = until the segment ends |
+| `fadeIn`, `fadeOut`, `opacity` | Seconds; 0..1 |
+| **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = a default sans font (DejaVu / Liberation / Noto on Linux, Helvetica on macOS, Segoe UI on Windows, fontconfig otherwise) |
+| **Image:** `imagePath` or `image`, `imageHeight` | A PNG keeps its transparency; `image` takes RGBA pixels from memory (for example a picture UltraCanvas rendered); `imageHeight` 0 = its own pixel size |
+
+Text is taken literally — `:`, quotes, `%` and backslashes need no escaping.
+Text overlays need an FFmpeg built with libfreetype (the usual Linux, macOS
+and MSYS2 packages are); ask `VideoFX_IsTextOverlayAvailable()`.
+
+---
+
 ## Export settings
 
 `VideoFXExportSettings` defaults to "keep the first segment's size and rate,
@@ -69561,6 +69643,8 @@ videofx trim clip.mp4 cut.mp4 10 25 --lossless
 videofx effects clip.mp4 graded.mp4 temperature=0.3 vignette=0.4 fadein=1 fadeout=1
 videofx transcode clip.mov clip.webm --height 720 --quality 70
 videofx concat all.mp4 a.mp4 b.mov c.mkv
+videofx concat all.mp4 a.mp4 b.mov c.mkv --transition crossfade:1
+videofx transcode talk.mp4 titled.mp4 --title "Opening keynote" --watermark logo.png
 videofx testclip pattern.mp4 5 1280 720 30
 ```
 
@@ -69590,8 +69674,8 @@ generates its own clips, so it needs no media files.
 | Stage | Contents | State |
 |---|---|---|
 | 1 | Probe, frames, segment timeline, 26 effects, speed, joins, GIF / audio outputs, lossless cut, job, CLI | **Done** |
-| 2 | Transitions between segments (dissolve, wipe, slide), title and image overlays, picture-in-picture | Planned |
-| 3 | Keyframed effect parameters, multi-track audio mixing (music bed, ducking) | Planned |
+| 2 | Transitions between segments (30 types, with audio cross-fade), text and image overlays | **Done** |
+| 3 | Picture-in-picture, keyframed effect and overlay parameters, multi-track audio mixing (music bed, ducking) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |
 
@@ -69603,7 +69687,7 @@ FILE: Docs/Modules/VideoFX/intro.md
 
 # VideoFX
 
-The video editing and conversion engine. Probe any media file, pull frames and filmstrips, and build a timeline of clips — each trimmed, sped up or slowed down, colour-graded, faded, cropped or rotated — that is joined and encoded to MP4, WebM, MOV, MKV, an animated GIF or an audio file, with picture and sound kept in sync across every join. FFmpeg does the work behind VideoFX's own API, so no codec library leaks into application code; exports run on a background job with progress and cancel. Stage 1 is implemented; transitions, overlays, keyframes and multi-track mixing are next.
+The video editing and conversion engine. Probe any media file, pull frames and filmstrips, and build a timeline of clips — each trimmed, sped up or slowed down, colour-graded, faded, cropped or rotated — that is joined, with crossfades, wipes and slides between clips and titles and logos on top, and encoded to MP4, WebM, MOV, MKV, an animated GIF or an audio file, with picture and sound kept in sync across every join. FFmpeg does the work behind VideoFX's own API, so no codec library leaks into application code; exports run on a background job with progress and cancel. Stages 1 and 2 are implemented; picture-in-picture, keyframes and multi-track mixing are next.
 
 ==============================================================================
 FILE: Docs/Modules/VirtualFS/README.md
