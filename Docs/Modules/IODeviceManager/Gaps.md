@@ -136,11 +136,15 @@ absent.
 
 ## Categories not started
 
-`README.md` advertises 19. Beyond scanner, camera and printer:
+Beyond scanner, camera and printer, `IODeviceCategory` has these, and none
+has a backend (`README.md` lists them as planned):
 
-Storage · NetworkAdapter · Display · HID/Gamepad · GPIO · Serial ·
-Bluetooth · Barcode · RFID · Biometric · Keyboard · Mouse · Touchscreen ·
-Stylus
+Storage · NetworkAdapter · GPIO · Serial · Bluetooth · Barcode · Biometric
+
+The README once advertised 19 categories, including Display, HID/Gamepad,
+RFID, Keyboard, Mouse, Touchscreen and Stylus, which are not even
+`IODeviceCategory` values; it no longer does. Adding one is an enum value
+first, a backend second.
 
 ### ❓ Microphone and Speaker — a decision, not work
 

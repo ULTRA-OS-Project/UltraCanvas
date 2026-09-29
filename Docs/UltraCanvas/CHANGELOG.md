@@ -15,6 +15,25 @@
   ICA, WIA, TWAIN, AVFoundation and Media Foundation are marked *planned*, and
   a note says that on macOS and Windows a USB scanner or any camera is not
   found yet. The Win32 row of the library-links table now names winspool.
+- **IODeviceManager's README describes the module that exists.** It marked
+  Scanner, Camera and NetworkCamera "Production" and listed WIA, TWAIN, ICA,
+  MediaFoundation, AVFoundation, ONVIF and RTSP backends that were never
+  written. Its examples called `DiscoverNetworkCameras()`, `CapturePhoto()`,
+  `SetPTZ()`, `AddeSCLScanner()`, `Scan(config, bytes)` and
+  `ScanColorMode::RGB`, none of which exist.
+  - The category and backend tables now carry each entry's real state, taken
+    from `Gaps.md`: printers available on all three platforms, scanners and
+    webcams partial, the rest planned.
+  - Microphone and Speaker are marked as the open decision `Gaps.md` records.
+    The categories that were never `IODeviceCategory` values are gone.
+  - Every example is rewritten against the headers and compiles: scanning
+    through `ScannerDevice::Scan(ScannedImage&)`, cameras through
+    `CaptureFrame` / `StartStream` / `SetControl`, printing through
+    `PrintFile`, eSCL scanners named in `ULTRACANVAS_ESCL_SCANNERS`, and a
+    custom device through `RegisterDevice`.
+  - `intro.md`, which the DemoApp shows as the module's introduction, no
+    longer claims TWAIN, WIA, ONVIF or libgpiod. `Gaps.md` says which
+    categories exist.
 
 #### 2026-09-29 *0.9.79*
 - **New element: `UltraCanvasBusyIndicator`**, the turning ring that says
