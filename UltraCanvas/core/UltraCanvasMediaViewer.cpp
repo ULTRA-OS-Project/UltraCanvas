@@ -1231,7 +1231,15 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         dv->ApplyDarkTheme();
         dv->SetBackgroundColor(Color(22, 22, 28, 255));
         dv->SetBorders(1.0f, Color(255, 255, 255, 50), 8.0f);
-        dv->SetFontSize(12);
+        dv->SetFontSize(11);   // Arrange() adjusts it to the panel width
+        {
+            // Headings a step above the text rather than the document sizes
+            // (1.5x / 1.3x): the panel is a table viewer, often in a narrow
+            // preview pane, and every line spent on a heading is a row less.
+            MarkdownHybridStyle md = dv->GetMarkdownStyle();
+            md.headerSizeMultipliers = {1.3f, 1.2f, 1.08f, 1.0f, 1.0f, 1.0f};
+            dv->SetMarkdownStyle(md);
+        }
         dv->SetWordWrap(true);
         dv->SetShowLineNumbers(false);
         dv->SetHighlightSyntax(false);
@@ -2506,19 +2514,23 @@ std::string DetailsToMarkdown(const std::string& plain) {
     std::ostringstream md;
     std::string line;
     bool first = true, inTable = false;
+    // One blank line between blocks, never two: each blank line is a full
+    // line of height in the panel.
     auto endTable = [&] { if (inTable) { md << "\n"; inTable = false; } };
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (first) {
             if (line.empty()) continue;
-            md << "## " << EscapeDetailsCell(line) << "\n\n";
+            md << "## " << EscapeDetailsCell(line) << "\n";
             first = false;
             continue;
         }
         if (line.empty()) { endTable(); continue; }
         if (line.rfind("## ", 0) == 0 || line.rfind("### ", 0) == 0) {
+            // endTable() leaves the one blank line a heading needs after a
+            // table; a note paragraph already ends in one.
             endTable();
-            md << "\n" << line << "\n\n";
+            md << line << "\n";
             continue;
         }
         const size_t colon = line.find(": ");
@@ -2571,7 +2583,15 @@ void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
     float w = std::min(kMaxWidth, area.width - 2 * kInset);
     float h = area.height - 2 * kInset;
     if (w < 60.0f || h < 60.0f) return;
+    auto* dv = static_cast<UltraCanvasTextArea*>(detailsView.get());
+    const float fontSize = detailsFontSize > 0.0f ? detailsFontSize : (w < 360.0f ? 10.0f : 11.0f);
+    if (dv->GetStyle().fontStyle.fontSize != fontSize) dv->SetFontSize(fontSize);
     detailsView->Arrange(Rect2Df(area.x + kInset, area.y + kInset, w, h), ctx);
+}
+
+void UltraCanvasMediaViewer::SetDetailsFontSize(float size) {
+    detailsFontSize = std::max(0.0f, size);
+    if (IsDetailsVisible()) InvalidateLayout();
 }
 
 // ===== SLIDESHOW =====

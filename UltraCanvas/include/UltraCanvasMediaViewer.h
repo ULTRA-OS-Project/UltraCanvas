@@ -471,6 +471,11 @@ public:
     void SetDetailsVisible(bool visible);
     void ToggleDetails() { SetDetailsVisible(!IsDetailsVisible()); }
     bool IsDetailsVisible() const;
+    // Text size of the Details panel, in points. 0 (the default) picks it
+    // from the panel's width: 11, or 10 when the panel is narrower than
+    // 360 px - a file manager's preview pane - so a metadata table fits.
+    void SetDetailsFontSize(float size);
+    float GetDetailsFontSize() const { return detailsFontSize; }
 
 private:
     void BuildUI(float w, float h);
@@ -605,6 +610,7 @@ private:
     // positioned absolutely over the display area; see SetDetailsVisible().
     std::shared_ptr<UltraCanvasUIElement>    detailsView;
     std::string detailsMarkdown;   // what detailsView shows for the current file
+    float detailsFontSize = 0.0f;  // 0: chosen from the panel width in Arrange()
     MediaKind activeKind = MediaKind::Image;
 
     // Details text for the current UCD container (empty when the current file

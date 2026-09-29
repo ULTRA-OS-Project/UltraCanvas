@@ -195,10 +195,16 @@ The mouse wheel, Up / Down and PageUp / PageDown scroll it; Escape or the
 button again closes it. Left / Right keep browsing, and the panel follows
 to the next file.
 
+The text is small so a metadata table fits a preview pane: 11 pt, or 10 pt
+when the panel is narrower than 360 px, with headings only a step larger.
+`SetDetailsFontSize()` sets a size of your own; 0 goes back to the automatic
+choice.
+
 ```cpp
 viewer->SetDetailsVisible(true);
 viewer->ToggleDetails();
 bool open = viewer->IsDetailsVisible();
+viewer->SetDetailsFontSize(12);   // 0 = automatic (11, or 10 when narrow)
 ```
 
 ## Content, navigation, slideshow
