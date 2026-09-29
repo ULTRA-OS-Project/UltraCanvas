@@ -242,7 +242,7 @@ namespace UltraCanvas {
     void UltraCanvasListView::UpdateScrollbar() {
         if (!model || model->GetRowCount() == 0) {
             maxScrollY = 0;
-            verticalScrollbar->SetVisible(false);
+            HideScrollbar();
             return;
         }
 
@@ -254,9 +254,10 @@ namespace UltraCanvas {
         maxScrollY = std::max(0, rowsContentHeight - rowsViewportHeight);
         bool hasVerticalScrollbar = maxScrollY > 0;
 
-        verticalScrollbar->SetVisible(hasVerticalScrollbar);
-
-        if (hasVerticalScrollbar) {
+        if (!hasVerticalScrollbar) {
+            HideScrollbar();
+        } else {
+            verticalScrollbar->SetVisible(true);
             // Scrollbar bounds in element-local space (within listview padding rect)
             int localPaddingX = GetBorderLeftWidth();
             int localPaddingY = GetBorderTopWidth();
@@ -273,6 +274,16 @@ namespace UltraCanvas {
             verticalScrollbar->SetContentSize(rowsContentHeight);
         }
         ClampScrollOffset();
+    }
+
+    // A hidden scrollbar keeps no bounds: the last visible ones were computed
+    // for an earlier size (a list arranged at its parent's full width before
+    // the split pane sized it), and a rectangle outside the list must never
+    // survive to be painted or hit-tested once the bar shows again without a
+    // fresh UpdateScrollbar.
+    void UltraCanvasListView::HideScrollbar() {
+        verticalScrollbar->SetVisible(false);
+        verticalScrollbar->SetBounds(Rect2Df(0, 0, 0, 0));
     }
 
     void UltraCanvasListView::SyncScrollbarBeforePaint() {
