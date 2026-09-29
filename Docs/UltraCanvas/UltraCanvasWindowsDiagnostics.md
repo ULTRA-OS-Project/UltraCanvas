@@ -249,7 +249,8 @@ File size   : 21843456 bytes
       (UCDemo-Windows-<version>-x86_64.zip).
 ```
 
-`uc-diagnose.ps1 -CheckOnly .\UltraFiler.exe` does only this check and exits
+`uc-diagnose.ps1 -CheckOnly .\UltraFiler.exe` does only this check (and the
+[DLL-name check](#entry-point-not-found-in-a-windows-dll)) and exits
 0 or 1; `uc-diagnose.bat` runs it automatically before launching.
 
 **Why an older package "still works".** A report of the shape "0.3.109 starts,
@@ -413,6 +414,40 @@ certificate from a trusted CA. `package-win.sh` signs only `Texter.exe` and
 `UltraCanvasDemo.exe`, only when run without `--no-sign`, and CI always
 passes `--no-sign`. The PowerShell signing scripts can create only a
 self-signed certificate, which does not help against AV or SmartScreen.
+
+## "Entry point not found" in a Windows DLL
+
+While the application is running - not at start - a box titled with the
+executable's name says *The procedure entry point `WNetGetConnectionW` could
+not be located in the dynamic link library `C:\WINDOWS\SYSTEM32\pcacli.dll`*
+(German: *Der Prozedureinsprungpunkt ... wurde in der DLL ... nicht
+gefunden*). In UltraFiler it appeared right after the UAC consent prompt of
+"Delete as administrator" (0.9.92), and earlier on a double-click that opened
+a picture in Photos, naming `daxexec.dll` (0.9.83). Both are the same bug.
+
+The DLL named is the *importer*: a Windows component that the shell loaded
+into our process and that imports `WNetGetConnectionW` from `MPR.dll`. That
+import failed because the process already held a module called `mpr.dll` -
+ImageMagick's coder for its `MPR:` pseudo-format, shipped as
+`lib\ImageMagick-*\modules-Q16HDRI\coders\mpr.dll`. ImageMagick loads every
+coder the first time libvips asks it whether it recognises a file, and the
+Windows loader keys the modules of a process by base name: a later import of
+`MPR.dll` by name is answered with the module already loaded under that name,
+wherever it came from, and the coder has no `WNetGetConnectionW` to offer.
+Explorer never shows the box because Explorer never loads that coder.
+
+`package-win.sh` no longer ships a coder whose name Windows also uses
+(`mpr.dll`, `url.dll`, and anything else found in `System32`), and refuses to
+build a package that carries such a name anywhere. For a package already
+extracted, `uc-diagnose.ps1 -CheckOnly` lists the offending files under *DLLs
+named like Windows system DLLs*; deleting them (with the `.la` beside each)
+fixes that installation, and so does extracting a newer package into a fresh
+folder rather than over the old one.
+
+The general rule for anyone adding a DLL to the package: **no DLL may carry
+the base name of a Windows system DLL**, in a subdirectory or not. A plug-in
+loaded by full path is affected exactly like one next to the executable - the
+name is what the loader matches on.
 
 ## Windows 11 differences worth checking first
 
