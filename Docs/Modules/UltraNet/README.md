@@ -70,6 +70,25 @@ is purely a libcurl build option.
 `I<Category>ProtocolPlugin` interface in
 `UltraNet/UltraNetPlugins.h`.
 
+A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
+`UltraNet_RefreshPlugins()`, and it reaches the core **only through the host
+table** (`UltraNetPluginHost`, ABI 2) handed to its `UltraNet_PluginInit`:
+registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
+`UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
+`UltraNet_MimeBuild`, `UltraNet_HttpGet` / `HttpRequest`, ... Plug-in sources
+call those functions as usual;
+`Plugins/UltraNet/common/UltraNetPluginHostShim.cpp`, compiled into every
+plug-in, defines them inside the DSO and forwards each call to the table. So a
+plug-in has no undefined core symbol: it loads into an app on a **static**
+core (which carries only the objects the app itself uses), and a Windows DLL
+links without the core's import library, static core or shared. A plug-in that
+needs another core function appends it to `UltraNetPluginHost` (bumping the
+ABI), to the host's table in `core/UltraNet/UltraNetPlugins.cpp` and to the
+shim, and uses only header-only UltraCanvas helpers. The macOS and Windows
+linkers reject a plug-in that calls the core directly; on Linux the
+`UltraNetPluginHostImports` test (`scripts/check_ultranet_plugin_imports.py`)
+does, reading every built plug-in's undefined symbols.
+
 ---
 
 ## Architecture

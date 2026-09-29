@@ -45,12 +45,15 @@ public:
 
     // Raised whenever any control changes the filter.
     std::function<void()> onFilterChanged;
-    // "Load mail" — analyse whatever UltraMail has cached for this account.
+    // "Load mail" — download what is new for EmailCleaner's own accounts, then
+    // analyse every in-scope account's cache (UltraMail's as UltraMail synced it).
     std::function<void()> onScan;
     // "Re-analyse" — run the classifier over the stored corpus again.
     std::function<void()> onReanalyse;
     // "Rules…" — open the keyword rule editor.
     std::function<void()> onEditRules;
+    // "Accounts…" — list the accounts, add one without UltraMail.
+    std::function<void()> onManageAccounts;
 
 private:
     void NotifyFilterChanged();
