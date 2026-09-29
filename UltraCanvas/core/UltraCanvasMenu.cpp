@@ -562,17 +562,16 @@ namespace UltraCanvas {
         int currentX = itemBounds.x + style.paddingLeft;
         int textY = itemBounds.y + (itemBounds.height - fontHeight) / 2;
 
-        // Render checkbox/radio
+        // Render checkbox/radio. The indicator is centred on the row exactly as
+        // the label's line box is (textY above): the two share a centre line,
+        // so the box and the text stay level whatever the item height. It used
+        // to be nudged one pixel up, which read as the box floating above the
+        // text.
         if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
-            int checkboxY = itemBounds.y + (itemBounds.height - style.iconSize) / 2 - 1;
+            int checkboxY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
             RenderCheckbox(item, Point2Di(currentX, checkboxY), ctx);
             currentX += style.iconSize + style.iconSpacing;
         }
-        // if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
-
-        //     RenderCheckbox(item, Point2Di(currentX, textY), ctx);
-        //     currentX += style.iconSize + style.iconSpacing;
-        // }
 
         // Render icon (from an in-memory image if provided, else the file path)
         if (item.iconImage || !item.iconPath.empty()) {
@@ -780,26 +779,38 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::RenderCheckbox(const MenuItemData &item, const Point2Di &position, IRenderContext *ctx) {
-        Rect2Di checkRect(position.x, position.y, style.iconSize, style.iconSize);
+        // A 1px stroke centred on an integer edge is smeared over two pixels
+        // on each side, so the outline is inset by half a pixel: it then sits
+        // on whole pixels and its centre is still position + iconSize / 2.
+        const double size = static_cast<double>(style.iconSize);
+        const Point2Dd center(position.x + size / 2.0, position.y + size / 2.0);
+        const bool roundRadio = item.type == MenuItemType::Radio &&
+                                style.radioShape == MenuRadioShape::Round;
 
-        ctx->DrawFilledRectangle(checkRect, Colors::Transparent, 1, style.borderColor);
+        if (roundRadio) {
+            ctx->DrawFilledCircle(center, static_cast<float>(size / 2.0 - 0.5),
+                                  Colors::Transparent, style.borderColor, 1.0f);
+        } else {
+            Rect2Dd checkRect(position.x + 0.5, position.y + 0.5, size - 1.0, size - 1.0);
+            ctx->DrawFilledRectangle(checkRect, Colors::Transparent, 1, style.borderColor);
+        }
 
         if (item.checked) {
-            ctx->SetStrokePaint(style.textColor);
-            ctx->SetStrokeWidth(2.0f);
+            Color markColor = item.enabled ? style.textColor : style.disabledTextColor;
 
             if (item.type == MenuItemType::Checkbox) {
                 // Draw checkmark
+                ctx->SetStrokePaint(markColor);
+                ctx->SetStrokeWidth(2.0f);
                 Point2Dd p1(position.x + 3, position.y + style.iconSize / 2);
                 Point2Dd p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
                 Point2Dd p3(position.x + style.iconSize - 3, position.y + 3);
                 ctx->DrawLine(p1, p2);
                 ctx->DrawLine(p2, p3);
             } else {
-                // Draw radio dot
-                Point2Dd center = {position.x + static_cast<double>(style.iconSize) / 2.0,
-                                    position.y + static_cast<double>(style.iconSize) / 2.0};
-                ctx->DrawCircle(center, static_cast<double>(style.iconSize) / 4.0);
+                // Draw the radio dot: a filled disc, not a stroked ring, so it
+                // has no hole at small sizes and the same centre as the outline.
+                ctx->DrawFilledCircle(center, static_cast<float>(size / 4.0), markColor, Colors::Transparent, 0.0f);
             }
         }
     }

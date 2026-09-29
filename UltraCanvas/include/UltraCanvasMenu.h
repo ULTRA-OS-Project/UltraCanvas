@@ -152,6 +152,13 @@ namespace UltraCanvas {
     };
 
 // ===== MENU STYLING =====
+    // Outline of a Radio item's indicator. The dot inside is always round; this
+    // picks the ring around it.
+    enum class MenuRadioShape {
+        Square,     // the same box a Checkbox item gets (the historical look)
+        Round       // a circle, as UltraCanvasRadio draws it
+    };
+
     struct MenuStyle {
         // Colors
         Color backgroundColor = Color(248, 248, 248);
@@ -183,6 +190,7 @@ namespace UltraCanvas {
         int borderRadius = 4;
         int minWidth = 0;       // Minimum menu width (0 = no minimum)
         int maxWidth = 0;       // Maximum menu width (0 = no maximum, items ellipsize when exceeded)
+        MenuRadioShape radioShape = MenuRadioShape::Square;  // Outline of a Radio item's indicator
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
