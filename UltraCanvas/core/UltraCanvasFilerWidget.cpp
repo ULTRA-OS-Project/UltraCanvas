@@ -637,7 +637,12 @@ namespace UltraCanvas {
                         std::transform(ext.begin(), ext.end(), ext.begin(),
                                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
                         if (ext.empty() || binary.count(ext)) continue;
-                        out.emplace(ext, language);   // first claimant names it
+                        // A shared extension (.pl: Perl or Prolog) is named
+                        // after its default, not after whichever language
+                        // the tokenizer's unordered map happened to list first.
+                        const auto& shared = SyntaxTokenizer::SharedExtensionLanguages(ext);
+                        if (!shared.empty()) out[ext] = shared.front();
+                        else out.emplace(ext, language);   // first claimant names it
                     }
                 }
                 return out;
@@ -3038,7 +3043,7 @@ namespace UltraCanvas {
         ResolveShortcutEntry(e);
         ResolveBundleEntry(e);
         if (!e.isDirectory && e.category == FilerFileCategory::Text &&
-            (e.extension == "cls" || e.extension == "m") &&
+            !SyntaxTokenizer::SharedExtensionLanguages(e.extension).empty() &&
             !(isRemotePath && isRemotePath(e.path))) {
             const std::string language = SharedExtensionLanguage(e);
             if (!language.empty())
@@ -3891,8 +3896,17 @@ namespace UltraCanvas {
         // where nothing above claimed the extension (add() keeps the first),
         // and only as Text where that is what the display will treat it as.
         for (const auto& [ext, language] : SourceTextExtensions()) {
-            if (FilerCategoryForExtension(ext) == FilerFileCategory::Text)
-                add(ext, language, FilerFileCategory::Text);
+            if (FilerCategoryForExtension(ext) != FilerFileCategory::Text) continue;
+            // One switch covers every language a shared extension can be,
+            // so its label names them all: "VBA / LaTeX".
+            std::string label = language;
+            const auto& shared = SyntaxTokenizer::SharedExtensionLanguages(ext);
+            if (!shared.empty()) {
+                label.clear();
+                for (const std::string& name : shared)
+                    label += (label.empty() ? "" : " / ") + name;
+            }
+            add(ext, label, FilerFileCategory::Text);
         }
         std::vector<FilerFormatInfo> out;
         out.reserve(byExtension.size());
