@@ -287,6 +287,23 @@ media:
       brew: "lame"
       msys2: "mingw-w64-x86_64-lame"
 
+    # VideoFX's engine. Optional: without it VideoFX builds from a stub whose
+    # calls return VideoFXResult::NotAvailable. FFmpeg itself is LGPL-2.1+, but
+    # a build configured with --enable-gpl (the Debian / Ubuntu packages, and
+    # anything linking libx264 / libx265) is GPL, and so is a binary that links
+    # it - see THIRD_PARTY_LICENSES.md before distributing.
+    ffmpeg:
+      min_version: "4.4"                # libavformat 58.76 / libavcodec 58.134 (Ubuntu 22.04)
+      purpose: "VideoFX: demux, decode, filter (effects), encode and mux video / audio - optional"
+      required: false
+      priority: "medium"
+      platforms: ["all"]
+      pkg_config: "libavformat libavcodec libavfilter libavutil libswscale"
+      apt: "libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev"
+      vcpkg: "ffmpeg[avformat,avcodec,avfilter,swscale]"
+      brew: "ffmpeg"
+      msys2: "mingw-w64-x86_64-ffmpeg"
+
 # ===== WINDOWS-APP COMPATIBILITY (UltraWin) =====
 #
 # UltraWin never links its engines: Wine (and, in Stage 2, QEMU) are spawned

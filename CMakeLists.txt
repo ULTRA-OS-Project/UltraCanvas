@@ -251,6 +251,9 @@ option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)"
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
 option(ULTRACANVAS_USE_VIRTUALFS "Build the VirtualFS module and the UltraCanvas bridge to it" ON)
+# VideoFX always builds; FFmpeg (found by pkg-config) turns its engine on,
+# otherwise the same API is a stub returning VideoFXResult::NotAvailable.
+option(ULTRACANVAS_USE_VIDEOFX "Build the VideoFX video editing / conversion module" ON)
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
@@ -267,6 +270,15 @@ if(ULTRACANVAS_USE_VIRTUALFS)
     message(STATUS "")
     message(STATUS "── Building VirtualFS Module ──")
     add_subdirectory(VirtualFS)
+endif()
+
+# ===== BUILD VIDEOFX MODULE =====
+# Independent sibling module (video probing, frames, trim / effects / join /
+# export on FFmpeg). Nothing in the core links it; applications and Tests/ do.
+if(ULTRACANVAS_USE_VIDEOFX)
+    message(STATUS "")
+    message(STATUS "── Building VideoFX Module ──")
+    add_subdirectory(VideoFX)
 endif()
 
 # ===== BUILD ULTRACANVAS CORE LIBRARY =====
