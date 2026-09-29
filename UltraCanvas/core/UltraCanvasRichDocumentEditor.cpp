@@ -1995,6 +1995,74 @@ void UCRichDocumentEditor::SetAlignment(RichTextAlign align) {
     NotifyChanged();
 }
 
+void UCRichDocumentEditor::SetRightToLeft(bool rightToLeft) {
+    int first = 0, last = 0;
+    if (caret.InCell()) {
+        first = last = caret.blockIndex;
+    } else {
+        SelectedBlockRange(first, last);
+    }
+    {
+        EditScope scope(*this, first, last - first + 1);
+        for (int b = first; b <= last && b < GetBlockCount(); b++) doc->blocks[static_cast<size_t>(b)].rightToLeft = rightToLeft;
+    }
+    NotifyChanged();
+}
+
+namespace {
+
+// Code points of the right-to-left scripts' blocks.
+bool IsRightToLeftCodePoint(uint32_t cp) {
+    return (cp >= 0x0590 && cp <= 0x08FF) || (cp >= 0xFB1D && cp <= 0xFDFF) || (cp >= 0xFE70 && cp <= 0xFEFF)
+        || (cp >= 0x10800 && cp <= 0x10FFF) || (cp >= 0x1E800 && cp <= 0x1EFFF);
+}
+
+// Letters of the left-to-right scripts, roughly: what is neither RTL nor a
+// digit, space, punctuation or symbol.
+bool IsLeftToRightLetter(uint32_t cp) {
+    if (cp < 0x80) return std::isalpha(static_cast<int>(cp)) != 0;
+    if (IsRightToLeftCodePoint(cp)) return false;
+    if (cp >= 0x2000 && cp <= 0x2BFF) return false;       // punctuation, symbols, arrows
+    if (cp >= 0x3000 && cp <= 0x303F) return false;       // CJK punctuation
+    if (cp == 0xA0 || (cp >= 0xA1 && cp <= 0xBF) || cp == 0xD7 || cp == 0xF7) return false;
+    return true;
+}
+
+template <typename Visit>
+void ForEachCodePoint(const std::string& utf8, Visit visit) {
+    for (size_t i = 0; i < utf8.size();) {
+        const unsigned char c = static_cast<unsigned char>(utf8[i]);
+        const int length = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+        uint32_t cp = length == 1 ? c : length == 2 ? (c & 0x1F) : length == 3 ? (c & 0x0F) : (c & 0x07);
+        for (int k = 1; k < length && i + static_cast<size_t>(k) < utf8.size(); k++) {
+            cp = (cp << 6) | (static_cast<unsigned char>(utf8[i + static_cast<size_t>(k)]) & 0x3F);
+        }
+        if (!visit(cp)) return;
+        i += static_cast<size_t>(length);
+    }
+}
+
+} // namespace
+
+bool UCRichDocumentEditor::ContainsRightToLeft(const std::string& utf8) {
+    bool found = false;
+    ForEachCodePoint(utf8, [&](uint32_t cp) {
+        found = IsRightToLeftCodePoint(cp);
+        return !found;
+    });
+    return found;
+}
+
+int UCRichDocumentEditor::FirstStrongDirection(const std::string& utf8) {
+    int direction = 0;
+    ForEachCodePoint(utf8, [&](uint32_t cp) {
+        if (IsRightToLeftCodePoint(cp)) direction = 1;
+        else if (IsLeftToRightLetter(cp)) direction = -1;
+        return direction == 0;
+    });
+    return direction;
+}
+
 void UCRichDocumentEditor::SetListStyle(bool ordered) {
     // A table cell holds runs and nothing else: RichTableCell carries no
     // paragraph properties, so there is nowhere to record a heading, a list, an

@@ -167,3 +167,15 @@
   `text/html` on X11, `HTML Format` on Windows). `UltraCanvasRichTextEdit`
   copies HTML next to the text and pastes another application's HTML
   formatted; a paste into another document brings the pictures along.
+- **Input method composition shown in place.** New
+  `UCEventType::TextComposition` (`UCEvent::compositionCursor`) and
+  `UltraCanvasUIElement::DrawsTextComposition()`; the X11 window keeps a second,
+  on-the-spot input context (XIMPreeditCallbacks) for elements that draw the
+  composition, and Windows reads the IMM composition string for them.
+  `UltraCanvasRichTextEdit` draws the composition underlined at the caret.
+- **Right-to-left paragraphs.** `RichDocBlock::rightToLeft`,
+  `UCRichDocumentEditor::SetRightToLeft`/`ContainsRightToLeft`/
+  `FirstStrongDirection`, `UltraCanvasRichTextEdit::SetRightToLeft`/
+  `IsRightToLeft`; right-to-left paragraphs start at the right, and Left/Right
+  move visually through text with right-to-left letters. DOCX `w:bidi`, ODT
+  `style:writing-mode` and HTML `dir` are read and written.

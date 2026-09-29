@@ -1275,6 +1275,9 @@ private:
             ctx.paragraphCharacter = ParagraphStyleCharacter(p);
         }
         block.styleId = ParagraphStyleId(p);
+        if (auto* pPr = p->FirstChildElement("w:pPr"); pPr && pPr->FirstChildElement("w:bidi")) {
+            block.rightToLeft = ToggleOn(pPr, "w:bidi");
+        }
         // A table of contents entry: Word's "TOC 1".."TOC 9" styles (which
         // a file may use without defining).
         std::string rawStyle;
@@ -2115,6 +2118,7 @@ private:
             }
             pPr << "</w:tabs>";
         }
+        if (block.rightToLeft) pPr << "<w:bidi/>";
         if (block.spaceBeforePt >= 0.0f || block.spaceAfterPt >= 0.0f || block.lineSpacing > 0.0f
             || block.lineHeightPt > 0.0f) {
             pPr << "<w:spacing";

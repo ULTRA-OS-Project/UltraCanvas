@@ -1507,6 +1507,66 @@ int main() {
         window->RemoveChild(other);
     }
 
+    // ===== INPUT METHOD COMPOSITION =====
+    std::cerr << "\n--- Input method composition ---" << std::endl;
+    {
+        edit->SetMarkdown("ab\n");
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 1));
+        window->UpdateAndRender();
+        const Rect2Df before = edit->GetCaretRectForTest();
+        TEST("The element draws compositions itself", edit->DrawsTextComposition());
+        UCEvent compose;
+        compose.type = UCEventType::TextComposition;
+        compose.text = "\xE3\x81\x8B\xE3\x81\xAA";          // kana, being composed
+        compose.compositionCursor = static_cast<int>(compose.text.size());
+        TEST("A composition is taken", edit->OnEvent(compose));
+        window->UpdateAndRender();
+        const Rect2Df during = edit->GetCaretRectForTest();
+        TEST("It shows at the caret, which moves to its end", during.x > before.x + 5.0f);
+        TEST("...without entering the document", editor.BlockText(0) == "ab" && edit->GetCompositionText() == compose.text);
+        // The input method commits: the text arrives typed.
+        UCEvent commit = TextEvent("\xE4\xBB\xAE");
+        edit->OnEvent(commit);
+        window->UpdateAndRender();
+        TEST("The committed text is typed and the composition gone",
+             editor.BlockText(0) == "a\xE4\xBB\xAE" "b" && edit->GetCompositionText().empty());
+        compose.text.clear();
+        edit->OnEvent(compose);
+        TEST("An empty composition ends it", edit->GetCompositionText().empty());
+    }
+
+    // ===== RIGHT TO LEFT =====
+    std::cerr << "\n--- Right-to-left text ---" << std::endl;
+    {
+        // Hebrew: shalom olam.
+        edit->SetMarkdown("\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D \xD7\xA2\xD7\x95\xD7\x9C\xD7\x9D\n\nleft text\n");
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 0));
+        window->UpdateAndRender();
+        const Rect2Df start = edit->GetCaretRectForTest();
+        editor.SetCaret(RichDocPosition(1, 0));
+        window->UpdateAndRender();
+        const Rect2Df leftStart = edit->GetCaretRectForTest();
+        TEST("A Hebrew paragraph starts at the right", start.x > leftStart.x + 200.0f);
+        // At its logical start (the right end), Left moves into the text.
+        editor.SetCaret(RichDocPosition(0, 0));
+        window->UpdateAndRender();
+        edit->OnEvent(KeyEvent(UCKeys::Left));
+        window->UpdateAndRender();
+        const Rect2Df afterLeft = edit->GetCaretRectForTest();
+        TEST("Left moves the caret left through it", editor.GetCaret().blockIndex == 0 && editor.GetCaret().byteOffset == 2
+             && afterLeft.x < start.x);
+        edit->OnEvent(KeyEvent(UCKeys::Right));
+        TEST("...and Right back", editor.GetCaret() == RichDocPosition(0, 0));
+        // A left-to-right paragraph marked right-to-left starts at the right.
+        editor.SetCaret(RichDocPosition(1, 0));
+        edit->SetRightToLeft(true);
+        window->UpdateAndRender();
+        TEST("A paragraph marked right-to-left", edit->IsRightToLeft() && edit->GetCaretRectForTest().x > leftStart.x + 200.0f);
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

@@ -44143,6 +44143,30 @@ The editing core has the same switches (off by default there, because a
 programmatic `InsertText` must insert exactly what it is given); typing goes
 through `UCRichDocumentEditor::TypeText` / `TypeEnter`.
 
+## Input methods
+
+An input method's composition (Japanese, Chinese, Korean, dead-key
+sequences) is shown in the text at the caret, underlined, as it is composed,
+and the caret moves inside it; the document only changes when the input
+method commits the text, which arrives as typing (one undo step, autoformat
+and all). Composing over a selection replaces it. The framework delivers the
+composition as `UCEventType::TextComposition` (`event.text`,
+`event.compositionCursor`) to an element whose `DrawsTextComposition()` is
+true: on X11 through an on-the-spot input context used while such an element
+has focus (other widgets keep the input method's own window), on Windows
+through the IMM composition string. `GetCompositionText()` reads it.
+
+## Right-to-left text
+
+Text is shaped and ordered by the Unicode bidirectional rules, so Arabic,
+Hebrew and mixed lines display correctly; a paragraph whose first letter is
+right-to-left starts at the right. `SetRightToLeft(true)` marks the selected
+paragraphs right-to-left (`RichDocBlock::rightToLeft`), so they start at the
+right whatever their first letter; left and right alignment mean what they say
+on the page. In a paragraph with right-to-left letters Left and Right move the
+caret the way the arrow points; Home/End and word steps stay logical. DOCX
+`w:bidi`, ODT `style:writing-mode` and HTML `dir="rtl"` carry the direction.
+
 ## Drag and drop
 
 Press inside the selection and drag: the text moves to where the drop caret
@@ -44448,9 +44472,10 @@ it. UltraTexter's zoom box sets a word-processing tab's zoom.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **No pre-edit (IME composition) display.** Committed text arrives correctly;
-  an inline composition string needs an event the framework does not have yet
-  (the same limit applies to every text widget today).
+- **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
+  paragraph's left indent is still on the left.
+- **The input method's candidate window** is placed by the input method, not
+  next to the caret.
 
 ## Related
 

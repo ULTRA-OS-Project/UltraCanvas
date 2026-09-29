@@ -379,8 +379,13 @@ struct RichDocBlock {
         paragraphBorderRight = from.paragraphBorderRight;
         paragraphBackground = from.paragraphBackground;
         tabStops = from.tabStops;
+        rightToLeft = from.rightToLeft;
     }
     RichTextAlign align = RichTextAlign::Default;
+    // A right-to-left paragraph (Arabic, Hebrew): it starts at the right,
+    // and "left" and "right" indents and alignment mean the other side. Text
+    // of either direction inside it is still ordered by the Unicode bidi rules.
+    bool rightToLeft = false;
     std::string codeLanguage;           // CodeBlock fence language hint
     std::vector<RichTableRow> tableRows;
     // Table: relative column widths (any unit - points as read), one per grid

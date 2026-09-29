@@ -55,6 +55,7 @@ struct OdtTextProps {
     std::string parentStyleName;
     std::string masterPageName;                     // style:master-page-name (paragraph styles)
     RichTextAlign align = RichTextAlign::Default;   // paragraph styles only
+    int rightToLeft = -1;                           // style:writing-mode rl-*: 1, lr-*: 0, unset: -1
     bool bottomBorder = false;                      // paragraph styles only
     bool pageBreakBefore = false;                   // paragraph styles only
     int headingLevel = 0;                           // derived from heading style names
@@ -111,6 +112,7 @@ struct OdtTextProps {
         if (fontSizePt <= 0) fontSizePt = parent.fontSizePt;
         if (masterPageName.empty()) masterPageName = parent.masterPageName;
         if (align == RichTextAlign::Default) align = parent.align;
+        if (rightToLeft < 0) rightToLeft = parent.rightToLeft;
         bottomBorder = bottomBorder || parent.bottomBorder;
         pageBreakBefore = pageBreakBefore || parent.pageBreakBefore;
         if (headingLevel == 0) headingLevel = parent.headingLevel;
@@ -679,6 +681,9 @@ private:
                 else if (align == "end" || align == "right") props.align = RichTextAlign::Right;
                 else if (align == "justify") props.align = RichTextAlign::Justify;
                 else if (align == "start" || align == "left") props.align = RichTextAlign::Left;
+                const std::string mode = Attr(pp, "style:writing-mode");
+                if (mode.rfind("rl", 0) == 0) props.rightToLeft = 1;
+                else if (mode.rfind("lr", 0) == 0) props.rightToLeft = 0;
                 ReadParagraphGeometry(pp, props);
                 std::string border = Attr(pp, "fo:border-bottom");
                 props.bottomBorder = !border.empty() && border != "none";
@@ -1291,6 +1296,7 @@ private:
         block.styleId = NamedStyleFor(styleName);
         if (block.styleId == "Normal") block.styleId.clear();
         block.align = paraProps.align;
+        block.rightToLeft = paraProps.rightToLeft == 1;
         ApplyGeometry(block, paraProps);
 
         // Reverse-map well-known paragraph shapes: heading styles used on
@@ -2228,7 +2234,7 @@ private:
         if (!block.styleId.empty() && doc_->FindStyle(block.styleId)
             && (block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading)) {
             const std::string parent = StyleIdToOdfName(block.styleId);
-            if (block.HasParagraphGeometry() || block.align != RichTextAlign::Default
+            if (block.HasParagraphGeometry() || block.align != RichTextAlign::Default || block.rightToLeft
                 || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
                 return GeometryStyleFor(block, parent);
             }
@@ -2239,7 +2245,8 @@ private:
             case RichBlockType::CodeBlock: return "PCode";
             default: break;
         }
-        if (block.HasParagraphGeometry() || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
+        if (block.HasParagraphGeometry() || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()
+            || block.rightToLeft) {
             return GeometryStyleFor(block);
         }
         return AlignedStyle(block.align);
@@ -2258,6 +2265,7 @@ private:
     std::string GeometryStyleFor(const RichDocBlock& block, const std::string& parent = "Standard") {
         std::ostringstream props;
         if (const char* align = AlignValue(block.align)) props << " fo:text-align=\"" << align << "\"";
+        if (block.rightToLeft) props << " style:writing-mode=\"rl-tb\"";
         if (block.leftIndentPt != 0.0f) props << " fo:margin-left=\"" << Pt(block.leftIndentPt) << "\"";
         if (block.rightIndentPt != 0.0f) props << " fo:margin-right=\"" << Pt(block.rightIndentPt) << "\"";
         if (block.firstLineIndentPt != 0.0f) props << " fo:text-indent=\"" << Pt(block.firstLineIndentPt) << "\"";

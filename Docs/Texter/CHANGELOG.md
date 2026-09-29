@@ -52,6 +52,12 @@
   word-processing tab pastes into a word processor, browser or mail with its
   formatting, tables and pictures, and text copied from a web page, Word or
   Writer pastes into a word-processing tab formatted instead of as plain text.
+- **Input methods and right-to-left text in word-processing tabs.** Text being
+  composed with an input method (Japanese, Chinese, Korean) shows in the
+  document, underlined, until it is committed. Arabic and Hebrew paragraphs
+  start at the right, the arrow keys move the way they point through them, and
+  *Paragraph Right-to-Left* in the right-click menu sets a paragraph's
+  direction; .docx and .odt files keep it.
 - Ctrl+click on a link to a place inside the document (a "#bookmark" link)
   now goes there instead of trying to open it in a browser.
 - **The zoom box zooms a word-processing tab** (and a page wider than the

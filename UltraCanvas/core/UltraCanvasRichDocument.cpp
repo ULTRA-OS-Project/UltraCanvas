@@ -1723,6 +1723,7 @@ private:
             return found == token.attributes.end() ? "" : found->second;
         };
         RichTextAlign align = align_;
+        const std::string dirAttribute = LowerAscii(attribute("dir"));
         const std::string alignAttribute = LowerAscii(attribute("align"));
         if (alignAttribute == "center") align = RichTextAlign::Center;
         else if (alignAttribute == "right") align = RichTextAlign::Right;
@@ -1826,6 +1827,7 @@ private:
                 align_ = align;
                 StartBlock(RichBlockType::Heading);
                 block_.headingLevel = heading;
+                block_.rightToLeft = dirAttribute == "rtl";
                 format.bold = false;              // a heading is bold by being one
                 PushFormat(name, format);
                 return;
@@ -1836,7 +1838,10 @@ private:
                 align_ = align;
                 if (name != "body" && name != "html") StartBlock(DefaultBlockType());
                 align_ = saved;
-                if (name != "body" && name != "html") block_.align = align;
+                if (name != "body" && name != "html") {
+                    block_.align = align;
+                    block_.rightToLeft = dirAttribute == "rtl";
+                }
             }
             PushFormat(name, format);
             return;
@@ -2091,7 +2096,8 @@ std::string UCRichDocument::ToHTML() const {
         switch (block.type) {
             case RichBlockType::Heading: {
                 int level = std::clamp(block.headingLevel, 1, 6);
-                html << "<h" << level << ">" << RunsToHtml(block.runs, &media) << "</h" << level << ">\n";
+                html << "<h" << level << (block.rightToLeft ? " dir=\"rtl\"" : "") << ">" << RunsToHtml(block.runs, &media)
+                     << "</h" << level << ">\n";
                 break;
             }
             case RichBlockType::ListItem: {
@@ -2192,8 +2198,9 @@ std::string UCRichDocument::ToHTML() const {
                     frame.backgroundColor = block.paragraphBackground;
                     css += CellFrameCss(frame);
                 }
-                if (!css.empty()) html << "<p style=\"" << EscapeHtml(css) << "\">";
-                else html << "<p>";
+                const char* dir = block.rightToLeft ? " dir=\"rtl\"" : "";
+                if (!css.empty()) html << "<p" << dir << " style=\"" << EscapeHtml(css) << "\">";
+                else html << "<p" << dir << ">";
                 html << RunsToHtml(block.runs, &media) << "</p>\n";
                 break;
             }

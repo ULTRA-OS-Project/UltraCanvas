@@ -486,6 +486,11 @@ namespace UltraCanvas {
         bool IsFocused() const;
         virtual bool SetFocus(bool focus);
         virtual bool AcceptsFocus() const { return false; }
+        // True for an element that shows an input method's pre-edit text in
+        // place (TextComposition events). While one has focus the platform
+        // input method leaves the composing to it; any other element gets the
+        // input method's own composition window.
+        virtual bool DrawsTextComposition() const { return false; }
         bool CanReceiveFocus() const { return IsVisible() && !IsDisabled() && IsInteractive() && AcceptsFocus(); }
 
         bool IsSelected() const { return stateFlags.isSelected; }

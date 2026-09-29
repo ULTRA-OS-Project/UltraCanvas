@@ -128,6 +128,10 @@ public:
     bool OnEvent(const UCEvent& event) override;
     void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
     bool AcceptsFocus() const override { return !readOnly; }
+    // An input method's composition is shown in the text, underlined, at the
+    // caret (TextComposition events), not in a window of its own.
+    bool DrawsTextComposition() const override { return !readOnly; }
+    const std::string& GetCompositionText() const { return preeditText; }
 
     // ===== DOCUMENT =====
     // The element shares ownership of the document, so an application can keep
@@ -240,6 +244,16 @@ public:
     // Paragraph formatting.
     void SetHeadingLevel(int level);          // 0 = body text
     void SetAlignment(RichTextAlign align);
+    // Right-to-left paragraphs (RichDocBlock::rightToLeft): the selected ones
+    // start at the right. Text with right-to-left letters is shaped and
+    // ordered by the Unicode bidi rules either way, and Left/Right move the
+    // caret the way the arrow points in it.
+    void SetRightToLeft(bool rightToLeft);
+    bool IsRightToLeft() const {
+        const RichDocPosition caret = editor.GetCaret();
+        return caret.blockIndex >= 0 && caret.blockIndex < editor.GetBlockCount()
+               && editor.GetBlock(caret.blockIndex).rightToLeft;
+    }
     void ToggleBulletList();
     void ToggleNumberedList();
     void IndentList();
@@ -724,6 +738,15 @@ private:
     bool hasColumns = false;
     mutable float columnWidthOverride = 0.0f;
     bool placingParkedBody = false;           // PlaceFurnitureBeingEdited placing the body
+    // Input method composition: the text being composed and its caret (a
+    // byte offset in it), laid out in the caret's block but not in the model.
+    std::string preeditText;
+    int preeditCursor = 0;
+    bool HandleComposition(const UCEvent& event);
+    // Left/Right through text with right-to-left letters: one character the
+    // way the arrow points. False when the text has none (logical steps do).
+    bool VisualStep(const RichDocPosition& pos, int direction, RichDocPosition& out) const;
+    void BuildBlockLayoutFor(IRenderContext* ctx, int blockIndex);
     // Where a body block's column starts, in element coordinates.
     float BlockLeft(const BlockLayout& bl) const { return ColumnLeft() + bl.columnX; }
     std::shared_ptr<FurnitureLayout> LayoutFurniture(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,

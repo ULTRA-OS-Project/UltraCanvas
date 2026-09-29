@@ -316,6 +316,13 @@ public:
     void SetBlockType(RichBlockType type, int headingLevel = 0);
     void SetHeadingLevel(int level);          // 0 = plain paragraph
     void SetAlignment(RichTextAlign align);
+    // The selected paragraphs' writing direction (RichDocBlock::rightToLeft).
+    void SetRightToLeft(bool rightToLeft);
+    // True when text holds right-to-left letters (Hebrew, Arabic, ...).
+    static bool ContainsRightToLeft(const std::string& utf8);
+    // The direction of the first letter with one: +1 right-to-left, -1
+    // left-to-right, 0 none (digits and punctuation only).
+    static int FirstStrongDirection(const std::string& utf8);
     void SetListStyle(bool ordered);          // turns blocks into list items
     void ToggleList(bool ordered);            // ... or back into paragraphs
     void IndentList();                        // deeper nesting (list blocks only)

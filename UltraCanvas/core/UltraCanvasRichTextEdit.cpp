@@ -1311,7 +1311,19 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
         layout->SetExplicitWidth(wrapWidth);
         layout->SetWrap(TextWrap::WrapWordChar);
     }
-    if (block.align != RichTextAlign::Default) {
+    // Right-to-left: the text layout takes its base direction from the first
+    // letter, and mirrors left and right alignment in a paragraph that starts
+    // with a right-to-left one. A paragraph marked right-to-left starts at
+    // the right whatever its first letter.
+    const int firstStrong = UCRichDocumentEditor::FirstStrongDirection(text);
+    if (block.rightToLeft || firstStrong > 0) {
+        RichTextAlign visual = block.align;
+        if (visual == RichTextAlign::Default) visual = RichTextAlign::Right;
+        if (firstStrong > 0 && (visual == RichTextAlign::Left || visual == RichTextAlign::Right)) {
+            visual = visual == RichTextAlign::Left ? RichTextAlign::Right : RichTextAlign::Left;
+        }
+        layout->SetAlignment(ToTextAlignment(visual));
+    } else if (block.align != RichTextAlign::Default) {
         layout->SetAlignment(ToTextAlignment(block.align));
     }
     if (paragraphOriginX >= 0.0f) {
@@ -1322,6 +1334,58 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
 }
 
 void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockIndex) {
+    // The block with the caret shows an input method's composition in its
+    // text: laid out with it spliced in at the caret, underlined, and put back.
+    const RichDocPosition caret = editor.GetCaret();
+    if (!preeditText.empty() && caret.blockIndex == blockIndex
+        && blockIndex < static_cast<int>(editor.GetDocument()->blocks.size())) {
+        RichDocBlock& block = editor.GetDocument()->blocks[static_cast<size_t>(blockIndex)];
+        std::vector<RichTextRun>* runs = &block.runs;
+        if (caret.InCell()) {
+            runs = nullptr;
+            if (caret.cellRow < static_cast<int>(block.tableRows.size())
+                && caret.cellColumn < static_cast<int>(block.tableRows[static_cast<size_t>(caret.cellRow)].cells.size())) {
+                runs = &block.tableRows[static_cast<size_t>(caret.cellRow)].cells[static_cast<size_t>(caret.cellColumn)].runs;
+            }
+        }
+        if (runs) {
+            const std::vector<RichTextRun> saved = *runs;
+            RichTextRun composing = editor.FormatAt(caret);
+            composing.text = preeditText;
+            composing.underline = true;
+            composing.lineBreakBefore = false;
+            // Split the run the caret is in and put the composition between.
+            int offset = 0;
+            size_t at = runs->size();
+            for (size_t i = 0; i < runs->size(); i++) {
+                RichTextRun& run = (*runs)[i];
+                const int start = offset + (run.lineBreakBefore ? 1 : 0);
+                const int end = start + static_cast<int>(run.text.size());
+                if (caret.byteOffset <= start && (caret.byteOffset < start || !run.lineBreakBefore)) {
+                    at = i;
+                    break;
+                }
+                if (caret.byteOffset < end) {
+                    RichTextRun tail = run;
+                    tail.text = run.text.substr(static_cast<size_t>(caret.byteOffset - start));
+                    tail.lineBreakBefore = false;
+                    run.text.resize(static_cast<size_t>(caret.byteOffset - start));
+                    runs->insert(runs->begin() + static_cast<std::ptrdiff_t>(i) + 1, tail);
+                    at = i + 1;
+                    break;
+                }
+                offset = end;
+            }
+            runs->insert(runs->begin() + static_cast<std::ptrdiff_t>(at), composing);
+            BuildBlockLayoutFor(ctx, blockIndex);
+            *runs = saved;
+            return;
+        }
+    }
+    BuildBlockLayoutFor(ctx, blockIndex);
+}
+
+void UltraCanvasRichTextEdit::BuildBlockLayoutFor(IRenderContext* ctx, int blockIndex) {
     // A block in a section of columns is laid out at its column's width.
     const bool bodyBlock = !furnitureEdit || placingParkedBody;
     const float width = bodyBlock && static_cast<size_t>(blockIndex) < blockColumnWidths.size()
@@ -2428,7 +2492,51 @@ void UltraCanvasRichTextEdit::DrawImageSelection(IRenderContext* ctx) {
 // ===== HIT TESTING =====
 
 Rect2Df UltraCanvasRichTextEdit::CaretRect() const {
-    return PositionRect(editor.GetCaret());
+    // While composing, the caret is in the composition.
+    RichDocPosition caret = editor.GetCaret();
+    if (!preeditText.empty()) caret.byteOffset += preeditCursor;
+    return PositionRect(caret);
+}
+
+bool UltraCanvasRichTextEdit::VisualStep(const RichDocPosition& pos, int direction, RichDocPosition& out) const {
+    if (pos.blockIndex < 0 || pos.blockIndex >= static_cast<int>(blockLayouts.size())) return false;
+    const BlockLayout* bl = pos.InCell() ? CellLayoutFor(pos) : &blockLayouts[static_cast<size_t>(pos.blockIndex)];
+    if (!bl || !bl->layout) return false;
+    const std::string text = bl->layout->GetText();
+    if (!UCRichDocumentEditor::ContainsRightToLeft(text)) return false;
+    const UCCursorMoveResult moved = bl->layout->MoveCursorVisually(true, pos.byteOffset, 0, direction);
+    // Off either end of the paragraph: the logical neighbour (previous or
+    // next paragraph) takes over.
+    if (moved.newIndex < 0 || moved.newIndex > static_cast<int>(text.size())) {
+        const bool rtlBlock = UCRichDocumentEditor::FirstStrongDirection(text) > 0;
+        const bool forward = (direction > 0) != rtlBlock;
+        out = forward ? editor.NextCharacter(editor.ContainerEnd(pos)) : editor.PreviousCharacter(editor.ContainerStart(pos));
+        if (out == pos) return false;
+        return true;
+    }
+    int index = moved.newIndex;
+    for (int t = 0; t < moved.newTrailing && index < static_cast<int>(text.size()); t++) {
+        index = UCRichDocumentEditor::NextCharOffset(text, index);
+    }
+    out = pos;
+    out.byteOffset = std::clamp(index, 0, static_cast<int>(text.size()));
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::HandleComposition(const UCEvent& event) {
+    const bool starting = preeditText.empty() && !event.text.empty();
+    // Composing over a selection replaces it, as typing would.
+    if (starting && editor.HasSelection()) {
+        editor.DeleteSelection();
+        AfterEdit();
+    }
+    preeditText = event.text;
+    preeditCursor = std::clamp(event.compositionCursor < 0 ? static_cast<int>(preeditText.size()) : event.compositionCursor,
+                               0, static_cast<int>(preeditText.size()));
+    InvalidateBlock(editor.GetCaret().blockIndex);
+    caretMoved = true;
+    RequestRedraw();
+    return true;
 }
 
 Rect2Df UltraCanvasRichTextEdit::PositionRect(const RichDocPosition& position) const {
@@ -3095,7 +3203,15 @@ bool UltraCanvasRichTextEdit::OnEvent(const UCEvent& event) {
         case UCEventType::MouseMove:        return HandleMouseMove(event);
         case UCEventType::MouseDoubleClick: return HandleDoubleClick(event);
         case UCEventType::MouseWheel:       return HandleMouseWheel(event);
-        case UCEventType::KeyDown:          return readOnly ? false : HandleKeyDown(event);
+        case UCEventType::KeyDown:
+            if (readOnly) return false;
+            // Typed (committed) text ends any composition.
+            if (!preeditText.empty() && !event.text.empty()) {
+                preeditText.clear();
+                InvalidateBlock(editor.GetCaret().blockIndex);
+            }
+            return HandleKeyDown(event);
+        case UCEventType::TextComposition:  return readOnly ? false : HandleComposition(event);
         case UCEventType::DragEnter:
         case UCEventType::DragOver:
             if (readOnly || !Contains(event.pointer)) return false;
@@ -3463,13 +3579,20 @@ bool UltraCanvasRichTextEdit::HandleKeyDown(const UCEvent& event) {
             handled = false;
             break;
         case UCKeys::Left:
-            editor.SetCaret(event.ctrl ? editor.PreviousWord(caret) : editor.PreviousCharacter(caret),
-                            event.shift);
+        case UCKeys::Right: {
+            const bool right = event.virtualKey == UCKeys::Right;
+            RichDocPosition target;
+            if (!event.ctrl && VisualStep(caret, right ? 1 : -1, target)) {
+                // Text with right-to-left letters: the arrow moves the way it
+                // points, whichever way the text runs.
+                editor.SetCaret(target, event.shift);
+            } else if (right) {
+                editor.SetCaret(event.ctrl ? editor.NextWord(caret) : editor.NextCharacter(caret), event.shift);
+            } else {
+                editor.SetCaret(event.ctrl ? editor.PreviousWord(caret) : editor.PreviousCharacter(caret), event.shift);
+            }
             break;
-        case UCKeys::Right:
-            editor.SetCaret(event.ctrl ? editor.NextWord(caret) : editor.NextCharacter(caret),
-                            event.shift);
-            break;
+        }
         case UCKeys::Up:
         case UCKeys::Down: {
             if (goalColumnX < 0) goalColumnX = CaretLayoutX();
@@ -3734,6 +3857,7 @@ UC_RTE_FORMAT_ACTION(SetTextColor(const std::string& hexColor), editor.SetTextCo
 UC_RTE_FORMAT_ACTION(SetLink(const std::string& target), editor.SetLink(target))
 UC_RTE_FORMAT_ACTION(SetHeadingLevel(int level), editor.SetHeadingLevel(level))
 UC_RTE_FORMAT_ACTION(SetAlignment(RichTextAlign align), editor.SetAlignment(align))
+UC_RTE_FORMAT_ACTION(SetRightToLeft(bool rightToLeft), editor.SetRightToLeft(rightToLeft))
 UC_RTE_FORMAT_ACTION(ToggleBulletList(), editor.ToggleList(false))
 UC_RTE_FORMAT_ACTION(ToggleNumberedList(), editor.ToggleList(true))
 UC_RTE_FORMAT_ACTION(IndentList(), editor.IndentList())

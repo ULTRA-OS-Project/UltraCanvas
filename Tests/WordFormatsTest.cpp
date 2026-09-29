@@ -1146,6 +1146,24 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== 5g11. Right-to-left paragraphs survive ODT and DOCX =====
+    {
+        auto doc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("Mixed paragraph.\n\nPlain.\n"));
+        doc->blocks[0].rightToLeft = true;
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("rtl.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const RichDocBlock* mixed = FindBlock(back, "Mixed");
+            const RichDocBlock* plain = FindBlock(back, "Plain");
+            CHECK_MSG(mixed && mixed->rightToLeft && plain && !plain->rightToLeft, ext);
+        }
+        CHECK(doc->ToHTML().find("<p dir=\"rtl\">Mixed") != std::string::npos);
+        CHECK(UCRichDocument::FromHTML(doc->ToHTML()).blocks[0].rightToLeft);
+    }
+
     // ===== 5h. List labels: formats, templates, editing =====
     {
         CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");

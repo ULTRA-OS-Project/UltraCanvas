@@ -478,6 +478,10 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
         items.push_back(MenuItemData::Submenu("References", [this]() {
             return BuildReferenceMenuItems();
         }));
+        items.push_back(MenuItemData::Action(richEdit->IsRightToLeft() ? "Paragraph Left-to-Right" : "Paragraph Right-to-Left",
+            [this]() {
+                if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->SetRightToLeft(!edit->IsRightToLeft());
+            }));
         items.push_back(MenuItemData::Submenu("Columns and Sections", [this]() {
             std::vector<MenuItemData> section;
             UltraCanvasRichTextEdit* edit = GetActiveRichEdit();
