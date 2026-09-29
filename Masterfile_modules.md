@@ -742,6 +742,15 @@ the backing implementation can be replaced without affecting callers.
     GPL-2.0-or-later and this framework is MIT — so the renderer pipes a
     rasterised page through GutenPrint's own `rastertogutenprint` program and
     sends back what it gets, the same way UltraWin runs QEMU and Wine.
+  - **Driverless network devices** need no driver and no platform code, so
+    each is one file in `core/IODeviceManager/` serving Linux, macOS and
+    Windows: **eSCL** scanners (`...ScannerESCL.cpp`) and **IPP** printers -
+    IPP Everywhere, AirPrint, Mopria (`...PrinterIPP.cpp`). Both are found
+    over DNS-SD through UltraNet's mDNS plugin, or named in
+    `ULTRACANVAS_ESCL_SCANNERS` / `ULTRACANVAS_IPP_PRINTERS`. The IPP renderer
+    sends a document the printer renders as it is and draws text and images
+    as PWG raster otherwise; the encoding (`...PrinterIPPProtocol.h`) and the
+    page format (`...PrinterPwgRaster.h`) are pure and unit-tested.
   See `Docs/Modules/IODeviceManager/Architecture.md`.
 
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform

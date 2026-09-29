@@ -3619,6 +3619,54 @@ add_test(NAME IODeviceScannerESCLTest COMMAND IODeviceScannerESCLTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: IODeviceScannerESCLTest")
 
+# ===== IPP DRIVERLESS PRINTING TEST =====
+# The IPP encoding, reading a printer's description, a job's attributes, the
+# pass-through-or-draw decision and the PWG raster writer - everything the IPP
+# printer backend decides without a network, so it runs on every platform in
+# the matrix. Links no UltraCanvas: the two sources are pure.
+message(STATUS "  Building IODevicePrinterIPPTest...")
+add_executable(IODevicePrinterIPPTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODevicePrinterIPPTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterPwgRaster.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterTypes.cpp
+)
+target_include_directories(IODevicePrinterIPPTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODevicePrinterIPPTest PRIVATE cxx_std_20)
+set_target_properties(IODevicePrinterIPPTest PROPERTIES
+    OUTPUT_NAME "IODevicePrinterIPPTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME IODevicePrinterIPPTest COMMAND IODevicePrinterIPPTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: IODevicePrinterIPPTest")
+
+# ===== IPP PRINTING, AGAINST A REAL PRINTER =====
+# The IPP backend end to end, against CUPS's reference IPP Everywhere printer
+# (ippeveprinter), which the test starts itself. Everything the unit test
+# above cannot reach: discovery by address, describing the printer, drawing
+# and sending PWG raster, passing a PDF through, jobs. Skipped - exit code 77
+# - where ippeveprinter is not installed (cups-ipp-utils) or cannot start.
+if(TARGET UltraCanvas AND UNIX)
+    message(STATUS "  Building IODevicePrinterIPPLiveTest...")
+    add_executable(IODevicePrinterIPPLiveTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/IODevicePrinterIPPLiveTest.cpp
+    )
+    target_include_directories(IODevicePrinterIPPLiveTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(IODevicePrinterIPPLiveTest PRIVATE cxx_std_20)
+    target_link_libraries(IODevicePrinterIPPLiveTest PRIVATE UltraCanvas)
+    set_target_properties(IODevicePrinterIPPLiveTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME IODevicePrinterIPPLiveTest COMMAND IODevicePrinterIPPLiveTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(IODevicePrinterIPPLiveTest PROPERTIES SKIP_RETURN_CODE 77)
+    message(STATUS "    Test registered: IODevicePrinterIPPLiveTest")
+endif()
+
 # ===== VECTOR RASTERIZER TEST =====
 # UltraCanvasVectorRaster: a vector file's natural size, and rasterizing it
 # into a raster layer at a chosen pixel size (the path a bitmap editor takes
@@ -3802,6 +3850,8 @@ add_executable(IODevicePrinterTest
     # The renderer that uses them rasterises pages and needs the imaging
     # stack; this half is string work and links here without it.
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterGutenPrintModels.cpp
+    # The CUPS raster writer GutenPrint's filter reads: pure byte layout.
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterRaster.cpp
     # Finding the tools asks the filesystem whether they are there, through
     # PathFromUtf8 - which exists so that a path a user's own files live under
     # opens on Windows too, whatever the active code page.
