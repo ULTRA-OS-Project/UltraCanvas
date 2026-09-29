@@ -322,7 +322,19 @@ public:
     // click was not on a flagged word, so a host can show its own menu.
     bool ShowSpellSuggestionMenu(const UCEvent& event);
 
+    // ===== ZOOM =====
+    // 1 = 100%. Everything is drawn scaled - text, pictures, pages - and
+    // outside page view the text rewraps to the zoomed width, as a word
+    // processor's web view does. Ctrl+wheel zooms too. 0.25 to 5.
+    void SetZoom(float factor);
+    float GetZoom() const { return zoom; }
+    std::function<void(float zoom)> onZoomChanged;
+
     // ===== SCROLLING =====
+    // A page wider than the view (a landscape page, or zoomed in) scrolls
+    // sideways too: a horizontal scrollbar appears, Shift+wheel scrolls it.
+    float GetHorizontalScrollOffset() const { return hScrollOffset; }
+    void SetHorizontalScrollOffset(float offset);
     void ScrollToTop();
     void ScrollToCaret();
     float GetScrollOffset() const { return scrollOffset; }
@@ -508,7 +520,7 @@ private:
     RichPageSetup EffectivePageSetup() const;
     void UpdateColumnGeometry();
     // The text column: its left edge in element coordinates and its width.
-    float ColumnLeft() const { return visibleArea.x + columnOffsetX; }
+    float ColumnLeft() const { return visibleArea.x + columnOffsetX - hScrollOffset; }
     float ColumnWidth() const { return columnWidth; }
     std::shared_ptr<FurnitureLayout> LayoutFurniture(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
                                                      int pageNumber, int pageCount);
@@ -537,6 +549,15 @@ private:
                           float originX, float originY) const;
     void DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl, float originY);
     void DrawScrollbar(IRenderContext* ctx);
+    void DrawHorizontalScrollbar(IRenderContext* ctx);
+    // Element-local point -> the document space everything is laid out in
+    // (the zoom undone), and a document rectangle back to element-local.
+    Point2Df ToDocument(const Point2Di& elementPoint) const;
+    Point2Df ToDocument(const Point2Df& elementPoint) const;
+    Rect2Df ToElement(const Rect2Df& documentRect) const;
+    // The width of what is laid out (a page and its desk in page view).
+    float ContentWidth() const;
+    float MaxHorizontalScroll() const;
     void UpdateCaret();
 
     // ===== SEARCH / SPELL INTERNALS =====
@@ -614,6 +635,12 @@ private:
     std::map<std::string, std::shared_ptr<FurnitureLayout>> furnitureCache;
     float furnitureCacheWidth = -1.0f;
     float scrollOffset = 0.0f;
+    float hScrollOffset = 0.0f;       // document pixels, page view only
+    float zoom = 1.0f;
+    bool needsHorizontalScrollbar = false;
+    Rect2Df hThumbRect{0, 0, 0, 0};
+    bool draggingHThumb = false;
+    float hThumbGrabOffset = 0.0f;
     float contentHeight = 0.0f;
     float lastWrapWidth = -1.0f;
     // Selection the cached layouts were built under, so a moved selection

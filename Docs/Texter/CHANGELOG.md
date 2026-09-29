@@ -13,6 +13,9 @@
   can be dragged to move it (Ctrl to copy), and picture files dropped on the
   document are inserted there. Typing gets curly quotes, dashes and lists
   from `1. ` / `- ` as in a word processor.
+- **The zoom box zooms a word-processing tab** (and a page wider than the
+  window scrolls sideways). It used to change the font size of plain-text tabs
+  only.
 
 #### 2026-09-28 *1.52*
 - **The version is in the window title** — `UltraTexter 1.52` — so a screenshot or a

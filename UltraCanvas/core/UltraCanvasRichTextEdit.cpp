@@ -203,15 +203,69 @@ void UltraCanvasRichTextEdit::Arrange(const Rect2Df& finalRect, const CSSLayout:
     visibleAreaDirty = true;
 }
 
+// The visible area is kept in document space - the element's pixels divided
+// by the zoom - which is the space everything is laid out and hit-tested in.
+// Its origin is the same in both spaces; drawing scales about it.
 void UltraCanvasRichTextEdit::RecalculateVisibleArea() {
     Rect2Df bounds = GetLocalBounds();
-    float scrollbar = (contentHeight > bounds.height) ? style.scrollbarWidth : 0.0f;
+    const float bar = style.scrollbarWidth;
+    float availableHeight = bounds.height - 2 * style.padding;
+    const float vertical = (contentHeight * zoom > availableHeight) ? bar : 0.0f;
+    const float availableWidth = bounds.width - 2 * style.padding - vertical;
+    // A page (and the desk either side of it) wider than the view scrolls
+    // sideways.
+    needsHorizontalScrollbar = false;
+    if (pageView) {
+        const float pageWidth = Px(EffectivePageSetup().widthPt) + 2.0f * style.pageGap;
+        needsHorizontalScrollbar = pageWidth * zoom > availableWidth + 0.5f;
+    }
+    if (needsHorizontalScrollbar) availableHeight -= bar;
     visibleArea = Rect2Df(bounds.x + style.padding,
                           bounds.y + style.padding,
-                          std::max(1.0f, bounds.width - 2 * style.padding - scrollbar),
-                          std::max(1.0f, bounds.height - 2 * style.padding));
+                          std::max(1.0f, availableWidth / zoom),
+                          std::max(1.0f, availableHeight / zoom));
     visibleAreaDirty = false;
     UpdateColumnGeometry();
+    hScrollOffset = std::clamp(hScrollOffset, 0.0f, MaxHorizontalScroll());
+}
+
+float UltraCanvasRichTextEdit::ContentWidth() const {
+    return pageView ? pageWidthPx + 2.0f * style.pageGap : visibleArea.width;
+}
+
+float UltraCanvasRichTextEdit::MaxHorizontalScroll() const {
+    return std::max(0.0f, ContentWidth() - visibleArea.width);
+}
+
+Point2Df UltraCanvasRichTextEdit::ToDocument(const Point2Df& p) const {
+    return Point2Df(visibleArea.x + (p.x - visibleArea.x) / zoom, visibleArea.y + (p.y - visibleArea.y) / zoom);
+}
+
+Point2Df UltraCanvasRichTextEdit::ToDocument(const Point2Di& p) const {
+    return ToDocument(Point2Df(static_cast<float>(p.x), static_cast<float>(p.y)));
+}
+
+Rect2Df UltraCanvasRichTextEdit::ToElement(const Rect2Df& r) const {
+    return Rect2Df(visibleArea.x + (r.x - visibleArea.x) * zoom, visibleArea.y + (r.y - visibleArea.y) * zoom,
+                   r.width * zoom, r.height * zoom);
+}
+
+void UltraCanvasRichTextEdit::SetZoom(float factor) {
+    factor = std::clamp(factor, 0.25f, 5.0f);
+    if (std::abs(factor - zoom) < 0.001f) return;
+    // The scroll offset is in document pixels, so the view keeps its place.
+    zoom = factor;
+    visibleAreaDirty = true;
+    InvalidateDocument();
+    caretMoved = true;
+    if (onZoomChanged) onZoomChanged(zoom);
+}
+
+void UltraCanvasRichTextEdit::SetHorizontalScrollOffset(float offset) {
+    const float clamped = std::clamp(offset, 0.0f, MaxHorizontalScroll());
+    if (std::abs(clamped - hScrollOffset) < 0.01f) return;
+    hScrollOffset = clamped;
+    RequestRedraw();
 }
 
 // ===== PAGES =====
@@ -243,7 +297,9 @@ void UltraCanvasRichTextEdit::UpdateColumnGeometry() {
     const RichPageSetup page = EffectivePageSetup();
     pageWidthPx = Px(page.widthPt);
     pageHeightPx = Px(page.heightPt);
-    pageLeftX = std::max(0.0f, (visibleArea.width - pageWidthPx) * 0.5f);
+    // Centred on the desk; when the page is wider than the view it starts a
+    // desk's width in and the view scrolls sideways over it.
+    pageLeftX = std::max(style.pageGap, (visibleArea.width - pageWidthPx) * 0.5f);
     const float left = Px(std::max(0.0f, page.marginLeftPt));
     const float right = Px(std::max(0.0f, page.marginRightPt));
     columnOffsetX = pageLeftX + left;
@@ -1556,7 +1612,14 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
                              style.drawBorder ? style.borderColor : Colors::Transparent);
 
     ctx->PushState();
-    ctx->ClipRect(Rect2Dd(visibleArea.x, visibleArea.y, visibleArea.width, visibleArea.height));
+    const Rect2Df view = ToElement(visibleArea);
+    ctx->ClipRect(Rect2Dd(view.x, view.y, view.width, view.height));
+    if (zoom != 1.0f) {
+        // Drawn in document space, scaled about the view's origin.
+        ctx->Translate(visibleArea.x, visibleArea.y);
+        ctx->Scale(zoom, zoom);
+        ctx->Translate(-visibleArea.x, -visibleArea.y);
+    }
     RenderPages(ctx);
     DrawFloats(ctx, /*behindText*/ true);
 
@@ -1589,6 +1652,7 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
     }
 
     DrawScrollbar(ctx);
+    DrawHorizontalScrollbar(ctx);
 }
 
 // Draws the pictures sitting inside a laid-out text. The layout reserved a box
@@ -1629,7 +1693,7 @@ void UltraCanvasRichTextEdit::RenderPages(IRenderContext* ctx) {
             const float bottom = frame.top + pageHeightPx;
             if (bottom < viewTop) continue;
             if (frame.top > viewBottom) break;
-            const double x = visibleArea.x + pageLeftX;
+            const double x = visibleArea.x + pageLeftX - hScrollOffset;
             const double y = visibleArea.y + frame.top - scrollOffset;
             ctx->DrawFilledRectangle(Rect2Dd(x + 3.0, y + 3.0, pageWidthPx, pageHeightPx),
                                      style.pageShadowColor, 0.0f, Colors::Transparent);
@@ -1944,15 +2008,36 @@ void UltraCanvasRichTextEdit::DrawScrollbar(IRenderContext* ctx) {
                              Color(180, 180, 180), 0.0f, Colors::Transparent, 3.0f);
 }
 
+void UltraCanvasRichTextEdit::DrawHorizontalScrollbar(IRenderContext* ctx) {
+    if (!needsHorizontalScrollbar || MaxHorizontalScroll() <= 0.0f) {
+        hThumbRect = Rect2Df(0, 0, 0, 0);
+        return;
+    }
+    Rect2Df bounds = GetLocalBounds();
+    const float bar = style.scrollbarWidth;
+    const float trackWidth = bounds.width - (thumbRect.width > 0 ? bar : 0.0f);
+    const float trackY = bounds.y + bounds.height - bar;
+    ctx->DrawFilledRectangle(Rect2Dd(bounds.x, trackY, trackWidth, bar), Color(245, 245, 245), 0.0f, Colors::Transparent);
+    const float ratio = visibleArea.width / ContentWidth();
+    const float thumbWidth = std::max(24.0f, trackWidth * ratio);
+    const float travel = trackWidth - thumbWidth;
+    const float thumbX = bounds.x + (MaxHorizontalScroll() > 0 ? hScrollOffset / MaxHorizontalScroll() * travel : 0.0f);
+    hThumbRect = Rect2Df(thumbX, trackY + 2.0f, thumbWidth, bar - 4.0f);
+    ctx->DrawFilledRectangle(Rect2Dd(hThumbRect.x, hThumbRect.y, hThumbRect.width, hThumbRect.height),
+                             Color(180, 180, 180), 0.0f, Colors::Transparent, 3.0f);
+}
+
 void UltraCanvasRichTextEdit::UpdateCaret() {
     auto& caret = UltraCanvasCaret::GetInstance();
     Rect2Df rect = CaretRect();
     if (rect.width <= 0 && rect.height <= 0) { caret.Hide(this); return; }
 
-    if (rect.y + rect.height < visibleArea.y || rect.y > visibleArea.y + visibleArea.height) {
+    if (rect.y + rect.height < visibleArea.y || rect.y > visibleArea.y + visibleArea.height
+        || rect.x < visibleArea.x - 1.0f || rect.x > visibleArea.x + visibleArea.width + 1.0f) {
         caret.Hide(this);
         return;
     }
+    rect = ToElement(rect);
     Point2Df windowPos = GetPositionInWindow();
     Rect2Di rectInWindow(static_cast<int>(windowPos.x + rect.x),
                          static_cast<int>(windowPos.y + rect.y),
@@ -2384,6 +2469,16 @@ void UltraCanvasRichTextEdit::ScrollToCaret() {
     } else if (bottom > scrollOffset + visibleArea.height) {
         SetScrollOffset(bottom - visibleArea.height);
     }
+    // Sideways too, when the page is wider than the view.
+    if (MaxHorizontalScroll() > 0.0f) {
+        const Rect2Df at = CaretRect();
+        const float margin = 16.0f;
+        if (at.x < visibleArea.x + margin) {
+            SetHorizontalScrollOffset(hScrollOffset - (visibleArea.x + margin - at.x));
+        } else if (at.x > visibleArea.x + visibleArea.width - margin) {
+            SetHorizontalScrollOffset(hScrollOffset + (at.x - (visibleArea.x + visibleArea.width - margin)));
+        }
+    }
 }
 
 // ===== EDIT PLUMBING =====
@@ -2600,8 +2695,8 @@ void UltraCanvasRichTextEdit::DropStaleSpellErrors() {
 const SpellError* UltraCanvasRichTextEdit::GetSpellErrorAtPosition(int x, int y) {
     if (!spellCheckEnabled || spellErrors.empty()) return nullptr;
 
-    const RichDocPosition hit = PositionFromPoint(Point2Df(static_cast<float>(x),
-                                                           static_cast<float>(y)));
+    const RichDocPosition hit = PositionFromPoint(ToDocument(Point2Df(static_cast<float>(x),
+                                                                      static_cast<float>(y))));
     if (hit.blockIndex < 0
         || hit.blockIndex >= static_cast<int>(spellBlockStarts.size())) {
         return nullptr;
@@ -2790,7 +2885,7 @@ bool UltraCanvasRichTextEdit::OnEvent(const UCEvent& event) {
             // Show where a dropped file would go, with the same mark as an
             // internal drag.
             draggingText = true;
-            dropPosition = PositionFromPoint(event.pointer);
+            dropPosition = PositionFromPoint(ToDocument(event.pointer));
             RequestRedraw();
             return true;
         case UCEventType::DragLeave:
@@ -2820,7 +2915,7 @@ bool UltraCanvasRichTextEdit::HandleFileDrop(const UCEvent& event) {
         RequestRedraw();
         return false;
     }
-    const RichDocPosition at = PositionFromPoint(event.pointer);
+    const RichDocPosition at = PositionFromPoint(ToDocument(event.pointer));
     if (onFilesDropped && onFilesDropped(event.droppedFiles, at)) {
         RequestRedraw();
         return true;
@@ -2845,13 +2940,13 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
         // still act on what is highlighted; a click outside moves the caret so
         // that Paste lands where the user clicked. The hit test runs before
         // either, while the layouts still describe what was on screen.
-        const RichDocPosition hit = PositionFromPoint(event.pointer);
+        const RichDocPosition hit = PositionFromPoint(ToDocument(event.pointer));
         // A right-click on a picture selects it, so a host menu can offer
         // what applies to a picture (alt text, size).
         {
             RichDocPosition image;
             Rect2Df rect;
-            if (ImageAtPoint(event.pointer, image, rect) && !(HasSelectedImage() && selectedImage == image)) {
+            if (ImageAtPoint(ToDocument(event.pointer), image, rect) && !(HasSelectedImage() && selectedImage == image)) {
                 SelectImage(image);
             }
         }
@@ -2872,6 +2967,12 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
         return false;
     }
 
+    if (hThumbRect.width > 0 && hThumbRect.Contains(event.pointer)) {
+        draggingHThumb = true;
+        hThumbGrabOffset = static_cast<float>(event.pointer.x) - hThumbRect.x;
+        UltraCanvasApplication::GetInstance()->CaptureMouse(this);
+        return true;
+    }
     if (thumbRect.width > 0 && thumbRect.Contains(event.pointer)) {
         draggingThumb = true;
         thumbGrabOffset = static_cast<float>(event.pointerGlobal.y) - GetYInWindow() - thumbRect.y;
@@ -2883,11 +2984,11 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
     if (!readOnly && HasSelectedImage()) {
         Rect2Df rect;
         if (ImageRectFor(selectedImage, rect)) {
-            const int handle = ImageHandleAt(rect, event.pointer);
+            const int handle = ImageHandleAt(rect, ToDocument(event.pointer));
             if (handle >= 0) {
                 resizeHandle = handle;
                 resizeStartRect = rect;
-                resizeStartPoint = event.pointer;
+                resizeStartPoint = ToDocument(event.pointer);
                 resizePreview = rect;
                 UltraCanvasApplication::GetInstance()->CaptureMouse(this);
                 return true;
@@ -2897,27 +2998,27 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
     {
         RichDocPosition image;
         Rect2Df rect;
-        if (!event.shift && ImageAtPoint(event.pointer, image, rect)) {
+        if (!event.shift && ImageAtPoint(ToDocument(event.pointer), image, rect)) {
             SelectImage(image);
             return true;
         }
     }
 
     if (!readOnly) {
-        const int box = CheckboxAtPoint(event.pointer);
+        const int box = CheckboxAtPoint(ToDocument(event.pointer));
         if (box >= 0 && editor.ToggleChecked(box)) {
             AfterEdit();
             return true;
         }
     }
 
-    if (const RichTextHitRect* link = LinkAtPoint(event.pointer)) {
+    if (const RichTextHitRect* link = LinkAtPoint(ToDocument(event.pointer))) {
         // Ctrl+click follows a link; a plain click places the caret, so a link
         // stays editable text rather than a trap.
         if (event.ctrl && onLinkClicked && onLinkClicked(link->linkTarget)) return true;
     }
 
-    RichDocPosition position = PositionFromPoint(event.pointer);
+    RichDocPosition position = PositionFromPoint(ToDocument(event.pointer));
     // A press inside the selection may be the start of dragging it away; it
     // is decided on the first move (or on release, a plain click).
     if (enableDragAndDrop && !readOnly && !event.shift && editor.HasSelection() && !editor.HasCellSelection()
@@ -2939,7 +3040,7 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
 
 bool UltraCanvasRichTextEdit::HandleMouseUp(const UCEvent& event) {
     if (resizeHandle >= 0) {
-        const Rect2Df rect = ResizedImageRect(event.pointer);
+        const Rect2Df rect = ResizedImageRect(ToDocument(event.pointer));
         resizeHandle = -1;
         UltraCanvasApplication::GetInstance()->ReleaseMouse();
         const RichDocPosition image = selectedImage;
@@ -2955,7 +3056,7 @@ bool UltraCanvasRichTextEdit::HandleMouseUp(const UCEvent& event) {
     if (dragArmed) {
         dragArmed = false;
         UltraCanvasApplication::GetInstance()->ReleaseMouse();
-        const RichDocPosition here = PositionFromPoint(event.pointer);
+        const RichDocPosition here = PositionFromPoint(ToDocument(event.pointer));
         if (draggingText) {
             draggingText = false;
             SetMouseCursor(UCMouseCursor::Text);
@@ -2972,7 +3073,8 @@ bool UltraCanvasRichTextEdit::HandleMouseUp(const UCEvent& event) {
         }
         return true;
     }
-    if (draggingThumb || selecting) {
+    if (draggingThumb || selecting || draggingHThumb) {
+        draggingHThumb = false;
         draggingThumb = false;
         selecting = false;
         UltraCanvasApplication::GetInstance()->ReleaseMouse();
@@ -2993,8 +3095,16 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
         SetScrollOffset((thumbY / travel) * maxScroll);
         return true;
     }
+    if (draggingHThumb) {
+        Rect2Df bounds = GetLocalBounds();
+        const float trackWidth = bounds.width - (thumbRect.width > 0 ? style.scrollbarWidth : 0.0f);
+        const float travel = std::max(1.0f, trackWidth - hThumbRect.width);
+        const float thumbX = std::clamp(static_cast<float>(event.pointer.x) - hThumbGrabOffset - bounds.x, 0.0f, travel);
+        SetHorizontalScrollOffset(thumbX / travel * MaxHorizontalScroll());
+        return true;
+    }
     if (resizeHandle >= 0) {
-        resizePreview = ResizedImageRect(event.pointer);
+        resizePreview = ResizedImageRect(ToDocument(event.pointer));
         RequestRedraw();
         return true;
     }
@@ -3002,7 +3112,7 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
     if (!selecting && HasSelectedImage() && !readOnly) {
         Rect2Df rect;
         int handle = -1;
-        if (ImageRectFor(selectedImage, rect)) handle = ImageHandleAt(rect, event.pointer);
+        if (ImageRectFor(selectedImage, rect)) handle = ImageHandleAt(rect, ToDocument(event.pointer));
         static const UCMouseCursor cursors[8] = {
             UCMouseCursor::SizeNWSE, UCMouseCursor::SizeNS, UCMouseCursor::SizeNESW, UCMouseCursor::SizeWE,
             UCMouseCursor::SizeNWSE, UCMouseCursor::SizeNS, UCMouseCursor::SizeNESW, UCMouseCursor::SizeWE};
@@ -3017,15 +3127,16 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
         }
         if (draggingText) {
             // Near the top or bottom edge the view scrolls along.
-            if (event.pointer.y < visibleArea.y + 8.0f) SetScrollOffset(scrollOffset - 12.0f);
-            else if (event.pointer.y > visibleArea.y + visibleArea.height - 8.0f) SetScrollOffset(scrollOffset + 12.0f);
-            dropPosition = PositionFromPoint(event.pointer);
+            const float pointerY = ToDocument(event.pointer).y;
+            if (pointerY < visibleArea.y + 8.0f) SetScrollOffset(scrollOffset - 12.0f);
+            else if (pointerY > visibleArea.y + visibleArea.height - 8.0f) SetScrollOffset(scrollOffset + 12.0f);
+            dropPosition = PositionFromPoint(ToDocument(event.pointer));
             RequestRedraw();
         }
         return true;
     }
     if (selecting) {
-        editor.SetCaret(PositionFromPoint(event.pointer), /*extend*/ true);
+        editor.SetCaret(PositionFromPoint(ToDocument(event.pointer)), /*extend*/ true);
         goalColumnX = -1.0f;
         AfterSelectionChange();
         return true;
@@ -3035,14 +3146,22 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
 
 bool UltraCanvasRichTextEdit::HandleDoubleClick(const UCEvent& event) {
     if (!Contains(event.pointer)) return false;
-    editor.SelectWordAt(PositionFromPoint(event.pointer));
+    editor.SelectWordAt(PositionFromPoint(ToDocument(event.pointer)));
     AfterSelectionChange();
     return true;
 }
 
 bool UltraCanvasRichTextEdit::HandleMouseWheel(const UCEvent& event) {
     if (!Contains(event.pointer)) return false;
+    if (event.ctrl) {
+        SetZoom(zoom * (event.wheelDelta > 0 ? 1.1f : 1.0f / 1.1f));
+        return true;
+    }
     float step = static_cast<float>(style.baseFont.fontSize) * 3.0f;
+    if (event.shift && MaxHorizontalScroll() > 0.0f) {
+        SetHorizontalScrollOffset(hScrollOffset - (event.wheelDelta > 0 ? step : -step));
+        return true;
+    }
     SetScrollOffset(scrollOffset - (event.wheelDelta > 0 ? step : -step));
     return true;
 }

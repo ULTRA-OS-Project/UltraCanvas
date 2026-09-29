@@ -1118,6 +1118,39 @@ int main() {
         edit->SetPageView(false);
     }
 
+    // ===== ZOOM AND SIDEWAYS SCROLLING =====
+    std::cerr << "\n--- Zoom ---" << std::endl;
+    {
+        edit->SetMarkdown("alpha beta gamma delta\n");
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 60, 18));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 60, 18));
+        window->UpdateAndRender();
+        const int atOne = editor.GetCaret().byteOffset;
+        edit->SetZoom(2.0f);
+        window->UpdateAndRender();
+        // The same document point is twice as far from the view's origin.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 8 + 2 * (60 - 8), 8 + 2 * (18 - 8)));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 8 + 2 * (60 - 8), 8 + 2 * (18 - 8)));
+        window->UpdateAndRender();
+        TEST("A click lands on the same text at 200%", editor.GetCaret().byteOffset == atOne && atOne > 0);
+        TEST("Zoom is clamped", [&]() { edit->SetZoom(50.0f); return edit->GetZoom() <= 5.0f; }());
+
+        edit->SetZoom(2.0f);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        edit->SetHorizontalScrollOffset(200.0f);
+        TEST("A page wider than the view scrolls sideways", edit->GetHorizontalScrollOffset() > 0.0f);
+        edit->SetZoom(0.5f);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("...and not when it fits", edit->GetHorizontalScrollOffset() == 0.0f);
+        edit->SetPageView(false);
+        edit->SetZoom(1.0f);
+        window->UpdateAndRender();
+    }
+
     // ===== PAGE FIELDS IN THE BODY =====
     std::cerr << "\n--- Page fields ---" << std::endl;
     {

@@ -2407,6 +2407,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 : std::static_pointer_cast<UltraCanvasUIElement>(doc->textArea);
             doc->richEdit = view;
             doc->language = "Rich Text";
+            // The zoom the other tabs are shown at.
+            view->SetZoom(static_cast<float>(config.fontZoomPercent) / 100.0f);
 
             // Swap the editor slot inside the tab rather than the whole tab
             // content: editorArea is the flex row that also holds the
@@ -5128,10 +5130,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         float fontSize = config.defaultFontSize * percent / 100.0;
         fontSize = std::max(4.0f, std::min(72.0f, fontSize));
 
-        // Apply to all open document TextAreas
+        // Apply to all open document TextAreas; a word-processing tab keeps
+        // its document's own sizes and zooms instead.
         for (auto& doc : documents) {
             if (doc->textArea) {
                 doc->textArea->SetFontSize(fontSize);
+            }
+            if (doc->richEdit) {
+                doc->richEdit->SetZoom(static_cast<float>(percent) / 100.0f);
             }
         }
 

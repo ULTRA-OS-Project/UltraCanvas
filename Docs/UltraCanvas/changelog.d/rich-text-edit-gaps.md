@@ -85,3 +85,8 @@
   block taller than a page ran past the bottom margin. Caret, hit testing,
   selection, scrolling, spell marks and pictures follow the pieces.
 - **`ITextLayout::GetLineExtents()`**: every line's bytes and vertical extent.
+- **Zoom and horizontal scrolling in the rich text element.** `SetZoom`
+  (0.25-5, Ctrl+wheel) scales everything it draws; outside page view the text
+  rewraps to the zoomed width. A page wider than the view - landscape, or
+  zoomed in - gets a horizontal scrollbar (Shift+wheel, the caret brings the
+  view along) instead of being cut at the right.

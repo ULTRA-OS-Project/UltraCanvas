@@ -654,14 +654,26 @@ read-only one shows neither.
 Outside page view the text fills the element, and a document's first-page
 header and footer are drawn above and below the body.
 
+## Zoom and scrolling sideways
+
+```cpp
+editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
+editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
+```
+
+Everything is drawn scaled: text, pictures, pages. Outside page view the text
+rewraps to the zoomed width; in page view the page is simply larger, and when
+it (with the desk either side) is wider than the element a horizontal
+scrollbar appears - drag it, Shift+wheel, or let the caret take the view
+along. `GetHorizontalScrollOffset` / `SetHorizontalScrollOffset` read and set
+it. UltraTexter's zoom box sets a word-processing tab's zoom.
+
 ## What is not implemented yet
 
 Honest limits of this first version — none of them silently misbehave:
 
 - **Headers and footers are shown, not edited.** The caret never enters
   them.
-- **No zoom and no horizontal scrolling.** A page wider than the element is
-  cut at the right.
 - **No pre-edit (IME composition) display.** Committed text arrives correctly;
   an inline composition string needs an event the framework does not have yet
   (the same limit applies to every text widget today).
