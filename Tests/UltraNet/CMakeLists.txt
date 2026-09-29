@@ -218,16 +218,15 @@ add_test(NAME UltraNet COMMAND UltraNetTests)
 # states for this environment, not test failures.
 add_test(NAME UltraNetApiStatus COMMAND UltraNetApiStatus)
 
-# Every core function a plug-in DSO calls must be kept in the host even when
-# the core is static (kPluginHostImports in core/UltraNet/UltraNetPlugins.cpp).
-# A shared-core build resolves a forgotten one anyway, so this reads the built
-# plug-ins' undefined symbols instead of trusting a load to fail. POSIX only:
-# it needs nm and c++filt.
+# A plug-in DSO must need no core symbol from its host: everything reaches the
+# core through the UltraNetPluginHost table (Plugins/UltraNet/common/
+# UltraNetPluginHostShim.cpp). A shared-core build would resolve a stray one
+# anyway, so this reads the built plug-ins' undefined symbols instead of
+# trusting a load to fail. POSIX only: it needs nm and c++filt.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND AND UNIX)
     add_test(NAME UltraNetPluginHostImports
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_SOURCE_DIR}/scripts/check_ultranet_plugin_imports.py
-                     ${CMAKE_BINARY_DIR}/Plugins/UltraNet
-                     ${CMAKE_SOURCE_DIR}/UltraCanvas/core/UltraNet/UltraNetPlugins.cpp)
+                     ${CMAKE_BINARY_DIR}/Plugins/UltraNet)
 endif()

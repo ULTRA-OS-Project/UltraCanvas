@@ -6,7 +6,7 @@
 // Build: produces libultranet_smtp.{so,dylib,dll}. Loaded by
 // UltraNet_RefreshPlugins() at runtime. Entry point:
 //
-//   extern "C" void UltraNet_PluginRegister(void);
+//   extern "C" ULTRANET_PLUGIN_EXPORT void UltraNet_PluginInit(const UltraNetPluginHost*);
 //
 // This is the canonical reference implementation for the
 // I<Category>ProtocolPlugin plug-in contract.
@@ -16,6 +16,7 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetMime.h>
 #include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
@@ -243,17 +244,13 @@ public:
 
 } // namespace
 
-// v2 entry — preferred, works on Windows. The host hands us a vtable so we
-// don't need to resolve UltraNet_RegisterPlugin via load-time symbol lookup.
+// v2 entry. The host hands us its table, so nothing from the core is
+// resolved by load-time symbol lookup.
 extern "C" ULTRANET_PLUGIN_EXPORT
 void UltraNet_PluginInit(const UltraNetPluginHost* host) {
-    if (!host || host->abiVersion < 1 || !host->RegisterPlugin) return;
+    // ABI 2: the core functions this plug-in calls come through `host`
+    // (UltraNetPluginHostShim); an older host cannot serve them.
+    if (!UltraNetPlugin_AttachHost(host)) return;
     host->RegisterPlugin(std::make_shared<SmtpPlugin>());
 }
 
-// v1 entry — POSIX-only fallback for hosts that don't supply the v2 vtable.
-#if !defined(_WIN32) && !defined(_WIN64)  // v1 resolves UltraNet_RegisterPlugin from the host at dlopen(); POSIX-only, Windows uses the v2 UltraNet_PluginInit vtable above
-extern "C" void UltraNet_PluginRegister(void) {
-    UltraNet_RegisterPlugin(std::make_shared<SmtpPlugin>());
-}
-#endif
