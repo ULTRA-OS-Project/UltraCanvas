@@ -17,6 +17,7 @@ UltraCanvas is a modular, cross-platform **C++20 UI and rendering framework**
 | NetworkMonitor | System-wide socket table with the owning process (not UltraNet: observes other processes) | `UltraCanvas/{include,core}/NetworkMonitor`, `Docs/Modules/NetworkMonitor` |
 | FileLoader | Universal file load/save/convert facade | `Docs/Modules/FileLoader` |
 | VirtualFS | Virtual filesystem and compression | `VirtualFS/` |
+| VideoFX | Video probing, frames, trim / effects / joins / export (on FFmpeg) | `VideoFX/`, `Docs/Modules/VideoFX` |
 | File-type plugins | Charts, diagrams, vector, documents, video, … | `UltraCanvas/Plugins/` |
 
 The authoritative module registry — purpose and public function surface of

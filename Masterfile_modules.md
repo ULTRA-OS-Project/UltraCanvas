@@ -1699,3 +1699,81 @@ Rules: every blocking call returns `NetworkMonitorResult`; `std::optional`
 for anything a backend may not report, so "0" and "not reported" are never
 confused; a backend counts and reports what it could not see rather than
 leaving it out; platform code only under `OS/<Platform>/`.
+
+### **16. VideoFX**
+
+Video editing and conversion — probing media, pulling frames, and a timeline
+of segments that is trimmed, sped up, filtered, fitted to one size and rate,
+joined and encoded to a file. Sources under `VideoFX/{include,core,tools}`,
+target `VideoFX`, header `<VideoFX/VideoFX.h>`, `namespace VideoFX`; see
+`Docs/Modules/VideoFX/README.md`.
+
+**Not the player.** Playback, recording and thumbnails for the UI stay in the
+core (`UltraCanvasVideoPlayer`, `UltraCanvasVideoRecorder`,
+`UltraCanvasVideoThumbnail`, on the platform media frameworks). VideoFX is
+headless and has no UltraCanvas UI dependency; applications call it from a
+worker thread or through `VideoFXExportJob`.
+
+Like UltraNet and VirtualFS it encapsulates an open-source engine (FFmpeg:
+libavformat, libavcodec, libavfilter, libswscale) behind its own types; no
+FFmpeg header or type appears in a public header. FFmpeg is optional at build
+time: without it the same API links from a stub whose calls return
+`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 8.x.
+
+**Implementation status:** Stages 1 and 2 — probe, frames, the segment
+timeline with 26 effect types, speed, joins, 30 transitions between segments
+(picture via xfade, sound cross-faded), text and image overlays on the output
+frame, still images with sub-pixel pan and zoom and one-call slideshows,
+GIF / audio-only outputs, lossless cut, background job, `videofx`
+command-line tool. Planned: picture-in-picture, keyframed parameters,
+multi-track audio mixing, hardware encoders beyond the platform ones picked
+automatically (VideoToolbox, Media Foundation), project files.
+
+- Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
+  `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
+  `VideoFXSegment`, `VideoFXSourceKind`, `VideoFXExportSettings`,
+  `VideoFXContainer`, `VideoFXVideoCodec`, `VideoFXAudioCodec`,
+  `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
+  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
+  `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
+  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`
+- Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
+  `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
+  `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
+  `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
+  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`
+- Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
+  `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`
+- Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
+  `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
+  `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
+  `VideoFX_GenerateTestClip`
+- Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
+  `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
+  `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
+  `Rotate270`, `Rotate`, `FlipHorizontal`, `FlipVertical`, `Crop`, `FadeIn`,
+  `FadeOut`, `Volume`, `NormalizeAudio`
+- Segments (`VideoFXSegment::`): `FromFile`, `FromImage`, `FromImageFrame`,
+  `SolidColor`, `TestPattern`; fields `effects`, `overlays`, `transitionIn`,
+  `motion`, `imageFit`, `image`
+- Image motion (`VideoFXImageMotion::`): `Make`, `Custom`
+- Transitions (`VideoFXTransition::`): `Make`, `Crossfade`; 30
+  `VideoFXTransitionType`s (blends, wipes, pushes, shapes)
+- Overlays (`VideoFXOverlay::`): `Text`, `Image`, `ImageFromFrame`
+- Presets (`VideoFXExportSettings::`): `WebMP4`, `WebM`, `AnimatedGif`,
+  `MasterProRes`, `AudioOnlyMP3`, `AudioOnlyWAV`
+- Internal: `VideoFX::Internal::{FormatNumber, EscapeFilterValue,
+  AutoRotateChain, AtempoChain, BuildVideoEffectChain, BuildAudioEffectChain,
+  TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
+  OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
+  ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
+  ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
+  ContainViewRect, MakeBlurredBackdrop, RenderView}`
+  (the last eight in `core/VideoFXKenBurns.h`, no FFmpeg dependency)
+  (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
+  shims in `core/VideoFXBackend.h`
+
+Rules: every blocking call returns `VideoFXResult`, with the reason in
+`VideoFX_GetLastError()`; effects are typed values, never filter strings from
+the caller; numbers in filter text are dot-decimal whatever the locale; paths
+are UTF-8; a failed or cancelled export leaves no partial file behind.
