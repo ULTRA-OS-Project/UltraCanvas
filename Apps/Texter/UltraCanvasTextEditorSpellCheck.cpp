@@ -478,6 +478,32 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
         items.push_back(MenuItemData::Submenu("References", [this]() {
             return BuildReferenceMenuItems();
         }));
+        items.push_back(MenuItemData::Submenu("Track Changes", [this]() {
+            std::vector<MenuItemData> review;
+            UltraCanvasRichTextEdit* edit = GetActiveRichEdit();
+            if (!edit) return review;
+            const bool any = edit->GetDocument()->HasTrackedChanges();
+            review.push_back(MenuItemData::Action(edit->IsTrackingChanges() ? "Stop Tracking Changes" : "Track Changes",
+                [this]() {
+                    if (UltraCanvasRichTextEdit* target = GetActiveRichEdit()) {
+                        target->SetTrackChanges(!target->IsTrackingChanges());
+                    }
+                }));
+            review.push_back(MenuItemData::Separator());
+            auto action = [&](const std::string& label, bool (UltraCanvasRichTextEdit::*op)()) {
+                MenuItemData item = MenuItemData::Action(label, [this, op]() {
+                    if (UltraCanvasRichTextEdit* target = GetActiveRichEdit()) (target->*op)();
+                });
+                item.enabled = any;
+                review.push_back(std::move(item));
+            };
+            action("Next Change", &UltraCanvasRichTextEdit::GoToNextChange);
+            action("Accept Change", &UltraCanvasRichTextEdit::AcceptChangeAtCaret);
+            action("Reject Change", &UltraCanvasRichTextEdit::RejectChangeAtCaret);
+            action("Accept All Changes", &UltraCanvasRichTextEdit::AcceptAllChanges);
+            action("Reject All Changes", &UltraCanvasRichTextEdit::RejectAllChanges);
+            return review;
+        }));
         // Comments on the selection (or the word at the caret), and on the
         // one the caret is in.
         items.push_back(MenuItemData::Action("New Comment...", [this]() {

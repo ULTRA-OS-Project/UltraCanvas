@@ -290,6 +290,7 @@ public:
             doc_->pageFurniture = doc_->firstPageFurniture;
             doc_->firstPageFurniture = RichPageFurniture{};
         }
+        LoadTrackedChanges(text->FirstChildElement("text:tracked-changes"));
         ParseBlockContainer(text, 0, "");
         if (!doc_->notes.empty()) doc_->UpdateNoteMarks();
         LoadMetadata();
@@ -908,7 +909,66 @@ private:
         run.lineBreakBefore = ctx.pendingLineBreak;
         ctx.pendingLineBreak = false;
         run.commentIds = ActiveCommentIds();
+        if (activeInsertion_ >= 0) {
+            run.change = RichTextRun::Change::Inserted;
+            run.revision = activeInsertion_;
+        }
         ctx.runs.push_back(std::move(run));
+    }
+
+    // Tracked changes: text:tracked-changes lists each changed region -
+    // who and when, and for a deletion the deleted text; the body marks
+    // insertions with change-start / change-end and deletions with a point.
+    struct ChangedRegion {
+        bool insertion = false;
+        bool deletion = false;
+        int revision = -1;
+        std::string deletedText;
+    };
+    std::map<std::string, ChangedRegion> changedRegions_;
+    int activeInsertion_ = -1;             // revision of the insertion being read
+
+    void LoadTrackedChanges(tinyxml2::XMLElement* changes) {
+        if (!changes) return;
+        for (auto* region = changes->FirstChildElement("text:changed-region"); region;
+             region = region->NextSiblingElement("text:changed-region")) {
+            std::string id = Attr(region, "text:id");
+            if (id.empty()) id = Attr(region, "xml:id");
+            ChangedRegion out;
+            tinyxml2::XMLElement* change = region->FirstChildElement("text:insertion");
+            out.insertion = change != nullptr;
+            if (!change) {
+                change = region->FirstChildElement("text:deletion");
+                out.deletion = change != nullptr;
+            }
+            if (!change) continue;             // format changes: not kept
+            std::string author, date;
+            if (auto* info = change->FirstChildElement("office:change-info")) {
+                if (auto* creator = info->FirstChildElement("dc:creator")) author = ElementText(creator);
+                if (auto* when = info->FirstChildElement("dc:date")) date = ElementText(when);
+            }
+            out.revision = -1;
+            for (size_t i = 0; i < doc_->revisions.size(); i++) {
+                if (doc_->revisions[i].author == author && doc_->revisions[i].date == date) out.revision = static_cast<int>(i);
+            }
+            if (out.revision < 0) {
+                doc_->revisions.push_back({author, date});
+                out.revision = static_cast<int>(doc_->revisions.size()) - 1;
+            }
+            if (out.deletion) {
+                bool first = true;
+                for (auto* p = change->FirstChildElement(); p; p = p->NextSiblingElement()) {
+                    const std::string tag = p->Name() ? p->Name() : "";
+                    if (tag != "text:p" && tag != "text:h") continue;
+                    if (!first) out.deletedText += " ";
+                    std::string line = ElementText(p);
+                    for (size_t at; (at = line.find(kKeptWhitespace)) != std::string::npos;) line.replace(at, 3, " ");
+                    out.deletedText += line;
+                    first = false;
+                }
+            }
+            changedRegions_[id] = std::move(out);
+        }
     }
 
     // Comments (office:annotation): those whose range the text being read is
@@ -1144,6 +1204,23 @@ private:
                 ctx.pendingLineBreak = false;
                 ctx.endsInCollapsibleSpace = false;
                 ctx.runs.push_back(std::move(reference));
+            } else if (tag == "text:change-start" || tag == "text:change-end" || tag == "text:change") {
+                auto region = changedRegions_.find(Attr(elem, "text:change-id"));
+                if (region != changedRegions_.end()) {
+                    if (tag == "text:change-start" && region->second.insertion) activeInsertion_ = region->second.revision;
+                    else if (tag == "text:change-end" && region->second.insertion) activeInsertion_ = -1;
+                    else if (tag == "text:change" && region->second.deletion && !region->second.deletedText.empty()) {
+                        // The deleted text, back where it was, marked deleted.
+                        const int saved = activeInsertion_;
+                        activeInsertion_ = -1;
+                        AppendRun(ctx, region->second.deletedText, props, linkTarget);
+                        activeInsertion_ = saved;
+                        if (!ctx.runs.empty()) {
+                            ctx.runs.back().change = RichTextRun::Change::Deleted;
+                            ctx.runs.back().revision = region->second.revision;
+                        }
+                    }
+                }
             } else if (tag == "office:annotation") {
                 ReadAnnotation(elem);
             } else if (tag == "office:annotation-end") {
@@ -1585,6 +1662,12 @@ private:
                 }
             } else if (tag == "text:index-title") {
                 ParseBlockContainer(elem, listLevel, listStyleName);
+            } else if (tag == "text:change-start" || tag == "text:change-end") {
+                // Whole inserted paragraphs.
+                auto region = changedRegions_.find(Attr(elem, "text:change-id"));
+                if (region != changedRegions_.end() && region->second.insertion) {
+                    activeInsertion_ = tag == "text:change-start" ? region->second.revision : -1;
+                }
             }
             // Everything else (sequence declarations, forms) is skipped.
         }
@@ -2021,43 +2104,79 @@ private:
         }
     }
 
+    // Tracked changes: one changed region per changed run, listed at the top
+    // of the text.
+    std::ostringstream changedRegions_;
+    int changeCount_ = 0;
+
+    std::string ChangeInfo(const RichTextRun& run) const {
+        const RichRevision* revision = run.revision >= 0 && run.revision < static_cast<int>(doc_->revisions.size())
+                                     ? &doc_->revisions[static_cast<size_t>(run.revision)] : nullptr;
+        std::string info = "<office:change-info><dc:creator>" + EscapeXml(revision ? revision->author : "")
+                         + "</dc:creator><dc:date>"
+                         + EscapeXml(revision && !revision->date.empty() ? revision->date : "1970-01-01T00:00:00")
+                         + "</dc:date></office:change-info>";
+        return info;
+    }
+
     void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
         for (const auto& run : runs) {
             UpdateOpenComments(xml, run.commentIds);
-            if (run.lineBreakBefore) xml << "<text:line-break/>";
-            if (run.IsInlineImage()) {
-                WriteInlineImage(xml, run);
+            if (run.change == RichTextRun::Change::Deleted) {
+                // Deleted text lives in its region; the text has a point.
+                const std::string id = "ct" + std::to_string(++changeCount_);
+                changedRegions_ << "<text:changed-region text:id=\"" << id << "\"><text:deletion>" << ChangeInfo(run)
+                                << "<text:p>" << OdtText(run.text) << "</text:p></text:deletion></text:changed-region>";
+                if (run.lineBreakBefore) xml << "<text:line-break/>";
+                xml << "<text:change text:change-id=\"" << id << "\"/>";
                 continue;
             }
-            if (run.IsNoteReference()) {
-                WriteNote(xml, run);
-                continue;
+            std::string changeId;
+            if (run.change == RichTextRun::Change::Inserted) {
+                changeId = "ct" + std::to_string(++changeCount_);
+                changedRegions_ << "<text:changed-region text:id=\"" << changeId << "\"><text:insertion>"
+                                << ChangeInfo(run) << "</text:insertion></text:changed-region>";
+                xml << "<text:change-start text:change-id=\"" << changeId << "\"/>";
             }
-            std::string styleName = TextStyleNameFor(run);
-            std::string body = OdtText(run.text);
-            if (run.field == RichTextRun::Field::PageNumber) {
-                body = "<text:page-number text:select-page=\"current\">" + body + "</text:page-number>";
-            } else if (run.field == RichTextRun::Field::PageCount) {
-                body = "<text:page-count>" + body + "</text:page-count>";
-            } else if (run.field == RichTextRun::Field::Sequence) {
-                const std::string name = EscapeXml(run.fieldArgument);
-                body = "<text:sequence text:name=\"" + name + "\" text:formula=\"ooow:" + name
-                     + "+1\" style:num-format=\"1\">" + body + "</text:sequence>";
-            } else if (run.field == RichTextRun::Field::Reference
-                       || run.field == RichTextRun::Field::PageReference) {
-                body = std::string("<text:bookmark-ref text:reference-format=\"")
-                     + (run.field == RichTextRun::Field::PageReference ? "page" : "text")
-                     + "\" text:ref-name=\"" + EscapeXml(run.fieldArgument) + "\">" + body + "</text:bookmark-ref>";
-            }
-            if (!styleName.empty()) {
-                body = "<text:span text:style-name=\"" + styleName + "\">" + body + "</text:span>";
-            }
-            if (!run.linkTarget.empty()) {
-                body = "<text:a xlink:type=\"simple\" xlink:href=\""
-                     + EscapeXml(run.linkTarget) + "\">" + body + "</text:a>";
-            }
-            xml << body;
+            WriteRun(xml, run);
+            if (!changeId.empty()) xml << "<text:change-end text:change-id=\"" << changeId << "\"/>";
         }
+    }
+
+    void WriteRun(std::ostringstream& xml, const RichTextRun& run) {
+        if (run.lineBreakBefore) xml << "<text:line-break/>";
+        if (run.IsInlineImage()) {
+            WriteInlineImage(xml, run);
+            return;
+        }
+        if (run.IsNoteReference()) {
+            WriteNote(xml, run);
+            return;
+        }
+        std::string styleName = TextStyleNameFor(run);
+        std::string body = OdtText(run.text);
+        if (run.field == RichTextRun::Field::PageNumber) {
+            body = "<text:page-number text:select-page=\"current\">" + body + "</text:page-number>";
+        } else if (run.field == RichTextRun::Field::PageCount) {
+            body = "<text:page-count>" + body + "</text:page-count>";
+        } else if (run.field == RichTextRun::Field::Sequence) {
+            const std::string name = EscapeXml(run.fieldArgument);
+            body = "<text:sequence text:name=\"" + name + "\" text:formula=\"ooow:" + name
+                 + "+1\" style:num-format=\"1\">" + body + "</text:sequence>";
+        } else if (run.field == RichTextRun::Field::Reference
+                   || run.field == RichTextRun::Field::PageReference) {
+            body = std::string("<text:bookmark-ref text:reference-format=\"")
+                 + (run.field == RichTextRun::Field::PageReference ? "page" : "text")
+                 + "\" text:ref-name=\"" + EscapeXml(run.fieldArgument) + "\">" + body + "</text:bookmark-ref>";
+        }
+        if (!styleName.empty()) {
+            body = "<text:span text:style-name=\"" + styleName + "\">" + body + "</text:span>";
+        }
+        if (!run.linkTarget.empty()) {
+            body = "<text:a xlink:type=\"simple\" xlink:href=\""
+                 + EscapeXml(run.linkTarget) + "\">" + body + "</text:a>";
+        }
+        xml << body;
     }
 
     std::string ParagraphStyleFor(const RichDocBlock& block) {
@@ -2582,6 +2701,8 @@ private:
             << AutomaticStylesXml()
             << "</office:automatic-styles>\n"
             << "<office:body>\n<office:text>\n"
+            << (!changedRegions_.str().empty() ? "<text:tracked-changes>" + changedRegions_.str() + "</text:tracked-changes>\n"
+                                            : std::string())
             << body
             << "</office:text>\n</office:body>\n</office:document-content>\n";
         return xml.str();

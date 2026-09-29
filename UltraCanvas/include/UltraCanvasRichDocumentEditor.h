@@ -388,6 +388,24 @@ public:
     // the reference just before or after the position.
     int NoteAt(const RichDocPosition& pos) const;
 
+    // ===== TRACKED CHANGES =====
+    // With tracking on, typed and pasted text is marked inserted, and deleted
+    // text stays, marked deleted, until the change is accepted (deleted text
+    // goes, inserted text stays) or rejected (the other way round). Deleting
+    // text that is itself a tracked insertion removes it outright. Paragraph
+    // breaks, tables and pictures are edited untracked.
+    void SetTrackChanges(bool enabled);
+    bool IsTrackingChanges() const { return trackChanges; }
+    void SetRevisionAuthor(const std::string& author, const std::string& date = "");
+    bool AcceptAllChanges();
+    bool RejectAllChanges();
+    // The change at a position (the run it is in), or every change in the
+    // selection when there is one.
+    bool AcceptChangeAt(const RichDocPosition& pos);
+    bool RejectChangeAt(const RichDocPosition& pos);
+    // The start of the next tracked change after `pos` (wrapping), or false.
+    bool NextChange(const RichDocPosition& pos, RichDocRange& out) const;
+
     // ===== COMMENTS =====
     // A comment on the selection (the word at the caret when nothing is
     // selected). Returns its index in UCRichDocument::comments, or -1.
@@ -638,9 +656,10 @@ private:
     static void EraseRunRange(std::vector<RichTextRun>& runs, int startByte, int endByte);
     // Inserts text at `byteOffset` carrying `format`; when `format` is null the
     // text inherits the formatting of the run it lands in.
-    static void InsertIntoRuns(std::vector<RichTextRun>& runs, int byteOffset,
-                               const std::string& text, const RichTextRun* format,
-                               bool lineBreakBefore = false);
+    // With tracking on, the text is a tracked insertion.
+    void InsertIntoRuns(std::vector<RichTextRun>& runs, int byteOffset,
+                        const std::string& text, const RichTextRun* format,
+                        bool lineBreakBefore = false);
     static std::vector<RichTextRun> SliceRuns(const std::vector<RichTextRun>& runs,
                                               int startByte, int endByte);
     // The run covering `byteOffset` (preferring the one to its left, which is
@@ -672,6 +691,19 @@ private:
     // Format armed by a toolbar press at a collapsed caret.
     RichTextRun pendingFormat;
     bool pendingFormatValid = false;
+
+    // Tracked changes.
+    bool trackChanges = false;
+    bool trackBackward = false;       // Backspace: the caret stays before what it marked
+    std::string revisionAuthor;
+    std::string revisionDate;
+    int currentRevision = -1;         // this session's UCRichDocument::revisions entry
+    int CurrentRevision();
+    // Marks `range` deleted (tracked); true when it handled the range.
+    bool MarkRangeDeleted(const RichDocRange& range);
+    // Applies accept (true) or reject to the changes in [from, to) of every
+    // run list in blocks first..last (all runs of middle blocks).
+    void ResolveChanges(const RichDocRange& range, bool accept, bool wholeDocument);
 };
 
 } // namespace UltraCanvas

@@ -39,6 +39,11 @@
   menu comments on the selection; comments show in a pane beside the text,
   signed with your login name, and can be edited (double-click), resolved or
   deleted. Comments in .docx and .odt files now show and are saved back.
+- **Track changes in word-processing tabs.** The right-click menu's *Track
+  Changes* submenu turns tracking on, steps through the changes and accepts or
+  rejects them one at a time or all at once. Insertions show underlined,
+  deletions struck through, as in Word and Writer, and changes tracked in a
+  .docx or .odt file now show instead of being quietly accepted.
 - Ctrl+click on a link to a place inside the document (a "#bookmark" link)
   now goes there instead of trying to open it in a browser.
 - **The zoom box zooms a word-processing tab** (and a page wider than the

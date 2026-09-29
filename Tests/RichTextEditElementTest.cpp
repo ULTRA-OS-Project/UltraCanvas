@@ -1408,6 +1408,36 @@ int main() {
         edit->onCommentActivated = nullptr;
     }
 
+    // ===== TRACKED CHANGES =====
+    std::cerr << "\n--- Tracked changes ---" << std::endl;
+    {
+        edit->SetMarkdown("Some text to review.\n");
+        window->UpdateAndRender();
+        edit->SetCommentAuthor("Reviewer");
+        edit->SetTrackChanges(true);
+        TEST("Tracking is on", edit->IsTrackingChanges());
+        editor.SetCaret(RichDocPosition(0, 5));
+        edit->OnEvent(TextEvent("n"));
+        edit->OnEvent(TextEvent("e"));
+        edit->OnEvent(TextEvent("w"));
+        edit->OnEvent(TextEvent(" "));
+        editor.SetCaret(RichDocPosition(0, 0));
+        edit->OnEvent(KeyEvent(UCKeys::Delete));
+        window->UpdateAndRender();
+        TEST("Typed and deleted text both stay: " + editor.BlockText(0), editor.BlockText(0) == "Some new text to review.");
+        TEST("...marked by Reviewer", [&]() {
+            const auto& doc = edit->GetDocument();
+            for (const auto& r : editor.GetBlock(0).runs) {
+                if (r.change != RichTextRun::Change::Unchanged
+                    && (r.revision < 0 || doc->revisions[static_cast<size_t>(r.revision)].author != "Reviewer")) return false;
+            }
+            return true;
+        }());
+        TEST("The next change is found", edit->GoToNextChange() && editor.HasSelection());
+        TEST("All changes accepted", edit->AcceptAllChanges() && editor.BlockText(0) == "ome new text to review.");
+        edit->SetTrackChanges(false);
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

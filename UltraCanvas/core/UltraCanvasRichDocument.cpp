@@ -143,6 +143,7 @@ std::string RunsToReadableText(const std::vector<RichTextRun>& runs) {
     std::string out;
     for (const auto& run : runs) {
         if (run.lineBreakBefore) out += '\n';
+        if (run.IsDeleted()) continue;          // a tracked deletion: the text as it will be
         if (run.IsInlineImage()) {
             out += "[" + (run.imageAltText.empty() ? std::string("image") : run.imageAltText) + "]";
         } else if (run.IsNoteReference()) {
@@ -217,6 +218,7 @@ std::string RunsToMarkdown(const std::vector<RichTextRun>& runs, bool inTableCel
             // normal flow, "<br>" is avoided; inside table cells fall back to a space.
             out += inTableCell ? " " : "  \n";
         }
+        if (run.IsDeleted()) continue;
         out += RunToMarkdown(run, inTableCell, mediaPaths);
     }
     return out;
@@ -1192,6 +1194,7 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
     std::string out;
     for (const auto& run : MergeAdjacentRuns(runs)) {
         if (run.lineBreakBefore && !out.empty()) out += "<br/>";
+        if (run.IsDeleted()) continue;
         if (run.IsNoteReference()) {
             const std::string mark = EscapeHtml(run.text);
             out += "<sup><a href=\"#note-" + mark + "\">" + mark + "</a></sup>";
@@ -1600,6 +1603,14 @@ std::string ShownText(const std::vector<RichTextRun>& runs) {
 }
 
 } // namespace
+
+bool UCRichDocument::HasTrackedChanges() const {
+    bool any = false;
+    ForEachBodyRuns(blocks, [&](const std::vector<RichTextRun>& runs, int) {
+        for (const RichTextRun& run : runs) any = any || run.change != RichTextRun::Change::Unchanged;
+    });
+    return any;
+}
 
 std::vector<int> UCRichDocument::ActiveComments() const {
     std::vector<int> out;

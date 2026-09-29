@@ -256,6 +256,16 @@ private:
     std::map<std::string, int> commentIndexById_;
     std::vector<int> activeComments_;
 
+    // The revision entry for an author and date, shared by every change
+    // they made then.
+    int RevisionFor(const std::string& author, const std::string& date) {
+        for (size_t i = 0; i < doc_->revisions.size(); i++) {
+            if (doc_->revisions[i].author == author && doc_->revisions[i].date == date) return static_cast<int>(i);
+        }
+        doc_->revisions.push_back({author, date});
+        return static_cast<int>(doc_->revisions.size()) - 1;
+    }
+
     int CommentFor(const std::string& id) {
         auto found = commentIndexById_.find(id);
         if (found != commentIndexById_.end()) return found->second;
@@ -788,6 +798,8 @@ private:
         bool inFieldResult = false;
         RichTextRun::Field field = RichTextRun::Field::Plain;
         std::string fieldArgument;           // SEQ's label, REF's / PAGEREF's bookmark
+        RichTextRun::Change change = RichTextRun::Change::Unchanged;   // inside w:ins / w:del
+        int revision = -1;
         // What the paragraph's style gives its text, under each run's own.
         RichStyleCharacter paragraphCharacter;
     };
@@ -994,7 +1006,7 @@ private:
                 }
             } else if (tag == "w:instrText") {
                 if (child->GetText()) ctx.fieldInstruction += child->GetText();
-            } else if (tag == "w:t") {
+            } else if (tag == "w:t" || tag == "w:delText") {
                 RichTextRun run = props;
                 if (ctx.inFieldResult || ctx.field != RichTextRun::Field::Plain) {
                     run.field = ctx.field;
@@ -1060,7 +1072,11 @@ private:
             if (tag == "w:r") {
                 const size_t before = ctx.runs.size();
                 ParseRun(child, linkTarget, ctx);
-                for (size_t r = before; r < ctx.runs.size(); r++) ctx.runs[r].commentIds = activeComments_;
+                for (size_t r = before; r < ctx.runs.size(); r++) {
+                    ctx.runs[r].commentIds = activeComments_;
+                    ctx.runs[r].change = ctx.change;
+                    ctx.runs[r].revision = ctx.revision;
+                }
             } else if (tag == "w:commentRangeStart") {
                 const int index = CommentFor(Attr(child, "w:id"));
                 if (std::find(activeComments_.begin(), activeComments_.end(), index) == activeComments_.end()) {
@@ -1109,12 +1125,22 @@ private:
                 ParseInlineContainer(child, linkTarget, ctx);
                 ctx.field = saved;
                 ctx.fieldArgument = savedArgument;
-            } else if (tag == "w:ins" || tag == "w:smartTag" || tag == "w:sdt"
-                       || tag == "w:sdtContent") {
-                // Accepted tracked insertions and content-control wrappers.
+            } else if (tag == "w:ins" || tag == "w:del" || tag == "w:moveTo" || tag == "w:moveFrom") {
+                // Tracked changes: the text inside is marked inserted or
+                // deleted (a move is a deletion here and an insertion there).
+                const RichTextRun::Change savedChange = ctx.change;
+                const int savedRevision = ctx.revision;
+                ctx.change = (tag == "w:ins" || tag == "w:moveTo") ? RichTextRun::Change::Inserted
+                                                                    : RichTextRun::Change::Deleted;
+                ctx.revision = RevisionFor(Attr(child, "w:author"), Attr(child, "w:date"));
+                ParseInlineContainer(child, linkTarget, ctx);
+                ctx.change = savedChange;
+                ctx.revision = savedRevision;
+            } else if (tag == "w:smartTag" || tag == "w:sdt" || tag == "w:sdtContent") {
+                // Content-control wrappers.
                 ParseInlineContainer(child, linkTarget, ctx);
             }
-            // w:del (tracked deletions), bookmarks, proofing marks: skipped.
+            // Bookmark ends, proofing marks: nothing to keep.
         }
     }
 
@@ -1848,11 +1874,13 @@ private:
     }
 
     // Splits run text on tabs/newlines into w:t / w:tab / w:br sequence.
-    static void WriteRunText(std::ostringstream& xml, const std::string& text) {
+    // `deleted`: the text of a tracked deletion, which Word keeps in w:delText.
+    static void WriteRunText(std::ostringstream& xml, const std::string& text, bool deleted = false) {
         std::string pending;
         auto flush = [&]() {
             if (pending.empty()) return;
-            xml << "<w:t xml:space=\"preserve\">" << EscapeXml(pending) << "</w:t>";
+            xml << (deleted ? "<w:delText xml:space=\"preserve\">" : "<w:t xml:space=\"preserve\">")
+                << EscapeXml(pending) << (deleted ? "</w:delText>" : "</w:t>");
             pending.clear();
         };
         for (char c : text) {
@@ -1938,7 +1966,20 @@ private:
                 xml << "<w:hyperlink r:id=\"rIdLink"
                     << (HyperlinkRelIndex(run.linkTarget) + 1) << "\">";
             }
-            if (run.field != RichTextRun::Field::Plain) {
+            // A tracked change wraps the run: w:ins, or w:del with its text in
+            // w:delText.
+            std::string closeChange;
+            if (run.change != RichTextRun::Change::Unchanged) {
+                const bool inserted = run.change == RichTextRun::Change::Inserted;
+                const RichRevision* revision = run.revision >= 0 && run.revision < static_cast<int>(doc_->revisions.size())
+                                             ? &doc_->revisions[static_cast<size_t>(run.revision)] : nullptr;
+                xml << (inserted ? "<w:ins" : "<w:del") << " w:id=\"" << ++revisionId_ << "\" w:author=\""
+                    << EscapeXml(revision ? revision->author : "") << "\"";
+                if (revision && !revision->date.empty()) xml << " w:date=\"" << EscapeXml(revision->date) << "\"";
+                xml << ">";
+                closeChange = inserted ? "</w:ins>" : "</w:del>";
+            }
+            if (run.field != RichTextRun::Field::Plain && closeChange.empty()) {
                 // A page number or count: a simple field showing its last value.
                 xml << "<w:fldSimple w:instr=\"" << EscapeXml(FieldInstruction(run)) << "\"><w:r>";
                 WriteRunProperties(xml, run, false);
@@ -1957,6 +1998,7 @@ private:
                     xml << (endnote ? "<w:endnoteReference w:id=\"" : "<w:footnoteReference w:id=\"")
                         << id->second << "\"/></w:r>";
                 }
+                xml << closeChange;
                 if (isLink) xml << "</w:hyperlink>";
                 continue;
             }
@@ -1969,12 +2011,13 @@ private:
             } else {
                 WriteRunProperties(xml, run, isLink);
                 if (run.lineBreakBefore) xml << "<w:br/>";
-                WriteRunText(xml, run.text);
+                WriteRunText(xml, run.text, run.IsDeleted());
             }
-            xml << "</w:r>";
+            xml << "</w:r>" << closeChange;
             if (isLink) xml << "</w:hyperlink>";
         }
     }
+    int revisionId_ = 1000;
 
     static const char* JcValue(RichTextAlign align) {
         switch (align) {

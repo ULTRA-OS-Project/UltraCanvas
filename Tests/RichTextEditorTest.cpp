@@ -1614,6 +1614,80 @@ static void TestComments() {
     CHECK(ed.SetCommentText(first, "Fine now.") && ed.GetDocument()->comments[0].text == "Fine now.");
 }
 
+static void TestTrackedChanges() {
+    std::cout << "\n--- Tracked changes ---\n";
+    UCRichDocumentEditor ed(MakeDocument({"The quick brown fox", "jumps over the dog"}));
+    ed.SetRevisionAuthor("Ada", "2026-09-29T10:00:00Z");
+    ed.SetTrackChanges(true);
+    // Typing is an insertion.
+    ed.SetCaret(RichDocPosition(0, 4));
+    ed.InsertText("very ");
+    CHECK_EQ(ed.BlockText(0), std::string("The very quick brown fox"));
+    bool inserted = false;
+    for (const auto& r : ed.GetBlock(0).runs) inserted = inserted || (r.text == "very " && r.change == RichTextRun::Change::Inserted);
+    CHECK(inserted);
+    CHECK(ed.GetDocument()->revisions.size() == 1 && ed.GetDocument()->revisions[0].author == "Ada");
+    // Deleting keeps the text, marked; the caret goes past it (Delete) or
+    // before it (Backspace).
+    ed.SetSelection(RichDocPosition(0, 15), RichDocPosition(0, 21));      // "brown "
+    CHECK(ed.DeleteSelection());
+    CHECK_EQ(ed.BlockText(0), std::string("The very quick brown fox"));
+    CHECK(ed.GetCaret() == RichDocPosition(0, 21));
+    bool deleted = false;
+    for (const auto& r : ed.GetBlock(0).runs) deleted = deleted || (r.text == "brown " && r.IsDeleted());
+    CHECK(deleted);
+    ed.SetCaret(RichDocPosition(1, 5));
+    CHECK(ed.DeleteBackward());
+    CHECK(ed.GetCaret() == RichDocPosition(1, 4));
+    CHECK_EQ(ed.BlockText(1), std::string("jumps over the dog"));
+    // Deleting a tracked insertion takes it back.
+    ed.SetSelection(RichDocPosition(0, 4), RichDocPosition(0, 9));        // "very "
+    ed.DeleteSelection();
+    CHECK_EQ(ed.BlockText(0), std::string("The quick brown fox"));
+    // The text as it will be, in exports.
+    CHECK(ed.GetDocument()->ToPlainText().find("The quick fox") != std::string::npos);
+    CHECK(ed.GetDocument()->ToMarkdown().find("jump over") != std::string::npos);
+    // Accepting drops deleted text; rejecting drops inserted.
+    ed.SetCaret(RichDocPosition(1, 0));
+    ed.InsertText("He ");
+    UCRichDocument before = *ed.GetDocument();
+    CHECK(ed.AcceptAllChanges());
+    CHECK_EQ(ed.BlockText(0), std::string("The quick fox"));
+    CHECK_EQ(ed.BlockText(1), std::string("He jump over the dog"));
+    CHECK(!ed.GetDocument()->HasTrackedChanges());
+    ed.Undo();
+    CHECK(ed.GetDocument()->HasTrackedChanges());
+    CHECK(ed.RejectAllChanges());
+    CHECK_EQ(ed.BlockText(0), std::string("The quick brown fox"));
+    CHECK_EQ(ed.BlockText(1), std::string("jumps over the dog"));
+    // One change at a time.
+    ed.SetCaret(RichDocPosition(0, 0));
+    ed.InsertText("A: ");
+    ed.SetCaret(RichDocPosition(1, 0));
+    ed.InsertText("B: ");
+    RichDocRange next;
+    // From the start of the first change, the next one is the second.
+    CHECK(ed.NextChange(RichDocPosition(0, 0), next) && next.start == RichDocPosition(1, 0));
+    CHECK(ed.NextChange(RichDocPosition(0, 5), next) && next.start == RichDocPosition(1, 0) && next.end == RichDocPosition(1, 3));
+    ed.SetCaret(RichDocPosition(1, 1));
+    CHECK(ed.RejectChangeAt(ed.GetCaret()));
+    CHECK_EQ(ed.BlockText(1), std::string("jumps over the dog"));
+    CHECK(ed.AcceptChangeAt(RichDocPosition(0, 1)));
+    CHECK(!ed.GetDocument()->HasTrackedChanges());
+    CHECK_EQ(ed.BlockText(0), std::string("A: The quick brown fox"));
+    // Untracked typing next to a change is not part of it.
+    ed.SetTrackChanges(false);
+    ed.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 3));
+    ed.SetTrackChanges(true);
+    ed.DeleteSelection();
+    ed.SetTrackChanges(false);
+    ed.SetCaret(RichDocPosition(0, 3));
+    ed.InsertText("x");
+    bool plain = false;
+    for (const auto& r : ed.GetBlock(0).runs) plain = plain || (r.text.find('x') != std::string::npos && r.change == RichTextRun::Change::Unchanged);
+    CHECK(plain);
+}
+
 static void TestNamedStyles() {
     std::cout << "\n--- Named styles ---\n";
     UCRichDocumentEditor ed(MakeDocument({"Chapter one", "Body text here", "More body"}));
@@ -1725,6 +1799,7 @@ int main() {
     TestNamedStyles();
     TestFieldsAndContents();
     TestComments();
+    TestTrackedChanges();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

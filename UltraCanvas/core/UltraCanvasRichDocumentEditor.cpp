@@ -85,6 +85,8 @@ void StripObjectIdentity(RichTextRun& run) {
     run.imageAltText.clear();
     run.field = RichTextRun::Field::Plain;
     run.fieldArgument.clear();
+    run.change = RichTextRun::Change::Unchanged;
+    run.revision = -1;
     // A note mark is raised because it is a mark; the text next to it is not.
     if (run.noteIndex >= 0) run.superscript = false;
     run.noteIndex = -1;
@@ -251,6 +253,14 @@ void UCRichDocumentEditor::InsertIntoRuns(std::vector<RichTextRun>& runs, int by
     }
     inserted.text = text;
     inserted.lineBreakBefore = lineBreakBefore;
+    // Typed text is a change of its own, or none - never its neighbour's.
+    if (trackChanges) {
+        inserted.change = RichTextRun::Change::Inserted;
+        inserted.revision = CurrentRevision();
+    } else {
+        inserted.change = RichTextRun::Change::Unchanged;
+        inserted.revision = -1;
+    }
 
     int idx = SplitRunAt(runs, byteOffset);
     idx = std::min(idx, static_cast<int>(runs.size()));
@@ -1012,6 +1022,7 @@ void UCRichDocumentEditor::DeleteRange(const RichDocRange& range) {
 
 void UCRichDocumentEditor::DeleteRangeInternal(const RichDocRange& range) {
     if (range.IsEmpty()) return;
+    if (trackChanges && MarkRangeDeleted(range)) return;
     // Two cells of one table: the cells between them are emptied, not joined.
     int top = 0, left = 0, bottom = 0, right = 0;
     if (CellRectBetween(range.start, range.end, top, left, bottom, right)) {
@@ -1527,7 +1538,15 @@ bool UCRichDocumentEditor::DeleteBackward() {
         std::string text = TextAt(caret);
         RichDocPosition from = caret;
         from.byteOffset = PreviousCharOffset(text, caret.byteOffset);
+        trackBackward = true;
         DeleteRange(RichDocRange(from, caret));
+        trackBackward = false;
+        return true;
+    }
+    // Tracking: a paragraph break is not a tracked change; Backspace at a
+    // paragraph's start just moves back into the previous one.
+    if (trackChanges && !caret.InCell() && caret.blockIndex > 0 && IsTextBlock(caret.blockIndex - 1)) {
+        SetCaret(RichDocPosition(caret.blockIndex - 1, BlockTextLength(caret.blockIndex - 1)));
         return true;
     }
     // At the very start of a cell, Backspace moves to the previous cell rather
@@ -1581,6 +1600,10 @@ bool UCRichDocumentEditor::DeleteForward() {
         return false;
     }
     if (caret.blockIndex + 1 >= GetBlockCount()) return false;
+    if (trackChanges && !caret.InCell() && IsTextBlock(caret.blockIndex + 1)) {
+        SetCaret(RichDocPosition(caret.blockIndex + 1, 0));
+        return true;
+    }
 
     int next = caret.blockIndex + 1;
     if (!IsTextBlock(next)) {
@@ -3156,6 +3179,259 @@ int UCRichDocumentEditor::NoteAt(const RichDocPosition& pos) const {
     return -1;
 }
 
+// ===== TRACKED CHANGES =====
+
+void UCRichDocumentEditor::SetTrackChanges(bool enabled) {
+    trackChanges = enabled;
+    currentRevision = -1;             // a new session: a new revision entry
+    pendingFormatValid = false;
+}
+
+void UCRichDocumentEditor::SetRevisionAuthor(const std::string& author, const std::string& date) {
+    revisionAuthor = author;
+    revisionDate = date;
+    currentRevision = -1;
+}
+
+int UCRichDocumentEditor::CurrentRevision() {
+    if (currentRevision < 0 || currentRevision >= static_cast<int>(doc->revisions.size())) {
+        doc->revisions.push_back({revisionAuthor, revisionDate});
+        currentRevision = static_cast<int>(doc->revisions.size()) - 1;
+    }
+    return currentRevision;
+}
+
+bool UCRichDocumentEditor::MarkRangeDeleted(const RichDocRange& range) {
+    // Cells of a table selected as a block are emptied untracked.
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (CellRectBetween(range.start, range.end, top, left, bottom, right)) return false;
+    const int revision = CurrentRevision();
+    int caretBlock = range.end.blockIndex;
+    int caretOffset = range.end.byteOffset;
+    auto mark = [&](std::vector<RichTextRun>& runs, int from, int to, bool lastContainer) {
+        const int length = static_cast<int>(RunsText(runs).size());
+        from = std::clamp(from, 0, length);
+        to = std::clamp(to, from, length);
+        if (from == to) return;
+        const int startIdx = SplitRunAt(runs, from);
+        const int endIdx = SplitRunAt(runs, to);
+        int removed = 0;
+        for (int i = endIdx - 1; i >= startIdx && i < static_cast<int>(runs.size()); i--) {
+            RichTextRun& run = runs[static_cast<size_t>(i)];
+            if (run.change == RichTextRun::Change::Inserted) {
+                // Deleting a tracked insertion takes it back.
+                removed += static_cast<int>(run.text.size()) + (run.lineBreakBefore ? 1 : 0);
+                runs.erase(runs.begin() + i);
+            } else if (run.change == RichTextRun::Change::Unchanged) {
+                run.change = RichTextRun::Change::Deleted;
+                run.revision = revision;
+            }
+        }
+        CoalesceRuns(runs);
+        if (lastContainer) caretOffset = to - removed;
+    };
+    if (range.start.SameContainer(range.end)) {
+        std::vector<RichTextRun>* runs = MutableRunsAt(range.start);
+        if (!runs) return false;
+        mark(*runs, range.start.byteOffset, range.end.byteOffset, true);
+        caret = trackBackward ? ClampPosition(range.start)
+                              : ClampPosition(range.start.InCell()
+                                    ? RichDocPosition(range.start.blockIndex, range.start.cellRow, range.start.cellColumn, caretOffset)
+                                    : RichDocPosition(range.start.blockIndex, caretOffset));
+        anchor = caret;
+        return true;
+    }
+    if (range.start.InCell() || range.end.InCell()) return false;
+    const int lastBlock = std::min(range.end.blockIndex, GetBlockCount() - 1);
+    for (int b = range.start.blockIndex; b <= lastBlock; b++) {
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+        if (!IsTextBlockType(block.type)) continue;
+        const int length = static_cast<int>(RunsText(block.runs).size());
+        const int from = b == range.start.blockIndex ? range.start.byteOffset : 0;
+        const int to = b == range.end.blockIndex ? range.end.byteOffset : length;
+        mark(block.runs, from, to, b == range.end.blockIndex);
+    }
+    caret = trackBackward ? ClampPosition(range.start) : ClampPosition(RichDocPosition(caretBlock, caretOffset));
+    anchor = caret;
+    return true;
+}
+
+void UCRichDocumentEditor::ResolveChanges(const RichDocRange& range, bool accept, bool wholeDocument) {
+    auto resolve = [&](std::vector<RichTextRun>& runs, int from, int to) {
+        if (!wholeDocument) {
+            const int length = static_cast<int>(RunsText(runs).size());
+            from = std::clamp(from, 0, length);
+            to = std::clamp(to, from, length);
+        }
+        const int startIdx = wholeDocument ? 0 : SplitRunAt(runs, from);
+        const int endIdx = wholeDocument ? static_cast<int>(runs.size()) : SplitRunAt(runs, to);
+        for (int i = endIdx - 1; i >= startIdx && i < static_cast<int>(runs.size()); i--) {
+            RichTextRun& run = runs[static_cast<size_t>(i)];
+            if (run.change == RichTextRun::Change::Unchanged) continue;
+            const bool drop = accept ? run.change == RichTextRun::Change::Deleted
+                                     : run.change == RichTextRun::Change::Inserted;
+            if (drop) {
+                runs.erase(runs.begin() + i);
+            } else {
+                run.change = RichTextRun::Change::Unchanged;
+                run.revision = -1;
+            }
+        }
+        CoalesceRuns(runs);
+    };
+    const int first = wholeDocument ? 0 : range.start.blockIndex;
+    const int last = wholeDocument ? GetBlockCount() - 1 : std::min(range.end.blockIndex, GetBlockCount() - 1);
+    for (int b = first; b <= last; b++) {
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+        const bool edgeStart = !wholeDocument && b == range.start.blockIndex;
+        const bool edgeEnd = !wholeDocument && b == range.end.blockIndex;
+        if (!range.start.InCell() || wholeDocument) {
+            const int length = static_cast<int>(RunsText(block.runs).size());
+            resolve(block.runs, edgeStart ? range.start.byteOffset : 0, edgeEnd ? range.end.byteOffset : length);
+        }
+        for (size_t r = 0; r < block.tableRows.size(); r++) {
+            for (size_t c = 0; c < block.tableRows[r].cells.size(); c++) {
+                std::vector<RichTextRun>& runs = block.tableRows[r].cells[c].runs;
+                const bool here = range.start.InCell() && static_cast<int>(r) == range.start.cellRow
+                                  && static_cast<int>(c) == range.start.cellColumn;
+                if (wholeDocument || (!range.start.InCell() && b > range.start.blockIndex && b < range.end.blockIndex)) {
+                    resolve(runs, 0, static_cast<int>(RunsText(runs).size()));
+                } else if (here) {
+                    resolve(runs, range.start.byteOffset, range.end.byteOffset);
+                }
+            }
+        }
+    }
+    EnsureNotEmpty();
+    caret = ClampPosition(caret);
+    anchor = ClampPosition(anchor);
+}
+
+bool UCRichDocumentEditor::AcceptAllChanges() {
+    if (!doc->HasTrackedChanges()) return false;
+    {
+        EditScope scope(*this, 0, GetBlockCount());
+        ResolveChanges(RichDocRange(), true, true);
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::RejectAllChanges() {
+    if (!doc->HasTrackedChanges()) return false;
+    {
+        EditScope scope(*this, 0, GetBlockCount());
+        ResolveChanges(RichDocRange(), false, true);
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+namespace {
+
+// The extent of the tracked change a position is in: the run it touches
+// with a change, widened over its neighbours with the same change.
+bool ChangeExtent(const std::vector<RichTextRun>& runs, int offset, int& from, int& to) {
+    int position = 0;
+    int hit = -1;
+    std::vector<std::pair<int, int>> spans;
+    for (size_t i = 0; i < runs.size(); i++) {
+        const int start = position + (runs[i].lineBreakBefore ? 1 : 0);
+        const int end = start + static_cast<int>(runs[i].text.size());
+        spans.emplace_back(position, end);
+        if (runs[i].change != RichTextRun::Change::Unchanged && offset >= start && offset <= end && hit < 0) {
+            hit = static_cast<int>(i);
+        }
+        position = end;
+    }
+    if (hit < 0) return false;
+    int a = hit, b = hit;
+    while (a > 0 && runs[static_cast<size_t>(a - 1)].change == runs[static_cast<size_t>(hit)].change
+           && runs[static_cast<size_t>(a - 1)].revision == runs[static_cast<size_t>(hit)].revision) a--;
+    while (b + 1 < static_cast<int>(runs.size()) && runs[static_cast<size_t>(b + 1)].change == runs[static_cast<size_t>(hit)].change
+           && runs[static_cast<size_t>(b + 1)].revision == runs[static_cast<size_t>(hit)].revision) b++;
+    from = spans[static_cast<size_t>(a)].first;
+    to = spans[static_cast<size_t>(b)].second;
+    return true;
+}
+
+} // namespace
+
+bool UCRichDocumentEditor::AcceptChangeAt(const RichDocPosition& pos) {
+    RichDocRange range = GetSelectionRange();
+    if (range.IsEmpty()) {
+        const std::vector<RichTextRun>* runs = RunsAt(ClampPosition(pos));
+        int from = 0, to = 0;
+        if (!runs || !ChangeExtent(*runs, pos.byteOffset, from, to)) return false;
+        range = RichDocRange(pos, pos);
+        range.start.byteOffset = from;
+        range.end.byteOffset = to;
+    }
+    {
+        EditScope scope(*this, range.start.blockIndex, range.end.blockIndex - range.start.blockIndex + 1);
+        ResolveChanges(range, true, false);
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::RejectChangeAt(const RichDocPosition& pos) {
+    RichDocRange range = GetSelectionRange();
+    if (range.IsEmpty()) {
+        const std::vector<RichTextRun>* runs = RunsAt(ClampPosition(pos));
+        int from = 0, to = 0;
+        if (!runs || !ChangeExtent(*runs, pos.byteOffset, from, to)) return false;
+        range = RichDocRange(pos, pos);
+        range.start.byteOffset = from;
+        range.end.byteOffset = to;
+    }
+    {
+        EditScope scope(*this, range.start.blockIndex, range.end.blockIndex - range.start.blockIndex + 1);
+        ResolveChanges(range, false, false);
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::NextChange(const RichDocPosition& pos, RichDocRange& out) const {
+    // Body runs only, in document order; wraps round to the first.
+    struct Found { int block; int from; int to; };
+    std::vector<Found> changes;
+    for (int b = 0; b < GetBlockCount(); b++) {
+        const std::vector<RichTextRun>& runs = doc->blocks[static_cast<size_t>(b)].runs;
+        int position = 0;
+        for (size_t i = 0; i < runs.size(); i++) {
+            const int start = position + (runs[i].lineBreakBefore ? 1 : 0);
+            const int end = start + static_cast<int>(runs[i].text.size());
+            position = end;
+            if (runs[i].change == RichTextRun::Change::Unchanged) continue;
+            if (i > 0 && runs[i - 1].change == runs[i].change && runs[i - 1].revision == runs[i].revision) {
+                changes.back().to = end;
+                continue;
+            }
+            changes.push_back({b, start, end});
+        }
+    }
+    if (changes.empty()) return false;
+    for (const Found& found : changes) {
+        if (found.block > pos.blockIndex || (found.block == pos.blockIndex && found.from > pos.byteOffset)) {
+            out = RichDocRange(RichDocPosition(found.block, found.from), RichDocPosition(found.block, found.to));
+            return true;
+        }
+    }
+    out = RichDocRange(RichDocPosition(changes.front().block, changes.front().from),
+                       RichDocPosition(changes.front().block, changes.front().to));
+    return true;
+}
+
 int UCRichDocumentEditor::AddComment(const std::string& text, const std::string& author, const std::string& date) {
     RichDocRange range = GetSelectionRange();
     if (range.IsEmpty()) range = WordAt(caret);       // the word at the caret
@@ -3920,6 +4196,23 @@ void UCRichDocumentEditor::InsertBlocksInternal(const std::vector<RichDocBlock>&
     // A pasted copy of a bookmarked paragraph does not take its bookmark:
     // names are unique, and references stay with the original.
     std::vector<RichDocBlock> blocks = incoming;
+    // Pasted text is a tracked insertion when tracking is on.
+    if (trackChanges) {
+        const int revision = CurrentRevision();
+        auto mark = [revision](std::vector<RichTextRun>& runs) {
+            for (RichTextRun& run : runs) {
+                if (run.change == RichTextRun::Change::Deleted) continue;
+                run.change = RichTextRun::Change::Inserted;
+                run.revision = revision;
+            }
+        };
+        for (RichDocBlock& block : blocks) {
+            mark(block.runs);
+            for (RichTableRow& row : block.tableRows) {
+                for (RichTableCell& cell : row.cells) mark(cell.runs);
+            }
+        }
+    }
     for (RichDocBlock& block : blocks) {
         auto& marks = block.bookmarks;
         marks.erase(std::remove_if(marks.begin(), marks.end(),

@@ -18,6 +18,8 @@
 #include "UltraCanvasPdfSurface.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <ctime>
 #include <cmath>
 #include <fstream>
 
@@ -1150,6 +1152,13 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         if (run.fontSizePt > 0.0f)   add(TextAttributeFactory::CreateFontSize(run.fontSizePt));
         if (!run.color.empty()) {
             add(TextAttributeFactory::CreateForeground(ParseHexColor(run.color, style.textColor)));
+        }
+        if (run.change == RichTextRun::Change::Inserted) {
+            add(TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle));
+            add(TextAttributeFactory::CreateForeground(style.insertionColor));
+        } else if (run.change == RichTextRun::Change::Deleted) {
+            add(TextAttributeFactory::CreateStrikethrough(true));
+            add(TextAttributeFactory::CreateForeground(style.deletionColor));
         }
         if (!run.highlightColor.empty()) {
             add(TextAttributeFactory::CreateBackground(ParseHexColor(run.highlightColor, Colors::Transparent)));
@@ -4325,10 +4334,66 @@ void UltraCanvasRichTextEdit::RenderNotes(IRenderContext* ctx) {
 
 // ===== COMMENTS =====
 
+// ===== TRACKED CHANGES =====
+
+std::string UltraCanvasRichTextEdit::CurrentIsoTime() {
+    const std::time_t now = std::time(nullptr);
+    std::tm utc{};
+#if defined(_WIN32)
+    gmtime_s(&utc, &now);
+#else
+    gmtime_r(&now, &utc);
+#endif
+    char text[32];
+    std::snprintf(text, sizeof(text), "%04d-%02d-%02dT%02d:%02d:%02dZ", utc.tm_year + 1900, utc.tm_mon + 1,
+                  utc.tm_mday, utc.tm_hour, utc.tm_min, utc.tm_sec);
+    return text;
+}
+
+void UltraCanvasRichTextEdit::SetTrackChanges(bool enabled) {
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    editor.SetRevisionAuthor(commentAuthor, CurrentIsoTime());
+    editor.SetTrackChanges(enabled);
+}
+
+bool UltraCanvasRichTextEdit::AcceptAllChanges() {
+    if (readOnly || furnitureEdit || !editor.AcceptAllChanges()) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::RejectAllChanges() {
+    if (readOnly || furnitureEdit || !editor.RejectAllChanges()) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::AcceptChangeAtCaret() {
+    if (readOnly || furnitureEdit || !editor.AcceptChangeAt(editor.GetCaret())) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::RejectChangeAtCaret() {
+    if (readOnly || furnitureEdit || !editor.RejectChangeAt(editor.GetCaret())) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::GoToNextChange() {
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    RichDocRange change;
+    if (!editor.NextChange(editor.GetCaret(), change)) return false;
+    editor.SetSelection(change.start, change.end);
+    caretMoved = true;
+    AfterSelectionChange();
+    return true;
+}
+
 int UltraCanvasRichTextEdit::AddComment(const std::string& text) {
     if (readOnly) return -1;
     if (furnitureEdit) FinishHeaderFooterEditing();
-    const int index = editor.AddComment(text, commentAuthor, "");
+    const int index = editor.AddComment(text, commentAuthor, CurrentIsoTime());
     if (index >= 0) AfterEdit();
     return index;
 }

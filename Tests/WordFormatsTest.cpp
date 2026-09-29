@@ -1078,6 +1078,42 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== 5g9. Tracked changes survive ODT and DOCX =====
+    {
+        auto doc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("The quick brown fox.\n"));
+        UCRichDocumentEditor editor;
+        editor.SetDocument(doc);
+        editor.SetRevisionAuthor("Ada Lovelace", "2026-09-29T10:00:00Z");
+        editor.SetTrackChanges(true);
+        editor.SetCaret(RichDocPosition(0, 4));
+        editor.InsertText("very ");
+        editor.SetSelection(RichDocPosition(0, 15), RichDocPosition(0, 21));
+        editor.DeleteSelection();
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("changes.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const RichDocBlock* block = FindBlock(back, "The ");
+            bool inserted = false, deleted = false;
+            std::string all;
+            if (block) {
+                for (const auto& r : block->runs) {
+                    all += r.text;
+                    const RichRevision* rev = r.revision >= 0 && r.revision < static_cast<int>(back.revisions.size())
+                                            ? &back.revisions[static_cast<size_t>(r.revision)] : nullptr;
+                    const bool byAda = rev && rev->author == "Ada Lovelace" && rev->date == "2026-09-29T10:00:00Z";
+                    inserted = inserted || (r.text == "very " && r.change == RichTextRun::Change::Inserted && byAda);
+                    deleted = deleted || (r.text == "brown " && r.IsDeleted() && byAda);
+                }
+            }
+            CHECK_MSG(all == "The very quick brown fox.", std::string(ext) + ": " + all);
+            CHECK_MSG(inserted && deleted, ext);
+            CHECK_MSG(back.ToPlainText().find("The very quick fox.") != std::string::npos, ext);
+        }
+    }
+
     // ===== 5h. List labels: formats, templates, editing =====
     {
         CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");

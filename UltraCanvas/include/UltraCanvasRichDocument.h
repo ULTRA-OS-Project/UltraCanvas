@@ -88,6 +88,15 @@ struct RichTextRun {
     // The comments (UCRichDocument::comments) this text is under, by index.
     std::vector<int> commentIds;
 
+    // A tracked change: text inserted, or deleted but kept (shown struck
+    // through) until the change is accepted or rejected. `revision` is its
+    // UCRichDocument::revisions entry (who, when). Exports that give the
+    // text alone (Markdown, HTML, plain text) leave deleted text out.
+    enum class Change { Unchanged, Inserted, Deleted };
+    Change change = Change::Unchanged;
+    int revision = -1;
+    bool IsDeleted() const { return change == Change::Deleted; }
+
     // The named character style (UCRichDocument::styles) this run was given,
     // "" for none. Its properties are already in the run's own fields; the
     // name is what lets a change to the style reach the run.
@@ -121,7 +130,7 @@ struct RichTextRun {
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
             && highlightColor == other.highlightColor && characterStyleId == other.characterStyleId
-            && commentIds == other.commentIds
+            && commentIds == other.commentIds && change == other.change && revision == other.revision
             && field == Field::Plain && other.field == Field::Plain   // a field stays its own run
             && noteIndex < 0 && other.noteIndex < 0;                  // and so does a note mark
     }
@@ -474,6 +483,13 @@ struct RichComment {
     bool resolved = false;
 };
 
+// ===== TRACKED CHANGES =====
+// Who made a tracked change, and when (RichTextRun::revision).
+struct RichRevision {
+    std::string author;
+    std::string date;            // ISO 8601; may be empty
+};
+
 // ===== NAMED STYLES =====
 // What a named style sets: every property is optional, and one it leaves
 // unset comes from the style it is based on (or is left alone).
@@ -604,6 +620,10 @@ public:
     // Sets every reference run's text to its note's mark. True when any
     // changed.
     bool UpdateNoteMarks();
+
+    // ===== TRACKED CHANGES =====
+    std::vector<RichRevision> revisions;
+    bool HasTrackedChanges() const;
 
     // ===== COMMENTS =====
     std::vector<RichComment> comments;

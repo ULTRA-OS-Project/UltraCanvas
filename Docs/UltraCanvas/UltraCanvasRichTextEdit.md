@@ -272,6 +272,30 @@ exported to PDF. DOCX (`comments.xml`, ranges that may cross paragraphs) and
 ODT (`office:annotation`, with LibreOffice's resolved flag) read and write
 them; DOCX does not keep the resolved flag.
 
+### Tracked changes
+
+```cpp
+editor->SetCommentAuthor("Ada Lovelace");        // signs comments and changes
+editor->SetTrackChanges(true);
+// ... typing is marked inserted, deleting marks text deleted ...
+editor->GoToNextChange();                        // selects it
+editor->AcceptChangeAtCaret();                   // or RejectChangeAtCaret, AcceptAllChanges, RejectAllChanges
+```
+
+With tracking on, typed and pasted text is a tracked insertion (underlined,
+`style.insertionColor`) and deleted text stays, struck through
+(`style.deletionColor`), with the caret moving past it (before it for
+Backspace). Deleting a tracked insertion removes it outright. Accepting keeps
+insertions and drops deletions; rejecting does the opposite; each is one undo
+step. In the model a change is `RichTextRun::change` (`Inserted`/`Deleted`)
+with `revision` indexing `UCRichDocument::revisions` (author and date).
+Paragraph breaks, tables and pictures are edited untracked, and so is text
+typed with tracking off, even next to a change. Markdown, HTML and plain-text
+export give the text as it would be with the changes accepted. DOCX (`w:ins`,
+`w:del` with `w:delText`, moves as a deletion plus an insertion - they used to
+be accepted silently on load) and ODT (`text:tracked-changes` with
+change-start/end and deletion points) read and write them.
+
 ### Tables
 
 The caret goes inside table cells: click into one, type, select, format, and

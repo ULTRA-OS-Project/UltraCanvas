@@ -100,6 +100,9 @@ struct RichTextEditStyle {
     Color commentBorderColor = Color(222, 170, 40);
     Color commentAuthorColor = Color(150, 100, 0);
     float commentPaneWidth = 230.0f;
+    // Tracked changes: inserted text underlined, deleted text struck through.
+    Color insertionColor = Color(0, 105, 180);
+    Color deletionColor = Color(185, 30, 30);
 };
 
 // A clickable region inside a rendered block (hyperlinks today).
@@ -441,8 +444,27 @@ public:
     bool SetCommentText(int index, const std::string& text);
     bool SetCommentResolved(int index, bool resolved);
     std::vector<int> GetCommentsAtCaret() const { return editor.CommentsAt(editor.GetCaret()); }
-    // The name new comments are signed with.
-    void SetCommentAuthor(const std::string& name) { commentAuthor = name; }
+    // The name new comments and tracked changes are signed with.
+    void SetCommentAuthor(const std::string& name) {
+        commentAuthor = name;
+        editor.SetRevisionAuthor(name, CurrentIsoTime());
+    }
+
+    // ===== TRACKED CHANGES =====
+    // See UCRichDocumentEditor::SetTrackChanges. Inserted text is shown
+    // underlined (style.insertionColor), deleted text struck through
+    // (style.deletionColor), until accepted or rejected.
+    void SetTrackChanges(bool enabled);
+    bool IsTrackingChanges() const { return editor.IsTrackingChanges(); }
+    bool AcceptAllChanges();
+    bool RejectAllChanges();
+    // The change at the caret, or every change in the selection.
+    bool AcceptChangeAtCaret();
+    bool RejectChangeAtCaret();
+    // Selects the next tracked change after the caret (wrapping round).
+    bool GoToNextChange();
+    // "2026-09-29T10:00:00Z": the time stamp comments and changes get.
+    static std::string CurrentIsoTime();
     const std::string& GetCommentAuthor() const { return commentAuthor; }
     // Whether comments (their shading and pane) are shown; on by default.
     void SetShowComments(bool show);

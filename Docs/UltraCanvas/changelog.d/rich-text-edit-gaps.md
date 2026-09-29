@@ -145,3 +145,12 @@
   text shaded and a comment pane beside the text (click a comment to select its
   text). DOCX `comments.xml` and ODT `office:annotation` are read and written;
   both used to be dropped.
+- **Tracked changes.** `RichTextRun::change` (`Unchanged`/`Inserted`/`Deleted`)
+  and `revision` into `UCRichDocument::revisions`; `UCRichDocumentEditor::
+  SetTrackChanges`, `SetRevisionAuthor`, `AcceptAllChanges`,
+  `RejectAllChanges`, `AcceptChangeAt`, `RejectChangeAt`, `NextChange`; and in
+  `UltraCanvasRichTextEdit` the same (`AcceptChangeAtCaret`, `GoToNextChange`),
+  with insertions underlined and deletions struck through. DOCX `w:ins`/`w:del`
+  and ODT tracked changes are read and written - DOCX deletions used to vanish
+  and insertions to be accepted on load. Text exports leave deleted text out.
+  `UCRichDocumentEditor::InsertIntoRuns` is no longer static.
