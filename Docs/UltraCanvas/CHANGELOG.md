@@ -1,3 +1,106 @@
+#### 2026-09-29 *0.9.90*
+- **VideoFX: portrait photos no longer lose two thirds of themselves.** A
+  still image's framing is now `VideoFXSegment::imageFit` (and
+  `VideoFXSlideshowOptions::imageFit`): `Cover`, `Contain` (black bars) or
+  the new `BlurredBackground`, which shows the whole photo over a blurred,
+  darkened, enlarged copy of itself - made once per photo from a 1/12-size
+  render. The default `Auto` keeps `Cover` for 4:3, 3:2 and panoramic
+  photos and switches to `BlurredBackground` for an image much taller than
+  the frame, such as a portrait photo in a 16:9 slideshow. Pan and zoom move
+  the sharp photo in front of its backdrop. Still images no longer take
+  their framing from the video `fitMode`. `videofx slideshow --fit`.
+- **VideoFX text overlays no longer depend on the machine's fonts.** A text
+  overlay without a `fontPath` now takes, in order: the font the application
+  set with the new `VideoFX_SetDefaultFontPath()`; the framework's bundled
+  Ubuntu font found next to the executable wherever UltraCanvas apps ship
+  `media/` (`share/media/fonts`, `Resources/media/fonts`); a system sans font;
+  and fontconfig's "Sans" only after a one-time check that this FFmpeg can
+  load it. With none usable, the export fails before writing anything, with
+  `NotAvailable` and a message naming the fix - on a minimal Linux install
+  without DejaVu / Liberation / Noto it used to fail inside the filter graph.
+  `VideoFX_GetDefaultFontPath()` reports the choice; `videofx` gains
+  `--font`.
+- **A text overlay's own `fontPath` was ignored.** It was checked for
+  existence and then never passed to FFmpeg, so every title was drawn in the
+  default font. It is now used, ahead of the default.
+- **VideoFX: photos on the timeline, "Ken Burns" motion and slideshows.**
+  - `VideoFXSegment::FromImage(path, seconds, motion)` and
+    `FromImageFrame(rgba, ...)` put a still image on the timeline, with
+    transitions, effects and overlays like any segment. `VideoFXImageMotion`
+    moves a virtual camera across it: `ZoomIn`, `ZoomOut`, four pans,
+    `Custom` start / end zoom and centre, `Still` (fitted like video), and
+    `Auto`, which varies the move per segment and pans along the direction
+    the frame crops. Moves are eased, zoom runs geometrically, and every frame
+    is resampled at sub-pixel positions in VideoFX itself, so there is none
+    of the stepping FFmpeg's `zoompan` shows. Large photos are shrunk once to
+    what the closest zoom needs and loaded only when their segment plays.
+  - `VideoFX_CreateSlideshow(images, output, options)` makes a slideshow in
+    one call: seconds per image, a transition (crossfade by default),
+    per-image captions, fade from and to black, 1080p30 unless sized.
+  - JPEG EXIF orientation is honoured, in exports and in
+    `VideoFX_ExtractFrame` / `ExtractThumbnails`. Reading a single image
+    twice no longer fails (the image demuxers report end-of-file after any
+    seek; a still is now re-read from a fresh open), and JPEG frames could
+    not be extracted at all before.
+  - `videofx slideshow` with `--seconds`, `--motion` and `--caption`;
+    `VideoFXTest` grows to 241 checks.
+- **VideoFX is implemented (stage 1).** Until now the module was a
+  specification: a README describing 264 functions, no sources, no build
+  target. `VideoFX/` is now a built, headless module on FFmpeg (4.4 to 8.x),
+  wrapped behind its own types - no FFmpeg header reaches a caller:
+  - **Inspection:** `VideoFX_Probe` (container, duration, tags, every stream,
+    display rotation), `VideoFX_ExtractFrame` / `VideoFX_ExtractThumbnails`
+    (upright RGBA, scaled to fit), `VideoFX_SaveFrameImage` (PNG / JPEG).
+  - **A segment timeline:** `VideoFX_Export` plays file ranges, colour cards
+    and test patterns one after another, each with its own trim, speed
+    (0.25-4x, pitch kept) and effects, fits them to one size / rate / sample
+    format (letterbox, fill or stretch) and encodes MP4, MOV, MKV, WebM, AVI,
+    animated GIF, MP3, M4A, WAV, FLAC or OGG. Picture and sound stay in sync
+    across joins: a stream that runs short is padded (last frame / silence).
+  - **26 typed effects** (brightness, contrast, saturation, gamma, exposure,
+    hue, temperature, grayscale, sepia, invert, 3D LUT with strength, blur,
+    sharpen, denoise, vignette, quarter turns, free rotation, flips, crop,
+    fade in / out, volume, EBU R128 loudness), validated before anything is
+    written; filter text is dot-decimal under any locale.
+  - One-line helpers `VideoFX_Transcode`, `Trim`, `ApplyEffects`,
+    `Concatenate`, `ExtractAudio`, `GenerateTestClip`; `VideoFX_TrimLossless`
+    cuts by stream copy; `VideoFXExportJob` runs an export on a worker thread
+    with progress and cancel. A failed or cancelled export removes its
+    partial file.
+  - A `videofx` command-line tool (`info`, `frame`, `transcode`, `trim`,
+    `concat`, `effects`, `testclip`).
+  - Without FFmpeg the module still builds, from a stub whose calls return
+    `VideoFXResult::NotAvailable`, so applications need no `#ifdef`.
+  - `Tests/VideoFXTest.cpp` (116 checks) covers the filter-text translation
+    and the engine end to end on clips it generates itself. The Linux CI rows
+    now install FFmpeg's development packages so it runs there.
+  - The demo's module list shows VideoFX as partially implemented; transitions,
+    overlays, keyframes, multi-track mixing and project files are the next
+    stages (`Docs/Modules/VideoFX/README.md`, `Masterfile_modules.md` §16).
+- **VideoFX stage 2: transitions between segments, titles and logos.**
+  - `VideoFXSegment::transitionIn` blends the previous segment into this one
+    over 0.04-5 s: 30 `VideoFXTransitionType`s (crossfade, dissolve, fade
+    through black / white, wipes, slides, smooth pushes, squeezes, circle /
+    rect / radial reveals, pixelize, blur), on FFmpeg's `xfade`. The
+    segments overlap by the transition's length and their sound is
+    cross-faded over the same span, in every output including GIF and
+    audio-only files. The exporter holds the last D seconds of a segment back
+    until the first D seconds of the next are in; a clip shorter than the
+    transition shrinks the overlap instead of failing.
+  - `VideoFXSegment::overlays` draws `VideoFXOverlay::Text` (drawtext:
+    literal text, font size as a fraction of the frame height, colour,
+    shadow, background band, default system font or `fontPath`) and
+    `VideoFXOverlay::Image` / `ImageFromFrame` (PNG transparency kept, RGBA
+    from memory, scaled to a fraction of the height) on the output frame,
+    at one of nine anchors or a custom position, with start / end times,
+    fade in / out and opacity. `VideoFX_IsTextOverlayAvailable()` reports
+    whether the FFmpeg build can draw text.
+  - GIF output now builds its palette once per frame at the very end, so
+    transitions and overlays get colours of their own and nothing is
+    buffered for the whole file.
+  - `videofx` gains `--transition NAME[:SECONDS]`, `--title TEXT` and
+    `--watermark IMAGE`; `VideoFXTest` grows to 182 checks.
+
 #### 2026-09-29 *0.9.89*
 - **`UltraCanvasListView` clears the scrollbar's bounds when it hides it.**
   A hidden scrollbar kept the rectangle of its last visible layout, computed
