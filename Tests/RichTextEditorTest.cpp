@@ -1396,6 +1396,116 @@ static void TestCellSelection() {
     CHECK(ed.GetCaret().blockIndex == 0);
 }
 
+static void TestMoveRange() {
+    std::cout << "\n--- Drag and drop ---\n";
+    {
+        UCRichDocumentEditor ed(MakeDocument({"one two three"}));
+        // "two " to the end of the paragraph.
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(0, 4), RichDocPosition(0, 8)), RichDocPosition(0, 13)));
+        CHECK_EQ(Shape(ed), std::string("one threetwo "));
+        CHECK(ed.HasSelection());
+        CHECK_EQ(ed.RangeToPlainText(ed.GetSelectionRange()), std::string("two "));
+        CHECK(ed.Undo());
+        CHECK_EQ(Shape(ed), std::string("one two three"));
+        // ...and to the front.
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(0, 8), RichDocPosition(0, 13)), RichDocPosition(0, 0)));
+        CHECK_EQ(Shape(ed), std::string("threeone two "));
+        CHECK(ed.Undo());
+        // Onto itself is refused.
+        CHECK(!ed.MoveRange(RichDocRange(RichDocPosition(0, 4), RichDocPosition(0, 8)), RichDocPosition(0, 6)));
+        // Copy leaves the original.
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(0, 0), RichDocPosition(0, 3)), RichDocPosition(0, 13), true));
+        CHECK_EQ(Shape(ed), std::string("one two threeone"));
+    }
+    {
+        // Across paragraphs: the moved text's paragraph structure goes with it.
+        UCRichDocumentEditor ed(MakeDocument({"first", "second", "third", "fourth"}));
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(0, 0), RichDocPosition(1, 6)), RichDocPosition(3, 6)));
+        CHECK_EQ(Shape(ed), std::string("|third|fourthfirst|second"));
+        CHECK(ed.Undo());
+        CHECK_EQ(Shape(ed), std::string("first|second|third|fourth"));
+        // A word from a later paragraph into an earlier one.
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(3, 0), RichDocPosition(3, 4)), RichDocPosition(0, 5)));
+        CHECK_EQ(Shape(ed), std::string("firstfour|second|third|th"));
+    }
+    {
+        // Into a table cell.
+        UCRichDocumentEditor ed(BuildTableDocument());
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(0, 0), RichDocPosition(0, 6)), RichDocPosition(1, 0, 0, 5)));
+        CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 0, 0)), std::string("alphabefore"));
+        CHECK_EQ(ed.BlockText(0), std::string(" the table"));
+    }
+}
+
+static void TestAutoFormat() {
+    std::cout << "\n--- Autoformat ---\n";
+    auto typeAll = [](UCRichDocumentEditor& ed, const std::string& text) {
+        // One character (one UTF-8 sequence) per keystroke, as a keyboard types.
+        for (size_t i = 0; i < text.size();) {
+            size_t n = 1;
+            while (i + n < text.size() && (static_cast<unsigned char>(text[i + n]) & 0xC0) == 0x80) n++;
+            ed.TypeText(text.substr(i, n));
+            i += n;
+        }
+    };
+    {
+        UCRichDocumentEditor ed(MakeDocument({""}));
+        ed.SetAutoFormatEnabled(true);
+        typeAll(ed, "\"Hi,\" she said. It's (c) 2026... a--b and c -- d -> e");
+        CHECK_EQ(ed.BlockText(0), std::string("\xE2\x80\x9CHi,\xE2\x80\x9D she said. It\xE2\x80\x99s \xC2\xA9 2026\xE2\x80\xA6 a\xE2\x80\x94" "b and c \xE2\x80\x93 d \xE2\x86\x92 e"));
+        // Undo right after a correction takes back only the correction.
+        UCRichDocumentEditor ed2(MakeDocument({""}));
+        ed2.SetAutoFormatEnabled(true);
+        typeAll(ed2, "(c)");
+        CHECK_EQ(ed2.BlockText(0), std::string("\xC2\xA9"));
+        CHECK(ed2.Undo());
+        CHECK_EQ(ed2.BlockText(0), std::string("(c)"));
+    }
+    {
+        UCRichDocumentEditor ed(MakeDocument({""}));
+        ed.SetAutoFormatEnabled(true);
+        typeAll(ed, "1. first");
+        CHECK(ed.GetBlock(0).type == RichBlockType::ListItem && ed.GetBlock(0).orderedList);
+        CHECK_EQ(ed.BlockText(0), std::string("first"));
+        ed.TypeEnter();
+        typeAll(ed, "second");
+        CHECK(ed.GetBlock(1).type == RichBlockType::ListItem);
+        ed.TypeEnter();
+        ed.TypeEnter();             // empty item: leaves the list
+        typeAll(ed, "## Title");
+        CHECK(ed.GetBlock(2).type == RichBlockType::Heading && ed.GetBlock(2).headingLevel == 2);
+        CHECK_EQ(ed.BlockText(2), std::string("Title"));
+        ed.TypeEnter();
+        typeAll(ed, "[ ] task");
+        CHECK(ed.GetBlock(3).checkbox && !ed.GetBlock(3).checked);
+        ed.TypeEnter();
+        ed.TypeEnter();
+        typeAll(ed, "---");
+        ed.TypeEnter();
+        CHECK(ed.GetBlock(4).type == RichBlockType::HorizontalRule);
+        typeAll(ed, "- bullet");
+        CHECK(ed.GetBlock(5).type == RichBlockType::ListItem && !ed.GetBlock(5).orderedList);
+        // The list start comes from the number typed.
+        ed.TypeEnter();
+        ed.TypeEnter();
+        typeAll(ed, "3) third");
+        CHECK(ed.GetBlock(6).orderedList && ed.GetBlock(6).listStartNumber == 3
+              && ed.GetBlock(6).numberTemplate == "%1)");
+    }
+    {
+        // Off: text goes in exactly as typed.
+        UCRichDocumentEditor ed(MakeDocument({""}));
+        typeAll(ed, "\"x\" -- 1. ");
+        CHECK_EQ(ed.BlockText(0), std::string("\"x\" -- 1. "));
+        // Code keeps straight quotes.
+        UCRichDocumentEditor code(MakeDocument({""}));
+        code.SetAutoFormatEnabled(true);
+        code.ToggleCode();
+        typeAll(code, "\"s\"");
+        CHECK_EQ(code.BlockText(0), std::string("\"s\""));
+    }
+}
+
 int main() {
     TestPositionsAndNavigation();
     TestTypingAndDeleting();
@@ -1416,6 +1526,8 @@ int main() {
     TestTableCaretFollowsStructure();
     TestInlineImages();
     TestCellSelection();
+    TestMoveRange();
+    TestAutoFormat();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

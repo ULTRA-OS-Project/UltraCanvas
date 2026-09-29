@@ -43941,6 +43941,49 @@ self-contained and saves to `.odt`/`.docx` with the picture inside it.
 | Ctrl+B / I / U | Bold, italic, underline |
 | Ctrl+click on a link | `onLinkClicked` (a plain click just places the caret, so links stay editable) |
 
+## Autoformat as you type
+
+On by default, as in a word processor:
+
+| Typed | Becomes |
+|---|---|
+| `"` `'` | “ ” ‘ ’ (opening after a space or bracket, closing - the apostrophe - after a letter) |
+| `a--b`, `a -- b` | `a—b` (em dash), `a – b` (en dash) |
+| `...` | … |
+| `(c)` `(r)` `(tm)` `->` `<-` `=>` | © ® ™ → ← ⇒ |
+| `1. ` `3) ` `a) ` opening a paragraph | a numbered list (starting at that number / letter) |
+| `- ` `* ` `+ ` | a bullet list |
+| `[ ] ` `[x] ` | a check list item |
+| `# ` … `###### ` | a heading of that level |
+| `> ` | a quote |
+| `---` `***` `___` then Enter | a horizontal rule |
+
+Each correction is its own undo step, so Ctrl+Z right after it takes back only
+the correction and leaves what was typed. Code (inline or a code block) and
+formulas are never corrected, and pasted text is never corrected.
+
+```cpp
+editor->SetAutoFormatEnabled(false);            // everything off
+RichAutoFormatOptions options = editor->GetAutoFormatOptions();
+options.smartQuotes = false;                    // or just one of them
+editor->SetAutoFormatOptions(options);
+```
+
+The editing core has the same switches (off by default there, because a
+programmatic `InsertText` must insert exactly what it is given); typing goes
+through `UCRichDocumentEditor::TypeText` / `TypeEnter`.
+
+## Drag and drop
+
+Press inside the selection and drag: the text moves to where the drop caret
+shows, and stays selected; hold Ctrl at the drop to copy it instead. One undo
+step takes the move back. A press inside the selection that does not move is
+an ordinary click. Image files dropped from another application are inserted
+where they are dropped, as pictures in the line; `onFilesDropped` lets a host
+take other files (or all of them). `enableDragAndDrop = false` turns dragging
+the selection off. The editing core's `MoveRange(range, target, copy)` does the
+move.
+
 ## Find and replace
 
 ```cpp

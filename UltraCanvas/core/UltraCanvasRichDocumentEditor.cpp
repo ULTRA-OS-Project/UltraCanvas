@@ -2785,6 +2785,221 @@ void UCRichDocumentEditor::DeleteBlock(int blockIndex) {
     NotifySelectionChanged();
 }
 
+// ===== AUTOFORMAT =====
+
+namespace {
+
+bool EndsWith(const std::string& text, size_t end, const std::string& tail) {
+    return end >= tail.size() && text.compare(end - tail.size(), tail.size(), tail) == 0;
+}
+
+// The UTF-8 character that ends at `end` (empty at the start).
+std::string CharBefore(const std::string& text, int end) {
+    if (end <= 0) return {};
+    const int start = UCRichDocumentEditor::PreviousCharOffset(text, end);
+    return text.substr(static_cast<size_t>(start), static_cast<size_t>(end - start));
+}
+
+bool IsSpaceChar(const std::string& c) {
+    return c.empty() || c == " " || c == "\t" || c == "\n" || c == "\xC2\xA0";
+}
+
+} // namespace
+
+std::string UCRichDocumentEditor::ApplySmartQuotes(const std::string& typed) const {
+    if (!autoFormatEnabled || !autoFormat.smartQuotes) return typed;
+    if (typed != "\"" && typed != "'") return typed;
+    const std::vector<RichTextRun>* runs = RunsAt(caret);
+    if (!runs) return typed;
+    if (!caret.InCell() && (doc->blocks[static_cast<size_t>(caret.blockIndex)].type == RichBlockType::CodeBlock
+                            || doc->blocks[static_cast<size_t>(caret.blockIndex)].type == RichBlockType::MathBlock)) {
+        return typed;
+    }
+    const RichTextRun format = pendingFormatValid ? pendingFormat : FormatAt(caret);
+    if (format.code || format.math) return typed;     // code and formulas mean the straight quote
+
+    const std::string text = RunsText(*runs);
+    const int at = HasSelection() ? GetSelectionRange().start.byteOffset : caret.byteOffset;
+    const std::string before = CharBefore(text, std::min(at, static_cast<int>(text.size())));
+    // Opening after nothing, a space, an opening bracket, a dash or another
+    // opening quote; closing (which is also the apostrophe) after anything else.
+    static const char* const openers[] = {"(", "[", "{", "<", "\xE2\x80\x94", "\xE2\x80\x93",
+                                          "\xE2\x80\x9C", "\xE2\x80\x98", "-", "/"};
+    bool opening = IsSpaceChar(before);
+    for (const char* opener : openers) opening = opening || before == opener;
+    if (typed == "\"") return opening ? "\xE2\x80\x9C" : "\xE2\x80\x9D";   // “ ”
+    return opening ? "\xE2\x80\x98" : "\xE2\x80\x99";                       // ‘ ’
+}
+
+bool UCRichDocumentEditor::AutoFormatBeforeCaret() {
+    if (!autoFormatEnabled || HasSelection()) return false;
+    std::vector<RichTextRun>* runs = MutableRunsAt(caret);
+    if (!runs) return false;
+    const RichDocBlock& owner = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+    if (!caret.InCell() && (owner.type == RichBlockType::CodeBlock || owner.type == RichBlockType::MathBlock)) {
+        return false;
+    }
+    const std::string text = RunsText(*runs);
+    const int end = std::min(caret.byteOffset, static_cast<int>(text.size()));
+    if (end <= 0) return false;
+    if (const RichTextRun* run = RunAtOffset(*runs, end)) {
+        if (run->code || run->math || run->field != RichTextRun::Field::Plain) return false;
+    }
+
+    // ---- replacements of what the caret just finished ----
+    int replaceFrom = -1;
+    std::string replacement;
+    const std::string last = CharBefore(text, end);
+    const size_t e = static_cast<size_t>(end);
+    if (autoFormat.ellipsis && EndsWith(text, e, "...") && !EndsWith(text, e, "....")) {
+        replaceFrom = end - 3;
+        replacement = "\xE2\x80\xA6";                                 // …
+    } else if (autoFormat.symbols) {
+        static const std::pair<const char*, const char*> symbols[] = {
+            {"(c)", "\xC2\xA9"}, {"(C)", "\xC2\xA9"}, {"(r)", "\xC2\xAE"}, {"(R)", "\xC2\xAE"},
+            {"(tm)", "\xE2\x84\xA2"}, {"(TM)", "\xE2\x84\xA2"},
+            {"->", "\xE2\x86\x92"}, {"<-", "\xE2\x86\x90"}, {"=>", "\xE2\x87\x92"}};
+        for (const auto& [from, to] : symbols) {
+            const std::string pattern = from;
+            // "-->" is an arrow drawn with a longer shaft, not a dash and an arrow.
+            if (EndsWith(text, e, pattern) && !(pattern == "->" && EndsWith(text, e, "-->"))) {
+                replaceFrom = end - static_cast<int>(pattern.size());
+                replacement = to;
+                break;
+            }
+        }
+    }
+    if (replaceFrom < 0 && autoFormat.dashes && last != "-" && !last.empty()) {
+        // "word--word" (an em dash) or "word -- word" (an en dash), decided
+        // once the character after the hyphens is typed.
+        const int hyphens = end - static_cast<int>(last.size());
+        if (hyphens >= 2 && EndsWith(text, static_cast<size_t>(hyphens), "--")
+            && !EndsWith(text, static_cast<size_t>(hyphens), "---")) {
+            const std::string before = CharBefore(text, hyphens - 2);
+            if (!before.empty()) {
+                const bool spaced = IsSpaceChar(before) && IsSpaceChar(last);
+                const bool joined = !IsSpaceChar(before) && !IsSpaceChar(last);
+                if (spaced || joined) {
+                    replaceFrom = hyphens - 2;
+                    replacement = std::string(spaced ? "\xE2\x80\x93" : "\xE2\x80\x94") + last;
+                }
+            }
+        }
+    }
+    if (replaceFrom >= 0) {
+        {
+            EditScope scope(*this, caret.blockIndex, 1);
+            std::vector<RichTextRun>* target = MutableRunsAt(caret);
+            EraseRunRange(*target, replaceFrom, end);
+            InsertIntoRuns(*target, replaceFrom, replacement, nullptr);
+            caret.byteOffset = replaceFrom + static_cast<int>(replacement.size());
+            anchor = caret;
+        }
+        coalescing = false;
+        NotifyChanged();
+        NotifySelectionChanged();
+        return true;
+    }
+
+    // ---- a paragraph's opening characters turning it into something ----
+    if (caret.InCell() || last != " " || owner.type != RichBlockType::Paragraph) return false;
+    const std::string head = text.substr(0, e - 1);        // what precedes the space
+    RichDocBlock changed = owner;
+    bool matched = false;
+    if (autoFormat.headings && !head.empty() && head.size() <= 6
+        && head.find_first_not_of('#') == std::string::npos) {
+        changed.type = RichBlockType::Heading;
+        changed.headingLevel = static_cast<int>(head.size());
+        matched = true;
+    } else if (autoFormat.lists && (head == "-" || head == "*" || head == "+")) {
+        changed.type = RichBlockType::ListItem;
+        changed.orderedList = false;
+        matched = true;
+    } else if (autoFormat.lists && (head == "[ ]" || head == "[x]" || head == "[X]")) {
+        changed.type = RichBlockType::ListItem;
+        changed.orderedList = false;
+        changed.checkbox = true;
+        changed.checked = head != "[ ]";
+        matched = true;
+    } else if (autoFormat.lists && head.size() >= 2 && (head.back() == '.' || head.back() == ')')) {
+        const std::string label = head.substr(0, head.size() - 1);
+        const bool digits = label.size() <= 4 && label.find_first_not_of("0123456789") == std::string::npos;
+        const bool letter = label.size() == 1 && std::isalpha(static_cast<unsigned char>(label[0]));
+        if (digits || letter) {
+            changed.type = RichBlockType::ListItem;
+            changed.orderedList = true;
+            if (digits) {
+                const int number = std::stoi(label);   // locale-ok: ASCII digits only
+                changed.listStartNumber = number > 1 ? number : 0;
+                changed.numberFormat = RichNumberFormat::Decimal;
+            } else {
+                const bool upper = std::isupper(static_cast<unsigned char>(label[0])) != 0;
+                changed.numberFormat = upper ? RichNumberFormat::UpperLetter : RichNumberFormat::LowerLetter;
+                const int number = std::tolower(static_cast<unsigned char>(label[0])) - 'a' + 1;
+                changed.listStartNumber = number > 1 ? number : 0;
+            }
+            if (head.back() == ')') changed.numberTemplate = "%1)";
+            matched = true;
+        }
+    } else if (autoFormat.lists && head == ">") {
+        changed.type = RichBlockType::BlockQuote;
+        matched = true;
+    }
+    if (!matched) return false;
+    {
+        EditScope scope(*this, caret.blockIndex, 1);
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+        changed.runs = block.runs;
+        EraseRunRange(changed.runs, 0, end);
+        block = std::move(changed);
+        caret.byteOffset = 0;
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::TypeText(const std::string& utf8) {
+    if (!autoFormatEnabled) {
+        InsertText(utf8);
+        return false;
+    }
+    InsertText(ApplySmartQuotes(utf8));
+    // Only a keystroke's worth of text triggers a correction; a paste does not.
+    if (utf8.size() > 4) return false;
+    return AutoFormatBeforeCaret();
+}
+
+void UCRichDocumentEditor::TypeEnter() {
+    if (autoFormatEnabled && autoFormat.rules && !HasSelection() && !caret.InCell()
+        && doc->blocks[static_cast<size_t>(caret.blockIndex)].type == RichBlockType::Paragraph) {
+        const std::string text = BlockText(caret.blockIndex);
+        const bool rule = text.size() >= 3 && caret.byteOffset == static_cast<int>(text.size())
+                       && (text.find_first_not_of('-') == std::string::npos
+                           || text.find_first_not_of('*') == std::string::npos
+                           || text.find_first_not_of('_') == std::string::npos);
+        if (rule) {
+            {
+                EditScope scope(*this, caret.blockIndex, 1);
+                RichDocBlock& block = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+                block = RichDocBlock{};
+                block.type = RichBlockType::HorizontalRule;
+                RichDocBlock paragraph;
+                doc->blocks.insert(doc->blocks.begin() + caret.blockIndex + 1, paragraph);
+                caret = RichDocPosition(caret.blockIndex + 1, 0);
+                anchor = caret;
+            }
+            coalescing = false;
+            NotifyChanged();
+            NotifySelectionChanged();
+            return;
+        }
+    }
+    SplitBlock();
+}
+
 // ===== CLIPBOARD SUPPORT =====
 
 std::vector<RichDocBlock> UCRichDocumentEditor::ExtractRange(const RichDocRange& range) const {
@@ -2870,6 +3085,56 @@ std::string UCRichDocumentEditor::RangeToPlainText(const RichDocRange& range) co
     return out;
 }
 
+namespace {
+// Where `pos` ends up once `range` has been deleted (pos not inside it).
+RichDocPosition PositionAfterDelete(const RichDocPosition& pos, const RichDocRange& range) {
+    if (pos <= range.start) return pos;
+    if (pos.SameContainer(range.end)) {
+        RichDocPosition out = range.start;
+        out.byteOffset = range.start.byteOffset + (pos.byteOffset - range.end.byteOffset);
+        return out;
+    }
+    if (!range.start.InCell() && !range.end.InCell() && pos.blockIndex > range.end.blockIndex) {
+        RichDocPosition out = pos;
+        out.blockIndex -= range.end.blockIndex - range.start.blockIndex;
+        return out;
+    }
+    return pos;
+}
+} // namespace
+
+bool UCRichDocumentEditor::MoveRange(const RichDocRange& range, const RichDocPosition& target, bool copy) {
+    if (range.IsEmpty()) return false;
+    const RichDocPosition to = ClampPosition(target);
+    // Onto itself: nothing to do. Its edges are fine for a copy.
+    if (to > range.start && to < range.end) return false;
+    if (!copy && (to == range.start || to == range.end)) return false;
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (CellRectBetween(range.start, range.end, top, left, bottom, right)) return false;
+    const std::vector<RichDocBlock> moving = ExtractRange(range);
+    if (moving.empty()) return false;
+
+    const int first = std::min(range.start.blockIndex, to.blockIndex);
+    const int last = std::max(range.end.blockIndex, to.blockIndex);
+    {
+        EditScope scope(*this, first, last - first + 1);
+        RichDocPosition at = to;
+        if (!copy) {
+            DeleteRangeInternal(range);
+            at = ClampPosition(PositionAfterDelete(to, range));
+        }
+        caret = anchor = at;
+        pendingFormatValid = false;
+        InsertBlocksInternal(moving);
+        // The dropped text ends up selected, as it does in a word processor.
+        anchor = at;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
 // Pasting into a table cell. A cell holds runs, not blocks, so:
 // - a table pastes cell by cell into the grid from the caret's cell on, as a
 //   spreadsheet does (cells past the table's edge are dropped);
@@ -2940,7 +3205,15 @@ void UCRichDocumentEditor::InsertBlocks(const std::vector<RichDocBlock>& blocks)
     {
         EditScope scope(*this, first, count);
         if (HasSelection()) DeleteRangeInternal(selection);
+        InsertBlocksInternal(blocks);
+    }
+    NotifyChanged();
+    NotifySelectionChanged();
+}
 
+void UCRichDocumentEditor::InsertBlocksInternal(const std::vector<RichDocBlock>& blocks) {
+    if (blocks.empty()) return;
+    {
         if (caret.InCell()) {
             InsertBlocksIntoCellInternal(blocks);
         } else if (blocks.size() == 1 && IsTextBlockType(blocks[0].type)
@@ -2996,8 +3269,6 @@ void UCRichDocumentEditor::InsertBlocks(const std::vector<RichDocBlock>& blocks)
             }
         }
     }
-    NotifyChanged();
-    NotifySelectionChanged();
 }
 
 } // namespace UltraCanvas

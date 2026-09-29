@@ -47,3 +47,16 @@
   table from outside takes the whole table. Editing core: `HasCellSelection`,
   `GetCellSelectionRect`, `SelectedCells`, `SelectCellRange`,
   `MergeSelectedCells`.
+- **Drag and drop in the rich text element.** Dragging the selection moves
+  it (Ctrl at the drop copies it) with a drop caret showing where it lands,
+  as one undo step, the moved text left selected; image files dropped from
+  another application are inserted at the drop point (`onFilesDropped` lets a
+  host take them). Editing core: `MoveRange(range, target, copy)`.
+- **Autoformat as you type** (`RichAutoFormatOptions`, on by default in the
+  element): smart quotes, em and en dashes from `--`, `…` from `...`, © ® ™ →
+  ← ⇒, lists from `1. ` / `a) ` / `- ` / `[ ] `, headings from `#`, quotes
+  from `> `, and a rule from `---` + Enter. Each correction is a separate undo
+  step. Code and formulas are left alone, and so is pasted text.
+- `UltraCanvasRichTextEdit::InsertImageFromFile` / `InsertInlineImageFromFile`
+  opened the path with `std::ifstream(path)`, which on Windows reads a UTF-8
+  name through the ANSI code page; they go through `PathFromUtf8` now.

@@ -262,6 +262,17 @@ public:
         bool CanSplitCurrentCell() const;
     bool SplitCurrentCell();
 
+    // ===== AUTOFORMAT AS YOU TYPE =====
+    // On by default: typed quotes become “curly”, "--" a dash, "..." an
+    // ellipsis, (c) ©, and "1. ", "- ", "[ ] ", "# " or "> " opening a
+    // paragraph make it a list, check list, heading or quote; a paragraph of
+    // "---" becomes a rule on Enter. Each correction is its own undo step,
+    // so Ctrl+Z straight after takes back just the correction.
+    void SetAutoFormatEnabled(bool enabled) { editor.SetAutoFormatEnabled(enabled); }
+    bool IsAutoFormatEnabled() const { return editor.IsAutoFormatEnabled(); }
+    void SetAutoFormatOptions(const RichAutoFormatOptions& options) { editor.SetAutoFormatOptions(options); }
+    const RichAutoFormatOptions& GetAutoFormatOptions() const { return editor.GetAutoFormatOptions(); }
+
     // ===== SEARCH =====
     // FindNext starts at the end of the selection (so repeated calls walk
     // forwards through matches) and FindPrevious at its start. A match becomes
@@ -310,6 +321,13 @@ public:
     // Return true to consume a link click (otherwise it is ignored; the
     // element never launches a browser on its own).
     std::function<bool(const std::string& target)> onLinkClicked;
+    // Drag and drop: on by default. A drag moves the selection; with Ctrl held
+    // at the drop it copies it.
+    bool enableDragAndDrop = true;
+    // Files dropped from another application, with the document position
+    // under the drop. Return true to consume them; otherwise image files are
+    // inserted there as pictures in the line and anything else is ignored.
+    std::function<bool(const std::vector<std::string>& paths, const RichDocPosition& at)> onFilesDropped;
     // Right-click, before the built-in spell popup. Return true to consume it,
     // which is how a host puts the suggestions inside its own context menu.
     std::function<bool(const UCEvent& event)> onContextMenu;
@@ -479,6 +497,8 @@ private:
     const RichTextHitRect* LinkAtPoint(const Point2Df& localPoint) const;
     // Caret rectangle in element-local coordinates; invalid when off-screen.
     Rect2Df CaretRect() const;
+    // The same for any position (the drop point of a drag).
+    Rect2Df PositionRect(const RichDocPosition& position) const;
     // Vertical motion: the position one visual line above/below `pos`.
     RichDocPosition VerticalStep(const RichDocPosition& pos, int direction) const;
     // The caret's x inside its block's layout — the column Up/Down aims for.
@@ -490,6 +510,7 @@ private:
     bool HandleMouseMove(const UCEvent& event);
     bool HandleDoubleClick(const UCEvent& event);
     bool HandleMouseWheel(const UCEvent& event);
+    bool HandleFileDrop(const UCEvent& event);
     bool HandleKeyDown(const UCEvent& event);
 
     void AfterEdit();                 // invalidate, notify, keep the caret visible
@@ -526,6 +547,13 @@ private:
 
     bool readOnly = false;
     bool selecting = false;           // mouse drag in progress
+    // Drag and drop of the selection: a press inside it arms a drag, which
+    // starts once the pointer has moved a few pixels (a press and release
+    // without moving just places the caret there).
+    bool dragArmed = false;
+    bool draggingText = false;
+    Point2Df dragStartPoint{0, 0};
+    RichDocPosition dropPosition;
     bool draggingThumb = false;
     float thumbGrabOffset = 0.0f;
     Rect2Df thumbRect{0, 0, 0, 0};

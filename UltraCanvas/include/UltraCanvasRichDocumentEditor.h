@@ -147,6 +147,24 @@ struct RichFindOptions {
     bool wrapAround = true;
 };
 
+// ===== AUTOCORRECT / AUTOFORMAT AS YOU TYPE =====
+// What a word processor does to typed text. Each is applied as its own undo
+// step (except the quotes, which change the character as it is typed), so
+// Ctrl+Z right after takes back only the correction and keeps what was typed.
+struct RichAutoFormatOptions {
+    bool smartQuotes = true;    // " and ' become “ ” ‘ ’ by context
+    bool dashes = true;         // "a--b" becomes "a—b", "a -- b" becomes "a – b"
+    bool ellipsis = true;       // "..." becomes "…"
+    bool symbols = true;        // (c) (r) (tm) -> <- => become © ® ™ → ← ⇒
+    bool lists = true;          // "1. " / "a) " / "- " / "* " / "[ ] " opening a paragraph start a list
+    bool headings = true;       // "# " .. "###### " opening a paragraph make it a heading
+    bool rules = true;          // a paragraph of "---", "***" or "___" becomes a rule on Enter
+
+    bool AnyEnabled() const {
+        return smartQuotes || dashes || ellipsis || symbols || lists || headings || rules;
+    }
+};
+
 // ===== THE EDITOR =====
 
 // Owns a document plus a caret and selection over it, and is the only thing
@@ -360,6 +378,23 @@ public:
     // Back to 1x1, with fresh empty cells filling the slots it gives up.
     bool SplitTableCell(int blockIndex, int row, int cellIndex);
 
+    // ===== AUTOFORMAT =====
+    // Off by default in the editing core (a programmatic InsertText must
+    // insert exactly what it is given); the element turns it on for typing.
+    void SetAutoFormatOptions(const RichAutoFormatOptions& options) { autoFormat = options; }
+    const RichAutoFormatOptions& GetAutoFormatOptions() const { return autoFormat; }
+    void SetAutoFormatEnabled(bool enabled) { autoFormatEnabled = enabled; }
+    bool IsAutoFormatEnabled() const { return autoFormatEnabled; }
+    // Typing, as a keyboard delivers it: the text is inserted (with smart
+    // quotes applied), then any correction the text now ends in is made as a
+    // separate undo step. Returns true when a correction was made.
+    bool TypeText(const std::string& utf8);
+    // Enter, as typed: a paragraph of "---" becomes a rule first. Then splits.
+    void TypeEnter();
+    // The corrections alone, for callers that insert text themselves.
+    std::string ApplySmartQuotes(const std::string& typed) const;
+    bool AutoFormatBeforeCaret();
+
     // ===== CLIPBOARD SUPPORT =====
     // Blocks covered by `range`, trimmed to the selected text — the payload of
     // a rich copy. Media referenced by an image block is NOT copied; callers
@@ -370,6 +405,10 @@ public:
     // block merges into the current paragraph and the last one keeps the text
     // that followed the caret, which is what makes pasting mid-sentence work.
     void InsertBlocks(const std::vector<RichDocBlock>& blocks);
+    // Drag and drop: moves (or, with `copy`, duplicates) the text of `range`
+    // to `target`, as one undo step, and leaves the moved text selected. False
+    // when the target is inside the range, or the range is a block of cells.
+    bool MoveRange(const RichDocRange& range, const RichDocPosition& target, bool copy = false);
 
     // ===== SEARCH =====
     // Matches are found in block text, so a match never spans a block boundary
@@ -480,6 +519,7 @@ private:
     // the top-left one. No undo step of its own.
     void ClearSelectedCellsInternal();
     void InsertBlocksIntoCellInternal(const std::vector<RichDocBlock>& blocks);
+    void InsertBlocksInternal(const std::vector<RichDocBlock>& blocks);
     // Grid rectangle of a cell selection between two cell positions.
     bool CellRectBetween(const RichDocPosition& a, const RichDocPosition& b,
                          int& top, int& left, int& bottom, int& right) const;
@@ -531,6 +571,9 @@ private:
     bool coalescing = false;        // the last step was typing and can absorb more
     bool applyingUndo = false;      // suppresses step recording while reverting
     bool modified = false;
+
+    RichAutoFormatOptions autoFormat;
+    bool autoFormatEnabled = false;
 
     // Format armed by a toolbar press at a collapsed caret.
     RichTextRun pendingFormat;

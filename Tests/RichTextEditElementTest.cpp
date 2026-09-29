@@ -13,8 +13,12 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <vector>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -40,6 +44,14 @@ static int failCount = 0;
     } while (0)
 
 namespace {
+
+// A 1x1 PNG, for pictures that have to decode.
+const std::vector<uint8_t> kDotPng = {
+    0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+    0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x08,0x02,0x00,0x00,0x00,0x90,0x77,0x53,
+    0xDE,0x00,0x00,0x00,0x0C,0x49,0x44,0x41,0x54,0x78,0x9C,0x63,0xF8,0xCF,0xC0,0x00,
+    0x00,0x03,0x01,0x01,0x00,0xC9,0xFE,0x92,0xEF,0x00,0x00,0x00,0x00,0x49,0x45,0x4E,
+    0x44,0xAE,0x42,0x60,0x82};
 
 UCEvent MouseEvent(UCEventType type, float x, float y, bool shift = false) {
     UCEvent event;
@@ -954,6 +966,47 @@ int main() {
              && editor.GetBlock(0).tableRows[0].cells[0].columnSpan == 2
              && editor.GetBlock(0).tableRows[0].cells[0].rowSpan == 2);
         window->UpdateAndRender();
+    }
+
+    // ===== DRAG AND DROP =====
+    std::cerr << "\n--- Drag and drop ---" << std::endl;
+    {
+        edit->SetMarkdown("alpha beta gamma\n");
+        window->UpdateAndRender();
+        editor.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 6));   // "alpha "
+        window->UpdateAndRender();
+        // Press inside "alpha", drag past the end of the line, release.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 20, 18));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 60, 18));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 600, 18));
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 600, 18));
+        window->UpdateAndRender();
+        TEST("Dragging a selection moves it: " + editor.BlockText(0), editor.BlockText(0) == "beta gammaalpha ");
+        TEST("...and it stays selected", edit->GetSelectedText() == "alpha ");
+        TEST("One undo puts it back", edit->Undo() && editor.BlockText(0) == "alpha beta gamma");
+
+        // A press inside the selection without moving is a click.
+        editor.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 6));
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 20, 18));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 20, 18));
+        window->UpdateAndRender();
+        TEST("A click inside the selection just places the caret", !edit->HasSelection());
+        // A picture file dropped from another application lands in the line.
+        const std::string file = PathToUtf8(std::filesystem::temp_directory_path() / "rte-drop-dot.png");
+        {
+            std::ofstream out(PathFromUtf8(file), std::ios::binary);
+            out.write(reinterpret_cast<const char*>(kDotPng.data()), static_cast<std::streamsize>(kDotPng.size()));
+        }
+        UCEvent drop = MouseEvent(UCEventType::Drop, 600, 18);
+        drop.droppedFiles = {file};
+        TEST("A dropped image file is accepted", edit->OnEvent(drop));
+        TEST("...as a picture in the line", [&]() {
+            for (const auto& r : editor.GetBlock(0).runs) if (r.IsInlineImage()) return true;
+            return false;
+        }());
+        std::filesystem::remove(PathFromUtf8(file));
     }
 
     // ===== PAGE FIELDS IN THE BODY =====

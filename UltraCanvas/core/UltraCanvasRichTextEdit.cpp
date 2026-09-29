@@ -14,6 +14,7 @@
 #include "UltraCanvasUI.h"
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <cmath>
@@ -122,6 +123,9 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
         if (onSelectionChanged) onSelectionChanged();
     };
     SetMouseCursor(UCMouseCursor::Text);
+    // Typing gets a word processor's corrections (smart quotes, dashes,
+    // lists from "1. "...); SetAutoFormatEnabled(false) turns them off.
+    editor.SetAutoFormatEnabled(true);
 }
 
 UltraCanvasRichTextEdit::~UltraCanvasRichTextEdit() {
@@ -1287,6 +1291,14 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
         RenderBlock(ctx, i, bl);
     }
     DrawSpellErrorMarks(ctx);
+    if (draggingText) {
+        // Where the dragged text will land: a caret-shaped mark.
+        const Rect2Df drop = PositionRect(dropPosition);
+        if (drop.height > 0.0f) {
+            ctx->DrawFilledRectangle(Rect2Dd(drop.x - 1.0, drop.y, 2.0, drop.height),
+                                     style.cursorColor, 0.0f, Colors::Transparent);
+        }
+    }
     ctx->PopState();
 
     // A block of selected cells has no caret, as in a word processor.
@@ -1642,7 +1654,10 @@ void UltraCanvasRichTextEdit::UpdateCaret() {
 // ===== HIT TESTING =====
 
 Rect2Df UltraCanvasRichTextEdit::CaretRect() const {
-    RichDocPosition position = editor.GetCaret();
+    return PositionRect(editor.GetCaret());
+}
+
+Rect2Df UltraCanvasRichTextEdit::PositionRect(const RichDocPosition& position) const {
     if (position.blockIndex < 0 || position.blockIndex >= static_cast<int>(blockLayouts.size())) {
         return Rect2Df(0, 0, 0, 0);
     }
@@ -2272,6 +2287,23 @@ bool UltraCanvasRichTextEdit::OnEvent(const UCEvent& event) {
         case UCEventType::MouseDoubleClick: return HandleDoubleClick(event);
         case UCEventType::MouseWheel:       return HandleMouseWheel(event);
         case UCEventType::KeyDown:          return readOnly ? false : HandleKeyDown(event);
+        case UCEventType::DragEnter:
+        case UCEventType::DragOver:
+            if (readOnly || !Contains(event.pointer)) return false;
+            // Show where a dropped file would go, with the same mark as an
+            // internal drag.
+            draggingText = true;
+            dropPosition = PositionFromPoint(event.pointer);
+            RequestRedraw();
+            return true;
+        case UCEventType::DragLeave:
+            if (draggingText && !dragArmed) {
+                draggingText = false;
+                RequestRedraw();
+            }
+            return false;
+        case UCEventType::Drop:
+            return HandleFileDrop(event);
         case UCEventType::FocusGained:
             RequestRedraw();
             return true;
@@ -2283,6 +2315,28 @@ bool UltraCanvasRichTextEdit::OnEvent(const UCEvent& event) {
         default:
             return false;
     }
+}
+
+bool UltraCanvasRichTextEdit::HandleFileDrop(const UCEvent& event) {
+    if (!dragArmed) draggingText = false;
+    if (readOnly || !Contains(event.pointer) || event.droppedFiles.empty()) {
+        RequestRedraw();
+        return false;
+    }
+    const RichDocPosition at = PositionFromPoint(event.pointer);
+    if (onFilesDropped && onFilesDropped(event.droppedFiles, at)) {
+        RequestRedraw();
+        return true;
+    }
+    bool inserted = false;
+    editor.SetCaret(at, false);
+    for (const std::string& path : event.droppedFiles) {
+        const std::string mime = UCRichDocument::MimeTypeForImageName(path);
+        if (mime.rfind("image/", 0) != 0) continue;
+        inserted = InsertInlineImageFromFile(path) || inserted;
+    }
+    if (!inserted) AfterSelectionChange();
+    return inserted;
 }
 
 bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
@@ -2335,6 +2389,17 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
     }
 
     RichDocPosition position = PositionFromPoint(event.pointer);
+    // A press inside the selection may be the start of dragging it away; it
+    // is decided on the first move (or on release, a plain click).
+    if (enableDragAndDrop && !readOnly && !event.shift && editor.HasSelection() && !editor.HasCellSelection()
+        && editor.GetSelectionRange().start < position && position < editor.GetSelectionRange().end) {
+        dragArmed = true;
+        draggingText = false;
+        dragStartPoint = Point2Df(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
+        dropPosition = position;
+        UltraCanvasApplication::GetInstance()->CaptureMouse(this);
+        return true;
+    }
     editor.SetCaret(position, event.shift);
     goalColumnX = -1.0f;
     selecting = true;
@@ -2344,7 +2409,26 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
 }
 
 bool UltraCanvasRichTextEdit::HandleMouseUp(const UCEvent& event) {
-    (void)event;
+    if (dragArmed) {
+        dragArmed = false;
+        UltraCanvasApplication::GetInstance()->ReleaseMouse();
+        const RichDocPosition here = PositionFromPoint(event.pointer);
+        if (draggingText) {
+            draggingText = false;
+            SetMouseCursor(UCMouseCursor::Text);
+            if (editor.MoveRange(editor.GetSelectionRange(), here, /*copy*/ event.ctrl)) {
+                AfterEdit();
+            } else {
+                RequestRedraw();
+            }
+        } else {
+            // Pressed and released without dragging: an ordinary click.
+            editor.SetCaret(here, false);
+            goalColumnX = -1.0f;
+            AfterSelectionChange();
+        }
+        return true;
+    }
     if (draggingThumb || selecting) {
         draggingThumb = false;
         selecting = false;
@@ -2364,6 +2448,22 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
                      - thumbGrabOffset - bounds.y;
         thumbY = std::max(0.0f, std::min(thumbY, travel));
         SetScrollOffset((thumbY / travel) * maxScroll);
+        return true;
+    }
+    if (dragArmed) {
+        const float dx = static_cast<float>(event.pointer.x) - dragStartPoint.x;
+        const float dy = static_cast<float>(event.pointer.y) - dragStartPoint.y;
+        if (!draggingText && dx * dx + dy * dy >= 16.0f) {
+            draggingText = true;
+            SetMouseCursor(UCMouseCursor::Hand);
+        }
+        if (draggingText) {
+            // Near the top or bottom edge the view scrolls along.
+            if (event.pointer.y < visibleArea.y + 8.0f) SetScrollOffset(scrollOffset - 12.0f);
+            else if (event.pointer.y > visibleArea.y + visibleArea.height - 8.0f) SetScrollOffset(scrollOffset + 12.0f);
+            dropPosition = PositionFromPoint(event.pointer);
+            RequestRedraw();
+        }
         return true;
     }
     if (selecting) {
@@ -2440,7 +2540,7 @@ bool UltraCanvasRichTextEdit::HandleKeyDown(const UCEvent& event) {
             if (event.shift) {
                 editor.InsertLineBreak();
             } else {
-                editor.SplitBlock();
+                editor.TypeEnter();
             }
             break;
         case UCKeys::Tab:
@@ -2501,7 +2601,7 @@ bool UltraCanvasRichTextEdit::HandleKeyDown(const UCEvent& event) {
     }
 
     if (!handled && !event.ctrl && !event.alt && !event.text.empty()) {
-        editor.InsertText(event.text);
+        editor.TypeText(event.text);
         handled = true;
     }
     if (handled) {
@@ -2711,7 +2811,8 @@ int UltraCanvasRichTextEdit::GetCurrentHeadingLevel() const {
 bool UltraCanvasRichTextEdit::InsertInlineImageFromFile(const std::string& path,
                                                         const std::string& altText) {
     if (readOnly) return false;
-    std::ifstream in(path, std::ios::binary);
+    // The path is UTF-8 on every platform (see UltraCanvasPathUtf8.h).
+    std::ifstream in(PathFromUtf8(path), std::ios::binary);
     if (!in) return false;
     std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)),
                               std::istreambuf_iterator<char>());
@@ -2745,7 +2846,8 @@ void UltraCanvasRichTextEdit::InsertImageFromMemory(const std::string& name,
 bool UltraCanvasRichTextEdit::InsertImageFromFile(const std::string& path,
                                                   const std::string& altText) {
     if (readOnly) return false;
-    std::ifstream in(path, std::ios::binary);
+    // The path is UTF-8 on every platform (see UltraCanvasPathUtf8.h).
+    std::ifstream in(PathFromUtf8(path), std::ios::binary);
     if (!in) return false;
     std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)),
                               std::istreambuf_iterator<char>());
