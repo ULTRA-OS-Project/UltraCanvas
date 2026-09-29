@@ -216,7 +216,8 @@ void UltraCanvasRichTextEdit::RecalculateVisibleArea() {
     const float bar = style.scrollbarWidth;
     float availableHeight = bounds.height - 2 * style.padding;
     const float vertical = (contentHeight * zoom > availableHeight) ? bar : 0.0f;
-    const float availableWidth = bounds.width - 2 * style.padding - vertical;
+    const float pane = commentPaneShown ? style.commentPaneWidth : 0.0f;
+    const float availableWidth = std::max(40.0f, bounds.width - 2 * style.padding - vertical - pane);
     // A page (and the desk either side of it) wider than the view scrolls
     // sideways.
     needsHorizontalScrollbar = false;
@@ -1152,6 +1153,14 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         }
         if (!run.highlightColor.empty()) {
             add(TextAttributeFactory::CreateBackground(ParseHexColor(run.highlightColor, Colors::Transparent)));
+        } else if (!run.commentIds.empty() && showComments && !printing) {
+            // Text under a comment that is still open.
+            const auto& comments = editor.GetDocument()->comments;
+            bool open = false;
+            for (int id : run.commentIds) {
+                open = open || (id >= 0 && id < static_cast<int>(comments.size()) && !comments[static_cast<size_t>(id)].resolved);
+            }
+            if (open) add(TextAttributeFactory::CreateBackground(style.commentHighlightColor));
         }
         if (!run.linkTarget.empty()) {
             add(TextAttributeFactory::CreateForeground(style.linkColor));
@@ -1591,6 +1600,16 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
 
     // Note marks number themselves in document order; a reference added,
     // moved or removed renumbers the others.
+    // The comment pane comes and goes with the document's comments (and
+    // narrows the text when it is there).
+    if (!furnitureEdit && editor.GetDocument()) {
+        const bool pane = showComments && !printing && !editor.GetDocument()->comments.empty()
+                          && !editor.GetDocument()->ActiveComments().empty();
+        if (pane != commentPaneShown) {
+            commentPaneShown = pane;
+            visibleAreaDirty = true;
+        }
+    }
     // So do caption numbers and cross-references.
     bool fieldsChanged = false;
     if (!furnitureEdit && editor.GetDocument()) fieldsChanged = editor.GetDocument()->UpdateFields();
@@ -1716,6 +1735,7 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
         UltraCanvasCaret::GetInstance().Hide(this);
     }
 
+    if (commentPaneShown) RenderCommentPane(ctx);
     DrawScrollbar(ctx);
     DrawHorizontalScrollbar(ctx);
 }
@@ -3015,6 +3035,21 @@ bool UltraCanvasRichTextEdit::HandleFileDrop(const UCEvent& event) {
 bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
     if (!Contains(event.pointer)) return false;
 
+    // The comment pane: a click on a comment selects its text; the pane
+    // itself is not text.
+    if (commentPaneShown && static_cast<float>(event.pointer.x) >= CommentPaneLeft()
+        && static_cast<float>(event.pointer.x) < CommentPaneLeft() + style.commentPaneWidth) {
+        const int index = CommentBoxAt(event.pointer);
+        RichDocRange range;
+        if (index >= 0 && !furnitureEdit && editor.CommentRange(index, range)) {
+            editor.SetSelection(range.start, range.end);
+            AfterSelectionChange();
+            if (event.type == UCEventType::MouseDoubleClick && onCommentActivated) onCommentActivated(index);
+        }
+        if (!IsFocused()) SetFocus(true);
+        return true;
+    }
+
     // While a header or footer is edited, a click outside it leaves it and
     // lands in the body as any click would.
     if (furnitureEdit && !blockLayouts.empty()) {
@@ -3243,6 +3278,11 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
 
 bool UltraCanvasRichTextEdit::HandleDoubleClick(const UCEvent& event) {
     if (!Contains(event.pointer)) return false;
+    if (commentPaneShown && static_cast<float>(event.pointer.x) >= CommentPaneLeft()) {
+        const int index = CommentBoxAt(event.pointer);
+        if (index >= 0 && onCommentActivated) onCommentActivated(index);
+        return true;
+    }
     // A double-click on a header or footer (or the margin where one would
     // be) edits it; one on the body while editing one goes back.
     if (!readOnly) {
@@ -4281,6 +4321,129 @@ void UltraCanvasRichTextEdit::RenderNotes(IRenderContext* ctx) {
         if (IsEditingNote() && area.noteIndex == furnitureEdit->noteIndex) continue;
         RenderFurniture(ctx, *area.layout, area.top);
     }
+}
+
+// ===== COMMENTS =====
+
+int UltraCanvasRichTextEdit::AddComment(const std::string& text) {
+    if (readOnly) return -1;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    const int index = editor.AddComment(text, commentAuthor, "");
+    if (index >= 0) AfterEdit();
+    return index;
+}
+
+bool UltraCanvasRichTextEdit::RemoveComment(int index) {
+    if (readOnly || furnitureEdit || !editor.RemoveComment(index)) return false;
+    AfterEdit();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::SetCommentText(int index, const std::string& text) {
+    if (readOnly || !(furnitureEdit ? furnitureEdit->bodyEditor : editor).SetCommentText(index, text)) return false;
+    RequestRedraw();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::SetCommentResolved(int index, bool resolved) {
+    if (readOnly || furnitureEdit || !editor.SetCommentResolved(index, resolved)) return false;
+    // The shading goes with the comment being open.
+    for (auto& bl : blockLayouts) bl.valid = false;
+    layoutsDirty = true;
+    RequestRedraw();
+    return true;
+}
+
+void UltraCanvasRichTextEdit::SetShowComments(bool show) {
+    if (showComments == show) return;
+    showComments = show;
+    InvalidateDocument();
+}
+
+float UltraCanvasRichTextEdit::CommentPaneLeft() const {
+    return visibleArea.x + visibleArea.width * zoom + style.padding;
+}
+
+// Each comment in a box in the pane, level with the start of its text (or
+// just below the box above it), joined to the text by a line.
+void UltraCanvasRichTextEdit::RenderCommentPane(IRenderContext* ctx) {
+    commentBoxes.clear();
+    const Rect2Df bounds = GetLocalBounds();
+    const float left = CommentPaneLeft();
+    const float width = style.commentPaneWidth;
+    const float top = bounds.y, bottom = bounds.y + bounds.height;
+    ctx->PushState();
+    ctx->ClipRect(Rect2Dd(left, top, width, bounds.height));
+    ctx->DrawFilledRectangle(Rect2Dd(left, top, width, bounds.height), style.commentPaneColor, 0.0f, Colors::Transparent);
+
+    const UCRichDocument& document = *editor.GetDocument();
+    const std::vector<int> caretComments = editor.CommentsAt(editor.GetCaret());
+    FontStyle textFont = style.baseFont;
+    textFont.fontSize = std::max(8.0, style.baseFont.fontSize * 0.85);
+    FontStyle authorFont = textFont;
+    authorFont.fontWeight = FontWeight::Bold;
+    const float inner = width - 20.0f;
+    float nextFree = top + 6.0f;
+    std::vector<std::pair<Point2Dd, Point2Dd>> connectors;
+    for (int index : document.ActiveComments()) {
+        RichDocRange range;
+        if (!editor.CommentRange(index, range)) continue;
+        const Rect2Df anchor = ToElement(PositionRect(range.start));
+        const RichComment& comment = document.comments[static_cast<size_t>(index)];
+        auto layout = ctx->CreateTextLayout(comment.text.empty() ? " " : comment.text, false);
+        layout->SetFontStyle(textFont);
+        layout->SetExplicitWidth(inner);
+        layout->SetWrap(TextWrap::WrapWordChar);
+        const float textHeight = static_cast<float>(layout->GetLayoutExtents().logical.height);
+        const float header = static_cast<float>(textFont.fontSize) * 1.5f;
+        const float height = header + textHeight + 10.0f;
+        const float y = std::max(anchor.y, nextFree);
+        nextFree = y + height + 6.0f;
+        if (y > bottom || y + height < top) continue;
+        const Rect2Df box(left + 6.0f, y, width - 12.0f, height);
+        const bool current = std::find(caretComments.begin(), caretComments.end(), index) != caretComments.end();
+        Color border = style.commentBorderColor;
+        Color text = style.textColor;
+        if (comment.resolved) {
+            border.a = 90;
+            text = style.pageBreakColor;
+        }
+        // The comment the caret is in is joined to its text by a line, drawn
+        // once the pane is (over the text, so outside the pane's clip).
+        if (current && anchor.height > 0.0f) {
+            connectors.push_back({Point2Dd(anchor.x, anchor.y + anchor.height),
+                                  Point2Dd(box.x, box.y + header * 0.5f)});
+        }
+        ctx->DrawFilledRectangle(Rect2Dd(box.x, box.y, box.width, box.height), style.commentBoxColor,
+                                 current ? 2.0f : 1.0f, border);
+        ctx->PushState();
+        ctx->SetFontStyle(authorFont);
+        ctx->SetTextPaint(comment.resolved ? style.pageBreakColor : style.commentAuthorColor);
+        std::string title = comment.author.empty() ? "Comment" : comment.author;
+        if (comment.resolved) title += " (resolved)";
+        ctx->DrawText(title, Point2Dd(box.x + 4.0f, box.y + 3.0f));
+        ctx->PopState();
+        ctx->SetTextPaint(text);
+        ctx->DrawTextLayout(*layout, Point2Dd(box.x + 4.0f, box.y + header));
+        commentBoxes.push_back({index, box});
+    }
+    ctx->PopState();
+    for (const auto& [from, to] : connectors) {
+        ctx->PushState();
+        ctx->SetLineDash(UCDashPattern({3.0, 2.0}));
+        ctx->DrawLine(from, Point2Dd(left, from.y), style.commentBorderColor);
+        ctx->DrawLine(Point2Dd(left, from.y), to, style.commentBorderColor);
+        ctx->PopState();
+    }
+}
+
+int UltraCanvasRichTextEdit::CommentBoxAt(const Point2Di& elementPoint) const {
+    if (!commentPaneShown) return -1;
+    const Point2Df point(static_cast<float>(elementPoint.x), static_cast<float>(elementPoint.y));
+    for (const CommentBox& box : commentBoxes) {
+        if (box.rect.Contains(point)) return box.index;
+    }
+    return -1;
 }
 
 // ===== PDF =====

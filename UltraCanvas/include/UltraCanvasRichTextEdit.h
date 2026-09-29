@@ -93,6 +93,13 @@ struct RichTextEditStyle {
     float scrollbarWidth = 15.0f;
     float pageGap = 16.0f;            // page view: desk between and around pages
     bool drawBorder = true;
+    // Comments: the text they are on, and the pane beside the text.
+    Color commentHighlightColor = Color(255, 236, 160);
+    Color commentPaneColor = Color(238, 238, 238);
+    Color commentBoxColor = Color(255, 255, 250);
+    Color commentBorderColor = Color(222, 170, 40);
+    Color commentAuthorColor = Color(150, 100, 0);
+    float commentPaneWidth = 230.0f;
 };
 
 // A clickable region inside a rendered block (hyperlinks today).
@@ -420,6 +427,27 @@ public:
     // Return true to consume a link click (otherwise it is ignored; the
     // element never launches a browser on its own).
     std::function<bool(const std::string& target)> onLinkClicked;
+    // A comment's box was double-clicked: a host opens its editor
+    // (SetCommentText). Its text is selected already.
+    std::function<void(int commentIndex)> onCommentActivated;
+
+    // ===== COMMENTS =====
+    // A comment on the selection (the word at the caret without one). The
+    // commented text is shaded and the comments are shown in a pane at the
+    // element's right, each level with its text; clicking one selects its
+    // text. Resolved comments are shown pale.
+    int AddComment(const std::string& text);
+    bool RemoveComment(int index);
+    bool SetCommentText(int index, const std::string& text);
+    bool SetCommentResolved(int index, bool resolved);
+    std::vector<int> GetCommentsAtCaret() const { return editor.CommentsAt(editor.GetCaret()); }
+    // The name new comments are signed with.
+    void SetCommentAuthor(const std::string& name) { commentAuthor = name; }
+    const std::string& GetCommentAuthor() const { return commentAuthor; }
+    // Whether comments (their shading and pane) are shown; on by default.
+    void SetShowComments(bool show);
+    bool IsShowingComments() const { return showComments; }
+    bool IsCommentPaneVisible() const { return commentPaneShown; }
     // Drag and drop: on by default. A drag moves the selection; with Ctrl held
     // at the drop it copies it.
     bool enableDragAndDrop = true;
@@ -788,6 +816,18 @@ private:
     bool readOnly = false;
     // Drawing for output (PDF, print): no selection, caret, guides or marks.
     bool printing = false;
+    // Comments' pane: shown while the document has comments and showComments.
+    std::string commentAuthor;
+    bool showComments = true;
+    bool commentPaneShown = false;
+    struct CommentBox {
+        int index = -1;
+        Rect2Df rect{0, 0, 0, 0};             // element coordinates
+    };
+    std::vector<CommentBox> commentBoxes;
+    float CommentPaneLeft() const;
+    void RenderCommentPane(IRenderContext* ctx);
+    int CommentBoxAt(const Point2Di& elementPoint) const;
     bool ShowsEditingMarks() const { return !readOnly && !printing; }
     bool ExportPdfPages(class UltraCanvasPdfSurface& pdf, std::string& error);
     bool selecting = false;           // mouse drag in progress

@@ -1042,6 +1042,42 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== 5g8. Comments survive ODT and DOCX =====
+    {
+        auto doc = std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown(
+            "First paragraph with a remark.\n\nSecond paragraph goes on.\n\nThird one.\n"));
+        UCRichDocumentEditor editor;
+        editor.SetDocument(doc);
+        editor.SetSelection(RichDocPosition(0, 6), RichDocPosition(0, 15));
+        editor.AddComment("Say more.\nWith two lines.", "Ada Lovelace", "2026-09-29T10:00:00Z");
+        // One crossing a paragraph break.
+        editor.SetSelection(RichDocPosition(0, 23), RichDocPosition(1, 6));
+        const int crossing = editor.AddComment("Across paragraphs", "Grace Hopper");
+        editor.SetCommentResolved(crossing, true);
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("comments.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *doc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            const std::vector<int> active = back.ActiveComments();
+            CHECK_MSG(active.size() == 2, std::string(ext) + " " + std::to_string(active.size()));
+            if (active.size() != 2) continue;
+            UCRichDocumentEditor reader;
+            reader.SetDocument(std::make_shared<UCRichDocument>(back));
+            RichDocRange range;
+            const RichComment& a = back.comments[static_cast<size_t>(active[0])];
+            CHECK_MSG(a.author == "Ada Lovelace" && a.text == "Say more.\nWith two lines." && a.date == "2026-09-29T10:00:00Z", ext);
+            CHECK_MSG(reader.CommentRange(active[0], range) && range.start == RichDocPosition(0, 6)
+                      && range.end == RichDocPosition(0, 15), ext);
+            const RichComment& b = back.comments[static_cast<size_t>(active[1])];
+            CHECK_MSG(b.author == "Grace Hopper" && b.text == "Across paragraphs", ext);
+            CHECK_MSG(reader.CommentRange(active[1], range) && range.start == RichDocPosition(0, 23)
+                      && range.end == RichDocPosition(1, 6), ext);
+            if (std::string(ext) == "odt") CHECK_MSG(b.resolved, ext);
+        }
+    }
+
     // ===== 5h. List labels: formats, templates, editing =====
     {
         CHECK(FormatListNumber(4, RichNumberFormat::LowerRoman) == "iv");

@@ -478,6 +478,29 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
         items.push_back(MenuItemData::Submenu("References", [this]() {
             return BuildReferenceMenuItems();
         }));
+        // Comments on the selection (or the word at the caret), and on the
+        // one the caret is in.
+        items.push_back(MenuItemData::Action("New Comment...", [this]() {
+            UltraCanvasDialogManager::ShowInputDialog(
+                "Comment on the selected text:", "New Comment", "", InputType::Text,
+                [this](DialogResult result, const std::string& text) {
+                    if (result != DialogResult::OK) return;
+                    if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->AddComment(text);
+                },
+                GetWindow());
+        }));
+        const std::vector<int> here = richEdit->GetCommentsAtCaret();
+        if (!here.empty()) {
+            const int index = here.back();
+            const bool resolved = richEdit->GetDocument()->comments[static_cast<size_t>(index)].resolved;
+            items.push_back(MenuItemData::Action("Edit Comment...", [this, index]() { EditRichComment(index); }));
+            items.push_back(MenuItemData::Action(resolved ? "Reopen Comment" : "Resolve Comment", [this, index, resolved]() {
+                if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->SetCommentResolved(index, !resolved);
+            }));
+            items.push_back(MenuItemData::Action("Delete Comment", [this, index]() {
+                if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) edit->RemoveComment(index);
+            }));
+        }
     }
 
     // A right-clicked picture is selected by the element before this runs, so
@@ -626,6 +649,18 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildTableMenuItems() {
     action("Split Cell", run(&UltraCanvasRichTextEdit::SplitCurrentCell),
            richEdit->CanSplitCurrentCell());
     return items;
+}
+
+void UltraCanvasTextEditor::EditRichComment(int index) {
+    UltraCanvasRichTextEdit* edit = GetActiveRichEdit();
+    if (!edit || index < 0 || index >= static_cast<int>(edit->GetDocument()->comments.size())) return;
+    UltraCanvasDialogManager::ShowInputDialog(
+        "Comment:", "Edit Comment", edit->GetDocument()->comments[static_cast<size_t>(index)].text, InputType::Text,
+        [this, index](DialogResult result, const std::string& text) {
+            if (result != DialogResult::OK) return;
+            if (UltraCanvasRichTextEdit* target = GetActiveRichEdit()) target->SetCommentText(index, text);
+        },
+        GetWindow());
 }
 
 // Contents, captions, bookmarks and cross-references for a word-processing

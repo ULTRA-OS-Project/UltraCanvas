@@ -1365,6 +1365,49 @@ int main() {
         edit->SetPageView(false);
     }
 
+    // ===== COMMENTS =====
+    std::cerr << "\n--- Comments ---" << std::endl;
+    {
+        edit->SetMarkdown("A sentence someone will comment on.\n\nAnother paragraph.\n");
+        window->UpdateAndRender();
+        const float widthBefore = edit->GetContentHeight();
+        TEST("No pane without comments", !edit->IsCommentPaneVisible());
+        edit->SetCommentAuthor("Reviewer");
+        editor.SetSelection(RichDocPosition(0, 2), RichDocPosition(0, 10));
+        const int comment = edit->AddComment("Clarify.");
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("A comment is added", comment >= 0 && edit->GetDocument()->comments[static_cast<size_t>(comment)].author == "Reviewer");
+        TEST("...and the pane appears", edit->IsCommentPaneVisible());
+        (void)widthBefore;
+        int activated = -1;
+        edit->onCommentActivated = [&](int index) { activated = index; };
+        editor.SetCaret(RichDocPosition(1, 0));
+        bool selected = false;
+        const float paneX = static_cast<float>(edit->GetWidth()) - 15.0f - 110.0f;
+        for (float y = 2.0f; y < 200.0f && !selected; y += 4.0f) {
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, paneX, y));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, paneX, y));
+            selected = editor.HasSelection() && editor.GetSelectionRange().start == RichDocPosition(0, 2);
+            if (selected) edit->OnEvent(MouseEvent(UCEventType::MouseDoubleClick, paneX, y));
+        }
+        TEST("Clicking the comment selects its text", selected);
+        TEST("Double-clicking it asks the host to edit it", activated == comment);
+        TEST("Hiding comments hides the pane", [&]() {
+            edit->SetShowComments(false);
+            window->UpdateAndRender();
+            const bool hidden = !edit->IsCommentPaneVisible();
+            edit->SetShowComments(true);
+            return hidden;
+        }());
+        TEST("Removing it removes the pane", [&]() {
+            edit->RemoveComment(comment);
+            window->UpdateAndRender();
+            return !edit->IsCommentPaneVisible();
+        }());
+        edit->onCommentActivated = nullptr;
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

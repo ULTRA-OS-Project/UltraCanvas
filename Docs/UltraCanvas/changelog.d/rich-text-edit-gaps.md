@@ -137,3 +137,11 @@
   reference). Caption numbers and references keep up with edits, and page view
   fills in the pages. DOCX and ODT read and write them; the default styles
   gain *Caption*.
+- **Comments.** `UCRichDocument::comments` (`RichComment`) anchored by
+  `RichTextRun::commentIds`; `UCRichDocumentEditor::AddComment`,
+  `RemoveComment`, `SetCommentText`, `SetCommentResolved`, `CommentsAt`,
+  `CommentRange`; and in `UltraCanvasRichTextEdit` the same plus
+  `SetCommentAuthor`, `SetShowComments` and `onCommentActivated`, with commented
+  text shaded and a comment pane beside the text (click a comment to select its
+  text). DOCX `comments.xml` and ODT `office:annotation` are read and written;
+  both used to be dropped.

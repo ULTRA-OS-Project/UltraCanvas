@@ -35,6 +35,12 @@
   Table caption, adds a bookmark, and inserts a cross-reference to a caption or
   bookmark - its text or its page. Ctrl+click on a contents entry goes to the
   heading.
+- **Comments in word-processing tabs.** *New Comment...* in the right-click
+  menu comments on the selection; comments show in a pane beside the text,
+  signed with your login name, and can be edited (double-click), resolved or
+  deleted. Comments in .docx and .odt files now show and are saved back.
+- Ctrl+click on a link to a place inside the document (a "#bookmark" link)
+  now goes there instead of trying to open it in a browser.
 - **The zoom box zooms a word-processing tab** (and a page wider than the
   window scrolls sideways). It used to change the font size of plain-text tabs
   only.

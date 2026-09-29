@@ -1601,6 +1601,21 @@ std::string ShownText(const std::vector<RichTextRun>& runs) {
 
 } // namespace
 
+std::vector<int> UCRichDocument::ActiveComments() const {
+    std::vector<int> out;
+    std::vector<bool> seen(comments.size(), false);
+    ForEachBodyRuns(blocks, [&](const std::vector<RichTextRun>& runs, int) {
+        for (const RichTextRun& run : runs) {
+            for (int id : run.commentIds) {
+                if (id < 0 || id >= static_cast<int>(comments.size()) || seen[static_cast<size_t>(id)]) continue;
+                seen[static_cast<size_t>(id)] = true;
+                out.push_back(id);
+            }
+        }
+    });
+    return out;
+}
+
 std::vector<UCRichDocument::BookmarkInfo> UCRichDocument::Bookmarks() const {
     std::vector<BookmarkInfo> out;
     for (size_t b = 0; b < blocks.size(); b++) {

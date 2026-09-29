@@ -248,6 +248,30 @@ paragraphs, `w:hyperlink w:anchor`) and ODT (`text:sequence`,
 all of it; a LibreOffice table of contents' page numbers become page
 references to its headings on the way in.
 
+### Comments
+
+```cpp
+editor->SetCommentAuthor("Ada Lovelace");
+int c = editor->AddComment("Is this right?");   // on the selection, or the word at the caret
+editor->SetCommentResolved(c, true);
+editor->onCommentActivated = [&](int index) { /* open an editor, then SetCommentText */ };
+```
+
+Commented text is shaded (`style.commentHighlightColor`, not for resolved
+comments) and the comments are shown in a pane at the element's right
+(`style.commentPaneWidth`), each box level with its text or just below the
+box above; the text column narrows to make room, and the pane goes when the
+last comment does (or `SetShowComments(false)`). The comment the caret is in
+is outlined and joined to its text by a dotted line. Clicking a box selects
+its text; double-clicking calls `onCommentActivated`. In the model a comment
+is `UCRichDocument::comments` (`RichComment`: author, initials, date, text,
+resolved) and the runs it covers carry its index in `RichTextRun::commentIds`,
+so it moves and grows with its text; `RemoveComment` is one undo step, and a
+comment whose text is deleted disappears. Comments are not printed or
+exported to PDF. DOCX (`comments.xml`, ranges that may cross paragraphs) and
+ODT (`office:annotation`, with LibreOffice's resolved flag) read and write
+them; DOCX does not keep the resolved flag.
+
 ### Tables
 
 The caret goes inside table cells: click into one, type, select, format, and

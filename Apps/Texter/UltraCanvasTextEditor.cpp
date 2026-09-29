@@ -4706,10 +4706,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         };
 
         doc->richEdit->onLinkClicked = [](const std::string& target) {
-            if (target.empty()) return false;
+            // "#name" is a bookmark in the document: the element goes there.
+            if (target.empty() || target[0] == '#') return false;
             OpenURL(target);
             return true;
         };
+
+        // Comments are signed with the login name; a double-click on one in
+        // the comment pane edits it.
+        const char* user = std::getenv("USER");
+        if (!user) user = std::getenv("USERNAME");
+        doc->richEdit->SetCommentAuthor(user ? user : "");
+        doc->richEdit->onCommentActivated = [this](int index) { EditRichComment(index); };
     }
 
     void UltraCanvasTextEditor::SetupDocumentCallbacks(int docIndex) {

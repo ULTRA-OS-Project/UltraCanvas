@@ -112,6 +112,13 @@ void RichCharFormatDelta::ApplyTo(RichTextRun& run) const {
     if (setFontSize)   run.fontSizePt = fontSizePt;
     if (setColor)      run.color = color;
     if (setLink)       run.linkTarget = linkTarget;
+    if (addComment >= 0 && std::find(run.commentIds.begin(), run.commentIds.end(), addComment) == run.commentIds.end()) {
+        run.commentIds.push_back(addComment);
+    }
+    if (removeComment >= 0) {
+        run.commentIds.erase(std::remove(run.commentIds.begin(), run.commentIds.end(), removeComment),
+                             run.commentIds.end());
+    }
 }
 
 // ===== UTF-8 HELPERS =====
@@ -3147,6 +3154,119 @@ int UCRichDocumentEditor::NoteAt(const RichDocPosition& pos) const {
         position = end;
     }
     return -1;
+}
+
+int UCRichDocumentEditor::AddComment(const std::string& text, const std::string& author, const std::string& date) {
+    RichDocRange range = GetSelectionRange();
+    if (range.IsEmpty()) range = WordAt(caret);       // the word at the caret
+    if (range.IsEmpty()) return -1;
+    RichComment comment;
+    comment.text = text;
+    comment.author = author;
+    comment.date = date;
+    // Initials: the first letter of each word of the name.
+    for (size_t i = 0; i < author.size();) {
+        if (author[i] == ' ') { i++; continue; }
+        const int next = NextCharOffset(author, static_cast<int>(i));
+        comment.initials += author.substr(i, static_cast<size_t>(next) - i);       // a whole UTF-8 character
+        while (i < author.size() && author[i] != ' ') i++;
+    }
+    doc->comments.push_back(std::move(comment));
+    const int index = static_cast<int>(doc->comments.size()) - 1;
+    RichCharFormatDelta delta;
+    delta.addComment = index;
+    coalescing = false;
+    ApplyCharFormatToRange(range, delta);
+    return index;
+}
+
+bool UCRichDocumentEditor::RemoveComment(int index) {
+    if (index < 0 || index >= static_cast<int>(doc->comments.size())) return false;
+    RichDocRange range;
+    if (!CommentRange(index, range)) return false;
+    RichCharFormatDelta delta;
+    delta.removeComment = index;
+    coalescing = false;
+    // Whole blocks: a comment in a table is taken off every cell it covers.
+    const int first = range.start.blockIndex, last = range.end.blockIndex;
+    {
+        EditScope scope(*this, first, last - first + 1);
+        for (int b = first; b <= last; b++) {
+            RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            for (RichTextRun& run : block.runs) delta.ApplyTo(run);
+            CoalesceRuns(block.runs);
+            for (RichTableRow& row : block.tableRows) {
+                for (RichTableCell& cell : row.cells) {
+                    for (RichTextRun& run : cell.runs) delta.ApplyTo(run);
+                    CoalesceRuns(cell.runs);
+                }
+            }
+        }
+    }
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SetCommentText(int index, const std::string& text) {
+    if (index < 0 || index >= static_cast<int>(doc->comments.size())) return false;
+    doc->comments[static_cast<size_t>(index)].text = text;
+    modified = true;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SetCommentResolved(int index, bool resolved) {
+    if (index < 0 || index >= static_cast<int>(doc->comments.size())) return false;
+    doc->comments[static_cast<size_t>(index)].resolved = resolved;
+    modified = true;
+    NotifyChanged();
+    return true;
+}
+
+std::vector<int> UCRichDocumentEditor::CommentsAt(const RichDocPosition& pos) const {
+    const std::vector<RichTextRun>* runs = RunsAt(ClampPosition(pos));
+    if (!runs) return {};
+    // The run the position is inside, or the one it ends.
+    int offset = 0;
+    const RichTextRun* found = nullptr;
+    for (const RichTextRun& run : *runs) {
+        const int start = offset + (run.lineBreakBefore ? 1 : 0);
+        const int end = start + static_cast<int>(run.text.size());
+        if (pos.byteOffset >= start && pos.byteOffset <= end && !run.commentIds.empty()) {
+            found = &run;
+            if (pos.byteOffset < end) break;
+        }
+        offset = end;
+    }
+    return found ? found->commentIds : std::vector<int>{};
+}
+
+bool UCRichDocumentEditor::CommentRange(int index, RichDocRange& out) const {
+    bool any = false;
+    auto consider = [&](const std::vector<RichTextRun>& runs, int block, int row, int column) {
+        int offset = 0;
+        for (const RichTextRun& run : runs) {
+            const int start = offset + (run.lineBreakBefore ? 1 : 0);
+            const int end = start + static_cast<int>(run.text.size());
+            offset = end;
+            if (std::find(run.commentIds.begin(), run.commentIds.end(), index) == run.commentIds.end()) continue;
+            const RichDocPosition from = row >= 0 ? RichDocPosition(block, row, column, start) : RichDocPosition(block, start);
+            const RichDocPosition to = row >= 0 ? RichDocPosition(block, row, column, end) : RichDocPosition(block, end);
+            if (!any) out.start = from;
+            out.end = to;
+            any = true;
+        }
+    };
+    for (int b = 0; b < GetBlockCount(); b++) {
+        const RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+        consider(block.runs, b, -1, -1);
+        for (size_t r = 0; r < block.tableRows.size(); r++) {
+            for (size_t c = 0; c < block.tableRows[r].cells.size(); c++) {
+                consider(block.tableRows[r].cells[c].runs, b, static_cast<int>(r), static_cast<int>(c));
+            }
+        }
+    }
+    return any;
 }
 
 bool UCRichDocumentEditor::AddBookmark(const std::string& name) {

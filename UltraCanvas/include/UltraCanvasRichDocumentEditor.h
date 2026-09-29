@@ -100,11 +100,13 @@ struct RichCharFormatDelta {
     bool setFontSize = false;      float fontSizePt = 0.0f;
     bool setColor = false;         std::string color;        // "#RRGGBB", empty = inherit
     bool setLink = false;          std::string linkTarget;   // empty = remove the link
+    int addComment = -1;           // put the text under this comment
+    int removeComment = -1;        // take it out from under this one
 
     bool IsEmpty() const {
         return !setBold && !setItalic && !setUnderline && !setStrikethrough && !setCode
             && !setSubscript && !setSuperscript && !setFontFamily && !setFontSize
-            && !setColor && !setLink;
+            && !setColor && !setLink && addComment < 0 && removeComment < 0;
     }
     // Applies this delta to one run's attributes.
     void ApplyTo(RichTextRun& run) const;
@@ -385,6 +387,20 @@ public:
     // The note a reference at `pos` (the caret, typically) points to, or -1:
     // the reference just before or after the position.
     int NoteAt(const RichDocPosition& pos) const;
+
+    // ===== COMMENTS =====
+    // A comment on the selection (the word at the caret when nothing is
+    // selected). Returns its index in UCRichDocument::comments, or -1.
+    int AddComment(const std::string& text, const std::string& author = "", const std::string& date = "");
+    // Takes the comment off its text (one undo step); it is then not shown or
+    // saved.
+    bool RemoveComment(int index);
+    bool SetCommentText(int index, const std::string& text);
+    bool SetCommentResolved(int index, bool resolved);
+    // The comments the text at a position is under.
+    std::vector<int> CommentsAt(const RichDocPosition& pos) const;
+    // The span a comment covers (first to last covered character).
+    bool CommentRange(int index, RichDocRange& out) const;
 
     // ===== BOOKMARKS, CROSS-REFERENCES, CAPTIONS, CONTENTS =====
     // A bookmark on the caret's paragraph (the table's, in a cell). False

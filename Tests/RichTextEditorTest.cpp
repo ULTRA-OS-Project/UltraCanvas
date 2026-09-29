@@ -1580,6 +1580,40 @@ static void TestFieldsAndContents() {
     CHECK(count == 1);
 }
 
+static void TestComments() {
+    std::cout << "\n--- Comments ---\n";
+    UCRichDocumentEditor ed(MakeDocument({"The quick brown fox", "jumps over the lazy dog"}));
+    ed.SetSelection(RichDocPosition(0, 4), RichDocPosition(1, 5));
+    const int first = ed.AddComment("Too long?", "Ada Lovelace", "2026-09-29T10:00:00Z");
+    CHECK(first == 0);
+    CHECK_EQ(ed.GetDocument()->comments[0].initials, std::string("AL"));
+    RichDocRange range;
+    CHECK(ed.CommentRange(first, range));
+    CHECK(range.start == RichDocPosition(0, 4) && range.end == RichDocPosition(1, 5));
+    CHECK(ed.CommentsAt(RichDocPosition(0, 10)) == std::vector<int>{first});
+    CHECK(ed.CommentsAt(RichDocPosition(1, 10)).empty());
+    // With no selection, the word at the caret.
+    ed.SetCaret(RichDocPosition(1, 17));
+    const int second = ed.AddComment("Which dog?", "Grace");
+    CHECK(ed.CommentRange(second, range) && range.start == RichDocPosition(1, 15) && range.end == RichDocPosition(1, 19));
+    CHECK(ed.GetDocument()->ActiveComments() == (std::vector<int>{first, second}));
+    // Typing inside a comment's text extends it.
+    ed.SetCaret(RichDocPosition(0, 6));
+    ed.InsertText("XY");
+    CHECK(ed.CommentsAt(RichDocPosition(0, 7)) == std::vector<int>{first});
+    // Removing is one undo step.
+    CHECK(ed.RemoveComment(first));
+    CHECK(ed.GetDocument()->ActiveComments() == std::vector<int>{second});
+    ed.Undo();
+    CHECK(ed.GetDocument()->ActiveComments().size() == 2);
+    // Deleting the text a comment is on removes it from view.
+    ed.SetSelection(RichDocPosition(1, 14), RichDocPosition(1, 19));
+    ed.DeleteSelection();
+    CHECK(ed.GetDocument()->ActiveComments() == std::vector<int>{first});
+    CHECK(ed.SetCommentResolved(first, true) && ed.GetDocument()->comments[0].resolved);
+    CHECK(ed.SetCommentText(first, "Fine now.") && ed.GetDocument()->comments[0].text == "Fine now.");
+}
+
 static void TestNamedStyles() {
     std::cout << "\n--- Named styles ---\n";
     UCRichDocumentEditor ed(MakeDocument({"Chapter one", "Body text here", "More body"}));
@@ -1690,6 +1724,7 @@ int main() {
     TestAutoFormat();
     TestNamedStyles();
     TestFieldsAndContents();
+    TestComments();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

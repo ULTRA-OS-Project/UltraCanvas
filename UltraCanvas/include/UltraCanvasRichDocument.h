@@ -85,6 +85,9 @@ struct RichTextRun {
     int noteIndex = -1;
     bool IsNoteReference() const { return noteIndex >= 0; }
 
+    // The comments (UCRichDocument::comments) this text is under, by index.
+    std::vector<int> commentIds;
+
     // The named character style (UCRichDocument::styles) this run was given,
     // "" for none. Its properties are already in the run's own fields; the
     // name is what lets a change to the style reach the run.
@@ -118,6 +121,7 @@ struct RichTextRun {
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
             && highlightColor == other.highlightColor && characterStyleId == other.characterStyleId
+            && commentIds == other.commentIds
             && field == Field::Plain && other.field == Field::Plain   // a field stays its own run
             && noteIndex < 0 && other.noteIndex < 0;                  // and so does a note mark
     }
@@ -458,6 +462,18 @@ struct RichNote {
     std::vector<RichDocBlock> blocks;
 };
 
+// ===== COMMENTS =====
+// A reviewer's comment on some text: the runs it covers carry its index in
+// RichTextRun::commentIds. A comment no run refers to any more (its text was
+// deleted, or it was removed) is not shown and not saved.
+struct RichComment {
+    std::string author;
+    std::string initials;
+    std::string date;            // ISO 8601, as the formats store it; may be empty
+    std::string text;            // paragraphs separated by '\n'
+    bool resolved = false;
+};
+
 // ===== NAMED STYLES =====
 // What a named style sets: every property is optional, and one it leaves
 // unset comes from the style it is based on (or is left alone).
@@ -588,6 +604,11 @@ public:
     // Sets every reference run's text to its note's mark. True when any
     // changed.
     bool UpdateNoteMarks();
+
+    // ===== COMMENTS =====
+    std::vector<RichComment> comments;
+    // The comments some text is under, in the order they first appear.
+    std::vector<int> ActiveComments() const;
 
     // ===== BOOKMARKS, CAPTIONS, CROSS-REFERENCES, CONTENTS =====
     struct BookmarkInfo {

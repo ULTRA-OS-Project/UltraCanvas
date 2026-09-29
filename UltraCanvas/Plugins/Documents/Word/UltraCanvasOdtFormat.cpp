@@ -907,7 +907,46 @@ private:
         ApplyPropsToRun(run, props);
         run.lineBreakBefore = ctx.pendingLineBreak;
         ctx.pendingLineBreak = false;
+        run.commentIds = ActiveCommentIds();
         ctx.runs.push_back(std::move(run));
+    }
+
+    // Comments (office:annotation): those whose range the text being read is
+    // inside, by office:name; a comment without a name marks only the text
+    // right after it.
+    std::vector<std::pair<std::string, int>> activeAnnotations_;
+    int pointAnnotation_ = -1;
+
+    std::vector<int> ActiveCommentIds() {
+        std::vector<int> ids;
+        for (const auto& [name, index] : activeAnnotations_) ids.push_back(index);
+        if (pointAnnotation_ >= 0) {
+            ids.push_back(pointAnnotation_);
+            pointAnnotation_ = -1;
+        }
+        return ids;
+    }
+
+    void ReadAnnotation(tinyxml2::XMLElement* annotation) {
+        RichComment comment;
+        if (auto* creator = annotation->FirstChildElement("dc:creator")) comment.author = ElementText(creator);
+        if (auto* date = annotation->FirstChildElement("dc:date")) comment.date = ElementText(date);
+        comment.resolved = std::string(Attr(annotation, "loext:resolved")) == "true";
+        bool first = true;
+        for (auto* p = annotation->FirstChildElement(); p; p = p->NextSiblingElement()) {
+            const std::string tag = p->Name() ? p->Name() : "";
+            if (tag != "text:p" && tag != "text:h") continue;
+            if (!first) comment.text += "\n";
+            std::string line = ElementText(p);
+            for (size_t at; (at = line.find(kKeptWhitespace)) != std::string::npos;) line.replace(at, 3, " ");
+            comment.text += line;
+            first = false;
+        }
+        doc_->comments.push_back(std::move(comment));
+        const int index = static_cast<int>(doc_->comments.size()) - 1;
+        const std::string name = Attr(annotation, "office:name");
+        if (name.empty()) pointAnnotation_ = index;
+        else activeAnnotations_.emplace_back(name, index);
     }
 
     // Embedded formula objects live as sub-documents inside the package
@@ -1105,7 +1144,14 @@ private:
                 ctx.pendingLineBreak = false;
                 ctx.endsInCollapsibleSpace = false;
                 ctx.runs.push_back(std::move(reference));
-            } else if (tag == "text:soft-page-break" || tag == "office:annotation"
+            } else if (tag == "office:annotation") {
+                ReadAnnotation(elem);
+            } else if (tag == "office:annotation-end") {
+                const std::string name = Attr(elem, "office:name");
+                activeAnnotations_.erase(std::remove_if(activeAnnotations_.begin(), activeAnnotations_.end(),
+                                                        [&](const auto& a) { return a.first == name; }),
+                                         activeAnnotations_.end());
+            } else if (tag == "text:soft-page-break"
                        || tag == "text:tracked-changes" || tag == "text:sequence-decls") {
                 // Non-content markup.
             } else {
@@ -1757,7 +1803,16 @@ public:
         static const char* kMimeType = "application/vnd.oasis.opendocument.text";
         // Body and page furniture first: writing them collects the automatic
         // styles that content.xml and styles.xml each declare.
-        const std::string body = WriteBlocks(doc.blocks);
+        std::string body = WriteBlocks(doc.blocks);
+        if (!openComments_.empty()) {
+            // A comment running to the end of the document ends here.
+            std::ostringstream close;
+            close << "<text:p>";
+            for (int id : openComments_) close << "<office:annotation-end office:name=\"__Annotation__" << id << "\"/>";
+            close << "</text:p>\n";
+            openComments_.clear();
+            body += close.str();
+        }
         const std::string masterStyles = BuildMasterStyles();
         if (!zip_.AddEntry("mimetype", std::string(kMimeType), false)
             || !zip_.AddEntry("content.xml", BuildContentXml(body))
@@ -1919,12 +1974,56 @@ private:
         if (blocks.empty()) blocks.emplace_back();
         xml << "<text:note text:id=\"" << (endnote ? "edn" : "ftn") << (++noteCounter_)
             << "\" text:note-class=\"" << (endnote ? "endnote" : "footnote") << "\">"
-            << "<text:note-citation>" << OdtText(run.text) << "</text:note-citation><text:note-body>"
-            << WriteBlocks(blocks) << "</text:note-body></text:note>";
+            << "<text:note-citation>" << OdtText(run.text) << "</text:note-citation><text:note-body>";
+        // The note's text is its own: comments open around the reference
+        // stay open past it.
+        std::vector<int> open;
+        open.swap(openComments_);
+        xml << WriteBlocks(blocks);
+        openComments_.swap(open);
+        xml << "</text:note-body></text:note>";
+    }
+
+    // Comments: an office:annotation where the text under it starts and an
+    // office:annotation-end where it stops, which may be paragraphs later.
+    std::vector<int> openComments_;
+    std::set<int> writtenComments_;
+
+    void UpdateOpenComments(std::ostringstream& xml, const std::vector<int>& wanted) {
+        for (size_t i = 0; i < openComments_.size();) {
+            const int id = openComments_[i];
+            if (std::find(wanted.begin(), wanted.end(), id) == wanted.end()) {
+                xml << "<office:annotation-end office:name=\"__Annotation__" << id << "\"/>";
+                openComments_.erase(openComments_.begin() + static_cast<std::ptrdiff_t>(i));
+            } else {
+                i++;
+            }
+        }
+        for (int id : wanted) {
+            if (id < 0 || id >= static_cast<int>(doc_->comments.size())) continue;
+            if (std::find(openComments_.begin(), openComments_.end(), id) != openComments_.end()) continue;
+            if (writtenComments_.count(id)) continue;
+            const RichComment& comment = doc_->comments[static_cast<size_t>(id)];
+            xml << "<office:annotation office:name=\"__Annotation__" << id << "\""
+                << (comment.resolved ? " loext:resolved=\"true\"" : "") << ">";
+            if (!comment.author.empty()) xml << "<dc:creator>" << EscapeXml(comment.author) << "</dc:creator>";
+            if (!comment.date.empty()) xml << "<dc:date>" << EscapeXml(comment.date) << "</dc:date>";
+            size_t start = 0;
+            do {
+                const size_t end = comment.text.find('\n', start);
+                const std::string line = comment.text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                xml << "<text:p>" << OdtText(line) << "</text:p>";
+                start = end == std::string::npos ? std::string::npos : end + 1;
+            } while (start != std::string::npos);
+            xml << "</office:annotation>";
+            openComments_.push_back(id);
+            writtenComments_.insert(id);
+        }
     }
 
     void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
         for (const auto& run : runs) {
+            UpdateOpenComments(xml, run.commentIds);
             if (run.lineBreakBefore) xml << "<text:line-break/>";
             if (run.IsInlineImage()) {
                 WriteInlineImage(xml, run);
@@ -2476,6 +2575,8 @@ private:
             << "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
             << "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
             << "xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
+            << "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" "
+            << "xmlns:loext=\"urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0\" "
             << "office:version=\"1.3\">\n"
             << "<office:automatic-styles>\n"
             << AutomaticStylesXml()

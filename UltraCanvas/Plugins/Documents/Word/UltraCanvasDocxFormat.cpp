@@ -133,6 +133,7 @@ public:
         LoadSection(body->FirstChildElement("w:sectPr"));
         LoadNotes(RichNote::Kind::Footnote);
         LoadNotes(RichNote::Kind::Endnote);
+        LoadComments();
         LoadMetadata();
         return true;
     }
@@ -250,6 +251,65 @@ private:
     std::map<std::string, int> noteIndexById_;
     // Bookmarks started between paragraphs, for the next one.
     std::vector<std::string> pendingBookmarks_;
+    // Comments: w:id -> index into doc_->comments, and those whose range the
+    // text being read is inside (ranges may cross paragraphs).
+    std::map<std::string, int> commentIndexById_;
+    std::vector<int> activeComments_;
+
+    int CommentFor(const std::string& id) {
+        auto found = commentIndexById_.find(id);
+        if (found != commentIndexById_.end()) return found->second;
+        doc_->comments.emplace_back();
+        const int index = static_cast<int>(doc_->comments.size()) - 1;
+        commentIndexById_[id] = index;
+        return index;
+    }
+
+    // word/comments.xml: author, initials, date and text of each comment the
+    // body marks.
+    void LoadComments() {
+        if (commentIndexById_.empty()) return;
+        std::string partName = "word/comments.xml";
+        for (const auto& [id, rel] : relationships_) {
+            const std::string file = "comments.xml";
+            if (!rel.external && rel.target.size() >= file.size()
+                && rel.target.compare(rel.target.size() - file.size(), file.size(), file) == 0) {
+                partName = ResolvePartPath(rel.target);
+            }
+        }
+        std::string xml;
+        if (!zip_.ReadEntry(partName, xml)) return;
+        ProtectWhitespaceRuns(xml);
+        tinyxml2::XMLDocument part;
+        if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !part.RootElement()) return;
+        for (auto* c = part.RootElement()->FirstChildElement("w:comment"); c; c = c->NextSiblingElement("w:comment")) {
+            auto found = commentIndexById_.find(Attr(c, "w:id"));
+            if (found == commentIndexById_.end()) continue;
+            RichComment& comment = doc_->comments[static_cast<size_t>(found->second)];
+            comment.author = Attr(c, "w:author");
+            comment.initials = Attr(c, "w:initials");
+            comment.date = Attr(c, "w:date");
+            std::string text;
+            for (auto* p = c->FirstChildElement("w:p"); p; p = p->NextSiblingElement("w:p")) {
+                if (p != c->FirstChildElement("w:p")) text += "\n";
+                text += ElementText(p);
+            }
+            for (size_t at; (at = text.find(kKeptSpaceMarker)) != std::string::npos;) text.replace(at, 3, " ");
+            comment.text = text;
+        }
+    }
+
+    // The w:t text under an element, w:tab as a tab.
+    static std::string ElementText(tinyxml2::XMLElement* e) {
+        std::string text;
+        for (auto* child = e->FirstChildElement(); child; child = child->NextSiblingElement()) {
+            const std::string tag = child->Name() ? child->Name() : "";
+            if (tag == "w:t") text += child->GetText() ? child->GetText() : "";
+            else if (tag == "w:tab") text += "\t";
+            else text += ElementText(child);
+        }
+        return text;
+    }
 
     static const char* Attr(const tinyxml2::XMLElement* e, const char* name) {
         const char* v = e->Attribute(name);
@@ -998,7 +1058,18 @@ private:
              child = child->NextSiblingElement()) {
             std::string tag = child->Name() ? child->Name() : "";
             if (tag == "w:r") {
+                const size_t before = ctx.runs.size();
                 ParseRun(child, linkTarget, ctx);
+                for (size_t r = before; r < ctx.runs.size(); r++) ctx.runs[r].commentIds = activeComments_;
+            } else if (tag == "w:commentRangeStart") {
+                const int index = CommentFor(Attr(child, "w:id"));
+                if (std::find(activeComments_.begin(), activeComments_.end(), index) == activeComments_.end()) {
+                    activeComments_.push_back(index);
+                }
+            } else if (tag == "w:commentRangeEnd") {
+                const int index = CommentFor(Attr(child, "w:id"));
+                activeComments_.erase(std::remove(activeComments_.begin(), activeComments_.end(), index),
+                                      activeComments_.end());
             } else if (tag == "m:oMath") {
                 // Embedded equations become $latex$ text for the markdown
                 // pipeline (which renders inline math).
@@ -1803,8 +1874,62 @@ private:
         }
     }
 
+    // Comment ranges open where the text being written is: a range starts at
+    // the first run under the comment and ends before the first after it
+    // that is not, which may be paragraphs later.
+    std::vector<int> openComments_;
+    std::set<int> writtenComments_;
+
+    static void WriteCommentEnd(std::ostringstream& xml, int id) {
+        xml << "<w:commentRangeEnd w:id=\"" << id << "\"/><w:r>"
+            << "<w:commentReference w:id=\"" << id << "\"/></w:r>";
+    }
+
+    void UpdateOpenComments(std::ostringstream& xml, const std::vector<int>& wanted) {
+        for (size_t i = 0; i < openComments_.size();) {
+            const int id = openComments_[i];
+            if (std::find(wanted.begin(), wanted.end(), id) == wanted.end()) {
+                WriteCommentEnd(xml, id);
+                openComments_.erase(openComments_.begin() + static_cast<std::ptrdiff_t>(i));
+            } else {
+                i++;
+            }
+        }
+        for (int id : wanted) {
+            if (id < 0 || id >= static_cast<int>(doc_->comments.size())) continue;
+            if (std::find(openComments_.begin(), openComments_.end(), id) != openComments_.end()) continue;
+            if (writtenComments_.count(id)) continue;       // one range per comment
+            xml << "<w:commentRangeStart w:id=\"" << id << "\"/>";
+            openComments_.push_back(id);
+            writtenComments_.insert(id);
+        }
+    }
+
+    std::string BuildCommentsXml() const {
+        std::ostringstream xml;
+        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:comments " << kPartNamespaces << ">";
+        for (int id : writtenComments_) {
+            const RichComment& comment = doc_->comments[static_cast<size_t>(id)];
+            xml << "<w:comment w:id=\"" << id << "\" w:author=\"" << EscapeXml(comment.author) << "\"";
+            if (!comment.date.empty()) xml << " w:date=\"" << EscapeXml(comment.date) << "\"";
+            if (!comment.initials.empty()) xml << " w:initials=\"" << EscapeXml(comment.initials) << "\"";
+            xml << ">";
+            size_t start = 0;
+            do {
+                const size_t end = comment.text.find('\n', start);
+                const std::string line = comment.text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                xml << "<w:p><w:r><w:t xml:space=\"preserve\">" << EscapeXml(line) << "</w:t></w:r></w:p>";
+                start = end == std::string::npos ? std::string::npos : end + 1;
+            } while (start != std::string::npos);
+            xml << "</w:comment>";
+        }
+        xml << "</w:comments>\n";
+        return xml.str();
+    }
+
     void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
         for (const auto& run : runs) {
+            UpdateOpenComments(xml, run.commentIds);
             bool isLink = !run.linkTarget.empty();
             if (isLink && run.linkTarget[0] == '#') {
                 // A link inside the document, to a bookmark.
@@ -2389,8 +2514,24 @@ private:
 
     std::string BuildDocumentXml() {
         NumberNotes();
-        const std::string body = WriteBlocks(doc_->blocks);
+        std::string body = WriteBlocks(doc_->blocks);
+        if (!openComments_.empty()) {
+            // A comment running to the end of the document ends here.
+            std::ostringstream close;
+            close << "<w:p>";
+            for (int id : openComments_) WriteCommentEnd(close, id);
+            close << "</w:p>\n";
+            openComments_.clear();
+            body += close.str();
+        }
         const std::string sectPr = SectionPropertiesXml();
+        if (!writtenComments_.empty()) {
+            FurniturePart part;
+            part.kind = "comments";
+            part.name = "comments.xml";
+            part.xml = BuildCommentsXml();
+            furnitureParts_.push_back(std::move(part));
+        }
         AddNotesPart(RichNote::Kind::Footnote);
         AddNotesPart(RichNote::Kind::Endnote);
         std::ostringstream xml;

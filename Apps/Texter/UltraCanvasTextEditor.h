@@ -486,6 +486,7 @@ namespace UltraCanvas {
         std::vector<MenuItemData> BuildTableMenuItems();
         std::vector<MenuItemData> BuildStyleMenuItems(int kind);   // RichStyle::Kind
         std::vector<MenuItemData> BuildReferenceMenuItems();
+        void EditRichComment(int index);
         std::vector<MenuItemData> BuildDictionaryMenuItems();
 
         // Every open editor window, so the singleton spell service can reach
