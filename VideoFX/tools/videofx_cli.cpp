@@ -14,6 +14,7 @@
 //          --transition NAME[:SECONDS]   between joined files (concat)
 //          --title TEXT                  caption at the bottom, faded in and out
 //          --watermark IMAGE             logo in the top-right corner
+//          --font FONTFILE               font for --title (default: the bundled Ubuntu font)
 // transitions: crossfade dissolve fadeblack fadewhite wipeleft wiperight
 //          wipeup wipedown slideleft slideright slideup slidedown smoothleft
 //          smoothright smoothup smoothdown circleopen circleclose circlecrop
@@ -74,7 +75,7 @@ int Usage() {
         "       videofx effects <in> <out> <effect[=value]>... [options]\n"
         "       videofx testclip <out> <seconds> [width height fps]\n"
         "options: --width N --height N --fps F --quality 0..100 --speed S\n"
-        "         --transition NAME[:SECONDS] --title TEXT --watermark IMAGE\n"
+        "         --transition NAME[:SECONDS] --title TEXT --watermark IMAGE --font FONTFILE\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
         "         --acodec aac|mp3|opus|vorbis|flac|pcm|none\n";
     return 2;
@@ -182,6 +183,11 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
             t.fadeIn = 0.5;
             t.fadeOut = 0.5;
             o.overlays.push_back(t);
+        } else if (a == "--font" && next(v)) {
+            if (!VideoFX_SetDefaultFontPath(v)) {
+                std::cerr << "videofx: font file not found: " << v << "\n";
+                return false;
+            }
         } else if (a == "--watermark" && next(v)) {
             VideoFXOverlay w = VideoFXOverlay::Image(v, VideoFXAnchor::TopRight, 0.12);
             w.opacity = 0.85;

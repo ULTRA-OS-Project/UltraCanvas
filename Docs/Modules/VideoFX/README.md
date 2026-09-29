@@ -225,10 +225,35 @@ clip.overlays = { title, logo };
 | `anchor`, `margin` | One of nine positions, `margin` from the edge (fraction of height); `Custom` uses `x`, `y` (fractions of width / height) |
 | `start`, `end` | Segment seconds after speed; `end` 0 = until the segment ends |
 | `fadeIn`, `fadeOut`, `opacity` | Seconds; 0..1 |
-| **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = a default sans font (DejaVu / Liberation / Noto on Linux, Helvetica on macOS, Segoe UI on Windows, fontconfig otherwise) |
+| **Text:** `text`, `fontSize`, `textColor`, `fontPath`, `shadow`, `box`, `boxColor`, `boxOpacity` | UTF-8, `\n` for lines; size as a fraction of height; empty `fontPath` = the default font (below) |
 | **Image:** `imagePath` or `image`, `imageHeight` | A PNG keeps its transparency; `image` takes RGBA pixels from memory (for example a picture UltraCanvas rendered); `imageHeight` 0 = its own pixel size |
 
 Text is taken literally — `:`, quotes, `%` and backslashes need no escaping.
+
+**Which font.** A text overlay with no `fontPath` uses the default font,
+chosen in this order:
+
+1. the one the application set with `VideoFX_SetDefaultFontPath(path)`;
+2. the framework's bundled **Ubuntu** font (`media/fonts/Ubuntu-R.ttf`),
+   found next to the running application wherever UltraCanvas apps ship
+   `media/` — `share/media/fonts` (Linux build and package),
+   `Resources/media/fonts` (Windows), `Contents/Resources/media/fonts`
+   (macOS) — so every UltraCanvas application renders titles the same way on
+   every machine;
+3. a common system sans font (DejaVu, Liberation, Noto, FreeSans on Linux;
+   Helvetica on macOS; Segoe UI on Windows);
+4. fontconfig's "Sans" — only if this FFmpeg can actually load it, which is
+   checked once.
+
+When none of them works, an export with text fails before it starts, with
+`NotAvailable` and a message saying to set a font — never halfway through.
+An application that does not ship `media/` should bundle a font of its own
+and pass it once:
+
+```cpp
+VideoFX_SetDefaultFontPath(appDir + "/fonts/BrandSans.ttf");   // false if missing
+std::string font = VideoFX_GetDefaultFontPath();               // what will be used
+```
 Text overlays need an FFmpeg built with libfreetype (the usual Linux, macOS
 and MSYS2 packages are); ask `VideoFX_IsTextOverlayAvailable()`.
 
@@ -329,6 +354,7 @@ videofx transcode clip.mov clip.webm --height 720 --quality 70
 videofx concat all.mp4 a.mp4 b.mov c.mkv
 videofx concat all.mp4 a.mp4 b.mov c.mkv --transition crossfade:1
 videofx transcode talk.mp4 titled.mp4 --title "Opening keynote" --watermark logo.png
+videofx transcode talk.mp4 titled.mp4 --title "Opening keynote" --font BrandSans.ttf
 videofx testclip pattern.mp4 5 1280 720 30
 ```
 

@@ -67,8 +67,9 @@ void OverlayPosition(const VideoFXOverlay& overlay, int outHeight,
                      const std::string& itemW, const std::string& itemH,
                      std::string& x, std::string& y);
 
-// drawtext filter for a text overlay on a frame of outWidth x outHeight.
-// `fontFile` empty = select by fontconfig name ("Sans").
+// drawtext filter for a text overlay on a frame of outWidth x outHeight, in
+// the overlay's fontPath, else `fontFile` (the export's default), else
+// fontconfig's "Sans" when both are empty.
 std::string BuildTextOverlayFilter(const VideoFXOverlay& overlay, int outWidth, int outHeight,
                                    double segmentDuration, const std::string& fontFile);
 

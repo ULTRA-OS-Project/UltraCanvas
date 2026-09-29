@@ -16,6 +16,7 @@
 
 #include "VideoFX/VideoFX.h"
 #include "VideoFXFilterBuilder.h"
+#include "VideoFXPlatform.h"
 
 #include "UltraCanvasPathUtf8.h"
 
@@ -191,6 +192,12 @@ static void TestTransitionAndOverlayText() {
     CHECK(dt.find(":fontsize=36") != std::string::npos, "size 0.1 of 360 px");
     CHECK(dt.find(":x=(w-text_w)/2:y=h-text_h-18") != std::string::npos, "bottom centre, 5% margin");
     CHECK(dt.find("fontfile=") == std::string::npos, "no fontfile without a path");
+    VideoFXOverlay own = t;
+    own.fontPath = "/fonts/own.ttf";
+    CHECK(BuildTextOverlayFilter(own, 640, 360, 4.0, "/fonts/default.ttf").find(":fontfile=/fonts/own.ttf") !=
+              std::string::npos, "the overlay's own font wins over the default");
+    CHECK(BuildTextOverlayFilter(t, 640, 360, 4.0, "/fonts/default.ttf").find(":fontfile=/fonts/default.ttf") !=
+              std::string::npos, "no font of its own: the export's default");
     CHECK(BuildTextOverlayFilter(t, 640, 360, 4.0, "C:/Fonts/a.ttf").find("fontfile=C\\\\:/Fonts/a.ttf") !=
               std::string::npos, "font path escaped");
 
@@ -628,6 +635,30 @@ static void TestTransitionsAndOverlays(const VideoFXExportSettings& base) {
         VideoFX_ExtractFrame(textOut, 1.5, f);
         const int after = whitePixels(f);
         CHECK(after > before + 200, "the big title appears at its start time");
+        // ---- default font: bundled first, application override, reset ----
+        const std::string automatic = VideoFX_GetDefaultFontPath();
+        CHECK(automatic.empty() || Exists(automatic), "the automatic font exists");
+        const std::string exeDir = VideoFX::Internal::ExecutableDir();
+        CHECK(!exeDir.empty(), "executable directory found");
+        const fs::path bundled = UltraCanvas::PathFromUtf8(exeDir) / ".." / "share" / "media" / "fonts" / "Ubuntu-R.ttf";
+        if (fs::exists(bundled)) {
+            CHECK(automatic.find("Ubuntu-R.ttf") != std::string::npos, "the framework's bundled font comes first");
+        } else {
+            std::printf("  SKIP  bundled-font preference (no share/media next to the test)\n");
+        }
+        CHECK(!VideoFX_SetDefaultFontPath(TempPath("none.ttf")), "a missing default font is refused");
+        CHECK_EQ(VideoFX_GetDefaultFontPath(), automatic, "and changes nothing");
+        const fs::path repoFont = UltraCanvas::PathFromUtf8(__FILE__).parent_path() / ".." / "media" / "fonts" / "Ubuntu-B.ttf";
+        if (fs::exists(repoFont)) {
+            const std::string chosen = UltraCanvas::PathToUtf8(repoFont);
+            CHECK(VideoFX_SetDefaultFontPath(chosen), "the application picks its font");
+            CHECK_EQ(VideoFX_GetDefaultFontPath(), chosen, "and it is the default now");
+            card.overlays = {VideoFXOverlay::Text("Bold", VideoFXAnchor::Center, 0.3)};
+            CHECK_OK(VideoFX_Export({card}, TempPath("bold.mkv"), s), "text in the application's font");
+            CHECK(VideoFX_SetDefaultFontPath(""), "reset to automatic");
+            CHECK_EQ(VideoFX_GetDefaultFontPath(), automatic, "automatic again");
+        }
+
         VideoFXOverlay missingFont = VideoFXOverlay::Text("x");
         missingFont.fontPath = TempPath("none.ttf");
         card.overlays = {missingFont};

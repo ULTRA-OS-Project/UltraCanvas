@@ -74,6 +74,18 @@ bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec codec);
 // Whether text overlays can be drawn (FFmpeg built with libfreetype)
 bool VideoFX_IsTextOverlayAvailable();
 
+// The font of text overlays that set no fontPath. Unless set, VideoFX takes
+// the framework's bundled Ubuntu font from next to the application
+// (share/media/fonts, Resources/media/fonts - where UltraCanvas apps ship
+// media/), then a system sans font, then fontconfig's "Sans". An export whose
+// text has no usable font fails up front with NotAvailable.
+// Returns false (and changes nothing) when the file does not exist;
+// "" returns to the automatic choice.
+bool VideoFX_SetDefaultFontPath(const std::string& path);
+
+// The font file that will be used; "" = none found (fontconfig, if any)
+std::string VideoFX_GetDefaultFontPath();
+
 // Backend diagnostics to stderr: false (default) = errors only
 void VideoFX_SetVerboseLogging(bool verbose);
 

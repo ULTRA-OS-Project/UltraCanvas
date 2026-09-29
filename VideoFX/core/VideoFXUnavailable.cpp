@@ -25,6 +25,8 @@ std::string VideoFX_GetLastError() { return kReason; }
 bool VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec) { return false; }
 bool VideoFX_IsAudioEncoderAvailable(VideoFXAudioCodec) { return false; }
 bool VideoFX_IsTextOverlayAvailable() { return false; }
+bool VideoFX_SetDefaultFontPath(const std::string& path) { return path.empty(); }
+std::string VideoFX_GetDefaultFontPath() { return ""; }
 void VideoFX_SetVerboseLogging(bool) {}
 
 const char* VideoFX_ResultToString(VideoFXResult result) {

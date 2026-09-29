@@ -556,7 +556,9 @@ std::string BuildTextOverlayFilter(const VideoFXOverlay& o, int outWidth, int ou
 
     // expansion=none: the text is literal, '%' included
     std::string f = "drawtext=expansion=none:text=" + EscapeFilterValue(o.text);
-    f += fontFile.empty() ? ":font=Sans" : ":fontfile=" + EscapeFilterValue(fontFile);
+    // The overlay's own font first, then the export's default
+    const std::string& font = o.fontPath.empty() ? fontFile : o.fontPath;
+    f += font.empty() ? ":font=Sans" : ":fontfile=" + EscapeFilterValue(font);
     f += ":fontsize=" + std::to_string(size) + ":fontcolor=" + HexColor(o.textColor);
     f += ":x=" + EscapeFilterValue(x) + ":y=" + EscapeFilterValue(y);
     if (o.shadow) {

@@ -503,6 +503,10 @@ VideoFXResult Exporter::PlanSegments(const std::vector<VideoFXSegment>& segments
                 std::error_code ec;
                 if (!o.fontPath.empty() && !std::filesystem::exists(UltraCanvas::PathFromUtf8(o.fontPath), ec))
                     return Fail(VideoFXResult::FileNotFound, "Font file not found: " + o.fontPath);
+                if (o.fontPath.empty() && ResolveDefaultFont().empty() && !FontconfigCanDrawText())
+                    return Fail(VideoFXResult::NotAvailable,
+                                "No font for text overlays: set VideoFXOverlay::fontPath, or call "
+                                "VideoFX_SetDefaultFontPath() with a .ttf / .otf the application ships");
             } else if (o.image.IsValid()) {
                 image = o.image;
             } else {
@@ -518,28 +522,6 @@ VideoFXResult Exporter::PlanSegments(const std::vector<VideoFXSegment>& segments
         plans.push_back(std::move(p));
     }
     return VideoFXResult::Ok;
-}
-
-// A default sans font for text overlays with no fontPath. "" lets drawtext
-// ask fontconfig for "Sans" instead (the Linux and MSYS2 builds have it).
-std::string DefaultFontFile() {
-    static const char* candidates[] = {
-#if defined(_WIN32)
-        "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf",
-#elif defined(__APPLE__)
-        "/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "/Library/Fonts/Arial.ttf",
-#else
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/noto/NotoSans-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-#endif
-    };
-    for (const char* c : candidates) {
-        std::error_code ec;
-        if (std::filesystem::exists(UltraCanvas::PathFromUtf8(c), ec)) return c;
-    }
-    return "";
 }
 
 VideoFXResult Exporter::PlanOutput() {
@@ -767,7 +749,7 @@ VideoFXResult Exporter::OpenVideoEncoder() {
                                      "[vfxg1][vfxpal]paletteuse=new=1:dither=bayer:bayer_scale=5[out]");
         if (r != VideoFXResult::Ok) return r;
     }
-    fontFile = DefaultFontFile();
+    fontFile = ResolveDefaultFont();
     return VideoFXResult::Ok;
 }
 

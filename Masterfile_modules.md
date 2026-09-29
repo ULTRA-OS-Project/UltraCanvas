@@ -1706,7 +1706,8 @@ automatically (VideoToolbox, Media Foundation), project files.
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
-  `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetVerboseLogging`
+  `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
+  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
@@ -1727,7 +1728,8 @@ automatically (VideoToolbox, Media Foundation), project files.
 - Internal: `VideoFX::Internal::{FormatNumber, EscapeFilterValue,
   AutoRotateChain, AtempoChain, BuildVideoEffectChain, BuildAudioEffectChain,
   TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
-  OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters}`
+  OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
+  ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir}`
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 

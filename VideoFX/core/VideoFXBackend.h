@@ -102,6 +102,12 @@ const enum AVPixelFormat* SupportedPixelFormats(const AVCodec* codec);
 const enum AVSampleFormat* SupportedSampleFormats(const AVCodec* codec);
 const int* SupportedSampleRates(const AVCodec* codec);
 
+// ===== FONTS (VideoFXFonts.cpp) =====
+// Font file for text overlays with no fontPath; "" = none found
+std::string ResolveDefaultFont();
+// Whether drawtext can load fontconfig's "Sans" (the last resort); probed once
+bool FontconfigCanDrawText();
+
 // ===== CODEC SELECTION =====
 // Encoder for a codec choice, trying the usual implementations in order
 // (libx264, then platform encoders, ...). nullptr = none in this build.

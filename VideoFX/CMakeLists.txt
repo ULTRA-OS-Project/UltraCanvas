@@ -2,7 +2,7 @@
 # Build configuration for the VideoFX module (video editing / conversion).
 # FFmpeg is optional: without it the same API is built from a stub whose calls
 # return VideoFXResult::NotAvailable, so consumers never need an #ifdef.
-# Version: 0.1.0
+# Version: 0.2.0
 # Last Modified: 2026-09-29
 # Author: UltraCanvas Framework
 
@@ -64,7 +64,17 @@ if(VIDEOFX_FFMPEG_FOUND)
         core/VideoFXProbe.cpp
         core/VideoFXExport.cpp
         core/VideoFXRemux.cpp
+        core/VideoFXFonts.cpp
+        core/VideoFXPlatform.h
     )
+    # The executable's directory, where bundled fonts are looked for
+    if(WIN32)
+        list(APPEND VIDEOFX_SOURCES OS/MSWindows/VideoFXExecutableDir.cpp)
+    elseif(APPLE)
+        list(APPEND VIDEOFX_SOURCES OS/MacOS/VideoFXExecutableDir.cpp)
+    else()
+        list(APPEND VIDEOFX_SOURCES OS/Linux/VideoFXExecutableDir.cpp)
+    endif()
 else()
     list(APPEND VIDEOFX_SOURCES core/VideoFXUnavailable.cpp)
 endif()
