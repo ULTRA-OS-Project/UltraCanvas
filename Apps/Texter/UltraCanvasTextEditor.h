@@ -76,6 +76,9 @@ namespace UltraCanvas {
         std::string defaultLanguage = "Plain Text";
         bool darkTheme = false;
         bool wordWrap = true;
+        // Word-processing documents shown on their pages (headers, footers,
+        // page breaks) rather than as one column.
+        bool documentPageLayout = true;
         std::string defaultEncoding = "UTF-8";
 
         // Spell checking. Off until the user asks for it, so a launch without
@@ -451,6 +454,7 @@ namespace UltraCanvas {
         void OnViewToggleTheme();
         void OnViewToggleLineNumbers(bool checked);
         void OnViewToggleWordWrap(bool checked);
+        void OnViewTogglePageLayout(bool checked);
         void OnViewToggleToolbar(bool checked);
         void OnViewToggleMarkdownToolbar(bool checked);
         void UpdateToolbarsSubmenu();

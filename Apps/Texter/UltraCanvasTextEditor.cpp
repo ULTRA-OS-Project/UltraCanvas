@@ -712,6 +712,9 @@ namespace {
                         MenuItemData::Checkbox("Word Wrap", config.wordWrap, [this](bool checked) {
                             OnViewToggleWordWrap(checked);
                         }),
+                        MenuItemData::Checkbox("Page Layout (documents)", config.documentPageLayout, [this](bool checked) {
+                            OnViewTogglePageLayout(checked);
+                        }),
                         MenuItemData::Separator(),
                         MenuItemData::Submenu("Toolbars", {
                             MenuItemData::Checkbox("Main Toolbar", config.showToolbar, [this](bool checked) {
@@ -2411,8 +2414,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 : std::static_pointer_cast<UltraCanvasUIElement>(doc->textArea);
             doc->richEdit = view;
             doc->language = "Rich Text";
-            // The zoom the other tabs are shown at.
+            // The zoom the other tabs are shown at, on pages unless the user
+            // turned that off.
             view->SetZoom(static_cast<float>(config.fontZoomPercent) / 100.0f);
+            view->SetPageView(config.documentPageLayout);
 
             // Swap the editor slot inside the tab rather than the whole tab
             // content: editorArea is the flex row that also holds the
@@ -4050,6 +4055,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (doc->textArea) {
                 doc->textArea->SetWordWrap(config.wordWrap);
             }
+        }
+        SaveConfig();
+    }
+
+    void UltraCanvasTextEditor::OnViewTogglePageLayout(bool checked) {
+        config.documentPageLayout = checked;
+        for (auto& doc : documents) {
+            if (doc->richEdit) doc->richEdit->SetPageView(checked);
         }
         SaveConfig();
     }
@@ -5819,6 +5832,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.darkTheme = configFile.GetBool("darkTheme", config.darkTheme);
         config.showLineNumbers = configFile.GetBool("showLineNumbers", config.showLineNumbers);
         config.wordWrap = configFile.GetBool("wordWrap", config.wordWrap);
+        config.documentPageLayout = configFile.GetBool("documentPageLayout", config.documentPageLayout);
         config.defaultFontSize = configFile.GetInt("defaultFontSize", config.defaultFontSize);
         config.fontZoomPercent = configFile.GetInt("fontZoomPercent", 100);
         // config.maxRecentFiles = configFile.GetInt("maxRecentFiles", config.maxRecentFiles);
@@ -5835,6 +5849,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetBool("darkTheme", isDarkTheme);
         configFile.SetBool("showLineNumbers", config.showLineNumbers);
         configFile.SetBool("wordWrap", config.wordWrap);
+        configFile.SetBool("documentPageLayout", config.documentPageLayout);
         configFile.SetInt("defaultFontSize", config.defaultFontSize);
         configFile.SetInt("fontZoomPercent", config.fontZoomPercent);
         // configFile.SetInt("maxRecentFiles", config.maxRecentFiles);

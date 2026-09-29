@@ -15,6 +15,11 @@
   can be dragged to move it (Ctrl to copy), and picture files dropped on the
   document are inserted there. Typing gets curly quotes, dashes and lists
   from `1. ` / `- ` as in a word processor.
+- **Word-processing documents open on their pages** - headers, footers,
+  page numbers, paragraphs and tables continuing over page breaks with their
+  header rows repeated. *View > Page Layout (documents)* switches back to one
+  column (remembered). Double-click a header or footer (or the page's top or
+  bottom margin) to edit it; Escape returns to the body.
 - **The zoom box zooms a word-processing tab** (and a page wider than the
   window scrolls sideways). It used to change the font size of plain-text tabs
   only.
