@@ -9,7 +9,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(VideoFX
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "VideoFX - video editing and conversion engine"
     LANGUAGES CXX
 )
@@ -54,6 +54,8 @@ set(VIDEOFX_HEADERS
 set(VIDEOFX_SOURCES
     core/VideoFXFilterBuilder.cpp
     core/VideoFXFilterBuilder.h
+    core/VideoFXKenBurns.cpp
+    core/VideoFXKenBurns.h
     core/VideoFXJob.cpp
 )
 

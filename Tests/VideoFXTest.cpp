@@ -16,6 +16,7 @@
 
 #include "VideoFX/VideoFX.h"
 #include "VideoFXFilterBuilder.h"
+#include "VideoFXKenBurns.h"
 #include "VideoFXPlatform.h"
 
 #include "UltraCanvasPathUtf8.h"
@@ -33,6 +34,8 @@ using namespace VideoFX;
 using namespace VideoFX::Internal;
 
 static int failures = 0;
+
+static bool Near(double a, double b, double tolerance) { return std::fabs(a - b) <= tolerance; }
 
 #define CHECK(cond, msg)                                                    \
     do {                                                                    \
@@ -225,6 +228,81 @@ static void TestTransitionAndOverlayText() {
     CHECK(!ValidateOverlay(VideoFXOverlay::Image(""), 5.0, error), "image without a picture refused");
 }
 
+static VideoFXFrame SolidFrame(int w, int h, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) {
+    VideoFXFrame f;
+    f.width = w;
+    f.height = h;
+    f.pixels.resize(static_cast<size_t>(w) * h * 4);
+    for (size_t i = 0; i < f.pixels.size(); i += 4) {
+        f.pixels[i] = r; f.pixels[i + 1] = g; f.pixels[i + 2] = b; f.pixels[i + 3] = a;
+    }
+    return f;
+}
+
+static void TestKenBurnsMath() {
+    std::printf("Still images: camera maths and renderer\n");
+    std::string error;
+    CHECK(ValidateMotion(VideoFXImageMotion{}, error), "Auto is valid");
+    CHECK(!ValidateMotion(VideoFXImageMotion::Custom(9.0, 0.5, 0.5, 1.0, 0.5, 0.5), error), "zoom 9 refused");
+    CHECK(!ValidateMotion(VideoFXImageMotion::Custom(1.0, 1.5, 0.5, 1.0, 0.5, 0.5), error), "centre 1.5 refused");
+
+    // Auto: pans along the direction the frame crops, different per segment
+    const VideoFXImageMotion autoMotion;
+    const VideoFXImageMotion a0 = ResolveMotion(autoMotion, 6000, 2000, 1920, 1080, 0);
+    const VideoFXImageMotion a1 = ResolveMotion(autoMotion, 6000, 2000, 1920, 1080, 1);
+    CHECK(a0.style == VideoFXMotionStyle::Custom && a0.endZoom > a0.startZoom, "Auto #0: zoom in");
+    CHECK(a1.startX < a1.endX && a1.startY == a1.endY, "Auto #1: pan sideways along a panorama");
+    const VideoFXImageMotion c0 = ResolveMotion(autoMotion, 4000, 3000, 1920, 1080, 0);
+    CHECK(c0.startY < c0.endY, "a 4:3 photo in 16:9 is cropped top and bottom: pan down it");
+    const VideoFXImageMotion p0 = ResolveMotion(autoMotion, 3000, 4000, 1920, 1080, 0);
+    CHECK(p0.startY < p0.endY && p0.startX == p0.endX, "Auto #0: pan down a portrait photo");
+    CHECK(ResolveMotion(VideoFXImageMotion::Make(VideoFXMotionStyle::Still), 10, 10, 10, 10, 0).style ==
+              VideoFXMotionStyle::Still, "Still stays still");
+
+    VideoFXImageMotion m = VideoFXImageMotion::Custom(1.0, 0.2, 0.5, 4.0, 0.8, 0.5);
+    KenBurnsView v = ViewAt(m, 0.0);
+    CHECK(Near(v.zoom, 1.0, 1e-9) && Near(v.centerX, 0.2, 1e-9), "start of the move");
+    v = ViewAt(m, 1.0);
+    CHECK(Near(v.zoom, 4.0, 1e-9) && Near(v.centerX, 0.8, 1e-9), "end of the move");
+    v = ViewAt(m, 0.5);
+    CHECK(Near(v.zoom, 2.0, 1e-9), "half-way zoom is geometric (1 -> 4 passes 2)");
+    CHECK(ViewAt(m, 0.1).zoom < std::exp(0.1 * std::log(4.0)), "eased: slow at the start");
+
+    double x, y, w, h;
+    ViewRect(KenBurnsView{}, 4000, 3000, 1920, 1080, x, y, w, h);
+    CHECK(Near(w, 4000, 1e-6) && Near(w / h, 1920.0 / 1080.0, 1e-9), "zoom 1: full width, frame-shaped");
+    CHECK(y >= 0 && y + h <= 3000 + 1e-9, "inside the image");
+    ViewRect(KenBurnsView{2.0, 0.0, 0.0}, 4000, 3000, 1920, 1080, x, y, w, h);
+    CHECK(Near(w, 2000, 1e-6) && Near(x, 0, 1e-9) && Near(y, 0, 1e-9), "zoom 2 in the corner: half size, clamped");
+    StillRect(VideoFXFitMode::Letterbox, 1000, 1000, 1920, 1080, x, y, w, h);
+    CHECK(x < 0 && Near(y, 0, 1e-9) && Near(h, 1000, 1e-9), "letterbox: whole square image, bars at the sides");
+
+    // Renderer: colour kept, black outside the image, transparency on black
+    const VideoFXFrame red = SolidFrame(8, 8, 255, 0, 0);
+    std::vector<uint8_t> out(16 * 9 * 4);
+    RenderView(red, 0, 0, 8, 4.5, 16, 9, out.data(), 16 * 4, 1);
+    CHECK(out[0] == 255 && out[1] == 0 && out[3] == 255, "solid image renders solid");
+    StillRect(VideoFXFitMode::Letterbox, 8, 8, 16, 9, x, y, w, h);
+    RenderView(red, x, y, w, h, 16, 9, out.data(), 16 * 4, 1);
+    CHECK(out[0] == 0 && out[3] == 255, "letterbox bar is black");
+    CHECK(out[(4 * 16 + 8) * 4] == 255, "centre is the image");
+    const VideoFXFrame clear = SolidFrame(8, 8, 255, 255, 255, 0);
+    RenderView(clear, 0, 0, 8, 4.5, 16, 9, out.data(), 16 * 4, 1);
+    CHECK(out[0] == 0 && out[3] == 255, "transparent pixels come out black");
+
+    // Sub-pixel: a 0.3 px move of the camera changes the picture
+    VideoFXFrame ramp = SolidFrame(64, 16, 0, 0, 0);
+    for (int yy = 0; yy < 16; ++yy)
+        for (int xx = 0; xx < 64; ++xx) ramp.pixels[(static_cast<size_t>(yy) * 64 + xx) * 4] = static_cast<uint8_t>(xx * 4);
+    std::vector<uint8_t> a(32 * 8 * 4), b(32 * 8 * 4);
+    RenderView(ramp, 10.0, 0, 32, 8, 32, 8, a.data(), 32 * 4, 1);
+    RenderView(ramp, 10.3, 0, 32, 8, 32, 8, b.data(), 32 * 4, 1);
+    CHECK(b[16 * 4] > a[16 * 4], "no whole-pixel snapping (no jitter)");
+    std::vector<uint8_t> c(32 * 8 * 4);
+    RenderView(ramp, 10.0, 0, 32, 8, 32, 8, c.data(), 32 * 4, 4);
+    CHECK(c == a, "threaded rendering matches single-threaded");
+}
+
 // ============================================================================
 // PART 2 - ENGINE
 // ============================================================================
@@ -232,8 +310,6 @@ static void TestTransitionAndOverlayText() {
 #ifdef VIDEOFX_HAS_FFMPEG
 
 namespace fs = std::filesystem;
-
-static bool Near(double a, double b, double tolerance) { return std::fabs(a - b) <= tolerance; }
 
 static std::string TempPath(const std::string& name) {
     static const fs::path dir = [] {
@@ -274,6 +350,7 @@ static double StreamDuration(const VideoFXMediaInfo& info, VideoFXStreamKind kin
 }
 
 static void TestTransitionsAndOverlays(const VideoFXExportSettings& base);
+static void TestStillImages(const VideoFXExportSettings& base);
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -481,6 +558,7 @@ static void TestEngine() {
     }
 
     TestTransitionsAndOverlays(base);
+    TestStillImages(base);
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -673,6 +751,122 @@ static void TestTransitionsAndOverlays(const VideoFXExportSettings& base) {
     CHECK(VideoFX_Export({card}, TempPath("x.mkv"), s) == VideoFXResult::InvalidArgument, "empty text");
 }
 
+// A JPEG carrying an EXIF "rotate 90 clockwise" orientation (value 6)
+static bool WriteRotatedJpeg(const VideoFXFrame& frame, const std::string& path) {
+    if (VideoFX_SaveFrameImage(frame, path) != VideoFXResult::Ok) return false;
+    std::FILE* in = UltraCanvas::OpenFileUtf8(path, "rb");
+    if (!in) return false;
+    std::vector<uint8_t> jpeg;
+    uint8_t buf[4096];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof(buf), in)) > 0) jpeg.insert(jpeg.end(), buf, buf + n);
+    std::fclose(in);
+    const uint8_t exif[] = {
+        0xFF, 0xE1, 0x00, 0x22, 'E', 'x', 'i', 'f', 0, 0,             // APP1, length 34
+        'I', 'I', 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00,                  // little-endian TIFF, IFD at 8
+        0x01, 0x00,                                                    // one entry
+        0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,   // Orientation = 6
+        0x00, 0x00, 0x00, 0x00};                                       // no next IFD
+    jpeg.insert(jpeg.begin() + 2, std::begin(exif), std::end(exif));
+    std::FILE* out = UltraCanvas::OpenFileUtf8(path, "wb");
+    if (!out) return false;
+    const bool ok = std::fwrite(jpeg.data(), 1, jpeg.size(), out) == jpeg.size();
+    return std::fclose(out) == 0 && ok;
+}
+
+static void TestStillImages(const VideoFXExportSettings& base) {
+    std::printf("Engine: still images and slideshows\n");
+    VideoFXExportSettings s = base;
+    s.width = 160;
+    s.height = 120;
+    s.frameRate = 25.0;
+    VideoFXFrame f;
+    VideoFXMediaInfo info;
+    double r, g, b;
+
+    // ---- an image from memory, 2 s, still ----
+    const std::string still = TempPath("still.mkv");
+    CHECK_OK(VideoFX_Export({VideoFXSegment::FromImageFrame(SolidFrame(400, 300, 255, 0, 0), 2.0,
+                                                            VideoFXImageMotion::Make(VideoFXMotionStyle::Still))},
+                            still, s), "still image from memory");
+    CHECK_OK(VideoFX_Probe(still, info), "probe still");
+    CHECK(Near(info.duration, 2.0, 0.05), "shown for exactly its 2 s");
+    VideoFX_ExtractFrame(still, 1.0, f);
+    CentreColour(f, r, g, b);
+    CHECK(r > 200 && g < 60, "it is the image");
+
+    // ---- zoom in on a file: the picture changes over time ----
+    VideoFXFrame checker = SolidFrame(320, 240, 0, 0, 0);
+    for (int yy = 0; yy < 240; ++yy)
+        for (int xx = 0; xx < 320; ++xx)
+            if (((xx / 20) + (yy / 20)) % 2) {
+                uint8_t* p = &checker.pixels[(static_cast<size_t>(yy) * 320 + xx) * 4];
+                p[0] = p[1] = p[2] = 255;
+            }
+    const std::string png = TempPath("checker.png");
+    CHECK_OK(VideoFX_SaveFrameImage(checker, png), "write a checkerboard PNG");
+    const std::string zoom = TempPath("zoom.mkv");
+    CHECK_OK(VideoFX_Export({VideoFXSegment::FromImage(png, 2.0,
+                                 VideoFXImageMotion::Custom(1.0, 0.5, 0.5, 3.0, 0.5, 0.5))}, zoom, s),
+             "zoom into a PNG");
+    VideoFXFrame early, late;
+    VideoFX_ExtractFrame(zoom, 0.05, early);
+    VideoFX_ExtractFrame(zoom, 1.95, late);
+    auto edges = [](const VideoFXFrame& fr) {           // black/white changes along the middle row
+        int n = 0;
+        const size_t row = static_cast<size_t>(fr.height / 2) * fr.width;
+        for (int xx = 1; xx < fr.width; ++xx)
+            if ((fr.pixels[(row + xx) * 4] > 128) != (fr.pixels[(row + xx - 1) * 4] > 128)) ++n;
+        return n;
+    };
+    CHECK(edges(early) > edges(late) * 2, "zoomed in 3x: far fewer squares across");
+
+    // ---- EXIF orientation ----
+    const std::string rotated = TempPath("rotated.jpg");
+    CHECK(WriteRotatedJpeg(SolidFrame(64, 32, 0, 0, 255), rotated), "write a JPEG with EXIF orientation 6");
+    CHECK_OK(VideoFX_ExtractFrame(rotated, 0.0, f), "decode it");
+    CHECK(f.width == 32 && f.height == 64, "shown upright: 64x32 stored, 32x64 displayed");
+    std::vector<VideoFXFrame> strip;
+    CHECK_OK(VideoFX_ExtractThumbnails(rotated, 3, strip, 32, 32), "several thumbnails of one still");
+    CHECK(strip.size() == 3 && strip[2].IsValid(), "a still can be read more than once");
+
+    // ---- the output takes an image's shape when no size is given ----
+    VideoFXExportSettings sized = base;
+    sized.frameRate = 25.0;
+    const std::string shaped = TempPath("shaped.mkv");
+    CHECK_OK(VideoFX_Export({VideoFXSegment::FromImage(rotated, 0.5)}, shaped, sized), "export without a size");
+    CHECK_OK(VideoFX_Probe(shaped, info), "probe it");
+    CHECK(info.width == 32 && info.height == 64, "size from the upright photo");
+
+    // ---- slideshow in one call ----
+    VideoFXSlideshowOptions opt;
+    opt.secondsPerImage = 2.0;
+    opt.transition = VideoFXTransition::Crossfade(0.5);
+    opt.captions = {"one", "", "three"};
+    const std::string show = TempPath("show.mkv");
+    VideoFXExportSettings small = base;
+    small.width = 160;
+    small.height = 90;
+    CHECK_OK(VideoFX_CreateSlideshow({png, rotated, png}, show, opt, small), "slideshow of three images");
+    CHECK_OK(VideoFX_Probe(show, info), "probe slideshow");
+    CHECK(Near(info.duration, 5.0, 0.06), "3 x 2 s - 2 x 0.5 s overlap = 5 s");
+    CHECK(info.width == 160 && info.height == 90 && Near(info.frameRate, 30.0, 0.01), "given size, 30 fps default");
+    VideoFX_ExtractFrame(show, 0.0, f);
+    CentreColour(f, r, g, b);
+    CHECK(r < 40 && g < 40 && b < 40, "fades in from black");
+
+    // ---- errors ----
+    CHECK(VideoFX_CreateSlideshow({}, TempPath("x.mkv")) == VideoFXResult::InvalidArgument, "no images");
+    CHECK(VideoFX_CreateSlideshow({TempPath("none.jpg")}, TempPath("x.mkv")) == VideoFXResult::FileNotFound,
+          "missing image");
+    opt.transition = VideoFXTransition::Crossfade(1.5);
+    CHECK(VideoFX_CreateSlideshow({png, png}, TempPath("x.mkv"), opt) == VideoFXResult::InvalidArgument,
+          "transition longer than half an image");
+    VideoFXSegment bad = VideoFXSegment::FromImage(png, 2.0, VideoFXImageMotion::Custom(9.0, 0.5, 0.5, 1.0, 0.5, 0.5));
+    CHECK(VideoFX_Export({bad}, TempPath("x.mkv"), s) == VideoFXResult::InvalidArgument, "bad zoom refused");
+    CHECK(!Exists(TempPath("x.mkv")), "nothing written by a refused export");
+}
+
 #else
 
 static void TestEngine() {
@@ -691,6 +885,7 @@ int main() {
     TestTempoAndRotation();
     TestEffectChains();
     TestTransitionAndOverlayText();
+    TestKenBurnsMath();
     TestEngine();
     if (failures) {
         std::printf("\n%d check(s) FAILED\n", failures);

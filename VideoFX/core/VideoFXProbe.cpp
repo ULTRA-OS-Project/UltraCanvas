@@ -53,6 +53,9 @@ struct OpenVideo {
     AVRational tb{1, 1};
     int64_t startTs = 0;          // stream timestamps are relative to this
     double duration = 0.0;
+    std::string path;
+    bool fresh = true;            // nothing read since the file was opened
+    bool still = false;           // a single image (image2 / *_pipe demuxers)
 };
 
 VideoFXResult OpenVideoStream(const std::string& path, OpenVideo& v) {
@@ -68,6 +71,10 @@ VideoFXResult OpenVideoStream(const std::string& path, OpenVideo& v) {
     v.startTs = st->start_time != AV_NOPTS_VALUE ? st->start_time : 0;
     if (st->duration != AV_NOPTS_VALUE) v.duration = ToSeconds(st->duration, st->time_base);
     else if (v.fmt->duration != AV_NOPTS_VALUE) v.duration = v.fmt->duration / static_cast<double>(AV_TIME_BASE);
+    const std::string demuxer = v.fmt->iformat && v.fmt->iformat->name ? v.fmt->iformat->name : "";
+    v.still = demuxer == "image2" || (demuxer.size() > 5 && demuxer.compare(demuxer.size() - 5, 5, "_pipe") == 0);
+    v.path = path;
+    v.fresh = true;
     return VideoFXResult::Ok;
 }
 
@@ -78,13 +85,24 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
     seconds = std::max(0.0, seconds);
     if (v.duration > 0.0) seconds = std::min(seconds, v.duration);
 
-    if (!attachedPicture) {
+    if (v.still) {
+        // The image demuxers report end-of-file after any seek, even to 0:
+        // a still is read from a freshly opened file instead
+        if (!v.fresh) {
+            OpenVideo reopened;
+            VideoFXResult r = OpenVideoStream(v.path, reopened);
+            if (r != VideoFXResult::Ok) return r;
+            v = std::move(reopened);
+        }
+    } else if (!attachedPicture && !(v.fresh && seconds <= 0.0)) {
         const int64_t target = v.startTs + static_cast<int64_t>(seconds / av_q2d(v.tb));
         if (av_seek_frame(v.fmt.get(), v.stream, target, AVSEEK_FLAG_BACKWARD) < 0)
             av_seek_frame(v.fmt.get(), -1, 0, AVSEEK_FLAG_BACKWARD);   // unseekable: from the start
         avcodec_flush_buffers(v.dec.get());
     }
 
+    v.fresh = false;
+    st = v.fmt->streams[v.stream];
     const double halfFrame = st->avg_frame_rate.num > 0 ? 0.5 / av_q2d(st->avg_frame_rate) : 0.02;
     PacketPtr pkt = MakePacket();
     FramePtr frame = MakeFrame();
@@ -115,10 +133,17 @@ VideoFXResult DecodeFrameAt(OpenVideo& v, double seconds, AVFrame* out, double& 
             av_frame_move_ref(out, frame.get());
             frameTime = t;
             haveFrame = true;
-            if (attachedPicture || t >= seconds - halfFrame) return VideoFXResult::Ok;
+            if (attachedPicture || v.still || t >= seconds - halfFrame) return VideoFXResult::Ok;
         }
         if (draining && !haveFrame) return Fail(VideoFXResult::DecodeError, "No frame at the requested time");
     }
+}
+
+// The stream's rotation, or for a still without one its EXIF orientation
+int DisplayRotation(const OpenVideo& v, const AVFrame* frame) {
+    if (v.rotation != 0) return v.rotation;
+    const int r = GetFrameRotation(frame);
+    return r < 0 ? 0 : r;
 }
 
 // Convert a decoded frame to upright RGBA no larger than maxWidth x maxHeight
@@ -267,7 +292,7 @@ VideoFXResult VideoFX_ExtractFrame(const std::string& path, double seconds, Vide
     double t = 0.0;
     r = DecodeFrameAt(v, seconds, decoded.get(), t);
     if (r != VideoFXResult::Ok) return r;
-    r = ConvertToRgba(decoded.get(), v.rotation, maxWidth, maxHeight, frame);
+    r = ConvertToRgba(decoded.get(), DisplayRotation(v, decoded.get()), maxWidth, maxHeight, frame);
     frame.timestamp = t;
     return r;
 }
@@ -288,7 +313,7 @@ VideoFXResult VideoFX_ExtractThumbnails(const std::string& path, int count, std:
         r = DecodeFrameAt(v, t, decoded.get(), frameTime);
         if (r != VideoFXResult::Ok) return r;
         VideoFXFrame f;
-        r = ConvertToRgba(decoded.get(), v.rotation, maxWidth, maxHeight, f);
+        r = ConvertToRgba(decoded.get(), DisplayRotation(v, decoded.get()), maxWidth, maxHeight, f);
         if (r != VideoFXResult::Ok) return r;
         f.timestamp = frameTime;
         frames.push_back(std::move(f));

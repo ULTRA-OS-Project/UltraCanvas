@@ -13,6 +13,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <initializer_list>
 #include <mutex>
@@ -20,7 +21,7 @@
 namespace VideoFX {
 
 #ifndef VIDEOFX_VERSION_STRING
-#define VIDEOFX_VERSION_STRING "0.2.0"
+#define VIDEOFX_VERSION_STRING "0.3.0"
 #endif
 
 namespace Internal {
@@ -211,6 +212,27 @@ int GetStreamRotation(const AVStream* stream) {
     long cw = std::lround(-ccw / 90.0) * 90;
     cw = ((cw % 360) + 360) % 360;
     return static_cast<int>(cw);
+}
+
+int GetFrameRotation(const AVFrame* frame) {
+    if (const AVFrameSideData* sd = av_frame_get_side_data(frame, AV_FRAME_DATA_DISPLAYMATRIX)) {
+        if (sd->size > 0 && static_cast<size_t>(sd->size) >= 9 * sizeof(int32_t)) {   // int in FFmpeg 4.x
+            const double ccw = av_display_rotation_get(reinterpret_cast<const int32_t*>(sd->data));
+            if (!std::isnan(ccw)) {
+                long cw = std::lround(-ccw / 90.0) * 90;
+                return static_cast<int>(((cw % 360) + 360) % 360);
+            }
+        }
+    }
+    if (const AVDictionaryEntry* e = av_dict_get(frame->metadata, "Orientation", nullptr, 0)) {
+        switch (std::atoi(e->value)) {        // EXIF values; the mirrored ones (2, 4, 5, 7) are left as stored
+            case 3: return 180;
+            case 6: return 90;
+            case 8: return 270;
+            default: return 0;
+        }
+    }
+    return -1;
 }
 
 // ===== SUPPORTED CONFIGURATIONS =====

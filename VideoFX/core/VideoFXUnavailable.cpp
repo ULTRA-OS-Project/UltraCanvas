@@ -10,7 +10,7 @@
 namespace VideoFX {
 
 #ifndef VIDEOFX_VERSION_STRING
-#define VIDEOFX_VERSION_STRING "0.2.0"
+#define VIDEOFX_VERSION_STRING "0.3.0"
 #endif
 
 namespace {
@@ -65,6 +65,11 @@ VideoFXResult VideoFX_ExtractAudio(const std::string&, const std::string&, const
 }
 VideoFXResult VideoFX_TrimLossless(const std::string&, const std::string&, double, double,
                                    const VideoFXProgressCallback&) {
+    return Unavailable();
+}
+VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>&, const std::string&,
+                                      const VideoFXSlideshowOptions&, const VideoFXExportSettings&,
+                                      const VideoFXProgressCallback&) {
     return Unavailable();
 }
 VideoFXResult VideoFX_GenerateTestClip(const std::string&, double, int, int, double, bool) { return Unavailable(); }

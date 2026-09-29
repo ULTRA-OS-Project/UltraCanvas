@@ -96,6 +96,11 @@ bool SetFrameChannels(AVFrame* frame, const AVCodecContext* ctx);
 // Display rotation of a video stream, clockwise degrees 0/90/180/270
 int GetStreamRotation(const AVStream* stream);
 
+// Rotation a single decoded frame asks for - a photo's EXIF orientation:
+// display-matrix side data (FFmpeg 6.1+) or the "Orientation" tag the JPEG
+// decoder puts in the frame metadata (older). -1 = the frame says nothing.
+int GetFrameRotation(const AVFrame* frame);
+
 // Formats / rates an encoder accepts; AV_PIX_FMT_NONE / AV_SAMPLE_FMT_NONE /
 // 0 terminated, or nullptr when it accepts anything.
 const enum AVPixelFormat* SupportedPixelFormats(const AVCodec* codec);

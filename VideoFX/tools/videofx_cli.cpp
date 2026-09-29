@@ -9,6 +9,9 @@
 //   videofx concat <out> <in1> <in2> ... [options]
 //   videofx effects <in> <out> <effect[=value]>... [options]
 //   videofx testclip <out> <seconds> [width height fps]
+//   videofx slideshow <out> <image1> <image2> ... [--seconds S] [--motion M]
+//                     [--caption TEXT]... [--transition NAME[:SECONDS]]
+// motion: auto still zoomin zoomout panleft panright panup pandown
 //
 // options: --width N --height N --fps F --quality 0..100 --speed S
 //          --transition NAME[:SECONDS]   between joined files (concat)
@@ -74,6 +77,7 @@ int Usage() {
         "       videofx concat <out> <in1> <in2> ... [options]\n"
         "       videofx effects <in> <out> <effect[=value]>... [options]\n"
         "       videofx testclip <out> <seconds> [width height fps]\n"
+        "       videofx slideshow <out> <image>... [--seconds S] [--motion M] [--caption TEXT]...\n"
         "options: --width N --height N --fps F --quality 0..100 --speed S\n"
         "         --transition NAME[:SECONDS] --title TEXT --watermark IMAGE --font FONTFILE\n"
         "         --vcodec h264|h265|vp8|vp9|av1|mpeg4|mjpeg|prores|ffv1|gif|none\n"
@@ -118,8 +122,22 @@ struct Options {
     double speed = 1.0;
     bool lossless = false;
     VideoFXTransition transition;
+    bool transitionGiven = false;
     std::vector<VideoFXOverlay> overlays;
+    VideoFXSlideshowOptions slideshow;
 };
+
+bool ParseMotion(const std::string& s, VideoFXImageMotion& m) {
+    static const std::pair<const char*, VideoFXMotionStyle> names[] = {
+        {"auto", VideoFXMotionStyle::Auto}, {"still", VideoFXMotionStyle::Still},
+        {"zoomin", VideoFXMotionStyle::ZoomIn}, {"zoomout", VideoFXMotionStyle::ZoomOut},
+        {"panleft", VideoFXMotionStyle::PanLeft}, {"panright", VideoFXMotionStyle::PanRight},
+        {"panup", VideoFXMotionStyle::PanUp}, {"pandown", VideoFXMotionStyle::PanDown}};
+    for (const auto& n : names) {
+        if (s == n.first) { m = VideoFXImageMotion::Make(n.second); return true; }
+    }
+    return false;
+}
 
 bool ParseTransition(const std::string& spec, VideoFXTransition& t) {
     static const std::pair<const char*, VideoFXTransitionType> names[] = {
@@ -176,7 +194,13 @@ bool ParseOptions(std::vector<std::string>& args, Options& o) {
         else if (a == "--speed" && next(v)) speed = NumberOr(v, 1.0);
         else if (a == "--vcodec" && next(v)) { if (!ParseVideoCodec(v, settings.videoCodec)) return false; }
         else if (a == "--acodec" && next(v)) { if (!ParseAudioCodec(v, settings.audioCodec)) return false; }
-        else if (a == "--transition" && next(v)) { if (!ParseTransition(v, o.transition)) return false; }
+        else if (a == "--transition" && next(v)) {
+            if (!ParseTransition(v, o.transition)) return false;
+            o.transitionGiven = true;
+        }
+        else if (a == "--seconds" && next(v)) o.slideshow.secondsPerImage = NumberOr(v, -1.0);
+        else if (a == "--motion" && next(v)) { if (!ParseMotion(v, o.slideshow.motion)) return false; }
+        else if (a == "--caption" && next(v)) o.slideshow.captions.push_back(v);
         else if (a == "--title" && next(v)) {
             VideoFXOverlay t = VideoFXOverlay::Text(v, VideoFXAnchor::Bottom, 0.06);
             t.box = true;
@@ -364,6 +388,12 @@ int main(int argc, char** argv) {
             s.effects.push_back(e);
         }
         return Report(VideoFX_Export({s}, args[1], settings, Progress));
+    }
+
+    if (cmd == "slideshow" && args.size() >= 2) {
+        std::vector<std::string> images(args.begin() + 1, args.end());
+        if (options.transitionGiven) options.slideshow.transition = options.transition;
+        return Report(VideoFX_CreateSlideshow(images, args[0], options.slideshow, settings, Progress));
     }
 
     if (cmd == "testclip" && (args.size() == 2 || args.size() == 5)) {

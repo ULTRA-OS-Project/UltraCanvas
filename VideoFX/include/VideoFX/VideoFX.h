@@ -1,7 +1,7 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
-// Version: 0.2.0
+// Version: 0.3.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once
@@ -154,6 +154,15 @@ VideoFXResult VideoFX_ExtractAudio(const std::string& inputPath, const std::stri
 VideoFXResult VideoFX_TrimLossless(const std::string& inputPath, const std::string& outputPath,
                                    double start, double end,
                                    const VideoFXProgressCallback& progress = {});
+
+// A video of still images, each moving slowly ("Ken Burns"), joined by
+// transitions, with optional captions. Without a size in `settings` the
+// output is 1920x1080 at 30 fps.
+VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths,
+                                      const std::string& outputPath,
+                                      const VideoFXSlideshowOptions& options = {},
+                                      const VideoFXExportSettings& settings = {},
+                                      const VideoFXProgressCallback& progress = {});
 
 // A generated test clip (moving pattern + tone) - for tests and demos
 VideoFXResult VideoFX_GenerateTestClip(const std::string& outputPath, double seconds,

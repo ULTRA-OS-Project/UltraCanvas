@@ -105,6 +105,24 @@ VideoFXSegment VideoFXSegment::FromFile(const std::string& path, double start, d
     return s;
 }
 
+VideoFXSegment VideoFXSegment::FromImage(const std::string& path, double seconds, VideoFXImageMotion motion) {
+    VideoFXSegment s;
+    s.kind = VideoFXSourceKind::Image;
+    s.path = path;
+    s.duration = seconds;
+    s.motion = motion;
+    return s;
+}
+
+VideoFXSegment VideoFXSegment::FromImageFrame(const VideoFXFrame& rgba, double seconds, VideoFXImageMotion motion) {
+    VideoFXSegment s;
+    s.kind = VideoFXSourceKind::Image;
+    s.image = rgba;
+    s.duration = seconds;
+    s.motion = motion;
+    return s;
+}
+
 VideoFXSegment VideoFXSegment::SolidColor(uint32_t rgb, double seconds) {
     VideoFXSegment s;
     s.kind = VideoFXSourceKind::Color;

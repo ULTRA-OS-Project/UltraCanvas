@@ -18,6 +18,7 @@
 
 #include "VideoFXBackend.h"
 #include "VideoFXFilterBuilder.h"
+#include "VideoFXKenBurns.h"
 #include "VideoFX/VideoFX.h"
 
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"   // PathFromUtf8
@@ -330,9 +331,10 @@ private:
     VideoFXResult ProcessSegment(size_t index);
     VideoFXResult ProcessFileSegment(const SegmentPlan& plan);
     VideoFXResult RunGeneratorGraphs(const SegmentPlan& plan, bool video, bool audio);
-    std::string FitChain(bool sarNotSquare) const;
+    VideoFXResult RunImageSegment(const SegmentPlan& plan, size_t index);
+    std::string FitChain(bool sarNotSquare, bool resample = true) const;
     std::string SegmentVideoGraph(const SegmentPlan& plan, const std::string& head, bool sarNotSquare,
-                                  std::vector<GraphSource>& sources) const;
+                                  std::vector<GraphSource>& sources, bool resample = true) const;
     VideoFXResult FeedOverlayImages(Graph& g, const SegmentPlan& plan);
     std::string AudioTail() const;
 
@@ -461,6 +463,26 @@ VideoFXResult Exporter::PlanSegments(const std::vector<VideoFXSegment>& segments
                 p.sampleRate = info.sampleRate;
                 p.channels = info.channels;
             }
+        } else if (seg.kind == VideoFXSourceKind::Image) {
+            if (!(seg.duration > 0.0 && seg.duration <= 24 * 3600.0))
+                return Fail(VideoFXResult::InvalidArgument, "Image segments last 0..24 hours");
+            std::string motionError;
+            if (!ValidateMotion(seg.motion, motionError)) return Fail(VideoFXResult::InvalidArgument, motionError);
+            if (seg.image.IsValid()) {
+                p.displayWidth = seg.image.width;
+                p.displayHeight = seg.image.height;
+            } else {
+                // Checked now so a bad file fails before anything is written;
+                // decoded only when the segment plays (a slideshow of a hundred
+                // photos does not hold a hundred photos)
+                VideoFXMediaInfo info;
+                VideoFXResult r = VideoFX_Probe(seg.path, info);
+                if (r != VideoFXResult::Ok) return r;
+                if (!info.HasVideo()) return Fail(VideoFXResult::NoMediaStreams, "Not an image: " + seg.path);
+                p.displayWidth = info.width;
+                p.displayHeight = info.height;
+            }
+            p.outDuration = seg.duration;
         } else {
             if (!(seg.duration > 0.0 && seg.duration <= 24 * 3600.0))
                 return Fail(VideoFXResult::InvalidArgument, "Generated segments last 0..24 hours");
@@ -593,6 +615,20 @@ VideoFXResult Exporter::PlanOutput() {
                 srcW = p.displayWidth;
                 srcH = p.displayHeight;
                 srcRate = p.frameRate;
+            } else if (p.segment.kind == VideoFXSourceKind::Image) {
+                // The photo's upright shape (EXIF applied), no bigger than 1080p
+                srcW = p.displayWidth;
+                srcH = p.displayHeight;
+                VideoFXFrame upright;
+                if (!p.segment.image.IsValid() &&
+                    VideoFX_ExtractFrame(p.segment.path, 0.0, upright, 4096, 4096) == VideoFXResult::Ok) {
+                    srcW = upright.width;
+                    srcH = upright.height;
+                }
+                const double shrink = std::min(1.0, std::min(1920.0 / std::max(srcW, srcH),
+                                                              1080.0 / std::max(1, std::min(srcW, srcH))));
+                srcW = std::max(2, static_cast<int>(std::lround(srcW * shrink)));
+                srcH = std::max(2, static_cast<int>(std::lround(srcH * shrink)));
             } else {
                 srcW = 1280;
                 srcH = 720;
@@ -821,10 +857,12 @@ VideoFXResult Exporter::OpenOutput() {
 // filter text shared by every segment
 // ---------------------------------------------------------------------------
 
-// Fit to the output rate and size
-std::string Exporter::FitChain(bool sarNotSquare) const {
+// Fit to the output rate and size. `resample` false for frames already at
+// the output rate (still images): fps would drop the last one, which has no
+// duration to end by.
+std::string Exporter::FitChain(bool sarNotSquare, bool resample) const {
     const std::string W = std::to_string(width), H = std::to_string(height);
-    std::string tail = "fps=" + Rational(frameRate);
+    std::string tail = resample ? "fps=" + Rational(frameRate) : std::string();
     if (sarNotSquare) AppendFilter(tail, "scale=trunc(iw*sar/2)*2:ih,setsar=1");
     switch (settings.fitMode) {
         case VideoFXFitMode::Fill:
@@ -847,10 +885,10 @@ std::string Exporter::FitChain(bool sarNotSquare) const {
 // drawn in the chain, images from their own [ovN] sources), and the stage
 // pixel format. Image sources are added to `sources`.
 std::string Exporter::SegmentVideoGraph(const SegmentPlan& plan, const std::string& head, bool sarNotSquare,
-                                        std::vector<GraphSource>& sources) const {
+                                        std::vector<GraphSource>& sources, bool resample) const {
     std::string done;                   // finished chains, ';'-terminated
     std::string chain = head;
-    AppendFilter(chain, FitChain(sarNotSquare));
+    AppendFilter(chain, FitChain(sarNotSquare, resample));
     int label = 0;
     for (size_t k = 0; k < plan.segment.overlays.size(); ++k) {
         const VideoFXOverlay& o = plan.segment.overlays[k];
@@ -1279,6 +1317,91 @@ VideoFXResult Exporter::RunGeneratorGraphs(const SegmentPlan& plan, bool video, 
     return VideoFXResult::Ok;
 }
 
+// Scale RGBA pixels (a large photo shrunk once, area-averaged)
+VideoFXResult ScaleRgba(const VideoFXFrame& src, int w, int h, VideoFXFrame& dst) {
+    SwsPtr sws(sws_getContext(src.width, src.height, AV_PIX_FMT_RGBA, w, h, AV_PIX_FMT_RGBA, SWS_AREA,
+                              nullptr, nullptr, nullptr));
+    if (!sws) return Fail(VideoFXResult::FilterError, "Cannot scale the image");
+    dst.width = w;
+    dst.height = h;
+    dst.timestamp = src.timestamp;
+    dst.pixels.assign(static_cast<size_t>(w) * h * 4, 0);
+    const uint8_t* srcData[4] = {src.pixels.data(), nullptr, nullptr, nullptr};
+    const int srcLines[4] = {src.width * 4, 0, 0, 0};
+    uint8_t* dstData[4] = {dst.pixels.data(), nullptr, nullptr, nullptr};
+    const int dstLines[4] = {w * 4, 0, 0, 0};
+    sws_scale(sws.get(), srcData, srcLines, 0, src.height, dstData, dstLines);
+    return VideoFXResult::Ok;
+}
+
+// A still image: each output frame is rendered here from the photo along the
+// segment's camera path, then goes through the same effects, overlays and
+// output stage as video
+VideoFXResult Exporter::RunImageSegment(const SegmentPlan& plan, size_t index) {
+    VideoFXFrame image;
+    VideoFXResult r;
+    if (plan.segment.image.IsValid()) {
+        image = plan.segment.image;
+    } else if ((r = VideoFX_ExtractFrame(plan.segment.path, 0.0, image)) != VideoFXResult::Ok) {
+        const std::string reason = VideoFX_GetLastError();
+        return Fail(r, "Image " + plan.segment.path + ": " + reason);
+    }
+
+    const VideoFXImageMotion motion = ResolveMotion(plan.segment.motion, image.width, image.height,
+                                                    width, height, index);
+    // Shrink once so that at the closest zoom the image is still about one
+    // image pixel per output pixel: sharp, no aliasing, little memory
+    const double closest = motion.style == VideoFXMotionStyle::Still
+                               ? 1.0 : std::max(motion.startZoom, motion.endZoom);
+    const double need = std::max(static_cast<double>(width) * closest / image.width,
+                                 static_cast<double>(height) * closest / image.height);
+    if (need < 0.75) {
+        VideoFXFrame smaller;
+        const int w = std::max(2, static_cast<int>(std::ceil(image.width * need)));
+        const int h = std::max(2, static_cast<int>(std::ceil(image.height * need)));
+        if ((r = ScaleRgba(image, w, h, smaller)) != VideoFXResult::Ok) return r;
+        image = std::move(smaller);
+    }
+
+    std::vector<GraphSource> sources = {
+        {"in", VideoSourceArgs(width, height, AV_PIX_FMT_RGBA, venc->time_base, AVRational{1, 1}, frameRate)}};
+    std::string head = "[in]null";
+    AppendFilter(head, plan.videoEffects);
+    Graph g;
+    if ((r = BuildGraph(g, true, sources, SegmentVideoGraph(plan, head, false, sources, false))) != VideoFXResult::Ok)
+        return r;
+    if ((r = FeedOverlayImages(g, plan)) != VideoFXResult::Ok) return r;
+    const AVRational sinkTb = av_buffersink_get_time_base(g.sink);
+    FramePtr scratch = MakeFrame();
+    auto emit = [&](AVFrame* f) { return EmitVideo(f, sinkTb); };
+
+    const int64_t frames = std::max<int64_t>(1, std::llround(plan.outDuration / av_q2d(venc->time_base)));
+    for (int64_t k = 0; k < frames; ++k) {
+        FramePtr f = MakeFrame();
+        f->format = AV_PIX_FMT_RGBA;
+        f->width = width;
+        f->height = height;
+        f->sample_aspect_ratio = AVRational{1, 1};
+        int err = av_frame_get_buffer(f.get(), 0);
+        if (err < 0) return Fail(VideoFXResult::EncodeError, "Out of memory", err);
+        double x, y, w, h;
+        if (motion.style == VideoFXMotionStyle::Still) {
+            StillRect(settings.fitMode, image.width, image.height, width, height, x, y, w, h);
+        } else {
+            const double fraction = frames > 1 ? static_cast<double>(k) / (frames - 1) : 0.0;
+            ViewRect(ViewAt(motion, fraction), image.width, image.height, width, height, x, y, w, h);
+        }
+        RenderView(image, x, y, w, h, width, height, f->data[0], f->linesize[0], settings.threads);
+        f->pts = k;
+        err = av_buffersrc_add_frame_flags(g.src, f.get(), 0);
+        if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot feed the image", err);
+        if ((r = PullGraph(g, scratch.get(), emit)) != VideoFXResult::Ok) return r;
+    }
+    int err = av_buffersrc_add_frame_flags(g.src, nullptr, 0);
+    if (err < 0) return Fail(VideoFXResult::FilterError, "Cannot finish the image", err);
+    return PullGraph(g, scratch.get(), emit);
+}
+
 VideoFXResult Exporter::ProcessFileSegment(const SegmentPlan& plan) {
     FormatInputPtr fmt;
     VideoFXResult r = OpenInput(plan.segment.path, fmt);
@@ -1479,6 +1602,8 @@ VideoFXResult Exporter::ProcessSegment(size_t index) {
 
     if (plan.segment.kind == VideoFXSourceKind::File) {
         r = ProcessFileSegment(plan);
+    } else if (plan.segment.kind == VideoFXSourceKind::Image) {
+        r = outVideo ? RunImageSegment(plan, index) : VideoFXResult::Ok;
     } else {
         const bool tone = plan.segment.kind == VideoFXSourceKind::TestPattern && !plan.segment.mute;
         r = RunGeneratorGraphs(plan, outVideo, outAudio && tone);
@@ -1659,6 +1784,45 @@ VideoFXResult VideoFX_ExtractAudio(const std::string& inputPath, const std::stri
     VideoFXExportSettings audioOnly = settings;
     audioOnly.videoCodec = VideoFXVideoCodec::Disabled;
     return VideoFX_Export({VideoFXSegment::FromFile(inputPath)}, outputPath, audioOnly, progress);
+}
+
+VideoFXResult VideoFX_CreateSlideshow(const std::vector<std::string>& imagePaths, const std::string& outputPath,
+                                      const VideoFXSlideshowOptions& options, const VideoFXExportSettings& settings,
+                                      const VideoFXProgressCallback& progress) {
+    ClearError();
+    if (imagePaths.empty()) return Fail(VideoFXResult::InvalidArgument, "A slideshow needs at least one image");
+    if (!(options.secondsPerImage >= 0.5 && options.secondsPerImage <= 3600.0))
+        return Fail(VideoFXResult::InvalidArgument, "Seconds per image must be 0.5..3600");
+    if (!options.transition.IsCut() && options.transition.duration > options.secondsPerImage / 2.0)
+        return Fail(VideoFXResult::InvalidArgument, "A transition may take at most half of an image's time");
+
+    std::vector<VideoFXSegment> segments;
+    segments.reserve(imagePaths.size());
+    for (size_t i = 0; i < imagePaths.size(); ++i) {
+        VideoFXSegment s = VideoFXSegment::FromImage(imagePaths[i], options.secondsPerImage, options.motion);
+        if (i > 0) s.transitionIn = options.transition;
+        if (i < options.captions.size() && !options.captions[i].empty()) {
+            VideoFXOverlay caption = VideoFXOverlay::Text(options.captions[i], VideoFXAnchor::Bottom, 0.055);
+            caption.box = true;
+            caption.fadeIn = std::min(0.5, options.secondsPerImage / 4.0);
+            caption.fadeOut = caption.fadeIn;
+            s.overlays.push_back(caption);
+        }
+        segments.push_back(std::move(s));
+    }
+    if (options.fadeInOut) {
+        const double fade = std::min(0.8, options.secondsPerImage / 4.0);
+        segments.front().effects.push_back(VideoFXEffect::FadeIn(fade));
+        segments.back().effects.push_back(VideoFXEffect::FadeOut(fade));
+    }
+
+    VideoFXExportSettings s = settings;
+    if (s.width <= 0 && s.height <= 0) {
+        s.width = 1920;
+        s.height = 1080;
+    }
+    if (s.frameRate <= 0.0) s.frameRate = 30.0;
+    return VideoFX_Export(segments, outputPath, s, progress);
 }
 
 VideoFXResult VideoFX_GenerateTestClip(const std::string& outputPath, double seconds, int width, int height,

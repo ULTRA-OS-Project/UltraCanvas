@@ -1691,7 +1691,8 @@ time: without it the same API links from a stub whose calls return
 **Implementation status:** Stages 1 and 2 — probe, frames, the segment
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
-frame, GIF / audio-only outputs, lossless cut, background job, `videofx`
+frame, still images with sub-pixel pan and zoom and one-call slideshows,
+GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
 multi-track audio mixing, hardware encoders beyond the platform ones picked
 automatically (VideoToolbox, Media Foundation), project files.
@@ -1702,7 +1703,8 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXContainer`, `VideoFXVideoCodec`, `VideoFXAudioCodec`,
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
-  `VideoFXOverlayKind`, `VideoFXAnchor`
+  `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
+  `VideoFXMotionStyle`, `VideoFXSlideshowOptions`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -1712,14 +1714,17 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
-  `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_GenerateTestClip`
+  `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
+  `VideoFX_GenerateTestClip`
 - Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
   `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
   `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
   `Rotate270`, `Rotate`, `FlipHorizontal`, `FlipVertical`, `Crop`, `FadeIn`,
   `FadeOut`, `Volume`, `NormalizeAudio`
-- Segments (`VideoFXSegment::`): `FromFile`, `SolidColor`, `TestPattern`;
-  fields `effects`, `overlays`, `transitionIn`
+- Segments (`VideoFXSegment::`): `FromFile`, `FromImage`, `FromImageFrame`,
+  `SolidColor`, `TestPattern`; fields `effects`, `overlays`, `transitionIn`,
+  `motion`, `image`
+- Image motion (`VideoFXImageMotion::`): `Make`, `Custom`
 - Transitions (`VideoFXTransition::`): `Make`, `Crossfade`; 30
   `VideoFXTransitionType`s (blends, wipes, pushes, shapes)
 - Overlays (`VideoFXOverlay::`): `Text`, `Image`, `ImageFromFrame`
@@ -1729,7 +1734,9 @@ automatically (VideoToolbox, Media Foundation), project files.
   AutoRotateChain, AtempoChain, BuildVideoEffectChain, BuildAudioEffectChain,
   TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
-  ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir}`
+  ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
+  ValidateMotion, ResolveMotion, ViewAt, ViewRect, StillRect, RenderView}`
+  (the last six in `core/VideoFXKenBurns.h`, no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 

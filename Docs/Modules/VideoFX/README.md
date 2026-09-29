@@ -11,12 +11,13 @@ size, and encode the result as MP4, WebM, MOV, MKV, an animated GIF or an
 audio file. One call, `VideoFX_Export`, does all of it from a list of
 segments.
 
-> **Status: stages 1 and 2 implemented.** Probe, frames, the segment
-> timeline with 26 effects, speed, joins, 30 transitions between segments,
-> text and image overlays, GIF and audio-only output, lossless cut, the
-> background job and the `videofx` command-line tool work today, on FFmpeg
-> 4.4 to 8.x. Picture-in-picture, keyframes, multi-track mixing and project
-> files are planned (see *Roadmap*).
+> **Status: stages 1 and 2 implemented, plus photos.** Probe, frames, the
+> segment timeline with 26 effects, speed, joins, 30 transitions between
+> segments, text and image overlays, still images with smooth pan and zoom
+> ("Ken Burns") and one-call slideshows, GIF and audio-only output, lossless
+> cut, the background job and the `videofx` command-line tool work today, on
+> FFmpeg 4.4 to 8.x. Picture-in-picture, keyframes, multi-track mixing and
+> project files are planned (see *Roadmap*).
 
 ---
 
@@ -130,6 +131,57 @@ output (see `fitMode`) and picture and sound stay in sync across every join —
 a stream that runs short is padded before the next segment, video by holding
 its last frame, audio with silence. A file without a picture shows black for
 its length in a video export.
+
+---
+
+## Photos and slideshows
+
+A still image is a segment too: `VideoFXSegment::FromImage(path, seconds,
+motion)` — or `FromImageFrame(rgba, ...)` for pixels in memory, such as a
+picture UltraCanvas rendered. It takes transitions, effects and overlays like
+any other segment. A photo's EXIF orientation is honoured, so a phone
+picture taken upright comes out upright (in `VideoFX_ExtractFrame` too).
+
+```cpp
+std::vector<VideoFXSegment> story = {
+    VideoFXSegment::FromImage("beach.jpg", 5.0),                         // Auto motion
+    VideoFXSegment::FromImage("sunset.jpg", 5.0, VideoFXImageMotion::Make(VideoFXMotionStyle::ZoomOut)),
+    VideoFXSegment::FromFile("waves.mp4", 12.0, 20.0),                   // mixed with video
+};
+story[1].transitionIn = VideoFXTransition::Crossfade(1.0);
+VideoFX_Export(story, "holiday.mp4", VideoFXExportSettings::WebMP4(1080));
+```
+
+The **motion** (`VideoFXImageMotion`) is a slow camera move across the photo:
+
+| `VideoFXMotionStyle` | Move |
+|---|---|
+| `Auto` (default) | A different move per segment — zooms in and out, and pans along the direction the frame crops: sideways along a panorama, up and down a portrait photo or a 4:3 photo in a 16:9 frame |
+| `ZoomIn`, `ZoomOut` | Centred, 1 to 1.25 and back |
+| `PanLeft`, `PanRight`, `PanUp`, `PanDown` | Across the whole photo at zoom 1.2 |
+| `Custom` | `VideoFXImageMotion::Custom(startZoom, startX, startY, endZoom, endX, endY)`: zoom 1..4, centres as 0..1 fractions of the photo |
+| `Still` | No motion; the photo is fitted like video, by `fitMode` (letterboxed by default) |
+
+Zoom 1 shows the largest part of the photo that fills the frame; the view
+never leaves the photo. Moves start and end gently (`easeInOut`), and the
+zoom runs at a steady-looking speed. Every frame is resampled from the photo
+at sub-pixel positions, so the camera glides — without the stepping FFmpeg's
+own `zoompan` shows. A large photo is shrunk once to what the closest zoom
+needs, and each photo is loaded only when its segment plays.
+
+**A slideshow in one call:**
+
+```cpp
+VideoFXSlideshowOptions options;
+options.secondsPerImage = 4.0;                                  // transitions included
+options.transition = VideoFXTransition::Crossfade(1.0);         // default; Cut for none
+options.captions = { "Arrival", "", "The old town" };           // optional, per image
+VideoFX_CreateSlideshow({ "a.jpg", "b.jpg", "c.png" }, "trip.mp4", options);
+```
+
+It fades in from and out to black (`fadeInOut`), gives each photo its own
+`Auto` move, and without a size in the settings makes 1920x1080 at 30 fps.
+Length: `n x secondsPerImage - (n - 1) x transition`.
 
 ---
 
@@ -356,6 +408,8 @@ videofx concat all.mp4 a.mp4 b.mov c.mkv --transition crossfade:1
 videofx transcode talk.mp4 titled.mp4 --title "Opening keynote" --watermark logo.png
 videofx transcode talk.mp4 titled.mp4 --title "Opening keynote" --font BrandSans.ttf
 videofx testclip pattern.mp4 5 1280 720 30
+videofx slideshow trip.mp4 a.jpg b.jpg c.png --seconds 4 --caption Arrival --caption "" --caption "Old town"
+videofx slideshow trip.mp4 *.jpg --motion zoomin --transition dissolve:1.5
 ```
 
 ---
@@ -385,6 +439,7 @@ generates its own clips, so it needs no media files.
 |---|---|---|
 | 1 | Probe, frames, segment timeline, 26 effects, speed, joins, GIF / audio outputs, lossless cut, job, CLI | **Done** |
 | 2 | Transitions between segments (30 types, with audio cross-fade), text and image overlays | **Done** |
+| 2b | Still images with pan and zoom, EXIF orientation, one-call slideshows | **Done** |
 | 3 | Picture-in-picture, keyframed effect and overlay parameters, multi-track audio mixing (music bed, ducking) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |

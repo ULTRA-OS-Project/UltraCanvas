@@ -267,26 +267,73 @@ struct VideoFXOverlay {
 };
 
 // ============================================================================
+// STILL IMAGES (photo segments, "Ken Burns" motion)
+// ============================================================================
+// How the virtual camera moves over a still image. Zoom 1 shows the largest
+// part of the image that fills the frame (the image covers it, no bars);
+// zoom 1.25 shows 80% of that. Centres are the point looked at, as fractions
+// of the image's width / height; the view never leaves the image.
+enum class VideoFXMotionStyle {
+    Still,                          // no motion; fitted like video (VideoFXExportSettings::fitMode)
+    ZoomIn, ZoomOut,                // centred, 1 -> 1.25 / 1.25 -> 1
+    PanLeft, PanRight,              // camera moves across at zoom 1.2
+    PanUp, PanDown,
+    Auto,                           // varies from segment to segment, pans along the image's long side
+    Custom                          // startZoom/endZoom, start/end centres below
+};
+
+struct VideoFXImageMotion {
+    VideoFXMotionStyle style = VideoFXMotionStyle::Auto;
+    double startZoom = 1.0, endZoom = 1.25;     // Custom: 1..4
+    double startX = 0.5, startY = 0.5;          // Custom: 0..1
+    double endX = 0.5, endY = 0.5;
+    bool easeInOut = true;                      // start and stop gently rather than at constant speed
+
+    static VideoFXImageMotion Make(VideoFXMotionStyle style) {
+        VideoFXImageMotion m;
+        m.style = style;
+        return m;
+    }
+    static VideoFXImageMotion Custom(double startZoom, double startX, double startY,
+                                     double endZoom, double endX, double endY) {
+        VideoFXImageMotion m;
+        m.style = VideoFXMotionStyle::Custom;
+        m.startZoom = startZoom; m.startX = startX; m.startY = startY;
+        m.endZoom = endZoom; m.endX = endX; m.endY = endY;
+        return m;
+    }
+};
+
+// ============================================================================
 // TIMELINE SEGMENTS (VideoFX_Export)
 // ============================================================================
 // An export is a list of segments played one after another. A segment is a
-// range of a media file, or a generated clip (a solid colour, a test pattern).
-enum class VideoFXSourceKind { File, Color, TestPattern };
+// range of a media file, a still image shown for a while, or a generated
+// clip (a solid colour, a test pattern).
+enum class VideoFXSourceKind { File, Color, TestPattern, Image };
 
 struct VideoFXSegment {
     VideoFXSourceKind kind = VideoFXSourceKind::File;
     std::string path;               // File
     double start = 0.0;             // File: first second used
     double end = 0.0;               // File: last second used, 0 = to the end
-    double duration = 5.0;          // Color / TestPattern length, seconds
+    double duration = 5.0;          // Image / Color / TestPattern length, seconds
     uint32_t color = 0x000000;      // Color: 0xRRGGBB
     double speed = 1.0;             // 0.25..4; 2 = twice as fast (audio keeps pitch)
     bool mute = false;              // drop this segment's audio (silence instead)
     std::vector<VideoFXEffect> effects;
     std::vector<VideoFXOverlay> overlays;   // drawn after effects, over the output frame
     VideoFXTransition transitionIn;         // from the previous segment into this one
+    VideoFXImageMotion motion;              // Image: camera movement over the still
+    VideoFXFrame image;                     // Image: pixels in memory, used instead of `path` when valid
 
     static VideoFXSegment FromFile(const std::string& path, double start = 0.0, double end = 0.0);
+    // A photo / PNG / any image FFmpeg decodes, shown for `seconds`; JPEG
+    // orientation (EXIF) is honoured
+    static VideoFXSegment FromImage(const std::string& path, double seconds = 5.0,
+                                    VideoFXImageMotion motion = {});
+    static VideoFXSegment FromImageFrame(const VideoFXFrame& rgba, double seconds = 5.0,
+                                         VideoFXImageMotion motion = {});
     static VideoFXSegment SolidColor(uint32_t rgb, double seconds);
     // SMPTE-style moving test pattern with a 1 kHz tone
     static VideoFXSegment TestPattern(double seconds);
@@ -351,6 +398,17 @@ struct VideoFXExportSettings {
     static VideoFXExportSettings MasterProRes();                // ProRes 422 + PCM in MOV
     static VideoFXExportSettings AudioOnlyMP3(int64_t bitRate = 192000);
     static VideoFXExportSettings AudioOnlyWAV();
+};
+
+// ============================================================================
+// SLIDESHOW (VideoFX_CreateSlideshow)
+// ============================================================================
+struct VideoFXSlideshowOptions {
+    double secondsPerImage = 4.0;               // on screen, transitions included
+    VideoFXTransition transition = VideoFXTransition::Crossfade(1.0);   // between images; Cut for none
+    VideoFXImageMotion motion;                  // Auto: a different move per image
+    std::vector<std::string> captions;          // optional, one per image ("" = none), bottom centre
+    bool fadeInOut = true;                      // fade from and to black at the ends
 };
 
 // Progress 0..1 of the whole export. Return false to cancel; the call then
