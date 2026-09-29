@@ -2700,6 +2700,85 @@ int UCRichDocumentEditor::InsertInlineImage(const std::string& name,
     return mediaIndex;
 }
 
+namespace {
+// The run holding the picture whose placeholder starts at `byteOffset`.
+const RichTextRun* ImageRunAt(const std::vector<RichTextRun>& runs, int byteOffset) {
+    int position = 0;
+    for (const RichTextRun& run : runs) {
+        const int start = position + (run.lineBreakBefore ? 1 : 0);
+        position = start + static_cast<int>(run.text.size());
+        if (run.IsInlineImage() && start == byteOffset) return &run;
+        if (start > byteOffset) break;
+    }
+    return nullptr;
+}
+} // namespace
+
+bool UCRichDocumentEditor::IsImageAt(const RichDocPosition& image) const {
+    float w = 0, h = 0;
+    std::string alt;
+    int media = -1;
+    return GetImageInfo(image, w, h, alt, media);
+}
+
+bool UCRichDocumentEditor::GetImageInfo(const RichDocPosition& image, float& widthPt, float& heightPt,
+                                        std::string& altText, int& mediaIndex) const {
+    if (image.blockIndex < 0 || image.blockIndex >= GetBlockCount()) return false;
+    const RichDocBlock& block = doc->blocks[static_cast<size_t>(image.blockIndex)];
+    if (!image.InCell() && block.type == RichBlockType::Image) {
+        widthPt = block.imageWidthPt;
+        heightPt = block.imageHeightPt;
+        altText = block.imageAltText;
+        mediaIndex = block.mediaIndex;
+        return true;
+    }
+    const std::vector<RichTextRun>* runs = RunsAt(image);
+    if (!runs) return false;
+    const RichTextRun* run = ImageRunAt(*runs, image.byteOffset);
+    if (!run) return false;
+    widthPt = run->imageWidthPt;
+    heightPt = run->imageHeightPt;
+    altText = run->imageAltText;
+    mediaIndex = run->mediaIndex;
+    return true;
+}
+
+bool UCRichDocumentEditor::SetImageSize(const RichDocPosition& image, float widthPt, float heightPt) {
+    if (!(widthPt > 0.0f) || !(heightPt > 0.0f) || !IsImageAt(image)) return false;
+    {
+        EditScope scope(*this, image.blockIndex, 1);
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(image.blockIndex)];
+        if (!image.InCell() && block.type == RichBlockType::Image) {
+            block.imageWidthPt = widthPt;
+            block.imageHeightPt = heightPt;
+        } else {
+            RichTextRun* run = const_cast<RichTextRun*>(ImageRunAt(*MutableRunsAt(image), image.byteOffset));
+            run->imageWidthPt = widthPt;
+            run->imageHeightPt = heightPt;
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SetImageAltText(const RichDocPosition& image, const std::string& altText) {
+    if (!IsImageAt(image)) return false;
+    {
+        EditScope scope(*this, image.blockIndex, 1);
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(image.blockIndex)];
+        if (!image.InCell() && block.type == RichBlockType::Image) {
+            block.imageAltText = altText;
+        } else {
+            RichTextRun* run = const_cast<RichTextRun*>(ImageRunAt(*MutableRunsAt(image), image.byteOffset));
+            run->imageAltText = altText;
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
 bool UCRichDocumentEditor::InsertField(RichTextRun::Field field) {
     if (field == RichTextRun::Field::Plain) return false;
     if (!IsTextContainer(caret)) return false;

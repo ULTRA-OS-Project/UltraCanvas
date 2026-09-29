@@ -459,6 +459,43 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
     items.push_back(MenuItemData::ActionWithShortcut("Select All", "Ctrl+A",
         [this]() { OnEditSelectAll(); }));
 
+    // A right-clicked picture is selected by the element before this runs, so
+    // its items apply to the picture under the pointer.
+    if (richEdit && richEdit->HasSelectedImage()) {
+        items.push_back(MenuItemData::Separator());
+        MenuItemData altText = MenuItemData::Action("Picture Alt Text...", [this]() {
+            UltraCanvasRichTextEdit* edit = GetActiveRichEdit();
+            if (!edit || !edit->HasSelectedImage()) return;
+            UltraCanvasDialogManager::ShowInputDialog(
+                "Describe the picture for readers who cannot see it:", "Alt Text",
+                edit->GetSelectedImageAltText(), InputType::Text,
+                [this](DialogResult result, const std::string& text) {
+                    if (result != DialogResult::OK) return;
+                    if (UltraCanvasRichTextEdit* target = GetActiveRichEdit()) target->SetSelectedImageAltText(text);
+                },
+                GetWindow());
+        });
+        altText.enabled = editable;
+        items.push_back(std::move(altText));
+        MenuItemData original = MenuItemData::Action("Picture Original Size", [this]() {
+            UltraCanvasRichTextEdit* edit = GetActiveRichEdit();
+            if (!edit || !edit->HasSelectedImage()) return;
+            // The picture's own pixels at 96 DPI, which is how it was inserted.
+            const RichDocPosition image = edit->GetSelectedImage();
+            float w = 0, h = 0;
+            std::string alt;
+            int media = -1;
+            if (!edit->GetEditor().GetImageInfo(image, w, h, alt, media) || media < 0) return;
+            const auto& document = edit->GetDocument();
+            if (media >= static_cast<int>(document->media.size())) return;
+            int pw = 0, ph = 0;
+            if (!UCRichDocument::SniffImagePixelSize(document->media[static_cast<size_t>(media)].data, pw, ph)) return;
+            edit->SetSelectedImageSize(static_cast<float>(pw) * 72.0f / 96.0f, static_cast<float>(ph) * 72.0f / 96.0f);
+        });
+        original.enabled = editable;
+        items.push_back(std::move(original));
+    }
+
     // Table items only where there is a table: offered in every document they
     // would be a menu full of things that cannot be done.
     if (richEdit && richEdit->IsCaretInTable()) {
@@ -516,6 +553,9 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildTableMenuItems() {
            run(&UltraCanvasRichTextEdit::DeleteCurrentColumn));
     items.push_back(MenuItemData::Separator());
     // Merging needs somewhere to merge into; splitting needs something merged.
+    // A block of cells selected by dragging merges in one go.
+    action("Merge Selected Cells", run(&UltraCanvasRichTextEdit::MergeSelectedCells),
+           richEdit->HasCellSelection());
     action("Merge With Cell Right", run(&UltraCanvasRichTextEdit::MergeWithCellRight),
            column + 1 < columns);
     action("Merge With Cell Below", run(&UltraCanvasRichTextEdit::MergeWithCellBelow),

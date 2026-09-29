@@ -6,6 +6,13 @@
   greyed out there, because the document model had no check list; it now
   turns the paragraphs into check list items, whose boxes tick on a click.
   See `Docs/UltraCanvas/changelog.d/rich-text-edit-gaps.md`.
+- **Word-processing tabs: pictures, tables and typing.** A picture can be
+  clicked and resized by its handles, and its right-click menu has *Picture
+  Alt Text...* and *Picture Original Size*. Dragging across table cells
+  selects them, and *Table > Merge Selected Cells* merges them. Selected text
+  can be dragged to move it (Ctrl to copy), and picture files dropped on the
+  document are inserted there. Typing gets curly quotes, dashes and lists
+  from `1. ` / `- ` as in a word processor.
 
 #### 2026-09-28 *1.52*
 - **The version is in the window title** — `UltraTexter 1.52` — so a screenshot or a

@@ -340,6 +340,19 @@ public:
                           const std::vector<uint8_t>& data,
                           const std::string& altText = "");
     void DeleteBlock(int blockIndex);
+
+    // ===== PICTURES =====
+    // A picture is addressed by where it sits: an Image block by {block, 0},
+    // a picture in the line by the offset of its placeholder in its
+    // container. These return false when nothing is there.
+    bool IsImageAt(const RichDocPosition& image) const;
+    // Its size in points (0 = its own pixel size), its alt text and media.
+    bool GetImageInfo(const RichDocPosition& image, float& widthPt, float& heightPt,
+                      std::string& altText, int& mediaIndex) const;
+    // Resizes it, one undo step. Sizes <= 0 are refused.
+    bool SetImageSize(const RichDocPosition& image, float widthPt, float heightPt);
+    // Sets the description a screen reader or a text export gives for it.
+    bool SetImageAltText(const RichDocPosition& image, const std::string& altText);
     // Inserts a page number (Field::PageNumber) or page count field at the
     // caret. Its text is a placeholder until a paged view numbers it.
     bool InsertField(RichTextRun::Field field);

@@ -60,3 +60,9 @@
 - `UltraCanvasRichTextEdit::InsertImageFromFile` / `InsertInlineImageFromFile`
   opened the path with `std::ifstream(path)`, which on Windows reads a UTF-8
   name through the ANSI code page; they go through `PathFromUtf8` now.
+- **Pictures in the rich text element can be selected, resized and
+  described.** A click selects a picture (frame and eight handles); dragging a
+  corner resizes it in proportion, a side stretches it, as one undo step.
+  `HasSelectedImage`, `SelectImage`, `SetSelectedImageSize`,
+  `Get/SetSelectedImageAltText` on the element; `IsImageAt`, `GetImageInfo`,
+  `SetImageSize`, `SetImageAltText` on the editing core.

@@ -16,6 +16,7 @@
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -1007,6 +1008,53 @@ int main() {
             return false;
         }());
         std::filesystem::remove(PathFromUtf8(file));
+    }
+
+    // ===== PICTURES: SELECT, RESIZE, ALT TEXT =====
+    std::cerr << "\n--- Picture resize ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichDocBlock image;
+        image.type = RichBlockType::Image;
+        image.mediaIndex = document->AddMedia("dot.png", "image/png", kDotPng);
+        image.imageWidthPt = 60.0f;       // 80 x 40 px at 96/72
+        image.imageHeightPt = 30.0f;
+        document->blocks.push_back(image);
+        RichDocBlock after;
+        RichTextRun text;
+        text.text = "Below the picture.";
+        after.runs.push_back(text);
+        document->blocks.push_back(after);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 30, 20));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 30, 20));
+        window->UpdateAndRender();
+        TEST("Clicking a picture selects it", edit->HasSelectedImage());
+
+        // Drag the bottom-right handle 40 px to the right: a corner keeps the
+        // proportions, so 80x40 becomes 120x60 px = 90x45 pt.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 88, 48));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 110, 48));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, 128, 48));
+        window->UpdateAndRender();
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 128, 48));
+        window->UpdateAndRender();
+        const RichDocBlock& resized = editor.GetBlock(0);
+        TEST("A corner handle resizes in proportion: " + std::to_string(resized.imageWidthPt) + "x"
+             + std::to_string(resized.imageHeightPt),
+             std::abs(resized.imageWidthPt - 90.0f) < 1.0f && std::abs(resized.imageHeightPt - 45.0f) < 1.0f);
+        TEST("One undo restores the size", edit->Undo() && std::abs(editor.GetBlock(0).imageWidthPt - 60.0f) < 0.01f);
+
+        TEST("Alt text on the selected picture", edit->SelectImage(RichDocPosition(0, 0))
+             && edit->SetSelectedImageAltText("A red dot") && editor.GetBlock(0).imageAltText == "A red dot"
+             && edit->GetSelectedImageAltText() == "A red dot");
+        TEST("Delete removes a selected picture", [&]() {
+            edit->OnEvent(KeyEvent(UCKeys::Delete));
+            window->UpdateAndRender();
+            return editor.GetBlock(0).type != RichBlockType::Image;
+        }());
     }
 
     // ===== PAGE FIELDS IN THE BODY =====

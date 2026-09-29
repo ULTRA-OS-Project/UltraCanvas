@@ -228,6 +228,20 @@ public:
                                      const std::vector<uint8_t>& data,
                                      const std::string& altText = "");
 
+    // ===== PICTURES =====
+    // Clicking a picture selects it: a frame with eight handles is drawn round
+    // it, and dragging a handle resizes it (a corner keeps its proportions).
+    // Delete removes a selected picture, like any selection.
+    bool HasSelectedImage() const;
+    // {block, 0} for an Image block, the placeholder's offset for a picture
+    // in the line (see UCRichDocumentEditor::IsImageAt).
+    RichDocPosition GetSelectedImage() const { return selectedImage; }
+    // Selects the picture at `image`; false when there is none.
+    bool SelectImage(const RichDocPosition& image);
+    bool SetSelectedImageSize(float widthPt, float heightPt);
+    std::string GetSelectedImageAltText() const;
+    bool SetSelectedImageAltText(const std::string& altText);
+
     // ===== TABLES =====
     // Structural table editing, addressed from the caret: a menu item says
     // "insert row below" and means the row the caret is in, so the element
@@ -491,6 +505,17 @@ private:
     // The laid-out cell a position addresses, or null when it is not in one.
     const BlockLayout* CellLayoutFor(const RichDocPosition& pos) const;
 
+    // ===== PICTURES (internal) =====
+    // Every laid-out picture, with its element-local rectangle.
+    void ForEachImage(const std::function<void(const RichDocPosition&, const Rect2Df&)>& visit) const;
+    bool ImageAtPoint(const Point2Df& localPoint, RichDocPosition& outImage, Rect2Df& outRect) const;
+    bool ImageRectFor(const RichDocPosition& image, Rect2Df& outRect) const;
+    // Handle 0..7 (clockwise from the top-left corner) under the point, or -1.
+    int ImageHandleAt(const Rect2Df& imageRect, const Point2Df& localPoint) const;
+    static std::array<Point2Df, 8> ImageHandleCentres(const Rect2Df& rect);
+    Rect2Df ResizedImageRect(const Point2Df& pointer) const;
+    void DrawImageSelection(IRenderContext* ctx);
+
     // ===== HIT TESTING =====
     // Element-local point -> document position. Snaps to the nearest block.
     RichDocPosition PositionFromPoint(const Point2Df& localPoint) const;
@@ -554,6 +579,14 @@ private:
     bool draggingText = false;
     Point2Df dragStartPoint{0, 0};
     RichDocPosition dropPosition;
+    // The selected picture, and a resize in progress.
+    bool imageSelected = false;
+    RichDocPosition selectedImage;
+    RichDocPosition imageSelectionAnchor, imageSelectionCaret;   // what SelectImage set
+    int resizeHandle = -1;
+    Rect2Df resizeStartRect{0, 0, 0, 0};
+    Point2Df resizeStartPoint{0, 0};
+    Rect2Df resizePreview{0, 0, 0, 0};
     bool draggingThumb = false;
     float thumbGrabOffset = 0.0f;
     Rect2Df thumbRect{0, 0, 0, 0};

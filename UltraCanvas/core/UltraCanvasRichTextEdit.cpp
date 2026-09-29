@@ -1291,6 +1291,7 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
         RenderBlock(ctx, i, bl);
     }
     DrawSpellErrorMarks(ctx);
+    DrawImageSelection(ctx);
     if (draggingText) {
         // Where the dragged text will land: a caret-shaped mark.
         const Rect2Df drop = PositionRect(dropPosition);
@@ -1604,6 +1605,8 @@ void UltraCanvasRichTextEdit::DrawSelectionForNonTextBlock(IRenderContext* ctx, 
     // Blocks with no text cannot carry a selection attribute, so a selection
     // that swallows one is shown as a translucent wash over its box.
     if (!editor.HasSelection()) return;
+    // A selected picture shows its frame and handles instead.
+    if (HasSelectedImage() && !selectedImage.InCell() && selectedImage.blockIndex == blockIndex) return;
     RichDocRange range = editor.GetSelectionRange();
     RichDocPosition here(blockIndex, 0);
     if (here < range.start || !(here < range.end)) return;
@@ -1649,6 +1652,177 @@ void UltraCanvasRichTextEdit::UpdateCaret() {
                          static_cast<int>(windowPos.y + rect.y),
                          2, static_cast<int>(std::max(4.0f, rect.height)));
     caret.Show(this, rectInWindow, style.cursorColor);
+}
+
+// ===== PICTURES =====
+
+void UltraCanvasRichTextEdit::ForEachImage(
+        const std::function<void(const RichDocPosition&, const Rect2Df&)>& visit) const {
+    const auto& blocks = editor.GetDocument()->blocks;
+    auto inlineImages = [&](const BlockLayout& layout, float originX, float originY, RichDocPosition at) {
+        if (!layout.layout) return;
+        for (const BlockLayout::InlineImage& placed : layout.inlineImages) {
+            if (placed.math) continue;
+            const Rect2Di box = layout.layout->IndexToPos(placed.byteOffset);
+            at.byteOffset = placed.byteOffset;
+            visit(at, Rect2Df(originX + static_cast<float>(box.x), originY + static_cast<float>(box.y),
+                              placed.width, placed.height));
+        }
+    };
+    for (size_t i = 0; i < blockLayouts.size() && i < blocks.size(); i++) {
+        const BlockLayout& bl = blockLayouts[i];
+        if (!bl.valid) continue;
+        const float top = visibleArea.y + bl.bounds.y - scrollOffset;
+        if (top > visibleArea.y + visibleArea.height || top + bl.bounds.height < visibleArea.y) continue;
+        const int index = static_cast<int>(i);
+        if (blocks[i].type == RichBlockType::Image) {
+            visit(RichDocPosition(index, 0), Rect2Df(ColumnLeft() + bl.textLeft, top, bl.bounds.width, bl.bounds.height));
+            continue;
+        }
+        inlineImages(bl, ColumnLeft() + bl.textLeft, top, RichDocPosition(index, 0));
+        for (size_t c = 0; c < bl.cells.size(); c++) {
+            const BlockLayout& cell = *bl.cells[c];
+            inlineImages(cell, ColumnLeft() + cell.bounds.x + cell.textLeft, top + cell.bounds.y + cell.textTop,
+                         RichDocPosition(index, bl.cellRows[c], bl.cellColumns[c], 0));
+        }
+    }
+}
+
+bool UltraCanvasRichTextEdit::ImageAtPoint(const Point2Df& localPoint, RichDocPosition& outImage,
+                                           Rect2Df& outRect) const {
+    bool found = false;
+    ForEachImage([&](const RichDocPosition& at, const Rect2Df& rect) {
+        if (found) return;
+        if (localPoint.x >= rect.x && localPoint.x <= rect.x + rect.width
+            && localPoint.y >= rect.y && localPoint.y <= rect.y + rect.height) {
+            outImage = at;
+            outRect = rect;
+            found = true;
+        }
+    });
+    return found;
+}
+
+bool UltraCanvasRichTextEdit::ImageRectFor(const RichDocPosition& image, Rect2Df& outRect) const {
+    bool found = false;
+    ForEachImage([&](const RichDocPosition& at, const Rect2Df& rect) {
+        if (!found && at == image) {
+            outRect = rect;
+            found = true;
+        }
+    });
+    return found;
+}
+
+std::array<Point2Df, 8> UltraCanvasRichTextEdit::ImageHandleCentres(const Rect2Df& r) {
+    const float cx = r.x + r.width * 0.5f, cy = r.y + r.height * 0.5f;
+    const float right = r.x + r.width, bottom = r.y + r.height;
+    return {Point2Df(r.x, r.y), Point2Df(cx, r.y), Point2Df(right, r.y), Point2Df(right, cy),
+            Point2Df(right, bottom), Point2Df(cx, bottom), Point2Df(r.x, bottom), Point2Df(r.x, cy)};
+}
+
+int UltraCanvasRichTextEdit::ImageHandleAt(const Rect2Df& imageRect, const Point2Df& p) const {
+    const std::array<Point2Df, 8> centres = ImageHandleCentres(imageRect);
+    for (int i = 0; i < 8; i++) {
+        if (std::abs(p.x - centres[static_cast<size_t>(i)].x) <= 6.0f
+            && std::abs(p.y - centres[static_cast<size_t>(i)].y) <= 6.0f) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// The picture's rectangle while handle `resizeHandle` is dragged to
+// `pointer`: the opposite side stays put; a corner keeps the proportions.
+Rect2Df UltraCanvasRichTextEdit::ResizedImageRect(const Point2Df& pointer) const {
+    const Rect2Df& r = resizeStartRect;
+    float left = r.x, top = r.y, right = r.x + r.width, bottom = r.y + r.height;
+    const float dx = pointer.x - resizeStartPoint.x, dy = pointer.y - resizeStartPoint.y;
+    const int h = resizeHandle;
+    const bool west = h == 0 || h == 6 || h == 7, east = h == 2 || h == 3 || h == 4;
+    const bool north = h == 0 || h == 1 || h == 2, south = h == 4 || h == 5 || h == 6;
+    if (west) left += dx;
+    if (east) right += dx;
+    if (north) top += dy;
+    if (south) bottom += dy;
+    const float minimum = 8.0f;
+    float width = std::max(minimum, right - left);
+    float height = std::max(minimum, bottom - top);
+    width = std::min(width, std::max(minimum, ColumnWidth()));
+    const bool corner = (west || east) && (north || south);
+    if (corner && r.width > 0.0f && r.height > 0.0f) {
+        // The larger of the two changes decides; the other follows it.
+        const float scale = std::max(width / r.width, height / r.height);
+        width = std::min(std::max(minimum, r.width * scale), std::max(minimum, ColumnWidth()));
+        height = std::max(minimum, width * r.height / r.width);
+    }
+    const float x = west ? r.x + r.width - width : r.x;
+    const float y = north ? r.y + r.height - height : r.y;
+    return Rect2Df(x, y, width, height);
+}
+
+bool UltraCanvasRichTextEdit::HasSelectedImage() const {
+    return imageSelected && editor.GetAnchor() == imageSelectionAnchor && editor.GetCaret() == imageSelectionCaret
+        && editor.IsImageAt(selectedImage);
+}
+
+bool UltraCanvasRichTextEdit::SelectImage(const RichDocPosition& image) {
+    if (!editor.IsImageAt(image)) return false;
+    if (!image.InCell() && editor.GetBlock(image.blockIndex).type == RichBlockType::Image) {
+        // The block, up to the start of what follows it (so Delete removes it).
+        RichDocPosition next(image.blockIndex, 0);
+        if (image.blockIndex + 1 < editor.GetBlockCount()) next = RichDocPosition(image.blockIndex + 1, 0);
+        editor.SetSelection(image, next);
+    } else {
+        RichDocPosition end = image;
+        end.byteOffset += static_cast<int>(std::string(RichTextRun::kObjectReplacement).size());
+        editor.SetSelection(image, end);
+    }
+    selectedImage = image;
+    imageSelectionAnchor = editor.GetAnchor();
+    imageSelectionCaret = editor.GetCaret();
+    imageSelected = true;
+    editor.BreakUndoCoalescing();
+    AfterSelectionChange();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::SetSelectedImageSize(float widthPt, float heightPt) {
+    if (readOnly || !HasSelectedImage()) return false;
+    if (!editor.SetImageSize(selectedImage, widthPt, heightPt)) return false;
+    AfterEdit();
+    return true;
+}
+
+std::string UltraCanvasRichTextEdit::GetSelectedImageAltText() const {
+    float w = 0, h = 0;
+    int media = -1;
+    std::string alt;
+    if (HasSelectedImage()) editor.GetImageInfo(selectedImage, w, h, alt, media);
+    return alt;
+}
+
+bool UltraCanvasRichTextEdit::SetSelectedImageAltText(const std::string& altText) {
+    if (readOnly || !HasSelectedImage()) return false;
+    if (!editor.SetImageAltText(selectedImage, altText)) return false;
+    AfterEdit();
+    return true;
+}
+
+void UltraCanvasRichTextEdit::DrawImageSelection(IRenderContext* ctx) {
+    if (!HasSelectedImage()) return;
+    Rect2Df rect;
+    if (resizeHandle >= 0) {
+        rect = resizePreview;
+    } else if (!ImageRectFor(selectedImage, rect)) {
+        return;
+    }
+    const Color frame(40, 110, 220);
+    ctx->DrawFilledRectangle(Rect2Dd(rect.x, rect.y, rect.width, rect.height), Colors::Transparent, 1.0f, frame);
+    if (readOnly) return;
+    for (const Point2Df& c : ImageHandleCentres(rect)) {
+        ctx->DrawFilledRectangle(Rect2Dd(c.x - 3.5, c.y - 3.5, 7.0, 7.0), Colors::White, 1.0f, frame);
+    }
 }
 
 // ===== HIT TESTING =====
@@ -2349,6 +2523,15 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
         // that Paste lands where the user clicked. The hit test runs before
         // either, while the layouts still describe what was on screen.
         const RichDocPosition hit = PositionFromPoint(event.pointer);
+        // A right-click on a picture selects it, so a host menu can offer
+        // what applies to a picture (alt text, size).
+        {
+            RichDocPosition image;
+            Rect2Df rect;
+            if (ImageAtPoint(event.pointer, image, rect) && !(HasSelectedImage() && selectedImage == image)) {
+                SelectImage(image);
+            }
+        }
         const bool insideSelection =
             editor.HasSelection() && editor.GetSelectionRange().Contains(hit);
 
@@ -2373,6 +2556,29 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
         return true;
     }
     if (!IsFocused()) SetFocus(true);
+
+    if (!readOnly && HasSelectedImage()) {
+        Rect2Df rect;
+        if (ImageRectFor(selectedImage, rect)) {
+            const int handle = ImageHandleAt(rect, event.pointer);
+            if (handle >= 0) {
+                resizeHandle = handle;
+                resizeStartRect = rect;
+                resizeStartPoint = event.pointer;
+                resizePreview = rect;
+                UltraCanvasApplication::GetInstance()->CaptureMouse(this);
+                return true;
+            }
+        }
+    }
+    {
+        RichDocPosition image;
+        Rect2Df rect;
+        if (!event.shift && ImageAtPoint(event.pointer, image, rect)) {
+            SelectImage(image);
+            return true;
+        }
+    }
 
     if (!readOnly) {
         const int box = CheckboxAtPoint(event.pointer);
@@ -2409,6 +2615,20 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
 }
 
 bool UltraCanvasRichTextEdit::HandleMouseUp(const UCEvent& event) {
+    if (resizeHandle >= 0) {
+        const Rect2Df rect = ResizedImageRect(event.pointer);
+        resizeHandle = -1;
+        UltraCanvasApplication::GetInstance()->ReleaseMouse();
+        const RichDocPosition image = selectedImage;
+        if (std::abs(rect.width - resizeStartRect.width) >= 1.0f
+            || std::abs(rect.height - resizeStartRect.height) >= 1.0f) {
+            if (editor.SetImageSize(image, rect.width / kPixelsPerPoint, rect.height / kPixelsPerPoint)) {
+                AfterEdit();
+            }
+        }
+        RequestRedraw();
+        return true;
+    }
     if (dragArmed) {
         dragArmed = false;
         UltraCanvasApplication::GetInstance()->ReleaseMouse();
@@ -2449,6 +2669,21 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
         thumbY = std::max(0.0f, std::min(thumbY, travel));
         SetScrollOffset((thumbY / travel) * maxScroll);
         return true;
+    }
+    if (resizeHandle >= 0) {
+        resizePreview = ResizedImageRect(event.pointer);
+        RequestRedraw();
+        return true;
+    }
+    // Over a selected picture's handle, the cursor says which way it resizes.
+    if (!selecting && HasSelectedImage() && !readOnly) {
+        Rect2Df rect;
+        int handle = -1;
+        if (ImageRectFor(selectedImage, rect)) handle = ImageHandleAt(rect, event.pointer);
+        static const UCMouseCursor cursors[8] = {
+            UCMouseCursor::SizeNWSE, UCMouseCursor::SizeNS, UCMouseCursor::SizeNESW, UCMouseCursor::SizeWE,
+            UCMouseCursor::SizeNWSE, UCMouseCursor::SizeNS, UCMouseCursor::SizeNESW, UCMouseCursor::SizeWE};
+        SetMouseCursor(handle >= 0 ? cursors[handle] : UCMouseCursor::Text);
     }
     if (dragArmed) {
         const float dx = static_cast<float>(event.pointer.x) - dragStartPoint.x;

@@ -43872,6 +43872,25 @@ into a cell keeps them in the cell, a line each. Extending a selection out of
 a table stops at its edge; extending one into a table from outside takes the
 whole table.
 
+### Pictures: selecting, resizing, alt text
+
+A click on a picture - a paragraph of its own or one in the line - selects it:
+a frame with eight handles is drawn round it. Dragging a corner handle resizes
+it in proportion, a side handle stretches it; release commits the size as one
+undo step (`imageWidthPt` / `imageHeightPt`, never wider than the column).
+Delete removes a selected picture. A right-click selects the picture under the
+pointer first, so a host's context menu can offer picture items.
+
+```cpp
+if (editor->HasSelectedImage()) {
+    editor->SetSelectedImageAltText("Quarterly revenue by region");
+    editor->SetSelectedImageSize(/*widthPt*/ 240, /*heightPt*/ 160);
+}
+editor->SelectImage(RichDocPosition(imageBlock, 0));
+// Editing core: pictures are addressed by where they sit.
+edit.GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
+```
+
 ### Check lists
 
 ```cpp
@@ -44195,7 +44214,6 @@ Honest limits of this first version — none of them silently misbehave:
   them.
 - **No zoom and no horizontal scrolling.** A page wider than the element is
   cut at the right.
-- **Images are not resized interactively** (insert and delete work).
 - **No pre-edit (IME composition) display.** Committed text arrives correctly;
   an inline composition string needs an event the framework does not have yet
   (the same limit applies to every text widget today).
