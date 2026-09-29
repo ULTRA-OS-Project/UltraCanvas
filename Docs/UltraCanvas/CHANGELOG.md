@@ -1,3 +1,36 @@
+#### 2026-09-29 *0.9.87*
+- **Every application's signal handler calls
+  `UltraCanvasApplicationBase::RequestExitFromSignal()`.** ArtCreator,
+  DeviceExplorer, Texter, UltraAI, UltraAuthenticator, UltraCleaner and the
+  demo application still called `RequestExit()` (which logs and runs a
+  callback) and `std::exit` from the handler, running the static
+  destructors under live threads. Each handler is now the one call, and
+  the main loop turns it into an orderly exit: `Run` returns and `main`
+  shuts down as on a closed window. The `g_app` globals the handlers
+  needed are gone.
+- **`UltraCanvasListView` checks its scrollbar before it paints.** The
+  scrollbar's range, visibility and bounds were computed only when the
+  model changed or the element was arranged; a paint that came between
+  the two (a model that grew while the element was still at an old size)
+  drew the rows with no scrollbar until the next arrange. `Render` now
+  recomputes what `UpdateScrollbar` would give for the current rows and
+  bounds, and when the scrollbar disagrees it logs one
+  `scrollbar was stale at paint` line to the debug stream and refreshes it
+  before drawing. `GetScrollMetrics()` returns the same numbers (rows, row
+  height, content and viewport height, range, offset, whether the scrollbar
+  shows and where) for diagnostics and tests.
+- **Windows: the kernel network ETW source names a process it cannot
+  open.** It reported `pid 4720` for every process that refused
+  `OpenProcess`, while the socket-table backend already named the same
+  process from the Toolhelp process list. The list is now one table
+  (`UltraCanvasWindowsProcessNames.h`, internal to `OS/MSWindows`): the
+  backend refreshes it with every snapshot, and the event source reads it
+  for each event, refreshing on a miss at most every two seconds, so a
+  connect event from the antivirus proxy reads `AvastSvc` like its row.
+  The registry completes the rest: an event whose source knew only the PID
+  (an empty executable path) takes the socket table's identity for that
+  PID - name, path and user - when the table has the socket.
+
 #### 2026-09-29 *0.9.86*
 - **GutenPrint printed only the first page of every multi-page job.** The CUPS
   raster writer that feeds GutenPrint's filter put its `RaS3` sync word before
