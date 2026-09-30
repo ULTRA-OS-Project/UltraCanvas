@@ -448,6 +448,29 @@ else()
     message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXT METRICS SCREENSHOT TEST =====
+# Cap-height centring, level indicators, crisp 1px borders and a caret that
+# spans the text's line box, read back from the composited pixels. It is also
+# the screenshot fixture for that change: ULTRACANVAS_SCREENSHOT_DIR=<dir>
+# makes it write the window as PPM files. Skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextMetricsScreenshotTest...")
+    add_executable(TextMetricsScreenshotTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextMetricsScreenshotTest.cpp
+    )
+    target_include_directories(TextMetricsScreenshotTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextMetricsScreenshotTest PRIVATE cxx_std_20)
+    target_link_libraries(TextMetricsScreenshotTest PRIVATE UltraCanvas)
+    set_target_properties(TextMetricsScreenshotTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextMetricsScreenshotTest COMMAND TextMetricsScreenshotTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextMetricsScreenshotTest")
+else()
+    message(STATUS "  TextMetricsScreenshotTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== ULTRATEXTER MARKDOWN SPELL RANGE TEST =====
 # The scanner that keeps fenced code, link targets and math out of UltraTexter's
 # spell check has no framework or editor dependency, so the test builds from
