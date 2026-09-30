@@ -41,7 +41,12 @@ if (photo.success) {
 ### Typed Object Loaders
 
 Beyond raw bytes, FileLoader can open a file straight into the matching
-UltraCanvas object through the native file dialog:
+UltraCanvas object through a file dialog. Every FileLoader dialog (open,
+open multiple, save, select folder) follows
+`UltraCanvasDialogManager::SetUseNativeDialogs`: the platform's picker when
+it is on, the framework's `UltraCanvasFileDialog` when it is off (the
+default). A native picker blocks and runs the callback before the call
+returns; the framework's runs it when the dialog closes.
 
 ```cpp
 // Decode an image into a UCImage

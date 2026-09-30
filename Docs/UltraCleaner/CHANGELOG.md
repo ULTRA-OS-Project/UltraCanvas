@@ -30,9 +30,9 @@
   the results dialog was not. `main.cpp` now leaves native dialogs off and
   all of them share one style. The photo-folder picker included: it is the
   framework's file dialog in its folder mode, opening on the folder chosen
-  last time, else the user's Pictures folder.
-  (`UltraCanvasFileLoader::SelectFolderDialog` opens the platform's picker
-  whatever the flag says, so the window builds the dialog itself.)
+  last time, else the user's Pictures folder. (Needs the framework change
+  that makes `UltraCanvasFileLoader`'s dialogs honour the setting; see the
+  framework changelog.)
 
 #### 2026-09-29 *0.56*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called
