@@ -1,3 +1,20 @@
+#### 2026-09-30 *0.2.5*
+- **A QR code can be read from an image file or from the screen.** The scan
+  dialog has two buttons beside Cancel. *From image…* opens a picture — the
+  QR the site offered to download, a photo copied off a phone — and decodes
+  it; the file is read by the scanner only, never copied, thumbnailed or
+  added to the recent-files list. *From screen* decodes whatever a browser
+  window on this same machine is showing, which is the common desktop case:
+  the enrolment page and the authenticator share one display and no camera
+  can see either. The capture stays in memory (the framework's new
+  `UltraCanvasDesktopShell::CaptureScreenImage`; the PNG-writing
+  `CaptureScreen` would have put the seed in the Pictures folder) and is
+  wiped as soon as it has been decoded. All three sources hand the URI to
+  the same handler as before, so nothing bypasses the parser, and both new
+  ones work when there is no camera or its access was refused — the status
+  line now says so instead of sending the user to the setup key. A rejected
+  code re-opens the camera only if one had opened in the first place.
+
 #### 2026-09-29 *0.2.4*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called
   `RequestExit()` (which logs and runs a callback) and then `std::exit`,
