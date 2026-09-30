@@ -9,15 +9,17 @@
 //
 // Async path without c-ares: a detached thread runs the sync resolver. Fine
 // for typical app workloads; the curl_multi worker is reserved for HTTP.
-// Version: 0.3.0 - per-call name servers (UltraNetDnsOptions)
+// Version: 0.3.1 - the reverse lookup honours the deadline and per-call servers
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetDns.h"
 #include "UltraNetDnsImpl.h"
 
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -156,30 +158,33 @@ UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
     }
     const int timeoutMs = options.timeoutMs > 0 ? options.timeoutMs : 5000;
 
+    // PTR takes an address, and the reverse lookup owns that path - the
+    // deadline, the servers, the hosts file - so it is one call whichever
+    // backend and whatever the options.
+    if (type == UltraNetDnsType::PTR) {
+        std::string host;
+        UltraNetResult r = UltraNet_DnsReverseLookup(hostname, host, options);
+        if (r) outAddresses.push_back(host);
+        return r;
+    }
+
     // ---- A lookup with servers of its own ---------------------------------
-    // Bypasses the cache and the getaddrinfo / getnameinfo paths, which have
-    // no way to name a server: everything goes to the platform backend, PTR
-    // as a query for the reverse name.
+    // Bypasses the cache and the getaddrinfo path, which has no way to name a
+    // server: everything goes to the platform backend.
     if (!options.servers.empty()) {
         if (UltraNetResult v = ValidateServers(options.servers); !v) return v;
-        std::string name = hostname;
-        if (type == UltraNetDnsType::PTR && !UltraNet_DnsReverseName(hostname, name)) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                                         "not a valid IPv4/IPv6 address");
-        }
-        return ultranet_dns_platform::Resolve(name, type, outAddresses,
+        return ultranet_dns_platform::Resolve(hostname, type, outAddresses,
                                               timeoutMs, options.servers);
     }
     // Never destroyed: detached async lookups can still run at exit.
     static const std::vector<std::string>& kNoServers = *new std::vector<std::string>;
 
 #ifdef ULTRANET_HAS_CARES
-    // c-ares handles every record type uniformly (including PTR — but the
-    // caller-facing reverse-lookup API takes an IP, so PTR still flows
-    // through UltraNet_DnsReverseLookup for that ergonomics). Route every
-    // forward query through the c-ares Resolve() implementation; the
-    // per-platform libresolv / dnsapi path becomes unused.
-    if (type != UltraNetDnsType::PTR) {
+    // c-ares handles every forward record type uniformly (PTR went to the
+    // reverse lookup above, whose getnameinfo path also reads the hosts
+    // file). Route every forward query through the c-ares Resolve()
+    // implementation; the per-platform libresolv / dnsapi path is unused.
+    {
         const std::string cacheKey =
             std::string{DnsTypeName(type)} + "|" + hostname;
         if (LookupCache(cacheKey, outAddresses)) {
@@ -192,12 +197,6 @@ UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
     }
 #endif
 
-    if (type == UltraNetDnsType::PTR) {
-        std::string host;
-        UltraNetResult r = UltraNet_DnsReverseLookup(hostname, host, timeoutMs);
-        if (r) outAddresses.push_back(host);
-        return r;
-    }
     if (type != UltraNetDnsType::A && type != UltraNetDnsType::AAAA) {
         const std::string cacheKey =
             std::string{DnsTypeName(type)} + "|" + hostname;
@@ -286,14 +285,68 @@ UltraNetResult UltraNet_DnsResolveAsync(
 
 UltraNetResult UltraNet_DnsReverseLookup(const std::string& ipAddress,
                                          std::string& outHostname,
-                                         int /*timeoutMs*/) {
-    // getnameinfo has no deadline and no server of its own; a caller that
-    // needs either asks for a PTR through UltraNet_DnsResolve with options.
+                                         int timeoutMs) {
+    UltraNetDnsOptions options;
+    options.timeoutMs = timeoutMs;
+    return UltraNet_DnsReverseLookup(ipAddress, outHostname, options);
+}
+
+namespace {
+
+// getnameinfo has no deadline of its own, so it runs on a thread that owns
+// its state; the caller waits up to the deadline and then walks away. The
+// thread finishes on its own and frees the state - it never writes into the
+// caller's frame, which may be long gone by then.
+struct ReverseLookupState {
+    std::mutex              mu;
+    std::condition_variable cv;
+    bool                    done = false;
+    int                     rc   = 0;
+    std::string             host;
+};
+
+UltraNetResult ReverseLookupSystem(const sockaddr* sa, socklen_t sal, int timeoutMs,
+                                   std::string& outHostname) {
+    auto state = std::make_shared<ReverseLookupState>();
+    // A copy of the address for the thread: the caller's sockaddr is a local.
+    std::vector<unsigned char> address(reinterpret_cast<const unsigned char*>(sa),
+                                       reinterpret_cast<const unsigned char*>(sa) + sal);
+    std::thread([state, address, sal]() {
+        char host[NI_MAXHOST]{};
+        const int rc = ::getnameinfo(reinterpret_cast<const sockaddr*>(address.data()), sal,
+                                     host, sizeof host, nullptr, 0, NI_NAMEREQD);
+        std::lock_guard<std::mutex> lk(state->mu);
+        state->rc   = rc;
+        state->host = host;
+        state->done = true;
+        state->cv.notify_all();
+    }).detach();
+
+    std::unique_lock<std::mutex> lk(state->mu);
+    if (!state->cv.wait_for(lk, std::chrono::milliseconds(timeoutMs),
+                            [&] { return state->done; })) {
+        return UltraNetResult::Error(UltraNetResultCode::Timeout,
+                                     "reverse lookup timed out");
+    }
+    if (state->rc != 0) {
+        return UltraNetResult::Error(UltraNetResultCode::HostNotFound,
+                                     gai_strerror(state->rc));
+    }
+    outHostname = state->host;
+    return UltraNetResult::Ok();
+}
+
+} // namespace
+
+UltraNetResult UltraNet_DnsReverseLookup(const std::string& ipAddress,
+                                         std::string& outHostname,
+                                         const UltraNetDnsOptions& options) {
     outHostname.clear();
     if (ipAddress.empty()) {
         return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
                                      "ipAddress is empty");
     }
+    const int timeoutMs = options.timeoutMs > 0 ? options.timeoutMs : 5000;
 
     sockaddr_in  v4{};
     sockaddr_in6 v6{};
@@ -313,14 +366,26 @@ UltraNetResult UltraNet_DnsReverseLookup(const std::string& ipAddress,
                                      "not a valid IPv4/IPv6 address");
     }
 
-    char host[NI_MAXHOST]{};
-    int rc = ::getnameinfo(sa, sal, host, sizeof host, nullptr, 0, NI_NAMEREQD);
-    if (rc != 0) {
-        return UltraNetResult::Error(UltraNetResultCode::HostNotFound,
-                                     gai_strerror(rc));
+    // Servers of its own: a PTR query for the reverse name at those servers,
+    // through the platform backend, which honours the deadline itself.
+    if (!options.servers.empty()) {
+        if (UltraNetResult v = ValidateServers(options.servers); !v) return v;
+        std::string reverseName;
+        UltraNet_DnsReverseName(ipAddress, reverseName);   // an address: cannot fail here
+        std::vector<std::string> names;
+        UltraNetResult r = ultranet_dns_platform::Resolve(
+            reverseName, UltraNetDnsType::PTR, names, timeoutMs, options.servers);
+        if (r && names.empty()) {
+            return UltraNetResult::Error(UltraNetResultCode::HostNotFound,
+                                         "no PTR record for " + reverseName);
+        }
+        if (r) outHostname = names.front();
+        return r;
     }
-    outHostname.assign(host);
-    return UltraNetResult::Ok();
+
+    // The system's resolver, which also answers from the hosts file, under
+    // the deadline.
+    return ReverseLookupSystem(sa, sal, timeoutMs, outHostname);
 }
 
 bool UltraNet_DnsParseServer(const std::string& spec,

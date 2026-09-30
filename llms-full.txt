@@ -1197,9 +1197,10 @@ future.
   Google Drive
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
-- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync` (each also with an
-  `UltraNetDnsOptions` - the name servers to ask for that call only, and the
-  deadline), `UltraNet_DnsReverseLookup`, `UltraNet_DnsClearCache`,
+- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
+  (each also with an `UltraNetDnsOptions` - the name servers to ask for that
+  call only, and the deadline; the reverse lookup without servers is the
+  system resolver under the deadline), `UltraNet_DnsClearCache`,
   `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
 - `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
@@ -68771,6 +68772,12 @@ options.servers   = {"9.9.9.9", "[2620:fe::fe]:53"};
 options.timeoutMs = 2000;
 std::vector<std::string> a;
 UltraNet_DnsResolve("example.com", a, UltraNetDnsType::A, options);
+
+// The reverse lookup takes the same options. Without servers it is the
+// system resolver (hosts file included) under the deadline; with servers it
+// is a PTR query for the address's reverse name at those servers.
+std::string host;
+UltraNet_DnsReverseLookup("9.9.9.9", host, options);
 ```
 
 ```cpp
