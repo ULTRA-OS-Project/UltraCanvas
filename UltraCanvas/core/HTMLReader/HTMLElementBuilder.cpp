@@ -1,8 +1,13 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.3.0 - tables on the CSSLayout table engine (shared columns,
+//                  colspan / rowspan, min/max-content widths, cellspacing,
+//                  valign); inline-block boxes and inline tables sit on the
+//                  line beside their text (mail buttons); an inline around a
+//                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-09-13
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -136,6 +141,16 @@ std::string FormControlText(const Node& e) {
     return std::string();
 }
 
+// The href of the nearest <a href> around `node` (not `node` itself): text
+// and images inside a link's blocks - <a href><div>..</div></a> - are that
+// link too.
+std::string AncestorLink(const Node& node) {
+    for (const Node* p = node.parent; p; p = p->parent) {
+        if (p->IsElement("a") && p->HasAttribute("href")) return p->GetAttribute("href");
+    }
+    return std::string();
+}
+
 bool MarkupHasVisibleText(const std::string& markup) {
     bool inTag = false;
     for (char c : markup) {
@@ -258,7 +273,16 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                                        int listItemIndex) {
     const ComputedStyle& blockStyle = resolver.StyleOf(&element);
 
+    // The current line's inline content. Text and inline elements gather in
+    // `inlineRun` (one label); an inline box (an inline-block button, an
+    // inline table) ends the run, and the runs and boxes of the line collect
+    // in `lineParts` - a line with a box in it is laid out as a wrapping row.
+    struct LinePart {
+        std::vector<Node*> run;
+        Node* box = nullptr;
+    };
     std::vector<Node*> inlineRun;
+    std::vector<LinePart> lineParts;
     bool markerPending = (element.tag == "li");
     int listCounter = 0;
 
@@ -277,6 +301,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         if (spacing > 0.5f) {
             auto spacer = MakeContainer("gap");
             spacer->size.height = CSSLayout::Dimension::Px(spacing);
+            spacer->layoutItem.SetFlexShrink(0.f);
             parent.AddChild(spacer);
         }
         parent.AddChild(std::move(child));
@@ -285,58 +310,115 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         anyFlowChild = true;
     };
 
-    auto flushRun = [&]() {
-        if (inlineRun.empty() && !markerPending) return;
-        std::string marker;
-        if (markerPending) {
-            marker = MarkerText(blockStyle.listMarker, listItemIndex);
-            markerPending = false;
-        }
-        auto label = BuildInlineRun(inlineRun, blockStyle, marker);
-        // Anchors inside the run map to its label; runs that produce no label
-        // (e.g. an empty <a id="..."/> target) fall back to the enclosing
-        // block so #fragment navigation still lands nearby.
+    // Anchors inside a run map to its label; runs that produce no label
+    // (e.g. an empty <a id="..."/> target) fall back to the enclosing
+    // block so #fragment navigation still lands nearby.
+    auto registerRun = [&](const std::vector<Node*>& run,
+                           const std::shared_ptr<UltraCanvasUIElement>& label) {
         std::shared_ptr<UltraCanvasUIElement> anchorTarget = label;
         if (!anchorTarget) {
             anchorTarget = std::static_pointer_cast<UltraCanvasUIElement>(
                 parent.shared_from_this());
         }
-        for (const Node* node : inlineRun) {
+        for (const Node* node : run) {
             RegisterAnchors(*node, anchorTarget, /*deep=*/true);
         }
-        if (label) {
-            addFlowChild(label, 0.f, 0.f);
-        }
-        inlineRun.clear();
     };
 
-    for (const auto& childPtr : element.children) {
-        Node& child = *childPtr;
+    auto flushRun = [&]() {
+        if (lineParts.empty()) {
+            if (inlineRun.empty() && !markerPending) return;
+            std::string marker;
+            if (markerPending) {
+                marker = MarkerText(blockStyle.listMarker, listItemIndex);
+                markerPending = false;
+            }
+            auto label = BuildInlineRun(inlineRun, blockStyle, marker, &element);
+            registerRun(inlineRun, label);
+            if (label) addFlowChild(label, 0.f, 0.f);
+            inlineRun.clear();
+            return;
+        }
 
-        if (child.type == NodeType::Comment) continue;
+        // A line with boxes in it: a wrapping row, placed by text-align, its
+        // items centred on each other (a button beside its caption).
+        if (!inlineRun.empty()) {
+            lineParts.push_back({ inlineRun, nullptr });
+            inlineRun.clear();
+        }
+        auto line = MakeContainer("line");
+        line->size.width = CSSLayout::Dimension::Pct(100.f);
+        CSSLayout::JustifyContent justify = CSSLayout::JustifyContent::FlexStart;
+        if (blockStyle.textAlign == TextAlignMode::Center)     justify = CSSLayout::JustifyContent::Center;
+        else if (blockStyle.textAlign == TextAlignMode::Right) justify = CSSLayout::JustifyContent::FlexEnd;
+        line->layout.SetFlex(CSSLayout::FlexDirection::Row, CSSLayout::FlexWrap::Wrap)
+                    .SetFlexJustifyContent(justify)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+
+        std::string marker;
+        if (markerPending) {
+            marker = MarkerText(blockStyle.listMarker, listItemIndex);
+            markerPending = false;
+        }
+        auto addLabel = [&](const std::vector<Node*>& run) {
+            auto label = BuildInlineRun(run, blockStyle, marker, &element);
+            marker.clear();
+            registerRun(run, label);
+            if (!label) return;
+            // Its own width in the row, wrapping only when the line is full.
+            label->size.width = CSSLayout::Dimension::Auto();
+            label->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+            line->AddChild(label);
+            ++elementCount;
+        };
+        if (!marker.empty() && lineParts.front().box) addLabel({});
+        for (auto& part : lineParts) {
+            if (!part.box) {
+                addLabel(part.run);
+                continue;
+            }
+            if (auto box = BuildInlineBox(*part.box)) {
+                line->AddChild(box);
+                ++elementCount;
+            }
+        }
+        lineParts.clear();
+        if (!line->GetChildren().empty()) addFlowChild(line, 0.f, 0.f);
+    };
+
+    auto addBox = [&](Node& child) {
+        if (!inlineRun.empty()) {
+            lineParts.push_back({ inlineRun, nullptr });
+            inlineRun.clear();
+        }
+        lineParts.push_back({ {}, &child });
+    };
+
+    std::function<void(Node&)> processChild = [&](Node& child) {
+        if (child.type == NodeType::Comment) return;
 
         if (child.type == NodeType::Text) {
             inlineRun.push_back(&child);
-            continue;
+            return;
         }
-        if (!child.IsElement()) continue;
+        if (!child.IsElement()) return;
 
         const ComputedStyle& childStyle = resolver.StyleOf(&child);
-        if (childStyle.display == DisplayMode::Hidden) continue;
+        if (childStyle.display == DisplayMode::Hidden) return;
 
-        if ((child.tag == "img" || child.tag == "image") && flowImages) {
-            inlineRun.push_back(&child);
-            continue;
-        }
         if (child.tag == "img" || child.tag == "image") {
+            if (flowImages) {
+                inlineRun.push_back(&child);
+                return;
+            }
             flushRun();
             if (opts.enableImages) {
-                if (auto image = BuildImage(child)) {
+                if (auto image = BuildImage(child, AncestorLink(child))) {
                     RegisterAnchors(child, image);
                     addFlowChild(image, childStyle.marginTop, childStyle.marginBottom);
                 }
             }
-            continue;
+            return;
         }
         if (child.tag == "svg") {
             // EPUB cover pages wrap the image in an <svg> viewport
@@ -347,7 +429,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                 Node* svgImage = child.FindFirst("image");
                 if (!svgImage) svgImage = child.FindFirst("img");
                 if (svgImage) {
-                    if (auto image = BuildImage(*svgImage)) {
+                    if (auto image = BuildImage(*svgImage, AncestorLink(child))) {
                         RegisterAnchors(child, image, /*deep=*/true);
                         addFlowChild(image, childStyle.marginTop, childStyle.marginBottom);
                     }
@@ -355,7 +437,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                     warnings.push_back("svg without raster <image> skipped");
                 }
             }
-            continue;
+            return;
         }
         if (child.tag == "hr") {
             flushRun();
@@ -363,14 +445,21 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                 RegisterAnchors(child, rule);
                 addFlowChild(rule, childStyle.marginTop, childStyle.marginBottom);
             }
-            continue;
+            return;
         }
-        if (childStyle.display == DisplayMode::Table) {
+        // A table is a table whatever its display says: display:inline (the
+        // mail-button idiom) makes it an inline table, a box on the line.
+        if (child.tag == "table" || childStyle.display == DisplayMode::Table) {
+            if (childStyle.display == DisplayMode::Inline ||
+                childStyle.display == DisplayMode::InlineBlock) {
+                addBox(child);
+                return;
+            }
             flushRun();
             if (auto table = BuildTable(child)) {
                 addFlowChild(table, childStyle.marginTop, childStyle.marginBottom);
             }
-            continue;
+            return;
         }
         // Form controls route to BuildFormControl by tag (not display): a void
         // <input> would otherwise fall through to BuildBlock, which recurses
@@ -381,7 +470,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             if (auto control = BuildFormControl(child)) {
                 addFlowChild(control, childStyle.marginTop, childStyle.marginBottom);
             }
-            continue;
+            return;
         }
 
         if (childStyle.display == DisplayMode::ListItem) {
@@ -392,13 +481,29 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             ConfigureBlockLayout(*item);
             BuildChildrenInto(*item, child, ++listCounter);
             addFlowChild(item, childStyle.marginTop, childStyle.marginBottom);
-            continue;
+            return;
         }
 
         if (IsBlockDisplay(childStyle.display)) {
             flushRun();
             addFlowChild(BuildBlock(child), childStyle.marginTop, childStyle.marginBottom);
-            continue;
+            return;
+        }
+
+        // An inline-block with a box of its own - the mail "button" - is a
+        // box on the line.
+        if (NeedsInlineBox(child)) {
+            addBox(child);
+            return;
+        }
+        // An inline element around a block or a table (<a href><table>,
+        // <font><div>): as in a browser, the block breaks the line and the
+        // inline's formatting carries on inside it - so look through it.
+        if (HasBlockDescendant(child)) {
+            RegisterAnchors(child, std::static_pointer_cast<UltraCanvasUIElement>(
+                                       parent.shared_from_this()));
+            for (const auto& grand : child.children) processChild(*grand);
+            return;
         }
 
         // An inline element holding an image (<a href><img></a>, the banner
@@ -433,15 +538,17 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                 };
             RegisterAnchors(child, std::static_pointer_cast<UltraCanvasUIElement>(
                                        parent.shared_from_this()));
-            std::string href;
+            std::string href = AncestorLink(child);
             if (child.tag == "a" && child.HasAttribute("href")) href = child.GetAttribute("href");
             lift(child, href);
-            continue;
+            return;
         }
 
-        // Inline / inline-block content joins the current run.
+        // Inline content joins the current run.
         inlineRun.push_back(&child);
-    }
+    };
+
+    for (const auto& childPtr : element.children) processChild(*childPtr);
 
     flushRun();
 }
@@ -452,7 +559,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
 
 std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     const std::vector<Node*>& run, const ComputedStyle& blockStyle,
-    const std::string& markerPrefix) {
+    const std::string& markerPrefix, const Node* blockNode) {
 
     std::string markup;
     runPlain.clear();
@@ -463,9 +570,47 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
         runPlain += markerPrefix;
     }
 
+    // Whether every piece of text in the run is kept on one line (nowrap on
+    // the block, <nobr> or white-space: nowrap around it).
+    bool anyText = false, allNoWrap = true;
+    std::function<void(const Node&)> scanWrap = [&](const Node& n) {
+        if (n.type == NodeType::Text) {
+            bool visible = false;
+            for (unsigned char c : n.text) if (!std::isspace(c)) { visible = true; break; }
+            if (!visible) return;
+            anyText = true;
+            const Node* p = n.parent;
+            if (!(p ? resolver.StyleOf(p).noWrap : blockStyle.noWrap)) allNoWrap = false;
+            return;
+        }
+        for (const auto& c : n.children) scanWrap(*c);
+    };
+
     for (const Node* node : run) {
-        AppendInlineMarkup(*node, blockStyle, blockStyle.preserveWhitespace, markup);
+        scanWrap(*node);
+        const int start = static_cast<int>(runPlain.size());
+        // A text node whose parent is not the block is inside an inline the
+        // builder looked through (it wraps a block): format it as that inline.
+        const Node* p = node->parent;
+        if (node->type == NodeType::Text && blockNode && p && p != blockNode && p->IsElement()) {
+            std::string prefix, suffix;
+            StyleWrap(resolver.StyleOf(p), blockStyle, prefix, suffix);
+            markup += prefix;
+            AppendInlineMarkup(*node, resolver.StyleOf(p),
+                               resolver.StyleOf(p).preserveWhitespace, markup);
+            markup += suffix;
+        } else {
+            AppendInlineMarkup(*node, blockStyle, blockStyle.preserveWhitespace, markup);
+        }
+        // Inside a link that is not part of the run (the run is the content
+        // of a block or box inside <a href>): the whole piece is that link.
+        const int end = static_cast<int>(runPlain.size());
+        if (end > start) {
+            std::string href = AncestorLink(*node);
+            if (!href.empty()) runLinks.push_back({ start, end, href });
+        }
     }
+    const bool runNoWrap = blockStyle.noWrap || (anyText && allNoWrap);
 
     // Trim a leading collapse-space. Literal leading spaces in the markup are
     // rendered text, so runPlain starts with the same spaces — trim both and
@@ -497,7 +642,7 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     if (!MarkupHasVisibleText(markup)) return nullptr;
 
     auto label = std::make_shared<UltraCanvasLabel>(MakeId("text"));
-    ConfigureLabel(*label, blockStyle);
+    ConfigureLabel(*label, blockStyle, runNoWrap);
     label->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
     label->size.width = CSSLayout::Dimension::Pct(100.f);
     label->SetTextIsMarkup(true);
@@ -511,6 +656,33 @@ std::shared_ptr<UltraCanvasLabel> ElementBuilder::BuildInlineRun(
     }
     if (!runImages.empty()) label->SetInlineImages(runImages);
     return label;
+}
+
+void ElementBuilder::StyleWrap(const ComputedStyle& style, const ComputedStyle& runStyle,
+                               std::string& prefix, std::string& suffix,
+                               const std::string& tag) {
+    auto wrap = [&](const std::string& open, const std::string& close) {
+        prefix += open;
+        suffix = close + suffix;
+    };
+
+    if (style.bold && !runStyle.bold) wrap("<b>", "</b>");
+    if (style.italic && !runStyle.italic) wrap("<i>", "</i>");
+    if (style.underline && !runStyle.underline) wrap("<u>", "</u>");
+    if (style.strikethrough && !runStyle.strikethrough) wrap("<s>", "</s>");
+    if (style.monospace && !runStyle.monospace) wrap("<tt>", "</tt>");
+    if (tag == "sub") wrap("<sub>", "</sub>");
+    else if (tag == "sup") wrap("<sup>", "</sup>");
+    else if (std::fabs(style.fontSizePx - runStyle.fontSizePx) > 0.5f) {
+        wrap("<span size=\"" + std::to_string(PangoSize(style.fontSizePx)) + "\">",
+             "</span>");
+    }
+    bool colorDiffers = style.color.r != runStyle.color.r ||
+                        style.color.g != runStyle.color.g ||
+                        style.color.b != runStyle.color.b;
+    if (colorDiffers) {
+        wrap("<span foreground=\"" + ColorHex(style.color) + "\">", "</span>");
+    }
 }
 
 void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
@@ -583,28 +755,7 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
 
     // Span wrappers derived from the difference to the enclosing run style.
     std::string prefix, suffix;
-    auto wrap = [&](const std::string& open, const std::string& close) {
-        prefix += open;
-        suffix = close + suffix;
-    };
-
-    if (style.bold && !runStyle.bold) wrap("<b>", "</b>");
-    if (style.italic && !runStyle.italic) wrap("<i>", "</i>");
-    if (style.underline && !runStyle.underline) wrap("<u>", "</u>");
-    if (style.strikethrough && !runStyle.strikethrough) wrap("<s>", "</s>");
-    if (style.monospace && !runStyle.monospace) wrap("<tt>", "</tt>");
-    if (node.tag == "sub") wrap("<sub>", "</sub>");
-    else if (node.tag == "sup") wrap("<sup>", "</sup>");
-    else if (std::fabs(style.fontSizePx - runStyle.fontSizePx) > 0.5f) {
-        wrap("<span size=\"" + std::to_string(PangoSize(style.fontSizePx)) + "\">",
-             "</span>");
-    }
-    bool colorDiffers = style.color.r != runStyle.color.r ||
-                        style.color.g != runStyle.color.g ||
-                        style.color.b != runStyle.color.b;
-    if (colorDiffers) {
-        wrap("<span foreground=\"" + ColorHex(style.color) + "\">", "</span>");
-    }
+    StyleWrap(style, runStyle, prefix, suffix, node.tag);
 
     out += prefix;
     const int linkStart = static_cast<int>(runPlain.size());
@@ -750,65 +901,189 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildFormControl(Node& ele
     return box;
 }
 
-std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) {
-    // v1 table support: each row is a flex row, cells share the width
-    // equally (flex-grow 1). TODO: use CSSLayout Grid for real column sizing.
+bool ElementBuilder::HasBlockDescendant(const Node& element) const {
+    for (const auto& childPtr : element.children) {
+        const Node& child = *childPtr;
+        if (!child.IsElement()) continue;
+        const ComputedStyle& style = resolver.StyleOf(&child);
+        if (style.display == DisplayMode::Hidden) continue;
+        if (child.tag == "table" || IsBlockDisplay(style.display)) return true;
+        if (style.display == DisplayMode::InlineBlock) continue;   // a box of its own
+        if (HasBlockDescendant(child)) return true;
+    }
+    return false;
+}
+
+bool ElementBuilder::NeedsInlineBox(const Node& element) const {
+    const ComputedStyle& style = resolver.StyleOf(&element);
+    if (style.display != DisplayMode::InlineBlock) return false;
+    if (element.tag == "img" || element.tag == "image" || element.tag == "svg") return false;
+    if (HasBlockDescendant(element)) return true;
+    return style.backgroundColor.has_value() || style.borderWidth > 0.f ||
+           style.paddingTop > 0.f || style.paddingRight > 0.f ||
+           style.paddingBottom > 0.f || style.paddingLeft > 0.f ||
+           style.widthPx.has_value() || style.heightPx.has_value();
+}
+
+std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildInlineBox(Node& element) {
+    const ComputedStyle& style = resolver.StyleOf(&element);
+    if (element.tag == "table" || style.display == DisplayMode::Table) {
+        return BuildTable(element, /*inlineBox=*/true);
+    }
+    auto box = MakeContainer(element.tag);
+    RegisterAnchors(element, box);
+    ApplyBoxStyle(*box, style, /*fillWidth=*/false, /*realMargins=*/true);
+    ConfigureBlockLayout(*box);
+    BuildChildrenInto(*box, element);
+    // As wide as its content (shrink-to-fit), narrower only when the line is.
+    box->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+    return box;
+}
+
+std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, bool inlineBox) {
+    const ComputedStyle& style = resolver.StyleOf(&element);
     auto table = MakeContainer("table");
     RegisterAnchors(element, table);
     ++elementCount;
-    const ComputedStyle& style = resolver.StyleOf(&element);
-    ApplyBoxStyle(*table, style);
-    ConfigureBlockLayout(*table);
+    ApplyBoxStyle(*table, style, /*fillWidth=*/false, /*realMargins=*/inlineBox);
+    // border-spacing: CSS, else cellspacing, else a browser's 2px.
+    const float spacing = style.borderCollapse ? 0.f : style.borderSpacing.value_or(2.f);
+    table->layout.SetTableSpacing(spacing, spacing);
+    // <table border="1"> rules every cell too.
+    const bool ruledCells = element.tag == "table" && style.borderWidth > 0.f &&
+                            element.HasAttribute("border");
 
-    std::function<void(Node&)> addRows = [&](Node& parent) {
-        for (const auto& childPtr : parent.children) {
+    auto isRow = [&](const Node& n) {
+        return n.tag == "tr" || resolver.StyleOf(&n).display == DisplayMode::TableRow;
+    };
+    auto isCell = [&](const Node& n) {
+        return n.tag == "td" || n.tag == "th" ||
+               resolver.StyleOf(&n).display == DisplayMode::TableCell;
+    };
+
+    // Rows in document order - through thead / tbody / tfoot. Anything else
+    // at row level (a stray block) gets a row of its own, as in a browser's
+    // anonymous row and cell.
+    struct RowEntry { Node* row = nullptr; Node* lone = nullptr; };
+    std::vector<RowEntry> rows;
+    std::function<void(Node&)> collect = [&](Node& parentNode) {
+        for (const auto& childPtr : parentNode.children) {
             Node& child = *childPtr;
             if (!child.IsElement()) continue;
+            if (resolver.StyleOf(&child).display == DisplayMode::Hidden) continue;
             if (child.tag == "thead" || child.tag == "tbody" || child.tag == "tfoot") {
-                addRows(child);
-                continue;
+                collect(child);
+            } else if (isRow(child)) {
+                rows.push_back({ &child, nullptr });
+            } else if (isCell(child)) {
+                rows.push_back({ nullptr, &child });
+            } else if (child.tag != "caption" && child.tag != "colgroup" && child.tag != "col") {
+                rows.push_back({ nullptr, &child });
             }
-            if (child.tag != "tr") continue;
-
-            auto row = MakeContainer("tr");
-            ++elementCount;
-            row->layout.SetFlex(CSSLayout::FlexDirection::Row);
-
-            for (const auto& cellPtr : child.children) {
-                Node& cell = *cellPtr;
-                if (!cell.IsElement()) continue;
-                if (cell.tag != "td" && cell.tag != "th") continue;
-
-                const ComputedStyle& cellStyle = resolver.StyleOf(&cell);
-                auto cellBox = MakeContainer(cell.tag);
-                RegisterAnchors(cell, cellBox);
-                ++elementCount;
-                ApplyBoxStyle(*cellBox, cellStyle);
-                ConfigureBlockLayout(*cellBox);
-                // Honor an explicit cell width: a fixed-px cell (e.g. an 8px
-                // spacer gutter, the ubiquitous email layout idiom) keeps its
-                // width and does not grow; a percentage cell takes that share;
-                // a cell with no width grows to fill what is left. Sharing the
-                // width equally (the old behavior) crushed content columns that
-                // sit between fixed spacer cells.
-                if (cellStyle.widthPx) {
-                    cellBox->layoutItem.SetFlexGrow(0.f).SetFlexShrink(0.f)
-                           .SetFlexBasis(CSSLayout::Dimension::Px(*cellStyle.widthPx));
-                } else if (cellStyle.widthPercent) {
-                    cellBox->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f)
-                           .SetFlexBasis(CSSLayout::Dimension::Pct(*cellStyle.widthPercent));
-                } else {
-                    cellBox->layoutItem.SetFlexGrow(1.f).SetFlexShrink(1.f)
-                           .SetFlexBasis(CSSLayout::Dimension::Px(0));
-                }
-                BuildChildrenInto(*cellBox, cell);
-                row->AddChild(cellBox);
-            }
-            table->AddChild(row);
         }
     };
-    addRows(element);
-    return table;
+    collect(element);
+
+    // Slots taken by row-spanning cells of earlier rows.
+    std::vector<std::vector<bool>> taken(rows.size());
+    auto isTaken = [&](size_t r, int c) {
+        return c < static_cast<int>(taken[r].size()) && taken[r][c];
+    };
+    auto take = [&](size_t r, int c) {
+        if (static_cast<int>(taken[r].size()) <= c) taken[r].resize(c + 1, false);
+        taken[r][c] = true;
+    };
+    auto spanAttr = [](const Node& n, const char* name) {
+        std::string v = n.GetAttribute(name);
+        int value = 1;
+        if (!v.empty()) {
+            try { value = std::stoi(v); } catch (...) { value = 1; }
+        }
+        return value;
+    };
+
+    auto addCell = [&](Node& cell, const ComputedStyle& rowStyle, size_t r, int& c) {
+        while (isTaken(r, c)) ++c;
+        const int colSpan = std::clamp(spanAttr(cell, "colspan"), 1, 1000);
+        int rowSpan = spanAttr(cell, "rowspan");
+        const int rowsLeft = static_cast<int>(rows.size() - r);
+        rowSpan = rowSpan <= 0 ? rowsLeft : std::clamp(rowSpan, 1, rowsLeft);
+        for (int dr = 0; dr < rowSpan; ++dr)
+            for (int dc = 0; dc < colSpan; ++dc) take(r + dr, c + dc);
+
+        const ComputedStyle& cellStyle = resolver.StyleOf(&cell);
+        auto cellBox = MakeContainer(cell.tag.empty() ? std::string("td") : cell.tag);
+        RegisterAnchors(cell, cellBox);
+        ++elementCount;
+        // A px / % width is the column's width (the table layout reads it).
+        ApplyBoxStyle(*cellBox, cellStyle, /*fillWidth=*/false);
+        if (!cellStyle.backgroundColor && rowStyle.backgroundColor) {
+            cellBox->SetBackgroundColor(ToColor(*rowStyle.backgroundColor));
+        }
+        if (ruledCells && cellStyle.borderWidth <= 0.f) {
+            cellBox->SetBorders(1.f, Color(128, 128, 128, 255));
+        }
+        // valign / vertical-align of the cell, else of its row; a cell
+        // centres its content by default, as in a browser.
+        VerticalAlignMode va = cellStyle.verticalAlign;
+        if (va == VerticalAlignMode::Baseline) va = rowStyle.verticalAlign;
+        CSSLayout::JustifyContent justify = CSSLayout::JustifyContent::Center;
+        if (va == VerticalAlignMode::Top)         justify = CSSLayout::JustifyContent::FlexStart;
+        else if (va == VerticalAlignMode::Bottom) justify = CSSLayout::JustifyContent::FlexEnd;
+        cellBox->layout.SetFlex(CSSLayout::FlexDirection::Column)
+                       .SetFlexJustifyContent(justify)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        cellBox->layoutItem.SetGridRowColSimplified(static_cast<int>(r), c, rowSpan, colSpan);
+        BuildChildrenInto(*cellBox, cell);
+        table->AddChild(cellBox);
+        c += colSpan;
+    };
+
+    static const ComputedStyle kNoRowStyle{};
+    for (size_t r = 0; r < rows.size(); ++r) {
+        int c = 0;
+        if (rows[r].lone) {
+            addCell(*rows[r].lone, kNoRowStyle, r, c);
+            continue;
+        }
+        Node& row = *rows[r].row;
+        const ComputedStyle& rowStyle = resolver.StyleOf(&row);
+        for (const auto& cellPtr : row.children) {
+            Node& cell = *cellPtr;
+            if (!cell.IsElement() || !isCell(cell)) continue;
+            if (resolver.StyleOf(&cell).display == DisplayMode::Hidden) continue;
+            addCell(cell, rowStyle, r, c);
+        }
+    }
+
+    const bool fullWidth = style.widthPercent && *style.widthPercent >= 99.5f;
+    if (inlineBox || fullWidth) {
+        if (inlineBox) table->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+        return table;
+    }
+
+    // A table narrower than its line: <table align>, else the alignment its
+    // container asks for (<td align="right">, <center>) - as mail clients
+    // render it.
+    TextAlignMode align = style.textAlign;
+    std::string alignAttr = element.GetAttribute("align");
+    std::transform(alignAttr.begin(), alignAttr.end(), alignAttr.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    if (alignAttr == "center" || alignAttr == "middle") align = TextAlignMode::Center;
+    else if (alignAttr == "right") align = TextAlignMode::Right;
+    else if (alignAttr == "left") align = TextAlignMode::Left;
+    if (align != TextAlignMode::Center && align != TextAlignMode::Right) return table;
+
+    auto line = MakeContainer("tableline");
+    line->size.width = CSSLayout::Dimension::Pct(100.f);
+    line->layout.SetFlexRow()
+                .SetFlexJustifyContent(align == TextAlignMode::Center
+                                           ? CSSLayout::JustifyContent::Center
+                                           : CSSLayout::JustifyContent::FlexEnd)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    table->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+    line->AddChild(table);
+    return line;
 }
 
 // ============================================================================
@@ -816,17 +1091,27 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) 
 // ============================================================================
 
 void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
-                                   const ComputedStyle& style, bool fillWidth) {
+                                   const ComputedStyle& style, bool fillWidth,
+                                   bool realMargins) {
     using CSSLayout::Dimension;
 
     // Vertical margins become sibling spacer elements (see BuildChildrenInto);
-    // horizontal margins fold into padding so width:100% never overflows.
+    // horizontal margins fold into padding so width:100% never overflows -
+    // except on an inline box, whose background must stay inside its margin.
     target.box.boxSizing = CSSLayout::BoxSizing::BorderBox;
 
+    const float foldRight = realMargins ? 0.f : style.marginRight;
+    const float foldLeft  = realMargins ? 0.f : style.marginLeft;
     target.box.padding.top = Dimension::Px(style.paddingTop);
-    target.box.padding.right = Dimension::Px(style.paddingRight + style.marginRight);
+    target.box.padding.right = Dimension::Px(style.paddingRight + foldRight);
     target.box.padding.bottom = Dimension::Px(style.paddingBottom);
-    target.box.padding.left = Dimension::Px(style.paddingLeft + style.marginLeft);
+    target.box.padding.left = Dimension::Px(style.paddingLeft + foldLeft);
+    if (realMargins) {
+        target.box.margin.top = Dimension::Px(style.marginTop);
+        target.box.margin.right = Dimension::Px(style.marginRight);
+        target.box.margin.bottom = Dimension::Px(style.marginBottom);
+        target.box.margin.left = Dimension::Px(style.marginLeft);
+    }
 
     if (style.widthPx) {
         target.size.width = Dimension::Px(*style.widthPx);
@@ -843,22 +1128,26 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
         target.SetBackgroundColor(ToColor(*style.backgroundColor));
     }
     if (style.borderWidth > 0) {
-        target.box.border.top = Dimension::Px(style.borderWidth);
-        target.box.border.right = Dimension::Px(style.borderWidth);
-        target.box.border.bottom = Dimension::Px(style.borderWidth);
-        target.box.border.left = Dimension::Px(style.borderWidth);
+        // Width, colour and radius together: box.border alone reserves the
+        // space but paints nothing.
+        target.SetBorders(style.borderWidth, ToColor(style.borderColor), style.borderRadius);
     }
 }
 
-void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style) {
+void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
+                                    bool noWrap) {
     LabelStyle labelStyle;
     labelStyle.fontStyle.fontFamily =
         style.monospace && style.fontFamily.empty() ? "monospace" : style.fontFamily;
-    labelStyle.fontStyle.fontSize = style.fontSizePx;
+    // FontStyle sizes are points; CSS sizes are px (96 dpi). Inline <span
+    // size> markup converts the same way (PangoSize), so a 15px button caption
+    // is no longer smaller than the 12px text around it.
+    labelStyle.fontStyle.fontSize = style.fontSizePx * 72.f / 96.f;
     labelStyle.fontStyle.fontWeight = style.bold ? FontWeight::Bold : FontWeight::Normal;
     labelStyle.fontStyle.fontSlant = style.italic ? FontSlant::Italic : FontSlant::Normal;
     labelStyle.textColor = ToColor(FlattenOverWhite(style.color));
-    labelStyle.wrap = style.preserveWhitespace ? TextWrap::WrapWordChar : TextWrap::WrapWord;
+    labelStyle.wrap = noWrap ? TextWrap::WrapNone
+                    : style.preserveWhitespace ? TextWrap::WrapWordChar : TextWrap::WrapWord;
 
     switch (style.textAlign) {
         case TextAlignMode::Left: labelStyle.horizontalAlign = TextAlignment::Left; break;

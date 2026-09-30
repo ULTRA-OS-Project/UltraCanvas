@@ -60,6 +60,10 @@ struct SimpleSelector {
     std::string tag;                  // empty or "*" = any element
     std::vector<std::string> classes;
     std::string id;
+    // :link / :any-link - an <a href>. Links are all unvisited here, so a
+    // :visited rule never matches and :hover / :active / :focus rules are
+    // dropped (a static render is never hovered).
+    bool link = false;
 };
 
 // A descendant chain: "div.chapter p.first" — path.back() matches the element

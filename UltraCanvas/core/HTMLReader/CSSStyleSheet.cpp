@@ -1,8 +1,10 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules.
+// Version: 1.2.0 - a:link / :any-link selectors match links (mail styles its
+//                  links that way); other pseudo-classes still drop the rule.
 // Version: 1.1.2 - ParseFloatClassic moved to UltraCanvasTextUtils, so the SVG
 //                  reader and the other format parsers share one copy of it
-// Last Modified: 2026-09-15
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
@@ -255,7 +257,7 @@ int Selector::Specificity() const {
     int ids = 0, classes = 0, tags = 0;
     for (const auto& part : path) {
         if (!part.id.empty()) ++ids;
-        classes += static_cast<int>(part.classes.size());
+        classes += static_cast<int>(part.classes.size()) + (part.link ? 1 : 0);
         if (!part.tag.empty() && part.tag != "*") ++tags;
     }
     return ids * 10000 + classes * 100 + tags;
@@ -269,8 +271,24 @@ std::optional<SimpleSelector> ParseCompound(const std::string& text) {
     size_t i = 0;
     while (i < text.size()) {
         char c = text[i];
+        if (c == ':' && i + 1 < text.size() && text[i + 1] != ':') {
+            // :link / :any-link match every link; any other pseudo-class
+            // (:hover, :visited, :nth-child(...)) drops the selector.
+            std::string name;
+            ++i;
+            while (i < text.size() && (std::isalnum(static_cast<unsigned char>(text[i])) ||
+                                       text[i] == '-')) {
+                name += static_cast<char>(std::tolower(static_cast<unsigned char>(text[i])));
+                ++i;
+            }
+            if (name == "link" || name == "any-link") {
+                result.link = true;
+                continue;
+            }
+            return std::nullopt;
+        }
         if (c == ':' || c == '[' || c == '(') {
-            return std::nullopt;   // pseudo-class / attribute / functional
+            return std::nullopt;   // pseudo-element / attribute / functional
         }
         if (c == '*') {
             ++i;

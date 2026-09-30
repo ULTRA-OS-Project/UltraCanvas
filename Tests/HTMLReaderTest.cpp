@@ -1,8 +1,9 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
-// Last Modified: 2026-09-14
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -12,6 +13,7 @@
 #include <clocale>
 #include <cstdio>
 #include <cmath>
+#include <functional>
 #include <string>
 
 using namespace UltraCanvas::HTML;
@@ -426,6 +428,72 @@ static void TestReadingModeOverride() {
 
 // ============================================================================
 
+// The whole HTML 4 entity set: mail writes feet-and-inches as 5&acute;8&quot;.
+static void TestHtml4Entities() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<p>5&acute;8&quot; &eth;&thorn; &alpha;&Omega; &larr;&hearts; &frac12;&sup2; &bogus;</p>");
+    Node* p = doc.root->FindFirst("p");
+    CHECK(p != nullptr);
+    if (p) {
+        CHECK_EQ(p->TextContent(),
+                 std::string("5\xC2\xB4" "8\" \xC3\xB0\xC3\xBE \xCE\xB1\xCE\xA9 "
+                             "\xE2\x86\x90\xE2\x99\xA5 \xC2\xBD\xC2\xB2 &bogus;"));
+    }
+}
+
+// The presentational table attributes of mail HTML, <nobr>, and a:link.
+static void TestMailTableStyles() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><body><table cellpadding='0' cellspacing='4'>"
+        "<tr valign='top' align='center'><td id='c1' nowrap>a</td>"
+        "<td id='c2' valign='bottom' style='white-space:nowrap'>b</td></tr></table>"
+        "<table style='border-collapse:collapse'><tr><td id='c3'>c</td></tr></table>"
+        "<p><nobr id='n'>x</nobr><a id='link' href='h'>l</a><a id='plain'>m</a></p>"
+        "</body></html>");
+    StyleResolver resolver;
+    resolver.AddStyleSheet("a:link { color: #3333aa } a:hover { color: #ff0000 }");
+    ResolverOptions options;
+    options.baseFontSizePx = 12.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    auto byId = [&](const char* id) { return find(doc.root.get(), id); };
+    Node* table = doc.root->FindFirst("table");
+    Node* c1 = byId("c1");
+    Node* c2 = byId("c2");
+    Node* c3 = byId("c3");
+    CHECK(table && c1 && c2 && c3);
+    if (!table || !c1 || !c2 || !c3) return;
+    const ComputedStyle& t = resolver.StyleOf(table);
+    CHECK(t.borderSpacing.has_value() && *t.borderSpacing == 4.f);
+    const ComputedStyle& s1 = resolver.StyleOf(c1);
+    CHECK(s1.noWrap);
+    CHECK_EQ(s1.paddingLeft, 0.f);                 // cellpadding
+    CHECK(s1.textAlign == TextAlignMode::Center);  // <tr align>
+    const ComputedStyle& s2 = resolver.StyleOf(c2);
+    CHECK(s2.noWrap);
+    CHECK(s2.verticalAlign == VerticalAlignMode::Bottom);
+    CHECK(resolver.StyleOf(c1->parent).verticalAlign == VerticalAlignMode::Top);
+    const ComputedStyle& s3 = resolver.StyleOf(c3);
+    CHECK_EQ(s3.paddingTop, 1.f);                  // a browser's default cell padding
+    CHECK(s3.borderCollapse);
+    if (Node* n = byId("n")) CHECK(resolver.StyleOf(n).noWrap);
+    Node* link = byId("link");
+    Node* plain = byId("plain");
+    CHECK(link && plain);
+    if (link && plain) {
+        CHECK(resolver.StyleOf(link).color.r == 0x33 && resolver.StyleOf(link).color.b == 0xAA);
+        CHECK(resolver.StyleOf(plain).color.r != 0x33);   // no href: not a :link
+    }
+}
+
 int main() {
     TestParserBasics();
     TestParserFragmentAndRecovery();
@@ -438,6 +506,8 @@ int main() {
     TestStyleSheetParsing();
     TestStyleResolution();
     TestReadingModeOverride();
+    TestHtml4Entities();
+    TestMailTableStyles();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);

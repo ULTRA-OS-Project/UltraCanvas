@@ -3,8 +3,8 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
-// Version: 1.1.0
-// Last Modified: 2026-09-29
+// Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -52,6 +52,8 @@ struct ComputedStyle {
     bool strikethrough = false;
     bool monospace = false;
     bool preserveWhitespace = false; // white-space: pre
+    bool noWrap = false;             // white-space: nowrap, <nobr>, <td nowrap>
+    bool borderCollapse = false;     // border-collapse: collapse
     CssColor color{0, 0, 0, 255};
     TextAlignMode textAlign = TextAlignMode::Left;
     float lineHeight = 1.4f;         // multiplier
@@ -63,10 +65,15 @@ struct ComputedStyle {
     std::optional<CssColor> backgroundColor;
     float borderWidth = 0;
     CssColor borderColor{0, 0, 0, 255};
+    float borderRadius = 0;
+    // border-spacing (CSS) or the cellspacing attribute, on a table.
+    std::optional<float> borderSpacing;
     std::optional<float> widthPx;
     std::optional<float> heightPx;
     std::optional<float> widthPercent;   // width given in % (builder maps to Dimension::Pct)
-    VerticalAlignMode verticalAlign = VerticalAlignMode::Baseline;   // not inherited
+    // Not inherited. On a table cell (or row: valign) Baseline means "not
+    // set", and the cell centres its content, as a browser's UA sheet does.
+    VerticalAlignMode verticalAlign = VerticalAlignMode::Baseline;
 
     // links
     bool isLink = false;

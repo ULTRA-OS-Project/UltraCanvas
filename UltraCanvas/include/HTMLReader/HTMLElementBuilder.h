@@ -6,8 +6,8 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -94,9 +94,12 @@ private:
     std::shared_ptr<UltraCanvasContainer> BuildBlock(Node& element);
     void BuildChildrenInto(UltraCanvasContainer& parent, Node& element,
                            int listItemIndex = -1);
+    // `blockNode` is the element whose content the run is: a text node whose
+    // parent is some other element (an inline the builder looked through,
+    // because it wraps a block) takes that element's formatting.
     std::shared_ptr<UltraCanvasLabel> BuildInlineRun(
         const std::vector<Node*>& run, const ComputedStyle& blockStyle,
-        const std::string& markerPrefix);
+        const std::string& markerPrefix, const Node* blockNode = nullptr);
     // Whether a block's inline content has text of its own (not only images
     // and whitespace): then its images flow in that text, as in a browser;
     // otherwise each image gets a line of its own.
@@ -107,13 +110,29 @@ private:
     std::shared_ptr<UltraCanvasUIElement> BuildImage(Node& element,
                                                      const std::string& linkHref = "");
     std::shared_ptr<UltraCanvasUIElement> BuildRule(Node& element);
-    std::shared_ptr<UltraCanvasContainer> BuildTable(Node& element);
+    // A <table> (or display: table) on the CSSLayout table engine: one cell
+    // element per <td>/<th> at its row / column / spans, columns shared by
+    // every row. A table narrower than its line is placed by its align
+    // attribute or the text-align it inherits, unless `inlineBox` (it then
+    // sits in a line of inline content, which places it).
+    std::shared_ptr<UltraCanvasContainer> BuildTable(Node& element, bool inlineBox = false);
+    // An inline-block with a box of its own (background, border, padding,
+    // width - a mail "button"), or an inline element holding a block or a
+    // table: a shrink-to-fit box on the line, beside the text around it.
+    std::shared_ptr<UltraCanvasUIElement> BuildInlineBox(Node& element);
+    bool NeedsInlineBox(const Node& element) const;
+    bool HasBlockDescendant(const Node& element) const;
     // Display-only render of a form control (input/textarea/button/select):
     // a styled box showing its value/label. Returns null for hidden inputs.
     std::shared_ptr<UltraCanvasContainer> BuildFormControl(Node& element);
 
     void AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
                             bool preserveWhitespace, std::string& out);
+    // Pango markup that turns `runStyle` text into `style` text (bold, size,
+    // color, ...); `tag` adds <sub>/<sup>.
+    static void StyleWrap(const ComputedStyle& style, const ComputedStyle& runStyle,
+                          std::string& prefix, std::string& suffix,
+                          const std::string& tag = std::string());
 
     // Maps the node's id (and <a name>) to the built element in `anchors`,
     // recursing into `node`'s subtree when deep is true.
@@ -121,9 +140,12 @@ private:
                          const std::shared_ptr<UltraCanvasUIElement>& element,
                          bool deep = false);
 
+    // Horizontal margins fold into padding unless `realMargins` (an inline
+    // box, whose background must not reach into its margin).
     void ApplyBoxStyle(UltraCanvasUIElement& target, const ComputedStyle& style,
-                       bool fillWidth = true);
-    void ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style);
+                       bool fillWidth = true, bool realMargins = false);
+    void ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
+                        bool noWrap = false);
 
     static std::string MarkerText(ListMarker marker, int index);
 };

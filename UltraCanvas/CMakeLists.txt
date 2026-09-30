@@ -551,6 +551,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/AbsoluteLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/FlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/GridLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/TableLayout.cpp
 
         # Collision-aware placement of annotation labels around shapes.
         # Part of the layout engine, not of any chart/diagram plugin.

@@ -1665,6 +1665,7 @@ add_executable(CSSLayoutAutoExpandTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
@@ -1696,6 +1697,7 @@ add_executable(CSSLayoutSafeAlignTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
@@ -1728,6 +1730,7 @@ add_executable(DialogIconLayoutTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
@@ -3767,6 +3770,7 @@ add_executable(CSSLayoutFormGridTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp

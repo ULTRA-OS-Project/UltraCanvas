@@ -1,7 +1,10 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
-// Version: 1.1.0
-// Last Modified: 2026-09-29
+// Version: 1.2.0 - table presentational attributes (nowrap, valign,
+//                  cellpadding, cellspacing, tr align); white-space: nowrap;
+//                  border-collapse / border-spacing / border-radius; cells
+//                  default to a browser's 1px padding.
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -52,7 +55,8 @@ const ComputedStyle& StyleResolver::StyleOf(const Node* node) const {
 // left alone here.
 void StyleResolver::ApplyAlignAttribute(const Node& element, ComputedStyle& style) {
     static const char* const kAlignable[] = {
-        "p", "div", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "img", "caption"
+        "p", "div", "td", "th", "tr", "tbody", "thead", "tfoot",
+        "h1", "h2", "h3", "h4", "h5", "h6", "img", "caption"
     };
     bool alignable = false;
     for (const char* tag : kAlignable) if (element.tag == tag) { alignable = true; break; }
@@ -115,6 +119,39 @@ void StyleResolver::ApplyLegacyAttributes(const Node& element, ComputedStyle& st
         if (auto color = CssColor::Parse(TrimLower(element.GetAttribute("bgcolor"))))
             style.backgroundColor = *color;
     }
+    // Tables: <td nowrap>, valign on a cell or its row, the table's
+    // cellpadding on each of its cells and its cellspacing on itself.
+    const bool cell = element.tag == "td" || element.tag == "th";
+    if (cell && element.HasAttribute("nowrap")) style.noWrap = true;
+    if ((cell || element.tag == "tr") && element.HasAttribute("valign")) {
+        const std::string v = TrimLower(element.GetAttribute("valign"));
+        if (v == "top") style.verticalAlign = VerticalAlignMode::Top;
+        else if (v == "bottom") style.verticalAlign = VerticalAlignMode::Bottom;
+        else if (v == "middle" || v == "center") style.verticalAlign = VerticalAlignMode::Middle;
+    }
+    if (cell) {
+        const Node* table = element.parent;
+        while (table && !table->IsElement("table")) table = table->parent;
+        if (table && table->HasAttribute("cellpadding")) {
+            if (auto len = CssLength::Parse(TrimLower(table->GetAttribute("cellpadding")))) {
+                const float px = len->unit == CssUnit::Percent ? 0.f
+                               : len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+                style.paddingTop = style.paddingRight = style.paddingBottom = style.paddingLeft = px;
+            }
+        }
+    }
+    if (element.tag == "table" && element.HasAttribute("cellspacing")) {
+        if (auto len = CssLength::Parse(TrimLower(element.GetAttribute("cellspacing")))) {
+            if (len->unit != CssUnit::Percent)
+                style.borderSpacing = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+        }
+    }
+    if (element.tag == "table" && element.HasAttribute("border")) {
+        if (auto len = CssLength::Parse(TrimLower(element.GetAttribute("border")))) {
+            if (len->unit != CssUnit::Percent)
+                style.borderWidth = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+        }
+    }
     if (colorsAllowed && element.tag == "body" && element.HasAttribute("text")) {
         if (auto color = CssColor::Parse(TrimLower(element.GetAttribute("text")))) style.color = *color;
     }
@@ -132,6 +169,8 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
     style.strikethrough = parentStyle.strikethrough;
     style.monospace = parentStyle.monospace;
     style.preserveWhitespace = parentStyle.preserveWhitespace;
+    style.noWrap = parentStyle.noWrap;
+    style.borderCollapse = parentStyle.borderCollapse;
     style.color = parentStyle.color;
     style.textAlign = parentStyle.textAlign;
     style.lineHeight = parentStyle.lineHeight;
@@ -281,8 +320,8 @@ void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle
     else if (tag == "tr") { s.display = DisplayMode::TableRow; }
     else if (tag == "td" || tag == "th") {
         s.display = DisplayMode::TableCell;
-        s.paddingTop = s.paddingBottom = 0.25f * em;
-        s.paddingRight = s.paddingLeft = 0.4f * em;
+        // A browser's cell padding (cellpadding="1").
+        s.paddingTop = s.paddingBottom = s.paddingRight = s.paddingLeft = 1.f;
         if (tag == "th") { s.bold = true; s.textAlign = TextAlignMode::Center; }
     }
     else if (tag == "b" || tag == "strong") { s.bold = true; }
@@ -314,6 +353,7 @@ void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle
         s.display = DisplayMode::Hidden;
     }
     else if (tag == "img") { s.display = DisplayMode::InlineBlock; }
+    else if (tag == "nobr") { s.display = DisplayMode::Inline; s.noWrap = true; }
     else if (tag == "br" || tag == "span" || tag == "q" || tag == "abbr" ||
              tag == "mark" || tag == "font" || tag == "wbr") {
         s.display = DisplayMode::Inline;
@@ -335,6 +375,7 @@ bool StyleResolver::CompoundMatches(const SimpleSelector& part, const Node& elem
     for (const auto& cls : part.classes) {
         if (!element.HasClass(cls)) return false;
     }
+    if (part.link && !(element.tag == "a" && element.HasAttribute("href"))) return false;
     return true;
 }
 
@@ -428,6 +469,8 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         else if (lower == "table") s.display = DisplayMode::Table;
         else if (lower == "table-row") s.display = DisplayMode::TableRow;
         else if (lower == "table-cell") s.display = DisplayMode::TableCell;
+        else if (lower == "inline-table" || lower == "inline-flex" || lower == "inline-grid")
+            s.display = DisplayMode::InlineBlock;
     }
     else if (prop == "color") {
         if (opts.overrideAuthorColors) return;
@@ -526,6 +569,24 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
     else if (prop == "white-space") {
         s.preserveWhitespace = (lower == "pre" || lower == "pre-wrap" ||
                                 lower == "pre-line");
+        s.noWrap = (lower == "nowrap");
+    }
+    else if (prop == "border-collapse") {
+        s.borderCollapse = (lower == "collapse");
+    }
+    else if (prop == "border-spacing") {
+        auto parts = SplitParts(lower);
+        if (!parts.empty()) {
+            if (auto len = CssLength::Parse(parts[0])) s.borderSpacing = len->ToPx(em, rem);
+        }
+    }
+    else if (prop == "border-radius") {
+        auto parts = SplitParts(lower);
+        if (!parts.empty()) {
+            if (auto len = CssLength::Parse(parts[0])) {
+                if (len->unit != CssUnit::Percent) s.borderRadius = len->ToPx(em, rem);
+            }
+        }
     }
     else if (prop == "list-style-type" || prop == "list-style") {
         if (lower == "none") s.listMarker = ListMarker::NoMarker;

@@ -1,7 +1,7 @@
 // core/CSSLayout/Layout.cpp
 // Chainable setters on struct Layout and struct LayoutItem.
-// Version: 1.1.0
-// Last Modified: 2026-05-31
+// Version: 1.2.0 - SetTable / SetTableSpacing (display: table)
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -132,6 +132,20 @@ namespace UltraCanvas {
 
         Layout& Layout::SetGridAutoFlow(GridAutoFlow f) {
             asGrid(*this).autoFlow = f;
+            return *this;
+        }
+
+        Layout& Layout::SetTable() {
+            (void)asGrid(*this);
+            display = DisplayType::Table;
+            return *this;
+        }
+
+        Layout& Layout::SetTableSpacing(float horizontal, float vertical) {
+            auto& gl = asGrid(*this);
+            gl.columnGap = Dimension::Px(horizontal);
+            gl.rowGap    = Dimension::Px(vertical);
+            display = DisplayType::Table;
             return *this;
         }
 

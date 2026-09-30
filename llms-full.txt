@@ -2238,6 +2238,8 @@ The engine implements a useful subset of CSS, not the whole specification.
 - **Flex** (`display: flex`) — direction, wrap, grow/shrink/basis, justify/align, gap, order
 - **Grid** (`display: grid`) — explicit placement, auto-placement, track sizing (px / % / fr / auto / min/max-content / fit-content), gaps
 - **Block** (`display: block`, the default) — children stacked vertically
+- **Table** (`DisplayType::Table`) — HTML's automatic table layout; see
+  [Table layout](#table-layout) below
 - **Absolute positioning** — `Absolute`, `Fixed`, `Relative`, and the UI-specific `AbsoluteUI`
 
 **Not implemented yet** (do not rely on these):
@@ -2245,7 +2247,9 @@ The engine implements a useful subset of CSS, not the whole specification.
 - **No normal flow / inline layout.** `Inline` and `InlineBlock` fall through to Block
   (see the `TODO` at `Element.cpp:214-215`) — there is no inline formatting context, no
   text-run wrapping across boxes, no baseline alignment.
-- **No table layout** (no `display: table` family).
+- **No `table-row` / `table-cell` display types.** A table's cells are its direct
+  children, placed by row and column (see [Table layout](#table-layout)); there are no
+  row boxes and no anonymous-box generation.
 - Minor gaps: LTR writing-mode only; no margin collapsing; Grid named lines / template
   areas / subgrid / masonry / dense packing are not implemented.
 
@@ -2544,6 +2548,41 @@ scroll-range arithmetic `UltraCanvasContainer::UpdateScrollability` performs.
 
 The grid engine needs no such fallback: `ArrangeGrid` sizes a non-stretch item to
 `min(track, natural)`, so a grid item can never be larger than the area it is aligned in.
+
+## Table layout
+
+`DisplayType::Table` is the automatic table layout browsers use for HTML tables
+(CSS 2.1 §17.5.2.2), in `core/CSSLayout/TableLayout.cpp`. The HTML reader builds every
+`<table>` on it; use it anywhere columns must line up across rows whose content decides
+their width. The cells are the container's direct children, each placed with
+`SetGridRowColSimplified(row, column, rowSpan, colSpan)`:
+
+```cpp
+table->layout.SetTableSpacing(2, 2);                 // border-spacing; also sets display: table
+cell->layoutItem.SetGridRowColSimplified(0, 1, 1, 3);   // row 0, column 1, spanning 3 columns
+cell->size.width = CSSLayout::Dimension::Px(128);    // a fixed column (Pct(40) = a % column)
+table->AddChild(cell);
+```
+
+- Every cell reports a **min-content** width (its widest unbreakable run —
+  `UltraCanvasLabel` publishes it; a `WrapNone` label's is its whole line — or its px
+  width) and a **max-content** width (one line). A column's min / max is the largest of
+  its one-column cells; a spanning cell widens its columns only by what they lack.
+- A cell's `size.width` in px makes its column **fixed**, in % a **percentage** column;
+  the rest are **auto**. A table with its own width uses it (never less than the
+  columns' minimum); an auto-width table shrinks to its preferred width.
+- The width is handed out minimum first, then fixed, then %, then auto columns up to
+  max-content, each group proportionally when short; what is left widens the auto
+  columns (else the % ones).
+- A row is as tall as its tallest cell at its column width; every cell is **stretched**
+  to its row(s), so its background fills the slot. Aligning a cell's content vertically
+  is the cell's job — the HTML reader makes cells flex columns with `justify-content`.
+- The spacing applies between the cells and around the outer ones, as `border-spacing`
+  does. `Tests/HTMLTableLayoutTest.cpp` pins the column sharing, spans and widths.
+
+Why not Grid: `ArrangeGrid` sizes rows from each item's max-content height at unbounded
+width (a wrapped paragraph gets one line) and has no min-content column distribution, so
+a table built on it cannot keep a label column narrow while a long value wraps.
 
 ## Troubleshooting: my widget renders nothing at all
 
