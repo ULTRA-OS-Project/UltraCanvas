@@ -1,3 +1,35 @@
+#### 2026-09-30 *0.10.11*
+- **A signature per account.** *Account Settings* has a new *Signature* row,
+  which shows the account's signature in a few words, and an *Edit signature…*
+  button that opens the signature editor. The account signs with nothing, with
+  plain text, or with HTML.
+  - *Plain text* is typed into a text box. It goes into the message below a
+    `-- ` line, the separator mail programs recognise as the start of a
+    signature (one the user wrote themselves is not doubled).
+  - *HTML* is designed in a WYSIWYG editor (`UltraCanvasRichTextEdit`) with
+    two rows of tools: bold, italic, underline, strikethrough, font, size and
+    text colour; left / centre / right, bulleted and numbered lists, a
+    horizontal line, *Link…* (a web page or an e-mail address) and
+    *Picture…* (a logo or photo, stored with the signature and sent as an
+    inline part of the message). *HTML source* switches to the markup, coloured
+    as HTML, for a signature made elsewhere; *Design* reads it back.
+  - Both versions are kept whichever is chosen, so switching loses neither. A
+    first switch to HTML starts from the plain-text signature.
+  - *Add the signature to replies and forwards too* is on by default.
+- **Where it goes.** New mail, replies and forwards get the signature of the
+  account they are sent from, below the line the message is written on and
+  above the quoted or forwarded text. An HTML signature makes the message a
+  formatted one: a plain-text reply is turned into the rich editor first, its
+  `> ` quotes becoming quote bars, and is sent as HTML with a plain-text
+  version beside it.
+- The editor saves on its own *Save*, not with the account page's, which
+  checks the sign-in first: a signature can be changed while the server is
+  unreachable. The signature is kept in the local store (schema 8) and is left
+  alone when the account's servers are saved or the address is added again.
+- Demo: `ULTRAMAIL_DEMO_SIGNATURE=1` opens the editor on a sample HTML
+  signature; `=2` (with `ULTRAMAIL_DEMO_MAIL=1`) opens a new message signed
+  with it.
+
 #### 2026-09-30 *0.10.10*
 - **New mail is fetched as soon as UltraMail starts.** The first check used to
   wait for the five-minute timer (it ran at start only when the vault needed a

@@ -1,5 +1,6 @@
 // Apps/UltraMail/engine/UltraMailLocalStore.cpp
 // LocalStore implementation on top of UltraDatabase.
+// Version: 0.2.0 - schema 8: the account's signature (SetAccountSignature)
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailLocalStore.h"
@@ -159,6 +160,12 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
         { 7, "attachment count per message",
           // -1 = not counted yet; filled when a body is downloaded or read.
           "ALTER TABLE message_security ADD COLUMN attachments INTEGER DEFAULT -1;" },
+        { 8, "account signature",
+          // 'none' keeps what existing accounts did: no signature.
+          "ALTER TABLE accounts ADD COLUMN signature_kind TEXT DEFAULT 'none';"
+          "ALTER TABLE accounts ADD COLUMN signature_text TEXT DEFAULT '';"
+          "ALTER TABLE accounts ADD COLUMN signature_html TEXT DEFAULT '';"
+          "ALTER TABLE accounts ADD COLUMN signature_replies INTEGER DEFAULT 1;" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -200,7 +207,8 @@ UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
         "SELECT account_id, display_name, email, short_name, "
         "  imap_host, imap_port, imap_security, imap_username, imap_oauth, "
         "  smtp_host, smtp_port, smtp_security, smtp_username, smtp_oauth, "
-        "  provider_name, imap_auth, smtp_auth FROM accounts "
+        "  provider_name, imap_auth, smtp_auth, "
+        "  signature_kind, signature_text, signature_html, signature_replies FROM accounts "
         "ORDER BY short_name", rs);
     if (!q) return q;
     for (const auto& row : rs) {
@@ -222,9 +230,25 @@ UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
         a.providerName  = row["provider_name"].AsString();
         a.imap.auth     = MailAuthFromString(row["imap_auth"].AsString());
         a.smtp.auth     = MailAuthFromString(row["smtp_auth"].AsString());
+        a.signature.kind      = SignatureKindFromString(row["signature_kind"].AsString());
+        a.signature.text      = row["signature_text"].AsString();
+        a.signature.html      = row["signature_html"].AsString();
+        a.signature.onReplies = row["signature_replies"].AsInt() != 0;
         out.push_back(std::move(a));
     }
     return UltraDbResult::Ok();
+}
+
+UltraDbResult LocalStore::SetAccountSignature(const std::string& accountId,
+                                              const Signature& signature) {
+    if (accountId.empty())
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "account id must not be empty");
+    return UltraDb_Exec(connection_,
+        "UPDATE accounts SET signature_kind=?, signature_text=?, signature_html=?, "
+        "signature_replies=? WHERE account_id=?",
+        { ToString(signature.kind), signature.text, signature.html,
+          static_cast<int64_t>(signature.onReplies ? 1 : 0), accountId });
 }
 
 UltraDbResult LocalStore::RemoveAccount(const std::string& accountId) {

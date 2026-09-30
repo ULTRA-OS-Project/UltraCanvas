@@ -8,12 +8,15 @@
 // the reason and offers "Save anyway". Nothing is called on Cancel.
 // With `AccountFields::edit` set it doubles as the account settings page: a
 // display-name row above the servers, and - for a password account - a
-// password row, or - for an OAuth account - a "Sign in again" button.
+// password row, or - for an OAuth account - a "Sign in again" button - and a
+// Signature row whose "Edit signature…" button opens the signature editor.
+// Version: 0.5.0 - the Signature row (account settings page)
 // Version: 0.4.0 - an authentication method per server
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraMailDiscovery.h"
+#include "UltraMailTypes.h"   // Signature
 
 #include "UltraCanvasWindow.h"
 
@@ -39,6 +42,12 @@ public:
         // shown in the bottom row; clicking it closes this page and runs the
         // callback, which owns the confirm-and-remove flow.
         std::function<void()> onDelete;
+        // When set (account settings only), a Signature row shows `signature`
+        // in a few words and an "Edit signature…" button. The editor saves on
+        // its own Save - not on this page's, which checks the sign-in first -
+        // and hands the new signature to this callback.
+        Signature signature;
+        std::function<void(const Signature&)> onSaveSignature;
     };
 
     // What Save hands back. `settings` is always filled; the rest are only
