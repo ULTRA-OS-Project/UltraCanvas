@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.13 - a compose window per message: each has its own view, so a
+//                   second one no longer takes over the first one's buttons
 // Version: 0.9.12 - a signature per account (Account Settings > Signature): put
 //                   into new mail, replies and forwards
 // Version: 0.9.11 - and right after the computer wakes from sleep (WakeDetector)
@@ -274,8 +276,8 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // (exercises Attach file / Attach cloud link without a server).
     if (const char* dcl = std::getenv("ULTRAMAIL_DEMO_CLOUD"); dcl && *dcl) {
         SeedDemoCloud();
-        OpenComposer(Composer::NewMessage("Erika Example", "erika@example.com"));
-        if (*dcl == '2') composeView_.OpenCloudLinkPicker();   // =2: picker open too
+        ComposeView* view = OpenComposer(Composer::NewMessage("Erika Example", "erika@example.com"));
+        if (*dcl == '2' && view) view->OpenCloudLinkPicker();   // =2: picker open too
     }
     // Demo path: open a reply-prefilled compose window.
     if (const char* dcomp = std::getenv("ULTRAMAIL_DEMO_COMPOSE"); dcomp && *dcomp == '1') {
@@ -799,7 +801,7 @@ void UltraMailApp::SaveSignature(const std::string& accountId, const Signature& 
         if (account.accountId == accountId) account.signature = signature;
 }
 
-void UltraMailApp::OpenComposer(const Draft& draft) {
+ComposeView* UltraMailApp::OpenComposer(const Draft& draft) {
     WindowConfig cfg;
     cfg.title  = draft.subject.empty() ? "New message" : draft.subject;
     cfg.width  = 640;
@@ -807,20 +809,41 @@ void UltraMailApp::OpenComposer(const Draft& draft) {
     cfg.backgroundColor = Theme::kCardBackground;
     auto win = CreateWindow(cfg);
 
-    composeView_.SetDraft(draft);
-    composeView_.SetParentWindow(win.get());
-    composeView_.SetCloud(cloud_.get());
-    composeView_.onSend   = [this](const Draft& d) { HandleSendDraft(d); };
+    // Its own view: the buttons, the toolbar and Send act on this window's
+    // message, whatever other compose windows are open.
+    auto view = std::make_shared<ComposeView>();
+    view->SetDraft(draft);
+    view->SetParentWindow(win.get());
+    view->SetCloud(cloud_.get());
+    view->onSend   = [this](const Draft& d) { HandleSendDraft(d); };
     UltraCanvasWindow* raw = win.get();
-    composeView_.onCancel = [raw]() { raw->Close(); };
-    auto view = composeView_.Build();
-    win->AddChild(view);
-    composeView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
-    win->onWindowResize = [this](int cw, int ch) {
-        composeView_.Resize(static_cast<float>(cw), static_cast<float>(ch));
+    view->onCancel = [raw]() { raw->Close(); };
+    win->AddChild(view->Build());
+    view->Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
+    // Raw: the window owns these callbacks, and the view lives as long as the
+    // window's entry in composers_.
+    ComposeView* rawView = view.get();
+    win->onWindowResize = [rawView](int cw, int ch) {
+        rawView->Resize(static_cast<float>(cw), static_cast<float>(ch));
     };
+    win->onWindowClosed = [this, raw]() { RetireComposer(raw); };
     win->Show();
-    viewerWindows_.push_back(win);
+    composers_.push_back({win, view});
+    return rawView;
+}
+
+void UltraMailApp::RetireComposer(UltraCanvasWindow* window) {
+    // Deferred: dropping the last reference to a window from inside its own
+    // close callback would destroy it while it is still running.
+    auto drop = [this, window]() {
+        composers_.erase(std::remove_if(composers_.begin(), composers_.end(),
+                                        [window](const ComposeSession& s) {
+                                            return s.window.get() == window;
+                                        }),
+                         composers_.end());
+    };
+    if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(drop);
+    else drop();
 }
 
 std::string UltraMailApp::FolderWithRole(const std::string& accountId, FolderRole role) const {
