@@ -1,3 +1,48 @@
+#### 2026-09-30 *0.9.103*
+- **The file display's copy, move and delete questions are one dialog, and the
+  answer is the button.** Five dialogs with four layouts asked with toggle
+  switches wired to act as radio buttons and a *Continue* button that did
+  whatever the switches said. Every question a copy, move or delete asks is now
+  an *operation dialog*: the question, the facts under it (*From*, *Into*,
+  *Reason*, *Size*), an optional list of the entries with the display's own
+  icons (up to 200 rows, ten at a time), a note, and the answers as buttons -
+  as wide as their label, the safe one coloured and taken by Return, a
+  destructive one red, *Stop* / *Cancel* taken by Escape, an *Apply to all …*
+  checkbox beside them. See *The operation dialog* in
+  `Docs/UltraCanvas/UltraCanvasFilerWidget.md`.
+  - **A taken name shows the two files side by side** - existing and pasted,
+    with size, date and which is newer - and names what *Keep both* will call
+    the pasted file; two files of the same size and date are called identical
+    and default to *Skip*. The checkbox counts: *Apply to all 7 remaining
+    conflicts*.
+  - **A folder pasted over a folder merges.** *Replace the existing folder*
+    used to `remove_all` the existing folder first - everything in it the
+    pasted one did not have was gone. *Merge* (the default, and
+    `PasteConflictAction::Merge`) puts the pasted folder's entries into the
+    existing one, asking about each taken name inside; *Replace* is still
+    there, red, with the count of what it deletes.
+  - **The drop confirmation offers both verbs**, Move and Copy, with the one
+    the gesture asked for as the coloured default, so a wrong modifier never
+    needs a second drag; `FilerDropConfirmation::CopyOnly` joins the modes, and
+    a Cut + Paste move asks under the same setting as a dropped move.
+  - **The delete confirmation's two radios are its two buttons**, *Move to
+    Trash* and *Delete permanently* (red); Del makes the first the default,
+    Shift+Del the second. Its list grew from 40 rows to 200.
+  - **A summary at the end.** A paste or delete that ran to its end with
+    entries skipped - by hand, by policy or because they failed - ends on
+    *Copied 137 of 140 items. 3 were skipped.* with the skipped entries and the
+    reason beside each, and a *Copy skipped items again* button.
+  - **Standing answers for a host:** `SetConfirmTrashDelete`,
+    `SetConflictPolicy`, `SetFolderConflictPolicy`, `SetProblemPolicy`
+    (*skip and report* sends failures to the summary instead of a question)
+    and `SetProgressWindowDelay`; until the progress window is due the window
+    shows the busy pointer.
+  - `UltraCanvasModalDialog` 3.6.0: `AddCustomButton` takes a
+    `DialogButtonRole` (Default / Destructive / DestructiveDefault / Cancel),
+    which decides what Return and Escape take and how the button is drawn, and
+    `AddFooterElement` puts an element at the left of the button bar. See
+    `Docs/UltraCanvas/UltraCanvasDialogKeyboard.md`.
+  - `UltraCanvasFilerWidget` 1.34.0.
 #### 2026-09-30 *0.9.102*
 - **QRCode: an image with no code in it is no longer reported as an error.**
   `ScanQRCodeFile` and `ScanQRCodeImage` set `errorMessage` to "No QR codes

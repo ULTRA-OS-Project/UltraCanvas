@@ -1,7 +1,7 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.5.0
+// Version: 3.6.0
 // Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
@@ -318,6 +318,15 @@ namespace UltraCanvas {
             return entry && entry->button->IsVisible() && !entry->button->IsDisabled();
         };
 
+        // A custom button given the Default role is the answer Return means,
+        // whatever the configured default says (which cannot name it).
+        for (auto& candidate : dialogButtons) {
+            if ((candidate.role == DialogButtonRole::Default ||
+                 candidate.role == DialogButtonRole::DestructiveDefault) &&
+                usable(&candidate))
+                return &candidate;
+        }
+
         auto* entry = FindButtonEntry(dialogConfig.defaultButton);
         if (usable(entry)) return entry;
 
@@ -348,6 +357,9 @@ namespace UltraCanvas {
 
     UltraCanvasModalDialog::DialogButtonEntry* UltraCanvasModalDialog::FindCancelButtonEntry() {
         if (auto* configured = FindButtonEntry(dialogConfig.cancelButton)) return configured;
+        // A custom button given the Cancel role ("Stop", "Cancel").
+        for (auto& candidate : dialogButtons)
+            if (candidate.role == DialogButtonRole::Cancel) return &candidate;
 
         // No explicit cancel button in this dialog; fall back to whichever
         // dismissive button it does carry so Escape maps to a real action.
@@ -908,16 +920,49 @@ namespace UltraCanvas {
 
     void UltraCanvasModalDialog::AddCustomButton(const std::string& text, DialogResult buttonResult,
                                                  std::function<void()> callback) {
+        AddCustomButton(text, buttonResult, DialogButtonRole::Normal, std::move(callback));
+    }
+
+    void UltraCanvasModalDialog::AddCustomButton(const std::string& text, DialogResult buttonResult,
+                                                 DialogButtonRole role,
+                                                 std::function<void()> callback) {
         auto button = std::make_shared<UltraCanvasButton>(
                 "DialogBtn_Custom_" + text, 0, 0,
                 static_cast<long>(style.buttonWidth), static_cast<long>(style.buttonHeight));
         button->SetText(text);
         SizeButtonToLabel(button);
+        // The role's look: the default answer in the accent colour, a
+        // destructive one in red - filled when it is also the default, an
+        // outline when it merely sits beside the default.
+        switch (role) {
+            case DialogButtonRole::Default:
+                button->SetStyle(ButtonStyles::PrimaryStyle());
+                break;
+            case DialogButtonRole::DestructiveDefault:
+                button->SetStyle(ButtonStyles::DangerStyle());
+                break;
+            case DialogButtonRole::Destructive: {
+                ButtonStyle red;
+                red.borderColor      = Color(163, 38, 31, 255);
+                red.borderWidth      = 1.5f;
+                red.normalTextColor  = Color(143, 31, 25, 255);
+                red.hoverTextColor   = Color(143, 31, 25, 255);
+                red.pressedTextColor = Colors::White;
+                red.hoverColor       = Color(250, 232, 230, 255);
+                red.pressedColor     = Color(163, 38, 31, 255);
+                button->SetStyle(red);
+                break;
+            }
+            default:
+                break;
+        }
         button->onClick = [this, buttonResult, callback]() {
             if (callback) callback();
             CloseDialog(buttonResult);
         };
-        dialogButtons.push_back(DialogButtonEntry{button, DialogButton::NoneButton, buttonResult});
+        DialogButtonEntry entry{button, DialogButton::NoneButton, buttonResult};
+        entry.role = role;
+        dialogButtons.push_back(std::move(entry));
 
         // The new label needs a letter that none of the existing buttons uses,
         // which can only be decided across the whole set.
@@ -926,6 +971,25 @@ namespace UltraCanvas {
         if (footerSection) {
             footerSection->AddChild(button);
         }
+    }
+
+    void UltraCanvasModalDialog::AddFooterElement(std::shared_ptr<UltraCanvasUIElement> element) {
+        if (!element || !footerSection) return;
+        element->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        footerElements.push_back(element);
+        // The bar was a centred row of buttons. With something at its left it
+        // becomes: the elements, a spacer that takes the slack, the buttons -
+        // rebuilt in that order, since the buttons are already in it.
+        if (!footerSpacer) {
+            footerSpacer = std::make_shared<UltraCanvasContainer>("FooterSpacer");
+            footerSpacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            footerSpacer->size.height = CSSLayout::Dimension::Px(1);
+            footerSection->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::FlexStart);
+        }
+        footerSection->ClearChildren();
+        for (const auto& e : footerElements) footerSection->AddChild(e);
+        footerSection->AddChild(footerSpacer);
+        for (auto& entry : dialogButtons) footerSection->AddChild(entry.button);
     }
 
     void UltraCanvasModalDialog::SetButtonDisabled(DialogButton button, bool disabled) {

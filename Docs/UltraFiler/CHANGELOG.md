@@ -1,3 +1,40 @@
+#### 2026-09-30 *1.60.0*
+- **The copy, move and delete questions are one dialog, and the answer is the
+  button.** The *File already exists*, *Cannot copy*, *Confirm delete* and
+  *write-protected* dialogs each had their own layout and asked with toggle
+  switches and a *Continue* button. Every question is now the same window: what
+  is asked, the facts under it (from, into, reason, how much), the entries with
+  their icons, and the answers as buttons - the safe one coloured and taken by
+  Return, a destructive one red, *Stop* by Escape - with an *Apply to all …*
+  checkbox beside them that says how many are left.
+  - **A taken name shows both files side by side**, with size, date and which
+    is newer, and says what *Keep both* will call the pasted one.
+  - **A folder pasted over a folder is merged**, the way every other file
+    manager does it: its entries go into the folder that is there, each asked
+    about in turn when its own name is taken. *Replace*, which deletes the
+    existing folder first, is still there - red, and saying what it deletes.
+    (Before, *Replace the existing folder* was the only answer besides Keep
+    both and Skip, and it wiped the existing folder.)
+  - **A dropped move offers Copy beside Move**, and a dropped copy Move beside
+    Copy, the requested one coloured; a Cut + Paste move asks the same
+    question as a dropped move.
+  - **Delete asks with two buttons**, *Move to the Recycle Bin* and *Delete
+    permanently*, instead of two radios and one *Delete*; Del makes the first
+    the default, Shift+Del the second. The list of what is about to go shows up
+    to 200 items (ten at a time) instead of 40.
+  - **A summary at the end** when something was skipped: how many were done,
+    the skipped items with the reason beside each, and a button that tries
+    just those again.
+- **Settings > Handling > File operations** holds the standing answers:
+  *Ask before* moving files (drag & drop or Cut and Paste), copying files by
+  drag & drop, moving files to the Recycle Bin (off, Del goes there unasked; a
+  permanent delete always asks); *When a name is already taken* (Ask / Keep
+  both / Replace / Skip); *When a folder is pasted over a folder* (Merge / Ask);
+  *When a file cannot be copied, moved or deleted* (Ask each time / Skip it and
+  report at the end); and the progress window's delay (0 to 10 seconds, the
+  busy pointer until then). The drop confirmation moved here from *Drag & Drop*
+  as the first two checkboxes; its setting is unchanged. (Framework side:
+  `Docs/UltraCanvas/CHANGELOG.md` 0.9.103.)
 #### 2026-09-29 *1.59.0*
 - **A folder can be exported as text.** *Extras > Export* in the file
   context menu has two new entries. *Folder content* lists what the selected
