@@ -9,6 +9,8 @@
   when the account has stayed unreachable for ten minutes, and then once.
   - Mail arrives within a minute of the network coming up, instead of at
     the next five-minute sync.
+  - Opening a folder while the server cannot be reached takes the same
+    grace period; it used to raise "That folder could not be fetched" once.
   - A failure the server itself produced — a rejected password, an
     untrusted certificate — is reported at once, as before, and so is any
     failure of a sync you asked for with Update.
@@ -23,6 +25,9 @@
   many attempts in a row have failed, and what happens next.
 - The `[UMSTREAM]` debug lines the sync engine and the progress callback
   printed to stderr on every fetch since 0.9.51 are gone.
+- `ULTRAMAIL_DEMO_COLLECT=1` now leaves the main window on top of the seeded
+  mail; `ULTRAMAIL_DEMO_COLLECT=contacts` opens the contact manager as it
+  always did.
 
 #### 2026-09-29 *0.10.8*
 - **Replies and forwards keep an HTML message's formatting.** Answering or

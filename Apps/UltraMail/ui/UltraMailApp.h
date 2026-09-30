@@ -307,8 +307,11 @@ private:
     // Fetch one folder's messages now (envelopes + bodies), on a worker. Backs
     // the lazy load when a non-inbox folder is first opened and the Reload of a
     // folder other than the inbox. No-op without the IMAP plug-in / an unlocked
-    // vault / known servers.
-    void SyncFolder(const std::string& accountId, const std::string& folder);
+    // vault / known servers. `userInitiated` is Reload; opening a folder is a
+    // passive refresh, so a server it cannot reach gets the same grace period
+    // as a background sync instead of an alert.
+    void SyncFolder(const std::string& accountId, const std::string& folder,
+                    bool userInitiated);
     // Run the given accounts through the SyncService on worker threads and
     // report the outcome on the UI thread. `userInitiated` syncs (Reload, a new
     // account) always say why nothing was fetched; timer syncs say so once.

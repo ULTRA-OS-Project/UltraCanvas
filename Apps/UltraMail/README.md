@@ -32,8 +32,9 @@ and **UltraDatabase** (local store) modules.
 > people you correspond with. When mail cannot be fetched — no IMAP plug-in, no
 > known server for the address, no stored password, a rejected login — Reload
 > and the first sync say so instead of doing nothing. A background sync that
-> cannot reach the server at all is the exception: right after boot that is
-> the network not being up yet, so it is retried every minute and reported
+> cannot reach the server at all — or a folder opened while it cannot — is
+> the exception: right after boot that is the network not being up yet, so it
+> is retried every minute and reported
 > only once the account has stayed unreachable for ten minutes
 > (`OfflineGrace` in `UltraMailSyncScheduler.h`). A **connection pill** at
 > the right end of the status line shows the selected account's last contact
@@ -133,6 +134,9 @@ the bytes to the cache and opens them in **`UltraCanvasMediaViewer`** (images,
 PDF, text, audio/video, …). Try it: run with `ULTRAMAIL_DEMO_MAIL=1`, which
 seeds a demo inbox (two messages dated today, one with an attachment) so the
 whole main window can be exercised without a live sync.
+`ULTRAMAIL_DEMO_COLLECT=1` seeds the same inbox and auto-collects its senders
+into the address book, leaving the main window on top;
+`ULTRAMAIL_DEMO_COLLECT=contacts` also opens the contact manager on them.
 
 **Contacts:** the address book (`ContactStore` on UltraDatabase) organises
 contacts into **Family / Friends / Work / Leisure / Services** sections, each

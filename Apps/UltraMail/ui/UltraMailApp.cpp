@@ -208,10 +208,13 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
         EnsureVaultUnlocked([this]() { RunSyncs(/*force=*/false); Refresh(); });
     }
 
-    // Demo path: seed mail, auto-collect senders, and open the contact manager.
-    if (const char* dcol = std::getenv("ULTRAMAIL_DEMO_COLLECT"); dcol && *dcol == '1') {
+    // Demo path: seed mail and auto-collect its senders; the main window shows
+    // the mail. "contacts" also opens the contact manager on the collected
+    // senders — on request only, since it lands on top of the main window.
+    if (const char* dcol = std::getenv("ULTRAMAIL_DEMO_COLLECT"); dcol && *dcol) {
         SeedDemoMail();
-        OpenContacts();
+        Refresh();
+        if (std::string(dcol) == "contacts") OpenContacts();
     }
     // Demo path: seed contacts and open the contact manager.
     if (const char* dc = std::getenv("ULTRAMAIL_DEMO_CONTACTS"); dc && *dc == '1') {
@@ -429,7 +432,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
             return;                                   // opened again too soon; throttle
         folderSyncInFlight_.insert(key);
         folderSyncedAt_[key] = now;
-        SyncFolder(accountId, folder);
+        SyncFolder(accountId, folder, /*userInitiated=*/false);
     };
     auto mail = mailView_.Build();
     accountView_->AddChild(mail);
@@ -642,7 +645,8 @@ void UltraMailApp::HandleReload() {
         // Reload also refreshes the folder in view when it is not the inbox (the
         // account sync covers the inbox); other folders are lazily fetched.
         const std::string folder = mailView_.CurrentFolder();
-        if (!folder.empty() && folder != "INBOX") SyncFolder(target, folder);
+        if (!folder.empty() && folder != "INBOX")
+            SyncFolder(target, folder, /*userInitiated=*/true);
         Refresh();
     });
 }
@@ -1440,7 +1444,8 @@ void UltraMailApp::SyncAccount(const std::string& accountId) {
     }
 }
 
-void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& folder) {
+void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& folder,
+                              bool userInitiated) {
     IMailboxProtocolPlugin* imap = ImapPlugin();
     if (!imap || !vault_.IsUnlocked()) return;
 
@@ -1471,10 +1476,10 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
         [this, accountId, username, provider](UltraNetMailOptions& o) {
             return ResolveCredentials(accountId, username, provider, o.credentials);
         },
-        [this, svc, accountId, folder, who](SyncOutcome outcome) {
+        [this, svc, accountId, folder, who, userInitiated](SyncOutcome outcome) {
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) return;
-            app->PostToUIThread([this, accountId, folder, who, outcome]() {
+            app->PostToUIThread([this, accountId, folder, who, userInitiated, outcome]() {
                 // Clear the in-flight guard first — even on failure — so the next
                 // open can retry once the throttle window passes. (Harmless no-op
                 // for callers that never set it, e.g. HandleReload.)
@@ -1493,6 +1498,21 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                                                   : ConnectionState::Failed,
                                    outcome.message);
                     if (last || accountId == selectedAccount_) ShowAccountStatus();
+                    // Opening a folder is a passive refresh: a server it cannot
+                    // reach right after boot is the network not being up yet,
+                    // so it takes the same grace period as a background sync
+                    // (status line, a retry in a minute, the alert after ten
+                    // minutes offline). Reload reports as before.
+                    if (!userInitiated && outcome.NetworkUnreachable()) {
+                        if (!offline_.Unreachable(accountId, NowMonotonicSec())) {
+                            ScheduleOfflineRetry();
+                            return;
+                        }
+                    } else {
+                        offline_.Reached(accountId);
+                    }
+                    // Once per run of failures, on Reload too: its account sync
+                    // reports the same server in its own alert.
                     if (syncErrorReported_.insert(accountId).second) {
                         AlertError(window_ ? window_.get() : nullptr,
                                    "That folder could not be fetched for " + who + ".",
@@ -1501,6 +1521,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                     return;
                 }
                 syncErrorReported_.erase(accountId);
+                offline_.Reached(accountId);
                 accountError_.erase(accountId);
                 NoteConnection(accountId, ConnectionState::Connected);
                 if (last) ShowAccountStatus();
