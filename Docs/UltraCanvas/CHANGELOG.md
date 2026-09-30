@@ -1,3 +1,55 @@
+#### 2026-09-30 *0.9.98*
+- **`SetMargin()` did nothing inside an ordinary container or group box.**
+  Block layout, the default display, stacked its children at their bare
+  border-box height and never read their margins, so a margin only took effect
+  under flex, grid or absolute positioning. The Group Box demo's label margins
+  had no visible effect, and the TreeView demo had to switch its group boxes to
+  a flex column to put any space between a tree and its options. Block layout
+  now offsets each child by its margin, adds the vertical margins to the stack
+  and to the parent's automatic height, and narrows the width a child is
+  offered by its left and right margins (percentages against the content
+  width) - so wrapped multi-line text wraps inside its margins. Margins do not
+  collapse, as in flex; `margin: auto` does not centre in block layout.
+  `Tests/CSSLayoutBlockMarginTest.cpp` pins it.
+
+#### 2026-09-30 *0.9.97*
+- **`UltraNet_DnsResolveAsync` with `UltraNetDnsType::PTR` is the reverse
+  lookup, and refuses a non-address before any thread starts.** The
+  asynchronous PTR path reached `UltraNet_DnsReverseLookup` only by way of
+  the synchronous `UltraNet_DnsResolve` on a detached thread, behind a stale
+  comment about the c-ares PTR parser, and a caller that passed a host name
+  instead of an address got a thread and an empty answer later rather than
+  an error now. It now calls the reverse lookup directly with the caller's
+  options - hosts file, deadline and servers as there - and checks the
+  address up front the way it checks the server list: an empty or
+  non-address argument is `InvalidUrl` synchronously, no thread, no callback.
+  Forward types are unchanged (c-ares's event thread, or a thread running the
+  synchronous lookup).
+  - Tests (`Tests/UltraNet/test_dns_servers.cpp`): a non-address PTR is
+    refused synchronously and never calls back; a PTR at a silent loopback
+    server calls back with an empty list at its deadline; without servers
+    the asynchronous answer matches the synchronous reverse lookup. The
+    `UltraNet_DnsResolveAsync` probe covers the synchronous refusal.
+- **Asynchronous lookups that need a thread run on a small worker pool.**
+  PTR on every backend, and every type on the system backends (c-ares
+  answers forward types from its own event thread), started a detached
+  thread per call, so a burst of lookups was a burst of threads. They queue
+  on a pool of at most eight workers (two on a small machine), grown on
+  demand and never destroyed. The deadline counts from the call, not from
+  when a worker is free: the time a lookup spent queued comes off its
+  budget, and one that spent all of it is answered empty at once, without a
+  query - so a burst at a server that never answers is back after one
+  deadline, not one per pool-full (`dns_resolve_async_burst_answers_within_
+  one_deadline`).
+- **The c-ares PTR parser is given the queried address.** `ares_parse_ptr_
+  reply` was called with no address, relying on c-ares tolerating that. The
+  backend now decodes the in-addr.arpa / ip6.arpa name it queries back into
+  the address's wire bytes and family and hands them to the parser, which
+  puts them into the hostent it builds. New pure helper
+  `UltraNet_DnsReverseNameToAddress` (the inverse of
+  `UltraNet_DnsReverseName`: case-insensitive, trailing dot allowed, strict
+  about label count and range) does the decoding and is tested both ways.
+
 #### 2026-09-30 *0.9.96*
 - **Menu: the checkbox / radio indicator sits level with its label.** It was
   drawn one pixel above the row's centre line while the label was drawn on

@@ -25,7 +25,9 @@ The engine implements a useful subset of CSS, not the whole specification.
 
 - **Flex** (`display: flex`) — direction, wrap, grow/shrink/basis, justify/align, gap, order
 - **Grid** (`display: grid`) — explicit placement, auto-placement, track sizing (px / % / fr / auto / min/max-content / fit-content), gaps
-- **Block** (`display: block`, the default) — children stacked vertically
+- **Block** (`display: block`, the default) — children stacked vertically; each in-flow
+  child's margin offsets it and adds to the stack, and its left/right margin narrows the
+  width it is offered (percentages resolve against the content width)
 - **Table** (`DisplayType::Table`) — HTML's automatic table layout; see
   [Table layout](#table-layout) below
 - **Absolute positioning** — `Absolute`, `Fixed`, `Relative`, and the UI-specific `AbsoluteUI`
@@ -38,7 +40,9 @@ The engine implements a useful subset of CSS, not the whole specification.
 - **No `table-row` / `table-cell` display types.** A table's cells are its direct
   children, placed by row and column (see [Table layout](#table-layout)); there are no
   row boxes and no anonymous-box generation.
-- Minor gaps: LTR writing-mode only; no margin collapsing; Grid named lines / template
+- Minor gaps: LTR writing-mode only; no margin collapsing (in Block as in Flex, two
+  stacked siblings are separated by the *sum* of their facing margins); Block does not
+  centre on `margin: auto` (an auto margin is 0 there); Grid named lines / template
   areas / subgrid / masonry / dense packing are not implemented.
 
 ## How it integrates with the UI framework
