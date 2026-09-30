@@ -21,6 +21,8 @@
   request). Hovering it shows the account, the server, the state, the time
   of the last contact and the last attempt, the reason for a failure, how
   many attempts in a row have failed, and what happens next.
+- The `[UMSTREAM]` debug lines the sync engine and the progress callback
+  printed to stderr on every fetch since 0.9.51 are gone.
 
 #### 2026-09-29 *0.10.8*
 - **Replies and forwards keep an HTML message's formatting.** Answering or

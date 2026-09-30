@@ -43,7 +43,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
@@ -1683,15 +1682,11 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             senderIcons_.EnsureIconForAddress(m.fromAddr);
             feed_.Publish(m);   // the desktop feed learns of new mail as it arrives
             progressBuf->push_back(m);
-            std::fprintf(stderr, "[UMSTREAM] onProgress uid=%lld buf=%zu aid=%s\n",
-                         (long long)m.uid, progressBuf->size(), aid.c_str());
             if (progressBuf->size() < 20) return;   // bound UI churn on big syncs
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) { progressBuf->clear(); return; }
             auto batch = std::make_shared<std::vector<MessageEnvelope>>();
             batch->swap(*progressBuf);
-            std::fprintf(stderr, "[UMSTREAM] flush batch=%zu aid=%s selected=%s\n",
-                         batch->size(), aid.c_str(), selectedAccount_.c_str());
             app->PostToUIThread([this, aid, batch]() {
                 statusReceived_ += static_cast<int>(batch->size());
                 SetStatus("Receiving messages… (" + std::to_string(statusReceived_) + ")");
