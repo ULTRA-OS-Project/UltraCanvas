@@ -2,10 +2,10 @@
 // "Extras > Export > Folder content / Folder tree content" — the folder as
 // text: the listing of what one folder holds (name, size, modified), or the
 // whole tree below it drawn with line characters the way the `tree` command
-// draws it (├── └── │), or that tree as a CSV table (name, path, type,
-// size, modified) for a spreadsheet. UltraFilerFolderExportWindow builds the text on a
-// worker thread and shows it in a text window whose Save button writes it to
-// a file of the user's choosing.
+// draws it (├── └── │), or that tree as a ';'-separated CSV table (name,
+// path, type, size, modified) for a spreadsheet. UltraFilerFolderExportWindow
+// builds the text on a worker thread and shows it in a text window whose
+// Save button writes it to a file of the user's choosing.
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -26,8 +26,8 @@ namespace UltraCanvas {
 enum class FolderExportKind {
     Content,   // the entries directly in the folder, with size and date
     Tree,      // the folder and everything below it, drawn as a tree
-    Csv,       // the folder and everything below it, one CSV row per entry:
-               // Name, Path, Type, Size (bytes), Modified
+    Csv,       // the folder and everything below it, one CSV row per entry,
+               // ';'-separated: Name;Path;Type;Size (bytes);Modified
 };
 
 // How far a tree export goes before it stops: a tree of a whole drive would

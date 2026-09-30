@@ -3,7 +3,8 @@
   as CSV* lists the folder and everything below it as a table - name, path,
   type, size in bytes and modification date and time, one row per entry -
   in the export window, and **Save…** writes it as a `.csv` file that
-  spreadsheets open directly (UTF-8 with a byte order mark, CRLF rows,
+  spreadsheets open directly (`;`-separated, so German Excel reads the
+  columns on a double-click; UTF-8 with a byte order mark, CRLF rows,
   RFC 4180 quoting).
 - **The folder tree export shows file sizes.** In *Extras > Export > Folder
   tree content* every file line now ends with the file's size

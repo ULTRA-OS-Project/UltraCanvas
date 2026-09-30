@@ -97,10 +97,15 @@ namespace {
         return buf;
     }
 
-    // One CSV field (RFC 4180): quoted when it holds a comma, a quote or a
-    // line break, with its quotes doubled.
+    // The field separator. A semicolon, as a spreadsheet set up for a
+    // decimal comma (German Excel, for one) expects it - there a comma is
+    // the decimal separator, and a comma-separated file opens as one column.
+    constexpr char kCsvSeparator = ';';
+
+    // One CSV field (RFC 4180 quoting): quoted when it holds the separator,
+    // a comma, a quote or a line break, with its quotes doubled.
     std::string CsvField(const std::string& s) {
-        if (s.find_first_of(",\"\r\n") == std::string::npos) return s;
+        if (s.find_first_of(";,\"\r\n") == std::string::npos) return s;
         std::string out = "\"";
         for (char c : s) {
             if (c == '"') out += '"';
@@ -308,10 +313,10 @@ namespace {
                 // whatever its decimal separator. Folders have none.
                 const std::string size = item.isDirectory
                         ? std::string() : std::to_string(item.size);
-                text += CsvField(item.name) + "," +
-                        CsvField(PathToUtf8(item.path)) + "," +
-                        CsvField(TypeOf(item)) + "," + size + "," +
-                        FormatTimeSeconds(item.modified) + "\n";
+                text += CsvField(item.name) + kCsvSeparator +
+                        CsvField(PathToUtf8(item.path)) + kCsvSeparator +
+                        CsvField(TypeOf(item)) + kCsvSeparator + size +
+                        kCsvSeparator + FormatTimeSeconds(item.modified) + "\n";
                 if (item.isDirectory && !item.isLink) Walk(item.path);
             }
         }
@@ -322,7 +327,8 @@ namespace {
         CsvWalk walk;
         walk.includeHidden = includeHidden;
         walk.cancelled = cancelled;
-        walk.text = "Name,Path,Type,Size,Modified\n";
+        walk.text = std::string("Name") + kCsvSeparator + "Path" + kCsvSeparator +
+                    "Type" + kCsvSeparator + "Size" + kCsvSeparator + "Modified\n";
         walk.Walk(root);
         return walk.text;
     }

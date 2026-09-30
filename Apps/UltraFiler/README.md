@@ -387,17 +387,18 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   a file of your choosing, proposed as `<folder> - content.txt` /
   `<folder> - tree.txt`. Several export windows can be open at once.
   *Folder tree as CSV* writes the same walk as a table for a spreadsheet:
-  a `Name,Path,Type,Size,Modified` header and one row per folder and file,
+  a `Name;Path;Type;Size;Modified` header and one row per folder and file,
   each folder followed by its content. *Type* is `Folder`, `Link`, or the
   file's extension in capitals (`PDF file`; `File` without one); *Size* is
   in plain bytes, empty for folders; *Modified* is local time as
-  `YYYY-MM-DD HH:MM:SS`. Fields with a comma, a quote or a line break are
-  quoted (RFC 4180). There is no heading, and a tree over 200 000 entries
+  `YYYY-MM-DD HH:MM:SS`. Fields are separated by `;`, and a field holding a
+  `;`, a comma, a quote or a line break is quoted (RFC 4180 quoting). There is no heading, and a tree over 200 000 entries
   ends without a note, so the file stays a clean table. **Save…** proposes
   `<folder> - files.csv` and writes it with CRLF line ends and a UTF-8 byte
-  order mark, so Excel opens non-ASCII names correctly. The separator is a
-  comma; a spreadsheet set up for `;` (German Excel, for one) opens it
-  through its import dialog.
+  order mark, so Excel opens non-ASCII names correctly. The semicolon is
+  what a spreadsheet set up for a decimal comma expects (German Excel opens
+  the file with a double-click); one set up for `,` asks for the separator
+  in its import dialog.
 - **Extras > Open prompt** (in the file context menu's Extras submenu):
   starts the operating system's command line program
   in the folder of the active tab, detached from UltraFiler (closing the file
