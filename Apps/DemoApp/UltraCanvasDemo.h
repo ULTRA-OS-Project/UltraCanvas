@@ -294,8 +294,9 @@ namespace UltraCanvas {
         // WYSIWYG page: UltraCanvasRichTextEdit with toolbars built from real
         // elements and driven by GetFormatState(), plus .odt/.docx open & save.
         std::shared_ptr<UltraCanvasUIElement> CreateWYSIWYGExamples();
-        // The same editor on Chinese and Arabic text: line breaking without
-        // spaces, right-to-left paragraphs, mixed-direction lines.
+        // The same editor on Chinese, Arabic and Myanmar text: line breaking
+        // without spaces, right-to-left paragraphs, complex-script shaping,
+        // mixed-direction lines.
         std::shared_ptr<UltraCanvasUIElement> CreateWYSIWYGInternationalExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePartiallyImplementedExamples(const std::string& text);
         std::shared_ptr<UltraCanvasUIElement> CreateDomainTableDemo();

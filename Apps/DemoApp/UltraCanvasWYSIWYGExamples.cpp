@@ -751,13 +751,16 @@ namespace UltraCanvas {
         return root;
     }
 
-    // ===== CHINESE AND ARABIC =====
-    // The same editor on two scripts the Latin sample does not exercise.
+    // ===== CHINESE, ARABIC AND MYANMAR =====
+    // The same editor on three scripts the Latin sample does not exercise.
     // Chinese has no spaces: a line may break between any two characters.
     // Arabic runs right to left and joins its letters; a right-to-left
     // paragraph starts at the right, and a Latin word or a number inside it
-    // keeps its own direction (the Unicode bidi rules). The text is plain
-    // UTF-8 in the document; the system's fonts supply the glyphs.
+    // keeps its own direction (the Unicode bidi rules). Myanmar (Burmese,
+    // Unicode encoding) stacks consonants, medials and vowel signs into one
+    // syllable that the shaper reorders, and leaves no spaces between words.
+    // The text is plain UTF-8 in the document; the system's fonts supply the
+    // glyphs (Myanmar needs a font such as Padauk or Noto Sans Myanmar).
 
     namespace {
 
@@ -768,7 +771,7 @@ namespace UltraCanvas {
 
         std::shared_ptr<UCRichDocument> BuildInternationalDocument() {
             auto document = std::make_shared<UCRichDocument>();
-            document->metadata.title = "Chinese and Arabic";
+            document->metadata.title = "Chinese, Arabic and Myanmar";
 
             // ----- Chinese -----
             document->blocks.push_back(MakeHeading(1, "多语言文档示例"));
@@ -831,7 +834,27 @@ namespace UltraCanvas {
                 document->blocks.push_back(RightToLeft(third));
             }
 
-            // ----- Both, and a table -----
+            // ----- Myanmar -----
+            document->blocks.push_back(MakeHeading(1, "မြန်မာဘာသာ နမူနာ"));
+            {
+                std::vector<RichTextRun> runs;
+                runs.push_back(MakeRun("ဤစာပိုဒ်ကို မြန်မာဘာသာဖြင့် ရေးသားထားပါသည်။ မြန်မာစာတွင် စကားလုံးများကြားတွင် "
+                                       "နေရာလွတ် မထားလေ့ရှိဘဲ စကားစုများကြားတွင်သာ ခြားထားပါသည်။ "));
+                RichTextRun bold = MakeRun("စာလုံးမည်း");
+                bold.bold = true;
+                runs.push_back(bold);
+                runs.push_back(MakeRun("နှင့် "));
+                RichTextRun italic = MakeRun("စာလုံးစောင်း");
+                italic.italic = true;
+                runs.push_back(italic);
+                runs.push_back(MakeRun("ကိုလည်း သုံးနိုင်ပါသည်။ ခုနှစ် ၂၀၂၆ ကဲ့သို့ မြန်မာဂဏန်းများလည်း ပါဝင်နိုင်ပါသည်။"));
+                document->blocks.push_back(MakeParagraph(std::move(runs)));
+            }
+            document->blocks.push_back(MakeListItem("ဇယားများနှင့် စာရင်းများ", false));
+            document->blocks.push_back(MakeListItem("အောက်ခြေမှတ်စုများနှင့် မှတ်ချက်များ", false));
+            document->blocks.push_back(MakeListItem("PDF အဖြစ် ထုတ်ယူခြင်း", false));
+
+            // ----- All of them, and a table -----
             document->blocks.push_back(MakeHeading(2, "Mixed directions in one line"));
             document->blocks.push_back(MakeParagraph({MakeRun(
                 "An English sentence can hold an Arabic phrase, مرحبا بالعالم, and a Chinese one, 你好，世界, "
@@ -839,19 +862,21 @@ namespace UltraCanvas {
             {
                 RichDocBlock table;
                 table.type = RichBlockType::Table;
-                auto row = [&](const char* english, const char* chinese, const char* arabic, bool header) {
+                auto row = [&](const char* english, const char* chinese, const char* arabic, const char* myanmar,
+                               bool header) {
                     RichTableRow r;
                     r.header = header;
                     r.cells.push_back(MakeCell(english, header));
                     r.cells.push_back(MakeCell(chinese, header));
                     r.cells.push_back(MakeCell(arabic, header));
+                    r.cells.push_back(MakeCell(myanmar, header));
                     table.tableRows.push_back(r);
                 };
-                row("English", "中文", "العربية", true);
-                row("Hello", "你好", "مرحبا", false);
-                row("Thank you", "谢谢", "شكرا", false);
-                row("Book", "书", "كتاب", false);
-                row("Document", "文档", "مستند", false);
+                row("English", "中文", "العربية", "မြန်မာ", true);
+                row("Hello", "你好", "مرحبا", "မင်္ဂလာပါ", false);
+                row("Thank you", "谢谢", "شكرا", "ကျေးဇူးတင်ပါတယ်", false);
+                row("Book", "书", "كتاب", "စာအုပ်", false);
+                row("Document", "文档", "مستند", "စာရွက်စာတမ်း", false);
                 document->blocks.push_back(table);
             }
             document->UpdateNoteMarks();
@@ -868,14 +893,14 @@ namespace UltraCanvas {
         root->SetBackgroundColor(Color(248, 248, 250, 255));
 
         auto title = std::make_shared<UltraCanvasLabel>("wysiwygIntlTitle", 20, 12, 960, 28);
-        title->SetText("WYSIWYG Editor — Chinese & Arabic");
+        title->SetText("WYSIWYG Editor — Chinese, Arabic & Myanmar");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
         root->AddChild(title);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("wysiwygIntlSubtitle", 20, 44, 960, 20);
-        subtitle->SetText("Chinese lines break between any two characters; Arabic paragraphs start at the right. "
-                          "Click into either and type, or use the arrow keys.");
+        subtitle->SetText("Chinese lines break between any two characters; Arabic paragraphs start at the right; "
+                          "Myanmar syllables are shaped from stacked letters. Click in and type, or use the arrow keys.");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(100, 100, 100, 255));
         root->AddChild(subtitle);
@@ -946,7 +971,8 @@ namespace UltraCanvas {
         auto notes = std::make_shared<UltraCanvasLabel>("wysiwygIntlNotes", 20, 712, 960, 48);
         notes->SetText("Text is shaped and ordered by the Unicode bidirectional rules, so an English word or a "
                        "number inside Arabic keeps its own direction. A paragraph whose first letter is Arabic "
-                       "starts at the right by itself; Right-to-left makes any paragraph start there.");
+                       "starts at the right by itself; Right-to-left makes any paragraph start there. Myanmar text needs a "
+                       "Myanmar font (Padauk or Noto Sans Myanmar) and the Unicode encoding, not Zawgyi.");
         notes->SetFontSize(11);
         notes->SetTextColor(Color(120, 120, 120, 255));
         root->AddChild(notes);

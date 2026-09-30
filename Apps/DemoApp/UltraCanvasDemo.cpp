@@ -1786,10 +1786,11 @@ namespace UltraCanvas {
                 .AddVariant("wysiwyg", "Open & save .odt / .docx")
                 .AddVariant("wysiwyg", "Read-only preview");
 
-        textDocBuilder.AddItem("wysiwygintl", "WYSIWYG — Chinese & Arabic",
-                               "The WYSIWYG editor on Chinese and Arabic text: Chinese lines break "
-                               "between any two characters, Arabic paragraphs run right to left, and "
-                               "one line can mix both directions",
+        textDocBuilder.AddItem("wysiwygintl", "WYSIWYG — Chinese, Arabic & Myanmar",
+                               "The WYSIWYG editor on Chinese, Arabic and Myanmar text: Chinese lines "
+                               "break between any two characters, Arabic paragraphs run right to left, "
+                               "Myanmar syllables are shaped from stacked letters, and one line can mix "
+                               "both directions",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateWYSIWYGInternationalExamples(); },
                                "DemoApp/UltraCanvasWYSIWYGExamples.cpp",
