@@ -7,6 +7,13 @@
   "Checking …" with its spinner and the connection pill turns "Checking…", then
   "Connected". A network that is not up yet right after boot gets the usual grace
   period - status line and a retry, no alert.
+- **And right after the computer wakes from sleep.** The five-minute timer cannot
+  tell that the machine slept, so after a wake the inbox could stay as it was
+  before the sleep for minutes. A light 15-second check (`WakeDetector`) notices
+  that far more time passed between two of its ticks than it should have, and
+  every account is checked 5 seconds later, once Wi-Fi has had a moment to
+  reconnect. What was offline before the sleep starts a fresh grace period, so a
+  network that is still coming back shows on the status line, not in an alert.
 - **A Settings window, like UltraFiler's.** The gear at the right end of the
   toolbar (UltraFiler's gear button) opens it: a page tree on the left, and
   pages with their notes and a *Restore default* button.

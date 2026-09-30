@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailSyncScheduler.cpp
+// Version: 0.3.0 - WakeDetector
 // Version: 0.2.0 - OfflineGrace holds back a not-yet-online failure
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSyncScheduler.h"
@@ -57,6 +58,18 @@ std::vector<std::string> OfflineGrace::AccountsInGrace(int64_t nowSec) const {
     for (const auto& [id, since] : since_)
         if (nowSec - since < graceSec_) out.push_back(id);
     return out;
+}
+
+// ---- WakeDetector -----------------------------------------------------------
+
+bool WakeDetector::Tick(int64_t wallNowSec) {
+    const int64_t previous = last_;
+    last_ = wallNowSec;
+    if (previous == 0) return false;                // the first tick starts the clock
+    const int64_t gap = wallNowSec - previous;
+    if (gap <= tickSec_ + slackSec_) return false;  // ran normally (or the clock went back)
+    lastSleepSec_ = gap - tickSec_;
+    return true;
 }
 
 } // namespace UltraMail

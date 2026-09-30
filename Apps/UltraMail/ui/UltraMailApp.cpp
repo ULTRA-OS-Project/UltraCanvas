@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.11 - and right after the computer wakes from sleep (WakeDetector)
 // Version: 0.9.10 - new mail is fetched right after start, not five minutes later
 // Version: 0.9.9 - a Settings window (gear at the right end of the toolbar, as in
 //                  UltraFiler): layout, HTML / plain text, text size, remote-image
@@ -75,6 +76,9 @@ constexpr int   kActionIcon    = 12;
 // The first fetch after start waits this long, so the main window is painted
 // (with the cached mail) before the network work begins.
 constexpr unsigned int kStartupSyncDelayMs = 400;
+// After a wake from sleep, the check waits this long: Wi-Fi usually needs a few
+// seconds to reconnect, and a check before that would only report "offline".
+constexpr unsigned int kWakeSyncDelayMs = 5000;
 
 std::string IconPath(const std::string& name) {
     return UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/icons/" + name);
@@ -1428,7 +1432,41 @@ void UltraMailApp::StartBackgroundSync() {
         app->StartTimer(300000, /*periodic=*/true,
                         [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
         syncTimerStarted_ = true;
+        // The five-minute timer cannot tell a wake from sleep: after one it may
+        // be minutes before it fires. This short one can (see WakeDetector).
+        wake_.Tick(static_cast<int64_t>(std::time(nullptr)));   // start its clock
+        app->StartTimer(static_cast<unsigned int>(wake_.TickSec() * 1000), /*periodic=*/true,
+                        [this](UltraCanvas::TimerId) {
+                            if (wake_.Tick(static_cast<int64_t>(std::time(nullptr))))
+                                OnWokeFromSleep();
+                        });
     }
+}
+
+void UltraMailApp::OnWokeFromSleep() {
+    if (accounts_.empty() || wakeCheckPending_) return;
+    // Whatever was unreachable before the sleep is a fresh question now: a
+    // first failure after the wake is held back like one right after boot.
+    offline_.Clear();
+    auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    wakeCheckPending_ = true;
+    app->StartTimer(kWakeSyncDelayMs, /*periodic=*/false, [this](UltraCanvas::TimerId) {
+        wakeCheckPending_ = false;
+        SyncAllInBackground();
+    });
+}
+
+void UltraMailApp::SyncAllInBackground() {
+    std::vector<ScheduledAccount> targets;
+    for (const auto& a : accounts_) {
+        DiscoveryResult d = SettingsFor(a);
+        ScheduledAccount sa;
+        sa.accountId = a.accountId;
+        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        targets.push_back(sa);
+    }
+    SyncAccounts(targets, /*userInitiated=*/false);
 }
 
 void UltraMailApp::RunSyncs(bool force) {

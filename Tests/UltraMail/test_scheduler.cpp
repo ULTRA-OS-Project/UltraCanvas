@@ -1,7 +1,7 @@
 // Tests/UltraMail/test_scheduler.cpp
 // The sync scheduler's due-account logic, the offline grace period and the
-// contact auto-collector.
-// Version: 0.2.0
+// contact auto-collector, and the wake-from-sleep detector.
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
@@ -155,4 +155,43 @@ TEST(collector_does_not_reclassify_existing) {
     std::vector<Contact> work;
     store.ListBySection(ContactSection::Work, work);
     REQUIRE_EQ(work.size(), (size_t)1);
+}
+
+// ---- WakeDetector: a wake from sleep, seen as a gap between timer ticks ----
+
+TEST(wake_detector_first_tick_starts_the_clock) {
+    WakeDetector w(30, 90);
+    REQUIRE(!w.Tick(1000000));          // nothing to compare with yet
+    REQUIRE(!w.Tick(1000030));          // one period later: running normally
+}
+
+TEST(wake_detector_late_ticks_are_not_a_sleep) {
+    WakeDetector w(30, 90);
+    w.Tick(1000000);
+    REQUIRE(!w.Tick(1000060));          // a busy loop, a tick delayed by 30 s
+    REQUIRE(!w.Tick(1000060 + 120));    // exactly period + slack: still not a sleep
+}
+
+TEST(wake_detector_sees_a_sleep) {
+    WakeDetector w(30, 90);
+    w.Tick(1000000);
+    REQUIRE(w.Tick(1000000 + 3600));    // an hour went by between two ticks
+    REQUIRE_EQ(w.LastSleepSec(), static_cast<int64_t>(3570));
+    REQUIRE(!w.Tick(1000000 + 3630));   // and afterwards it runs normally again
+}
+
+TEST(wake_detector_ignores_the_clock_going_back) {
+    WakeDetector w(30, 90);
+    w.Tick(1000000);
+    REQUIRE(!w.Tick(990000));           // NTP set the clock back
+    REQUIRE(!w.Tick(990030));
+}
+
+TEST(offline_grace_clear_forgets_running_periods) {
+    OfflineGrace g(600);
+    REQUIRE(!g.Unreachable("a", 100));  // first failure: held back
+    REQUIRE(g.InGrace("a", 200));
+    g.Clear();                          // the computer slept and woke
+    REQUIRE(!g.InGrace("a", 5000));
+    REQUIRE(!g.Unreachable("a", 5000)); // the first failure after waking is held back again
 }
