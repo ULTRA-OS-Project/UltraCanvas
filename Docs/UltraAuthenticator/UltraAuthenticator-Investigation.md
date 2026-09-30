@@ -154,6 +154,19 @@ and poll loop are exercised only by their graceful-degradation path ("No
 camera is available"). The decode itself — the `UCVideoFrame` overload the
 dialog calls — is covered by the unit tests above.
 
+**Two more sources, same path** (UltraAuthenticator 0.2.5). The camera is
+the wrong tool for the common desktop case, where the enrolment page and the
+authenticator share one display and no camera can see either. The scan
+dialog therefore also decodes an image file (*From image…*: read by the
+scanner only, never copied, thumbnailed or registered as a recent file, since
+the file already holds the seed in the clear) and the screen (*From screen*).
+The screen capture stays in memory — `UltraCanvasDesktopShell::CaptureScreenImage`
+was added for it, because the existing `CaptureScreen` writes a PNG and a PNG
+of an enrolment QR is the seed in the Pictures folder — and the buffer is
+wiped as soon as it has been decoded. All three sources converge on the one
+acceptance path and the same `AccountStore::AddFromUri`, so the in-memory
+rule of this section holds for every way a code gets in, not only the camera.
+
 **(d) ~~No TOTP/HOTP/Base32 code.~~ — DONE.** The engine now lives in
 `Apps/UltraAuthenticator/otp/`:
 

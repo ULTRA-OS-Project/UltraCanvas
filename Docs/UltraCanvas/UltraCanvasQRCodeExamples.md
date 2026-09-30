@@ -196,7 +196,16 @@ bool ExportToSVG(const QRCodeData& data,
 std::vector<QRScanResult> ScanQRCodeFile(const std::string& imagePath,
                                          std::string* errorMessage = nullptr);
 bool IsDecoderAvailable();
+```
 
+Both scanners (`ScanQRCodeFile` and `ScanQRCodeImage`) come back empty in two
+distinct ways. An image with no code in it returns an empty vector and leaves
+`errorMessage` untouched; a scan that could not run at all — an unreadable
+file, no decoder built in, bad arguments — returns an empty vector with the
+reason in `errorMessage`. Test the vector to report "nothing found" and the
+string to report a failure; never match the string's text.
+
+```cpp
 // Structured-content builders
 std::string CreateURLContent(const std::string& url);
 std::string CreateEmailContent(const std::string& email,
