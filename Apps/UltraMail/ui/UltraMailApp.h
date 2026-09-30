@@ -9,6 +9,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCanvasBadge.h"
 #include "UltraCanvasBusyIndicator.h"
 #include "UltraCanvasMediaViewerWindow.h"
 #include "UltraMailStartPage.h"
@@ -43,6 +44,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <functional>
 #include <map>
 #include <memory>
@@ -173,6 +175,13 @@ private:
     void SetStatus(const std::string& text);
     // Runs the status-line ring while a sync, send or mailbox action is in flight.
     void UpdateBusyIndicator();
+    // The connection pill at the right end of the status line: the selected
+    // account's last contact with its mail server, with the details (server,
+    // last contact, reason) in its tooltip.
+    enum class ConnectionState { Unknown, Checking, Connected, Unreachable, Failed };
+    void NoteConnection(const std::string& accountId, ConnectionState state,
+                        const std::string& reason = "");
+    void UpdateConnectionIndicator();
     static std::string SlugFromEmail(const std::string& email);
     static std::string LocalPart(const std::string& email);
 
@@ -289,13 +298,20 @@ private:
     // Sync the accounts the scheduler reports as due (called from the timer),
     // or every account when `force` is set (the Reload button).
     void RunSyncs(bool force);
+    // A background sync could not reach the server: sync the accounts whose
+    // grace period is running again after kOfflineRetrySec (see OfflineGrace).
+    void ScheduleOfflineRetry();
+    void RetryUnreachableAccounts();
     // Sync one account now — the first sync right after it was added.
     void SyncAccount(const std::string& accountId);
     // Fetch one folder's messages now (envelopes + bodies), on a worker. Backs
     // the lazy load when a non-inbox folder is first opened and the Reload of a
     // folder other than the inbox. No-op without the IMAP plug-in / an unlocked
-    // vault / known servers.
-    void SyncFolder(const std::string& accountId, const std::string& folder);
+    // vault / known servers. `userInitiated` is Reload; opening a folder is a
+    // passive refresh, so a server it cannot reach gets the same grace period
+    // as a background sync instead of an alert.
+    void SyncFolder(const std::string& accountId, const std::string& folder,
+                    bool userInitiated);
     // Run the given accounts through the SyncService on worker threads and
     // report the outcome on the UI thread. `userInitiated` syncs (Reload, a new
     // account) always say why nothing was fetched; timer syncs say so once.
@@ -342,6 +358,15 @@ private:
     // silence every other account's failures (and this account's, after
     // another's) until some sync succeeded.
     std::set<std::string> syncErrorReported_;
+    // Holds back the alert for a background sync that could not reach the
+    // server until the account has stayed unreachable for the grace period:
+    // right after the computer starts the network is often not up yet, and
+    // that first failure is a false alarm. Keyed on NowMonotonicSec().
+    OfflineGrace offline_;
+    bool         offlineRetryPending_ = false;
+    // How soon an unreachable account is tried again while its grace period
+    // runs, so mail arrives soon after the network does.
+    static constexpr int64_t kOfflineRetrySec = 60;
     // The locked-vault warning, once per run of locked rounds.
     bool vaultLockReported_ = false;
     // The last sync failure per account ("Could not fetch mail for …: reason"),
@@ -395,6 +420,17 @@ private:
     // doing ("Checking <account>…", "Receiving messages… (N)", "Up to date").
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
     std::shared_ptr<UltraCanvas::UltraCanvasBusyIndicator> busyIndicator_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBadge>     connectionBadge_;
+    // What the last contact with each account's mail server came to, for the
+    // connection pill. Wall-clock times, since they are shown to the user.
+    struct ConnectionInfo {
+        ConnectionState state = ConnectionState::Unknown;
+        std::string     reason;         // the last failure's message
+        std::time_t     lastOk = 0;     // last successful contact, 0 = none this run
+        std::time_t     lastTry = 0;    // last attempt, 0 = none this run
+        int             failures = 0;   // in a row, since the last success
+    };
+    std::map<std::string, ConnectionInfo> connection_;
     int                                                mailboxActionsInFlight_ = 0;
     // Cumulative messages streamed in during the current run of syncs (for the
     // "Receiving messages… (N)" status); reset when the last sync ends.
