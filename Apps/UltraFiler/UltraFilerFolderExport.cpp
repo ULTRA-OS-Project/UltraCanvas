@@ -83,6 +83,32 @@ namespace {
         return buf;
     }
 
+    // To the second, the way a spreadsheet reads a date and time.
+    std::string FormatTimeSeconds(std::time_t t) {
+        if (t == 0) return "";
+        std::tm tmv{};
+#ifdef _WIN32
+        localtime_s(&tmv, &t);
+#else
+        localtime_r(&t, &tmv);
+#endif
+        char buf[32];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tmv);
+        return buf;
+    }
+
+    // One CSV field (RFC 4180): quoted when it holds a comma, a quote or a
+    // line break, with its quotes doubled.
+    std::string CsvField(const std::string& s) {
+        if (s.find_first_of(",\"\r\n") == std::string::npos) return s;
+        std::string out = "\"";
+        for (char c : s) {
+            if (c == '"') out += '"';
+            out += c;
+        }
+        return out + "\"";
+    }
+
     // Characters, not bytes, so the columns line up behind "Übersicht".
     size_t Utf8Length(const std::string& s) {
         size_t n = 0;
@@ -246,6 +272,61 @@ namespace {
         }
     };
 
+    // ----- Folder tree as CSV -----
+
+    struct CsvWalk {
+        bool includeHidden = false;
+        const std::atomic<bool>* cancelled = nullptr;
+        size_t rows = 0;
+        bool truncated = false;
+        std::string text;
+
+        static std::string TypeOf(const ExportItem& item) {
+            if (item.isLink) return "Link";
+            if (item.isDirectory) return "Folder";
+            std::string ext = PathToUtf8(item.path.extension());
+            if (ext.size() <= 1) return "File";
+            ext.erase(0, 1);
+            for (char& c : ext)
+                if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+            return ext + " file";
+        }
+
+        // One row per entry, each folder's rows followed by its content's,
+        // so the table reads in the same order as the tree.
+        void Walk(const fs::path& dir) {
+            std::vector<ExportItem> items;
+            if (!ReadFolder(dir, includeHidden, true, cancelled, items)) return;
+            for (const ExportItem& item : items) {
+                if (truncated || (cancelled && cancelled->load())) return;
+                if (rows >= kMaxFolderExportEntries) {
+                    truncated = true;
+                    return;
+                }
+                ++rows;
+                // The size in plain bytes: a number any spreadsheet sums,
+                // whatever its decimal separator. Folders have none.
+                const std::string size = item.isDirectory
+                        ? std::string() : std::to_string(item.size);
+                text += CsvField(item.name) + "," +
+                        CsvField(PathToUtf8(item.path)) + "," +
+                        CsvField(TypeOf(item)) + "," + size + "," +
+                        FormatTimeSeconds(item.modified) + "\n";
+                if (item.isDirectory && !item.isLink) Walk(item.path);
+            }
+        }
+    };
+
+    std::string BuildCsvText(const fs::path& root, bool includeHidden,
+                             const std::atomic<bool>* cancelled) {
+        CsvWalk walk;
+        walk.includeHidden = includeHidden;
+        walk.cancelled = cancelled;
+        walk.text = "Name,Path,Type,Size,Modified\n";
+        walk.Walk(root);
+        return walk.text;
+    }
+
     std::string BuildTreeText(const fs::path& root, bool includeHidden,
                               const std::atomic<bool>* cancelled) {
         TreeWalk walk;
@@ -272,6 +353,10 @@ std::string BuildFolderExportText(const std::string& folder, FolderExportKind ki
                                   bool includeHidden,
                                   const std::atomic<bool>* cancelled) {
     const fs::path root = PathFromUtf8(folder);
+    // A CSV file is a table and nothing else: a heading above it would be
+    // read as data rows.
+    if (kind == FolderExportKind::Csv)
+        return BuildCsvText(root, includeHidden, cancelled);
     std::string text = (kind == FolderExportKind::Tree ? "Folder tree: " : "Folder: ") +
                        folder + "\n" +
                        "Exported: " + FormatTime(std::time(nullptr)) +
@@ -289,7 +374,11 @@ std::string FolderExportFileName(const std::string& folder, FolderExportKind kin
     // is not something a file name may carry.
     for (char& c : name)
         if (c == ':' || c == '\\' || c == '/') c = '_';
-    return name + (kind == FolderExportKind::Tree ? " - tree.txt" : " - content.txt");
+    switch (kind) {
+        case FolderExportKind::Tree: return name + " - tree.txt";
+        case FolderExportKind::Csv:  return name + " - files.csv";
+        default:                     return name + " - content.txt";
+    }
 }
 
 // ===== THE EXPORT WINDOW =====
@@ -309,8 +398,9 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
 
     const std::string folderName = PathToUtf8(PathFromUtf8(folder).filename());
     WindowConfig wc;
-    wc.title = std::string(kind == FolderExportKind::Tree ? "Folder tree content"
-                                                          : "Folder content") +
+    wc.title = std::string(kind == FolderExportKind::Tree  ? "Folder tree content"
+                           : kind == FolderExportKind::Csv ? "Folder tree as CSV"
+                                                           : "Folder content") +
                " - " + (folderName.empty() ? folder : folderName) + " - UltraFiler";
     wc.width = 760;
     wc.height = 560;
@@ -341,8 +431,8 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
     textArea_->SetFont("monospace", 10.0f);
     textArea_->SetWordWrap(false);
     textArea_->SetShowLineNumbers(false);
-    textArea_->SetText(kind == FolderExportKind::Tree ? "Reading the folder tree ..."
-                                                      : "Reading the folder ...",
+    textArea_->SetText(kind == FolderExportKind::Content ? "Reading the folder ..."
+                                                         : "Reading the folder tree ...",
                        false);
     textArea_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -422,14 +512,27 @@ void UltraFilerFolderExportWindow::ShowText(const std::string& text) {
 void UltraFilerFolderExportWindow::Save() {
     if (text_.empty() || !window_) return;
     // What is in the text area, so an edit made before saving is kept.
-    const std::string text = textArea_ ? textArea_->GetText() : text_;
+    std::string text = textArea_ ? textArea_->GetText() : text_;
+    const bool csv = kind_ == FolderExportKind::Csv;
+    if (csv) {
+        // The way spreadsheets expect it: CRLF rows (RFC 4180), and a UTF-8
+        // byte order mark - without it Excel reads "Übersicht" as ANSI.
+        std::string crlf = "\xEF\xBB\xBF";
+        crlf.reserve(text.size() + text.size() / 16 + 3);
+        for (char c : text) {
+            if (c == '\n') crlf += '\r';
+            crlf += c;
+        }
+        text = std::move(crlf);
+    }
 
     FileDialogOptions opts;
     opts.SetTitle("Save export")
         .SetInitialDirectory(folder_)
         .SetDefaultFileName(FolderExportFileName(folder_, kind_))
         .SetParentWindow(window_.get());
-    opts.AddFilter("Text files", std::vector<std::string>{"txt"});
+    if (csv) opts.AddFilter("CSV files", std::vector<std::string>{"csv"});
+    else     opts.AddFilter("Text files", std::vector<std::string>{"txt"});
     opts.AddFilter("All files", "*");
 
     std::weak_ptr<UltraFilerFolderExportWindow> self = weak_from_this();

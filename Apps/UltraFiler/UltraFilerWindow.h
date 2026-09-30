@@ -414,8 +414,9 @@ private:
     // or the shown folder while nothing is selected) - empty when the
     // selection is not exactly one local folder.
     std::string ExportTargetFolder() const;
-    // Extras > Export > Folder content / Folder tree content: opens a text
-    // window with the export of ExportTargetFolder(), which can be saved.
+    // Extras > Export > Folder content / Folder tree content / Folder tree as
+    // CSV: opens a text window with the export of ExportTargetFolder(),
+    // which can be saved.
     void ExportFolder(FolderExportKind kind);
     // Filter-as-you-type: every edit of the search field narrows the active
     // tab's folder listing to the names containing the text (the filer's

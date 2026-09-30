@@ -366,8 +366,8 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   display shows hidden files. Local folders only — the
   item is disabled on a remote drive and in the History, Favorites and
   Computer views.
-- **Extras > Export > Folder content / Folder tree content** (in the file
-  context menu's Extras submenu): writes a folder out as text and opens it
+- **Extras > Export > Folder content / Folder tree content / Folder tree as
+  CSV** (in the file context menu's Extras submenu): writes a folder out as text and opens it
   in a text window with **Save…** and **Close**. The folder is the selected
   one, or the shown folder while nothing is selected; the items are disabled
   for any other selection, on a remote drive and inside an archive.
@@ -386,6 +386,18 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   fixed-width font and can be edited before **Save…** writes it (UTF-8) to
   a file of your choosing, proposed as `<folder> - content.txt` /
   `<folder> - tree.txt`. Several export windows can be open at once.
+  *Folder tree as CSV* writes the same walk as a table for a spreadsheet:
+  a `Name,Path,Type,Size,Modified` header and one row per folder and file,
+  each folder followed by its content. *Type* is `Folder`, `Link`, or the
+  file's extension in capitals (`PDF file`; `File` without one); *Size* is
+  in plain bytes, empty for folders; *Modified* is local time as
+  `YYYY-MM-DD HH:MM:SS`. Fields with a comma, a quote or a line break are
+  quoted (RFC 4180). There is no heading, and a tree over 200 000 entries
+  ends without a note, so the file stays a clean table. **Save…** proposes
+  `<folder> - files.csv` and writes it with CRLF line ends and a UTF-8 byte
+  order mark, so Excel opens non-ASCII names correctly. The separator is a
+  comma; a spreadsheet set up for `;` (German Excel, for one) opens it
+  through its import dialog.
 - **Extras > Open prompt** (in the file context menu's Extras submenu):
   starts the operating system's command line program
   in the folder of the active tab, detached from UltraFiler (closing the file
