@@ -5,8 +5,8 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
-// Version: 4.0.1
-// Last Modified: 2026-07-13
+// Version: 4.1.0 - SetBorderRadius: rounded corners without a border
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -292,6 +292,18 @@ namespace UltraCanvas {
             SetBorderRight(width, color, borderRadius, dash);
             SetBorderTop(width, color, borderRadius, dash);
             SetBorderBottom(width, color, borderRadius, dash);
+        }
+
+        // Rounded corners with or without a border: the background (and any
+        // border) is drawn with this radius. Border widths are left as they
+        // are - a box can be rounded and borderless (a mail button).
+        void SetBorderRadius(float radius) {
+            if (!bordersVisual) bordersVisual.emplace();
+            bordersVisual->left.radius = radius;
+            bordersVisual->right.radius = radius;
+            bordersVisual->top.radius = radius;
+            bordersVisual->bottom.radius = radius;
+            RequestRedraw();
         }
 
         void SetBordersColor(const Color& color) {

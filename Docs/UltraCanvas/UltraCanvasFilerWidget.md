@@ -327,6 +327,7 @@ Open with      >  clicking the entry opens the selection with the OS default
                   registers for the selected files (default app first), then
                   entries added via AddOpenWithApp(), then "Other
                   application…" (file dialog)
+Extract and Run   (only on a program inside an archive — see below)
 ──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 ──────────         displays; the label is configurable)
@@ -431,6 +432,8 @@ Notes:
   Extract into the existing folder / Skip) when the destination folder name
   is already taken; `OpenExtractDialog()` opens the extract dialog the menu
   uses.
+- **Extract and Run** appears only when the one selected entry is a program
+  inside an archive — see [Programs inside archives](#programs-inside-archives).
 - **Display > Thumbnails** switches thumbnails on and off per file kind, and
   **Display > Detail view** does the same for the detail pane a host opens
   beside the display — see [Selective previews](#selective-previews). Both
@@ -444,6 +447,64 @@ Notes:
   appear on the file kinds they apply to (their values are probed lazily from
   the file headers and cached). Drive it in code with
   `SetDatasetField(FilerDatasetField::Size, true)` / `SetDatasetFields(mask)`.
+
+## Programs inside archives
+
+An entry inside an archive has a virtual path, and no system can execute a
+virtual path — Windows' own zip folders cannot start a program from one
+either. `ExtractAndRunEntry(entry)` does what it takes:
+
+1. It unpacks **the whole archive** the program is in (the innermost one, for
+   a zip inside a zip) into a new *run folder*, behind the usual progress
+   window with Cancel. The whole archive rather than the one file, because a
+   program's DLLs, data and configuration sit beside it; unpacking only the
+   `.exe` — what Explorer does — starts a program that then cannot find its
+   own files.
+2. On Windows it carries the archive's download mark (`Zone.Identifier`)
+   onto every unpacked file, as Explorer does, so SmartScreen still looks at
+   a program that came in a downloaded zip.
+3. It starts the program with its own folder as the working directory:
+   on Windows an `.exe` / `.com` directly (a console program gets a console),
+   a `.bat` / `.cmd` through `cmd.exe`, an `.msi` through `msiexec`, and a
+   program that asks for administrator rights through the UAC prompt; on
+   Linux and macOS the file itself.
+4. It deletes the run folder once the program **and everything it started**
+   have ended. On Windows the program runs in a job object, so a `setup.exe`
+   that hands over to a second stage and exits counts as running until the
+   second stage is done; on POSIX the program leads a process group of its
+   own. A folder is never removed while a file in it is still open (on
+   Windows it is renamed first, which fails while anything holds a file in
+   it), so a program that slipped out of the watch — an installer relaunched
+   elevated — keeps its files until it lets go of them.
+
+Double-click, Enter and `OpenEntryWithOS` do this for such an entry, and the
+context menu offers it as **Extract and Run**. `CanExtractAndRun(entry)`
+says which entries qualify: on Windows `.exe`, `.com`, `.bat`, `.cmd` and
+`.msi`; on Linux and macOS an entry the archive recorded as executable
+(`FilerEntry::archiveExecutable`) or an `.AppImage`. A file on disk is never
+one of them — it runs as it is.
+
+Run folders go under `DefaultArchiveRunRoot()` (`UltraCanvas-Run` in the
+system's temporary folder) unless the host answers `chooseArchiveRunRoot`
+with a folder of its own; UltraFiler picks a RAM disc when one with room is
+mounted. Each run folder has a marker beside it naming the processes using it,
+so `SweepArchiveRunFolders(root)` — run before every unpack, and by
+UltraFiler at start-up — removes what an application that closed while its
+program still ran had to leave behind, and nothing still in use. The pieces
+that are not UI live in `UltraCanvasArchiveRun.h`: `IsRunnableArchiveEntry`,
+`LaunchWatchedProgram` (a launch whose end can be waited for),
+`CopyDownloadMarking` and the run-folder functions.
+
+```cpp
+filer->chooseArchiveRunRoot = [](uint64_t bytesNeeded) -> std::string {
+    return bytesNeeded < (1ull << 30) ? "/mnt/ram/runs" : "";   // "" = default
+};
+// Double-click already does it; a host with its own activation calls:
+if (filer->CanExtractAndRun(entry)) filer->ExtractAndRunEntry(entry);
+```
+
+Needs the VirtualFS module (`ULTRACANVAS_HAS_VIRTUALFS`); without it
+`CanExtractAndRun` is always false. WebAssembly cannot start programs.
 
 ## Selective previews
 
@@ -477,7 +538,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
-| `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC, and a .cls / .m whose first lines are LaTeX / Objective-C is named so; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
+| `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
 | `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |

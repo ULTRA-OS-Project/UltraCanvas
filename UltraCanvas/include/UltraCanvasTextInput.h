@@ -532,6 +532,12 @@ private:
 
     float GetCaretXPosition();
     float GetCaretYPosition();
+    // The single text line's box inside `area`: its top puts the font's
+    // capitals on the area's centre line (the line a button or checkbox
+    // beside the field centres on), its height is the font's line height.
+    // Text, selection highlight and caret all take their vertical position
+    // from here, so they move together.
+    Rect2Dd GetTextLineBox(const Rect2Dd& area, IRenderContext* ctx) const;
 
     Rect2Di GetTextArea() const;
     

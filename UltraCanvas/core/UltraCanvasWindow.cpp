@@ -437,6 +437,10 @@ namespace UltraCanvas {
         // Tooltip caches a static render context tied to the old nativeSurface;
         // drop it now so it is rebuilt at the new scale on next show.
         UltraCanvasTooltipManager::HideTooltipImmediately();
+        // The shared caret's context likewise; it is only rebuilt on a size
+        // change by itself, and the caret's size in logical pixels is the same
+        // on both monitors.
+        UltraCanvasCaret::GetInstance().InvalidateContext();
 
         // Re-layout and repaint at the new resolution. config_.width/height are
         // unchanged (logical), so seed a full-window dirty rect directly rather

@@ -1,3 +1,34 @@
+#### 2026-09-29 *0.4.0*
+- **EmailCleaner can have accounts of its own.** Until now every account came
+  from UltraMail, so a mailbox could only be cleaned after it had been set up
+  in a mail client. **Accounts…** in the toolbar lists every account with where
+  its mail comes from, and adds one to EmailCleaner alone: the address (**Find
+  servers** fills the IMAP server in from UltraMail's provider table, then
+  autoconfig), a password — an app password at Gmail, Outlook and Yahoo — and
+  **Sign in and add**, which checks the sign-in against the server before
+  anything is saved. The account keeps its own list (`accounts.db`), its own
+  password (`vault/emailcleaner.vault`) and its own downloaded copy of the
+  inbox and junk folder (`mail/ec-<account>/`) under EmailCleaner's data
+  directory, fetched by UltraMail's own `SyncEngine` — one IMAP implementation,
+  two places its results are kept. **Load mail** downloads what is new for
+  these accounts before analysing, and **Remove** deletes the password, the
+  copy and the analysis without touching the server. UltraMail's accounts are
+  shared exactly as before; an address UltraMail already shares cannot be
+  added twice, and its id (`ec-…`) cannot collide with UltraMail's. The
+  analysis database records each account's source (schema 4).
+- **EmailCleaner loads UltraNet's plug-ins.** It asked the registry for the
+  IMAP plug-in without ever initialising it, so the plug-in was never found and
+  Block's companions — **Move to Trash** and the unsubscribe mail — always said
+  "The IMAP plug-in is not loaded". It now brings the registry up at start-up
+  from `Plugins/UltraNet` beside the executable (as UltraMail does), or from
+  `EMAILCLEANER_PLUGIN_DIR`, and names the folder it looked in when the
+  plug-in is missing.
+- **UltraMail accounts use the servers UltraMail stored.** The mail backend
+  looked each shared account's server up in the provider table only, so an
+  account whose servers were found by autoconfig or typed in by hand in
+  UltraMail could not be acted on. It now takes the account's stored servers,
+  and the provider table only when there are none.
+
 #### 2026-09-28 *0.3.3*
 - **The version is in the window title** — `EmailCleaner 0.3.3` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

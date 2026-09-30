@@ -592,7 +592,10 @@ namespace UltraCanvas {
 
     bool UltraCanvasLinuxClipboard::HandleSelectionNotify(const XSelectionEvent& selEvent) {
         if (selEvent.property == None) {
-            LogError("HandleSelectionNotify", "Selection conversion failed");
+            // The owner has nothing in the requested target - an empty
+            // clipboard, or text asked of an image. That is an answer, not
+            // an error: a clipboard monitor asks every half second and would
+            // otherwise fill the log with it.
             selectionData.clear();
             selectionFormat.clear();
             selectionReady = true;

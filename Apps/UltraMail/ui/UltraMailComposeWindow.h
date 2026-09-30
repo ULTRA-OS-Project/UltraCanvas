@@ -5,14 +5,19 @@
 // hands an updated Draft back through onSend. "Attach file" reads a local file
 // into the draft's attachments; "Attach cloud link" uploads through (or picks
 // from) an UltraCloud account and puts the share link into the body.
-// Version: 0.4.0
-// Last Modified: 2026-09-09
+// A draft with a formatted body (the reply or forward of an HTML message, or
+// any draft signed with an HTML signature) is edited in an
+// UltraCanvasRichTextEdit with a small formatting row; any other draft in a
+// plain-text area.
+// Version: 0.5.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 // UltraCanvas UI headers before engine headers (X11 macro ordering).
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTextArea.h"
 
@@ -57,6 +62,8 @@ private:
     void ChooseCloudLink();
     // Rebuild the chips and show the attachment row only while there are any.
     void RefreshAttachments();
+    // Bold / italic / underline / lists for the formatted body.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildFormatRow();
 
     Draft draft_;
     UltraCanvas::UltraCanvasWindowBase* parent_ = nullptr;
@@ -65,7 +72,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> to_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> cc_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> subject_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  body_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  body_;       // plain drafts
+    std::shared_ptr<UltraCanvas::UltraCanvasRichTextEdit> rich_;    // formatted drafts
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachWrap_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
 };

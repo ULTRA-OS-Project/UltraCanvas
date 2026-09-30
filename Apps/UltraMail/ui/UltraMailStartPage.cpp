@@ -1,6 +1,7 @@
 // Apps/UltraMail/ui/UltraMailStartPage.cpp
+// Version: 0.4.0 - the Settings gear in the top-right corner
 // Version: 0.3.0 - themed title colour and primary button
-// Last Modified: 2026-09-09
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailStartPage.h"
 
@@ -9,6 +10,7 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraMailTheme.h"
+#include "UltraMailSettingsDialog.h"
 
 using namespace UltraCanvas;
 
@@ -23,6 +25,7 @@ constexpr float kButtonHeight = 34.0f;
 constexpr float kButtonFont   = 11.0f;
 constexpr int   kButtonIcon   = 16;
 constexpr float kButtonRadius = 6.0f;
+constexpr float kCornerInset  = 10.0f;   // the gear's distance from the top-right corner
 } // namespace
 
 std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
@@ -63,6 +66,17 @@ std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
     add->SetUseIconAsMask(true);   // tint the glyph with the button's text colour
     add->onClick = [this]() { if (onAddAccount) onAddAccount(); };
     page_->AddChild(add);
+
+    // The Settings gear, top right - where the toolbar's gear is once an
+    // account exists. Out of the column's flow, so the three centred items
+    // stay centred.
+    auto gear = SettingsDialog::MakeGearButton("startSettings", Theme::kControlHeight,
+                                               [this]() { if (onSettings) onSettings(); });
+    CSSLayout::Position corner;
+    corner.top   = CSSLayout::Dimension::Px(kCornerInset);
+    corner.right = CSSLayout::Dimension::Px(kCornerInset);
+    gear->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute).SetPositionInsets(corner);
+    page_->AddChild(gear);
 
     return page_;
 }

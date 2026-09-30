@@ -9,6 +9,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCanvasBadge.h"
 #include "UltraCanvasBusyIndicator.h"
 #include "UltraCanvasMediaViewerWindow.h"
 #include "UltraMailStartPage.h"
@@ -17,6 +18,7 @@
 #include "UltraMailAccountWizard.h"
 #include "UltraMailContactsView.h"
 #include "UltraMailComposeWindow.h"
+#include "UltraMailSignature.h"
 #include "UltraMailPassphraseDialog.h"
 #include "UltraMailServerSettingsDialog.h"
 
@@ -43,6 +45,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <functional>
 #include <map>
 #include <memory>
@@ -70,6 +73,8 @@ public:
     // Reload accounts + status, rebuild the account bar and the mail view, and
     // switch between the start page and the account view.
     void Refresh();
+    // The unread total, published for the desktop's mail badge on every Refresh.
+    void PublishUnreadNotice();
 
 private:
     // Build the account view (everything shown once an account exists).
@@ -101,6 +106,8 @@ private:
     // name, the IMAP/SMTP servers and the password — or re-run the browser
     // sign-in for an OAuth account — checking the sign-in before saving.
     void HandleAccountSettings(const std::string& accountId);
+    // The Settings window (the toolbar's gear): app-wide options.
+    void OpenSettings();
     // The settings page's login check: resolves the credentials through
     // `credentials` (on the worker) and lists the incoming server once with
     // the IMAP plug-in; the outcome is delivered on the UI thread. A missing
@@ -171,6 +178,13 @@ private:
     void SetStatus(const std::string& text);
     // Runs the status-line ring while a sync, send or mailbox action is in flight.
     void UpdateBusyIndicator();
+    // The connection pill at the right end of the status line: the selected
+    // account's last contact with its mail server, with the details (server,
+    // last contact, reason) in its tooltip.
+    enum class ConnectionState { Unknown, Checking, Connected, Unreachable, Failed };
+    void NoteConnection(const std::string& accountId, ConnectionState state,
+                        const std::string& reason = "");
+    void UpdateConnectionIndicator();
     static std::string SlugFromEmail(const std::string& email);
     static std::string LocalPart(const std::string& email);
 
@@ -206,6 +220,12 @@ private:
 
     // Open a compose window for the given draft (new / reply / forward).
     void OpenComposer(const Draft& draft);
+    // `draft` with the signature of the account it is sent from (its fromAddr)
+    // put in - as account settings define it.
+    Draft WithSignature(Draft draft, DraftPurpose purpose) const;
+    // Saves an account's signature (from the signature editor) and keeps the
+    // in-memory account list in step.
+    void SaveSignature(const std::string& accountId, const Signature& signature);
 
     // Message actions from the reading pane, mirrored to the IMAP server on a
     // background worker and then refreshed. Delete moves to Trash (fallback:
@@ -287,13 +307,27 @@ private:
     // Sync the accounts the scheduler reports as due (called from the timer),
     // or every account when `force` is set (the Reload button).
     void RunSyncs(bool force);
+    // A background sync could not reach the server: sync the accounts whose
+    // grace period is running again after kOfflineRetrySec (see OfflineGrace).
+    void ScheduleOfflineRetry();
+    void RetryUnreachableAccounts();
+    // The computer woke from sleep (WakeDetector): forget the offline grace
+    // from before the sleep and check every account shortly after, once the
+    // network has had a moment to come back.
+    void OnWokeFromSleep();
+    // Check every account now, as a background sync (no alerts for a network
+    // that is not up yet - the offline grace applies).
+    void SyncAllInBackground();
     // Sync one account now — the first sync right after it was added.
     void SyncAccount(const std::string& accountId);
     // Fetch one folder's messages now (envelopes + bodies), on a worker. Backs
     // the lazy load when a non-inbox folder is first opened and the Reload of a
     // folder other than the inbox. No-op without the IMAP plug-in / an unlocked
-    // vault / known servers.
-    void SyncFolder(const std::string& accountId, const std::string& folder);
+    // vault / known servers. `userInitiated` is Reload; opening a folder is a
+    // passive refresh, so a server it cannot reach gets the same grace period
+    // as a background sync instead of an alert.
+    void SyncFolder(const std::string& accountId, const std::string& folder,
+                    bool userInitiated);
     // Run the given accounts through the SyncService on worker threads and
     // report the outcome on the UI thread. `userInitiated` syncs (Reload, a new
     // account) always say why nothing was fetched; timer syncs say so once.
@@ -340,6 +374,15 @@ private:
     // silence every other account's failures (and this account's, after
     // another's) until some sync succeeded.
     std::set<std::string> syncErrorReported_;
+    // Holds back the alert for a background sync that could not reach the
+    // server until the account has stayed unreachable for the grace period:
+    // right after the computer starts the network is often not up yet, and
+    // that first failure is a false alarm. Keyed on NowMonotonicSec().
+    OfflineGrace offline_;
+    bool         offlineRetryPending_ = false;
+    // How soon an unreachable account is tried again while its grace period
+    // runs, so mail arrives soon after the network does.
+    static constexpr int64_t kOfflineRetrySec = 60;
     // The locked-vault warning, once per run of locked rounds.
     bool vaultLockReported_ = false;
     // The last sync failure per account ("Could not fetch mail for …: reason"),
@@ -383,6 +426,10 @@ private:
     // True once the periodic sync timer runs, so StartBackgroundSync() can be
     // called again (after an account is added) without starting a second one.
     bool        syncTimerStarted_ = false;
+    // Notices a wake from sleep from a short periodic timer (started with the
+    // sync timer), so mail is checked right after the computer wakes.
+    WakeDetector wake_;
+    bool         wakeCheckPending_ = false;   // a post-wake sync is scheduled
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     // The account view root; hidden while the start page is up (no account
@@ -393,6 +440,17 @@ private:
     // doing ("Checking <account>…", "Receiving messages… (N)", "Up to date").
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
     std::shared_ptr<UltraCanvas::UltraCanvasBusyIndicator> busyIndicator_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBadge>     connectionBadge_;
+    // What the last contact with each account's mail server came to, for the
+    // connection pill. Wall-clock times, since they are shown to the user.
+    struct ConnectionInfo {
+        ConnectionState state = ConnectionState::Unknown;
+        std::string     reason;         // the last failure's message
+        std::time_t     lastOk = 0;     // last successful contact, 0 = none this run
+        std::time_t     lastTry = 0;    // last attempt, 0 = none this run
+        int             failures = 0;   // in a row, since the last success
+    };
+    std::map<std::string, ConnectionInfo> connection_;
     int                                                mailboxActionsInFlight_ = 0;
     // Cumulative messages streamed in during the current run of syncs (for the
     // "Receiving messages… (N)" status); reset when the last sync ends.

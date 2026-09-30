@@ -57,17 +57,19 @@ void PutZeros(std::vector<uint8_t>& out, size_t count) {
 // PAGE HEADER
 // ============================================================================
 
-bool WriteCupsRasterPageHeader(const IOCupsRasterPage& page,
-                               std::vector<uint8_t>& out) {
+void AppendCupsRasterSync(std::vector<uint8_t>& out) {
+    // Version 3 (uncompressed), big-endian.
+    const char sync[] = {'R', 'a', 'S', '3'};
+    out.insert(out.end(), sync, sync + 4);
+}
+
+bool AppendCupsRasterPageHeader(const IOCupsRasterPage& page,
+                                std::vector<uint8_t>& out) {
     if (!page.IsValid()) {
         return false;
     }
 
     const size_t start = out.size();
-
-    // Sync word: version 3 (uncompressed), big-endian.
-    const char sync[] = {'R', 'a', 'S', '3'};
-    out.insert(out.end(), sync, sync + 4);
 
     // --- Fields shared with PostScript's setpagedevice -----------------
 
@@ -149,8 +151,11 @@ bool WriteCupsRasterPageHeader(const IOCupsRasterPage& page,
 
     // The format fixes this exactly; a field added or dropped above shifts
     // everything after it and the filter reads garbage without complaining.
-    return out.size() - start ==
-           kCupsRasterSyncBytes + kCupsRasterHeaderBytes;
+    if (out.size() - start != kCupsRasterHeaderBytes) {
+        out.resize(start);
+        return false;
+    }
+    return true;
 }
 
 // ============================================================================

@@ -6,16 +6,17 @@
 // Build: produces libultranet_smtp.{so,dylib,dll}. Loaded by
 // UltraNet_RefreshPlugins() at runtime. Entry point:
 //
-//   extern "C" void UltraNet_PluginRegister(void);
+//   extern "C" ULTRANET_PLUGIN_EXPORT void UltraNet_PluginInit(const UltraNetPluginHost*);
 //
 // This is the canonical reference implementation for the
 // I<Category>ProtocolPlugin plug-in contract.
-// Version: 0.1.1
-// Last Modified: 2026-07-05
+// Version: 0.2.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetMime.h>
 #include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
@@ -68,6 +69,16 @@ std::string BuildMessage(const UltraNetMailMessage& m) {
         }
     }
 
+    in.alternativeText = m.alternativeText;
+    for (const auto& part : m.inlineParts) {
+        UltraNetMimeBuildAttachment a;
+        a.filename = part.filename;
+        if (!part.mediaType.empty()) a.mediaType = part.mediaType;
+        a.data = part.data;
+        a.isInline = true;
+        a.contentId = part.contentId;
+        in.attachments.push_back(std::move(a));
+    }
     for (const auto& [name, bytes] : m.attachments) {
         UltraNetMimeBuildAttachment a;
         a.filename = name;
@@ -233,17 +244,13 @@ public:
 
 } // namespace
 
-// v2 entry — preferred, works on Windows. The host hands us a vtable so we
-// don't need to resolve UltraNet_RegisterPlugin via load-time symbol lookup.
+// v2 entry. The host hands us its table, so nothing from the core is
+// resolved by load-time symbol lookup.
 extern "C" ULTRANET_PLUGIN_EXPORT
 void UltraNet_PluginInit(const UltraNetPluginHost* host) {
-    if (!host || host->abiVersion < 1 || !host->RegisterPlugin) return;
+    // ABI 2: the core functions this plug-in calls come through `host`
+    // (UltraNetPluginHostShim); an older host cannot serve them.
+    if (!UltraNetPlugin_AttachHost(host)) return;
     host->RegisterPlugin(std::make_shared<SmtpPlugin>());
 }
 
-// v1 entry — POSIX-only fallback for hosts that don't supply the v2 vtable.
-#if !defined(_WIN32) && !defined(_WIN64)  // v1 resolves UltraNet_RegisterPlugin from the host at dlopen(); POSIX-only, Windows uses the v2 UltraNet_PluginInit vtable above
-extern "C" void UltraNet_PluginRegister(void) {
-    UltraNet_RegisterPlugin(std::make_shared<SmtpPlugin>());
-}
-#endif

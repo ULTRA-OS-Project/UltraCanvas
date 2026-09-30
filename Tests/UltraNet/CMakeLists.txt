@@ -217,3 +217,16 @@ add_test(NAME UltraNet COMMAND UltraNetTests)
 # Fails only on BROKEN entries — IMPLEMENTED / NOT IMPLEMENTED are legitimate
 # states for this environment, not test failures.
 add_test(NAME UltraNetApiStatus COMMAND UltraNetApiStatus)
+
+# A plug-in DSO must need no core symbol from its host: everything reaches the
+# core through the UltraNetPluginHost table (Plugins/UltraNet/common/
+# UltraNetPluginHostShim.cpp). A shared-core build would resolve a stray one
+# anyway, so this reads the built plug-ins' undefined symbols instead of
+# trusting a load to fail. POSIX only: it needs nm and c++filt.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND AND UNIX)
+    add_test(NAME UltraNetPluginHostImports
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_SOURCE_DIR}/scripts/check_ultranet_plugin_imports.py
+                     ${CMAKE_BINARY_DIR}/Plugins/UltraNet)
+endif()

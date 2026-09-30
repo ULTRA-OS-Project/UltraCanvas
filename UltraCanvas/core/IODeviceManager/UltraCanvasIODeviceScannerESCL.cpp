@@ -26,6 +26,7 @@
 #include <atomic>
 #include <cctype>
 #include <cstdlib>
+#include <map>
 #include <mutex>
 #include <sstream>
 
@@ -416,8 +417,6 @@ IODeviceResult EsclScannerDevice::DoScanPage(ScannedImage& image) {
 //
 // This is not a fallback for a broken discovery path so much as the way a
 // scanner on another subnet is reached at all: mDNS does not cross routers.
-// It is also the only way to reach one on Windows at the moment, where the
-// mDNS plugin's browse is a stub.
 std::vector<std::string> ExplicitScannerUrls() {
     std::vector<std::string> urls;
     const char* setting = std::getenv("ULTRACANVAS_ESCL_SCANNERS");
@@ -455,7 +454,12 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
     }
 
     // Both the plain and the TLS service types, since a scanner may offer
-    // either or both.
+    // either or both - and one offering both is one scanner, listed once.
+    // Plain HTTP is browsed first and wins: a scanner's certificate is
+    // self-signed in all but a few cases and TLS verification stays on, so
+    // the https:// address would fail where the http:// one works. The TLS
+    // address is kept in the attributes for a caller that wants it.
+    std::map<std::string, size_t> seen;     // scanner identity -> index in found
     struct ServiceType { const char* name; bool tls; };
     for (const ServiceType& service : {ServiceType{"_uscan._tcp", false},
                                        ServiceType{"_uscans._tcp", true}}) {
@@ -487,6 +491,18 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
                                                         txt, service.tls);
             if (url.empty()) continue;
 
+            const std::string identity = EsclScannerIdentity(txt, host->second[0]);
+            if (!identity.empty()) {
+                auto known = seen.find(identity);
+                if (known != seen.end()) {
+                    // The same scanner again: over TLS, or on another
+                    // interface or address family.
+                    if (service.tls) found[known->second].attributes["escl-tls-url"] = url;
+                    continue;
+                }
+                seen[identity] = found.size();
+            }
+
             IODeviceInfo info;
             info.deviceId = "escl:" + url;
             info.name = EsclTxtValue(txt, "ty");
@@ -499,6 +515,7 @@ std::vector<IODeviceInfo> DiscoverOverMdns() {
             info.connectionPath = url;
             info.location = host->second[0];
             info.attributes["discovery"] = "mdns";
+            if (service.tls) info.attributes["escl-tls-url"] = url;
             found.push_back(std::move(info));
         }
     }

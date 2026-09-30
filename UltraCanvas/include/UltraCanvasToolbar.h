@@ -6,8 +6,15 @@
 // toolbar grows past it when its buttons need the room. Hosts therefore
 // cannot clip their own icons by guessing a number that was right before the
 // button metrics changed.
-// Version: 1.4.1
-// Last Modified: 2026-09-25
+//
+// Items can carry a badge - a count, a short text or a status dot in a corner
+// of the item - through SetItemBadge / SetItemBadgeCount / SetItemBadgeDot,
+// which anchor an UltraCanvasBadge to the item. With EnableItemReordering
+// the user drags items into a new order and onItemReordered says which moved
+// where; with ToolbarOverflowMode::Scroll a toolbar whose items outgrow it
+// scrolls them with the mouse wheel instead of clipping them.
+// Version: 1.5.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,6 +30,7 @@
 #include "UltraCanvasAutoComplete.h"
 #include "UltraCanvasSpacer.h"
 #include "UltraCanvasSeparator.h"
+#include "UltraCanvasBadge.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
@@ -30,6 +38,8 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <optional>
+#include <set>
 #include <unordered_map>
 
 namespace UltraCanvas {
@@ -217,10 +227,28 @@ namespace UltraCanvas {
         bool isHovered = false;
         float autoHideDelay = 0.5f; // seconds
 
-        // Drag state
+        // Drag state (ToolbarDragMode::Movable: the whole toolbar moves)
         bool isDragging = false;
         Point2Di dragStartPos;
         Point2Di originalPos;
+
+        // Item badges, keyed by the item's id. A badge is a child of this
+        // container too - an absolutely positioned overlay anchored to its
+        // item - so the item helpers (GetItemCount, GetWidgetAt, MoveItem)
+        // skip whatever is in this set.
+        std::unordered_map<std::string, std::shared_ptr<UltraCanvasBadge>> badgeMap;
+        std::set<const UltraCanvasUIElement*> badgeSet;
+
+        // Item reordering (ToolbarDragMode::ReorderItems). A press on an item
+        // is a candidate; once the pointer travels ReorderDragThreshold px
+        // with the button down, the item follows the pointer past its
+        // neighbours until release.
+        static constexpr int ReorderDragThreshold = 6;
+        int      reorderCandidate = -1;   // item index pressed, -1 = none
+        int      reorderIndex     = -1;   // where that item currently sits
+        bool     reorderActive    = false;
+        Point2Di reorderStart;
+        bool     reorderFilterInstalled = false;
 
         // Magnification (for dock-style toolbars)
         int hoveredItemIndex = -1;
@@ -266,7 +294,36 @@ namespace UltraCanvas {
         // GetWidgetAt(index) returns the child at the given position.
         std::shared_ptr<UltraCanvasUIElement> GetWidget(const std::string& identifier);
         std::shared_ptr<UltraCanvasUIElement> GetWidgetAt(int index);
-        int GetItemCount() const { return static_cast<int>(GetChildCount()); }
+        // Items only: a badge anchored to an item is a child of this
+        // container but never an item.
+        int GetItemCount() const;
+        // The items in their current order, one shared_ptr each.
+        std::vector<std::shared_ptr<UltraCanvasUIElement>> GetItems() const;
+        // The position of the item registered under `identifier`, -1 if none.
+        int GetItemIndex(const std::string& identifier) const;
+        // Move the item at `fromIndex` so that it sits at `toIndex` (indices
+        // among the items, as GetItems() lists them). Fires onItemReordered.
+        bool MoveItem(int fromIndex, int toIndex);
+        // The ids of the items in order; an unnamed spacer or separator is "".
+        std::vector<std::string> GetItemOrder() const;
+
+        // ===== ITEM BADGES =====
+        // A badge in the top-right corner of the item registered under `id`:
+        // a short text ("14"), a count (caps at 99+, 0 hides it) or a plain
+        // status dot in `color` (a red dot = the webcam is on, a yellow one =
+        // traffic). Each call replaces what the item showed before; the
+        // returned badge can be styled further. Without `color` the badge
+        // keeps UltraCanvasBadge's default variant.
+        std::shared_ptr<UltraCanvasBadge> SetItemBadge(const std::string& id, const std::string& text,
+                                                      std::optional<Color> color = std::nullopt);
+        std::shared_ptr<UltraCanvasBadge> SetItemBadgeCount(const std::string& id, int count,
+                                                           std::optional<Color> color = std::nullopt);
+        std::shared_ptr<UltraCanvasBadge> SetItemBadgeDot(const std::string& id, const Color& color);
+        std::shared_ptr<UltraCanvasBadge> GetItemBadge(const std::string& id);
+        void ClearItemBadge(const std::string& id);
+        // Where the badge straddles the item; changes apply to badges set
+        // afterwards. Defaults keep an 18 px pill inside a 44 px item.
+        void SetItemBadgeCorner(BadgeCorner corner, float offsetX = -7.0f, float offsetY = 7.0f);
 
         // Convenience builders — each creates a real widget, adds it as a child,
         // and returns the typed shared_ptr for inline configuration.
@@ -297,6 +354,10 @@ namespace UltraCanvas {
         // ===== RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
+        // The reorder drag watches the window's pointer events (an item's
+        // button consumes the press before this container would see it), so
+        // the watch is installed when the toolbar reaches a window.
+        void SetWindow(UltraCanvasWindowBase* win) override;
 
         // ===== AUTO-HIDE =====
         void SetAutoHideDelay(float delay) { autoHideDelay = delay; }
@@ -305,7 +366,14 @@ namespace UltraCanvas {
         bool IsAutoHidden() const { return isAutoHidden; }
 
         // ===== DRAG & DROP =====
+        // Let the user drag an item along the toolbar into a new place.
+        // onItemReordered(from, to) fires on release when the order changed.
         void EnableItemReordering(bool enable);
+        bool IsItemReorderingEnabled() const {
+            return toolbarDragMode == ToolbarDragMode::ReorderItems ||
+                   toolbarDragMode == ToolbarDragMode::Both;
+        }
+        bool IsReorderingItem() const { return reorderActive; }
         void BeginDrag(const Point2Di& startPos);
         void UpdateDrag(const Point2Di& currentPos);
         void EndDrag();
@@ -336,6 +404,19 @@ namespace UltraCanvas {
         void ApplyAppearanceToChildren();
         void CreateOverflowMenu();
         void UpdateOverflowButton();
+        // Reordering: the window-level watch and the item geometry it needs.
+        void InstallReorderFilter();
+        void RemoveReorderFilter();
+        std::string ReorderFilterId() const;
+        bool HandleReorderEvent(const UCEvent& event);
+        int  ItemIndexAtLocal(const Point2Df& local) const;
+        bool IsItem(const CSSLayout::Element* child) const;
+        void ApplyOverflowToChild(const std::shared_ptr<UltraCanvasUIElement>& child);
+        // Badge placement.
+        BadgeCorner badgeCorner = BadgeCorner::TopRight;
+        float badgeOffsetX = -7.0f;
+        float badgeOffsetY = 7.0f;
+        std::shared_ptr<UltraCanvasBadge> EnsureItemBadge(const std::string& id);
         void CalculateMagnification();
         void RenderDockMagnification(IRenderContext* ctx);
         void RenderShadow(IRenderContext* ctx);

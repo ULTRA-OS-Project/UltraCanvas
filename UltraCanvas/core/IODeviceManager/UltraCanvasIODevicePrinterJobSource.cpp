@@ -5,6 +5,7 @@
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterJobSource.h"
 
+#include "UltraCanvasImage.h"
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasRasterLayer.h"
 #include "UltraCanvasUtils.h"
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 
 namespace UltraCanvas {
@@ -99,6 +101,26 @@ IODeviceResult MakeImageSource(const IOPrintJob& job,
             IODeviceResultCode::NotImplemented,
             "Printing an image from memory is not wired up yet; print it "
             "from a file");
+    }
+
+    // The image library has to be started before anything is decoded, and
+    // decoding without it does not fail - it crashes inside the library. An
+    // application normally starts it when it opens its first window, but a
+    // job can be printed by a tool that never opens one: a server printing
+    // invoices, a command-line print. The eSCL scanner backend guards its
+    // own decoding the same way. The init is idempotent, so an application
+    // that already did it loses nothing, and once_flag keeps two concurrent
+    // jobs from racing into it.
+    static std::once_flag imagingReady;
+    static bool imagingOk = false;
+    std::call_once(imagingReady, []() {
+        imagingOk = UCImageRaster::InitializeImageSubsysterm("UltraCanvasPrint");
+    });
+    if (!imagingOk) {
+        return IODeviceResult::Error(
+            IODeviceResultCode::BackendUnavailable,
+            "The image library could not be started, so '" + job.filePath +
+                "' cannot be decoded for printing");
     }
 
     UCRasterDocument document;

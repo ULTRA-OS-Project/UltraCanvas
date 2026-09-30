@@ -1,5 +1,5 @@
 // Apps/EmailCleaner/ui/EmailCleanerAccountBar.cpp
-// Version: 0.3.0 (Phase 3)
+// Version: 0.4.0 - Accounts… (own accounts beside UltraMail's)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerAccountBar.h"
 
@@ -23,7 +23,7 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::Build(float x, float y,
     root_->AddChild(CreateLabel("ecAccountLabel", cursor, kRowY + 4, 68, 20, "Account"));
     cursor += 72.0f;
 
-    accountPicker_ = CreateDropdown("ecAccountPicker", cursor, kRowY, 190, kControlH);
+    accountPicker_ = CreateDropdown("ecAccountPicker", cursor, kRowY, 150, kControlH);
     accountPicker_->AddItem("All accounts", "");
     accountPicker_->SetSelectedIndex(0, false);
     accountPicker_->onSelectionChanged = [this](int index, const DropdownItem&) {
@@ -33,18 +33,26 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::Build(float x, float y,
         NotifyFilterChanged();
     };
     root_->AddChild(accountPicker_);
-    cursor += 198.0f;
+    cursor += 156.0f;
 
-    auto scanButton = CreateButton("ecScan", cursor, kRowY, 110, kControlH, "Load mail");
+    // Accounts come from UltraMail or are added here; this lists both and
+    // holds the form for the second kind.
+    auto accountsButton = CreateButton("ecAccounts", cursor, kRowY, 112, kControlH,
+                                       "Accounts…");
+    accountsButton->onClick = [this]() { if (onManageAccounts) onManageAccounts(); };
+    root_->AddChild(accountsButton);
+    cursor += 118.0f;
+
+    auto scanButton = CreateButton("ecScan", cursor, kRowY, 96, kControlH, "Load mail");
     scanButton->onClick = [this]() { if (onScan) onScan(); };
     root_->AddChild(scanButton);
-    cursor += 118.0f;
+    cursor += 104.0f;
 
     auto reanalyseButton = CreateButton("ecReanalyse", cursor, kRowY, 110, kControlH,
                                         "Re-analyse");
     reanalyseButton->onClick = [this]() { if (onReanalyse) onReanalyse(); };
     root_->AddChild(reanalyseButton);
-    cursor += 118.0f;
+    cursor += 116.0f;
 
     // The rules were always editable — as a text file in the data directory.
     // This is that file, in a dialog.
@@ -57,7 +65,7 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::Build(float x, float y,
     root_->AddChild(CreateLabel("ecCategoryLabel", cursor, kRowY + 4, 84, 20, "Category"));
     cursor += 88.0f;
 
-    categoryPicker_ = CreateDropdown("ecCategoryPicker", cursor, kRowY, 150, kControlH);
+    categoryPicker_ = CreateDropdown("ecCategoryPicker", cursor, kRowY, 140, kControlH);
     categoryPicker_->AddItem("All categories", "");
     for (MessageCategory category : AllCategories())
         categoryPicker_->AddItem(CategoryLabel(category), ToString(category));
@@ -73,7 +81,7 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::Build(float x, float y,
         NotifyFilterChanged();
     };
     root_->AddChild(categoryPicker_);
-    cursor += 162.0f;
+    cursor += 148.0f;
 
     unwantedOnly_ = std::make_shared<UltraCanvasCheckbox>(
         "ecUnwantedOnly", cursor, kRowY, 140, kControlH, "Unwanted only");
@@ -85,7 +93,7 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::Build(float x, float y,
     cursor += 148.0f;
 
     search_ = CreateTextInput("ecSearch", static_cast<int>(cursor), static_cast<int>(kRowY),
-                              180, static_cast<int>(kControlH));
+                              126, static_cast<int>(kControlH));
     search_->SetPlaceholder("Search subject or sender");
     search_->onTextChanged = [this](const std::string& text) {
         filter_.search = text;

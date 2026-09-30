@@ -420,9 +420,12 @@ namespace UltraCanvas {
         displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea");
         displayContainer->SetBackgroundColor(Colors::White);
         // displayContainer is the demo's main scroll region — give its scrollbars
-        // the shared slim, round-ended demo style.
+        // the shared slim, round-ended demo style. Containers stopped scrolling
+        // by default in 0.9.22, so a scroll view has to ask: without this every
+        // example page taller than the window was cut off at the window edge.
         {
             ContainerStyle dcStyle = displayContainer->GetContainerStyle();
+            dcStyle.autoShowScrollbars = true;
             dcStyle.scrollbarStyle = DemoScrollbarStyle();
             displayContainer->SetContainerStyle(dcStyle);
         }
@@ -2025,11 +2028,12 @@ namespace UltraCanvas {
                                "as single native windows (Wine tier)",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraWin"); });
-        // Specification only — no VideoFX sources, no build target and no consumer;
-        // the timeline / effects / export engine in Docs/Modules/VideoFX/README.md
-        // is a design document. "Planned", not "PartiallyImplemented".
+        // Built module (VideoFX/, target VideoFX, on FFmpeg) at stage 1 of its
+        // roadmap: probe, frames, trim / speed / effects / joins, export, the
+        // videofx CLI and VideoFXTest. No application calls it yet, and
+        // transitions, overlays and keyframes are still to come - partial.
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
-                               ImplementationStatus::Planned,
+                               ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
         // Built module (VirtualFS/, target VirtualFS) reaching applications through
         // the core: UltraCanvasFilerWidget browses archive interiors via
@@ -2076,7 +2080,8 @@ namespace UltraCanvas {
 
         widgetsBuilder.AddItem("colorpicker", "Colour Picker",
                                "HSV colour wheel with saturation/value square, preview "
-                               "swatches, hex input, HSV/HSL/RGB channel sliders and alpha",
+                               "swatches, hex input, HSV/HSL/RGB channel sliders and alpha; "
+                               "hue x lightness field and colour + intensity slider styles",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateColorPickerExamples(); },
                                "DemoApp/UltraCanvasColorPickerExamples.cpp",
@@ -2331,13 +2336,27 @@ namespace UltraCanvas {
                 currentDisplayElement = item->createExample();
                 if (currentDisplayElement) {
                     displayContainer->AddChild(currentDisplayElement);
-                    // Grow to fill, but also shrink (flex-shrink:1) so an example
-                    // that sets a large explicit size is clamped into displayContainer
-                    // (which then scrolls) instead of overflowing it.
+                    // Grow to fill. A page built at a fixed pixel height (the
+                    // usual `(id, 0, 0, 1000, 1400)` example root) keeps that
+                    // height, so it overflows displayContainer, which scrolls it.
+                    // Shrinking it to the window would clamp the page instead,
+                    // and a page that places its children absolutely does not
+                    // scroll itself, so its lower rows were unreachable. A page
+                    // with no fixed height is fitted to the window and scrolls
+                    // its own content (the album, the editors).
+                    // Likewise a fixed pixel width is kept rather than stretched
+                    // to the window: stretched, it fills the viewport exactly,
+                    // and the vertical scrollbar then narrows the viewport by its
+                    // track and fabricates a horizontal overflow of that much.
+                    const bool fixedHeight =
+                        currentDisplayElement->size.height.unit == CSSLayout::DimensionUnit::Pixels;
+                    const bool fixedWidth =
+                        currentDisplayElement->size.width.unit == CSSLayout::DimensionUnit::Pixels;
                     currentDisplayElement->layoutItem
                         .SetFlexGrow(1)
-                        .SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+                        .SetFlexShrink(fixedHeight ? 0 : 1)
+                        .SetAlignSelf(fixedWidth ? CSSLayout::AlignSelf::Start
+                                                 : CSSLayout::AlignSelf::Stretch);
                 }
                 currentSelectedId = itemId;
             } catch (const std::exception& e) {

@@ -4,6 +4,7 @@
 #include "test_framework.h"
 
 #include <UltraNet/UltraNetPlugins.h>
+#include <UltraNet/UltraNetUrl.h>
 
 #include <algorithm>
 #include <memory>
@@ -110,11 +111,41 @@ TEST(plugin_host_vtable_abi_version_is_set) {
     // The host vtable handed to v2 plug-in entry points carries the ABI
     // version constant. If anything ever bumps the struct, the plug-in's
     // version check will refuse mismatched hosts.
-    REQUIRE_EQ(ULTRANET_PLUGIN_HOST_ABI_VERSION, 1);
+    REQUIRE_EQ(ULTRANET_PLUGIN_HOST_ABI_VERSION, 2);
 
     UltraNetPluginHost vtable{};
     vtable.abiVersion    = ULTRANET_PLUGIN_HOST_ABI_VERSION;
     vtable.RegisterPlugin = &UltraNet_RegisterPlugin;
     REQUIRE(vtable.RegisterPlugin != nullptr);
-    REQUIRE_EQ(vtable.abiVersion, 1);
+    REQUIRE_EQ(vtable.abiVersion, 2);
+}
+
+TEST(plugin_host_table_serves_every_core_function) {
+    // A plug-in's shim forwards every core call through this table and has
+    // no other way to reach the core, so a null slot would be a crash inside
+    // a plug-in rather than a missing feature.
+    const UltraNetPluginHost* host = UltraNet_GetPluginHost();
+    REQUIRE(host != nullptr);
+    REQUIRE_EQ(host->abiVersion, ULTRANET_PLUGIN_HOST_ABI_VERSION);
+    REQUIRE(host->RegisterPlugin != nullptr);
+    REQUIRE(host->ParseUrl != nullptr);
+    REQUIRE(host->UrlEncode != nullptr);
+    REQUIRE(host->UrlDecode != nullptr);
+    REQUIRE(host->ResolveCaBundlePath != nullptr);
+    REQUIRE(host->DescribeTrustRoots != nullptr);
+    REQUIRE(host->DescribePlatform != nullptr);
+    REQUIRE(host->MimeBuild != nullptr);
+    REQUIRE(host->HttpGet != nullptr);
+    REQUIRE(host->HttpRequest != nullptr);
+    REQUIRE(host->HttpHeadersSet != nullptr);
+
+    // The slots are the real functions, not stand-ins.
+    UltraNetUrlComponents url;
+    REQUIRE(host->ParseUrl("imaps://mail.example.com:993/INBOX", url));
+    REQUIRE_EQ(url.host, std::string("mail.example.com"));
+    REQUIRE_EQ(host->UrlEncode("a b"), UltraNet_UrlEncode("a b"));
+
+    UltraNetHttpHeaders headers;
+    host->HttpHeadersSet(headers, "X-Test", "1");
+    REQUIRE_EQ(headers.Get("X-Test"), std::string("1"));
 }

@@ -63,6 +63,14 @@ void RegisterSaneScannerBackend(IODeviceManager& manager);
 // SANE, a network one needs no driver at all, and the manager merges the
 // two enumerators.
 void RegisterEsclScannerBackend(IODeviceManager& manager);
+
+// core/IODeviceManager/UltraCanvasIODevicePrinterIPP.cpp
+//
+// Driverless printing, for the same reason and in the same place: IPP is HTTP
+// and a binary encoding. Registered after CUPS, and it leaves out any printer
+// a CUPS queue already reaches, so on Linux and macOS it adds only what CUPS
+// does not see; on Windows it is the only route to a driverless printer.
+void RegisterIppPrinterBackend(IODeviceManager& manager);
 #endif
 
 } // namespace Internal

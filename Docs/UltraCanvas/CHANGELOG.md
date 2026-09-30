@@ -1,3 +1,804 @@
+#### 2026-09-30 *0.9.101*
+- **DesktopShell: the screen can be captured into memory.**
+  `UltraCanvasDesktopShell::CaptureScreenImage(DesktopScreenImage&, &error)`
+  returns the whole screen as BGRx pixels (cairo's RGB24 layout, the QR
+  scanner's BGRA32) without touching the disk, for a caller that must not
+  leave a file behind: UltraAuthenticator reads an enrolment QR code off the
+  screen this way, and a PNG of that code in the Pictures folder would be the
+  account's seed in the clear. `CaptureScreen(pngPath)` is unchanged and now
+  writes the same buffer, so the two cannot disagree about what the screen
+  looked like. The null backend fails both with the same reason.
+
+#### 2026-09-30 *0.9.100*
+- **`UltraCanvasFileLoader`'s file dialogs honour the native-dialogs
+  setting.** `OpenFileDialog`, `OpenMultipleFilesDialog`, `SaveFileDialog`
+  and `SelectFolderDialog` always opened the platform's picker, whatever
+  `UltraCanvasDialogManager::SetUseNativeDialogs` said, so an app that turned
+  native dialogs off for one look throughout still got the platform's file
+  picker among its own dialogs (UltraCleaner had to build the framework's
+  file dialog by hand to get around it). With the setting off they now open
+  `UltraCanvasFileDialog` in the matching mode, with the caller's title,
+  start directory, default name, filters and hidden-files choice carried
+  across, and the callback runs when that dialog closes rather than before
+  the call returns. Apps that set the flag to true are unaffected; an app
+  that never set it (the default is off) now gets the framework's file
+  browser, and one `SetUseNativeDialogs(true)` at start-up restores the
+  platform's.
+- **`UltraCanvasDialogManager::CreateFileDialog` is public**, beside the
+  other factories, so a caller can build the file browser directly instead
+  of constructing `UltraCanvasFileDialog` itself.
+
+#### 2026-09-30 *0.9.99*
+- **HTML mail tables line up, and mail "buttons" are drawn.** A partner-proposal mail in
+  UltraMail showed every table row with its own column widths, the Login / Upgrade /
+  Profile / Photos buttons as white text on white (or not at all), `5&acute;8"` literally,
+  and its text a third too large; Thunderbird showed a tidy table with blue buttons.
+  - CSSLayout has a table layout: `DisplayType::Table` (`core/CSSLayout/TableLayout.cpp`,
+    `Layout::SetTable` / `SetTableSpacing`) - the browsers' automatic table layout, with
+    columns shared by every row, colspan / rowspan, min/max-content column widths, px and
+    % widths, border-spacing, and cells stretched to their rows. See *Table layout* in
+    `Docs/CSSLayout.md`.
+  - The HTML reader builds tables on it (it gave each row its own flex row before), reads
+    `cellspacing` / `cellpadding` / `valign` / `nowrap` / `<tr align>` / `<table align>` /
+    `border`, `border-collapse` / `border-spacing` / `border-radius` / `white-space:
+    nowrap` and `<nobr>`, centres a cell's content vertically by default, and places a
+    table narrower than its line by its alignment.
+  - An inline-block with a box of its own (background, border, padding, width) and an
+    inline table are shrink-to-fit boxes on the line beside their text - the mail button
+    idiom (`<a style="display:inline-block"><table style="display:inline"><td
+    style="background:...">`). An inline element around a block (`<a href><div>`,
+    `<font><table>`) is looked through, its formatting and link carried into the block.
+  - Borders keep their colour and radius (only the width reached the element before, so
+    they were invisible).
+  - Every HTML 4 named entity is decoded (`&acute;`, `&eth;`, `&alpha;`, `&hearts;`, ...).
+  - `a:link` / `:any-link` selectors match links; other pseudo-classes still drop the rule.
+  - `inherit` works for colour, font and text properties, so `<a style="color: inherit">`
+    keeps its paragraph's grey instead of turning default blue (Anthropic's sign-in mail).
+  - CSS pixel sizes are converted to the label's points: text was drawn 33% too large,
+    and a 15px `<span>` came out smaller than the 12px text around it. The eBook viewer
+    converts its system font size (points) to px, so its default size is unchanged.
+  - `UltraCanvasLabel` publishes a real min-content width (its widest unbreakable run).
+- **HTML mail: `@media` queries, background pictures, rounded borderless buttons,
+  centred boxes.** Anthropic's sign-in mail showed a square-cornered button, a
+  blank gap where its waving hand should be, and its footer columns stacked.
+  - `@media` blocks (and `<style media="...">`) apply when their query holds for
+    `HTML::BuildOptions::viewportWidth` (default 800px): `min-width`, `max-width`,
+    `width` (px / em), `screen` / `all` / `print` / `not` / `only`; an unknown
+    feature does not match. `StyleSheet::MediaMatches` answers a query list. The
+    `<!-- ... -->` some mail wraps its style sheet in is skipped.
+  - `background` / `background-image` pictures are drawn under the box's content,
+    fitted by `background-size` (`contain` / `cover`, else unscaled). Of several
+    `url()` layers the first that loads is shown (an animated GIF over its poster
+    falls back to the poster). The background colour is found anywhere in the
+    shorthand's last layer. Repeat and position are not honoured yet.
+  - `UltraCanvasUIElement::SetBorderRadius`: rounded corners without a border - the
+    background is filled rounded. The HTML reader uses it for `border-radius` on a
+    borderless box.
+  - `max-width` (px) caps a box and a table; `margin: 0 auto` (or `margin-left:
+    auto`) centres (or right-aligns) a block or table that has a width or max-width.
+
+#### 2026-09-30 *0.9.98*
+- **`SetMargin()` did nothing inside an ordinary container or group box.**
+  Block layout, the default display, stacked its children at their bare
+  border-box height and never read their margins, so a margin only took effect
+  under flex, grid or absolute positioning. The Group Box demo's label margins
+  had no visible effect, and the TreeView demo had to switch its group boxes to
+  a flex column to put any space between a tree and its options. Block layout
+  now offsets each child by its margin, adds the vertical margins to the stack
+  and to the parent's automatic height, and narrows the width a child is
+  offered by its left and right margins (percentages against the content
+  width) - so wrapped multi-line text wraps inside its margins. Margins do not
+  collapse, as in flex; `margin: auto` does not centre in block layout.
+  `Tests/CSSLayoutBlockMarginTest.cpp` pins it.
+
+#### 2026-09-30 *0.9.97*
+- **`UltraNet_DnsResolveAsync` with `UltraNetDnsType::PTR` is the reverse
+  lookup, and refuses a non-address before any thread starts.** The
+  asynchronous PTR path reached `UltraNet_DnsReverseLookup` only by way of
+  the synchronous `UltraNet_DnsResolve` on a detached thread, behind a stale
+  comment about the c-ares PTR parser, and a caller that passed a host name
+  instead of an address got a thread and an empty answer later rather than
+  an error now. It now calls the reverse lookup directly with the caller's
+  options - hosts file, deadline and servers as there - and checks the
+  address up front the way it checks the server list: an empty or
+  non-address argument is `InvalidUrl` synchronously, no thread, no callback.
+  Forward types are unchanged (c-ares's event thread, or a thread running the
+  synchronous lookup).
+  - Tests (`Tests/UltraNet/test_dns_servers.cpp`): a non-address PTR is
+    refused synchronously and never calls back; a PTR at a silent loopback
+    server calls back with an empty list at its deadline; without servers
+    the asynchronous answer matches the synchronous reverse lookup. The
+    `UltraNet_DnsResolveAsync` probe covers the synchronous refusal.
+- **Asynchronous lookups that need a thread run on a small worker pool.**
+  PTR on every backend, and every type on the system backends (c-ares
+  answers forward types from its own event thread), started a detached
+  thread per call, so a burst of lookups was a burst of threads. They queue
+  on a pool of at most eight workers (two on a small machine), grown on
+  demand and never destroyed. The deadline counts from the call, not from
+  when a worker is free: the time a lookup spent queued comes off its
+  budget, and one that spent all of it is answered empty at once, without a
+  query - so a burst at a server that never answers is back after one
+  deadline, not one per pool-full (`dns_resolve_async_burst_answers_within_
+  one_deadline`).
+- **The c-ares PTR parser is given the queried address.** `ares_parse_ptr_
+  reply` was called with no address, relying on c-ares tolerating that. The
+  backend now decodes the in-addr.arpa / ip6.arpa name it queries back into
+  the address's wire bytes and family and hands them to the parser, which
+  puts them into the hostent it builds. New pure helper
+  `UltraNet_DnsReverseNameToAddress` (the inverse of
+  `UltraNet_DnsReverseName`: case-insensitive, trailing dot allowed, strict
+  about label count and range) does the decoding and is tested both ways.
+
+#### 2026-09-30 *0.9.96*
+- **Menu: the checkbox / radio indicator sits level with its label.** It was
+  drawn one pixel above the row's centre line while the label was drawn on
+  it, so the box floated above the text. The label is now centred on the row
+  by its cap height rather than its line box, which holds the ascender and
+  descender space too and so put a mixed-case label a shade lower than the
+  indicator. The radio dot is a filled disc rather than a stroked ring, and
+  the mark greys with a disabled item.
+- **Single-line text centres on its capitals, everywhere.** A layout drawn
+  with `VerticalAlignment::Middle` in a box of known height - a button
+  label, a list-view cell, a dropdown, a tab - now puts the middle of a
+  capital letter on the middle of the box instead of the middle of the
+  font's ascent + descent band, which sat up to a pixel higher on fonts
+  with tall ascenders. Text drawn at a point gets the same line through
+  `IRenderContext::TextTopCentredOnCaps(row, font)` and
+  `GetCapCentreOffset(font)`; the menu and the spinner use them. The cap
+  height comes from `ITextLayout::GetCapHeight()`, measured once per font
+  from the ink of a capital H and cached on the render context, so no
+  render pass measures twice. The caches are per context, not process-wide,
+  and `IRenderContext::InvalidateFontMetricsCache()` clears them: the Cairo
+  backend calls it when a context's surface, resolution, hinting or
+  antialiasing changes, so a font is measured again under the new settings.
+  The antialias, hint-style and hint-metrics setters, which each cleared
+  the shared layout cache and re-applied the options by hand, now share
+  one `InvalidateAllFontMetricsCaches`, the single place that knows what
+  a font-settings change invalidates.
+- **TextInput: text, selection and caret share one cap-centred line box.**
+  The field centred its text by the line height, placed the caret by
+  1.2 × the font size and sized it by 1.4 ×, so the three drifted apart and
+  the text sat below a button or checkbox beside the field. One line box
+  (`GetTextLineBox`) now positions all three, with the font's capitals on
+  the field's centre line and the caret spanning the font's line height.
+  `UltraCanvasAutoComplete` inherits it. The text area's lines flow from
+  the top and its caret follows the layout, which is right for a
+  multi-line editor; its one single-line label, the placeholder for a
+  missing markdown image, is now cap-centred in its box too.
+- **`DrawFilledRectangle` / `DrawFilledCircle` keep the border inside the
+  shape.** A stroke is centred on its path, so a 1px outline on a rectangle
+  with whole-pixel edges was smeared over two rows of pixels on each side
+  and read as a grey haze, on every checkbox, input and menu indicator in
+  the framework. The path is now inset by half the border width
+  (`IRenderContext::InsetForStroke`, usable on its own), so the outline
+  sits on whole pixels with its outer edge on the rectangle's edge and its
+  centre unchanged; a rounded corner keeps its outer radius. A circle's
+  ring likewise stays within its radius instead of overhanging it by half
+  a stroke.
+- **Menu: a Radio item's outline is a circle.** It was the same square box a
+  Checkbox item gets, so the two item kinds could not be told apart until one
+  was checked. `MenuStyle::radioShape` chooses: `MenuRadioShape::Round` (the
+  default, as `UltraCanvasRadio` draws it) or `MenuRadioShape::Square`, the
+  old look. UltraMail's "Show emails" filter menu uses the default and so
+  gets the circle.
+- **TextArea: a scroll step is one laid-out line.** The wheel and the page
+  keys stepped by 1.3 x the font size, an estimate that drifted from the
+  real line height by a few pixels a notch and left the top line cut
+  part-way through after a few turns. They now step by the measured line
+  height the layout uses, and PageUp / PageDown, when the caret has no
+  on-screen rectangle to measure a page from, move by the lines that fit
+  the visible area instead of a fixed ten.
+- **The first-surface text-render diagnostic answers a measurement question
+  on its own.** It logged the Pango and Cairo resolutions, the device scale
+  and cairo's font options as bare enum numbers, read before the framework's
+  own options were applied. It now logs after they are, names every option
+  (antialias, hint style, hint metrics, subpixel order) for both the Pango
+  context and cairo, adds the surface size and the pinned resolution, and
+  measures the default font on that context: line height, baseline, cap
+  height and the width of an H, to compare across machines before
+  suspecting a caller. A runtime change to the antialias, hint-style or
+  hint-metrics setting logs the new options too, so the log stays true
+  after it.
+- **The caret follows a DPI change.** When a window moved to a display with
+  another scale, the window, popup and tooltip contexts were rebuilt at
+  the new scale but the shared caret's was not: it is rebuilt only when
+  its size changes, and the caret's logical size is the same on both
+  displays, so it kept painting from a surface made at the old scale. The
+  window now drops it with the others. (Checked on the way: Windows,
+  macOS and Linux all reach the shared `HandleDeviceScaleChange`, which
+  makes a new render context, so the per-context font-metrics caches
+  start fresh on every platform.)
+
+#### 2026-09-29 *0.9.95*
+- **`UltraNet_DnsReverseLookup` honours its deadline and takes per-call name
+  servers.** It ignored its `timeoutMs` (a getnameinfo call has no clock) and
+  had no way to name a server, so a reverse lookup could hang for as long as
+  the system resolver liked and always asked the system's servers, while the
+  forward lookups had both since 0.9.49.
+  - New overload `UltraNet_DnsReverseLookup(ip, outHostname, const
+    UltraNetDnsOptions&)`. Without servers it is the system resolver - the
+    hosts file included - run on a thread of its own under the deadline:
+    `Timeout` when it passes, the lookup abandoned and its state freed by the
+    thread when it finishes. With `options.servers` it is a PTR query for the
+    address's reverse name at those servers, through the platform backend,
+    which bounds itself by the deadline; a bad entry is refused as
+    `InvalidUrl` before any query. The `int timeoutMs` form delegates to it.
+  - `UltraNet_DnsResolve(..., UltraNetDnsType::PTR, options)` is that call:
+    PTR is routed through the reverse lookup whatever the backend and the
+    options, so the two entry points cannot drift.
+  - Tests (`Tests/UltraNet/test_dns_servers.cpp`): validation through the
+    options overload, a reverse lookup at a silent loopback server comes back
+    at its deadline with no host name (`Timeout` under c-ares), and the
+    system form answers under its deadline. The `UltraNet_DnsReverseLookup`
+    probe covers the per-call server form the same way.
+
+#### 2026-09-29 *0.9.94*
+- **UltraNet plug-ins reach the core only through the host table, so they
+  load on a static core and link on Windows without one.** A plug-in DSO used
+  to resolve the core functions it calls (`UltraNet_ParseUrl`,
+  `UltraNet_UrlEncode`, `UltraNet_ResolveCaBundlePath`, `UltraNet_MimeBuild`,
+  `UltraNet_HttpRequest`, ...) from the host when it loaded. A shared
+  libUltraCanvas always had them. A static one - the default on macOS and
+  Windows, and on Linux without DemoApp - only puts into the executable the
+  objects the app itself uses, so `dlopen(RTLD_NOW)` refused any plug-in
+  calling one the app never did: EmailCleaner, which never parses a URL, could
+  not load the IMAP plug-in, and UltraMail was exposed the same way. And a
+  Windows plug-in DLL could only be linked against a shared core's import
+  library - hidden only because the LaTeX plug-in forces a shared core there.
+  - `UltraNetPluginHost` is ABI 2: after `RegisterPlugin` it carries every
+    core function a plug-in uses (appended, so an ABI-1 plug-in still reads a
+    new host's table). `UltraNet_GetPluginHost()` returns the host's table.
+  - `Plugins/UltraNet/common/UltraNetPluginHostShim.cpp`, compiled into all
+    eighteen plug-ins with hidden visibility, defines those functions inside
+    the plug-in and forwards each call to the table, so plug-in sources are
+    unchanged; `UltraNet_PluginInit` attaches the host first and registers
+    nothing for a host older than ABI 2.
+  - The plug-ins no longer link the core on Windows, macOS no longer links
+    them with `-undefined dynamic_lookup`, and the in-tree plug-ins no longer
+    export the POSIX-only v1 entry (`UltraNet_PluginRegister`), which worked
+    only by resolving `UltraNet_RegisterPlugin` from the host. The loader
+    still accepts v1 from third-party plug-ins.
+  - The LDAP and WebDAV plug-ins used `UltraCanvas::Trim`, UltraCanvas
+    utility code; they use the header-only `UltraCanvas::TrimWhitespace` now.
+  - New `UltraNetPluginHostImports` test (`ctest -R UltraNet`, Linux and
+    macOS): `scripts/check_ultranet_plugin_imports.py` fails when a built
+    plug-in has any undefined core symbol - a shared-core Linux build would
+    resolve it anyway, so a load test there could not notice.
+  - Verified on a static-core Linux build: twelve built plug-ins with no
+    undefined core symbol, the UltraNet suites green, and EmailCleaner loading
+    the IMAP plug-in and reaching the server through it.
+
+#### 2026-09-29 *0.9.93*
+- **Windows: "Delete as administrator" in UltraFiler put up "The procedure
+  entry point `WNetGetConnectionW` could not be located in
+  `C:\WINDOWS\SYSTEM32\pcacli.dll`" after the consent prompt - and the box
+  0.9.83 saw in `daxexec.dll` was the same bug.** The package shipped
+  ImageMagick's coder module `coders\mpr.dll` (the `MPR:` in-memory image
+  registry). ImageMagick loads every coder into the process the first time
+  libvips asks it whether it recognises a file, and Windows keys the modules
+  of a process by base name: from then on any system DLL that imports
+  `MPR.dll` by name - `pcacli.dll`, which the shell loads for the `runas`
+  verb, `daxexec.dll`, which activates a Store app - was bound to the coder
+  instead of to the real one, and its import failed.
+  - `package-win.sh` lets no coder into the package under a Windows system
+    DLL's name. `mpr.dll` and `url.dll` (fetch over HTTP), pseudo-formats of
+    no use here, are dropped with their `.la` files. A real format whose
+    name collides - `dpx.dll` (SMPTE DPX, which the export dialog offers)
+    and `vid.dll` on Windows 10 and 11, plus anything the packaging
+    machine's `System32` turns up - ships as `<name>-coder.dll`, with its
+    `.la` pointing at the new file; ImageMagick opens coders through the
+    `.la`, so nothing changes for it. The build then refuses any DLL of a
+    system DLL's name anywhere in the package, with the file named.
+  - `uc-diagnose.ps1` lists the DLLs of an installed package that carry a
+    system DLL's name, so an older extraction can be fixed by deleting them.
+  - The elevated-delete backend turns the loader's hard-error boxes off on
+    its worker thread around the launch, as the file-associations backend
+    already did: a system DLL that still fails to load comes back as
+    `ShellExecuteEx`'s error in the "Cannot Delete" dialog, not as a modal box
+    behind the progress window.
+  - Anyone on a 0.9.92 or older package: delete
+    `lib\ImageMagick-*\modules-Q16HDRI\coders\mpr.dll` and `mpr.la` (and
+    `url.dll`, `url.la`) from it, or extract the next package into a fresh
+    folder.
+
+#### 2026-09-29 *0.9.92*
+- ColorPicker: two new wheel styles that pick colour and intensity together at
+  full saturation. `ColorPickerWheelStyle::HueLightnessField` is a single
+  field with the hue running top to bottom and the lightness from black
+  through the pure colour to white; `HueLightnessSliders` is a colour (hue)
+  bar plus an intensity bar from white through the colour to black. The hue
+  bar and the new intensity bar share one gradient-bar renderer, whose handle
+  now carries the marker outline so it stays visible on white.
+- DemoApp: the Colour Picker page gains a row showing both styles, and the
+  field with collapsible sliders.
+- **DemoApp: example pages taller than the window could not be scrolled.**
+  0.9.22 made containers scroll only when they ask to, and the demo's display
+  area, its one scroll region, was not among the places opted in. Pages built
+  at a fixed height were also shrunk to the window, so they never overflowed
+  it, and their lower rows (the Colour Picker's variants, most of Slider,
+  Split Pane, Tabs, ...) were cut off at the window edge. The display area now
+  opts in, and a page with a fixed pixel height or width keeps it rather than
+  being squeezed or stretched to the window (stretched, the vertical bar
+  would narrow the viewport and fabricate a horizontal overflow). Pages with
+  no fixed size are still fitted to the window and scroll their own content.
+
+#### 2026-09-29 *0.9.91*
+- **`UltraCanvasDesktopShell`: the running desktop as a module.** The windows
+  other applications have open and which one is active, the virtual desktops,
+  the installed applications a launcher lists, a screenshot of the screen,
+  the live state of the devices an info panel shows (webcam, microphone and
+  speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic, USB count,
+  battery, keyboard layout) and the counts an application publishes for the
+  desktop to show (`PublishNotice` / `ReadNotice`, one atomically written JSON
+  file per application), and `ReserveScreenEdges` to keep maximised windows
+  off a window's strips along the screen's edges (`_NET_WM_STRUT_PARTIAL`). `UltraCanvasDesktopShellMonitor` reports window and
+  desktop changes on its own thread. Linux backend over EWMH, `XGetImage`,
+  procfs and sysfs; a null backend elsewhere keeps the application list, the
+  launcher and the notices working. The module the new UltraDesktop
+  application (`Apps/UltraDesktop`, its own changelog) is built on, so any
+  application gets the same window list. See
+  `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+- **`UltraCanvasWaveSeparator`**: the S-curve between two groups on one bar,
+  one group's colour up to the curve and the next group's after it. An
+  in-flow element like `UltraCanvasSeparator`; in the catalogue.
+- **`UltraCanvasToolbar` 1.5.0: item badges, real item reordering, wheel
+  scrolling.** `SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot` /
+  `ClearItemBadge` anchor an `UltraCanvasBadge` to an item (a count on the
+  mail icon, a red dot on the webcam). `EnableItemReordering(true)` now
+  reorders *items*: a press on an item followed by a drag moves it past its
+  neighbours and `onItemReordered(from, to)` fires on release; before, the
+  mode moved the whole toolbar on any press, which is what
+  `ToolbarDragMode::Movable` is for. `MoveItem`, `GetItemIndex`,
+  `GetItemOrder` and `GetItems` do the same from code (badges are children
+  but never items). `ToolbarOverflowMode::Scroll` keeps items at their size
+  and scrolls a full toolbar with the mouse wheel instead of squeezing them.
+  `UltraCanvasButton::CanToggle` (new getter) is what the toolbar reads to
+  reset a plain button's pressed look when its press became a drag.
+- **`WindowType::Desktop`**: a window the size of the screen at the bottom of
+  the stack, on every virtual desktop, out of taskbars and undecorated
+  (`_NET_WM_WINDOW_TYPE_DESKTOP` plus the sticky, below and skip-taskbar
+  states on X11) - the window a desktop shell draws its wallpaper and bars
+  into. The X11 window size limit rises from 4096 to 16384 px so a 5K screen
+  is a valid size.
+- **UltraMail publishes its unread total** to the desktop through
+  `UltraCanvasDesktopShell::PublishNotice("UltraMail", …)` whenever the
+  account bar refreshes, so the desktop's mail icon carries the count.
+- **X11 windows carry a `WM_CLASS`.** Every window now sets its class hint to
+  the name `Initialize()` was given (`UltraFiler`; instance `ultrafiler`),
+  which is what a taskbar - UltraDesktop's or any other desktop's - matches
+  against a desktop entry's `StartupWMClass=` to find the application's icon.
+  Before, no UltraCanvas window had one, so the `StartupWMClass` lines in the
+  shipped `.desktop` files matched nothing. `UltraCanvasApplicationBase::GetAppName`
+  (new) exposes the name.
+- **An empty clipboard is no longer logged as an error.** The Linux clipboard
+  reported "Selection conversion failed" whenever the owner had nothing in the
+  requested target, which a clipboard monitor asks every half second; that
+  answer is now silent.
+
+#### 2026-09-29 *0.9.90*
+- **VideoFX: portrait photos no longer lose two thirds of themselves.** A
+  still image's framing is now `VideoFXSegment::imageFit` (and
+  `VideoFXSlideshowOptions::imageFit`): `Cover`, `Contain` (black bars) or
+  the new `BlurredBackground`, which shows the whole photo over a blurred,
+  darkened, enlarged copy of itself - made once per photo from a 1/12-size
+  render. The default `Auto` keeps `Cover` for 4:3, 3:2 and panoramic
+  photos and switches to `BlurredBackground` for an image much taller than
+  the frame, such as a portrait photo in a 16:9 slideshow. Pan and zoom move
+  the sharp photo in front of its backdrop. Still images no longer take
+  their framing from the video `fitMode`. `videofx slideshow --fit`.
+- **VideoFX text overlays no longer depend on the machine's fonts.** A text
+  overlay without a `fontPath` now takes, in order: the font the application
+  set with the new `VideoFX_SetDefaultFontPath()`; the framework's bundled
+  Ubuntu font found next to the executable wherever UltraCanvas apps ship
+  `media/` (`share/media/fonts`, `Resources/media/fonts`); a system sans font;
+  and fontconfig's "Sans" only after a one-time check that this FFmpeg can
+  load it. With none usable, the export fails before writing anything, with
+  `NotAvailable` and a message naming the fix - on a minimal Linux install
+  without DejaVu / Liberation / Noto it used to fail inside the filter graph.
+  `VideoFX_GetDefaultFontPath()` reports the choice; `videofx` gains
+  `--font`.
+- **A text overlay's own `fontPath` was ignored.** It was checked for
+  existence and then never passed to FFmpeg, so every title was drawn in the
+  default font. It is now used, ahead of the default.
+- **VideoFX: photos on the timeline, "Ken Burns" motion and slideshows.**
+  - `VideoFXSegment::FromImage(path, seconds, motion)` and
+    `FromImageFrame(rgba, ...)` put a still image on the timeline, with
+    transitions, effects and overlays like any segment. `VideoFXImageMotion`
+    moves a virtual camera across it: `ZoomIn`, `ZoomOut`, four pans,
+    `Custom` start / end zoom and centre, `Still` (fitted like video), and
+    `Auto`, which varies the move per segment and pans along the direction
+    the frame crops. Moves are eased, zoom runs geometrically, and every frame
+    is resampled at sub-pixel positions in VideoFX itself, so there is none
+    of the stepping FFmpeg's `zoompan` shows. Large photos are shrunk once to
+    what the closest zoom needs and loaded only when their segment plays.
+  - `VideoFX_CreateSlideshow(images, output, options)` makes a slideshow in
+    one call: seconds per image, a transition (crossfade by default),
+    per-image captions, fade from and to black, 1080p30 unless sized.
+  - JPEG EXIF orientation is honoured, in exports and in
+    `VideoFX_ExtractFrame` / `ExtractThumbnails`. Reading a single image
+    twice no longer fails (the image demuxers report end-of-file after any
+    seek; a still is now re-read from a fresh open), and JPEG frames could
+    not be extracted at all before.
+  - `videofx slideshow` with `--seconds`, `--motion` and `--caption`;
+    `VideoFXTest` grows to 241 checks.
+- **VideoFX is implemented (stage 1).** Until now the module was a
+  specification: a README describing 264 functions, no sources, no build
+  target. `VideoFX/` is now a built, headless module on FFmpeg (4.4 to 8.x),
+  wrapped behind its own types - no FFmpeg header reaches a caller:
+  - **Inspection:** `VideoFX_Probe` (container, duration, tags, every stream,
+    display rotation), `VideoFX_ExtractFrame` / `VideoFX_ExtractThumbnails`
+    (upright RGBA, scaled to fit), `VideoFX_SaveFrameImage` (PNG / JPEG).
+  - **A segment timeline:** `VideoFX_Export` plays file ranges, colour cards
+    and test patterns one after another, each with its own trim, speed
+    (0.25-4x, pitch kept) and effects, fits them to one size / rate / sample
+    format (letterbox, fill or stretch) and encodes MP4, MOV, MKV, WebM, AVI,
+    animated GIF, MP3, M4A, WAV, FLAC or OGG. Picture and sound stay in sync
+    across joins: a stream that runs short is padded (last frame / silence).
+  - **26 typed effects** (brightness, contrast, saturation, gamma, exposure,
+    hue, temperature, grayscale, sepia, invert, 3D LUT with strength, blur,
+    sharpen, denoise, vignette, quarter turns, free rotation, flips, crop,
+    fade in / out, volume, EBU R128 loudness), validated before anything is
+    written; filter text is dot-decimal under any locale.
+  - One-line helpers `VideoFX_Transcode`, `Trim`, `ApplyEffects`,
+    `Concatenate`, `ExtractAudio`, `GenerateTestClip`; `VideoFX_TrimLossless`
+    cuts by stream copy; `VideoFXExportJob` runs an export on a worker thread
+    with progress and cancel. A failed or cancelled export removes its
+    partial file.
+  - A `videofx` command-line tool (`info`, `frame`, `transcode`, `trim`,
+    `concat`, `effects`, `testclip`).
+  - Without FFmpeg the module still builds, from a stub whose calls return
+    `VideoFXResult::NotAvailable`, so applications need no `#ifdef`.
+  - `Tests/VideoFXTest.cpp` (116 checks) covers the filter-text translation
+    and the engine end to end on clips it generates itself. The Linux CI rows
+    now install FFmpeg's development packages so it runs there.
+  - The demo's module list shows VideoFX as partially implemented; transitions,
+    overlays, keyframes, multi-track mixing and project files are the next
+    stages (`Docs/Modules/VideoFX/README.md`, `Masterfile_modules.md` §16).
+- **VideoFX stage 2: transitions between segments, titles and logos.**
+  - `VideoFXSegment::transitionIn` blends the previous segment into this one
+    over 0.04-5 s: 30 `VideoFXTransitionType`s (crossfade, dissolve, fade
+    through black / white, wipes, slides, smooth pushes, squeezes, circle /
+    rect / radial reveals, pixelize, blur), on FFmpeg's `xfade`. The
+    segments overlap by the transition's length and their sound is
+    cross-faded over the same span, in every output including GIF and
+    audio-only files. The exporter holds the last D seconds of a segment back
+    until the first D seconds of the next are in; a clip shorter than the
+    transition shrinks the overlap instead of failing.
+  - `VideoFXSegment::overlays` draws `VideoFXOverlay::Text` (drawtext:
+    literal text, font size as a fraction of the frame height, colour,
+    shadow, background band, default system font or `fontPath`) and
+    `VideoFXOverlay::Image` / `ImageFromFrame` (PNG transparency kept, RGBA
+    from memory, scaled to a fraction of the height) on the output frame,
+    at one of nine anchors or a custom position, with start / end times,
+    fade in / out and opacity. `VideoFX_IsTextOverlayAvailable()` reports
+    whether the FFmpeg build can draw text.
+  - GIF output now builds its palette once per frame at the very end, so
+    transitions and overlays get colours of their own and nothing is
+    buffered for the whole file.
+  - `videofx` gains `--transition NAME[:SECONDS]`, `--title TEXT` and
+    `--watermark IMAGE`; `VideoFXTest` grows to 182 checks.
+
+#### 2026-09-29 *0.9.89*
+- **`UltraCanvasListView` clears the scrollbar's bounds when it hides it.**
+  A hidden scrollbar kept the rectangle of its last visible layout, computed
+  for an earlier size - a list arranged at its parent's full width before the
+  split pane sized it reported its bar at x 1251 with a negative height while
+  the list was 470 wide. Nothing painted it while hidden, but the stale
+  rectangle was what `GetScrollMetrics()` and the layout log showed, and
+  what a paint would use if the bar were shown again without a fresh
+  `UpdateScrollbar`. `UpdateScrollbar` now sets the hidden bar's bounds to
+  0,0 0x0, so a hidden bar has no position at all.
+
+#### 2026-09-29 *0.9.88*
+- **An eSCL scanner that offers TLS was listed twice.** Such a scanner
+  advertises both `_uscan._tcp` and `_uscans._tcp`, and discovery keyed each
+  entry on its URL, which differs between the two - so the scanner appeared
+  once as `escl:http://...` and again as `escl:https://...`. It is now
+  recognised by the `uuid` in its TXT record (compared without regard to case
+  or a `urn:uuid:` prefix), or by its host when it gives none, and listed
+  once: over plain HTTP, since its certificate is almost always self-signed
+  and TLS verification stays on, with the TLS address kept in the
+  `escl-tls-url` attribute. Checked against one scanner advertised both ways
+  over Avahi: two entries before, one after. `EsclScannerIdentity` is new and
+  tested in `IODeviceScannerESCLTest`.
+  - A stale comment went with it: `ULTRACANVAS_ESCL_SCANNERS` was described
+    as the only way to reach a scanner on Windows, which stopped being true
+    when the mDNS plugin learned to resolve there.
+- **The IODeviceManager backend tables now list IPP printing.** The IPP
+  driverless printer backend and the rewrite of those tables to list only
+  backends that exist merged one after the other, so the tables said nothing
+  of IPP - and the README still marked it "IPP discovery planned". The
+  Printers rows of `Docs/Dependencies.md` and the DemoApp's copy of it, the
+  module README's overview and backend tables, and `intro.md` now say that
+  driverless network printers work over IPP on every platform, and the README
+  gains a *Network Printers* section showing `ULTRACANVAS_IPP_PRINTERS`, next
+  to the one for eSCL scanners.
+- **The changelog check never ran on a pending entry.** `changelog.yml`
+  triggered on `CHANGELOG.md`, the version cmake file, the script and itself,
+  but not on `Docs/UltraCanvas/changelog.d/**` - and since the framework's
+  number moved to `main`, a pending entry is how nearly every pull request
+  records its change. So `check_changelog.py`'s rule that a pending entry
+  carries no `####` header was never enforced in CI; #579's two entries, for
+  one, merged without the check running. The workflow now triggers on that
+  directory too.
+
+#### 2026-09-29 *0.9.87*
+- **Every application's signal handler calls
+  `UltraCanvasApplicationBase::RequestExitFromSignal()`.** ArtCreator,
+  DeviceExplorer, Texter, UltraAI, UltraAuthenticator, UltraCleaner and the
+  demo application still called `RequestExit()` (which logs and runs a
+  callback) and `std::exit` from the handler, running the static
+  destructors under live threads. Each handler is now the one call, and
+  the main loop turns it into an orderly exit: `Run` returns and `main`
+  shuts down as on a closed window. The `g_app` globals the handlers
+  needed are gone.
+- **`UltraCanvasListView` checks its scrollbar before it paints.** The
+  scrollbar's range, visibility and bounds were computed only when the
+  model changed or the element was arranged; a paint that came between
+  the two (a model that grew while the element was still at an old size)
+  drew the rows with no scrollbar until the next arrange. `Render` now
+  recomputes what `UpdateScrollbar` would give for the current rows and
+  bounds, and when the scrollbar disagrees it logs one
+  `scrollbar was stale at paint` line to the debug stream and refreshes it
+  before drawing. `GetScrollMetrics()` returns the same numbers (rows, row
+  height, content and viewport height, range, offset, whether the scrollbar
+  shows and where) for diagnostics and tests.
+- **Windows: the kernel network ETW source names a process it cannot
+  open.** It reported `pid 4720` for every process that refused
+  `OpenProcess`, while the socket-table backend already named the same
+  process from the Toolhelp process list. The list is now one table
+  (`UltraCanvasWindowsProcessNames.h`, internal to `OS/MSWindows`): the
+  backend refreshes it with every snapshot, and the event source reads it
+  for each event, refreshing on a miss at most every two seconds, so a
+  connect event from the antivirus proxy reads `AvastSvc` like its row.
+  The registry completes the rest: an event whose source knew only the PID
+  (an empty executable path) takes the socket table's identity for that
+  PID - name, path and user - when the table has the socket.
+
+#### 2026-09-29 *0.9.86*
+- **GutenPrint printed only the first page of every multi-page job.** The CUPS
+  raster writer that feeds GutenPrint's filter put its `RaS3` sync word before
+  every page, where the format has it once, at the start of the stream. The
+  filter read the second one as the start of page 2's header, found every
+  field four bytes out of step, and stopped there - with exit status 0 and no
+  message, so the job reported success. Checked against GutenPrint's own
+  `rastertogutenprint`: one page printed from a three-page job before the
+  fix, three after.
+  - The sync word is its own call now, `AppendCupsRasterSync`, made once per
+    stream; `WriteCupsRasterPageHeader` became `AppendCupsRasterPageHeader`
+    and writes the header alone. Renamed rather than quietly changed, so a
+    caller still expecting the sync word fails to compile instead of
+    printing garbage.
+  - `Tests/IODevicePrinterTest` now builds a three-page stream and reads it
+    back the way the filter does. Nothing tested the writer before.
+- **The CUPS backend's comment on device ids described something that never
+  happened.** It said the printer's UUID made the same printer found by the
+  IPP backend collapse into one entry; `cupsGetDests2` does not return
+  `printer-uuid`, so ids are `cups:<queue>` and the IPP backend avoids the
+  double listing from its side. The comment now says so.
+- **Driverless printing over IPP, on Linux, macOS and Windows.** An IPP
+  Everywhere, AirPrint or Mopria printer now appears as a `PrinterDevice` with
+  no driver installed and no print system in between - which on Windows is the
+  first route to such a printer at all. One file in `core/IODeviceManager/`
+  serves all three platforms, as the eSCL scanner backend does: IPP is HTTP and
+  a binary encoding, and nothing in it is platform code.
+  - Found over DNS-SD (`_ipp._tcp`, `_ipps._tcp`) through UltraNet's mDNS
+    plugin, or named in `ULTRACANVAS_IPP_PRINTERS` for a printer on another
+    subnet. Registered as `urn:uuid:<uuid>` and shown by its DNS-SD instance
+    name, which is unique where the model name is not.
+  - A document the printer renders itself - PDF, JPEG, whatever it lists in
+    `document-format-supported` - is sent as it is. Text and other images are
+    drawn here and sent as **PWG raster**, which every IPP Everywhere printer
+    must accept: landscape pages turned onto the portrait sheet, and every
+    second side of a duplex job turned the way the printer's
+    `pwg-raster-document-sheet-back` asks, so no even page comes out upside
+    down. Copies and page ranges are said once, never twice. Pages are drawn
+    inside the printer's own margins, because a PWG raster page is printed
+    edge to edge as it is.
+  - A printer busy with one job refuses the next; the job waits and asks
+    again, as CUPS's IPP backend does, for up to three minutes.
+  - Refused by name rather than half-printed: a PDF to a printer that renders
+    none, a page range the printer cannot apply, a printer that takes neither
+    the document nor PWG raster.
+  - Capabilities, status, supplies (`marker-*` and PWG's `printer-supply`),
+    job queue, job status and cancel all work. An IPP 1.1 printer is asked
+    again in 1.1 and remembered.
+  - New: `UltraCanvasIODevicePrinterIPPProtocol.h` (RFC 8010 encoding both
+    ways, attribute mapping, the send-or-draw plan) and
+    `UltraCanvasIODevicePrinterPwgRaster.h` (PWG 5102.4 writer), both pure;
+    `Tests/IODevicePrinterIPPTest` covers them with 232 assertions, the PWG
+    compression checked by a decoder written from the specification.
+  - `Tests/IODevicePrinterIPPLiveTest` prints to CUPS's reference printer
+    `ippeveprinter`, which it starts itself, and is skipped where that is not
+    installed. Not yet run against a physical printer.
+- **Printing an image crashed a program that had never opened a window.**
+  `MakePageSourceForJob`, shared by the GutenPrint, GDI and IPP renderers,
+  decoded the image without starting the image library, and the library does
+  not fail when it is not started - it crashes. A command-line tool or a
+  server printing a PNG hit it; an application that had opened a window did
+  not. It now starts the library once, as the eSCL scanner backend already
+  did for its own decoding.
+- **A printer was going to be listed twice on Linux and macOS, and the design
+  that was meant to prevent it had never worked.** The CUPS backend keys a
+  queue on `printer-uuid` so the IPP backend could collapse into it - but
+  `cupsGetDests2` does not return that option, for CUPS's discovered queues or
+  configured ones (checked against CUPS 2.4.7). The IPP backend now matches
+  CUPS's queues itself, by the UUID in a `dnssd://` URI, the DNS-SD instance
+  name, or the same address, and leaves those printers to CUPS.
+
+#### 2026-09-29 *0.9.85*
+- **The dependency tables no longer claim IODeviceManager backends that do
+  not exist.** `Docs/Dependencies.md` and the DemoApp's in-app copy
+  (`UltraCanvasDependenciesExamples.cpp`) listed ICA and AVFoundation for macOS
+  and WIA, TWAIN and Media Foundation for Windows. None of them has a backend.
+  The one Windows device backend is the printer backend on the print spooler
+  (`OS/MSWindows/UltraCanvasWindowsIODevicePrinter.cpp`, winspool and gdi32).
+  The single "Scanners / cameras / print" row is now three, one per category,
+  listing only what `UltraCanvasIODeviceBackends.cpp` registers:
+  - Printers: CUPS on Linux and macOS, the Windows print spooler.
+  - Scanners: SANE on Linux, and the eSCL network backend (over UltraNet) on
+    all three.
+  - Cameras: V4L2 on Linux.
+
+  ICA, WIA, TWAIN, AVFoundation and Media Foundation are marked *planned*, and
+  a note says that on macOS and Windows a USB scanner or any camera is not
+  found yet. The Win32 row of the library-links table now names winspool.
+- **IODeviceManager's README describes the module that exists.** It marked
+  Scanner, Camera and NetworkCamera "Production" and listed WIA, TWAIN, ICA,
+  MediaFoundation, AVFoundation, ONVIF and RTSP backends that were never
+  written. Its examples called `DiscoverNetworkCameras()`, `CapturePhoto()`,
+  `SetPTZ()`, `AddeSCLScanner()`, `Scan(config, bytes)` and
+  `ScanColorMode::RGB`, none of which exist.
+  - The category and backend tables now carry each entry's real state, taken
+    from `Gaps.md`: printers available on all three platforms, scanners and
+    webcams partial, the rest planned.
+  - Microphone and Speaker are marked as the open decision `Gaps.md` records.
+    The categories that were never `IODeviceCategory` values are gone.
+  - Every example is rewritten against the headers and compiles: scanning
+    through `ScannerDevice::Scan(ScannedImage&)`, cameras through
+    `CaptureFrame` / `StartStream` / `SetControl`, printing through
+    `PrintFile`, eSCL scanners named in `ULTRACANVAS_ESCL_SCANNERS`, and a
+    custom device through `RegisterDevice`.
+  - `intro.md`, which the DemoApp shows as the module's introduction, no
+    longer claims TWAIN, WIA, ONVIF or libgpiod. `Gaps.md` says which
+    categories exist.
+- **CI now builds IODeviceManager's optional Linux backends.** The Linux jobs
+  install `libudev-dev`, `libcups2-dev` and `libsane-dev`, so configure reports
+  the udev hot-plug watcher, the CUPS printer backend and the SANE scanner
+  backend as ENABLED. `OS/Linux/UltraCanvasLinuxIODeviceWatcher.cpp`,
+  `core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp` and
+  `OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp` are now compiled on every pull
+  request. Until now no CI build had any of the three libraries, so these
+  files compiled to nothing and a compile error in them would have gone
+  unnoticed.
+  - `package-linux.sh` leaves `libudev.so` on the host instead of bundling it:
+    libudev reads the running udev's database, so it has to be the system's
+    own.
+  - libcups and libsane are bundled like every other library. Leaving them to
+    the host would stop every packaged application from starting on a system
+    without them, because the core library links both. The Linux package
+    therefore now prints through CUPS and scans through SANE, which it could
+    not before. The bundled SANE loader still uses the host's scanner
+    drivers: Debian's libsane reads `/etc/sane.d` and searches
+    `/usr/lib/<multiarch>/sane`, `/usr/lib/sane` and `/usr/lib64/sane`, which
+    covers the Debian, Arch and Fedora layouts.
+
+#### 2026-09-29 *0.9.84*
+- **DemoApp: `ShowFullSizeImageViewer` is now `ShowInMediaViewer`.** It has
+  opened far more than bitmaps since it moved onto
+  `UltraCanvasMediaViewerWindow` - vector drawings (SVG, EPS, XAR, CDR, DWG)
+  and 3D models (STL) go through it too - so the name now says what it does.
+  Every caller in the demo was updated.
+- **DemoApp: removed the dead `UltraCanvasBitmapExamples.cpp`.** Its eight
+  per-format pages (`CreatePNGExamples` ... `CreateBMPExamples`) had not been
+  reachable since the Bitmap menu switched to `CreateBitmapFormatDemoPage`,
+  and its two helpers (`ExtractImageMetadata`, `CreateImageInfoLabel`) were
+  used only by those pages. The declarations and the CMake entry went with it.
+
+#### 2026-09-29 *0.9.83*
+- **Windows: double-clicking a JPG in UltraFiler put up an "entry point not
+  found" box (`WNetGetConnectionW` in `daxexec.dll`) and did not open the
+  picture.** When Photos or another Store app is the default, the shell loads
+  its activation DLL into UltraFiler's own process. There that DLL failed to
+  resolve an import: the loader showed its modal box, and `ShellExecuteEx`
+  came back "access was denied".
+  - The loader's hard-error boxes are now off on the launching thread around
+    every default open and "Open with" launch.
+  - A registered handler that still fails to start is handed to
+    `explorer.exe`, which activates it from its own process, as a
+    double-click in Explorer would.
+
+#### 2026-09-29 *0.9.82*
+- **`.pl` is Perl or Prolog by what the file says, not by chance.** Perl and
+  Prolog both claim `.pl`, and the extension lookup walks an unordered map, so
+  which language a `.pl` file was highlighted as - and what the Filer called
+  it - depended on the hash order of the build.
+  - `SyntaxTokenizer::SharedExtensionLanguages(extension)` (new, static) lists
+    the languages a shared extension can be, the default first: `.cls` VBA /
+    LaTeX, `.m` MATLAB / Objective-C, `.pl` Perl / Prolog.
+    `SetLanguageByExtension` picks that default instead of the map's first
+    claimant.
+  - `SyntaxTokenizer::LanguageFromContent` also tells `.pl` apart: a `#` or
+    `#!` line, `use`, `my`, `our`, `sub`, `package`, `require` or POD is Perl;
+    a `%` or `/*` comment or a `:-` clause is Prolog.
+  - `UltraCanvasFilerWidget` names every shared extension after its content
+    ("Prolog Text"), and after the default when the file does not say.
+    `GetPreviewableFormats()` labels a shared extension with all of its
+    languages, so the Display > Thumbnails > Text switch reads "VBA / LaTeX",
+    "MATLAB / Objective-C" and "Perl / Prolog".
+
+#### 2026-09-29 *0.9.81*
+- **HTML can be opened in the WYSIWYG editor.** New
+  `HTMLReader/HTMLRichDocumentImporter.h`: `ImportHTMLToRichDocument` /
+  `AppendHTMLToRichDocument` turn an HTML page or fragment into a
+  `UCRichDocument`, through the HTML reader's own parser and style resolver.
+  - Mapped: paragraphs, headings, lists (nested, start numbers, letter and
+    Roman formats), rules and line breaks.
+  - Text formatting: bold, italic, underline, strike, sub/superscript, code,
+    links, text and highlight colours, and font families and sizes.
+  - Layout: alignment, left indents, and the space between blocks, collapsed
+    as CSS collapses margins.
+  - Pictures (`data:` URIs, or any other source through a `resolveImage`
+    callback) become a picture paragraph when alone in their block, else
+    sit inside the line.
+  - Tables with several columns keep spans, cell colours, borders, padding and
+    widths. One-column layout tables are unwrapped into the text flow, and
+    a table inside a cell becomes lines of that cell.
+- **Blocks carry a quote level.** New `RichDocBlock::quoteLevel`: how many
+  quotes a block sits inside. It applies to any kind of block, so a quoted
+  list or table stays one.
+  - `UltraCanvasRichTextEdit` draws a bar per level and indents the block.
+  - Enter keeps the level. Enter on an empty quoted line, or Backspace at the
+    start of a quoted block, steps one level out.
+  - `ToHTML` nests `<blockquote type="cite">`. `ToPlainText` and
+    `ToMarkdown` prefix the lines with `> `.
+- **`UCRichDocument::ToHTML(RichDocumentHTMLOptions)`**: an `imageSource` hook
+  decides a picture's `src`, for example `cid:` for mail; without it pictures
+  stay `data:` URIs.
+  - Pictures now carry their `width`/`height`.
+  - Headings and picture paragraphs keep their alignment.
+- **The HTML reader reads `<font color face size>`, `bgcolor` and
+  `<body text>`**, which much mail HTML is still written with. As in a
+  browser, CSS for the same property wins.
+- **An inline picture in the rich text editor no longer runs past the right
+  edge** of an indented or quoted paragraph: it is fitted to the line, not
+  the column.
+- **UltraNet can send HTML mail with a plain-text version and embedded
+  pictures.**
+  - New `UltraNetMimeBuildInput::alternativeText` builds
+    `multipart/alternative`.
+  - Inline attachments with a Content-ID travel with the HTML in
+    `multipart/related`.
+  - Both text parts are quoted-printable, so long HTML lines stay within
+    SMTP's 998-character limit.
+  - `UltraNetMailMessage` carries the same as `alternativeText` and
+    `inlineParts`, and the SMTP plug-in passes them on.
+
+#### 2026-09-29 *0.9.80*
+- **Programs inside archives can be run.** An entry inside an archive has a
+  virtual path, which no system can execute, so `UltraCanvasFilerWidget`
+  ignored a double-click on a program in a zip. `ExtractAndRunEntry` now
+  unpacks the archive holding it — the whole archive, so the program finds
+  its DLLs and data beside it — into a run folder, starts the program there
+  and deletes the folder once the program and everything it started have
+  ended. Double-click, Enter and `OpenEntryWithOS` do it for such an entry,
+  and the context menu offers it as *Extract and Run*.
+  - New `UltraCanvasArchiveRun.h`: `IsRunnableArchiveEntry` (Windows by
+    extension — `.exe`, `.com`, `.bat`, `.cmd`, `.msi`; POSIX by the execute
+    bit the archive recorded, or `.AppImage`), `LaunchWatchedProgram` (a
+    launch whose end can be waited for: a job object on Windows, so an
+    installer's second stage counts; a process group of its own on POSIX,
+    with a failed `exec` reported instead of lost), `CopyDownloadMarking`
+    (Windows: the archive's `Zone.Identifier` goes onto the unpacked files,
+    so SmartScreen still checks them) and the run folders — each with a
+    marker naming the processes using it, removed only when nothing holds a
+    file in it, and swept up by `SweepArchiveRunFolders` after an
+    application that closed while its program still ran.
+  - `FilerEntry::archiveExecutable` carries the execute bit an archive
+    recorded; `chooseArchiveRunRoot` lets the host pick where run folders go.
+  - `Tests/ArchiveRunTest.cpp` covers the rule, the run folders and the
+    watched launch, including a program that exits while its child runs on.
+
 #### 2026-09-29 *0.9.79*
 - **New element: `UltraCanvasBusyIndicator`**, the turning ring that says
   *working on it* when there is no percentage to show (a network call, a

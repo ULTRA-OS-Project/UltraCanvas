@@ -247,6 +247,27 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
 
 ---
 
+## FFmpeg (optional — VideoFX's engine; LGPL or GPL depending on the build)
+
+- **Used by:** the VideoFX module (`VideoFX/core/`), for probing, decoding,
+  filtering, encoding and muxing. Nothing else in the framework links it.
+- **Linked, not vendored:** the system libraries are used (libavformat,
+  libavcodec, libavfilter, libavutil, libswscale — `libav*-dev` /
+  `brew install ffmpeg` / `mingw-w64-x86_64-ffmpeg`), found by pkg-config.
+  No FFmpeg source is carried in this repository and no FFmpeg type appears
+  in a VideoFX public header. Without it VideoFX builds from a stub.
+- **License:** LGPL-2.1-or-later — https://ffmpeg.org/legal.html. **But** a
+  build configured with `--enable-gpl` is GPL-2.0-or-later as a whole, and
+  so is a program linking it. The Debian / Ubuntu packages are built that way
+  (they include libx264 / libx265), as is Homebrew's. A distributor who needs
+  VideoFX under the LGPL must link an LGPL-only FFmpeg build, which then
+  writes H.264 only through a platform encoder (VideoToolbox, Media
+  Foundation) or OpenH264.
+- **Patents:** H.264, H.265 and AAC encoding may need patent licences in
+  some jurisdictions; VP8, VP9, AV1, Opus, Vorbis and FLAC are royalty-free.
+
+---
+
 ## GutenPrint (optional, GPL — run as a program, never linked)
 
 - **Used by:** `UltraCanvas/core/IODeviceManager/UltraCanvasIODevicePrinterGutenPrint.cpp`,

@@ -2,14 +2,15 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
-// Version: 1.1.0
-// Last Modified: 2026-09-09
+// Version: 1.2.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
+#include <cmath>
 #include <locale>
 #include <map>
 #include <cctype>
@@ -116,6 +117,38 @@ std::vector<RichTextRun> MergeAdjacentRuns(const std::vector<RichTextRun>& runs)
         }
     }
     return merged;
+}
+
+// The bare markers of a quote level on an otherwise empty line: ">", "> >".
+std::string QuoteMarker(int level) {
+    std::string marker;
+    for (int i = 0; i < level; ++i) marker += i == 0 ? ">" : " >";
+    return marker;
+}
+
+// Puts one "> " per quote level in front of every line of `text` - the
+// mail-quote convention Markdown shares ("> > " for a quote inside a quote).
+// An empty line gets the bare markers, so the quote does not break there.
+std::string QuoteLines(const std::string& text, int level) {
+    if (level <= 0 || text.empty()) return text;
+    std::string prefix;
+    for (int i = 0; i < level; ++i) prefix += "> ";
+    std::string out;
+    size_t start = 0;
+    while (start < text.size()) {
+        size_t end = text.find('\n', start);
+        const bool lastLine = end == std::string::npos;
+        if (lastLine) end = text.size();
+        if (end == start) {
+            out += QuoteMarker(level);
+        } else {
+            out += prefix;
+            out.append(text, start, end - start);
+        }
+        if (!lastLine) out += '\n';
+        start = end + 1;
+    }
+    return out;
 }
 
 // Emphasis markers only work when they hug non-space characters, so leading/
@@ -791,15 +824,23 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
         }
     }
 
-    std::ostringstream md;
+    std::ostringstream out;
     bool first = true;
-    auto blockSeparator = [&]() {
-        if (!first) md << "\n";
-        first = false;
-    };
+    int previousQuote = 0;
 
     for (size_t bi = 0; bi < blocks.size(); ++bi) {
         const RichDocBlock& block = blocks[bi];
+        // Each block is written on its own, then every line of it gets one
+        // "> " per quote level, so a quoted reply stays one quote. The blank
+        // line before it belongs to the shallower of the two blocks it
+        // separates: inside a quote it keeps the quote going, at its edge it
+        // ends it.
+        std::ostringstream md;
+        bool separated = false;
+        auto blockSeparator = [&]() {
+            if (!first) separated = true;
+            first = false;
+        };
         switch (block.type) {
             case RichBlockType::Heading: {
                 blockSeparator();
@@ -890,6 +931,9 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
                 break;
             }
         }
+        if (separated) out << QuoteMarker(std::min(previousQuote, block.quoteLevel)) << "\n";
+        out << QuoteLines(md.str(), block.quoteLevel);
+        previousQuote = block.quoteLevel;
     }
     // The notes, as footnote definitions after the body - footnotes, then
     // endnotes, each once, in the order of their first reference. A note of
@@ -904,18 +948,18 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
             const RichNote& note = notes[index];
             if (note.kind != kind || written[index] || marks[index].empty()) continue;
             written[index] = true;
-            md << (firstNote ? "\n" : "") << "[^" << marks[index] << "]: ";
+            out << (firstNote ? "\n" : "") << "[^" << marks[index] << "]: ";
             firstNote = false;
             bool firstParagraph = true;
             for (const RichDocBlock& noteBlock : note.blocks) {
-                if (!firstParagraph) md << "\n    ";
-                md << RunsToMarkdown(noteBlock.runs, false, &mediaPaths);
+                if (!firstParagraph) out << "\n    ";
+                out << RunsToMarkdown(noteBlock.runs, false, &mediaPaths);
                 firstParagraph = false;
             }
-            md << "\n";
+            out << "\n";
         }
     }
-    return md.str();
+    return out.str();
 }
 
 // ===== MARKDOWN PARSER =====
@@ -1988,8 +2032,32 @@ UCRichDocument UCRichDocument::FromHTML(const std::string& html) {
 
 namespace {
 
+// The src of media entry `index`: what the caller's hook says, else the
+// bytes as a data: URI. Empty when there is no such entry.
+using HtmlImageSource = std::function<std::string(int)>;
+
+std::string HtmlImageSrc(int index, const std::vector<RichDocMedia>& media,
+                         const HtmlImageSource& source) {
+    if (index < 0 || index >= static_cast<int>(media.size())) return "";
+    if (source) return source(index);
+    const RichDocMedia& m = media[static_cast<size_t>(index)];
+    return "data:" + m.mimeType + ";base64," + Base64Encode(m.data);
+}
+
+// width="…" height="…" in CSS pixels (the model keeps points), or nothing
+// for a picture shown at its own size.
+std::string HtmlImageSize(float widthPt, float heightPt) {
+    std::string out;
+    if (widthPt > 0.0f)
+        out += " width=\"" + std::to_string(static_cast<int>(std::lround(widthPt * 4.0f / 3.0f))) + "\"";
+    if (heightPt > 0.0f)
+        out += " height=\"" + std::to_string(static_cast<int>(std::lround(heightPt * 4.0f / 3.0f))) + "\"";
+    return out;
+}
+
 std::string RunsToHtml(const std::vector<RichTextRun>& runs,
-                       const std::vector<RichDocMedia>* media = nullptr) {
+                       const std::vector<RichDocMedia>* media = nullptr,
+                       const HtmlImageSource& imageSource = {}) {
     std::string out;
     for (const auto& run : MergeAdjacentRuns(runs)) {
         if (run.lineBreakBefore && !out.empty()) out += "<br/>";
@@ -2001,9 +2069,8 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
         }
         if (run.IsInlineImage()) {
             const std::string alt = EscapeHtml(run.imageAltText);
-            if (media && run.mediaIndex >= 0
-                && run.mediaIndex < static_cast<int>(media->size())) {
-                const RichDocMedia& m = (*media)[static_cast<size_t>(run.mediaIndex)];
+            const std::string src = media ? HtmlImageSrc(run.mediaIndex, *media, imageSource) : "";
+            if (!src.empty()) {
                 // A floating picture floats in HTML too, at its side.
                 std::string floatStyle;
                 if (run.IsFloatingImage() && run.imageWrap == RichTextRun::ImageWrap::Square) {
@@ -2013,8 +2080,8 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
                 } else if (run.IsFloatingImage() && run.imageWrap == RichTextRun::ImageWrap::TopAndBottom) {
                     floatStyle = " style=\"display:block\"";
                 }
-                out += "<img alt=\"" + alt + "\"" + floatStyle + " src=\"data:" + m.mimeType
-                     + ";base64," + Base64Encode(m.data) + "\"/>";
+                out += "<img alt=\"" + alt + "\"" + floatStyle + " src=\"" + EscapeHtml(src) + "\""
+                     + HtmlImageSize(run.imageWidthPt, run.imageHeightPt) + "/>";
             } else {
                 out += "[" + alt + "]";
             }
@@ -2076,11 +2143,16 @@ const char* AlignCss(RichTextAlign align) {
 
 } // namespace
 
-std::string UCRichDocument::ToHTML() const {
-    if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToHTML();
+std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const {
+    if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToHTML(options);
     std::ostringstream html;
     int openListLevel = -1;   // -1 = no list open
     std::vector<bool> listOrderedStack;
+    int openQuotes = 0;
+    const HtmlImageSource& imageSource = options.imageSource;
+    auto runsHtml = [&](const std::vector<RichTextRun>& runs) {
+        return RunsToHtml(runs, &media, imageSource);
+    };
 
     auto closeListsTo = [&](int level) {
         while (openListLevel > level) {
@@ -2089,15 +2161,29 @@ std::string UCRichDocument::ToHTML() const {
             --openListLevel;
         }
     };
+    // A quote level is a nesting of <blockquote>s, marked as a quotation the
+    // way mail programs mark theirs (type="cite") and styled inline, since a
+    // mail's reader ignores style sheets: a grey bar at the left.
+    auto quoteTo = [&](int level) {
+        level = std::max(0, level);
+        if (level == openQuotes) return;
+        closeListsTo(-1);   // a list never straddles a quote's edge
+        for (; openQuotes > level; --openQuotes) html << "</blockquote>\n";
+        for (; openQuotes < level; ++openQuotes)
+            html << "<blockquote type=\"cite\" style=\"margin:0 0 0 0.8ex;"
+                    "border-left:2px solid #cccccc;padding-left:1ex\">\n";
+    };
 
     for (const auto& block : blocks) {
+        quoteTo(block.quoteLevel);
         if (block.type != RichBlockType::ListItem) closeListsTo(-1);
 
         switch (block.type) {
             case RichBlockType::Heading: {
                 int level = std::clamp(block.headingLevel, 1, 6);
-                html << "<h" << level << (block.rightToLeft ? " dir=\"rtl\"" : "") << ">" << RunsToHtml(block.runs, &media)
-                     << "</h" << level << ">\n";
+                html << "<h" << level << (block.rightToLeft ? " dir=\"rtl\"" : "");
+                if (const char* alignCss = AlignCss(block.align)) html << " style=\"text-align:" << alignCss << "\"";
+                html << ">" << runsHtml(block.runs) << "</h" << level << ">\n";
                 break;
             }
             case RichBlockType::ListItem: {
@@ -2132,7 +2218,7 @@ std::string UCRichDocument::ToHTML() const {
                     html << (block.checked ? "<input type=\"checkbox\" disabled checked> "
                                            : "<input type=\"checkbox\" disabled> ");
                 }
-                html << RunsToHtml(block.runs, &media) << "</li>\n";
+                html << runsHtml(block.runs) << "</li>\n";
                 break;
             }
             case RichBlockType::CodeBlock:
@@ -2140,7 +2226,7 @@ std::string UCRichDocument::ToHTML() const {
                      << "</code></pre>\n";
                 break;
             case RichBlockType::BlockQuote:
-                html << "<blockquote><p>" << RunsToHtml(block.runs, &media) << "</p></blockquote>\n";
+                html << "<blockquote><p>" << runsHtml(block.runs) << "</p></blockquote>\n";
                 break;
             case RichBlockType::Table: {
                 // A document's own frames become CSS on the cells; otherwise
@@ -2158,7 +2244,7 @@ std::string UCRichDocument::ToHTML() const {
                         if (const char* alignCss = AlignCss(cell.align)) css += std::string("text-align:") + alignCss + ";";
                         if (block.tableBordersFromDocument) css += CellFrameCss(cell);
                         if (!css.empty()) html << " style=\"" << EscapeHtml(css) << "\"";
-                        html << ">" << RunsToHtml(cell.runs, &media) << "</" << tag << ">";
+                        html << ">" << runsHtml(cell.runs) << "</" << tag << ">";
                     }
                     html << "</tr>\n";
                 }
@@ -2166,11 +2252,13 @@ std::string UCRichDocument::ToHTML() const {
                 break;
             }
             case RichBlockType::Image: {
-                if (block.mediaIndex >= 0 && block.mediaIndex < static_cast<int>(media.size())) {
-                    const RichDocMedia& m = media[block.mediaIndex];
-                    html << "<p><img alt=\"" << EscapeHtml(block.imageAltText)
-                         << "\" src=\"data:" << m.mimeType << ";base64,"
-                         << Base64Encode(m.data) << "\"/></p>\n";
+                const std::string src = HtmlImageSrc(block.mediaIndex, media, imageSource);
+                if (!src.empty()) {
+                    const char* alignCss = AlignCss(block.align);
+                    html << (alignCss ? std::string("<p style=\"text-align:") + alignCss + "\">" : std::string("<p>"))
+                         << "<img alt=\"" << EscapeHtml(block.imageAltText)
+                         << "\" src=\"" << EscapeHtml(src) << "\""
+                         << HtmlImageSize(block.imageWidthPt, block.imageHeightPt) << "/></p>\n";
                 } else {
                     html << "<p>[" << EscapeHtml(block.imageAltText) << "]</p>\n";
                 }
@@ -2201,12 +2289,13 @@ std::string UCRichDocument::ToHTML() const {
                 const char* dir = block.rightToLeft ? " dir=\"rtl\"" : "";
                 if (!css.empty()) html << "<p" << dir << " style=\"" << EscapeHtml(css) << "\">";
                 else html << "<p" << dir << ">";
-                html << RunsToHtml(block.runs, &media) << "</p>\n";
+                html << runsHtml(block.runs) << "</p>\n";
                 break;
             }
         }
     }
     closeListsTo(-1);
+    quoteTo(0);
     // The notes after the body, each with the mark its references link to.
     const std::vector<std::string> marks = NoteMarks();
     std::vector<bool> written(notes.size(), false);
@@ -2223,7 +2312,7 @@ std::string UCRichDocument::ToHTML() const {
             const std::string mark = EscapeHtml(marks[index]);
             html << "<div id=\"note-" << mark << "\"><sup>" << mark << "</sup> ";
             for (const RichDocBlock& noteBlock : notes[index].blocks) {
-                html << "<p>" << RunsToHtml(noteBlock.runs, &media) << "</p>";
+                html << "<p>" << runsHtml(noteBlock.runs) << "</p>";
             }
             html << "</div>\n";
         }
@@ -2236,11 +2325,16 @@ std::string UCRichDocument::ToHTML() const {
 
 std::string UCRichDocument::ToPlainText() const {
     if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToPlainText();
-    std::ostringstream text;
+    std::ostringstream out;
     bool first = true;
+    int previousQuote = 0;
     for (const auto& block : blocks) {
-        if (!first) text << "\n";
+        // Written per block so a quoted block's lines can carry "> "; the
+        // blank line between two blocks is quoted as deep as the shallower.
+        if (!first) out << QuoteMarker(std::min(previousQuote, block.quoteLevel)) << "\n";
         first = false;
+        previousQuote = block.quoteLevel;
+        std::ostringstream text;
         switch (block.type) {
             case RichBlockType::Table:
                 for (const auto& row : block.tableRows) {
@@ -2265,6 +2359,7 @@ std::string UCRichDocument::ToPlainText() const {
                 text << RunsToReadableText(block.runs) << "\n";
                 break;
         }
+        out << QuoteLines(text.str(), block.quoteLevel);
     }
     // The notes after a rule: "[1] text".
     const std::vector<std::string> marks = NoteMarks();
@@ -2276,20 +2371,20 @@ std::string UCRichDocument::ToPlainText() const {
             if (notes[index].kind != kind || written[index] || marks[index].empty()) continue;
             written[index] = true;
             if (!ruled) {
-                text << "\n----------\n";
+                out << "\n----------\n";
                 ruled = true;
             }
-            text << "[" << marks[index] << "] ";
+            out << "[" << marks[index] << "] ";
             bool firstParagraph = true;
             for (const RichDocBlock& noteBlock : notes[index].blocks) {
-                if (!firstParagraph) text << "\n    ";
-                text << RunsToReadableText(noteBlock.runs);
+                if (!firstParagraph) out << "\n    ";
+                out << RunsToReadableText(noteBlock.runs);
                 firstParagraph = false;
             }
-            text << "\n";
+            out << "\n";
         }
     }
-    return text.str();
+    return out.str();
 }
 
 // ===== LIST NUMBERING =====

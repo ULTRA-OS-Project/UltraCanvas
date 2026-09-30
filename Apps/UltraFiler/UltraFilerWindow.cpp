@@ -18,7 +18,10 @@
 // menu offers Copy / Delete / Paste on folders, a Pin submenu whose
 // "To Treeview" / "To Favorites" flags show and toggle where the folder is
 // pinned, and Unpin on pinned entries. The filer context menus' Extras
-// submenu ends with an app-provided block (extrasMenuProvider): "Open
+// submenu ends with an app-provided block (extrasMenuProvider): "Find
+// text", an Export submenu - "Folder content" / "Folder tree content" open a
+// text window with the folder written out as a listing or as a tree drawn
+// with line characters, and save it (UltraFilerFolderExport) - "Open
 // prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
 // submenus whose "To Treeview" / "To Favorites" flags follow the current
 // selection. Folder icons: the main user folders carry one of their own
@@ -761,6 +764,35 @@ namespace {
         return text;
     }
 
+    // Extract and Run's folders on a RAM disc. A dot name, so that browsing
+    // the disc on Linux and macOS does not show them.
+    std::string RamDiscRunRoot(const std::string& mountPath) {
+        return PathToUtf8(PathFromUtf8(mountPath) / ".UltraFiler-Run");
+    }
+
+    // Where a program unpacked by Extract and Run goes: a RAM disc when one
+    // is mounted with room for the whole archive and some to spare - the
+    // unpacking then never touches the disk, and nothing of it is left there
+    // - else the widget's default, the temporary folder. The Windows stand-in
+    // disc (a folder in %TEMP%) is not memory, and is passed over. An archive
+    // whose size is unknown goes to the temporary folder, which is not
+    // filled up by a surprise.
+    std::string ChooseArchiveRunRoot(uint64_t bytesNeeded) {
+        if (bytesNeeded == 0 || !UltraFilerRamDisks::Available()) return std::string();
+        const uint64_t wanted = bytesNeeded + bytesNeeded / 10 + (16ull << 20);
+        std::string best;
+        uintmax_t bestFree = 0;
+        for (const auto& disc : UltraFilerRamDisks::List()) {
+            if (!disc.trueRam) continue;
+            std::error_code ec;
+            const fs::space_info space = fs::space(PathFromUtf8(disc.mountPath), ec);
+            if (ec || space.available < wanted || space.available <= bestFree) continue;
+            bestFree = space.available;
+            best = RamDiscRunRoot(disc.mountPath);
+        }
+        return best;
+    }
+
 } // namespace
 
 // ===== INITIALIZATION =====
@@ -773,6 +805,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     CancelFolderPreviewTimer(); // its callback captures `this`
     StopSubfolderSearch();
     ReapSearchWorkers(true);    // now the search threads are waited for
+    exportWindows.clear();      // each joins the walk building its text
     StopSubfolderProbeWorker();
     StopCloudStorageDiscovery();
     // Its worker posts into this window, so it has to be joined here like the
@@ -798,6 +831,20 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     window = CreateWindow(config);
     if (!window || !window->IsCreated()) return false;
+
+    // Programs started by Extract and Run in an earlier session whose
+    // folders could not be removed then (UltraFiler closed while they ran):
+    // gone now, unless they still run. Off the UI thread - it is a walk of
+    // folders that may be large - and on paths only, never on this window.
+    {
+        std::vector<std::string> runRoots{DefaultArchiveRunRoot()};
+        if (UltraFilerRamDisks::Available())
+            for (const auto& disc : UltraFilerRamDisks::List())
+                runRoots.push_back(RamDiscRunRoot(disc.mountPath));
+        std::thread([runRoots]() {
+            for (const std::string& root : runRoots) SweepArchiveRunFolders(root);
+        }).detach();
+    }
 
     window->layout.SetFlexColumn()
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -1514,6 +1561,36 @@ void UltraFilerWindow::OpenSystemPrompt() {
         UltraCanvasAlert::Error(error, "Open prompt", nullptr, window.get());
 }
 
+std::string UltraFilerWindow::ExportTargetFolder() const {
+    const std::vector<FilerEntry> targets = PinTargets();
+    if (targets.size() != 1 || !targets.front().isDirectory) return {};
+    const std::string& path = targets.front().path;
+    // The walk reads the local file system: a remote drive's folders, and
+    // the folders inside an archive, are not directories on it.
+    if (path.empty() || IsRemoteFilerPath(path)) return {};
+    std::error_code ec;
+    if (!fs::is_directory(PathFromUtf8(path), ec) || ec) return {};
+    return path;
+}
+
+void UltraFilerWindow::ExportFolder(FolderExportKind kind) {
+    const std::string folder = ExportTargetFolder();
+    if (folder.empty()) return;
+    exportWindows.erase(
+            std::remove_if(exportWindows.begin(), exportWindows.end(),
+                           [](const std::shared_ptr<UltraFilerFolderExportWindow>& w) {
+                               return !w || w->IsClosed();
+                           }),
+            exportWindows.end());
+    // The export sees what the display shows: hidden entries only while it
+    // lists them too.
+    UltraCanvasFilerWidget* shown = VisibleFiler();
+    const bool includeHidden = shown && shown->GetShowHiddenFiles();
+    auto exportWindow = std::make_shared<UltraFilerFolderExportWindow>();
+    exportWindow->Open(folder, kind, includeHidden, window.get());
+    exportWindows.push_back(std::move(exportWindow));
+}
+
 UltraCanvasFilerWidget* UltraFilerWindow::VisibleFiler() const {
     if (favoritesShown) return ActiveFavoritesFiler();
     if (historyShown) return ActiveHistoryFiler();
@@ -1606,8 +1683,19 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
             [this]() { OpenFindTextDialog(); });
     findText.enabled = !findRoot.empty() && !IsRemoteFilerPath(findRoot);
 
+    // Export writes out one folder: the selected one, or the shown one while
+    // nothing is selected.
+    const bool canExport = !ExportTargetFolder().empty();
+    MenuItemData exportContent = MenuItemData::Action("Folder content",
+            [this]() { ExportFolder(FolderExportKind::Content); });
+    exportContent.enabled = canExport;
+    MenuItemData exportTree = MenuItemData::Action("Folder tree content",
+            [this]() { ExportFolder(FolderExportKind::Tree); });
+    exportTree.enabled = canExport;
+
     return {
             findText,
+            MenuItemData::Submenu("Export", {exportContent, exportTree}),
             MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
             MenuItemData::Separator(),
             setIcon,
@@ -4413,7 +4501,9 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
             // Not previewable: run it / open it, Explorer-style. The widget
             // launches executables directly (scripts through its Run-or-Open
             // dialog) and everything else with the OS default application;
-            // archive entries (virtual paths) are ignored there.
+            // a program inside an archive is unpacked and run from there
+            // (Extract and Run), and any other archive entry - a virtual
+            // path no application can open - is ignored.
             if (tab->filer) tab->filer->OpenEntryWithOS(entry);
             return;
         }
@@ -4476,6 +4566,9 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     };
     tab->filer->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
+    };
+    tab->filer->chooseArchiveRunRoot = [](uint64_t bytesNeeded) {
+        return ChooseArchiveRunRoot(bytesNeeded);
     };
     tab->filer->onOpenPath = [this](const FilerEntry& entry) {
         const std::string parent = PathToUtf8(PathFromUtf8(entry.path).parent_path());

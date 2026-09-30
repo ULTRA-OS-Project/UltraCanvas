@@ -1,11 +1,14 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.7.0 - Settings: plain-text view, text size, trusted-website pictures
+// Version: 0.6.1 - the HTML body is built for the pane width (@media queries)
+// Version: 0.6.0 - Reply / Forward hand over the HTML body and its pictures
 // Version: 0.5.0 - sender badge instead of the initial avatar; the cached body
 //                  is scanned on first read and the verdict stored, with a
 //                  warning strip above suspicious and scam messages.
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-09-19
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -138,18 +141,39 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
             if (a.accountId == curAccount_) { selfName = a.displayName; selfAddr = a.email; }
     };
 
+    // The message as a reply or forward sees it, with its pictures: the
+    // message's own, and remote ones only when already loaded - composing
+    // never fetches anything. Used while the reply is built, which happens
+    // before the handler returns.
+    auto source = [this]() {
+        SourceMessage src = current_;
+        src.image = [this](const std::string& url) -> std::vector<uint8_t> {
+            switch (ClassifyImageSource(url, inlineImages_)) {
+                case ImageSource::Embedded:
+                    return ResolveEmbeddedImage(url, inlineImages_);
+                case ImageSource::Remote:
+                    if (auto it = remoteCache_.find(url); it != remoteCache_.end()) return it->second;
+                    return {};
+                case ImageSource::Other:
+                    break;
+            }
+            return {};
+        };
+        return src;
+    };
+
     auto replyBtn = makeActionButton("prevReply", "Reply", "undo.svg");
-    replyBtn->onClick = [this, selfIdentity]() {
+    replyBtn->onClick = [this, selfIdentity, source]() {
         if (!onReply || !hasMessage_) return;
         std::string selfName, selfAddr; selfIdentity(selfName, selfAddr);
-        onReply(current_, selfName, selfAddr);
+        onReply(source(), selfName, selfAddr);
     };
 
     auto forwardBtn = makeActionButton("prevForward", "Forward", "redo.svg");
-    forwardBtn->onClick = [this, selfIdentity]() {
+    forwardBtn->onClick = [this, selfIdentity, source]() {
         if (!onForward || !hasMessage_) return;
         std::string selfName, selfAddr; selfIdentity(selfName, selfAddr);
-        onForward(current_, selfName, selfAddr);
+        onForward(source(), selfName, selfAddr);
     };
 
     junkBtn_ = makeActionButton("prevJunk", "Junk", "circle-stop.svg");
@@ -325,17 +349,31 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     return root_;
 }
 
+void MessagePreview::ReRender() {
+    if (!bodyHost_ || !hasMessage_) return;
+    blockedRemote_.clear();
+    RenderBody(lastBody_, lastIsHtml_);
+    FetchTrustedHostImages();
+    UpdateRemoteBar();
+}
+
 void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     if (!bodyHost_) return;
+    if (&body != &lastBody_) lastBody_ = body;
+    lastIsHtml_ = isHtml;
     bodyHost_->ClearChildren();
 
-    if (isHtml) {
+    // Settings > Reading > "as plain text": no layout and nothing fetched.
+    if (isHtml && showHtml) {
         // Full render through the HTMLReader element builder: the CSSLayout
         // engine measures and lays out a native UltraCanvas tree (containers +
         // Pango-markup labels + images).
         HTML::BuildOptions opts;
-        opts.style.baseFontSizePx = 12.0f;   // ≈ the 9pt UI font
+        opts.style.baseFontSizePx = bodyFontSizePx;   // 12px ≈ the 9pt UI font
         opts.enableImages = true;
+        // @media queries (a newsletter's side-by-side columns from 480px up)
+        // are answered for the pane the message is shown in.
+        if (bodyHost_->GetWidth() > 0.f) opts.viewportWidth = bodyHost_->GetWidth();
         // Embedded images from the message; remote ones only once loaded.
         opts.resourceLoader = [this](const std::string& src) { return LoadBodyImage(src); };
         // Links open in the browser (web and mail addresses only - never a
@@ -427,6 +465,51 @@ void MessagePreview::UpdateRemoteBar() {
     remoteAlways_->SetVisible(!remoteDangerous_ && !curEnv_.fromAddr.empty());
     if (!remoteDangerous_ && !curEnv_.fromAddr.empty())
         remoteAlways_->SetText("Always from " + curEnv_.fromAddr);
+}
+
+void MessagePreview::FetchTrustedHostImages() {
+    if (remoteAllowed_ || remoteDangerous_ || !remoteImageHostTrusted ||
+        blockedRemote_.empty())
+        return;
+    std::vector<std::string> urls;
+    for (const auto& u : blockedRemote_)
+        if (remoteImageHostTrusted(u)) urls.push_back(u);
+    if (!urls.empty()) FetchSomeRemoteImages(urls);
+}
+
+void MessagePreview::FetchSomeRemoteImages(const std::vector<std::string>& urls) {
+    if (fetchingRemote_ || urls.empty()) return;
+    fetchingRemote_ = true;
+    UpdateRemoteBar();
+    const uint64_t token = showToken_;
+    std::thread([this, urls, token]() {
+        auto results = std::make_shared<std::map<std::string, std::vector<uint8_t>>>();
+        for (const auto& src : urls) {
+            const std::string url = src.rfind("//", 0) == 0 ? "https:" + src : src;
+            UltraNetHttpOptions options;
+            options.timeoutMs = 15000;
+            options.connectTimeoutMs = 8000;
+            options.maxReceiveSize = 5 * 1024 * 1024;
+            UltraNetResponse response;
+            if (UltraNet_HttpGet(url, response, options) && response.statusCode >= 200 &&
+                response.statusCode < 300 && !response.body.empty())
+                (*results)[src] = std::move(response.body);
+            else
+                (*results)[src] = {};
+        }
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, results, token]() {
+            fetchingRemote_ = false;
+            if (remoteCache_.size() + results->size() > 400) remoteCache_.clear();
+            for (auto& [src, bytes] : *results) remoteCache_[src] = std::move(bytes);
+            if (token != showToken_) return;
+            // The others stay blocked: the new render lists them again.
+            blockedRemote_.clear();
+            RenderBody(curHtml_, true);
+            UpdateRemoteBar();
+        });
+    }).detach();
 }
 
 void MessagePreview::FetchRemoteImages() {
@@ -642,8 +725,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         pendingHtml = pm.bodyIsHtml;
         havePending = true;
         attachmentStrip_.SetAttachments(pm.attachments);
-        // Reply quoting works from text; reduce HTML to text for the captured copy.
+        // The text for a plain reply, and the HTML a formatted one is built
+        // from (UltraMailRichComposer).
         current_.body = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
+        current_.bodyHtml = pm.bodyIsHtml ? pm.body : std::string();
         current_.attachments = pm.attachments;
     }
 
@@ -680,6 +765,8 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         if (remoteAllowed_ && !blockedRemote_.empty()) {
             remoteAllowed_ = false;      // FetchRemoteImages sets it once loaded
             FetchRemoteImages();
+        } else {
+            FetchTrustedHostImages();    // pictures on trusted websites only
         }
     }
     UpdateRemoteBar();

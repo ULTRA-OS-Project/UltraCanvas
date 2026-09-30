@@ -7,7 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
@@ -850,23 +850,49 @@ float UltraCanvasRichTextEdit::PlaceBlocksInColumn(IRenderContext* ctx) {
     return y;
 }
 
+float UltraCanvasRichTextEdit::QuoteInset(const RichDocBlock& block) const {
+    return style.quoteIndent * static_cast<float>(std::max(0, block.quoteLevel));
+}
+
 float UltraCanvasRichTextEdit::BlockIndentFor(const RichDocBlock& block) const {
     // A document's own left indent adds to the view's indent for the block's
     // kind. List items keep the view's list indentation only (see the model).
+    // Every kind of block moves right by its quote levels, a table or a
+    // picture as much as a paragraph.
     const float documentIndent = Px(std::max(0.0f, block.leftIndentPt));
+    const float quote = QuoteInset(block);
     switch (block.type) {
         case RichBlockType::ListItem:
-            return style.listIndent * static_cast<float>(block.listLevel + 1);
+            return quote + style.listIndent * static_cast<float>(block.listLevel + 1);
         case RichBlockType::BlockQuote:
-            return style.quoteIndent + documentIndent;
+            return quote + style.quoteIndent + documentIndent;
         case RichBlockType::CodeBlock:
-            return style.codeIndent + documentIndent;
+            return quote + style.codeIndent + documentIndent;
         case RichBlockType::Paragraph:
         case RichBlockType::Heading:
         case RichBlockType::MathBlock:
-            return documentIndent;
+            return quote + documentIndent;
         default:
-            return 0.0f;
+            return quote;
+    }
+}
+
+// One bar per quote level at the block's left, like a mail program's quoted
+// text. A bar reaches down across the gap to the next block while that one
+// is still inside the same quote, so a quoted reply reads as one column.
+void UltraCanvasRichTextEdit::DrawQuoteBars(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks,
+                                            int index, const BlockLayout& bl,
+                                            float originX, float originY) const {
+    const RichDocBlock& block = blocks[static_cast<size_t>(index)];
+    if (block.quoteLevel <= 0) return;
+    const size_t next = static_cast<size_t>(index) + 1;
+    const int nextLevel = next < blocks.size() ? blocks[next].quoteLevel : 0;
+    const float gap = GapAfterBlock(blocks, index);
+    for (int level = 0; level < block.quoteLevel; ++level) {
+        const float height = bl.bounds.height + (level < nextLevel ? gap : 0.0f);
+        ctx->DrawFilledRectangle(Rect2Dd(originX + style.quoteIndent * static_cast<float>(level) + 1.0f,
+                                         originY, 3.0, height),
+                                 style.quoteBarColor, 0.0f, Colors::Transparent);
     }
 }
 
@@ -1134,8 +1160,10 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                         : (image ? static_cast<float>(image->GetWidth()) : 16.0f);
             float height = run.imageHeightPt > 0.0f ? Px(run.imageHeightPt)
                          : (image ? static_cast<float>(image->GetHeight()) : 16.0f);
-            // Never wider than the column it sits in; keep the aspect ratio.
-            const float maxWidth = std::max(16.0f, ColumnWidth());
+            // Never wider than the line it sits in (a quoted or indented
+            // paragraph's is narrower than the column); keep the aspect ratio.
+            const double lineWidth = layout->GetExplicitWidth();
+            const float maxWidth = std::max(16.0f, lineWidth > 0.0 ? static_cast<float>(lineWidth) : ColumnWidth());
             if (width > maxWidth) {
                 height *= maxWidth / width;
                 width = maxWidth;
@@ -1465,12 +1493,18 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
             float height = block.imageHeightPt > 0 ? Px(block.imageHeightPt)
                                                    : (bl.image ? static_cast<float>(bl.image->GetHeight()) : 120.0f);
             // Never wider than the text column; keep the aspect ratio.
-            if (width > columnSpan && width > 0) {
-                height *= columnSpan / width;
-                width = columnSpan;
+            const float room = std::max(8.0f, columnSpan - indent);
+            if (width > room && width > 0) {
+                height *= room / width;
+                width = room;
             }
             bl.bounds.width = std::max(8.0f, width);
             bl.bounds.height = std::max(8.0f, height);
+            // A centred or right-aligned picture paragraph sits where its
+            // alignment puts it in the room it has.
+            const float spare = std::max(0.0f, room - bl.bounds.width);
+            if (block.align == RichTextAlign::Center) bl.textLeft += spare * 0.5f;
+            else if (block.align == RichTextAlign::Right) bl.textLeft += spare;
             break;
         }
 
@@ -2032,11 +2066,13 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
                                           float originX, float originY, int blockIndex) {
     const RichDocBlock& block = blocks[static_cast<size_t>(index)];
     float textX = originX + bl.textLeft;
+    DrawQuoteBars(ctx, blocks, index, bl, originX, originY);
+    const float ruleX = originX + QuoteInset(block);
 
     switch (block.type) {
         case RichBlockType::HorizontalRule: {
             float centerY = originY + bl.bounds.height / 2.0f;
-            ctx->DrawLine(Point2Dd(originX, centerY),
+            ctx->DrawLine(Point2Dd(ruleX, centerY),
                           Point2Dd(originX + ColumnWidth(), centerY), style.ruleColor);
             if (blockIndex >= 0) DrawSelectionForNonTextBlock(ctx, blockIndex, bl, originY);
             return;
@@ -2048,7 +2084,7 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
             float centerY = originY + bl.bounds.height / 2.0f;
             ctx->PushState();
             ctx->SetLineDash(UCDashPattern({4.0, 3.0}));
-            ctx->DrawLine(Point2Dd(originX, centerY),
+            ctx->DrawLine(Point2Dd(ruleX, centerY),
                           Point2Dd(originX + ColumnWidth(), centerY), style.pageBreakColor);
             ctx->PopState();
             if (blockIndex >= 0) DrawSelectionForNonTextBlock(ctx, blockIndex, bl, originY);
@@ -2213,7 +2249,7 @@ void UltraCanvasRichTextEdit::DrawParagraphFrame(IRenderContext* ctx, const std:
     const bool withNext = at + 1 < blocks.size() && blocks[at + 1].HasParagraphFrame()
                           && blocks[at + 1].SameParagraphFrame(block);
     const float padding = kParagraphFramePadding;
-    const double left = originX + Px(std::max(0.0f, block.leftIndentPt)) - padding;
+    const double left = originX + QuoteInset(block) + Px(std::max(0.0f, block.leftIndentPt)) - padding;
     const double right = originX + ColumnWidth() - Px(std::max(0.0f, block.rightIndentPt));
     // Grouped paragraphs meet halfway across the gap between them.
     const float gapBelow = GapAfterBlock(blocks, blockIndex);

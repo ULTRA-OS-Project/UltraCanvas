@@ -131,7 +131,7 @@ their *License* is likewise marked **—** (OS component).
 | WGL | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/opengl/wgl-and-windows-reference) | — | — |
 | WIA | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/wia/-wia-startpage) | — | — |
 | wimlib | [wimlib.net](https://wimlib.net/) | [wimlib.net/git/wimlib](https://wimlib.net/git/wimlib) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
-| Win32 API (gdi32 / user32 / comdlg32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/) | — | — |
+| Win32 API (gdi32 / user32 / comdlg32 / winspool) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/api/) | — | — |
 | Wine (runtime, not linked) | [winehq.org](https://www.winehq.org/) | [gitlab.winehq.org/wine/wine](https://gitlab.winehq.org/wine/wine) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | winetricks (runtime, not linked) | [wiki.winehq.org/Winetricks](https://wiki.winehq.org/Winetricks) | [github.com/Winetricks/winetricks](https://github.com/Winetricks/winetricks) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | Winsock2 (ws2_32) | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-start-page-2) | — | — |
@@ -249,8 +249,18 @@ for the full search order.
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| Scanners / cameras / print (native OS) | SANE, V4L2, CUPS | ICA, AVFoundation | WIA, TWAIN, Media Foundation |
+| Printers | CUPS (optional); IPP network printers through UltraNet | CUPS (optional); IPP network printers through UltraNet | Win32 (winspool, gdi32) — the print spooler; IPP network printers through UltraNet |
+| Scanners | SANE (optional); eSCL network scanners through UltraNet | eSCL network scanners through UltraNet; ICA planned | eSCL network scanners through UltraNet; WIA, TWAIN planned |
+| Cameras | V4L2 | – (AVFoundation planned) | – (Media Foundation planned) |
 | Hot-plug watching | libudev (optional) | – (no watcher yet) | – (no watcher yet) |
+
+Only the backends `UltraCanvas/core/IODeviceManager/UltraCanvasIODeviceBackends.cpp`
+registers are listed; the ones marked *planned* have no code yet. eSCL
+(AirScan / Mopria) and IPP (IPP Everywhere / AirPrint / Mopria) are protocols
+the module speaks itself over HTTP, so they need UltraNet rather than a
+third-party library, and they find only network devices: eSCL network
+scanners, IPP driverless printers. On macOS and Windows a USB scanner or any camera is therefore not
+found yet.
 
 Hot-plug watching is what lets `IODeviceManager::StartMonitoring()` notice a
 device being plugged in or removed without the application rescanning.
@@ -487,7 +497,17 @@ configure time naming what is missing.
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| Video effects / transcode | FFmpeg | FFmpeg | FFmpeg |
+| Probe, decode, effects (libavfilter), encode, mux | FFmpeg ≥ 4.4 — libavformat, libavcodec, libavfilter, libavutil, libswscale (optional) | FFmpeg (optional) | FFmpeg (optional) |
+
+> Found through pkg-config and linked as shared system libraries, never
+> vendored; no FFmpeg type appears in a VideoFX public header. Without it the
+> module builds from a stub (`VideoFX_IsAvailable()` is false, every call
+> returns `NotAvailable`). Which codecs can be *written* depends on the FFmpeg
+> build: H.264 needs libx264 or a platform encoder (VideoToolbox, Media
+> Foundation), H.265 libx265, VP8/VP9 libvpx, AV1 SVT-AV1 / libaom / rav1e;
+> MPEG-4, MJPEG, ProRes, FFV1, GIF, AAC, FLAC and PCM are FFmpeg's own.
+> FFmpeg is LGPL 2.1+, but a `--enable-gpl` build (Debian / Ubuntu packages,
+> anything with libx264 / libx265) is GPL — see `THIRD_PARTY_LICENSES.md`.
 
 ### VirtualFS module
 

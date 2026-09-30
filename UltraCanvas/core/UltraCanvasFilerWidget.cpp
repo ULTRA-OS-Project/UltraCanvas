@@ -163,6 +163,10 @@ namespace UltraCanvas {
         // How often the UI reads the archive worker's counters. Fast enough
         // that the ring moves smoothly, slow enough to cost nothing.
         constexpr unsigned int kArchivePollIntervalMs = 100;
+        // How often the programs started by Extract and Run are asked whether
+        // they have ended. Their folders only have to go eventually; a
+        // program's end is not something anyone waits for on screen.
+        constexpr unsigned int kArchiveRunPollIntervalMs = 2000;
         // How long a copy / move / delete has to run before it gets a progress
         // window. Everything shorter is over before a window would have
         // finished appearing, and a file manager that flashes a dialog for
@@ -633,7 +637,12 @@ namespace UltraCanvas {
                         std::transform(ext.begin(), ext.end(), ext.begin(),
                                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
                         if (ext.empty() || binary.count(ext)) continue;
-                        out.emplace(ext, language);   // first claimant names it
+                        // A shared extension (.pl: Perl or Prolog) is named
+                        // after its default, not after whichever language
+                        // the tokenizer's unordered map happened to list first.
+                        const auto& shared = SyntaxTokenizer::SharedExtensionLanguages(ext);
+                        if (!shared.empty()) out[ext] = shared.front();
+                        else out.emplace(ext, language);   // first claimant names it
                     }
                 }
                 return out;
@@ -2255,6 +2264,18 @@ namespace UltraCanvas {
         StopFolderStatsWorker();
         StopFolderPrefetchWorker();
         StopFolderWatchWorker();
+        // Programs started by Extract and Run outlive the widget. What has
+        // ended is cleaned up now; a folder still in use stays, with its
+        // marker naming the program, until a later sweep finds it free.
+        if (archiveRunTimer != InvalidTimerId) {
+            if (auto* app = UltraCanvasApplication::GetInstance())
+                app->StopTimer(archiveRunTimer);
+            archiveRunTimer = InvalidTimerId;
+        }
+        for (ArchiveRun& run : archiveRuns)
+            if (!run.process || !run.process->IsRunning())
+                RemoveArchiveRunFolder(run.folder);
+        archiveRuns.clear();
     }
 
     // ===== FOLDER =====
@@ -3022,7 +3043,7 @@ namespace UltraCanvas {
         ResolveShortcutEntry(e);
         ResolveBundleEntry(e);
         if (!e.isDirectory && e.category == FilerFileCategory::Text &&
-            (e.extension == "cls" || e.extension == "m") &&
+            !SyntaxTokenizer::SharedExtensionLanguages(e.extension).empty() &&
             !(isRemotePath && isRemotePath(e.path))) {
             const std::string language = SharedExtensionLanguage(e);
             if (!language.empty())
@@ -3379,6 +3400,7 @@ namespace UltraCanvas {
                 e.isHidden = v.isHidden;
                 e.isReadOnly = v.isReadOnly;
                 e.isArchive = v.isArchive;
+                e.archiveExecutable = v.IsFile() && (v.permissions & 0111) != 0;
                 e.size = v.size;
                 e.compressedSize = v.compressedSize;
                 e.modifiedTime = ParseIso8601(v.modifiedTime);
@@ -3874,8 +3896,17 @@ namespace UltraCanvas {
         // where nothing above claimed the extension (add() keeps the first),
         // and only as Text where that is what the display will treat it as.
         for (const auto& [ext, language] : SourceTextExtensions()) {
-            if (FilerCategoryForExtension(ext) == FilerFileCategory::Text)
-                add(ext, language, FilerFileCategory::Text);
+            if (FilerCategoryForExtension(ext) != FilerFileCategory::Text) continue;
+            // One switch covers every language a shared extension can be,
+            // so its label names them all: "VBA / LaTeX".
+            std::string label = language;
+            const auto& shared = SyntaxTokenizer::SharedExtensionLanguages(ext);
+            if (!shared.empty()) {
+                label.clear();
+                for (const std::string& name : shared)
+                    label += (label.empty() ? "" : " / ") + name;
+            }
+            add(ext, label, FilerFileCategory::Text);
         }
         std::vector<FilerFormatInfo> out;
         out.reserve(byExtension.size());
@@ -8291,6 +8322,152 @@ namespace UltraCanvas {
         auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
         if (dialog) UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
         else        ReportError(cfg.message + " " + details);
+    }
+
+    // ===== EXTRACT AND RUN =====
+    bool UltraCanvasFilerWidget::CanExtractAndRun(const FilerEntry& e) const {
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+        if (e.isDirectory || e.isArchive || e.path.empty()) return false;
+        if (!IsRunnableArchiveEntry(e.extension, e.archiveExecutable)) return false;
+        // A real file always wins, even one under a folder named like an
+        // archive ("backup.zip/setup.exe" on disk): that one runs as it is.
+        std::error_code ec;
+        if (fs::exists(PathFromUtf8(e.path), ec)) return false;
+        return VirtualFS::VirtualFSPath::Resolve(e.path).isInsideArchive;
+#else
+        (void)e;
+        return false;
+#endif
+    }
+
+    void UltraCanvasFilerWidget::ExtractAndRunEntry(const FilerEntry& e) {
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+        if (!CanExtractAndRun(e)) return;
+        if (archiveJob) {   // one pack / unpack at a time
+            ReportError("Wait until the archive being packed or unpacked is done, "
+                        "then run \"" + e.name + "\" again");
+            return;
+        }
+        // The archive the program is directly in - the innermost one, for a
+        // program in a zip inside a zip - and the program's path in there.
+        // Nested entries of the stack are paths inside the outermost archive.
+        const VirtualFS::VirtualFSResolvedPath resolved =
+                VirtualFS::VirtualFSPath::Resolve(e.path);
+        std::string archive = resolved.realPath;
+        if (resolved.archiveStack.size() > 1)
+            archive += "/" + resolved.archiveStack.back();
+        if (resolved.fullPath.size() <= archive.size() + 1 ||
+            resolved.fullPath.compare(0, archive.size(), archive) != 0 ||
+            resolved.fullPath[archive.size()] != '/') {
+            ReportError("Cannot find \"" + e.name + "\" in its archive");
+            return;
+        }
+        const std::string inner = resolved.fullPath.substr(archive.size() + 1);
+
+        // Initialize on the UI thread: the worker must not be the first
+        // caller to build the VirtualFS provider registry.
+        UCVFSBridge::Initialize();
+        const uint64_t unpackedBytes =
+                VirtualFS::VirtualFS_GetArchiveInfo(archive).uncompressedSize;
+        std::string root = chooseArchiveRunRoot ? chooseArchiveRunRoot(unpackedBytes)
+                                                : std::string();
+        if (root.empty()) root = DefaultArchiveRunRoot();
+        std::string folder, error;
+        if (!CreateArchiveRunFolder(root, folder, error)) {
+            ReportError(error);
+            return;
+        }
+        fs::path programPath = PathFromUtf8(folder) / PathFromUtf8(inner);
+        programPath.make_preferred();
+        const std::string program = PathToUtf8(programPath);
+        // The file on disk is what a browser marked as downloaded - for a zip
+        // inside a zip, the outer one.
+        const std::string downloaded = resolved.realPath;
+        const std::string archiveName = RepairLegacyEncodedName(
+                PathToUtf8(PathFromUtf8(archive).filename()));
+        const std::string programName = e.name;
+        auto detail = std::make_shared<std::string>();   // see ReportExtractionProblem
+
+        StartArchiveJob("Extract and Run",
+                        "Unpacking \"" + archiveName + "\" to run \"" + programName + "\"",
+                        folder, /*packing=*/false,
+                        [archive, folder, root, downloaded, detail](
+                                const ArchiveProgressReporter& report) {
+            // Folders an earlier run left behind - its program still ran when
+            // the application closed - go once nothing holds them. Swept on
+            // the worker: it is file system work, and can be slow.
+            SweepArchiveRunFolders(root);
+            const bool ok = UCVFSBridge::ExtractArchive(archive, folder,
+                    [&report](uint64_t done, uint64_t total, const std::string& file) {
+                return report(done, total, file);
+            }, detail.get());
+            CopyDownloadMarking(downloaded, folder);
+            return ok;
+        },
+                        [this, folder, program, programName, archive, detail](
+                                bool ok, bool cancelled) {
+            if (cancelled) {
+                RemoveArchiveRunFolder(folder);
+                return;
+            }
+            // An archive unpacked only in part is reported, and the program
+            // still started when it was among what did unpack: what was held
+            // back were entries that would have been written outside the
+            // folder, which a well-made archive does not contain anyway.
+            if (!ok) ReportExtractionProblem(archive, *detail);
+            std::error_code ec;
+            if (!fs::is_regular_file(PathFromUtf8(program), ec)) {
+                if (ok) ReportError("\"" + programName + "\" could not be unpacked");
+                RemoveArchiveRunFolder(folder);
+                return;
+            }
+            StartExtractedProgram(folder, program);
+        });
+#else
+        (void)e;
+        ReportError("Extract and Run requires the VirtualFS module");
+#endif
+    }
+
+    void UltraCanvasFilerWidget::StartExtractedProgram(const std::string& folder,
+                                                       const std::string& programPath) {
+        // Its own folder is where a program looks for what came with it.
+        const std::string workingDirectory =
+                PathToUtf8(PathFromUtf8(programPath).parent_path());
+        std::string error;
+        ShowLaunchPointer();
+        std::unique_ptr<WatchedProcess> process =
+                LaunchWatchedProgram(programPath, workingDirectory, error);
+        if (!process) {
+            ReportError(error);
+            RemoveArchiveRunFolder(folder);
+            return;
+        }
+        RecordArchiveRunProcess(folder, process->GetProcessId());
+        archiveRuns.push_back(ArchiveRun{std::move(process), folder});
+        if (archiveRunTimer == InvalidTimerId) {
+            if (auto* app = UltraCanvasApplication::GetInstance()) {
+                archiveRunTimer = app->StartTimer(kArchiveRunPollIntervalMs, true,
+                                                  [this](TimerId) { PollArchiveRuns(); });
+            }
+        }
+    }
+
+    void UltraCanvasFilerWidget::PollArchiveRuns() {
+        for (auto it = archiveRuns.begin(); it != archiveRuns.end();) {
+            if (it->process && it->process->IsRunning()) { ++it; continue; }
+            it->process.reset();
+            // Not removable yet means a file in it is still open - a program
+            // that slipped out of the watch is still using it. Asked again on
+            // the next tick.
+            if (RemoveArchiveRunFolder(it->folder)) it = archiveRuns.erase(it);
+            else ++it;
+        }
+        if (archiveRuns.empty() && archiveRunTimer != InvalidTimerId) {
+            if (auto* app = UltraCanvasApplication::GetInstance())
+                app->StopTimer(archiveRunTimer);
+            archiveRunTimer = InvalidTimerId;
+        }
     }
 
     // ===== LAYOUT =====
@@ -13259,8 +13436,12 @@ namespace UltraCanvas {
             return;
         }
         // Only a real file — an entry inside an archive is a virtual path no
-        // external application (or the kernel) can read.
-        if (!fs::is_regular_file(e.path, ec) || ec) return;
+        // external application (or the kernel) can read. A program in there
+        // is unpacked first and started from where it was unpacked to.
+        if (!fs::is_regular_file(e.path, ec) || ec) {
+            if (CanExtractAndRun(e)) ExtractAndRunEntry(e);
+            return;
+        }
         // A web location holds an address, and opening the file itself would
         // hand a property list to a text editor.
         if (e.isShortcut && e.extension == "webloc") {
@@ -13484,6 +13665,14 @@ namespace UltraCanvas {
                 openWith.onClick = [this]() { OpenSelectionWithDefaultApp(); };
             }
             menu.AddItem(openWith);
+        }
+        // A program inside an archive: the one way to start it. Only shown
+        // where it applies - greyed out on every other entry, it would be
+        // noise in the menu of every file.
+        if (singleSel && CanExtractAndRun(targets.front())) {
+            const FilerEntry program = targets.front();
+            addAction("Extract and Run", true,
+                      [this, program]() { ExtractAndRunEntry(program); });
         }
         menu.AddItem(MenuItemData::Separator());
 

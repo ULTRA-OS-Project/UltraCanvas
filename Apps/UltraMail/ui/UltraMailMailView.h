@@ -4,6 +4,8 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.6.0 - reading options (HTML / plain text, text size) and trusted
+//                  picture hosts forwarded to the preview.
 // Version: 0.5.0 - sender-badge column between From and Subject (address book,
 //                  known-sender registry and the stored content-scan verdict).
 // Version: 0.4.0 - folder sidebar, UltraCanvasListView message list, reading-
@@ -93,6 +95,10 @@ public:
     void SetReadingPane(bool on);
     bool ReadingPane() const { return readingPane_; }
 
+    // Settings > Reading > Messages: HTML mail formatted or as plain text, and
+    // the body text size (CSS px). The message on screen is shown again.
+    void SetBodyOptions(bool showHtml, float textSizePx);
+
     // Narrow the list to one kind of mail ("Show emails ▸" in the row menu);
     // a filter with kind All shows everything again. Switching folder or
     // account clears it.
@@ -138,6 +144,8 @@ public:
     // Forwarded to the preview: which senders' remote images load without asking.
     std::function<bool(const std::string& address)> remoteImagesAllowed;
     std::function<void(const std::string& address)> onAlwaysAllowRemoteImages;
+    // Forwarded too: whether a remote picture's host is a trusted website.
+    std::function<bool(const std::string& url)> remoteImageHostTrusted;
 
     // The folder tree selected a folder under a different account: the app
     // updates the selected account (and the account bar) without re-showing the

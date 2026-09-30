@@ -1,10 +1,11 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
-// Last Modified: 2026-09-23
+// Last Modified: 2026-09-29
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasDebug.h"
 #include <algorithm>
 
 namespace UltraCanvas {
@@ -241,7 +242,7 @@ namespace UltraCanvas {
     void UltraCanvasListView::UpdateScrollbar() {
         if (!model || model->GetRowCount() == 0) {
             maxScrollY = 0;
-            verticalScrollbar->SetVisible(false);
+            HideScrollbar();
             return;
         }
 
@@ -253,9 +254,10 @@ namespace UltraCanvas {
         maxScrollY = std::max(0, rowsContentHeight - rowsViewportHeight);
         bool hasVerticalScrollbar = maxScrollY > 0;
 
-        verticalScrollbar->SetVisible(hasVerticalScrollbar);
-
-        if (hasVerticalScrollbar) {
+        if (!hasVerticalScrollbar) {
+            HideScrollbar();
+        } else {
+            verticalScrollbar->SetVisible(true);
             // Scrollbar bounds in element-local space (within listview padding rect)
             int localPaddingX = GetBorderLeftWidth();
             int localPaddingY = GetBorderTopWidth();
@@ -272,6 +274,62 @@ namespace UltraCanvas {
             verticalScrollbar->SetContentSize(rowsContentHeight);
         }
         ClampScrollOffset();
+    }
+
+    // A hidden scrollbar keeps no bounds: the last visible ones were computed
+    // for an earlier size (a list arranged at its parent's full width before
+    // the split pane sized it), and a rectangle outside the list must never
+    // survive to be painted or hit-tested once the bar shows again without a
+    // fresh UpdateScrollbar.
+    void UltraCanvasListView::HideScrollbar() {
+        verticalScrollbar->SetVisible(false);
+        verticalScrollbar->SetBounds(Rect2Df(0, 0, 0, 0));
+    }
+
+    void UltraCanvasListView::SyncScrollbarBeforePaint() {
+        const int rows = model ? model->GetRowCount() : 0;
+        const int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
+        const int rowsViewportHeight = crHeight - GetHeaderOffset();
+        const int expectedMax = rows > 0 ? std::max(0, RowsContentHeight() - rowsViewportHeight) : 0;
+        const bool expectedVisible = expectedMax > 0;
+        int expectedX = 0, expectedY = 0, expectedHeight = 0;
+        if (expectedVisible) {
+            expectedX = GetBorderLeftWidth() + (GetWidth() - GetTotalBorderHorizontal()) -
+                        verticalScrollbar->GetStyle().trackSize;
+            expectedY = GetBorderTopWidth() + GetHeaderOffset();
+            expectedHeight = (GetHeight() - GetTotalBorderVertical()) - GetHeaderOffset();
+        }
+        const Rect2Df sb = verticalScrollbar->GetBounds();
+        const bool stale = expectedMax != maxScrollY || expectedVisible != verticalScrollbar->IsVisible() ||
+                           (expectedVisible && (static_cast<int>(sb.x) != expectedX ||
+                                                static_cast<int>(sb.y) != expectedY ||
+                                                static_cast<int>(sb.height) != expectedHeight));
+        if (!stale) return;
+        debugOutput << "UltraCanvasListView " << GetIdentifier() << ": scrollbar was stale at paint (rows "
+                    << rows << ", content " << RowsContentHeight() << ", viewport " << rowsViewportHeight
+                    << ", range " << maxScrollY << " -> " << expectedMax << ", shown "
+                    << verticalScrollbar->IsVisible() << " -> " << expectedVisible << ")" << std::endl;
+        UpdateScrollbar();
+    }
+
+    UltraCanvasListView::ScrollMetrics UltraCanvasListView::GetScrollMetrics() const {
+        ScrollMetrics m;
+        m.rows = model ? model->GetRowCount() : 0;
+        m.rowHeight = (useVariableRowHeights && delegate) ? 0 : viewStyle.rowHeight;
+        m.contentHeight = RowsContentHeight();
+        const int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
+        m.viewportHeight = crHeight - GetHeaderOffset();
+        m.maxScroll = m.rows > 0 ? std::max(0, m.contentHeight - m.viewportHeight) : 0;
+        m.scrollOffset = scrollOffsetY;
+        m.scrollbarVisible = verticalScrollbar && verticalScrollbar->IsVisible();
+        if (verticalScrollbar) {
+            const Rect2Df b = verticalScrollbar->GetBounds();
+            m.scrollbarBounds = Rect2Di(static_cast<int>(b.x), static_cast<int>(b.y),
+                                        static_cast<int>(b.width), static_cast<int>(b.height));
+        }
+        m.width = GetWidth();
+        m.height = GetHeight();
+        return m;
     }
 
     void UltraCanvasListView::ClampScrollOffset() {
@@ -468,6 +526,14 @@ namespace UltraCanvas {
     void UltraCanvasListView::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         // Draw background and border
         UltraCanvasUIElement::Render(ctx, dirtyRect);
+
+        // The scrollbar is recomputed whenever the model, the style or the
+        // bounds change - but only if that change reached this view. A paint
+        // is the one moment the rows, the bounds and the scrollbar are all
+        // read together, so it is where a stale state is cheapest to catch:
+        // recompute the range from what is about to be painted and, when the
+        // scrollbar disagrees, bring it up to date before drawing.
+        SyncScrollbarBeforePaint();
 
         // Element-local content rect (ctx is translated to element origin)
         int localContentX = GetBorderLeftWidth() + GetPaddingLeft();

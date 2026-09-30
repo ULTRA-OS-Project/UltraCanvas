@@ -130,6 +130,10 @@ ULTRANET_PROBE(kArea, UltraNet_DnsResolveAsync) {
     const UltraNetResult noCallback =
         UltraNet_DnsResolveAsync("localhost", UltraNetDnsType::A, nullptr);
     PROBE_EXPECT(!noCallback && noCallback.code == UltraNetResultCode::InvalidState);
+    // PTR is the reverse lookup: a non-address is refused before any thread.
+    const UltraNetResult notAnIp = UltraNet_DnsResolveAsync(
+        "not-an-ip", UltraNetDnsType::PTR, [](const std::vector<std::string>&) {});
+    PROBE_EXPECT(!notAnIp && notAnIp.code == UltraNetResultCode::InvalidUrl);
 
     std::mutex m;
     std::condition_variable cv;
@@ -156,7 +160,7 @@ ULTRANET_PROBE(kArea, UltraNet_DnsResolveAsync) {
     PROBE_EXPECT(Contains(addresses, "127.0.0.1"));
     return Working(std::string("async localhost lookup delivered ") +
                    Join(addresses) + " via " + kBackend +
-                   "; missing callback rejected");
+                   "; missing callback and a non-address PTR rejected");
 }
 
 ULTRANET_PROBE(kArea, UltraNet_DnsReverseLookup) {
@@ -173,8 +177,41 @@ ULTRANET_PROBE(kArea, UltraNet_DnsReverseLookup) {
                            "reverse record on this host (" + r.message + ")");
     }
     PROBE_EXPECT(!host.empty());
+
+    // The options overload: with servers, a PTR query for the reverse name at
+    // those servers, so a server that never answers is only ever the deadline.
+    UltraNetSocketOptions socketOptions;
+    socketOptions.bindAddress = "127.0.0.1";
+    const UltraNetHandle silent = UltraNet_UdpOpen(0, socketOptions);
+    UltraNetEndpoint local;
+    if (silent == UltraNetInvalidHandle || !UltraNet_SocketLocalEndpoint(silent, local)) {
+        return Working("127.0.0.1 -> \"" + host + "\"; empty and non-IP input "
+                       "rejected as InvalidUrl (no loopback UDP socket to test "
+                       "the per-call server form)");
+    }
+    UltraNetDnsOptions options;
+    options.servers   = {"127.0.0.1:" + std::to_string(local.port)};
+    options.timeoutMs = 1500;
+    std::string viaServer;
+    const auto started = std::chrono::steady_clock::now();
+    const UltraNetResult atSilent = UltraNet_DnsReverseLookup("127.0.0.1", viaServer, options);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started);
+    UltraNet_SocketClose(silent);
+    if (atSilent) {
+        return Broken("a reverse lookup pointed at a server that never answers "
+                      "resolved to \"" + viaServer + "\", so the per-call server "
+                      "list was not applied");
+    }
+    PROBE_EXPECT(viaServer.empty());
+    if (kHasCares) {
+        PROBE_EXPECT_MSG(atSilent.code == UltraNetResultCode::Timeout, atSilent.message);
+        PROBE_EXPECT(elapsed.count() < 10000);
+    }
     return Working("127.0.0.1 -> \"" + host + "\"; empty and non-IP input "
-                   "rejected as InvalidUrl");
+                   "rejected as InvalidUrl; a 1.5 s lookup at a silent server "
+                   "came back after " + std::to_string(elapsed.count()) + " ms ("
+                   + atSilent.message + ")");
 }
 
 ULTRANET_PROBE(kArea, UltraNet_DnsClearCache) {
@@ -206,8 +243,9 @@ ULTRANET_PROBE_NAMED(kArea, "UltraNet_DnsResolve (per-call servers)", DnsResolve
     PROBE_EXPECT(UltraNet_DnsParseServer("[2620:fe::fe]:53", address, port));
     PROBE_EXPECT(address == "2620:fe::fe" && port == 53);
     PROBE_EXPECT(!UltraNet_DnsParseServer("dns.quad9.net", address, port));
-    std::string reverse;
+    std::string reverse, back;
     PROBE_EXPECT(UltraNet_DnsReverseName("8.8.4.4", reverse) && reverse == "4.4.8.8.in-addr.arpa");
+    PROBE_EXPECT(UltraNet_DnsReverseNameToAddress(reverse, back) && back == "8.8.4.4");
 
     UltraNetSocketOptions socketOptions;
     socketOptions.bindAddress = "127.0.0.1";

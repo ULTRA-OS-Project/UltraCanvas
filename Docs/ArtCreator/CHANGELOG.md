@@ -1,3 +1,10 @@
+#### 2026-09-29 *0.6.3*
+- **Ctrl-C and SIGTERM exit in order.** The signal handler called
+  `RequestExit()` (which logs and runs a callback) and then `std::exit`,
+  running the static destructors under live threads. It now makes the one
+  call a handler may, `UltraCanvasApplicationBase::RequestExitFromSignal()`,
+  and the main loop turns it into the same shutdown as a closed window.
+
 #### 2026-09-28 *0.6.2*
 - **The version is in the window title** — `ArtCreator 0.6.2` — so a screenshot or a
   bug report says which build it came from. The number is this changelog's

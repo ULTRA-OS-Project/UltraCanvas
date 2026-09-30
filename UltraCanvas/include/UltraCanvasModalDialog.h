@@ -583,6 +583,9 @@ namespace UltraCanvas {
 
         // ===== CUSTOM DIALOGS =====
         static std::shared_ptr<UltraCanvasModalDialog> CreateDialog(const DialogConfig& config);
+        // The framework's own file browser (open / save / select folder), for
+        // a caller that wants it whatever the native-dialogs setting says.
+        static std::shared_ptr<UltraCanvasFileDialog> CreateFileDialog(const FileDialogConfig& config);
         static void ShowDialog(std::shared_ptr<UltraCanvasModalDialog> dialog,
                                std::function<void(DialogResult)> onResult = nullptr,
                                UltraCanvasWindowBase* parent = nullptr);
@@ -610,7 +613,9 @@ namespace UltraCanvas {
         // (GTK on Linux, Win32 MessageBox on Windows, NSAlert on macOS)
         // instead of the internal UltraCanvas modal dialog system.
         // Native dialogs are BLOCKING - callbacks are invoked immediately before return.
-        // File dialogs ALWAYS use native dialogs regardless of this setting.
+        // UltraCanvasFileLoader's file dialogs (open, open multiple, save,
+        // select folder) follow the same setting: native when it is on, the
+        // UltraCanvasFileDialog below when it is off.
         static void SetUseNativeDialogs(bool useNative);
         static bool GetUseNativeDialogs();
 
@@ -631,7 +636,6 @@ namespace UltraCanvas {
         static std::shared_ptr<UltraCanvasModalDialog> CreateMessageDialog(const std::string& message, const std::string& title,
                                                                            DialogType type, DialogButtons buttons);
         static std::shared_ptr<UltraCanvasInputDialog> CreateInputDialog(const InputDialogConfig& config);
-        static std::shared_ptr<UltraCanvasFileDialog> CreateFileDialog(const FileDialogConfig& config);
     };
 
 // ===== INPUT DIALOG CLASS =====

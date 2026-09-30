@@ -48,11 +48,10 @@ using namespace UltraCanvas;
 
 namespace {
 
-UltraCanvasApplication* g_app = nullptr;
-
+// The one call a signal handler may make: it sets a flag the main loop
+// turns into RequestExit, so main returns and the destructors run in order.
 void SignalHandler(int) {
-    if (g_app) g_app->RequestExit();
-    std::exit(EXIT_SUCCESS);
+    UltraCanvasApplicationBase::RequestExitFromSignal();
 }
 
 void PrintUsage(const char* programName) {
@@ -149,7 +148,6 @@ int main(int argc, char* argv[]) {
     if (list) return RunList(grouping, details, showSerials);
 
     UltraCanvasApplication app;
-    g_app = &app;
 
 #ifdef __linux__
     std::signal(SIGINT, SignalHandler);
