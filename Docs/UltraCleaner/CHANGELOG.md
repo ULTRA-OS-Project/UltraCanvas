@@ -1,3 +1,39 @@
+#### 2026-09-30 *0.57*
+- **A failure no longer ends the clean.** The remover stopped after fifty
+  failures. On Windows the temp directory holds more files than that which
+  another program still has open, so a clean of 1400 items removed six,
+  reported "some items could not be removed" and never reached the caches
+  behind them. Every failure is now recorded and the run goes on to the last
+  item (`RemoverKeepsGoingPastAnyNumberOfFailures` in the test suite);
+  `RemovalOptions::failureLimit` is gone.
+- **The cleaning pages scan themselves.** The System junk tab starts its scan
+  the first time it is opened, whether from the tab strip or the overview's
+  button, and a photo folder is looked through as soon as it is chosen (or as
+  soon as the window opens when the folder came from the command line). A
+  later tab switch keeps the list and its ticks; the Scan buttons repeat a
+  scan.
+- **"Simulate" is gone from the window.** The dropdown offers *Move to Trash*
+  (the default) and *Delete permanently*; both are confirmed in a dialog that
+  names what goes, which is what the dry run was for. The engine keeps the
+  mode for the command line, where `--clean` still simulates by default.
+- **The results dialog scrolls and groups its failures.** The run's outcome
+  used to go through the platform's message box, which neither scrolls nor
+  wraps well, so fifty failures were cut off at "…and 37 more" (twelve were
+  shown, and the count was off by one). The result is now the framework's own
+  dialog, laid out as Markdown: the summary, then one heading per distinct
+  reason with the paths under it, so forty-nine files another process holds
+  open read as one heading and a list rather than forty-nine copies of the
+  same sentence. The list scrolls past the screen's height. The Photo albums
+  tab reports its failures the same way; it reported none before.
+- **Every dialog is the framework's own.** The app asked for native dialogs,
+  so its confirmations and notices were the platform's message boxes while
+  the results dialog was not. `main.cpp` now leaves native dialogs off and
+  all of them share one style. The photo-folder picker included: it is the
+  framework's file dialog in its folder mode, opening on the folder chosen
+  last time, else the user's Pictures folder. (Needs the framework change
+  that makes `UltraCanvasFileLoader`'s dialogs honour the setting; see the
+  framework changelog.)
+
 #### 2026-09-29 *0.56*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called
   `RequestExit()` (which logs and runs a callback) and then `std::exit`,

@@ -103,7 +103,7 @@ std::shared_ptr<UltraCanvasContainer> AlbumView::Build(float width, float height
     groupList_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     statusLabel_ = CreateLabel("ucAlbumStatus", 0, 0, 600, 24,
-                               "Choose a folder of photos, then press “Scan”.");
+                               "Choose a folder of photos — it is looked through as soon as it is chosen.");
     statusLabel_->SetWrap(TextWrap::WrapWord);
     root_->AddChild(statusLabel_);
     statusLabel_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);

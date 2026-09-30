@@ -139,65 +139,165 @@ namespace UltraCanvas {
         return out;
     }
 
+    // ===== FILE DIALOGS =====
+    // Each of the four follows UltraCanvasDialogManager's native-dialogs
+    // setting: the platform's picker when it is on (blocking; the callback
+    // runs before the call returns), the framework's UltraCanvasFileDialog
+    // when it is off (the callback runs when the dialog closes). The choice
+    // used to be the platform's regardless, so an app that turned native
+    // dialogs off for one look throughout still got the platform's file
+    // picker among its own dialogs.
+    namespace {
+
+    FileDialogConfig FileConfigFrom(const FileDialogOptions& opts,
+                                    FileDialogType type,
+                                    const std::string& defaultTitle) {
+        FileDialogConfig config;
+        config.title            = opts.title.empty() ? defaultTitle : opts.title;
+        config.dialogType       = type;
+        config.initialDirectory = opts.initialDirectory;
+        config.defaultFileName  = opts.defaultFileName;
+        config.showHiddenFiles  = opts.showHiddenFiles;
+        config.allowMultipleSelection = type == FileDialogType::OpenMultiple;
+        // A folder has no file filter; a file dialog takes the caller's, and
+        // falls back to "everything" rather than the config's sample list.
+        if (type == FileDialogType::SelectFolder) {
+            config.filters.clear();
+        } else if (!opts.filters.empty()) {
+            config.filters = opts.filters;
+        } else {
+            config.filters = { FileFilter("All Files", "*") };
+        }
+        return config;
+    }
+
+    // Shows the framework's dialog and hands its selection on. The result
+    // lambda is stored on the dialog, so it holds the dialog raw: the dialog
+    // is alive for as long as its own callback can run.
+    void ShowFrameworkFileDialog(
+            const FileDialogConfig& config,
+            UltraCanvasWindowBase* parent,
+            std::function<void(DialogResult, const std::vector<std::string>&)> onDone) {
+        auto dialog = UltraCanvasDialogManager::CreateFileDialog(config);
+        UltraCanvasDialogManager::ShowDialog(
+            dialog,
+            [dialog = dialog.get(), onDone](DialogResult result) {
+                std::vector<std::string> paths;
+                if (result == DialogResult::OK) {
+                    paths = dialog->GetSelectedFilePaths();
+                }
+                if (paths.empty()) result = DialogResult::Cancel;
+                if (onDone) onDone(result, paths);
+            },
+            parent);
+    }
+
+    } // namespace
+
     void UltraCanvasFileLoader::OpenFileDialog(
             const FileDialogOptions& opts,
             std::function<void(DialogResult, const std::string&)> onResult) {
+
+        const bool registerAsRecent = opts.registerAsRecent;
+        auto deliver = [registerAsRecent, onResult](DialogResult dr,
+                                                    const std::string& result) {
+            if (dr == DialogResult::OK && registerAsRecent) {
+                NotifyRecentFile(result);
+            }
+            if (onResult) onResult(dr, result);
+        };
+
+        if (!UltraCanvasDialogManager::GetUseNativeDialogs()) {
+            ShowFrameworkFileDialog(
+                FileConfigFrom(opts, FileDialogType::Open, "Open File"),
+                opts.parentWindow,
+                [deliver](DialogResult dr, const std::vector<std::string>& paths) {
+                    deliver(dr, paths.empty() ? std::string() : paths.front());
+                });
+            return;
+        }
 
         FileDialogOptions effective = opts;
         if (effective.title.empty()) effective.title = "Open File";
 
         std::string result = UltraCanvasNativeDialogs::OpenFile(effective);
-        DialogResult dr = result.empty() ? DialogResult::Cancel : DialogResult::OK;
-
-        if (dr == DialogResult::OK && opts.registerAsRecent) {
-            NotifyRecentFile(result);
-        }
-        if (onResult) {
-            onResult(dr, result);
-        }
+        deliver(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
     }
 
     void UltraCanvasFileLoader::OpenMultipleFilesDialog(
             const FileDialogOptions& opts,
             std::function<void(DialogResult, const std::vector<std::string>&)> onResult) {
 
+        const bool registerAsRecent = opts.registerAsRecent;
+        auto deliver = [registerAsRecent, onResult](
+                           DialogResult dr, const std::vector<std::string>& results) {
+            if (dr == DialogResult::OK && registerAsRecent) {
+                for (const auto& path : results) {
+                    NotifyRecentFile(path);
+                }
+            }
+            if (onResult) onResult(dr, results);
+        };
+
+        if (!UltraCanvasDialogManager::GetUseNativeDialogs()) {
+            ShowFrameworkFileDialog(
+                FileConfigFrom(opts, FileDialogType::OpenMultiple, "Open Files"),
+                opts.parentWindow, deliver);
+            return;
+        }
+
         FileDialogOptions effective = opts;
         if (effective.title.empty()) effective.title = "Open Files";
 
         std::vector<std::string> results = UltraCanvasNativeDialogs::OpenMultipleFiles(effective);
-        DialogResult dr = results.empty() ? DialogResult::Cancel : DialogResult::OK;
-
-        if (dr == DialogResult::OK && opts.registerAsRecent) {
-            for (const auto& path : results) {
-                NotifyRecentFile(path);
-            }
-        }
-        if (onResult) {
-            onResult(dr, results);
-        }
+        deliver(results.empty() ? DialogResult::Cancel : DialogResult::OK, results);
     }
 
     void UltraCanvasFileLoader::SaveFileDialog(
             const FileDialogOptions& opts,
             std::function<void(DialogResult, const std::string&)> onResult) {
 
+        const bool registerAsRecent = opts.registerAsRecent;
+        auto deliver = [registerAsRecent, onResult](DialogResult dr,
+                                                    const std::string& result) {
+            if (dr == DialogResult::OK && registerAsRecent) {
+                NotifyRecentFile(result);
+            }
+            if (onResult) onResult(dr, result);
+        };
+
+        if (!UltraCanvasDialogManager::GetUseNativeDialogs()) {
+            ShowFrameworkFileDialog(
+                FileConfigFrom(opts, FileDialogType::Save, "Save File"),
+                opts.parentWindow,
+                [deliver](DialogResult dr, const std::vector<std::string>& paths) {
+                    deliver(dr, paths.empty() ? std::string() : paths.front());
+                });
+            return;
+        }
+
         FileDialogOptions effective = opts;
         if (effective.title.empty()) effective.title = "Save File";
 
         std::string result = UltraCanvasNativeDialogs::SaveFile(effective);
-        DialogResult dr = result.empty() ? DialogResult::Cancel : DialogResult::OK;
-
-        if (dr == DialogResult::OK && opts.registerAsRecent) {
-            NotifyRecentFile(result);
-        }
-        if (onResult) {
-            onResult(dr, result);
-        }
+        deliver(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
     }
 
     void UltraCanvasFileLoader::SelectFolderDialog(
             const FileDialogOptions& opts,
             std::function<void(DialogResult, const std::string&)> onResult) {
+
+        if (!UltraCanvasDialogManager::GetUseNativeDialogs()) {
+            ShowFrameworkFileDialog(
+                FileConfigFrom(opts, FileDialogType::SelectFolder, "Select Folder"),
+                opts.parentWindow,
+                [onResult](DialogResult dr, const std::vector<std::string>& paths) {
+                    if (onResult) {
+                        onResult(dr, paths.empty() ? std::string() : paths.front());
+                    }
+                });
+            return;
+        }
 
         // Folder selection bypasses the options-based overload because
         // SelectFolder takes (title, initialDir, parent) directly.
