@@ -5083,7 +5083,7 @@ int UltraCanvasRichTextEdit::CommentBoxAt(const Point2Di& elementPoint) const {
 
 bool UltraCanvasRichTextEdit::ExportToPdf(const std::string& utf8Path, std::string& error) {
     const RichPageSetup page = EffectivePageSetup();
-    auto pdf = UltraCanvasPdfSurface::CreateFile(utf8Path, page.widthPt, page.heightPt, error);
+    auto pdf = UltraCanvasPdfSurface::CreateForFile(utf8Path, page.widthPt, page.heightPt, error);
     if (!pdf) return false;
     if (!ExportPdfPages(*pdf, error)) return false;
     return pdf->Finish(error);

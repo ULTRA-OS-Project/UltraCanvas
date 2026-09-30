@@ -117,9 +117,9 @@ private:
 
 } // namespace
 
-std::unique_ptr<UltraCanvasPdfSurface> UltraCanvasPdfSurface::CreateFile(const std::string& utf8Path,
-                                                                         double widthPt, double heightPt,
-                                                                         std::string& error) {
+std::unique_ptr<UltraCanvasPdfSurface> UltraCanvasPdfSurface::CreateForFile(const std::string& utf8Path,
+                                                                            double widthPt, double heightPt,
+                                                                            std::string& error) {
     std::FILE* file = OpenFileUtf8(utf8Path, "wb");
     if (!file) {
         error = "Could not create " + utf8Path;
