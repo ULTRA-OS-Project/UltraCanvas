@@ -30295,6 +30295,11 @@ label->SetInlineImages({ star });
   The text's ascent and descent are measured from the label's own font.
 - An image wider than the label's line is scaled down to fit, keeping its
   aspect ratio.
+- `fit` (`ImageFitMode`, default `Fill`) and `position` (`ImagePosition`,
+  default centred) say how the picture fills its `width` x `height` box, like
+  CSS `object-fit` / `object-position`: `Fill` stretches it to the box;
+  `Contain`, `Cover`, `NoScale` and `ScaleDown` keep its shape and place it by
+  `position`, clipped to the box.
 - `InlineImageRect(i)` returns where image `i` is drawn, in label-local
   coordinates.
 - A placeholder inside a `SetTextLinks` range is part of that link, so

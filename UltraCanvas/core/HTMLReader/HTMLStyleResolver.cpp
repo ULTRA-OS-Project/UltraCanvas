@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.5.0 - object-fit and object-position (the background-position syntax)
 // Version: 1.4.0 - background-repeat: repeat / repeat-x / repeat-y / no-repeat,
 //                  one or two values, per layer (initial: repeat).
 // Version: 1.3.0 - background-position (keywords, %, lengths, edge offsets);
@@ -677,6 +678,16 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         s.backgroundRepeats.clear();
         for (const auto& item : SplitTopLevel(lower, ','))
             s.backgroundRepeats.push_back(ParseBackgroundRepeat(item).value_or(BackgroundRepeat{}));
+    }
+    else if (prop == "object-fit") {
+        if (lower == "contain") s.objectFit = ObjectFitMode::Contain;
+        else if (lower == "cover") s.objectFit = ObjectFitMode::Cover;
+        else if (lower == "none") s.objectFit = ObjectFitMode::NoScaling;
+        else if (lower == "scale-down") s.objectFit = ObjectFitMode::ScaleDown;
+        else if (lower == "fill") s.objectFit = ObjectFitMode::Fill;
+    }
+    else if (prop == "object-position") {
+        if (auto position = ParseBackgroundPosition(lower, em, rem)) s.objectPosition = *position;
     }
     else if (prop == "background-position") {
         s.backgroundPositions.clear();

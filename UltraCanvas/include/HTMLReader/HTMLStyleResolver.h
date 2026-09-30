@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.6.0 - object-fit / object-position
 // Version: 1.5.0 - background-repeat (per layer)
 // Version: 1.4.0 - background-position; background size and position per layer
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
@@ -53,6 +54,10 @@ struct BackgroundAxisPosition {
 struct BackgroundPosition {
     BackgroundAxisPosition x, y;   // CSS initial value: 0% 0% (top left)
 };
+// object-fit, how an <img> fills the box its width / height give it. CSS's
+// initial value is fill (stretch). (No enumerator named None: X11 defines it.)
+enum class ObjectFitMode { Fill, Contain, Cover, NoScaling, ScaleDown };
+
 // background-repeat on each axis. CSS's initial value repeats both ways;
 // space and round are taken as repeat.
 struct BackgroundRepeat {
@@ -96,6 +101,10 @@ struct ComputedStyle {
     std::vector<BackgroundSizeMode> backgroundSizes;
     std::vector<BackgroundPosition> backgroundPositions;
     std::vector<BackgroundRepeat> backgroundRepeats;
+    // object-fit / object-position, on an <img> (not inherited). The
+    // position's initial value is 50% 50%.
+    ObjectFitMode objectFit = ObjectFitMode::Fill;
+    BackgroundPosition objectPosition{ { 0.5f, false, false }, { 0.5f, false, false } };
     BackgroundSizeMode BackgroundSizeAt(size_t layer) const {
         return backgroundSizes.empty() ? BackgroundSizeMode::Auto
                                        : backgroundSizes[layer % backgroundSizes.size()];

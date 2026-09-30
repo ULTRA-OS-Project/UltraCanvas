@@ -1,7 +1,8 @@
 // include/UltraCanvasCommonTypes.h
 // Unified common types and structures for UltraCanvas Framework
-// Version: 2.2.0
-// Last Modified: 2026-09-16
+// Version: 2.3.0 - ImagePosition / ImageAxisPosition and FitImageRect (CSS
+//                 object-fit + object-position), shared by image element and label
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -529,4 +530,55 @@ enum class ImageFitMode {
     Fill,
     ScaleDown
 };
+
+// Where an image that does not fill its box sits in it, per axis - CSS
+// object-position / background-position: a fraction of the free space (0 =
+// left / top, 0.5 = centred, 1 = right / bottom) or a pixel offset from the
+// left / top edge, or from the right / bottom edge when fromEnd is set. An
+// image larger than the box (Cover, NoScale) is shifted the same way, so 0.5
+// shows its middle.
+struct ImageAxisPosition {
+    float value   = 0.5f;
+    bool  pixels  = false;   // value is px, not a fraction
+    bool  fromEnd = false;   // px measured from the right / bottom edge
+
+    static ImageAxisPosition Fraction(float f) { return { f, false, false }; }
+    static ImageAxisPosition Pixels(float px, bool fromEndEdge = false) {
+        return { px, true, fromEndEdge };
+    }
+    // The offset of an item `item` long inside `space` along this axis.
+    float OffsetIn(float space, float item) const {
+        if (!pixels) return (space - item) * value;
+        return fromEnd ? space - item - value : value;
+    }
+    bool IsCentred() const { return !pixels && value == 0.5f; }
+};
+
+struct ImagePosition {
+    ImageAxisPosition x;
+    ImageAxisPosition y;
+    bool IsCentred() const { return x.IsCentred() && y.IsCentred(); }
+};
+
+// The rectangle an image of `natural` size is drawn into inside `box` when it
+// is fitted by `fit` and placed by `position` (CSS object-fit +
+// object-position). It can reach past the box (Cover, NoScale): clip to the
+// box when drawing. Empty for an empty image or box.
+inline Rect2Df FitImageRect(const Size2Df& natural, const Rect2Df& box, ImageFitMode fit,
+                            const ImagePosition& position) {
+    if (natural.width <= 0.f || natural.height <= 0.f || box.width <= 0.f || box.height <= 0.f)
+        return Rect2Df();
+    const float fitW = box.width / natural.width, fitH = box.height / natural.height;
+    float w = natural.width, h = natural.height;
+    switch (fit) {
+        case ImageFitMode::Fill:      w = box.width; h = box.height; break;
+        case ImageFitMode::Contain:   { float k = fitW < fitH ? fitW : fitH; w *= k; h *= k; break; }
+        case ImageFitMode::Cover:     { float k = fitW > fitH ? fitW : fitH; w *= k; h *= k; break; }
+        case ImageFitMode::ScaleDown: { float k = fitW < fitH ? fitW : fitH; if (k > 1.f) k = 1.f;
+                                        w *= k; h *= k; break; }
+        case ImageFitMode::NoScale:   break;
+    }
+    return Rect2Df(box.x + position.x.OffsetIn(box.width, w),
+                   box.y + position.y.OffsetIn(box.height, h), w, h);
+}
 } // namespace UltraCanvas

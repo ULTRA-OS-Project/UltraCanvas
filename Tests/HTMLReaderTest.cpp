@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.6.0 - object-fit, object-position
 // Version: 1.5.0 - background-repeat
 // Version: 1.4.0 - background-position
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
@@ -617,6 +618,39 @@ static void TestBackgroundRepeat() {
     CHECK(r.x && !r.y);                                  // the second layer's own
 }
 
+// object-fit and object-position on an <img>, with their initial values.
+static void TestObjectFitPosition() {
+    auto styleOf = [](const std::string& css) {
+        Parser parser;
+        Document doc = parser.Parse("<img src=\"a.png\" style=\"" + css + "\">");
+        StyleResolver resolver;
+        ResolverOptions options;
+        options.baseFontSizePx = 16.f;
+        resolver.Resolve(doc, options);
+        Node* img = doc.root->FindFirst("img");
+        return img ? resolver.StyleOf(img) : ComputedStyle{};
+    };
+    auto isFraction = [](const BackgroundAxisPosition& a, float f) {
+        return !a.pixels && std::fabs(a.value - f) < 0.001f;
+    };
+    ComputedStyle st = styleOf("");
+    CHECK(st.objectFit == ObjectFitMode::Fill);          // CSS initial: fill
+    CHECK(isFraction(st.objectPosition.x, 0.5f) && isFraction(st.objectPosition.y, 0.5f));
+    CHECK(styleOf("object-fit: contain").objectFit == ObjectFitMode::Contain);
+    CHECK(styleOf("object-fit: COVER").objectFit == ObjectFitMode::Cover);
+    CHECK(styleOf("object-fit: none").objectFit == ObjectFitMode::NoScaling);
+    CHECK(styleOf("object-fit: scale-down").objectFit == ObjectFitMode::ScaleDown);
+    CHECK(styleOf("object-fit: bogus").objectFit == ObjectFitMode::Fill);
+    st = styleOf("object-position: right top");
+    CHECK(isFraction(st.objectPosition.x, 1.f) && isFraction(st.objectPosition.y, 0.f));
+    st = styleOf("object-position: 25% 1em");
+    CHECK(isFraction(st.objectPosition.x, 0.25f));
+    CHECK(st.objectPosition.y.pixels && std::fabs(st.objectPosition.y.value - 16.f) < 0.001f);
+    st = styleOf("object-position: right 10px bottom 5px");
+    CHECK(st.objectPosition.x.pixels && st.objectPosition.x.fromEnd);
+    CHECK(st.objectPosition.y.pixels && st.objectPosition.y.fromEnd);
+}
+
 int main() {
     TestParserBasics();
     TestParserFragmentAndRecovery();
@@ -634,6 +668,7 @@ int main() {
     TestMediaAndBackgrounds();
     TestBackgroundPosition();
     TestBackgroundRepeat();
+    TestObjectFitPosition();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);

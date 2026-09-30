@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.7.0 - object-fit / object-position on <img>, block and inline (CSS's
+//                  default fill: a box of another shape stretches the picture).
 // Version: 1.6.0 - background-repeat: the picture tiles as the layer says (CSS's
 //                  default repeats both ways).
 // Version: 1.5.0 - background-position: the picture sits where the layer says
@@ -147,6 +149,25 @@ std::string FormControlText(const Node& e) {
         return first ? TrimAscii(first->TextContent()) : std::string();
     }
     return std::string();
+}
+
+ImageFitMode ToImageFit(ObjectFitMode fit) {
+    switch (fit) {
+        case ObjectFitMode::Contain:   return ImageFitMode::Contain;
+        case ObjectFitMode::Cover:     return ImageFitMode::Cover;
+        case ObjectFitMode::NoScaling: return ImageFitMode::NoScale;
+        case ObjectFitMode::ScaleDown: return ImageFitMode::ScaleDown;
+        case ObjectFitMode::Fill:      break;
+    }
+    return ImageFitMode::Fill;
+}
+
+ImagePosition ToImagePosition(const BackgroundPosition& p) {
+    auto axis = [](const BackgroundAxisPosition& a) {
+        return a.pixels ? ImageAxisPosition::Pixels(a.value, a.fromEnd)
+                        : ImageAxisPosition::Fraction(a.value);
+    };
+    return ImagePosition{ axis(p.x), axis(p.y) };
 }
 
 // The href of the nearest <a href> around `node` (not `node` itself): text
@@ -741,6 +762,8 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
                     image.width = w;
                     image.height = h;
                     image.image = raster;
+                    image.fit = ToImageFit(style.objectFit);
+                    image.position = ToImagePosition(style.objectPosition);
                     switch (style.verticalAlign) {
                         case VerticalAlignMode::Middle: image.align = LabelInlineImageAlign::Middle; break;
                         case VerticalAlignMode::Top:    image.align = LabelInlineImageAlign::Top;    break;
@@ -836,6 +859,10 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     image->LoadFromImage(raster);
 
     const ComputedStyle& style = resolver.StyleOf(&element);
+    // object-fit / object-position: how the picture fills the box its width
+    // and height give it (CSS's default stretches it), and where it sits.
+    image->SetFitMode(ToImageFit(style.objectFit));
+    image->SetImagePosition(ToImagePosition(style.objectPosition));
     ApplyBoxStyle(*image, style, /*fillWidth=*/false);
     // Without explicit dimensions the element reports the image's natural
     // size through MeasureOwnContent. Cap at the column width so oversized
@@ -1180,12 +1207,7 @@ void ElementBuilder::ApplyBackgroundImage(UltraCanvasContainer& box, const Compu
         case BackgroundSizeMode::Cover:   image->SetFitMode(ImageFitMode::Cover);   break;
         case BackgroundSizeMode::Auto:    image->SetFitMode(ImageFitMode::NoScale); break;
     }
-    const BackgroundPosition where = style.BackgroundPositionAt(layer);
-    auto axis = [](const BackgroundAxisPosition& a) {
-        return a.pixels ? ImageAxisPosition::Pixels(a.value, a.fromEnd)
-                        : ImageAxisPosition::Fraction(a.value);
-    };
-    image->SetImagePosition(ImagePosition{ axis(where.x), axis(where.y) });
+    image->SetImagePosition(ToImagePosition(style.BackgroundPositionAt(layer)));
     const BackgroundRepeat repeat = style.BackgroundRepeatAt(layer);
     image->SetImageRepeat(repeat.x, repeat.y);
     // Out of flow, filling the box: it neither sizes the box nor pushes its

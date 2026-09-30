@@ -4,8 +4,9 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
-// Version: 2.0.3
-// Last Modified: 2026-07-02
+// Version: 2.1.0 - an inline image has a fit mode and position (object-fit /
+//                 object-position)
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -74,6 +75,10 @@ namespace UltraCanvas {
         float height = 0.f;
         std::shared_ptr<UCImage> image;
         LabelInlineImageAlign align = LabelInlineImageAlign::Baseline;
+        // How the picture fills its box (CSS object-fit; Fill stretches it,
+        // the CSS default) and where it sits when it does not (object-position).
+        ImageFitMode  fit = ImageFitMode::Fill;
+        ImagePosition position;
     };
 
 // ===== LABEL COMPONENT =====

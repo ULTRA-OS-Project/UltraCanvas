@@ -1,5 +1,6 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
+// Version: 1.4.0 - ImagePosition moved to UltraCanvasCommonTypes.h (FitImageRect)
 // Version: 1.3.0 - SetImageRepeat: the image tiles across the element (either axis)
 // Version: 1.2.0 - SetImagePosition: where the fitted image sits in the element
 // Last Modified: 2026-09-30
@@ -37,33 +38,8 @@ enum class ImageLoadState {
     Failed
 };
 
-// Where an image that does not fill its element sits in it, per axis - CSS
-// background-position / object-position: a fraction of the free space (0 =
-// left / top, 0.5 = centred, 1 = right / bottom) or a pixel offset from the
-// left / top edge, or from the right / bottom edge when fromEnd is set. An
-// image larger than the element (Cover, NoScale) is shifted the same way, so
-// 0.5 shows its middle.
-struct ImageAxisPosition {
-    float value   = 0.5f;
-    bool  pixels  = false;   // value is px, not a fraction
-    bool  fromEnd = false;   // px measured from the right / bottom edge
-
-    static ImageAxisPosition Fraction(float f) { return { f, false, false }; }
-    static ImageAxisPosition Pixels(float px, bool fromEndEdge = false) {
-        return { px, true, fromEndEdge };
-    }
-    // The offset of an item `item` long inside `space` along this axis.
-    float OffsetIn(float space, float item) const {
-        if (!pixels) return (space - item) * value;
-        return fromEnd ? space - item - value : value;
-    }
-    bool IsCentred() const { return !pixels && value == 0.5f; }
-};
-
-struct ImagePosition {
-    ImageAxisPosition x;
-    ImageAxisPosition y;
-};
+// ImagePosition / ImageAxisPosition and FitImageRect live in
+// UltraCanvasCommonTypes.h (the label's in-text images use them too).
 
 // ===== IMAGE ELEMENT COMPONENT =====
 class UltraCanvasImageElement : public UltraCanvasUIElement {

@@ -143,22 +143,7 @@ namespace UltraCanvas {
     }
 
     Rect2Df UltraCanvasImageElement::ImageDrawRect() const {
-        const Size2Df natural = NaturalImageSize();
-        if (natural.width <= 0.f || natural.height <= 0.f) return Rect2Df();
-        const Rect2Df content = GetLocalContentRect();
-        const float cw = content.width, ch = content.height;
-        if (cw <= 0.f || ch <= 0.f) return Rect2Df();
-        const float fitW = cw / natural.width, fitH = ch / natural.height;
-        float w = natural.width, h = natural.height;
-        switch (fitMode) {
-            case ImageFitMode::Fill:      w = cw; h = ch; break;
-            case ImageFitMode::Contain:   { float k = std::min(fitW, fitH); w *= k; h *= k; break; }
-            case ImageFitMode::Cover:     { float k = std::max(fitW, fitH); w *= k; h *= k; break; }
-            case ImageFitMode::ScaleDown: { float k = std::min(1.f, std::min(fitW, fitH)); w *= k; h *= k; break; }
-            case ImageFitMode::NoScale:   break;
-        }
-        return Rect2Df(content.x + imagePosition.x.OffsetIn(cw, w),
-                       content.y + imagePosition.y.OffsetIn(ch, h), w, h);
+        return FitImageRect(NaturalImageSize(), GetLocalContentRect(), fitMode, imagePosition);
     }
 
     Size2Df UltraCanvasImageElement::NaturalImageSize() const {
@@ -282,7 +267,7 @@ namespace UltraCanvas {
         }
         // Positioned off-centre: fit and place the image here, clipped to the
         // content box (the backends centre what they fit).
-        else if (!imagePosition.x.IsCentred() || !imagePosition.y.IsCentred()) {
+        else if (!imagePosition.IsCentred()) {
             const Rect2Df dest = ImageDrawRect();
             if (dest.width > 0 && dest.height > 0) {
                 ctx->PushState();

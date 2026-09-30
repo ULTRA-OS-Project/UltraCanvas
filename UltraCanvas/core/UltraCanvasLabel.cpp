@@ -14,6 +14,7 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.5.0 - inline images fitted and placed by their fit / position
 // Version: 2.4.0 - min-content width is the widest unbreakable run
 // Version: 2.3.0 - inline images at U+FFFC placeholders (LabelInlineImage)
 // Last Modified: 2026-09-30
@@ -468,8 +469,21 @@ namespace UltraCanvas {
                 if (!inlineImages[i].image) continue;
                 const Rect2Df r = InlineImageRect(i);
                 if (r.width <= 0.f || r.height <= 0.f) continue;
-                ctx->DrawImage(*inlineImages[i].image,
-                               Rect2Dd(r.x, r.y, r.width, r.height), ImageFitMode::Fill);
+                const LabelInlineImage& img = inlineImages[i];
+                if (img.fit == ImageFitMode::Fill) {
+                    ctx->DrawImage(*img.image, Rect2Dd(r.x, r.y, r.width, r.height), ImageFitMode::Fill);
+                    continue;
+                }
+                // Fitted inside its box and placed there (object-fit /
+                // object-position), clipped to the box.
+                const Size2Df natural(static_cast<float>(img.image->GetWidth()),
+                                      static_cast<float>(img.image->GetHeight()));
+                const Rect2Df d = FitImageRect(natural, r, img.fit, img.position);
+                if (d.width <= 0.f || d.height <= 0.f) continue;
+                ctx->PushState();
+                ctx->ClipRect(Rect2Dd(r.x, r.y, r.width, r.height));
+                ctx->DrawImage(*img.image, Rect2Dd(d.x, d.y, d.width, d.height), ImageFitMode::Fill);
+                ctx->PopState();
             }
         }
     }

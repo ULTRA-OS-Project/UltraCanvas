@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.4.0 - object-fit, object-position
 // Version: 1.3.0 - background-repeat
 // Version: 1.2.0 - background-position
 // Version: 1.1.0 - background pictures, margin: auto, @media width
@@ -404,6 +405,62 @@ void TestBackgroundRepeat() {
     Check(isPicture(5, 5) && !isPicture(185, 5) && !isPicture(5, 85), "no-repeat: one picture");
 }
 
+// object-fit / object-position place an <img>'s picture in its box (a 40x20
+// picture in a 200x100 <img>).
+void TestObjectFitPosition() {
+    std::printf("object-fit / object-position place the picture\n");
+
+    auto drawRect = [](const std::string& style) {
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        opts.resourceLoader = [](const std::string&) { return BackgroundPicture40x20(); };
+        HTML::ElementBuilder builder;
+        auto host = std::make_shared<Host>();
+        host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        auto root = builder.Build("<div><img src='p.png' width='200' height='100' style='" +
+                                  style + "'></div>", opts).root;
+        if (!root) return Rect2Df();
+        root->size.width = CSSLayout::Dimension::Px(400.f);
+        host->AddChild(root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = 400;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        root->Measure(mc, ctx);
+        root->Arrange(Rect2Df{ 0, 0, 400.f, root->measured.measuredHeight }, ctx);
+        std::vector<Placed> all;
+        Collect(root.get(), 0, 0, all);
+        for (const auto& p : all)
+            if (auto* img = dynamic_cast<UltraCanvasImageElement*>(p.element)) {
+                Rect2Df r = img->ImageDrawRect();
+                Rect2Df box = img->GetLocalContentRect();
+                return Rect2Df(r.x - box.x, r.y - box.y, r.width, r.height);
+            }
+        return Rect2Df();
+    };
+    Rect2Df r = drawRect("");
+    CheckNear(r.width, 200.f, "default fill: stretched across");
+    CheckNear(r.height, 100.f, "default fill: stretched down");
+    r = drawRect("object-fit:contain;object-position:right");
+    CheckNear(r.width, 200.f, "contain: 2:1 picture fills the 2:1 box");
+    r = drawRect("object-fit:none");
+    CheckNear(r.width, 40.f, "none: natural width");
+    CheckNear(r.x, 80.f, "none: centred by default");
+    CheckNear(r.y, 40.f, "none: centred vertically");
+    r = drawRect("object-fit:none;object-position:right bottom");
+    CheckNear(r.x, 160.f, "none: right");
+    CheckNear(r.y, 80.f, "none: bottom");
+    r = drawRect("object-fit:none;object-position:10px 15px");
+    CheckNear(r.x, 10.f, "none: 10px from the left");
+    CheckNear(r.y, 15.f, "none: 15px from the top");
+    r = drawRect("object-fit:scale-down;object-position:left top");
+    CheckNear(r.width, 40.f, "scale-down: never enlarged");
+    CheckNear(r.x, 0.f, "scale-down: left");
+    r = drawRect("object-fit:cover;object-position:left");
+    CheckNear(r.width, 200.f, "cover: covers the box");
+}
+
 } // namespace
 
 int main() {
@@ -415,6 +472,7 @@ int main() {
     TestBackgroundAndAutoMargins();
     TestBackgroundPosition();
     TestBackgroundRepeat();
+    TestObjectFitPosition();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }
