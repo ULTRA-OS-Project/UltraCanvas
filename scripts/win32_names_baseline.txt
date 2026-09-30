@@ -1,0 +1,52 @@
+# Functions of ours named like a Win32 A/W macro (CreateFile, DrawText, ...),
+# recorded so CI can block *new* ones while these are worked off. Each line is
+# <path>::<kind>::<name>.
+#
+# These are debt, not exceptions: in a translation unit that includes
+# <windows.h> the name becomes NameW, and the Windows link fails as soon as the
+# declaring and the calling file disagree. Rename the function and remove the
+# line.
+#
+# Do not add to this file to silence a new finding. A site that is correct as
+# it stands says so where it is:
+#     hr = item->GetDisplayName(&name);   // win32-name-ok: <why>
+#
+# Regenerate with:
+#     python3 scripts/check_win32_names.py --update-baseline
+Apps/Texter/UltraCanvasTextEditor.cpp::win32-name-member::ReplaceText
+Tests/DWGReaderTest.cpp::win32-name-declaration::FindText
+Tests/MathFontTest.cpp::win32-name-member::GetGlyphOutline
+Tests/SequenceModelTest.cpp::win32-name-member::GetMessage
+Tests/SpellCheckerTest.cpp::win32-name-declaration::SetEnvironmentVariable
+Tests/VectorFormatsPluginTest.cpp::win32-name-declaration::FindText
+UltraCanvas/Plugins/Diagrams/UltraCanvasERDiagram.cpp::win32-name-qualified::GetRoleText
+UltraCanvas/Plugins/Diagrams/UltraCanvasSequenceDiagram.cpp::win32-name-member::GetMessage
+UltraCanvas/Plugins/Diagrams/UltraCanvasSequenceModel.cpp::win32-name-qualified::GetMessage
+UltraCanvas/Plugins/Documents/UltraCanvasPDFView.cpp::win32-name-member::ReplaceText
+UltraCanvas/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp::win32-name-declaration::ReplaceText
+UltraCanvas/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp::win32-name-qualified::ReplaceText
+UltraCanvas/Plugins/LaTeX/UltraCanvasMathFont.cpp::win32-name-qualified::GetGlyphOutline
+UltraCanvas/Plugins/LaTeX/UltraCanvasMathRender.cpp::win32-name-member::GetGlyphOutline
+UltraCanvas/Plugins/Vector/UltraCanvasEMFConverter.cpp::win32-name-declaration::CreateFont
+UltraCanvas/Plugins/Vector/UltraCanvasEMFReader.cpp::win32-name-declaration::TextOut
+UltraCanvas/Plugins/Vector/UltraCanvasWMFConverter.cpp::win32-name-declaration::CreateFont
+UltraCanvas/core/UltraCanvasApplication.cpp::win32-name-qualified::FindWindow
+UltraCanvas/core/UltraCanvasModalDialog.cpp::win32-name-qualified::GetCurrentDirectory
+UltraCanvas/core/UltraCanvasModalDialog.cpp::win32-name-qualified::GetMessage
+UltraCanvas/core/UltraCanvasModalDialog.cpp::win32-name-qualified::SetCurrentDirectory
+UltraCanvas/core/UltraCanvasTextArea.cpp::win32-name-qualified::ReplaceText
+UltraCanvas/core/UltraCanvasToast.cpp::win32-name-qualified::GetMessage
+UltraCanvas/core/UltraMessage/UltraMessageEndpoint.cpp::win32-name-declaration::SendMessage
+UltraCanvas/include/Plugins/Diagrams/UltraCanvasERDiagram.h::win32-name-declaration::GetRoleText
+UltraCanvas/include/Plugins/Diagrams/UltraCanvasSequenceModel.h::win32-name-declaration::GetMessage
+UltraCanvas/include/Plugins/Documents/UltraCanvasPDF.h::win32-name-declaration::ReplaceText
+UltraCanvas/include/Plugins/LaTeX/UltraCanvasMathFont.h::win32-name-declaration::GetGlyphOutline
+UltraCanvas/include/UltraCanvasApplication.h::win32-name-declaration::FindWindow
+UltraCanvas/include/UltraCanvasDatePicker.h::win32-name-declaration::GetDateFormat
+UltraCanvas/include/UltraCanvasModalDialog.h::win32-name-declaration::GetCurrentDirectory
+UltraCanvas/include/UltraCanvasModalDialog.h::win32-name-declaration::GetMessage
+UltraCanvas/include/UltraCanvasModalDialog.h::win32-name-declaration::SetCurrentDirectory
+UltraCanvas/include/UltraCanvasTextArea.h::win32-name-declaration::ReplaceText
+UltraCanvas/include/UltraCanvasTimePicker.h::win32-name-declaration::GetTimeFormat
+UltraCanvas/include/UltraNet/UltraNetPlugins.h::win32-name-declaration::CreateDirectory
+VirtualFS/include/VirtualFS/VirtualFSProvider.h::win32-name-declaration::CreateDirectory

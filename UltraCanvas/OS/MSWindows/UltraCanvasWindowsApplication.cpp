@@ -12,6 +12,7 @@
 #include "../../include/UltraCanvasWindow.h"
 #include "UltraCanvasWindowsApplication.h"
 #include "UltraCanvasWindowsDiagnostics.h"
+#include <imm.h>
 #include <iostream>
 #include <algorithm>
 #include <cstdio>
@@ -535,6 +536,33 @@ namespace UltraCanvas {
                 event.virtualKey = ConvertVKToUCKey(wParam);
                 event.character = 0;
                 fillModifiers();
+                pushEventScaled(event);
+                return;
+            }
+
+            // ===== INPUT METHOD COMPOSITION =====
+            // For an element that draws the composition itself: the text
+            // being composed as TextComposition events. The result still
+            // arrives as WM_CHAR (DefWindowProc turns it into WM_IME_CHAR).
+            case WM_IME_COMPOSITION:
+            case WM_IME_ENDCOMPOSITION: {
+                UltraCanvasUIElement* focused = tw ? tw->GetFocusedElement() : nullptr;
+                if (!focused || !focused->DrawsTextComposition()) return;
+                event.type = UCEventType::TextComposition;
+                if (msg == WM_IME_COMPOSITION && (lParam & GCS_COMPSTR)) {
+                    if (HIMC context = ImmGetContext(hwnd)) {
+                        const LONG bytes = ImmGetCompositionStringW(context, GCS_COMPSTR, nullptr, 0);
+                        std::wstring composing(bytes > 0 ? static_cast<size_t>(bytes) / sizeof(wchar_t) : 0, L'\0');
+                        if (bytes > 0) ImmGetCompositionStringW(context, GCS_COMPSTR, composing.data(), bytes);
+                        const LONG cursor = ImmGetCompositionStringW(context, GCS_CURSORPOS, nullptr, 0);
+                        ImmReleaseContext(hwnd, context);
+                        event.text = Utf16ToUtf8(composing);
+                        const size_t units = std::min(static_cast<size_t>(std::max<LONG>(0, cursor)), composing.size());
+                        event.compositionCursor = static_cast<int>(Utf16ToUtf8(composing.substr(0, units)).size());
+                    }
+                } else if (msg == WM_IME_COMPOSITION) {
+                    return;                       // a result only: WM_CHAR brings it
+                }
                 pushEventScaled(event);
                 return;
             }

@@ -200,6 +200,7 @@ namespace UltraCanvas {
 
         // ===== LINE ACCESS =====
         std::vector<LayoutLineRange> GetLineByteRanges() const override;
+        std::vector<LayoutLineExtent> GetLineExtents() const override;
     };
 
 } // namespace UltraCanvas

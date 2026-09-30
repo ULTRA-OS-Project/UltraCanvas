@@ -707,12 +707,7 @@ namespace UltraCanvas {
                 event.type = UCEventType::WindowBlur;
                 
                 // Unset XIC focus when window loses focus
-                if (targetWindow) {
-                    XIC xic = targetWindow->GetXIC();
-                    if (xic) {
-                        XUnsetICFocus(xic);
-                    }
-                }
+                if (targetWindow) targetWindow->UnfocusXICs();
                 break;
             }
 

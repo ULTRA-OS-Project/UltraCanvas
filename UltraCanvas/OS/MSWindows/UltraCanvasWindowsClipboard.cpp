@@ -7,6 +7,7 @@
 #include "UltraCanvasWindowsClipboard.h"
 #include "UltraCanvasWindowsApplication.h"
 #include <iostream>
+#include <cstdio>
 #include <cstring>
 #include "UltraCanvasDebug.h"
 
@@ -103,6 +104,88 @@ namespace UltraCanvas {
 
         CloseClipboard();
         return true;
+    }
+
+// ===== HTML =====
+    // CF_HTML: UTF-8 with a header giving byte offsets of the document and of
+    // the fragment inside it.
+    bool UltraCanvasWindowsClipboard::SetClipboardHtml(const std::string& html, const std::string& plainText) {
+        const UINT format = RegisterClipboardFormatW(L"HTML Format");
+        if (!format) return SetClipboardText(plainText);
+        const std::string prefix = "<html><body>\r\n<!--StartFragment-->";
+        const std::string suffix = "<!--EndFragment-->\r\n</body></html>";
+        // Fixed-width offsets, so the header's length is known before them.
+        const char* headerTemplate = "Version:0.9\r\nStartHTML:%010u\r\nEndHTML:%010u\r\n"
+                                     "StartFragment:%010u\r\nEndFragment:%010u\r\n";
+        char header[160];
+        const unsigned headerLength = static_cast<unsigned>(std::snprintf(header, sizeof(header), headerTemplate, 0u, 0u, 0u, 0u));
+        const unsigned startHtml = headerLength;
+        const unsigned startFragment = startHtml + static_cast<unsigned>(prefix.size());
+        const unsigned endFragment = startFragment + static_cast<unsigned>(html.size());
+        const unsigned endHtml = endFragment + static_cast<unsigned>(suffix.size());
+        std::snprintf(header, sizeof(header), headerTemplate, startHtml, endHtml, startFragment, endFragment);
+        const std::string payload = std::string(header) + prefix + html + suffix;
+
+        std::wstring wtext = UltraCanvasWindowsApplication::Utf8ToUtf16(plainText);
+        const size_t textBytes = (wtext.size() + 1) * sizeof(wchar_t);
+        HGLOBAL hText = GlobalAlloc(GMEM_MOVEABLE, textBytes);
+        HGLOBAL hHtml = GlobalAlloc(GMEM_MOVEABLE, payload.size() + 1);
+        if (!hText || !hHtml) {
+            if (hText) GlobalFree(hText);
+            if (hHtml) GlobalFree(hHtml);
+            return false;
+        }
+        std::memcpy(GlobalLock(hText), wtext.c_str(), textBytes);
+        GlobalUnlock(hText);
+        std::memcpy(GlobalLock(hHtml), payload.c_str(), payload.size() + 1);
+        GlobalUnlock(hHtml);
+        if (!OpenClipboard(nullptr)) {
+            GlobalFree(hText);
+            GlobalFree(hHtml);
+            return false;
+        }
+        EmptyClipboard();
+        const bool textSet = SetClipboardData(CF_UNICODETEXT, hText) != nullptr;
+        if (!textSet) GlobalFree(hText);
+        const bool htmlSet = SetClipboardData(format, hHtml) != nullptr;
+        if (!htmlSet) GlobalFree(hHtml);
+        CloseClipboard();
+        return textSet;
+    }
+
+    bool UltraCanvasWindowsClipboard::GetClipboardHtml(std::string& html) {
+        const UINT format = RegisterClipboardFormatW(L"HTML Format");
+        if (!format || !IsClipboardFormatAvailable(format)) return false;
+        if (!OpenClipboard(nullptr)) return false;
+        HANDLE hData = GetClipboardData(format);
+        std::string payload;
+        if (hData) {
+            if (const char* data = static_cast<const char*>(GlobalLock(hData))) {
+                payload.assign(data, strnlen(data, GlobalSize(hData)));
+                GlobalUnlock(hData);
+            }
+        }
+        CloseClipboard();
+        if (payload.empty()) return false;
+        // The fragment between its offsets; the whole document without them.
+        auto offset = [&](const char* key) -> long {
+            const size_t at = payload.find(key);
+            if (at == std::string::npos) return -1;
+            long value = 0;
+            for (size_t i = at + std::strlen(key); i < payload.size() && payload[i] >= '0' && payload[i] <= '9'; i++) {
+                value = value * 10 + (payload[i] - '0');
+            }
+            return value;
+        };
+        const long start = offset("StartFragment:"), end = offset("EndFragment:");
+        if (start >= 0 && end > start && static_cast<size_t>(end) <= payload.size()) {
+            html = payload.substr(static_cast<size_t>(start), static_cast<size_t>(end - start));
+        } else {
+            const long startHtml = offset("StartHTML:");
+            html = startHtml >= 0 && static_cast<size_t>(startHtml) < payload.size()
+                 ? payload.substr(static_cast<size_t>(startHtml)) : payload;
+        }
+        return !html.empty();
     }
 
 // ===== IMAGE OPERATIONS =====

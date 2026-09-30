@@ -1122,6 +1122,30 @@ engine; these classes hold the pixels being edited and hand them to it.
   `SetAntialias`, and text outlines `AppendTextPath` /
   `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
   the Cairo backend implements all of it. Tested by `RenderContextTest`.
+- **UltraCanvasAccessibility** (`UltraCanvasAccessibility.h`) — the
+  platform-neutral accessibility layer: `AccessibleRole`,
+  `IAccessibleText` (text, caret, selection, character bounds, attributes,
+  `GetTextAtOffset` by character/word/line/sentence/paragraph),
+  `AccessibilityEvent`, and `UltraCanvasAccessibility::AddListener` /
+  `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
+  character-offset helpers. Elements answer through
+  `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
+  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
+  No platform bridge (AT-SPI, UIA) yet. See
+  `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
+- **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
+  through the ordinary `IRenderContext` (units: points), as vectors with
+  selectable text: `CreateFile(utf8Path, w, h, error)` /
+  `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
+  `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
+  work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
+- **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent)`,
+  `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
+  dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+- **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
+  extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
+  one line.
 
 ### **2. UltraAI**
 
@@ -5358,6 +5382,80 @@ fallback route, not the private-data one.
 - [`UltraCanvasVectorRaster.md`](UltraCanvasVectorRaster.md) — the `UltraCanvasVectorElement` viewer
 - [`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) — the PDF viewer used for the fallback route
 - [`UltraCanvasEPSExamples.md`](UltraCanvasEPSExamples.md) — the PostScript interpreter, a separate engine for `.eps`
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasAccessibility.md
+==============================================================================
+
+# UltraCanvasAccessibility
+
+What assistive technology — screen readers, magnifiers, braille displays —
+needs to know about an element, in a form that does not depend on the
+platform: its **role**, its **name**, for text a **text interface** (content,
+caret, selection, character boxes, formatting, words, lines, sentences) and an
+**event stream** saying what changed. A platform bridge (AT-SPI on Linux, UI
+Automation on Windows, NSAccessibility on macOS) is the layer that hands this
+to the operating system; the bridges are not written yet, so today the layer
+serves tests, in-application readers (read aloud, a braille panel) and future
+bridges.
+
+Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
+
+## Elements
+
+```cpp
+AccessibleRole role = element->GetAccessibleRole();   // Unknown by default
+std::string name = element->GetAccessibleName();
+IAccessibleText* text = element->GetAccessibleTextInterface();   // null without text
+```
+
+An element describes itself by overriding these three virtuals of
+`UltraCanvasUIElement`. `UltraCanvasRichTextEdit` is the first to do so: role
+`Document`, name the document's title (else the element's identifier), and a
+text interface over the whole document.
+
+## Text
+
+Offsets count characters (Unicode code points), not bytes.
+
+```cpp
+std::string all = text->GetAccessibleText();
+int caret = text->GetCaretOffset();
+text->SetSelection(10, 20);
+int start = 0, end = 0;
+std::string word = text->GetTextAtOffset(caret, AccessibleTextBoundary::Word, start, end);
+AccessibleTextAttributes look = text->GetAttributesAt(caret, start, end);   // bold, heading level, link, ...
+Rect2Df box = text->GetCharacterBounds(caret);                              // window coordinates
+int under = text->GetOffsetAtPoint(Point2Df(120, 80));
+```
+
+Words, sentences and paragraphs come from the text
+(`UltraCanvasAccessibility::TextUnitAt`); an element can override
+`GetTextAtOffset` for units only its layout knows — the rich text element does
+so for lines. In the rich text element the text is the paragraphs one per line,
+a table's cells separated by tabs and its rows by line breaks; attributes include
+headings, list items, links, tracked insertions and deletions and comments.
+
+## Events
+
+```cpp
+int id = UltraCanvasAccessibility::AddListener([](const AccessibilityEvent& e) {
+    // e.type: FocusChanged, TextChanged, CaretMoved, SelectionChanged, NameChanged
+    // e.element, e.offset (caret for CaretMoved), e.length
+});
+UltraCanvasAccessibility::RemoveListener(id);
+```
+
+The window announces `FocusChanged` when an element gains the focus; the rich
+text element announces edits, caret moves and selection changes. Elements build
+events only while someone listens (`HasListeners()`), so the layer costs nothing
+otherwise. Listeners are called on the thread that made the change (the UI
+thread).
+
+## Helpers
+
+`CharacterCount`, `ByteOffsetOfCharacter` and `CharacterOffsetOfByte` convert
+between the characters of the accessibility API and UTF-8 byte offsets.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -44400,6 +44498,117 @@ Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
 
+### Named styles
+
+```cpp
+editor->ApplyParagraphStyle("Heading2");        // a heading, with its look
+editor->ApplyCharacterStyle("Emphasis");        // on the selection; "" removes it
+RichStyle callout;                              // add one, or change one
+callout.id = "Callout"; callout.name = "Call Out"; callout.basedOn = "Normal";
+callout.character.bold = true;
+callout.paragraph.leftIndentPt = 20.0f;
+editor->UpdateStyle(callout);
+editor->NewStyleFromCaret("My Title");          // from the paragraph at the caret
+editor->UpdateStyleFromCaret();                 // its style redefined to match it
+for (const RichStyle& s : editor->GetStyles()) { /* a style box */ }
+```
+
+`UCRichDocument::styles` holds the document's paragraph and character styles
+(`RichStyle`: id, display name, `basedOn`, `nextStyle`, and optional character
+and paragraph properties). A block names its paragraph style in `styleId`, a
+run its character style in `characterStyleId`. The formatting itself stays on
+the blocks and runs - every view, serializer and writer keeps working as before
+- and the style is what lets a change reach them: `UpdateStyle` changes every
+paragraph and run that has the style, or a style based on it, except in a
+property formatted directly (one whose value is not what the style used to
+give it). Styles and text change as one undo step. A heading style makes a
+heading (`headingLevel`); Enter after a paragraph gives the next one the
+style's `nextStyle` (body text after a heading). A document without styles gets
+`UCRichDocument::DefaultStyles()` - Normal, Title, Subtitle, Heading 1-6,
+Quote, Code; Strong, Emphasis, Source Text - the first time one is applied.
+DOCX (`styles.xml`, `w:pStyle`, `w:rStyle`) and ODT (`office:styles`, text and
+paragraph style names, Writer's "Standard" and "Heading_20_N" read as Normal
+and HeadingN) keep them both ways.
+
+### Contents, captions, bookmarks and cross-references
+
+```cpp
+editor->InsertTableOfContents();                 // headings 1-3, before the caret's paragraph
+std::string fig = editor->InsertCaption("Figure", "The test rig");   // under the picture at the caret
+editor->InsertCrossReference(fig);               // "Figure 1" - renumbers with the captions
+editor->InsertCrossReference(fig, /*pageNumber*/ true);
+editor->AddBookmark("method");                   // on the caret's paragraph
+editor->GoToBookmark("method");
+editor->UpdateTableOfContents();                 // after headings were added or renamed
+```
+
+A caption is a paragraph ("Figure 2: text", in the *Caption* style) whose
+number is a `RichTextRun::Field::Sequence` field: captions number themselves
+per label in document order, and a new one before the others moves them all
+on. A cross-reference (`Field::Reference`) shows its bookmark's caption label
+and number, or the bookmarked paragraph's text; `Field::PageReference` shows
+its page. A table of contents is a run of paragraphs with
+`RichDocBlock::tocLevel`, one per heading, each ending in a page reference to
+a bookmark on its heading (headings without one are given one): in page view
+the numbers are the pages the headings are on, and they follow every edit.
+`UpdateTableOfContents()` rebuilds the entries (new, renamed or removed
+headings); it is one undo step. Ctrl+click on an entry, a cross-reference or a
+link to `#name` goes there. Bookmarks (`RichDocBlock::bookmarks`) are
+paragraph-level; a pasted copy of a bookmarked paragraph does not take its
+bookmark. DOCX (`SEQ`, `REF`, `PAGEREF`, `w:bookmarkStart`, TOC-styled
+paragraphs, `w:hyperlink w:anchor`) and ODT (`text:sequence`,
+`text:bookmark-ref`, `text:bookmark`, `text:table-of-content`) read and write
+all of it; a LibreOffice table of contents' page numbers become page
+references to its headings on the way in.
+
+### Comments
+
+```cpp
+editor->SetCommentAuthor("Ada Lovelace");
+int c = editor->AddComment("Is this right?");   // on the selection, or the word at the caret
+editor->SetCommentResolved(c, true);
+editor->onCommentActivated = [&](int index) { /* open an editor, then SetCommentText */ };
+```
+
+Commented text is shaded (`style.commentHighlightColor`, not for resolved
+comments) and the comments are shown in a pane at the element's right
+(`style.commentPaneWidth`), each box level with its text or just below the
+box above; the text column narrows to make room, and the pane goes when the
+last comment does (or `SetShowComments(false)`). The comment the caret is in
+is outlined and joined to its text by a dotted line. Clicking a box selects
+its text; double-clicking calls `onCommentActivated`. In the model a comment
+is `UCRichDocument::comments` (`RichComment`: author, initials, date, text,
+resolved) and the runs it covers carry its index in `RichTextRun::commentIds`,
+so it moves and grows with its text; `RemoveComment` is one undo step, and a
+comment whose text is deleted disappears. Comments are not printed or
+exported to PDF. DOCX (`comments.xml`, ranges that may cross paragraphs) and
+ODT (`office:annotation`, with LibreOffice's resolved flag) read and write
+them; DOCX does not keep the resolved flag.
+
+### Tracked changes
+
+```cpp
+editor->SetCommentAuthor("Ada Lovelace");        // signs comments and changes
+editor->SetTrackChanges(true);
+// ... typing is marked inserted, deleting marks text deleted ...
+editor->GoToNextChange();                        // selects it
+editor->AcceptChangeAtCaret();                   // or RejectChangeAtCaret, AcceptAllChanges, RejectAllChanges
+```
+
+With tracking on, typed and pasted text is a tracked insertion (underlined,
+`style.insertionColor`) and deleted text stays, struck through
+(`style.deletionColor`), with the caret moving past it (before it for
+Backspace). Deleting a tracked insertion removes it outright. Accepting keeps
+insertions and drops deletions; rejecting does the opposite; each is one undo
+step. In the model a change is `RichTextRun::change` (`Inserted`/`Deleted`)
+with `revision` indexing `UCRichDocument::revisions` (author and date).
+Paragraph breaks, tables and pictures are edited untracked, and so is text
+typed with tracking off, even next to a change. Markdown, HTML and plain-text
+export give the text as it would be with the changes accepted. DOCX (`w:ins`,
+`w:del` with `w:delText`, moves as a deletion plus an insertion - they used to
+be accepted silently on load) and ODT (`text:tracked-changes` with
+change-start/end and deletion points) read and write them.
+
 ### Tables
 
 The caret goes inside table cells: click into one, type, select, format, and
@@ -44482,6 +44691,96 @@ not its column**. `BuildTableGrid()` (in `UltraCanvasRichDocument.h`) resolves
 which cell occupies each slot, and is what both the layout and these operations
 use; positions keep addressing cells as `{row, index-within-row}`.
 
+#### Selecting a block of cells
+
+Drag (or Shift+arrow) from one cell into another and the selection becomes a
+block of whole cells - the smallest grid rectangle holding both, grown until no
+merged cell sticks out of it - drawn filled, without a caret:
+
+```cpp
+if (editor->HasCellSelection()) editor->MergeSelectedCells();   // "merge these six"
+editor->GetEditor().SelectCellRange(tableBlock, /*top*/ 0, /*left*/ 0, /*bottom*/ 1, /*right*/ 2);
+```
+
+On a cell selection Delete and Backspace empty the cells (the table keeps its
+shape), typing replaces them from the top-left cell, character formatting and
+`SetAlignment` apply to every cell, and Copy copies the cells as a table (plain
+text: a tab between cells, a line per row). Pasting a copied table into a cell
+fills the grid from that cell on, as a spreadsheet does; pasting paragraphs
+into a cell keeps them in the cell, a line each. Extending a selection out of
+a table stops at its edge; extending one into a table from outside takes the
+whole table.
+
+### Pictures: selecting, resizing, alt text
+
+A click on a picture - a paragraph of its own or one in the line - selects it:
+a frame with eight handles is drawn round it. Dragging a corner handle resizes
+it in proportion, a side handle stretches it; release commits the size as one
+undo step (`imageWidthPt` / `imageHeightPt`, never wider than the column).
+Delete removes a selected picture. A right-click selects the picture under the
+pointer first, so a host's context menu can offer picture items.
+
+```cpp
+if (editor->HasSelectedImage()) {
+    editor->SetSelectedImageAltText("Quarterly revenue by region");
+    editor->SetSelectedImageSize(/*widthPt*/ 240, /*heightPt*/ 160);
+}
+editor->SelectImage(RichDocPosition(imageBlock, 0));
+// Editing core: pictures are addressed by where they sit.
+edit.GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
+```
+
+### Floating pictures
+
+A picture run with `imageWrap` other than `Inline` floats: its placeholder stays
+where it is anchored in the text (so it moves with its paragraph and a
+selection or Backspace covers it), but it takes no room in the line. It is
+placed at its paragraph's top plus `imageOffsetYPt`, at the column's left or
+right edge, centred, or `imageOffsetXPt` from the left (`imageFloatAlign`
+`Left` / `Right` / `Center` / `Default`), and text treats it as `imageWrap`
+says:
+
+| `imageWrap` | Text |
+|---|---|
+| `Square` | flows beside it; paragraphs level with it are narrowed |
+| `TopAndBottom` (or a centred `Square`) | stops above it and resumes below |
+| `BehindText` / `InFrontOfText` | ignores it; it is drawn under / over the text |
+
+DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
+offset from the paragraph) and ODT frames anchored to a paragraph or character
+(`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
+write back out; HTML output floats them with CSS. A floating picture is
+selected, resized and described like any other. In a table cell or a header
+it stays in the line.
+
+The wrap works a paragraph at a time: a paragraph that starts beside a picture
+is narrowed as a whole, so a long one beside a short picture stays narrow below
+it too.
+
+### Check lists
+
+```cpp
+editor->ToggleCheckList();        // the selected paragraphs become to-do items
+editor->ToggleCheckedAtCaret();   // tick / untick (a click on the box does the same)
+```
+
+A check list item is an unordered `ListItem` with `RichDocBlock::checkbox`
+set, ticked when `checked`. The element draws a box where the bullet would
+be; clicking it toggles the tick as one undo step. Enter continues the list
+with an unticked box. Markdown spells it `- [ ]` / `- [x]`; ODT and DOCX have
+no check list, so they carry a ☐ or ☒ in front of the text, which
+`UCRichDocument::ReadCheckboxPrefixes()` (run by every reader) turns back into
+a check list item - Word's own check box content controls read the same way.
+
+### Formulas
+
+A run with `RichTextRun::math` holds LaTeX source and is drawn typeset
+(through `UltraCanvasInlineMath`, on the line's baseline, never broken over
+two lines). Put the caret inside it and the source appears in its place for
+editing; move the caret away and it is typeset again. A `MathBlock` is typeset
+in display style and centred until the caret enters it. Without the LaTeX
+module, both show their source.
+
 ### Structure
 
 ```cpp
@@ -44526,6 +44825,99 @@ self-contained and saves to `.odt`/`.docx` with the picture inside it.
 | Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+B / I / U | Bold, italic, underline |
 | Ctrl+click on a link | `onLinkClicked` (a plain click just places the caret, so links stay editable) |
+
+## Autoformat as you type
+
+On by default, as in a word processor:
+
+| Typed | Becomes |
+|---|---|
+| `"` `'` | “ ” ‘ ’ (opening after a space or bracket, closing - the apostrophe - after a letter) |
+| `a--b`, `a -- b` | `a—b` (em dash), `a – b` (en dash) |
+| `...` | … |
+| `(c)` `(r)` `(tm)` `->` `<-` `=>` | © ® ™ → ← ⇒ |
+| `1. ` `3) ` `a) ` opening a paragraph | a numbered list (starting at that number / letter) |
+| `- ` `* ` `+ ` | a bullet list |
+| `[ ] ` `[x] ` | a check list item |
+| `# ` … `###### ` | a heading of that level |
+| `> ` | a quote |
+| `---` `***` `___` then Enter | a horizontal rule |
+
+Each correction is its own undo step, so Ctrl+Z right after it takes back only
+the correction and leaves what was typed. Code (inline or a code block) and
+formulas are never corrected, and pasted text is never corrected.
+
+```cpp
+editor->SetAutoFormatEnabled(false);            // everything off
+RichAutoFormatOptions options = editor->GetAutoFormatOptions();
+options.smartQuotes = false;                    // or just one of them
+editor->SetAutoFormatOptions(options);
+```
+
+The editing core has the same switches (off by default there, because a
+programmatic `InsertText` must insert exactly what it is given); typing goes
+through `UCRichDocumentEditor::TypeText` / `TypeEnter`.
+
+## Input methods
+
+An input method's composition (Japanese, Chinese, Korean, dead-key
+sequences) is shown in the text at the caret, underlined, as it is composed,
+and the caret moves inside it; the document only changes when the input
+method commits the text, which arrives as typing (one undo step, autoformat
+and all). Composing over a selection replaces it. The framework delivers the
+composition as `UCEventType::TextComposition` (`event.text`,
+`event.compositionCursor`) to an element whose `DrawsTextComposition()` is
+true: on X11 through an on-the-spot input context used while such an element
+has focus (other widgets keep the input method's own window), on Windows
+through the IMM composition string. `GetCompositionText()` reads it.
+
+## Right-to-left text
+
+Text is shaped and ordered by the Unicode bidirectional rules, so Arabic,
+Hebrew and mixed lines display correctly; a paragraph whose first letter is
+right-to-left starts at the right. `SetRightToLeft(true)` marks the selected
+paragraphs right-to-left (`RichDocBlock::rightToLeft`), so they start at the
+right whatever their first letter; left and right alignment mean what they say
+on the page; a right-to-left list item has its number or bullet on the right. In a paragraph with right-to-left letters Left and Right move the
+caret the way the arrow points; Home/End and word steps stay logical. DOCX
+`w:bidi`, ODT `style:writing-mode` and HTML `dir="rtl"` carry the direction.
+
+## Fonts for other scripts
+
+The element bundles no fonts: a run is drawn in its `fontFamily` (or the
+system UI font), and a character that font lacks is taken from whichever
+installed font has it (fontconfig on Linux and Windows, CoreText on macOS).
+Windows and macOS always include Chinese, Arabic and Myanmar fonts; a Linux
+system may not (minimal installs often lack CJK and Myanmar), and then the
+text falls back to a poor bitmap font or shows boxes. An application that must
+show a script everywhere ships the font and calls
+`UltraCanvasApplication::GetInstance()->RegisterFontFile(path)` before the
+text is laid out, and names that family on the runs. The demo's
+*WYSIWYG — Chinese, Arabic & Myanmar* page does this with Noto Sans Myanmar
+(`media/textsamples/fonts`, SIL OFL 1.1). Keep such fonts out of
+`media/fonts`, which every application loads at start-up.
+
+## Accessibility
+
+The element describes itself to assistive technology through
+[`UltraCanvasAccessibility`](UltraCanvasAccessibility.md): role `Document`,
+the document's title as its name, and `GetAccessibleTextInterface()` - the
+paragraphs one per line (a table's cells tab-separated), caret and selection,
+character boxes, words, lines and sentences, and per-run formatting including
+headings, lists, links, tracked changes and comments. Edits, caret moves,
+selection changes and focus are announced to listeners. There is no platform
+bridge yet (AT-SPI, UI Automation), so a system screen reader does not see it.
+
+## Drag and drop
+
+Press inside the selection and drag: the text moves to where the drop caret
+shows, and stays selected; hold Ctrl at the drop to copy it instead. One undo
+step takes the move back. A press inside the selection that does not move is
+an ordinary click. Image files dropped from another application are inserted
+where they are dropped, as pictures in the line; `onFilesDropped` lets a host
+take other files (or all of them). `enableDragAndDrop = false` turns dragging
+the selection off. The editing core's `MoveRange(range, target, copy)` does the
+move.
 
 ## Find and replace
 
@@ -44595,17 +44987,26 @@ if (editor->CanUndo()) editor->Undo();
 editor->GetEditor().BreakUndoCoalescing();   // force a new step
 ```
 
+Undo goes back 200 steps by default; `GetEditor().SetMaxUndoSteps(n)` changes
+that (0 = unlimited).
+
 ## Clipboard
 
-Copy puts the selection's plain text on the system clipboard and keeps the
-styled blocks in a process-local buffer. A paste whose clipboard text still
-matches what was copied restores the formatting too, so copy/paste **inside the
-application preserves formatting**; a paste from another application arrives as
-plain text.
+Copy puts the selection on the system clipboard twice: as HTML (formatting,
+lists, tables, pictures inlined as `data:` URIs) and as plain text, so a word
+processor, browser or mail client pastes it formatted and a terminal pastes
+the text. The element also keeps the styled blocks in a process-local buffer:
+a paste whose clipboard text still matches what was copied uses them, so
+copy/paste **inside the application loses nothing** (between two documents the
+pictures come along; notes, comments and bookmarks stay behind).
 
-Full cross-application rich paste needs per-MIME clipboard transport
-(`text/html`), which `UltraCanvasClipboardBackend` does not carry yet — see
-[`WYSIWYGElementInvestigation.md`](WYSIWYGElementInvestigation.md) §4.
+A paste from another application uses its HTML when it offers some
+(`UCRichDocument::FromHTML`: paragraphs, headings, lists, quotes, code,
+tables, rules, links, inlined pictures and character formatting from tags and
+CSS, Word's list-number spans and conditional comments dropped), and its plain
+text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
+(`UltraCanvasClipboard.h`): `text/html` on X11 (UTF-16 from Firefox is
+converted), `HTML Format` on Windows; other platforms fall back to plain text.
 
 ## Style
 
@@ -44666,6 +45067,10 @@ out:
   guide when editable. Tables from Markdown or built in the editor keep the
   `style.tableBorderColor` grid. Rows and columns inserted into a framed table
   copy their neighbour's frame and fill.
+- **Border line styles:** each `RichBorder` has a `style` - `Solid`,
+  `Dotted`, `Dashed` or `Double` - read from and written to ODT and DOCX
+  (read from DOC). A double border is drawn as two thin lines together as
+  wide as the border.
 
 Lengths are points and are drawn at 96/72 pixels per point - the scale run
 font sizes get from Pango at the 96 DPI every context is pinned to - so
@@ -44694,10 +45099,19 @@ Page view draws the document's pages (`UCRichDocument::page`: size,
 margins, header and footer distances - A4 with 2 cm margins when the
 document states none) on a desk (`style.deskColor`), centred, `style.pageGap`
 apart. The text column is the page's, between its side margins, so a table
-sized for the page's column fills it. Blocks go onto pages in order: one
-that does not fit in what is left of a page moves whole to the next, and a
-page break starts one. The space between two blocks is dropped at the top
-of a page.
+sized for the page's column fills it. Blocks go onto pages in order, and a
+page break starts a new one. A paragraph that does not fit in what is left of
+a page continues on the next, broken between lines with widow and orphan
+control (at least two lines stay together at the foot of one page and the
+top of the next; a paragraph of three lines or fewer moves whole). A table
+continues between rows - never through a cell spanning rows - and its
+leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
+ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at
+the top of each page it continues on. A heading is kept with the start of the
+paragraph after it. A block taller than a whole page is still broken, between
+any two lines. The space between two blocks is dropped at the top of a page.
+Caret, clicks, selection, spell marks and pictures all follow a block's pieces
+across the page gap.
 
 Each page carries its header and footer (`UCRichDocument::FurnitureForPage`:
 `firstPageFurniture` on page one when `firstPageDiffers`, `pageFurniture`
@@ -44706,6 +45120,57 @@ otherwise), with page number and page count fields
 top margin, or below the header when the header is taller than the margin
 leaves room for; the footer likewise.
 
+**Sections and columns.** `InsertSectionBreak(newPage)` starts a new section
+at the caret (`RichDocBlock::sectionStart`, its setup in
+`RichDocBlock::section`; the first section's is `UCRichDocument::firstSection`)
+and `SetSectionColumns(n, gapPt)` sets the caret's section in columns. In page
+view a section's text fills its first column to the foot of the page, then the
+next column from the section's top, then the next page; a continuous section
+starts below the longest column of the one before, a new-page one on a new
+page. A paragraph moves whole to the next column (columns are not balanced, and
+a paragraph taller than a column is not broken across columns); outside page
+view the text is one column. DOCX section breaks (`w:sectPr` in a paragraph,
+`w:cols`, `w:type`) and ODT sections (`text:section` with `style:columns`) are
+read and written.
+
+**Editing a header or footer.** Double-click a page's header or footer - or
+its top or bottom margin, to make one - or call `EditHeader(page)` /
+`EditFooter(page)`. The body is then shown pale behind it, a dashed rule marks
+the header's edge, and everything (typing, formatting, pictures, tables, page
+fields, undo) acts on the header or footer; a header growing a line pushes the
+body down as it is typed. Escape, a click in the body or
+`FinishHeaderFooterEditing()` goes back. A document whose first page differs
+edits the first page's own header on page 0. The changes go into
+`UCRichDocument::pageFurniture` / `firstPageFurniture` as they are made, so
+`GetDocument()` (which is the document, not the header, during editing) can be
+saved at any moment; undo within the header works while it is edited, and the
+edit as a whole is not an undo step of the body. `onHeaderFooterEditingChanged`
+tells a host when to retarget its toolbar. Outside page view, the one header
+and footer above and below the body are edited the same way.
+
+**Footnotes and endnotes.** `InsertFootnote()` / `InsertEndnote()` put a
+reference at the caret and open the new note for typing (it is edited the way
+a header is: body pale behind it, Escape or a click in the body goes back);
+double-clicking a note, or its reference, opens it again, and `EditNote(i)`
+does the same from code. The marks number themselves in document order -
+footnotes 1, 2, 3, endnotes i, ii, iii - and renumber when a reference is
+added, moved or deleted. In page view a footnote sits at the foot of the page
+its reference is on, under a short rule, and the page's text makes room for
+it (the reference's line never ends up below its own note); endnotes follow
+the body, onto further pages as they need. Outside page view both follow the
+body. PDF export prints them. In the model a note is `UCRichDocument::notes`
+(`RichNote`: kind and blocks) and its reference a run with `noteIndex`; DOCX
+(`footnotes.xml` / `endnotes.xml`), ODT (`text:note`) and Markdown (`[^1]`
+references with `[^1]: ...` definitions) read and write them, and HTML and
+plain text put them after the body.
+
+Page fields work in the body too: `InsertPageNumberField()` and
+`InsertPageCountField()` put one at the caret, and in page view each shows
+the page its paragraph landed on (the value is kept in the run's text, so a
+save or plain-text copy carries it; DOCX and ODT save it as a real field).
+Updating them is not an edit - no undo step, and the document stays
+unmodified.
+
 An editable page view marks the corners of each page's text area
 (`style.pageMarginGuideColor`) and shows page breaks as dashed rules; a
 read-only one shows neither.
@@ -44713,34 +45178,48 @@ read-only one shows neither.
 Outside page view the text fills the element, and a document's first-page
 header and footer are drawn above and below the body.
 
+## PDF and printing
+
+```cpp
+std::string error;
+editor->ExportToPdf("/home/me/report.pdf", error);    // or ExportToPdf(bytes, error)
+```
+
+The document goes out as page view lays it out - whether or not the element is
+in page view - with headers, footers, page numbers, floating pictures and
+formulas, as vectors with real (selectable, searchable) text, and without
+anything that belongs to editing: no selection, caret, margin corners, dashed
+page breaks or borderless-cell guides. The element needs no window for it.
+`UltraCanvasPdfSurface` (the PDF writer behind it) draws any element into a
+PDF, and `PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window)`
+prints one - which is what UltraTexter's Print does for a word-processing tab,
+and File > Export as PDF writes.
+
+## Zoom and scrolling sideways
+
+```cpp
+editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
+editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
+```
+
+Everything is drawn scaled: text, pictures, pages. Outside page view the text
+rewraps to the zoomed width; in page view the page is simply larger, and when
+it (with the desk either side) is wider than the element a horizontal
+scrollbar appears - drag it, Shift+wheel, or let the caret take the view
+along. `GetHorizontalScrollOffset` / `SetHorizontalScrollOffset` read and set
+it. UltraTexter's zoom box sets a word-processing tab's zoom.
+
 ## What is not implemented yet
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **A selection cannot span several cells.** Rows, columns, merging and
-  splitting are all there (see *Editing a table's structure*), but they act on
-  the cell the caret is in: there is no drag-select across a block of cells, so
-  "merge these six" has to be done as a merge right and a merge down. The
-  selection model holds a range inside one container, and widening it is a
-  piece of work in its own right — rendering, hit testing and copying all
-  change with it.
-- **Border line styles draw solid.** A double, dotted or dashed cell border
-  from a document is drawn as a solid line of its width.
-- **Page view moves whole blocks.** A paragraph or table is not split across
-  pages (no widow/orphan control, no repeated table header rows), and a block
-  taller than a page runs past its bottom margin.
-- **Headers and footers are shown, not edited.** The caret never enters
-  them; page number fields in the body keep the number they were saved with.
-- **No zoom and no horizontal scrolling.** A page wider than the element is
-  cut at the right.
-- **Images are not resized interactively** (insert and delete work).
-- **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
-  typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
-  TextArea's Markdown mode and is the intended path.
-- **No pre-edit (IME composition) display.** Committed text arrives correctly;
-  an inline composition string needs an event the framework does not have yet
-  (the same limit applies to every text widget today).
-- **Cross-application rich paste** — see Clipboard above.
+- **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
+  paragraph's left indent is still on the left.
+- **No screen-reader bridge.** The accessibility model is there (see
+  Accessibility above); the AT-SPI / UI Automation bridges that hand it to the
+  operating system are not.
+- **The input method's candidate window** is placed by the input method, not
+  next to the caret.
 
 ## Related
 

@@ -110,6 +110,14 @@ namespace UltraCanvas {
         if (prev) prev->RequestRedraw();
         if (_focusedElement) _focusedElement->RequestRedraw();
 
+        // Assistive technology follows the focus.
+        if (_focusedElement && UltraCanvasAccessibility::HasListeners()) {
+            AccessibilityEvent focusEvent;
+            focusEvent.type = AccessibilityEventType::FocusChanged;
+            focusEvent.element = _focusedElement;
+            UltraCanvasAccessibility::Notify(focusEvent);
+        }
+
         debugOutput << "Focus changed to: " << (element ? element->GetIdentifier() : "none") << std::endl;
     }
 

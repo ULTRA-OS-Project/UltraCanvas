@@ -275,7 +275,20 @@ namespace UltraCanvas {
         }
 
         surfaceSize = sz;
+        return InitializeForSurface(oldCairoSurface);
+    }
 
+    bool RenderContextCairo::AttachSurface(cairo_surface_t* target, const Size2Di& sz) {
+        if (!target || cairo_surface_status(target) != CAIRO_STATUS_SUCCESS) return false;
+        auto oldCairoSurface = surface;
+        surface = target;
+        surfaceSize = sz;
+        return InitializeForSurface(oldCairoSurface);
+    }
+
+    // The cairo and Pango contexts for `surface`, replacing any earlier ones
+    // (and releasing `oldCairoSurface`).
+    bool RenderContextCairo::InitializeForSurface(cairo_surface_t* oldCairoSurface) {
         if (pangoContext) {
             g_object_unref(pangoContext);
             pangoContext = nullptr;
@@ -349,7 +362,7 @@ namespace UltraCanvas {
             const cairo_font_options_t* pangoFo = pango_cairo_context_get_font_options(pangoContext);
 
             debugOutput << "UC text-render diag (first surface):"
-                        << " surface=" << sz.width << "x" << sz.height
+                        << " surface=" << surfaceSize.width << "x" << surfaceSize.height
                         << " pinned_res=" << g_PangoResolution
                         << " pango_ctx_res=" << ctxRes
                         << " fontmap_res=" << fmRes

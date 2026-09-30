@@ -1,3 +1,69 @@
+#### 2026-09-30 *1.55*
+- **Printing a word-processing tab (.docx, .odt, .doc) printed a blank page.**
+  File > Print read the tab's text area, which a word-processing tab keeps
+  detached and empty. It now prints the document as it looks - its pages as a
+  PDF, with fonts, pictures, tables, headers and page numbers - and
+  **File > Export as PDF...** saves that PDF.
+- **The Checklist button works in a word-processing tab.** It used to be
+  greyed out there, because the document model had no check list; it now
+  turns the paragraphs into check list items, whose boxes tick on a click.
+  See `Docs/UltraCanvas/changelog.d/rich-text-edit-gaps.md`.
+- **Word-processing tabs: pictures, tables and typing.** A picture can be
+  clicked and resized by its handles, and its right-click menu has *Picture
+  Alt Text...* and *Picture Original Size*. Dragging across table cells
+  selects them, and *Table > Merge Selected Cells* merges them. Selected text
+  can be dragged to move it (Ctrl to copy), and picture files dropped on the
+  document are inserted there. Typing gets curly quotes, dashes and lists
+  from `1. ` / `- ` as in a word processor.
+- **Word-processing documents open on their pages** - headers, footers,
+  page numbers, paragraphs and tables continuing over page breaks with their
+  header rows repeated. *View > Page Layout (documents)* switches back to one
+  column (remembered). Double-click a header or footer (or the page's top or
+  bottom margin) to edit it; Escape returns to the body.
+- **Styles in word-processing tabs.** The right-click menu has *Paragraph
+  Style* and *Character Style* submenus with the document's styles, *New Style
+  from Paragraph...* and *Update Style to Match Paragraph*; changing a style
+  changes every paragraph that has it.
+- **Footnotes and endnotes in word-processing tabs.** The right-click menu has
+  *Insert Footnote* and *Insert Endnote*; the note opens for typing, and a
+  double-click on a note or its number opens it again. Footnotes sit at the
+  foot of their page, and notes in .docx and .odt files now open as notes
+  (ODT ones used to appear in brackets in the text) and save back as notes.
+- **Contents, captions and cross-references in word-processing tabs.** The
+  right-click menu's *References* submenu inserts and updates a table of
+  contents (its page numbers follow the pages), inserts a numbered Figure or
+  Table caption, adds a bookmark, and inserts a cross-reference to a caption or
+  bookmark - its text or its page. Ctrl+click on a contents entry goes to the
+  heading.
+- **Comments in word-processing tabs.** *New Comment...* in the right-click
+  menu comments on the selection; comments show in a pane beside the text,
+  signed with your login name, and can be edited (double-click), resolved or
+  deleted. Comments in .docx and .odt files now show and are saved back.
+- **Track changes in word-processing tabs.** The right-click menu's *Track
+  Changes* submenu turns tracking on, steps through the changes and accepts or
+  rejects them one at a time or all at once. Insertions show underlined,
+  deletions struck through, as in Word and Writer, and changes tracked in a
+  .docx or .odt file now show instead of being quietly accepted.
+- **Columns in word-processing tabs.** *Columns and Sections* in the right-click
+  menu sets the text in one, two or three columns and inserts section breaks;
+  newsletters and papers set in columns in .docx and .odt files now show their
+  columns in page layout.
+- **Formatted copy and paste with other programs.** Text copied from a
+  word-processing tab pastes into a word processor, browser or mail with its
+  formatting, tables and pictures, and text copied from a web page, Word or
+  Writer pastes into a word-processing tab formatted instead of as plain text.
+- **Input methods and right-to-left text in word-processing tabs.** Text being
+  composed with an input method (Japanese, Chinese, Korean) shows in the
+  document, underlined, until it is committed. Arabic and Hebrew paragraphs
+  start at the right, the arrow keys move the way they point through them, and
+  *Paragraph Right-to-Left* in the right-click menu sets a paragraph's
+  direction; .docx and .odt files keep it.
+- Ctrl+click on a link to a place inside the document (a "#bookmark" link)
+  now goes there instead of trying to open it in a browser.
+- **The zoom box zooms a word-processing tab** (and a page wider than the
+  window scrolls sideways). It used to change the font size of plain-text tabs
+  only.
+
 #### 2026-09-29 *1.54*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called
   `RequestExit()` (which logs and runs a callback) and then `std::exit`,

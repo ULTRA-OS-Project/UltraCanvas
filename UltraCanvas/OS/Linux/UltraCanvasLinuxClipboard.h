@@ -85,6 +85,8 @@ namespace UltraCanvas {
         // ===== CLIPBOARD OPERATIONS =====
         bool GetClipboardText(std::string& text) override;
         bool SetClipboardText(const std::string& text) override;
+        bool SetClipboardHtml(const std::string& html, const std::string& plainText) override;
+        bool GetClipboardHtml(std::string& html) override;
         bool GetClipboardImage(std::vector<uint8_t>& imageData, std::string& format) override;
         bool SetClipboardImage(const std::vector<uint8_t>& imageData, const std::string& format) override;
         bool GetClipboardFiles(std::vector<std::string>& filePaths) override;
