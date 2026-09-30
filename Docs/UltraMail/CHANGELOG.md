@@ -1,4 +1,18 @@
 #### 2026-09-30 *0.10.10*
+- **A Settings window, like UltraFiler's.** The gear at the right end of the
+  toolbar (UltraFiler's gear button) opens it: a page tree on the left, and
+  pages with their notes and a *Restore default* button.
+  - *Privacy > Images*: remote pictures load **always**, **only from trusted
+    websites, trusted senders and contacts** (the default), or **never by
+    themselves**. Trusted websites are new: mail from such a domain (or a
+    subdomain) shows its pictures, and a picture hosted there loads in any
+    message. The "Always from <sender>" list can be edited here. Junk and
+    suspicious mail still never load pictures by themselves.
+  - *Reading > Messages*: HTML mail formatted or as plain text, and the message
+    text size (11-16 px). *Reading > Layout*: the reading pane.
+    *Privacy > Sender icons*: downloading the known senders' icons.
+  - The reading-pane and sender-icon switches moved here from each account's
+    *Account Settings*, since they were never per account.
 - **HTML mail is laid out for the width of the preview pane.** A newsletter's
   `@media (min-width: …)` rules (side-by-side columns from 480px up) are answered for
   the pane's width when the message is opened; resizing the pane does not re-lay the

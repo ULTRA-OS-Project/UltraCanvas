@@ -123,9 +123,31 @@ Apps/UltraMail/
                                   settings lookup): text + Cancel; closed by the app
     UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
                                   port, security, username; validates in place
+    UltraMailSettingsDialog.{h,cpp} the Settings window (toolbar gear, as in
+                                  UltraFiler): Reading > Layout / Messages,
+                                  Privacy > Images / Sender icons
+    UltraMailPreferences.{h,cpp}  app-wide preferences.ini behind it
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```
+
+**Settings:** the gear at the right end of the toolbar opens the Settings
+window, built like UltraFiler's (page tree on the left, notes at the foot of
+each page, *Restore default* in the bottom bar). Changes apply and are saved
+(`preferences.ini` in the data folder) at once:
+
+- *Reading > Layout* — a message opens beside the list or in its place.
+- *Reading > Messages* — HTML mail formatted or as plain text (nothing
+  fetched); the message text size (11 / 12 / 14 / 16 px).
+- *Privacy > Images* — pictures on the web load **always**, **only from trusted
+  websites, trusted senders and contacts** (the default), or **never by
+  themselves**. Trusted websites are domains (`example.com` covers its
+  subdomains): mail from them shows its pictures, and a picture hosted there
+  loads in any mail. Trusted senders are the "Always from <sender>" list. Junk
+  and suspicious mail never load pictures by themselves.
+- *Privacy > Sender icons* — whether the known senders' icons are downloaded.
+
+An account's servers and sign-in stay in its own *Account Settings*.
 
 **Attachments:** a message's MIME parts are decoded by `MimeCodec` (over
 `UltraNet_MimeParse`); the attachment strip under the message body shows one

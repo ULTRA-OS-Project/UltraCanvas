@@ -105,6 +105,8 @@ private:
     // name, the IMAP/SMTP servers and the password — or re-run the browser
     // sign-in for an OAuth account — checking the sign-in before saving.
     void HandleAccountSettings(const std::string& accountId);
+    // The Settings window (the toolbar's gear): app-wide options.
+    void OpenSettings();
     // The settings page's login check: resolves the credentials through
     // `credentials` (on the worker) and lists the incoming server once with
     // the IMAP plug-in; the outcome is delivered on the UI thread. A missing

@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.9 - a Settings window (gear at the right end of the toolbar, as in
+//                  UltraFiler): layout, HTML / plain text, text size, remote-image
+//                  policy with trusted websites, sender icons
 // Version: 0.9.8 - replies and forwards of HTML mail keep the formatting
 // Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
 //                  style, no master-password prompt); old vaults migrate once
@@ -7,6 +10,7 @@
 #include "UltraMailApp.h"
 
 #include "UltraMailAlerts.h"
+#include "UltraMailSettingsDialog.h"
 #include "UltraMailTheme.h"
 
 #include "UltraMailAttachmentCache.h"
@@ -314,6 +318,25 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     });
     makeAction("umAddAccount", "Add account", 0, "", false,
                [this]() { HandleAddAccount(); });
+    // The gear at the far right opens the settings window - the same tool
+    // button as UltraFiler's: icon only, white, a thin border.
+    {
+        auto gear = std::make_shared<UltraCanvasButton>("umAppSettings", 0, 0, 30,
+                                                        Theme::kControlHeight, "");
+        gear->SetCornerRadius(4.0f);
+        gear->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
+        gear->SetBorder(1.0f, Color(0, 0, 0, 60));
+        gear->SetIcon(IconPath("settings.svg"));
+        gear->SetIconSize(15, 15);
+        gear->SetIconPosition(ButtonIconPosition::Left);
+        gear->SetIconSpacing(0);
+        gear->SetUseIconAsMask(true);
+        gear->SetIconMaskColor(Color(55, 55, 60, 255));
+        gear->SetTooltip("Settings");
+        gear->onClick = [this]() { OpenSettings(); };
+        gear->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        toolbar->AddChild(gear);
+    }
     // "Delete account" moved to the account settings dialog's bottom row
     // (ServerSettingsDialog, red button) — see HandleAccountSettings.
     accountView_->AddChild(toolbar);
@@ -375,11 +398,33 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         for (char& c : a) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return a;
     };
+    // Settings > Privacy > Images: whether a message's pictures on the web load
+    // by themselves. Junk and suspicious mail never ask here (the preview
+    // decides that first).
     mailView_.remoteImagesAllowed = [this, lowerAddr](const std::string& addr) {
-        return prefs_.remoteImageSenders.count(lowerAddr(addr)) > 0;
+        switch (prefs_.remoteImages) {
+            case RemoteImagePolicy::LoadAlways: return true;
+            case RemoteImagePolicy::LoadNever:  return false;
+            case RemoteImagePolicy::LoadTrusted: break;
+        }
+        const std::string a = lowerAddr(addr);
+        if (prefs_.remoteImageSenders.count(a)) return true;
+        if (const auto at = a.rfind('@'); at != std::string::npos &&
+            prefs_.IsTrustedDomain(a.substr(at + 1)))
+            return true;
+        Contact contact;
+        bool found = false;
+        return contacts_.FindByEmail(a, contact, found) && found;
+    };
+    // ... and, for any other message, the pictures hosted on a trusted website.
+    mailView_.remoteImageHostTrusted = [this](const std::string& url) {
+        return prefs_.remoteImages == RemoteImagePolicy::LoadTrusted && prefs_.IsTrustedDomain(url);
     };
     mailView_.onAlwaysAllowRemoteImages = [this, lowerAddr](const std::string& addr) {
-        if (prefs_.remoteImageSenders.insert(lowerAddr(addr)).second) prefs_.Save(prefsPath_);
+        if (prefs_.remoteImageSenders.insert(lowerAddr(addr)).second) {
+            prefs_.Save(prefsPath_);
+            SettingsDialog::SyncWithPreferences();
+        }
     };
     mailView_.onAddToContactGroup = [this](const MessageEnvelope& e, const ContactPlace& p) {
         AddSenderToContactGroup(e, p);
@@ -439,6 +484,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mail->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     // Apply the remembered reading-pane choice (default on; a rebuild only when off).
     mailView_.SetReadingPane(prefs_.showReadingPane);
+    mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
 
     // ----- Status line: what the app is currently doing -----
     // A turning ring left of the text while anything runs in the background
@@ -2253,6 +2299,16 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
     });
 }
 
+void UltraMailApp::OpenSettings() {
+    SettingsDialog::Show(window_ ? window_.get() : nullptr, &prefs_, [this]() {
+        // Every change is saved and applied at once.
+        prefs_.Save(prefsPath_);
+        mailView_.SetReadingPane(prefs_.showReadingPane);
+        mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+        senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+    });
+}
+
 void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
     const Account* found = nullptr;
     for (const auto& a : accounts_) if (a.accountId == accountId) found = &a;
@@ -2281,8 +2337,6 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.canOAuth        = !provider.empty();
         fields.providerName    = provider.empty() ? std::string()
                                                    : OAuthProviderDisplayName(provider);
-        fields.showReadingPane  = prefs_.showReadingPane;
-        fields.fetchSenderIcons = prefs_.fetchSenderIcons;
         // The red "Delete account" button in the settings dialog's bottom row.
         // It closes the page, then HandleDeleteAccount runs the confirm-and-remove.
         fields.onDelete = [this, accountId]() { HandleDeleteAccount(accountId); };
@@ -2310,18 +2364,6 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
             "before the changes are saved.",
             current,
             [this, account, provider](const ServerSettingsDialog::Result& r) {
-                // The reading-pane checkbox is an app-wide view option; apply and
-                // remember it regardless of the server/credential outcome below.
-                if (r.showReadingPane != prefs_.showReadingPane) {
-                    prefs_.showReadingPane = r.showReadingPane;
-                    prefs_.Save(prefsPath_);
-                    mailView_.SetReadingPane(prefs_.showReadingPane);
-                }
-                if (r.fetchSenderIcons != prefs_.fetchSenderIcons) {
-                    prefs_.fetchSenderIcons = r.fetchSenderIcons;
-                    prefs_.Save(prefsPath_);
-                    senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
-                }
                 Account updated = account;
                 AutoDiscovery::ApplyTo(updated, r.settings);
                 updated.displayName =
