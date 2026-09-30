@@ -9,7 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
-// Version: 1.0.0
+// Version: 1.1.0 - background pictures, margin: auto, @media width
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
@@ -205,6 +205,62 @@ void TestFontSize() {
     if (label) CheckNear(label->GetStyle().fontStyle.fontSize, 12.f, "16px is 12pt", 0.01f);
 }
 
+void TestBackgroundAndAutoMargins() {
+    std::printf("background picture, margin: auto, @media width\n");
+    HTML::BuildOptions opts;
+    opts.style.baseFontSizePx = 12.f;
+    opts.viewportWidth = 600.f;
+    opts.resourceLoader = [](const std::string& src) {
+        // A 1x1 PNG for the poster; the GIF "fails to load".
+        static const std::vector<uint8_t> png = {
+            0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+            0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x08,0x02,0x00,0x00,0x00,0x90,0x77,0x53,
+            0xDE,0x00,0x00,0x00,0x0C,0x49,0x44,0x41,0x54,0x78,0x9C,0x63,0xF8,0x70,0xC0,0x01,
+            0x00,0x04,0x94,0x01,0xF1,0xA1,0xC1,0x05,0x69,0x00,0x00,0x00,0x00,0x49,0x45,0x4E,
+            0x44,0xAE,0x42,0x60,0x82 };
+        return src == "poster.png" ? png : std::vector<uint8_t>{};
+    };
+    HTML::ElementBuilder builder;
+    auto host = std::make_shared<Host>();
+    host->Adopt(CreateRenderContext(Size2Di(600, 400), nullptr));
+    auto root = builder.Build(
+        "<div style='width:146px;height:146px;margin:0 auto;border-radius:20px;"
+        "background:url(wave.gif) center / contain no-repeat, url(poster.png) center / contain no-repeat'></div>"
+        "<style>@media (min-width:480px) { .col { width:50% !important } }</style>"
+        "<div style='font-size:0'><div class='col' style='display:inline-block;width:100%'><p>a</p></div>"
+        "<div class='col' style='display:inline-block;width:100%'><p>b</p></div></div>", opts).root;
+    Check(root != nullptr, "built");
+    if (!root) return;
+    root->size.width = CSSLayout::Dimension::Px(600.f);
+    host->AddChild(root);
+    CSSLayout::LayoutContext ctx;
+    ctx.viewportWidth = 600;
+    ctx.viewportHeight = 400;
+    CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 600.f },
+                                      { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+    root->Measure(mc, ctx);
+    root->Arrange(Rect2Df{ 0, 0, 600.f, root->measured.measuredHeight }, ctx);
+
+    std::vector<Placed> all;
+    Collect(root.get(), 0, 0, all);
+    const Placed* picture = nullptr;
+    for (const auto& p : all)
+        if (p.element->GetIdentifier().rfind("html_bgimg_", 0) == 0) picture = &p;
+    Check(picture != nullptr, "the poster layer is the background (the GIF did not load)");
+    if (picture) {
+        CheckNear(picture->rect.width, 146.f, "it fills its box's width");
+        CheckNear(picture->rect.height, 146.f, "and height");
+        CheckNear(picture->rect.x, (600.f - 146.f) / 2.f, "margin: 0 auto centres the box");
+    }
+    const Placed* a = LabelWith(all, "a");
+    const Placed* b = LabelWith(all, "b");
+    Check(a && b, "both columns built");
+    if (a && b) {
+        CheckNear(a->rect.y, b->rect.y, "from 480px the @media rule puts them side by side");
+        Check(b->rect.x >= 299.f, "the second in the right half");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -213,6 +269,7 @@ int main() {
     TestWidths();
     TestButtonAndAlignment();
     TestFontSize();
+    TestBackgroundAndAutoMargins();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

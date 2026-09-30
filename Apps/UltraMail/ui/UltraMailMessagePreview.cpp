@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.6.1 - the HTML body is built for the pane width (@media queries)
 // Version: 0.6.0 - Reply / Forward hand over the HTML body and its pictures
 // Version: 0.5.0 - sender badge instead of the initial avatar; the cached body
 //                  is scanned on first read and the verdict stored, with a
@@ -358,6 +359,9 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         HTML::BuildOptions opts;
         opts.style.baseFontSizePx = 12.0f;   // ≈ the 9pt UI font
         opts.enableImages = true;
+        // @media queries (a newsletter's side-by-side columns from 480px up)
+        // are answered for the pane the message is shown in.
+        if (bodyHost_->GetWidth() > 0.f) opts.viewportWidth = bodyHost_->GetWidth();
         // Embedded images from the message; remote ones only once loaded.
         opts.resourceLoader = [this](const std::string& src) { return LoadBodyImage(src); };
         // Links open in the browser (web and mail addresses only - never a

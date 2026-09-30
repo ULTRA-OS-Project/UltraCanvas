@@ -6,6 +6,7 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
@@ -36,6 +37,10 @@ struct BuildOptions {
     std::string userCss;
 
     bool enableImages = true;
+
+    // The width, in CSS px, the document is shown at: @media (min-width /
+    // max-width) queries are answered for it. 0 = a desktop mail pane (800).
+    float viewportWidth = 0.f;
 
     // Resolves an <img src> or <link href> to raw bytes. For EPUB this reads
     // from the archive; return an empty vector when the resource is missing.
@@ -146,6 +151,14 @@ private:
                        bool fillWidth = true, bool realMargins = false);
     void ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
                         bool noWrap = false);
+    // background-image: the first url() layer that loads, drawn under the
+    // box's content (an out-of-flow image element filling it), fitted by
+    // background-size.
+    void ApplyBackgroundImage(UltraCanvasContainer& box, const ComputedStyle& style);
+    // A box narrower than its line (width / max-width) with margin-left and /
+    // or margin-right auto: centred (or pushed right) in a full-width row.
+    std::shared_ptr<UltraCanvasUIElement> PlaceByAutoMargins(
+        std::shared_ptr<UltraCanvasUIElement> box, const ComputedStyle& style);
 
     static std::string MarkerText(ListMarker marker, int index);
 };

@@ -86,19 +86,30 @@ public:
     std::vector<Rule> rules;
 
     // Parse css text and append its rules (cascade order is preserved across
-    // multiple calls). At-rules (@media, @font-face, ...) are skipped whole;
-    // selectors using unsupported syntax (pseudo-classes, attribute selectors,
-    // sibling combinators) are dropped individually so the rest of the rule
-    // still applies.
+    // multiple calls). An @media block's rules apply when its query matches
+    // the media width (below); other at-rules (@font-face, @import, ...) are
+    // skipped whole. Selectors using unsupported syntax (most pseudo-classes,
+    // attribute selectors, sibling combinators) are dropped individually so
+    // the rest of the rule still applies.
     void ParseAppend(const std::string& css);
 
     void Clear() { rules.clear(); nextOrder = 0; }
+
+    // The viewport width, in CSS px, that @media queries are answered for
+    // (min-width / max-width / width). Set it before ParseAppend.
+    void SetMediaWidth(float px) { mediaWidth = px; }
+    float GetMediaWidth() const { return mediaWidth; }
+
+    // Whether a media query list ("only screen and (min-width:480px), print")
+    // holds on a screen `widthPx` wide. Unknown media features do not match.
+    static bool MediaMatches(const std::string& query, float widthPx);
 
     // Parse a bare declaration list — the content of a style="" attribute.
     static std::vector<Declaration> ParseDeclarationList(const std::string& text);
 
 private:
     int nextOrder = 0;
+    float mediaWidth = 800.f;
 };
 
 // Lowercase-trim helper shared by parser and resolver.

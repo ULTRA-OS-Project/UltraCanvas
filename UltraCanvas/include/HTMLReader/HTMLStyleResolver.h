@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
@@ -12,6 +13,8 @@
 #include "HTMLReader/CSSStyleSheet.h"
 
 #include <optional>
+#include <string>
+#include <vector>
 #include <unordered_map>
 
 namespace UltraCanvas {
@@ -33,6 +36,9 @@ enum class TextAlignMode { Left, Right, Center, Justify };
 // vertical-align, as far as an inline image uses it: where the image sits
 // against the text of its line.
 enum class VerticalAlignMode { Baseline, Middle, Top, Bottom };
+
+// background-size, as far as a single background picture uses it.
+enum class BackgroundSizeMode { Auto, Contain, Cover };
 
 enum class ListMarker {
     Disc, Circle, Square,
@@ -63,6 +69,13 @@ struct ComputedStyle {
     float marginTop = 0, marginRight = 0, marginBottom = 0, marginLeft = 0;
     float paddingTop = 0, paddingRight = 0, paddingBottom = 0, paddingLeft = 0;
     std::optional<CssColor> backgroundColor;
+    // background-image / the url() layers of the background shorthand, top
+    // layer first; later ones are fallbacks (an animated GIF over its poster).
+    std::vector<std::string> backgroundImages;
+    BackgroundSizeMode backgroundSize = BackgroundSizeMode::Auto;
+    // margin-left / margin-right: auto (centring a box with a width).
+    bool marginLeftAuto = false, marginRightAuto = false;
+    std::optional<float> maxWidthPx;
     float borderWidth = 0;
     CssColor borderColor{0, 0, 0, 255};
     float borderRadius = 0;
@@ -93,6 +106,9 @@ struct ResolverOptions {
 class StyleResolver {
 public:
     void AddStyleSheet(const std::string& css) { sheet.ParseAppend(css); }
+    // The viewport width @media queries are answered for; set it before
+    // adding style sheets.
+    void SetMediaWidth(float px) { sheet.SetMediaWidth(px); }
     void ClearStyleSheets() { sheet.Clear(); }
 
     // Compute styles for every element in the document. Call again after

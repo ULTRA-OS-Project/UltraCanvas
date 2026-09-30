@@ -1,5 +1,7 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules.
+// Version: 1.3.0 - @media blocks apply when their query matches the media width;
+//                  <!-- --> around a style sheet is skipped.
 // Version: 1.2.0 - a:link / :any-link selectors match links (mail styles its
 //                  links that way); other pseudo-classes still drop the rule.
 // Version: 1.1.2 - ParseFloatClassic moved to UltraCanvasTextUtils, so the SVG
@@ -13,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <unordered_map>
 
@@ -407,6 +410,62 @@ std::vector<Declaration> StyleSheet::ParseDeclarationList(const std::string& tex
 // STYLESHEET
 // ============================================================================
 
+bool StyleSheet::MediaMatches(const std::string& query, float widthPx) {
+    // A comma-separated list matches when any of its queries does.
+    std::string list = TrimLower(query);
+    if (list.empty()) return true;
+    size_t start = 0;
+    while (start <= list.size()) {
+        size_t comma = list.find(',', start);
+        std::string one = Trim(list.substr(start, comma == std::string::npos
+                                                      ? std::string::npos : comma - start));
+        start = (comma == std::string::npos) ? list.size() + 1 : comma + 1;
+        if (one.empty()) continue;
+
+        bool negate = false, ok = true;
+        size_t i = 0;
+        while (i < one.size() && ok) {
+            while (i < one.size() && std::isspace(static_cast<unsigned char>(one[i]))) ++i;
+            if (i >= one.size()) break;
+            if (one[i] == '(') {
+                size_t close = one.find(')', i);
+                if (close == std::string::npos) { ok = false; break; }
+                std::string feature = one.substr(i + 1, close - i - 1);
+                i = close + 1;
+                size_t colon = feature.find(':');
+                std::string name = Trim(feature.substr(0, colon));
+                std::string value = colon == std::string::npos ? "" : Trim(feature.substr(colon + 1));
+                if (name == "min-width" || name == "max-width" || name == "width") {
+                    auto len = CssLength::Parse(value);
+                    if (!len || len->unit == CssUnit::Percent) { ok = false; break; }
+                    const float px = len->ToPx(16.f, 16.f);   // em in a query: the initial 16px
+                    if (name == "min-width") ok = widthPx >= px;
+                    else if (name == "max-width") ok = widthPx <= px;
+                    else ok = std::fabs(widthPx - px) < 0.5f;
+                } else if (name == "orientation") {
+                    ok = value == "landscape";
+                } else if (name == "prefers-color-scheme") {
+                    ok = value == "light";
+                } else if (name == "color" || name == "hover" || name == "pointer") {
+                    ok = true;
+                } else {
+                    ok = false;   // unknown feature: no match, as in a browser
+                }
+                continue;
+            }
+            size_t e = i;
+            while (e < one.size() && !std::isspace(static_cast<unsigned char>(one[e])) && one[e] != '(') ++e;
+            std::string word = one.substr(i, e - i);
+            i = e;
+            if (word == "not") negate = true;
+            else if (word == "only" || word == "and" || word == "screen" || word == "all") continue;
+            else ok = false;   // print, speech, tv, ...
+        }
+        if (ok != negate) return true;
+    }
+    return false;
+}
+
 void StyleSheet::ParseAppend(const std::string& css) {
     std::string text = StripComments(css);
 
@@ -415,13 +474,28 @@ void StyleSheet::ParseAppend(const std::string& css) {
         while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) ++i;
         if (i >= text.size()) break;
 
+        // The HTML comment markers old mail wraps its style sheet in.
+        if (text.compare(i, 4, "<!--") == 0) { i += 4; continue; }
+        if (text.compare(i, 3, "-->") == 0)  { i += 3; continue; }
+
         if (text[i] == '@') {
-            // @import/@charset end at ';'; block at-rules skip the block.
+            // @import/@charset end at ';'; block at-rules skip the block,
+            // except a matching @media, whose rules apply.
             size_t semi = text.find(';', i);
             size_t brace = text.find('{', i);
             if (brace != std::string::npos &&
                 (semi == std::string::npos || brace < semi)) {
-                i = SkipBlock(text, brace);
+                const size_t end = SkipBlock(text, brace);
+                std::string keyword;
+                for (size_t k = i + 1; k < brace && (std::isalpha(static_cast<unsigned char>(text[k])) ||
+                                                     text[k] == '-'); ++k)
+                    keyword += static_cast<char>(std::tolower(static_cast<unsigned char>(text[k])));
+                if (keyword == "media" &&
+                    MediaMatches(text.substr(i + 6, brace - i - 6), mediaWidth)) {
+                    const size_t innerEnd = (end > brace + 1 && text[end - 1] == '}') ? end - 1 : end;
+                    ParseAppend(text.substr(brace + 1, innerEnd - brace - 1));
+                }
+                i = end;
             } else if (semi != std::string::npos) {
                 i = semi + 1;
             } else {

@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
 // Last Modified: 2026-09-30
@@ -500,6 +501,53 @@ static void TestMailTableStyles() {
     }
 }
 
+// @media answered for a width; <style media>; background layers; margin:auto.
+static void TestMediaAndBackgrounds() {
+    CHECK(StyleSheet::MediaMatches("only screen and (min-width:480px)", 720.f));
+    CHECK(!StyleSheet::MediaMatches("only screen and (min-width:480px)", 400.f));
+    CHECK(StyleSheet::MediaMatches("only screen and (max-width:479px)", 400.f));
+    CHECK(StyleSheet::MediaMatches("print, screen and (max-width: 30em)", 480.f));
+    CHECK(!StyleSheet::MediaMatches("print", 720.f));
+    CHECK(StyleSheet::MediaMatches("not print", 720.f));
+    CHECK(!StyleSheet::MediaMatches("(-webkit-min-device-pixel-ratio: 2)", 720.f));
+
+    const char* html =
+        "<html><head><style>@media only screen and (min-width:480px) { .c { width:65% !important; } }"
+        "</style><style media='screen and (max-width:479px)'>.d { color: #ff0000 }</style></head>"
+        "<body><div id='c' class='c d' style='width:100%;margin:0 auto;max-width:640px;"
+        "background:url(\"wave.gif\") center / contain no-repeat, url(poster.png) #fafafa;"
+        "border-radius:20px'>x</div></body></html>";
+    auto styleAt = [&](float width, auto check) {
+        Parser parser;
+        Document doc = parser.Parse(html);
+        StyleResolver resolver;
+        resolver.SetMediaWidth(width);
+        for (const auto& css : doc.styleSheets) resolver.AddStyleSheet(css);
+        resolver.Resolve(doc, ResolverOptions{});
+        Node* div = doc.root->FindFirst("div");
+        CHECK(div != nullptr);
+        if (div) check(resolver.StyleOf(div));
+    };
+    styleAt(720.f, [](const ComputedStyle& st) {
+        CHECK(st.widthPercent && *st.widthPercent == 65.f);   // the wide-screen rule
+        CHECK(st.color.r == 0);                               // the narrow sheet is off
+        CHECK(st.marginLeftAuto && st.marginRightAuto);
+        CHECK(st.maxWidthPx && *st.maxWidthPx == 640.f);
+        CHECK(st.backgroundImages.size() == 2);
+        if (st.backgroundImages.size() == 2) {
+            CHECK_EQ(st.backgroundImages[0], std::string("wave.gif"));
+            CHECK_EQ(st.backgroundImages[1], std::string("poster.png"));
+        }
+        CHECK(st.backgroundSize == BackgroundSizeMode::Contain);
+        CHECK(st.backgroundColor && st.backgroundColor->r == 0xfa);
+        CHECK_EQ(st.borderRadius, 20.f);
+    });
+    styleAt(400.f, [](const ComputedStyle& st) {
+        CHECK(st.widthPercent && *st.widthPercent == 100.f);
+        CHECK(st.color.r == 0xff);
+    });
+}
+
 int main() {
     TestParserBasics();
     TestParserFragmentAndRecovery();
@@ -514,6 +562,7 @@ int main() {
     TestReadingModeOverride();
     TestHtml4Entities();
     TestMailTableStyles();
+    TestMediaAndBackgrounds();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);

@@ -1,3 +1,12 @@
+#### 2026-09-30 *0.10.10*
+- **HTML mail is laid out for the width of the preview pane.** A newsletter's
+  `@media (min-width: …)` rules (side-by-side columns from 480px up) are answered for
+  the pane's width when the message is opened; resizing the pane does not re-lay the
+  message out yet. The HTML rendering improvements behind it (tables, buttons,
+  background pictures, rounded borderless buttons) are framework changes - see the
+  pending `html-mail-table-layout` and `html-media-backgrounds` entries in
+  `Docs/UltraCanvas/CHANGELOG.md`.
+
 #### 2026-09-30 *0.10.9*
 - **No "New mail could not be fetched" alert while the network is still
   coming up.** Right after the computer starts, the first background sync

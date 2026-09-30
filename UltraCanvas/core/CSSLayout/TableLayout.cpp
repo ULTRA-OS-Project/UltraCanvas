@@ -24,7 +24,7 @@
 // The GridLayout gaps are the border-spacing: between the cells and around the
 // outer ones, as in CSS. Vertical alignment of a cell's content is the cell's
 // own business (a flex-column cell with justify-content does it).
-// Version: 1.0.0
+// Version: 1.1.0 - max-width caps the table's width
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
@@ -379,6 +379,14 @@ namespace UltraCanvas {
                     // Auto: shrink to fit the preferred width within what is available.
                     tableW = ti.maxTotal;
                     if (parentInline) tableW = std::min(tableW, std::max(0.f, *parentInline - frameH));
+                }
+                // max-width caps an explicit or auto width (the used width a
+                // parent imposes is already capped).
+                if (!authoritative && e.boxConstraints) {
+                    if (auto mx = resolveDimension(e.boxConstraints->maxWidth, parentInline, ctx)) {
+                        const float cap = e.box.boxSizing == BoxSizing::BorderBox ? *mx - frameH : *mx;
+                        tableW = std::min(tableW, std::max(0.f, cap));
+                    }
                 }
                 tableW = std::max(tableW, ti.minTotal);   // a table never crushes its columns
                 s.contentW = tableW;

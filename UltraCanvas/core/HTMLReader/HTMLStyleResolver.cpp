@@ -4,7 +4,8 @@
 //                  cellpadding, cellspacing, tr align); white-space: nowrap;
 //                  border-collapse / border-spacing / border-radius; cells
 //                  default to a browser's 1px padding; `inherit` for
-//                  color, font and text properties.
+//                  color, font and text properties; background images and
+//                  size, margin: auto, max-width.
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
@@ -493,13 +494,63 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         if (opts.overrideAuthorColors) return;
         if (auto color = CssColor::Parse(lower)) s.color = *color;
     }
-    else if (prop == "background-color" || prop == "background") {
+    else if (prop == "background-color") {
         if (opts.overrideAuthorColors) return;
-        // For the 'background' shorthand only a plain color layer is honored.
-        if (auto color = CssColor::Parse(SplitParts(lower).empty()
-                                             ? lower
-                                             : SplitParts(lower)[0])) {
-            s.backgroundColor = *color;
+        if (auto color = CssColor::Parse(lower)) s.backgroundColor = *color;
+    }
+    else if (prop == "background" || prop == "background-image") {
+        // Layers split on top-level commas; each may hold url(...), a size
+        // after '/', and (in the shorthand's last layer) a colour.
+        std::vector<std::string> layers;
+        {
+            std::string current;
+            int parens = 0;
+            for (char c : value) {
+                if (c == '(') ++parens;
+                if (c == ')') --parens;
+                if (c == ',' && parens == 0) { layers.push_back(current); current.clear(); }
+                else current += c;
+            }
+            layers.push_back(current);
+        }
+        std::vector<std::string> urls;
+        for (const auto& rawLayer : layers) {
+            const std::string layer = Trim(rawLayer);
+            std::string low = TrimLower(layer);
+            size_t u = low.find("url(");
+            if (u != std::string::npos) {
+                size_t close = layer.find(')', u);
+                std::string url = Trim(layer.substr(u + 4, close == std::string::npos
+                                                               ? std::string::npos : close - u - 4));
+                if (url.size() >= 2 && (url.front() == '\'' || url.front() == '"')) {
+                    url = url.substr(1, url.size() - 2);
+                }
+                if (!url.empty()) urls.push_back(url);
+            }
+            if (prop == "background" && urls.size() == 1 && u != std::string::npos) {
+                if (low.find("contain") != std::string::npos) s.backgroundSize = BackgroundSizeMode::Contain;
+                else if (low.find("cover") != std::string::npos) s.backgroundSize = BackgroundSizeMode::Cover;
+            }
+        }
+        s.backgroundImages = urls;   // the shorthand (and 'none') resets them
+        if (prop == "background" && !opts.overrideAuthorColors) {
+            // The colour sits in the last layer, anywhere among its words.
+            for (const auto& part : SplitParts(TrimLower(layers.back()))) {
+                if (part.rfind("url(", 0) == 0) continue;
+                if (auto color = CssColor::Parse(part)) { s.backgroundColor = *color; break; }
+            }
+        }
+    }
+    else if (prop == "background-size") {
+        if (lower.rfind("contain", 0) == 0) s.backgroundSize = BackgroundSizeMode::Contain;
+        else if (lower.rfind("cover", 0) == 0) s.backgroundSize = BackgroundSizeMode::Cover;
+        else s.backgroundSize = BackgroundSizeMode::Auto;
+    }
+    else if (prop == "max-width") {
+        s.maxWidthPx.reset();
+        if (auto len = CssLength::Parse(lower)) {
+            if (len->unit != CssUnit::Percent && len->unit != CssUnit::Auto)
+                s.maxWidthPx = len->ToPx(em, rem);
         }
     }
     else if (prop == "font-size") {
@@ -619,17 +670,28 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
     else if (prop == "margin") {
         ApplyBoxShorthand(lower, em, rem, s.marginTop, s.marginRight,
                           s.marginBottom, s.marginLeft);
+        // Which sides are 'auto' (1-4 values, as for the lengths).
+        auto parts = SplitParts(lower);
+        auto isAuto = [&](size_t index) { return index < parts.size() && parts[index] == "auto"; };
+        switch (parts.size()) {
+            case 1: s.marginLeftAuto = s.marginRightAuto = isAuto(0); break;
+            case 2: case 3: s.marginLeftAuto = s.marginRightAuto = isAuto(1); break;
+            case 4: s.marginRightAuto = isAuto(1); s.marginLeftAuto = isAuto(3); break;
+            default: break;
+        }
     }
     else if (prop == "margin-top") {
         if (auto len = CssLength::Parse(lower)) s.marginTop = len->ToPx(em, rem);
     }
     else if (prop == "margin-right") {
+        s.marginRightAuto = (lower == "auto");
         if (auto len = CssLength::Parse(lower)) s.marginRight = len->ToPx(em, rem);
     }
     else if (prop == "margin-bottom") {
         if (auto len = CssLength::Parse(lower)) s.marginBottom = len->ToPx(em, rem);
     }
     else if (prop == "margin-left") {
+        s.marginLeftAuto = (lower == "auto");
         if (auto len = CssLength::Parse(lower)) s.marginLeft = len->ToPx(em, rem);
     }
     else if (prop == "padding") {

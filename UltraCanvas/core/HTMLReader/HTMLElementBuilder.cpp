@@ -1,5 +1,9 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.4.0 - @media answered for BuildOptions::viewportWidth; background
+//                  images (first url() layer that loads, fitted by
+//                  background-size); rounded borderless boxes; max-width;
+//                  margin: auto centres a narrowed block or table.
 // Version: 1.3.0 - tables on the CSSLayout table engine (shared columns,
 //                  colspan / rowspan, min/max-content widths, cellspacing,
 //                  valign); inline-block boxes and inline tables sit on the
@@ -184,6 +188,7 @@ BuildResult ElementBuilder::BuildDocument(Document& document, const BuildOptions
     nextId = 0;
 
     resolver.ClearStyleSheets();
+    resolver.SetMediaWidth(opts.viewportWidth > 0.f ? opts.viewportWidth : 800.f);
     for (const auto& href : document.styleSheetLinks) {
         if (opts.resourceLoader) {
             std::vector<uint8_t> bytes = opts.resourceLoader(href);
@@ -264,6 +269,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildBlock(Node& element) 
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*container, style);
     ConfigureBlockLayout(*container);
+    ApplyBackgroundImage(*container, style);
 
     BuildChildrenInto(*container, element);
     return container;
@@ -479,6 +485,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             RegisterAnchors(child, item);
             ApplyBoxStyle(*item, childStyle);
             ConfigureBlockLayout(*item);
+            ApplyBackgroundImage(*item, childStyle);
             BuildChildrenInto(*item, child, ++listCounter);
             addFlowChild(item, childStyle.marginTop, childStyle.marginBottom);
             return;
@@ -486,7 +493,8 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
 
         if (IsBlockDisplay(childStyle.display)) {
             flushRun();
-            addFlowChild(BuildBlock(child), childStyle.marginTop, childStyle.marginBottom);
+            addFlowChild(PlaceByAutoMargins(BuildBlock(child), childStyle),
+                         childStyle.marginTop, childStyle.marginBottom);
             return;
         }
 
@@ -934,6 +942,7 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildInlineBox(Node& eleme
     RegisterAnchors(element, box);
     ApplyBoxStyle(*box, style, /*fillWidth=*/false, /*realMargins=*/true);
     ConfigureBlockLayout(*box);
+    ApplyBackgroundImage(*box, style);
     BuildChildrenInto(*box, element);
     // As wide as its content (shrink-to-fit), narrower only when the line is.
     box->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
@@ -949,6 +958,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
     // border-spacing: CSS, else cellspacing, else a browser's 2px.
     const float spacing = style.borderCollapse ? 0.f : style.borderSpacing.value_or(2.f);
     table->layout.SetTableSpacing(spacing, spacing);
+    ApplyBackgroundImage(*table, style);
     // <table border="1"> rules every cell too.
     const bool ruledCells = element.tag == "table" && style.borderWidth > 0.f &&
                             element.HasAttribute("border");
@@ -1034,6 +1044,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
                        .SetFlexJustifyContent(justify)
                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         cellBox->layoutItem.SetGridRowColSimplified(static_cast<int>(r), c, rowSpan, colSpan);
+        ApplyBackgroundImage(*cellBox, cellStyle);
         BuildChildrenInto(*cellBox, cell);
         table->AddChild(cellBox);
         c += colSpan;
@@ -1069,6 +1080,8 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
     std::string alignAttr = element.GetAttribute("align");
     std::transform(alignAttr.begin(), alignAttr.end(), alignAttr.begin(),
                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    if (style.marginLeftAuto && style.marginRightAuto) align = TextAlignMode::Center;
+    else if (style.marginLeftAuto) align = TextAlignMode::Right;
     if (alignAttr == "center" || alignAttr == "middle") align = TextAlignMode::Center;
     else if (alignAttr == "right") align = TextAlignMode::Right;
     else if (alignAttr == "left") align = TextAlignMode::Left;
@@ -1127,11 +1140,63 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
     if (style.backgroundColor) {
         target.SetBackgroundColor(ToColor(*style.backgroundColor));
     }
+    if (style.maxWidthPx) {
+        CSSLayout::BoxConstraints limits = target.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.maxWidth = Dimension::Px(*style.maxWidthPx);
+        target.boxConstraints = limits;
+    }
     if (style.borderWidth > 0) {
         // Width, colour and radius together: box.border alone reserves the
         // space but paints nothing.
         target.SetBorders(style.borderWidth, ToColor(style.borderColor), style.borderRadius);
+    } else if (style.borderRadius > 0) {
+        target.SetBorderRadius(style.borderRadius);   // a rounded, borderless box
     }
+}
+
+void ElementBuilder::ApplyBackgroundImage(UltraCanvasContainer& box, const ComputedStyle& style) {
+    if (style.backgroundImages.empty() || !opts.enableImages || !opts.resourceLoader) return;
+    std::shared_ptr<UCImage> raster;
+    for (const auto& url : style.backgroundImages) {
+        std::vector<uint8_t> bytes = opts.resourceLoader(url);
+        if (!bytes.empty()) raster = UCImageRaster::LoadFromMemory(bytes);
+        if (raster && raster->GetWidth() > 0 && raster->GetHeight() > 0) break;
+        raster.reset();
+        warnings.push_back("background image not shown: " + url);
+    }
+    if (!raster) return;
+
+    auto image = std::make_shared<UltraCanvasImageElement>(MakeId("bgimg"));
+    image->LoadFromImage(raster);
+    switch (style.backgroundSize) {
+        case BackgroundSizeMode::Contain: image->SetFitMode(ImageFitMode::Contain); break;
+        case BackgroundSizeMode::Cover:   image->SetFitMode(ImageFitMode::Cover);   break;
+        case BackgroundSizeMode::Auto:    image->SetFitMode(ImageFitMode::NoScale); break;
+    }
+    // Out of flow, filling the box: it neither sizes the box nor pushes its
+    // content, and as the first child it is drawn underneath that content.
+    CSSLayout::Position fill;
+    fill.top = fill.right = fill.bottom = fill.left = CSSLayout::Dimension::Px(0.f);
+    image->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute).SetPositionInsets(fill);
+    box.AddChild(image);
+    ++elementCount;
+}
+
+std::shared_ptr<UltraCanvasUIElement> ElementBuilder::PlaceByAutoMargins(
+    std::shared_ptr<UltraCanvasUIElement> box, const ComputedStyle& style) {
+    if (!box || !style.marginLeftAuto) return box;   // right-auto alone: start of line, as is
+    const bool narrowed = style.widthPx || style.maxWidthPx ||
+                          (style.widthPercent && *style.widthPercent < 99.5f);
+    if (!narrowed) return box;
+    auto line = MakeContainer("autoline");
+    line->size.width = CSSLayout::Dimension::Pct(100.f);
+    line->layout.SetFlexRow()
+                .SetFlexJustifyContent(style.marginRightAuto ? CSSLayout::JustifyContent::Center
+                                                             : CSSLayout::JustifyContent::FlexEnd)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    box->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f);
+    line->AddChild(box);
+    return line;
 }
 
 void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
