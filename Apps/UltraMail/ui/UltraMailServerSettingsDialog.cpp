@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
+// Version: 0.6.0 - the Signature row: the account's signature in a few words and
+//                  "Edit signature…" (UltraMailSignatureDialog)
 // Version: 0.5.0 - the app-wide view options (preview pane, sender icons) moved to
 //                  the Settings window (UltraMailSettingsDialog)
 // Version: 0.4.0 - an authentication method per server (Automatic, normal or
@@ -8,6 +10,8 @@
 
 #include "UltraMailTheme.h"
 #include "UltraMailAlerts.h"
+#include "UltraMailSignature.h"
+#include "UltraMailSignatureDialog.h"
 
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasContainer.h"
@@ -100,7 +104,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // credential rows (a password field and/or a "Sign in with …" button) on
     // top of the server rows, plus room for a multi-line sign-in error.
     // Two authentication rows sit under the server rows on both.
-    config.height     = account.edit ? 560 : 400;
+    // The Signature row adds one more line.
+    config.height     = account.edit ? (account.onSaveSignature ? 592 : 560) : 400;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -277,6 +282,36 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         Theme::StyleSecondary(oauthBtn);
         row->AddChild(oauthBtn);
         oauthBtn->layoutItem.SetFlexGrow(1);
+    }
+
+    // Signature row (account settings page only): what the account signs with,
+    // and the button to the editor. The editor saves by itself, so the row
+    // keeps the latest signature for the next time it is opened.
+    if (account.edit && account.onSaveSignature) {
+        auto row = credRow("srvSigRow", "Signature");
+        auto current = std::make_shared<Signature>(account.signature);
+        auto summary = Theme::MakeLine("srvSigSummary", DescribeSignature(*current),
+                                       Theme::kControlHeight, Theme::kSizeBody,
+                                       Theme::kTextPrimary);
+        row->AddChild(summary);
+        summary->layoutItem.SetFlexGrow(1);
+        auto editBtn = CreateButton("srvSigEdit", 0, 0, 120, Theme::kControlHeight,
+                                    "Edit signature\xE2\x80\xA6");
+        Theme::FitToLabel(editBtn, 120);
+        Theme::StyleSecondary(editBtn);
+        std::function<void(const Signature&)> onSaveSignature = account.onSaveSignature;
+        UltraCanvasLabel* summaryLabel = summary.get();   // a sibling in this dialog
+        editBtn->onClick = [dlg, email, current, summaryLabel, onSaveSignature]() {
+            // The editor is modal over this page, so the page (and the
+            // label) outlive it.
+            SignatureDialog::Show(dlg, email, *current,
+                [current, summaryLabel, onSaveSignature](const Signature& edited) {
+                    *current = edited;
+                    summaryLabel->SetText(DescribeSignature(edited));
+                    if (onSaveSignature) onSaveSignature(edited);
+                });
+        };
+        row->AddChild(editBtn);
     }
 
     auto note = Theme::MakeLine("srvNote",

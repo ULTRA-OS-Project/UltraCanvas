@@ -86,6 +86,9 @@ Apps/UltraMail/
                                   token refresh, credentials for IMAP/SMTP
     UltraMailComposer.{h,cpp}     Draft model + Reply/Forward/New builders
                                   (Re:/Fwd:, quoting, threading headers)
+    UltraMailSignature.{h,cpp}    the account signature in a draft: plain text
+                                  below "-- ", HTML as rich blocks (a plain
+                                  draft becomes a formatted one), above the quote
     UltraMailSender.{h,cpp}       send a Draft via the SMTP plug-in
                                   (IMailProtocolPlugin)
     UltraMailOutbox.{h,cpp}       persistent send queue on UltraDatabase:
@@ -122,7 +125,11 @@ Apps/UltraMail/
     UltraMailWaitDialog.{h,cpp}   a step running elsewhere (browser sign-in,
                                   settings lookup): text + Cancel; closed by the app
     UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
-                                  port, security, username; validates in place
+                                  port, security, username; validates in place;
+                                  as Account Settings also name, password, Signature
+    UltraMailSignatureDialog.{h,cpp} the signature editor: None / Plain text /
+                                  HTML (WYSIWYG RichTextEdit + format rows, or
+                                  HTML source); also on replies and forwards
     UltraMailSettingsDialog.{h,cpp} the Settings window (toolbar gear, as in
                                   UltraFiler): Reading > Layout / Messages,
                                   Privacy > Images / Sender icons

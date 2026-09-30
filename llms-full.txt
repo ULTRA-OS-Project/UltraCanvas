@@ -16561,6 +16561,7 @@ and `MoveWindowToVirtualDesktop(id, i)` (−1 = on every desktop).
 | `GetScreenSize(w, h)` | The default screen's size in pixels. |
 | `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
+| `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
 | `DefaultScreenshotPath()` | `<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png` — the user's Pictures folder from `GetWellKnownUserFolders`, the home directory when there is none. Dots in the time, since a colon is not a file-name character on Windows. |
 
 ### Devices
@@ -16617,8 +16618,8 @@ nothing is ever reported: `IsNative()` says which.
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window, written by cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
-| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen` fails with a reason; the application list, launcher and notices still work. |
+| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
+| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen` and `CaptureScreenImage` fail with a reason; the application list, launcher and notices still work. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -41889,7 +41890,16 @@ bool ExportToSVG(const QRCodeData& data,
 std::vector<QRScanResult> ScanQRCodeFile(const std::string& imagePath,
                                          std::string* errorMessage = nullptr);
 bool IsDecoderAvailable();
+```
 
+Both scanners (`ScanQRCodeFile` and `ScanQRCodeImage`) come back empty in two
+distinct ways. An image with no code in it returns an empty vector and leaves
+`errorMessage` untouched; a scan that could not run at all — an unreadable
+file, no decoder built in, bad arguments — returns an empty vector with the
+reason in `errorMessage`. Test the vector to report "nothing found" and the
+string to report a failure; never match the string's text.
+
+```cpp
 // Structured-content builders
 std::string CreateURLContent(const std::string& url);
 std::string CreateEmailContent(const std::string& email,
@@ -62396,7 +62406,12 @@ if (photo.success) {
 ### Typed Object Loaders
 
 Beyond raw bytes, FileLoader can open a file straight into the matching
-UltraCanvas object through the native file dialog:
+UltraCanvas object through a file dialog. Every FileLoader dialog (open,
+open multiple, save, select folder) follows
+`UltraCanvasDialogManager::SetUseNativeDialogs`: the platform's picker when
+it is on, the framework's `UltraCanvasFileDialog` when it is off (the
+default). A native picker blocks and runs the callback before the call
+returns; the framework's runs it when the dialog closes.
 
 ```cpp
 // Decode an image into a UCImage
@@ -71331,7 +71346,10 @@ would destroy a working second factor.
 **Untrusted input.** Scanned QR codes and typed keys go through the same
 strict parser; a malformed seed is refused rather than silently turned into
 a different one. Camera frames are decoded in memory and never written to
-disk as images.
+disk as images, and so is a capture of the screen when you read the code
+off a browser window: no screenshot is saved. An image file you open is
+only read; it is not copied and not added to your recent files. Delete it
+once the account is in, because that file *is* the seed.
 
 ## What it does not protect against
 
@@ -71383,8 +71401,9 @@ values are clamped, never trusted.
 
 ## Everyday advice
 
-- Enrol by scanning where you can; typing a 32-character key is the
-  fallback.
+- Enrol by scanning where you can: with the camera, from the screen when
+  the code is in a browser window on the same machine, or from an image.
+  Typing a 32-character key is the fallback.
 - Take a backup after enrolling anything important, with a passphrase you
   will still know in a year. Keep it off cloud folders unless you accept
   that the passphrase is then the only thing protecting it.
@@ -71552,6 +71571,19 @@ Not verified end to end: this build environment has no camera, so the capture
 and poll loop are exercised only by their graceful-degradation path ("No
 camera is available"). The decode itself — the `UCVideoFrame` overload the
 dialog calls — is covered by the unit tests above.
+
+**Two more sources, same path** (UltraAuthenticator 0.2.5). The camera is
+the wrong tool for the common desktop case, where the enrolment page and the
+authenticator share one display and no camera can see either. The scan
+dialog therefore also decodes an image file (*From image…*: read by the
+scanner only, never copied, thumbnailed or registered as a recent file, since
+the file already holds the seed in the clear) and the screen (*From screen*).
+The screen capture stays in memory — `UltraCanvasDesktopShell::CaptureScreenImage`
+was added for it, because the existing `CaptureScreen` writes a PNG and a PNG
+of an enrolment QR is the seed in the Pictures folder — and the buffer is
+wiped as soon as it has been decoded. All three sources converge on the one
+acceptance path and the same `AccountStore::AddFromUri`, so the in-memory
+rule of this section holds for every way a code gets in, not only the camera.
 
 **(d) ~~No TOTP/HOTP/Base32 code.~~ — DONE.** The engine now lives in
 `Apps/UltraAuthenticator/otp/`:

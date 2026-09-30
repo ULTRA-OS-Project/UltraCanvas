@@ -1,4 +1,4 @@
-#### 2026-09-30 *0.9.100*
+#### 2026-09-30 *0.9.103*
 - **The file display's copy, move and delete questions are one dialog, and the
   answer is the button.** Five dialogs with four layouts asked with toggle
   switches wired to act as radio buttons and a *Continue* button that did
@@ -43,6 +43,46 @@
     `AddFooterElement` puts an element at the left of the button bar. See
     `Docs/UltraCanvas/UltraCanvasDialogKeyboard.md`.
   - `UltraCanvasFilerWidget` 1.34.0.
+#### 2026-09-30 *0.9.102*
+- **QRCode: an image with no code in it is no longer reported as an error.**
+  `ScanQRCodeFile` and `ScanQRCodeImage` set `errorMessage` to "No QR codes
+  detected" whenever they found nothing, the same channel as an unreadable
+  file or a missing decoder, so a caller wanting to say "nothing found"
+  rather than "could not scan" had to match that text. Now an empty result
+  with an empty error means no code, and the error is filled only when the
+  scan could not run. The demo app already read it that way; UltraAuthenticator's
+  scan dialog stops matching the string.
+
+#### 2026-09-30 *0.9.101*
+- **DesktopShell: the screen can be captured into memory.**
+  `UltraCanvasDesktopShell::CaptureScreenImage(DesktopScreenImage&, &error)`
+  returns the whole screen as BGRx pixels (cairo's RGB24 layout, the QR
+  scanner's BGRA32) without touching the disk, for a caller that must not
+  leave a file behind: UltraAuthenticator reads an enrolment QR code off the
+  screen this way, and a PNG of that code in the Pictures folder would be the
+  account's seed in the clear. `CaptureScreen(pngPath)` is unchanged and now
+  writes the same buffer, so the two cannot disagree about what the screen
+  looked like. The null backend fails both with the same reason.
+
+#### 2026-09-30 *0.9.100*
+- **`UltraCanvasFileLoader`'s file dialogs honour the native-dialogs
+  setting.** `OpenFileDialog`, `OpenMultipleFilesDialog`, `SaveFileDialog`
+  and `SelectFolderDialog` always opened the platform's picker, whatever
+  `UltraCanvasDialogManager::SetUseNativeDialogs` said, so an app that turned
+  native dialogs off for one look throughout still got the platform's file
+  picker among its own dialogs (UltraCleaner had to build the framework's
+  file dialog by hand to get around it). With the setting off they now open
+  `UltraCanvasFileDialog` in the matching mode, with the caller's title,
+  start directory, default name, filters and hidden-files choice carried
+  across, and the callback runs when that dialog closes rather than before
+  the call returns. Apps that set the flag to true are unaffected; an app
+  that never set it (the default is off) now gets the framework's file
+  browser, and one `SetUseNativeDialogs(true)` at start-up restores the
+  platform's.
+- **`UltraCanvasDialogManager::CreateFileDialog` is public**, beside the
+  other factories, so a caller can build the file browser directly instead
+  of constructing `UltraCanvasFileDialog` itself.
+
 #### 2026-09-30 *0.9.99*
 - **HTML mail tables line up, and mail "buttons" are drawn.** A partner-proposal mail in
   UltraMail showed every table row with its own column widths, the Login / Upgrade /

@@ -34,8 +34,8 @@
 // exists every query answers empty with IsAvailable() false, the monitor
 // polls nothing, and the platform-neutral parts - the application list from
 // desktop entries, the notices, the launcher - still work.
-// Version: 1.0.0
-// Last Modified: 2026-09-29
+// Version: 1.1.0
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -67,6 +67,18 @@ namespace UltraCanvas {
         bool minimized = false;
         bool skipTaskbar = false;       // asked to stay out of taskbars: panels, docks,
                                         // the desktop itself, tooltips
+    };
+
+    // ===== A CAPTURE OF THE SCREEN, IN MEMORY =====
+    // Rows top to bottom, `stride` bytes apart; four bytes per pixel in
+    // memory order B, G, R, unused - the layout cairo calls RGB24 and the QR
+    // scanner calls BGRA32 - so a row can be handed to either without a copy.
+    struct DesktopScreenImage {
+        int width  = 0;
+        int height = 0;
+        int stride = 0;                 // bytes between row starts, >= width * 4
+        std::vector<uint8_t> pixels;    // height * stride bytes
+        bool IsValid() const { return width > 0 && height > 0 && !pixels.empty(); }
     };
 
     // ===== WHAT THE DEVICES ARE DOING RIGHT NOW =====
@@ -153,6 +165,12 @@ namespace UltraCanvas {
         // The whole screen, written as PNG to `pngPath`. The directory is
         // created. False with the reason in `error`.
         static bool CaptureScreen(const std::string& pngPath, std::string* error = nullptr);
+        // The whole screen as pixels in memory, for a caller that must not
+        // leave a file behind: UltraAuthenticator reads an enrolment QR code
+        // off the screen this way, and a screenshot of that QR on disk would
+        // be the account's seed in the clear. Nothing is written anywhere.
+        // False with the reason in `error`; `out` is then empty.
+        static bool CaptureScreenImage(DesktopScreenImage& out, std::string* error = nullptr);
         // "<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png" - the
         // user's Pictures folder through GetWellKnownUserFolders, the home
         // directory when there is none. Only names the file; CaptureScreen

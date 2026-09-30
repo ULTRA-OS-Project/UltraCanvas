@@ -3,8 +3,8 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
-// Version: 1.0.0
-// Last Modified: 2026-09-29
+// Version: 1.1.0
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASDESKTOPSHELLBACKEND_H
@@ -43,6 +43,7 @@ namespace DesktopShellBackend {
     bool GetScreenSize(int& width, int& height);
     bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom);
     bool CaptureScreen(const std::string& pngPath, std::string& error);
+    bool CaptureScreenImage(DesktopScreenImage& out, std::string& error);
 
     // The parts of the device activity only the platform can read: audio
     // and video capture in use, playback running, the battery, the keyboard

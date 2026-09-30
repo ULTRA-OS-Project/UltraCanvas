@@ -34,7 +34,7 @@
   report at the end); and the progress window's delay (0 to 10 seconds, the
   busy pointer until then). The drop confirmation moved here from *Drag & Drop*
   as the first two checkboxes; its setting is unchanged. (Framework side:
-  `Docs/UltraCanvas/CHANGELOG.md` 0.9.100.)
+  `Docs/UltraCanvas/CHANGELOG.md` 0.9.103.)
 #### 2026-09-29 *1.59.0*
 - **A folder can be exported as text.** *Extras > Export* in the file
   context menu has two new entries. *Folder content* lists what the selected

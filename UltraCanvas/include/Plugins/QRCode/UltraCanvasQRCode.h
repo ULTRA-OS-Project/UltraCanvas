@@ -144,6 +144,13 @@ namespace UltraCanvas {
                          const Color& foreground = Colors::Black,
                          const Color& background = Colors::White);
 
+        // Decodes every QR code in an image file.
+        //
+        // The two ways to come back empty are distinct. No code in the image:
+        // an empty vector and `errorMessage` left untouched. The scan could
+        // not run at all (unreadable file, no decoder built in, bad
+        // arguments): an empty vector and the reason in `errorMessage`. Test
+        // the string to report a failure, never to detect "nothing found".
         std::vector<QRScanResult> ScanQRCodeFile(const std::string& imagePath,
                                                  std::string* errorMessage = nullptr);
 
@@ -166,6 +173,9 @@ namespace UltraCanvas {
         //
         // `stride` is the byte offset between row starts; pass 0 for tightly
         // packed rows. Rows are top-to-bottom. The buffer is only read.
+        // Empty result and empty `errorMessage` when the pixels hold no code;
+        // the reason in `errorMessage` only when the scan could not run
+        // (see ScanQRCodeFile).
         //
         // Note this takes raw pixels rather than a UCImage: UCImageRaster is
         // declared in a backend-specific header (libspecific/Cairo), so a

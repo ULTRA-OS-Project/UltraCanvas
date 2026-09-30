@@ -5,9 +5,10 @@
 // hands an updated Draft back through onSend. "Attach file" reads a local file
 // into the draft's attachments; "Attach cloud link" uploads through (or picks
 // from) an UltraCloud account and puts the share link into the body.
-// A draft with a formatted body (the reply or forward of an HTML message) is
-// edited in an UltraCanvasRichTextEdit with a small formatting row; any other
-// draft in a plain-text area.
+// A draft with a formatted body (the reply or forward of an HTML message, or
+// any draft signed with an HTML signature) is edited in an
+// UltraCanvasRichTextEdit with a small formatting row; any other draft in a
+// plain-text area.
 // Version: 0.5.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS

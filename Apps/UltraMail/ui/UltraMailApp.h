@@ -18,6 +18,7 @@
 #include "UltraMailAccountWizard.h"
 #include "UltraMailContactsView.h"
 #include "UltraMailComposeWindow.h"
+#include "UltraMailSignature.h"
 #include "UltraMailPassphraseDialog.h"
 #include "UltraMailServerSettingsDialog.h"
 
@@ -219,6 +220,12 @@ private:
 
     // Open a compose window for the given draft (new / reply / forward).
     void OpenComposer(const Draft& draft);
+    // `draft` with the signature of the account it is sent from (its fromAddr)
+    // put in - as account settings define it.
+    Draft WithSignature(Draft draft, DraftPurpose purpose) const;
+    // Saves an account's signature (from the signature editor) and keeps the
+    // in-memory account list in step.
+    void SaveSignature(const std::string& accountId, const Signature& signature);
 
     // Message actions from the reading pane, mirrored to the IMAP server on a
     // background worker and then refreshed. Delete moves to Trash (fallback:
