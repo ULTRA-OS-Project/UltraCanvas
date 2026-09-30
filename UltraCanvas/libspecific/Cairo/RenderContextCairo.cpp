@@ -206,7 +206,28 @@ namespace UltraCanvas {
     }
 
     std::string RenderContextCairo::GenerateTextCacheKey(const std::string& text, const Size2Di &sz, bool isMarkup) {
-        // Generate a unique cache key based on all parameters that affect text rendering
+        // Generate a unique cache key based on all parameters that affect text rendering.
+        //
+        // Two things a layout depends on are deliberately NOT in the key:
+        //
+        // - The device scale. Cached layouts are shared by every context in
+        //   the process, and a context on a 2x display and one on a 1x display
+        //   can ask for the same text. That is safe because a layout's extents
+        //   are in user (logical) units, and with hint metrics OFF (the
+        //   framework default, g_TextHintMetrics) Pango does not round glyph
+        //   advances or line heights to device pixels, so the same font
+        //   measures the same at any scale. Only the paint differs, and the
+        //   paint happens at draw time on the drawing context. If hint metrics
+        //   were ever turned on, measurements would depend on the scale and
+        //   this key would need it - see the font-options invalidation below.
+        // - The text font options (antialias, hint style, hint metrics). They
+        //   are process-wide, and changing one goes through
+        //   InvalidateAllFontMetricsCaches, which clears this whole cache, so
+        //   a layout made under old options never survives them; keying on
+        //   them would only make the old entries unreachable rather than gone.
+        //
+        // The pinned Pango resolution IS in the key ("|r" below), so a layout
+        // made at one point-to-pixel ratio is never reused at another.
         std::ostringstream keyStream;
 
         keyStream << sz.width << "x" << sz.height << "|"
