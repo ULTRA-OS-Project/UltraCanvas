@@ -131,8 +131,8 @@ Apps/UltraMail/
   CMakeLists.txt                  UltraMailEngine static library
 ```
 
-**Settings:** the gear at the right end of the toolbar opens the Settings
-window, built like UltraFiler's (page tree on the left, notes at the foot of
+**Settings:** the gear at the right end of the toolbar (on the start page, in
+its top-right corner) opens the Settings window, built like UltraFiler's (page tree on the left, notes at the foot of
 each page, *Restore default* in the bottom bar). Changes apply and are saved
 (`preferences.ini` in the data folder) at once:
 

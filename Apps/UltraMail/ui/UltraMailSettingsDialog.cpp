@@ -14,7 +14,7 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
-// Version: 1.0.0
+// Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -722,6 +722,24 @@ void SettingsDialog::Show(UltraCanvasWindowBase* parent, Preferences* prefs,
     BuildDialog(state.get(), parent);
     if (!state->window) return;
     g_dialog = state;   // keeps the widgets alive
+}
+
+std::shared_ptr<UltraCanvasButton> SettingsDialog::MakeGearButton(
+        const std::string& id, float height, std::function<void()> onClick) {
+    auto gear = std::make_shared<UltraCanvasButton>(id, 0, 0, 30, height, "");
+    gear->SetCornerRadius(4.0f);
+    gear->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
+    gear->SetBorder(1.0f, Color(0, 0, 0, 60));
+    gear->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.svg"));
+    gear->SetIconSize(15, 15);
+    gear->SetIconPosition(ButtonIconPosition::Left);
+    gear->SetIconSpacing(0);
+    gear->SetUseIconAsMask(true);
+    gear->SetIconMaskColor(Color(55, 55, 60, 255));
+    gear->SetTooltip("Settings");
+    if (onClick) gear->onClick = std::move(onClick);
+    gear->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    return gear;
 }
 
 void SettingsDialog::SyncWithPreferences() {

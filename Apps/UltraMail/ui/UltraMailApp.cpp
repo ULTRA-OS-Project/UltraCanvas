@@ -187,6 +187,7 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // logo, app title and the "Add email account" button.
     auto start = startPage_.Build();
     startPage_.onAddAccount = [this]() { HandleAddAccount(); };
+    startPage_.onSettings   = [this]() { OpenSettings(); };
     window_->AddChild(start);
 
     // Account view — actions column + account bar on top, inbox | message below.
@@ -318,25 +319,9 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     });
     makeAction("umAddAccount", "Add account", 0, "", false,
                [this]() { HandleAddAccount(); });
-    // The gear at the far right opens the settings window - the same tool
-    // button as UltraFiler's: icon only, white, a thin border.
-    {
-        auto gear = std::make_shared<UltraCanvasButton>("umAppSettings", 0, 0, 30,
-                                                        Theme::kControlHeight, "");
-        gear->SetCornerRadius(4.0f);
-        gear->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-        gear->SetBorder(1.0f, Color(0, 0, 0, 60));
-        gear->SetIcon(IconPath("settings.svg"));
-        gear->SetIconSize(15, 15);
-        gear->SetIconPosition(ButtonIconPosition::Left);
-        gear->SetIconSpacing(0);
-        gear->SetUseIconAsMask(true);
-        gear->SetIconMaskColor(Color(55, 55, 60, 255));
-        gear->SetTooltip("Settings");
-        gear->onClick = [this]() { OpenSettings(); };
-        gear->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        toolbar->AddChild(gear);
-    }
+    // The gear at the far right opens the settings window (UltraFiler's gear).
+    toolbar->AddChild(SettingsDialog::MakeGearButton("umAppSettings", Theme::kControlHeight,
+                                                     [this]() { OpenSettings(); }));
     // "Delete account" moved to the account settings dialog's bottom row
     // (ServerSettingsDialog, red button) — see HandleAccountSettings.
     accountView_->AddChild(toolbar);

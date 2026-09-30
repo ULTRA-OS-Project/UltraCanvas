@@ -13,6 +13,8 @@
     *Privacy > Sender icons*: downloading the known senders' icons.
   - The reading-pane and sender-icon switches moved here from each account's
     *Account Settings*, since they were never per account.
+  - The start page (no account yet) carries the same gear in its top-right
+    corner, so privacy can be set before the first account is added.
 - **HTML mail is laid out for the width of the preview pane.** A newsletter's
   `@media (min-width: …)` rules (side-by-side columns from 480px up) are answered for
   the pane's width when the message is opened; resizing the pane does not re-lay the
