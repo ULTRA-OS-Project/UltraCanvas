@@ -1769,14 +1769,9 @@ namespace UltraCanvas {
                                "Docs/UltraCanvas/UltraCanvasTextAreaExamples.md");
 
         // The WYSIWYG element. "Partially implemented" is its own
-        // documentation's verdict rather than a guess: editing, formatting,
-        // undo, clipboard, images, links and the .odt/.docx round trip all
-        // work, but tables render without being editable in place, images are
-        // not resized interactively, math runs show their LaTeX source, there
-        // is no spell checking yet and cross-application rich paste needs
-        // clipboard MIME flavours the backend does not carry
-        // (Docs/UltraCanvas/UltraCanvasRichTextEdit.md, "What is not
-        // implemented yet").
+        // documentation's verdict rather than a guess: see "What is not
+        // implemented yet" in Docs/UltraCanvas/UltraCanvasRichTextEdit.md
+        // (unbalanced columns, RTL indents, no screen-reader bridge).
         textDocBuilder.AddItem("wysiwyg", "WYSIWYG Editor",
                                "Formatted documents edited as they look — the caret sits in "
                                "rendered text and bold is a state of the selection, over the same "
@@ -1790,6 +1785,15 @@ namespace UltraCanvas {
                 .AddVariant("wysiwyg", "Tables, rules & pictures")
                 .AddVariant("wysiwyg", "Open & save .odt / .docx")
                 .AddVariant("wysiwyg", "Read-only preview");
+
+        textDocBuilder.AddItem("wysiwygintl", "WYSIWYG — Chinese & Arabic",
+                               "The WYSIWYG editor on Chinese and Arabic text: Chinese lines break "
+                               "between any two characters, Arabic paragraphs run right to left, and "
+                               "one line can mix both directions",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateWYSIWYGInternationalExamples(); },
+                               "DemoApp/UltraCanvasWYSIWYGExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasRichTextEdit.md");
 
       textDocBuilder.AddItem("ebook", "eBook Reader",
                                "EPUB/FB2/MOBI/TXT reading with chapters, TOC, themes and font scaling "
