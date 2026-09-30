@@ -111,6 +111,21 @@ before adding cross-module code.
   The check cannot see a declaration `fs::path p(str);` or an implicit
   `fs::exists(str)`, so review catches those: write
   `fs::exists(PathFromUtf8(str))`.
+- **No function of ours is named like a Win32 A/W macro.** `<windows.h>`
+  `#define`s thousands of names to their `W` variant (`CreateFile` →
+  `CreateFileW`, `LoadImage`, `SendMessage`, `GetMessage`, `ReplaceText`, …),
+  and the macro renames our methods too — but only in the files that see
+  windows.h. The declaring and the calling file then disagree and the Windows
+  link fails with an undefined `…W` symbol that Linux and macOS never show;
+  `UltraCanvasPdfSurface::CreateFile` broke both Windows builds that way.
+  Pick another name (`CreateForFile`, `LoadImageFile`). A name the framework
+  must keep is made safe by an `#undef` in the Windows platform headers next
+  to the existing `#undef DrawText` (`UltraCanvasWindowsApplication.h`,
+  `UltraCanvasWindowsWindow.h`). `scripts/check_win32_names.py` enforces this
+  in CI (`win32-names.yml`) from the name list in
+  `scripts/win32_aw_macros.txt`; `scripts/win32_names_baseline.txt` holds the
+  sites that predate the check and only shrinks. A site that is correct as it
+  stands says so with `// win32-name-ok: <why>`.
 - **Third-party code** is vendored under `UltraCanvas/third_party/` and
   `3rdparty/` — do not modify it, and record licenses in
   `THIRD_PARTY_LICENSES.md`.
@@ -372,7 +387,9 @@ number anywhere else, and never introduce a new literal copy of one:
    `TryParseFloat` / `ParseFloatClassic` and write it with
    `FormatFloatClassic`, never `std::stof` / `atof` / `std::to_string(double)`
    / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
-   that too.
+   that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
+   `LoadImage`, `SendMessage`) — run `python3 scripts/check_win32_names.py`;
+   CI runs that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change.
