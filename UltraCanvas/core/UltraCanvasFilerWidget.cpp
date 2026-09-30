@@ -4857,8 +4857,12 @@ namespace UltraCanvas {
         spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
                                                    : FactPath(from))
                    + "\n\n**Into:** " + FactPath(destDir);
+        // How much is going: the set's tally, or a single file's own size (a
+        // single folder is not walked for it).
         if (entries.size() > 1)
             spec.facts += "\n\n**Size:** " + DescribeEntries(entries);
+        else if (entries.size() == 1 && !entries.front().isDirectory)
+            spec.facts += "\n\n**Size:** " + FormatSize(entries.front().size);
         if (entries.size() > 1) {
             spec.listed.assign(entries.begin(), entries.begin() +
                     static_cast<std::ptrdiff_t>(std::min(entries.size(), kOperationListRows)));

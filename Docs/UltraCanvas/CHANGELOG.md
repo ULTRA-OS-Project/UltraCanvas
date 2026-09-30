@@ -1,3 +1,10 @@
+#### 2026-09-30 *0.9.105*
+- **The copy / move confirmation names a single file's size.** The *Size* fact
+  under the question was only there for several entries; a drop of one file
+  now shows its size too (a single folder is not walked for it). The dialog
+  itself is the one 0.9.103 introduced: a copy asked for with Ctrl at the drop,
+  or by a drop from another program, shows *Copy* as the coloured default with
+  *Move* beside it, the mirror image of a dropped move.
 #### 2026-09-30 *0.9.104*
 - **UltraCanvasMediaViewer: the toolbars are icons, not captions.** Open, Prev, Next,
   Slideshow, Zoom -, Zoom +, Fit, Rotate L/R, Mirror H/V, Adjust, Curves, Save as

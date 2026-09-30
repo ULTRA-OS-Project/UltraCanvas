@@ -1,3 +1,8 @@
+#### 2026-09-30 *1.60.1*
+- **A dropped copy's question shows the file's size.** The confirmation a
+  Ctrl-drop (or a drop from another program) opens - *Copy* coloured, *Move*
+  beside it - names the size of a single file under *From* and *Into*, as the
+  move question already did for several entries.
 #### 2026-09-30 *1.60.0*
 - **The copy, move and delete questions are one dialog, and the answer is the
   button.** The *File already exists*, *Cannot copy*, *Confirm delete* and
