@@ -11,6 +11,12 @@
 // HTML message, or any draft signed with an HTML signature - opens formatted.
 // Plain text shows only the switch; switching back to it drops the formatting
 // and pictures, after asking.
+// Every compose window has its own view (UltraMailApp keeps one per window),
+// held by a shared_ptr: the answers that can come after its window closed -
+// the file and cloud pickers, the plain-text question, a Link… or Picture…
+// dialog - hold it weakly and find nothing to change.
+// Version: 0.7.0 - one view per window: owned by a shared_ptr, late dialog
+//                  answers hold it weakly
 // Version: 0.6.0 - the full formatting toolbar, and the Plain text | Formatted
 //                  switch
 // Version: 0.5.0
@@ -38,7 +44,9 @@
 
 namespace UltraMail {
 
-class ComposeView {
+// Create it with std::make_shared: Build() hands weak references to itself to
+// the dialogs it opens.
+class ComposeView : public std::enable_shared_from_this<ComposeView> {
 public:
     void SetDraft(Draft draft) { draft_ = std::move(draft); }
     // The window the composer lives in (parent of its file and cloud dialogs).
@@ -74,6 +82,8 @@ private:
     void SetFormatted(bool formatted, bool ask = true);
     // Shows the editor, the tools and the switch position for formatted_.
     void ShowMode();
+    // Formatted -> plain text, without asking.
+    void SwitchToPlain();
 
     Draft draft_;
     UltraCanvas::UltraCanvasWindowBase* parent_ = nullptr;

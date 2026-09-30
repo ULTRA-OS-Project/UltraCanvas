@@ -218,8 +218,13 @@ private:
     void SeedDemoCloud();
     void MigrateCloudSecrets();
 
-    // Open a compose window for the given draft (new / reply / forward).
-    void OpenComposer(const Draft& draft);
+    // Open a compose window for the given draft (new / reply / forward). Every
+    // window has its own ComposeView, so several can be open at once; the
+    // returned view lives until its window closes.
+    ComposeView* OpenComposer(const Draft& draft);
+    // Forgets a compose window once it has closed (on the next UI turn, never
+    // inside the window's own close callback).
+    void RetireComposer(UltraCanvas::UltraCanvasWindow* window);
     // `draft` with the signature of the account it is sent from (its fromAddr)
     // put in - as account settings define it.
     Draft WithSignature(Draft draft, DraftPurpose purpose) const;
@@ -461,7 +466,13 @@ private:
     AccountBar      accountBar_;
     MailView        mailView_;
     ContactsView    contactsView_;
-    ComposeView     composeView_;
+    // One per open compose window - its window and its own view. The view is
+    // a shared_ptr because the dialogs it opens hold it weakly.
+    struct ComposeSession {
+        std::shared_ptr<UltraCanvas::UltraCanvasWindow> window;
+        std::shared_ptr<ComposeView>                    view;
+    };
+    std::vector<ComposeSession> composers_;
     SyncScheduler   scheduler_;
     // New mail to the desktop feed (UltraMessage mail.message); fed from the
     // sync workers' progress callbacks.

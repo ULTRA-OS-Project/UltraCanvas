@@ -1,3 +1,14 @@
+#### 2026-09-30 *0.10.13*
+- **Several compose windows at once work.** UltraMail had one compose view for
+  every compose window, so opening a second message rebound the first window's
+  Send, Cancel, attachment buttons and formatting toolbar to the second: Send
+  in the first window sent the second message, Cancel closed the other window.
+  Each compose window now has its own view, and its entry is dropped once the
+  window has closed (the windows used to be kept until UltraMail quit).
+- What answers after a compose window closed - the file or cloud picker, the
+  "send as plain text?" question, a Link… or Picture… dialog - finds the
+  window gone and changes nothing.
+
 #### 2026-09-30 *0.10.12*
 - **The compose window has the full formatting toolbar.** The signature
   editor's tools now sit above every message body: bold, italic, underline,

@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.7.0 - one view per compose window: what answers after the window
+//                  closed holds the view weakly
 // Version: 0.6.0 - the full formatting toolbar (UltraMailFormatBar) and the
 //                  Plain text | Formatted switch
 // Version: 0.5.0 - a formatted draft is edited in a rich text editor with a B /
@@ -121,8 +123,11 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     FormatBar::Options barOptions;
     barOptions.idPrefix = "c";
     barOptions.dialogParent = parent_;
-    barOptions.editor = [this]() -> UltraCanvasRichTextEdit* {
-        return formatted_ ? rich_.get() : nullptr;
+    // Asked on every click, and again when a Link… or Picture… dialog
+    // answers - by then the window may be closed and this view gone.
+    barOptions.editor = [weak = weak_from_this()]() -> UltraCanvasRichTextEdit* {
+        auto self = weak.lock();
+        return self && self->formatted_ ? self->rich_.get() : nullptr;
     };
     formatBar_ = FormatBar::Build(barOptions);
     mode_ = CreateSegmentedControl("cMode", 0, 0, 160, Theme::kControlHeight);
@@ -251,6 +256,14 @@ void ComposeView::ShowMode() {
     }
 }
 
+void ComposeView::SwitchToPlain() {
+    if (!body_ || !rich_) return;
+    body_->SetText(rich_->GetPlainText());
+    formatted_ = false;
+    ShowMode();
+    body_->SetFocus(true);
+}
+
 void ComposeView::SetFormatted(bool formatted, bool ask) {
     if (!body_ || !rich_) return;
     if (formatted == formatted_) { ShowMode(); return; }
@@ -265,23 +278,19 @@ void ComposeView::SetFormatted(bool formatted, bool ask) {
         return;
     }
 
-    auto toPlain = [this]() {
-        body_->SetText(rich_->GetPlainText());
-        formatted_ = false;
-        ShowMode();
-        body_->SetFocus(true);
-    };
     const auto& doc = rich_->GetDocument();
     const std::string text = rich_->GetPlainText();
     const bool something = (doc && !doc->media.empty())
                         || text.find_first_not_of(" \t\r\n") != std::string::npos;
-    if (!ask || !something) { toPlain(); return; }
+    if (!ask || !something) { SwitchToPlain(); return; }
     UltraCanvasDialogManager::ShowConfirmation(
         "Send this message as plain text? Its formatting, links and pictures are removed.",
         "Plain text",
-        [this, toPlain](bool confirmed) {
-            if (confirmed) toPlain();
-            else ShowMode();   // stays formatted: the switch goes back
+        [weak = weak_from_this()](bool confirmed) {
+            auto self = weak.lock();
+            if (!self) return;   // the window closed while the question was open
+            if (confirmed) self->SwitchToPlain();
+            else self->ShowMode();   // stays formatted: the switch goes back
         },
         parent_);
 }
@@ -311,11 +320,12 @@ void ComposeView::ChooseFileToAttach() {
     options.title = "Attach file";
     options.parentWindow = parent_;
     UltraCanvasFileLoader::OpenFileDialog(
-        options, [this](DialogResult result, const std::string& path) {
-            if (result != DialogResult::OK || path.empty()) return;
-            if (!AttachFile(path))
+        options, [weak = weak_from_this()](DialogResult result, const std::string& path) {
+            auto self = weak.lock();
+            if (!self || result != DialogResult::OK || path.empty()) return;
+            if (!self->AttachFile(path))
                 UltraCanvasDialogManager::ShowError("Could not read " + path, "Attach file",
-                                                    nullptr, parent_);
+                                                    nullptr, self->parent_);
         });
 }
 
@@ -327,8 +337,8 @@ void ComposeView::ChooseCloudLink() {
         return;
     }
     UltraCloud::ShowCloudLinkPicker(parent_, *cloud_,
-        [this](const UltraCloud::CloudLinkPick& pick) {
-            InsertLink(pick.entry.name, pick.link.url);
+        [weak = weak_from_this()](const UltraCloud::CloudLinkPick& pick) {
+            if (auto self = weak.lock()) self->InsertLink(pick.entry.name, pick.link.url);
         });
 }
 
