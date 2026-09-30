@@ -5,7 +5,7 @@
 // record types (MX / TXT / SRV / NS / CNAME / SOA) the platform's DNS library
 // (libresolv, dnsapi). A lookup can name the servers it asks, for that call
 // only (UltraNetDnsOptions::servers).
-// Version: 0.3.1 - the reverse lookup takes the options too: a deadline, and servers
+// Version: 0.3.2 - async PTR is the reverse lookup too, validated before any thread
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -65,7 +65,11 @@ UltraNetResult UltraNet_DnsResolveAsync(
     std::function<void(const std::vector<std::string>&)> onResult);
 
 // The same, with per-call options. `onResult` receives an empty list on any
-// failure, as the overload above does.
+// failure, as the overload above does. A PTR lookup is
+// UltraNet_DnsReverseLookup with these options on a thread of its own - the
+// hosts file, the deadline and the servers behave as they do there - and an
+// argument that is not an address is refused as InvalidUrl before any thread
+// starts, the way a bad server entry is.
 UltraNetResult UltraNet_DnsResolveAsync(
     const std::string& hostname,
     UltraNetDnsType type,

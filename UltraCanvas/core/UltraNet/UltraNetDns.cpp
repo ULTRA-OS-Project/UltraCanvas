@@ -9,7 +9,7 @@
 //
 // Async path without c-ares: a detached thread runs the sync resolver. Fine
 // for typical app workloads; the curl_multi worker is reserved for HTTP.
-// Version: 0.3.1 - the reverse lookup honours the deadline and per-call servers
+// Version: 0.3.2 - async PTR is the reverse lookup too, validated before any thread
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetDns.h"
@@ -265,22 +265,44 @@ UltraNetResult UltraNet_DnsResolveAsync(
                                      "onResult callback is required");
     }
     if (UltraNetResult v = ValidateServers(options.servers); !v) return v;
-#ifdef ULTRANET_HAS_CARES
-    // c-ares gives us real non-blocking async — no thread-per-call.
-    // PTR is the one exception: we go through the reverse-lookup path
-    // (still on a detached thread) since the c-ares ParsePtr helper
-    // needs the queried IP as well.
-    if (type != UltraNetDnsType::PTR) {
-        return ultranet_dns_platform::ResolveAsyncCares(
-            hostname, type, std::move(onResult), options.servers);
+
+    // PTR takes an address, and the reverse lookup owns that path - the
+    // deadline, the servers, the hosts file - so it is that call on a thread
+    // of its own, whichever backend. The address is checked here, before any
+    // thread starts, the way the servers are: a non-address is refused now,
+    // not reported as an empty answer later.
+    if (type == UltraNetDnsType::PTR) {
+        if (hostname.empty()) {
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                         "ipAddress is empty");
+        }
+        std::string reverseName;
+        if (!UltraNet_DnsReverseName(hostname, reverseName)) {
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                         "not a valid IPv4/IPv6 address");
+        }
+        std::thread([hostname, options, cb = std::move(onResult)]() {
+            std::string host;
+            std::vector<std::string> names;
+            if (UltraNet_DnsReverseLookup(hostname, host, options)) names.push_back(host);
+            cb(names);
+        }).detach();
+        return UltraNetResult::Ok();
     }
-#endif
+
+#ifdef ULTRANET_HAS_CARES
+    // c-ares gives us real non-blocking async for every forward type — no
+    // thread-per-call.
+    return ultranet_dns_platform::ResolveAsyncCares(
+        hostname, type, std::move(onResult), options.servers);
+#else
     std::thread([hostname, type, options, cb = std::move(onResult)]() {
         std::vector<std::string> addrs;
         UltraNet_DnsResolve(hostname, addrs, type, options);
         cb(addrs);
     }).detach();
     return UltraNetResult::Ok();
+#endif
 }
 
 UltraNetResult UltraNet_DnsReverseLookup(const std::string& ipAddress,

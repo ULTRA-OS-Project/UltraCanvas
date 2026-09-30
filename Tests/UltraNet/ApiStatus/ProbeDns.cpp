@@ -130,6 +130,10 @@ ULTRANET_PROBE(kArea, UltraNet_DnsResolveAsync) {
     const UltraNetResult noCallback =
         UltraNet_DnsResolveAsync("localhost", UltraNetDnsType::A, nullptr);
     PROBE_EXPECT(!noCallback && noCallback.code == UltraNetResultCode::InvalidState);
+    // PTR is the reverse lookup: a non-address is refused before any thread.
+    const UltraNetResult notAnIp = UltraNet_DnsResolveAsync(
+        "not-an-ip", UltraNetDnsType::PTR, [](const std::vector<std::string>&) {});
+    PROBE_EXPECT(!notAnIp && notAnIp.code == UltraNetResultCode::InvalidUrl);
 
     std::mutex m;
     std::condition_variable cv;
@@ -156,7 +160,7 @@ ULTRANET_PROBE(kArea, UltraNet_DnsResolveAsync) {
     PROBE_EXPECT(Contains(addresses, "127.0.0.1"));
     return Working(std::string("async localhost lookup delivered ") +
                    Join(addresses) + " via " + kBackend +
-                   "; missing callback rejected");
+                   "; missing callback and a non-address PTR rejected");
 }
 
 ULTRANET_PROBE(kArea, UltraNet_DnsReverseLookup) {

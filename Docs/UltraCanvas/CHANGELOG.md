@@ -1,3 +1,22 @@
+#### 2026-09-30 *0.9.97*
+- **`UltraNet_DnsResolveAsync` with `UltraNetDnsType::PTR` is the reverse
+  lookup, and refuses a non-address before any thread starts.** The
+  asynchronous PTR path reached `UltraNet_DnsReverseLookup` only by way of
+  the synchronous `UltraNet_DnsResolve` on a detached thread, behind a stale
+  comment about the c-ares PTR parser, and a caller that passed a host name
+  instead of an address got a thread and an empty answer later rather than
+  an error now. It now calls the reverse lookup directly with the caller's
+  options - hosts file, deadline and servers as there - and checks the
+  address up front the way it checks the server list: an empty or
+  non-address argument is `InvalidUrl` synchronously, no thread, no callback.
+  Forward types are unchanged (c-ares's event thread, or a thread running the
+  synchronous lookup).
+  - Tests (`Tests/UltraNet/test_dns_servers.cpp`): a non-address PTR is
+    refused synchronously and never calls back; a PTR at a silent loopback
+    server calls back with an empty list at its deadline; without servers
+    the asynchronous answer matches the synchronous reverse lookup. The
+    `UltraNet_DnsResolveAsync` probe covers the synchronous refusal.
+
 #### 2026-09-30 *0.9.96*
 - **Menu: the checkbox / radio indicator sits level with its label.** It was
   drawn one pixel above the row's centre line while the label was drawn on
