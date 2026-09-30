@@ -1201,7 +1201,8 @@ future.
   (each also with an `UltraNetDnsOptions` - the name servers to ask for that
   call only, and the deadline; the reverse lookup without servers is the
   system resolver under the deadline), `UltraNet_DnsClearCache`,
-  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`
+  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`,
+  `UltraNet_DnsReverseNameToAddress`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
 - `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
   `UltraNet_UrlDecode`
