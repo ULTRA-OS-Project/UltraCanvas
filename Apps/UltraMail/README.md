@@ -35,7 +35,10 @@ and **UltraDatabase** (local store) modules.
 > cannot reach the server at all is the exception: right after boot that is
 > the network not being up yet, so it is retried every minute and reported
 > only once the account has stayed unreachable for ten minutes
-> (`OfflineGrace` in `UltraMailSyncScheduler.h`).
+> (`OfflineGrace` in `UltraMailSyncScheduler.h`). A **connection pill** at
+> the right end of the status line shows the selected account's last contact
+> with its server (Not checked / Checking… / Connected / Offline / Failed);
+> its tooltip has the server, the times and the reason.
 > Every message row carries a **sender badge** left of its subject — the
 > service's icon for a known sender, otherwise the sender's initial, framed in
 > the colour of the verdict (contact / business contact / new / advertisement /

@@ -328,6 +328,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         // Its last failure, if any, before Refresh() - whose folder fetch
         // replaces it with "Opening …" while it runs.
         ShowAccountStatus();
+        UpdateConnectionIndicator();
         Refresh();
     };
     accountView_->AddChild(bar);
@@ -408,6 +409,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.onSelectAccount = [this](const std::string& accountId) {
         selectedAccount_ = accountId;
         ShowAccountStatus();
+        UpdateConnectionIndicator();
         store_.ListAccounts(accounts_);
         store_.GetAccountStatus(status_);
         accountBar_.Rebuild(accounts_, status_, selectedAccount_);
@@ -463,9 +465,140 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                    Theme::kSizeSecondary, Theme::kTextSecondary);
     statusRow->AddChild(statusLabel_);
     statusLabel_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+
+    // The connection pill, right-aligned: the selected account's last contact
+    // with its mail server. Hovering it tells the server, when it was last
+    // reached and why it was not.
+    connectionBadge_ = CreateBadge("umConnection", 0, 0, "Not checked",
+                                   BadgeVariant::Neutral);
+    BadgeStyle badgeStyle = connectionBadge_->GetStyle();
+    badgeStyle.height   = statusHeight * 0.7f;
+    badgeStyle.fontSize = Theme::kSizeSmall;
+    badgeStyle.paddingH = Theme::kGap;
+    connectionBadge_->SetStyle(badgeStyle);
+    connectionBadge_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    statusRow->AddChild(connectionBadge_);
+    statusRow->SetPadding(0, Theme::kGap, 0, 0);   // the pill clear of the edge
     UpdateBusyIndicator();
+    UpdateConnectionIndicator();
 
     return accountView_;
+}
+
+void UltraMailApp::NoteConnection(const std::string& accountId, ConnectionState state,
+                                  const std::string& reason) {
+    ConnectionInfo& c = connection_[accountId];
+    const std::time_t now = std::time(nullptr);
+    switch (state) {
+        case ConnectionState::Checking:
+            c.lastTry = now;
+            break;
+        case ConnectionState::Connected:
+            c.lastOk = now;
+            c.failures = 0;
+            c.reason.clear();
+            break;
+        case ConnectionState::Unreachable:
+        case ConnectionState::Failed:
+            ++c.failures;
+            c.reason = reason;
+            break;
+        case ConnectionState::Unknown:
+            break;
+    }
+    c.state = state;
+    if (accountId == selectedAccount_) UpdateConnectionIndicator();
+}
+
+namespace {
+std::string ClockTime(std::time_t t) {
+    if (t == 0) return "not yet";
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &t);
+#else
+    localtime_r(&t, &local);
+#endif
+    char buf[16];
+    std::strftime(buf, sizeof buf, "%H:%M", &local);
+    return buf;
+}
+} // namespace
+
+void UltraMailApp::UpdateConnectionIndicator() {
+    if (!connectionBadge_) return;
+    const Account* account = nullptr;
+    for (const auto& a : accounts_) if (a.accountId == selectedAccount_) account = &a;
+    if (!account) {
+        connectionBadge_->SetVisible(false);
+        return;
+    }
+    connectionBadge_->SetVisible(true);
+    auto it = connection_.find(account->accountId);
+    const ConnectionInfo info = it != connection_.end() ? it->second : ConnectionInfo{};
+
+    // The pill: one word and a colour.
+    std::string label, stateText;
+    BadgeVariant variant = BadgeVariant::Neutral;
+    switch (info.state) {
+        case ConnectionState::Unknown:
+            label = "Not checked"; variant = BadgeVariant::Neutral;
+            stateText = "Not contacted yet in this session";
+            break;
+        case ConnectionState::Checking:
+            label = "Checking…"; variant = BadgeVariant::Primary;
+            stateText = "Contacting the server";
+            break;
+        case ConnectionState::Connected:
+            label = "Connected"; variant = BadgeVariant::Successful;
+            stateText = "The server answered and the mailbox was read";
+            break;
+        case ConnectionState::Unreachable:
+            label = "Offline"; variant = BadgeVariant::Warning;
+            stateText = "The server could not be reached";
+            break;
+        case ConnectionState::Failed:
+            label = "Failed"; variant = BadgeVariant::Danger;
+            stateText = "The server answered but refused the request";
+            break;
+    }
+    connectionBadge_->SetText(label);
+    connectionBadge_->SetVariant(variant);
+
+    // The tooltip: where, when, and why not.
+    const DiscoveryResult settings = SettingsFor(*account);
+    std::string server = settings.found ? AutoDiscovery::ImapServerUrl(settings.imap) : "";
+    if (server.empty()) server = "no server known";
+    TooltipContent tip;
+    tip.AddTitle("Mail server connection")
+       .AddRow("Account", account->email)
+       .AddRow("Server", server)
+       .AddRow("State", stateText)
+       .AddRow("Last contact", ClockTime(info.lastOk))
+       .AddRow("Last attempt", ClockTime(info.lastTry));
+    if (!info.reason.empty()) tip.AddRow("Reason", info.reason);
+    if (info.failures > 1) tip.AddRow("Failed attempts", std::to_string(info.failures));
+    tip.AddSeparator();
+    switch (info.state) {
+        case ConnectionState::Unreachable:
+            tip.AddText(offline_.InGrace(account->accountId, NowMonotonicSec())
+                        ? "Probably the network is not up yet. UltraMail tries again "
+                          "every minute and alerts after ten minutes offline."
+                        : "Check the network connection, or the server name and "
+                          "port on the account's settings page.");
+            break;
+        case ConnectionState::Failed:
+            tip.AddText("Update tries again; the account's settings page lets you "
+                        "correct the sign-in.");
+            break;
+        case ConnectionState::Unknown:
+            tip.AddText("Update contacts the server now.");
+            break;
+        default:
+            tip.AddText("Mail is checked every five minutes; Update checks now.");
+            break;
+    }
+    connectionBadge_->SetTooltipContent(tip);
 }
 
 void UltraMailApp::SetStatus(const std::string& text) {
@@ -1333,6 +1466,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
     auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
     if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
     SetStatus("Opening " + FriendlyFolderName(folder) + "…");
+    NoteConnection(accountId, ConnectionState::Checking);
     auto progressBuf = std::make_shared<std::vector<MessageEnvelope>>();
     svc->SyncFolderInBackground(accountId, folder, serverUrl, opts,
         [this, accountId, username, provider](UltraNetMailOptions& o) {
@@ -1355,6 +1489,10 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                 }
                 if (!outcome) {
                     accountError_[accountId] = "Could not fetch mail for " + who + ": " + outcome.message;
+                    NoteConnection(accountId, outcome.NetworkUnreachable()
+                                                  ? ConnectionState::Unreachable
+                                                  : ConnectionState::Failed,
+                                   outcome.message);
                     if (last || accountId == selectedAccount_) ShowAccountStatus();
                     if (syncErrorReported_.insert(accountId).second) {
                         AlertError(window_ ? window_.get() : nullptr,
@@ -1365,6 +1503,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
                 }
                 syncErrorReported_.erase(accountId);
                 accountError_.erase(accountId);
+                NoteConnection(accountId, ConnectionState::Connected);
                 if (last) ShowAccountStatus();
                 Refresh();   // re-query the store; the open folder now shows its mail
             });
@@ -1451,6 +1590,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         const std::string aid = acc.accountId;
         if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Updating…");
         SetStatus("Checking " + who + "…");
+        NoteConnection(aid, ConnectionState::Checking);
         // onDone keeps `svc` alive until the worker thread finishes; it marshals
         // the follow-up work back to the UI thread.
         // The outcome carries the reason a sync failed (bad password, untrusted
@@ -1488,6 +1628,10 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 }
                 if (!outcome) {
                     accountError_[aid] = "Could not fetch mail for " + who + ": " + outcome.message;
+                    NoteConnection(aid, outcome.NetworkUnreachable()
+                                            ? ConnectionState::Unreachable
+                                            : ConnectionState::Failed,
+                                   outcome.message);
                     if (last || aid == selectedAccount_) ShowAccountStatus();
                     // A dead OAuth sign-in offers Retry → re-sign-in (which
                     // re-syncs the account), but only when the user asked — a
@@ -1522,6 +1666,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 syncErrorReported_.erase(aid);   // recovered: arm the next report
                 offline_.Reached(aid);
                 accountError_.erase(aid);
+                NoteConnection(aid, ConnectionState::Connected);
                 vaultLockReported_ = false;
                 if (last) ShowAccountStatus();
                 CollectContacts(aid, "INBOX");
@@ -1845,6 +1990,7 @@ void UltraMailApp::Refresh() {
     RefreshContactIndex();
 
     accountBar_.Rebuild(accounts_, status_, selectedAccount_);
+    UpdateConnectionIndicator();   // follows the selection settled above
     mailView_.SetAccounts(accounts_);
     mailView_.ShowAccount(selectedAccount_);
     PublishUnreadNotice();
@@ -1950,6 +2096,7 @@ void UltraMailApp::HandleDeleteAccount(const std::string& accountId) {
             // the next removal (or a restart) clears — acceptable here.
             scheduler_.Remove(accountId);
             offline_.Reached(accountId);   // and its held-back network failure
+            connection_.erase(accountId);
 
             // Forget the stored password / OAuth tokens. Best-effort: these are
             // no-ops when the vault is locked, and the leftover encrypted

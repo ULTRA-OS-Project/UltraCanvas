@@ -9,6 +9,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCanvasBadge.h"
 #include "UltraCanvasBusyIndicator.h"
 #include "UltraCanvasMediaViewerWindow.h"
 #include "UltraMailStartPage.h"
@@ -43,6 +44,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <functional>
 #include <map>
 #include <memory>
@@ -173,6 +175,13 @@ private:
     void SetStatus(const std::string& text);
     // Runs the status-line ring while a sync, send or mailbox action is in flight.
     void UpdateBusyIndicator();
+    // The connection pill at the right end of the status line: the selected
+    // account's last contact with its mail server, with the details (server,
+    // last contact, reason) in its tooltip.
+    enum class ConnectionState { Unknown, Checking, Connected, Unreachable, Failed };
+    void NoteConnection(const std::string& accountId, ConnectionState state,
+                        const std::string& reason = "");
+    void UpdateConnectionIndicator();
     static std::string SlugFromEmail(const std::string& email);
     static std::string LocalPart(const std::string& email);
 
@@ -408,6 +417,17 @@ private:
     // doing ("Checking <account>…", "Receiving messages… (N)", "Up to date").
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     statusLabel_;
     std::shared_ptr<UltraCanvas::UltraCanvasBusyIndicator> busyIndicator_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBadge>     connectionBadge_;
+    // What the last contact with each account's mail server came to, for the
+    // connection pill. Wall-clock times, since they are shown to the user.
+    struct ConnectionInfo {
+        ConnectionState state = ConnectionState::Unknown;
+        std::string     reason;         // the last failure's message
+        std::time_t     lastOk = 0;     // last successful contact, 0 = none this run
+        std::time_t     lastTry = 0;    // last attempt, 0 = none this run
+        int             failures = 0;   // in a row, since the last success
+    };
+    std::map<std::string, ConnectionInfo> connection_;
     int                                                mailboxActionsInFlight_ = 0;
     // Cumulative messages streamed in during the current run of syncs (for the
     // "Receiving messages… (N)" status); reset when the last sync ends.

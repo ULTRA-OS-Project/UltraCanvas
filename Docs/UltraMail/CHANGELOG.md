@@ -14,6 +14,13 @@
     failure of a sync you asked for with Update.
   - The engine's sync outcome now carries UltraNet's result code, and a
     failed inbox fetch keeps its connection details for the alert.
+- **A connection pill at the right end of the status line** shows how the
+  selected account's last contact with its mail server went: *Not checked*,
+  *Checking…*, *Connected* (green), *Offline* (amber — the server could not
+  be reached) or *Failed* (red — the server answered but refused the
+  request). Hovering it shows the account, the server, the state, the time
+  of the last contact and the last attempt, the reason for a failure, how
+  many attempts in a row have failed, and what happens next.
 
 #### 2026-09-29 *0.10.8*
 - **Replies and forwards keep an HTML message's formatting.** Answering or
