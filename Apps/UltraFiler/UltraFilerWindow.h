@@ -794,6 +794,9 @@ private:
     // the History and Favorites lists) so it opens configured rather than
     // waiting for the next settings change.
     void ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target);
+    // Handling > File operations: the standing answers to the questions a
+    // copy, move or delete asks, pushed into one display.
+    void ApplyFileOperationSettings(UltraCanvasFilerWidget& target);
     // Opens the settings window (the navigation row's gear button and the
     // filer context menus' Settings item), which also hosts the Clear
     // History / Clear Favorites actions. `page` points it straight at one

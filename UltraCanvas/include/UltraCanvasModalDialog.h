@@ -1,7 +1,7 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.5.0
+// Version: 3.6.0
 // Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 #pragma once
@@ -61,6 +61,21 @@ namespace UltraCanvas {
         YesNoCancel = static_cast<int>(DialogButton::Yes) | static_cast<int>(DialogButton::No) | static_cast<int>(DialogButton::Cancel),
         RetryCancel = static_cast<int>(DialogButton::Retry) | static_cast<int>(DialogButton::Cancel),
         AbortRetryIgnore = static_cast<int>(DialogButton::Abort) | static_cast<int>(DialogButton::Retry) | static_cast<int>(DialogButton::Ignore)
+    };
+
+// ===== CUSTOM BUTTON ROLES =====
+    // What a custom button (AddCustomButton) is to the dialog beyond its
+    // label. Default is the button Return activates and the one drawn in the
+    // accent colour; Destructive is drawn red, so an answer that cannot be
+    // undone (Delete permanently, Replace a folder) looks different from the
+    // one beside it; Cancel is the button Escape and the close box map to.
+    // A button can be Default and Destructive at once: DestructiveDefault.
+    enum class DialogButtonRole {
+        Normal,
+        Default,
+        Destructive,
+        DestructiveDefault,
+        Cancel
     };
 
 // ===== DIALOG RESULT =====
@@ -367,8 +382,14 @@ namespace UltraCanvas {
             DialogButton type = DialogButton::NoneButton;
             DialogResult result = DialogResult::NoResult;
             char mnemonic = 0;   // uppercase ASCII, 0 = no mnemonic
+            DialogButtonRole role = DialogButtonRole::Normal;   // custom buttons
         };
         std::vector<DialogButtonEntry> dialogButtons;
+        // Elements AddFooterElement() put at the left of the button bar (an
+        // "Apply to all" checkbox), and the spacer that pushes the buttons to
+        // the right once there is one.
+        std::vector<std::shared_ptr<UltraCanvasUIElement>> footerElements;
+        std::shared_ptr<UltraCanvasContainer> footerSpacer;
 
         // ===== KEYBOARD STATE =====
         // Keys that were already held when the dialog was shown. Their KeyDown /
@@ -417,6 +438,21 @@ namespace UltraCanvas {
 
         // ===== BUTTON MANAGEMENT =====
         void AddCustomButton(const std::string& text, DialogResult result, std::function<void()> callback = nullptr);
+        // The same with a role: which button Return activates and wears the
+        // accent colour (Default), which is drawn red (Destructive), which
+        // Escape maps to (Cancel). Buttons are laid out in the order they are
+        // added and each is as wide as its label needs. `callback` runs before
+        // the dialog closes with `result`.
+        void AddCustomButton(const std::string& text, DialogResult result,
+                             DialogButtonRole role,
+                             std::function<void()> callback = nullptr);
+        // Puts `element` at the left end of the button bar; the buttons move
+        // to the right end. For the scope choice of a question that is asked
+        // once per entry - "Apply to all 7 remaining conflicts" - which
+        // belongs beside the answers, not among the facts above them. Give
+        // the element an explicit size: the bar is laid out before the
+        // dialog has a render context to measure text with.
+        void AddFooterElement(std::shared_ptr<UltraCanvasUIElement> element);
         void SetButtonDisabled(DialogButton button, bool disabled);
         void SetButtonVisible(DialogButton button, bool visible);
 

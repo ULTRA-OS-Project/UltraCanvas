@@ -87,7 +87,7 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.33.0
+// Version: 1.34.0
 // Last Modified: 2026-09-24
 // Author: UltraCanvas Framework
 #pragma once
@@ -122,6 +122,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "UltraCanvasModalDialog.h"   // DialogType, DialogButtonRole (the operation dialogs)
 
 namespace UltraCanvas {
 
@@ -140,8 +141,26 @@ namespace UltraCanvas {
     enum class PasteConflictAction {
         KeepBoth,
         Replace,
-        Skip
+        Skip,
+        // Folders only: the pasted folder's entries go INTO the existing
+        // folder, each of them asked about in turn when its own name is
+        // taken there; nothing already in the existing folder is removed.
+        // (Replace on a folder removes the existing folder first, with
+        // everything in it that the pasted one does not have.)
+        Merge
     };
+
+    // ===== WHAT THE HOST DECIDED ABOUT CONFLICTS AND FAILURES =====
+    // Standing answers a host can give in place of the per-entry dialogs
+    // (UltraFiler's Settings > Handling > File operations).
+    // A name that is already taken: ask (the default), or always do the same.
+    enum class FilerConflictPolicy { Ask, KeepBoth, Replace, Skip };
+    // A folder pasted over a folder: merge without asking (the default - the
+    // answer every file manager gives), or ask Merge / Replace / Skip.
+    enum class FilerFolderConflictPolicy { Merge, Ask };
+    // An entry that cannot be copied, moved or deleted: ask Try again / Skip
+    // (the default), or skip it and list it in the summary at the end.
+    enum class FilerProblemPolicy { Ask, SkipAndReport };
 
     // ===== HOW THE FOLDER CONTENT IS PRESENTED =====
     enum class FilerViewType {
@@ -350,7 +369,8 @@ namespace UltraCanvas {
     enum class FilerDropConfirmation {
         NeverConfirm,
         MoveOnly,
-        AlwaysConfirm
+        AlwaysConfirm,
+        CopyOnly       // ask only when the drop copies (a move is carried out)
     };
 
     // ===== WHAT A DELETE DOES =====
@@ -915,6 +935,38 @@ namespace UltraCanvas {
         // another program are copies and are covered by AlwaysConfirm.
         void SetDropConfirmation(FilerDropConfirmation mode) { dropConfirmation = mode; }
         FilerDropConfirmation GetDropConfirmation() const { return dropConfirmation; }
+        // The confirmation offers both verbs - Move and Copy - with the one
+        // the gesture asked for as the coloured default, so a wrong modifier
+        // never needs a second drag. A move asked for by Cut + Paste (Ctrl+X,
+        // Ctrl+V, or PasteFilesInto with `cut`) asks under the same setting
+        // when it covers moves: it changes where the files live just the
+        // same. A Ctrl+V copy is deliberate and never asks.
+
+        // ===== STANDING ANSWERS (Settings > Handling > File operations) =====
+        // Whether a delete to the trash asks first (true, the default). Off,
+        // Del moves the selection to the trash straight away; a permanent
+        // delete (Shift+Del, or where no trash can take the entries) always
+        // asks - it cannot be undone.
+        void SetConfirmTrashDelete(bool ask) { confirmTrashDelete = ask; }
+        bool GetConfirmTrashDelete() const { return confirmTrashDelete; }
+        // What a paste does with a file whose name is taken: ask (default)
+        // or always Keep both / Replace / Skip.
+        void SetConflictPolicy(FilerConflictPolicy policy) { conflictPolicy = policy; }
+        FilerConflictPolicy GetConflictPolicy() const { return conflictPolicy; }
+        // What a paste does with a folder whose name is taken: merge into the
+        // existing folder without asking (default), or ask.
+        void SetFolderConflictPolicy(FilerFolderConflictPolicy policy) { folderConflictPolicy = policy; }
+        FilerFolderConflictPolicy GetFolderConflictPolicy() const { return folderConflictPolicy; }
+        // What a paste or delete does with an entry that fails: ask Try
+        // again / Skip (default), or skip it and report it in the summary.
+        void SetProblemPolicy(FilerProblemPolicy policy) { problemPolicy = policy; }
+        FilerProblemPolicy GetProblemPolicy() const { return problemPolicy; }
+        // How long a copy, move or delete runs before the progress window
+        // opens over it (2000 ms by default; 0 opens it at once). Until
+        // then the window shows the busy pointer, so a stalled network
+        // volume is not two seconds of nothing.
+        void SetProgressWindowDelay(unsigned milliseconds) { progressWindowDelayMs = milliseconds; }
+        unsigned GetProgressWindowDelay() const { return progressWindowDelayMs; }
 
         // The selection info bar shown under the folder display. One line
         // describing the selection: name, type, size, modified date and
@@ -1229,6 +1281,11 @@ namespace UltraCanvas {
         // one (TrashAvailable) and each entry is a real file here - not inside
         // an archive, not on a remote drive.
         bool CanMoveToTrash(const std::vector<FilerEntry>& victims) const;
+        // A delete to the trash goes without a question when the host turned
+        // that question off (SetConfirmTrashDelete(false)) and the trash can
+        // take the entries.
+        bool TrashDeleteNeedsNoQuestion(const std::vector<FilerEntry>& victims,
+                                        FilerDeleteMode preferred) const;
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
         // What a delete that wipes out the whole selection leaves selected.
@@ -1884,6 +1941,12 @@ namespace UltraCanvas {
         bool dragEnabled = true;
         bool dropOnFolderCopies = false;   // plain drop on a folder: move / copy
         FilerDropConfirmation dropConfirmation = FilerDropConfirmation::NeverConfirm;
+        // The standing answers (see the setters above).
+        bool confirmTrashDelete = true;
+        FilerConflictPolicy conflictPolicy = FilerConflictPolicy::Ask;
+        FilerFolderConflictPolicy folderConflictPolicy = FilerFolderConflictPolicy::Merge;
+        FilerProblemPolicy problemPolicy = FilerProblemPolicy::Ask;
+        unsigned progressWindowDelayMs = 2000;
         bool dragOutArmed = false;         // press may still become a drag
         Point2Di dragOutPressPoint;
         int  dragPressIndex = -1;          // entry the press landed on
@@ -2793,12 +2856,19 @@ namespace UltraCanvas {
                            const std::string& destDir, bool copy);
         // Does dropConfirmation want this drop confirmed?
         bool DropNeedsConfirmation(bool copy) const;
-        // The "Move / Copy N items into <folder>?" dialog. `proceed` runs on
-        // the confirming answer and nothing runs on the other one; with
-        // dialogs disabled it runs straight away, so a drop is never lost.
-        void ConfirmDrop(const std::vector<std::string>& sources,
-                         const std::string& destDir, bool copy,
-                         std::function<void()> proceed);
+        // A move asked for by a paste (Cut + Paste) asks when the drop
+        // confirmation covers moves.
+        bool PasteMoveNeedsConfirmation() const;
+        // The "Move / Copy N items into <folder>?" dialog: the facts (from,
+        // into, how much), the entries, and BOTH verbs as buttons with the
+        // one the gesture asked for (`copyRequested`) as the coloured
+        // default. `proceed(copy)` runs with the verb that was chosen and
+        // nothing runs on Cancel; with dialogs disabled it runs straight
+        // away with the requested verb, so a drop is never lost.
+        void ConfirmTransfer(const std::vector<std::string>& sources,
+                             const std::string& destDir, bool copyRequested,
+                             std::function<void(bool copy)> proceed,
+                             std::function<void()> onCancel = nullptr);
         // Folder entry under a widget-local point that the running drag may be
         // dropped on (never one of the dragged items), or -1.
         int  DragDropFolderAt(const Point2Di& localPoint) const;
@@ -2899,7 +2969,8 @@ namespace UltraCanvas {
         // ===== COPY / MOVE / DELETE WORKER =====
         // Copying, moving and deleting run on a worker thread, and a progress
         // window opens over them once the operation has been running for
-        // kFileOpProgressDelayMs. Anything quicker never shows a window at
+        // progressWindowDelayMs (2 s unless the host set another). Anything
+        // quicker never shows a window at
         // all: a file manager that flashes a dialog for every copied text file
         // is worse than one that shows none. Packing and unpacking (ArchiveJob
         // below) open theirs at once instead, because those are never quick.
@@ -3030,14 +3101,53 @@ namespace UltraCanvas {
         // ===== PASTE CONFLICTS =====
         // One paste in flight: the sources not yet processed and the choices
         // the conflict dialog collected so far.
+        // An entry a paste or delete left where it was, for the summary at
+        // the end and its "… again" button: the entry, why, and (a paste)
+        // the folder it was headed for.
+        struct SkippedItem {
+            std::string path;
+            std::string reason;
+            std::string folder;
+        };
+        // The summary's "Copy skipped items again": the skipped entries
+        // grouped by destination, pasted one group after the other (one
+        // paste runs at a time).
+        struct PasteRetry {
+            std::vector<std::pair<std::string, std::vector<std::string>>> groups;
+            size_t index = 0;
+            bool cut = false;
+        };
+        std::unique_ptr<PasteRetry> pasteRetry;
+        void RetrySkippedPaste(const std::vector<SkippedItem>& items, bool cut);
+        void ContinuePasteRetry();
+
         struct PendingPaste {
             std::string folder;
             std::vector<std::string> sources;
+            // Per source, where it goes (empty = `folder`) and what it is:
+            // an ordinary entry, an entry of a folder being MERGED into an
+            // existing folder (it goes into that folder), or the merged
+            // folder itself once its entries are through (a move removes it
+            // when it is empty by then). Parallel to `sources`; a merge
+            // splices its entries in after the folder they came from.
+            enum class ItemKind : unsigned char { Entry, MergedEntry, MergedFolder };
+            std::vector<std::string> itemFolders;
+            std::vector<ItemKind> itemKinds;
             size_t next = 0;
             bool cut = false;
             PasteConflictAction action = PasteConflictAction::KeepBoth;
-            bool applyToAll = false;   // reuse `action` for later conflicts
+            bool applyToAll = false;   // reuse `action` for later file conflicts
+            // The same for folders whose name is taken: Merge, Replace or
+            // Skip, remembered apart from the file answer because Merge means
+            // nothing for a file.
+            PasteConflictAction folderAction = PasteConflictAction::Merge;
+            bool applyToAllFolders = false;
             bool changed = false;
+            // What the summary at the end lists: the entries that were not
+            // pasted, with why (a failure the user or the policy skipped, a
+            // conflict answered with Skip), and how many were.
+            std::vector<SkippedItem> skipped;
+            size_t pasted = 0;
             // The folders a move actually emptied - the parent of every
             // source that was renamed away. The caller of a paste knows the
             // destination and nothing else, so these are reported to
@@ -3081,34 +3191,85 @@ namespace UltraCanvas {
         // `action` when the name is taken. False = failed, with the reason.
         // Worker-side: it reports its bytes into `credit`.
         bool PasteOneEntry(PendingPaste& pp, const std::string& src,
-                           PasteConflictAction action,
+                           const std::string& folder,
+                           PasteConflictAction action, bool mergedEntry,
                            FileOpItemCredit& credit, std::string& whyFailed);
-        // The "already exists" dialog: exclusive Keep both / Replace / Skip
-        // switches, a "do this for all remaining conflicts" switch, and
-        // Continue / Cancel buttons.
+        // The paste behind ConfirmTransfer / PasteFilesInto, once any
+        // confirmation is answered: builds the queue and starts the worker.
+        void StartPaste(std::string folder, std::vector<std::string> paths,
+                        bool cut, std::function<void(bool changed)> onDone);
+        // The "already exists" dialog: the existing and the pasted entry side
+        // by side (icon, name, size, modified, which is newer), the name Keep
+        // both would use, and the answers as buttons - Keep both / Replace /
+        // Skip / Stop for a file, Merge / Replace / Skip / Stop for a folder -
+        // with an "Apply to all N remaining conflicts" checkbox.
         void ShowPasteConflictDialog(const std::string& src);
-        // The paste failure dialog: Try again / Skip, like a failed delete's.
+        // The paste failure dialog: Try again / Skip / Stop, like a failed
+        // delete's, with the reason, the source folder and the destination.
         void ShowPasteProblemDialog(const std::string& src,
                                     const std::string& reason);
+        // The summary a paste or delete ends on when entries were skipped:
+        // how many were done, the skipped ones with why, and a button that
+        // runs the operation again for those.
+        void ShowOperationSummary(const std::string& title,
+                                  const std::string& message,
+                                  const std::vector<SkippedItem>& skipped,
+                                  const std::string& facts,
+                                  const std::string& retryLabel,
+                                  std::function<void()> onRetry);
 
-        // A problem dialog in the house style: one exclusive switch per
-        // choice (try again / delete anyway / skip / …), a "do this for all"
-        // scope switch, and Continue / Cancel buttons. onContinue gets the
-        // index of the chosen label. False = modal dialogs are unavailable
-        // and the caller must fall back.
-        bool ShowProblemChoiceDialog(
-                DialogConfig& cfg,
-                const std::vector<std::string>& choiceLabels, size_t defaultChoice,
-                const std::string& allLabel,
-                std::function<void(size_t choice, bool all)> onContinue,
-                std::function<void()> onCancel);
-        // The two-choice form of it: proceed (index 0) vs. skip (index 1).
-        bool ShowProceedSkipDialog(
-                DialogConfig& cfg,
-                const std::string& proceedLabel, const std::string& skipLabel,
-                const std::string& allLabel, bool proceedDefault,
-                std::function<void(bool proceed, bool all)> onContinue,
-                std::function<void()> onCancel);
+        // ===== THE OPERATION DIALOG =====
+        // Every question a copy, move or delete asks is one of these: a
+        // question line, the facts under it (from / into / reason, as
+        // Markdown), an optional list of entries, a note, and a footer with
+        // an optional "Apply to all …" checkbox at the left and the answers
+        // as buttons at the right. The answer is the button: Return takes
+        // the one with the Default role, Escape the one with the Cancel
+        // role, and each button has a mnemonic letter. Every button is as
+        // wide as its label.
+        struct OperationDialogButton {
+            std::string label;
+            DialogButtonRole role = DialogButtonRole::Normal;
+        };
+        struct OperationDialogSpec {
+            std::string title;
+            DialogType type = DialogType::Question;
+            std::string question;                 // the message line
+            std::string facts;                    // Markdown under it, may be empty
+            std::string note;                     // Markdown under the list, may be empty
+            // Entries listed under the facts (the display's own icons, size,
+            // modified) with an optional caption above; `rowNotes`, when
+            // given per row, replaces the size / modified columns with one
+            // text column (the summary's reason).
+            std::vector<FilerEntry> listed;
+            std::vector<std::string> rowNotes;
+            std::vector<std::string> rowLabels;   // a first column, per row ("Existing")
+            bool listDetails = true;              // the Size and Modified columns
+            std::string listCaption;
+            int listVisibleRows = 10;
+            std::string applyToAllLabel;          // empty = no checkbox
+            bool applyToAllChecked = false;
+            std::vector<OperationDialogButton> buttons;
+            int width = 560;
+            bool showIcon = false;
+        };
+        // Shows the dialog; `onAnswer(buttonIndex, applyToAll)` runs for the
+        // button that was pressed, `onDismiss` when the dialog went without
+        // one (Escape without a Cancel-role button, the close box). False =
+        // modal dialogs are unavailable and nothing was shown.
+        bool ShowOperationDialog(const OperationDialogSpec& spec,
+                                 std::function<void(size_t button, bool applyToAll)> onAnswer,
+                                 std::function<void()> onDismiss);
+        // The entry list the operation dialogs share (the delete confirmation's
+        // list, generalised): at most kOperationListRows rows, `visibleRows`
+        // of them at a time, the rest behind a scrollbar.
+        std::shared_ptr<UltraCanvasUIElement> BuildOperationEntryList(
+                const std::string& id, const std::vector<FilerEntry>& listed,
+                const std::vector<std::string>& rowNotes,
+                const std::vector<std::string>& rowLabels, bool details,
+                int visibleRows, int& outHeight);
+        // At most this many rows in an operation dialog's list.
+        static constexpr size_t kOperationListRows = 200;
 
         // ===== DELETE PROBLEMS =====
         // What the delete-problem dialog decides for the entry it is about:
@@ -3157,6 +3318,9 @@ namespace UltraCanvas {
             std::function<void(bool changed)> onDone;
             // Each entry goes to the trash instead of being removed.
             bool toTrash = false;
+            // For the summary at the end: the entries that stayed, with why.
+            std::vector<SkippedItem> skipped;
+            size_t removed = 0;
         };
         std::unique_ptr<PendingDelete> pendingDelete;
 
