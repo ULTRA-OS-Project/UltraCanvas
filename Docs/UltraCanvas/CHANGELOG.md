@@ -16,6 +16,25 @@
     server calls back with an empty list at its deadline; without servers
     the asynchronous answer matches the synchronous reverse lookup. The
     `UltraNet_DnsResolveAsync` probe covers the synchronous refusal.
+- **Asynchronous lookups that need a thread run on a small worker pool.**
+  PTR on every backend, and every type on the system backends (c-ares
+  answers forward types from its own event thread), started a detached
+  thread per call, so a burst of lookups was a burst of threads. They queue
+  on a pool of at most eight workers (two on a small machine), grown on
+  demand and never destroyed. The deadline counts from the call, not from
+  when a worker is free: the time a lookup spent queued comes off its
+  budget, and one that spent all of it is answered empty at once, without a
+  query - so a burst at a server that never answers is back after one
+  deadline, not one per pool-full (`dns_resolve_async_burst_answers_within_
+  one_deadline`).
+- **The c-ares PTR parser is given the queried address.** `ares_parse_ptr_
+  reply` was called with no address, relying on c-ares tolerating that. The
+  backend now decodes the in-addr.arpa / ip6.arpa name it queries back into
+  the address's wire bytes and family and hands them to the parser, which
+  puts them into the hostent it builds. New pure helper
+  `UltraNet_DnsReverseNameToAddress` (the inverse of
+  `UltraNet_DnsReverseName`: case-insensitive, trailing dot allowed, strict
+  about label count and range) does the decoding and is tested both ways.
 
 #### 2026-09-30 *0.9.96*
 - **Menu: the checkbox / radio indicator sits level with its label.** It was

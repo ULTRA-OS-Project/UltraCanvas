@@ -243,8 +243,9 @@ ULTRANET_PROBE_NAMED(kArea, "UltraNet_DnsResolve (per-call servers)", DnsResolve
     PROBE_EXPECT(UltraNet_DnsParseServer("[2620:fe::fe]:53", address, port));
     PROBE_EXPECT(address == "2620:fe::fe" && port == 53);
     PROBE_EXPECT(!UltraNet_DnsParseServer("dns.quad9.net", address, port));
-    std::string reverse;
+    std::string reverse, back;
     PROBE_EXPECT(UltraNet_DnsReverseName("8.8.4.4", reverse) && reverse == "4.4.8.8.in-addr.arpa");
+    PROBE_EXPECT(UltraNet_DnsReverseNameToAddress(reverse, back) && back == "8.8.4.4");
 
     UltraNetSocketOptions socketOptions;
     socketOptions.bindAddress = "127.0.0.1";

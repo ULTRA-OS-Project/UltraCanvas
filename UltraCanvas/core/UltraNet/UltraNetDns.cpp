@@ -9,15 +9,18 @@
 //
 // Async path without c-ares: a detached thread runs the sync resolver. Fine
 // for typical app workloads; the curl_multi worker is reserved for HTTP.
-// Version: 0.3.2 - async PTR is the reverse lookup too, validated before any thread
+// Version: 0.3.3 - a worker pool for threaded lookups; UltraNet_DnsReverseNameToAddress
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetDns.h"
 #include "UltraNetDnsImpl.h"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -247,6 +250,85 @@ UltraNetResult UltraNet_DnsResolve(const std::string& hostname,
     return UltraNetResult::Ok();
 }
 
+namespace {
+
+// The threads behind the asynchronous lookups that need one: PTR on every
+// backend, every type on the system backends. A small fixed pool, grown to
+// its limit on demand and never shrunk, so a burst of calls queues instead
+// of starting a thread each. Workers are detached and the pool is never
+// destroyed: a lookup may still be running at exit, and a worker blocked in
+// the resolver cannot be joined.
+class DnsWorkerPool {
+public:
+    DnsWorkerPool()
+        : limit_(std::clamp(std::thread::hardware_concurrency(), 2u, 8u)) {}
+
+    void Post(std::function<void()> job) {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            jobs_.push_back(std::move(job));
+            if (idle_ == 0 && threads_ < limit_) {
+                ++threads_;
+                std::thread([this] { Run(); }).detach();
+            }
+        }
+        cv_.notify_one();
+    }
+
+private:
+    void Run() {
+        for (;;) {
+            std::function<void()> job;
+            {
+                std::unique_lock<std::mutex> lk(mu_);
+                ++idle_;
+                cv_.wait(lk, [&] { return !jobs_.empty(); });
+                --idle_;
+                job = std::move(jobs_.front());
+                jobs_.pop_front();
+            }
+            job();
+        }
+    }
+
+    std::mutex                        mu_;
+    std::condition_variable           cv_;
+    std::deque<std::function<void()>> jobs_;
+    unsigned                          threads_ = 0;
+    unsigned                          idle_    = 0;
+    const unsigned                    limit_;
+};
+
+DnsWorkerPool& DnsWorkers() {
+    static DnsWorkerPool& pool = *new DnsWorkerPool;   // never destroyed
+    return pool;
+}
+
+// Queues `lookup` with the caller's options on the pool and delivers its
+// answer to `onResult`. The deadline counts from now, not from when a worker
+// picks the job up: the budget a job spent queued is taken off, and one that
+// spent all of it is answered empty at once, without a query.
+void PostDnsLookup(UltraNetDnsOptions options,
+                   std::function<std::vector<std::string>(const UltraNetDnsOptions&)> lookup,
+                   std::function<void(const std::vector<std::string>&)> onResult) {
+    const int timeoutMs = options.timeoutMs > 0 ? options.timeoutMs : 5000;
+    const auto deadline = std::chrono::steady_clock::now()
+                        + std::chrono::milliseconds(timeoutMs);
+    DnsWorkers().Post([options, deadline, lookup = std::move(lookup),
+                       cb = std::move(onResult)]() mutable {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remaining <= 0) {
+            cb({});
+            return;
+        }
+        options.timeoutMs = static_cast<int>(remaining);
+        cb(lookup(options));
+    });
+}
+
+} // namespace
+
 UltraNetResult UltraNet_DnsResolveAsync(
     const std::string& hostname,
     UltraNetDnsType type,
@@ -267,10 +349,10 @@ UltraNetResult UltraNet_DnsResolveAsync(
     if (UltraNetResult v = ValidateServers(options.servers); !v) return v;
 
     // PTR takes an address, and the reverse lookup owns that path - the
-    // deadline, the servers, the hosts file - so it is that call on a thread
-    // of its own, whichever backend. The address is checked here, before any
-    // thread starts, the way the servers are: a non-address is refused now,
-    // not reported as an empty answer later.
+    // deadline, the servers, the hosts file - so it is that call on the
+    // worker pool, whichever backend. The address is checked here, before
+    // anything is queued, the way the servers are: a non-address is refused
+    // now, not reported as an empty answer later.
     if (type == UltraNetDnsType::PTR) {
         if (hostname.empty()) {
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
@@ -281,26 +363,30 @@ UltraNetResult UltraNet_DnsResolveAsync(
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
                                          "not a valid IPv4/IPv6 address");
         }
-        std::thread([hostname, options, cb = std::move(onResult)]() {
-            std::string host;
-            std::vector<std::string> names;
-            if (UltraNet_DnsReverseLookup(hostname, host, options)) names.push_back(host);
-            cb(names);
-        }).detach();
+        PostDnsLookup(options,
+            [hostname](const UltraNetDnsOptions& o) {
+                std::string host;
+                std::vector<std::string> names;
+                if (UltraNet_DnsReverseLookup(hostname, host, o)) names.push_back(host);
+                return names;
+            },
+            std::move(onResult));
         return UltraNetResult::Ok();
     }
 
 #ifdef ULTRANET_HAS_CARES
     // c-ares gives us real non-blocking async for every forward type — no
-    // thread-per-call.
+    // thread at all on this side.
     return ultranet_dns_platform::ResolveAsyncCares(
         hostname, type, std::move(onResult), options.servers);
 #else
-    std::thread([hostname, type, options, cb = std::move(onResult)]() {
-        std::vector<std::string> addrs;
-        UltraNet_DnsResolve(hostname, addrs, type, options);
-        cb(addrs);
-    }).detach();
+    PostDnsLookup(options,
+        [hostname, type](const UltraNetDnsOptions& o) {
+            std::vector<std::string> addrs;
+            UltraNet_DnsResolve(hostname, addrs, type, o);
+            return addrs;
+        },
+        std::move(onResult));
     return UltraNetResult::Ok();
 #endif
 }
@@ -474,6 +560,73 @@ bool UltraNet_DnsReverseName(const std::string& ipAddress, std::string& outName)
             name += kHex[b[i] >> 4];   name += '.';
         }
         outName = name + "ip6.arpa";
+        return true;
+    }
+    return false;
+}
+
+bool UltraNet_DnsReverseNameToAddress(const std::string& name, std::string& outAddress) {
+    outAddress.clear();
+    std::string n = name;
+    if (!n.empty() && n.back() == '.') n.pop_back();
+    for (char& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    // The labels in front of the suffix, in the order written (least
+    // significant first).
+    auto labelsBefore = [&](const char* suffix, std::vector<std::string>& labels) {
+        const std::size_t sl = std::strlen(suffix);
+        if (n.size() <= sl || n.compare(n.size() - sl, sl, suffix) != 0) return false;
+        std::string head = n.substr(0, n.size() - sl);   // "d.c.b.a" - no trailing dot
+        std::size_t start = 0;
+        for (;;) {
+            const std::size_t dot = head.find('.', start);
+            const std::string label = head.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+            if (label.empty()) return false;
+            labels.push_back(label);
+            if (dot == std::string::npos) break;
+            start = dot + 1;
+        }
+        return true;
+    };
+
+    std::vector<std::string> labels;
+    if (labelsBefore(".in-addr.arpa", labels)) {
+        if (labels.size() != 4) return false;
+        std::string text;
+        for (std::size_t k = labels.size(); k-- > 0;) {
+            const std::string& l = labels[k];
+            if (l.size() > 3) return false;
+            int v = 0;
+            for (char c : l) {
+                if (c < '0' || c > '9') return false;
+                v = v * 10 + (c - '0');
+            }
+            if (v > 255) return false;
+            if (!text.empty()) text += '.';
+            text += std::to_string(v);
+        }
+        in_addr v4{};
+        if (inet_pton(AF_INET, text.c_str(), &v4) != 1) return false;
+        outAddress = text;
+        return true;
+    }
+    labels.clear();
+    if (labelsBefore(".ip6.arpa", labels)) {
+        if (labels.size() != 32) return false;
+        unsigned char bytes[16]{};
+        for (std::size_t k = 0; k < 32; ++k) {
+            const std::string& l = labels[31 - k];   // most significant nibble first
+            if (l.size() != 1) return false;
+            const char c = l[0];
+            int v;
+            if      (c >= '0' && c <= '9') v = c - '0';
+            else if (c >= 'a' && c <= 'f') v = 10 + (c - 'a');
+            else return false;
+            bytes[k / 2] = static_cast<unsigned char>((bytes[k / 2] << 4) | v);
+        }
+        char text[INET6_ADDRSTRLEN]{};
+        if (!inet_ntop(AF_INET6, bytes, text, sizeof text)) return false;
+        outAddress = text;
         return true;
     }
     return false;

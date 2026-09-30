@@ -123,6 +123,32 @@ TEST(dns_reverse_name_for_v4_and_v6) {
     REQUIRE(name.empty());
 }
 
+TEST(dns_reverse_name_to_address_is_the_inverse) {
+    std::string address;
+    REQUIRE(UltraNet_DnsReverseNameToAddress("4.4.8.8.in-addr.arpa", address));
+    REQUIRE_EQ(address, std::string("8.8.4.4"));
+    REQUIRE(UltraNet_DnsReverseNameToAddress("1.2.0.192.IN-ADDR.ARPA.", address));   // case, trailing dot
+    REQUIRE_EQ(address, std::string("192.0.2.1"));
+    REQUIRE(UltraNet_DnsReverseNameToAddress(
+        "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa", address));
+    REQUIRE_EQ(address, std::string("2001:db8::1"));
+    // Round trip for both families.
+    for (const char* ip : {"127.0.0.1", "203.0.113.9", "::1", "2001:db8:85a3::8a2e:370:7334"}) {
+        std::string name, back;
+        REQUIRE(UltraNet_DnsReverseName(ip, name));
+        REQUIRE(UltraNet_DnsReverseNameToAddress(name, back));
+        REQUIRE_EQ(back, std::string(ip));
+    }
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("example.com", address));
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("4.4.8.in-addr.arpa", address));       // three labels
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("4.4.8.256.in-addr.arpa", address));   // out of range
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("4..8.8.in-addr.arpa", address));      // empty label
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("g.0.0.0.ip6.arpa", address));         // not hex, not 32
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("in-addr.arpa", address));
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("", address));
+    REQUIRE(address.empty());
+}
+
 TEST(dns_resolve_rejects_a_bad_server_entry_before_asking_anyone) {
     UltraNet_Initialize();
     UltraNetDnsOptions options;
@@ -366,4 +392,51 @@ TEST(dns_resolve_async_ptr_without_servers_matches_the_sync_lookup) {
     }
     REQUIRE_EQ(answer->names.size(), std::size_t(1));
     REQUIRE_EQ(answer->names.front(), host);
+}
+
+TEST(dns_resolve_async_burst_answers_within_one_deadline) {
+    UltraNet_Initialize();
+    SilentServer silent;
+    if (!silent.Ok()) SKIP("cannot open a loopback UDP socket");
+    // Many more lookups than the worker pool has threads, all at a server
+    // that never answers. The deadline counts from the call: the first
+    // lookups wait it out, the rest find their budget spent when a worker
+    // picks them up and are answered empty at once - so the whole burst is
+    // back after one deadline, not one per pool-full.
+    UltraNetDnsOptions options;
+    options.servers   = {silent.entry};
+    options.timeoutMs = 1500;
+    const int burst = 64;
+
+    struct Tally {
+        std::mutex              mu;
+        std::condition_variable cv;
+        int                     answered = 0;
+        int                     named    = 0;
+    };
+    auto tally = std::make_shared<Tally>();
+    const auto begun = std::chrono::steady_clock::now();
+    for (int i = 0; i < burst; ++i) {
+        const UltraNetResult started = UltraNet_DnsResolveAsync(
+            "127.0.0.1", UltraNetDnsType::PTR,
+            [tally](const std::vector<std::string>& names) {
+                {
+                    std::lock_guard<std::mutex> lk(tally->mu);
+                    ++tally->answered;
+                    if (!names.empty()) ++tally->named;
+                }
+                tally->cv.notify_all();
+            },
+            options);
+        REQUIRE(started);
+    }
+    std::unique_lock<std::mutex> lk(tally->mu);
+    const bool all = tally->cv.wait_for(lk, 30s, [&] { return tally->answered == burst; });
+    const auto elapsed = std::chrono::steady_clock::now() - begun;
+    REQUIRE(all);
+    REQUIRE_EQ(tally->named, 0);
+    // One deadline (1.5 s; the libresolv fallback rounds it up to 2 s) plus
+    // scheduling; a pool that restarted the clock per job would need eight
+    // rounds or more.
+    REQUIRE(elapsed < 8s);
 }
