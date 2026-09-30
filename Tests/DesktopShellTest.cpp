@@ -5,8 +5,8 @@
 // lifetime. Nothing here needs a display: the test points XDG_RUNTIME_DIR
 // and XDG_DATA_HOME at a throwaway directory and asserts against what it put
 // there, so it passes on every platform and on a headless runner.
-// Version: 1.0.0
-// Last Modified: 2026-09-29
+// Version: 1.1.0
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShell.h"
@@ -183,6 +183,25 @@ int main() {
         std::string error;
         Check(!UltraCanvasDesktopShell::CaptureScreen("", &error) && !error.empty(),
               "an empty screenshot path fails with a reason");
+
+        // The in-memory capture either hands back a coherent image (a display
+        // is present) or fails with a reason and an empty one; it never
+        // returns half of either.
+        DesktopScreenImage shot;
+        shot.width = 7;   // must be reset on failure
+        std::string captureError;
+        if (UltraCanvasDesktopShell::CaptureScreenImage(shot, &captureError)) {
+            Check(shot.IsValid(), "a captured screen image is valid");
+            Check(shot.stride >= shot.width * 4, "the stride covers four bytes a pixel");
+            Check(shot.pixels.size() == static_cast<size_t>(shot.height) * static_cast<size_t>(shot.stride),
+                  "the buffer is height * stride bytes");
+            std::printf("  (screen captured: %dx%d)\n", shot.width, shot.height);
+        } else {
+            Check(!captureError.empty(), "a failed screen capture says why");
+            Check(!shot.IsValid() && shot.width == 0 && shot.pixels.empty(),
+                  "a failed screen capture leaves the image empty");
+            std::printf("  (no screen capture here: %s)\n", captureError.c_str());
+        }
     }
 
     std::error_code ec;

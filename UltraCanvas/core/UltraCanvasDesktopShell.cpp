@@ -5,8 +5,8 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
-// Version: 1.0.0
-// Last Modified: 2026-09-29
+// Version: 1.1.0
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -227,6 +227,14 @@ bool UltraCanvasDesktopShell::CaptureScreen(const std::string& pngPath, std::str
             return true;
         }
     }
+    if (error) *error = reason;
+    return false;
+}
+
+bool UltraCanvasDesktopShell::CaptureScreenImage(DesktopScreenImage& out, std::string* error) {
+    std::string reason;
+    if (DesktopShellBackend::CaptureScreenImage(out, reason)) return true;
+    out = DesktopScreenImage();
     if (error) *error = reason;
     return false;
 }
@@ -546,6 +554,11 @@ namespace DesktopShellBackend {
     bool GetScreenSize(int&, int&) { return false; }
     bool ReserveScreenEdges(uint64_t, int, int, int, int) { return false; }
     bool CaptureScreen(const std::string&, std::string& error) {
+        error = "Screenshots are not available on this platform yet.";
+        return false;
+    }
+    bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
+        out = DesktopScreenImage();
         error = "Screenshots are not available on this platform yet.";
         return false;
     }
