@@ -68,10 +68,17 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRuleFooter();
 
     // ===== ACTIONS =====
+    // A cleaning page scans itself the first time it is shown: the System
+    // junk page once, the Photo albums page whenever its folder is one it
+    // has not looked through yet.
+    void OnTabEntered(int index);
     void StartScan();
     void StopWork();
     void StartClean();
     void ConfirmAndClean(RemovalMode mode);
+    // The run's outcome and its failures, grouped by reason, in a scrolling
+    // Markdown dialog.
+    void ShowCleanResult(const std::string& summary, const RemovalReport& result);
 
     // ===== VIEW UPDATES =====
     void RefreshDetailList();
@@ -132,6 +139,11 @@ private:
     AlbumScanner albumScanner_;
     AlbumScanReport albumReport_;
     std::vector<ImageDescriptor> albumPictures_;
+    // Whether the System junk page has scanned since the app opened, and
+    // which folder the album page last scanned — what OnTabEntered checks
+    // before starting one, so a tab switch never throws away ticks.
+    bool junkScannedOnce_ = false;
+    std::string albumScannedFolder_;
     // The category the filter dropdown is on; CategoryCount means "all".
     CleanCategory filterCategory_ = CleanCategory::CategoryCount;
     std::vector<CleanCategory> filterCategories_;
