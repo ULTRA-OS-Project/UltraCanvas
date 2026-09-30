@@ -105,6 +105,8 @@ private:
     // name, the IMAP/SMTP servers and the password — or re-run the browser
     // sign-in for an OAuth account — checking the sign-in before saving.
     void HandleAccountSettings(const std::string& accountId);
+    // The Settings window (the toolbar's gear): app-wide options.
+    void OpenSettings();
     // The settings page's login check: resolves the credentials through
     // `credentials` (on the worker) and lists the incoming server once with
     // the IMAP plug-in; the outcome is delivered on the UI thread. A missing
@@ -302,6 +304,13 @@ private:
     // grace period is running again after kOfflineRetrySec (see OfflineGrace).
     void ScheduleOfflineRetry();
     void RetryUnreachableAccounts();
+    // The computer woke from sleep (WakeDetector): forget the offline grace
+    // from before the sleep and check every account shortly after, once the
+    // network has had a moment to come back.
+    void OnWokeFromSleep();
+    // Check every account now, as a background sync (no alerts for a network
+    // that is not up yet - the offline grace applies).
+    void SyncAllInBackground();
     // Sync one account now — the first sync right after it was added.
     void SyncAccount(const std::string& accountId);
     // Fetch one folder's messages now (envelopes + bodies), on a worker. Backs
@@ -410,6 +419,10 @@ private:
     // True once the periodic sync timer runs, so StartBackgroundSync() can be
     // called again (after an account is added) without starting a second one.
     bool        syncTimerStarted_ = false;
+    // Notices a wake from sleep from a short periodic timer (started with the
+    // sync timer), so mail is checked right after the computer wakes.
+    WakeDetector wake_;
+    bool         wakeCheckPending_ = false;   // a post-wake sync is scheduled
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     // The account view root; hidden while the start page is up (no account

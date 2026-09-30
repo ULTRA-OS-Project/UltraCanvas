@@ -199,6 +199,7 @@ set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailWaitDialog.cpp
     ui/UltraMailOAuthCodeDialog.cpp
     ui/UltraMailServerSettingsDialog.cpp
+    ui/UltraMailSettingsDialog.cpp
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})

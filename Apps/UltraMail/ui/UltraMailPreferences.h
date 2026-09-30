@@ -4,6 +4,8 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.3.0 - remote-image policy, trusted websites, message view and text size
+//                  (the Settings window, UltraMailSettingsDialog)
 // Version: 0.2.0 - fetchSenderIcons (download the known senders' icons)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -12,6 +14,15 @@
 #include <string>
 
 namespace UltraMail {
+
+// When the pictures a message links to on the web are downloaded. Loading one
+// tells its sender that - and when - the message was opened.
+// (Load- prefixed: X11's headers #define Always.)
+enum class RemoteImagePolicy {
+    LoadAlways,    // every message (except junk and suspicious mail)
+    LoadTrusted,   // trusted senders, trusted websites and the address book
+    LoadNever      // never by themselves: the "Show images" bar asks each time
+};
 
 // The handful of app-wide view options. Add fields here (with a default) and a
 // matching key in Load/Save; unknown keys and a missing file are ignored so an
@@ -31,6 +42,26 @@ struct Preferences {
     // Senders whose remote (web) images load without asking ("Always from
     // <sender>" in the reading pane), lower-cased addresses.
     std::set<std::string> remoteImageSenders;
+
+    // Settings > Privacy > Images.
+    RemoteImagePolicy remoteImages = RemoteImagePolicy::LoadTrusted;
+    // Trusted websites (domains, lower case, "example.com"): a message from
+    // that domain or one of its subdomains loads its pictures, and a picture
+    // hosted there loads in any message - under the Trusted policy.
+    std::set<std::string> trustedImageDomains;
+
+    // Settings > Reading > Messages: show HTML mail formatted (false: as plain
+    // text - no layout, no pictures), and the body text size in CSS px.
+    bool  showHtml = true;
+    int   messageTextSize = 12;
+
+    // "anthropic.com" from "https://www.Anthropic.com/x", "@anthropic.com" or
+    // "*.anthropic.com"; empty when nothing like a domain is left.
+    static std::string NormalizeDomain(const std::string& text);
+    // Whether `host` is `domain` or one of its subdomains (both lower case).
+    static bool DomainMatches(const std::string& host, const std::string& domain);
+    // Whether `host` matches one of the trusted websites.
+    bool IsTrustedDomain(const std::string& host) const;
 
     // Read `path`; missing file or keys keep the defaults. Returns false only
     // when the file exists but could not be opened.

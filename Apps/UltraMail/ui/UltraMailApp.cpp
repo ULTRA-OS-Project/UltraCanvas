@@ -1,4 +1,9 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.11 - and right after the computer wakes from sleep (WakeDetector)
+// Version: 0.9.10 - new mail is fetched right after start, not five minutes later
+// Version: 0.9.9 - a Settings window (gear at the right end of the toolbar, as in
+//                  UltraFiler): layout, HTML / plain text, text size, remote-image
+//                  policy with trusted websites, sender icons
 // Version: 0.9.8 - replies and forwards of HTML mail keep the formatting
 // Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
 //                  style, no master-password prompt); old vaults migrate once
@@ -7,6 +12,7 @@
 #include "UltraMailApp.h"
 
 #include "UltraMailAlerts.h"
+#include "UltraMailSettingsDialog.h"
 #include "UltraMailTheme.h"
 
 #include "UltraMailAttachmentCache.h"
@@ -67,6 +73,12 @@ namespace {
 constexpr int   kWindowWidth   = 1180;
 constexpr int   kWindowHeight  = 760;
 constexpr int   kActionIcon    = 12;
+// The first fetch after start waits this long, so the main window is painted
+// (with the cached mail) before the network work begins.
+constexpr unsigned int kStartupSyncDelayMs = 400;
+// After a wake from sleep, the check waits this long: Wi-Fi usually needs a few
+// seconds to reconnect, and a check before that would only report "offline".
+constexpr unsigned int kWakeSyncDelayMs = 5000;
 
 std::string IconPath(const std::string& name) {
     return UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/icons/" + name);
@@ -183,6 +195,7 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // logo, app title and the "Add email account" button.
     auto start = startPage_.Build();
     startPage_.onAddAccount = [this]() { HandleAddAccount(); };
+    startPage_.onSettings   = [this]() { OpenSettings(); };
     window_->AddChild(start);
 
     // Account view — actions column + account bar on top, inbox | message below.
@@ -206,6 +219,18 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // device key, so this is the only time it is asked.
     if (!accounts_.empty() && !vault_.IsUnlocked()) {
         EnsureVaultUnlocked([this]() { RunSyncs(/*force=*/false); Refresh(); });
+    } else if (!accounts_.empty() && ImapPlugin()) {
+        // Fetch new mail right after start. The periodic timer's first tick is
+        // five minutes out, so without this the inbox showed only what was
+        // cached until Update was pressed - and the status line never said it
+        // was checking. Every account is due (never synced in this run). A
+        // background sync, not a user one: a network that is not up yet right
+        // after boot takes the offline grace period instead of an alert. Run
+        // from the loop, shortly after the window is shown, so it paints first.
+        if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent()) {
+            app->StartTimer(kStartupSyncDelayMs, /*periodic=*/false,
+                            [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
+        }
     }
 
     // Demo path: seed mail and auto-collect its senders; the main window shows
@@ -314,6 +339,9 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     });
     makeAction("umAddAccount", "Add account", 0, "", false,
                [this]() { HandleAddAccount(); });
+    // The gear at the far right opens the settings window (UltraFiler's gear).
+    toolbar->AddChild(SettingsDialog::MakeGearButton("umAppSettings", Theme::kControlHeight,
+                                                     [this]() { OpenSettings(); }));
     // "Delete account" moved to the account settings dialog's bottom row
     // (ServerSettingsDialog, red button) — see HandleAccountSettings.
     accountView_->AddChild(toolbar);
@@ -375,11 +403,33 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         for (char& c : a) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return a;
     };
+    // Settings > Privacy > Images: whether a message's pictures on the web load
+    // by themselves. Junk and suspicious mail never ask here (the preview
+    // decides that first).
     mailView_.remoteImagesAllowed = [this, lowerAddr](const std::string& addr) {
-        return prefs_.remoteImageSenders.count(lowerAddr(addr)) > 0;
+        switch (prefs_.remoteImages) {
+            case RemoteImagePolicy::LoadAlways: return true;
+            case RemoteImagePolicy::LoadNever:  return false;
+            case RemoteImagePolicy::LoadTrusted: break;
+        }
+        const std::string a = lowerAddr(addr);
+        if (prefs_.remoteImageSenders.count(a)) return true;
+        if (const auto at = a.rfind('@'); at != std::string::npos &&
+            prefs_.IsTrustedDomain(a.substr(at + 1)))
+            return true;
+        Contact contact;
+        bool found = false;
+        return contacts_.FindByEmail(a, contact, found) && found;
+    };
+    // ... and, for any other message, the pictures hosted on a trusted website.
+    mailView_.remoteImageHostTrusted = [this](const std::string& url) {
+        return prefs_.remoteImages == RemoteImagePolicy::LoadTrusted && prefs_.IsTrustedDomain(url);
     };
     mailView_.onAlwaysAllowRemoteImages = [this, lowerAddr](const std::string& addr) {
-        if (prefs_.remoteImageSenders.insert(lowerAddr(addr)).second) prefs_.Save(prefsPath_);
+        if (prefs_.remoteImageSenders.insert(lowerAddr(addr)).second) {
+            prefs_.Save(prefsPath_);
+            SettingsDialog::SyncWithPreferences();
+        }
     };
     mailView_.onAddToContactGroup = [this](const MessageEnvelope& e, const ContactPlace& p) {
         AddSenderToContactGroup(e, p);
@@ -439,6 +489,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mail->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     // Apply the remembered reading-pane choice (default on; a rebuild only when off).
     mailView_.SetReadingPane(prefs_.showReadingPane);
+    mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
 
     // ----- Status line: what the app is currently doing -----
     // A turning ring left of the text while anything runs in the background
@@ -1381,7 +1432,41 @@ void UltraMailApp::StartBackgroundSync() {
         app->StartTimer(300000, /*periodic=*/true,
                         [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
         syncTimerStarted_ = true;
+        // The five-minute timer cannot tell a wake from sleep: after one it may
+        // be minutes before it fires. This short one can (see WakeDetector).
+        wake_.Tick(static_cast<int64_t>(std::time(nullptr)));   // start its clock
+        app->StartTimer(static_cast<unsigned int>(wake_.TickSec() * 1000), /*periodic=*/true,
+                        [this](UltraCanvas::TimerId) {
+                            if (wake_.Tick(static_cast<int64_t>(std::time(nullptr))))
+                                OnWokeFromSleep();
+                        });
     }
+}
+
+void UltraMailApp::OnWokeFromSleep() {
+    if (accounts_.empty() || wakeCheckPending_) return;
+    // Whatever was unreachable before the sleep is a fresh question now: a
+    // first failure after the wake is held back like one right after boot.
+    offline_.Clear();
+    auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    wakeCheckPending_ = true;
+    app->StartTimer(kWakeSyncDelayMs, /*periodic=*/false, [this](UltraCanvas::TimerId) {
+        wakeCheckPending_ = false;
+        SyncAllInBackground();
+    });
+}
+
+void UltraMailApp::SyncAllInBackground() {
+    std::vector<ScheduledAccount> targets;
+    for (const auto& a : accounts_) {
+        DiscoveryResult d = SettingsFor(a);
+        ScheduledAccount sa;
+        sa.accountId = a.accountId;
+        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        targets.push_back(sa);
+    }
+    SyncAccounts(targets, /*userInitiated=*/false);
 }
 
 void UltraMailApp::RunSyncs(bool force) {
@@ -2253,6 +2338,16 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
     });
 }
 
+void UltraMailApp::OpenSettings() {
+    SettingsDialog::Show(window_ ? window_.get() : nullptr, &prefs_, [this]() {
+        // Every change is saved and applied at once.
+        prefs_.Save(prefsPath_);
+        mailView_.SetReadingPane(prefs_.showReadingPane);
+        mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+        senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+    });
+}
+
 void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
     const Account* found = nullptr;
     for (const auto& a : accounts_) if (a.accountId == accountId) found = &a;
@@ -2281,8 +2376,6 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.canOAuth        = !provider.empty();
         fields.providerName    = provider.empty() ? std::string()
                                                    : OAuthProviderDisplayName(provider);
-        fields.showReadingPane  = prefs_.showReadingPane;
-        fields.fetchSenderIcons = prefs_.fetchSenderIcons;
         // The red "Delete account" button in the settings dialog's bottom row.
         // It closes the page, then HandleDeleteAccount runs the confirm-and-remove.
         fields.onDelete = [this, accountId]() { HandleDeleteAccount(accountId); };
@@ -2310,18 +2403,6 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
             "before the changes are saved.",
             current,
             [this, account, provider](const ServerSettingsDialog::Result& r) {
-                // The reading-pane checkbox is an app-wide view option; apply and
-                // remember it regardless of the server/credential outcome below.
-                if (r.showReadingPane != prefs_.showReadingPane) {
-                    prefs_.showReadingPane = r.showReadingPane;
-                    prefs_.Save(prefsPath_);
-                    mailView_.SetReadingPane(prefs_.showReadingPane);
-                }
-                if (r.fetchSenderIcons != prefs_.fetchSenderIcons) {
-                    prefs_.fetchSenderIcons = r.fetchSenderIcons;
-                    prefs_.Save(prefsPath_);
-                    senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
-                }
                 Account updated = account;
                 AutoDiscovery::ApplyTo(updated, r.settings);
                 updated.displayName =

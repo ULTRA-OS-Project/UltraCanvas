@@ -412,6 +412,18 @@ argument to `SetBorders(width, color, radius)`. The radius is applied to the
 background fill as well as the border stroke, so labels can be rounded **with**
 a visible border or **without** one (by making the border color transparent).
 
+For a rounded box with **no border at all** - no border width, so no space
+reserved for one - call `SetBorderRadius(radius)` (on any element): the
+background is filled with that corner radius.
+
+```cpp
+auto chip = std::make_shared<UltraCanvasLabel>("chip", 20, 500, 120, 28);
+chip->SetText("Borderless");
+chip->SetBackgroundColor(Color(20, 20, 19));
+chip->SetTextColor(Colors::White);
+chip->SetBorderRadius(10.0f);   // rounded fill, border widths stay 0
+```
+
 ```cpp
 // Rounded WITH a visible border (filled).
 auto roundedFilled = std::make_shared<UltraCanvasLabel>(

@@ -1,5 +1,6 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
+// Version: 1.7.0 - dispatch display: table to MeasureTable / ArrangeTable.
 // Version: 1.6.0 - block layout honours in-flow children's margins: offset,
 //                 added to the stack and the auto height, horizontal margins
 //                 narrow the offered width. No collapsing.
@@ -221,6 +222,9 @@ namespace UltraCanvas {
                 case DisplayType::Grid:
                     MeasureGrid (*this, c, ctx);
                     break;
+                case DisplayType::Table:
+                    MeasureTable(*this, c, ctx);
+                    break;
                 case DisplayType::NoDisplay:
                     measured.measuredWidth = measured.measuredHeight = 0;
                     break;
@@ -258,6 +262,7 @@ namespace UltraCanvas {
                 switch (layout.display) {
                     case DisplayType::Flex:   ArrangeFlex (*this, finalRect, ctx); break;
                     case DisplayType::Grid:   ArrangeGrid (*this, finalRect, ctx); break;
+                    case DisplayType::Table:  ArrangeTable(*this, finalRect, ctx); break;
                     case DisplayType::Block:
                     case DisplayType::Inline:
                     case DisplayType::InlineBlock:

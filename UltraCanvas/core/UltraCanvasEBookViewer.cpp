@@ -1,7 +1,7 @@
 // core/UltraCanvasEBookViewer.cpp
 // eBook reading widget: engine chapters → HTML::ElementBuilder → CSSLayout.
-// Version: 2.2.0
-// Last Modified: 2026-07-23
+// Version: 2.2.1 - the system font size (pt) is converted to the builder's CSS px
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEBookViewer.h"
@@ -67,7 +67,8 @@ UltraCanvasEBookViewer::UltraCanvasEBookViewer(const std::string& id,
     // Book text starts at the interface font size (A-/A+ adjust from there).
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         float systemSize = static_cast<float>(app->GetSystemFontStyle().fontSize);
-        if (systemSize > 0.f) baseFontSizePx = systemSize;
+        // The system size is in points; the HTML builder takes CSS px.
+        if (systemSize > 0.f) baseFontSizePx = systemSize * 96.f / 72.f;
     }
     BuildUI();
     ApplyThemeColors();

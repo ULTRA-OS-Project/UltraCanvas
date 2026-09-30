@@ -2,6 +2,7 @@
 // Decides which accounts are due for a background sync. Pure bookkeeping over
 // per-account intervals and last-sync timestamps; the app drives it from a UI
 // timer and runs the due accounts through the SyncService.
+// Version: 0.3.0 - WakeDetector notices the computer woke from sleep; OfflineGrace::Clear
 // Version: 0.2.0 - OfflineGrace holds back a not-yet-online failure
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -82,9 +83,51 @@ public:
 
     int64_t GraceSec() const { return graceSec_; }
 
+    // Forget every running period - after the computer woke from sleep, time
+    // spent offline before it slept says nothing about the network now.
+    void Clear() { since_.clear(); }
+
 private:
     int64_t graceSec_;
     std::map<std::string, int64_t> since_;   // accountId -> first failure, steady seconds
+};
+
+// Notices that the computer slept (or hibernated) and has just woken up, so
+// the app can check for mail at once instead of when its five-minute timer
+// next fires - which, after a wake, can be minutes away and leaves the inbox
+// showing mail from before the sleep.
+//
+// Portable, with no system notification: the app calls Tick() from a short
+// periodic timer with the wall clock. While the computer runs, consecutive
+// ticks are about one period apart; across a sleep the timer cannot fire, so
+// the first tick afterwards sees far more wall time pass than a period. A
+// gap longer than the period plus `slackSec` is taken as a wake. (Setting the
+// clock forward by as much looks the same and costs one early mail check;
+// setting it back is ignored.)
+class WakeDetector {
+public:
+    static constexpr int64_t kDefaultTickSec  = 15;
+    static constexpr int64_t kDefaultSlackSec = 90;
+
+    explicit WakeDetector(int64_t tickSec = kDefaultTickSec,
+                          int64_t slackSec = kDefaultSlackSec)
+        : tickSec_(tickSec > 0 ? tickSec : kDefaultTickSec),
+          slackSec_(slackSec >= 0 ? slackSec : kDefaultSlackSec) {}
+
+    // Called every tickSec with the wall clock (epoch seconds). True when the
+    // time since the previous call shows the computer was asleep. The first
+    // call only starts the clock.
+    bool Tick(int64_t wallNowSec);
+
+    int64_t TickSec() const { return tickSec_; }
+    // How long the last detected sleep lasted (seconds, approximately).
+    int64_t LastSleepSec() const { return lastSleepSec_; }
+
+private:
+    int64_t tickSec_;
+    int64_t slackSec_;
+    int64_t last_ = 0;
+    int64_t lastSleepSec_ = 0;
 };
 
 } // namespace UltraMail

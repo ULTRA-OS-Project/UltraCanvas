@@ -1,3 +1,43 @@
+#### 2026-09-30 *0.10.10*
+- **New mail is fetched as soon as UltraMail starts.** The first check used to
+  wait for the five-minute timer (it ran at start only when the vault needed a
+  password), so the inbox showed what was cached until *Update* was pressed, and
+  nothing on screen said a check was due. Now every account is checked right after
+  the window appears: the *Update* button reads "Updating…", the status line says
+  "Checking …" with its spinner and the connection pill turns "Checking…", then
+  "Connected". A network that is not up yet right after boot gets the usual grace
+  period - status line and a retry, no alert.
+- **And right after the computer wakes from sleep.** The five-minute timer cannot
+  tell that the machine slept, so after a wake the inbox could stay as it was
+  before the sleep for minutes. A light 15-second check (`WakeDetector`) notices
+  that far more time passed between two of its ticks than it should have, and
+  every account is checked 5 seconds later, once Wi-Fi has had a moment to
+  reconnect. What was offline before the sleep starts a fresh grace period, so a
+  network that is still coming back shows on the status line, not in an alert.
+- **A Settings window, like UltraFiler's.** The gear at the right end of the
+  toolbar (UltraFiler's gear button) opens it: a page tree on the left, and
+  pages with their notes and a *Restore default* button.
+  - *Privacy > Images*: remote pictures load **always**, **only from trusted
+    websites, trusted senders and contacts** (the default), or **never by
+    themselves**. Trusted websites are new: mail from such a domain (or a
+    subdomain) shows its pictures, and a picture hosted there loads in any
+    message. The "Always from <sender>" list can be edited here. Junk and
+    suspicious mail still never load pictures by themselves.
+  - *Reading > Messages*: HTML mail formatted or as plain text, and the message
+    text size (11-16 px). *Reading > Layout*: the reading pane.
+    *Privacy > Sender icons*: downloading the known senders' icons.
+  - The reading-pane and sender-icon switches moved here from each account's
+    *Account Settings*, since they were never per account.
+  - The start page (no account yet) carries the same gear in its top-right
+    corner, so privacy can be set before the first account is added.
+- **HTML mail is laid out for the width of the preview pane.** A newsletter's
+  `@media (min-width: …)` rules (side-by-side columns from 480px up) are answered for
+  the pane's width when the message is opened; resizing the pane does not re-lay the
+  message out yet. The HTML rendering improvements behind it (tables, buttons,
+  background pictures, rounded borderless buttons) are framework changes - see the
+  pending `html-mail-table-layout` and `html-media-backgrounds` entries in
+  `Docs/UltraCanvas/CHANGELOG.md`.
+
 #### 2026-09-30 *0.10.9*
 - **No "New mail could not be fetched" alert while the network is still
   coming up.** Right after the computer starts, the first background sync
