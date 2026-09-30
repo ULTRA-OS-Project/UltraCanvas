@@ -1,5 +1,8 @@
 // core/CSSLayout/Element.cpp
 // Element base: measure-cache wrapper, default block layout, arrange dispatch.
+// Version: 1.6.0 - block layout honours in-flow children's margins: offset,
+//                 added to the stack and the auto height, horizontal margins
+//                 narrow the offered width. No collapsing.
 // Version: 1.5.2 - position:fixed children in ArrangeBlock go through
 //                 ArrangeFixedChild so their finalBounds stay parent-relative
 //                 (no double ancestor offset for a fixed element below the root).
@@ -8,7 +11,7 @@
 //                 size, so a stretched/grown container reports and lays out its
 //                 children against its used size. Single-axis Exact (block fill
 //                 hint) still lets an explicit size win.
-// Last Modified: 2026-07-13
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
