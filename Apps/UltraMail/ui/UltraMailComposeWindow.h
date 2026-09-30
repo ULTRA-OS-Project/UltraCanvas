@@ -5,23 +5,29 @@
 // hands an updated Draft back through onSend. "Attach file" reads a local file
 // into the draft's attachments; "Attach cloud link" uploads through (or picks
 // from) an UltraCloud account and puts the share link into the body.
-// A draft with a formatted body (the reply or forward of an HTML message, or
-// any draft signed with an HTML signature) is edited in an
-// UltraCanvasRichTextEdit with a small formatting row; any other draft in a
-// plain-text area.
+// The body is plain text or formatted, switched with Plain text | Formatted
+// at the end of the formatting toolbar (UltraMailFormatBar, the signature
+// editor's tools). A draft with a formatted body - the reply or forward of an
+// HTML message, or any draft signed with an HTML signature - opens formatted.
+// Plain text shows only the switch; switching back to it drops the formatting
+// and pictures, after asking.
+// Version: 0.6.0 - the full formatting toolbar, and the Plain text | Formatted
+//                  switch
 // Version: 0.5.0
-// Last Modified: 2026-09-29
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 // UltraCanvas UI headers before engine headers (X11 macro ordering).
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTextArea.h"
 
 #include "UltraMailAttachmentStrip.h"
+#include "UltraMailFormatBar.h"
 #include "UltraMailComposer.h"
 
 #include <UltraCloud/UltraCloudService.h>
@@ -62,8 +68,12 @@ private:
     void ChooseCloudLink();
     // Rebuild the chips and show the attachment row only while there are any.
     void RefreshAttachments();
-    // Bold / italic / underline / lists for the formatted body.
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildFormatRow();
+    // Switches the body between the plain-text area and the rich editor,
+    // carrying the text across. Formatted -> plain drops the formatting, so it
+    // asks first when there is something to lose (unless `ask` is false).
+    void SetFormatted(bool formatted, bool ask = true);
+    // Shows the editor, the tools and the switch position for formatted_.
+    void ShowMode();
 
     Draft draft_;
     UltraCanvas::UltraCanvasWindowBase* parent_ = nullptr;
@@ -74,6 +84,10 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> subject_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  body_;       // plain drafts
     std::shared_ptr<UltraCanvas::UltraCanvasRichTextEdit> rich_;    // formatted drafts
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> mode_;  // Plain text | Formatted
+    FormatBar formatBar_;
+    bool formatted_ = false;        // which of body_ / rich_ holds the message
+    bool switchingMode_ = false;    // SetSelectedIndex from code, not a click
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachWrap_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
 };

@@ -239,6 +239,10 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   below the line the message is written on and above any quote, in new mail
   and - unless switched off - in replies and forwards; an HTML signature makes
   the message a formatted one. *(Implemented in UltraMail 0.10.11.)*
+- **Formatting** — a *Plain text | Formatted* switch on every message, and in
+  formatted mode the same toolbar as the signature editor (character
+  formatting, font, size, colour, alignment, lists, a rule, links, pictures).
+  *(Implemented in UltraMail 0.10.12.)*
 - **Drafts** — autosaved to the local store every few seconds and on
   close; **Send** puts the message into the **Outbox** queue, which the
   engine flushes when online (so send never blocks and survives
