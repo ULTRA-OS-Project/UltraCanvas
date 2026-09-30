@@ -18,12 +18,12 @@
 // Runs headless under Xvfb. Skips - rather than fails - when there is no
 // display, so it stays usable on a bare CI machine. Under Xvfb there is no
 // window manager to activate the window, and a window that is never activated
-// draws no caret: the test hands the application the activation event itself,
-// as CaretStackingTest does.
+// draws no caret: the test activates it itself through DisplayTestSupport.h.
 // Version: 1.0.0
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
+#include "DisplayTestSupport.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCaret.h"
@@ -169,11 +169,7 @@ bool WritePpm(const std::shared_ptr<UltraCanvasWindow>& window, int width, int h
     return static_cast<bool>(out);
 }
 
-void Frame(const std::shared_ptr<UltraCanvasWindow>& window,
-           const std::vector<std::shared_ptr<UltraCanvasUIElement>>& elements) {
-    for (auto& e : elements) e->RequestRedraw();
-    window->UpdateAndRender();
-}
+using DisplayTest::Frame;
 
 } // namespace
 
@@ -227,22 +223,14 @@ int main() {
         checkbox, checkbox2, radio, button, button2, field, capsField, list};
     for (auto& e : elements) window->AddChild(e);
 
-    // A caret only appears in a focused element of a focused window, and under
-    // Xvfb there is no window manager to activate the window - so hand the
-    // application the activation event the backend would have delivered.
-    UCEvent activate;
-    activate.type = UCEventType::WindowFocus;
-    activate.targetWindow = window;
-    activate.nativeWindowHandle = window->GetNativeHandle();
-    app.DispatchEvent(activate);
-    field->SetFocus(true);
-    if (!field->IsFocused()) SKIP_ALL("the window could not be activated");
+    // A caret only appears in a focused element of a focused window; under
+    // Xvfb the test activates the window itself (DisplayTestSupport.h).
+    if (!DisplayTest::FocusElement(app, window, field)) SKIP_ALL("the window could not be activated");
 
     // A text input shows its caret only while nothing is selected, so the
     // caret is measured first and the selection made afterwards.
     auto& caret = UltraCanvasCaret::GetInstance();
-    for (int frame = 0; frame < 60 && !caret.IsOnWindow(window.get()); ++frame) Frame(window, elements);
-    if (!caret.IsOnWindow(window.get())) SKIP_ALL("the text field never claimed the caret");
+    if (!DisplayTest::WaitForCaret(window, elements)) SKIP_ALL("the text field never claimed the caret");
     for (int frame = 0; frame < 3; ++frame) Frame(window, elements);
     const Rect2Di caretRect = caret.GetRect();
     const bool caretShown = caret.IsPhaseVisible() &&

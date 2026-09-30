@@ -219,15 +219,16 @@ about a window under Xvfb catch people out:
 - There is no window manager, so the window is never activated, and a window
   that is never activated draws no caret and reports no focused element. That
   is correct behaviour, not a bug in the test. A test that needs focus hands the
-  application the activation event the backend would have delivered
-  (`UCEventType::WindowFocus` with the window's native handle, through
-  `UltraCanvasApplication::DispatchEvent`) and then calls `SetFocus(true)` on the
-  element - `CaretStackingTest` shows the sequence. Driving it from outside with
-  `xdotool windowfocus` works too but is slower and needs another package.
+  application the activation event the backend would have delivered and then
+  focuses the element: `DisplayTest::FocusElement(app, window, element)` in
+  `Tests/DisplayTestSupport.h` does both and says whether it worked. Driving
+  it from outside with `xdotool windowfocus` works too but is slower and needs
+  another package.
 - There is no event loop unless the test runs one, so frames are driven by
-  hand: `element->RequestRedraw()` then `window->UpdateAndRender()`, and a
-  text input shows its caret only while nothing is selected, so measure the
-  caret before making a selection.
+  hand: `DisplayTest::Frame(window, {elements})` marks them dirty and renders
+  once, and `DisplayTest::WaitForCaret` drives frames until the shared caret is
+  claimed. A text input shows its caret only while nothing is selected, so
+  measure the caret before making a selection.
 
 `TextMetricsScreenshotTest` doubles as the screenshot fixture for the
 text-metrics and crisp-border rules: with `ULTRACANVAS_SCREENSHOT_DIR=<dir>` it

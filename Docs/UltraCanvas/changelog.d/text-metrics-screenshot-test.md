@@ -12,3 +12,8 @@
   under Xvfb (there is no window manager to activate it, so the test
   dispatches the activation event itself) and why a text input shows no
   caret while a selection exists.
+- **`Tests/DisplayTestSupport.h` holds what a display test would otherwise
+  copy.** Activating the window, focusing an element, driving a frame
+  without an event loop and waiting for the shared caret were written out
+  in each test that opens a window under Xvfb; `CaretStackingTest` and
+  `TextMetricsScreenshotTest` now share them.
