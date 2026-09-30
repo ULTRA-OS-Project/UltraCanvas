@@ -44873,6 +44873,21 @@ on the page; a right-to-left list item has its number or bullet on the right. In
 caret the way the arrow points; Home/End and word steps stay logical. DOCX
 `w:bidi`, ODT `style:writing-mode` and HTML `dir="rtl"` carry the direction.
 
+## Fonts for other scripts
+
+The element bundles no fonts: a run is drawn in its `fontFamily` (or the
+system UI font), and a character that font lacks is taken from whichever
+installed font has it (fontconfig on Linux and Windows, CoreText on macOS).
+Windows and macOS always include Chinese, Arabic and Myanmar fonts; a Linux
+system may not (minimal installs often lack CJK and Myanmar), and then the
+text falls back to a poor bitmap font or shows boxes. An application that must
+show a script everywhere ships the font and calls
+`UltraCanvasApplication::GetInstance()->RegisterFontFile(path)` before the
+text is laid out, and names that family on the runs. The demo's
+*WYSIWYG — Chinese, Arabic & Myanmar* page does this with Noto Sans Myanmar
+(`media/textsamples/fonts`, SIL OFL 1.1). Keep such fonts out of
+`media/fonts`, which every application loads at start-up.
+
 ## Accessibility
 
 The element describes itself to assistive technology through

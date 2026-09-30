@@ -14,7 +14,7 @@
 // the table are exactly the formatting Markdown cannot spell, and they are the
 // reason this element exists next to UltraCanvasTextArea.
 //
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
@@ -759,14 +759,45 @@ namespace UltraCanvas {
     // keeps its own direction (the Unicode bidi rules). Myanmar (Burmese,
     // Unicode encoding) stacks consonants, medials and vowel signs into one
     // syllable that the shaper reorders, and leaves no spaces between words.
-    // The text is plain UTF-8 in the document; the system's fonts supply the
-    // glyphs (Myanmar needs a font such as Padauk or Noto Sans Myanmar).
+    // The text is plain UTF-8 in the document. Chinese and Arabic come from
+    // the system's fonts (every desktop ships one for each); Myanmar often
+    // has none on Linux, so the demo carries Noto Sans Myanmar
+    // (media/textsamples/fonts, SIL OFL) and registers it for this process.
 
     namespace {
 
         RichDocBlock RightToLeft(RichDocBlock block) {
             block.rightToLeft = true;
             return block;
+        }
+
+        const char* const kMyanmarFont = "Noto Sans Myanmar";
+
+        // Registers the Noto Sans Myanmar files the demo ships. They are kept
+        // out of media/fonts on purpose: that folder is loaded into every
+        // application, and only this page needs the script. Registering twice
+        // is a no-op, so reopening the page costs nothing.
+        void RegisterMyanmarFont() {
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (!app) return;
+            const std::string dir = NormalizePath(GetResourcesDir() + "media/textsamples/fonts/");
+            for (const char* file : {"NotoSansMyanmar-Regular.ttf", "NotoSansMyanmar-Bold.ttf"}) {
+                app->RegisterFontFile(dir + file);
+            }
+        }
+
+        // Names the Myanmar font on every run, so the text does not depend on
+        // which font fontconfig's fallback happens to rank first (on a bare
+        // Linux system that is often the bitmap Unifont). The family is saved
+        // with the document, as a word processor would.
+        RichDocBlock InMyanmarFont(RichDocBlock block) {
+            for (auto& run : block.runs) run.fontFamily = kMyanmarFont;
+            return block;
+        }
+
+        RichTableCell InMyanmarFont(RichTableCell cell) {
+            for (auto& run : cell.runs) run.fontFamily = kMyanmarFont;
+            return cell;
         }
 
         std::shared_ptr<UCRichDocument> BuildInternationalDocument() {
@@ -835,7 +866,7 @@ namespace UltraCanvas {
             }
 
             // ----- Myanmar -----
-            document->blocks.push_back(MakeHeading(1, "မြန်မာဘာသာ နမူနာ"));
+            document->blocks.push_back(InMyanmarFont(MakeHeading(1, "မြန်မာဘာသာ နမူနာ")));
             {
                 std::vector<RichTextRun> runs;
                 runs.push_back(MakeRun("ဤစာပိုဒ်ကို မြန်မာဘာသာဖြင့် ရေးသားထားပါသည်။ မြန်မာစာတွင် စကားလုံးများကြားတွင် "
@@ -848,11 +879,11 @@ namespace UltraCanvas {
                 italic.italic = true;
                 runs.push_back(italic);
                 runs.push_back(MakeRun("ကိုလည်း သုံးနိုင်ပါသည်။ ခုနှစ် ၂၀၂၆ ကဲ့သို့ မြန်မာဂဏန်းများလည်း ပါဝင်နိုင်ပါသည်။"));
-                document->blocks.push_back(MakeParagraph(std::move(runs)));
+                document->blocks.push_back(InMyanmarFont(MakeParagraph(std::move(runs))));
             }
-            document->blocks.push_back(MakeListItem("ဇယားများနှင့် စာရင်းများ", false));
-            document->blocks.push_back(MakeListItem("အောက်ခြေမှတ်စုများနှင့် မှတ်ချက်များ", false));
-            document->blocks.push_back(MakeListItem("PDF အဖြစ် ထုတ်ယူခြင်း", false));
+            document->blocks.push_back(InMyanmarFont(MakeListItem("ဇယားများနှင့် စာရင်းများ", false)));
+            document->blocks.push_back(InMyanmarFont(MakeListItem("အောက်ခြေမှတ်စုများနှင့် မှတ်ချက်များ", false)));
+            document->blocks.push_back(InMyanmarFont(MakeListItem("PDF အဖြစ် ထုတ်ယူခြင်း", false)));
 
             // ----- All of them, and a table -----
             document->blocks.push_back(MakeHeading(2, "Mixed directions in one line"));
@@ -869,7 +900,7 @@ namespace UltraCanvas {
                     r.cells.push_back(MakeCell(english, header));
                     r.cells.push_back(MakeCell(chinese, header));
                     r.cells.push_back(MakeCell(arabic, header));
-                    r.cells.push_back(MakeCell(myanmar, header));
+                    r.cells.push_back(InMyanmarFont(MakeCell(myanmar, header)));
                     table.tableRows.push_back(r);
                 };
                 row("English", "中文", "العربية", "မြန်မာ", true);
@@ -905,6 +936,7 @@ namespace UltraCanvas {
         subtitle->SetTextColor(Color(100, 100, 100, 255));
         root->AddChild(subtitle);
 
+        RegisterMyanmarFont();
         auto edit = CreateRichTextEdit("wysiwygIntlEditor", 20, 120, 960, 560);
         edit->SetDocument(BuildInternationalDocument());
         edit->SetModified(false);
@@ -971,8 +1003,8 @@ namespace UltraCanvas {
         auto notes = std::make_shared<UltraCanvasLabel>("wysiwygIntlNotes", 20, 712, 960, 48);
         notes->SetText("Text is shaped and ordered by the Unicode bidirectional rules, so an English word or a "
                        "number inside Arabic keeps its own direction. A paragraph whose first letter is Arabic "
-                       "starts at the right by itself; Right-to-left makes any paragraph start there. Myanmar text needs a "
-                       "Myanmar font (Padauk or Noto Sans Myanmar) and the Unicode encoding, not Zawgyi.");
+                       "starts at the right by itself; Right-to-left makes any paragraph start there. Myanmar is set in Noto Sans "
+                       "Myanmar, which the demo ships and registers; the text uses the Unicode encoding, not Zawgyi.");
         notes->SetFontSize(11);
         notes->SetTextColor(Color(120, 120, 120, 255));
         root->AddChild(notes);
