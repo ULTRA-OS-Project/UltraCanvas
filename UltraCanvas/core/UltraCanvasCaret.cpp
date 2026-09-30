@@ -143,6 +143,11 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    void UltraCanvasCaret::InvalidateContext() {
+        caretContext.reset();
+        surfaceDirty = true;
+    }
+
     void UltraCanvasCaret::Composite(UltraCanvasWindowBase* win, NativeSurfacePtr toSurface) {
         if (!IsOnWindow(win) || !phaseVisible || !toSurface) return;
         if (rect.width <= 0 || rect.height <= 0) return;

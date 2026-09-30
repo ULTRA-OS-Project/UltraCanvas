@@ -47,25 +47,111 @@ namespace UltraCanvas {
 
     std::vector<RenderContextCairo*> RenderContextCairo::g_Instances;
 
+    // Font options as words, for the text-render diagnostic: the enum numbers
+    // mean nothing in a log without the cairo headers open beside it.
+    static std::string DescribeFontOptions(const cairo_font_options_t* fo) {
+        if (!fo) return "none";
+        auto antialias = [](cairo_antialias_t a) -> const char* {
+            switch (a) {
+                case CAIRO_ANTIALIAS_DEFAULT:  return "default";
+                case CAIRO_ANTIALIAS_NONE:     return "none";
+                case CAIRO_ANTIALIAS_GRAY:     return "gray";
+                case CAIRO_ANTIALIAS_SUBPIXEL: return "subpixel";
+                case CAIRO_ANTIALIAS_FAST:     return "fast";
+                case CAIRO_ANTIALIAS_GOOD:     return "good";
+                case CAIRO_ANTIALIAS_BEST:     return "best";
+            }
+            return "?";
+        };
+        auto hintStyle = [](cairo_hint_style_t h) -> const char* {
+            switch (h) {
+                case CAIRO_HINT_STYLE_DEFAULT: return "default";
+                case CAIRO_HINT_STYLE_NONE:    return "none";
+                case CAIRO_HINT_STYLE_SLIGHT:  return "slight";
+                case CAIRO_HINT_STYLE_MEDIUM:  return "medium";
+                case CAIRO_HINT_STYLE_FULL:    return "full";
+            }
+            return "?";
+        };
+        auto hintMetrics = [](cairo_hint_metrics_t m) -> const char* {
+            switch (m) {
+                case CAIRO_HINT_METRICS_DEFAULT: return "default";
+                case CAIRO_HINT_METRICS_OFF:     return "off";
+                case CAIRO_HINT_METRICS_ON:      return "on";
+            }
+            return "?";
+        };
+        auto subpixel = [](cairo_subpixel_order_t o) -> const char* {
+            switch (o) {
+                case CAIRO_SUBPIXEL_ORDER_DEFAULT: return "default";
+                case CAIRO_SUBPIXEL_ORDER_RGB:     return "rgb";
+                case CAIRO_SUBPIXEL_ORDER_BGR:     return "bgr";
+                case CAIRO_SUBPIXEL_ORDER_VRGB:    return "vrgb";
+                case CAIRO_SUBPIXEL_ORDER_VBGR:    return "vbgr";
+            }
+            return "?";
+        };
+        std::string out = "antialias:";
+        out += antialias(cairo_font_options_get_antialias(fo));
+        out += "/hint_style:";
+        out += hintStyle(cairo_font_options_get_hint_style(fo));
+        out += "/hint_metrics:";
+        out += hintMetrics(cairo_font_options_get_hint_metrics(fo));
+        out += "/subpixel_order:";
+        out += subpixel(cairo_font_options_get_subpixel_order(fo));
+        return out;
+    }
 
-    void RenderContextCairo::ApplyPangoFontOptions() {
+
+    // The process-wide text font options as one cairo object, for applying
+    // to a Pango context and for the log. The caller destroys it.
+    static cairo_font_options_t* CreateTextFontOptions() {
         cairo_font_options_t *opts = cairo_font_options_create();
         cairo_font_options_set_antialias(opts, g_TextAntialias);
         cairo_font_options_set_hint_style(opts, g_TextHintStyle);
         cairo_font_options_set_hint_metrics(opts, g_TextHintMetrics);
+        return opts;
+    }
+
+    void RenderContextCairo::ApplyPangoFontOptions() {
+        cairo_font_options_t *opts = CreateTextFontOptions();
         pango_cairo_context_set_font_options(pangoContext, opts);
         cairo_font_options_destroy(opts);
+        // Hinting and antialiasing change a glyph's ink, so every cap height
+        // measured so far is measured again under the new options.
+        InvalidateFontMetricsCache();
+    }
+
+    void RenderContextCairo::InvalidateFontMetricsCache() {
+        IRenderContext::InvalidateFontMetricsCache();
+        UCTextLayout::InvalidateFontMetricsCache(pangoContext);
+    }
+
+    // The one place that knows what a change to the process-wide text font
+    // options invalidates: the shared layout cache, whose layouts keep their
+    // extents, and then every context, which takes the new options and drops
+    // its own font measurements (ApplyPangoFontOptions ends in
+    // InvalidateFontMetricsCache). The three setters below all come here.
+    void RenderContextCairo::InvalidateAllFontMetricsCaches() {
+        // The first-surface diagnostic logged the options text started with;
+        // this line keeps the log true after a runtime change to them.
+        {
+            cairo_font_options_t* opts = CreateTextFontOptions();
+            debugOutput << "UC text-render diag: font options changed, contexts=" << g_Instances.size()
+                        << " pango_font_options=" << DescribeFontOptions(opts)
+                        << " (layout and font-metrics caches cleared)" << std::endl;
+            cairo_font_options_destroy(opts);
+        }
+        g_TextLayoutsCache.ClearCache();
+        for (auto* instance : g_Instances) {
+            instance->ApplyPangoFontOptions();
+        }
     }
 
     void RenderContextCairo::SetTextAntialias(cairo_antialias_t mode) {
         if (g_TextAntialias != mode) {
             g_TextAntialias = mode;
-//            g_TextSurfacesCache.ClearCache();
-//            g_TextDimensionsCache.ClearCache();
-            g_TextLayoutsCache.ClearCache();
-            for (auto* instance : g_Instances) {
-                instance->ApplyPangoFontOptions();
-            }
+            InvalidateAllFontMetricsCaches();
         }
     }
 
@@ -76,12 +162,7 @@ namespace UltraCanvas {
     void RenderContextCairo::SetTextHintStyle(cairo_hint_style_t style) {
         if (g_TextHintStyle != style) {
             g_TextHintStyle = style;
-//            g_TextSurfacesCache.ClearCache();
-//            g_TextDimensionsCache.ClearCache();
-            g_TextLayoutsCache.ClearCache();
-            for (auto* instance : g_Instances) {
-                instance->ApplyPangoFontOptions();
-            }
+            InvalidateAllFontMetricsCaches();
         }
     }
 
@@ -92,12 +173,7 @@ namespace UltraCanvas {
     void RenderContextCairo::SetTextHintMetrics(cairo_hint_metrics_t metrics) {
         if (g_TextHintMetrics != metrics) {
             g_TextHintMetrics = metrics;
-//            g_TextSurfacesCache.ClearCache();
-//            g_TextDimensionsCache.ClearCache
-            g_TextLayoutsCache.ClearCache();
-            for (auto* instance : g_Instances) {
-                instance->ApplyPangoFontOptions();
-            }
+            InvalidateAllFontMetricsCaches();
         }
     }
 
@@ -230,6 +306,9 @@ namespace UltraCanvas {
 
         // Pin Pango DPI before any layout uses this context.
         pango_cairo_context_set_resolution(pangoContext, g_PangoResolution);
+        // A new surface may carry a new device scale, and this is a new
+        // PangoContext: measurements made on the old one no longer apply.
+        InvalidateFontMetricsCache();
 
         // Belt-and-braces: also pin the cairo surface's fallback DPI and the
         // default Pango font map's resolution. Pango's draw-time
@@ -241,8 +320,17 @@ namespace UltraCanvas {
             pango_cairo_font_map_set_resolution(PANGO_CAIRO_FONT_MAP(fm), g_PangoResolution);
         }
 
-        // One-shot diagnostic: the only reliable way to discover which Pango/
-        // Cairo layer is reporting a non-pinned resolution on a given platform.
+        // Apply configurable text rendering font options
+        ApplyPangoFontOptions();
+
+        // One-shot diagnostic, on the first surface: everything a text
+        // measurement depends on, so a "why is this label 1px off on that
+        // machine" question is answerable from the log alone. It is logged
+        // after ApplyPangoFontOptions so the font options shown are the ones
+        // text is shaped with, not cairo's defaults; the Pango context's are
+        // the ones that matter for layout, cairo's for the final paint. The
+        // sample line is the default FontStyle measured on this context:
+        // compare it across machines before suspecting the caller.
         static bool s_diagLogged = false;
         if (!s_diagLogged) {
             s_diagLogged = true;
@@ -255,22 +343,39 @@ namespace UltraCanvas {
             cairo_surface_get_fallback_resolution(surface, &sxFb, &syFb);
             double devSx = 0, devSy = 0;
             cairo_surface_get_device_scale(surface, &devSx, &devSy);
-            cairo_font_options_t* fo = cairo_font_options_create();
-            cairo_get_font_options(cairo, fo);
-            debugOutput << "UC text-render diag:"
+
+            cairo_font_options_t* cairoFo = cairo_font_options_create();
+            cairo_get_font_options(cairo, cairoFo);
+            const cairo_font_options_t* pangoFo = pango_cairo_context_get_font_options(pangoContext);
+
+            debugOutput << "UC text-render diag (first surface):"
+                        << " surface=" << sz.width << "x" << sz.height
+                        << " pinned_res=" << g_PangoResolution
                         << " pango_ctx_res=" << ctxRes
                         << " fontmap_res=" << fmRes
                         << " surface_fallback_res=" << sxFb << "x" << syFb
                         << " surface_device_scale=" << devSx << "x" << devSy
-                        << " hint_style=" << cairo_font_options_get_hint_style(fo)
-                        << " hint_metrics=" << cairo_font_options_get_hint_metrics(fo)
-                        << " antialias=" << cairo_font_options_get_antialias(fo)
+                        << " pango_font_options=" << DescribeFontOptions(pangoFo)
+                        << " cairo_font_options=" << DescribeFontOptions(cairoFo)
                         << std::endl;
-            cairo_font_options_destroy(fo);
-        }
+            cairo_font_options_destroy(cairoFo);
 
-        // Apply configurable text rendering font options
-        ApplyPangoFontOptions();
+            try {
+                FontStyle sample;   // the framework default: family "", 12pt, regular
+                UCTextLayout probe(pangoContext);
+                probe.SetFontStyle(sample);
+                probe.SetText("H");
+                debugOutput << "UC text-render diag sample: font=\"" << sample.ToFontDesc() << "\""
+                            << " line_height=" << probe.GetLayoutHeight()
+                            << " baseline=" << probe.GetBaseline()
+                            << " cap_height=" << probe.GetCapHeight()
+                            << " H_width=" << probe.GetLayoutWidth()
+                            << " (px, before device scale)"
+                            << std::endl;
+            } catch (const std::exception& e) {
+                debugOutput << "UC text-render diag sample: not measured (" << e.what() << ")" << std::endl;
+            }
+        }
 
         g_Instances.push_back(this);
 
