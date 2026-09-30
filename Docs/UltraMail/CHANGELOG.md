@@ -1,3 +1,20 @@
+#### 2026-09-30 *0.10.9*
+- **No "New mail could not be fetched" alert while the network is still
+  coming up.** Right after the computer starts, the first background sync
+  often runs before the connection is there, and the alert it raised
+  ("Could not resolve host") was a false alarm. A background sync that cannot
+  reach the server at all — no name resolution, no route, nobody listening,
+  a timed-out connection — now shows the reason on the status line only, and
+  UltraMail tries the account again every minute. The alert appears only
+  when the account has stayed unreachable for ten minutes, and then once.
+  - Mail arrives within a minute of the network coming up, instead of at
+    the next five-minute sync.
+  - A failure the server itself produced — a rejected password, an
+    untrusted certificate — is reported at once, as before, and so is any
+    failure of a sync you asked for with Update.
+  - The engine's sync outcome now carries UltraNet's result code, and a
+    failed inbox fetch keeps its connection details for the alert.
+
 #### 2026-09-29 *0.10.8*
 - **Replies and forwards keep an HTML message's formatting.** Answering or
   forwarding an HTML mail used to turn it into plain text with "> " in front

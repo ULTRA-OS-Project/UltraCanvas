@@ -41,6 +41,7 @@
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetMime.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -1264,6 +1265,37 @@ void UltraMailApp::RunSyncs(bool force) {
     SyncAccounts(targets, /*userInitiated=*/force);
 }
 
+void UltraMailApp::ScheduleOfflineRetry() {
+    // One pending retry at a time; it fires only for the accounts whose grace
+    // period is still running, and re-arms itself from their next failure —
+    // never from a success, and never past the grace period, after which the
+    // regular cadence takes over.
+    if (offlineRetryPending_) return;
+    auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    offlineRetryPending_ = true;
+    app->StartTimer(static_cast<unsigned int>(kOfflineRetrySec * 1000), /*periodic=*/false,
+                    [this](UltraCanvas::TimerId) {
+                        offlineRetryPending_ = false;
+                        RetryUnreachableAccounts();
+                    });
+}
+
+void UltraMailApp::RetryUnreachableAccounts() {
+    const std::vector<std::string> ids = offline_.AccountsInGrace(NowMonotonicSec());
+    if (ids.empty()) return;
+    std::vector<ScheduledAccount> targets;
+    for (const auto& a : accounts_) {
+        if (std::find(ids.begin(), ids.end(), a.accountId) == ids.end()) continue;
+        DiscoveryResult d = SettingsFor(a);
+        ScheduledAccount sa;
+        sa.accountId = a.accountId;
+        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        targets.push_back(sa);
+    }
+    SyncAccounts(targets, /*userInitiated=*/false);
+}
+
 void UltraMailApp::SyncAccount(const std::string& accountId) {
     for (const auto& a : accounts_) {
         if (a.accountId != accountId) continue;
@@ -1465,6 +1497,20 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                         syncErrorReported_.insert(aid);
                         return;
                     }
+                    // The server could not be reached at all. On a background
+                    // sync that is most often the network not being up yet —
+                    // right after the computer starts, or between two Wi-Fi
+                    // networks — so the status line carries it, the account is
+                    // retried sooner than the regular cadence, and the alert
+                    // waits until the account has stayed unreachable for the
+                    // whole grace period. The user's own Reload always reports.
+                    if (!userInitiated && outcome.NetworkUnreachable()) {
+                        const int64_t now = NowMonotonicSec();
+                        const bool persisted = offline_.Unreachable(aid, now);
+                        if (!persisted) { ScheduleOfflineRetry(); return; }
+                    } else {
+                        offline_.Reached(aid);   // the server answered: not a network gap
+                    }
                     const bool firstReport = syncErrorReported_.insert(aid).second;
                     if (userInitiated || firstReport) {
                         AlertError(window_ ? window_.get() : nullptr,
@@ -1474,6 +1520,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                     return;
                 }
                 syncErrorReported_.erase(aid);   // recovered: arm the next report
+                offline_.Reached(aid);
                 accountError_.erase(aid);
                 vaultLockReported_ = false;
                 if (last) ShowAccountStatus();
@@ -1902,6 +1949,7 @@ void UltraMailApp::HandleDeleteAccount(const std::string& accountId) {
             // references; at worst it re-inserts a few rows after this, which
             // the next removal (or a restart) clears — acceptable here.
             scheduler_.Remove(accountId);
+            offline_.Reached(accountId);   // and its held-back network failure
 
             // Forget the stored password / OAuth tokens. Best-effort: these are
             // no-ops when the vault is locked, and the leftover encrypted

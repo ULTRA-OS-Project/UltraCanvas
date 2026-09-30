@@ -1,6 +1,7 @@
 // Tests/UltraMail/test_scheduler.cpp
-// The sync scheduler's due-account logic and the contact auto-collector.
-// Version: 0.1.0
+// The sync scheduler's due-account logic, the offline grace period and the
+// contact auto-collector.
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
@@ -43,6 +44,60 @@ TEST(scheduler_remove) {
     REQUIRE_EQ(s.Count(), (size_t)1);
     s.Remove("erika");
     REQUIRE_EQ(s.Count(), (size_t)0);
+}
+
+// ---- offline grace ---------------------------------------------------------
+
+TEST(offline_grace_holds_the_first_failure) {
+    OfflineGrace g(600);
+    // Right after boot: the first failure is never reported.
+    REQUIRE(!g.Unreachable("erika", 1000));
+    REQUIRE(g.InGrace("erika", 1000));
+    // Still failing a minute later: held, still in grace.
+    REQUIRE(!g.Unreachable("erika", 1060));
+    REQUIRE(g.InGrace("erika", 1300));
+}
+
+TEST(offline_grace_reports_once_the_period_has_passed) {
+    OfflineGrace g(600);
+    REQUIRE(!g.Unreachable("erika", 1000));
+    REQUIRE(!g.Unreachable("erika", 1599));    // one second short
+    REQUIRE(g.Unreachable("erika", 1600));     // the whole period: report
+    REQUIRE(g.Unreachable("erika", 2000));     // and it stays reportable
+    // An expired period is not "in grace": the regular cadence takes over.
+    REQUIRE(!g.InGrace("erika", 1600));
+    REQUIRE_EQ(g.AccountsInGrace(1600).size(), (size_t)0);
+}
+
+TEST(offline_grace_restarts_after_the_server_answered) {
+    OfflineGrace g(600);
+    REQUIRE(!g.Unreachable("erika", 1000));
+    g.Reached("erika");                          // a sync succeeded
+    REQUIRE(!g.InGrace("erika", 1000));
+    // The next gap starts a new period from its own first failure.
+    REQUIRE(!g.Unreachable("erika", 1500));
+    REQUIRE(!g.Unreachable("erika", 2099));
+    REQUIRE(g.Unreachable("erika", 2100));
+}
+
+TEST(offline_grace_tracks_accounts_apart) {
+    OfflineGrace g(600);
+    REQUIRE(!g.Unreachable("erika", 1000));
+    REQUIRE(!g.Unreachable("work",  1400));
+    auto in = g.AccountsInGrace(1500);
+    REQUIRE_EQ(in.size(), (size_t)2);
+    // erika's period has run out at 1600, work's has not.
+    in = g.AccountsInGrace(1700);
+    REQUIRE_EQ(in.size(), (size_t)1);
+    REQUIRE_EQ(in[0], std::string("work"));
+    REQUIRE(g.Unreachable("erika", 1700));
+    REQUIRE(!g.Unreachable("work", 1700));
+}
+
+TEST(offline_grace_default_period_and_bad_values) {
+    REQUIRE_EQ(OfflineGrace().GraceSec(), OfflineGrace::kDefaultGraceSec);
+    REQUIRE_EQ(OfflineGrace(0).GraceSec(), OfflineGrace::kDefaultGraceSec);
+    REQUIRE_EQ(OfflineGrace(-5).GraceSec(), OfflineGrace::kDefaultGraceSec);
 }
 
 // ---- contact collector -----------------------------------------------------

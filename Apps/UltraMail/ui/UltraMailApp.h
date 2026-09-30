@@ -289,6 +289,10 @@ private:
     // Sync the accounts the scheduler reports as due (called from the timer),
     // or every account when `force` is set (the Reload button).
     void RunSyncs(bool force);
+    // A background sync could not reach the server: sync the accounts whose
+    // grace period is running again after kOfflineRetrySec (see OfflineGrace).
+    void ScheduleOfflineRetry();
+    void RetryUnreachableAccounts();
     // Sync one account now — the first sync right after it was added.
     void SyncAccount(const std::string& accountId);
     // Fetch one folder's messages now (envelopes + bodies), on a worker. Backs
@@ -342,6 +346,15 @@ private:
     // silence every other account's failures (and this account's, after
     // another's) until some sync succeeded.
     std::set<std::string> syncErrorReported_;
+    // Holds back the alert for a background sync that could not reach the
+    // server until the account has stayed unreachable for the grace period:
+    // right after the computer starts the network is often not up yet, and
+    // that first failure is a false alarm. Keyed on NowMonotonicSec().
+    OfflineGrace offline_;
+    bool         offlineRetryPending_ = false;
+    // How soon an unreachable account is tried again while its grace period
+    // runs, so mail arrives soon after the network does.
+    static constexpr int64_t kOfflineRetrySec = 60;
     // The locked-vault warning, once per run of locked rounds.
     bool vaultLockReported_ = false;
     // The last sync failure per account ("Could not fetch mail for …: reason"),
