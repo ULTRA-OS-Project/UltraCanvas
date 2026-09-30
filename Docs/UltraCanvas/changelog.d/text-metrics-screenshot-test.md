@@ -15,5 +15,5 @@
 - **`Tests/DisplayTestSupport.h` holds what a display test would otherwise
   copy.** Activating the window, focusing an element, driving a frame
   without an event loop and waiting for the shared caret were written out
-  in each test that opens a window under Xvfb; `CaretStackingTest` and
-  `TextMetricsScreenshotTest` now share them.
+  in each test that opens a window under Xvfb; `CaretStackingTest`,
+  `TextMetricsScreenshotTest` and `TextAreaSpellCheckTest` now share them.
