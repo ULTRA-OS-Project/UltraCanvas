@@ -31,11 +31,15 @@
     How long to watch for a window before reporting (default 20).
 
 .PARAMETER CheckOnly
-    Inspect the executable's PE header and stop; do not launch it. This is the
-    check that explains Windows' own "This app can't run on your PC" dialog:
-    a binary built for another CPU architecture, a truncated or empty file, or
-    a subsystem version this Windows is too old for. Exit code 0 when the file
-    could be started here, 1 when Windows would refuse it.
+    Inspect the executable's PE header and the package's DLL names, and stop;
+    do not launch it. The header check explains Windows' own "This app can't
+    run on your PC" dialog: a binary built for another CPU architecture, a
+    truncated or empty file, or a subsystem version this Windows is too old
+    for. The name check explains a "The procedure entry point ... could not
+    be located in the dynamic link library C:\WINDOWS\SYSTEM32\<x>.dll" box
+    that appears while the application runs: a DLL in the package carrying a
+    Windows system DLL's name. Exit code 0 when the file could be started
+    here, 1 when Windows would refuse it.
 
 .EXAMPLE
     .\uc-diagnose.ps1
@@ -205,6 +209,35 @@ if ($pe.Problems.Count -gt 0) {
     exit 1
 }
 Write-Host "The header is one this machine can load."
+
+# --- DLLs named like Windows system DLLs ------------------------------------
+# Windows keys the modules of a process by base name. A DLL in the package
+# with a system DLL's name is, once anything has loaded it, what every later
+# import of that name resolves to - and the system DLL doing the importing
+# fails with "The procedure entry point <function> could not be located in
+# the dynamic link library C:\WINDOWS\SYSTEM32\<importer>.dll". Packages up
+# to 0.9.92 shipped ImageMagick's coder lib\ImageMagick-*\...\coders\mpr.dll,
+# which cost UltraFiler its "Delete as administrator" (pcacli.dll, the
+# shell's runas helper, imports WNetGetConnectionW from the real MPR.dll)
+# and its double-click into Store apps (daxexec.dll, the same import).
+# Nothing here needs the process: it is file names against System32.
+Write-Section 'DLLs named like Windows system DLLs'
+$packageRoot = if ($exe.StartsWith($here, [StringComparison]::OrdinalIgnoreCase)) { $here } else { Split-Path -Parent $exe }
+$system32 = Join-Path $env:SystemRoot 'System32'
+$shadowing = @(Get-ChildItem -LiteralPath $packageRoot -Recurse -Filter '*.dll' -File -ErrorAction SilentlyContinue |
+               Where-Object { Test-Path -LiteralPath (Join-Path $system32 $_.Name) })
+if ($shadowing.Count -gt 0) {
+    Write-Host "[!] $($shadowing.Count) DLL(s) in this package carry the name of a Windows system DLL:" -ForegroundColor Yellow
+    foreach ($s in $shadowing) {
+        Write-Host "    $($s.FullName.Substring($packageRoot.Length).TrimStart('\'))" -ForegroundColor Yellow
+    }
+    Write-Host "    Once loaded, such a file answers for the system DLL inside this process, and" -ForegroundColor Yellow
+    Write-Host "    a Windows component importing the real one fails with 'The procedure entry" -ForegroundColor Yellow
+    Write-Host "    point ... could not be located'. Delete the files listed; a package newer" -ForegroundColor Yellow
+    Write-Host "    than 0.9.92 no longer ships them." -ForegroundColor Yellow
+} else {
+    Write-Host "None."
+}
 if ($CheckOnly) { exit 0 }
 
 # --- Mark of the Web -------------------------------------------------------

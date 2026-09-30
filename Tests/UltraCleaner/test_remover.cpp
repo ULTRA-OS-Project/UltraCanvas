@@ -118,6 +118,41 @@ TEST(RemoverRefusesAnItemPathThatLeftTheAllowedRoots) {
     REQUIRE(tree.Exists("precious/keep.txt"));
 }
 
+TEST(RemoverKeepsGoingPastAnyNumberOfFailures) {
+    // A run used to stop after fifty failures. On Windows a temp directory
+    // holds that many files other programs keep open, so the clean ended
+    // there and the items behind them were never reached. Every failure is
+    // recorded and the run goes on to the last item.
+    TempTree tree;
+    const std::string cache = tree.Dir("cache");
+    for (int i = 0; i < 60; ++i) {
+        tree.File("cache/locked" + std::to_string(i) + ".tmp", 10);
+    }
+    const std::string precious = tree.File("precious/keep.txt", 10);
+
+    ScanReport report = ScanOf(cache);
+    REQUIRE_EQ(report.items.size(), static_cast<size_t>(60));
+    // Sixty items that will fail — each pointed outside the allowed roots so
+    // the guard refuses it — and one at the end that must still be removed.
+    for (size_t i = 0; i + 1 < report.items.size(); ++i) {
+        report.items[i].path = precious;
+    }
+    const std::string last = report.items.back().path;
+
+    RemovalOptions options;
+    options.mode = RemovalMode::DeletePermanently;
+
+    Remover remover;
+    const RemovalReport result = remover.Remove(report, options);
+
+    REQUIRE_EQ(result.failures.size(), static_cast<size_t>(59));
+    REQUIRE_EQ(result.refusedByGuard, static_cast<size_t>(59));
+    REQUIRE_EQ(result.removedItems, static_cast<size_t>(1));
+    REQUIRE(!std::filesystem::exists(last));
+    REQUIRE(tree.Exists("precious/keep.txt"));
+    REQUIRE(!result.cancelled);
+}
+
 TEST(RemoverCountsItemsThatVanishedBeforeTheClean) {
     TempTree tree;
     const std::string cache = tree.Dir("cache");

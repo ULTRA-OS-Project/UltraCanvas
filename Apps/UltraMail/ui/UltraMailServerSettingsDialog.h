@@ -8,12 +8,15 @@
 // the reason and offers "Save anyway". Nothing is called on Cancel.
 // With `AccountFields::edit` set it doubles as the account settings page: a
 // display-name row above the servers, and - for a password account - a
-// password row, or - for an OAuth account - a "Sign in again" button.
+// password row, or - for an OAuth account - a "Sign in again" button - and a
+// Signature row whose "Edit signature…" button opens the signature editor.
+// Version: 0.5.0 - the Signature row (account settings page)
 // Version: 0.4.0 - an authentication method per server
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraMailDiscovery.h"
+#include "UltraMailTypes.h"   // Signature
 
 #include "UltraCanvasWindow.h"
 
@@ -35,17 +38,16 @@ public:
         bool        acceptsPassword = true;// show the password field
         bool        canOAuth = false;      // show the "Sign in with <provider>" button
         std::string providerName;          // OAuth button label, e.g. "Google"
-        // App-wide view option surfaced here (the only "Settings" page): the
-        // current value seeds the checkbox; Save returns it in Result. Same
-        // value regardless of which account's settings are open.
-        bool        showReadingPane = true;
-        // App-wide too: whether UltraMail may download the icons of the known
-        // services in its sender registry into the sender-icon cache.
-        bool        fetchSenderIcons = true;
         // When set (account settings only), a red "Delete account" button is
         // shown in the bottom row; clicking it closes this page and runs the
         // callback, which owns the confirm-and-remove flow.
         std::function<void()> onDelete;
+        // When set (account settings only), a Signature row shows `signature`
+        // in a few words and an "Edit signature…" button. The editor saves on
+        // its own Save - not on this page's, which checks the sign-in first -
+        // and hands the new signature to this callback.
+        Signature signature;
+        std::function<void(const Signature&)> onSaveSignature;
     };
 
     // What Save hands back. `settings` is always filled; the rest are only
@@ -55,8 +57,6 @@ public:
         std::string     displayName;   // edited name (empty -> caller falls back to the local part)
         std::string     newPassword;   // non-empty only when the user typed one
         bool            reauth = false;// the OAuth "Sign in again" button was used
-        bool            showReadingPane = true;   // the reading-pane checkbox state
-        bool            fetchSenderIcons = true;  // the sender-icon checkbox state
     };
 
     // The login check: run it for `candidate` (off the UI thread - it talks to

@@ -2,8 +2,9 @@
 // Core data types for the UltraMail engine: accounts, folders, message
 // envelopes, message flags, and the per-account status rollup that drives the
 // account bar (unread today · unread before · waiting for reply).
+// Version: 0.5.0 - a signature per account (plain text or HTML)
 // Version: 0.4.0 - the authentication method per server
-// Last Modified: 2026-09-27
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -75,6 +76,34 @@ struct MailServerSettings {
 // security setting and its authentication method. Credentials are left alone.
 void ApplyConnection(const MailServerSettings& server, UltraNetMailOptions& options);
 
+// Which signature an account puts under its messages.
+enum class SignatureKind {
+    Off = 0,    // no signature (not "None": X11 defines that macro)
+    Text,       // Signature::text, below a "-- " line
+    Html        // Signature::html, formatted (the message is then sent as HTML)
+};
+
+// "none" | "text" | "html" — the form stored in the database. Unknown text
+// reads as Off.
+std::string   ToString(SignatureKind kind);
+SignatureKind SignatureKindFromString(const std::string& s);
+
+// An account's signature. Both versions are kept whichever one is chosen, so
+// switching between plain text and HTML in the editor loses neither.
+struct Signature {
+    SignatureKind kind = SignatureKind::Off;
+    std::string   text;           // plain text, UTF-8, lines separated by '\n'
+    std::string   html;           // an HTML fragment; pictures inline as data: URIs
+    bool          onReplies = true;   // also under replies and forwards, not only new mail
+
+    // True when the chosen kind has something to show.
+    bool IsActive() const;
+    bool operator==(const Signature& other) const {
+        return kind == other.kind && text == other.text && html == other.html
+            && onReplies == other.onReplies;
+    }
+};
+
 // A configured account as the local store knows it (no secrets here —
 // credentials live in the OS keychain via the credential vault).
 struct Account {
@@ -89,6 +118,11 @@ struct Account {
     MailServerSettings imap;
     MailServerSettings smtp;
     std::string        providerName;   // "Gmail", an autoconfig display name, or ""
+
+    // Put under the messages the account writes. LocalStore::UpsertAccount
+    // leaves it alone (a re-added address keeps its signature); it is saved
+    // with LocalStore::SetAccountSignature.
+    Signature          signature;
 
     bool HasServers() const { return imap.Valid() && smtp.Valid(); }
 };

@@ -1,10 +1,12 @@
 // Apps/UltraMail/ui/UltraMailStartPage.h
 // The first-run start page: shown in the main window while no email account is
-// configured. It holds exactly three things — the UltraMail logo, the app title
-// and an "Add email account" button — and nothing else. Once an account exists
+// configured. It holds the UltraMail logo, the app title and an "Add email
+// account" button, centred - and, in the top-right corner where the toolbar's
+// sits later, the Settings gear, so privacy can be set before the first
+// account is added. Once an account exists
 // the app hides it and shows the account view (info-tile bar + Toolbox) instead.
-// Version: 0.2.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0 - the Settings gear in the top-right corner
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -29,6 +31,8 @@ public:
 
     // Fired when the "Add email account" button is clicked.
     std::function<void()> onAddAccount;
+    // Fired when the Settings gear is clicked.
+    std::function<void()> onSettings;
 
 private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> page_;

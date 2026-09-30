@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
+// Version: 0.6.0 - the Signature row: the account's signature in a few words and
+//                  "Edit signature…" (UltraMailSignatureDialog)
+// Version: 0.5.0 - the app-wide view options (preview pane, sender icons) moved to
+//                  the Settings window (UltraMailSettingsDialog)
 // Version: 0.4.0 - an authentication method per server (Automatic, normal or
 //                  encrypted password, OAuth2, Kerberos, NTLM, none for SMTP)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -6,6 +10,8 @@
 
 #include "UltraMailTheme.h"
 #include "UltraMailAlerts.h"
+#include "UltraMailSignature.h"
+#include "UltraMailSignatureDialog.h"
 
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasContainer.h"
@@ -98,7 +104,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // credential rows (a password field and/or a "Sign in with …" button) on
     // top of the server rows, plus room for a multi-line sign-in error.
     // Two authentication rows sit under the server rows on both.
-    config.height     = account.edit ? 560 : 400;
+    // The Signature row adds one more line.
+    config.height     = account.edit ? (account.onSaveSignature ? 592 : 560) : 400;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -277,54 +284,34 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         oauthBtn->layoutItem.SetFlexGrow(1);
     }
 
-    // View option (account settings page only): show the message preview pane
-    // beside the list, or open messages in place of the list (Gmail-style).
-    // App-wide, not per account — it just lives on this, the only Settings page.
-    std::shared_ptr<UltraCanvasCheckbox> readingPaneCheck;
-    if (account.edit) {
-        auto row = CreateContainer("srvViewRow", 0, 0, 0, Theme::kControlHeight);
-        row->layout.SetFlexRow()
-                   .SetFlexGap(Theme::kInnerGap)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto label = Theme::MakeLine("srvViewLbl", "View", Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
-        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
-        row->AddChild(label);
-        readingPaneCheck = UltraCanvasCheckbox::CreateCheckbox(
-            "srvReadingPane", 0, 0, 0, Theme::kControlHeight,
-            "Show message preview pane", account.showReadingPane);
-        readingPaneCheck->SetFontSize(Theme::kSizeBody);
-        row->AddChild(readingPaneCheck);
-        readingPaneCheck->layoutItem.SetFlexGrow(1);
-        content->AddChild(row);
-        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    }
-
-    // The sender badge's icons: UltraMail only ever asks the services in its
-    // own registry (Facebook, LinkedIn, Apple, …) for an icon, once each, and
-    // never asks anyone about a stranger's domain — but downloading nothing at
-    // all is still a choice the user gets to make.
-    std::shared_ptr<UltraCanvasCheckbox> senderIconCheck;
-    if (account.edit) {
-        auto row = CreateContainer("srvIconRow", 0, 0, 0, Theme::kControlHeight);
-        row->layout.SetFlexRow()
-                   .SetFlexGap(Theme::kInnerGap)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto label = Theme::MakeLine("srvIconLbl", "", Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
-        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
-        row->AddChild(label);
-        senderIconCheck = UltraCanvasCheckbox::CreateCheckbox(
-            "srvSenderIcons", 0, 0, 0, Theme::kControlHeight,
-            "Download icons of known senders", account.fetchSenderIcons);
-        senderIconCheck->SetFontSize(Theme::kSizeBody);
-        senderIconCheck->SetTooltip(
-            "Fetches the icon of each service in UltraMail's known-sender list "
-            "once, into the sender-icon cache. No other domain is ever looked up.");
-        row->AddChild(senderIconCheck);
-        senderIconCheck->layoutItem.SetFlexGrow(1);
-        content->AddChild(row);
-        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // Signature row (account settings page only): what the account signs with,
+    // and the button to the editor. The editor saves by itself, so the row
+    // keeps the latest signature for the next time it is opened.
+    if (account.edit && account.onSaveSignature) {
+        auto row = credRow("srvSigRow", "Signature");
+        auto current = std::make_shared<Signature>(account.signature);
+        auto summary = Theme::MakeLine("srvSigSummary", DescribeSignature(*current),
+                                       Theme::kControlHeight, Theme::kSizeBody,
+                                       Theme::kTextPrimary);
+        row->AddChild(summary);
+        summary->layoutItem.SetFlexGrow(1);
+        auto editBtn = CreateButton("srvSigEdit", 0, 0, 120, Theme::kControlHeight,
+                                    "Edit signature\xE2\x80\xA6");
+        Theme::FitToLabel(editBtn, 120);
+        Theme::StyleSecondary(editBtn);
+        std::function<void(const Signature&)> onSaveSignature = account.onSaveSignature;
+        UltraCanvasLabel* summaryLabel = summary.get();   // a sibling in this dialog
+        editBtn->onClick = [dlg, email, current, summaryLabel, onSaveSignature]() {
+            // The editor is modal over this page, so the page (and the
+            // label) outlive it.
+            SignatureDialog::Show(dlg, email, *current,
+                [current, summaryLabel, onSaveSignature](const Signature& edited) {
+                    *current = edited;
+                    summaryLabel->SetText(DescribeSignature(edited));
+                    if (onSaveSignature) onSaveSignature(edited);
+                });
+        };
+        row->AddChild(editBtn);
     }
 
     auto note = Theme::MakeLine("srvNote",
@@ -386,7 +373,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // something is missing. Fills the servers plus, on the settings page, the
     // edited display name and any typed new password.
     auto collect = [imap, smtp, imapAuth, smtpAuth, user, status, email, nameInput,
-                    passInput, prefill, readingPaneCheck, senderIconCheck](Result& out) {
+                    passInput, prefill](Result& out) {
         DiscoveryResult& r = out.settings;
         r = DiscoveryResult{};
         r.imap.host = Trim(imap.host->GetText());
@@ -408,8 +395,6 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         r.displayName = prefill.displayName;
         out.displayName = nameInput ? Trim(nameInput->GetText()) : std::string();
         out.newPassword = passInput ? passInput->GetText() : std::string();  // not trimmed
-        out.showReadingPane  = readingPaneCheck ? readingPaneCheck->IsChecked() : true;
-        out.fetchSenderIcons = senderIconCheck ? senderIconCheck->IsChecked() : true;
 
         if (r.imap.host.empty())      { status->SetText("Enter the incoming (IMAP) server."); return false; }
         if (r.imap.port == 0)         { status->SetText("The incoming port must be a number from 1 to 65535."); return false; }

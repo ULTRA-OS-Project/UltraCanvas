@@ -1197,10 +1197,12 @@ future.
   Google Drive
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
-- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync` (each also with an
-  `UltraNetDnsOptions` - the name servers to ask for that call only, and the
-  deadline), `UltraNet_DnsReverseLookup`, `UltraNet_DnsClearCache`,
-  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`
+- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
+  (each also with an `UltraNetDnsOptions` - the name servers to ask for that
+  call only, and the deadline; the reverse lookup without servers is the
+  system resolver under the deadline), `UltraNet_DnsClearCache`,
+  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`,
+  `UltraNet_DnsReverseNameToAddress`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
 - `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
   `UltraNet_UrlDecode`
@@ -2236,7 +2238,11 @@ The engine implements a useful subset of CSS, not the whole specification.
 
 - **Flex** (`display: flex`) — direction, wrap, grow/shrink/basis, justify/align, gap, order
 - **Grid** (`display: grid`) — explicit placement, auto-placement, track sizing (px / % / fr / auto / min/max-content / fit-content), gaps
-- **Block** (`display: block`, the default) — children stacked vertically
+- **Block** (`display: block`, the default) — children stacked vertically; each in-flow
+  child's margin offsets it and adds to the stack, and its left/right margin narrows the
+  width it is offered (percentages resolve against the content width)
+- **Table** (`DisplayType::Table`) — HTML's automatic table layout; see
+  [Table layout](#table-layout) below
 - **Absolute positioning** — `Absolute`, `Fixed`, `Relative`, and the UI-specific `AbsoluteUI`
 
 **Not implemented yet** (do not rely on these):
@@ -2244,8 +2250,12 @@ The engine implements a useful subset of CSS, not the whole specification.
 - **No normal flow / inline layout.** `Inline` and `InlineBlock` fall through to Block
   (see the `TODO` at `Element.cpp:214-215`) — there is no inline formatting context, no
   text-run wrapping across boxes, no baseline alignment.
-- **No table layout** (no `display: table` family).
-- Minor gaps: LTR writing-mode only; no margin collapsing; Grid named lines / template
+- **No `table-row` / `table-cell` display types.** A table's cells are its direct
+  children, placed by row and column (see [Table layout](#table-layout)); there are no
+  row boxes and no anonymous-box generation.
+- Minor gaps: LTR writing-mode only; no margin collapsing (in Block as in Flex, two
+  stacked siblings are separated by the *sum* of their facing margins); Block does not
+  centre on `margin: auto` (an auto margin is 0 there); Grid named lines / template
   areas / subgrid / masonry / dense packing are not implemented.
 
 ## How it integrates with the UI framework
@@ -2543,6 +2553,41 @@ scroll-range arithmetic `UltraCanvasContainer::UpdateScrollability` performs.
 
 The grid engine needs no such fallback: `ArrangeGrid` sizes a non-stretch item to
 `min(track, natural)`, so a grid item can never be larger than the area it is aligned in.
+
+## Table layout
+
+`DisplayType::Table` is the automatic table layout browsers use for HTML tables
+(CSS 2.1 §17.5.2.2), in `core/CSSLayout/TableLayout.cpp`. The HTML reader builds every
+`<table>` on it; use it anywhere columns must line up across rows whose content decides
+their width. The cells are the container's direct children, each placed with
+`SetGridRowColSimplified(row, column, rowSpan, colSpan)`:
+
+```cpp
+table->layout.SetTableSpacing(2, 2);                 // border-spacing; also sets display: table
+cell->layoutItem.SetGridRowColSimplified(0, 1, 1, 3);   // row 0, column 1, spanning 3 columns
+cell->size.width = CSSLayout::Dimension::Px(128);    // a fixed column (Pct(40) = a % column)
+table->AddChild(cell);
+```
+
+- Every cell reports a **min-content** width (its widest unbreakable run —
+  `UltraCanvasLabel` publishes it; a `WrapNone` label's is its whole line — or its px
+  width) and a **max-content** width (one line). A column's min / max is the largest of
+  its one-column cells; a spanning cell widens its columns only by what they lack.
+- A cell's `size.width` in px makes its column **fixed**, in % a **percentage** column;
+  the rest are **auto**. A table with its own width uses it (never less than the
+  columns' minimum); an auto-width table shrinks to its preferred width.
+- The width is handed out minimum first, then fixed, then %, then auto columns up to
+  max-content, each group proportionally when short; what is left widens the auto
+  columns (else the % ones).
+- A row is as tall as its tallest cell at its column width; every cell is **stretched**
+  to its row(s), so its background fills the slot. Aligning a cell's content vertically
+  is the cell's job — the HTML reader makes cells flex columns with `justify-content`.
+- The spacing applies between the cells and around the outer ones, as `border-spacing`
+  does. `Tests/HTMLTableLayoutTest.cpp` pins the column sharing, spans and widths.
+
+Why not Grid: `ArrangeGrid` sizes rows from each item's max-content height at unbounded
+width (a wrapped paragraph gets one line) and has no min-content column distribution, so
+a table built on it cannot keep a label column narrow while a long value wraps.
 
 ## Troubleshooting: my widget renders nothing at all
 
@@ -16516,6 +16561,7 @@ and `MoveWindowToVirtualDesktop(id, i)` (−1 = on every desktop).
 | `GetScreenSize(w, h)` | The default screen's size in pixels. |
 | `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
+| `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
 | `DefaultScreenshotPath()` | `<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png` — the user's Pictures folder from `GetWellKnownUserFolders`, the home directory when there is none. Dots in the time, since a colon is not a file-name character on Windows. |
 
 ### Devices
@@ -16572,8 +16618,8 @@ nothing is ever reported: `IsNative()` says which.
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window, written by cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
-| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen` fails with a reason; the application list, launcher and notices still work. |
+| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). |
+| Windows, macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen` and `CaptureScreenImage` fail with a reason; the application list, launcher and notices still work. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -19766,6 +19812,17 @@ code page.
 A `pkexec` / authorization-services backend for the Unix desktops would slot in
 behind the same four `Native*` functions.
 
+The Windows backend turns the loader's hard-error boxes off on its worker
+thread around the launch (`SetThreadErrorMode`, as the file-associations
+backend does): the `runas` verb has the shell load system DLLs of its own
+(`pcacli.dll`, the Program Compatibility Assistant client), and one that fails
+to resolve an import is reported through `ShellExecuteEx`'s error code, in the
+caller's dialog, rather than as a modal box behind the progress window. The
+one known way for that to happen - a DLL in the package carrying a Windows
+system DLL's name, which the loader then answers imports of that name with -
+is kept out of the package by `package-win.sh`; see [*"Entry point not found"
+in a Windows DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).
+
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFileAssociations.md
 ==============================================================================
@@ -19954,7 +20011,10 @@ code.
   process, and hard-error boxes are now off on that thread around every
   launch. When the default open still fails for a registered handler, the
   file is handed to `explorer.exe`, which activates the app from its own
-  process.
+  process. (Why the import failed at all - a packaged ImageMagick coder
+  named `mpr.dll` shadowing the system's - is a packaging bug, fixed the
+  same day; see [*"Entry point not found" in a Windows
+  DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).)
 - 1.2.1 (2026-09-12): macOS default open goes through Launch Services
   (`URLForApplicationToOpenURL:` + `openURLs:withApplicationAtURL:`) instead of
   spawning `/usr/bin/open`, so "nothing is registered for this file type" is
@@ -30398,6 +30458,18 @@ argument to `SetBorders(width, color, radius)`. The radius is applied to the
 background fill as well as the border stroke, so labels can be rounded **with**
 a visible border or **without** one (by making the border color transparent).
 
+For a rounded box with **no border at all** - no border width, so no space
+reserved for one - call `SetBorderRadius(radius)` (on any element): the
+background is filled with that corner radius.
+
+```cpp
+auto chip = std::make_shared<UltraCanvasLabel>("chip", 20, 500, 120, 28);
+chip->SetText("Borderless");
+chip->SetBackgroundColor(Color(20, 20, 19));
+chip->SetTextColor(Colors::White);
+chip->SetBorderRadius(10.0f);   // rounded fill, border widths stay 0
+```
+
 ```cpp
 // Rounded WITH a visible border (filled).
 auto roundedFilled = std::make_shared<UltraCanvasLabel>(
@@ -34432,6 +34504,7 @@ struct MenuStyle {
     int separatorHeight;     // Height of a separator row; the 1px line is centred in it
     int borderWidth;         // Border thickness
     int borderRadius;        // Corner radius
+    MenuRadioShape radioShape;  // Outline of a Radio item's indicator: Round (default) or Square
     
     // Submenu
     int submenuDelay;        // Hover delay before opening (ms)
@@ -34664,6 +34737,22 @@ viewMenu->AddItem(MenuItemData::Submenu("Zoom", {
     MenuItemData::Radio("200%", 1, false, onZoom200)
 }));
 ```
+
+### Radio Indicator Shape
+
+A `Radio` item draws a dot inside a round outline, as `UltraCanvasRadio`
+does. A style can ask for the same square box a `Checkbox` item gets instead:
+
+```cpp
+MenuStyle style = MenuStyle::Default();
+style.radioShape = MenuRadioShape::Square;  // the earlier square box
+menu->SetStyle(style);
+```
+
+Both shapes are `iconSize` wide and are centred on the row. The label is
+centred on the row by its cap height rather than by its line box (which
+holds the ascender and descender space too), so the indicator and the
+visible text sit on one centre line whatever the item height.
 
 ### Custom Styling
 
@@ -43043,6 +43132,55 @@ void SetAntialias(AntialiasMode mode);
 
 Geometry antialiasing for the fills and strokes that follow (text keeps
 its own hinting settings). `NoAntialias` is what a pixel-exact tool wants.
+
+### Crisp borders
+
+A stroke is centred on its path, so a 1px outline along a rectangle with
+whole-pixel edges lies half outside it and is antialiased over two rows of
+pixels on each side. `DrawFilledRectangle` and `DrawFilledCircle` therefore
+inset their path by half the border width: the outline sits on whole
+pixels, its outer edge is the rectangle's edge (or the circle's radius),
+and the centre does not move. A rounded corner keeps its outer radius. To
+stroke a path of your own the same way:
+
+```cpp
+Rect2Dd path = IRenderContext::InsetForStroke(rect, strokeWidth);
+ctx->Rect(path.x, path.y, path.width, path.height);
+ctx->SetStrokeWidth(strokeWidth);
+ctx->Stroke();
+```
+
+## Centring text on its capitals
+
+```cpp
+double GetCapCentreOffset(const FontStyle& font);                    // layout top → middle of a capital
+int    TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
+double ITextLayout::GetCapHeight();                                  // baseline → cap top, pixels
+```
+
+A line box holds the ascender and descender space, so centring it (or the
+font's ascent + descent band) puts a mixed-case label a shade below a box
+or icon centred beside it. The framework centres single-line text on the
+middle of a capital letter instead: half-way between the cap top and the
+baseline. A layout drawn with `VerticalAlignment::Middle` into a box of
+known height does this by itself, which covers `DrawTextInRect` and so
+buttons, list cells, dropdowns and tabs. Text placed at a point with
+`DrawText` gets the same line from `TextTopCentredOnCaps`:
+
+```cpp
+ctx->SetFontStyle(font);
+int y = ctx->TextTopCentredOnCaps(rowRect, font);   // same centre line as a box centred on rowRect
+ctx->DrawText(label, Point2Di(x, y));
+```
+
+The cap height is measured once per font from the ink of a capital H and
+cached, so asking per row costs a map lookup. The caches belong to the
+context (and, for layouts, to its Pango context), not to the process: two
+contexts can measure the same font differently, and a backend calls
+`InvalidateFontMetricsCache()` on a context whenever its resolution, font
+options, hinting or device scale change, so nothing measured under the old
+settings survives them. Callers never need to call it. A font with no
+measurable ink falls back to the line box's middle.
 
 ## Text outlines
 
@@ -59719,7 +59857,8 @@ File size   : 21843456 bytes
       (UCDemo-Windows-<version>-x86_64.zip).
 ```
 
-`uc-diagnose.ps1 -CheckOnly .\UltraFiler.exe` does only this check and exits
+`uc-diagnose.ps1 -CheckOnly .\UltraFiler.exe` does only this check (and the
+[DLL-name check](#entry-point-not-found-in-a-windows-dll)) and exits
 0 or 1; `uc-diagnose.bat` runs it automatically before launching.
 
 **Why an older package "still works".** A report of the shape "0.3.109 starts,
@@ -59883,6 +60022,46 @@ certificate from a trusted CA. `package-win.sh` signs only `Texter.exe` and
 `UltraCanvasDemo.exe`, only when run without `--no-sign`, and CI always
 passes `--no-sign`. The PowerShell signing scripts can create only a
 self-signed certificate, which does not help against AV or SmartScreen.
+
+## "Entry point not found" in a Windows DLL
+
+While the application is running - not at start - a box titled with the
+executable's name says *The procedure entry point `WNetGetConnectionW` could
+not be located in the dynamic link library `C:\WINDOWS\SYSTEM32\pcacli.dll`*
+(German: *Der Prozedureinsprungpunkt ... wurde in der DLL ... nicht
+gefunden*). In UltraFiler it appeared right after the UAC consent prompt of
+"Delete as administrator" (0.9.92), and earlier on a double-click that opened
+a picture in Photos, naming `daxexec.dll` (0.9.83). Both are the same bug.
+
+The DLL named is the *importer*: a Windows component that the shell loaded
+into our process and that imports `WNetGetConnectionW` from `MPR.dll`. That
+import failed because the process already held a module called `mpr.dll` -
+ImageMagick's coder for its `MPR:` pseudo-format, shipped as
+`lib\ImageMagick-*\modules-Q16HDRI\coders\mpr.dll`. ImageMagick loads every
+coder the first time libvips asks it whether it recognises a file, and the
+Windows loader keys the modules of a process by base name: a later import of
+`MPR.dll` by name is answered with the module already loaded under that name,
+wherever it came from, and the coder has no `WNetGetConnectionW` to offer.
+Explorer never shows the box because Explorer never loads that coder.
+
+`package-win.sh` lets no coder into the package under such a name. `mpr.dll`
+and `url.dll` are pseudo-formats of no use here and are dropped, with their
+`.la` files. A real format whose name collides - `dpx.dll` (SMPTE DPX) and
+`vid.dll` on Windows 10 and 11, plus whatever else the packaging machine's
+`System32` turns up - ships as `<name>-coder.dll`, and its `.la` is rewritten
+to point there: ImageMagick opens a coder through the `.la` (`dlname=` names
+the file to load), so the rename costs it nothing, and the process holds a
+module called `dpx-coder.dll`, a name no system DLL has. The build then refuses
+a package that carries a system DLL's name anywhere. For a package already
+extracted, `uc-diagnose.ps1 -CheckOnly` lists the offending files under *DLLs
+named like Windows system DLLs*; deleting them (with the `.la` beside each)
+fixes that installation, and so does extracting a newer package into a fresh
+folder rather than over the old one.
+
+The general rule for anyone adding a DLL to the package: **no DLL may carry
+the base name of a Windows system DLL**, in a subdirectory or not. A plug-in
+loaded by full path is affected exactly like one next to the executable - the
+name is what the loader matches on.
 
 ## Windows 11 differences worth checking first
 
@@ -62120,7 +62299,12 @@ if (photo.success) {
 ### Typed Object Loaders
 
 Beyond raw bytes, FileLoader can open a file straight into the matching
-UltraCanvas object through the native file dialog:
+UltraCanvas object through a file dialog. Every FileLoader dialog (open,
+open multiple, save, select folder) follows
+`UltraCanvasDialogManager::SetUseNativeDialogs`: the platform's picker when
+it is on, the framework's `UltraCanvasFileDialog` when it is off (the
+default). A native picker blocks and runs the callback before the call
+returns; the framework's runs it when the dialog closes.
 
 ```cpp
 // Decode an image into a UCImage
@@ -68613,6 +68797,25 @@ is purely a libcurl build option.
 `I<Category>ProtocolPlugin` interface in
 `UltraNet/UltraNetPlugins.h`.
 
+A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
+`UltraNet_RefreshPlugins()`, and it reaches the core **only through the host
+table** (`UltraNetPluginHost`, ABI 2) handed to its `UltraNet_PluginInit`:
+registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
+`UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
+`UltraNet_MimeBuild`, `UltraNet_HttpGet` / `HttpRequest`, ... Plug-in sources
+call those functions as usual;
+`Plugins/UltraNet/common/UltraNetPluginHostShim.cpp`, compiled into every
+plug-in, defines them inside the DSO and forwards each call to the table. So a
+plug-in has no undefined core symbol: it loads into an app on a **static**
+core (which carries only the objects the app itself uses), and a Windows DLL
+links without the core's import library, static core or shared. A plug-in that
+needs another core function appends it to `UltraNetPluginHost` (bumping the
+ABI), to the host's table in `core/UltraNet/UltraNetPlugins.cpp` and to the
+shim, and uses only header-only UltraCanvas helpers. The macOS and Windows
+linkers reject a plug-in that calls the core directly; on Linux the
+`UltraNetPluginHostImports` test (`scripts/check_ultranet_plugin_imports.py`)
+does, reading every built plug-in's undefined symbols.
+
 ---
 
 ## Architecture
@@ -68697,6 +68900,12 @@ options.servers   = {"9.9.9.9", "[2620:fe::fe]:53"};
 options.timeoutMs = 2000;
 std::vector<std::string> a;
 UltraNet_DnsResolve("example.com", a, UltraNetDnsType::A, options);
+
+// The reverse lookup takes the same options. Without servers it is the
+// system resolver (hosts file included) under the deadline; with servers it
+// is a PTR query for the address's reverse name at those servers.
+std::string host;
+UltraNet_DnsReverseLookup("9.9.9.9", host, options);
 ```
 
 ```cpp
@@ -71030,7 +71239,10 @@ would destroy a working second factor.
 **Untrusted input.** Scanned QR codes and typed keys go through the same
 strict parser; a malformed seed is refused rather than silently turned into
 a different one. Camera frames are decoded in memory and never written to
-disk as images.
+disk as images, and so is a capture of the screen when you read the code
+off a browser window: no screenshot is saved. An image file you open is
+only read; it is not copied and not added to your recent files. Delete it
+once the account is in, because that file *is* the seed.
 
 ## What it does not protect against
 
@@ -71082,8 +71294,9 @@ values are clamped, never trusted.
 
 ## Everyday advice
 
-- Enrol by scanning where you can; typing a 32-character key is the
-  fallback.
+- Enrol by scanning where you can: with the camera, from the screen when
+  the code is in a browser window on the same machine, or from an image.
+  Typing a 32-character key is the fallback.
 - Take a backup after enrolling anything important, with a passphrase you
   will still know in a year. Keep it off cloud folders unless you accept
   that the passphrase is then the only thing protecting it.

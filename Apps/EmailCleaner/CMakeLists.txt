@@ -2,7 +2,7 @@
 # EmailCleaner — loads several mail accounts into an analysis database and maps
 # who sends what, when. Builds the headless analysis engine library and, on top
 # of it, the GUI executable (sender map, timetable, sender detail).
-# Version: 0.2.0
+# Version: 0.3.0 - own accounts; builds the IMAP / SMTP plug-ins it loads
 # Author: UltraCanvas Framework / ULTRA OS
 
 # The engine analyses mail UltraMail has fetched and cached, so it needs the
@@ -28,6 +28,7 @@ set(EMAILCLEANER_ENGINE_SOURCES
     engine/EmailCleanerActions.cpp
     engine/EmailCleanerMailBackend.cpp
     engine/EmailCleanerAttachments.cpp
+    engine/EmailCleanerAccounts.cpp
 )
 
 add_library(EmailCleanerEngine STATIC ${EMAILCLEANER_ENGINE_SOURCES})
@@ -61,6 +62,7 @@ set(EMAILCLEANER_UI_SOURCES
     ui/EmailCleanerAccountBar.cpp
     ui/EmailCleanerActionsPanel.cpp
     ui/EmailCleanerRulesDialog.cpp
+    ui/EmailCleanerAccountsDialog.cpp
 )
 
 add_executable(EmailCleaner main.cpp ${EMAILCLEANER_UI_SOURCES})
@@ -80,6 +82,18 @@ if(TARGET fmt::fmt)
     target_link_libraries(EmailCleaner PRIVATE fmt::fmt)
 endif()
 target_compile_features(EmailCleaner PRIVATE cxx_std_20)
+
+# EmailCleaner dlopens UltraNet's IMAP plug-in at runtime (see ENABLE_EXPORTS
+# above) to download its own accounts and to act on mail; the SMTP one sends
+# an unsubscribe mail. As MODULE libraries they have no link relationship to
+# the executable, so without this a build of EmailCleaner alone would leave
+# them unbuilt (or stale against UltraNetPlugins.h) — the same reason
+# UltraMail's CMakeLists gives.
+foreach(_mail_plugin UltraNetImapPlugin UltraNetSmtpPlugin)
+    if(TARGET ${_mail_plugin})
+        add_dependencies(EmailCleaner ${_mail_plugin})
+    endif()
+endforeach()
 
 # The app icon, in one place for every consumer of it. main.cpp asks for this
 # same file by name; UCAPP_ICON_PATH is the fallback the core applies when an

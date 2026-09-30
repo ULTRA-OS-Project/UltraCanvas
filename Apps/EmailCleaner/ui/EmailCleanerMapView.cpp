@@ -151,7 +151,8 @@ void MapView::RebuildTreeMap() {
         treeMap_->SetRootNode(std::make_shared<TreeMapNode>("No senders yet", 0.0));
         if (summary_) {
             summary_->SetText("Nothing analysed yet — press \"Load mail\" to read the "
-                              "messages UltraMail has cached.");
+                              "messages UltraMail has cached, or add an account "
+                              "under \"Accounts…\".");
         }
         return;
     }

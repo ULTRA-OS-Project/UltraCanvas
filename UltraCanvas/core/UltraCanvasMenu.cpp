@@ -557,22 +557,18 @@ namespace UltraCanvas {
 
         ctx->SetFontStyle(item.font.value_or(style.font));
 
-        Point2Di textSize = ctx->GetTextDimension(item.label);
-        int fontHeight = textSize.y;
         int currentX = itemBounds.x + style.paddingLeft;
-        int textY = itemBounds.y + (itemBounds.height - fontHeight) / 2;
+        int textY = ctx->TextTopCentredOnCaps(itemBounds, item.font.value_or(style.font));
 
-        // Render checkbox/radio
+        // Render checkbox/radio. The indicator is centred on the row, the same
+        // line the label's capitals are centred on (TextTopCentredOnCaps), so the box
+        // and the text stay level whatever the item height. It used to be
+        // nudged one pixel up, which read as the box floating above the text.
         if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
-            int checkboxY = itemBounds.y + (itemBounds.height - style.iconSize) / 2 - 1;
+            int checkboxY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
             RenderCheckbox(item, Point2Di(currentX, checkboxY), ctx);
             currentX += style.iconSize + style.iconSpacing;
         }
-        // if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
-
-        //     RenderCheckbox(item, Point2Di(currentX, textY), ctx);
-        //     currentX += style.iconSize + style.iconSpacing;
-        // }
 
         // Render icon (from an in-memory image if provided, else the file path)
         if (item.iconImage || !item.iconPath.empty()) {
@@ -770,36 +766,45 @@ namespace UltraCanvas {
         headerFont.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(headerFont);
 
-        Point2Di textSize = ctx->GetTextDimension(item.label);
-        int fontHeight = textSize.y;
         int textX = bounds.x + style.paddingLeft;
-        int textY = bounds.y + (bounds.height - fontHeight) / 2;
+        int textY = ctx->TextTopCentredOnCaps(bounds, headerFont);
 
         ctx->SetTextPaint(style.headerTextColor);
         ctx->DrawText(item.label, Point2Di(textX, textY));
     }
 
     void UltraCanvasMenu::RenderCheckbox(const MenuItemData &item, const Point2Di &position, IRenderContext *ctx) {
-        Rect2Di checkRect(position.x, position.y, style.iconSize, style.iconSize);
+        // DrawFilledRectangle / DrawFilledCircle keep the 1px outline inside
+        // the given box, on whole pixels, so its centre is position + iconSize / 2.
+        const double size = static_cast<double>(style.iconSize);
+        const Point2Dd center(position.x + size / 2.0, position.y + size / 2.0);
+        const bool roundRadio = item.type == MenuItemType::Radio &&
+                                style.radioShape == MenuRadioShape::Round;
 
-        ctx->DrawFilledRectangle(checkRect, Colors::Transparent, 1, style.borderColor);
+        if (roundRadio) {
+            ctx->DrawFilledCircle(center, static_cast<float>(size / 2.0),
+                                  Colors::Transparent, style.borderColor, 1.0f);
+        } else {
+            Rect2Dd checkRect(position.x, position.y, size, size);
+            ctx->DrawFilledRectangle(checkRect, Colors::Transparent, 1, style.borderColor);
+        }
 
         if (item.checked) {
-            ctx->SetStrokePaint(style.textColor);
-            ctx->SetStrokeWidth(2.0f);
+            Color markColor = item.enabled ? style.textColor : style.disabledTextColor;
 
             if (item.type == MenuItemType::Checkbox) {
                 // Draw checkmark
+                ctx->SetStrokePaint(markColor);
+                ctx->SetStrokeWidth(2.0f);
                 Point2Dd p1(position.x + 3, position.y + style.iconSize / 2);
                 Point2Dd p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
                 Point2Dd p3(position.x + style.iconSize - 3, position.y + 3);
                 ctx->DrawLine(p1, p2);
                 ctx->DrawLine(p2, p3);
             } else {
-                // Draw radio dot
-                Point2Dd center = {position.x + static_cast<double>(style.iconSize) / 2.0,
-                                    position.y + static_cast<double>(style.iconSize) / 2.0};
-                ctx->DrawCircle(center, static_cast<double>(style.iconSize) / 4.0);
+                // Draw the radio dot: a filled disc, not a stroked ring, so it
+                // has no hole at small sizes and the same centre as the outline.
+                ctx->DrawFilledCircle(center, static_cast<float>(size / 4.0), markColor, Colors::Transparent, 0.0f);
             }
         }
     }

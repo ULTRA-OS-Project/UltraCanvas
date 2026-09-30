@@ -280,10 +280,6 @@ RemovalReport Remover::Remove(const ScanReport& report,
         if (!check.Allowed()) {
             ++result.refusedByGuard;
             result.failures.push_back({ item->path, check.reason });
-            if (options.failureLimit != 0 &&
-                result.failures.size() >= options.failureLimit) {
-                break;
-            }
             continue;
         }
 
@@ -326,11 +322,10 @@ RemovalReport Remover::Remove(const ScanReport& report,
             ++result.removedItems;
             result.freedBytes += item->sizeBytes;
         } else {
+            // Recorded, not fatal: the next item may well go. On Windows a
+            // temp directory holds dozens of files other programs keep open,
+            // and each of them is one line here, not the end of the clean.
             result.failures.push_back({ item->path, error });
-            if (options.failureLimit != 0 &&
-                result.failures.size() >= options.failureLimit) {
-                break;
-            }
         }
     }
     if (cancelRequested_) result.cancelled = true;

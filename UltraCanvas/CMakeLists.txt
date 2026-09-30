@@ -551,6 +551,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/AbsoluteLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/FlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/GridLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/TableLayout.cpp
 
         # Collision-aware placement of annotation labels around shapes.
         # Part of the layout engine, not of any chart/diagram plugin.
@@ -2559,28 +2560,12 @@ if(ULTRACANVAS_ENABLE_NET)
         message(STATUS "  [✓] UltraNet RTP plug-in - ENABLED (UDP receiver, RFC 3550)")
     endif()
 
-    # macOS: each UltraNet plug-in is a MODULE that resolves core symbols
-    # (UltraNet_RegisterPlugin, UltraNet_ParseUrl, ...) from the host binary at
-    # dlopen() time. Unlike Linux's ld, the Mach-O linker rejects undefined
-    # symbols in a module unless it is linked with -undefined dynamic_lookup
-    # (same mechanism the LaTeX plug-in uses below). Applied here in one place so
-    # a new plug-in only needs its target name added to this list.
-    # NB: when a new UltraNet plug-in is added above, add its target here too.
-    if(APPLE)
-        foreach(_ultranet_plugin IN ITEMS
-                UltraNetSmtpPlugin UltraNetImapPlugin UltraNetPop3Plugin
-                UltraNetJmapPlugin
-                UltraNetWebDavPlugin UltraNetLdapPlugin UltraNetTelnetPlugin
-                UltraNetRtspPlugin UltraNetMqttPlugin UltraNetAmqpPlugin
-                UltraNetCoapPlugin UltraNetSnmpPlugin UltraNetSshPlugin
-                UltraNetMdnsPlugin UltraNetRtmpPlugin UltraNetGrpcPlugin
-                UltraNetSipPlugin UltraNetRtpPlugin)
-            if(TARGET ${_ultranet_plugin})
-                set_property(TARGET ${_ultranet_plugin} APPEND_STRING
-                    PROPERTY LINK_FLAGS " -undefined dynamic_lookup")
-            endif()
-        endforeach()
-    endif()
+    # No plug-in resolves a core symbol from its host: everything it needs from
+    # the core comes through the UltraNetPluginHost table (see
+    # Plugins/UltraNet/common/UltraNetPluginHostShim.cpp). So the plug-ins link
+    # with no -undefined dynamic_lookup on macOS and no core import library on
+    # Windows, and either linker rejects a plug-in that starts calling the core
+    # directly - on Linux the UltraNetPluginHostImports test does.
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
 endif()

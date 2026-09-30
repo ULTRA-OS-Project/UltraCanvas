@@ -15,6 +15,7 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginHostShim.h"
 #include <UltraCanvasUtils.h>
 
 #include <curl/curl.h>
@@ -87,7 +88,7 @@ void ParseLdif(const std::string& body,
         std::size_t valStart = colon + 1;
         if (valStart < line.size() && line[valStart] == ':') ++valStart;     // ::
         std::string value = (valStart < line.size())
-                                ? UltraCanvas::Trim(line.substr(valStart))
+                                ? UltraCanvas::TrimWhitespace(line.substr(valStart))
                                 : std::string{};
 
         std::string lower; lower.reserve(name.size());
@@ -179,11 +180,8 @@ public:
 
 extern "C" ULTRANET_PLUGIN_EXPORT
 void UltraNet_PluginInit(const UltraNetPluginHost* host) {
-    if (!host || host->abiVersion < 1 || !host->RegisterPlugin) return;
+    // ABI 2: the core functions this plug-in calls come through `host`
+    // (UltraNetPluginHostShim); an older host cannot serve them.
+    if (!UltraNetPlugin_AttachHost(host)) return;
     host->RegisterPlugin(std::make_shared<LdapPlugin>());
 }
-#if !defined(_WIN32) && !defined(_WIN64)  // v1 resolves UltraNet_RegisterPlugin from the host at dlopen(); POSIX-only, Windows uses the v2 UltraNet_PluginInit vtable above
-extern "C" void UltraNet_PluginRegister(void) {
-    UltraNet_RegisterPlugin(std::make_shared<LdapPlugin>());
-}
-#endif
