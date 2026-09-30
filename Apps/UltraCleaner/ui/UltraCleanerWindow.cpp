@@ -935,12 +935,12 @@ void UltraCleanerWindow::CleanAlbumSelection() {
 
 void UltraCleanerWindow::ShowCleanResult(const std::string& summary,
                                          const RemovalReport& result) {
-    // The framework's own dialog, not the platform's message box: the app
-    // asks for native dialogs, and a native box neither scrolls nor renders
-    // Markdown, so fifty failures came out as one wall of text cut off at
-    // "…and 37 more". This one lays the summary and the grouped failure list
-    // out as Markdown and scrolls the list when it is taller than the screen
-    // allows the window to be.
+    // A custom dialog rather than ShowWarning: the failure list is long and
+    // structured, so it goes in as Markdown in the details slot and scrolls
+    // when it is taller than the screen allows the window to be. (The app
+    // used to ask for native dialogs, and the platform's message box neither
+    // scrolls nor renders Markdown, so fifty failures came out as one wall
+    // of text cut off at "…and 37 more".)
     DialogConfig config;
     config.title      = result.failures.empty() ? "Cleanup finished"
                                                 : "Finished with warnings";

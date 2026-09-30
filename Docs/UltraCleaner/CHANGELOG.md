@@ -25,6 +25,11 @@
   open read as one heading and a list rather than forty-nine copies of the
   same sentence. The list scrolls past the screen's height. The Photo albums
   tab reports its failures the same way; it reported none before.
+- **Every dialog is the framework's own.** The app asked for native dialogs,
+  so its confirmations and notices were the platform's message boxes while
+  the results dialog was not. `main.cpp` now leaves native dialogs off and
+  all of them share one style; only the folder picker stays the platform's,
+  because the framework has no folder dialog of its own.
 
 #### 2026-09-29 *0.56*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called

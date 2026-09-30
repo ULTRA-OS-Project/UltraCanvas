@@ -363,7 +363,11 @@ int main(int argc, char* argv[]) {
         // the same media/appicon/UltraCleaner.svg (see CMakeLists.txt).
         app.SetDefaultWindowIcon(
             NormalizePath(GetResourcesDir() + "media/appicon/UltraCleaner.png"));
-        UltraCanvasDialogManager::SetUseNativeDialogs(true);
+        // The framework's own dialogs throughout, not the platform's message
+        // boxes: they render Markdown, scroll a long list and look the same
+        // on every platform, which the results dialog relies on. (The folder
+        // picker is the platform's whatever this says.)
+        UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
         UltraCleaner::UltraCleanerWindow window;
         if (!window.Initialize(openAlbumInWindow ? albumFolder : std::string())) {
