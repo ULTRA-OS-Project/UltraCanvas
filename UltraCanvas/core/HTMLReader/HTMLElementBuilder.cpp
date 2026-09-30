@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.8.0 - <img> border, background, padding and rounded corners, block and
+//                  inline; width / height size the picture (content box), the
+//                  frame goes around it; border-radius in percent.
 // Version: 1.7.0 - object-fit / object-position on <img>, block and inline (CSS's
 //                  default fill: a box of another shape stretches the picture).
 // Version: 1.6.0 - background-repeat: the picture tiles as the layer says (CSS's
@@ -168,6 +171,27 @@ ImagePosition ToImagePosition(const BackgroundPosition& p) {
                         : ImageAxisPosition::Fraction(a.value);
     };
     return ImagePosition{ axis(p.x), axis(p.y) };
+}
+
+// The display size of an image's picture: its width / height (one of them
+// keeps the picture's shape), else the picture's own size.
+Size2Df ImageContentSize(const ComputedStyle& style, const UCImage& raster) {
+    float w = static_cast<float>(raster.GetWidth());
+    float h = static_cast<float>(raster.GetHeight());
+    if (style.widthPx && style.heightPx) { w = *style.widthPx; h = *style.heightPx; }
+    else if (style.widthPx && w > 0.f)  { h = h * *style.widthPx / w;  w = *style.widthPx; }
+    else if (style.heightPx && h > 0.f) { w = w * *style.heightPx / h; h = *style.heightPx; }
+    return Size2Df(w, h);
+}
+
+// border-radius in px for a border box of `boxW` x `boxH`: a percentage of
+// the box (the shorter side, so 50% of a square is a circle), capped at half
+// the shorter side as CSS caps overlapping corners.
+float BorderRadiusPx(const ComputedStyle& style, float boxW, float boxH) {
+    const float shorter = std::max(0.f, std::min(boxW, boxH));
+    const float r = style.borderRadiusPercent > 0.f ? shorter * style.borderRadiusPercent / 100.f
+                                                     : style.borderRadius;
+    return std::min(r, shorter / 2.f);
 }
 
 // The href of the nearest <a href> around `node` (not `node` itself): text
@@ -751,11 +775,8 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
             std::shared_ptr<UCImage> raster =
                 bytes.empty() ? nullptr : UCImageRaster::LoadFromMemory(bytes);
             if (raster && raster->GetWidth() > 0 && raster->GetHeight() > 0) {
-                float w = static_cast<float>(raster->GetWidth());
-                float h = static_cast<float>(raster->GetHeight());
-                if (style.widthPx && style.heightPx) { w = *style.widthPx; h = *style.heightPx; }
-                else if (style.widthPx)  { h = h * *style.widthPx / w;  w = *style.widthPx; }
-                else if (style.heightPx) { w = w * *style.heightPx / h; h = *style.heightPx; }
+                const Size2Df size = ImageContentSize(style, *raster);
+                const float w = size.width, h = size.height;
                 if (w >= 1.f && h >= 1.f) {
                     LabelInlineImage image;
                     image.byteOffset = static_cast<int>(runPlain.size());
@@ -764,6 +785,20 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
                     image.image = raster;
                     image.fit = ToImageFit(style.objectFit);
                     image.position = ToImagePosition(style.objectPosition);
+                    // Its CSS box: margins, border, padding, background.
+                    LabelInlineImageFrame& f = image.frame;
+                    f.marginTop = style.marginTop;       f.marginRight = style.marginRight;
+                    f.marginBottom = style.marginBottom; f.marginLeft = style.marginLeft;
+                    f.paddingTop = style.paddingTop;       f.paddingRight = style.paddingRight;
+                    f.paddingBottom = style.paddingBottom; f.paddingLeft = style.paddingLeft;
+                    if (style.borderWidth > 0.f) {
+                        f.borderWidth = style.borderWidth;
+                        f.borderColor = ToColor(style.borderColor);
+                    }
+                    if (style.backgroundColor) f.background = ToColor(*style.backgroundColor);
+                    f.borderRadius = BorderRadiusPx(style,
+                        w + f.paddingLeft + f.paddingRight + 2.f * f.borderWidth,
+                        h + f.paddingTop + f.paddingBottom + 2.f * f.borderWidth);
                     switch (style.verticalAlign) {
                         case VerticalAlignMode::Middle: image.align = LabelInlineImageAlign::Middle; break;
                         case VerticalAlignMode::Top:    image.align = LabelInlineImageAlign::Top;    break;
@@ -863,7 +898,20 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     // and height give it (CSS's default stretches it), and where it sits.
     image->SetFitMode(ToImageFit(style.objectFit));
     image->SetImagePosition(ToImagePosition(style.objectPosition));
-    ApplyBoxStyle(*image, style, /*fillWidth=*/false);
+    // Border, background, padding and rounded corners go around the picture:
+    // width / height size the picture itself (CSS's content-box), and the
+    // horizontal margins stay margins - the background must not fill them.
+    ComputedStyle boxStyle = style;
+    const Size2Df content = ImageContentSize(style, *raster);
+    boxStyle.borderRadius = BorderRadiusPx(style,
+        content.width + style.paddingLeft + style.paddingRight + 2.f * style.borderWidth,
+        content.height + style.paddingTop + style.paddingBottom + 2.f * style.borderWidth);
+    ApplyBoxStyle(*image, boxStyle, /*fillWidth=*/false);
+    image->box.boxSizing = CSSLayout::BoxSizing::ContentBox;
+    image->box.padding.left = CSSLayout::Dimension::Px(style.paddingLeft);
+    image->box.padding.right = CSSLayout::Dimension::Px(style.paddingRight);
+    image->box.margin.left = CSSLayout::Dimension::Px(style.marginLeft);
+    image->box.margin.right = CSSLayout::Dimension::Px(style.marginRight);
     // Without explicit dimensions the element reports the image's natural
     // size through MeasureOwnContent. Cap at the column width so oversized
     // images (covers, photos) shrink to fit instead of overflowing; a zero

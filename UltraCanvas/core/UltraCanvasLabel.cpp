@@ -14,6 +14,8 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.6.0 - inline images drawn in their frame (margin, border,
+//                 padding, background, rounded corners)
 // Version: 2.5.0 - inline images fitted and placed by their fit / position
 // Version: 2.4.0 - min-content width is the widest unbreakable run
 // Version: 2.3.0 - inline images at U+FFFC placeholders (LabelInlineImage)
@@ -177,7 +179,10 @@ namespace UltraCanvas {
             for (size_t i = 0; i < inlineImages.size(); ++i) {
                 const LabelInlineImage& img = inlineImages[i];
                 const Size2Df size = InlineImageSize(img);
-                const float h = size.height;
+                // The whole margin box stands on the line, as CSS places an
+                // inline replaced element.
+                const float w = size.width + img.frame.Horizontal();
+                const float h = size.height + img.frame.Vertical();
                 float ascent = h;                                  // baseline
                 switch (img.align) {
                     case LabelInlineImageAlign::Middle: ascent = (h + xHeight) / 2.f; break;
@@ -186,7 +191,7 @@ namespace UltraCanvas {
                     case LabelInlineImageAlign::Baseline: break;
                 }
                 inlineAscents[i] = ascent;
-                auto shape = TextAttributeFactory::CreateShape(size.width,
+                auto shape = TextAttributeFactory::CreateShape(w,
                                                                std::max(0.f, ascent),
                                                                std::max(0.f, h - ascent));
                 shape->SetRange(img.byteOffset, img.byteOffset + 3);   // U+FFFC is 3 bytes
@@ -207,9 +212,12 @@ namespace UltraCanvas {
     }
 
     Size2Df UltraCanvasLabel::InlineImageSize(const LabelInlineImage& image) const {
-        if (inlineFitWidth > 0.f && image.width > inlineFitWidth && image.width > 0.f) {
-            const float scale = inlineFitWidth / image.width;
-            return Size2Df(inlineFitWidth, image.height * scale);
+        // The picture shrinks so that it and its frame fit the line.
+        const float room = inlineFitWidth - image.frame.Horizontal();
+        if (inlineFitWidth > 0.f && image.width > room && image.width > 0.f) {
+            const float fitted = std::max(0.f, room);
+            const float scale = fitted / image.width;
+            return Size2Df(fitted, image.height * scale);
         }
         return Size2Df(image.width, image.height);
     }
@@ -220,8 +228,9 @@ namespace UltraCanvas {
         if (fit == inlineFitWidth) return;
         bool changes = false;
         for (const auto& img : inlineImages) {
-            const bool wasScaled = inlineFitWidth > 0.f && img.width > inlineFitWidth;
-            const bool isScaled  = fit > 0.f && img.width > fit;
+            const float w = img.width + img.frame.Horizontal();
+            const bool wasScaled = inlineFitWidth > 0.f && w > inlineFitWidth;
+            const bool isScaled  = fit > 0.f && w > fit;
             if (wasScaled || isScaled) { changes = true; break; }
         }
         inlineFitWidth = fit;
@@ -229,6 +238,25 @@ namespace UltraCanvas {
     }
 
     Rect2Df UltraCanvasLabel::InlineImageRect(size_t index) {
+        const Rect2Df box = InlineImageBoxRect(index);
+        if (index >= inlineImages.size() || box.width <= 0.f) return box;
+        const LabelInlineImageFrame& f = inlineImages[index].frame;
+        return Rect2Df(box.x + f.borderWidth + f.paddingLeft,
+                       box.y + f.borderWidth + f.paddingTop,
+                       std::max(0.f, box.width - 2.f * f.borderWidth - f.paddingLeft - f.paddingRight),
+                       std::max(0.f, box.height - 2.f * f.borderWidth - f.paddingTop - f.paddingBottom));
+    }
+
+    Rect2Df UltraCanvasLabel::InlineImageBoxRect(size_t index) {
+        const Rect2Df m = InlineImageMarginRect(index);
+        if (index >= inlineImages.size() || m.width <= 0.f) return m;
+        const LabelInlineImageFrame& f = inlineImages[index].frame;
+        return Rect2Df(m.x + f.marginLeft, m.y + f.marginTop,
+                       std::max(0.f, m.width - f.marginLeft - f.marginRight),
+                       std::max(0.f, m.height - f.marginTop - f.marginBottom));
+    }
+
+    Rect2Df UltraCanvasLabel::InlineImageMarginRect(size_t index) {
         if (index >= inlineImages.size()) return {};
         if (!internalLayoutValid || !textLayout) {
             UpdateInternalLayout(GetRenderContext());
@@ -239,11 +267,13 @@ namespace UltraCanvas {
         const Rect2Di pos = textLayout->IndexToPos(img.byteOffset);
         const double baseline = textLayout->IndexToBaseline(img.byteOffset);
         const float x = static_cast<float>(GetBorderLeftWidth() + GetPaddingLeft() + pos.x);
-        const float ascent = index < inlineAscents.size() ? inlineAscents[index] : size.height;
+        const float w = size.width + img.frame.Horizontal();
+        const float h = size.height + img.frame.Vertical();
+        const float ascent = index < inlineAscents.size() ? inlineAscents[index] : h;
         const float y = static_cast<float>(GetBorderTopWidth() + GetPaddingTop() +
                                            textLayout->GetLayoutVerticalOffset() +
                                            baseline - ascent);
-        return Rect2Df(x, y, size.width, size.height);
+        return Rect2Df(x, y, w, h);
     }
 
     // ===== Engine entry points =====
@@ -467,20 +497,38 @@ namespace UltraCanvas {
             // Inline images, into the boxes their placeholders reserved.
             for (size_t i = 0; i < inlineImages.size(); ++i) {
                 if (!inlineImages[i].image) continue;
+                const LabelInlineImage& img = inlineImages[i];
+                const LabelInlineImageFrame& f = img.frame;
+                // The frame: background over the border box, border inside it.
+                const Rect2Df box = InlineImageBoxRect(i);
+                if (box.width > 0.f && box.height > 0.f &&
+                    (f.background.a > 0 || (f.borderWidth > 0.f && f.borderColor.a > 0))) {
+                    ctx->DrawFilledRectangle(Rect2Dd(box.x, box.y, box.width, box.height),
+                                             f.background, f.borderWidth, f.borderColor,
+                                             f.borderRadius);
+                }
                 const Rect2Df r = InlineImageRect(i);
                 if (r.width <= 0.f || r.height <= 0.f) continue;
-                const LabelInlineImage& img = inlineImages[i];
-                if (img.fit == ImageFitMode::Fill) {
+                const bool rounded = f.borderRadius > f.borderWidth;
+                if (img.fit == ImageFitMode::Fill && !rounded) {
                     ctx->DrawImage(*img.image, Rect2Dd(r.x, r.y, r.width, r.height), ImageFitMode::Fill);
                     continue;
                 }
                 // Fitted inside its box and placed there (object-fit /
-                // object-position), clipped to the box.
+                // object-position), clipped to the box and to the rounded
+                // corners inside the border.
                 const Size2Df natural(static_cast<float>(img.image->GetWidth()),
                                       static_cast<float>(img.image->GetHeight()));
                 const Rect2Df d = FitImageRect(natural, r, img.fit, img.position);
                 if (d.width <= 0.f || d.height <= 0.f) continue;
                 ctx->PushState();
+                if (rounded) {
+                    const double inner = f.borderRadius - f.borderWidth;
+                    ctx->ClipRoundedRectangle(Rect2Dd(box.x + f.borderWidth, box.y + f.borderWidth,
+                                                      box.width - 2.f * f.borderWidth,
+                                                      box.height - 2.f * f.borderWidth),
+                                              inner, inner, inner, inner);
+                }
                 ctx->ClipRect(Rect2Dd(r.x, r.y, r.width, r.height));
                 ctx->DrawImage(*img.image, Rect2Dd(d.x, d.y, d.width, d.height), ImageFitMode::Fill);
                 ctx->PopState();

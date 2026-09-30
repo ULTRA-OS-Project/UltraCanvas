@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.6.0 - border-radius in percent; <img border="N"> (in the image's
+//                  colour); a border shorthand without a colour uses the text
+//                  colour (currentColor).
 // Version: 1.5.0 - object-fit and object-position (the background-position syntax)
 // Version: 1.4.0 - background-repeat: repeat / repeat-x / repeat-y / no-repeat,
 //                  one or two values, per layer (initial: repeat).
@@ -158,6 +161,16 @@ void StyleResolver::ApplyLegacyAttributes(const Node& element, ComputedStyle& st
         if (auto len = CssLength::Parse(TrimLower(element.GetAttribute("border")))) {
             if (len->unit != CssUnit::Percent)
                 style.borderWidth = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+        }
+    }
+    // <img border="N">: an N-pixel solid border in the image's colour - the
+    // link colour for an image inside a link. border="0" (mail's usual) none.
+    if (element.tag == "img" && element.HasAttribute("border")) {
+        if (auto len = CssLength::Parse(TrimLower(element.GetAttribute("border")))) {
+            if (len->unit != CssUnit::Percent) {
+                style.borderWidth = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+                style.borderColor = style.color;
+            }
         }
     }
     if (colorsAllowed && element.tag == "body" && element.HasAttribute("text")) {
@@ -802,7 +815,13 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         auto parts = SplitParts(lower);
         if (!parts.empty()) {
             if (auto len = CssLength::Parse(parts[0])) {
-                if (len->unit != CssUnit::Percent) s.borderRadius = len->ToPx(em, rem);
+                if (len->unit != CssUnit::Percent) {
+                    s.borderRadius = len->ToPx(em, rem);
+                    s.borderRadiusPercent = 0;
+                } else {
+                    s.borderRadius = 0;
+                    s.borderRadiusPercent = static_cast<float>(len->value);
+                }
             }
         }
     }
@@ -883,7 +902,9 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
     }
     else if (prop == "border" || prop == "border-top" || prop == "border-bottom" ||
              prop == "border-left" || prop == "border-right") {
-        // Uniform border approximation: width + color from the shorthand.
+        // Uniform border approximation: width + color from the shorthand. No
+        // colour given: the text colour (CSS's currentColor).
+        s.borderColor = s.color;
         for (const auto& part : SplitParts(lower)) {
             if (auto len = CssLength::Parse(part)) {
                 if (len->unit != CssUnit::Number || len->value == 0) {

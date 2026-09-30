@@ -30300,7 +30300,13 @@ label->SetInlineImages({ star });
   CSS `object-fit` / `object-position`: `Fill` stretches it to the box;
   `Contain`, `Cover`, `NoScale` and `ScaleDown` keep its shape and place it by
   `position`, clipped to the box.
-- `InlineImageRect(i)` returns where image `i` is drawn, in label-local
+- `frame` (`LabelInlineImageFrame`) is the CSS box around the picture:
+  margins, padding, `borderWidth` / `borderColor`, `borderRadius` and
+  `background`. The line reserves the whole margin box; the background fills
+  the border box, the border is drawn inside it, and the picture is clipped to
+  the rounded corners. The default frame is empty: the picture alone.
+- `InlineImageRect(i)` returns where image `i`'s picture is drawn (its content
+  box), and `InlineImageBoxRect(i)` its border box, in label-local
   coordinates.
 - A placeholder inside a `SetTextLinks` range is part of that link, so
   clicking the image activates it.

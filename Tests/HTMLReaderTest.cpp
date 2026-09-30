@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.7.0 - border-radius %, <img border>, border currentColor
 // Version: 1.6.0 - object-fit, object-position
 // Version: 1.5.0 - background-repeat
 // Version: 1.4.0 - background-position
@@ -651,6 +652,33 @@ static void TestObjectFitPosition() {
     CHECK(st.objectPosition.y.pixels && st.objectPosition.y.fromEnd);
 }
 
+// border-radius in percent, <img border="N"> and a border shorthand without
+// a colour (the text colour).
+static void TestImageBorders() {
+    auto styleOf = [](const std::string& html, const char* tag) {
+        Parser parser;
+        Document doc = parser.Parse(html);
+        StyleResolver resolver;
+        resolver.Resolve(doc, ResolverOptions{});
+        Node* n = doc.root->FindFirst(tag);
+        return n ? resolver.StyleOf(n) : ComputedStyle{};
+    };
+    ComputedStyle st = styleOf("<img src=a.png style=\"border-radius:50%\">", "img");
+    CHECK(st.borderRadiusPercent == 50.f && st.borderRadius == 0.f);
+    st = styleOf("<img src=a.png style=\"border-radius:50%;border-radius:4px\">", "img");
+    CHECK(st.borderRadiusPercent == 0.f && st.borderRadius == 4.f);
+    st = styleOf("<img src=a.png border=\"2\" style=\"color:#ff0000\">", "img");
+    CHECK(st.borderWidth == 2.f);
+    st = styleOf("<font color=\"#00ff00\"><img src=a.png border=\"3\"></font>", "img");
+    CHECK(st.borderWidth == 3.f && st.borderColor.g == 0xff && st.borderColor.r == 0);
+    st = styleOf("<img src=a.png border=\"0\">", "img");
+    CHECK(st.borderWidth == 0.f);
+    st = styleOf("<div style=\"color:#0000ff;border:1px solid\">x</div>", "div");
+    CHECK(st.borderWidth == 1.f && st.borderColor.b == 0xff && st.borderColor.r == 0);
+    st = styleOf("<div style=\"color:#0000ff;border:1px solid #ff0000\">x</div>", "div");
+    CHECK(st.borderColor.r == 0xff && st.borderColor.b == 0);
+}
+
 int main() {
     TestParserBasics();
     TestParserFragmentAndRecovery();
@@ -669,6 +697,7 @@ int main() {
     TestBackgroundPosition();
     TestBackgroundRepeat();
     TestObjectFitPosition();
+    TestImageBorders();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);

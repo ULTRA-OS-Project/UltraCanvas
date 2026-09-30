@@ -4,6 +4,8 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.2.0 - an inline image has a frame: margin, border, padding,
+//                 background, rounded corners (LabelInlineImageFrame)
 // Version: 2.1.0 - an inline image has a fit mode and position (object-fit /
 //                 object-position)
 // Last Modified: 2026-09-30
@@ -69,6 +71,27 @@ namespace UltraCanvas {
     // top at the text's top, or its bottom at the text's bottom.
     enum class LabelInlineImageAlign { Baseline, Middle, Top, Bottom };
 
+    // The box around an inline image, as CSS draws it around an inline <img>:
+    // margins keep the text away, the background fills the border box, the
+    // border is drawn inside it, and padding separates the picture from the
+    // border. The picture is clipped to the rounded corners.
+    struct LabelInlineImageFrame {
+        float marginTop = 0.f, marginRight = 0.f, marginBottom = 0.f, marginLeft = 0.f;
+        float paddingTop = 0.f, paddingRight = 0.f, paddingBottom = 0.f, paddingLeft = 0.f;
+        float borderWidth = 0.f;
+        Color borderColor = Colors::Black;
+        float borderRadius = 0.f;           // of the border box's outer corners
+        Color background = Colors::Transparent;
+
+        // Everything the frame adds around the picture, across and down.
+        float Horizontal() const {
+            return marginLeft + marginRight + paddingLeft + paddingRight + 2.f * borderWidth;
+        }
+        float Vertical() const {
+            return marginTop + marginBottom + paddingTop + paddingBottom + 2.f * borderWidth;
+        }
+    };
+
     struct LabelInlineImage {
         int   byteOffset = 0;       // of the U+FFFC placeholder in the rendered text
         float width = 0.f;          // display size in px (before any fit-to-line)
@@ -79,6 +102,7 @@ namespace UltraCanvas {
         // the CSS default) and where it sits when it does not (object-position).
         ImageFitMode  fit = ImageFitMode::Fill;
         ImagePosition position;
+        LabelInlineImageFrame frame;   // none by default: the picture alone
     };
 
 // ===== LABEL COMPONENT =====
@@ -138,9 +162,13 @@ namespace UltraCanvas {
         // Images drawn at U+FFFC placeholders of the text (see LabelInlineImage).
         void SetInlineImages(std::vector<LabelInlineImage> images);
         const std::vector<LabelInlineImage>& GetInlineImages() const { return inlineImages; }
-        // Where an inline image is drawn, label-local; empty before the first
-        // layout or for an index out of range.
+        // Where an inline image's picture is drawn (its content box),
+        // label-local; empty before the first layout or for an index out of
+        // range.
         Rect2Df InlineImageRect(size_t index);
+        // The image's border box: its frame's background and border, inside
+        // the margins.
+        Rect2Df InlineImageBoxRect(size_t index);
 
         // ===== STYLE MANAGEMENT =====
         void SetStyle(const LabelStyle &newStyle);
@@ -220,6 +248,8 @@ namespace UltraCanvas {
     private:
         // The display size of an inline image on a line `inlineFitWidth` wide.
         Size2Df InlineImageSize(const LabelInlineImage& image) const;
+        // The margin box an inline image reserves on its line, label-local.
+        Rect2Df InlineImageMarginRect(size_t index);
         // Size the images for a line `width` wide (-1: unbounded); drops the
         // text layout when that changes an image's box, so it is rebuilt.
         void FitInlineImages(float width);

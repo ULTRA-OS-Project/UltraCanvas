@@ -1,5 +1,6 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
+// Version: 1.4.0 - rounded corners (border-radius) clip the picture, inside the border
 // Version: 1.3.0 - a repeating image (SetImageRepeat) is one pattern fill over the
 //                 tiled area; drawn tile by tile where a backend has no patterns
 // Version: 1.2.0 - an image positioned off-centre (SetImagePosition) is drawn into
@@ -194,6 +195,21 @@ namespace UltraCanvas {
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         if (loadedImage && loadedImage->IsValid()) {
+            // Rounded corners (border-radius) clip the picture too, inside the
+            // border, as CSS clips a replaced element.
+            float radius = 0.f;
+            if (bordersVisual) {
+                radius = std::max({ bordersVisual->left.radius, bordersVisual->right.radius,
+                                    bordersVisual->top.radius, bordersVisual->bottom.radius });
+            }
+            const float bl = GetBorderLeftWidth(), br = GetBorderRightWidth();
+            const float bt = GetBorderTopWidth(),  bb = GetBorderBottomWidth();
+            const float inner = radius - std::max({ bl, br, bt, bb });
+            if (inner > 0.f) {
+                const Rect2Df b = GetLocalBounds();
+                ctx->ClipRoundedRectangle(Rect2Dd(b.x + bl, b.y + bt, b.width - bl - br, b.height - bt - bb),
+                                          inner, inner, inner, inner);
+            }
             DrawLoadedImage(ctx);
 //        } else if (loadedImage->IsLoading()) {
 //            DrawLoadingPlaceholder(ctx);

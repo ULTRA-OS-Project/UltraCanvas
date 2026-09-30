@@ -2,6 +2,9 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.3.7 - an item's own main size (width / height) is its content box when
+//                 it is box-sizing: content-box: the flex base size adds its
+//                 padding and border, as the block path already did.
 // Version: 1.3.6 - align-items / align-self are SAFE: an item that does not fit
 //                 its line aligns to the line's start instead of being placed at
 //                 a negative offset, so the leading part of oversized content
@@ -19,7 +22,7 @@
 //                 its content extent from the constraint rather than its own
 //                 explicit size, so a grown/stretched flex container lays out
 //                 its children against its USED size, not its flex-basis.
-// Last Modified: 2026-09-14
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -122,7 +125,16 @@ namespace UltraCanvas {
                 // else fall through to intrinsic / max-content measurement.
                 const Dimension& mainSizeDim = axis.isRow ? el.size.width : el.size.height;
                 auto own = resolveDimension(mainSizeDim, mainContent, ctx);
-                if (own.has_value()) return *own;
+                if (own.has_value()) {
+                    if (el.box.boxSizing == BoxSizing::BorderBox) return *own;
+                    // content-box: the base size is the border box around it.
+                    const float inlineRef = (axis.isRow ? mainContent : crossContent).value_or(0.f);
+                    const auto pad = resolveEdgeSizes(el.box.padding, inlineRef, ctx);
+                    const auto bor = resolveEdgeSizes(el.box.border, inlineRef, ctx);
+                    return axis.isRow
+                        ? resolveBorderBoxSize(*own, el.box.boxSizing, pad.horizontal(), bor.horizontal())
+                        : resolveBorderBoxSize(*own, el.box.boxSizing, pad.vertical(), bor.vertical());
+                }
 
                 // Prefer a published intrinsic.maxContent* (border-box units).
                 // Widgets like UltraCanvasLabel publish this via ComputeIntrinsicSizes;

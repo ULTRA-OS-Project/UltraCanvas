@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.5.0 - <img> border, background, padding, margins, border-radius
 // Version: 1.4.0 - object-fit, object-position
 // Version: 1.3.0 - background-repeat
 // Version: 1.2.0 - background-position
@@ -461,6 +462,90 @@ void TestObjectFitPosition() {
     CheckNear(r.width, 200.f, "cover: covers the box");
 }
 
+// An <img>'s CSS box: width / height size the picture, border and padding
+// go around it, horizontal margins stay outside; an inline image reserves its
+// whole frame on the line; percent radii round a square to a circle.
+void TestImageBox() {
+    std::printf("<img> border, background, padding and radius\n");
+    struct Built {
+        std::shared_ptr<Host> host;
+        std::shared_ptr<UltraCanvasUIElement> root;
+        std::vector<Placed> all;
+    };
+    auto build = [](const std::string& html) {
+        Built b;
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        opts.resourceLoader = [](const std::string&) { return BackgroundPicture40x20(); };
+        HTML::ElementBuilder builder;
+        b.host = std::make_shared<Host>();
+        b.host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        b.root = builder.Build(html, opts).root;
+        if (!b.root) return b;
+        b.root->size.width = CSSLayout::Dimension::Px(400.f);
+        b.host->AddChild(b.root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = 400;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        b.root->Measure(mc, ctx);
+        b.root->Arrange(Rect2Df{ 0, 0, 400.f, b.root->measured.measuredHeight }, ctx);
+        Collect(b.root.get(), 0, 0, b.all);
+        return b;
+    };
+    auto imageIn = [](const Built& b) -> const Placed* {
+        for (const auto& p : b.all)
+            if (p.element->GetIdentifier().rfind("html_img_", 0) == 0) return &p;
+        return nullptr;
+    };
+
+    // Block: 160x90 picture + 5px padding + 3px border = 176x106, 20px in.
+    Built b = build("<div><img src='p.png' width='160' height='90' style='border:3px solid #2244aa;"
+                    "background:#ffe080;padding:5px;margin-left:20px'></div>");
+    const Placed* img = imageIn(b);
+    Check(img != nullptr, "block image built");
+    if (img) {
+        CheckNear(img->rect.width, 176.f, "width: picture + padding + border");
+        CheckNear(img->rect.height, 106.f, "height: picture + padding + border");
+        CheckNear(img->rect.x, 20.f, "margin-left is a margin");
+        auto* e = static_cast<UltraCanvasImageElement*>(img->element);
+        Rect2Df content = e->GetLocalContentRect();
+        CheckNear(content.width, 160.f, "the picture keeps its 160px");
+        CheckNear(content.x, 8.f, "inside border and padding");
+        Check(e->GetBackgroundColor().a > 0, "background colour set");
+    }
+
+    // <img border="2"> inside a link: a 2px border in the link colour.
+    b = build("<div><a href='x'><img src='p.png' border='2' width='40' height='20'></a></div>");
+    img = imageIn(b);
+    if (img) {
+        CheckNear(img->rect.width, 44.f, "border attribute adds its width");
+        CheckNear(img->element->GetBorderLeftWidth(), 2.f, "border attribute: 2px");
+    } else Check(false, "linked image built");
+
+    // Inline: the frame is reserved on the line and the picture sits inside.
+    b = build("<p>text <img src='p.png' style='border:2px solid #2244aa;background:#ffe080;"
+              "padding:4px;margin:0 6px;border-radius:50%'> more</p>");
+    const Placed* line = LabelWith(b.all, "text");
+    auto* label = line ? dynamic_cast<UltraCanvasLabel*>(line->element) : nullptr;
+    Check(label && label->GetInlineImages().size() == 1, "inline image in the label");
+    if (label && label->GetInlineImages().size() == 1) {
+        const LabelInlineImageFrame& f = label->GetInlineImages()[0].frame;
+        CheckNear(f.borderWidth, 2.f, "inline border width");
+        CheckNear(f.paddingLeft, 4.f, "inline padding");
+        CheckNear(f.marginLeft, 6.f, "inline margin");
+        Check(f.background.a > 0, "inline background");
+        CheckNear(f.borderRadius, 16.f, "50% of the 52x32 box, the shorter side");
+        Rect2Df box = label->InlineImageBoxRect(0);
+        Rect2Df pic = label->InlineImageRect(0);
+        CheckNear(box.width, 52.f, "border box: 40 + 2*4 + 2*2");
+        CheckNear(box.height, 32.f, "border box: 20 + 2*4 + 2*2");
+        CheckNear(pic.width, 40.f, "the picture at its own size");
+        CheckNear(pic.x - box.x, 6.f, "inside border and padding");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -473,6 +558,7 @@ int main() {
     TestBackgroundPosition();
     TestBackgroundRepeat();
     TestObjectFitPosition();
+    TestImageBox();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

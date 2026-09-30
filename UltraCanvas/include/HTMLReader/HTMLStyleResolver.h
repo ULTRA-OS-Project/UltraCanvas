@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.7.0 - border-radius in percent; <img border>
 // Version: 1.6.0 - object-fit / object-position
 // Version: 1.5.0 - background-repeat (per layer)
 // Version: 1.4.0 - background-position; background size and position per layer
@@ -123,6 +124,10 @@ struct ComputedStyle {
     float borderWidth = 0;
     CssColor borderColor{0, 0, 0, 255};
     float borderRadius = 0;
+    // border-radius given in percent (of the box; 50% rounds a square to a
+    // circle): kept apart, since only the builder knows the box's size. 0 when
+    // the radius is a length.
+    float borderRadiusPercent = 0;
     // border-spacing (CSS) or the cellspacing attribute, on a table.
     std::optional<float> borderSpacing;
     std::optional<float> widthPx;
