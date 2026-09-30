@@ -362,7 +362,7 @@ namespace UltraCanvas {
             const cairo_font_options_t* pangoFo = pango_cairo_context_get_font_options(pangoContext);
 
             debugOutput << "UC text-render diag (first surface):"
-                        << " surface=" << sz.width << "x" << sz.height
+                        << " surface=" << surfaceSize.width << "x" << surfaceSize.height
                         << " pinned_res=" << g_PangoResolution
                         << " pango_ctx_res=" << ctxRes
                         << " fontmap_res=" << fmRes
