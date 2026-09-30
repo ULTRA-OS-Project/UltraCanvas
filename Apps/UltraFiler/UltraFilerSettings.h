@@ -222,13 +222,27 @@ public:
     // way this is set.
     bool dropOnFolderCopies = false;
 
-    // Handling > Drag & Drop: whether a drop asks before it is carried out.
-    // A drag is the one file operation that starts by accident - a press that
-    // wandered a few pixels while the hand was on the way somewhere else - and
-    // it is done before it is seen, which is why the destructive half of it
-    // asks by default: "Only when files are moved". "Always" asks for copies
-    // too, "Never" is the silent drop earlier releases had.
+    // Handling > File operations: whether a move or a copy asks before it is
+    // carried out (two checkboxes there: moves, copies). A drag is the one
+    // file operation that starts by accident - a press that wandered a few
+    // pixels while the hand was on the way somewhere else - and it is done
+    // before it is seen, which is why the destructive half of it asks by
+    // default: moves. A move asked for with Cut and Paste asks under the
+    // same setting; a Ctrl+V copy never does.
     FilerDropConfirmation dropConfirmation = FilerDropConfirmation::MoveOnly;
+
+    // ===== HANDLING > FILE OPERATIONS =====
+    // The standing answers to the questions a copy, move or delete asks
+    // (UltraCanvasFilerWidget::SetConfirmTrashDelete and friends). The drop
+    // confirmation above lives on the same page, as two checkboxes.
+    static constexpr int kMinProgressDelaySeconds     = 0;
+    static constexpr int kMaxProgressDelaySeconds     = 10;
+    static constexpr int kDefaultProgressDelaySeconds = 2;
+    bool confirmTrashDelete = true;                  // Del asks before the trash
+    FilerConflictPolicy conflictPolicy = FilerConflictPolicy::Ask;
+    FilerFolderConflictPolicy folderConflictPolicy = FilerFolderConflictPolicy::Merge;
+    FilerProblemPolicy problemPolicy = FilerProblemPolicy::Ask;
+    int progressDelaySeconds = kDefaultProgressDelaySeconds;
 
     // Handling > Tabs: what the "+" at the end of the folder tab strip opens -
     // another view of the folder the active tab is showing (the default, and
@@ -376,6 +390,24 @@ public:
         if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
         it = kv.find("handling.dragdrop.confirmation");
         if (it != kv.end()) dropConfirmation = ParseDropConfirmation(it->second);
+        it = kv.find("handling.fileops.confirm.trash");
+        if (it != kv.end())
+            confirmTrashDelete =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("handling.fileops.conflict");
+        if (it != kv.end()) conflictPolicy = ParseConflictPolicy(it->second);
+        it = kv.find("handling.fileops.folder.conflict");
+        if (it != kv.end())
+            folderConflictPolicy = Trim(it->second) == "ask"
+                    ? FilerFolderConflictPolicy::Ask : FilerFolderConflictPolicy::Merge;
+        it = kv.find("handling.fileops.failure");
+        if (it != kv.end())
+            problemPolicy = Trim(it->second) == "skip"
+                    ? FilerProblemPolicy::SkipAndReport : FilerProblemPolicy::Ask;
+        it = kv.find("handling.fileops.progress.delay");
+        if (it != kv.end())
+            ParseInt(it->second, progressDelaySeconds,
+                     kMinProgressDelaySeconds, kMaxProgressDelaySeconds);
         it = kv.find("handling.tabs.new.tab");
         if (it != kv.end()) newTabOpensHome = (it->second == "home");
         it = kv.find("handling.files.double.click");
@@ -455,6 +487,17 @@ public:
              << (dropOnFolderCopies ? "copy" : "move") << "\n";
         file << "handling.dragdrop.confirmation = "
              << FormatDropConfirmation(dropConfirmation) << "\n";
+        file << "handling.fileops.confirm.trash = "
+             << (confirmTrashDelete ? "true" : "false") << "\n";
+        file << "handling.fileops.conflict = "
+             << FormatConflictPolicy(conflictPolicy) << "\n";
+        file << "handling.fileops.folder.conflict = "
+             << (folderConflictPolicy == FilerFolderConflictPolicy::Ask ? "ask" : "merge")
+             << "\n";
+        file << "handling.fileops.failure = "
+             << (problemPolicy == FilerProblemPolicy::SkipAndReport ? "skip" : "ask")
+             << "\n";
+        file << "handling.fileops.progress.delay = " << progressDelaySeconds << "\n";
         file << "handling.tabs.new.tab = "
              << (newTabOpensHome ? "home" : "current") << "\n";
         file << "handling.files.double.click = "
@@ -508,6 +551,7 @@ public:
         switch (mode) {
             case FilerDropConfirmation::AlwaysConfirm: return "always";
             case FilerDropConfirmation::MoveOnly:      return "move";
+            case FilerDropConfirmation::CopyOnly:      return "copy";
             default:                                   return "none";
         }
     }
@@ -516,7 +560,43 @@ public:
         const std::string value = Trim(text);
         if (value == "always") return FilerDropConfirmation::AlwaysConfirm;
         if (value == "none")   return FilerDropConfirmation::NeverConfirm;
+        if (value == "copy")   return FilerDropConfirmation::CopyOnly;
         return FilerDropConfirmation::MoveOnly;
+    }
+
+    // The settings page shows the confirmation as two checkboxes - moves,
+    // copies - which is the same four-way choice.
+    static FilerDropConfirmation DropConfirmationFor(bool moves, bool copies) {
+        if (moves && copies) return FilerDropConfirmation::AlwaysConfirm;
+        if (moves)           return FilerDropConfirmation::MoveOnly;
+        if (copies)          return FilerDropConfirmation::CopyOnly;
+        return FilerDropConfirmation::NeverConfirm;
+    }
+    static bool ConfirmsMoves(FilerDropConfirmation mode) {
+        return mode == FilerDropConfirmation::AlwaysConfirm ||
+               mode == FilerDropConfirmation::MoveOnly;
+    }
+    static bool ConfirmsCopies(FilerDropConfirmation mode) {
+        return mode == FilerDropConfirmation::AlwaysConfirm ||
+               mode == FilerDropConfirmation::CopyOnly;
+    }
+
+    // ===== THE CONFLICT ANSWER =====
+    static std::string FormatConflictPolicy(FilerConflictPolicy policy) {
+        switch (policy) {
+            case FilerConflictPolicy::KeepBoth: return "keep-both";
+            case FilerConflictPolicy::Replace:  return "replace";
+            case FilerConflictPolicy::Skip:     return "skip";
+            default:                            return "ask";
+        }
+    }
+
+    static FilerConflictPolicy ParseConflictPolicy(const std::string& text) {
+        const std::string value = Trim(text);
+        if (value == "keep-both") return FilerConflictPolicy::KeepBoth;
+        if (value == "replace")   return FilerConflictPolicy::Replace;
+        if (value == "skip")      return FilerConflictPolicy::Skip;
+        return FilerConflictPolicy::Ask;
     }
 
     // ===== PREVIEW KIND NAMES =====

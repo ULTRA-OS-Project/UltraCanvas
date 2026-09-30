@@ -1122,6 +1122,30 @@ engine; these classes hold the pixels being edited and hand them to it.
   `SetAntialias`, and text outlines `AppendTextPath` /
   `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
   the Cairo backend implements all of it. Tested by `RenderContextTest`.
+- **UltraCanvasAccessibility** (`UltraCanvasAccessibility.h`) — the
+  platform-neutral accessibility layer: `AccessibleRole`,
+  `IAccessibleText` (text, caret, selection, character bounds, attributes,
+  `GetTextAtOffset` by character/word/line/sentence/paragraph),
+  `AccessibilityEvent`, and `UltraCanvasAccessibility::AddListener` /
+  `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
+  character-offset helpers. Elements answer through
+  `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
+  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
+  No platform bridge (AT-SPI, UIA) yet. See
+  `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
+- **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
+  through the ordinary `IRenderContext` (units: points), as vectors with
+  selectable text: `CreateFile(utf8Path, w, h, error)` /
+  `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
+  `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
+  work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
+- **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent)`,
+  `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
+  dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+- **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
+  extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
+  one line.
 
 ### **2. UltraAI**
 
@@ -5358,6 +5382,80 @@ fallback route, not the private-data one.
 - [`UltraCanvasVectorRaster.md`](UltraCanvasVectorRaster.md) — the `UltraCanvasVectorElement` viewer
 - [`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) — the PDF viewer used for the fallback route
 - [`UltraCanvasEPSExamples.md`](UltraCanvasEPSExamples.md) — the PostScript interpreter, a separate engine for `.eps`
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasAccessibility.md
+==============================================================================
+
+# UltraCanvasAccessibility
+
+What assistive technology — screen readers, magnifiers, braille displays —
+needs to know about an element, in a form that does not depend on the
+platform: its **role**, its **name**, for text a **text interface** (content,
+caret, selection, character boxes, formatting, words, lines, sentences) and an
+**event stream** saying what changed. A platform bridge (AT-SPI on Linux, UI
+Automation on Windows, NSAccessibility on macOS) is the layer that hands this
+to the operating system; the bridges are not written yet, so today the layer
+serves tests, in-application readers (read aloud, a braille panel) and future
+bridges.
+
+Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
+
+## Elements
+
+```cpp
+AccessibleRole role = element->GetAccessibleRole();   // Unknown by default
+std::string name = element->GetAccessibleName();
+IAccessibleText* text = element->GetAccessibleTextInterface();   // null without text
+```
+
+An element describes itself by overriding these three virtuals of
+`UltraCanvasUIElement`. `UltraCanvasRichTextEdit` is the first to do so: role
+`Document`, name the document's title (else the element's identifier), and a
+text interface over the whole document.
+
+## Text
+
+Offsets count characters (Unicode code points), not bytes.
+
+```cpp
+std::string all = text->GetAccessibleText();
+int caret = text->GetCaretOffset();
+text->SetSelection(10, 20);
+int start = 0, end = 0;
+std::string word = text->GetTextAtOffset(caret, AccessibleTextBoundary::Word, start, end);
+AccessibleTextAttributes look = text->GetAttributesAt(caret, start, end);   // bold, heading level, link, ...
+Rect2Df box = text->GetCharacterBounds(caret);                              // window coordinates
+int under = text->GetOffsetAtPoint(Point2Df(120, 80));
+```
+
+Words, sentences and paragraphs come from the text
+(`UltraCanvasAccessibility::TextUnitAt`); an element can override
+`GetTextAtOffset` for units only its layout knows — the rich text element does
+so for lines. In the rich text element the text is the paragraphs one per line,
+a table's cells separated by tabs and its rows by line breaks; attributes include
+headings, list items, links, tracked insertions and deletions and comments.
+
+## Events
+
+```cpp
+int id = UltraCanvasAccessibility::AddListener([](const AccessibilityEvent& e) {
+    // e.type: FocusChanged, TextChanged, CaretMoved, SelectionChanged, NameChanged
+    // e.element, e.offset (caret for CaretMoved), e.length
+});
+UltraCanvasAccessibility::RemoveListener(id);
+```
+
+The window announces `FocusChanged` when an element gains the focus; the rich
+text element announces edits, caret moves and selection changes. Elements build
+events only while someone listens (`HasListeners()`), so the layer costs nothing
+otherwise. Listeners are called on the thread that made the change (the UI
+thread).
+
+## Helpers
+
+`CharacterCount`, `ByteOffsetOfCharacter` and `CharacterOffsetOfByte` convert
+between the characters of the accessibility API and UTF-8 byte offsets.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -17141,6 +17239,25 @@ path — click, Return, Escape, mnemonic — runs the button's own `onClick`
 handler, so a dialog cannot behave differently depending on how a button was
 reached.
 
+Custom buttons carry no `DialogButton` type, so neither rule can name them —
+they take a **role** instead. `AddCustomButton(text, result, role, callback)`
+with `DialogButtonRole::Default` makes the button what Return takes (before the
+configured default) and draws it in the accent colour; `Destructive` draws it
+red (`DestructiveDefault` filled red, when the red answer is also the default);
+`Cancel` makes it what Escape takes. Buttons are laid out in the order they are
+added, each as wide as its label. `AddFooterElement(element)` puts an element —
+an "Apply to all 7 remaining conflicts" checkbox — at the left of the button
+bar and moves the buttons to its right end; give it an explicit size, the bar
+is laid out before the dialog has a render context to measure text with.
+
+```cpp
+dialog->AddCustomButton("Keep both", DialogResult::Yes, DialogButtonRole::Default);
+dialog->AddCustomButton("Replace",   DialogResult::Yes, DialogButtonRole::Destructive);
+dialog->AddCustomButton("Skip",      DialogResult::Yes);
+dialog->AddCustomButton("Stop",      DialogResult::Cancel, DialogButtonRole::Cancel);
+dialog->AddFooterElement(applyToAllCheckbox);
+```
+
 ## Mnemonics
 
 Each button is assigned a distinct letter, preferring the initial of its label,
@@ -21732,6 +21849,12 @@ filer->ConfirmDeletePaths(paths, onDone);  // the same dialog for paths the
 filer->DeletePaths(paths, onDone, FilerDeleteMode::MoveToTrash);  // no
                               // question - for a host that ran its own
                               // confirmation (default mode: Permanently)
+// The standing answers (UltraFiler's Settings > Handling > File operations):
+filer->SetConfirmTrashDelete(false);            // Del goes to the trash unasked
+filer->SetConflictPolicy(FilerConflictPolicy::KeepBoth);   // never ask on a taken name
+filer->SetFolderConflictPolicy(FilerFolderConflictPolicy::Ask);  // Merge / Replace / Skip
+filer->SetProblemPolicy(FilerProblemPolicy::SkipAndReport);      // failures go to the summary
+filer->SetProgressWindowDelay(0);               // the progress window at once
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
@@ -21745,13 +21868,17 @@ filer->CreateNewDocument({"Text", "txt", ""});
 
 ### Delete: to the Trash, or permanently
 
-**Del** and **Shift+Del** open the same confirmation, `Delete "X"?`, with the
-choice as two radio buttons: **Move to the Trash** (*Recycle Bin* on Windows)
-and **Delete permanently**. Del opens it on the trash, Shift+Del on the
-permanent delete — the keys Explorer gives the two — and the line under the
-question follows the choice: *It can be restored from the Trash.* or *This
-cannot be undone.* The context menu has both, **Delete** (Del) and **Delete
-Permanently** (Shift+Del).
+**Del** and **Shift+Del** open the same confirmation, `Delete "X"?` /
+`Delete 212 items?`, an [operation dialog](#the-operation-dialog) whose two
+answers are its two buttons: **Move to Trash** (*Recycle Bin* on Windows) and
+**Delete permanently**, the latter drawn red, plus Cancel. Del makes the trash
+the coloured default (Return takes it), Shift+Del the permanent delete — the
+keys Explorer gives the two — and the note under the list says what each
+means: *Move to Trash can be undone from the Trash. Delete permanently cannot
+be undone.* The context menu has both, **Delete** (Del) and **Delete
+Permanently** (Shift+Del). The facts under the question name the folder the
+entries are in (*From*) and, for several, how much is going (*Size:* `3 folders
+and 209 files (1.4 GB in the files)` — the files' own sizes, no tree walk).
 
 The trash is `UltraCanvasTrash` (`MoveToTrash`): the Recycle Bin through the
 shell, the Finder's Trash through NSFileManager (so *Put Back* works), and the
@@ -21759,35 +21886,39 @@ freedesktop.org trash on Linux and the BSDs — the drive's own
 `.Trash-$uid` for a file on a USB stick, never a copy into the home folder.
 Moving to the trash is one move per entry, so a folder of any size goes at
 once, and a write-protected entry is not asked about (moving it does not
-write to it). An entry the trash refuses stops at the problem dialog below
-(*Cannot Move to the Trash*); it is **never** deleted for good instead.
+write to it). An entry the trash refuses stops at the problem dialog below;
+it is **never** deleted for good instead.
 
-Under the choice the dialog lists **what is about to go**, in an
+Under the facts the dialog lists **what is about to go**, in an
 `UltraCanvasListView` with the Details view's columns - the entry's icon (the
 display's own, through `DrawEntryIcon`, so type glyphs and host icons alike)
-and name, size, modified - at most 40 rows, ten at a time with a scrollbar.
-Several items selected: the list is those items, under a caption that counts
-the folders and files and adds up the files' size. One folder: the list is
-what the folder holds, folders first and then by name, under *Folder "X"
-contains 147 items (first 40 shown)*. A single file gets no list - the
-question already names it.
+and name, size, modified - at most 200 rows (`kOperationListRows`), ten at a
+time with a scrollbar. Several items selected: the list is those items. One
+folder: the list is what the folder holds, folders first and then by name,
+under *Folder "X" contains 347 items (the first 200 shown)*. A single file
+gets no list - the question already names it.
 
 Where the trash cannot take the entries — no trash on this platform (Android,
-WebAssembly), entries inside an archive, entries on a remote drive — the
-trash option is greyed out, the dialog opens on **Delete permanently**, and
-the line says why. `CanMoveToTrash(victims)` answers the same question for a
-host. A host `confirmDelete` veto replaces the dialog and so has no choice to
-offer: the delete then goes the way `DeleteSelection` was asked for, as far as
-the trash can take the entries.
+WebAssembly), entries inside an archive, entries on a remote drive — only
+**Delete permanently** is offered, and the note says why. `CanMoveToTrash(victims)`
+answers the same question for a host. A host `confirmDelete` veto replaces the
+dialog and so has no choice to offer: the delete then goes the way
+`DeleteSelection` was asked for, as far as the trash can take the entries.
+
+`SetConfirmTrashDelete(false)` switches the question off for the trash: Del then
+moves the selection there straight away (it can be undone from the trash), while
+a permanent delete — Shift+Del, or entries the trash cannot take — always asks.
 
 ### Progress window (copy / move / delete)
 
 Copying, moving and deleting run on a **background worker**, and a
 [progress window](UltraCanvasProgressDialog.md) — the ring with the
 percentage, the file being handled and **Cancel** — opens over them **once the
-operation has been running for two seconds**. Anything shorter never shows a
-window at all: a file manager that flashes a dialog for every copied text file
-is worse than one that shows none. (Packing, unpacking and the
+operation has been running for two seconds** (`SetProgressWindowDelay(ms)`
+changes that; 0 opens it at once). Until then the window shows the busy
+pointer, so a stalled network volume is not two seconds of nothing. Anything
+shorter than the delay never shows a window at all: a file manager that flashes
+a dialog for every copied text file is worse than one that shows none. (Packing, unpacking and the
 ["Delete as administrator" helper run](#delete-problems-locked--failing-entries)
 open theirs immediately instead: none of those is ever the quick case, and the
 last one is waiting on a consent prompt the user has to answer.)
@@ -21899,30 +22030,31 @@ shape, and launch feedback there belongs to the Dock's bouncing icon.
 
 ### Delete problems (locked / failing entries)
 
-A delete that runs into trouble pauses on a **problem dialog** styled like the
-paste conflict dialog — two exclusive switches for the action, a scope switch,
-and **Continue** / **Cancel** buttons (Cancel keeps what was already deleted
-and drops the rest):
+A delete that runs into trouble pauses on a **problem dialog** — an
+[operation dialog](#the-operation-dialog) with the entry's path and the reason
+as its facts, the answers as buttons, **Stop** as the last of them (it keeps
+what was already deleted and drops the rest), and an *Apply to all …* checkbox
+beside them:
 
 - A **write-protected (locked) entry** asks *before* the attempt —
-  `"X" is write-protected.` — with **Delete it anyway** / **Skip this file**
-  (Skip preselected) and a *"Do this for all remaining write-protected items"*
-  scope switch. Delete-anyway lifts the protection first, so it also works on
-  Windows, where a read-only file can never be removed directly.
-- A **failed delete** asks *afterwards* — `"X" could not be deleted:
-  Permission denied.` ("The file may be locked or in use by another
-  program.") — with **Try again** / **Skip this file** (Try again
-  preselected) and a *"Do this for all remaining items"* scope switch.
-  A stored try-again-for-all grants each later failing entry one silent
-  retry before asking again, so a stubborn entry can never loop forever.
+  `"X" is write-protected.` — with **Skip** (the default) / **Delete anyway**
+  (red) and an *Apply to all remaining write-protected items* checkbox.
+  Delete-anyway lifts the protection first, so it also works on Windows, where
+  a read-only file can never be removed directly.
+- A **failed delete** asks *afterwards* — `"X" could not be deleted.` with
+  *Reason: Permission denied* — with **Try again** (the default) / **Skip**
+  and an *Apply to all later failures* checkbox. A stored try-again-for-all
+  grants each later failing entry one silent retry before asking again, so a
+  stubborn entry can never loop forever. An entry the trash refused gets the
+  same dialog, titled for the trash, and is never deleted for good instead.
 - A delete that fails with **"Access is denied"** on Windows is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
   user. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
-  (UltraFiler has), the dialog is **Administrator Permission Needed** —
-  "Deleting this file needs administrator permission. Windows will ask you to
-  confirm before it is deleted." — with **Delete as administrator**
-  (preselected) / **Try again** / **Skip this file** and the same scope switch.
+  (UltraFiler has), the dialog is **Delete: administrator permission needed** —
+  "Windows asks you to confirm once, at the end, for every item handed to the
+  administrator." — with **Delete as administrator** (the default) / **Try
+  again** / **Skip** and an *Apply to all later permission failures* checkbox.
   Entries handed to the administrator are collected while the queue runs and go
   to the elevated helper in **one run at the end**, so the whole delete costs
   one consent prompt however many entries need it; a "Deleting as
@@ -21934,6 +22066,11 @@ and drops the rest):
   another program") are not permission failures and keep the plain dialog,
   as does a process that already runs as administrator — asking again cannot
   change the system's answer there.
+
+With `SetProblemPolicy(FilerProblemPolicy::SkipAndReport)` a failed delete is
+not asked about at all: the entry stays, and the
+[summary](#the-summary-at-the-end) at the end lists it with the reason.
+Write-protected entries are a question, not a failure, and still ask.
 
 Entries inside archives are still deleted in one batched archive rewrite
 before the interactive queue; their failures are reported via `onError` as
@@ -22083,33 +22220,85 @@ or in another program) and falls back to the internal filer clipboard. A cut
 paste moves the files; the paste of a file into the folder it already lives in
 is skipped for a cut and duplicated with a unique " (2)" style name for a copy.
 
+### The operation dialog
+
+Every question a copy, move or delete asks is the same dialog
+(`ShowOperationDialog`, private): the **question** on top, the **facts** under
+it as Markdown (*From*, *Into*, *Reason*, *Size* — paths in code spans, so a
+Windows backslash survives), an optional **list** of entries with the display's
+own icons (at most 200 rows, ten at a time), a **note** under the list, and a
+footer with an optional **Apply to all …** checkbox at the left and the
+**answers as buttons** at the right. The answer is the button: no switch to set
+and no *Continue* to press afterwards. Each button is as wide as its label, the
+one with `DialogButtonRole::Default` is drawn in the accent colour and is what
+Return takes, a destructive one (*Delete permanently*, *Replace* a folder) is
+drawn red, the one with the Cancel role (*Stop*, *Cancel*) is what Escape
+takes, and every button has an underlined mnemonic letter
+([dialog keyboard handling](UltraCanvasDialogKeyboard.md)). *Stop* on a
+question asked in the middle of a queue keeps what was already done and drops
+the rest.
+
 ### Name conflicts
 
 When a pasted entry's name is already taken in the target folder, the paste
-pauses on the **conflict dialog** — "A file named "X" already exists in this
-folder." — with the choice set by three exclusive switches (the common
-formulations):
+pauses on the **conflict dialog** — `"Report 2026.pdf" already exists in
+"Accounting".` — with the two of them **side by side**: an *Existing* and a
+*Pasted* row, each with icon, name, size and modified date, and which of the
+two is *newer*. The note names what Keep both would call the pasted file
+(*Keep both renames the pasted file to "Report 2026 (2).pdf".*); two files of
+the same size and date are called *identical*, and the default moves to Skip.
+The answers are the buttons:
 
-- **Keep both** — the pasted entry takes the next free " (2)" style name
-  (the default, and what a conflict-free paste always does)
-- **Replace the existing file** — the existing entry is removed first
-- **Skip this file** — the entry is not pasted
+- **Keep both** (the default) — the pasted entry takes the next free " (2)"
+  style name, what a conflict-free paste always does
+- **Replace** — the existing file is removed first
+- **Skip** — the entry is not pasted (and is listed in the summary)
+- **Stop** — keeps what was already pasted and drops the rest
 
-A fourth switch, **"Do this for all remaining conflicts"**, decides the scope:
-off (the default) asks again on the next conflict, on applies the same choice
-to every remaining conflict of this paste. **Continue** proceeds with the
-chosen action; **Cancel** keeps what was already pasted and drops the rest.
-Copy-pasting a file alongside its original never asks — the copy simply takes
-the next free name, exactly like Duplicate.
+A **folder pasted over a folder** asks differently: the rows count what each
+folder holds, and the buttons are **Merge** (the default), **Replace** (red),
+**Skip** and **Stop**. *Merge* puts the pasted folder's entries **into** the
+existing folder — spliced into the paste queue right after it, each asked
+about in turn when its own name is taken there — and touches nothing already
+in the existing folder; a move removes the emptied source folder at the end
+(an entry that was skipped keeps it). *Replace* deletes the existing folder
+first, with everything in it that the pasted one does not have, and the note
+says so with the count. `PasteConflictAction::Merge` is the enumerator.
+
+The checkbox beside the buttons, **"Apply to all 7 remaining conflicts"**,
+counts the entries still to come whose name is taken (folders and files are
+counted, and answered, apart: *Apply to all 2 remaining folder conflicts*);
+it is absent when there are none. Copy-pasting a file alongside its original
+never asks — the copy simply takes the next free name, exactly like Duplicate.
+
+The host can answer for good: `SetConflictPolicy(FilerConflictPolicy::KeepBoth
+/ Replace / Skip)` stands in for the file dialog, and
+`SetFolderConflictPolicy(FilerFolderConflictPolicy::Merge)` — the default — for
+the folder one; `Ask` restores each dialog.
 
 An entry that **fails** to move or copy (locked, in use, permissions) asks too.
-The dialog is titled "Cannot Move" / "Cannot Copy" and spells the failure out in
-full: the operating system's own reason, the source path, the destination folder
-and what usually causes it. The choice is **Try again** / **Skip this file**,
-with a "Do this for all remaining items" scope switch; a stored
-try-again-for-all grants each later failing entry one silent retry before asking
-again. Drag & drop, inside the widget and from other applications, runs through
-the same machinery, so drops get the same dialogs.
+The dialog is titled "Copy: a file could not be copied" (or *Move*, *folder*)
+and spells the failure out: the operating system's own reason, the folder the
+entry is in (*From*), the destination (*Into*) and what usually causes it. The
+buttons are **Try again** (the default) / **Skip** / **Stop**, with an *Apply to
+all later failures* checkbox; a stored try-again-for-all grants each later
+failing entry one silent retry before asking again.
+`SetProblemPolicy(FilerProblemPolicy::SkipAndReport)` skips every failure
+without asking and lists it in the summary. Drag & drop, inside the widget and
+from other applications, runs through the same machinery, so drops get the same
+dialogs.
+
+### The summary at the end
+
+A paste or delete that ran to its end with entries left behind — skipped by
+hand, by a policy, or because they failed — ends on one **summary** instead of
+nothing: *Copied 137 of 140 items. 3 were skipped.*, the destination, and the
+skipped entries in a list with the reason beside each (*In use by another
+program*, *Skipped: the name is already taken*, *Skipped: write-protected*).
+**Close** is the default; **Copy skipped items again** (*Move …*, *Delete …*)
+runs the same operation for just those entries, grouped by the folder they
+were headed for. A Stop or a Cancel shows no summary — it already said what
+happened — and neither does an operation where nothing was skipped.
 
 A **move, a rename and a delete** all need the file to themselves: a rename is
 refused while another program still has it open — on Windows outright — and a
@@ -22182,18 +22371,25 @@ can be made to ask first with `SetDropConfirmation(FilerDropConfirmation)`:
 |---|---|
 | `NeverConfirm` | never — the drop is carried out straight away (the default, and what earlier releases did) |
 | `MoveOnly` | only when the drop **moves** the files; a copy is carried out |
+| `CopyOnly` | only when the drop **copies** the files |
 | `AlwaysConfirm` | for every drop, copies and files dragged in from other programs included |
 
 ```cpp
 filer->SetDropConfirmation(FilerDropConfirmation::MoveOnly);
 ```
 
-The question names what is about to happen — how many entries, moved or copied,
-into which folder, with the folder's full path as the detail line — and nothing
-is touched until it is answered; the other answer abandons the drop. Files
+The question is an [operation dialog](#the-operation-dialog) — `Move 3 items
+into "Archive"?` with *From*, *Into* and *Size* as its facts and the entries
+listed under them — and it offers **both verbs as buttons**: the one the
+gesture asked for is the coloured default, the other sits beside it, so a drop
+made with the wrong modifier is put right here instead of by a second drag;
+Cancel abandons the drop. Nothing is touched until it is answered. Files
 arriving from another program (or another pane of the same window) are copies,
-so only `AlwaysConfirm` asks about those. With dialogs disabled the drop is
-carried out rather than lost.
+so only a mode that covers copies asks about those. A move asked for by **Cut
+and Paste** — Ctrl+X, Ctrl+V, or `PasteFilesInto()` with `cut` — asks the same
+question when the mode covers moves: it changes where the files live just the
+same. A Ctrl+V copy is deliberate and never asks. With dialogs disabled the drop
+is carried out rather than lost.
 
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
@@ -33584,6 +33780,32 @@ folder breadcrumb, two toolbar rows (open / navigation / slideshow /
 transitions, zoom / rotate / mirror / adjust / curves / save / info), an image
 adjustments panel and a bottom info bar with a Details panel.
 
+The toolbars are **icons with tooltips**, not captions, so two rows still fit
+the narrow preview pane UltraFiler gives the viewer. Every icon comes from the
+framework's own set under `media/icons/` and is drawn as a mask, so it takes the
+toolbar's foreground colour and greys out with the button; hovering shows the
+caption, with the key where there is one:
+
+| Row | Icon | Tooltip |
+|---|---|---|
+| 1 | `folder-open` | Open a file or folder |
+| 1 | `angle-left`, `angle-right` | Previous file (Left), Next file (Right) |
+| 1 | `slideshow` (toggle) | Slideshow (Space) |
+| 1 | text dropdowns | Slideshow interval (`5 s` …), Slideshow transition (`Cross fade` …) |
+| 2 | `zoom-out`, `zoom-in`, `zoom-fit` | Zoom out (-), Zoom in (+), Fit to window |
+| 2 | text dropdown | Zoom level (`Fit`, `25%` … `400%`) |
+| 2 | `rotate-left`, `rotate-right` | Rotate left, Rotate right |
+| 2 | `mirror-h`, `mirror-v` | Mirror horizontally, Mirror vertically |
+| 2 | `settings-sliders` (toggle) | Adjustments: gamma, brightness, colour, sharpen |
+| 2 | `curves` | Curves |
+| 2 | `save` | Save as… |
+| 2 | `file-info` | Details |
+
+The three dropdowns stay text because a value picker shows its value; the
+interval and transition ones start on the defaults. The Slideshow toggle
+follows the state however it changed: Space and `PlaySlideshow()` /
+`PauseSlideshow()` press and release it too.
+
 Used full-window by the **UltraViewer** app (`Apps/UltraViewer`) and as the
 embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
 `SetTopBarsVisible(false)`). To open one file full size in a window of its own —
@@ -33756,8 +33978,9 @@ a summary saying so.
 
 ## Details panel
 
-The **Details** button in the info bar (and **Info** on the second toolbar
-row) opens a scrollable panel over the active view, for every media kind:
+The **Details** button in the info bar (the `file-info` icon; the same icon
+sits at the end of the second toolbar row) opens a scrollable panel over the
+active view, for every media kind:
 file name, path and size, the kind-specific facts (dimensions, channels,
 colour space, dpi and loader for an image; title / author for an e-book; page
 count for a PDF; container fields for a `*.ucd`) and, for images, the
@@ -33885,20 +34108,22 @@ out of the selection before moving it.
 
 ## Image adjustments and saving
 
-The adjustments panel (toolbar toggle *Adjust*) drives `MediaAdjustments`
+The adjustments panel (the `settings-sliders` toolbar toggle) drives `MediaAdjustments`
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
 
 Each slider is **continuous over its whole range** and carries its live value in
-its caption (`Gamma  1.37`), so an edit can be read off and repeated. *Reset*
+its caption (`Gamma  1.37`), so an edit can be read off and repeated. The
+panel ends in two icon buttons: *Auto-optimise* (the `wand`), a toggle whose
+pressed look says whether it is on, and *Reset* (the `reload` arrow). *Reset*
 puts the controls and the values back in one pass — curves included.
 
 ### Curves (highlights, midtones, shadows)
 
 The sliders move the whole tone range at once. To reach one part of it — lift
 the shadows without blowing the highlights, drop a colour cast out of the
-whites — the *Curves* toolbar button opens
+whites — the *Curves* toolbar button (the `curves` icon) opens
 [`UltraCanvasCurvesDialog`](UltraCanvasCurveEditor.md): a master (RGB) curve
 plus one per colour channel, over the histogram of the shown image.
 
@@ -41792,7 +42017,16 @@ bool ExportToSVG(const QRCodeData& data,
 std::vector<QRScanResult> ScanQRCodeFile(const std::string& imagePath,
                                          std::string* errorMessage = nullptr);
 bool IsDecoderAvailable();
+```
 
+Both scanners (`ScanQRCodeFile` and `ScanQRCodeImage`) come back empty in two
+distinct ways. An image with no code in it returns an empty vector and leaves
+`errorMessage` untouched; a scan that could not run at all — an unreadable
+file, no decoder built in, bad arguments — returns an empty vector with the
+reason in `errorMessage`. Test the vector to report "nothing found" and the
+string to report a failure; never match the string's text.
+
+```cpp
 // Structured-content builders
 std::string CreateURLContent(const std::string& url);
 std::string CreateEmailContent(const std::string& email,
@@ -44391,6 +44625,117 @@ Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
 
+### Named styles
+
+```cpp
+editor->ApplyParagraphStyle("Heading2");        // a heading, with its look
+editor->ApplyCharacterStyle("Emphasis");        // on the selection; "" removes it
+RichStyle callout;                              // add one, or change one
+callout.id = "Callout"; callout.name = "Call Out"; callout.basedOn = "Normal";
+callout.character.bold = true;
+callout.paragraph.leftIndentPt = 20.0f;
+editor->UpdateStyle(callout);
+editor->NewStyleFromCaret("My Title");          // from the paragraph at the caret
+editor->UpdateStyleFromCaret();                 // its style redefined to match it
+for (const RichStyle& s : editor->GetStyles()) { /* a style box */ }
+```
+
+`UCRichDocument::styles` holds the document's paragraph and character styles
+(`RichStyle`: id, display name, `basedOn`, `nextStyle`, and optional character
+and paragraph properties). A block names its paragraph style in `styleId`, a
+run its character style in `characterStyleId`. The formatting itself stays on
+the blocks and runs - every view, serializer and writer keeps working as before
+- and the style is what lets a change reach them: `UpdateStyle` changes every
+paragraph and run that has the style, or a style based on it, except in a
+property formatted directly (one whose value is not what the style used to
+give it). Styles and text change as one undo step. A heading style makes a
+heading (`headingLevel`); Enter after a paragraph gives the next one the
+style's `nextStyle` (body text after a heading). A document without styles gets
+`UCRichDocument::DefaultStyles()` - Normal, Title, Subtitle, Heading 1-6,
+Quote, Code; Strong, Emphasis, Source Text - the first time one is applied.
+DOCX (`styles.xml`, `w:pStyle`, `w:rStyle`) and ODT (`office:styles`, text and
+paragraph style names, Writer's "Standard" and "Heading_20_N" read as Normal
+and HeadingN) keep them both ways.
+
+### Contents, captions, bookmarks and cross-references
+
+```cpp
+editor->InsertTableOfContents();                 // headings 1-3, before the caret's paragraph
+std::string fig = editor->InsertCaption("Figure", "The test rig");   // under the picture at the caret
+editor->InsertCrossReference(fig);               // "Figure 1" - renumbers with the captions
+editor->InsertCrossReference(fig, /*pageNumber*/ true);
+editor->AddBookmark("method");                   // on the caret's paragraph
+editor->GoToBookmark("method");
+editor->UpdateTableOfContents();                 // after headings were added or renamed
+```
+
+A caption is a paragraph ("Figure 2: text", in the *Caption* style) whose
+number is a `RichTextRun::Field::Sequence` field: captions number themselves
+per label in document order, and a new one before the others moves them all
+on. A cross-reference (`Field::Reference`) shows its bookmark's caption label
+and number, or the bookmarked paragraph's text; `Field::PageReference` shows
+its page. A table of contents is a run of paragraphs with
+`RichDocBlock::tocLevel`, one per heading, each ending in a page reference to
+a bookmark on its heading (headings without one are given one): in page view
+the numbers are the pages the headings are on, and they follow every edit.
+`UpdateTableOfContents()` rebuilds the entries (new, renamed or removed
+headings); it is one undo step. Ctrl+click on an entry, a cross-reference or a
+link to `#name` goes there. Bookmarks (`RichDocBlock::bookmarks`) are
+paragraph-level; a pasted copy of a bookmarked paragraph does not take its
+bookmark. DOCX (`SEQ`, `REF`, `PAGEREF`, `w:bookmarkStart`, TOC-styled
+paragraphs, `w:hyperlink w:anchor`) and ODT (`text:sequence`,
+`text:bookmark-ref`, `text:bookmark`, `text:table-of-content`) read and write
+all of it; a LibreOffice table of contents' page numbers become page
+references to its headings on the way in.
+
+### Comments
+
+```cpp
+editor->SetCommentAuthor("Ada Lovelace");
+int c = editor->AddComment("Is this right?");   // on the selection, or the word at the caret
+editor->SetCommentResolved(c, true);
+editor->onCommentActivated = [&](int index) { /* open an editor, then SetCommentText */ };
+```
+
+Commented text is shaded (`style.commentHighlightColor`, not for resolved
+comments) and the comments are shown in a pane at the element's right
+(`style.commentPaneWidth`), each box level with its text or just below the
+box above; the text column narrows to make room, and the pane goes when the
+last comment does (or `SetShowComments(false)`). The comment the caret is in
+is outlined and joined to its text by a dotted line. Clicking a box selects
+its text; double-clicking calls `onCommentActivated`. In the model a comment
+is `UCRichDocument::comments` (`RichComment`: author, initials, date, text,
+resolved) and the runs it covers carry its index in `RichTextRun::commentIds`,
+so it moves and grows with its text; `RemoveComment` is one undo step, and a
+comment whose text is deleted disappears. Comments are not printed or
+exported to PDF. DOCX (`comments.xml`, ranges that may cross paragraphs) and
+ODT (`office:annotation`, with LibreOffice's resolved flag) read and write
+them; DOCX does not keep the resolved flag.
+
+### Tracked changes
+
+```cpp
+editor->SetCommentAuthor("Ada Lovelace");        // signs comments and changes
+editor->SetTrackChanges(true);
+// ... typing is marked inserted, deleting marks text deleted ...
+editor->GoToNextChange();                        // selects it
+editor->AcceptChangeAtCaret();                   // or RejectChangeAtCaret, AcceptAllChanges, RejectAllChanges
+```
+
+With tracking on, typed and pasted text is a tracked insertion (underlined,
+`style.insertionColor`) and deleted text stays, struck through
+(`style.deletionColor`), with the caret moving past it (before it for
+Backspace). Deleting a tracked insertion removes it outright. Accepting keeps
+insertions and drops deletions; rejecting does the opposite; each is one undo
+step. In the model a change is `RichTextRun::change` (`Inserted`/`Deleted`)
+with `revision` indexing `UCRichDocument::revisions` (author and date).
+Paragraph breaks, tables and pictures are edited untracked, and so is text
+typed with tracking off, even next to a change. Markdown, HTML and plain-text
+export give the text as it would be with the changes accepted. DOCX (`w:ins`,
+`w:del` with `w:delText`, moves as a deletion plus an insertion - they used to
+be accepted silently on load) and ODT (`text:tracked-changes` with
+change-start/end and deletion points) read and write them.
+
 ### Tables
 
 The caret goes inside table cells: click into one, type, select, format, and
@@ -44473,6 +44818,96 @@ not its column**. `BuildTableGrid()` (in `UltraCanvasRichDocument.h`) resolves
 which cell occupies each slot, and is what both the layout and these operations
 use; positions keep addressing cells as `{row, index-within-row}`.
 
+#### Selecting a block of cells
+
+Drag (or Shift+arrow) from one cell into another and the selection becomes a
+block of whole cells - the smallest grid rectangle holding both, grown until no
+merged cell sticks out of it - drawn filled, without a caret:
+
+```cpp
+if (editor->HasCellSelection()) editor->MergeSelectedCells();   // "merge these six"
+editor->GetEditor().SelectCellRange(tableBlock, /*top*/ 0, /*left*/ 0, /*bottom*/ 1, /*right*/ 2);
+```
+
+On a cell selection Delete and Backspace empty the cells (the table keeps its
+shape), typing replaces them from the top-left cell, character formatting and
+`SetAlignment` apply to every cell, and Copy copies the cells as a table (plain
+text: a tab between cells, a line per row). Pasting a copied table into a cell
+fills the grid from that cell on, as a spreadsheet does; pasting paragraphs
+into a cell keeps them in the cell, a line each. Extending a selection out of
+a table stops at its edge; extending one into a table from outside takes the
+whole table.
+
+### Pictures: selecting, resizing, alt text
+
+A click on a picture - a paragraph of its own or one in the line - selects it:
+a frame with eight handles is drawn round it. Dragging a corner handle resizes
+it in proportion, a side handle stretches it; release commits the size as one
+undo step (`imageWidthPt` / `imageHeightPt`, never wider than the column).
+Delete removes a selected picture. A right-click selects the picture under the
+pointer first, so a host's context menu can offer picture items.
+
+```cpp
+if (editor->HasSelectedImage()) {
+    editor->SetSelectedImageAltText("Quarterly revenue by region");
+    editor->SetSelectedImageSize(/*widthPt*/ 240, /*heightPt*/ 160);
+}
+editor->SelectImage(RichDocPosition(imageBlock, 0));
+// Editing core: pictures are addressed by where they sit.
+edit.GetEditor().SetImageAltText(RichDocPosition(block, placeholderOffset), "Logo");
+```
+
+### Floating pictures
+
+A picture run with `imageWrap` other than `Inline` floats: its placeholder stays
+where it is anchored in the text (so it moves with its paragraph and a
+selection or Backspace covers it), but it takes no room in the line. It is
+placed at its paragraph's top plus `imageOffsetYPt`, at the column's left or
+right edge, centred, or `imageOffsetXPt` from the left (`imageFloatAlign`
+`Left` / `Right` / `Center` / `Default`), and text treats it as `imageWrap`
+says:
+
+| `imageWrap` | Text |
+|---|---|
+| `Square` | flows beside it; paragraphs level with it are narrowed |
+| `TopAndBottom` (or a centred `Square`) | stops above it and resumes below |
+| `BehindText` / `InFrontOfText` | ignores it; it is drawn under / over the text |
+
+DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
+offset from the paragraph) and ODT frames anchored to a paragraph or character
+(`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
+write back out; HTML output floats them with CSS. A floating picture is
+selected, resized and described like any other. In a table cell or a header
+it stays in the line.
+
+The wrap works a paragraph at a time: a paragraph that starts beside a picture
+is narrowed as a whole, so a long one beside a short picture stays narrow below
+it too.
+
+### Check lists
+
+```cpp
+editor->ToggleCheckList();        // the selected paragraphs become to-do items
+editor->ToggleCheckedAtCaret();   // tick / untick (a click on the box does the same)
+```
+
+A check list item is an unordered `ListItem` with `RichDocBlock::checkbox`
+set, ticked when `checked`. The element draws a box where the bullet would
+be; clicking it toggles the tick as one undo step. Enter continues the list
+with an unticked box. Markdown spells it `- [ ]` / `- [x]`; ODT and DOCX have
+no check list, so they carry a ☐ or ☒ in front of the text, which
+`UCRichDocument::ReadCheckboxPrefixes()` (run by every reader) turns back into
+a check list item - Word's own check box content controls read the same way.
+
+### Formulas
+
+A run with `RichTextRun::math` holds LaTeX source and is drawn typeset
+(through `UltraCanvasInlineMath`, on the line's baseline, never broken over
+two lines). Put the caret inside it and the source appears in its place for
+editing; move the caret away and it is typeset again. A `MathBlock` is typeset
+in display style and centred until the caret enters it. Without the LaTeX
+module, both show their source.
+
 ### Structure
 
 ```cpp
@@ -44517,6 +44952,99 @@ self-contained and saves to `.odt`/`.docx` with the picture inside it.
 | Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+B / I / U | Bold, italic, underline |
 | Ctrl+click on a link | `onLinkClicked` (a plain click just places the caret, so links stay editable) |
+
+## Autoformat as you type
+
+On by default, as in a word processor:
+
+| Typed | Becomes |
+|---|---|
+| `"` `'` | “ ” ‘ ’ (opening after a space or bracket, closing - the apostrophe - after a letter) |
+| `a--b`, `a -- b` | `a—b` (em dash), `a – b` (en dash) |
+| `...` | … |
+| `(c)` `(r)` `(tm)` `->` `<-` `=>` | © ® ™ → ← ⇒ |
+| `1. ` `3) ` `a) ` opening a paragraph | a numbered list (starting at that number / letter) |
+| `- ` `* ` `+ ` | a bullet list |
+| `[ ] ` `[x] ` | a check list item |
+| `# ` … `###### ` | a heading of that level |
+| `> ` | a quote |
+| `---` `***` `___` then Enter | a horizontal rule |
+
+Each correction is its own undo step, so Ctrl+Z right after it takes back only
+the correction and leaves what was typed. Code (inline or a code block) and
+formulas are never corrected, and pasted text is never corrected.
+
+```cpp
+editor->SetAutoFormatEnabled(false);            // everything off
+RichAutoFormatOptions options = editor->GetAutoFormatOptions();
+options.smartQuotes = false;                    // or just one of them
+editor->SetAutoFormatOptions(options);
+```
+
+The editing core has the same switches (off by default there, because a
+programmatic `InsertText` must insert exactly what it is given); typing goes
+through `UCRichDocumentEditor::TypeText` / `TypeEnter`.
+
+## Input methods
+
+An input method's composition (Japanese, Chinese, Korean, dead-key
+sequences) is shown in the text at the caret, underlined, as it is composed,
+and the caret moves inside it; the document only changes when the input
+method commits the text, which arrives as typing (one undo step, autoformat
+and all). Composing over a selection replaces it. The framework delivers the
+composition as `UCEventType::TextComposition` (`event.text`,
+`event.compositionCursor`) to an element whose `DrawsTextComposition()` is
+true: on X11 through an on-the-spot input context used while such an element
+has focus (other widgets keep the input method's own window), on Windows
+through the IMM composition string. `GetCompositionText()` reads it.
+
+## Right-to-left text
+
+Text is shaped and ordered by the Unicode bidirectional rules, so Arabic,
+Hebrew and mixed lines display correctly; a paragraph whose first letter is
+right-to-left starts at the right. `SetRightToLeft(true)` marks the selected
+paragraphs right-to-left (`RichDocBlock::rightToLeft`), so they start at the
+right whatever their first letter; left and right alignment mean what they say
+on the page; a right-to-left list item has its number or bullet on the right. In a paragraph with right-to-left letters Left and Right move the
+caret the way the arrow points; Home/End and word steps stay logical. DOCX
+`w:bidi`, ODT `style:writing-mode` and HTML `dir="rtl"` carry the direction.
+
+## Fonts for other scripts
+
+The element bundles no fonts: a run is drawn in its `fontFamily` (or the
+system UI font), and a character that font lacks is taken from whichever
+installed font has it (fontconfig on Linux and Windows, CoreText on macOS).
+Windows and macOS always include Chinese, Arabic and Myanmar fonts; a Linux
+system may not (minimal installs often lack CJK and Myanmar), and then the
+text falls back to a poor bitmap font or shows boxes. An application that must
+show a script everywhere ships the font and calls
+`UltraCanvasApplication::GetInstance()->RegisterFontFile(path)` before the
+text is laid out, and names that family on the runs. The demo's
+*WYSIWYG — Chinese, Arabic & Myanmar* page does this with Noto Sans Myanmar
+(`media/textsamples/fonts`, SIL OFL 1.1). Keep such fonts out of
+`media/fonts`, which every application loads at start-up.
+
+## Accessibility
+
+The element describes itself to assistive technology through
+[`UltraCanvasAccessibility`](UltraCanvasAccessibility.md): role `Document`,
+the document's title as its name, and `GetAccessibleTextInterface()` - the
+paragraphs one per line (a table's cells tab-separated), caret and selection,
+character boxes, words, lines and sentences, and per-run formatting including
+headings, lists, links, tracked changes and comments. Edits, caret moves,
+selection changes and focus are announced to listeners. There is no platform
+bridge yet (AT-SPI, UI Automation), so a system screen reader does not see it.
+
+## Drag and drop
+
+Press inside the selection and drag: the text moves to where the drop caret
+shows, and stays selected; hold Ctrl at the drop to copy it instead. One undo
+step takes the move back. A press inside the selection that does not move is
+an ordinary click. Image files dropped from another application are inserted
+where they are dropped, as pictures in the line; `onFilesDropped` lets a host
+take other files (or all of them). `enableDragAndDrop = false` turns dragging
+the selection off. The editing core's `MoveRange(range, target, copy)` does the
+move.
 
 ## Find and replace
 
@@ -44586,17 +45114,26 @@ if (editor->CanUndo()) editor->Undo();
 editor->GetEditor().BreakUndoCoalescing();   // force a new step
 ```
 
+Undo goes back 200 steps by default; `GetEditor().SetMaxUndoSteps(n)` changes
+that (0 = unlimited).
+
 ## Clipboard
 
-Copy puts the selection's plain text on the system clipboard and keeps the
-styled blocks in a process-local buffer. A paste whose clipboard text still
-matches what was copied restores the formatting too, so copy/paste **inside the
-application preserves formatting**; a paste from another application arrives as
-plain text.
+Copy puts the selection on the system clipboard twice: as HTML (formatting,
+lists, tables, pictures inlined as `data:` URIs) and as plain text, so a word
+processor, browser or mail client pastes it formatted and a terminal pastes
+the text. The element also keeps the styled blocks in a process-local buffer:
+a paste whose clipboard text still matches what was copied uses them, so
+copy/paste **inside the application loses nothing** (between two documents the
+pictures come along; notes, comments and bookmarks stay behind).
 
-Full cross-application rich paste needs per-MIME clipboard transport
-(`text/html`), which `UltraCanvasClipboardBackend` does not carry yet — see
-[`WYSIWYGElementInvestigation.md`](WYSIWYGElementInvestigation.md) §4.
+A paste from another application uses its HTML when it offers some
+(`UCRichDocument::FromHTML`: paragraphs, headings, lists, quotes, code,
+tables, rules, links, inlined pictures and character formatting from tags and
+CSS, Word's list-number spans and conditional comments dropped), and its plain
+text otherwise. The transport is `SetClipboardHtml` / `GetClipboardHtml`
+(`UltraCanvasClipboard.h`): `text/html` on X11 (UTF-16 from Firefox is
+converted), `HTML Format` on Windows; other platforms fall back to plain text.
 
 ## Style
 
@@ -44657,6 +45194,10 @@ out:
   guide when editable. Tables from Markdown or built in the editor keep the
   `style.tableBorderColor` grid. Rows and columns inserted into a framed table
   copy their neighbour's frame and fill.
+- **Border line styles:** each `RichBorder` has a `style` - `Solid`,
+  `Dotted`, `Dashed` or `Double` - read from and written to ODT and DOCX
+  (read from DOC). A double border is drawn as two thin lines together as
+  wide as the border.
 
 Lengths are points and are drawn at 96/72 pixels per point - the scale run
 font sizes get from Pango at the 96 DPI every context is pinned to - so
@@ -44685,10 +45226,19 @@ Page view draws the document's pages (`UCRichDocument::page`: size,
 margins, header and footer distances - A4 with 2 cm margins when the
 document states none) on a desk (`style.deskColor`), centred, `style.pageGap`
 apart. The text column is the page's, between its side margins, so a table
-sized for the page's column fills it. Blocks go onto pages in order: one
-that does not fit in what is left of a page moves whole to the next, and a
-page break starts one. The space between two blocks is dropped at the top
-of a page.
+sized for the page's column fills it. Blocks go onto pages in order, and a
+page break starts a new one. A paragraph that does not fit in what is left of
+a page continues on the next, broken between lines with widow and orphan
+control (at least two lines stay together at the foot of one page and the
+top of the next; a paragraph of three lines or fewer moves whole). A table
+continues between rows - never through a cell spanning rows - and its
+leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
+ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at
+the top of each page it continues on. A heading is kept with the start of the
+paragraph after it. A block taller than a whole page is still broken, between
+any two lines. The space between two blocks is dropped at the top of a page.
+Caret, clicks, selection, spell marks and pictures all follow a block's pieces
+across the page gap.
 
 Each page carries its header and footer (`UCRichDocument::FurnitureForPage`:
 `firstPageFurniture` on page one when `firstPageDiffers`, `pageFurniture`
@@ -44697,6 +45247,57 @@ otherwise), with page number and page count fields
 top margin, or below the header when the header is taller than the margin
 leaves room for; the footer likewise.
 
+**Sections and columns.** `InsertSectionBreak(newPage)` starts a new section
+at the caret (`RichDocBlock::sectionStart`, its setup in
+`RichDocBlock::section`; the first section's is `UCRichDocument::firstSection`)
+and `SetSectionColumns(n, gapPt)` sets the caret's section in columns. In page
+view a section's text fills its first column to the foot of the page, then the
+next column from the section's top, then the next page; a continuous section
+starts below the longest column of the one before, a new-page one on a new
+page. A paragraph moves whole to the next column (columns are not balanced, and
+a paragraph taller than a column is not broken across columns); outside page
+view the text is one column. DOCX section breaks (`w:sectPr` in a paragraph,
+`w:cols`, `w:type`) and ODT sections (`text:section` with `style:columns`) are
+read and written.
+
+**Editing a header or footer.** Double-click a page's header or footer - or
+its top or bottom margin, to make one - or call `EditHeader(page)` /
+`EditFooter(page)`. The body is then shown pale behind it, a dashed rule marks
+the header's edge, and everything (typing, formatting, pictures, tables, page
+fields, undo) acts on the header or footer; a header growing a line pushes the
+body down as it is typed. Escape, a click in the body or
+`FinishHeaderFooterEditing()` goes back. A document whose first page differs
+edits the first page's own header on page 0. The changes go into
+`UCRichDocument::pageFurniture` / `firstPageFurniture` as they are made, so
+`GetDocument()` (which is the document, not the header, during editing) can be
+saved at any moment; undo within the header works while it is edited, and the
+edit as a whole is not an undo step of the body. `onHeaderFooterEditingChanged`
+tells a host when to retarget its toolbar. Outside page view, the one header
+and footer above and below the body are edited the same way.
+
+**Footnotes and endnotes.** `InsertFootnote()` / `InsertEndnote()` put a
+reference at the caret and open the new note for typing (it is edited the way
+a header is: body pale behind it, Escape or a click in the body goes back);
+double-clicking a note, or its reference, opens it again, and `EditNote(i)`
+does the same from code. The marks number themselves in document order -
+footnotes 1, 2, 3, endnotes i, ii, iii - and renumber when a reference is
+added, moved or deleted. In page view a footnote sits at the foot of the page
+its reference is on, under a short rule, and the page's text makes room for
+it (the reference's line never ends up below its own note); endnotes follow
+the body, onto further pages as they need. Outside page view both follow the
+body. PDF export prints them. In the model a note is `UCRichDocument::notes`
+(`RichNote`: kind and blocks) and its reference a run with `noteIndex`; DOCX
+(`footnotes.xml` / `endnotes.xml`), ODT (`text:note`) and Markdown (`[^1]`
+references with `[^1]: ...` definitions) read and write them, and HTML and
+plain text put them after the body.
+
+Page fields work in the body too: `InsertPageNumberField()` and
+`InsertPageCountField()` put one at the caret, and in page view each shows
+the page its paragraph landed on (the value is kept in the run's text, so a
+save or plain-text copy carries it; DOCX and ODT save it as a real field).
+Updating them is not an edit - no undo step, and the document stays
+unmodified.
+
 An editable page view marks the corners of each page's text area
 (`style.pageMarginGuideColor`) and shows page breaks as dashed rules; a
 read-only one shows neither.
@@ -44704,34 +45305,48 @@ read-only one shows neither.
 Outside page view the text fills the element, and a document's first-page
 header and footer are drawn above and below the body.
 
+## PDF and printing
+
+```cpp
+std::string error;
+editor->ExportToPdf("/home/me/report.pdf", error);    // or ExportToPdf(bytes, error)
+```
+
+The document goes out as page view lays it out - whether or not the element is
+in page view - with headers, footers, page numbers, floating pictures and
+formulas, as vectors with real (selectable, searchable) text, and without
+anything that belongs to editing: no selection, caret, margin corners, dashed
+page breaks or borderless-cell guides. The element needs no window for it.
+`UltraCanvasPdfSurface` (the PDF writer behind it) draws any element into a
+PDF, and `PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window)`
+prints one - which is what UltraTexter's Print does for a word-processing tab,
+and File > Export as PDF writes.
+
+## Zoom and scrolling sideways
+
+```cpp
+editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
+editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
+```
+
+Everything is drawn scaled: text, pictures, pages. Outside page view the text
+rewraps to the zoomed width; in page view the page is simply larger, and when
+it (with the desk either side) is wider than the element a horizontal
+scrollbar appears - drag it, Shift+wheel, or let the caret take the view
+along. `GetHorizontalScrollOffset` / `SetHorizontalScrollOffset` read and set
+it. UltraTexter's zoom box sets a word-processing tab's zoom.
+
 ## What is not implemented yet
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **A selection cannot span several cells.** Rows, columns, merging and
-  splitting are all there (see *Editing a table's structure*), but they act on
-  the cell the caret is in: there is no drag-select across a block of cells, so
-  "merge these six" has to be done as a merge right and a merge down. The
-  selection model holds a range inside one container, and widening it is a
-  piece of work in its own right — rendering, hit testing and copying all
-  change with it.
-- **Border line styles draw solid.** A double, dotted or dashed cell border
-  from a document is drawn as a solid line of its width.
-- **Page view moves whole blocks.** A paragraph or table is not split across
-  pages (no widow/orphan control, no repeated table header rows), and a block
-  taller than a page runs past its bottom margin.
-- **Headers and footers are shown, not edited.** The caret never enters
-  them; page number fields in the body keep the number they were saved with.
-- **No zoom and no horizontal scrolling.** A page wider than the element is
-  cut at the right.
-- **Images are not resized interactively** (insert and delete work).
-- **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
-  typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
-  TextArea's Markdown mode and is the intended path.
-- **No pre-edit (IME composition) display.** Committed text arrives correctly;
-  an inline composition string needs an event the framework does not have yet
-  (the same limit applies to every text widget today).
-- **Cross-application rich paste** — see Clipboard above.
+- **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
+  paragraph's left indent is still on the left.
+- **No screen-reader bridge.** The accessibility model is there (see
+  Accessibility above); the AT-SPI / UI Automation bridges that hand it to the
+  operating system are not.
+- **The input method's candidate window** is placed by the input method, not
+  next to the caret.
 
 ## Related
 
@@ -71464,6 +72079,19 @@ Not verified end to end: this build environment has no camera, so the capture
 and poll loop are exercised only by their graceful-degradation path ("No
 camera is available"). The decode itself — the `UCVideoFrame` overload the
 dialog calls — is covered by the unit tests above.
+
+**Two more sources, same path** (UltraAuthenticator 0.2.5). The camera is
+the wrong tool for the common desktop case, where the enrolment page and the
+authenticator share one display and no camera can see either. The scan
+dialog therefore also decodes an image file (*From image…*: read by the
+scanner only, never copied, thumbnailed or registered as a recent file, since
+the file already holds the seed in the clear) and the screen (*From screen*).
+The screen capture stays in memory — `UltraCanvasDesktopShell::CaptureScreenImage`
+was added for it, because the existing `CaptureScreen` writes a PNG and a PNG
+of an enrolment QR is the seed in the Pictures folder — and the buffer is
+wiped as soon as it has been decoded. All three sources converge on the one
+acceptance path and the same `AccountStore::AddFromUri`, so the in-memory
+rule of this section holds for every way a code gets in, not only the camera.
 
 **(d) ~~No TOTP/HOTP/Base32 code.~~ — DONE.** The engine now lives in
 `Apps/UltraAuthenticator/otp/`:

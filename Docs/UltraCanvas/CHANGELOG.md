@@ -1,3 +1,267 @@
+#### 2026-09-30 *0.9.104*
+- **UltraCanvasMediaViewer: the toolbars are icons, not captions.** Open, Prev, Next,
+  Slideshow, Zoom -, Zoom +, Fit, Rotate L/R, Mirror H/V, Adjust, Curves, Save as
+  and Info were text buttons, and two rows of words did not fit the narrow
+  preview pane UltraFiler gives the viewer. Every button is now an icon from
+  `media/icons/` drawn as a mask (so it takes the toolbar's foreground colour and
+  greys out with the button) with the caption as its tooltip, and so are the
+  info bar's *Details* button and the adjustments panel's *Auto* and *Reset*.
+  The interval, transition and zoom dropdowns stay text, because a value picker
+  shows its value: the first two now start on their defaults (`5 s`, `Cross fade`)
+  instead of blank, and all three carry a tooltip naming the value.
+  - *Auto* is a toggle now, since auto-optimise latches: its pressed look says
+    whether it is on, and *Reset* un-presses it with the sliders.
+  - The Slideshow toggle follows the state whichever way it changed: Space and
+    `PlaySlideshow()` / `PauseSlideshow()` press and release it too.
+  - New icons under `media/icons/`: `rotate-left`, `rotate-right`, `curves`,
+    `slideshow`, `transition`; `mirror-h`, `mirror-v`, `zoom-fit` and `wand` are
+    copies of the ArtCreator / UltraPaint ones, at the root so core can use them.
+- **UltraCanvasRichTextEdit: border line styles.** `RichBorder` has a
+  `style` (`RichBorderStyle::Solid`, `Dotted`, `Dashed`, `Double`). The ODT,
+  DOCX and DOC readers keep a border's line type (Word's ~25 types and ODF's
+  keywords map to the nearest of the four: thick-thin pairs to Double,
+  dash-dot to Dashed), the ODT and DOCX writers write it back, the HTML
+  serializer emits it as CSS, and the element draws it - a double border as
+  two thin lines, dotted and dashed as dashed strokes. They used to become a
+  solid line of the same width.
+- **Check lists in UCRichDocument.** A list item can be a to-do item
+  (`RichDocBlock::checkbox`, `checked`). The element draws a box in place of
+  the bullet and ticks it on a click (undoable); `ToggleCheckList()` and
+  `ToggleCheckedAtCaret()` on the element, `ToggleCheckList()` and
+  `ToggleChecked(block)` on the editing core. Markdown reads and writes
+  GitHub's `- [ ]` / `- [x]`, HTML writes a disabled check box, plain text
+  `[ ]` / `[x]`. ODT and DOCX have no check list, so the writers put a ☐ or
+  ☒ before the item's text and the readers turn a paragraph or list item
+  opening with ☐ ☑ ☒ back into one - which is also how check boxes in
+  documents written by Word arrive (`UCRichDocument::ReadCheckboxPrefixes`).
+- **Math runs are typeset.** A `RichTextRun::math` run is drawn as a formula
+  through `UltraCanvasInlineMath` (the LaTeX module), on the line's baseline,
+  and never broken across lines; while the caret is inside it the element
+  shows the LaTeX source, which is what is being edited. A `MathBlock` is
+  typeset in display style, centred in the column, until the caret enters it.
+  Without the LaTeX module both keep showing their source, as before.
+- **`TextAttributeFactory::CreateAllowBreaks(bool)`**: keeps a range of a text
+  layout on one line.
+- **`UCRichDocumentEditor::SetMaxUndoSteps`** makes the 200-step undo limit a
+  setting (0 = no limit).
+- **Fixed: inline images in the rich text element were drawn again at every
+  relayout.** The block layout never cleared its list of placed pictures, so
+  each edit or caret move added another copy of every picture in the block.
+- **Page number and page count fields in the body are numbered in page
+  view**, each with the page its paragraph is on; they used to keep the
+  number they were saved with. `InsertPageNumberField()` /
+  `InsertPageCountField()` on the element (`InsertField` on the editing
+  core) insert one. Text typed next to a field or an inline picture no longer
+  inherits being a field or a picture - it takes only the neighbour's
+  character formatting.
+- **A selection can span table cells.** Dragging or Shift+arrowing from one
+  cell into another selects a block of whole cells (grown to cover merged
+  cells). Delete empties them, typing replaces them, formatting and alignment
+  apply to all of them (`SetAlignment` in a table now sets the cells' own
+  alignment rather than doing nothing), Copy copies them as a table, and
+  `MergeSelectedCells()` merges them in one step. Pasting a table into a cell
+  fills the grid from there; pasting paragraphs into a cell keeps them in it.
+  A selection dragged out of a table stops at its edge, one dragged into a
+  table from outside takes the whole table. Editing core: `HasCellSelection`,
+  `GetCellSelectionRect`, `SelectedCells`, `SelectCellRange`,
+  `MergeSelectedCells`.
+- **Drag and drop in the rich text element.** Dragging the selection moves
+  it (Ctrl at the drop copies it) with a drop caret showing where it lands,
+  as one undo step, the moved text left selected; image files dropped from
+  another application are inserted at the drop point (`onFilesDropped` lets a
+  host take them). Editing core: `MoveRange(range, target, copy)`.
+- **Autoformat as you type** (`RichAutoFormatOptions`, on by default in the
+  element): smart quotes, em and en dashes from `--`, `…` from `...`, © ® ™ →
+  ← ⇒, lists from `1. ` / `a) ` / `- ` / `[ ] `, headings from `#`, quotes
+  from `> `, and a rule from `---` + Enter. Each correction is a separate undo
+  step. Code and formulas are left alone, and so is pasted text.
+- `UltraCanvasRichTextEdit::InsertImageFromFile` / `InsertInlineImageFromFile`
+  opened the path with `std::ifstream(path)`, which on Windows reads a UTF-8
+  name through the ANSI code page; they go through `PathFromUtf8` now.
+- **Pictures in the rich text element can be selected, resized and
+  described.** A click selects a picture (frame and eight handles); dragging a
+  corner resizes it in proportion, a side stretches it, as one undo step.
+  `HasSelectedImage`, `SelectImage`, `SetSelectedImageSize`,
+  `Get/SetSelectedImageAltText` on the element; `IsImageAt`, `GetImageInfo`,
+  `SetImageSize`, `SetImageAltText` on the editing core.
+- **Floating pictures with text wrap.** `RichTextRun` gains `imageWrap`
+  (`Square`, `TopAndBottom`, `BehindText`, `InFrontOfText`),
+  `imageFloatAlign` and `imageOffsetXPt` / `imageOffsetYPt`. The DOCX reader
+  used to flatten every `<wp:anchor>` picture into a separate image paragraph
+  after its paragraph, losing the wrap; it now keeps it in the paragraph as a
+  floating picture with its wrap and position, and the ODT reader does the
+  same for paragraph- and character-anchored frames. Both writers write them
+  back as anchored pictures (DOCX `wp:anchor`, ODT graphic styles); HTML
+  output floats them. The element places a floating picture at its
+  paragraph's top and wraps the text round it a paragraph at a time: beside a
+  square one, above and below a top-and-bottom one, under or over the others.
+- **Page view breaks paragraphs and tables across pages.** A paragraph that
+  does not fit continues on the next page, broken between lines with widow
+  and orphan control; a table continues between rows (never through a
+  row-spanning cell), repeating its header rows on every page; a heading is
+  kept with what follows it. They used to move to the next page whole, and a
+  block taller than a page ran past the bottom margin. Caret, hit testing,
+  selection, scrolling, spell marks and pictures follow the pieces.
+- **`ITextLayout::GetLineExtents()`**: every line's bytes and vertical extent.
+- **Zoom and horizontal scrolling in the rich text element.** `SetZoom`
+  (0.25-5, Ctrl+wheel) scales everything it draws; outside page view the text
+  rewraps to the zoomed width. A page wider than the view - landscape, or
+  zoomed in - gets a horizontal scrollbar (Shift+wheel, the caret brings the
+  view along) instead of being cut at the right.
+- **PDF export.** `UltraCanvasRichTextEdit::ExportToPdf(path | bytes, error)`
+  writes the document's pages - headers, footers, page numbers, pictures,
+  formulas - as a vector PDF with real text, without selection, caret or
+  editing guides, from an element that need never have been shown. It is built
+  on the new **`UltraCanvasPdfSurface`**, which draws any element into a PDF
+  through the ordinary render context (Cairo's PDF surface; UTF-8 paths on
+  every platform), and **`PrintDocumentWithDialog`** / `PrintDocumentWithSettings`
+  send such a PDF (or any payload a printer takes) through the print dialog.
+  `RenderContextCairo::AttachSurface` lets a context draw onto a surface it
+  did not create.
+- **Headers and footers can be edited.** Double-click one (or the page's top
+  or bottom margin, to create one), or call `EditHeader(page)` /
+  `EditFooter(page)`: the body is shown pale, and typing, formatting,
+  pictures, tables, fields and undo act on the header or footer, which is
+  written into the document as it changes (the body moves down as it grows).
+  Escape or a click in the body goes back. `IsEditingHeaderOrFooter`,
+  `FinishHeaderFooterEditing`, `onHeaderFooterEditingChanged`.
+- **Named styles.** `UCRichDocument::styles` (`RichStyle`: paragraph or
+  character, `basedOn`, `nextStyle`, optional properties), `RichDocBlock::styleId`
+  and `RichTextRun::characterStyleId`. The editing core applies, changes
+  (propagating to the text that follows the style, sparing direct formatting),
+  creates and deletes them in undoable steps; the element passes them through
+  and adds `NewStyleFromCaret` / `UpdateStyleFromCaret`. DOCX and ODT read and
+  write them (they were flattened into direct formatting on load and could not
+  be saved), and the DOCX reader now gives runs their paragraph and character
+  styles' bold, italics, underline and colour, which it used to drop. A
+  heading's bold no longer appears as `**...**` in its Markdown.
+- **Footnotes and endnotes.** `UCRichDocument::notes` (`RichNote`) with
+  reference runs (`RichTextRun::noteIndex`) that number themselves (footnotes
+  1, 2, 3, endnotes i, ii); `UCRichDocumentEditor::InsertNote`/`NoteAt`; and in
+  `UltraCanvasRichTextEdit`, `InsertFootnote`, `InsertEndnote` and `EditNote`
+  (double-click a note or its reference). Page view puts footnotes at the foot
+  of their reference's page, making room for them, and endnotes after the body;
+  PDF export includes them. DOCX and ODT read and write them - ODT footnotes
+  used to be flattened into the text in parentheses, DOCX ones were dropped -
+  and Markdown reads and writes `[^1]` footnotes.
+- **Table of contents, captions, bookmarks and cross-references.** New
+  field kinds `RichTextRun::Field::Sequence`, `Reference` and `PageReference`
+  (with `fieldArgument`), paragraph bookmarks (`RichDocBlock::bookmarks`) and
+  contents entries (`RichDocBlock::tocLevel`); `UCRichDocument::UpdateFields`,
+  `UpdatePageReferences`, `BuildTableOfContents`, `UpdateTableOfContents`;
+  editor and element `InsertTableOfContents`, `UpdateTableOfContents`,
+  `InsertCaption`, `InsertCrossReference`, `AddBookmark`, `RemoveBookmark`, and
+  `UltraCanvasRichTextEdit::GoToBookmark` (Ctrl+click on an entry or a
+  reference). Caption numbers and references keep up with edits, and page view
+  fills in the pages. DOCX and ODT read and write them; the default styles
+  gain *Caption*.
+- **Comments.** `UCRichDocument::comments` (`RichComment`) anchored by
+  `RichTextRun::commentIds`; `UCRichDocumentEditor::AddComment`,
+  `RemoveComment`, `SetCommentText`, `SetCommentResolved`, `CommentsAt`,
+  `CommentRange`; and in `UltraCanvasRichTextEdit` the same plus
+  `SetCommentAuthor`, `SetShowComments` and `onCommentActivated`, with commented
+  text shaded and a comment pane beside the text (click a comment to select its
+  text). DOCX `comments.xml` and ODT `office:annotation` are read and written;
+  both used to be dropped.
+- **Tracked changes.** `RichTextRun::change` (`Unchanged`/`Inserted`/`Deleted`)
+  and `revision` into `UCRichDocument::revisions`; `UCRichDocumentEditor::
+  SetTrackChanges`, `SetRevisionAuthor`, `AcceptAllChanges`,
+  `RejectAllChanges`, `AcceptChangeAt`, `RejectChangeAt`, `NextChange`; and in
+  `UltraCanvasRichTextEdit` the same (`AcceptChangeAtCaret`, `GoToNextChange`),
+  with insertions underlined and deletions struck through. DOCX `w:ins`/`w:del`
+  and ODT tracked changes are read and written - DOCX deletions used to vanish
+  and insertions to be accepted on load. Text exports leave deleted text out.
+  `UCRichDocumentEditor::InsertIntoRuns` is no longer static.
+- **Sections and multi-column layout.** `RichSectionSetup` (columns, gap, new
+  page), `RichDocBlock::sectionStart`/`section`, `UCRichDocument::firstSection`,
+  `SectionFor`, `HasColumns`; `InsertSectionBreak` and `SetSectionColumns` on the
+  editor and the element. Page view flows a section's text column by column.
+  DOCX `w:sectPr` section breaks with `w:cols` and ODT `text:section` columns are
+  read and written (both used to be read as one column).
+- **Rich copy and paste between applications.** `UCRichDocument::FromHTML`
+  reads HTML as browsers, Word and LibreOffice put it on the clipboard; the
+  clipboard gains an HTML flavour (`UltraCanvasClipboardBackend::
+  SetClipboardHtml`/`GetClipboardHtml`, `SetClipboardHtml`/`GetClipboardHtml`:
+  `text/html` on X11, `HTML Format` on Windows). `UltraCanvasRichTextEdit`
+  copies HTML next to the text and pastes another application's HTML
+  formatted; a paste into another document brings the pictures along.
+- **Input method composition shown in place.** New
+  `UCEventType::TextComposition` (`UCEvent::compositionCursor`) and
+  `UltraCanvasUIElement::DrawsTextComposition()`; the X11 window keeps a second,
+  on-the-spot input context (XIMPreeditCallbacks) for elements that draw the
+  composition, and Windows reads the IMM composition string for them.
+  `UltraCanvasRichTextEdit` draws the composition underlined at the caret.
+- **Right-to-left paragraphs.** `RichDocBlock::rightToLeft`,
+  `UCRichDocumentEditor::SetRightToLeft`/`ContainsRightToLeft`/
+  `FirstStrongDirection`, `UltraCanvasRichTextEdit::SetRightToLeft`/
+  `IsRightToLeft`; right-to-left paragraphs start at the right, and Left/Right
+  move visually through text with right-to-left letters. DOCX `w:bidi`, ODT
+  `style:writing-mode` and HTML `dir` are read and written.
+- **Accessibility foundation.** New `UltraCanvasAccessibility.h`:
+  `AccessibleRole`, `IAccessibleText` (text, caret, selection, character
+  bounds, attributes, text units), `AccessibilityEvent` and listeners;
+  `UltraCanvasUIElement::GetAccessibleRole`/`GetAccessibleName`/
+  `GetAccessibleTextInterface`; the window announces focus changes.
+  `UltraCanvasRichTextEdit` implements the text interface and announces edits
+  and caret moves. Platform bridges (AT-SPI, UIA) are still to be written.
+- **Right-to-left list items are mirrored**: their number or bullet sits to
+  the right of the text, in the indent, instead of on the far left.
+
+#### 2026-09-30 *0.9.103*
+- **The file display's copy, move and delete questions are one dialog, and the
+  answer is the button.** Five dialogs with four layouts asked with toggle
+  switches wired to act as radio buttons and a *Continue* button that did
+  whatever the switches said. Every question a copy, move or delete asks is now
+  an *operation dialog*: the question, the facts under it (*From*, *Into*,
+  *Reason*, *Size*), an optional list of the entries with the display's own
+  icons (up to 200 rows, ten at a time), a note, and the answers as buttons -
+  as wide as their label, the safe one coloured and taken by Return, a
+  destructive one red, *Stop* / *Cancel* taken by Escape, an *Apply to all …*
+  checkbox beside them. See *The operation dialog* in
+  `Docs/UltraCanvas/UltraCanvasFilerWidget.md`.
+  - **A taken name shows the two files side by side** - existing and pasted,
+    with size, date and which is newer - and names what *Keep both* will call
+    the pasted file; two files of the same size and date are called identical
+    and default to *Skip*. The checkbox counts: *Apply to all 7 remaining
+    conflicts*.
+  - **A folder pasted over a folder merges.** *Replace the existing folder*
+    used to `remove_all` the existing folder first - everything in it the
+    pasted one did not have was gone. *Merge* (the default, and
+    `PasteConflictAction::Merge`) puts the pasted folder's entries into the
+    existing one, asking about each taken name inside; *Replace* is still
+    there, red, with the count of what it deletes.
+  - **The drop confirmation offers both verbs**, Move and Copy, with the one
+    the gesture asked for as the coloured default, so a wrong modifier never
+    needs a second drag; `FilerDropConfirmation::CopyOnly` joins the modes, and
+    a Cut + Paste move asks under the same setting as a dropped move.
+  - **The delete confirmation's two radios are its two buttons**, *Move to
+    Trash* and *Delete permanently* (red); Del makes the first the default,
+    Shift+Del the second. Its list grew from 40 rows to 200.
+  - **A summary at the end.** A paste or delete that ran to its end with
+    entries skipped - by hand, by policy or because they failed - ends on
+    *Copied 137 of 140 items. 3 were skipped.* with the skipped entries and the
+    reason beside each, and a *Copy skipped items again* button.
+  - **Standing answers for a host:** `SetConfirmTrashDelete`,
+    `SetConflictPolicy`, `SetFolderConflictPolicy`, `SetProblemPolicy`
+    (*skip and report* sends failures to the summary instead of a question)
+    and `SetProgressWindowDelay`; until the progress window is due the window
+    shows the busy pointer.
+  - `UltraCanvasModalDialog` 3.6.0: `AddCustomButton` takes a
+    `DialogButtonRole` (Default / Destructive / DestructiveDefault / Cancel),
+    which decides what Return and Escape take and how the button is drawn, and
+    `AddFooterElement` puts an element at the left of the button bar. See
+    `Docs/UltraCanvas/UltraCanvasDialogKeyboard.md`.
+  - `UltraCanvasFilerWidget` 1.34.0.
+#### 2026-09-30 *0.9.102*
+- **QRCode: an image with no code in it is no longer reported as an error.**
+  `ScanQRCodeFile` and `ScanQRCodeImage` set `errorMessage` to "No QR codes
+  detected" whenever they found nothing, the same channel as an unreadable
+  file or a missing decoder, so a caller wanting to say "nothing found"
+  rather than "could not scan" had to match that text. Now an empty result
+  with an empty error means no code, and the error is filled only when the
+  scan could not run. The demo app already read it that way; UltraAuthenticator's
+  scan dialog stops matching the string.
+
 #### 2026-09-30 *0.9.101*
 - **DesktopShell: the screen can be captured into memory.**
   `UltraCanvasDesktopShell::CaptureScreenImage(DesktopScreenImage&, &error)`

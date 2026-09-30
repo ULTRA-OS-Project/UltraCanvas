@@ -119,16 +119,20 @@ Apps/UltraMail/
                                   (Open / Save As…) opens content in UltraCanvasMediaViewer
     UltraMailContactsView.{h,cpp} contact manager: section sidebar (with counts) +
                                   contact list; add/edit dialog; delete via context menu
-    UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body, attachment
-                                  strip, Send / Attach file / Attach cloud link
+    UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject, the formatting
+                                  toolbar with Plain text | Formatted, the body
+                                  (text area or RichTextEdit), attachment strip,
+                                  Send / Attach file / Attach cloud link
                                   (UltraCloud picker → share link into the body)
+    UltraMailFormatBar.{h,cpp}    the formatting toolbar for a RichTextEdit, shared
+                                  by the compose window and the signature editor
     UltraMailWaitDialog.{h,cpp}   a step running elsewhere (browser sign-in,
                                   settings lookup): text + Cancel; closed by the app
     UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
                                   port, security, username; validates in place;
                                   as Account Settings also name, password, Signature
     UltraMailSignatureDialog.{h,cpp} the signature editor: None / Plain text /
-                                  HTML (WYSIWYG RichTextEdit + format rows, or
+                                  HTML (WYSIWYG RichTextEdit + FormatBar, or
                                   HTML source); also on replies and forwards
     UltraMailSettingsDialog.{h,cpp} the Settings window (toolbar gear, as in
                                   UltraFiler): Reading > Layout / Messages,

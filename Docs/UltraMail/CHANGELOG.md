@@ -1,3 +1,35 @@
+#### 2026-09-30 *0.10.13*
+- **Several compose windows at once work.** UltraMail had one compose view for
+  every compose window, so opening a second message rebound the first window's
+  Send, Cancel, attachment buttons and formatting toolbar to the second: Send
+  in the first window sent the second message, Cancel closed the other window.
+  Each compose window now has its own view, and its entry is dropped once the
+  window has closed (the windows used to be kept until UltraMail quit).
+- What answers after a compose window closed - the file or cloud picker, the
+  "send as plain text?" question, a Link… or Picture… dialog - finds the
+  window gone and changes nothing.
+
+#### 2026-09-30 *0.10.12*
+- **The compose window has the full formatting toolbar.** The signature
+  editor's tools now sit above every message body: bold, italic, underline,
+  strikethrough, font, size and text colour in one row; left / centre /
+  right, bulleted and numbered lists, a horizontal line, *Link…* and
+  *Picture…* in the next. The small B / I / U / list row that only formatted
+  replies had is gone. Both windows share one toolbar (`UltraMailFormatBar`),
+  so they cannot drift apart.
+- **Plain text | Formatted.** The switch at the right end of the toolbar
+  decides how the message is written and sent. A new message starts as plain
+  text, with only the switch showing. *Formatted* turns what is written into
+  the rich editor, `> ` quotes becoming quote bars, and shows the tools; the
+  message is then sent as HTML with a plain-text version. Replies and forwards
+  of HTML mail, and mail signed with an HTML signature, open formatted.
+  Switching back to plain text asks first when there is something to lose,
+  since formatting, links and pictures are dropped.
+- The compose window is 40 px taller, for the second toolbar row.
+- Fixed while building it: a toolbar row of buttons sized to their labels
+  widened the whole compose window past its right edge, hiding the switch and
+  *Cancel*. The rows are now capped at the window's width.
+
 #### 2026-09-30 *0.10.11*
 - **A signature per account.** *Account Settings* has a new *Signature* row,
   which shows the account's signature in a few words, and an *Edit signature…*

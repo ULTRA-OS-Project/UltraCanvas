@@ -169,6 +169,22 @@ same font and is covered by the same license.
 
 ---
 
+## Noto Sans Myanmar (demo font)
+
+- **Used by:** the DemoApp's *WYSIWYG — Chinese, Arabic & Myanmar* page, which
+  registers it for its own process with `RegisterFontFile()` so the Myanmar
+  sample renders on systems without a Myanmar font. The framework does not
+  load it.
+- **Upstream:** The Noto Project — https://github.com/notofonts/myanmar
+  (version 2.107, the static Regular and Bold instances).
+- **Vendored at:** `media/textsamples/fonts/NotoSansMyanmar-Regular.ttf` and
+  `media/textsamples/fonts/NotoSansMyanmar-Bold.ttf`
+- **License:** SIL Open Font License 1.1 — Copyright 2022 The Noto Project
+  Authors.
+- **Full text:** `media/textsamples/fonts/OFL.txt`
+
+---
+
 ## yyjson (JSON engine)
 
 - **Used by:** the DataFormats section's `UltraCanvasJSON` module

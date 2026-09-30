@@ -76,6 +76,9 @@ namespace UltraCanvas {
         std::string defaultLanguage = "Plain Text";
         bool darkTheme = false;
         bool wordWrap = true;
+        // Word-processing documents shown on their pages (headers, footers,
+        // page breaks) rather than as one column.
+        bool documentPageLayout = true;
         std::string defaultEncoding = "UTF-8";
 
         // Spell checking. Off until the user asks for it, so a launch without
@@ -433,6 +436,7 @@ namespace UltraCanvas {
         void OnFileCloseAll();
         void OnFileQuit();
         void OnFilePrint();
+        void OnFileExportPdf();
 
         void OnEditUndo();
         void OnEditRedo();
@@ -450,6 +454,7 @@ namespace UltraCanvas {
         void OnViewToggleTheme();
         void OnViewToggleLineNumbers(bool checked);
         void OnViewToggleWordWrap(bool checked);
+        void OnViewTogglePageLayout(bool checked);
         void OnViewToggleToolbar(bool checked);
         void OnViewToggleMarkdownToolbar(bool checked);
         void UpdateToolbarsSubmenu();
@@ -479,6 +484,9 @@ namespace UltraCanvas {
         std::vector<MenuItemData> BuildSpellingMenuItems();
         // Rows, columns, merge and split for the table the caret is in.
         std::vector<MenuItemData> BuildTableMenuItems();
+        std::vector<MenuItemData> BuildStyleMenuItems(int kind);   // RichStyle::Kind
+        std::vector<MenuItemData> BuildReferenceMenuItems();
+        void EditRichComment(int index);
         std::vector<MenuItemData> BuildDictionaryMenuItems();
 
         // Every open editor window, so the singleton spell service can reach

@@ -1358,6 +1358,15 @@ void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
     applyingDisplayFormats = wasApplying;
 }
 
+void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target) {
+    target.SetConfirmTrashDelete(settings.confirmTrashDelete);
+    target.SetConflictPolicy(settings.conflictPolicy);
+    target.SetFolderConflictPolicy(settings.folderConflictPolicy);
+    target.SetProblemPolicy(settings.problemPolicy);
+    target.SetProgressWindowDelay(
+            static_cast<unsigned>(std::max(0, settings.progressDelaySeconds)) * 1000u);
+}
+
 void UltraFilerWindow::ApplySettings() {
     if (preview) {
         preview->SetTransparentBackground(settings.previewCheckeredBackground
@@ -1381,11 +1390,13 @@ void UltraFilerWindow::ApplySettings() {
         state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         state->filer->SetDropConfirmation(settings.dropConfirmation);
         state->filer->SetShowLockState(settings.showLockState);
+        ApplyFileOperationSettings(*state->filer);
     }
     if (folderPreview) {
         folderPreview->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         folderPreview->SetDropConfirmation(settings.dropConfirmation);
         folderPreview->SetShowLockState(settings.showLockState);
+        ApplyFileOperationSettings(*folderPreview);
     }
     // Extras > Cache. The disk cache is one per process, so it is set once
     // rather than per display; how thumbnails are held in memory is each
@@ -4402,6 +4413,9 @@ UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
     // and whether the drop asks before it is carried out.
     state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
     state->filer->SetDropConfirmation(settings.dropConfirmation);
+    // Handling > File operations: the standing answers to a copy, move or
+    // delete's questions.
+    ApplyFileOperationSettings(*state->filer);
     // Display > Files in use: mark files another program is holding.
     state->filer->SetShowLockState(settings.showLockState);
     // Display > Files: what this display starts with. Its own Display >

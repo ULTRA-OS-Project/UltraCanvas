@@ -390,6 +390,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUIElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextInput.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAccessibility.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasContainer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGroupBox.cpp
@@ -1246,6 +1247,8 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UCTextLayout.cpp
+        # UltraCanvasPdfSurface: PDF output through the render context.
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UltraCanvasPdfSurfaceCairo.cpp
         # Standalone QOI codec — dependency free, always compiled so qoi_encode/
         # qoi_decode/qoi_read/qoi_write are available without libvips.
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/qoi.cpp
