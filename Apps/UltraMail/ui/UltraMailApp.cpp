@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.10 - new mail is fetched right after start, not five minutes later
 // Version: 0.9.9 - a Settings window (gear at the right end of the toolbar, as in
 //                  UltraFiler): layout, HTML / plain text, text size, remote-image
 //                  policy with trusted websites, sender icons
@@ -71,6 +72,9 @@ namespace {
 constexpr int   kWindowWidth   = 1180;
 constexpr int   kWindowHeight  = 760;
 constexpr int   kActionIcon    = 12;
+// The first fetch after start waits this long, so the main window is painted
+// (with the cached mail) before the network work begins.
+constexpr unsigned int kStartupSyncDelayMs = 400;
 
 std::string IconPath(const std::string& name) {
     return UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/icons/" + name);
@@ -211,6 +215,18 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // device key, so this is the only time it is asked.
     if (!accounts_.empty() && !vault_.IsUnlocked()) {
         EnsureVaultUnlocked([this]() { RunSyncs(/*force=*/false); Refresh(); });
+    } else if (!accounts_.empty() && ImapPlugin()) {
+        // Fetch new mail right after start. The periodic timer's first tick is
+        // five minutes out, so without this the inbox showed only what was
+        // cached until Update was pressed - and the status line never said it
+        // was checking. Every account is due (never synced in this run). A
+        // background sync, not a user one: a network that is not up yet right
+        // after boot takes the offline grace period instead of an alert. Run
+        // from the loop, shortly after the window is shown, so it paints first.
+        if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent()) {
+            app->StartTimer(kStartupSyncDelayMs, /*periodic=*/false,
+                            [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
+        }
     }
 
     // Demo path: seed mail and auto-collect its senders; the main window shows

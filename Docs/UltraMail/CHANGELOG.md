@@ -1,4 +1,12 @@
 #### 2026-09-30 *0.10.10*
+- **New mail is fetched as soon as UltraMail starts.** The first check used to
+  wait for the five-minute timer (it ran at start only when the vault needed a
+  password), so the inbox showed what was cached until *Update* was pressed, and
+  nothing on screen said a check was due. Now every account is checked right after
+  the window appears: the *Update* button reads "Updating…", the status line says
+  "Checking …" with its spinner and the connection pill turns "Checking…", then
+  "Connected". A network that is not up yet right after boot gets the usual grace
+  period - status line and a retry, no alert.
 - **A Settings window, like UltraFiler's.** The gear at the right end of the
   toolbar (UltraFiler's gear button) opens it: a page tree on the left, and
   pages with their notes and a *Restore default* button.
