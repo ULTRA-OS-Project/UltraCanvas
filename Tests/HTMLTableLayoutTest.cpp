@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.2.0 - background-position
 // Version: 1.1.0 - background pictures, margin: auto, @media width
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
@@ -17,6 +18,7 @@
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRenderContext.h"
 
@@ -261,6 +263,64 @@ void TestBackgroundAndAutoMargins() {
     }
 }
 
+// background-position places the picture in its box (a 40x20 picture in a
+// 200x100 box, unscaled).
+void TestBackgroundPosition() {
+    std::printf("background-position places the picture\n");
+    static const std::vector<uint8_t> png40x20 = {
+        0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+        0x00,0x00,0x00,0x28,0x00,0x00,0x00,0x14,0x08,0x02,0x00,0x00,0x00,0x70,0x24,0xE8,
+        0xEC,0x00,0x00,0x00,0x24,0x49,0x44,0x41,0x54,0x78,0x9C,0x63,0x50,0x48,0x38,0x30,
+        0x20,0x88,0x61,0xD4,0xE2,0x51,0x8B,0x47,0x2D,0x1E,0xB5,0x78,0xD4,0xE2,0x51,0x8B,
+        0x47,0x2D,0x1E,0xB5,0x78,0xE4,0x58,0x0C,0x00,0xBA,0x4F,0xE8,0x2E,0x68,0xAC,0xCD,
+        0xD0,0x00,0x00,0x00,0x00,0x49,0x45,0x4E,0x44,0xAE,0x42,0x60,0x82 };
+    auto drawRect = [](const std::string& position) {
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        opts.resourceLoader = [](const std::string&) { return png40x20; };
+        HTML::ElementBuilder builder;
+        auto host = std::make_shared<Host>();
+        host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        auto root = builder.Build("<div style='width:200px;height:100px;background:url(p.png) no-repeat " +
+                                  position + "'></div>", opts).root;
+        if (!root) return Rect2Df();
+        root->size.width = CSSLayout::Dimension::Px(400.f);
+        host->AddChild(root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = 400;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        root->Measure(mc, ctx);
+        root->Arrange(Rect2Df{ 0, 0, 400.f, root->measured.measuredHeight }, ctx);
+        std::vector<Placed> all;
+        Collect(root.get(), 0, 0, all);
+        for (const auto& p : all)
+            if (auto* img = dynamic_cast<UltraCanvasImageElement*>(p.element))
+                return img->ImageDrawRect();
+        return Rect2Df();
+    };
+    Rect2Df r = drawRect("");
+    CheckNear(r.x, 0.f, "default: left");
+    CheckNear(r.y, 0.f, "default: top");
+    CheckNear(r.width, 40.f, "unscaled width");
+    r = drawRect("center");
+    CheckNear(r.x, 80.f, "center: x");
+    CheckNear(r.y, 40.f, "center: y");
+    r = drawRect("right bottom");
+    CheckNear(r.x, 160.f, "right");
+    CheckNear(r.y, 80.f, "bottom");
+    r = drawRect("10px 15px");
+    CheckNear(r.x, 10.f, "10px from the left");
+    CheckNear(r.y, 15.f, "15px from the top");
+    r = drawRect("right 10px bottom 5px");
+    CheckNear(r.x, 150.f, "10px from the right");
+    CheckNear(r.y, 75.f, "5px from the bottom");
+    r = drawRect("right top / contain");   // scaled to 200x100: fills the box
+    CheckNear(r.width, 200.f, "contain: scaled to the box");
+    CheckNear(r.x, 0.f, "no free space left to move in");
+}
+
 } // namespace
 
 int main() {
@@ -270,6 +330,7 @@ int main() {
     TestButtonAndAlignment();
     TestFontSize();
     TestBackgroundAndAutoMargins();
+    TestBackgroundPosition();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

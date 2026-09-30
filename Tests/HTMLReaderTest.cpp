@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.4.0 - background-position
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
@@ -538,7 +539,10 @@ static void TestMediaAndBackgrounds() {
             CHECK_EQ(st.backgroundImages[0], std::string("wave.gif"));
             CHECK_EQ(st.backgroundImages[1], std::string("poster.png"));
         }
-        CHECK(st.backgroundSize == BackgroundSizeMode::Contain);
+        CHECK(st.BackgroundSizeAt(0) == BackgroundSizeMode::Contain);
+        CHECK(st.BackgroundSizeAt(1) == BackgroundSizeMode::Auto);      // poster: no size
+        CHECK(st.BackgroundPositionAt(0).x.value == 0.5f && st.BackgroundPositionAt(0).y.value == 0.5f);
+        CHECK(st.BackgroundPositionAt(1).x.value == 0.f && st.BackgroundPositionAt(1).y.value == 0.f);
         CHECK(st.backgroundColor && st.backgroundColor->r == 0xfa);
         CHECK_EQ(st.borderRadius, 20.f);
     });
@@ -546,6 +550,44 @@ static void TestMediaAndBackgrounds() {
         CHECK(st.widthPercent && *st.widthPercent == 100.f);
         CHECK(st.color.r == 0xff);
     });
+}
+
+// background-position in its value forms, longhand and shorthand.
+static void TestBackgroundPosition() {
+    auto positionOf = [](const std::string& css) {
+        Parser parser;
+        Document doc = parser.Parse("<div style=\"" + css + "\">x</div>");
+        StyleResolver resolver;
+        ResolverOptions options;
+        options.baseFontSizePx = 16.f;
+        resolver.Resolve(doc, options);
+        Node* div = doc.root->FindFirst("div");
+        return div ? resolver.StyleOf(div).BackgroundPositionAt(0) : BackgroundPosition{};
+    };
+    auto isFraction = [](const BackgroundAxisPosition& a, float f) {
+        return !a.pixels && std::fabs(a.value - f) < 0.001f;
+    };
+    auto isPixels = [](const BackgroundAxisPosition& a, float px, bool fromEnd) {
+        return a.pixels && a.fromEnd == fromEnd && std::fabs(a.value - px) < 0.001f;
+    };
+    BackgroundPosition p = positionOf("background-position: right bottom");
+    CHECK(isFraction(p.x, 1.f) && isFraction(p.y, 1.f));
+    p = positionOf("background-position: top");             // x centred
+    CHECK(isFraction(p.x, 0.5f) && isFraction(p.y, 0.f));
+    p = positionOf("background-position: top left");        // vertical word first
+    CHECK(isFraction(p.x, 0.f) && isFraction(p.y, 0.f));
+    p = positionOf("background-position: 25% 75%");
+    CHECK(isFraction(p.x, 0.25f) && isFraction(p.y, 0.75f));
+    p = positionOf("background-position: 10px 2em");
+    CHECK(isPixels(p.x, 10.f, false) && isPixels(p.y, 32.f, false));
+    p = positionOf("background-position: 30px");            // y centred
+    CHECK(isPixels(p.x, 30.f, false) && isFraction(p.y, 0.5f));
+    p = positionOf("background-position: right 10px bottom 20%");
+    CHECK(isPixels(p.x, 10.f, true) && isFraction(p.y, 0.8f));
+    p = positionOf("background: #fff url(a.png) no-repeat right 5px top / cover");
+    CHECK(isPixels(p.x, 5.f, true) && isFraction(p.y, 0.f));
+    p = positionOf("background: url(a.png)");                // CSS initial value
+    CHECK(isFraction(p.x, 0.f) && isFraction(p.y, 0.f));
 }
 
 int main() {
@@ -563,6 +605,7 @@ int main() {
     TestHtml4Entities();
     TestMailTableStyles();
     TestMediaAndBackgrounds();
+    TestBackgroundPosition();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);

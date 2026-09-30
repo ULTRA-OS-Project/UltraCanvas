@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.5.0 - background-position: the picture sits where the layer says
+//                  (CSS's default top-left, not always centred).
 // Version: 1.4.0 - @media answered for BuildOptions::viewportWidth; background
 //                  images (first url() layer that loads, fitted by
 //                  background-size); rounded borderless boxes; max-width;
@@ -1157,7 +1159,9 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
 void ElementBuilder::ApplyBackgroundImage(UltraCanvasContainer& box, const ComputedStyle& style) {
     if (style.backgroundImages.empty() || !opts.enableImages || !opts.resourceLoader) return;
     std::shared_ptr<UCImage> raster;
-    for (const auto& url : style.backgroundImages) {
+    size_t layer = 0;
+    for (; layer < style.backgroundImages.size(); ++layer) {
+        const std::string& url = style.backgroundImages[layer];
         std::vector<uint8_t> bytes = opts.resourceLoader(url);
         if (!bytes.empty()) raster = UCImageRaster::LoadFromMemory(bytes);
         if (raster && raster->GetWidth() > 0 && raster->GetHeight() > 0) break;
@@ -1168,11 +1172,18 @@ void ElementBuilder::ApplyBackgroundImage(UltraCanvasContainer& box, const Compu
 
     auto image = std::make_shared<UltraCanvasImageElement>(MakeId("bgimg"));
     image->LoadFromImage(raster);
-    switch (style.backgroundSize) {
+    // The size and position of the layer that loaded.
+    switch (style.BackgroundSizeAt(layer)) {
         case BackgroundSizeMode::Contain: image->SetFitMode(ImageFitMode::Contain); break;
         case BackgroundSizeMode::Cover:   image->SetFitMode(ImageFitMode::Cover);   break;
         case BackgroundSizeMode::Auto:    image->SetFitMode(ImageFitMode::NoScale); break;
     }
+    const BackgroundPosition where = style.BackgroundPositionAt(layer);
+    auto axis = [](const BackgroundAxisPosition& a) {
+        return a.pixels ? ImageAxisPosition::Pixels(a.value, a.fromEnd)
+                        : ImageAxisPosition::Fraction(a.value);
+    };
+    image->SetImagePosition(ImagePosition{ axis(where.x), axis(where.y) });
     // Out of flow, filling the box: it neither sizes the box nor pushes its
     // content, and as the first child it is drawn underneath that content.
     CSSLayout::Position fill;

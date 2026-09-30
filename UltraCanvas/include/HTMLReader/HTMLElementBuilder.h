@@ -6,6 +6,7 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.3.0 - background-position
 // Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
 // Last Modified: 2026-09-30
@@ -152,8 +153,8 @@ private:
     void ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
                         bool noWrap = false);
     // background-image: the first url() layer that loads, drawn under the
-    // box's content (an out-of-flow image element filling it), fitted by
-    // background-size.
+    // box's content (an out-of-flow image element filling it), fitted by that
+    // layer's background-size and placed by its background-position.
     void ApplyBackgroundImage(UltraCanvasContainer& box, const ComputedStyle& style);
     // A box narrower than its line (width / max-width) with margin-left and /
     // or margin-right auto: centred (or pushed right) in a full-width row.

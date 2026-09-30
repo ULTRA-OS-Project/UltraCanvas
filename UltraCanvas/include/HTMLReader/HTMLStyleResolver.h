@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.4.0 - background-position; background size and position per layer
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
 // Last Modified: 2026-09-30
@@ -40,6 +41,18 @@ enum class VerticalAlignMode { Baseline, Middle, Top, Bottom };
 // background-size, as far as a single background picture uses it.
 enum class BackgroundSizeMode { Auto, Contain, Cover };
 
+// background-position on one axis: a fraction of the free space (0 = left /
+// top, 0.5 = centre, 1 = right / bottom - what a percentage is) or a px
+// offset from the left / top edge, or from the right / bottom one.
+struct BackgroundAxisPosition {
+    float value   = 0.f;
+    bool  pixels  = false;
+    bool  fromEnd = false;
+};
+struct BackgroundPosition {
+    BackgroundAxisPosition x, y;   // CSS initial value: 0% 0% (top left)
+};
+
 enum class ListMarker {
     Disc, Circle, Square,
     Decimal, LowerAlpha, UpperAlpha, LowerRoman, UpperRoman,
@@ -72,7 +85,18 @@ struct ComputedStyle {
     // background-image / the url() layers of the background shorthand, top
     // layer first; later ones are fallbacks (an animated GIF over its poster).
     std::vector<std::string> backgroundImages;
-    BackgroundSizeMode backgroundSize = BackgroundSizeMode::Auto;
+    // Per layer, as CSS lists them: layer i takes entry i, a shorter list
+    // repeats (use the *At helpers).
+    std::vector<BackgroundSizeMode> backgroundSizes;
+    std::vector<BackgroundPosition> backgroundPositions;
+    BackgroundSizeMode BackgroundSizeAt(size_t layer) const {
+        return backgroundSizes.empty() ? BackgroundSizeMode::Auto
+                                       : backgroundSizes[layer % backgroundSizes.size()];
+    }
+    BackgroundPosition BackgroundPositionAt(size_t layer) const {
+        return backgroundPositions.empty() ? BackgroundPosition{}
+                                           : backgroundPositions[layer % backgroundPositions.size()];
+    }
     // margin-left / margin-right: auto (centring a box with a width).
     bool marginLeftAuto = false, marginRightAuto = false;
     std::optional<float> maxWidthPx;

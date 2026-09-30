@@ -1,13 +1,15 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
-// Version: 1.1.0
-// Last Modified: 2026-06-02
+// Version: 1.2.0 - an image positioned off-centre (SetImagePosition) is drawn into
+//                 ImageDrawRect, clipped to the content box
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasFileError.h"
 #include "CSSLayout/LayoutUtils.h"
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
@@ -92,6 +94,25 @@ namespace UltraCanvas {
             return true;
         }
         return false;
+    }
+
+    Rect2Df UltraCanvasImageElement::ImageDrawRect() const {
+        const Size2Df natural = NaturalImageSize();
+        if (natural.width <= 0.f || natural.height <= 0.f) return Rect2Df();
+        const Rect2Df content = GetLocalContentRect();
+        const float cw = content.width, ch = content.height;
+        if (cw <= 0.f || ch <= 0.f) return Rect2Df();
+        const float fitW = cw / natural.width, fitH = ch / natural.height;
+        float w = natural.width, h = natural.height;
+        switch (fitMode) {
+            case ImageFitMode::Fill:      w = cw; h = ch; break;
+            case ImageFitMode::Contain:   { float k = std::min(fitW, fitH); w *= k; h *= k; break; }
+            case ImageFitMode::Cover:     { float k = std::max(fitW, fitH); w *= k; h *= k; break; }
+            case ImageFitMode::ScaleDown: { float k = std::min(1.f, std::min(fitW, fitH)); w *= k; h *= k; break; }
+            case ImageFitMode::NoScale:   break;
+        }
+        return Rect2Df(content.x + imagePosition.x.OffsetIn(cw, w),
+                       content.y + imagePosition.y.OffsetIn(ch, h), w, h);
     }
 
     Size2Df UltraCanvasImageElement::NaturalImageSize() const {
@@ -208,8 +229,23 @@ namespace UltraCanvas {
             ctx->Translate(-center.x, -center.y);
         }
 
+        // Positioned off-centre: fit and place the image here, clipped to the
+        // content box (the backends centre what they fit).
+        if (!imagePosition.x.IsCentred() || !imagePosition.y.IsCentred()) {
+            const Rect2Df dest = ImageDrawRect();
+            if (dest.width > 0 && dest.height > 0) {
+                ctx->PushState();
+                ctx->ClipRect(Rect2Dd(contentRect.x, contentRect.y, contentRect.width, contentRect.height));
+                const Rect2Dd d(dest.x, dest.y, dest.width, dest.height);
+                if (auto framePm = animator.GetCurrentFramePixmap())
+                    ctx->DrawPixmap(*framePm, d, ImageFitMode::Fill);
+                else if (loadedImage && loadedImage->IsValid())
+                    ctx->DrawImage(*loadedImage.get(), d, ImageFitMode::Fill);
+                ctx->PopState();
+            }
+        }
         // Draw the image using unified rendering (element-local bounds)
-        if (auto framePm = animator.GetCurrentFramePixmap()) {
+        else if (auto framePm = animator.GetCurrentFramePixmap()) {
             // Animated image: draw the controller's current frame directly.
             ctx->DrawPixmap(*framePm, contentRect, fitMode);
         } else if (loadedImage->IsValid()) {

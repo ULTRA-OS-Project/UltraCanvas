@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.3.0 - background-position (keywords, %, lengths, edge offsets);
+//                  background size and position kept per layer.
 // Version: 1.2.0 - table presentational attributes (nowrap, valign,
 //                  cellpadding, cellspacing, tr align); white-space: nowrap;
 //                  border-collapse / border-spacing / border-radius; cells
@@ -15,6 +17,7 @@
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
+#include <optional>
 
 namespace UltraCanvas {
 namespace HTML {
@@ -443,6 +446,107 @@ void ApplyBoxShorthand(const std::string& value, float emPx, float remPx,
     }
 }
 
+// Split on `sep` outside parentheses (url(...), rgb(...)).
+std::vector<std::string> SplitTopLevel(const std::string& value, char sep) {
+    std::vector<std::string> out;
+    std::string current;
+    int parens = 0;
+    for (char c : value) {
+        if (c == '(') ++parens;
+        if (c == ')') --parens;
+        if (c == sep && parens == 0) { out.push_back(current); current.clear(); }
+        else current += c;
+    }
+    out.push_back(current);
+    return out;
+}
+
+// background-size: contain / cover; anything else (auto, lengths) keeps the
+// picture at its own size.
+BackgroundSizeMode ParseBackgroundSize(const std::string& text) {
+    for (const auto& part : SplitParts(TrimLower(text))) {
+        if (part == "contain") return BackgroundSizeMode::Contain;
+        if (part == "cover") return BackgroundSizeMode::Cover;
+    }
+    return BackgroundSizeMode::Auto;
+}
+
+// background-position: keywords (left / center / right, top / center /
+// bottom), percentages and lengths, in 1 to 4 values ("right 10px bottom
+// 20%"). Words that are not part of a position (no-repeat, a colour, fixed)
+// are skipped, so the shorthand's rest can be passed as it is. Nothing that
+// looks like a position gives nullopt.
+std::optional<BackgroundPosition> ParseBackgroundPosition(const std::string& text,
+                                                          float emPx, float remPx) {
+    struct Token { std::string keyword; std::optional<CssLength> length; };
+    std::vector<Token> tokens;
+    for (const auto& part : SplitParts(TrimLower(text))) {
+        if (part == "left" || part == "right" || part == "top" || part == "bottom" ||
+            part == "center") {
+            tokens.push_back({ part, std::nullopt });
+        } else if (auto len = CssLength::Parse(part)) {
+            // A bare number is a length only when it is 0.
+            if (len->unit == CssUnit::Auto) continue;
+            if (len->unit == CssUnit::Number && len->value != 0.f) continue;
+            tokens.push_back({ std::string(), len });
+        }
+    }
+    if (tokens.empty() || tokens.size() > 4) return std::nullopt;
+
+    auto fraction = [](float f) { return BackgroundAxisPosition{ f, false, false }; };
+    auto fromLength = [&](const CssLength& len, bool fromEnd) {
+        if (len.unit == CssUnit::Percent) {
+            const float f = len.value / 100.f;
+            return fraction(fromEnd ? 1.f - f : f);
+        }
+        return BackgroundAxisPosition{ len.ToPx(emPx, remPx), true, fromEnd };
+    };
+    auto keywordFraction = [](const std::string& k) {
+        return (k == "left" || k == "top") ? 0.f : (k == "right" || k == "bottom") ? 1.f : 0.5f;
+    };
+    auto isHorizontal = [](const std::string& k) { return k == "left" || k == "right"; };
+    auto isVertical   = [](const std::string& k) { return k == "top" || k == "bottom"; };
+
+    BackgroundPosition p;
+    p.x = fraction(0.5f);
+    p.y = fraction(0.5f);
+
+    if (tokens.size() == 1) {
+        const Token& t = tokens[0];
+        if (t.length) { p.x = fromLength(*t.length, false); return p; }
+        if (isVertical(t.keyword)) p.y = fraction(keywordFraction(t.keyword));
+        else p.x = fraction(keywordFraction(t.keyword));
+        return p;
+    }
+    if (tokens.size() == 2) {
+        Token a = tokens[0], b = tokens[1];
+        // "top left", "center left": the vertical word came first.
+        if ((!a.keyword.empty() && isVertical(a.keyword)) ||
+            (!b.keyword.empty() && isHorizontal(b.keyword))) std::swap(a, b);
+        p.x = a.length ? fromLength(*a.length, false) : fraction(keywordFraction(a.keyword));
+        p.y = b.length ? fromLength(*b.length, false) : fraction(keywordFraction(b.keyword));
+        return p;
+    }
+    // 3 or 4 values: edge keywords, each maybe followed by its offset.
+    bool haveX = false, haveY = false;
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        const Token& t = tokens[i];
+        if (t.keyword.empty()) return std::nullopt;   // an offset without its edge
+        std::optional<CssLength> offset;
+        if (i + 1 < tokens.size() && tokens[i + 1].length) offset = tokens[++i].length;
+        const bool end = (t.keyword == "right" || t.keyword == "bottom");
+        BackgroundAxisPosition v = offset ? fromLength(*offset, end)
+                                          : fraction(keywordFraction(t.keyword));
+        if (isHorizontal(t.keyword) || (t.keyword == "center" && !haveX && haveY)) {
+            p.x = v; haveX = true;
+        } else if (isVertical(t.keyword) || t.keyword == "center") {
+            if (t.keyword == "center" && !haveX && !haveY) { p.x = v; haveX = true; }
+            else { p.y = v; haveY = true; }
+        }
+    }
+    return p;
+}
+
 bool ContainsWord(const std::string& value, const char* word) {
     for (const auto& part : SplitParts(value)) {
         if (TrimLower(part) == word) return true;
@@ -499,40 +603,43 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         if (auto color = CssColor::Parse(lower)) s.backgroundColor = *color;
     }
     else if (prop == "background" || prop == "background-image") {
-        // Layers split on top-level commas; each may hold url(...), a size
-        // after '/', and (in the shorthand's last layer) a colour.
-        std::vector<std::string> layers;
-        {
-            std::string current;
-            int parens = 0;
-            for (char c : value) {
-                if (c == '(') ++parens;
-                if (c == ')') --parens;
-                if (c == ',' && parens == 0) { layers.push_back(current); current.clear(); }
-                else current += c;
-            }
-            layers.push_back(current);
-        }
+        // Layers split on top-level commas; each may hold url(...), a
+        // position, a size after '/', and (in the shorthand's last layer) a
+        // colour. Size and position are kept per image layer.
+        const std::vector<std::string> layers = SplitTopLevel(value, ',');
         std::vector<std::string> urls;
+        std::vector<BackgroundSizeMode> sizes;
+        std::vector<BackgroundPosition> positions;
         for (const auto& rawLayer : layers) {
             const std::string layer = Trim(rawLayer);
-            std::string low = TrimLower(layer);
-            size_t u = low.find("url(");
-            if (u != std::string::npos) {
-                size_t close = layer.find(')', u);
-                std::string url = Trim(layer.substr(u + 4, close == std::string::npos
-                                                               ? std::string::npos : close - u - 4));
-                if (url.size() >= 2 && (url.front() == '\'' || url.front() == '"')) {
-                    url = url.substr(1, url.size() - 2);
-                }
-                if (!url.empty()) urls.push_back(url);
+            const std::string low = TrimLower(layer);
+            const size_t u = low.find("url(");
+            if (u == std::string::npos) continue;
+            const size_t close = layer.find(')', u);
+            std::string url = Trim(layer.substr(u + 4, close == std::string::npos
+                                                           ? std::string::npos : close - u - 4));
+            if (url.size() >= 2 && (url.front() == '\'' || url.front() == '"')) {
+                url = url.substr(1, url.size() - 2);
             }
-            if (prop == "background" && urls.size() == 1 && u != std::string::npos) {
-                if (low.find("contain") != std::string::npos) s.backgroundSize = BackgroundSizeMode::Contain;
-                else if (low.find("cover") != std::string::npos) s.backgroundSize = BackgroundSizeMode::Cover;
+            if (url.empty()) continue;
+            urls.push_back(url);
+            if (prop != "background") continue;
+            // The rest of the layer: "<position> [/ <size>] <repeat> ...".
+            std::string rest = low.substr(0, u) + " " +
+                               (close == std::string::npos ? std::string() : low.substr(close + 1));
+            std::string sizePart;
+            if (const size_t slash = rest.find('/'); slash != std::string::npos) {
+                sizePart = rest.substr(slash + 1);
+                rest = rest.substr(0, slash);
             }
+            sizes.push_back(ParseBackgroundSize(sizePart));
+            positions.push_back(ParseBackgroundPosition(rest, em, rem).value_or(BackgroundPosition{}));
         }
         s.backgroundImages = urls;   // the shorthand (and 'none') resets them
+        if (prop == "background") {
+            s.backgroundSizes = sizes;
+            s.backgroundPositions = positions;
+        }
         if (prop == "background" && !opts.overrideAuthorColors) {
             // The colour sits in the last layer, anywhere among its words.
             for (const auto& part : SplitParts(TrimLower(layers.back()))) {
@@ -542,9 +649,16 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         }
     }
     else if (prop == "background-size") {
-        if (lower.rfind("contain", 0) == 0) s.backgroundSize = BackgroundSizeMode::Contain;
-        else if (lower.rfind("cover", 0) == 0) s.backgroundSize = BackgroundSizeMode::Cover;
-        else s.backgroundSize = BackgroundSizeMode::Auto;
+        s.backgroundSizes.clear();
+        for (const auto& item : SplitTopLevel(lower, ','))
+            s.backgroundSizes.push_back(ParseBackgroundSize(item));
+    }
+    else if (prop == "background-position") {
+        s.backgroundPositions.clear();
+        for (const auto& item : SplitTopLevel(lower, ',')) {
+            if (auto position = ParseBackgroundPosition(item, em, rem))
+                s.backgroundPositions.push_back(*position);
+        }
     }
     else if (prop == "max-width") {
         s.maxWidthPx.reset();

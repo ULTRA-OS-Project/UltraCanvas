@@ -1,7 +1,7 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
-// Version: 1.1.0
-// Last Modified: 2026-05-11
+// Version: 1.2.0 - SetImagePosition: where the fitted image sits in the element
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -36,6 +36,34 @@ enum class ImageLoadState {
     Failed
 };
 
+// Where an image that does not fill its element sits in it, per axis - CSS
+// background-position / object-position: a fraction of the free space (0 =
+// left / top, 0.5 = centred, 1 = right / bottom) or a pixel offset from the
+// left / top edge, or from the right / bottom edge when fromEnd is set. An
+// image larger than the element (Cover, NoScale) is shifted the same way, so
+// 0.5 shows its middle.
+struct ImageAxisPosition {
+    float value   = 0.5f;
+    bool  pixels  = false;   // value is px, not a fraction
+    bool  fromEnd = false;   // px measured from the right / bottom edge
+
+    static ImageAxisPosition Fraction(float f) { return { f, false, false }; }
+    static ImageAxisPosition Pixels(float px, bool fromEndEdge = false) {
+        return { px, true, fromEndEdge };
+    }
+    // The offset of an item `item` long inside `space` along this axis.
+    float OffsetIn(float space, float item) const {
+        if (!pixels) return (space - item) * value;
+        return fromEnd ? space - item - value : value;
+    }
+    bool IsCentred() const { return !pixels && value == 0.5f; }
+};
+
+struct ImagePosition {
+    ImageAxisPosition x;
+    ImageAxisPosition y;
+};
+
 // ===== IMAGE ELEMENT COMPONENT =====
 class UltraCanvasImageElement : public UltraCanvasUIElement {
 private:
@@ -45,6 +73,7 @@ private:
     
     // Display properties
     ImageFitMode fitMode = ImageFitMode::Contain;
+    ImagePosition imagePosition;   // centred unless set
     Color tintColor = Colors::White;
     float opacity = 1.0f;
     bool smoothScaling = true;
@@ -102,6 +131,13 @@ public:
     void SetFitMode(ImageFitMode mode) { fitMode = mode; RequestRedraw(); }
     
     ImageFitMode GetFitMode() const { return fitMode; }
+    // Where the fitted image sits in the element (default: centred).
+    void SetImagePosition(const ImagePosition& position) { imagePosition = position; RequestRedraw(); }
+    const ImagePosition& GetImagePosition() const { return imagePosition; }
+    // The rectangle (element-local) the image is drawn into for the current
+    // fit mode and position; it may reach past the content box (Cover,
+    // NoScale), which clips it. Empty without an image.
+    Rect2Df ImageDrawRect() const;
     void SetTintColor(const Color& color) { tintColor = color; }
     void SetOpacity(float alpha) { opacity = std::max(0.0f, std::min(1.0f, alpha)); RequestRedraw(); }
     float GetOpacity() const { return opacity; }
