@@ -232,8 +232,13 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   "Attach cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
   account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
   shown as a chip strip with sizes and a total-size warning.
-- **Signatures** — per account, appended automatically, editable in
-  settings.
+- **Signatures** — per account, in *Account Settings > Signature*: none,
+  plain text (below a `-- ` line) or HTML, designed in a WYSIWYG editor
+  (`UltraCanvasRichTextEdit`: character formatting, font, size, colour,
+  alignment, lists, links, pictures, a rule) or written as HTML source. Put
+  below the line the message is written on and above any quote, in new mail
+  and - unless switched off - in replies and forwards; an HTML signature makes
+  the message a formatted one. *(Implemented in UltraMail 0.10.11.)*
 - **Drafts** — autosaved to the local store every few seconds and on
   close; **Send** puts the message into the **Outbox** queue, which the
   engine flushes when online (so send never blocks and survives

@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.12 - a signature per account (Account Settings > Signature): put
+//                   into new mail, replies and forwards
 // Version: 0.9.11 - and right after the computer wakes from sleep (WakeDetector)
 // Version: 0.9.10 - new mail is fetched right after start, not five minutes later
 // Version: 0.9.9 - a Settings window (gear at the right end of the toolbar, as in
@@ -7,7 +9,7 @@
 // Version: 0.9.8 - replies and forwards of HTML mail keep the formatting
 // Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
 //                  style, no master-password prompt); old vaults migrate once
-// Last Modified: 2026-09-29
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 
@@ -20,6 +22,7 @@
 #include "UltraMailCredentialVault.h"
 #include "UltraMailComposer.h"
 #include "UltraMailRichComposer.h"
+#include "UltraMailSignatureDialog.h"
 #include "UltraMailSender.h"
 #include "UltraMailContactCollector.h"
 #include "UltraMailSyncService.h"
@@ -285,6 +288,25 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
         src.date = "Tue, 14 Jan 2026 14:02:00 +0000";
         OpenComposer(Composer::Reply(src, "Erika Example", "erika@example.com", false));
     }
+    // Demo path: the account signature. =1 opens the signature editor on a
+    // designed HTML signature; =2 a new message from the demo account (seeded
+    // by ULTRAMAIL_DEMO_MAIL=1) signed with it.
+    if (const char* dsig = std::getenv("ULTRAMAIL_DEMO_SIGNATURE"); dsig && *dsig) {
+        Signature sig;
+        sig.kind = SignatureKind::Html;
+        sig.text = "Erika Example\nSales, ACME Ltd.";
+        sig.html = "<p><b><span style=\"color:#1E3A8A\">Erika Example</span></b><br>"
+                   "<i>Sales</i>, ACME Ltd.<br>"
+                   "<a href=\"https://acme.example\">acme.example</a></p>";
+        if (*dsig == '1') {
+            SignatureDialog::Show(window_.get(), "erika@example.com", sig,
+                                  [](const Signature&) {});
+        } else {
+            SaveSignature("erika", sig);
+            OpenComposer(WithSignature(Composer::NewMessage("Erika Example", "erika@example.com"),
+                                       DraftPurpose::NewMessage));
+        }
+    }
 
     return window_;
 }
@@ -325,7 +347,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         if (addr.empty() && !accounts_.empty()) {
             name = accounts_.front().displayName; addr = accounts_.front().email;
         }
-        OpenComposer(Composer::NewMessage(name, addr));
+        OpenComposer(WithSignature(Composer::NewMessage(name, addr), DraftPurpose::NewMessage));
     });
     // Update: download new mail for the account on screen now, rather than
     // waiting for the background check.
@@ -387,13 +409,13 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                const std::string& selfAddr) {
         Draft draft = Composer::Reply(src, selfName, selfAddr, /*replyAll=*/false);
         MakeRichReply(draft, src);
-        OpenComposer(draft);
+        OpenComposer(WithSignature(std::move(draft), DraftPurpose::ReplyOrForward));
     };
     mailView_.onForward = [this](const SourceMessage& src, const std::string& selfName,
                                  const std::string& selfAddr) {
         Draft draft = Composer::Forward(src, selfName, selfAddr);
         MakeRichForward(draft, src);
-        OpenComposer(draft);
+        OpenComposer(WithSignature(std::move(draft), DraftPurpose::ReplyOrForward));
     };
     mailView_.onDelete     = [this](const MessageEnvelope& e) { HandleDeleteMessage(e); };
     mailView_.onJunk       = [this](const MessageEnvelope& e) { HandleJunkMessage(e); };
@@ -755,6 +777,26 @@ void UltraMailApp::ReportMissingImapPlugin() {
                + ". Build the UltraNet IMAP plug-in (ULTRACANVAS_PLUGIN_IMAP) "
                  "and keep it there, or point ULTRAMAIL_PLUGIN_DIR at the folder "
                  "that holds it, then restart UltraMail.");
+}
+
+Draft UltraMailApp::WithSignature(Draft draft, DraftPurpose purpose) const {
+    const std::string from = ToLowerCase(draft.fromAddr);
+    for (const Account& account : accounts_) {
+        if (ToLowerCase(account.email) != from) continue;
+        ApplySignature(draft, account.signature, purpose);
+        break;
+    }
+    return draft;
+}
+
+void UltraMailApp::SaveSignature(const std::string& accountId, const Signature& signature) {
+    if (UltraDbResult up = store_.SetAccountSignature(accountId, signature); !up) {
+        AlertError(window_ ? window_.get() : nullptr,
+                   "The signature could not be saved.", DetailLine(up));
+        return;
+    }
+    for (Account& account : accounts_)
+        if (account.accountId == accountId) account.signature = signature;
 }
 
 void UltraMailApp::OpenComposer(const Draft& draft) {
@@ -2379,6 +2421,11 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         // The red "Delete account" button in the settings dialog's bottom row.
         // It closes the page, then HandleDeleteAccount runs the confirm-and-remove.
         fields.onDelete = [this, accountId]() { HandleDeleteAccount(accountId); };
+        // The Signature row: the editor saves on its own Save.
+        fields.signature       = account.signature;
+        fields.onSaveSignature = [this, accountId](const Signature& signature) {
+            SaveSignature(accountId, signature);
+        };
 
         // The login check uses the typed new password when present, else the
         // account's stored credentials. It only runs on the password path; the
