@@ -44869,7 +44869,7 @@ Hebrew and mixed lines display correctly; a paragraph whose first letter is
 right-to-left starts at the right. `SetRightToLeft(true)` marks the selected
 paragraphs right-to-left (`RichDocBlock::rightToLeft`), so they start at the
 right whatever their first letter; left and right alignment mean what they say
-on the page. In a paragraph with right-to-left letters Left and Right move the
+on the page; a right-to-left list item has its number or bullet on the right. In a paragraph with right-to-left letters Left and Right move the
 caret the way the arrow points; Home/End and word steps stay logical. DOCX
 `w:bidi`, ODT `style:writing-mode` and HTML `dir="rtl"` carry the direction.
 

@@ -1463,6 +1463,16 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
     bl.textLeft = indent;
     const float columnSpan = std::max(24.0f + indent, ColumnWidth() - intrudeRight);
     float wrapWidth = std::max(1.0f, columnSpan - indent);
+    // A right-to-left list item is the mirror image: its indent and its
+    // number or bullet are on the right, the text ends before them.
+    bl.markerOnRight = false;
+    if (block.type == RichBlockType::ListItem
+        && (block.rightToLeft
+            || UCRichDocumentEditor::FirstStrongDirection(UCRichDocumentEditor::RunsText(block.runs)) > 0)) {
+        bl.markerOnRight = true;
+        bl.textLeft = intrudeLeft;
+        bl.markerLeft = columnSpan - (bl.markerLeft - intrudeLeft) ;    // mirrored: the marker's right edge
+    }
     if (block.type != RichBlockType::ListItem) {
         // A hanging indent puts the first line left of the others: the layout
         // starts there, and its (negative) indent moves the rest back in.
@@ -2189,9 +2199,14 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
         // end a small gap before the text, but never past the column edge.
         const double width = static_cast<double>(ctx->GetTextLineWidth(bl.markerText));
         const double gap = std::max(4.0, markerFont.fontSize * 0.4);
-        const double markerX = std::max(static_cast<double>(originX),
-                                        std::min(static_cast<double>(originX + bl.markerLeft),
-                                                 static_cast<double>(originX + bl.textLeft) - gap - width));
+        double markerX = std::max(static_cast<double>(originX),
+                                  std::min(static_cast<double>(originX + bl.markerLeft),
+                                           static_cast<double>(originX + bl.textLeft) - gap - width));
+        if (bl.markerOnRight) {
+            // Mirrored: just right of where the text ends, within the indent.
+            const double textRight = originX + bl.textLeft + (bl.layout ? bl.layout->GetExplicitWidth() : 0.0);
+            markerX = std::max(textRight + gap, static_cast<double>(originX + bl.markerLeft) - width);
+        }
         ctx->DrawText(bl.markerText, Point2Dd(markerX, originY));
         ctx->PopState();
     }

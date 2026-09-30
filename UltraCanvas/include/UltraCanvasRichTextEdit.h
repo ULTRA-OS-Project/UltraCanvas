@@ -539,6 +539,7 @@ private:
         float markerLeft = 0.0f;                  // list bullet / number position
         std::string markerText;
         bool checkbox = false;                    // check list item: a box instead of markerText
+        bool markerOnRight = false;               // a right-to-left list item: marker right of the text
         bool checked = false;
         std::vector<RichTextHitRect> hitRects;
         // Table blocks: one layout per cell, plus the geometry to draw them.

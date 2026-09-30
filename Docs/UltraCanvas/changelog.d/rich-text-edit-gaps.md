@@ -186,3 +186,5 @@
   `GetAccessibleTextInterface`; the window announces focus changes.
   `UltraCanvasRichTextEdit` implements the text interface and announces edits
   and caret moves. Platform bridges (AT-SPI, UIA) are still to be written.
+- **Right-to-left list items are mirrored**: their number or bullet sits to
+  the right of the text, in the indent, instead of on the far left.
