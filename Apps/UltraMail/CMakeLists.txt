@@ -196,6 +196,7 @@ set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailAttachmentStrip.cpp
     ui/UltraMailContactsView.cpp
     ui/UltraMailComposeWindow.cpp
+    ui/UltraMailFormatBar.cpp
     ui/UltraMailPassphraseDialog.cpp
     ui/UltraMailWaitDialog.cpp
     ui/UltraMailOAuthCodeDialog.cpp

@@ -8,6 +8,7 @@
 // Nothing here paints anything. These are values handed to catalogue elements
 // through their own SetStyle / SetTextColor / SetBorders APIs, per the
 // framework rule that applications never hand-roll a widget.
+// Version: 0.4.0 - StyleSegmented (the signature editor, the compose window)
 // Version: 0.3.0 - sender-badge colours (kTrust*) and the badge metric
 // Last Modified: 2026-09-19
 // Author: UltraCanvas Framework / ULTRA OS
@@ -248,6 +249,24 @@ inline void StyleDropdown(const DropdownPtr& dd) {
     auto s = dd->GetStyle();
     s.fontSize = kSizeBody;
     dd->SetStyle(s);
+}
+
+// Segmented controls (None | Plain text | HTML, Plain text | Formatted): the
+// accent for the chosen segment, hairline borders, body-size text. A template
+// for the same reason as StyleTextArea.
+template <typename SegmentedPtr>
+inline void StyleSegmented(const SegmentedPtr& sc) {
+    if (!sc) return;
+    auto style = sc->GetStyle();
+    style.fontSize        = kSizeBody;
+    style.selectedColor   = kAccent;
+    style.hoverColor      = kAccentSoft;
+    style.normalColor     = kCardBackground;
+    style.borderColor     = kCardBorder;
+    style.separatorColor  = kCardBorder;
+    style.cornerRadius    = kControlRadius;
+    style.paddingVertical = 3;
+    sc->SetStyle(style);
 }
 
 // ---------------------------------------------------------------------------

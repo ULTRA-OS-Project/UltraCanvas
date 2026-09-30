@@ -803,7 +803,7 @@ void UltraMailApp::OpenComposer(const Draft& draft) {
     WindowConfig cfg;
     cfg.title  = draft.subject.empty() ? "New message" : draft.subject;
     cfg.width  = 640;
-    cfg.height = 520;
+    cfg.height = 560;   // two toolbar rows above the body
     cfg.backgroundColor = Theme::kCardBackground;
     auto win = CreateWindow(cfg);
 
