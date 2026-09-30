@@ -28,8 +28,11 @@
 - **Every dialog is the framework's own.** The app asked for native dialogs,
   so its confirmations and notices were the platform's message boxes while
   the results dialog was not. `main.cpp` now leaves native dialogs off and
-  all of them share one style; only the folder picker stays the platform's,
-  because the framework has no folder dialog of its own.
+  all of them share one style. The photo-folder picker included: it is the
+  framework's file dialog in its folder mode, opening on the folder chosen
+  last time, else the user's Pictures folder.
+  (`UltraCanvasFileLoader::SelectFolderDialog` opens the platform's picker
+  whatever the flag says, so the window builds the dialog itself.)
 
 #### 2026-09-29 *0.56*
 - **Ctrl-C and SIGTERM exit in order.** The signal handler called

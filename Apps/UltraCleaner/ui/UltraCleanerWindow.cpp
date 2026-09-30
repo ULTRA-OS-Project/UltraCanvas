@@ -3,6 +3,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerWindow.h"
 
+#include "UltraCleanerPaths.h"
 #include "UltraCleanerRules.h"
 
 // ULTRACLEANER_VERSION comes from the build alone: CMake reads the first line
@@ -16,14 +17,15 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasGroupBox.h"
-#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSeparator.h"
 #include "UltraCanvasSplitPane.h"
 
 #include <algorithm>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <map>
 #include <thread>
 
@@ -775,16 +777,36 @@ void UltraCleanerWindow::ConfirmAndClean(RemovalMode mode) {
 // ===== ALBUM =====
 
 void UltraCleanerWindow::ChooseAlbumFolder() {
-    FileDialogOptions options;
-    options.title = "Choose a folder of photos";
-    options.parentWindow = window_.get();
-    UltraCanvasFileLoader::SelectFolderDialog(
-        options, [this](DialogResult result, const std::string& folder) {
-            if (result != DialogResult::OK || folder.empty()) return;
-            albumView_.SetFolder(folder);
-            // Choosing the folder is the request: no second button press.
-            if (!working_) StartAlbumScan();
-        });
+    // The framework's own file dialog in its folder mode, like every other
+    // dialog in the app. UltraCanvasFileLoader::SelectFolderDialog always
+    // opens the platform's picker, whatever the native-dialogs flag says, so
+    // the dialog is built here instead.
+    FileDialogConfig config;
+    config.title      = "Choose a folder of photos";
+    config.dialogType = FileDialogType::SelectFolder;
+    config.filters.clear();   // folders only; a file filter has nothing to do
+    // Open where the pictures are likely to be: the folder chosen last time,
+    // else the user's Pictures folder, else home.
+    std::string start = albumView_.Folder();
+    if (start.empty()) {
+        std::error_code ec;
+        const std::string pictures = HomeDir() + "/Pictures";
+        start = std::filesystem::is_directory(PathFromUtf8(pictures), ec)
+                    ? pictures : HomeDir();
+    }
+    config.initialDirectory = start;
+
+    // What UltraCanvasDialogManager::CreateFileDialog does, which is private.
+    auto dialog = std::make_shared<UltraCanvasFileDialog>();
+    dialog->CreateFileDialog(config);
+    // Fired by OK with the folder the dialog is showing, before it closes.
+    dialog->onFileSelected = [this](const std::string& folder) {
+        if (folder.empty()) return;
+        albumView_.SetFolder(folder);
+        // Choosing the folder is the request: no second button press.
+        if (!working_) StartAlbumScan();
+    };
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window_.get());
 }
 
 void UltraCleanerWindow::StartAlbumScan() {

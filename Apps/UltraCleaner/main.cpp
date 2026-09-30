@@ -365,8 +365,8 @@ int main(int argc, char* argv[]) {
             NormalizePath(GetResourcesDir() + "media/appicon/UltraCleaner.png"));
         // The framework's own dialogs throughout, not the platform's message
         // boxes: they render Markdown, scroll a long list and look the same
-        // on every platform, which the results dialog relies on. (The folder
-        // picker is the platform's whatever this says.)
+        // on every platform, which the results dialog relies on. The folder
+        // picker is the framework's file dialog too, built in the window.
         UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
         UltraCleaner::UltraCleanerWindow window;
