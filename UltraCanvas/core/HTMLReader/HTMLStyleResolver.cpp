@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.4.0 - background-repeat: repeat / repeat-x / repeat-y / no-repeat,
+//                  one or two values, per layer (initial: repeat).
 // Version: 1.3.0 - background-position (keywords, %, lengths, edge offsets);
 //                  background size and position kept per layer.
 // Version: 1.2.0 - table presentational attributes (nowrap, valign,
@@ -471,6 +473,21 @@ BackgroundSizeMode ParseBackgroundSize(const std::string& text) {
     return BackgroundSizeMode::Auto;
 }
 
+// background-repeat: repeat-x, repeat-y, or one value per axis (repeat,
+// space, round, no-repeat); nullopt when the text names none of them. The
+// shorthand's whole layer can be passed: other words are skipped.
+std::optional<BackgroundRepeat> ParseBackgroundRepeat(const std::string& text) {
+    std::vector<bool> axes;
+    for (const auto& part : SplitParts(TrimLower(text))) {
+        if (part == "repeat-x") return BackgroundRepeat{ true, false };
+        if (part == "repeat-y") return BackgroundRepeat{ false, true };
+        if (part == "repeat" || part == "space" || part == "round") axes.push_back(true);
+        else if (part == "no-repeat") axes.push_back(false);
+    }
+    if (axes.empty()) return std::nullopt;
+    return BackgroundRepeat{ axes[0], axes.size() > 1 ? axes[1] : axes[0] };
+}
+
 // background-position: keywords (left / center / right, top / center /
 // bottom), percentages and lengths, in 1 to 4 values ("right 10px bottom
 // 20%"). Words that are not part of a position (no-repeat, a colour, fixed)
@@ -610,6 +627,7 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         std::vector<std::string> urls;
         std::vector<BackgroundSizeMode> sizes;
         std::vector<BackgroundPosition> positions;
+        std::vector<BackgroundRepeat> repeats;
         for (const auto& rawLayer : layers) {
             const std::string layer = Trim(rawLayer);
             const std::string low = TrimLower(layer);
@@ -633,12 +651,14 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
                 rest = rest.substr(0, slash);
             }
             sizes.push_back(ParseBackgroundSize(sizePart));
+            repeats.push_back(ParseBackgroundRepeat(rest + " " + sizePart).value_or(BackgroundRepeat{}));
             positions.push_back(ParseBackgroundPosition(rest, em, rem).value_or(BackgroundPosition{}));
         }
         s.backgroundImages = urls;   // the shorthand (and 'none') resets them
         if (prop == "background") {
             s.backgroundSizes = sizes;
             s.backgroundPositions = positions;
+            s.backgroundRepeats = repeats;
         }
         if (prop == "background" && !opts.overrideAuthorColors) {
             // The colour sits in the last layer, anywhere among its words.
@@ -652,6 +672,11 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         s.backgroundSizes.clear();
         for (const auto& item : SplitTopLevel(lower, ','))
             s.backgroundSizes.push_back(ParseBackgroundSize(item));
+    }
+    else if (prop == "background-repeat") {
+        s.backgroundRepeats.clear();
+        for (const auto& item : SplitTopLevel(lower, ','))
+            s.backgroundRepeats.push_back(ParseBackgroundRepeat(item).value_or(BackgroundRepeat{}));
     }
     else if (prop == "background-position") {
         s.backgroundPositions.clear();

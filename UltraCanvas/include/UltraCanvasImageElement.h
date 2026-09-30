@@ -1,5 +1,6 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
+// Version: 1.3.0 - SetImageRepeat: the image tiles across the element (either axis)
 // Version: 1.2.0 - SetImagePosition: where the fitted image sits in the element
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
@@ -74,6 +75,8 @@ private:
     // Display properties
     ImageFitMode fitMode = ImageFitMode::Contain;
     ImagePosition imagePosition;   // centred unless set
+    bool repeatX = false;           // tile across / down the element
+    bool repeatY = false;
     Color tintColor = Colors::White;
     float opacity = 1.0f;
     bool smoothScaling = true;
@@ -134,6 +137,13 @@ public:
     // Where the fitted image sits in the element (default: centred).
     void SetImagePosition(const ImagePosition& position) { imagePosition = position; RequestRedraw(); }
     const ImagePosition& GetImagePosition() const { return imagePosition; }
+    // Tile the image across (x) and / or down (y) the element - CSS
+    // background-repeat. The tiles line up on the one ImageDrawRect places,
+    // at the fitted size; one pattern fill draws them all, so a 1-pixel strip
+    // repeated across a large box costs the same as one picture.
+    void SetImageRepeat(bool x, bool y) { repeatX = x; repeatY = y; RequestRedraw(); }
+    bool GetImageRepeatX() const { return repeatX; }
+    bool GetImageRepeatY() const { return repeatY; }
     // The rectangle (element-local) the image is drawn into for the current
     // fit mode and position; it may reach past the content box (Cover,
     // NoScale), which clips it. Empty without an image.
@@ -204,6 +214,8 @@ public:
 private:
     // Natural (intrinsic) image size in pixels; {0,0} if no valid image is loaded.
     Size2Df NaturalImageSize() const;
+    // The repeating (SetImageRepeat) draw path.
+    void DrawRepeatedImage(IRenderContext* ctx, const Rect2Df& contentRect);
 
     void SetError(const std::string& message);
 

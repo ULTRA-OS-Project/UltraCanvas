@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.5.0 - background-repeat
 // Version: 1.4.0 - background-position
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
@@ -590,6 +591,32 @@ static void TestBackgroundPosition() {
     CHECK(isFraction(p.x, 0.f) && isFraction(p.y, 0.f));
 }
 
+// background-repeat: longhand, shorthand, lists per layer, the initial value.
+static void TestBackgroundRepeat() {
+    auto repeatOf = [](const std::string& css, size_t layer = 0) {
+        Parser parser;
+        Document doc = parser.Parse("<div style=\"" + css + "\">x</div>");
+        StyleResolver resolver;
+        resolver.Resolve(doc, ResolverOptions{});
+        Node* div = doc.root->FindFirst("div");
+        return div ? resolver.StyleOf(div).BackgroundRepeatAt(layer) : BackgroundRepeat{};
+    };
+    BackgroundRepeat r = repeatOf("background: url(a.png)");
+    CHECK(r.x && r.y);                                   // CSS initial: repeat
+    r = repeatOf("background: url(a.png) no-repeat center");
+    CHECK(!r.x && !r.y);
+    r = repeatOf("background: #fff url(a.png) repeat-x top");
+    CHECK(r.x && !r.y);
+    r = repeatOf("background-image: url(a.png); background-repeat: repeat-y");
+    CHECK(!r.x && r.y);
+    r = repeatOf("background-image: url(a.png); background-repeat: repeat no-repeat");
+    CHECK(r.x && !r.y);
+    r = repeatOf("background-image: url(a.png); background-repeat: space");
+    CHECK(r.x && r.y);                                   // space: taken as repeat
+    r = repeatOf("background: url(a.png) no-repeat, url(b.png) repeat-x", 1);
+    CHECK(r.x && !r.y);                                  // the second layer's own
+}
+
 int main() {
     TestParserBasics();
     TestParserFragmentAndRecovery();
@@ -606,6 +633,7 @@ int main() {
     TestMailTableStyles();
     TestMediaAndBackgrounds();
     TestBackgroundPosition();
+    TestBackgroundRepeat();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);

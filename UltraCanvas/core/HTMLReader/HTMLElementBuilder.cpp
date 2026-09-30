@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.6.0 - background-repeat: the picture tiles as the layer says (CSS's
+//                  default repeats both ways).
 // Version: 1.5.0 - background-position: the picture sits where the layer says
 //                  (CSS's default top-left, not always centred).
 // Version: 1.4.0 - @media answered for BuildOptions::viewportWidth; background
@@ -1184,6 +1186,8 @@ void ElementBuilder::ApplyBackgroundImage(UltraCanvasContainer& box, const Compu
                         : ImageAxisPosition::Fraction(a.value);
     };
     image->SetImagePosition(ImagePosition{ axis(where.x), axis(where.y) });
+    const BackgroundRepeat repeat = style.BackgroundRepeatAt(layer);
+    image->SetImageRepeat(repeat.x, repeat.y);
     // Out of flow, filling the box: it neither sizes the box nor pushes its
     // content, and as the first child it is drawn underneath that content.
     CSSLayout::Position fill;

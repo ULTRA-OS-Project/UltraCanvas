@@ -1,5 +1,7 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
+// Version: 1.3.0 - a repeating image (SetImageRepeat) is one pattern fill over the
+//                 tiled area; drawn tile by tile where a backend has no patterns
 // Version: 1.2.0 - an image positioned off-centre (SetImagePosition) is drawn into
 //                 ImageDrawRect, clipped to the content box
 // Last Modified: 2026-09-30
@@ -10,6 +12,7 @@
 #include "UltraCanvasFileError.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <vector>
@@ -94,6 +97,49 @@ namespace UltraCanvas {
             return true;
         }
         return false;
+    }
+
+    void UltraCanvasImageElement::DrawRepeatedImage(IRenderContext* ctx, const Rect2Df& contentRect) {
+        const Rect2Df tile = ImageDrawRect();
+        if (tile.width <= 0.f || tile.height <= 0.f) return;
+        // The tiled area: the whole content box along a repeating axis, the
+        // tile's own row / column along the other.
+        Rect2Df area = contentRect;
+        if (!repeatX) { area.x = tile.x; area.width = tile.width; }
+        if (!repeatY) { area.y = tile.y; area.height = tile.height; }
+        const float x0 = std::max(area.x, contentRect.x);
+        const float y0 = std::max(area.y, contentRect.y);
+        const float x1 = std::min(area.x + area.width, contentRect.x + contentRect.width);
+        const float y1 = std::min(area.y + area.height, contentRect.y + contentRect.height);
+        if (x1 <= x0 || y1 <= y0) return;
+        const Rect2Dd fillRect(x0, y0, x1 - x0, y1 - y0);
+        const Rect2Dd anchor(tile.x, tile.y, tile.width, tile.height);
+
+        // The tile's pixels, at its fitted size (the animation's current frame
+        // for an animated image).
+        std::shared_ptr<UCPixmap> pixmap = animator.GetCurrentFramePixmap();
+        if (!pixmap && loadedImage && loadedImage->IsValid()) {
+            pixmap = loadedImage->GetPixmap(std::max(1, static_cast<int>(std::lround(tile.width))),
+                                            std::max(1, static_cast<int>(std::lround(tile.height))),
+                                            ImageFitMode::Fill, ctx->GetDeviceScale());
+        }
+        if (!pixmap) return;
+
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(contentRect.x, contentRect.y, contentRect.width, contentRect.height));
+        if (auto pattern = ctx->CreatePixmapPattern(*pixmap, anchor, PatternExtend::Repeat)) {
+            ctx->SetFillPaint(pattern);
+            ctx->FillRectangle(fillRect);
+        } else {
+            // No pattern support: draw the tiles, within a sane count.
+            const double startX = anchor.x - std::ceil((anchor.x - fillRect.x) / anchor.width) * anchor.width;
+            const double startY = anchor.y - std::ceil((anchor.y - fillRect.y) / anchor.height) * anchor.height;
+            int drawn = 0;
+            for (double y = startY; y < fillRect.y + fillRect.height && drawn < 4096; y += anchor.height)
+                for (double x = startX; x < fillRect.x + fillRect.width && drawn < 4096; x += anchor.width, ++drawn)
+                    ctx->DrawPixmap(*pixmap, Rect2Dd(x, y, anchor.width, anchor.height), ImageFitMode::Fill);
+        }
+        ctx->PopState();
     }
 
     Rect2Df UltraCanvasImageElement::ImageDrawRect() const {
@@ -229,9 +275,14 @@ namespace UltraCanvas {
             ctx->Translate(-center.x, -center.y);
         }
 
+        // Repeating: one pattern fill over the tiled area, anchored on the
+        // positioned tile.
+        if (repeatX || repeatY) {
+            DrawRepeatedImage(ctx, contentRect);
+        }
         // Positioned off-centre: fit and place the image here, clipped to the
         // content box (the backends centre what they fit).
-        if (!imagePosition.x.IsCentred() || !imagePosition.y.IsCentred()) {
+        else if (!imagePosition.x.IsCentred() || !imagePosition.y.IsCentred()) {
             const Rect2Df dest = ImageDrawRect();
             if (dest.width > 0 && dest.height > 0) {
                 ctx->PushState();

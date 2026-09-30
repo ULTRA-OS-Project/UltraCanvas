@@ -3,6 +3,7 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.5.0 - background-repeat (per layer)
 // Version: 1.4.0 - background-position; background size and position per layer
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
@@ -52,6 +53,11 @@ struct BackgroundAxisPosition {
 struct BackgroundPosition {
     BackgroundAxisPosition x, y;   // CSS initial value: 0% 0% (top left)
 };
+// background-repeat on each axis. CSS's initial value repeats both ways;
+// space and round are taken as repeat.
+struct BackgroundRepeat {
+    bool x = true, y = true;
+};
 
 enum class ListMarker {
     Disc, Circle, Square,
@@ -89,9 +95,14 @@ struct ComputedStyle {
     // repeats (use the *At helpers).
     std::vector<BackgroundSizeMode> backgroundSizes;
     std::vector<BackgroundPosition> backgroundPositions;
+    std::vector<BackgroundRepeat> backgroundRepeats;
     BackgroundSizeMode BackgroundSizeAt(size_t layer) const {
         return backgroundSizes.empty() ? BackgroundSizeMode::Auto
                                        : backgroundSizes[layer % backgroundSizes.size()];
+    }
+    BackgroundRepeat BackgroundRepeatAt(size_t layer) const {
+        return backgroundRepeats.empty() ? BackgroundRepeat{}
+                                         : backgroundRepeats[layer % backgroundRepeats.size()];
     }
     BackgroundPosition BackgroundPositionAt(size_t layer) const {
         return backgroundPositions.empty() ? BackgroundPosition{}
