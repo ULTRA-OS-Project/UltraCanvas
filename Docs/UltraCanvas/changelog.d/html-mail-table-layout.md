@@ -21,6 +21,8 @@
     they were invisible).
   - Every HTML 4 named entity is decoded (`&acute;`, `&eth;`, `&alpha;`, `&hearts;`, ...).
   - `a:link` / `:any-link` selectors match links; other pseudo-classes still drop the rule.
+  - `inherit` works for colour, font and text properties, so `<a style="color: inherit">`
+    keeps its paragraph's grey instead of turning default blue (Anthropic's sign-in mail).
   - CSS pixel sizes are converted to the label's points: text was drawn 33% too large,
     and a 15px `<span>` came out smaller than the 12px text around it. The eBook viewer
     converts its system font size (points) to px, so its default size is unchanged.

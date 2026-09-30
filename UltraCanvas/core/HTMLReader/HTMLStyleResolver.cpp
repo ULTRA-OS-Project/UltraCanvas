@@ -3,7 +3,8 @@
 // Version: 1.2.0 - table presentational attributes (nowrap, valign,
 //                  cellpadding, cellspacing, tr align); white-space: nowrap;
 //                  border-collapse / border-spacing / border-radius; cells
-//                  default to a browser's 1px padding.
+//                  default to a browser's 1px padding; `inherit` for
+//                  color, font and text properties.
 // Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
@@ -458,7 +459,23 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
     const float em = s.fontSizePx;
     const float rem = opts.baseFontSizePx;
 
-    if (lower == "inherit" || lower == "initial" || lower == "unset") return;
+    // `inherit` takes the parent's value - mail writes <a style="color:
+    // inherit"> to keep a link in its paragraph's colour. The other keywords
+    // (and inherit on a property not listed here) leave the value as it is.
+    if (lower == "inherit") {
+        if (prop == "color") { if (!opts.overrideAuthorColors) s.color = parentStyle.color; }
+        else if (prop == "font-size") s.fontSizePx = parentStyle.fontSizePx;
+        else if (prop == "font-family") { s.fontFamily = parentStyle.fontFamily; s.monospace = parentStyle.monospace; }
+        else if (prop == "font-weight") s.bold = parentStyle.bold;
+        else if (prop == "font-style") s.italic = parentStyle.italic;
+        else if (prop == "text-decoration" || prop == "text-decoration-line") {
+            s.underline = parentStyle.underline;
+            s.strikethrough = parentStyle.strikethrough;
+        }
+        else if (prop == "text-align") s.textAlign = parentStyle.textAlign;
+        return;
+    }
+    if (lower == "initial" || lower == "unset") return;
 
     if (prop == "display") {
         if (lower == "none") s.display = DisplayMode::Hidden;

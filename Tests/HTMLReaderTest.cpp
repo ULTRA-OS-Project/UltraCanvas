@@ -451,6 +451,7 @@ static void TestMailTableStyles() {
         "<td id='c2' valign='bottom' style='white-space:nowrap'>b</td></tr></table>"
         "<table style='border-collapse:collapse'><tr><td id='c3'>c</td></tr></table>"
         "<p><nobr id='n'>x</nobr><a id='link' href='h'>l</a><a id='plain'>m</a></p>"
+        "<div style='color:#7b7974'><a id='inh' href='h' style='color: inherit'>i</a></div>"
         "</body></html>");
     StyleResolver resolver;
     resolver.AddStyleSheet("a:link { color: #3333aa } a:hover { color: #ff0000 }");
@@ -491,6 +492,11 @@ static void TestMailTableStyles() {
     if (link && plain) {
         CHECK(resolver.StyleOf(link).color.r == 0x33 && resolver.StyleOf(link).color.b == 0xAA);
         CHECK(resolver.StyleOf(plain).color.r != 0x33);   // no href: not a :link
+    }
+    if (Node* inh = byId("inh")) {
+        CHECK(resolver.StyleOf(inh).color.r == 0x7b && resolver.StyleOf(inh).color.b == 0x74);
+    } else {
+        CHECK(false);
     }
 }
 
