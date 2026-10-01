@@ -62,6 +62,11 @@ public:
     void Show();
 
     // ===== WHAT THE BARS DO (also reachable from the windows this opens) =====
+    // The ULTRA OS settings button: starts UOS-Settings, the system's settings
+    // application; when that is not installed, the desktop's own page instead.
+    void OpenSystemSettings();
+    // The desktop's own settings page (taskbar edge, wallpaper, RAM disc, file
+    // manager, virtual desktops) - right-click the ULTRA OS settings button.
     void OpenSettings();
     void OpenAppStarter();
     void OpenTasks();
@@ -116,6 +121,9 @@ private:
     // ===== RUNNING APPS =====
     void ShowWindowMenu(uint64_t windowId, int windowX, int windowY);
     void ShowClipboardMenu(int windowX, int windowY);
+    // Right-click on the ULTRA OS settings button: UOS-Settings or the
+    // desktop's own page.
+    void ShowSettingsMenu(int windowX, int windowY);
     std::string RunningItemId(uint64_t windowId) const;
 
     // ===== STATE =====

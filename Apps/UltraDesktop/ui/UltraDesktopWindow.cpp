@@ -310,8 +310,13 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
 
     // 1. System: ULTRA OS settings and the app starter.
     auto system = MakeGroup("Taskbar.System", vertical, false);
-    AddBarButton(system, "settings", "ULTRA OS settings", IconPath("ultraos.svg"),
-                 [this]() { OpenSettings(); });
+    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings",
+                                       IconPath("ultraos.svg"),
+                                       [this]() { OpenSystemSettings(); });
+    // The desktop's own page stays one right-click away.
+    if (settingsButton) {
+        settingsButton->onContextMenu = [this](int x, int y) { ShowSettingsMenu(x, y); };
+    }
     AddBarButton(system, "apps", "Applications", IconPath("apps.svg"),
                  [this]() { OpenAppStarter(); });
     bar->AddChild(system);
@@ -436,6 +441,15 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
 }
 
 // ===== WHAT THE BARS DO =====
+
+void UltraDesktopWindow::OpenSystemSettings() {
+    std::string error;
+    if (UltraCanvasDesktopShell::LaunchProgram("UOS-Settings", {}, &error)) return;
+    // Not installed (or not startable): the desktop's own page is still a
+    // settings page, and better than a button that does nothing.
+    debugOutput << "UltraDesktop: UOS-Settings: " << error << std::endl;
+    OpenSettings();
+}
 
 void UltraDesktopWindow::OpenSettings() {
     if (settingsWindow_ && settingsWindow_->IsOpen()) {
@@ -824,6 +838,16 @@ void UltraDesktopWindow::ShowWindowMenu(uint64_t windowId, int windowX, int wind
     }
     popupMenu_->AddItem(MenuItemData::Separator());
     popupMenu_->AddItem(MenuItemData::Action("Close window", [windowId]() { UltraCanvasDesktopShell::CloseWindow(windowId); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+void UltraDesktopWindow::ShowSettingsMenu(int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Action("ULTRA OS settings", [this]() { OpenSystemSettings(); }));
+    popupMenu_->AddItem(MenuItemData::Action("Desktop settings...", [this]() { OpenSettings(); }));
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }

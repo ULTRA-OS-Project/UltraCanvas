@@ -46,7 +46,11 @@ On the left by default; the settings move it to the top or bottom edge, and
 `--edge top` does so for one run. Three groups, joined by the S-curve wave
 separators:
 
-1. **System** — *ULTRA OS settings* and the *app starter*.
+1. **System** — *ULTRA OS settings* and the *app starter*. *ULTRA OS
+   settings* starts **UOS-Settings**, the system's settings application
+   (`Docs/UOSSettings/README.md`); right-click it for the desktop's own page
+   (*Desktop settings…*). When UOS-Settings is not installed the button opens
+   the desktop's page instead.
 2. **Running applications** — one button per open window on the current
    desktop, with the application's own icon (resolved from its desktop
    entry; the first letter of its class when it has none). The active
@@ -98,7 +102,8 @@ windows stop short of the bars instead of covering them.
 - **Task Manager**: the open windows with *Activate* and *Close* on the
   first tab, the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
-- **ULTRA OS settings**, the desktop's page: the taskbar's edge, the
+- **Desktop settings** (right-click *ULTRA OS settings*), the desktop's
+  page of the ULTRA OS settings: the taskbar's edge, the
   wallpaper (Browse… opens the file dialog), the RAM disc path, the file
   manager program, the number of virtual desktops. *Apply* writes the
   settings and rebuilds the bars in place.

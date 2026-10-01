@@ -1,3 +1,11 @@
+#### 2026-10-01 *0.1.1*
+- **The ULTRA OS settings button starts UOS-Settings.** The system's
+  settings now have an application of their own, UOS-Settings, and the
+  taskbar's settings button launches it. The desktop's own page - taskbar
+  edge, wallpaper, RAM disc, file manager, virtual desktops - is one
+  right-click away on the same button (*Desktop settings...*), and is what
+  the button opens when UOS-Settings is not installed.
+
 #### 2026-09-29 *0.1.0*
 - **First release.** UltraDesktop (`Apps/UltraDesktop`) is the ULTRA OS
   desktop: one screen-sized window at the bottom of the stack (the new
