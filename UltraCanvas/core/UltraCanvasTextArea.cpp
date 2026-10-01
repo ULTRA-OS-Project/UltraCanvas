@@ -3123,15 +3123,7 @@ namespace UltraCanvas {
             return count;
         }
 
-        int count = 0;
-        int pos = 0;
-        int searchLen = utf8_length(searchText);
-
-        while ((pos = utf8_find(textContent, searchText, pos, caseSensitive)) >= 0) {
-            count++;
-            pos += searchLen;
-        }
-        return count;
+        return static_cast<int>(utf8_find_all(textContent, searchText, caseSensitive).size());
     }
 
     int UltraCanvasTextArea::GetCurrentMatchIndex(const std::string& searchText, bool caseSensitive) const {
@@ -3163,16 +3155,9 @@ namespace UltraCanvas {
         int currentPos = GetSelectionMinGrapheme();
         if (currentPos < 0) currentPos = 0;
 
-        int index = 0;
-        int pos = 0;
-        int searchLen = utf8_length(searchText);
-
-        while ((pos = utf8_find(textContent, searchText, pos, caseSensitive)) >= 0) {
-            index++;
-            if (pos == currentPos) {
-                return index;
-            }
-            pos += searchLen;
+        const std::vector<int> matches = utf8_find_all(textContent, searchText, caseSensitive);
+        for (size_t i = 0; i < matches.size(); i++) {
+            if (matches[i] == currentPos) return static_cast<int>(i) + 1;
         }
         return 0; // Current selection doesn't match any occurrence
     }

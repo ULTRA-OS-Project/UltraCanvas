@@ -8,5 +8,5 @@
   and the UI thread did not come back (the first 30 KB alone took 1.4 s). The
   new `utf8_find_all` (`UltraCanvasUtilsUtf8.h`) lowercases once and returns
   every non-overlapping match in one pass — the same positions the loop
-  produced, in 17 ms for the whole file. `HighlightMatches` and UltraTexter's
-  background match counter use it.
+  produced, in 17 ms for the whole file. `HighlightMatches`, `CountMatches`,
+  `GetCurrentMatchIndex` and UltraTexter's background match counter use it.
