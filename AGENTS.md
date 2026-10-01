@@ -243,6 +243,35 @@ The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
 
+**Tests that need a display.** A few tests under `Tests/` open a real window
+and read the composited pixels back (`CaretStackingTest`,
+`TextMetricsScreenshotTest`, `TextAreaSpellCheckTest`). They skip themselves
+without a `DISPLAY`, so a bare CI machine passes them; to run one, give it a
+display with `xvfb-run -a ./build/bin/TextMetricsScreenshotTest`. Two things
+about a window under Xvfb catch people out:
+
+- There is no window manager, so the window is never activated, and a window
+  that is never activated draws no caret and reports no focused element. That
+  is correct behaviour, not a bug in the test. A test that needs focus hands the
+  application the activation event the backend would have delivered and then
+  focuses the element: `DisplayTest::FocusElement(app, window, element)` in
+  `Tests/DisplayTestSupport.h` does both and says whether it worked. Driving
+  it from outside with `xdotool windowfocus` works too but is slower and needs
+  another package.
+- There is no event loop unless the test runs one, so frames are driven by
+  hand: `DisplayTest::Frame(window, {elements})` marks them dirty and renders
+  once, and `DisplayTest::WaitForCaret` drives frames until the shared caret is
+  claimed. A text input shows its caret only while nothing is selected, so
+  measure the caret before making a selection.
+
+`TextMetricsScreenshotTest` doubles as the screenshot fixture for the
+text-metrics and crisp-border rules: with `ULTRACANVAS_SCREENSHOT_DIR=<dir>` it
+writes the window as PPM files (the caret, a selection, the popup menu) that
+any image tool converts. With `GDK_SCALE=2` it renders at 2x and skips its
+pixel assertions, which are written for whole logical pixels; the PPM is
+still read back at logical size, so for the actual 2x pixels take an X
+screenshot of the Xvfb display instead (`import -window root shot.png`).
+
 `-DULTRACANVAS_BUILD_NET_TESTS=ON` adds two UltraNet binaries: `UltraNetTests`
 (pass/fail suite) and `UltraNetApiStatus`, which probes every public
 `UltraNet_*` entry point and prints WORKING / IMPLEMENTED / NOT IMPLEMENTED /
