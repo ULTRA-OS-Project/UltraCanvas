@@ -13,6 +13,8 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasTreeView.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasEvent.h"
 #include <string>
 #include <vector>
@@ -21,6 +23,7 @@
 #include <sstream>
 #include <filesystem>
 #include <algorithm>
+#include <set>
 
 namespace UltraCanvas {
 
@@ -703,43 +706,45 @@ namespace UltraCanvas {
     };
 
 // ===== FILE DIALOG CLASS =====
+    // The framework's own open / save / select-folder dialog, used whenever
+    // native dialogs are off (UltraCanvasFileLoader's file dialogs, Cloud
+    // pickers). It is assembled from elements: an editable path field with an
+    // "up" button, a folder tree (the user's places and every mounted drive,
+    // loaded as it is expanded) beside the listing of the current folder, and
+    // the file-name field and file-type dropdown below them.
     class UltraCanvasFileDialog : public UltraCanvasModalDialog {
     private:
         FileDialogConfig fileConfig;
         std::vector<std::string> selectedFiles;
         std::string currentDirectory;
 
-        // File browser state
+        // The current folder's entries, as shown in the listing.
         std::vector<std::string> directoryList;
         std::vector<std::string> fileList;
-        int selectedFileIndex = -1;
-        int scrollOffset = 0;
-        int maxVisibleItems = 15;
-        std::string fileNameText;
         bool showHiddenFiles = false;
 
-        // Layout properties
-        int itemHeight = 20;
-        int pathBarHeight = 30;
-        int buttonHeight = 30;
-        int filterHeight = 25;
+        // ===== ELEMENTS =====
+        std::shared_ptr<UltraCanvasTextInput> pathInput;
+        std::shared_ptr<UltraCanvasButton> upButton;
+        std::shared_ptr<UltraCanvasTreeView> folderTree;
+        std::shared_ptr<UltraCanvasTreeView> fileListView;
+        std::shared_ptr<UltraCanvasTextInput> fileNameInput;
+        std::shared_ptr<UltraCanvasDropdown> filterDropdown;
 
-        // Layout rects
-        Rect2Di pathBarRect;
-        Rect2Di fileListRect;
-        Rect2Di fileNameInputRect;
-        Rect2Di filterSelectorRect;
-
-        // Colors
-        Color listBackgroundColor = Colors::White;
-        Color listBorderColor = Colors::Gray;
-        Color selectedItemColor = Color(173, 216, 230, 128);
-        Color hoverItemColor = Color(220, 240, 255, 128);
-        Color directoryColor = Color(70, 130, 180, 255);
-        Color fileColor = Colors::Black;
-
-        // Hover state
-        int hoverItemIndex = -1;
+        // Folder-tree nodes whose sub-folders have been read.
+        std::set<std::string> loadedTreeNodes;
+        // The drive roots shown in the tree, used to find the row of a folder.
+        std::vector<std::string> treeDriveRoots;
+        // Set while the dialog itself selects a tree row, so that selection is
+        // not taken for the user navigating there.
+        bool syncingTree = false;
+        // The name the dialog put into the name field for the listing's
+        // selection; while the field still holds it, OK takes the selection.
+        std::string autoFileName;
+        // A row of the listing was activated (double click, Enter) and is
+        // handled on the next loop pass; OK in the same key press must not act
+        // on it a second time.
+        bool activationPending = false;
 
     public:
         // Callbacks
@@ -777,58 +782,39 @@ namespace UltraCanvas {
         std::string GetSelectedFilePath() const;
         std::vector<std::string> GetSelectedFilePaths() const;
 
-        // Rendering override
-        void RenderCustomContent(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
-
-        // Event handling override
-        bool OnEvent(const UCEvent& event) override;
-
     protected:
-        void SetupFileInterface();
-        void PopulateFileList();
-        void OnFileSelected(const std::string& filename);
-        void OnDirectoryChanged(const std::string& directory);
+        // The name field takes the focus (the listing for a folder picker),
+        // so typing a name works at once.
+        void FocusInitialElement() override;
 
-        // Layout calculations
-        void CalculateFileDialogLayout();
-        Rect2Di GetPathBarBounds() const;
-        Rect2Di GetFileListBounds() const;
-        Rect2Di GetFileNameInputBounds() const;
-        Rect2Di GetFilterSelectorBounds() const;
+        // ===== CONSTRUCTION =====
+        void BuildFileInterface();
+        void RebuildFilterDropdown();
 
-        // Rendering helpers
-        void RenderPathBar(IRenderContext* ctx);
-        void RenderFileList(IRenderContext* ctx);
-        void RenderFileItem(IRenderContext* ctx, const std::string& name, int index, int y, bool isDirectory);
-        void RenderScrollbar(IRenderContext* ctx);
-        void RenderFileNameInput(IRenderContext* ctx);
-        void RenderFilterSelector(IRenderContext* ctx);
+        // ===== FOLDER TREE =====
+        void PopulateFolderTree();
+        void AddFolderTreeNode(const std::string& parentId, const std::string& nodeId,
+                               const std::string& label, const std::string& iconFile,
+                               bool probeSubFolders);
+        void LoadFolderTreeChildren(TreeNode* node);
+        // Selects the tree row of the current folder, opening its ancestors.
+        void SyncFolderTree();
 
-        // The file-name field is drawn by this dialog rather than being a real
-        // text input, so letters typed here are text, not mnemonics.
-        bool HasEditableTextField() const override { return fileConfig.dialogType != FileDialogType::SelectFolder; }
-        // The list and the name field are drawn by the dialog and handled at
-        // window level; focusing a button would take Return and the arrow keys
-        // away from them before OnEvent ever sees them.
-        void FocusInitialElement() override { ClearFocus(); }
+        // ===== LISTING =====
+        void RebuildFileListView();
+        void OnListSelectionChanged();
+        void ActivateListEntry(const std::string& name, bool isDirectory);
 
-        // Event handlers
-        void HandleFileListClick(const UCEvent& event);
-        void HandleFileListDoubleClick(const UCEvent& event);
-        // Returns false for keys the browser does not use, so Escape and the
-        // dialog's other keyboard handling still get their chance.
-        bool HandleKeyDown(const UCEvent& event);
-        void HandleTextInput(const UCEvent& event);
-        void HandleMouseWheel(const UCEvent& event);
-        void HandleFilterDropdownClick();
-        void HandleOkButton();
-        void HandleCancelButton();
-
-        // Navigation helpers
+        // ===== NAVIGATION =====
+        // Makes `directory` the current folder. syncTree: select its row in
+        // the folder tree (false when the tree is where the user chose it).
+        bool GoToDirectory(const std::string& directory, bool syncTree);
         void NavigateToDirectory(const std::string& dirName);
         void NavigateToParentDirectory();
-        void EnsureItemVisible();
-        void UpdateSelection();
+        void HandleOkButton();
+        // Closes the dialog with `files` (names in the current folder, or
+        // absolute paths) as the result.
+        void Accept(const std::vector<std::string>& files);
 
         // File helpers
         bool IsFileMatchingFilter(const std::string& fileName) const;

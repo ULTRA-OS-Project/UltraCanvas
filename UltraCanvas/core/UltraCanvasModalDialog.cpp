@@ -9,6 +9,10 @@
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"          // GetResourcesDir
+#include "UltraCanvasUtils.h"           // NormalizePath, GetWellKnownUserFolders
+#include "UltraCanvasVolumeMonitor.h"   // ListMountedVolumes
+#include <cstdlib>
 #include <fmt/os.h>
 #include <iostream>
 #include <algorithm>
@@ -1109,12 +1113,102 @@ namespace UltraCanvas {
     }
 
 // ===== FILE DIALOG IMPLEMENTATION =====
+    namespace {
+        // Folder-tree node ids. The same folder can be reached both from a
+        // place ("Documents") and from its drive, so an id is a tag naming the
+        // branch plus the folder's path; a placeholder child (the expander of
+        // a folder whose sub-folders have not been read yet) gets its own tag.
+        constexpr const char* kTreeRootId = "fd-root";
+        constexpr char kPlaceTag = 'p';
+        constexpr char kDriveTag = 'd';
+        constexpr char kPlaceholderTag = '~';
+
+        std::string TreeNodeId(char tag, const std::string& path) {
+            return std::string(1, tag) + "|" + path;
+        }
+        char TreeNodeTag(const std::string& id) {
+            return id.size() > 1 && id[1] == '|' ? id[0] : '\0';
+        }
+        std::string TreeNodePath(const std::string& id) {
+            return id.size() > 1 && id[1] == '|' ? id.substr(2) : std::string();
+        }
+
+        // Listing row ids: folders and files of the same name stay apart.
+        std::string ListNodeId(bool isDirectory, const std::string& name) {
+            return std::string(isDirectory ? "D|" : "F|") + name;
+        }
+
+        const Color kFileDialogBorderColor(160, 160, 160, 255);
+
+        std::string FileDialogIconPath(const std::string& file) {
+            return NormalizePath(GetResourcesDir() + "media/icons/" + file);
+        }
+
+        std::string UserHomeDirectory() {
+#if defined(_WIN32) || defined(_WIN64)
+            const char* home = std::getenv("USERPROFILE");
+#else
+            const char* home = std::getenv("HOME");
+#endif
+            return home ? std::string(home) : std::string();
+        }
+
+        bool IsHiddenName(const std::string& name) {
+            return !name.empty() && name[0] == '.';
+        }
+
+        bool LessIgnoringCase(const std::string& a, const std::string& b) {
+            return std::lexicographical_compare(
+                    a.begin(), a.end(), b.begin(), b.end(),
+                    [](unsigned char x, unsigned char y) {
+                        return std::tolower(x) < std::tolower(y);
+                    });
+        }
+
+        // The sub-folders of `folder`, sorted as the user reads them.
+        std::vector<std::string> SubFolderNames(const std::string& folder, bool showHidden) {
+            std::vector<std::string> names;
+            std::error_code ec;
+            for (std::filesystem::directory_iterator it(PathFromUtf8(folder), ec), end;
+                 it != end && !ec; it.increment(ec)) {
+                std::error_code dec;
+                if (!it->is_directory(dec) || dec) continue;
+                std::string name = PathToUtf8(it->path().filename());
+                if (!showHidden && IsHiddenName(name)) continue;
+                names.push_back(std::move(name));
+            }
+            std::sort(names.begin(), names.end(), LessIgnoringCase);
+            return names;
+        }
+
+        // Stops at the first sub-folder: whether a row needs an expander.
+        bool HasSubFolders(const std::string& folder, bool showHidden) {
+            std::error_code ec;
+            for (std::filesystem::directory_iterator it(PathFromUtf8(folder), ec), end;
+                 it != end && !ec; it.increment(ec)) {
+                std::error_code dec;
+                if (!it->is_directory(dec) || dec) continue;
+                if (!showHidden && IsHiddenName(PathToUtf8(it->path().filename()))) continue;
+                return true;
+            }
+            return false;
+        }
+
+        // `path` relative to `root`, or empty when it is not inside it.
+        std::filesystem::path RelativeInside(const std::filesystem::path& path,
+                                             const std::filesystem::path& root) {
+            std::filesystem::path rel = path.lexically_relative(root);
+            if (rel.empty() || *rel.begin() == "..") return {};
+            return rel;
+        }
+    } // namespace
+
     void UltraCanvasFileDialog::CreateFileDialog(const FileDialogConfig &config) {
         fileConfig = config;
         UltraCanvasModalDialog::CreateDialog(config);
 
-        // The file browser custom-renders against a fixed window height; never
-        // resize it to fit the (unused) message area.
+        // The browser fills the dialog at the configured size; there is no
+        // message text to fit the height to.
         autoSizeHeight = false;
 
         currentDirectory = fileConfig.initialDirectory;
@@ -1130,21 +1224,336 @@ namespace UltraCanvas {
             okEntry->button->onClick = [this]() { HandleOkButton(); };
         }
 
-        if (currentDirectory.empty()) {
-            try {
-                currentDirectory = PathToUtf8(std::filesystem::current_path());
-            } catch (const std::exception& e) {
-                currentDirectory = ".";
+        {
+            std::error_code ec;
+            if (currentDirectory.empty() ||
+                !std::filesystem::is_directory(PathFromUtf8(currentDirectory), ec)) {
+                std::filesystem::path cwd = std::filesystem::current_path(ec);
+                currentDirectory = ec ? std::string(".") : PathToUtf8(cwd);
             }
+            std::filesystem::path canonical =
+                    std::filesystem::canonical(PathFromUtf8(currentDirectory), ec);
+            if (!ec) currentDirectory = PathToUtf8(canonical);
         }
 
-        fileNameText = fileConfig.defaultFileName;
-
-        SetupFileInterface();
-        CalculateFileDialogLayout();
-
+        BuildFileInterface();
+        PopulateFolderTree();
+        RefreshFileList();
+        SyncFolderTree();
+        if (fileNameInput) fileNameInput->SetText(fileConfig.defaultFileName);
     }
 
+    void UltraCanvasFileDialog::BuildFileInterface() {
+        // The browser takes the whole content box: no type icon, no message.
+        SetIconVisible(false);
+        if (messageArea) messageArea->SetVisible(false);
+
+        const float fontSize = style.messageFontSize;
+        const long fieldHeight = 28;
+
+        auto browser = std::make_shared<UltraCanvasContainer>("FileDialogBrowser");
+        browser->layout.SetFlexColumn().SetFlexGap(8)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        browser->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+
+        // ----- path field + up button -----
+        auto pathRow = std::make_shared<UltraCanvasContainer>("FileDialogPathRow");
+        pathRow->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
+        pathRow->layout.SetFlexRow().SetFlexGap(6)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        pathRow->layoutItem.SetFlexShrink(0);
+
+        upButton = std::make_shared<UltraCanvasButton>("FileDialogUp", 0, 0, fieldHeight, fieldHeight);
+        upButton->SetIcon(FileDialogIconPath("arrow-up.svg"));
+        upButton->SetTooltip("Up one level");
+        upButton->layoutItem.SetFlexShrink(0);
+        upButton->onClick = [this]() { NavigateToParentDirectory(); };
+        pathRow->AddChild(upButton);
+
+        pathInput = std::make_shared<UltraCanvasTextInput>("FileDialogPath", 0, 0, 300, fieldHeight);
+        pathInput->SetFontSize(fontSize);
+        pathInput->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        // Return in the path field goes to the folder typed there instead of
+        // accepting the dialog.
+        pathInput->onEnterPressed = [this](const std::string& text) {
+            std::error_code ec;
+            const std::filesystem::path typed = PathFromUtf8(text);
+            if (std::filesystem::is_directory(typed, ec)) {
+                GoToDirectory(text, true);
+            } else if (fileConfig.dialogType != FileDialogType::SelectFolder &&
+                       std::filesystem::is_directory(typed.parent_path(), ec)) {
+                // A file path: open its folder and put the name in the name field.
+                GoToDirectory(PathToUtf8(typed.parent_path()), true);
+                if (fileNameInput) fileNameInput->SetText(PathToUtf8(typed.filename()));
+            } else if (pathInput) {
+                pathInput->SetText(currentDirectory);
+            }
+            return true;
+        };
+        pathRow->AddChild(pathInput);
+        browser->AddChild(pathRow);
+
+        // ----- folder tree | listing -----
+        auto panes = std::make_shared<UltraCanvasContainer>("FileDialogPanes");
+        panes->layout.SetFlexRow().SetFlexGap(8)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        panes->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+
+        folderTree = std::make_shared<UltraCanvasTreeView>("FileDialogFolders");
+        folderTree->size.width = CSSLayout::Dimension::Px(220);
+        folderTree->layoutItem.SetFlexShrink(0);
+        folderTree->SetFontSize(fontSize);
+        folderTree->SetRowHeight(22);
+        folderTree->SetSelectionMode(TreeSelectionMode::Single);
+        folderTree->SetLineStyle(TreeLineStyle::Dotted);
+        folderTree->SetShowFirstChildOnExpand(false);
+        folderTree->SetShowScrollToTopButton(false);
+        folderTree->SetRootVisible(false);
+        folderTree->SetBorders(1.0f, kFileDialogBorderColor);
+        folderTree->onNodeExpanded = [this](TreeNode* node) { LoadFolderTreeChildren(node); };
+        folderTree->onNodeSelected = [this](TreeNode* node) {
+            if (syncingTree || !node) return;
+            const std::string& id = node->data.nodeId;
+            if (TreeNodeTag(id) != kPlaceTag && TreeNodeTag(id) != kDriveTag) return;
+            GoToDirectory(TreeNodePath(id), false);
+        };
+        panes->AddChild(folderTree);
+
+        fileListView = std::make_shared<UltraCanvasTreeView>("FileDialogList");
+        fileListView->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        fileListView->SetFontSize(fontSize);
+        fileListView->SetRowHeight(22);
+        fileListView->SetSelectionMode(fileConfig.allowMultipleSelection
+                                       ? TreeSelectionMode::Multiple
+                                       : TreeSelectionMode::Single);
+        fileListView->SetLineStyle(TreeLineStyle::NoLine);
+        fileListView->SetShowExpandButtons(false);
+        fileListView->SetShowFirstChildOnExpand(false);
+        fileListView->SetRootVisible(false);
+        fileListView->SetBorders(1.0f, kFileDialogBorderColor);
+        fileListView->onNodeSelected = [this](TreeNode*) { OnListSelectionChanged(); };
+        fileListView->onNodeDoubleClicked = [this](TreeNode* node) {
+            if (!node) return;
+            const std::string& id = node->data.nodeId;
+            if (id.size() < 2) return;
+            // Opening a folder replaces every row of this view, the one being
+            // clicked included, while the view is still handling the click:
+            // the activation runs on the next pass of the event loop.
+            const bool isDirectory = id[0] == 'D';
+            const std::string name = id.substr(2);
+            activationPending = true;
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            if (!app) {
+                activationPending = false;
+                return;
+            }
+            std::weak_ptr<UltraCanvasUIElement> weak = weak_from_this();
+            app->PostToUIThread([weak, this, name, isDirectory]() {
+                if (weak.expired()) return;
+                activationPending = false;
+                ActivateListEntry(name, isDirectory);
+            });
+        };
+        panes->AddChild(fileListView);
+        browser->AddChild(panes);
+
+        // ----- name and type rows -----
+        // Two columns, so the labels line up and the fields start at the same
+        // x whatever the labels' measured widths are.
+        auto fields = std::make_shared<UltraCanvasContainer>("FileDialogFields");
+        fields->layout.SetFlexRow().SetFlexGap(8)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        fields->layoutItem.SetFlexShrink(0);
+
+        auto labelColumn = std::make_shared<UltraCanvasContainer>("FileDialogFieldLabels");
+        labelColumn->layout.SetFlexColumn().SetFlexGap(6)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        labelColumn->layoutItem.SetFlexShrink(0);
+
+        auto inputColumn = std::make_shared<UltraCanvasContainer>("FileDialogFieldInputs");
+        inputColumn->layout.SetFlexColumn().SetFlexGap(6)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        inputColumn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+
+        auto addLabel = [&](const std::string& id, const std::string& text) {
+            auto label = std::make_shared<UltraCanvasLabel>(id, text);
+            label->SetFontSize(fontSize);
+            label->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+            label->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
+            labelColumn->AddChild(label);
+        };
+
+        if (fileConfig.dialogType != FileDialogType::SelectFolder) {
+            addLabel("FileDialogNameLabel", "File name:");
+            fileNameInput = std::make_shared<UltraCanvasTextInput>(
+                    "FileDialogName", 0, 0, 300, fieldHeight);
+            fileNameInput->SetFontSize(fontSize);
+            fileNameInput->onEnterPressed = [this](const std::string&) {
+                HandleOkButton();
+                return true;
+            };
+            inputColumn->AddChild(fileNameInput);
+
+            addLabel("FileDialogTypeLabel", "Files of type:");
+            filterDropdown = std::make_shared<UltraCanvasDropdown>(
+                    "FileDialogType", 0, 0, 300, fieldHeight);
+            filterDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+                if (index < 0 || index >= static_cast<int>(fileConfig.filters.size())) return;
+                if (index == fileConfig.selectedFilterIndex) return;
+                fileConfig.selectedFilterIndex = index;
+                RefreshFileList();
+            };
+            inputColumn->AddChild(filterDropdown);
+            RebuildFilterDropdown();
+
+            fields->AddChild(labelColumn);
+            fields->AddChild(inputColumn);
+            browser->AddChild(fields);
+        }
+
+        AddDialogElement(browser);
+    }
+
+    void UltraCanvasFileDialog::RebuildFilterDropdown() {
+        if (!filterDropdown) return;
+        filterDropdown->ClearItems();
+        for (const FileFilter& filter : fileConfig.filters) {
+            filterDropdown->AddItem(filter.ToDisplayString());
+        }
+        if (fileConfig.selectedFilterIndex >= 0 &&
+            fileConfig.selectedFilterIndex < static_cast<int>(fileConfig.filters.size())) {
+            filterDropdown->SetSelectedIndex(fileConfig.selectedFilterIndex, false);
+        }
+        filterDropdown->SetDisabled(fileConfig.filters.size() < 2);
+    }
+
+    void UltraCanvasFileDialog::FocusInitialElement() {
+        if (fileNameInput && fileNameInput->IsVisible()) {
+            SetFocusedElement(fileNameInput.get());
+            return;
+        }
+        if (fileListView) {
+            SetFocusedElement(fileListView.get());
+            return;
+        }
+        UltraCanvasModalDialog::FocusInitialElement();
+    }
+
+// ----- folder tree -----
+    void UltraCanvasFileDialog::PopulateFolderTree() {
+        if (!folderTree) return;
+        loadedTreeNodes.clear();
+        treeDriveRoots.clear();
+
+        TreeNodeData rootData(kTreeRootId, "");
+        folderTree->SetRootNode(rootData);
+
+        // The user's places first: home and the well-known folders in it.
+        const std::string home = UserHomeDirectory();
+        std::error_code ec;
+        if (!home.empty() && std::filesystem::is_directory(PathFromUtf8(home), ec)) {
+            AddFolderTreeNode(kTreeRootId, TreeNodeId(kPlaceTag, home), "Home",
+                              "home-user.svg", false);
+        }
+        for (const UserFolderInfo& folder : GetWellKnownUserFolders()) {
+            if (folder.kind != UserFolderKind::Desktop &&
+                folder.kind != UserFolderKind::Documents &&
+                folder.kind != UserFolderKind::Downloads) continue;
+            AddFolderTreeNode(kTreeRootId, TreeNodeId(kPlaceTag, folder.path), folder.label,
+                              "folder.png", false);
+        }
+
+        // Then every mounted drive. Drives are not probed for sub-folders
+        // here: that would spin up an empty optical drive or wait out a
+        // disconnected network share just to open the dialog.
+        for (const MountedVolume& volume : ListMountedVolumes()) {
+            treeDriveRoots.push_back(volume.path);
+            AddFolderTreeNode(kTreeRootId, TreeNodeId(kDriveTag, volume.path),
+                              volume.label.empty() ? volume.path : volume.label,
+                              "drive.png", false);
+        }
+    }
+
+    void UltraCanvasFileDialog::AddFolderTreeNode(const std::string& parentId,
+                                                  const std::string& nodeId,
+                                                  const std::string& label,
+                                                  const std::string& iconFile,
+                                                  bool probeSubFolders) {
+        if (!folderTree || folderTree->FindNode(nodeId)) return;
+        TreeNodeData data(nodeId, label);
+        data.leftIcon = TreeNodeIcon(FileDialogIconPath(iconFile), 16, 16);
+        data.tooltip = TreeNodePath(nodeId);
+        if (!folderTree->AddNode(parentId, data)) return;
+        // An expander for a folder that (may) hold folders; its children are
+        // read when it is opened.
+        if (!probeSubFolders || HasSubFolders(TreeNodePath(nodeId), showHiddenFiles)) {
+            TreeNodeData placeholder(std::string(1, kPlaceholderTag) + "|" + nodeId, "...");
+            placeholder.enabled = false;
+            folderTree->AddNode(nodeId, placeholder);
+        }
+    }
+
+    void UltraCanvasFileDialog::LoadFolderTreeChildren(TreeNode* node) {
+        if (!folderTree || !node) return;
+        const std::string id = node->data.nodeId;
+        const char tag = TreeNodeTag(id);
+        if (tag != kPlaceTag && tag != kDriveTag) return;
+        if (!loadedTreeNodes.insert(id).second) return;
+
+        const std::string folder = TreeNodePath(id);
+        // The real children go in before the placeholder comes out: a node
+        // whose last child is removed becomes a leaf and loses its expansion.
+        for (const std::string& name : SubFolderNames(folder, showHiddenFiles)) {
+            AddFolderTreeNode(id, TreeNodeId(tag, CombinePath(folder, name)), name,
+                              "folder.png", true);
+        }
+        folderTree->RemoveNode(std::string(1, kPlaceholderTag) + "|" + id);
+    }
+
+    void UltraCanvasFileDialog::SyncFolderTree() {
+        if (!folderTree) return;
+        const std::filesystem::path current = PathFromUtf8(currentDirectory);
+
+        // The drive holding the folder: the longest root it lies inside.
+        std::string bestRoot;
+        std::filesystem::path bestRel;
+        for (const std::string& root : treeDriveRoots) {
+            const std::filesystem::path rootPath = PathFromUtf8(root);
+            std::filesystem::path rel;
+            if (current.lexically_normal() == rootPath.lexically_normal()) {
+                rel = ".";
+            } else {
+                rel = RelativeInside(current, rootPath);
+                if (rel.empty()) continue;
+            }
+            if (bestRoot.empty() || root.size() > bestRoot.size()) {
+                bestRoot = root;
+                bestRel = rel;
+            }
+        }
+        if (bestRoot.empty()) return;
+
+        TreeNode* node = folderTree->FindNode(TreeNodeId(kDriveTag, bestRoot));
+        std::filesystem::path walked = PathFromUtf8(bestRoot);
+        if (bestRel != ".") {
+            for (const auto& part : bestRel) {
+                if (!node || part.empty() || part == ".") continue;
+                folderTree->ExpandNode(node);   // reads its sub-folders
+                walked /= part;
+                TreeNode* child = folderTree->FindNode(TreeNodeId(kDriveTag, PathToUtf8(walked)));
+                if (!child) break;              // e.g. a hidden folder the tree leaves out
+                node = child;
+            }
+        }
+        if (!node) return;
+
+        syncingTree = true;
+        folderTree->SelectNode(node);
+        syncingTree = false;
+        folderTree->ScrollTo(node);
+    }
+
+// ----- listing -----
     std::vector<std::string> UltraCanvasFileDialog::GetSelectedFiles() const {
         return selectedFiles;
     }
@@ -1154,95 +1563,132 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFileDialog::SetCurrentDirectory(const std::string& directory) {
-        try {
-            if (std::filesystem::exists(directory) && std::filesystem::is_directory(directory)) {
-                currentDirectory = PathToUtf8(std::filesystem::canonical(directory));
-                RefreshFileList();
-                if (onDirectoryChanged) onDirectoryChanged(currentDirectory);
-            }
-        } catch (const std::exception& e) {
-            debugOutput << "Invalid path: " << directory << " - " << e.what() << std::endl;
+        GoToDirectory(directory, true);
+    }
+
+    bool UltraCanvasFileDialog::GoToDirectory(const std::string& directory, bool syncTree) {
+        std::error_code ec;
+        const std::filesystem::path path = PathFromUtf8(directory);
+        if (!std::filesystem::is_directory(path, ec) || ec) {
+            debugOutput << "Invalid path: " << directory << std::endl;
+            if (pathInput) pathInput->SetText(currentDirectory);
+            return false;
         }
+        std::filesystem::path canonical = std::filesystem::canonical(path, ec);
+        currentDirectory = ec ? directory : PathToUtf8(canonical);
+        RefreshFileList();
+        if (syncTree) SyncFolderTree();
+        if (onDirectoryChanged) onDirectoryChanged(currentDirectory);
+        return true;
     }
 
     std::string UltraCanvasFileDialog::GetCurrentDirectory() const {
         return currentDirectory;
     }
 
-    void UltraCanvasFileDialog::SetupFileInterface() {
-        RefreshFileList();
-    }
-
     void UltraCanvasFileDialog::RefreshFileList() {
         fileList.clear();
         directoryList.clear();
 
-        try {
-            for (const auto& entry : std::filesystem::directory_iterator(currentDirectory)) {
-                std::string fileName = PathToUtf8(entry.path().filename());
+        std::error_code ec;
+        for (std::filesystem::directory_iterator it(PathFromUtf8(currentDirectory), ec), end;
+             it != end && !ec; it.increment(ec)) {
+            std::string fileName = PathToUtf8(it->path().filename());
+            if (!showHiddenFiles && IsHiddenName(fileName)) continue;
 
-                if (!showHiddenFiles && !fileName.empty() && fileName[0] == '.') {
-                    continue;
-                }
-
-                if (entry.is_directory()) {
-                    directoryList.push_back(fileName);
-                } else if (entry.is_regular_file()) {
-                    if (fileConfig.dialogType == FileDialogType::SelectFolder) continue;
-
-                    if (IsFileMatchingFilter(fileName)) {
-                        fileList.push_back(fileName);
-                    }
-                }
+            std::error_code sec;
+            if (it->is_directory(sec)) {
+                directoryList.push_back(fileName);
+            } else if (it->is_regular_file(sec)) {
+                if (fileConfig.dialogType == FileDialogType::SelectFolder) continue;
+                if (IsFileMatchingFilter(fileName)) fileList.push_back(fileName);
             }
-
-            std::sort(directoryList.begin(), directoryList.end());
-            std::sort(fileList.begin(), fileList.end());
-
-        } catch (const std::exception& e) {
-            debugOutput << "Error reading directory: " << e.what() << std::endl;
         }
+        if (ec) debugOutput << "Error reading directory: " << ec.message() << std::endl;
 
-        selectedFileIndex = -1;
+        std::sort(directoryList.begin(), directoryList.end(), LessIgnoringCase);
+        std::sort(fileList.begin(), fileList.end(), LessIgnoringCase);
+
         selectedFiles.clear();
-        scrollOffset = 0;
+        autoFileName.clear();
+        if (pathInput) pathInput->SetText(currentDirectory);
+        RebuildFileListView();
     }
 
-    void UltraCanvasFileDialog::PopulateFileList() {
-        RefreshFileList();
-    }
-
-    void UltraCanvasFileDialog::OnFileSelected(const std::string& filename) {
-        if (fileConfig.allowMultipleSelection) {
-            selectedFiles.push_back(filename);
-        } else {
-            selectedFiles.clear();
-            selectedFiles.push_back(filename);
+    void UltraCanvasFileDialog::RebuildFileListView() {
+        if (!fileListView) return;
+        fileListView->SetRootNode(TreeNodeData("fd-list", ""));
+        const std::string folderIcon = FileDialogIconPath("folder.png");
+        const std::string fileIcon = FileDialogIconPath("document.svg");
+        for (const std::string& dir : directoryList) {
+            TreeNodeData data(ListNodeId(true, dir), dir);
+            data.leftIcon = TreeNodeIcon(folderIcon, 16, 16);
+            fileListView->AddNode("fd-list", data);
         }
+        for (const std::string& file : fileList) {
+            TreeNodeData data(ListNodeId(false, file), file);
+            data.leftIcon = TreeNodeIcon(fileIcon, 16, 16);
+            fileListView->AddNode("fd-list", data);
+        }
+        fileListView->ScrollToTop();
+        fileListView->RequestRedraw();
     }
 
-    void UltraCanvasFileDialog::OnDirectoryChanged(const std::string& directory) {
-        SetCurrentDirectory(directory);
+    void UltraCanvasFileDialog::OnListSelectionChanged() {
+        if (!fileListView) return;
+        std::vector<std::string> files;
+        for (TreeNode* node : fileListView->GetSelectedNodes()) {
+            const std::string& id = node->data.nodeId;
+            if (id.size() > 2 && id[0] == 'F') files.push_back(id.substr(2));
+        }
+        if (files.empty() || !fileNameInput) return;
+        // One file: its name. Several: each quoted, the way the name field
+        // of a multi-select dialog shows them.
+        std::string text;
+        if (files.size() == 1) {
+            text = files.front();
+        } else {
+            for (const std::string& f : files) {
+                if (!text.empty()) text += " ";
+                text += "\"" + f + "\"";
+            }
+        }
+        autoFileName = text;
+        fileNameInput->SetText(text);
     }
 
+    void UltraCanvasFileDialog::ActivateListEntry(const std::string& name, bool isDirectory) {
+        if (isDirectory) {
+            if (fileConfig.dialogType == FileDialogType::Save && fileNameInput &&
+                fileNameInput->GetText() == name) {
+                fileNameInput->SetText("");
+            }
+            NavigateToDirectory(name);
+            return;
+        }
+        if (fileConfig.dialogType == FileDialogType::SelectFolder) return;
+        Accept({name});
+    }
+
+// ----- filters and options -----
     void UltraCanvasFileDialog::SetFileFilters(const std::vector<FileFilter>& filters) {
         fileConfig.filters = filters;
-        if (!fileConfig.filters.empty()) {
-            fileConfig.selectedFilterIndex = 0;
-        }
+        fileConfig.selectedFilterIndex = 0;
+        RebuildFilterDropdown();
         RefreshFileList();
     }
 
     void UltraCanvasFileDialog::AddFileFilter(const FileFilter& filter) {
         fileConfig.filters.push_back(filter);
+        RebuildFilterDropdown();
     }
 
     void UltraCanvasFileDialog::AddFileFilter(const std::string& description, const std::vector<std::string>& extensions) {
-        fileConfig.filters.emplace_back(description, extensions);
+        AddFileFilter(FileFilter(description, extensions));
     }
 
     void UltraCanvasFileDialog::AddFileFilter(const std::string& description, const std::string& extension) {
-        fileConfig.filters.emplace_back(description, extension);
+        AddFileFilter(FileFilter(description, extension));
     }
 
     int UltraCanvasFileDialog::GetSelectedFilterIndex() const {
@@ -1252,6 +1698,7 @@ namespace UltraCanvas {
     void UltraCanvasFileDialog::SetSelectedFilterIndex(int index) {
         if (index >= 0 && index < static_cast<int>(fileConfig.filters.size())) {
             fileConfig.selectedFilterIndex = index;
+            if (filterDropdown) filterDropdown->SetSelectedIndex(index, false);
             RefreshFileList();
         }
     }
@@ -1261,9 +1708,12 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFileDialog::SetShowHiddenFiles(bool show) {
+        if (showHiddenFiles == show) return;
         showHiddenFiles = show;
         fileConfig.showHiddenFiles = show;
+        PopulateFolderTree();
         RefreshFileList();
+        SyncFolderTree();
     }
 
     bool UltraCanvasFileDialog::GetShowHiddenFiles() const {
@@ -1272,7 +1722,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFileDialog::SetDefaultFileName(const std::string& fileName) {
         fileConfig.defaultFileName = fileName;
-        fileNameText = fileName;
+        if (fileNameInput) fileNameInput->SetText(fileName);
     }
 
     std::string UltraCanvasFileDialog::GetDefaultFileName() const {
@@ -1292,437 +1742,100 @@ namespace UltraCanvas {
         return paths;
     }
 
-    void UltraCanvasFileDialog::CalculateFileDialogLayout() {
-        // All rects are stored in element-local space
-        Rect2Di bounds = GetLocalBounds();
-
-        pathBarRect = Rect2Di(10, 10, finalBounds.width - 20, pathBarHeight);
-
-        int topOffset = pathBarHeight + 20;
-        int bottomOffset = buttonHeight + filterHeight + 70;
-        fileListRect = Rect2Di(10, topOffset,
-                               finalBounds.width - 20, finalBounds.height - topOffset - bottomOffset);
-
-        maxVisibleItems = fileListRect.height / itemHeight;
-
-        int fileNameY = finalBounds.height - buttonHeight - filterHeight - 55;
-        fileNameInputRect = Rect2Di(90, fileNameY, finalBounds.width - 110, 22);
-
-        int filterY = finalBounds.height - buttonHeight - filterHeight - 25;
-        filterSelectorRect = Rect2Di(90, filterY, finalBounds.width - 110, filterHeight);
-    }
-
-    Rect2Di UltraCanvasFileDialog::GetPathBarBounds() const {
-        return pathBarRect;
-    }
-
-    Rect2Di UltraCanvasFileDialog::GetFileListBounds() const {
-        return fileListRect;
-    }
-
-    Rect2Di UltraCanvasFileDialog::GetFileNameInputBounds() const {
-        return fileNameInputRect;
-    }
-
-    Rect2Di UltraCanvasFileDialog::GetFilterSelectorBounds() const {
-        return filterSelectorRect;
-    }
-
-    void UltraCanvasFileDialog::RenderCustomContent(UltraCanvas::IRenderContext *ctx, const Rect2Di& dirtyRect) {
-        if (!IsVisible() || !ctx) return;
-
-        ctx->PushState();
-
-//        if (config_.modal) {
-//            RenderOverlay();
-//        }
-
-//        RenderBackground();
-//        RenderTitleBar();
-//        RenderBorder();
-
-        RenderPathBar(ctx);
-        RenderFileList(ctx);
-
-        if (fileConfig.dialogType != FileDialogType::SelectFolder) {
-            RenderFileNameInput(ctx);
-        }
-
-        RenderFilterSelector(ctx);
-//        RenderDialogButtons();
-
-        ctx->PopState();
-    }
-
-    void UltraCanvasFileDialog::RenderPathBar(IRenderContext* ctx) {
-        ctx->SetFillPaint(Colors::White);
-        ctx->FillRectangle(pathBarRect);
-        ctx->SetStrokePaint(listBorderColor);
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(pathBarRect);
-
-        ctx->SetTextPaint(Colors::Black);
-        ctx->SetFontSize(12.0f);
-        ctx->DrawText(currentDirectory, Point2Di(pathBarRect.x + 5, pathBarRect.y + 20));
-    }
-
-    void UltraCanvasFileDialog::RenderFileList(IRenderContext* ctx) {
-        ctx->SetFillPaint(listBackgroundColor);
-        ctx->FillRectangle(fileListRect);
-        ctx->SetStrokePaint(listBorderColor);
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(fileListRect);
-
-        ctx->ClipRect(fileListRect);
-
-        ctx->SetFontSize(12.0f);
-        int currentY = fileListRect.y + 2;
-        int itemIndex = 0;
-
-        for (const std::string& dir : directoryList) {
-            if (itemIndex < scrollOffset) {
-                itemIndex++;
-                continue;
-            }
-
-            if (currentY + itemHeight > fileListRect.y + fileListRect.height) break;
-
-            RenderFileItem(ctx, dir, itemIndex, currentY, true);
-            currentY += itemHeight;
-            itemIndex++;
-        }
-
-        for (const std::string& file : fileList) {
-            if (itemIndex < scrollOffset) {
-                itemIndex++;
-                continue;
-            }
-
-            if (currentY + itemHeight > fileListRect.y + fileListRect.height) break;
-
-            RenderFileItem(ctx, file, itemIndex, currentY, false);
-            currentY += itemHeight;
-            itemIndex++;
-        }
-
-        ctx->ClearClipRect();
-        RenderScrollbar(ctx);
-    }
-
-    void UltraCanvasFileDialog::RenderFileItem(IRenderContext* ctx, const std::string& name, int index, int y, bool isDirectory) {
-        bool isSelected = (index == selectedFileIndex);
-        bool isHovered = (index == hoverItemIndex);
-
-        if (isSelected) {
-            ctx->SetFillPaint(selectedItemColor);
-            ctx->FillRectangle(Rect2Di(fileListRect.x + 1, y, fileListRect.width - 17, itemHeight));
-        } else if (isHovered) {
-            ctx->SetFillPaint(hoverItemColor);
-            ctx->FillRectangle(Rect2Di(fileListRect.x + 1, y, fileListRect.width - 17, itemHeight));
-        }
-
-        ctx->SetTextPaint(isDirectory ? directoryColor : fileColor);
-        std::string icon = isDirectory ? "[D] " : "    ";
-        ctx->DrawText(icon + name, Point2Di(fileListRect.x + 5, y + 14));
-    }
-
-    void UltraCanvasFileDialog::RenderScrollbar(IRenderContext* ctx) {
-        int totalItems = static_cast<int>(directoryList.size() + fileList.size());
-        if (totalItems <= maxVisibleItems) return;
-
-        Rect2Di scrollBounds(
-                fileListRect.x + fileListRect.width - 15,
-                fileListRect.y,
-                15,
-                fileListRect.height
-        );
-
-        ctx->SetFillPaint(Color(240, 240, 240, 255));
-        ctx->FillRectangle(scrollBounds);
-
-        float thumbHeight = (static_cast<float>(maxVisibleItems) * scrollBounds.height) / totalItems;
-        float thumbY = scrollBounds.y + (scrollOffset * (scrollBounds.height - thumbHeight)) /
-                                        (totalItems - maxVisibleItems);
-
-        ctx->SetFillPaint(Color(160, 160, 160, 255));
-        ctx->FillRectangle(Rect2Di(scrollBounds.x + 2, static_cast<int>(thumbY), 11, static_cast<int>(thumbHeight)));
-    }
-
-    void UltraCanvasFileDialog::RenderFileNameInput(IRenderContext* ctx) {
-        ctx->SetTextPaint(Colors::Black);
-        ctx->SetFontSize(11.0f);
-        ctx->DrawText("File name:", Point2Di(fileNameInputRect.x - 75, fileNameInputRect.y + 15));
-
-        ctx->SetFillPaint(Colors::White);
-        ctx->FillRectangle(fileNameInputRect);
-        ctx->SetStrokePaint(listBorderColor);
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(fileNameInputRect);
-
-        ctx->SetTextPaint(Colors::Black);
-        ctx->DrawText(fileNameText, Point2Di(fileNameInputRect.x + 5, fileNameInputRect.y + 15));
-    }
-
-    void UltraCanvasFileDialog::RenderFilterSelector(IRenderContext* ctx) {
-        ctx->SetTextPaint(Colors::Black);
-        ctx->SetFontSize(11.0f);
-        ctx->DrawText("Files of type:", Point2Di(filterSelectorRect.x - 75, filterSelectorRect.y + 16));
-
-        ctx->SetFillPaint(Color(240, 240, 240, 255));
-        ctx->FillRectangle(filterSelectorRect);
-        ctx->SetStrokePaint(listBorderColor);
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(filterSelectorRect);
-
-        if (fileConfig.selectedFilterIndex >= 0 &&
-            fileConfig.selectedFilterIndex < static_cast<int>(fileConfig.filters.size())) {
-            const FileFilter& filter = fileConfig.filters[fileConfig.selectedFilterIndex];
-            ctx->SetTextPaint(Colors::Black);
-            ctx->DrawText(filter.ToDisplayString(), Point2Di(filterSelectorRect.x + 5, filterSelectorRect.y + 16));
-        }
-
-        ctx->DrawText("▼", Point2Di(filterSelectorRect.x + filterSelectorRect.width - 20, filterSelectorRect.y + 16));
-    }
-
-    bool UltraCanvasFileDialog::OnEvent(const UCEvent& event) {
-        switch (event.type) {
-            case UCEventType::MouseDown:
-                if (event.button == UCMouseButton::Left) {
-                    Point2Di eventPos(event.pointer.x, event.pointer.y);
-
-                    if (fileListRect.Contains(eventPos)) {
-                        HandleFileListClick(event);
-                        return true;
-                    }
-
-                    if (filterSelectorRect.Contains(eventPos)) {
-                        HandleFilterDropdownClick();
-                        return true;
-                    }
-                }
-                break;
-
-            case UCEventType::MouseDoubleClick:
-                if (fileListRect.Contains(event.pointer)) {
-                    HandleFileListDoubleClick(event);
-                    return true;
-                }
-                break;
-
-            case UCEventType::MouseMove:
-                if (fileListRect.Contains(event.pointer)) {
-                    int newHoverIndex = scrollOffset + (event.pointer.y - fileListRect.y) / itemHeight;
-                    int totalItems = static_cast<int>(directoryList.size() + fileList.size());
-                    hoverItemIndex = (newHoverIndex < totalItems) ? newHoverIndex : -1;
-                } else {
-                    hoverItemIndex = -1;
-                }
-                break;
-
-            case UCEventType::MouseUp:
-                break;
-
-            case UCEventType::KeyDown:
-                // Falls through to the modal dialog when the browser has no use
-                // for the key, so Escape still cancels.
-                if (HandleKeyDown(event)) return true;
-                break;
-
-            case UCEventType::TextInput:
-                HandleTextInput(event);
-                return true;
-
-            case UCEventType::MouseWheel:
-                HandleMouseWheel(event);
-                return true;
-
-            default:
-                break;
-        }
-        return UltraCanvasModalDialog::OnEvent(event);
-    }
-
-    void UltraCanvasFileDialog::HandleFileListClick(const UCEvent& event) {
-        int clickedIndex = scrollOffset + (event.pointer.y - fileListRect.y) / itemHeight;
-        int totalItems = static_cast<int>(directoryList.size() + fileList.size());
-
-        if (clickedIndex >= totalItems) return;
-
-        selectedFileIndex = clickedIndex;
-
-        if (clickedIndex >= static_cast<int>(directoryList.size())) {
-            int fileIndex = clickedIndex - static_cast<int>(directoryList.size());
-            if (fileIndex < static_cast<int>(fileList.size())) {
-                std::string selectedFile = fileList[fileIndex];
-                fileNameText = selectedFile;
-
-                if (fileConfig.allowMultipleSelection) {
-                    if (event.ctrl) {
-                        auto it = std::find(selectedFiles.begin(), selectedFiles.end(), selectedFile);
-                        if (it != selectedFiles.end()) {
-                            selectedFiles.erase(it);
-                        } else {
-                            selectedFiles.push_back(selectedFile);
-                        }
-                    } else {
-                        selectedFiles = {selectedFile};
-                    }
-                } else {
-                    selectedFiles = {selectedFile};
-                }
-            }
-        }
-    }
-
-    void UltraCanvasFileDialog::HandleFileListDoubleClick(const UCEvent& event) {
-        if (selectedFileIndex < 0) return;
-
-        if (selectedFileIndex < static_cast<int>(directoryList.size())) {
-            NavigateToDirectory(directoryList[selectedFileIndex]);
-        } else {
-            HandleOkButton();
-        }
-    }
-
-    bool UltraCanvasFileDialog::HandleKeyDown(const UCEvent& event) {
-        switch (event.virtualKey) {
-            case UCKeys::Return:
-                // Enter on a highlighted directory opens it; anywhere else it
-                // accepts the current selection or typed name.
-                if (selectedFileIndex >= 0 &&
-                    selectedFileIndex < static_cast<int>(directoryList.size())) {
-                    NavigateToDirectory(directoryList[selectedFileIndex]);
-                } else {
-                    HandleOkButton();
-                }
-                return true;
-
-            case UCKeys::Up:
-                if (selectedFileIndex > 0) {
-                    selectedFileIndex--;
-                    EnsureItemVisible();
-                    UpdateSelection();
-                }
-                return true;
-
-            case UCKeys::Down:
-                if (selectedFileIndex < static_cast<int>(directoryList.size() + fileList.size()) - 1) {
-                    selectedFileIndex++;
-                    EnsureItemVisible();
-                    UpdateSelection();
-                }
-                return true;
-
-            case UCKeys::Backspace:
-                // Backspace edits the file name being typed; only an empty name
-                // means "go up a level".
-                if (fileConfig.dialogType != FileDialogType::SelectFolder && !fileNameText.empty()) {
-                    fileNameText.pop_back();
-                } else {
-                    NavigateToParentDirectory();
-                }
-                return true;
-
-            default:
-                return false;
-        }
-    }
-
-    void UltraCanvasFileDialog::HandleTextInput(const UCEvent& event) {
-        if (fileConfig.dialogType != FileDialogType::SelectFolder) {
-            fileNameText += event.text;
-        }
-    }
-
-    void UltraCanvasFileDialog::HandleMouseWheel(const UCEvent& event) {
-        if (fileListRect.Contains(event.pointer)) {
-            int totalItems = static_cast<int>(directoryList.size() + fileList.size());
-            scrollOffset = std::max(0, std::min(totalItems - maxVisibleItems,
-                                                scrollOffset - event.wheelDelta * 3));
-        }
-    }
-
-    void UltraCanvasFileDialog::HandleFilterDropdownClick() {
-        if (!fileConfig.filters.empty()) {
-            fileConfig.selectedFilterIndex = (fileConfig.selectedFilterIndex + 1) % static_cast<int>(fileConfig.filters.size());
-            RefreshFileList();
-        }
-    }
-
+// ----- accepting -----
     void UltraCanvasFileDialog::HandleOkButton() {
+        // Return on a row of the listing has already been taken as opening it.
+        if (activationPending) return;
+
         if (fileConfig.dialogType == FileDialogType::SelectFolder) {
-            selectedFiles = {currentDirectory};
-            if (onFileSelected) {
-                onFileSelected(currentDirectory);
-            }
-        } else if (fileConfig.dialogType == FileDialogType::Save) {
-            if (!fileNameText.empty()) {
-                selectedFiles = {fileNameText};
-                std::string fullPath = CombinePath(currentDirectory, fileNameText);
-                if (onFileSelected) {
-                    onFileSelected(fullPath);
+            // A folder highlighted in the listing is the answer; otherwise the
+            // folder being shown.
+            std::string chosen = currentDirectory;
+            if (fileListView) {
+                if (TreeNode* node = fileListView->GetFirstSelectedNode()) {
+                    const std::string& id = node->data.nodeId;
+                    if (id.size() > 2 && id[0] == 'D') chosen = CombinePath(currentDirectory, id.substr(2));
                 }
             }
-        } else {
-            if (fileConfig.allowMultipleSelection && !selectedFiles.empty()) {
-                if (onFilesSelected) {
-                    onFilesSelected(GetSelectedFilePaths());
-                }
-            } else if (!selectedFiles.empty()) {
-                std::string fullPath = CombinePath(currentDirectory, selectedFiles[0]);
-                if (onFileSelected) {
-                    onFileSelected(fullPath);
-                }
+            Accept({chosen});
+            return;
+        }
+
+        std::string typed = fileNameInput ? fileNameInput->GetText() : std::string();
+        while (!typed.empty() && std::isspace(static_cast<unsigned char>(typed.back()))) typed.pop_back();
+        while (!typed.empty() && std::isspace(static_cast<unsigned char>(typed.front()))) typed.erase(0, 1);
+
+        // The name field still shows what the listing's selection put there:
+        // take the selection itself (several files for a multi-select).
+        if (!typed.empty() && typed == autoFileName && fileListView) {
+            std::vector<std::string> files;
+            for (TreeNode* node : fileListView->GetSelectedNodes()) {
+                const std::string& id = node->data.nodeId;
+                if (id.size() > 2 && id[0] == 'F') files.push_back(id.substr(2));
+            }
+            if (!files.empty()) {
+                if (!fileConfig.allowMultipleSelection) files.resize(1);
+                Accept(files);
+                return;
             }
         }
 
+        if (typed.empty()) {
+            // Nothing typed: OK opens a folder highlighted in the listing.
+            if (fileListView) {
+                if (TreeNode* node = fileListView->GetFirstSelectedNode()) {
+                    const std::string& id = node->data.nodeId;
+                    if (id.size() > 2 && id[0] == 'D') NavigateToDirectory(id.substr(2));
+                }
+            }
+            return;
+        }
+
+        // A typed name or path, relative to the folder being shown.
+        const std::string full = CombinePath(currentDirectory, typed);
+        std::error_code ec;
+        if (std::filesystem::is_directory(PathFromUtf8(full), ec)) {
+            fileNameInput->SetText("");
+            GoToDirectory(full, true);
+            return;
+        }
+        if (fileConfig.dialogType == FileDialogType::Save) {
+            std::filesystem::path parent = PathFromUtf8(full).parent_path();
+            if (!parent.empty() && !std::filesystem::is_directory(parent, ec)) return;
+            Accept({full});
+            return;
+        }
+        // Open: only a file that is there.
+        if (std::filesystem::is_regular_file(PathFromUtf8(full), ec)) {
+            Accept({full});
+        }
+    }
+
+    void UltraCanvasFileDialog::Accept(const std::vector<std::string>& files) {
+        if (files.empty()) return;
+        selectedFiles = files;
+        if (fileConfig.allowMultipleSelection) {
+            if (onFilesSelected) onFilesSelected(GetSelectedFilePaths());
+        } else if (onFileSelected) {
+            onFileSelected(GetSelectedFilePath());
+        }
         CloseDialog(DialogResult::OK);
     }
 
+// ----- navigation -----
     void UltraCanvasFileDialog::NavigateToDirectory(const std::string& dirName) {
         if (dirName == "..") {
             NavigateToParentDirectory();
             return;
         }
-
-        std::string newPath = CombinePath(currentDirectory, dirName);
-        SetCurrentDirectory(newPath);
+        GoToDirectory(CombinePath(currentDirectory, dirName), true);
     }
 
     void UltraCanvasFileDialog::NavigateToParentDirectory() {
-        try {
-            std::filesystem::path parentPath = PathFromUtf8(currentDirectory).parent_path();
-            if (!parentPath.empty()) {
-                SetCurrentDirectory(PathToUtf8(parentPath));
-            }
-        } catch (const std::exception& e) {
-            debugOutput << "Error navigating to parent directory: " << e.what() << std::endl;
-        }
-    }
-
-    void UltraCanvasFileDialog::EnsureItemVisible() {
-        if (selectedFileIndex < scrollOffset) {
-            scrollOffset = selectedFileIndex;
-        } else if (selectedFileIndex >= scrollOffset + maxVisibleItems) {
-            scrollOffset = selectedFileIndex - maxVisibleItems + 1;
-        }
-    }
-
-    void UltraCanvasFileDialog::UpdateSelection() {
-        if (selectedFileIndex < 0) return;
-
-        int totalDirectories = static_cast<int>(directoryList.size());
-
-        if (selectedFileIndex >= totalDirectories) {
-            int fileIndex = selectedFileIndex - totalDirectories;
-            if (fileIndex < static_cast<int>(fileList.size())) {
-                std::string selectedFile = fileList[fileIndex];
-                fileNameText = selectedFile;
-
-                if (!fileConfig.allowMultipleSelection) {
-                    selectedFiles = {selectedFile};
-                }
-            }
+        const std::filesystem::path current = PathFromUtf8(currentDirectory);
+        const std::filesystem::path parentPath = current.parent_path();
+        if (!parentPath.empty() && parentPath != current) {
+            GoToDirectory(PathToUtf8(parentPath), true);
         }
     }
 
@@ -1745,8 +1858,8 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasFileDialog::CombinePath(const std::string& dir, const std::string& file) const {
-        std::filesystem::path path(dir);
-        path /= file;
+        std::filesystem::path path = PathFromUtf8(dir);
+        path /= PathFromUtf8(file);
         return PathToUtf8(path);
     }
 
@@ -2113,8 +2226,8 @@ namespace UltraCanvas {
 
     FileDialogConfig::FileDialogConfig() : DialogConfig() {
         buttons = DialogButtons::OKCancel;
-        width = 600;
-        height = 450;
+        width = 760;
+        height = 520;
         resizable = true;
         // Default filters
         filters = {

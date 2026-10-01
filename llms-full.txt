@@ -49728,8 +49728,9 @@ animator:
   sheet model (`SetScrollPosition(row, col)`), read by the grid painter, the
   header painters, hit-testing and the scrollbar fractions.
 - `UltraCanvasTextArea` in Hex editing mode (`hexFirstVisibleRow`).
-- The `UltraCanvasFileDialog` file list and the `UltraCanvasNewDocumentDialog`
-  document list (item indices, also used for click hit-testing).
+- The `UltraCanvasNewDocumentDialog` document list (item indices, also used
+  for click hit-testing). (`UltraCanvasFileDialog` used to be on this list; its
+  folders and files are now `UltraCanvasTreeView`s, which scroll smoothly.)
 
 ---
 
@@ -62919,7 +62920,11 @@ open multiple, save, select folder) follows
 `UltraCanvasDialogManager::SetUseNativeDialogs`: the platform's picker when
 it is on, the framework's `UltraCanvasFileDialog` when it is off (the
 default). A native picker blocks and runs the callback before the call
-returns; the framework's runs it when the dialog closes.
+returns; the framework's runs it when the dialog closes. The framework's
+dialog is built from elements: a path field with an *up* button, a folder
+tree (Home, Desktop, Documents, Downloads and the mounted drives) beside the
+listing of the current folder, and the file-name field and file-type dropdown
+below them.
 
 ```cpp
 // Decode an image into a UCImage
