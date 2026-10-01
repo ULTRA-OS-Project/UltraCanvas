@@ -849,6 +849,16 @@ if(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VectorFormatsTests.cmake)
 endif()
 
+# ===== FILER TESTS WITHOUT THE FULL SUITE =====
+# FilerFolderPreviewTest and FilerNameEncodingTest alone, for builds that
+# leave BUILD_TESTS off (the Windows CI rows): the file display lists and draws
+# Thai, CJK and emoji names on the platform that converts them to UTF-16.
+option(ULTRACANVAS_BUILD_FILER_TESTS "Build the Filer tests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_FILER_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/FilerTests.cmake)
+endif()
+
 # ===== ULTRANET TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraNet is built.

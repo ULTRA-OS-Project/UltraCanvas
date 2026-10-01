@@ -31,3 +31,12 @@
 - `check_path_string.py` reads a name as a string or a path by its nearest
   declaration above the use, so `path` being an `fs::path` in one function and
   a `std::string` in the next no longer reports the path one.
+- **The Filer's name tests run on Windows.** `FilerFolderPreviewTest` and
+  `FilerNameEncodingTest` move to `Tests/FilerTests.cmake`, which
+  `Tests/CMakeLists.txt` includes as before and the top level includes on its
+  own under the new `ULTRACANVAS_BUILD_FILER_TESTS` option - the pattern the
+  CDR tests use. The Windows CI rows turn it on and run both: the
+  name-encoding test writes German, Thai, Russian, Chinese and emoji names to
+  a real folder and lists them through `UltraCanvasFilerWidget`, so the file
+  display itself is now tested on the platform where a name goes through
+  UTF-16 and the runner's code page 1252.
