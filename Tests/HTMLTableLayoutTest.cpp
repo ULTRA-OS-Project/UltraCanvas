@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.6.0 - images in a block without text share a line
 // Version: 1.5.0 - <img> border, background, padding, margins, border-radius
 // Version: 1.4.0 - object-fit, object-position
 // Version: 1.3.0 - background-repeat
@@ -546,6 +547,59 @@ void TestImageBox() {
     }
 }
 
+// Images in a block without text share a line, side by side, a space apart
+// where the HTML has whitespace; they wrap when the line is full, and
+// display:block or <br> still breaks the line.
+void TestImagesShareLine() {
+    std::printf("images share a line\n");
+    auto images = [](const std::string& html, float width) {
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        opts.resourceLoader = [](const std::string&) { return BackgroundPicture40x20(); };
+        HTML::ElementBuilder builder;
+        auto host = std::make_shared<Host>();
+        host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        auto root = builder.Build(html, opts).root;
+        std::vector<Rect2Df> out;
+        if (!root) return out;
+        root->size.width = CSSLayout::Dimension::Px(width);
+        host->AddChild(root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = width;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, width },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        root->Measure(mc, ctx);
+        root->Arrange(Rect2Df{ 0, 0, width, root->measured.measuredHeight }, ctx);
+        std::vector<Placed> all;
+        Collect(root.get(), 0, 0, all);
+        for (const auto& p : all)
+            if (p.element->GetIdentifier().rfind("html_img_", 0) == 0) out.push_back(p.rect);
+        return out;
+    };
+    auto r = images("<p><a href='a'><img src='p.png'></a> <a href='b'><img src='p.png'></a>"
+                    "<img src='p.png' height='40' width='80'></p>", 400.f);
+    Check(r.size() == 3, "three images");
+    if (r.size() == 3) {
+        Check(r[1].x > r[0].x + 40.f && r[1].x < r[0].x + 46.f, "second beside the first, a space apart");
+        CheckNear(r[2].x, r[1].x + 40.f, "no whitespace: no gap");
+        CheckNear(r[0].y + r[0].height, r[2].y + r[2].height, "they stand on one bottom line");
+    }
+    r = images("<div><img src='p.png' width='150'> <img src='p.png' width='150'> "
+               "<img src='p.png' width='150'></div>", 400.f);
+    if (r.size() == 3) {
+        CheckNear(r[2].x, 0.f, "the third wraps to the start of the next line");
+        Check(r[2].y >= r[0].y + r[0].height - 0.5f, "below the first two");
+        CheckNear(r[1].y, r[0].y, "the first two on one line");
+    } else Check(false, "three wide images");
+    r = images("<div><img src='p.png' style='display:block'><img src='p.png'></div>", 400.f);
+    if (r.size() == 2) Check(r[1].y >= r[0].y + 20.f - 0.5f, "display:block keeps its own line");
+    else Check(false, "two images (block)");
+    r = images("<div><img src='p.png'><br><img src='p.png'></div>", 400.f);
+    if (r.size() == 2) Check(r[1].y >= r[0].y + 20.f - 0.5f, "<br> breaks the line");
+    else Check(false, "two images (br)");
+}
+
 } // namespace
 
 int main() {
@@ -559,6 +613,7 @@ int main() {
     TestBackgroundRepeat();
     TestObjectFitPosition();
     TestImageBox();
+    TestImagesShareLine();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }

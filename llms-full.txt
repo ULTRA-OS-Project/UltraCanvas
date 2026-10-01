@@ -30312,8 +30312,10 @@ label->SetInlineImages({ star });
   clicking the image activates it.
 
 The HTML reader (`HTMLElementBuilder`) uses this for an `<img>` inside running
-text. An image in a block that has no text of its own still gets a line of
-its own, placed by `text-align`.
+text. Images in a block that has no text of its own go on lines of their own,
+placed by `text-align`: side by side on one wrapping line while only
+whitespace separates them, a space apart where the HTML has whitespace;
+`display:block` or `<br>` starts a new line.
 
 ## Event Callbacks
 

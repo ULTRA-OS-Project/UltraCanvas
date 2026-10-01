@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.9.0 - images in a block without text share a line, side by side (a
+//                  space's gap where the HTML has whitespace between them),
+//                  wrapping when it is full; display:block ones keep their own.
 // Version: 1.8.0 - <img> border, background, padding and rounded corners, block and
 //                  inline; width / height size the picture (content box), the
 //                  frame goes around it; border-radius in percent.
@@ -20,7 +23,7 @@
 //                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -171,6 +174,25 @@ ImagePosition ToImagePosition(const BackgroundPosition& p) {
                         : ImageAxisPosition::Fraction(a.value);
     };
     return ImagePosition{ axis(p.x), axis(p.y) };
+}
+
+// Whether a run holds nothing but whitespace text (spaces, newlines, &nbsp;)
+// - between two images it is the space that separates them on their line.
+bool OnlyWhitespace(const std::vector<Node*>& run) {
+    for (const Node* n : run) {
+        if (n->type != NodeType::Text) return false;
+        const std::string& t = n->text;
+        for (size_t i = 0; i < t.size(); ++i) {
+            const unsigned char c = static_cast<unsigned char>(t[i]);
+            if (std::isspace(c)) continue;
+            if (c == 0xC2 && i + 1 < t.size() && static_cast<unsigned char>(t[i + 1]) == 0xA0) {
+                ++i;            // U+00A0, &nbsp;
+                continue;
+            }
+            return false;
+        }
+    }
+    return true;
 }
 
 // The display size of an image's picture: its width / height (one of them
@@ -346,11 +368,17 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
     // margins collapse to the larger one, like CSS margin collapsing.
     float pendingMargin = 0.f;
     bool anyFlowChild = false;
+    // The line the last image went on, while nothing but whitespace has come
+    // after it: the next (inline) image joins it, side by side.
+    std::shared_ptr<UltraCanvasContainer> imageLine;
+    std::shared_ptr<UltraCanvasUIElement> lastImage;   // the line's last image
+    float lastImageMarginRight = 0.f;
     // Images in a block that also has text flow in that text; in a block of
     // images alone each gets a line of its own (BuildImage).
     const bool flowImages = opts.enableImages && HasInlineText(element);
     auto addFlowChild = [&](std::shared_ptr<UltraCanvasUIElement> child,
                             float topMargin, float bottomMargin) {
+        imageLine.reset();          // anything else in the flow ends the image line
         float spacing = anyFlowChild ? std::max(pendingMargin, topMargin)
                                      : topMargin;
         if (spacing > 0.5f) {
@@ -441,6 +469,59 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
         if (!line->GetChildren().empty()) addFlowChild(line, 0.f, 0.f);
     };
 
+    // An image in a block without text. Images that are inline (as <img> is
+    // by default) share one wrapping line, side by side, until text or a block
+    // comes between them; whitespace between two of them is a space's gap.
+    // display:block puts an image on a line of its own.
+    auto addImage = [&](Node& node, const std::string& href) {
+        const ComputedStyle& st = resolver.StyleOf(&node);
+        bool spaced = false;
+        if (!inlineRun.empty()) {
+            if (lineParts.empty() && OnlyWhitespace(inlineRun)) {
+                spaced = true;
+                inlineRun.clear();
+            } else {
+                imageLine.reset();
+            }
+        }
+        if (!lineParts.empty()) imageLine.reset();
+        flushRun();
+        auto row = std::dynamic_pointer_cast<UltraCanvasContainer>(BuildImage(node, href));
+        if (!row || row->GetChildren().empty()) return;
+        const bool inlineImage = !IsBlockDisplay(st.display);
+        std::shared_ptr<UltraCanvasUIElement> image = row->GetChildren().front();
+        if (inlineImage) {
+            // An inline box's vertical margins grow its line; they do not
+            // collapse with the blocks around it.
+            image->box.margin.top = CSSLayout::Dimension::Px(st.marginTop);
+            image->box.margin.bottom = CSSLayout::Dimension::Px(st.marginBottom);
+        }
+        if (inlineImage && imageLine) {
+            row->RemoveChild(image);
+            // The space goes after the image before it: at the end of a full
+            // line it is lost as a browser loses it, rather than indenting
+            // the next line.
+            if (spaced && lastImage) {
+                const float space = st.fontSizePx * 0.28f;   // a space, in a common text face
+                lastImage->box.margin.right = CSSLayout::Dimension::Px(lastImageMarginRight + space);
+            }
+            RegisterAnchors(node, image);
+            imageLine->AddChild(image);
+            lastImage = image;
+            lastImageMarginRight = st.marginRight;
+            return;
+        }
+        RegisterAnchors(node, row);
+        if (inlineImage) {
+            addFlowChild(row, 0.f, 0.f);
+            imageLine = row;
+            lastImage = image;
+            lastImageMarginRight = st.marginRight;
+        } else {
+            addFlowChild(row, st.marginTop, st.marginBottom);
+        }
+    };
+
     auto addBox = [&](Node& child) {
         if (!inlineRun.empty()) {
             lineParts.push_back({ inlineRun, nullptr });
@@ -466,13 +547,8 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                 inlineRun.push_back(&child);
                 return;
             }
-            flushRun();
-            if (opts.enableImages) {
-                if (auto image = BuildImage(child, AncestorLink(child))) {
-                    RegisterAnchors(child, image);
-                    addFlowChild(image, childStyle.marginTop, childStyle.marginBottom);
-                }
-            }
+            if (opts.enableImages) addImage(child, AncestorLink(child));
+            else flushRun();
             return;
         }
         if (child.tag == "svg") {
@@ -581,11 +657,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                         std::string gHref = href;
                         if (g.tag == "a" && g.HasAttribute("href")) gHref = g.GetAttribute("href");
                         if (g.tag == "img" || g.tag == "image") {
-                            flushRun();
-                            if (auto image = BuildImage(g, gHref)) {
-                                RegisterAnchors(g, image);
-                                addFlowChild(image, gs.marginTop, gs.marginBottom);
-                            }
+                            addImage(g, gHref);
                         } else if (g.FindFirst("img") || g.FindFirst("image")) {
                             lift(g, gHref);
                         } else {
@@ -939,9 +1011,11 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     CSSLayout::JustifyContent justify = CSSLayout::JustifyContent::FlexStart;
     if (style.textAlign == TextAlignMode::Center)     justify = CSSLayout::JustifyContent::Center;
     else if (style.textAlign == TextAlignMode::Right) justify = CSSLayout::JustifyContent::FlexEnd;
-    row->layout.SetFlexRow()
+    // Wrapping, because the images after it may join this line; they stand
+    // on its bottom, as images stand on a line's baseline.
+    row->layout.SetFlex(CSSLayout::FlexDirection::Row, CSSLayout::FlexWrap::Wrap)
                .SetFlexJustifyContent(justify)
-               .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+               .SetFlexAlignItems(CSSLayout::AlignItems::End);
     row->AddChild(image);
     return row;
 }

@@ -6,11 +6,12 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.5.0 - images in a block without text share a wrapping line
 // Version: 1.4.0 - background-repeat
 // Version: 1.3.0 - background-position
 // Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -109,10 +110,12 @@ private:
         const std::string& markerPrefix, const Node* blockNode = nullptr);
     // Whether a block's inline content has text of its own (not only images
     // and whitespace): then its images flow in that text, as in a browser;
-    // otherwise each image gets a line of its own.
+    // otherwise its images go on lines of their own - side by side on a
+    // shared, wrapping line while only whitespace separates them.
     bool HasInlineText(const Node& element) const;
 
-    // An image on a line of its own, placed by the text-align it inherits.
+    // An image on a line of its own (a wrapping row the next images can
+    // join), placed by the text-align it inherits.
     // `linkHref` makes it clickable (an image inside <a href>).
     std::shared_ptr<UltraCanvasUIElement> BuildImage(Node& element,
                                                      const std::string& linkHref = "");
