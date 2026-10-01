@@ -215,13 +215,15 @@ brew install cmake cairo pango freetype vips harfbuzz
 mkdir build && cd build && cmake .. && make
 ```
 
-The executables land in `build/`, and on Linux and the BSDs configuring also
-links `build/share/media` and `build/share/Docs` to the repository's
-directories, which is where `GetResourcesDir()` looks for icons, fonts,
-wallpapers and bundled documents. An application started straight from the
-build tree therefore finds its resources without an install step. Windows and
-macOS lay `Resources/` out differently and get theirs from the packaging
-scripts.
+The executables land in `build/`, and configuring also links
+`build/share/media` and `build/share/Docs` to the repository's directories
+(a symlink; on Windows a directory junction when a symlink needs privileges
+the build does not have, and a copy as the last resort), which is where
+`GetResourcesDir()` looks after the platform's packaged place
+(`exe/Resources/` on Windows, the bundle's `Contents/Resources/` on macOS).
+An application started straight from the build tree therefore finds its
+icons, fonts, wallpapers and bundled documents on every desktop platform
+without an install step.
 
 The project now defaults to Clang on Linux, so install the `clang` package
 alongside the existing deps. The build uses the system default linker (GNU ld,

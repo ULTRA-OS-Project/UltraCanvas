@@ -179,25 +179,41 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Every application runs from that directory, and GetResourcesDir()
-# (UltraCanvas/core/UltraCanvasConfig.cpp) looks for its resources at
-# <exe dir>/share/media, then <exe dir>/../share/media - the installed and
-# packaged layouts. Give the build tree the same share/, pointing at the
+# (UltraCanvas/core/UltraCanvasConfig.cpp) looks for its resources in the
+# platform's packaged place first (exe/Resources/ on Windows, the bundle's
+# Contents/Resources/ on macOS) and then at <exe dir>/share/media and
+# <exe dir>/../share/media. Give the build tree that share/, pointing at the
 # repository's media/ and Docs/, so an application started straight from the
-# build tree finds its icons, fonts, wallpaper and bundled documents without
-# an install step or a hand-made link. Links, not copies: media/ is over
-# 100 MB and a link follows edits to the sources. Only where a symlink is a
-# plain file operation; Windows and macOS lay Resources/ out differently
-# (SetResourcesDir) and get theirs from packaging.
-if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN
-   AND NOT CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
+# build tree finds its icons, fonts, wallpaper and bundled documents on every
+# desktop platform without an install step or a hand-made link. Links, not
+# copies: media/ is over 100 MB and a link follows edits to the sources. On
+# Windows a symbolic link needs Developer Mode or elevation, so a directory
+# junction (which needs neither) is the second try and a copy the last; a
+# copied share/ is left alone on later configures, so delete it to refresh.
+# Android gets its resources from the APK and Emscripten from the preload.
+if(NOT ANDROID AND NOT EMSCRIPTEN AND NOT CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
     foreach(_uc_resource media Docs)
-        if(NOT EXISTS "${CMAKE_BINARY_DIR}/share/${_uc_resource}")
+        set(_uc_link "${CMAKE_BINARY_DIR}/share/${_uc_resource}")
+        set(_uc_target "${CMAKE_SOURCE_DIR}/${_uc_resource}")
+        if(NOT EXISTS "${_uc_link}")
             file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/share")
-            file(CREATE_LINK "${CMAKE_SOURCE_DIR}/${_uc_resource}"
-                 "${CMAKE_BINARY_DIR}/share/${_uc_resource}" SYMBOLIC)
+            file(CREATE_LINK "${_uc_target}" "${_uc_link}" RESULT _uc_linked SYMBOLIC)
+            if(WIN32 AND NOT _uc_linked EQUAL 0)
+                file(TO_NATIVE_PATH "${_uc_link}" _uc_link_native)
+                file(TO_NATIVE_PATH "${_uc_target}" _uc_target_native)
+                execute_process(COMMAND cmd /c mklink /J "${_uc_link_native}" "${_uc_target_native}"
+                                RESULT_VARIABLE _uc_linked OUTPUT_QUIET ERROR_QUIET)
+            endif()
+            if(NOT _uc_linked EQUAL 0)
+                message(STATUS "share/${_uc_resource}: no link possible here, copying the directory")
+                file(COPY "${_uc_target}" DESTINATION "${CMAKE_BINARY_DIR}/share")
+            endif()
         endif()
     endforeach()
     unset(_uc_resource)
+    unset(_uc_link)
+    unset(_uc_target)
+    unset(_uc_linked)
 endif()
 
 # ===== ANDROID DEFAULTS (phase 1: core library only) =====
