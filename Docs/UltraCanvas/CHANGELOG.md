@@ -1,3 +1,76 @@
+#### 2026-10-01 *0.9.114*
+- **A picture whose thumbnail could not be made no longer shortens its row.**
+  The thumbnail grid shortens a row of landscape pictures to the height they
+  are drawn at, measured from the file headers. A file whose decode was given
+  up on is drawn as its type glyph instead, and that glyph was squeezed into
+  the shortened row - so a folder whose thumbnails failed showed its glyphs at
+  two sizes, row by row, and the sizes changed whenever the Display >
+  Thumbnails switches were touched. A failed file now counts as full height,
+  and the row relays out when the failure is known.
+- **`GetThumbnailCacheStats()` counts the thumbnails that are not shown** -
+  `pendingEntries` (waiting, including those being made), `inFlightEntries`
+  (being made now) and `failedEntries` (given up on) - so a host can tell
+  "still on its way" from "the workers are stuck" from "the files would not
+  decode".
+- **A stuck thumbnail job no longer stops every thumbnail after it.** The
+  Filer widget makes thumbnails on two to four background workers, and a job
+  that never finishes - a video in a cloud folder downloaded in full before
+  its first frame can be read, a drive that stopped answering, a shell call
+  that never returns - kept its worker for good. With every worker on such a
+  job, no thumbnail was made again in any folder for the rest of the session,
+  not even the ones waiting in the disk cache. A job running past 20 s now
+  gets one more worker started beside it (up to eight extra), and the log
+  names it. `GetThumbnailCacheStats()` reports `workerCount` and the longest
+  running job (`longestJobPath`, `longestJobSeconds`).
+- **Three more Filer paths and the image file reader are UTF-8 on Windows.**
+  The folder-size walk, `StatEntryForPath`, the folder watcher's directory
+  test and `UCImageRaster::LoadFileToMemory` handed a UTF-8 string straight
+  to `std::filesystem` / `std::ifstream`, which on Windows goes through the
+  ANSI code page and misses a Thai or CJK name. They go through
+  `PathFromUtf8` now.
+- **Every file name is UTF-8 on Windows - the implicit conversions too.**
+  `PathToUtf8` / `PathFromUtf8` had replaced `.string()` and `fs::path(str)`,
+  but a UTF-8 `std::string` handed *straight* to something that takes a path
+  converts the same way, through the ANSI code page: `fs::exists(str)`,
+  `fs::remove(str, ec)`, `fs::directory_iterator(str)`, `std::ifstream f(str)`,
+  `f.open(str)`, `fs::path p = str;` - and `fopen(name, mode)` reads the name
+  in it too. On a Windows whose code page lacks a character of the name, each
+  of these named a different file: an image, document, model, font, PDF, mail
+  attachment, cloud cache or setting under a Thai, CJK or emoji folder name
+  was "not found". 774 such sites in 243 files - framework, plugins,
+  VirtualFS, UltraCloud, UltraNet, SmartHome, UltraAI, every application and
+  the tests - now go through `PathFromUtf8` / `OpenFileUtf8`.
+  - `PathFromUtf8` also takes a `const char*`, a `std::string_view` and a
+    `std::filesystem::path` (returned unchanged), so wrapping a name in it is
+    correct whichever of these it is; a C string or view used to pick the
+    code-page `path` constructor instead.
+  - `scripts/check_path_string.py` reports the implicit forms as
+    `path-implicit` and `fopen-narrow` (537 findings before this change, none
+    after), and now also scans `UltraNet/` and `VideoFX/`. Linux, macOS,
+    Android, WASM and ULTRA OS platform code is exempt from the two new kinds:
+    a path's native string is the UTF-8 bytes there.
+  - `Tests/PathUtf8Test.cpp`, which Windows CI runs under code page 1252,
+    exercises each wrapped call - create, query, size, time, read, write,
+    open, copy, rename, iterate, remove - on a Thai-and-emoji folder and file.
+- **`UCImageRaster::LoadFileToMemory` checks what it reads.** A file that
+  would not open, or whose size `tellg()` could not report, sent `-1` to
+  `malloc` - a request for every byte there is; an empty file got a
+  zero-byte buffer that read as success; and a read the disk broke off left
+  the tail of the buffer uninitialised for the decoder. Each is now an error
+  with its reason, and a failure leaves no stale size or ownership behind.
+- `check_path_string.py` reads a name as a string or a path by its nearest
+  declaration above the use, so `path` being an `fs::path` in one function and
+  a `std::string` in the next no longer reports the path one.
+- **The Filer's name tests run on Windows.** `FilerFolderPreviewTest` and
+  `FilerNameEncodingTest` move to `Tests/FilerTests.cmake`, which
+  `Tests/CMakeLists.txt` includes as before and the top level includes on its
+  own under the new `ULTRACANVAS_BUILD_FILER_TESTS` option - the pattern the
+  CDR tests use. The Windows CI rows turn it on and run both: the
+  name-encoding test writes German, Thai, Russian, Chinese and emoji names to
+  a real folder and lists them through `UltraCanvasFilerWidget`, so the file
+  display itself is now tested on the platform where a name goes through
+  UTF-16 and the runner's code page 1252.
+
 #### 2026-10-01 *0.9.113*
 - **The closing line is checked, not just asked for.** The `Stop` hook
   `.claude/hooks/check-delivery.sh` now measures how many lines the checkout
