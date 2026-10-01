@@ -65,6 +65,7 @@
 #include "UltraFilerWindow.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
@@ -2238,12 +2239,23 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
     std::string name = mountPath;
     for (const auto& disc : UltraFilerRamDisks::List())
         if (disc.mountPath == mountPath) name = disc.name;
-    UltraCanvasAlert::Confirm(
-            "Eject the RAM disc \"" + name + "\"?\n\nEverything on it is "
-            "deleted and cannot be recovered.",
-            "Eject RAM disc",
-            [this, mountPath, name](bool confirmed) {
-        if (!confirmed) return;
+    // The answer on the button, the way the file display's own questions
+    // put it: Eject, red, since everything on the disc goes with it.
+    DialogConfig cfg;
+    cfg.title = "Eject RAM disc";
+    cfg.dialogType = DialogType::Warning;
+    cfg.message = "Eject the RAM disc \"" + name + "\"?";
+    cfg.details = "Everything on it is deleted and cannot be recovered.";
+    cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+    cfg.width = 480;
+    cfg.height = 180;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+    if (!dialog) return;   // no dialogs: nothing is ejected unasked
+    dialog->AddCustomButton("Eject", DialogResult::Yes,
+                            DialogButtonRole::DestructiveDefault);
+    dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->onResult = [this, mountPath, name](DialogResult result) {
+        if (result != DialogResult::Yes) return;
         // Tabs leave first: a display still listing the disc keeps no file
         // open, but it would show a folder that no longer exists.
         const std::string home = UserHomeDir();
@@ -2264,7 +2276,8 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
         // when the platform reports the unmount.
         RefreshDriveNodes();
         if (statusLabel) statusLabel->SetText("RAM disc \"" + name + "\" ejected");
-    }, window.get());
+    };
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
 }
 
 void UltraFilerWindow::AddTreeRemoteDriveNode(const RemoteDrive& drive) {
