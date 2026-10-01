@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.10.0 - borders per side (width, colour, dashed / dotted); <hr> is its
+//                   border box, as in a browser
 // Version: 1.9.0 - images in a block without text share a line, side by side (a
 //                  space's gap where the HTML has whitespace between them),
 //                  wrapping when it is full; display:block ones keep their own.
@@ -193,6 +195,17 @@ bool OnlyWhitespace(const std::vector<Node*>& run) {
         }
     }
     return true;
+}
+
+// The dash a border side is stroked with: none for solid, dashes three
+// widths long for dashed, width-long dots for dotted.
+UCDashPattern BorderDash(const BorderSide& side) {
+    const double w = std::max(1.f, side.Width());
+    switch (side.style) {
+        case BorderLineStyle::Dashed: return UCDashPattern({ 3.0 * w, 3.0 * w });
+        case BorderLineStyle::Dotted: return UCDashPattern({ w, w });
+        default:                      return UCDashPattern();
+    }
 }
 
 // The display size of an image's picture: its width / height (one of them
@@ -863,9 +876,11 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
                     f.marginBottom = style.marginBottom; f.marginLeft = style.marginLeft;
                     f.paddingTop = style.paddingTop;       f.paddingRight = style.paddingRight;
                     f.paddingBottom = style.paddingBottom; f.paddingLeft = style.paddingLeft;
-                    if (style.borderWidth > 0.f) {
-                        f.borderWidth = style.borderWidth;
-                        f.borderColor = ToColor(style.borderColor);
+                    if (style.HasBorder()) {
+                        // One border round an inline image: its widest side.
+                        const BorderSide& b = style.WidestBorder();
+                        f.borderWidth = b.Width();
+                        f.borderColor = ToColor(b.color);
                     }
                     if (style.backgroundColor) f.background = ToColor(*style.backgroundColor);
                     f.borderRadius = BorderRadiusPx(style,
@@ -976,8 +991,8 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     ComputedStyle boxStyle = style;
     const Size2Df content = ImageContentSize(style, *raster);
     boxStyle.borderRadius = BorderRadiusPx(style,
-        content.width + style.paddingLeft + style.paddingRight + 2.f * style.borderWidth,
-        content.height + style.paddingTop + style.paddingBottom + 2.f * style.borderWidth);
+        content.width + style.paddingLeft + style.paddingRight + style.BorderHorizontal(),
+        content.height + style.paddingTop + style.paddingBottom + style.BorderVertical());
     ApplyBoxStyle(*image, boxStyle, /*fillWidth=*/false);
     image->box.boxSizing = CSSLayout::BoxSizing::ContentBox;
     image->box.padding.left = CSSLayout::Dimension::Px(style.paddingLeft);
@@ -1024,11 +1039,11 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildRule(Node& element) {
     auto rule = MakeContainer("hr");
     const ComputedStyle& style = resolver.StyleOf(&element);
     ApplyBoxStyle(*rule, style);
-    rule->size.height = CSSLayout::Dimension::Px(
-        style.borderWidth > 0 ? style.borderWidth : 1.f);
-    Color line = style.borderWidth > 0 ? ToColor(style.borderColor)
-                                       : Color(160, 160, 160, 255);
-    rule->SetBackgroundColor(line);
+    // A rule is its border box: an empty box (unless it has a height) inside
+    // its borders - the user agent's inset 1px lines, or the author's
+    // (border-top: 1px solid #eee), or a height with a background.
+    const float height = style.heightPx.value_or(0.f) + style.BorderVertical();
+    rule->size.height = CSSLayout::Dimension::Px(height);
     return rule;
 }
 
@@ -1080,7 +1095,7 @@ bool ElementBuilder::NeedsInlineBox(const Node& element) const {
     if (style.display != DisplayMode::InlineBlock) return false;
     if (element.tag == "img" || element.tag == "image" || element.tag == "svg") return false;
     if (HasBlockDescendant(element)) return true;
-    return style.backgroundColor.has_value() || style.borderWidth > 0.f ||
+    return style.backgroundColor.has_value() || style.HasBorder() ||
            style.paddingTop > 0.f || style.paddingRight > 0.f ||
            style.paddingBottom > 0.f || style.paddingLeft > 0.f ||
            style.widthPx.has_value() || style.heightPx.has_value();
@@ -1113,7 +1128,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
     table->layout.SetTableSpacing(spacing, spacing);
     ApplyBackgroundImage(*table, style);
     // <table border="1"> rules every cell too.
-    const bool ruledCells = element.tag == "table" && style.borderWidth > 0.f &&
+    const bool ruledCells = element.tag == "table" && style.HasBorder() &&
                             element.HasAttribute("border");
 
     auto isRow = [&](const Node& n) {
@@ -1183,7 +1198,7 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
         if (!cellStyle.backgroundColor && rowStyle.backgroundColor) {
             cellBox->SetBackgroundColor(ToColor(*rowStyle.backgroundColor));
         }
-        if (ruledCells && cellStyle.borderWidth <= 0.f) {
+        if (ruledCells && !cellStyle.HasBorder()) {
             cellBox->SetBorders(1.f, Color(128, 128, 128, 255));
         }
         // valign / vertical-align of the cell, else of its row; a cell
@@ -1298,10 +1313,23 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
         limits.maxWidth = Dimension::Px(*style.maxWidthPx);
         target.boxConstraints = limits;
     }
-    if (style.borderWidth > 0) {
+    if (style.HasBorder() && style.UniformBorder()) {
         // Width, colour and radius together: box.border alone reserves the
         // space but paints nothing.
-        target.SetBorders(style.borderWidth, ToColor(style.borderColor), style.borderRadius);
+        const BorderSide& b = style.borderTop;
+        target.SetBorders(b.Width(), ToColor(b.color), style.borderRadius, BorderDash(b));
+    } else if (style.HasBorder()) {
+        // Each side its own (border-bottom: 1px solid #eee); the radius on
+        // every corner, bordered or not.
+        auto side = [&](const BorderSide& b, auto setter) {
+            if (b.Width() > 0.f)
+                (target.*setter)(b.Width(), ToColor(b.color), style.borderRadius, BorderDash(b));
+        };
+        side(style.borderTop, &UltraCanvasUIElement::SetBorderTop);
+        side(style.borderRight, &UltraCanvasUIElement::SetBorderRight);
+        side(style.borderBottom, &UltraCanvasUIElement::SetBorderBottom);
+        side(style.borderLeft, &UltraCanvasUIElement::SetBorderLeft);
+        if (style.borderRadius > 0) target.SetBorderRadius(style.borderRadius);
     } else if (style.borderRadius > 0) {
         target.SetBorderRadius(style.borderRadius);   // a rounded, borderless box
     }

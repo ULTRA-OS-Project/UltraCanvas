@@ -3,13 +3,14 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.8.0 - borders per side (width, style, colour): BorderSide
 // Version: 1.7.0 - border-radius in percent; <img border>
 // Version: 1.6.0 - object-fit / object-position
 // Version: 1.5.0 - background-repeat (per layer)
 // Version: 1.4.0 - background-position; background size and position per layer
 // Version: 1.3.0 - background images, margin: auto, max-width, @media width
 // Version: 1.2.0 - nowrap, border-collapse / border-spacing, border-radius
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,6 +24,27 @@
 
 namespace UltraCanvas {
 namespace HTML {
+
+// border-style, as drawn: double, groove, ridge, inset and outset draw
+// solid. (NoBorder, not None: X11 defines None.)
+enum class BorderLineStyle { NoBorder, Solid, Dashed, Dotted };
+
+// One side of a box's border.
+struct BorderSide {
+    float width = 3.f;                                // CSS initial: medium
+    BorderLineStyle style = BorderLineStyle::NoBorder;
+    CssColor color{0, 0, 0, 255};
+    // No colour of its own: the element's text colour (CSS's initial
+    // currentColor), filled in once the element's colour is known.
+    bool currentColor = true;
+    // The width it takes and draws: none without a style.
+    float Width() const { return style == BorderLineStyle::NoBorder ? 0.f : width; }
+    bool SameAs(const BorderSide& o) const {
+        return Width() == o.Width() && (Width() == 0.f ||
+               (style == o.style && color.r == o.color.r && color.g == o.color.g &&
+                color.b == o.color.b && color.a == o.color.a));
+    }
+};
 
 enum class DisplayMode {
     Block,
@@ -121,8 +143,33 @@ struct ComputedStyle {
     // margin-left / margin-right: auto (centring a box with a width).
     bool marginLeftAuto = false, marginRightAuto = false;
     std::optional<float> maxWidthPx;
-    float borderWidth = 0;
-    CssColor borderColor{0, 0, 0, 255};
+    // The four borders, each with its own width, style and colour (CSS
+    // border, border-top, border-width, border-left-color, ...). A side draws
+    // only with a style: Width() is 0 for border-style none, whatever its
+    // width says.
+    BorderSide borderTop, borderRight, borderBottom, borderLeft;
+    bool HasBorder() const {
+        return borderTop.Width() > 0.f || borderRight.Width() > 0.f ||
+               borderBottom.Width() > 0.f || borderLeft.Width() > 0.f;
+    }
+    // All four sides alike (one SetBorders call draws them).
+    bool UniformBorder() const {
+        return borderTop.SameAs(borderRight) && borderTop.SameAs(borderBottom) &&
+               borderTop.SameAs(borderLeft);
+    }
+    // The widest side - for consumers with one border only (a rich-text
+    // paragraph, an inline image's frame).
+    const BorderSide& WidestBorder() const {
+        const BorderSide* w = &borderTop;
+        for (const BorderSide* b : { &borderRight, &borderBottom, &borderLeft })
+            if (b->Width() > w->Width()) w = b;
+        return *w;
+    }
+    float BorderHorizontal() const { return borderLeft.Width() + borderRight.Width(); }
+    float BorderVertical() const { return borderTop.Width() + borderBottom.Width(); }
+    void SetAllBorders(const BorderSide& side) {
+        borderTop = borderRight = borderBottom = borderLeft = side;
+    }
     float borderRadius = 0;
     // border-radius given in percent (of the box; 50% rounds a square to a
     // circle): kept apart, since only the builder knows the box's size. 0 when

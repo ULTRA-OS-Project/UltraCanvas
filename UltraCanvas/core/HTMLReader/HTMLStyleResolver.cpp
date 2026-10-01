@@ -1,5 +1,9 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.7.0 - borders per side: border, border-top/-right/-bottom/-left,
+//                  border-width / -style / -color (1-4 values) and the per-side
+//                  longhands; a border without a style draws nothing, as in CSS;
+//                  dashed and dotted kept. <hr> draws a browser's inset rule.
 // Version: 1.6.0 - border-radius in percent; <img border="N"> (in the image's
 //                  colour); a border shorthand without a colour uses the text
 //                  colour (currentColor).
@@ -14,7 +18,7 @@
 //                  default to a browser's 1px padding; `inherit` for
 //                  color, font and text properties; background images and
 //                  size, margin: auto, max-width.
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -159,8 +163,13 @@ void StyleResolver::ApplyLegacyAttributes(const Node& element, ComputedStyle& st
     }
     if (element.tag == "table" && element.HasAttribute("border")) {
         if (auto len = CssLength::Parse(TrimLower(element.GetAttribute("border")))) {
-            if (len->unit != CssUnit::Percent)
-                style.borderWidth = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+            if (len->unit != CssUnit::Percent) {
+                BorderSide side;
+                side.width = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+                side.style = BorderLineStyle::Solid;
+                side.currentColor = false;          // black, as before
+                style.SetAllBorders(side);
+            }
         }
     }
     // <img border="N">: an N-pixel solid border in the image's colour - the
@@ -168,8 +177,10 @@ void StyleResolver::ApplyLegacyAttributes(const Node& element, ComputedStyle& st
     if (element.tag == "img" && element.HasAttribute("border")) {
         if (auto len = CssLength::Parse(TrimLower(element.GetAttribute("border")))) {
             if (len->unit != CssUnit::Percent) {
-                style.borderWidth = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
-                style.borderColor = style.color;
+                BorderSide side;
+                side.width = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+                side.style = BorderLineStyle::Solid;   // in currentColor
+                style.SetAllBorders(side);
             }
         }
     }
@@ -274,6 +285,12 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
         if (opts.overrideAuthorColors) style.color = opts.linkColor;
     }
 
+    // Borders without a colour of their own take the text colour.
+    for (BorderSide* side : { &style.borderTop, &style.borderRight,
+                              &style.borderBottom, &style.borderLeft }) {
+        if (side->currentColor) side->color = style.color;
+    }
+
     styles[&element] = style;
 
     for (const auto& child : element.children) {
@@ -336,7 +353,19 @@ void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle
         s.monospace = true;
         s.preserveWhitespace = true;
     }
-    else if (tag == "hr") { block(); marginsV(0.5f * em); }
+    else if (tag == "hr") {
+        block(); marginsV(0.5f * em);
+        // A browser's rule: a 1px inset border round an empty box - darker
+        // above and on the left, lighter below and on the right.
+        BorderSide dark, light;
+        dark.width = light.width = 1.f;
+        dark.style = light.style = BorderLineStyle::Solid;
+        dark.color = CssColor{154, 154, 154, 255};
+        light.color = CssColor{238, 238, 238, 255};
+        dark.currentColor = light.currentColor = false;
+        s.borderTop = s.borderLeft = dark;
+        s.borderBottom = s.borderRight = light;
+    }
     else if (tag == "table") { s.display = DisplayMode::Table; }
     else if (tag == "tr") { s.display = DisplayMode::TableRow; }
     else if (tag == "td" || tag == "th") {
@@ -442,6 +471,73 @@ std::vector<std::string> SplitParts(const std::string& value) {
     }
     if (!current.empty()) parts.push_back(current);
     return parts;
+}
+
+// A border-style keyword; nullopt when `word` is not one.
+std::optional<BorderLineStyle> ParseBorderLineStyle(const std::string& word) {
+    if (word == "none" || word == "hidden") return BorderLineStyle::NoBorder;
+    if (word == "dashed") return BorderLineStyle::Dashed;
+    if (word == "dotted") return BorderLineStyle::Dotted;
+    if (word == "solid" || word == "double" || word == "groove" || word == "ridge" ||
+        word == "inset" || word == "outset") return BorderLineStyle::Solid;
+    return std::nullopt;
+}
+
+// A border-width value: a length or thin / medium / thick.
+std::optional<float> ParseBorderWidth(const std::string& word, float emPx, float remPx) {
+    if (word == "thin") return 1.f;
+    if (word == "medium") return 3.f;
+    if (word == "thick") return 5.f;
+    if (auto len = CssLength::Parse(word)) {
+        if (len->unit == CssUnit::Percent) return std::nullopt;
+        // A bare number other than 0 is not a length.
+        if (len->unit == CssUnit::Number && len->value != 0) return std::nullopt;
+        return std::max(0.f, len->ToPx(emPx, remPx));
+    }
+    return std::nullopt;
+}
+
+// A border colour; nullopt for currentColor (the element's text colour,
+// filled in later) and for a word that is no colour.
+std::optional<CssColor> ParseBorderColor(const std::string& word, bool& isCurrent) {
+    isCurrent = (word == "currentcolor");
+    if (isCurrent) return std::nullopt;
+    return CssColor::Parse(word);
+}
+
+// A border side shorthand (border, border-top, ...): width, style and colour
+// in any order; what it leaves out goes back to its initial value (medium,
+// none, the text colour).
+BorderSide ParseBorderSide(const std::string& value, float emPx, float remPx) {
+    BorderSide side;
+    for (const auto& part : SplitParts(value)) {
+        bool isCurrent = false;
+        if (auto st = ParseBorderLineStyle(part)) side.style = *st;
+        else if (auto w = ParseBorderWidth(part, emPx, remPx)) side.width = *w;
+        else if (auto c = ParseBorderColor(part, isCurrent)) {
+            side.color = *c;
+            side.currentColor = false;
+        }
+    }
+    return side;
+}
+
+// A 1-4 value list (top, right, bottom, left - as margin), each value parsed
+// by `parse` and handed to `apply` with its side; values that do not parse
+// leave their side as it is.
+template <typename T, typename Parse, typename Apply>
+void ForBoxSides(const std::string& value, Parse parse, Apply apply) {
+    std::vector<std::optional<T>> v;
+    for (const auto& part : SplitParts(value)) v.push_back(parse(part));
+    if (v.empty() || v.size() > 4) return;
+    const auto& top = v[0];
+    const auto& right = v.size() > 1 ? v[1] : v[0];
+    const auto& bottom = v.size() > 2 ? v[2] : v[0];
+    const auto& left = v.size() > 3 ? v[3] : right;
+    if (top) apply(0, *top);
+    if (right) apply(1, *right);
+    if (bottom) apply(2, *bottom);
+    if (left) apply(3, *left);
 }
 
 // Apply a 1-4 value box shorthand (margin/padding) into the four floats.
@@ -900,30 +996,64 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
             }
         }
     }
-    else if (prop == "border" || prop == "border-top" || prop == "border-bottom" ||
-             prop == "border-left" || prop == "border-right") {
-        // Uniform border approximation: width + color from the shorthand. No
-        // colour given: the text colour (CSS's currentColor).
-        s.borderColor = s.color;
-        for (const auto& part : SplitParts(lower)) {
-            if (auto len = CssLength::Parse(part)) {
-                if (len->unit != CssUnit::Number || len->value == 0) {
-                    s.borderWidth = len->ToPx(em, rem);
-                    continue;
-                }
-            }
-            if (part == "thin") s.borderWidth = 1;
-            else if (part == "medium") s.borderWidth = 3;
-            else if (part == "thick") s.borderWidth = 5;
-            else if (part == "none" || part == "hidden") s.borderWidth = 0;
-            else if (auto color = CssColor::Parse(part)) s.borderColor = *color;
+    else if (prop == "border" || prop == "border-top" || prop == "border-right" ||
+             prop == "border-bottom" || prop == "border-left") {
+        const BorderSide side = ParseBorderSide(lower, em, rem);
+        if (prop == "border") s.SetAllBorders(side);
+        else if (prop == "border-top") s.borderTop = side;
+        else if (prop == "border-right") s.borderRight = side;
+        else if (prop == "border-bottom") s.borderBottom = side;
+        else s.borderLeft = side;
+    }
+    else if (prop == "border-width" || prop == "border-style" || prop == "border-color") {
+        BorderSide* sides[4] = { &s.borderTop, &s.borderRight, &s.borderBottom, &s.borderLeft };
+        if (prop == "border-width") {
+            ForBoxSides<float>(lower, [&](const std::string& w) { return ParseBorderWidth(w, em, rem); },
+                               [&](int i, float w) { sides[i]->width = w; });
+        } else if (prop == "border-style") {
+            ForBoxSides<BorderLineStyle>(lower, ParseBorderLineStyle,
+                               [&](int i, BorderLineStyle st) { sides[i]->style = st; });
+        } else {
+            // currentColor parses as "black, current" so it still takes its side.
+            ForBoxSides<std::pair<CssColor, bool>>(lower,
+                [&](const std::string& c) -> std::optional<std::pair<CssColor, bool>> {
+                    bool isCurrent = false;
+                    if (auto color = ParseBorderColor(c, isCurrent)) return std::make_pair(*color, false);
+                    if (isCurrent) return std::make_pair(CssColor{}, true);
+                    return std::nullopt;
+                },
+                [&](int i, const std::pair<CssColor, bool>& c) {
+                    sides[i]->color = c.first;
+                    sides[i]->currentColor = c.second;
+                });
         }
     }
-    else if (prop == "border-width") {
-        if (auto len = CssLength::Parse(lower)) s.borderWidth = len->ToPx(em, rem);
-    }
-    else if (prop == "border-color") {
-        if (auto color = CssColor::Parse(lower)) s.borderColor = *color;
+    else if (prop.rfind("border-", 0) == 0 &&
+             (prop.size() > 6 && (prop.find("-width") != std::string::npos ||
+                                  prop.find("-style") != std::string::npos ||
+                                  prop.find("-color") != std::string::npos))) {
+        // border-top-width, border-left-color, ...
+        BorderSide* side = nullptr;
+        if (prop.rfind("border-top-", 0) == 0) side = &s.borderTop;
+        else if (prop.rfind("border-right-", 0) == 0) side = &s.borderRight;
+        else if (prop.rfind("border-bottom-", 0) == 0) side = &s.borderBottom;
+        else if (prop.rfind("border-left-", 0) == 0) side = &s.borderLeft;
+        if (side) {
+            const std::string what = prop.substr(prop.rfind('-') + 1);
+            if (what == "width") {
+                if (auto w = ParseBorderWidth(lower, em, rem)) side->width = *w;
+            } else if (what == "style") {
+                if (auto st = ParseBorderLineStyle(lower)) side->style = *st;
+            } else if (what == "color") {
+                bool isCurrent = false;
+                if (auto c = ParseBorderColor(lower, isCurrent)) {
+                    side->color = *c;
+                    side->currentColor = false;
+                } else if (isCurrent) {
+                    side->currentColor = true;
+                }
+            }
+        }
     }
     // Unrecognized properties are ignored (vertical-align, float, etc.).
 }

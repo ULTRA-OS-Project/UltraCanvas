@@ -1,7 +1,10 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.0.12 - per-side borders: each side strokes in its own colour, dashed
+//                  or solid on its own (a dashed side took the previous colour and
+//                  passed its dash on to the sides after it)
 // Version: 1.0.11 - A non-invertible matrix is refused instead of killing the context
-// Last Modified: 2026-09-22
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -1445,11 +1448,8 @@ namespace UltraCanvas {
         // Top border
         if (borderTopWidth > 0) {
             SetStrokeWidth(borderTopWidth);
-            if (!borderTopPattern.dashes.empty()) {
-                SetLineDash(borderTopPattern);
-            } else {
-                SetStrokePaint(borderTopColor);
-            }
+            SetStrokePaint(borderTopColor);
+            SetLineDash(borderTopPattern);     // empty: solid
             float yPos = y + borderTopWidth / 2.0;
             DrawLine({x + topLeftRadius, yPos}, {x + width - topRightRadius, yPos});
 //            drawBorderSide(x + topLeftRadius, yPos,
@@ -1460,11 +1460,8 @@ namespace UltraCanvas {
         // Right border
         if (borderRightWidth > 0) {
             SetStrokeWidth(borderRightWidth);
-            if (!borderRightPattern.dashes.empty()) {
-                SetLineDash(borderRightPattern);
-            } else {
-                SetStrokePaint(borderRightColor);
-            }
+            SetStrokePaint(borderRightColor);
+            SetLineDash(borderRightPattern);     // empty: solid
             float xPos = x + width - borderRightWidth / 2.0;
             DrawLine({xPos, y + topRightRadius},
                      {xPos, y + height - bottomRightRadius});
@@ -1473,11 +1470,8 @@ namespace UltraCanvas {
         // Bottom border
         if (borderBottomWidth > 0) {
             SetStrokeWidth(borderBottomWidth);
-            if (!borderBottomPattern.dashes.empty()) {
-                SetLineDash(borderBottomPattern);
-            } else {
-                SetStrokePaint(borderBottomColor);
-            }
+            SetStrokePaint(borderBottomColor);
+            SetLineDash(borderBottomPattern);     // empty: solid
             float yPos = y + height - borderBottomWidth / 2.0;
             DrawLine({x + bottomLeftRadius, yPos},
                      {x + width - bottomRightRadius, yPos});
@@ -1487,16 +1481,15 @@ namespace UltraCanvas {
         if (borderLeftWidth > 0) {
             float xPos = x + borderLeftWidth / 2.0;
             SetStrokeWidth(borderLeftWidth);
-            if (!borderLeftPattern.dashes.empty()) {
-                SetLineDash(borderLeftPattern);
-            } else {
-                SetStrokePaint(borderLeftColor);
-            }
+            SetStrokePaint(borderLeftColor);
+            SetLineDash(borderLeftPattern);     // empty: solid
             DrawLine({xPos, y + topLeftRadius},
                      {xPos, y + height - bottomLeftRadius});
         }
 
-        // Draw rounded corners with borders.
+        // Draw rounded corners with borders (solid: a dash of a side must
+        // not carry over into them).
+        SetLineDash(UCDashPattern());
         // The path used for ClipPath() above follows the outer edge of the
         // rounded rectangle, so a corner arc drawn at the full corner radius is
         // centred on the clip boundary and has its outer half clipped away,

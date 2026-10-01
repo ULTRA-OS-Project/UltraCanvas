@@ -1,6 +1,7 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.8.0 - borders per side
 // Version: 1.7.0 - border-radius %, <img border>, border currentColor
 // Version: 1.6.0 - object-fit, object-position
 // Version: 1.5.0 - background-repeat
@@ -668,15 +669,58 @@ static void TestImageBorders() {
     st = styleOf("<img src=a.png style=\"border-radius:50%;border-radius:4px\">", "img");
     CHECK(st.borderRadiusPercent == 0.f && st.borderRadius == 4.f);
     st = styleOf("<img src=a.png border=\"2\" style=\"color:#ff0000\">", "img");
-    CHECK(st.borderWidth == 2.f);
+    CHECK(st.borderTop.Width() == 2.f && st.borderLeft.Width() == 2.f);
     st = styleOf("<font color=\"#00ff00\"><img src=a.png border=\"3\"></font>", "img");
-    CHECK(st.borderWidth == 3.f && st.borderColor.g == 0xff && st.borderColor.r == 0);
+    CHECK(st.borderTop.Width() == 3.f && st.borderTop.color.g == 0xff && st.borderTop.color.r == 0);
     st = styleOf("<img src=a.png border=\"0\">", "img");
-    CHECK(st.borderWidth == 0.f);
+    CHECK(!st.HasBorder());
     st = styleOf("<div style=\"color:#0000ff;border:1px solid\">x</div>", "div");
-    CHECK(st.borderWidth == 1.f && st.borderColor.b == 0xff && st.borderColor.r == 0);
+    CHECK(st.borderTop.Width() == 1.f && st.borderTop.color.b == 0xff && st.borderTop.color.r == 0);
     st = styleOf("<div style=\"color:#0000ff;border:1px solid #ff0000\">x</div>", "div");
-    CHECK(st.borderColor.r == 0xff && st.borderColor.b == 0);
+    CHECK(st.borderRight.color.r == 0xff && st.borderRight.color.b == 0);
+}
+
+// Borders per side: the shorthands, the 1-4 value lists, the longhands, and
+// no border without a style.
+static void TestBorderSides() {
+    auto styleOf = [](const std::string& css) {
+        Parser parser;
+        Document doc = parser.Parse("<div style=\"color:#0000ff;" + css + "\">x</div>");
+        StyleResolver resolver;
+        ResolverOptions options;
+        options.baseFontSizePx = 16.f;
+        resolver.Resolve(doc, options);
+        Node* n = doc.root->FindFirst("div");
+        return n ? resolver.StyleOf(n) : ComputedStyle{};
+    };
+    ComputedStyle st = styleOf("border-bottom:1px solid #eeeeee");
+    CHECK(st.borderBottom.Width() == 1.f && st.borderBottom.color.r == 0xee);
+    CHECK(st.borderTop.Width() == 0.f && st.borderLeft.Width() == 0.f && st.borderRight.Width() == 0.f);
+    CHECK(!st.UniformBorder());
+    st = styleOf("border:2px solid red;border-left:4px dashed #00ff00");
+    CHECK(st.borderTop.Width() == 2.f && st.borderTop.color.r == 0xff);
+    CHECK(st.borderLeft.Width() == 4.f && st.borderLeft.style == BorderLineStyle::Dashed);
+    CHECK(st.borderLeft.color.g == 0xff);
+    st = styleOf("border-width:1px 2px 3px 4px;border-style:solid");
+    CHECK(st.borderTop.Width() == 1.f && st.borderRight.Width() == 2.f);
+    CHECK(st.borderBottom.Width() == 3.f && st.borderLeft.Width() == 4.f);
+    CHECK(st.borderTop.color.b == 0xff);                  // currentColor
+    st = styleOf("border-width:1px 2px;border-style:solid dotted;border-color:red green");
+    CHECK(st.borderBottom.Width() == 1.f && st.borderLeft.Width() == 2.f);
+    CHECK(st.borderRight.style == BorderLineStyle::Dotted && st.borderBottom.style == BorderLineStyle::Solid);
+    CHECK(st.borderLeft.color.r == 0 && st.borderLeft.color.g > 0 && st.borderTop.color.r == 0xff);
+    st = styleOf("border-top-width:5px;border-top-style:solid;border-top-color:#ff0000");
+    CHECK(st.borderTop.Width() == 5.f && st.borderTop.color.r == 0xff && st.borderBottom.Width() == 0.f);
+    st = styleOf("border:1px #cccccc");                     // no style: no border
+    CHECK(!st.HasBorder());
+    st = styleOf("border-style:solid");                     // medium
+    CHECK(st.borderTop.Width() == 3.f && st.UniformBorder());
+    st = styleOf("border:1px solid #ccc;border-top:none");
+    CHECK(st.borderTop.Width() == 0.f && st.borderBottom.Width() == 1.f);
+    st = styleOf("border:0");
+    CHECK(!st.HasBorder());
+    st = styleOf("border:thin solid");
+    CHECK(st.borderLeft.Width() == 1.f);
 }
 
 int main() {
@@ -698,6 +742,7 @@ int main() {
     TestBackgroundRepeat();
     TestObjectFitPosition();
     TestImageBorders();
+    TestBorderSides();
 
     std::printf("%s: %d checks, %d failures\n",
                 failures == 0 ? "PASS" : "FAIL", checks, failures);
