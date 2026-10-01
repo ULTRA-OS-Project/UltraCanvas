@@ -1,3 +1,28 @@
+#### 2026-10-01 *0.9.120*
+- **A word-processing document prints on Windows, through GutenPrint, and on an
+  IPP printer without PDF.** It went to the printer only as the PDF
+  `ExportToPdf` writes, which those renderers cannot lay out, so they refused
+  the job. A job can now carry the same document as pages that draw themselves
+  (`IOPrintJob::pages`, an `IPrintPageSource`) beside the PDF, and each
+  renderer takes the form it can use: CUPS and a PDF-reading IPP printer the
+  PDF, as before; GDI and GutenPrint the pages; IPP the pages as PWG raster when
+  the printer takes no PDF or cannot select the page range from one.
+  - `PrintDocumentWithDialog` / `PrintDocumentWithSettings` /
+    `MakeDocumentPrintJob` take the pages as an optional last argument.
+  - `CreateRichDocumentPrintPages(editor)` (`UltraCanvasRichTextPrint.h`): the
+    pages `ExportToPdf` writes, laid out by a hidden copy of the document, drawn
+    straight into a render-context target or off screen at up to 300 dpi for a
+    Windows printer DC. A page the sheet's size prints 1:1 on the sheet's
+    edges; a larger one is scaled to fit.
+  - `UltraCanvasRichTextEdit::BeginPrintLayout` / `RenderPrintPage` /
+    `EndPrintLayout` draw a document's pages into any context; `ExportToPdf`
+    is built on them.
+  - `IPrintPageTarget::GetRenderContext()` (`RasterPageTarget` returns its
+    off-screen context). The native renderer refuses a job of pages alone by
+    name instead of queuing an empty one.
+  - New test `RichTextPrintTest`; `IODevicePrinterIPPTest` covers planning a
+    job of pages.
+
 #### 2026-10-01 *0.9.119*
 - **`cmake --install` now writes a working CMake package, so an application outside this repository builds with `find_package(UltraCanvas CONFIG REQUIRED)` and `target_link_libraries(app PRIVATE UltraCanvas::UltraCanvas)`.** The `install(EXPORT UltraCanvasTargets)` block in `UltraCanvas/CMakeLists.txt` had been commented out since the start, and the root still installed an `UltraCanvasConfig.cmake` that included a `UltraCanvasTargets.cmake` nothing generated - so the only out-of-tree route was a submodule and `add_subdirectory()` of the whole tree. The export set now holds the core and every in-tree target its link interface names (`UltraCanvasTextUtils`, `UltraCrypt`, `UltraVault`, `UltraCanvasBase32`, `UltraDatabase`, `uc-yyjson` in a static build, `UltraNet` when it links a system libcurl), VirtualFS and fmt are reached through their own packages (a fetched fmt is now told to install one), and `UltraCanvasConfig.cmake.in` - moved to `UltraCanvas/cmake/`, generated with `configure_package_config_file` where its inputs are in scope - re-finds Threads, fmt, VirtualFS, CURL, OpenSSL, Iconv and the pkg-config libraries the public headers include. The headers install as a mirror of the source layout under `include/ultracanvas/` (`include/`, `Plugins/`, `libspecific/`, `OS/` side by side), because the public headers reach across it with `../libspecific/...`, `../OS/<Platform>/...` and `Plugins/...` includes; the install interface is `include/ultracanvas/include` and `include/ultracanvas/Plugins`, as the build interface is. A shared core built against the vendored libcurl installs that `libcurl.so.4` next to itself; a static one cannot be packaged and the configure summary says why. The format plug-ins (CDR with its vendored libcdr archive, XAR, EPS, Vector, Models, OCR, Vectorizer with its Rust staticlib installed by path) join the export set from their own directories as `UltraCanvas::UltraCanvas<Name>Plugin`, listed in `ULTRACANVAS_PLUGIN_TARGETS`, and the `UltraCanvasAllFormats` registrar is exported as an object library, so an out-of-tree application registers every installed format the way an in-tree one does. `Tests/PackageConsumer` is a two-file application that builds against the installed package alone, and the Linux CI leg installs into a scratch prefix and builds and runs it on every pull request. `Docs/GettingStarted.md` describes the route.
 - **The documented `CreateButton` form took an argument that does not exist.** `AGENTS.md`, `UltraCanvasButtonExamples.md`, the element catalogue, `UltraCanvasSplitPane.md` and `UltraCanvasDialogKeyboard.md` all showed `CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me")` - identifier, a numeric id, then geometry - and the button doc's class reference declared a constructor with `long id`. No element factory or constructor takes an id, and `CreateAutoButton` never existed either; an assistant copying the documented form got a compile error on its first button. The examples now show the real signatures: identifier, x, y, w, h, text, the size-only and text-only constructors a layout positions, and `CreateIconButton` with the icon path before the text.
