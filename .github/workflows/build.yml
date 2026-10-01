@@ -656,6 +656,28 @@ jobs:
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
 
+      # The installed CMake package is what an application outside this tree
+      # builds against (Docs/GettingStarted.md, the out-of-tree route). Install
+      # into a scratch prefix and build Tests/PackageConsumer with nothing but
+      # find_package(UltraCanvas): an export CMake refuses to generate, a
+      # header that reaches outside the install, or a dependency the config
+      # forgets fails here, on this pull request, rather than on a user's
+      # machine. Linux only: that is the leg that installs every module and
+      # builds the core shared, which is the shape a package is used in.
+      - name: Install and build against the CMake package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          cmake --install build --prefix "$PWD/install-prefix" > install.log
+          test -f install-prefix/lib/cmake/UltraCanvas/UltraCanvasConfig.cmake \
+            || { echo "::error::cmake --install wrote no UltraCanvasConfig.cmake"; tail -20 install.log; exit 1; }
+          cmake -S Tests/PackageConsumer -B build-package-consumer \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_PREFIX_PATH="$PWD/install-prefix"
+          cmake --build build-package-consumer --parallel 2
+          LD_LIBRARY_PATH="$PWD/install-prefix/lib" ./build-package-consumer/PackageConsumer
+
       # What the cache actually did, in the log where anyone can see it. A
       # leg still at a 0% hit rate on a second run of the same commit is
       # misconfigured rather than merely cold, and the counters are the only

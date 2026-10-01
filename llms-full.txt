@@ -3300,10 +3300,32 @@ Two layouts are supported.
 | Layout | When | How it links |
 |---|---|---|
 | **In-tree**, `Apps/<Name>/` | The app belongs to the ULTRA OS family or you want the six-platform CI to build it | One `option(BUILD_<NAME>)` + `add_subdirectory(Apps/<Name>)` block in the root `CMakeLists.txt`, after the framework; link `${ULTRACANVAS_LIBRARY}` |
-| **Out-of-tree**, your own repo | A product that merely depends on the framework | Add the repository as a submodule and `add_subdirectory()` it with the bundled apps switched off; the framework exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_LIBRARIES`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form). There is no installed `find_package(UltraCanvas)` config yet |
+| **Out-of-tree**, your own repo | A product that merely depends on the framework | Install the framework once (`cmake --install build --prefix <prefix>`), then `find_package(UltraCanvas CONFIG REQUIRED)` and link `UltraCanvas::UltraCanvas`; point `CMAKE_PREFIX_PATH` at the prefix. The alternative is a submodule plus `add_subdirectory()` with the bundled apps switched off, which exports `ULTRACANVAS_LIBRARY`, `ULTRACANVAS_PLUGIN_TARGETS` and `ULTRACANVAS_INCLUDE_DIRS` to the parent scope (`Apps/Texter/CMakeLists.txt` shows the sibling-directory form) |
 
-The in-tree route is the one CI validates on every pull request, so prefer it
-for anything that will be released with the framework.
+Both routes are validated on every pull request: CI builds the in-tree
+applications, and it installs the framework into a scratch prefix and builds
+`Tests/PackageConsumer` against it with nothing but `find_package`. That
+directory is the complete out-of-tree starting point, two files long:
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(MyApp LANGUAGES CXX)
+find_package(UltraCanvas CONFIG REQUIRED)
+add_executable(MyApp main.cpp)
+target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas)
+```
+
+The package carries the whole element catalogue, FileLoader, JSON, and
+UltraDatabase and UltraNet when the installed build enabled them, plus
+`UltraCanvas::UltraCrypt` and `UltraCanvas::UltraVault` as separate targets.
+It re-finds cairo, pango, freetype, glib, tinyxml2 and libvips through
+pkg-config on your machine, so the `-dev` packages from step 1 are needed
+there too. The file-format converter plug-ins (CDR, XAR, EPS, the vector and
+3D-model converters, OCR, Vectorizer) are not in the package: they install as
+plain archives and are an in-tree concern for now. A static framework built
+against the vendored libcurl cannot be packaged at all and says so at
+configure time; build it shared, or against a system libcurl with WebSocket
+support.
 
 Ask the assistant to **copy a small existing app, not to invent a structure**.
 `Apps/UltraAuthenticator/` is the cleanest template: a headless core library,
@@ -3380,7 +3402,7 @@ int main(int argc, char* argv[]) {
     auto window = CreateWindow(config);
 
     auto label  = CreateLabel("greeting", 20, 20, 300, 24, "Hello from UltraCanvas");
-    auto button = CreateButton("quit", 101, 20, 60, 120, 32, "Quit");
+    auto button = CreateButton("quit", 20, 60, 120, 32, "Quit");
     // Capture the window raw: the button lives inside it, and a shared_ptr
     // here would close an ownership cycle (scripts/check_callback_cycles.py).
     button->onClick = [&app]() { app.RequestExit(); };
@@ -3616,7 +3638,7 @@ assistant must read, which is what stops it guessing.
 
 - [ ] Toolchain installed; the full tree builds and `UltraCanvasDemo` runs
 - [ ] The assistant has read `AGENTS.md` (Claude Code: automatic via `CLAUDE.md`)
-- [ ] App skeleton copied from an existing app; changelog, version line and CMake option in place
+- [ ] App skeleton copied from an existing app (in-tree) or from `Tests/PackageConsumer` (out-of-tree); changelog, version line and CMake option in place
 - [ ] Every control comes from the catalogue; layouts from the layout engines
 - [ ] Modules used only through their public surfaces; TLS on, SQL bound
 - [ ] Build and all `scripts/check_*.py` are green locally

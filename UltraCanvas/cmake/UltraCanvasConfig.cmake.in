@@ -1,0 +1,85 @@
+@PACKAGE_INIT@
+
+# UltraCanvasConfig.cmake — the CMake package an installed UltraCanvas provides.
+# Generated from UltraCanvas/cmake/UltraCanvasConfig.cmake.in by
+# UltraCanvas/CMakeLists.txt ("INSTALLATION AND THE CMAKE PACKAGE").
+#
+#     find_package(UltraCanvas CONFIG REQUIRED)
+#     target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas)
+#
+# Imported targets:
+#   UltraCanvas::UltraCanvas     the framework: windows, elements, rendering,
+#                                FileLoader, UltraCanvasJSON; UltraDatabase and
+#                                UltraNet when the build enabled them
+#   UltraCanvas::UltraCrypt      cryptographic services, UI-free
+#   UltraCanvas::UltraVault      credential and secret storage, UI-free
+#   UltraCanvas::UltraDatabase   (when built) usable on its own, without the UI
+#   UltraCanvas::UltraNet        (when built against a system libcurl)
+#
+# Variables, for build systems that still want them:
+#   ULTRACANVAS_VERSION, ULTRACANVAS_INCLUDE_DIRS, ULTRACANVAS_LIBRARIES
+#
+# Tests/PackageConsumer is the smallest application that uses this; CI builds
+# it against a fresh install on every pull request.
+
+include(CMakeFindDependencyMacro)
+
+set(ULTRACANVAS_VERSION "@ULTRACANVAS_PACKAGE_VERSION@")
+
+# ---- Packages the link interface names as imported targets -----------------
+find_dependency(Threads)
+find_dependency(fmt CONFIG)
+if(@ULTRACANVAS_PACKAGE_HAS_VIRTUALFS@)
+    find_dependency(VirtualFS CONFIG)
+endif()
+if(@ULTRACANVAS_PACKAGE_HAS_NET@)
+    find_dependency(CURL)
+    if(@ULTRACANVAS_PACKAGE_NET_OPENSSL@)
+        find_dependency(OpenSSL)
+    endif()
+    if(@ULTRACANVAS_PACKAGE_NET_ICONV@)
+        find_dependency(Iconv)
+    endif()
+endif()
+
+# ---- System libraries the link interface names by -l name ------------------
+# The build recorded them the way pkg-config reported them (-lcairo,
+# -lpango-1.0, -lvips-cpp, ...), and the public headers include <cairo/cairo.h>,
+# <glib.h> and <vips/vips8> themselves. Re-run pkg-config on the consumer's
+# machine for the include and library directories those need; a missing -dev
+# package fails here, by name, rather than at the first #include.
+find_dependency(PkgConfig)
+pkg_check_modules(_ultracanvas_deps REQUIRED
+    cairo pango pangocairo freetype2 glib-2.0 tinyxml2)
+set(_ultracanvas_dep_includes ${_ultracanvas_deps_INCLUDE_DIRS})
+set(_ultracanvas_dep_libdirs  ${_ultracanvas_deps_LIBRARY_DIRS})
+if(@ULTRACANVAS_PACKAGE_HAS_VIPS@)
+    pkg_check_modules(_ultracanvas_vips REQUIRED vips-cpp)
+    list(APPEND _ultracanvas_dep_includes ${_ultracanvas_vips_INCLUDE_DIRS})
+    list(APPEND _ultracanvas_dep_libdirs  ${_ultracanvas_vips_LIBRARY_DIRS})
+endif()
+
+# ---- The exported targets ---------------------------------------------------
+if(NOT TARGET UltraCanvas::UltraCanvas)
+    include("${CMAKE_CURRENT_LIST_DIR}/UltraCanvasTargets.cmake")
+endif()
+
+if(_ultracanvas_dep_includes)
+    set_property(TARGET UltraCanvas::UltraCanvas APPEND PROPERTY
+        INTERFACE_INCLUDE_DIRECTORIES ${_ultracanvas_dep_includes})
+endif()
+if(_ultracanvas_dep_libdirs)
+    set_property(TARGET UltraCanvas::UltraCanvas APPEND PROPERTY
+        INTERFACE_LINK_DIRECTORIES ${_ultracanvas_dep_libdirs})
+endif()
+
+set(ULTRACANVAS_INCLUDE_DIRS
+    "${PACKAGE_PREFIX_DIR}/include/ultracanvas/include"
+    "${PACKAGE_PREFIX_DIR}/include/ultracanvas/Plugins"
+    ${_ultracanvas_dep_includes})
+set(ULTRACANVAS_LIBRARIES UltraCanvas::UltraCanvas)
+
+unset(_ultracanvas_dep_includes)
+unset(_ultracanvas_dep_libdirs)
+
+check_required_components(UltraCanvas)
