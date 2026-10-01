@@ -99,7 +99,10 @@ void IngestStats::Add(const IngestStats& other) {
 }
 
 bool ReadFileBytes(const std::string& path, std::string& out) {
-    std::ifstream in(path, std::ios::binary);
+    // UTF-8, as every path in the app: the cache path carries the IMAP folder
+    // name ("Entwürfe", "Корзина"), which the narrow-string constructor would
+    // read in the Windows code page and miss.
+    std::ifstream in(PathFromUtf8(path), std::ios::binary);
     if (!in) return false;
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -259,12 +262,13 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
                                             const IngestOptions& options) {
     IngestStats stats;
     std::error_code ec;
-    if (!std::filesystem::is_directory(directory, ec)) return stats;
+    const std::filesystem::path dir = PathFromUtf8(directory);
+    if (!std::filesystem::is_directory(dir, ec)) return stats;
 
     // Sort by uid so an interrupted run resumes in a predictable place and the
     // progress numbers move monotonically.
     std::vector<std::pair<int64_t, std::filesystem::path>> files;
-    for (const auto& entry : std::filesystem::directory_iterator(directory, ec)) {
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
         if (ec) break;
         if (!entry.is_regular_file(ec)) continue;
         const std::string name = PathToUtf8(entry.path().filename());

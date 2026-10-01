@@ -98,7 +98,7 @@ void OnUiThread(std::function<void()> task) {
 bool EmailCleanerApp::Initialize(const std::string& dataDir,
                                  const std::string& mailDataDir) {
     std::error_code ec;
-    std::filesystem::create_directories(dataDir, ec);
+    std::filesystem::create_directories(PathFromUtf8(dataDir), ec);
 
     const UltraDbResult opened = store_.Open("emailcleaner", dataDir + "/analysis.db");
     if (!opened) return false;
@@ -288,7 +288,7 @@ void EmailCleanerApp::LoadRules() {
     // it can only ever sharpen the detection. On the first run, write the
     // built-in table out so there is something to edit.
     std::error_code ec;
-    if (std::filesystem::exists(rulesPath_, ec)) {
+    if (std::filesystem::exists(PathFromUtf8(rulesPath_), ec)) {
         RuleSet user;
         if (user.LoadFile(rulesPath_)) rules.Merge(user);
     } else {
@@ -305,7 +305,7 @@ void EmailCleanerApp::ImportAccounts() {
     const std::string mailDb = mailDataDir_ + "/mail.db";
     int imported = 0;
 
-    if (std::filesystem::exists(mailDb, ec)) {
+    if (std::filesystem::exists(PathFromUtf8(mailDb), ec)) {
         UltraMail::LocalStore mailStore;
         if (mailStore.Open("emailcleaner-mailaccounts", mailDb)) {
             std::vector<UltraMail::Account> mailAccounts;
@@ -343,8 +343,9 @@ void EmailCleanerApp::ImportAccounts() {
     // EMAILCLEANER_MAIL_DIR pointing at it. The cache layout still names the
     // accounts: one directory per account under <mail dir>/mail. Take them
     // from there so the corpus can be loaded without UltraMail present.
-    if (!std::filesystem::is_directory(mailCacheDir_, ec)) return;
-    for (const auto& entry : std::filesystem::directory_iterator(mailCacheDir_, ec)) {
+    const std::filesystem::path cacheRoot = PathFromUtf8(mailCacheDir_);
+    if (!std::filesystem::is_directory(cacheRoot, ec)) return;
+    for (const auto& entry : std::filesystem::directory_iterator(cacheRoot, ec)) {
         if (ec) break;
         if (!entry.is_directory(ec)) continue;
         StoredAccount stored;

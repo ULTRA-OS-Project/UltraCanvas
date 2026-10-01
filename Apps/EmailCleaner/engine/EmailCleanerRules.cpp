@@ -3,6 +3,7 @@
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerRules.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 
 #include "EmailCleanerText.h"
 
@@ -311,7 +312,7 @@ std::string RuleSet::Serialize() const {
 }
 
 bool RuleSet::LoadFile(const std::string& path, std::vector<std::string>* outErrors) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);   // UTF-8 path
     if (!in) return false;
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -320,7 +321,7 @@ bool RuleSet::LoadFile(const std::string& path, std::vector<std::string>* outErr
 }
 
 bool RuleSet::SaveFile(const std::string& path) const {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!out) return false;
     out << Serialize();
     return out.good();

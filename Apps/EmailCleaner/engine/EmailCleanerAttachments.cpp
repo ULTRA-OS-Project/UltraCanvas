@@ -146,7 +146,8 @@ AttachmentFetch FetchAttachment(const std::string& mailCacheDir,
     if (path.empty()) return AttachmentFetch::NoSuchMessage;
 
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(path, ec)) return AttachmentFetch::NoSuchMessage;
+    if (!std::filesystem::is_regular_file(PathFromUtf8(path), ec))
+        return AttachmentFetch::NoSuchMessage;
 
     std::string raw;
     if (!ReadFile(path, raw) || raw.empty()) return AttachmentFetch::Unreadable;
