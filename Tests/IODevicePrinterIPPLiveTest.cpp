@@ -16,8 +16,14 @@
 // Skipped - exit code 77, which ctest reports as skipped - where
 // ippeveprinter is not installed (it is in Debian and Ubuntu's
 // cups-ipp-utils) or will not start. It is a check against a real
-// implementation where one is to hand, not a dependency.
-// Version: 1.0.0
+// implementation where one is to hand, not a dependency. ippeveprinter
+// (CUPS 2.4) needs two things from the machine even with -r off: a running
+// DNS-SD daemon (Avahi on Linux), or it stops with "Unable to initialize
+// DNS-SD", and IPv6, or it stops with "Unable to create IPv6 listener" - so a
+// container without IPv6 skips here however it is set up. CI's Linux rows
+// install it, start Avahi, and set ULTRACANVAS_TEST_IPP_REQUIRED, which turns
+// a skip into a failure.
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -54,6 +60,19 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr int kSkipped = 77;
+
+// What a skip returns. CI sets ULTRACANVAS_TEST_IPP_REQUIRED on the rows that
+// install ippeveprinter, because there a skip is indistinguishable from a pass
+// and would let the test quietly stop running - the same reason
+// ULTRAFIBU_TEST_PG_REQUIRED exists for the multi-user database test.
+int SkipOrFail() {
+    const char* required = std::getenv("ULTRACANVAS_TEST_IPP_REQUIRED");
+    if (required && *required && std::string(required) != "0") {
+        std::cout << "FAILED: ULTRACANVAS_TEST_IPP_REQUIRED is set, so a skip is a failure\n";
+        return EXIT_FAILURE;
+    }
+    return SkipOrFail();
+}
 int g_passed = 0;
 int g_failed = 0;
 
@@ -239,13 +258,13 @@ int main() {
     const std::string program = FindIppEvePrinter();
     if (program.empty()) {
         std::cout << "SKIPPED: ippeveprinter is not installed (Debian/Ubuntu: cups-ipp-utils)\n";
-        return kSkipped;
+        return SkipOrFail();
     }
 
     char pattern[] = "/tmp/uc-ipp-live-XXXXXX";
     if (!mkdtemp(pattern)) {
         std::cout << "SKIPPED: no temporary directory\n";
-        return kSkipped;
+        return SkipOrFail();
     }
     const std::string root = pattern;
     const std::string spool = root + "/spool";
@@ -271,7 +290,7 @@ int main() {
     if (!reference.Start(program, spool, port, log)) {
         std::cout << "SKIPPED: ippeveprinter would not start\n";
         fs::remove_all(PathFromUtf8(root));
-        return kSkipped;
+        return SkipOrFail();
     }
 
     const std::string uri = "ipp://localhost:" + std::to_string(port) + "/ipp/print";
@@ -306,7 +325,7 @@ int main() {
             std::cout << "SKIPPED: ippeveprinter exited:\n" << ReadTail(log) << "\n";
             manager.Shutdown();
             fs::remove_all(PathFromUtf8(root));
-            return kSkipped;
+            return SkipOrFail();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
