@@ -37,6 +37,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -52,7 +53,7 @@ namespace {
         if (intro.find_first_not_of(" \t\r\n") != std::string::npos) {
             combined += intro + "\n\n";
         }
-        if (std::ifstream(base + svgName).good()) {
+        if (std::ifstream(UltraCanvas::PathFromUtf8(base + svgName)).good()) {
             combined += "![UltraNet architecture](" + svgName + ")\n\n";
         }
 

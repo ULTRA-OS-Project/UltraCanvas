@@ -36,6 +36,7 @@
 #include <filesystem>
 #include <fstream>
 #include <system_error>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace Authenticator {
@@ -95,7 +96,7 @@ StoreResult AuthFailure() {
 }
 
 bool ReadWholeFile(const std::string& path, std::vector<uint8_t>& out) {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::ate);
     if (!file) return false;
     const std::streamoff size = file.tellg();
     if (size < 0 || static_cast<size_t>(size) > kMaxStoreFileBytes) return false;
@@ -111,7 +112,7 @@ bool ReadWholeFile(const std::string& path, std::vector<uint8_t>& out) {
 bool WriteFileAtomically(const std::string& path, const std::vector<uint8_t>& data) {
     const std::string temporary = path + ".tmp";
     {
-        std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+        std::ofstream file(UltraCanvas::PathFromUtf8(temporary), std::ios::binary | std::ios::trunc);
         if (!file) return false;
         if (!data.empty()) {
             file.write(reinterpret_cast<const char*>(data.data()),
@@ -129,7 +130,7 @@ bool WriteFileAtomically(const std::string& path, const std::vector<uint8_t>& da
     // A filesystem without POSIX permissions is not a reason to fail the save;
     // the encryption, not the mode bits, is what protects the contents.
 
-    std::filesystem::rename(temporary, path, ec);
+    std::filesystem::rename(UltraCanvas::PathFromUtf8(temporary), UltraCanvas::PathFromUtf8(path), ec);
     if (ec) {
         std::remove(temporary.c_str());
         return false;
@@ -160,7 +161,7 @@ EncryptedFileStore::~EncryptedFileStore() {
 
 bool EncryptedFileStore::Exists(const std::string& path) {
     std::error_code ec;
-    return std::filesystem::exists(path, ec) && !ec;
+    return std::filesystem::exists(UltraCanvas::PathFromUtf8(path), ec) && !ec;
 }
 
 void EncryptedFileStore::Close() {

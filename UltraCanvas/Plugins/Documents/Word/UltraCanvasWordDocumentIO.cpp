@@ -29,7 +29,7 @@ WordDocumentFormat WordDocumentFormatFromExtension(const std::string& extension)
 }
 
 WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath) {
-    std::ifstream file(filePath, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
     uint8_t magic[8] = {};
     if (file.is_open()) {
         file.read(reinterpret_cast<char*>(magic), sizeof(magic));

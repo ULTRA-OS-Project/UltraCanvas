@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -373,7 +374,7 @@ NetworkMonitorResult FinishCsv(std::ofstream& file, const std::string& path, std
 NetworkMonitorResult NetworkMonitor_ExportSummaryCsv(const std::vector<ProcessTrafficSummary>& summaries,
                                                      const std::string& path, int64_t* rowsWritten) {
     if (rowsWritten) *rowsWritten = 0;
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    std::ofstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!file) return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError, "Could not write " + path);
     using NetworkMonitorCsv::Field;
     file << "application,pid,executable,user,attributed,connections,established,listening,"
@@ -395,7 +396,7 @@ NetworkMonitorResult NetworkMonitor_ExportSummaryCsv(const std::vector<ProcessTr
 NetworkMonitorResult NetworkMonitor_ExportConnectionsCsv(const std::vector<NetworkConnection>& connections,
                                                          const std::string& path, int64_t* rowsWritten) {
     if (rowsWritten) *rowsWritten = 0;
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    std::ofstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!file) return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError, "Could not write " + path);
     using NetworkMonitorCsv::Field;
     file << "application,pid,executable,user,transport,family,local,remote,remote_name,name_source,"

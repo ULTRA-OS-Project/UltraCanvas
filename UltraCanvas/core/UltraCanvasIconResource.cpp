@@ -20,6 +20,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 
@@ -77,12 +78,12 @@ namespace UltraCanvas {
             out.clear();
             if (length == 0) return false;
             std::error_code ec;
-            if (!fs::is_regular_file(path, ec) || ec) return false;
-            const std::uintmax_t size = fs::file_size(path, ec);
+            if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(path), ec) || ec) return false;
+            const std::uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
             if (ec || size == 0 || offset >= size) return false;
             const size_t want = static_cast<size_t>(
                     std::min<std::uintmax_t>(length, size - offset));
-            std::ifstream in(path, std::ios::binary);
+            std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
             if (!in) return false;
             in.seekg(static_cast<std::streamoff>(offset));
             if (!in) return false;

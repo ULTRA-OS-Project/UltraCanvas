@@ -13,9 +13,16 @@
 //     swallows the valid text after it;
 //   * an unpaired surrogate - legal in an NTFS name - becomes U+FFFD instead
 //     of throwing;
-//   * PathFromUtf8 / PathToUtf8 round-trip a real file created on disk.
-// Version: 1.0.0
-// Last Modified: 2026-09-27
+//   * PathFromUtf8 / PathToUtf8 round-trip a real file created on disk;
+//   * every spelling of a name PathFromUtf8 takes - std::string, C string,
+//     string_view, a path passed through, a wide string - names the same
+//     file, and each call the codebase wraps a UTF-8 name for (the
+//     filesystem queries, create / rename / copy / remove, directory
+//     iteration, ifstream / ofstream and open(), OpenFileUtf8) works on a
+//     Thai-and-emoji folder and file. Windows CI runs this under code page
+//     1252, where the unwrapped forms of those calls miss the file.
+// Version: 1.1.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPathUtf8.h"
@@ -133,6 +140,49 @@ int main() {
         std::FILE* f = OpenFileUtf8(full, "rb");
         Check(f != nullptr, "OpenFileUtf8 opens it");
         if (f) std::fclose(f);
+
+        // Every spelling of the name reaches the same file.
+        const std::string_view view(full);
+        const fs::path asPath = PathFromUtf8(full);
+        Check(fs::exists(PathFromUtf8(full.c_str()), ec), "PathFromUtf8(const char*)");
+        Check(fs::exists(PathFromUtf8(view), ec), "PathFromUtf8(string_view)");
+        Check(PathFromUtf8(asPath) == asPath, "PathFromUtf8(path) passes it through");
+        Check(fs::exists(PathFromUtf8(asPath.wstring()), ec), "PathFromUtf8(wstring)");
+
+        // The calls the codebase wraps, on a UTF-8 folder and file.
+        const std::string folder = PathToUtf8(dir) + "/\xE0\xB9\x84\xE0\xB8\x97\xE0\xB8\xA2 \xF0\x9F\x93\x81";
+        fs::create_directories(PathFromUtf8(folder + "/sub"), ec);
+        Check(!ec && fs::is_directory(PathFromUtf8(folder), ec), "create_directories / is_directory");
+        const std::string inner = folder + "/" + name;
+        {
+            std::ofstream out;
+            out.open(PathFromUtf8(inner), std::ios::binary);
+            out << "hello";
+        }
+        Check(fs::is_regular_file(PathFromUtf8(inner), ec), "ofstream::open writes it");
+        Check(fs::file_size(PathFromUtf8(inner), ec) == 5, "file_size reads it");
+        {
+            std::ifstream in(PathFromUtf8(inner), std::ios::binary);
+            std::string text;
+            in >> text;
+            Check(text == "hello", "ifstream reads it back");
+        }
+        const std::string copied = folder + "/sub/\xE6\x96\x87 copy.txt";
+        fs::copy_file(PathFromUtf8(inner), PathFromUtf8(copied), ec);
+        Check(!ec && fs::exists(PathFromUtf8(copied), ec), "copy_file");
+        const std::string renamed = folder + "/\xF0\x9F\x8C\xB4 renamed.txt";
+        fs::rename(PathFromUtf8(inner), PathFromUtf8(renamed), ec);
+        Check(!ec && fs::exists(PathFromUtf8(renamed), ec) &&
+              !fs::exists(PathFromUtf8(inner), ec), "rename");
+        int seen = 0;
+        for (const auto& entry : fs::recursive_directory_iterator(PathFromUtf8(folder), ec))
+            if (entry.is_regular_file()) ++seen;
+        Check(seen == 2, "recursive_directory_iterator over a UTF-8 folder");
+        (void)fs::last_write_time(PathFromUtf8(renamed), ec);
+        Check(!ec, "last_write_time");
+        Check(fs::remove(PathFromUtf8(renamed), ec) && !ec, "remove");
+        fs::remove_all(PathFromUtf8(folder), ec);
+        Check(!fs::exists(PathFromUtf8(folder), ec), "remove_all");
 
         fs::remove_all(dir, ec);
     }

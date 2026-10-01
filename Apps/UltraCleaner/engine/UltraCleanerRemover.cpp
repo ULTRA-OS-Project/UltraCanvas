@@ -35,7 +35,7 @@ std::string UniqueTrashName(const std::string& directory,
     std::error_code ec;
     if (!fs::exists(PathFromUtf8(directory) / baseName, ec)) return baseName;
 
-    const fs::path base(baseName);
+    const fs::path base(UltraCanvas::PathFromUtf8(baseName));
     const std::string stem = PathToUtf8(base.stem());
     const std::string extension = PathToUtf8(base.extension());
     for (int suffix = 1; suffix < 10000; ++suffix) {

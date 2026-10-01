@@ -16,6 +16,7 @@
 
 #include <sys/stat.h>
 #include <unistd.h>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 
@@ -25,7 +26,7 @@ std::string StubRoot() {
     static std::string root = [] {
         std::string r = fs::temp_directory_path() /
                         ("ultrawin-comp-" + std::to_string(getpid()));
-        fs::create_directories(r);
+        fs::create_directories(UltraCanvas::PathFromUtf8(r));
         return r;
     }();
     return root;
@@ -33,7 +34,7 @@ std::string StubRoot() {
 
 std::string WriteScript(const std::string& name, const std::string& body) {
     std::string path = StubRoot() + "/" + name;
-    std::ofstream(path) << body;
+    std::ofstream(UltraCanvas::PathFromUtf8(path)) << body;
     chmod(path.c_str(), 0755);
     return path;
 }

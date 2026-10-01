@@ -30,6 +30,7 @@
 
 #include <fstream>
 #include <utility>
+#include "../../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraAI {
 
@@ -101,7 +102,7 @@ bool Fail(std::string* out, const std::string& message) {
 
 bool LoadCassette(const std::string& path, ScriptedTransport& transport,
                   std::string* outErrorMessage) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!in) return Fail(outErrorMessage, "cannot open cassette: " + path);
 
     json j = json::parse(in, nullptr, /*allow_exceptions=*/false);
@@ -317,7 +318,7 @@ bool RecordingTransport::Save(const std::string& path,
     j["ultraai_cassette"] = kCassetteVersion;
     j["exchanges"]        = std::move(exchanges);
 
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!out) return Fail(outErrorMessage, "cannot write cassette: " + path);
     out << j.dump(2) << '\n';
     if (!out.good()) {

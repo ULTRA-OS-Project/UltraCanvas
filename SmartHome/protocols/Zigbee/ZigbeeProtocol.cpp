@@ -17,6 +17,7 @@
 #include <memory>
 #include <atomic>
 #include <optional>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 // Conditional Zigbee stack includes
 #ifdef ULTRACANVAS_WITH_EZSP
@@ -1617,7 +1618,7 @@ std::vector<std::string> ZigbeeProtocol::GetAvailableAdapters() const {
     
     for (const char* pattern : patterns) {
         if (strstr(pattern, "*") == nullptr) {
-            FILE* f = fopen(pattern, "r");
+            FILE* f = UltraCanvas::OpenFileUtf8(pattern, "r");
             if (f) {
                 fclose(f);
                 adapters.push_back(pattern);

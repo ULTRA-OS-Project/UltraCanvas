@@ -10,6 +10,7 @@
 #include <cstring>
 #include <fstream>
 #include <vector>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace AnchorPoint {
 
@@ -120,7 +121,7 @@ TransferResult SendFile(IConnection& conn, const std::string& filePath,
                         const std::string& displayName, ProgressFn onProgress) {
     TransferResult r;
 
-    std::ifstream in(filePath, std::ios::binary | std::ios::ate);
+    std::ifstream in(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
     if (!in) { r.error = "cannot open " + filePath; return r; }
     uint64_t fileSize = static_cast<uint64_t>(in.tellg());
     in.seekg(0);
@@ -263,7 +264,7 @@ TransferResult ReceiveFile(IConnection& conn, const AcceptFn& accept,
     // Resume: if a partial file already exists, continue from its length.
     uint64_t haveBytes = 0;
     {
-        std::ifstream probe(outPath, std::ios::binary | std::ios::ate);
+        std::ifstream probe(UltraCanvas::PathFromUtf8(outPath), std::ios::binary | std::ios::ate);
         if (probe) {
             uint64_t existing = static_cast<uint64_t>(probe.tellg());
             if (existing <= offer.fileSize) haveBytes = existing;
@@ -271,14 +272,14 @@ TransferResult ReceiveFile(IConnection& conn, const AcceptFn& accept,
     }
 
     std::ios::openmode mode = std::ios::binary | std::ios::in | std::ios::out;
-    std::fstream out(outPath, mode);
+    std::fstream out(UltraCanvas::PathFromUtf8(outPath), mode);
     if (!out) {
         // Create fresh.
-        std::ofstream create(outPath, std::ios::binary);
+        std::ofstream create(UltraCanvas::PathFromUtf8(outPath), std::ios::binary);
         if (!create) { SendError(conn, "cannot create file"); r.error = "cannot create " + outPath; return r; }
         create.close();
         haveBytes = 0;
-        out.open(outPath, mode);
+        out.open(UltraCanvas::PathFromUtf8(outPath), mode);
         if (!out) { r.error = "cannot open " + outPath; return r; }
     }
 

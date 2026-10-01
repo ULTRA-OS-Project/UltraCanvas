@@ -10,6 +10,7 @@
 
 #include <fstream>
 #include <mutex>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -42,7 +43,7 @@ bool UltraCanvasMathEngine::LoadFontFrom(const std::vector<std::string>& searchD
     for (const auto& dir : searchDirs) {
         for (const auto& name : candidates) {
             const std::string path = dir.empty() ? name : (dir.back() == '/' ? dir + name : dir + "/" + name);
-            std::ifstream probe(path, std::ios::binary);
+            std::ifstream probe(UltraCanvas::PathFromUtf8(path), std::ios::binary);
             if (!probe.good()) continue;
             if (LoadFont(path)) return true;
         }

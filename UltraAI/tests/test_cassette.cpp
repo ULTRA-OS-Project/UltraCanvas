@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraAI;
 
@@ -156,7 +157,7 @@ void TestLoadFailures() {
 
     const std::string bogus = TempPath("ultraai_bogus_cassette.json");
     {
-        std::ofstream out(bogus, std::ios::trunc);
+        std::ofstream out(UltraCanvas::PathFromUtf8(bogus), std::ios::trunc);
         out << R"({"something":"else"})" << std::endl;
     }
     EXPECT_TRUE(!LoadCassette(bogus, transport, &error));

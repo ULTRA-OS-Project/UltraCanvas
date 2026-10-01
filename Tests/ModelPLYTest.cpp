@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::ModelStorage;
@@ -335,7 +336,7 @@ static void TestCapabilities() {
 
 static void TestSample(const std::string& mediaRoot) {
     std::printf("The E-45 aircraft as PLY\n");
-    const std::string path = (std::filesystem::path(mediaRoot) / "PLY/E-45-Aircraft.ply").string();
+    const std::string path = (UltraCanvas::PathFromUtf8(mediaRoot) / "PLY/E-45-Aircraft.ply").string();
 
     PLYConverter converter;
     std::vector<std::string> warnings;
@@ -385,7 +386,7 @@ static void TestSample(const std::string& mediaRoot) {
 
 static void TestRoundTrip(const std::string& mediaRoot) {
     std::printf("Writing PLY back out\n");
-    const std::string path = (std::filesystem::path(mediaRoot) / "PLY/E-45-Aircraft.ply").string();
+    const std::string path = (UltraCanvas::PathFromUtf8(mediaRoot) / "PLY/E-45-Aircraft.ply").string();
     PLYConverter converter;
     ConversionOptions quiet;
     auto original = converter.Import(path, quiet);
@@ -464,7 +465,7 @@ static void TestRoundTrip(const std::string& mediaRoot) {
 // part rather than an inconvenience.
 static void TestAgainstTheOtherExports(const std::string& mediaRoot) {
     std::printf("Against the other exports of the same aircraft\n");
-    const std::string path = (std::filesystem::path(mediaRoot) / "PLY/E-45-Aircraft.ply").string();
+    const std::string path = (UltraCanvas::PathFromUtf8(mediaRoot) / "PLY/E-45-Aircraft.ply").string();
     PLYConverter converter;
     ConversionOptions quiet;
     auto ply = converter.Import(path, quiet);

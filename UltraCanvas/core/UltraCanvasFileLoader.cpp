@@ -22,6 +22,7 @@
 #include <cctype>
 #include <fstream>
 #include <iterator>
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_HAS_NET
 #include "UltraNet/UltraNetHttp.h"
@@ -537,7 +538,7 @@ namespace UltraCanvas {
         const std::string path = SaveFile(options);
         if (path.empty()) return false;   // user cancelled
 
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
         if (!out) return false;
         if (size > 0) {
             out.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));

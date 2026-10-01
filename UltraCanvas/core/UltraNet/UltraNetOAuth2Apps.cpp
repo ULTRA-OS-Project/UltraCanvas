@@ -14,6 +14,7 @@
 #include <mutex>
 #include <set>
 #include <sstream>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace {
 
@@ -157,7 +158,7 @@ int UltraNet_OAuth2ParseAppsIni(const std::string& text) {
 }
 
 int UltraNet_OAuth2LoadAppsFile(const std::string& path) {
-    std::ifstream is(path);
+    std::ifstream is(UltraCanvas::PathFromUtf8(path));
     if (!is) return 0;
     std::string text((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
     return UltraNet_OAuth2ParseAppsIni(text);

@@ -12,6 +12,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraCloud {
 
@@ -96,7 +97,7 @@ Result MemoryProvider::MakeDirectory(const Account& account, const Credentials&,
 
 Result MemoryProvider::Upload(const Account& account, const Credentials&,
                               const std::string& localPath, const std::string& remotePath) {
-    std::ifstream is(localPath, std::ios::binary);
+    std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
     if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
     Item item;
     item.data.assign(std::istreambuf_iterator<char>(is), std::istreambuf_iterator<char>());
@@ -112,7 +113,7 @@ Result MemoryProvider::Download(const Account& account, const Credentials&,
     const Tree& tree = Stores()[account.accountId];
     auto it = tree.find(NormalizePath(remotePath));
     if (it == tree.end()) return Result::Error(ResultCode::NotFound, "no file " + remotePath);
-    std::ofstream os(localPath, std::ios::binary | std::ios::trunc);
+    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
     if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
     os.write(reinterpret_cast<const char*>(it->second.data.data()),
              static_cast<std::streamsize>(it->second.data.size()));

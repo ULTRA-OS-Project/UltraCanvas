@@ -15,6 +15,7 @@
 
 #include <sys/stat.h>
 #include <unistd.h>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 
@@ -24,7 +25,7 @@ std::string StubRoot() {
     static std::string root = [] {
         std::string r = fs::temp_directory_path() /
                         ("ultrawin-prog-" + std::to_string(getpid()));
-        fs::create_directories(r);
+        fs::create_directories(UltraCanvas::PathFromUtf8(r));
         return r;
     }();
     return root;
@@ -33,7 +34,7 @@ std::string StubRoot() {
 // Fakes wineboot and records every other invocation's arguments.
 std::string StubWine() {
     std::string path = StubRoot() + "/wine";
-    std::ofstream(path) << "#!/bin/sh\n"
+    std::ofstream(UltraCanvas::PathFromUtf8(path)) << "#!/bin/sh\n"
                            "case \"$1\" in\n"
                            "  --version) echo 'wine-11.0 (stub)'; exit 0;;\n"
                            "  wineboot) : > \"$WINEPREFIX/system.reg\"; exit 0;;\n"
@@ -45,8 +46,8 @@ std::string StubWine() {
 }
 
 std::string WriteFile(const std::string& path, const std::string& content) {
-    fs::create_directories(fs::path(path).parent_path());
-    std::ofstream(path) << content;
+    fs::create_directories(UltraCanvas::PathFromUtf8(path).parent_path());
+    std::ofstream(UltraCanvas::PathFromUtf8(path)) << content;
     return path;
 }
 

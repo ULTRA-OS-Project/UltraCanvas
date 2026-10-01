@@ -27,6 +27,7 @@
 #include <map>
 #include <mutex>
 #include <utility>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraVault {
 
@@ -202,7 +203,7 @@ Result SaveFileLocked(VaultState& s) {
     }
 
     const std::string tmpPath = s.filePath + ".tmp";
-    std::FILE* f = std::fopen(tmpPath.c_str(), "wb");
+    std::FILE* f = UltraCanvas::OpenFileUtf8(tmpPath, "wb");
     if (!f) {
         return Result::Error(ResultCode::IoError,
                              "cannot write vault file: " + tmpPath);
@@ -216,7 +217,7 @@ Result SaveFileLocked(VaultState& s) {
     // C's rename() refuses to on Windows, which made every Put after the first
     // fail once the vault file existed.
     std::error_code ec;
-    if (wrote) std::filesystem::rename(tmpPath, s.filePath, ec);
+    if (wrote) std::filesystem::rename(UltraCanvas::PathFromUtf8(tmpPath), UltraCanvas::PathFromUtf8(s.filePath), ec);
     if (!wrote || ec) {
         std::remove(tmpPath.c_str());
         return Result::Error(ResultCode::IoError,
@@ -227,7 +228,7 @@ Result SaveFileLocked(VaultState& s) {
 }
 
 Result LoadFileLocked(VaultState& s, UltraCryptSecureBuffer& passphrase) {
-    std::FILE* f = std::fopen(s.filePath.c_str(), "rb");
+    std::FILE* f = UltraCanvas::OpenFileUtf8(s.filePath, "rb");
     if (!f) {
         // A missing vault file is a fresh vault: derive with recommended
         // parameters; the file appears on the first Put.

@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDF.h"
+#include "../../include/UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_PDF_MUPDF
 
@@ -294,7 +295,7 @@ bool MuPDFDocument::OpenInMemory(const std::string& path,
     // document exists, which is the whole point of this entry point.
     std::vector<uint8_t> bytes;
     {
-        std::ifstream f(path, std::ios::binary | std::ios::ate);
+        std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::ate);
         if (!f.is_open()) return false;
         const std::streamsize size = f.tellg();
         if (size <= 0) return false;
@@ -421,7 +422,7 @@ PDFDocumentInfo MuPDFDocument::GetInfo() const {
     if (!memoryBuffer_.empty()) {
         info.fileSize = static_cast<long>(memoryBuffer_.size());
     } else if (!path_.empty() && path_ != "<memory>") {
-        std::ifstream f(path_, std::ios::binary | std::ios::ate);
+        std::ifstream f(UltraCanvas::PathFromUtf8(path_), std::ios::binary | std::ios::ate);
         if (f.is_open()) info.fileSize = static_cast<long>(f.tellg());
     }
     return info;

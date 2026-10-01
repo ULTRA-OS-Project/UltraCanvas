@@ -3182,29 +3182,10 @@ endif()
 
 message(STATUS "")
 
-# ===== FILER FOLDER PREVIEW TEST =====
-# Display > Folder previews: the geometry of the cards that peek out of a
-# folder icon (UltraCanvasFilerWidget::FolderPreviewCardRects) - at most two,
-# inside the box, above the front flap, front card right of and lower than the
-# back one, and a pure function of the box so the draw and the prefetch ask
-# the thumbnail cache for the same size.
-if(TARGET UltraCanvas)
-    message(STATUS "  Building FilerFolderPreviewTest...")
-    add_executable(FilerFolderPreviewTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/FilerFolderPreviewTest.cpp
-    )
-    target_include_directories(FilerFolderPreviewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(FilerFolderPreviewTest PRIVATE cxx_std_20)
-    target_link_libraries(FilerFolderPreviewTest PRIVATE UltraCanvas)
-    set_target_properties(FilerFolderPreviewTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME FilerFolderPreviewTest COMMAND FilerFolderPreviewTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: FilerFolderPreviewTest")
-else()
-    message(STATUS "  FilerFolderPreviewTest skipped (UltraCanvas target not present)")
-endif()
+# ===== FILER FOLDER PREVIEW TEST / FILER NAME ENCODING TEST =====
+# Defined in FilerTests.cmake, which the top level also includes on its own
+# (ULTRACANVAS_BUILD_FILER_TESTS) where BUILD_TESTS is off - the Windows row.
+include(${CMAKE_CURRENT_SOURCE_DIR}/FilerTests.cmake)
 
 message(STATUS "")
 
@@ -3357,33 +3338,6 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: FilerSourceTextFormatsTest")
 endif()
-
-# ===== FILER NAME ENCODING TEST =====
-# The file display draws German umlauts, Thai, Russian and Chinese names
-# intact, and a name in a legacy code page (Latin-1, or IBM437 out of a
-# Windows ZIP) decoded instead of as U+FFFD ("Namens•nderung").
-if(TARGET UltraCanvas)
-    message(STATUS "  Building FilerNameEncodingTest...")
-    add_executable(FilerNameEncodingTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/FilerNameEncodingTest.cpp
-    )
-    target_include_directories(FilerNameEncodingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(FilerNameEncodingTest PRIVATE cxx_std_20)
-    target_link_libraries(FilerNameEncodingTest PRIVATE UltraCanvas)
-    # Exported symbols, so the crash backtrace this test prints can name the
-    # frames in the test itself, not just the ones in libUltraCanvas.
-    set_target_properties(FilerNameEncodingTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-        ENABLE_EXPORTS ON
-    )
-    add_test(NAME FilerNameEncodingTest COMMAND FilerNameEncodingTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: FilerNameEncodingTest")
-else()
-    message(STATUS "  FilerNameEncodingTest skipped (UltraCanvas target not present)")
-endif()
-
-message(STATUS "")
 
 # ===== FILER SHORTCUT ENTRY TEST =====
 # What the file display makes of a .lnk it lists: type, category, info column

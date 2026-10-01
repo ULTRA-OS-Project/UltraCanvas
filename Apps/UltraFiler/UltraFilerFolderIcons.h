@@ -29,6 +29,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -79,7 +80,7 @@ public:
         const std::string why = SaveImageFileAsQoi(imagePath, destination, kIconEdge);
         if (!why.empty()) {
             error = why;
-            std::filesystem::remove(destination, ec);   // no half-written icon
+            std::filesystem::remove(UltraCanvas::PathFromUtf8(destination), ec);   // no half-written icon
             return false;
         }
 
@@ -139,7 +140,7 @@ public:
             // folder itself is NOT checked - one on an unplugged drive keeps
             // its icon for when it comes back.
             std::error_code ec;
-            if (!std::filesystem::exists(icon, ec) || ec) continue;
+            if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(icon), ec) || ec) continue;
             icons[IdentityKey(folder)] = icon;
         }
         return true;
@@ -193,7 +194,7 @@ private:
             std::string candidate = suffix == 0
                     ? base + ".qoi"
                     : base + "-" + std::to_string(suffix) + ".qoi";
-            if (!std::filesystem::exists(candidate, ec) || ec) return candidate;
+            if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(candidate), ec) || ec) return candidate;
         }
         return base + ".qoi";
     }
@@ -213,7 +214,7 @@ private:
             iconPath.compare(0, dir.size(), dir) != 0)
             return;
         std::error_code ec;
-        std::filesystem::remove(iconPath, ec);
+        std::filesystem::remove(UltraCanvas::PathFromUtf8(iconPath), ec);
     }
 
     // folder identity key -> converted icon file

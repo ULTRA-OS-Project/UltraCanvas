@@ -252,7 +252,7 @@ namespace UltraCanvas {
         for (const auto& sample : BundledTextSamples()) {
             const std::string path = NormalizePath(samplesDir + sample.fileName);
             std::error_code ec;
-            if (std::filesystem::exists(path, ec)) {
+            if (std::filesystem::exists(UltraCanvas::PathFromUtf8(path), ec)) {
                 presentSamples.push_back(sample);
             }
         }
@@ -415,7 +415,7 @@ namespace UltraCanvas {
         //    actually exists, so a not-yet-uploaded <Module>.svg leaves no broken
         //    image behind. Existence is checked directly (LoadFile returns an error
         //    string rather than failing for a missing path).
-        if (std::ifstream(svgPath).good()) {
+        if (std::ifstream(UltraCanvas::PathFromUtf8(svgPath)).good()) {
             combined += "![" + moduleName + " architecture](" + svgName + ")\n\n";
         } else {
             debugOutput << "Module diagram not found: " << svgPath << std::endl;

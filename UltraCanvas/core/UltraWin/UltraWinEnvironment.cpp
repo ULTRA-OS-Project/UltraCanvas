@@ -56,7 +56,7 @@ static bool SaveManifest(const std::string& prefixPath,
 
 // A prefix is initialized once wineboot has written its registry.
 static bool PrefixInitialized(const std::string& prefixPath) {
-    return fs::exists(prefixPath + "/system.reg");
+    return fs::exists(UltraCanvas::PathFromUtf8(prefixPath + "/system.reg"));
 }
 
 int RunWineCommand(const std::string& binaryPath,
@@ -139,7 +139,7 @@ UltraWinResult ApplyMappings(const std::string& prefixPath) {
         fs::path linkPath = dosdevices / link;
         std::error_code lec;
         if (fs::is_symlink(linkPath, lec)) fs::remove(linkPath, lec);
-        fs::create_directory_symlink(target, linkPath, lec);
+        fs::create_directory_symlink(UltraCanvas::PathFromUtf8(target), linkPath, lec);
         if (lec) {
             return UltraWinResult::Error(
                 UltraWinResultCode::DriveMappingFailed,
@@ -208,12 +208,12 @@ UltraWinResult UltraWin_CreateEnvironment(const std::string& name) {
                                      "no usable wine binary found");
 
     std::string prefix = PrefixPath(name);
-    if (fs::exists(prefix))
+    if (fs::exists(UltraCanvas::PathFromUtf8(prefix)))
         return UltraWinResult::Error(UltraWinResultCode::EnvironmentExists,
                                      name + " already exists");
 
     std::error_code ec;
-    fs::create_directories(prefix, ec);
+    fs::create_directories(UltraCanvas::PathFromUtf8(prefix), ec);
     if (ec)
         return UltraWinResult::Error(UltraWinResultCode::EnvironmentCreateFailed,
                                      "mkdir failed: " + ec.message());
@@ -223,7 +223,7 @@ UltraWinResult UltraWin_CreateEnvironment(const std::string& name) {
                             cfg.suppressWinePrompts,
                             cfg.environmentCreateTimeoutSeconds);
     if (rc != 0) {
-        fs::remove_all(prefix, ec);
+        fs::remove_all(UltraCanvas::PathFromUtf8(prefix), ec);
         return UltraWinResult::Error(
             UltraWinResultCode::EnvironmentCreateFailed,
             rc == -1 ? "wineboot --init timed out or could not run"
@@ -244,7 +244,7 @@ UltraWinResult UltraWin_CreateEnvironment(const std::string& name) {
     for (int i = 0; i < 100 && !PrefixInitialized(prefix); ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     if (!PrefixInitialized(prefix)) {
-        fs::remove_all(prefix, ec);
+        fs::remove_all(UltraCanvas::PathFromUtf8(prefix), ec);
         return UltraWinResult::Error(
             UltraWinResultCode::EnvironmentCreateFailed,
             "prefix registry was not created by wineboot");
@@ -269,11 +269,11 @@ UltraWinResult UltraWin_DeleteEnvironment(const std::string& name) {
                 name + " has running applications");
     }
     std::string prefix = PrefixPath(name);
-    if (!fs::exists(prefix))
+    if (!fs::exists(UltraCanvas::PathFromUtf8(prefix)))
         return UltraWinResult::Error(UltraWinResultCode::EnvironmentNotFound,
                                      name);
     std::error_code ec;
-    fs::remove_all(prefix, ec);
+    fs::remove_all(UltraCanvas::PathFromUtf8(prefix), ec);
     if (ec)
         return UltraWinResult::Error(UltraWinResultCode::EnvironmentDeleteFailed,
                                      ec.message());
@@ -328,11 +328,11 @@ UltraWinResult UltraWin_MapFolder(const std::string& environment,
     if (hostPath.empty() || hostPath[0] != '/')
         return UltraWinResult::Error(UltraWinResultCode::InvalidArgument,
                                      "hostPath must be absolute");
-    if (!fs::is_directory(hostPath))
+    if (!fs::is_directory(UltraCanvas::PathFromUtf8(hostPath)))
         return UltraWinResult::Error(UltraWinResultCode::FileNotFound,
                                      hostPath + " is not a directory");
     std::string prefix = PrefixPath(environment);
-    if (!fs::exists(prefix))
+    if (!fs::exists(UltraCanvas::PathFromUtf8(prefix)))
         return UltraWinResult::Error(UltraWinResultCode::EnvironmentNotFound,
                                      environment);
 
@@ -364,7 +364,7 @@ UltraWinResult UltraWin_UnmapFolder(const std::string& environment,
                                      "drive letter must be A..Z");
     char letter = CanonicalDriveLetter(driveLetter);
     std::string prefix = PrefixPath(environment);
-    if (!fs::exists(prefix))
+    if (!fs::exists(UltraCanvas::PathFromUtf8(prefix)))
         return UltraWinResult::Error(UltraWinResultCode::EnvironmentNotFound,
                                      environment);
 
@@ -396,6 +396,6 @@ std::vector<UltraWinFolderMapping> UltraWin_ListMappings(
     if (!UltraWin_IsInitialized() || !IsValidEnvironmentName(environment))
         return {};
     std::string prefix = PrefixPath(environment);
-    if (!fs::exists(prefix)) return {};
+    if (!fs::exists(UltraCanvas::PathFromUtf8(prefix))) return {};
     return LoadManifest(prefix);
 }

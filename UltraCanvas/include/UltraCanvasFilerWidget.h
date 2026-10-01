@@ -90,7 +90,12 @@
 // SetDetailsColumnVisible leaves Details columns out of the table.
 // SetEntryFilter narrows what the listing shows to the entries a host
 // predicate accepts - a file picker's "Files of type" filter.
-// Version: 1.35.0
+// A picture whose thumbnail could not be made no longer shortens its row
+// (the type glyph drawn instead keeps the full tile), and
+// GetThumbnailCacheStats also counts the thumbnails still waiting, being
+// made and given up on. A thumbnail job running past 20 s gets another
+// worker started beside it, so one stuck file cannot stop every thumbnail.
+// Version: 1.36.0
 // Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
@@ -904,6 +909,21 @@ namespace UltraCanvas {
             size_t hotBudget = 0;     // ceiling for the decompressed tiles
             size_t iconEntries = 0;   // how many of `entries` are icons
             size_t iconBytes = 0;     // and what they occupy
+            // The thumbnails not held: still waiting for a worker, being made
+            // by one right now, and given up on (the tile keeps its type
+            // glyph). Waiting ones that never move while nothing is made
+            // mean the workers are stuck; failed ones mean the files would
+            // not decode - the log names each of those.
+            size_t pendingEntries = 0;
+            size_t inFlightEntries = 0;
+            size_t failedEntries = 0;
+            // The background workers, and the job that has kept one of them
+            // busy longest right now (empty path / 0 when all are idle). A
+            // job running for minutes is what stops a whole folder's
+            // thumbnails: see kThumbJobStuckAfter in the source.
+            size_t workerCount = 0;
+            std::string longestJobPath;
+            int longestJobSeconds = 0;
         };
         ThumbCacheStats GetThumbnailCacheStats() const;
 
@@ -2137,6 +2157,21 @@ namespace UltraCanvas {
         // via the global image cache and are not safe against two threads
         // rasterizing the same instance concurrently.
         std::unordered_set<std::string> thumbPathsInFlight;
+        // Files whose content thumbnail was given up on, at any size. The
+        // tile draws its type glyph instead, which needs the full square, so
+        // the layout does not shorten a row on behalf of a picture that will
+        // never be drawn (EntryAspect). Cleared with the cache.
+        std::unordered_set<std::string> thumbFailedPaths;
+        // When each running job (image, text read or folder listing) started,
+        // keyed "<kind>:<path>". Guarded by thumbMutex. What the watchdog in
+        // StartThumbnailWorkersLocked reads to tell a stuck worker, and what
+        // GetThumbnailCacheStats reports as the longest job.
+        std::unordered_map<std::string, std::chrono::steady_clock::time_point>
+                thumbJobsStarted;
+        unsigned thumbWorkerBase = 0;   // workers started for the widget
+        void NoteThumbJobLocked(const std::string& key, bool running);
+        // A worker added to thumbFailedPaths: the next repaint relays out.
+        std::atomic<bool> thumbFailuresChanged{false};
         // Compressed mode: LRU of decompressed pixmaps for the tiles being
         // drawn, so repaints never re-inflate. Guarded by thumbMutex.
         struct HotThumb {

@@ -16,6 +16,7 @@
 #include <vector>
 #include <UltraCanvasUtils.h>
 #include <UltraNet/UltraNetMime.h>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using UltraCanvas::PathFromUtf8;
 using UltraCanvas::PathToUtf8;
@@ -257,7 +258,7 @@ std::string SyncEngine::WriteBody(const std::string& accountId, const std::strin
     const std::string path = BodyPath(accountId, folder, uid);
     std::error_code ec;
     fs::create_directories(PathFromUtf8(path).parent_path(), ec);
-    std::ofstream os(path, std::ios::binary | std::ios::trunc);
+    std::ofstream os(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!os) return std::string();
     os.write(raw.data(), static_cast<std::streamsize>(raw.size()));
     if (!os) return std::string();

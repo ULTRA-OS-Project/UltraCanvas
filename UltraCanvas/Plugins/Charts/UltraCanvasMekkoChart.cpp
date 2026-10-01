@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -121,7 +122,7 @@ namespace UltraCanvas {
     }
 
     void MekkoChartDataVector::LoadFromCSV(const std::string& filePath) {
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) return;
 
         ClearData();
