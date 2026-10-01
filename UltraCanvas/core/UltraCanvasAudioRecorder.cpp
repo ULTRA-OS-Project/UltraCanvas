@@ -30,6 +30,12 @@ struct UltraCanvasAudioRecorder::Impl {
     std::atomic<float> currentPeak{0.0f};
     std::atomic<float> currentRMS{0.0f};
     std::atomic<bool>  muted{false};
+
+    // Live mode: the converted float chunk and the fixed-duration packetiser.
+    // Both are touched by the audio thread only; the vector is reserved at
+    // Start() so a steady-state chunk never allocates.
+    std::vector<float> liveChunk;
+    AudioFramePacketizer livePacketizer;
     // Throttling: emit onLevelChanged at most levelUpdateHz
     size_t framesSinceLastLevelEmit = 0;
     std::string lastError;
@@ -107,8 +113,24 @@ struct UltraCanvasAudioRecorder::Impl {
         const float gain = config.inputGain;
         const bool isMuted = muted.load(std::memory_order_relaxed);
 
-        // Append (or stream-to-file) raw bytes
-        if (config.streamToFile && !config.streamFilePath.empty()) {
+        // Live frames, in both modes: convert to float, apply gain and mute,
+        // and hand the chunk to the packetiser, which calls onLiveFrame once
+        // per complete frame.
+        if (owner && owner->onLiveFrame) {
+            const size_t sampleCountLive = frames * config.channels;
+            liveChunk.resize(sampleCountLive);
+            for (size_t i = 0; i < sampleCountLive; ++i) {
+                float v = isMuted ? 0.0f
+                        : SampleToFloat(srcBytes + i * bytesPerSample, config.sampleType) * gain;
+                liveChunk[i] = std::clamp(v, -1.0f, 1.0f);
+            }
+            livePacketizer.Feed(liveChunk.data(), frames, owner->onLiveFrame);
+        }
+
+        if (config.mode == AudioCaptureMode::Live) {
+            // Nothing is kept.
+        } else if (config.streamToFile && !config.streamFilePath.empty()) {
+            // Append (or stream-to-file) raw bytes
             std::ofstream f(config.streamFilePath,
                             std::ios::binary | std::ios::app);
             if (f) {
@@ -158,17 +180,6 @@ struct UltraCanvasAudioRecorder::Impl {
             }
             if (rms < config.silenceThreshold && owner && owner->onSilenceDetected) {
                 owner->onSilenceDetected();
-            }
-        }
-
-        // Per-chunk raw buffer event (only useful for live visualization /
-        // off-the-fly encoding). Convert to f32 lazily on demand by the user.
-        if (owner && owner->onBufferAvailable) {
-            // We pass the raw bytes reinterpreted as float only when format is f32.
-            // For other formats the user must reinterpret based on config.
-            if (config.sampleType == AudioSampleType::PCM_F32) {
-                owner->onBufferAvailable(
-                    reinterpret_cast<const float*>(srcBytes), frames, config.channels);
             }
         }
 
@@ -236,6 +247,13 @@ bool UltraCanvasAudioRecorder::Start() {
     impl->accumulatedSeconds = 0.0;
     impl->frameCount = 0;
     impl->buffer.clear();
+    impl->livePacketizer.Reset(
+        AudioFramesForMilliseconds(impl->config.liveFrameMs, impl->config.sampleRate),
+        impl->config.channels, impl->config.sampleRate);
+    // Reserve for a generous backend period so the audio thread does not
+    // allocate once running; 100 ms covers every backend default.
+    impl->liveChunk.reserve(
+        AudioFramesForMilliseconds(100, impl->config.sampleRate) * impl->config.channels);
     impl->SetState(AudioRecordingState::Recording);
     return true;
 }
@@ -265,6 +283,10 @@ bool UltraCanvasAudioRecorder::Stop() {
         impl->accumulatedSeconds +=
             std::chrono::duration<double>(now - impl->startedAt).count();
     }
+    // The device is stopped, so this runs on the caller's thread with no
+    // audio callback in flight. Deliver the partial last live frame,
+    // zero-padded, so an encoder sees the end of the speech.
+    if (onLiveFrame) impl->livePacketizer.Flush(onLiveFrame);
     impl->SetState(AudioRecordingState::Stopped);
     return true;
 }
