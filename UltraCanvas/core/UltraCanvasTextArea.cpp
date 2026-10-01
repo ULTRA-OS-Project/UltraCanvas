@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.7.1
-// Last Modified: 2026-06-22
+// Version: 3.7.2
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -2913,10 +2913,10 @@ namespace UltraCanvas {
         }
 
         int searchLen = utf8_length(searchText);
-        int pos = 0;
-        while ((pos = utf8_find(textContent, searchText, pos, lastSearchCaseSensitive)) >= 0) {
+        const std::vector<int> matches = utf8_find_all(textContent, searchText, lastSearchCaseSensitive);
+        searchHighlights.reserve(matches.size());
+        for (int pos : matches) {
             searchHighlights.push_back({pos, pos + searchLen});
-            pos += searchLen;
         }
         RequestRedraw();
     }

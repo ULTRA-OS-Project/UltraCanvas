@@ -426,6 +426,27 @@ else()
     message(STATUS "  TextInputUtf8Test skipped (UltraCanvas target not present)")
 endif()
 
+# ===== UTF-8 FIND ALL TEST =====
+# utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
+# loop was quadratic and hung UltraTexter's search bar on a large file.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building Utf8FindAllTest...")
+    add_executable(Utf8FindAllTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/Utf8FindAllTest.cpp
+    )
+    target_include_directories(Utf8FindAllTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(Utf8FindAllTest PRIVATE cxx_std_20)
+    target_link_libraries(Utf8FindAllTest PRIVATE UltraCanvas)
+    set_target_properties(Utf8FindAllTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME Utf8FindAllTest COMMAND Utf8FindAllTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: Utf8FindAllTest")
+else()
+    message(STATUS "  Utf8FindAllTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CARET STACKING ORDER TEST =====
 # Where the shared caret lands in the window's compositing order: under a menu
 # opened over it, back on top once the menu closes. Needs the real framework -

@@ -1,3 +1,11 @@
+#### 2026-10-01 *1.56*
+- **Typing in the search bar no longer hangs on a large file.** With a big
+  document open (the ~940 KB framework changelog, say), each keystroke in the
+  search bar made the editor find the matches to highlight one at a time, each
+  search starting again from the top of the file - and the app froze. All
+  matches are now found in a single pass. See
+  `Docs/UltraCanvas/changelog.d/search-highlight-quadratic.md`.
+
 #### 2026-09-30 *1.55*
 - **Printing a word-processing tab (.docx, .odt, .doc) printed a blank page.**
   File > Print read the tab's text area, which a word-processing tab keeps

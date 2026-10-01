@@ -1,8 +1,10 @@
 // include/UltraCanvasUtilsUtf8.h
 // UTF-8 string utilities: codepoint indexing, byte-offset character
 // boundaries, search, split and repair.
-// Version: 1.1.0
-// Last Modified: 2026-09-15
+// Version: 1.2.0
+// Last Modified: 2026-10-01
+// V1.2.0: utf8_find_all - every match in one linear pass, for search
+//   highlighting and match counting on large documents.
 // V1.1.0: byte-offset boundary helpers (utf8_align_boundary /
 //   utf8_prev_boundary / utf8_next_boundary / utf8_boundaries /
 //   utf8_bytes_for_chars) plus utf8_make_valid, for buffers that address text
@@ -148,6 +150,14 @@ namespace UltraCanvas {
     // Case-insensitive mode uses g_utf8_strdown (preserves codepoint count).
     int utf8_find(const std::string& haystack, const std::string& needle,
                         int startCp = 0, bool caseSensitive = true);
+
+    // Every non-overlapping match, as codepoint positions in ascending order.
+    // One pass over the haystack: calling utf8_find in a loop instead costs a
+    // full walk from the start of the string per match (and, case-insensitive,
+    // a lowercased copy of the whole haystack per match), which is quadratic and
+    // hangs the UI on a large document with a common search term.
+    std::vector<int> utf8_find_all(const std::string& haystack, const std::string& needle,
+                                   bool caseSensitive = true);
 
     // Reverse find. Returns codepoint position, or -1.
     int utf8_rfind(const std::string& haystack, const std::string& needle,
