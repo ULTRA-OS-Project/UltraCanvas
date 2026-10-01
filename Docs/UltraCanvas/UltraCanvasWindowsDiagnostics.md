@@ -491,11 +491,17 @@ and `url.dll` are pseudo-formats of no use here and are dropped, with their
 to point there: ImageMagick opens a coder through the `.la` (`dlname=` names
 the file to load), so the rename costs it nothing, and the process holds a
 module called `dpx-coder.dll`, a name no system DLL has. The build then refuses
-a package that carries a system DLL's name anywhere. For a package already
-extracted, `uc-diagnose.ps1 -CheckOnly` lists the offending files under *DLLs
-named like Windows system DLLs*; deleting them (with the `.la` beside each)
-fixes that installation, and so does extracting a newer package into a fresh
-folder rather than over the old one.
+a package that carries a system DLL's name anywhere.
+
+A package already extracted repairs itself: before the image subsystem
+starts, the application applies the same two rules to its own coder folder
+(`UltraCanvasCoderModuleRepair`, see
+[`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)) and
+logs every file it deleted or renamed. That also covers a newer package
+extracted over an older folder, which keeps the old coders. Only a folder the
+process cannot write is left as it is; `uc-diagnose.ps1 -CheckOnly` lists
+such files under *DLLs named like Windows system DLLs*, and deleting them
+(with the `.la` beside each) by hand fixes that installation.
 
 The general rule for anyone adding a DLL to the package: **no DLL may carry
 the base name of a Windows system DLL**, in a subdirectory or not. A plug-in

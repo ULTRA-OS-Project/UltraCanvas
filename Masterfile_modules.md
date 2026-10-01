@@ -379,6 +379,21 @@ the backing implementation can be replaced without affecting callers.
   the host wired the helper. See
   `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
 
+- **UltraCanvasCoderModuleRepair** (`UltraCanvasCoderModuleRepair.h`) —
+  repairs an installed Windows package whose ImageMagick coder carries a
+  Windows system DLL's name (`mpr.dll` in packages up to 0.9.92, or left by a
+  newer package extracted over an older one): once loaded, such a coder
+  answered every later import of that name in the process, and the shell's
+  own DLLs failed with "entry point not found". The image subsystem calls
+  `RepairPackagedCoderModules(exeDir)` on Windows before anything can load a
+  coder; the pseudo-formats `mpr` and `url` are deleted, a real format (`dpx`,
+  `vid`, anything else `System32` holds) is renamed to `<name>-coder.dll` with
+  its `.la` pointed at the new file. Platform-free half (and the no-op for
+  other platforms) in `core/UltraCanvasCoderModuleRepair.cpp`, the System32
+  lookup in `OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp`,
+  `Tests/CoderModuleRepairTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md`.
+
 - **UltraCanvasTrash** (`UltraCanvasTrash.h`) — moves files and folders into
   the desktop's trash, from where the system's own file manager restores them.
   `MoveToTrash(path, error)`, `TrashAvailable()`, `TrashDisplayName()`
