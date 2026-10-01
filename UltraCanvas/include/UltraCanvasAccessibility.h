@@ -91,6 +91,9 @@ public:
     // with its extent. Lines come from the element's layout; the other units
     // from the text (see UltraCanvasAccessibility::TextUnitAt).
     virtual std::string GetTextAtOffset(int offset, AccessibleTextBoundary boundary, int& start, int& end) const;
+    // True when the user cannot change the text (a viewer, a locked field);
+    // a screen reader then does not announce it as editable.
+    virtual bool IsReadOnly() const { return false; }
 };
 
 enum class AccessibilityEventType {
@@ -98,7 +101,8 @@ enum class AccessibilityEventType {
     TextChanged,        // its text changed; offset/length give what is new, when known (else -1)
     CaretMoved,         // offset = the new caret offset
     SelectionChanged,
-    NameChanged
+    NameChanged,
+    ElementDestroyed    // `element` is being destroyed; drop any reference to it
 };
 
 struct AccessibilityEvent {

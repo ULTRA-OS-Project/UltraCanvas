@@ -2666,6 +2666,7 @@ public:
     }
     int GetCharacterCount() const override { return UltraCanvasAccessibility::CharacterCount(GetAccessibleText()); }
     int GetCaretOffset() const override { return edit.AccessOffsetOf(edit.editor.GetCaret()); }
+    bool IsReadOnly() const override { return edit.IsReadOnly(); }
     bool SetCaretOffset(int offset) override {
         edit.editor.SetCaret(edit.AccessPositionOf(offset));
         edit.AfterSelectionChange();
