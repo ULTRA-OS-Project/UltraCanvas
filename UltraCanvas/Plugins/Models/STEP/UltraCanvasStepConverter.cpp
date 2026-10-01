@@ -20,6 +20,7 @@
 #include <set>
 #include <sstream>
 #include <unordered_map>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -2131,7 +2132,7 @@ std::shared_ptr<ModelDocument> StepConverter::ImportFromStream(std::istream& str
 
 std::shared_ptr<ModelDocument> StepConverter::Import(const std::string& filename,
                                                      const ConversionOptions& options) {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) {
         options.Warn("STEP: cannot open " + filename);
         return nullptr;
@@ -2185,7 +2186,7 @@ bool StepConverter::ExportToStream(const ModelDocument& document, std::ostream& 
 
 bool StepConverter::Export(const ModelDocument& document, const std::string& filename,
                            const ConversionOptions& options) {
-    std::ofstream file(filename, std::ios::binary);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) {
         options.Warn("STEP: cannot write " + filename);
         return false;
@@ -2207,7 +2208,7 @@ bool StepConverter::ValidateData(const std::vector<uint8_t>& data) const {
 }
 
 bool StepConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) return false;
     std::vector<uint8_t> head(64);
     file.read(reinterpret_cast<char*>(head.data()), static_cast<std::streamsize>(head.size()));

@@ -80,15 +80,15 @@ namespace UltraCanvas {
         // test: see RemoveArchiveRunFolder.
         bool RemoveHeldFolder(const fs::path& folder) {
             std::error_code ec;
-            fs::path removing = folder;
+            fs::path removing = UltraCanvas::PathFromUtf8(folder);
             removing += kRemovingSuffix;
             // A leftover of an interrupted removal by the same name is gone
             // for good already; clear it so the rename has somewhere to go.
             if (fs::exists(removing, ec)) fs::remove_all(removing, ec);
             ec.clear();
-            fs::rename(folder, removing, ec);
+            fs::rename(UltraCanvas::PathFromUtf8(folder), removing, ec);
             if (ec) return false;   // something still holds a file in it
-            fs::path marker = folder;
+            fs::path marker = UltraCanvas::PathFromUtf8(folder);
             marker += kMarkerSuffix;
             fs::remove(marker, ec);
             ec.clear();
@@ -159,11 +159,11 @@ namespace UltraCanvas {
         const std::string prefix = std::to_string(CurrentProcessId()) + "-";
         for (int n = 1; n < 10000; ++n) {
             const fs::path folder = rootPath / PathFromUtf8(prefix + std::to_string(n));
-            fs::path marker = folder;
+            fs::path marker = UltraCanvas::PathFromUtf8(folder);
             marker += kMarkerSuffix;
             if (fs::exists(marker, ec)) continue;   // a folder mid-removal
-            if (!fs::create_directory(folder, ec) || ec) {
-                if (!fs::exists(folder)) {
+            if (!fs::create_directory(UltraCanvas::PathFromUtf8(folder), ec) || ec) {
+                if (!fs::exists(UltraCanvas::PathFromUtf8(folder))) {
                     outError = "Could not create a folder in " + root + ": " +
                                ec.message();
                     return false;
@@ -171,7 +171,7 @@ namespace UltraCanvas {
                 continue;
             }
             if (!AppendToMarker(marker, CurrentProcessId())) {
-                fs::remove(folder, ec);
+                fs::remove(UltraCanvas::PathFromUtf8(folder), ec);
                 outError = "Could not write in " + root + ".";
                 return false;
             }
@@ -228,7 +228,7 @@ namespace UltraCanvas {
             if (!rmEc) ++removed;
         }
         for (const fs::path& folder : folders) {
-            fs::path marker = folder;
+            fs::path marker = UltraCanvas::PathFromUtf8(folder);
             marker += kMarkerSuffix;
             std::error_code mEc;
             if (fs::exists(marker, mEc)) {
@@ -237,7 +237,7 @@ namespace UltraCanvas {
                     if (IsProcessAlive(id)) { held = true; break; }
                 if (held) continue;
             } else {
-                const auto written = fs::last_write_time(folder, mEc);
+                const auto written = fs::last_write_time(UltraCanvas::PathFromUtf8(folder), mEc);
                 if (!mEc && fs::file_time_type::clock::now() - written < kUnmarkedGrace)
                     continue;
             }
@@ -249,7 +249,7 @@ namespace UltraCanvas {
             const fs::path folder = rootPath /
                     PathFromUtf8(name.substr(0, name.size() - std::strlen(kMarkerSuffix)));
             std::error_code mEc;
-            if (!fs::exists(folder, mEc)) fs::remove(marker, mEc);
+            if (!fs::exists(UltraCanvas::PathFromUtf8(folder), mEc)) fs::remove(marker, mEc);
         }
         return removed;
     }

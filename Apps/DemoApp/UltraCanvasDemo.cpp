@@ -18,6 +18,7 @@
 #include <iostream>
 #include <sstream>
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
     // Demo-wide scrollbar look: a light-blue track carrying a blue, round-ended
@@ -196,7 +197,7 @@ namespace UltraCanvas {
     std::string DemoHeaderContainer::LoadFileContent(const std::string& filePath) {
         if (filePath.empty()) return "";
 
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) {
             debugOutput << "Failed to open file: " << filePath << std::endl;
             return "// Error: Could not load file: " + filePath;

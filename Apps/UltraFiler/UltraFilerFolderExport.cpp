@@ -174,7 +174,7 @@ namespace {
 
     std::string LinkSuffix(const ExportItem& item) {
         std::error_code ec;
-        const fs::path target = fs::read_symlink(item.path, ec);
+        const fs::path target = fs::read_symlink(UltraCanvas::PathFromUtf8(item.path), ec);
         return ec ? std::string() : " -> " + PathToUtf8(target);
     }
 

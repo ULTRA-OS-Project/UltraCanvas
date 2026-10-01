@@ -108,9 +108,18 @@ before adding cross-module code.
   (`path-strings.yml`), and `scripts/path_string_baseline.txt` is empty and
   must stay that way. A path built from a wide string or a `std::u8string`
   is already correct; say so at the site with `// path-string-ok: <why>`.
-  The check cannot see a declaration `fs::path p(str);` or an implicit
-  `fs::exists(str)`, so review catches those: write
-  `fs::exists(PathFromUtf8(str))`.
+  The implicit forms are just as wrong and are checked too: a UTF-8 string
+  handed straight to `fs::exists(str)`, `fs::remove(str, ec)`,
+  `fs::directory_iterator(str)`, `std::ifstream f(str)`, `f.open(str)` or
+  `fs::path p = str;` converts through the code page as well (`path-implicit`),
+  and `fopen(name, mode)` reads the name in it (`fopen-narrow`). Write
+  `fs::exists(PathFromUtf8(str))` and `OpenFileUtf8(name, mode)`.
+  `PathFromUtf8` also takes a C string, a `string_view` and a path (passed
+  through), so wrapping is never wrong. The check reads the file's own
+  declarations to tell a string from a path, so a string it cannot see the
+  type of (an `auto`, a getter's result) is still review's to catch.
+  `Tests/PathUtf8Test.cpp` runs every one of these calls on a Thai-and-emoji
+  folder in Windows CI, under code page 1252.
 - **No function of ours is named like a Win32 A/W macro.** `<windows.h>`
   `#define`s thousands of names to their `W` variant (`CreateFile` →
   `CreateFileW`, `LoadImage`, `SendMessage`, `GetMessage`, `ReplaceText`, …),

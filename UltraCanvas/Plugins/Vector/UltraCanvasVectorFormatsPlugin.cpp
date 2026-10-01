@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -173,7 +174,7 @@ GraphicsFileInfo UltraCanvasVectorFormatsPlugin::GetFileInfo(const std::string& 
     GraphicsFileInfo info(filePath);
     info.formatType = GraphicsFormatType::Vector;
     info.supportedManipulations = GetSupportedManipulations();
-    std::ifstream in(filePath, std::ios::binary | std::ios::ate);
+    std::ifstream in(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
     if (in) {
         std::streamsize fileSize = in.tellg();
         if (fileSize > 0) info.fileSize = static_cast<size_t>(fileSize);

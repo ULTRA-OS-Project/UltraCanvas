@@ -14,6 +14,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasOCRPlugin.h"
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_OCR_SUPPORT
 
@@ -280,8 +281,8 @@ std::vector<std::string> UltraCanvasOCR::InstalledLanguages() {
     std::set<std::string> found;
     std::error_code ec;
     for (const std::string& dir : DiscoveryDirs()) {
-        if (!fs::is_directory(dir, ec)) continue;
-        for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(dir), ec)) continue;
+        for (const auto& entry : fs::directory_iterator(UltraCanvas::PathFromUtf8(dir), ec)) {
             if (ec) break;
             const fs::path& p = entry.path();
             if (p.extension() == ".traineddata")
@@ -312,7 +313,7 @@ bool UltraCanvasOCR::DownloadLanguage(const std::string& code,
                code + ".traineddata in \"" + dir + "\" manually.";
     return false;
 #else
-    fs::create_directories(dir, ec);
+    fs::create_directories(UltraCanvas::PathFromUtf8(dir), ec);
     if (ec) {
         outError = "Cannot create language directory \"" + dir +
                    "\": " + ec.message();
@@ -383,7 +384,7 @@ bool UltraCanvasOCR::EnsureLanguages(const std::vector<std::string>& codes,
     // which loads all languages from one datapath — can use them together.
     const std::string dir = LanguageDataDir();
     std::error_code ec;
-    fs::create_directories(dir, ec); // best-effort; download re-checks
+    fs::create_directories(UltraCanvas::PathFromUtf8(dir), ec); // best-effort; download re-checks
 
     for (const std::string& code : want) {
         const fs::path target = PathFromUtf8(dir) / (code + ".traineddata");
@@ -399,7 +400,7 @@ bool UltraCanvasOCR::EnsureLanguages(const std::vector<std::string>& codes,
             // Skip the destination itself.
             if (fs::equivalent(PathFromUtf8(src), PathFromUtf8(dir), ec)) continue;
             if (fs::exists(candidate, ec)) {
-                fs::create_directories(dir, ec);
+                fs::create_directories(UltraCanvas::PathFromUtf8(dir), ec);
                 fs::copy_file(candidate, target,
                               fs::copy_options::overwrite_existing, ec);
                 if (!ec && fs::exists(target, ec)) { seeded = true; break; }

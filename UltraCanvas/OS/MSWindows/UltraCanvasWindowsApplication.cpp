@@ -22,6 +22,7 @@
 #include <pango/pangocairo.h>
 #include <fontconfig/fontconfig.h>
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasPathUtf8.h"
 
 // Link against IME library
 #pragma comment(lib, "imm32.lib")
@@ -1040,7 +1041,7 @@ namespace UltraCanvas {
 
         for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
             std::string path = dir + kEmbeddedAllFonts[i];
-            if (!std::filesystem::exists(path)) {
+            if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(path))) {
                 debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
                 continue;
             }

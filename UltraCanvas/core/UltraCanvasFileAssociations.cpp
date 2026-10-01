@@ -27,6 +27,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <sys/wait.h>
@@ -293,14 +294,14 @@ bool LaunchExecutable(const std::string& path, std::string& outError) {
 
 ExecutableKind ClassifyExecutable(const std::string& path) {
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(path, ec) || ec)
+    if (!std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(path), ec) || ec)
         return ExecutableKind::NotExecutable;
     if (::access(path.c_str(), X_OK) != 0)
         return ExecutableKind::NotExecutable;
     // The execute bit alone is not enough (FAT mounts set it on everything):
     // the content must actually look runnable.
     unsigned char head[4] = {};
-    FILE* f = std::fopen(path.c_str(), "rb");
+    FILE* f = UltraCanvas::OpenFileUtf8(path, "rb");
     if (!f) return ExecutableKind::NotExecutable;
     const size_t n = std::fread(head, 1, sizeof head, f);
     std::fclose(f);

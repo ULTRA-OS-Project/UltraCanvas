@@ -17,6 +17,7 @@
 #include <sstream>
 #include <regex>
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -2076,7 +2077,7 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
                     ? PageOutputPath(svgPath, page + 1)
                     : svgPath;
 
-            std::ofstream out(outPath, std::ios::binary | std::ios::trunc);
+            std::ofstream out(UltraCanvas::PathFromUtf8(outPath), std::ios::binary | std::ios::trunc);
             if (!out) {
                 result.error = "Cannot write file: " + outPath;
                 result.writtenFiles.clear();

@@ -14,6 +14,7 @@
 #include <cctype>
 #include <fstream>
 #include <mutex>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -88,7 +89,7 @@ void MergeInto(MediaCodecRegistration& target, const MediaCodecRegistration& inc
 // TypeScript file that happens to begin with a 'G' — and ".ts" is TypeScript
 // far more often than it is video, so nothing may claim it by name alone.
 bool LooksLikeMpegTransportStream(const std::string& filePath) {
-    std::ifstream f(filePath, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
     if (!f) return false;
     char buf[188 * 2 + 1] = {0};
     f.read(buf, sizeof(buf));

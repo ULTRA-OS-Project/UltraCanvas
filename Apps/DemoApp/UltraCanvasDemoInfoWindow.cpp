@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -33,7 +34,7 @@ namespace UltraCanvas {
     static void ShowChangelogPopup(const std::string& filePath, UltraCanvasWindowBase* parent) {
         static std::shared_ptr<UltraCanvasWindow> changelogWindow;
 
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         std::string text;
         if (file.is_open()) {
             std::stringstream buffer;

@@ -96,7 +96,7 @@ void IngestStats::Add(const IngestStats& other) {
 }
 
 bool ReadFileBytes(const std::string& path, std::string& out) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!in) return false;
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -249,12 +249,12 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
                                             const IngestOptions& options) {
     IngestStats stats;
     std::error_code ec;
-    if (!std::filesystem::is_directory(directory, ec)) return stats;
+    if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(directory), ec)) return stats;
 
     // Sort by uid so an interrupted run resumes in a predictable place and the
     // progress numbers move monotonically.
     std::vector<std::pair<int64_t, std::filesystem::path>> files;
-    for (const auto& entry : std::filesystem::directory_iterator(directory, ec)) {
+    for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(directory), ec)) {
         if (ec) break;
         if (!entry.is_regular_file(ec)) continue;
         const std::string name = PathToUtf8(entry.path().filename());

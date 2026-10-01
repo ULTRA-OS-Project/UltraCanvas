@@ -31,6 +31,7 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <zlib.h>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -2367,7 +2368,7 @@ const std::unordered_map<std::string, PSInterpreter::OpFn>& PSInterpreter::Opera
 // ===== EPS DOCUMENT =====
 
     bool EPSDocument::LoadFromFile(const std::string& filepath) {
-        std::ifstream file(filepath, std::ios::binary);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filepath), std::ios::binary);
         if (!file.is_open()) return false;
         std::string data((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
@@ -2477,7 +2478,7 @@ const std::unordered_map<std::string, PSInterpreter::OpFn>& PSInterpreter::Opera
         lastError.clear();
         document = std::make_unique<EPSDocument>();
         if (!document->LoadFromFile(filepath)) {
-            std::ifstream probe(filepath, std::ios::binary);
+            std::ifstream probe(UltraCanvas::PathFromUtf8(filepath), std::ios::binary);
             lastError = probe.is_open()
                     ? ("The file is not a PostScript (.eps/.ps) drawing: " + filepath)
                     : ("The file cannot be read: " + filepath);
@@ -2580,7 +2581,7 @@ const std::unordered_map<std::string, PSInterpreter::OpFn>& PSInterpreter::Opera
     }
 
     bool UltraCanvasEPSPlugin::ValidateFile(const std::string& filePath) {
-        std::ifstream file(filePath, std::ios::binary);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
         if (!file.is_open()) return false;
         uint8_t header[4];
         file.read(reinterpret_cast<char*>(header), 4);

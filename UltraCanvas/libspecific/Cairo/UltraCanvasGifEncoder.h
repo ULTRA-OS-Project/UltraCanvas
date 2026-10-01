@@ -37,6 +37,7 @@
 #include <vector>
 #include <algorithm>
 #include <unordered_map>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace GifEncode {
@@ -335,7 +336,7 @@ inline std::string EncodeGifFile(const std::string& path,
     out.push_back(0x3B);   // trailer
 
     // ---- Write to disk -------------------------------------------------------
-    FILE* fp = std::fopen(path.c_str(), "wb");
+    FILE* fp = UltraCanvas::OpenFileUtf8(path, "wb");
     if (!fp) return "GIF encode: failed to open output file";
     size_t written = std::fwrite(out.data(), 1, out.size(), fp);
     std::fclose(fp);

@@ -135,7 +135,7 @@ private:
 };
 
 std::string ReadTail(const std::string& path) {
-    std::ifstream file(path);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path));
     std::stringstream contents;
     contents << file.rdbuf();
     const std::string text = contents.str();
@@ -147,7 +147,7 @@ std::string WaitForSpoolFile(const std::string& spool, int jobId, const std::str
     const std::string prefix = std::to_string(jobId) + "-";
     for (int attempt = 0; attempt < 100; ++attempt) {
         std::error_code error;
-        for (const auto& entry : fs::directory_iterator(spool, error)) {
+        for (const auto& entry : fs::directory_iterator(UltraCanvas::PathFromUtf8(spool), error)) {
             const std::string name = PathToUtf8(entry.path().filename());
             if (name.rfind(prefix, 0) == 0 && PathToUtf8(entry.path().extension()) == extension) {
                 return PathToUtf8(entry.path());
@@ -159,7 +159,7 @@ std::string WaitForSpoolFile(const std::string& spool, int jobId, const std::str
 }
 
 std::vector<uint8_t> ReadBytes(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     return std::vector<uint8_t>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 }
 
@@ -256,7 +256,7 @@ int main() {
     // ippeveprinter stores without rendering, so a hand-made one will do.
     const std::string textPath = root + "/letter.txt";
     {
-        std::ofstream text(textPath);
+        std::ofstream text(UltraCanvas::PathFromUtf8(textPath));
         for (int line = 1; line <= 200; ++line) text << "Line " << line << " of a letter to the printer\n";
     }
     const std::string pdfPath = root + "/three-pages.pdf";
@@ -264,7 +264,7 @@ int main() {
                             "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
                             "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]>>endobj\n"
                             "trailer<</Root 1 0 R>>\n%%EOF\n";
-    { std::ofstream(pdfPath, std::ios::binary) << pdf; }
+    { std::ofstream(UltraCanvas::PathFromUtf8(pdfPath), std::ios::binary) << pdf; }
 
     const int port = 20000 + static_cast<int>(getpid() % 20000);
     ReferencePrinter reference;

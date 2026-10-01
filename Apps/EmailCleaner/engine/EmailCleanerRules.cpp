@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace EmailCleaner {
 
@@ -311,7 +312,7 @@ std::string RuleSet::Serialize() const {
 }
 
 bool RuleSet::LoadFile(const std::string& path, std::vector<std::string>* outErrors) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!in) return false;
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -320,7 +321,7 @@ bool RuleSet::LoadFile(const std::string& path, std::vector<std::string>* outErr
 }
 
 bool RuleSet::SaveFile(const std::string& path) const {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!out) return false;
     out << Serialize();
     return out.good();

@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDFView.h"
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
 
@@ -112,7 +113,7 @@ bool UltraCanvasPDFView::LoadFromPath(const std::string& path,
     // (on Windows outright). A file too big to hold is streamed instead — the
     // handle is the lesser cost there.
     std::error_code ec;
-    const auto fileSize = std::filesystem::file_size(path, ec);
+    const auto fileSize = std::filesystem::file_size(UltraCanvas::PathFromUtf8(path), ec);
     const bool inMemory = !ec && maxInMemoryBytes_ > 0 &&
                           static_cast<uintmax_t>(fileSize) <= maxInMemoryBytes_;
 
@@ -325,7 +326,7 @@ bool UltraCanvasPDFView::ExtractImageToFile(int indexOnPage,
     std::vector<uint8_t> bytes = doc_->ExtractImageBytes(images[indexOnPage]);
     if (bytes.empty()) return false;
 
-    std::ofstream f(path, std::ios::binary);
+    std::ofstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f) return false;
     f.write(reinterpret_cast<const char*>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));
@@ -451,7 +452,7 @@ bool UltraCanvasPDFView::ExportTextToFile(const std::string& path,
     const std::string text = selectionOnly ? GetSelectedText()
                                             : GetCurrentPageText();
     if (text.empty()) return false;
-    std::ofstream f(path, std::ios::binary);
+    std::ofstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f) return false;
     f.write(text.data(), static_cast<std::streamsize>(text.size()));
     return f.good();

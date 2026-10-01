@@ -14,6 +14,7 @@
 #include <map>
 #include <vips/vips8>
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasPathUtf8.h"
 
 // ============================================================================
 // STRUCTURES
@@ -121,7 +122,7 @@ namespace PixelFX {
         info.fileExtension = (lastDot != std::string::npos) ? info.fileName.substr(lastDot + 1) : "";
 
         // Get file size
-        std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
         if (file.is_open()) {
             info.fileSize = file.tellg();
             file.close();

@@ -89,7 +89,7 @@ static std::string LowerExt(const std::string& path) {
 
 static std::string BaseName(const std::string& path) {
     std::error_code ec;
-    fs::path p(path);
+    fs::path p(UltraCanvas::PathFromUtf8(path));
     return PathToUtf8(p.filename());
 }
 
@@ -150,7 +150,7 @@ static std::string ResolutionText(double dpiX, double dpiY) {
 // stall the viewer. Returns false if the file can't be opened.
 static bool ReadTextFile(const std::string& path, std::string& out,
                          size_t maxBytes = 16u * 1024u * 1024u) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f) return false;
     out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
     if (out.size() > maxBytes) {
@@ -190,7 +190,7 @@ static uint32_t ReadLE32(const unsigned char* p) {
 }
 
 static bool ReadUCDHeader(const std::string& path, UCDHeader& out) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f) return false;
     unsigned char h[28];
     if (!f.read(reinterpret_cast<char*>(h), sizeof(h))) return false;
@@ -219,7 +219,7 @@ static bool ReadUCDThumbnail(const std::string& path, const UCDHeader& hdr,
     constexpr uint32_t kMaxThumbBytes = 64u * 1024u * 1024u;
     if (!hdr.valid || !hdr.HasThumbnail() || hdr.IsPrivate() ||
         hdr.thumbnailLength > kMaxThumbBytes) return false;
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f) return false;
     f.seekg(28 + (std::streamoff)hdr.extensionLength);
     out.resize(hdr.thumbnailLength);
@@ -248,7 +248,7 @@ static std::string BuildUCDDetailsText(const std::string& path,
     os << "File: " << BaseName(path) << "\n";
     os << "Path: " << path << "\n";
     std::error_code ec;
-    auto sz = fs::file_size(path, ec);
+    auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
     if (!ec) os << "Size: " << HumanSize(sz) << "\n";
     if (!hdr.valid) {
         os << "\nNot a UCD v2 container (no valid signature).\n"
@@ -1511,8 +1511,8 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
 std::vector<std::string> UltraCanvasMediaViewer::EnumerateFolder(const std::string& folder) {
     std::vector<std::string> out;
     std::error_code ec;
-    if (!fs::is_directory(folder, ec)) return out;
-    for (fs::directory_iterator it(folder, ec), end; it != end && !ec; it.increment(ec)) {
+    if (!fs::is_directory(UltraCanvas::PathFromUtf8(folder), ec)) return out;
+    for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(folder), ec), end; it != end && !ec; it.increment(ec)) {
         std::error_code fec;
         if (it->is_regular_file(fec)) {
             std::string p = PathToUtf8(it->path());
@@ -1573,7 +1573,7 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
 
 void UltraCanvasMediaViewer::OpenFile(const std::string& filePath) {
     std::error_code ec;
-    fs::path p(filePath);
+    fs::path p(UltraCanvas::PathFromUtf8(filePath));
     std::string folder = PathToUtf8(p.parent_path());
     if (folder.empty()) folder = ".";
     OpenFolder(folder, filePath);
@@ -2305,7 +2305,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   UC DOCUMENT";
         std::error_code ec;
-        auto sz = fs::file_size(path, ec);
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
         infoLabel->SetText(os.str());
@@ -2322,7 +2322,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
                << " / " << pv->GetPageCount();
         }
         std::error_code ec;
-        auto sz = fs::file_size(path, ec);
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
         if (pv->HasDocument()) {
@@ -2352,7 +2352,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
                    << " / " << fv->GetFaceCount();
         }
         std::error_code ec;
-        auto sz = fs::file_size(path, ec);
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
         infoLabel->SetText(os.str());
@@ -2370,7 +2370,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   " << kindLabel;
         std::error_code ec;
-        auto sz = fs::file_size(path, ec);
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
         infoLabel->SetText(os.str());
@@ -2387,7 +2387,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
        << "   \xC2\xB7   " << img->GetWidth() << " x " << img->GetHeight();
 
     std::error_code ec;
-    auto sz = fs::file_size(path, ec);
+    auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
     if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
 
     std::string ext = LowerExt(path);
@@ -2426,7 +2426,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         bos << "File: " << BaseName(path) << "\n";
         bos << "Path: " << path << "\n";
         std::error_code bec;
-        auto bsz = fs::file_size(path, bec);
+        auto bsz = fs::file_size(UltraCanvas::PathFromUtf8(path), bec);
         if (!bec) bos << "Size: " << HumanSize(bsz) << "\n";
         std::string ext = LowerExt(path);
         std::transform(ext.begin(), ext.end(), ext.begin(),
@@ -2460,7 +2460,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         dos << "File: " << BaseName(path) << "\n";
         dos << "Path: " << path << "\n";
         std::error_code dec;
-        auto dsz = fs::file_size(path, dec);
+        auto dsz = fs::file_size(UltraCanvas::PathFromUtf8(path), dec);
         if (!dec) dos << "Size: " << HumanSize(dsz) << "\n";
         dos << "Type: PDF document\n";
         if (pv->HasDocument()) dos << "Pages: " << pv->GetPageCount() << "\n";
@@ -2486,7 +2486,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         mos << "File: " << BaseName(path) << "\n";
         mos << "Path: " << path << "\n";
         std::error_code mec;
-        auto msz = fs::file_size(path, mec);
+        auto msz = fs::file_size(UltraCanvas::PathFromUtf8(path), mec);
         if (!mec) mos << "Size: " << HumanSize(msz) << "\n";
         std::string ext = LowerExt(path);
         std::transform(ext.begin(), ext.end(), ext.begin(),
@@ -2502,7 +2502,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     os << "Path: " << path << "\n";
 
     std::error_code ec;
-    auto sz = fs::file_size(path, ec);
+    auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
     if (!ec) os << "Size: " << HumanSize(sz) << "\n";
 
     if (auto img = surface->GetImage()) {

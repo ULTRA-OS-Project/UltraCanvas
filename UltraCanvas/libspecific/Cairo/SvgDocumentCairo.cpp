@@ -18,6 +18,7 @@
 #include <cmath>
 #include <fstream>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -68,7 +69,7 @@ namespace UltraCanvas {
 
         // The source bytes only live for the duration of the parse — the
         // retained state is the parsed document, not the XML.
-        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::ate);
         if (!file.good()) {
             debugOutput << "UCSvgDocument: Cannot read " << path << std::endl;
             return doc;

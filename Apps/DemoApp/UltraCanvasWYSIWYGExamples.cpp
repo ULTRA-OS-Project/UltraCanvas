@@ -36,6 +36,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -350,7 +351,7 @@ namespace UltraCanvas {
             // The framework logo, embedded in the document's media store so the
             // document stays self-contained when it is saved.
             const std::string logoPath = NormalizePath(GetResourcesDir() + "media/images/UltraCanvas-logo.png");
-            std::ifstream logoFile(logoPath, std::ios::binary);
+            std::ifstream logoFile(UltraCanvas::PathFromUtf8(logoPath), std::ios::binary);
             if (logoFile) {
                 std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(logoFile)),
                                            std::istreambuf_iterator<char>());
