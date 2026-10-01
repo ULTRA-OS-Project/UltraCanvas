@@ -255,8 +255,9 @@ label->SetInlineImages({ star });
   `Contain`, `Cover`, `NoScale` and `ScaleDown` keep its shape and place it by
   `position`, clipped to the box.
 - `frame` (`LabelInlineImageFrame`) is the CSS box around the picture:
-  margins, padding, `borderWidth` / `borderColor`, `borderRadius` and
-  `background`. The line reserves the whole margin box; the background fills
+  margins, padding, four border sides (`borderTop` ... `borderLeft`, each a
+  `LabelInlineImageBorder`: width, colour, dash; `SetBorders(w, colour)` for
+  one all round), `borderRadius` and `background`. The line reserves the whole margin box; the background fills
   the border box, the border is drawn inside it, and the picture is clipped to
   the rounded corners. The default frame is empty: the picture alone.
 - `InlineImageRect(i)` returns where image `i`'s picture is drawn (its content

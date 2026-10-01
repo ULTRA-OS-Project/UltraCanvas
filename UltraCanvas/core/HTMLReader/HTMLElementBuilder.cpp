@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.13.0 - border-collapse: collapse draws a shared cell edge once (the
+//                   wider border wins); <table border> rules join the resolution
 // Version: 1.12.0 - vertical-align on images sharing a line: top, middle, bottom
 // Version: 1.11.0 - the gap between images a space apart is a space of their font,
 //                   measured (SpaceWidth)
@@ -904,16 +906,17 @@ void ElementBuilder::AppendInlineMarkup(const Node& node, const ComputedStyle& r
                     f.marginBottom = style.marginBottom; f.marginLeft = style.marginLeft;
                     f.paddingTop = style.paddingTop;       f.paddingRight = style.paddingRight;
                     f.paddingBottom = style.paddingBottom; f.paddingLeft = style.paddingLeft;
-                    if (style.HasBorder()) {
-                        // One border round an inline image: its widest side.
-                        const BorderSide& b = style.WidestBorder();
-                        f.borderWidth = b.Width();
-                        f.borderColor = ToColor(b.color);
-                    }
+                    auto border = [&](const BorderSide& b) {
+                        return LabelInlineImageBorder{ b.Width(), ToColor(b.color), BorderDash(b) };
+                    };
+                    f.borderTop = border(style.borderTop);
+                    f.borderRight = border(style.borderRight);
+                    f.borderBottom = border(style.borderBottom);
+                    f.borderLeft = border(style.borderLeft);
                     if (style.backgroundColor) f.background = ToColor(*style.backgroundColor);
                     f.borderRadius = BorderRadiusPx(style,
-                        w + f.paddingLeft + f.paddingRight + 2.f * f.borderWidth,
-                        h + f.paddingTop + f.paddingBottom + 2.f * f.borderWidth);
+                        w + f.paddingLeft + f.paddingRight + style.BorderHorizontal(),
+                        h + f.paddingTop + f.paddingBottom + style.BorderVertical());
                     switch (style.verticalAlign) {
                         case VerticalAlignMode::Middle: image.align = LabelInlineImageAlign::Middle; break;
                         case VerticalAlignMode::Top:    image.align = LabelInlineImageAlign::Top;    break;
@@ -1145,6 +1148,51 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildInlineBox(Node& eleme
     return box;
 }
 
+// border-collapse: collapse. Neighbouring cells share an edge, drawn once:
+// the wider of the two borders, kept by the cell to the left of it or above
+// it (the other cell drops its side); on a tie the left / upper cell's. Where
+// the table draws a border of its own, the cells along that edge leave it to
+// the table. Then every cell gets its settled sides.
+template <typename Entry, typename Apply>
+void CollapseBorders(std::vector<Entry>& cells, const ComputedStyle& table, Apply apply) {
+    int rows = 0, cols = 0;
+    for (const auto& e : cells) {
+        rows = std::max(rows, e.row + e.rowSpan);
+        cols = std::max(cols, e.col + e.colSpan);
+    }
+    std::vector<int> grid(static_cast<size_t>(rows) * cols, -1);
+    for (size_t i = 0; i < cells.size(); ++i)
+        for (int r = cells[i].row; r < cells[i].row + cells[i].rowSpan; ++r)
+            for (int c = cells[i].col; c < cells[i].col + cells[i].colSpan; ++c)
+                grid[static_cast<size_t>(r) * cols + c] = static_cast<int>(i);
+    auto at = [&](int r, int c) {
+        return (r < 0 || c < 0 || r >= rows || c >= cols) ? -1 : grid[static_cast<size_t>(r) * cols + c];
+    };
+    // `keep` (left / upper) and `drop` (right / lower) meet: the wider wins.
+    auto settle = [](BorderSide& keep, BorderSide& drop) {
+        if (drop.Width() > keep.Width()) keep = drop;
+        drop = BorderSide{};
+    };
+    for (size_t i = 0; i < cells.size(); ++i) {
+        Entry& e = cells[i];
+        for (int r = e.row; r < e.row + e.rowSpan; ++r) {       // right edge
+            const int j = at(r, e.col + e.colSpan);
+            if (j >= 0 && j != static_cast<int>(i)) settle(e.borders.borderRight, cells[j].borders.borderLeft);
+        }
+        for (int c = e.col; c < e.col + e.colSpan; ++c) {       // bottom edge
+            const int j = at(e.row + e.rowSpan, c);
+            if (j >= 0 && j != static_cast<int>(i)) settle(e.borders.borderBottom, cells[j].borders.borderTop);
+        }
+    }
+    for (Entry& e : cells) {
+        if (table.borderTop.Width() > 0.f && e.row == 0) e.borders.borderTop = BorderSide{};
+        if (table.borderLeft.Width() > 0.f && e.col == 0) e.borders.borderLeft = BorderSide{};
+        if (table.borderBottom.Width() > 0.f && e.row + e.rowSpan == rows) e.borders.borderBottom = BorderSide{};
+        if (table.borderRight.Width() > 0.f && e.col + e.colSpan == cols) e.borders.borderRight = BorderSide{};
+        apply(e);
+    }
+}
+
 std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, bool inlineBox) {
     const ComputedStyle& style = resolver.StyleOf(&element);
     auto table = MakeContainer("table");
@@ -1208,6 +1256,15 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
         return value;
     };
 
+    // Each cell's place and the borders it is to draw. Separate borders are
+    // drawn as built; collapsed ones once the whole grid is known.
+    struct CellEntry {
+        std::shared_ptr<UltraCanvasContainer> box;
+        int row = 0, col = 0, rowSpan = 1, colSpan = 1;
+        ComputedStyle borders;      // the cell's style, with its resolved sides
+    };
+    std::vector<CellEntry> cellEntries;
+
     auto addCell = [&](Node& cell, const ComputedStyle& rowStyle, size_t r, int& c) {
         while (isTaken(r, c)) ++c;
         const int colSpan = std::clamp(spanAttr(cell, "colspan"), 1, 1000);
@@ -1221,14 +1278,27 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
         auto cellBox = MakeContainer(cell.tag.empty() ? std::string("td") : cell.tag);
         RegisterAnchors(cell, cellBox);
         ++elementCount;
+        // The cell's borders: its own, else the 1px rule of <table border>.
+        ComputedStyle boxStyle = cellStyle;
+        if (ruledCells && !cellStyle.HasBorder()) {
+            BorderSide rule;
+            rule.width = 1.f;
+            rule.style = BorderLineStyle::Solid;
+            rule.color = CssColor{128, 128, 128, 255};
+            rule.currentColor = false;
+            boxStyle.SetAllBorders(rule);
+        }
+        CellEntry entry{ cellBox, static_cast<int>(r), c, rowSpan, colSpan, boxStyle };
+        if (style.borderCollapse) {
+            // Settled with the neighbours' once every cell is placed.
+            boxStyle.SetAllBorders(BorderSide{});
+        }
         // A px / % width is the column's width (the table layout reads it).
-        ApplyBoxStyle(*cellBox, cellStyle, /*fillWidth=*/false);
+        ApplyBoxStyle(*cellBox, boxStyle, /*fillWidth=*/false);
         if (!cellStyle.backgroundColor && rowStyle.backgroundColor) {
             cellBox->SetBackgroundColor(ToColor(*rowStyle.backgroundColor));
         }
-        if (ruledCells && !cellStyle.HasBorder()) {
-            cellBox->SetBorders(1.f, Color(128, 128, 128, 255));
-        }
+        cellEntries.push_back(std::move(entry));
         // valign / vertical-align of the cell, else of its row; a cell
         // centres its content by default, as in a browser.
         VerticalAlignMode va = cellStyle.verticalAlign;
@@ -1261,6 +1331,11 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element, 
             if (resolver.StyleOf(&cell).display == DisplayMode::Hidden) continue;
             addCell(cell, rowStyle, r, c);
         }
+    }
+
+    if (style.borderCollapse && !cellEntries.empty()) {
+        CollapseBorders(cellEntries, style,
+                        [&](CellEntry& e) { ApplyBorders(*e.box, e.borders); });
     }
 
     const bool fullWidth = style.widthPercent && *style.widthPercent >= 99.5f;
@@ -1341,6 +1416,11 @@ void ElementBuilder::ApplyBoxStyle(UltraCanvasUIElement& target,
         limits.maxWidth = Dimension::Px(*style.maxWidthPx);
         target.boxConstraints = limits;
     }
+    ApplyBorders(target, style);
+}
+
+// The four border sides (each its own width, colour, dash) and the radius.
+void ElementBuilder::ApplyBorders(UltraCanvasUIElement& target, const ComputedStyle& style) {
     if (style.HasBorder() && style.UniformBorder()) {
         // Width, colour and radius together: box.border alone reserves the
         // space but paints nothing.

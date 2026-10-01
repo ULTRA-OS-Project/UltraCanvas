@@ -14,6 +14,7 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.7.0 - an inline image's border drawn per side (mitred corners)
 // Version: 2.6.0 - inline images drawn in their frame (margin, border,
 //                 padding, background, rounded corners)
 // Version: 2.5.0 - inline images fitted and placed by their fit / position
@@ -241,10 +242,12 @@ namespace UltraCanvas {
         const Rect2Df box = InlineImageBoxRect(index);
         if (index >= inlineImages.size() || box.width <= 0.f) return box;
         const LabelInlineImageFrame& f = inlineImages[index].frame;
-        return Rect2Df(box.x + f.borderWidth + f.paddingLeft,
-                       box.y + f.borderWidth + f.paddingTop,
-                       std::max(0.f, box.width - 2.f * f.borderWidth - f.paddingLeft - f.paddingRight),
-                       std::max(0.f, box.height - 2.f * f.borderWidth - f.paddingTop - f.paddingBottom));
+        return Rect2Df(box.x + f.borderLeft.width + f.paddingLeft,
+                       box.y + f.borderTop.width + f.paddingTop,
+                       std::max(0.f, box.width - f.borderLeft.width - f.borderRight.width -
+                                     f.paddingLeft - f.paddingRight),
+                       std::max(0.f, box.height - f.borderTop.width - f.borderBottom.width -
+                                     f.paddingTop - f.paddingBottom));
     }
 
     Rect2Df UltraCanvasLabel::InlineImageBoxRect(size_t index) {
@@ -501,15 +504,31 @@ namespace UltraCanvas {
                 const LabelInlineImageFrame& f = img.frame;
                 // The frame: background over the border box, border inside it.
                 const Rect2Df box = InlineImageBoxRect(i);
-                if (box.width > 0.f && box.height > 0.f &&
-                    (f.background.a > 0 || (f.borderWidth > 0.f && f.borderColor.a > 0))) {
-                    ctx->DrawFilledRectangle(Rect2Dd(box.x, box.y, box.width, box.height),
-                                             f.background, f.borderWidth, f.borderColor,
-                                             f.borderRadius);
+                const Rect2Dd boxD(box.x, box.y, box.width, box.height);
+                if (box.width > 0.f && box.height > 0.f && f.HasBorder()) {
+                    // Each side its own, meeting on the corners' diagonals.
+                    if (f.background.a > 0) ctx->SetFillPaint(f.background);
+                    const double rad = f.borderRadius;
+                    ctx->DrawRoundedRectangleWidthBorders(
+                        boxD, f.background.a > 0,
+                        f.borderLeft.width, f.borderRight.width, f.borderTop.width, f.borderBottom.width,
+                        f.borderLeft.color, f.borderRight.color, f.borderTop.color, f.borderBottom.color,
+                        rad, rad, rad, rad,
+                        f.borderLeft.dash, f.borderRight.dash, f.borderTop.dash, f.borderBottom.dash);
+                } else if (box.width > 0.f && box.height > 0.f && f.background.a > 0) {
+                    ctx->DrawFilledRectangle(boxD, f.background, 0.f, Colors::Transparent, f.borderRadius);
                 }
                 const Rect2Df r = InlineImageRect(i);
                 if (r.width <= 0.f || r.height <= 0.f) continue;
-                const bool rounded = f.borderRadius > f.borderWidth;
+                // The rounded corners inside the border: what each side leaves
+                // of the radius.
+                const float lw = f.borderLeft.width, rw = f.borderRight.width;
+                const float tw = f.borderTop.width, bw = f.borderBottom.width;
+                const double itl = std::max(0.f, f.borderRadius - std::max(lw, tw));
+                const double itr = std::max(0.f, f.borderRadius - std::max(rw, tw));
+                const double ibr = std::max(0.f, f.borderRadius - std::max(rw, bw));
+                const double ibl = std::max(0.f, f.borderRadius - std::max(lw, bw));
+                const bool rounded = itl > 0 || itr > 0 || ibr > 0 || ibl > 0;
                 if (img.fit == ImageFitMode::Fill && !rounded) {
                     ctx->DrawImage(*img.image, Rect2Dd(r.x, r.y, r.width, r.height), ImageFitMode::Fill);
                     continue;
@@ -523,11 +542,9 @@ namespace UltraCanvas {
                 if (d.width <= 0.f || d.height <= 0.f) continue;
                 ctx->PushState();
                 if (rounded) {
-                    const double inner = f.borderRadius - f.borderWidth;
-                    ctx->ClipRoundedRectangle(Rect2Dd(box.x + f.borderWidth, box.y + f.borderWidth,
-                                                      box.width - 2.f * f.borderWidth,
-                                                      box.height - 2.f * f.borderWidth),
-                                              inner, inner, inner, inner);
+                    ctx->ClipRoundedRectangle(Rect2Dd(box.x + lw, box.y + tw,
+                                                      box.width - lw - rw, box.height - tw - bw),
+                                              itl, itr, ibr, ibl);
                 }
                 ctx->ClipRect(Rect2Dd(r.x, r.y, r.width, r.height));
                 ctx->DrawImage(*img.image, Rect2Dd(d.x, d.y, d.width, d.height), ImageFitMode::Fill);

@@ -4,6 +4,7 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.3.0 - an inline image's border per side (LabelInlineImageBorder)
 // Version: 2.2.0 - an inline image has a frame: margin, border, padding,
 //                 background, rounded corners (LabelInlineImageFrame)
 // Version: 2.1.0 - an inline image has a fit mode and position (object-fit /
@@ -75,20 +76,36 @@ namespace UltraCanvas {
     // margins keep the text away, the background fills the border box, the
     // border is drawn inside it, and padding separates the picture from the
     // border. The picture is clipped to the rounded corners.
+    struct LabelInlineImageBorder {
+        float width = 0.f;
+        Color color = Colors::Black;
+        UCDashPattern dash;             // empty: solid
+    };
+
     struct LabelInlineImageFrame {
         float marginTop = 0.f, marginRight = 0.f, marginBottom = 0.f, marginLeft = 0.f;
         float paddingTop = 0.f, paddingRight = 0.f, paddingBottom = 0.f, paddingLeft = 0.f;
-        float borderWidth = 0.f;
-        Color borderColor = Colors::Black;
+        // Each side its own width, colour and dash (empty: solid).
+        LabelInlineImageBorder borderTop, borderRight, borderBottom, borderLeft;
         float borderRadius = 0.f;           // of the border box's outer corners
         Color background = Colors::Transparent;
 
         // Everything the frame adds around the picture, across and down.
         float Horizontal() const {
-            return marginLeft + marginRight + paddingLeft + paddingRight + 2.f * borderWidth;
+            return marginLeft + marginRight + paddingLeft + paddingRight +
+                   borderLeft.width + borderRight.width;
         }
         float Vertical() const {
-            return marginTop + marginBottom + paddingTop + paddingBottom + 2.f * borderWidth;
+            return marginTop + marginBottom + paddingTop + paddingBottom +
+                   borderTop.width + borderBottom.width;
+        }
+        // One border all round.
+        void SetBorders(float width, const Color& color) {
+            borderTop = borderRight = borderBottom = borderLeft = LabelInlineImageBorder{ width, color, {} };
+        }
+        bool HasBorder() const {
+            return borderTop.width > 0.f || borderRight.width > 0.f ||
+                   borderBottom.width > 0.f || borderLeft.width > 0.f;
         }
     };
 

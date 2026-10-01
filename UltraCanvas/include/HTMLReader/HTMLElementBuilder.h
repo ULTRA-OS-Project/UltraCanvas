@@ -6,6 +6,7 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.7.0 - ApplyBorders; collapsed table borders
 // Version: 1.6.0 - the gap between images is a space measured in their font
 // Version: 1.5.0 - images in a block without text share a wrapping line
 // Version: 1.4.0 - background-repeat
@@ -162,6 +163,9 @@ private:
     // box, whose background must not reach into its margin).
     void ApplyBoxStyle(UltraCanvasUIElement& target, const ComputedStyle& style,
                        bool fillWidth = true, bool realMargins = false);
+    // The border sides and radius of a style (ApplyBoxStyle calls it; a
+    // collapsed table's cells call it once their shared edges are settled).
+    void ApplyBorders(UltraCanvasUIElement& target, const ComputedStyle& style);
     void ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
                         bool noWrap = false);
     // background-image: the first url() layer that loads, drawn under the

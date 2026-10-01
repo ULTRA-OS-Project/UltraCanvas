@@ -1,5 +1,8 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.0.13 - borders drawn as filled wedges of the border ring: sides meet on
+//                  the corner's diagonal (mitred), each in its own colour, and rounded
+//                  corners are shared the same way; dashed sides stay strokes
 // Version: 1.0.12 - per-side borders: each side strokes in its own colour, dashed
 //                  or solid on its own (a dashed side took the previous colour and
 //                  passed its dash on to the sides after it)
@@ -1395,145 +1398,139 @@ namespace UltraCanvas {
 
         PushState();
 
-        // Create the rounded rectangle path. Trace it clockwise as
-        // edge-then-corner so any mix of zero / non-zero radii stays a closed
-        // rectangle (a zero radius collapses its arc to the corner point while
-        // the line_to calls still draw the full edges). The earlier form let a
-        // zero-radius corner draw the *next* edge, cutting a diagonal across the
-        // fill whenever only some corners were rounded.
+        // A rounded rectangle path, traced clockwise as edge-then-corner so any
+        // mix of zero / non-zero radii stays a closed rectangle (a zero radius
+        // collapses its arc to the corner point).
+        auto roundedPath = [&](double rx, double ry, double rw, double rh,
+                               double tl, double tr, double br, double bl) {
+            MoveTo(rx + tl, ry);
+            LineTo(rx + rw - tr, ry);
+            if (tr > 0) Arc(rx + rw - tr, ry + tr, tr, -M_PI / 2, 0);
+            LineTo(rx + rw, ry + rh - br);
+            if (br > 0) Arc(rx + rw - br, ry + rh - br, br, 0, M_PI / 2);
+            LineTo(rx + bl, ry + rh);
+            if (bl > 0) Arc(rx + bl, ry + rh - bl, bl, M_PI / 2, M_PI);
+            LineTo(rx, ry + tl);
+            if (tl > 0) Arc(rx + tl, ry + tl, tl, M_PI, 3 * M_PI / 2);
+            ClosePath();
+        };
+
+        // Background, and everything after it, inside the outer edge.
         ClearPath();
-
-        // Start just after the top-left corner and run along the top edge.
-        MoveTo(x + topLeftRadius, y);
-        LineTo(x + width - topRightRadius, y);
-        if (topRightRadius > 0) {
-            Arc(x + width - topRightRadius, y + topRightRadius,
-                      topRightRadius, -M_PI / 2, 0);
-        }
-
-        // Right edge -> bottom-right corner.
-        LineTo(x + width, y + height - bottomRightRadius);
-        if (bottomRightRadius > 0) {
-            Arc(x + width - bottomRightRadius, y + height - bottomRightRadius,
-                      bottomRightRadius, 0, M_PI / 2);
-        }
-
-        // Bottom edge -> bottom-left corner.
-        LineTo(x + bottomLeftRadius, y + height);
-        if (bottomLeftRadius > 0) {
-            Arc(x + bottomLeftRadius, y + height - bottomLeftRadius,
-                      bottomLeftRadius, M_PI / 2, M_PI);
-        }
-
-        // Left edge -> back up into the top-left corner.
-        LineTo(x, y + topLeftRadius);
-        if (topLeftRadius > 0) {
-            Arc(x + topLeftRadius, y + topLeftRadius,
-                      topLeftRadius, M_PI, 3 * M_PI / 2);
-        }
-
-        ClosePath();
-
-        // Fill background
+        roundedPath(x, y, width, height, topLeftRadius, topRightRadius,
+                    bottomRightRadius, bottomLeftRadius);
         if (fill) {
             FillPathPreserve();
         }
         ClipPath();
+        ClearPath();
 
-        // Clip to the rounded rectangle for borders
-//        cairo_clip_preserve(cr);
-//        cairo_new_path(cr);
+        // The padding edge: inside the borders, its corners rounded by what
+        // the borders leave of the outer radius.
+        const double lw = std::max(0.0, borderLeftWidth),  rw = std::max(0.0, borderRightWidth);
+        const double tw = std::max(0.0, borderTopWidth),   bw = std::max(0.0, borderBottomWidth);
+        const double ix = x + lw, iy = y + tw;
+        const double iw = width - lw - rw, ih = height - tw - bw;
+        const bool hasInner = iw > 0 && ih > 0;
+        const double itl = std::max(0.0, topLeftRadius - std::max(lw, tw));
+        const double itr = std::max(0.0, topRightRadius - std::max(rw, tw));
+        const double ibr = std::max(0.0, bottomRightRadius - std::max(rw, bw));
+        const double ibl = std::max(0.0, bottomLeftRadius - std::max(lw, bw));
 
-        // Draw borders (inset by half the border width for proper positioning)
-        // Top border
+        // A solid side: the part of the ring between the two edges that lies in
+        // its wedge - out to the outer corners, in to the inner ones - so two
+        // sides meet on the corner's diagonal (CSS's mitred join), each in its
+        // own colour, and a rounded corner is shared the same way.
+        auto fillSide = [&](const Color& color, std::initializer_list<Point2Dd> wedge) {
+            PushState();
+            ClearPath();
+            bool first = true;
+            for (const Point2Dd& pt : wedge) {
+                if (first) MoveTo(pt.x, pt.y); else LineTo(pt.x, pt.y);
+                first = false;
+            }
+            ClosePath();
+            ClipPath();
+            ClearPath();
+            roundedPath(x, y, width, height, topLeftRadius, topRightRadius,
+                        bottomRightRadius, bottomLeftRadius);
+            if (hasInner) roundedPath(ix, iy, iw, ih, itl, itr, ibr, ibl);
+            SetFillRule(FillRule::EvenOdd);
+            SetFillPaint(color);
+            Fill();
+            PopState();
+        };
+        // A dashed or dotted side: a stroke along its straight part.
+        auto strokeSide = [&](double w, const Color& color, const UCDashPattern& dash,
+                              const Point2Dd& from, const Point2Dd& to) {
+            SetStrokeWidth(w);
+            SetStrokePaint(color);
+            SetLineDash(dash);
+            DrawLine(from, to);
+            SetLineDash(UCDashPattern());
+        };
+
+        // Each wedge runs from its outer corners to the inner ones and on to
+        // the middle, so a ring that curves inside the inner corners (a round
+        // avatar) is still all in one wedge or another.
+        // The inner corners, even where the borders leave no inside (a thick
+        // rule): where opposite borders meet, in proportion to their widths.
+        double iL = x + lw, iR = x + width - rw, iT = y + tw, iB = y + height - bw;
+        if (iL > iR) iL = iR = (lw + rw > 0) ? x + width * lw / (lw + rw) : x + width / 2.0;
+        if (iT > iB) iT = iB = (tw + bw > 0) ? y + height * tw / (tw + bw) : y + height / 2.0;
+        const double cx = (iL + iR) / 2.0, cy = (iT + iB) / 2.0;
+
+        // One colour all round, all solid: the whole ring at once (no seams
+        // where wedges meet).
+        auto sameSolid = [&](double w, const Color& c, const UCDashPattern& d) {
+            return w == tw && d.dashes.empty() && c.r == borderTopColor.r &&
+                   c.g == borderTopColor.g && c.b == borderTopColor.b && c.a == borderTopColor.a;
+        };
+        if (tw > 0 && borderTopPattern.dashes.empty() &&
+            sameSolid(rw, borderRightColor, borderRightPattern) &&
+            sameSolid(bw, borderBottomColor, borderBottomPattern) &&
+            sameSolid(lw, borderLeftColor, borderLeftPattern)) {
+            ClearPath();
+            roundedPath(x, y, width, height, topLeftRadius, topRightRadius,
+                        bottomRightRadius, bottomLeftRadius);
+            if (hasInner) roundedPath(ix, iy, iw, ih, itl, itr, ibr, ibl);
+            SetFillRule(FillRule::EvenOdd);
+            SetFillPaint(borderTopColor);
+            Fill();
+            PopState();
+            return;
+        }
         if (borderTopWidth > 0) {
-            SetStrokeWidth(borderTopWidth);
-            SetStrokePaint(borderTopColor);
-            SetLineDash(borderTopPattern);     // empty: solid
-            float yPos = y + borderTopWidth / 2.0;
-            DrawLine({x + topLeftRadius, yPos}, {x + width - topRightRadius, yPos});
-//            drawBorderSide(x + topLeftRadius, yPos,
-//                           x + width - topRightRadius, yPos,
-//                           borderTopWidth, borderTopColor, borderTopPattern);
+            if (borderTopPattern.dashes.empty())
+                fillSide(borderTopColor, { {x, y}, {x + width, y}, {iR, iT}, {cx, cy}, {iL, iT} });
+            else
+                strokeSide(borderTopWidth, borderTopColor, borderTopPattern,
+                           {x + topLeftRadius, y + tw / 2.0}, {x + width - topRightRadius, y + tw / 2.0});
         }
-
-        // Right border
         if (borderRightWidth > 0) {
-            SetStrokeWidth(borderRightWidth);
-            SetStrokePaint(borderRightColor);
-            SetLineDash(borderRightPattern);     // empty: solid
-            float xPos = x + width - borderRightWidth / 2.0;
-            DrawLine({xPos, y + topRightRadius},
-                     {xPos, y + height - bottomRightRadius});
+            if (borderRightPattern.dashes.empty())
+                fillSide(borderRightColor, { {x + width, y}, {x + width, y + height},
+                                             {iR, iB}, {cx, cy}, {iR, iT} });
+            else
+                strokeSide(borderRightWidth, borderRightColor, borderRightPattern,
+                           {x + width - rw / 2.0, y + topRightRadius},
+                           {x + width - rw / 2.0, y + height - bottomRightRadius});
         }
-
-        // Bottom border
         if (borderBottomWidth > 0) {
-            SetStrokeWidth(borderBottomWidth);
-            SetStrokePaint(borderBottomColor);
-            SetLineDash(borderBottomPattern);     // empty: solid
-            float yPos = y + height - borderBottomWidth / 2.0;
-            DrawLine({x + bottomLeftRadius, yPos},
-                     {x + width - bottomRightRadius, yPos});
+            if (borderBottomPattern.dashes.empty())
+                fillSide(borderBottomColor, { {x + width, y + height}, {x, y + height},
+                                              {iL, iB}, {cx, cy}, {iR, iB} });
+            else
+                strokeSide(borderBottomWidth, borderBottomColor, borderBottomPattern,
+                           {x + bottomLeftRadius, y + height - bw / 2.0},
+                           {x + width - bottomRightRadius, y + height - bw / 2.0});
         }
-
-        // Left border
         if (borderLeftWidth > 0) {
-            float xPos = x + borderLeftWidth / 2.0;
-            SetStrokeWidth(borderLeftWidth);
-            SetStrokePaint(borderLeftColor);
-            SetLineDash(borderLeftPattern);     // empty: solid
-            DrawLine({xPos, y + topLeftRadius},
-                     {xPos, y + height - bottomLeftRadius});
-        }
-
-        // Draw rounded corners with borders (solid: a dash of a side must
-        // not carry over into them).
-        SetLineDash(UCDashPattern());
-        // The path used for ClipPath() above follows the outer edge of the
-        // rounded rectangle, so a corner arc drawn at the full corner radius is
-        // centred on the clip boundary and has its outer half clipped away,
-        // making the corners look thinner than the straight edges. Inset each
-        // arc radius by half its stroke width so the stroke's outer edge lines
-        // up with the clip boundary, matching how the straight borders above are
-        // inset by half their width.
-        if (topLeftRadius > 0) {
-            const Color avgColor = borderLeftColor.Blend(borderTopColor, 0.5);
-            double avgWidth = (borderLeftWidth + borderTopWidth) / 2.0;
-            double arcRadius = std::max(0.0, topLeftRadius - avgWidth / 2.0);
-            SetStrokeWidth(avgWidth);
-            SetStrokePaint(avgColor);
-            DrawArc(x + topLeftRadius, y + topLeftRadius, arcRadius,
-                M_PI, 3 * M_PI / 2);
-        }
-        if (topRightRadius > 0) {
-            const Color avgColor = borderTopColor.Blend(borderRightColor, 0.5);
-            double avgWidth = (borderTopWidth + borderRightWidth) / 2.0;
-            double arcRadius = std::max(0.0, topRightRadius - avgWidth / 2.0);
-            SetStrokeWidth(avgWidth);
-            SetStrokePaint(avgColor);
-            DrawArc(x + width - topRightRadius, y + topRightRadius, arcRadius,
-                3 * M_PI / 2, 2 * M_PI);
-        }
-
-        if (bottomRightRadius > 0) {
-            const Color avgColor = borderBottomColor.Blend(borderRightColor, 0.5);
-            double avgWidth = (borderRightWidth +  borderBottomWidth) / 2.0;
-            double arcRadius = std::max(0.0, bottomRightRadius - avgWidth / 2.0);
-            SetStrokeWidth(avgWidth);
-            SetStrokePaint(avgColor);
-            DrawArc(x + width - bottomRightRadius, y + height - bottomRightRadius,
-                arcRadius, 0, M_PI / 2);
-        }
-
-        if (bottomLeftRadius > 0) {
-            const Color avgColor = borderBottomColor.Blend(borderLeftColor, 0.5);
-            double avgWidth = (borderBottomWidth + borderLeftWidth) / 2.0;
-            double arcRadius = std::max(0.0, bottomLeftRadius - avgWidth / 2.0);
-            SetStrokeWidth(avgWidth);
-            SetStrokePaint(avgColor);
-            DrawArc(x + bottomLeftRadius, y + height - bottomLeftRadius, arcRadius,
-                M_PI / 2, M_PI);
+            if (borderLeftPattern.dashes.empty())
+                fillSide(borderLeftColor, { {x, y + height}, {x, y}, {iL, iT}, {cx, cy}, {iL, iB} });
+            else
+                strokeSide(borderLeftWidth, borderLeftColor, borderLeftPattern,
+                           {x + lw / 2.0, y + topLeftRadius}, {x + lw / 2.0, y + height - bottomLeftRadius});
         }
         PopState();
     }

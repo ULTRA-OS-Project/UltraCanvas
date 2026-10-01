@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.8.0 - per-side inline image borders, collapsed table borders, mitred corners
 // Version: 1.7.0 - vertical-align on a shared image line
 // Version: 1.6.0 - images in a block without text share a line
 // Version: 1.5.0 - <img> border, background, padding, margins, border-radius
@@ -534,7 +535,7 @@ void TestImageBox() {
     Check(label && label->GetInlineImages().size() == 1, "inline image in the label");
     if (label && label->GetInlineImages().size() == 1) {
         const LabelInlineImageFrame& f = label->GetInlineImages()[0].frame;
-        CheckNear(f.borderWidth, 2.f, "inline border width");
+        CheckNear(f.borderLeft.width, 2.f, "inline border width");
         CheckNear(f.paddingLeft, 4.f, "inline padding");
         CheckNear(f.marginLeft, 6.f, "inline margin");
         Check(f.background.a > 0, "inline background");
@@ -609,6 +610,100 @@ void TestImagesShareLine() {
     } else Check(false, "four images (vertical-align)");
 }
 
+// Borders: an inline image's sides each their own; a collapsed table draws a
+// shared cell edge once (the wider wins); two coloured sides meet on the
+// corner's diagonal.
+void TestBorderSides() {
+    std::printf("borders per side, collapsed, mitred\n");
+    auto build = [](const std::string& html, std::shared_ptr<Host>& host) {
+        HTML::BuildOptions opts;
+        opts.style.baseFontSizePx = 12.f;
+        opts.resourceLoader = [](const std::string&) { return BackgroundPicture40x20(); };
+        HTML::ElementBuilder builder;
+        host = std::make_shared<Host>();
+        host->Adopt(CreateRenderContext(Size2Di(400, 300), nullptr));
+        auto root = builder.Build(html, opts).root;
+        std::vector<Placed> all;
+        if (!root) return all;
+        root->size.width = CSSLayout::Dimension::Px(400.f);
+        host->AddChild(root);
+        CSSLayout::LayoutContext ctx;
+        ctx.viewportWidth = 400;
+        ctx.viewportHeight = 300;
+        CSSLayout::MeasureConstraints mc{ { CSSLayout::ConstraintMode::Exact, 400.f },
+                                          { CSSLayout::ConstraintMode::Unbounded, INFINITY } };
+        root->Measure(mc, ctx);
+        root->Arrange(Rect2Df{ 0, 0, 400.f, root->measured.measuredHeight }, ctx);
+        Collect(root.get(), 0, 0, all);
+        return all;
+    };
+    std::shared_ptr<Host> host;
+
+    // Inline image: left 3px, bottom 5px, nothing else.
+    auto all = build("<p>text <img src='p.png' style='border-left:3px solid #00f;"
+                     "border-bottom:5px dashed #f00'> more</p>", host);
+    const Placed* line = LabelWith(all, "text");
+    auto* label = line ? dynamic_cast<UltraCanvasLabel*>(line->element) : nullptr;
+    if (label && label->GetInlineImages().size() == 1) {
+        const LabelInlineImageFrame& f = label->GetInlineImages()[0].frame;
+        CheckNear(f.borderLeft.width, 3.f, "inline: left side");
+        CheckNear(f.borderBottom.width, 5.f, "inline: bottom side");
+        CheckNear(f.borderTop.width, 0.f, "inline: no top");
+        Check(!f.borderBottom.dash.dashes.empty() && f.borderLeft.dash.dashes.empty(), "inline: dashed bottom only");
+        Rect2Df box = label->InlineImageBoxRect(0), pic = label->InlineImageRect(0);
+        CheckNear(box.width, 43.f, "inline box: 40 + 3 left");
+        CheckNear(box.height, 25.f, "inline box: 20 + 5 bottom");
+        CheckNear(pic.x - box.x, 3.f, "picture inside the left border");
+        CheckNear(pic.y - box.y, 0.f, "no top border to clear");
+    } else Check(false, "inline image built");
+
+    // Collapsed: a | b with 1px each, then c with 3px - shared edges once.
+    all = build("<table style='border-collapse:collapse'><tr>"
+                "<td style='border:1px solid #999'>a</td><td style='border:1px solid #999'>b</td>"
+                "<td style='border:3px solid #c00'>c</td></tr></table>", host);
+    std::vector<UltraCanvasUIElement*> cells;
+    for (const auto& p : all)
+        if (p.element->GetIdentifier().rfind("html_td_", 0) == 0) cells.push_back(p.element);
+    if (cells.size() == 3) {
+        CheckNear(cells[0]->GetBorderRightWidth(), 1.f, "a keeps the shared a|b edge");
+        CheckNear(cells[1]->GetBorderLeftWidth(), 0.f, "b drops it");
+        CheckNear(cells[1]->GetBorderRightWidth(), 3.f, "the wider c border wins b|c");
+        CheckNear(cells[2]->GetBorderLeftWidth(), 0.f, "c drops its left");
+        CheckNear(cells[2]->GetBorderRightWidth(), 3.f, "outer edges stay");
+    } else Check(false, "three collapsed cells");
+
+    // Separate (the default): every cell keeps every side.
+    all = build("<table><tr><td style='border:1px solid #999'>a</td>"
+                "<td style='border:1px solid #999'>b</td></tr></table>", host);
+    cells.clear();
+    for (const auto& p : all)
+        if (p.element->GetIdentifier().rfind("html_td_", 0) == 0) cells.push_back(p.element);
+    if (cells.size() == 2) CheckNear(cells[1]->GetBorderLeftWidth(), 1.f, "separate: both sides kept");
+    else Check(false, "two separate cells");
+
+    // Mitred: a 10px red top meets a 10px blue left on the diagonal.
+    auto ctx = CreateRenderContext(Size2Di(40, 40), nullptr);
+    if (!ctx) { Check(false, "offscreen context"); return; }
+    auto* cr = static_cast<cairo_t*>(ctx->GetNativeContext());
+    cairo_set_source_rgb(cr, 1, 1, 1);
+    cairo_paint(cr);
+    ctx->DrawRoundedRectangleWidthBorders(Rect2Dd(0, 0, 40, 40), false, 10, 10, 10, 10,
+        Color(0, 0, 255, 255), Color(0, 0, 255, 255), Color(255, 0, 0, 255), Color(255, 0, 0, 255),
+        0, 0, 0, 0, UCDashPattern(), UCDashPattern(), UCDashPattern(), UCDashPattern());
+    cairo_surface_t* surf = cairo_get_target(cr);
+    cairo_surface_flush(surf);
+    auto pixel = [&](int x, int y) {
+        return reinterpret_cast<const uint32_t*>(cairo_image_surface_get_data(surf) +
+                                                 y * cairo_image_surface_get_stride(surf))[x];
+    };
+    auto isRed = [&](int x, int y) { uint32_t p = pixel(x, y); return ((p >> 16) & 0xFF) > 200 && (p & 0xFF) < 50; };
+    auto isBlue = [&](int x, int y) { uint32_t p = pixel(x, y); return (p & 0xFF) > 200 && ((p >> 16) & 0xFF) < 50; };
+    Check(isRed(7, 2), "above the diagonal: the top's colour");
+    Check(isBlue(2, 7), "below it: the left's colour");
+    Check(isRed(20, 5) && isBlue(5, 20), "along the sides");
+    Check(isRed(33, 2) && isBlue(37, 7), "top-right corner mitred too");
+}
+
 } // namespace
 
 int main() {
@@ -623,6 +718,7 @@ int main() {
     TestObjectFitPosition();
     TestImageBox();
     TestImagesShareLine();
+    TestBorderSides();
     std::printf("\n%s (%d failures)\n", g_failures == 0 ? "PASSED" : "FAILED", g_failures);
     return g_failures == 0 ? 0 : 1;
 }
