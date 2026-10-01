@@ -507,6 +507,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasChipExamples.cpp
             Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
+            Apps/DemoApp/UltraCanvasBusyIndicatorExamples.cpp
             Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
             Apps/DemoApp/UltraCanvasScrollbarExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp

@@ -800,6 +800,19 @@ namespace UltraCanvas {
                 .AddVariant("badge", "Status Dots")
                 .AddVariant("badge", "Overlay on Icon");
 
+        basicBuilder.AddItem("busyindicator", "Busy Indicator",
+                             "\"Working on it\" with no percentage: a turning ring, two counter-turning "
+                             "rings, swelling dots, a sliding bar or a pulsing circle",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateBusyIndicatorExamples(); },
+                             "DemoApp/UltraCanvasBusyIndicatorExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasBusyIndicator.md")
+                .AddVariant("busyindicator", "Ring")
+                .AddVariant("busyindicator", "Dual Ring")
+                .AddVariant("busyindicator", "Dots")
+                .AddVariant("busyindicator", "Bar")
+                .AddVariant("busyindicator", "Pulse");
+
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
 
