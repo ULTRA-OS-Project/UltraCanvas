@@ -974,9 +974,20 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
   work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
 - **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
-  — `PrintDocumentWithDialog(name, bytes, mimeType, parent)`,
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent, pages)`,
   `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
   dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+  The optional `pages` (`IOPrintJob::pages`, an `IPrintPageSource`) is the
+  same document as pages to draw, for the renderers that cannot lay out a
+  PDF - Windows GDI, GutenPrint, IPP without PDF - which draw them instead of
+  refusing the job. `IPrintPageTarget::GetRenderContext()` lets a source draw
+  straight into a target's render context.
+- **RichDocumentPrintPages** / `CreateRichDocumentPrintPages(editor)`
+  (`UltraCanvasRichTextPrint.h`) — a word-processing document's pages as an
+  `IPrintPageSource`, the pages `ExportToPdf` writes, laid out by a hidden
+  element of its own. `UltraCanvasRichTextEdit::BeginPrintLayout` /
+  `RenderPrintPage` / `EndPrintLayout` draw them into any context. Tested by
+  `RichTextPrintTest`.
 - **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
   extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
   one line.

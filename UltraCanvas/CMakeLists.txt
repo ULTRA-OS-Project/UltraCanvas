@@ -877,6 +877,8 @@ set(ULTRACANVAS_CORE_SOURCES
         # and the element that renders and edits it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        # Its pages, for the printers that draw rather than take its PDF.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextPrint.cpp
         # Word-processing formats: ODT/DOCX/DOC readers and writers
         # (used by FileLoader::OpenTextDocument and Texter)
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp

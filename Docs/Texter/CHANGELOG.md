@@ -1,4 +1,4 @@
-#### 2026-10-01 *1.57*
+#### 2026-10-01 *1.58*
 - **Typing in the search bar no longer hangs on a large file.** With a big
   document open (the ~940 KB framework changelog, say), each keystroke in the
   search bar made the editor find the matches to highlight one at a time, each
@@ -11,6 +11,15 @@
   searches and highlights; deleting back below two clears the highlights and
   the count. Enter, Find Next and Find Previous still search for a single
   character.
+
+#### 2026-10-01 *1.57*
+- **A word-processing tab prints on Windows, and on printers that do not read
+  PDF.** Print sent the document only as a PDF, which a Windows printer, a
+  GutenPrint printer and an IPP printer without PDF cannot take - they refused
+  the job with "Print Failed". The same pages now go along, and those printers
+  draw them: fonts, pictures, tables, headers and page numbers, with the
+  printer, copies, paper and page range chosen in the dialog. A framework
+  change, see `Docs/UltraCanvas/changelog.d/print-pages-beside-pdf.md`.
 
 #### 2026-10-01 *1.56*
 - **Texter builds without MuPDF again.** Opening and saving PDFs needs the

@@ -95,21 +95,23 @@ IODeviceResult PrintTextWithSettings(const IOPrintDialogChoice& chosen,
 IODeviceResult PrintDocumentWithSettings(const IOPrintDialogChoice& chosen,
                                          const std::string& documentName,
                                          const std::vector<uint8_t>& data,
-                                         const std::string& mimeType) {
-    return SubmitToChosenPrinter(chosen, MakeDocumentPrintJob(chosen, documentName, data, mimeType));
+                                         const std::string& mimeType,
+                                         const IPrintPageSourcePtr& pages) {
+    return SubmitToChosenPrinter(chosen, MakeDocumentPrintJob(chosen, documentName, data, mimeType, pages));
 }
 
 IODeviceResult PrintDocumentWithDialog(const std::string& documentName,
                                        const std::vector<uint8_t>& data,
                                        const std::string& mimeType,
-                                       UltraCanvasWindowBase* parent) {
+                                       UltraCanvasWindowBase* parent,
+                                       const IPrintPageSourcePtr& pages) {
     const NativePrintResult chosen =
         UltraCanvasNativeDialogs::RequestPrintSettings(documentName, parent);
     if (!chosen.IsOK()) {
         return IODeviceResult::Error(IODeviceResultCode::Cancelled,
                                      "The print dialog was cancelled");
     }
-    return PrintDocumentWithSettings(chosen, documentName, data, mimeType);
+    return PrintDocumentWithSettings(chosen, documentName, data, mimeType, pages);
 }
 
 IODeviceResult PrintTextWithDialog(const std::string& documentName,

@@ -60,6 +60,8 @@ public:
     int MeasureTextWidth(const std::string& utf8, int pixelHeight) const override;
     int GetLineHeight(int pixelHeight) const override;
     int GetAscent(int pixelHeight) const override;
+    // The off-screen context the page is drawn on.
+    IRenderContext* GetRenderContext() override;
 
     // ===== READING THE PAGE BACK =====
 
