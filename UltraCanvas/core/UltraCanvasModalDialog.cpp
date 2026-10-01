@@ -1543,17 +1543,40 @@ namespace UltraCanvas {
             };
             inputColumn->AddChild(fileNameInput);
 
-            addLabel("FileDialogTypeLabel", "Files of type:");
-            filterDropdown = std::make_shared<UltraCanvasDropdown>(
-                    "FileDialogType", 0, 0, 300, fieldHeight);
-            filterDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
-                if (index < 0 || index >= static_cast<int>(fileConfig.filters.size())) return;
-                if (index == fileConfig.selectedFilterIndex) return;
-                fileConfig.selectedFilterIndex = index;
-                ApplyListingFilter();
-            };
-            inputColumn->AddChild(filterDropdown);
-            RebuildFilterDropdown();
+            if (fileConfig.filterToggles) {
+                // One button per kind of file, any number on, sized to their
+                // names and left-aligned: no extension lists to read through.
+                addLabel("FileDialogTypeLabel", "Show:");
+                auto toggleRow = std::make_shared<UltraCanvasContainer>("FileDialogTypeRow");
+                toggleRow->size.height = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
+                toggleRow->layout.SetFlexRow()
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+                filterToggleBar = std::make_shared<UltraCanvasSegmentedControl>(
+                        "FileDialogTypeToggles", 0, 0, 300, fieldHeight);
+                filterToggleBar->SetSelectionMode(SegmentSelectionMode::Toggle);
+                filterToggleBar->SetWidthMode(SegmentWidthMode::FitContent);
+                filterToggleBar->layoutItem.SetFlexShrink(1);
+                toggleRow->AddChild(filterToggleBar);
+                inputColumn->AddChild(toggleRow);
+                RebuildFilterToggles();
+                ApplyListingFilter();   // the listing was set up before the toggles
+                filterToggleBar->onSelectionChanged = [this](const std::vector<int>& on) {
+                    activeFilters = std::set<int>(on.begin(), on.end());
+                    ApplyListingFilter();
+                };
+            } else {
+                addLabel("FileDialogTypeLabel", "Files of type:");
+                filterDropdown = std::make_shared<UltraCanvasDropdown>(
+                        "FileDialogType", 0, 0, 300, fieldHeight);
+                filterDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+                    if (index < 0 || index >= static_cast<int>(fileConfig.filters.size())) return;
+                    if (index == fileConfig.selectedFilterIndex) return;
+                    fileConfig.selectedFilterIndex = index;
+                    ApplyListingFilter();
+                };
+                inputColumn->AddChild(filterDropdown);
+                RebuildFilterDropdown();
+            }
 
             fields->AddChild(labelColumn);
             fields->AddChild(inputColumn);
@@ -1574,6 +1597,64 @@ namespace UltraCanvas {
             filterDropdown->SetSelectedIndex(fileConfig.selectedFilterIndex, false);
         }
         filterDropdown->SetDisabled(fileConfig.filters.size() < 2);
+    }
+
+    void UltraCanvasFileDialog::RebuildFilterToggles() {
+        activeFilters.clear();
+        const int count = static_cast<int>(fileConfig.filters.size());
+        auto isAllFiles = [this](int i) {
+            const auto& exts = fileConfig.filters[i].extensions;
+            return std::find(exts.begin(), exts.end(), "*") != exts.end();
+        };
+        // Every kind of file on, "All files" off: it would match everything
+        // and make the others pointless. Only an all-"*" list starts with it.
+        for (int i = 0; i < count; ++i) {
+            if (!isAllFiles(i)) activeFilters.insert(i);
+        }
+        if (activeFilters.empty()) {
+            for (int i = 0; i < count; ++i) activeFilters.insert(i);
+        }
+        if (!filterToggleBar) return;
+        filterToggleBar->ClearSegments();
+        std::string tooltip;
+        for (int i = 0; i < count; ++i) {
+            const FileFilter& filter = fileConfig.filters[i];
+            filterToggleBar->AddSegment(filter.description);
+            // The extensions stay one hover away, shortened for a long list.
+            if (isAllFiles(i)) continue;
+            std::string exts;
+            const size_t shown = std::min<size_t>(filter.extensions.size(), 24);
+            for (size_t k = 0; k < shown; ++k) {
+                if (k > 0) exts += " ";
+                exts += filter.extensions[k];
+            }
+            if (filter.extensions.size() > shown) {
+                exts += " ... (" + std::to_string(filter.extensions.size()) + " types)";
+            }
+            if (!tooltip.empty()) tooltip += "\n";
+            tooltip += filter.description + ": " + exts;
+        }
+        filterToggleBar->SetTooltip(tooltip);
+        // Set before the callback is wired (or while it is unset by a rebuild
+        // the caller follows with ApplyListingFilter).
+        auto callback = std::move(filterToggleBar->onSelectionChanged);
+        filterToggleBar->onSelectionChanged = nullptr;
+        filterToggleBar->SetSelectedIndices(std::vector<int>(activeFilters.begin(), activeFilters.end()));
+        filterToggleBar->onSelectionChanged = std::move(callback);
+    }
+
+    bool UltraCanvasFileDialog::MatchesTypeFilter(const std::string& fileName) const {
+        const int count = static_cast<int>(fileConfig.filters.size());
+        if (fileConfig.filterToggles) {
+            for (int i : activeFilters) {
+                if (i >= 0 && i < count && fileConfig.filters[i].Matches(fileName)) return true;
+            }
+            return activeFilters.empty();
+        }
+        if (fileConfig.selectedFilterIndex < 0 || fileConfig.selectedFilterIndex >= count) {
+            return true;
+        }
+        return fileConfig.filters[fileConfig.selectedFilterIndex].Matches(fileName);
     }
 
     void UltraCanvasFileDialog::FocusInitialElement() {
@@ -1780,14 +1861,30 @@ namespace UltraCanvas {
             filerView->SetEntryFilter([](const FilerEntry& e) { return e.isDirectory; });
             return;
         }
-        if (fileConfig.selectedFilterIndex < 0 ||
-            fileConfig.selectedFilterIndex >= static_cast<int>(fileConfig.filters.size())) {
+        if (!fileConfig.filterToggles &&
+            (fileConfig.selectedFilterIndex < 0 ||
+             fileConfig.selectedFilterIndex >= static_cast<int>(fileConfig.filters.size()))) {
             filerView->SetEntryFilter(nullptr);
             return;
         }
-        const FileFilter filter = fileConfig.filters[fileConfig.selectedFilterIndex];
-        filerView->SetEntryFilter([filter](const FilerEntry& e) {
-            return e.isDirectory || e.isArchive || filter.Matches(e.name);
+        // The filters in force, copied: the listing may run the predicate off
+        // the UI thread, and a toggle change sets a new one through here.
+        std::vector<FileFilter> inForce;
+        if (fileConfig.filterToggles) {
+            for (int i : activeFilters) {
+                if (i >= 0 && i < static_cast<int>(fileConfig.filters.size())) {
+                    inForce.push_back(fileConfig.filters[i]);
+                }
+            }
+        } else {
+            inForce.push_back(fileConfig.filters[fileConfig.selectedFilterIndex]);
+        }
+        filerView->SetEntryFilter([inForce](const FilerEntry& e) {
+            if (e.isDirectory || e.isArchive) return true;
+            for (const FileFilter& filter : inForce) {
+                if (filter.Matches(e.name)) return true;
+            }
+            return inForce.empty();
         });
     }
 
@@ -1831,12 +1928,17 @@ namespace UltraCanvas {
         fileConfig.filters = filters;
         fileConfig.selectedFilterIndex = 0;
         RebuildFilterDropdown();
+        if (fileConfig.filterToggles) RebuildFilterToggles();
         ApplyListingFilter();
     }
 
     void UltraCanvasFileDialog::AddFileFilter(const FileFilter& filter) {
         fileConfig.filters.push_back(filter);
         RebuildFilterDropdown();
+        if (fileConfig.filterToggles) {
+            RebuildFilterToggles();
+            ApplyListingFilter();
+        }
     }
 
     void UltraCanvasFileDialog::AddFileFilter(const std::string& description, const std::vector<std::string>& extensions) {
@@ -1994,13 +2096,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasFileDialog::IsFileMatchingFilter(const std::string& fileName) const {
-        if (fileConfig.selectedFilterIndex < 0 ||
-            fileConfig.selectedFilterIndex >= static_cast<int>(fileConfig.filters.size())) {
-            return true;
-        }
-
-        const FileFilter& filter = fileConfig.filters[fileConfig.selectedFilterIndex];
-        return filter.Matches(fileName);
+        return MatchesTypeFilter(fileName);
     }
 
     std::string UltraCanvasFileDialog::GetFileExtension(const std::string& fileName) const {

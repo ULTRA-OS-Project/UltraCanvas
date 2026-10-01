@@ -1635,12 +1635,12 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     // they hold nothing open once loaded.
 }
 
-// Every extension the viewer opens, for the Open dialog's "All supported
-// media" filter. Several kinds are decided at run time (the codec registry, the
-// model and vector readers a plugin registered, the tokenizer's languages), so
-// the candidates are gathered from every list those checks use and each is
-// kept only when IsSupportedMedia accepts it: the filter then offers exactly
-// what browsing a folder would show. Lowercase, undotted, sorted, unique.
+// Every extension the viewer opens, for the Open dialog's type toggles.
+// Several kinds are decided at run time (the codec registry, the model and
+// vector readers a plugin registered, the tokenizer's languages), so the
+// candidates are gathered from every list those checks use and each is kept
+// only when IsSupportedMedia accepts it: the toggles then offer exactly what
+// browsing a folder would show. Lowercase, undotted, sorted, unique.
 static std::vector<std::string> SupportedOpenExtensions() {
     std::vector<std::string> candidates = ImageExtensions();
     auto add = [&candidates](const std::vector<std::string>& exts) {
@@ -1683,15 +1683,31 @@ static std::vector<std::string> SupportedOpenExtensions() {
 }
 
 void UltraCanvasMediaViewer::ShowOpenDialog() {
+    // One toggle button per kind of file rather than a list of extensions:
+    // each supported extension goes to the kind the viewer would show it as.
+    enum Group { Images, Audio, Video, Documents, Text, GroupCount };
+    static const char* const groupNames[GroupCount] = {
+        "Images", "Audio", "Video", "Documents", "Text" };
+    std::vector<std::string> groups[GroupCount];
+    for (const std::string& e : SupportedOpenExtensions()) {
+        switch (ClassifyFile("file." + e)) {
+            case MediaKind::Image:
+            case MediaKind::Vector:
+            case MediaKind::Model:    groups[Images].push_back(e);    break;
+            case MediaKind::Audio:    groups[Audio].push_back(e);     break;
+            case MediaKind::Video:    groups[Video].push_back(e);     break;
+            case MediaKind::Text:     groups[Text].push_back(e);      break;
+            default:                  groups[Documents].push_back(e); break;
+        }
+    }
+
     FileDialogOptions opts;
-    // Everything the viewer opens comes first, so the dialog lists videos,
-    // documents and the rest from the start rather than images alone.
-    opts.SetTitle("Open media")
-        .AddFilter("All supported media", SupportedOpenExtensions())
-        .AddFilter("Images", std::vector<std::string>{
-            "png", "jpg", "jpeg", "gif", "bmp", "webp", "tiff", "tif",
-            "svg", "ico", "heic", "heif", "avif", "jxl", "tga", "ppm", "qoi" })
-        .AddFilter("All files", std::vector<std::string>{ "*" })
+    opts.SetTitle("Open media").SetFilterToggles(true);
+    // A kind this build cannot show at all (no video backend) gets no button.
+    for (int g = 0; g < GroupCount; ++g) {
+        if (!groups[g].empty()) opts.AddFilter(groupNames[g], groups[g]);
+    }
+    opts.AddFilter("All files", std::vector<std::string>{ "*" })
         .SetParentWindow(GetWindow());
     UltraCanvasFileLoader::OpenMultipleFilesDialog(opts,
             [this](DialogResult r, const std::vector<std::string>& files) {
