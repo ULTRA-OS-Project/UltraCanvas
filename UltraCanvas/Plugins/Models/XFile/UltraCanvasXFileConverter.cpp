@@ -36,6 +36,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -706,7 +707,7 @@ FormatCapabilities XFileConverter::GetCapabilities() const {
 
 std::shared_ptr<ModelStorage::ModelDocument> XFileConverter::Import(
         const std::string& filename, const ConversionOptions& options) {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) {
         options.Warn("X: cannot open " + filename);
         return nullptr;
@@ -743,7 +744,7 @@ bool XFileConverter::ValidateData(const std::vector<uint8_t>& data) const {
 }
 
 bool XFileConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) return false;
     char head[16] = {};
     file.read(head, 16);

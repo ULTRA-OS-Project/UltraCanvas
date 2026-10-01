@@ -28,7 +28,7 @@
   stayed in the analysis - the map, the counts, the message list - until the
   account was scanned again, and even that did not help: the body is still in
   the mail cache it was read from (UltraMail kept every cached `.eml` for
-  good until its 0.10.14, and removes one only at its next sync of the folder
+  good until its 0.10.15, and removes one only at its next sync of the folder
   now), so the scan analysed it again. Now the
   moved messages are taken out of the analysis as soon as the moves come
   back, and the move is remembered (schema 5, `moved_messages`), so neither
@@ -45,25 +45,13 @@
   file open: what was not opened for a week goes, then the oldest until the
   rest fits in 256 MB (`PruneAttachmentCache`, on UltraMail's
   `AttachmentCache::Prune`, the rule UltraMail applies to its own copies).
-  Opening an attachment again makes its copy new. `WriteToCache` also builds
-  its paths through `PathFromUtf8` now, so a data folder or an attachment
-  named in Thai or with an emoji works on Windows too.
+  Opening an attachment again makes its copy new.
 - **Two attachments with the same name no longer overwrite each other.**
   The viewer's copy was written under the attachment's name, truncating
   whatever was there: opening a second "invoice.pdf" from another sender
   replaced the first - even while it was still open in a viewer. The copies
   are now written through UltraMail's `AttachmentCache`: the same bytes reuse
-  the copy already there, different bytes get "invoice (1).pdf". And an
-  attachment is read back from a folder with a non-ASCII name ("Entwürfe",
-  "Корзина") on Windows too: the cached message is opened as UTF-8.
-- **Mail in a folder with a non-ASCII name is analysed on Windows too.** The
-  scan walked the cache and read every message through narrow-string file
-  calls, which Windows reads in its code page: a folder such as "Entwürfe" or
-  "Корзина" - or an account or data folder named in another script - was
-  not found, and its mail never reached the map. Every file and folder path
-  in EmailCleaner now goes through `PathFromUtf8`: the scan
-  (`ReadFileBytes`, the folder walk), the rules file, and the start-up checks
-  of the data and mail folders.
+  the copy already there, different bytes get "invoice (1).pdf".
 
 #### 2026-09-29 *0.4.0*
 - **EmailCleaner can have accounts of its own.** Until now every account came

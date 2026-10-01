@@ -8,6 +8,7 @@
 #include "UltraSocialComposer.h"
 
 #include <fstream>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraSocial;
 
@@ -113,7 +114,7 @@ TEST(composer_validation_finds_problems) {
 
     // Oversized media file (5 bytes > 4-byte cap).
     std::string big = "tests-oversized-media.bin";
-    { std::ofstream os(big, std::ios::binary); os << "12345"; }
+    { std::ofstream os(UltraCanvas::PathFromUtf8(big), std::ios::binary); os << "12345"; }
     post.media = {{big, "", ""}};
     auto problems = ValidateAdaptedPost(post, caps);
     REQUIRE_EQ(problems.size(), std::size_t{1});

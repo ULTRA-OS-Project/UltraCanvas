@@ -20,6 +20,7 @@
 
 #include <fstream>
 #include <sstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace VectorConverter {
@@ -31,7 +32,7 @@ std::shared_ptr<VectorStorage::VectorDocument> ExportOnlyConverter::Import(
     // File and stream imports funnel into ImportFromString, so a subclass
     // that grows a reader (DXF, DWG, EMF, WMF) overrides only that method
     // plus CanImport; for pure writers the base ImportFromString warns.
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file.is_open()) {
         if (CanImport() && options.WarningCallback) {
             options.WarningCallback("Cannot open file: " + filename);
@@ -65,7 +66,7 @@ bool ExportOnlyConverter::Export(
         const ConversionOptions& options) {
     std::string data = ExportToString(document, options);
     if (data.empty()) return false;
-    std::ofstream file(filename, std::ios::binary);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file.is_open()) {
         if (options.WarningCallback) {
             options.WarningCallback("Failed to create file: " + filename);
@@ -100,7 +101,7 @@ std::string AIConverter::ExportToString(
 }
 
 bool AIConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file.is_open()) return false;
     std::string head(8, '\0');
     file.read(head.data(), static_cast<std::streamsize>(head.size()));

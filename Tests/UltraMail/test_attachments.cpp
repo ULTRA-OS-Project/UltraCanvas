@@ -18,6 +18,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace UltraMail;
@@ -85,10 +86,10 @@ TEST(cache_write_roundtrip_and_dedup) {
 
     std::string p1 = cache.Write(att);
     REQUIRE(!p1.empty());
-    REQUIRE(fs::exists(p1));
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(p1)));
 
     // Bytes on disk match.
-    std::ifstream is(p1, std::ios::binary);
+    std::ifstream is(UltraCanvas::PathFromUtf8(p1), std::ios::binary);
     std::string got((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
     REQUIRE_EQ(got, content);
 
@@ -101,7 +102,7 @@ TEST(cache_write_roundtrip_and_dedup) {
     att2.data.push_back('!');
     std::string p3 = cache.Write(att2);
     REQUIRE(p3 != p1);
-    REQUIRE(fs::exists(p3));
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(p3)));
 
     fs::remove_all(dir);
 }

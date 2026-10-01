@@ -123,6 +123,7 @@
 #include <mutex>
 #include <set>
 #include <sys/stat.h>
+#include "UltraCanvasPathUtf8.h"
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>   // GetFileAttributesExW: the attribute bits ::stat cannot see
 // The MSVC UCRT <sys/stat.h> exposes _S_IREAD/_S_IWRITE/_S_IEXEC but not the POSIX permission-bit
@@ -2334,6 +2335,7 @@ namespace UltraCanvas {
             added.push_back(std::move(e));
         }
         fileListPaths.insert(fileListPaths.end(), paths.begin(), paths.end());
+        ApplyFileTypeFilter(added);
         if (added.empty()) return;
 
         // The selection is held by index, and the sort below moves the
@@ -2410,6 +2412,85 @@ namespace UltraCanvas {
         // whatever its file is called.
         return matches(e.name) ||
                (!e.linkDisplayName.empty() && matches(e.linkDisplayName));
+    }
+
+    // ===== FILE TYPE FILTER (load / save dialogs) =====
+
+    namespace {
+        // "*.PNG", ".png" and "png" all name the same type; FilerEntry keeps
+        // its extension lowercase without the dot, so the wanted list is
+        // normalised to that form once, when it is set.
+        std::string NormalizeFilterExtension(std::string ext) {
+            while (!ext.empty() && (ext.front() == '*' || ext.front() == '.'))
+                ext.erase(ext.begin());
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            return ext;
+        }
+    }
+
+    void UltraCanvasFilerWidget::SetFileTypeFilter(const std::vector<std::string>& extensions,
+                                                   FilerTypeFilterMode mode) {
+        std::vector<std::string> wanted;
+        for (const std::string& raw : extensions) {
+            std::string ext = NormalizeFilterExtension(raw);
+            // "*" (or "*.*", which normalises to "") is "every file": a
+            // dialog's "All files" entry, and the end of the filter.
+            if (ext.empty()) { wanted.clear(); break; }
+            if (std::find(wanted.begin(), wanted.end(), ext) == wanted.end())
+                wanted.push_back(ext);
+        }
+        if (wanted == fileTypeExtensions && mode == fileTypeFilterMode) return;
+        fileTypeExtensions = std::move(wanted);
+        fileTypeFilterMode = mode;
+        // The listing is re-derived from disk: a Hide filter dropped entries
+        // the display no longer holds, and the prefetch cache serves a
+        // navigation only, so this is one scan per filter change - a
+        // dropdown pick, not a keystroke.
+        if (!currentPath.empty() || fileListMode) Refresh();
+        else RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetFileTypeFilterMode(FilerTypeFilterMode mode) {
+        SetFileTypeFilter(fileTypeExtensions, mode);
+    }
+
+    void UltraCanvasFilerWidget::SetDimmedEntryOpacity(double opacity) {
+        opacity = std::max(0.0, std::min(1.0, opacity));
+        if (opacity == dimmedEntryOpacity) return;
+        dimmedEntryOpacity = opacity;
+        RequestRedraw();
+    }
+
+    bool UltraCanvasFilerWidget::EntryPassesFileTypeFilter(const FilerEntry& e) const {
+        if (fileTypeExtensions.empty() || e.isDirectory) return true;
+        // A shortcut to a folder is a way to the files, like the folder is.
+        if (e.isShortcut && !e.linkTarget.empty()) {
+            std::error_code lec;
+            if (fs::is_directory(PathFromUtf8(e.linkTarget), lec) && !lec) return true;
+        }
+        return std::find(fileTypeExtensions.begin(), fileTypeExtensions.end(),
+                         e.extension) != fileTypeExtensions.end();
+    }
+
+    bool UltraCanvasFilerWidget::IsDimmedEntry(const FilerEntry& e) const {
+        return fileTypeFilterMode == FilerTypeFilterMode::ShowDimmed &&
+               !EntryPassesFileTypeFilter(e);
+    }
+
+    void UltraCanvasFilerWidget::ApplyFileTypeFilter(std::vector<FilerEntry>& list) {
+        if (fileTypeExtensions.empty()) return;
+        if (fileTypeFilterMode == FilerTypeFilterMode::ShowDimmed) {
+            for (const FilerEntry& e : list)
+                if (!EntryPassesFileTypeFilter(e)) ++typeFilteredCount;
+            return;
+        }
+        auto dropped = std::remove_if(list.begin(), list.end(),
+                                      [this](const FilerEntry& e) {
+                                          return !EntryPassesFileTypeFilter(e);
+                                      });
+        typeFilteredCount += static_cast<int>(std::distance(dropped, list.end()));
+        list.erase(dropped, list.end());
     }
 
     void UltraCanvasFilerWidget::ApplyNameFilterToEntries() {
@@ -2751,19 +2832,20 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::StatEntryForPath(const std::string& path,
                                                   FilerEntry& e) const {
         std::error_code ec;
-        fs::file_status st = fs::symlink_status(path, ec);
+        const fs::path native = PathFromUtf8(path);
+        fs::file_status st = fs::symlink_status(native, ec);
         if (ec || !fs::exists(st)) return false;
-        e.name = PathToUtf8(PathFromUtf8(path).filename());
+        e.name = PathToUtf8(native.filename());
         e.path = path;
         e.isSymlink = fs::is_symlink(st);
-        e.isDirectory = fs::is_directory(path, ec) && !ec;
+        e.isDirectory = fs::is_directory(native, ec) && !ec;
         // Dot names plus the platform's own notion of hidden (the attribute
         // bit on Windows, UF_HIDDEN on macOS) - so NTUSER.DAT and the
         // profile-folder compatibility junctions filter like dot files do.
         e.isHidden = IsHiddenFileSystemEntry(PathFromUtf8(path));
         if (!e.isDirectory) {
             std::error_code sec;
-            e.size = fs::file_size(path, sec);
+            e.size = fs::file_size(UltraCanvas::PathFromUtf8(path), sec);
             if (sec) e.size = 0;
         }
         e.extension = e.isDirectory ? "" : LowerExtension(e.name);
@@ -2856,7 +2938,7 @@ namespace UltraCanvas {
             cached.linkTarget = aliasTarget;
             cached.info = aliasTarget;
             std::error_code aec;
-            if (fs::is_directory(aliasTarget, aec) && !aec) {
+            if (fs::is_directory(UltraCanvas::PathFromUtf8(aliasTarget), aec) && !aec) {
                 cached.category = FilerFileCategory::Folder;
             } else {
                 FilerEntry probe;
@@ -3118,7 +3200,7 @@ namespace UltraCanvas {
                                                    std::vector<FilerEntry>& out,
                                                    int* hiddenSkipped) const {
         std::error_code ec;
-        for (fs::directory_iterator it(path, ec), end; it != end;
+        for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), ec), end; it != end;
              it.increment(ec)) {
             if (ec) break;
             FilerEntry e;
@@ -3507,6 +3589,13 @@ namespace UltraCanvas {
         ignoredItemCount = showHiddenFiles ? 0 : ignored;
 
         for (FilerEntry& e : entries) DecorateEntry(e);
+
+        // A file type filter (a dialog's "Images (*.png, *.jpg)") goes first:
+        // the listing the name filter keeps beside itself must never hold a
+        // file the type filter hid, or widening the name filter would bring
+        // it back.
+        typeFilteredCount = 0;
+        ApplyFileTypeFilter(entries);
 
         // A live name filter narrows the listing; the full scan is kept so
         // the filter can be widened or dropped without another disk scan.
@@ -4733,7 +4822,7 @@ namespace UltraCanvas {
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(destDir, ec)) {
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(destDir), ec)) {
             ReportError("Drop target is not a folder: " + destDir);
             return;
         }
@@ -4760,7 +4849,7 @@ namespace UltraCanvas {
             return;
         }
         std::error_code ec;
-        if (!fs::is_directory(destDir, ec)) {
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(destDir), ec)) {
             ReportError("Drop target is not a folder: " + destDir);
             return;
         }
@@ -5005,10 +5094,10 @@ namespace UltraCanvas {
     std::string UltraCanvasFilerWidget::UniquePathIn(
             const std::string& folder, const std::string& baseName,
             const std::function<bool(const std::string&)>& alsoTaken) {
-        fs::path base(baseName);
+        fs::path base(UltraCanvas::PathFromUtf8(baseName));
         std::string stem = PathToUtf8(base.stem());
         std::string ext = PathToUtf8(base.extension());   // includes the dot
-        fs::path dir(folder);
+        fs::path dir(UltraCanvas::PathFromUtf8(folder));
         fs::path candidate = dir / baseName;
         std::error_code ec;
         int n = 2;
@@ -5426,8 +5515,8 @@ namespace UltraCanvas {
                 // The merged folder's entries are through. A move leaves the
                 // folder itself behind; it goes once nothing is left in it
                 // (an entry that was skipped keeps it, and its place).
-                if (pp->cut && fs::is_directory(from, ec) && fs::is_empty(from, ec)) {
-                    fs::remove(from, ec);
+                if (pp->cut && fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) && fs::is_empty(UltraCanvas::PathFromUtf8(from), ec)) {
+                    fs::remove(UltraCanvas::PathFromUtf8(from), ec);
                     if (!ec) {
                         const std::string vacated = PathToUtf8(from.parent_path());
                         if (!vacated.empty()) pp->vacatedFolders.push_back(vacated);
@@ -5438,14 +5527,14 @@ namespace UltraCanvas {
                 advance();
                 continue;
             }
-            if (!fs::exists(from, ec)) { advance(); continue; }
+            if (!fs::exists(UltraCanvas::PathFromUtf8(from), ec)) { advance(); continue; }
             // Cut-pasting into the folder the file already lives in is a no-op,
             // and a folder must never be pasted into itself.
             if (pp->cut && from.parent_path() == PathFromUtf8(folder)) {
                 advance();
                 continue;
             }
-            const bool isDir = fs::is_directory(from, ec);
+            const bool isDir = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec);
             if (isDir && PathIsSameOrBelow(folder, src)) {
                 // The worker cannot report anything itself: the message is
                 // handed to the UI thread, which shows it when the stretch ends.
@@ -5483,7 +5572,7 @@ namespace UltraCanvas {
                     // folder itself comes round again once they are through.
                     // Nothing already in the existing folder is touched.
                     std::vector<std::string> children;
-                    for (fs::directory_iterator it(from, ec), endIt; !ec && it != endIt;
+                    for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(from), ec), endIt; !ec && it != endIt;
                          it.increment(ec))
                         children.push_back(PathToUtf8(it->path()));
                     std::sort(children.begin(), children.end());
@@ -5700,7 +5789,7 @@ namespace UltraCanvas {
         }
         ec.clear();
         if (pp.cut) {
-            fs::rename(from, PathFromUtf8(dest), ec);
+            fs::rename(UltraCanvas::PathFromUtf8(from), PathFromUtf8(dest), ec);
             if (ec) {
                 // Either the two paths are on different volumes - where a
                 // rename cannot work and copy + delete is the move - or the
@@ -5773,7 +5862,7 @@ namespace UltraCanvas {
         std::error_code ec;
         const fs::path from = PathFromUtf8(src);
         const std::string name = RepairLegacyEncodedName(PathToUtf8(from.filename()));
-        const std::string kind = fs::is_directory(from, ec) ? "folder" : "file";
+        const std::string kind = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) ? "folder" : "file";
         const bool moving = pendingPaste->cut;
         const std::string verb = moving ? "moved" : "copied";
         const size_t at = pendingPaste->next;
@@ -5878,7 +5967,7 @@ namespace UltraCanvas {
         const fs::path from = PathFromUtf8(src);
         const std::string name = RepairLegacyEncodedName(PathToUtf8(from.filename()));
         const std::string dest = PathToUtf8(PathFromUtf8(folder) / from.filename());
-        const bool isDir = fs::is_directory(from, ec) &&
+        const bool isDir = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) &&
                            fs::is_directory(PathFromUtf8(dest), ec);
         const std::string kind = isDir ? "folder" : "file";
         std::string folderName = PathToUtf8(PathFromUtf8(folder).filename());
@@ -6010,7 +6099,7 @@ namespace UltraCanvas {
         }
 
         bool WriteFileBytes(const std::string& path, const void* data, size_t size) {
-            std::ofstream out(path, std::ios::binary);
+            std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary);
             if (!out) return false;
             out.write(static_cast<const char*>(data),
                       static_cast<std::streamsize>(size));
@@ -6112,7 +6201,7 @@ namespace UltraCanvas {
         std::error_code ec;
         for (const std::string& path : paths) {
             if (path.empty()) continue;
-            const fs::file_status st = fs::status(path, ec);
+            const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(path), ec);
             if (ec) continue;                  // gone already: nothing to do
             FilerEntry entry;
             entry.path = path;
@@ -6157,7 +6246,7 @@ namespace UltraCanvas {
         // file for the trash to take, only an archive to rewrite.
         std::error_code ec;
         for (const FilerEntry& e : victims) {
-            if (!fs::exists(fs::symlink_status(e.path, ec))) return false;
+            if (!fs::exists(fs::symlink_status(UltraCanvas::PathFromUtf8(e.path), ec))) return false;
         }
         return true;
     }
@@ -7200,7 +7289,7 @@ namespace UltraCanvas {
         // case-insensitive filesystem (Windows, macOS) "photos" -> "Photos"
         // resolves to the same directory, and rejecting it would make a
         // case-only rename impossible.
-        if (fs::exists(target, ec) && !fs::equivalent(oldPath, target, ec)) {
+        if (fs::exists(UltraCanvas::PathFromUtf8(target), ec) && !fs::equivalent(UltraCanvas::PathFromUtf8(oldPath), UltraCanvas::PathFromUtf8(target), ec)) {
             ShowRenameReplaceDialog(oldPath, PathToUtf8(target));
             return;
         }
@@ -7226,7 +7315,7 @@ namespace UltraCanvas {
         if (wasOnlySelection) DeselectPathsForModification({oldPath});
 
         std::error_code ec;
-        fs::rename(oldPath, targetPath, ec);
+        fs::rename(UltraCanvas::PathFromUtf8(oldPath), UltraCanvas::PathFromUtf8(targetPath), ec);
         if (ec) {
             ReportError("Rename failed for " + oldPath + ": " + ec.message());
             // Nothing moved: the entry keeps its old name, so put the
@@ -7259,7 +7348,7 @@ namespace UltraCanvas {
         const std::string newName = RepairLegacyEncodedName(PathToUtf8(target.filename()));
         const std::string oldName = RepairLegacyEncodedName(
                 PathToUtf8(PathFromUtf8(oldPath).filename()));
-        const bool isDir = fs::is_directory(target, ec);
+        const bool isDir = fs::is_directory(UltraCanvas::PathFromUtf8(target), ec);
         const std::string kind = isDir ? "folder" : "file";
 
         // The two of them side by side: the entry that has the name, and the
@@ -7473,17 +7562,17 @@ namespace UltraCanvas {
         // empty files is real work, and a ring that stands at 0 % all through
         // it is a ring that says the operation is stuck.
         std::error_code ec;
-        const fs::path root(path);
-        const fs::file_status st = fs::status(root, ec);   // follows links, as
+        const fs::path root(UltraCanvas::PathFromUtf8(path));
+        const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(root), ec);   // follows links, as
         if (ec) return 1;                                  // the copy does
         if (!fs::is_directory(st)) {
             if (!fs::is_regular_file(st)) return 1;
-            const uintmax_t size = fs::file_size(root, ec);
+            const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(root), ec);
             return ec ? 1 : 1 + static_cast<uint64_t>(size);
         }
         uint64_t units = 1;
         std::error_code iterEc;
-        fs::recursive_directory_iterator it(root, iterEc), end;
+        fs::recursive_directory_iterator it(UltraCanvas::PathFromUtf8(root), iterEc), end;
         if (iterEc) return units;
         for (; it != end; it.increment(iterEc)) {
             if (iterEc || credit.Cancelled()) break;
@@ -7505,7 +7594,7 @@ namespace UltraCanvas {
         if (!fs::is_directory(fs::symlink_status(root, ec)) || ec) return 1;
         uint64_t entries = 1;
         std::error_code iterEc;
-        fs::recursive_directory_iterator it(root, iterEc), end;
+        fs::recursive_directory_iterator it(UltraCanvas::PathFromUtf8(root), iterEc), end;
         if (iterEc) return entries;
         for (; it != end; it.increment(iterEc)) {
             if (iterEc || credit.Cancelled()) break;
@@ -7521,10 +7610,10 @@ namespace UltraCanvas {
         ec.clear();
         credit.SetFile(PathToUtf8(PathFromUtf8(from).filename()));
         std::error_code sizeEc;
-        const uintmax_t size = fs::file_size(from, sizeEc);
+        const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(from), sizeEc);
         const uint64_t bytes = sizeEc ? 0 : static_cast<uint64_t>(size);
         if (sizeEc || bytes <= kFileOpChunkThreshold) {
-            fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
+            fs::copy_file(UltraCanvas::PathFromUtf8(from), UltraCanvas::PathFromUtf8(to), fs::copy_options::overwrite_existing, ec);
             if (ec) return false;
             credit.Step(1 + bytes, {});
             return true;
@@ -7533,8 +7622,8 @@ namespace UltraCanvas {
         // A big file is copied in chunks so the ring moves inside it: a single
         // four-gigabyte file is the case a percentage is most wanted for, and
         // it is also the case where Cancel must not mean "wait for the file".
-        std::ifstream in(from, std::ios::binary);
-        std::ofstream out(to, std::ios::binary | std::ios::trunc);
+        std::ifstream in(UltraCanvas::PathFromUtf8(from), std::ios::binary);
+        std::ofstream out(UltraCanvas::PathFromUtf8(to), std::ios::binary | std::ios::trunc);
         if (!in || !out) {
             ec = std::make_error_code(std::errc::io_error);
             return false;
@@ -7546,7 +7635,7 @@ namespace UltraCanvas {
                 in.close();
                 out.close();
                 std::error_code rm;
-                fs::remove(to, rm);             // half a file helps nobody
+                fs::remove(UltraCanvas::PathFromUtf8(to), rm);             // half a file helps nobody
                 return false;
             }
             in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
@@ -7565,14 +7654,14 @@ namespace UltraCanvas {
         if (readFailed || !out) {
             ec = std::make_error_code(std::errc::io_error);
             std::error_code rm;
-            fs::remove(to, rm);
+            fs::remove(UltraCanvas::PathFromUtf8(to), rm);
             return false;
         }
         // copy_file gives the copy the original's permissions; a chunked copy
         // has to do it itself, or the two halves of this function would
         // produce different files.
         std::error_code pec;
-        const fs::file_status st = fs::status(from, pec);
+        const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(from), pec);
         if (!pec) fs::permissions(to, st.permissions(),
                                   fs::perm_options::replace, pec);
         return true;
@@ -7584,21 +7673,21 @@ namespace UltraCanvas {
                                                       std::error_code& ec) {
         ec.clear();
         if (credit.Cancelled()) return false;
-        const fs::path source(from);
-        const fs::path target(to);
+        const fs::path source(UltraCanvas::PathFromUtf8(from));
+        const fs::path target(UltraCanvas::PathFromUtf8(to));
         // status(), not symlink_status(): this replaces a
         // std::filesystem::copy(..., recursive) call, which follows symlinks,
         // and a copy that suddenly stopped following them would be a silent
         // change of what lands in the destination.
-        const fs::file_status st = fs::status(source, ec);
+        const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(source), ec);
         if (ec) return false;
 
         if (fs::is_directory(st)) {
-            fs::create_directories(target, ec);
+            fs::create_directories(UltraCanvas::PathFromUtf8(target), ec);
             if (ec) return false;
             credit.Step(1, PathToUtf8(source.filename()));
             std::error_code iterEc;
-            fs::directory_iterator it(source, iterEc), end;
+            fs::directory_iterator it(UltraCanvas::PathFromUtf8(source), iterEc), end;
             if (iterEc) { ec = iterEc; return false; }
             for (; it != end; it.increment(iterEc)) {
                 if (iterEc) { ec = iterEc; return false; }
@@ -7620,7 +7709,7 @@ namespace UltraCanvas {
             return CopyFileWithProgress(from, to, credit, ec);
         // Anything else - a device node, a socket, a link the library has its
         // own idea about: hand it to the library, which knows what it can do.
-        fs::copy(source, target, fs::copy_options::recursive, ec);
+        fs::copy(UltraCanvas::PathFromUtf8(source), UltraCanvas::PathFromUtf8(target), fs::copy_options::recursive, ec);
         if (ec) return false;
         credit.Step(1, PathToUtf8(source.filename()));
         return true;
@@ -7644,7 +7733,7 @@ namespace UltraCanvas {
         // keeps a link into somebody's home folder from taking the home
         // folder with it.
         std::error_code statEc;
-        const fs::file_status st = fs::symlink_status(victim, statEc);
+        const fs::file_status st = fs::symlink_status(UltraCanvas::PathFromUtf8(victim), statEc);
         // Nothing there is not a failure: std::filesystem::remove_all says as
         // much by answering 0 for a path that is not there, and a delete whose
         // entry vanished under it (a folder watcher, another program) must not
@@ -8012,11 +8101,11 @@ namespace UltraCanvas {
             const FilerEntry& e = pe.archives[pe.next];
             const std::string destDir =
                     PathToUtf8(PathFromUtf8(currentPath) / PathFromUtf8(e.name).stem());
-            if (fs::exists(destDir, ec) && !pe.applyToAll) {
+            if (fs::exists(UltraCanvas::PathFromUtf8(destDir), ec) && !pe.applyToAll) {
                 ShowExtractConflictDialog(e);
                 return;
             }
-            if (!ExtractCurrentAndAdvance(fs::exists(destDir, ec)
+            if (!ExtractCurrentAndAdvance(fs::exists(UltraCanvas::PathFromUtf8(destDir), ec)
                                                   ? pe.action
                                                   : PasteConflictAction::KeepBoth))
                 return;   // running on the archive worker; it resumes the queue
@@ -8046,9 +8135,9 @@ namespace UltraCanvas {
         std::error_code ec;
         // Keep both renames the destination; Replace merges the archive
         // content into the existing folder.
-        if (action == PasteConflictAction::KeepBoth && fs::exists(destDir, ec))
+        if (action == PasteConflictAction::KeepBoth && fs::exists(UltraCanvas::PathFromUtf8(destDir), ec))
             destDir = UniqueChildPath(baseName);
-        fs::create_directories(destDir, ec);
+        fs::create_directories(UltraCanvas::PathFromUtf8(destDir), ec);
 
         // Initialize on the UI thread: the worker must not be the first caller
         // to build the VirtualFS provider registry.
@@ -8436,22 +8525,22 @@ namespace UltraCanvas {
 
         std::error_code ec;
         fs::path dir(d.destDir.empty() ? currentPath : d.destDir);
-        if (!fs::is_directory(dir, ec)) dir = currentPath;
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(dir), ec)) dir = currentPath;
 
         if (d.extractMode) {
             // The name is the destination folder the archives unpack into.
             fs::path target = dir / baseName;
             int n = 2;
-            while (fs::exists(target, ec))
+            while (fs::exists(UltraCanvas::PathFromUtf8(target), ec))
                 target = dir / (baseName + " (" + std::to_string(n++) + ")");
-            fs::create_directories(target, ec);
-            if (ec || !fs::is_directory(target, ec)) {
+            fs::create_directories(UltraCanvas::PathFromUtf8(target), ec);
+            if (ec || !fs::is_directory(UltraCanvas::PathFromUtf8(target), ec)) {
                 ReportError("Extraction failed: cannot create " + PathToUtf8(target));
                 return;
             }
             std::vector<std::pair<std::string, std::string>> jobs;
             for (const std::string& src : d.sourcePaths) {
-                fs::path dest = target;
+                fs::path dest = UltraCanvas::PathFromUtf8(target);
                 if (d.sourcePaths.size() > 1) {
                     // Several archives: each unpacks into its own subfolder so
                     // their contents cannot collide.
@@ -8460,9 +8549,9 @@ namespace UltraCanvas {
                     if (stem.empty()) stem = "archive";
                     dest = target / stem;
                     int m = 2;
-                    while (fs::exists(dest, ec))
+                    while (fs::exists(UltraCanvas::PathFromUtf8(dest), ec))
                         dest = target / (stem + " (" + std::to_string(m++) + ")");
-                    fs::create_directories(dest, ec);
+                    fs::create_directories(UltraCanvas::PathFromUtf8(dest), ec);
                 }
                 jobs.emplace_back(src, PathToUtf8(dest));
             }
@@ -8477,7 +8566,7 @@ namespace UltraCanvas {
         // so ".tar.gz" stays ".tar.gz" rather than becoming ".tar (2).gz".
         fs::path candidate = dir / (baseName + "." + ext);
         int n = 2;
-        while (fs::exists(candidate, ec)) {
+        while (fs::exists(UltraCanvas::PathFromUtf8(candidate), ec)) {
             candidate = dir / (baseName + " (" + std::to_string(n++) + ")." + ext);
         }
         std::string dest = PathToUtf8(candidate);
@@ -8803,10 +8892,10 @@ namespace UltraCanvas {
         }
         std::string dest = UniqueChildPath("New " + type.label + "." + type.extension);
         if (!type.templatePath.empty() && fs::exists(type.templatePath, ec)) {
-            fs::copy_file(type.templatePath, dest, ec);
+            fs::copy_file(type.templatePath, UltraCanvas::PathFromUtf8(dest), ec);
             if (ec) { ReportError("New document failed: " + ec.message()); return; }
         } else {
-            std::ofstream out(dest, std::ios::binary);
+            std::ofstream out(UltraCanvas::PathFromUtf8(dest), std::ios::binary);
             if (!out) { ReportError("New document failed: " + dest); return; }
         }
         Refresh();
@@ -8848,7 +8937,7 @@ namespace UltraCanvas {
             return;
         }
         const std::string dest = UniqueChildPath("New folder");
-        fs::create_directory(dest, ec);
+        fs::create_directory(UltraCanvas::PathFromUtf8(dest), ec);
         if (ec) {
             ReportError("New folder failed: " + ec.message());
             return;
@@ -8913,7 +9002,7 @@ namespace UltraCanvas {
         std::error_code ec;
         for (const FilerEntry& e : sel) {
             if (e.isDirectory) continue;
-            if (!fs::is_regular_file(e.path, ec) || ec) continue;
+            if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(e.path), ec) || ec) continue;
             paths.push_back(e.path);
         }
         if (paths.empty()) return;
@@ -9839,6 +9928,11 @@ namespace UltraCanvas {
                 // Render.
                 DrawEmptyState(ctx, bounds,
                                "No matches for \"" + nameFilter + "\"");
+            } else if (typeFilteredCount > 0 &&
+                       fileTypeFilterMode == FilerTypeFilterMode::Hide) {
+                // The folder has files, just none of the type the host asked
+                // for - "Folder is empty!" would send the user elsewhere.
+                DrawEmptyState(ctx, bounds, "No files of the chosen type");
             } else if (!listingPendingStatus.empty()) {
                 // A remote folder still on its way: what is happening, under
                 // a turning ring - not "empty", which it may well not be.
@@ -9878,6 +9972,16 @@ namespace UltraCanvas {
             if (top + item.rect.height < bounds.y || top > bounds.y + bounds.height) continue;
             if (left + item.rect.width < bounds.x || left > bounds.x + bounds.width) continue;
             bool hov = (static_cast<int>(item.entryIndex) == hoveredIndex);
+            // A file the type filter does not ask for (ShowDimmed) is drawn
+            // greyed out as a whole - name, columns, icon or thumbnail, the
+            // badges on it - through the context's global alpha, the way a
+            // disabled button fades its icon. Hidden-mode filtering never
+            // gets here: those entries are not in the listing.
+            const bool dimmed = IsDimmedEntry(entries[item.entryIndex]);
+            if (dimmed) {
+                ctx->PushState();
+                ctx->SetAlpha(dimmedEntryOpacity);
+            }
             switch (viewType) {
                 case FilerViewType::Details: DrawDetailsRow(ctx, item, hov); break;
                 case FilerViewType::List:    DrawListItem(ctx, item, hov); break;
@@ -9885,6 +9989,7 @@ namespace UltraCanvas {
                 case FilerViewType::TreeMap: DrawTreeMapCell(ctx, item, hov); break;
                 default:                     DrawThumbnailTile(ctx, item, hov); break;
             }
+            if (dimmed) ctx->PopState();
             // Ghost entries that are pending a "cut": wash the tile toward the
             // background so it reads as dimmed until the move is pasted.
             if (IsCutEntry(entries[item.entryIndex])) {
@@ -10553,6 +10658,15 @@ namespace UltraCanvas {
         // a moment is longer than the microseconds an immediate retry takes.
         constexpr uint8_t kUnreadableMaxAttempts = 4;
         constexpr auto kUnreadableRetryDelay = std::chrono::milliseconds(300);
+        // A job that has kept a worker this long is taken to be stuck - a
+        // video in a cloud folder being downloaded in full before its first
+        // frame can be read, a file on a drive that stopped answering, a
+        // shell call that never returns. Nothing can interrupt it, but with
+        // every worker on such a job no other thumbnail in any folder was
+        // made again for the rest of the session; so for each stuck job one
+        // more worker is started, up to kThumbExtraWorkersMax.
+        constexpr auto kThumbJobStuckAfter = std::chrono::seconds(20);
+        constexpr unsigned kThumbExtraWorkersMax = 8;
 
         // ===== FOLDER CONTENT PREVIEWS =====
         // Below this icon edge a picture inside a folder is a smudge: the
@@ -10584,7 +10698,7 @@ namespace UltraCanvas {
         bool PeekFolderContents(const std::string& path,
                                 std::vector<FilerEntry>& out) {
             std::error_code ec;
-            fs::directory_iterator it(path, ec);
+            fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), ec);
             if (ec) return false;
             auto lessByName = [](const FilerEntry& a, const FilerEntry& b) {
                 const size_t n = std::min(a.name.size(), b.name.size());
@@ -10664,7 +10778,7 @@ namespace UltraCanvas {
         // moments ago is given the same benefit of the doubt.
         bool WrittenVeryRecently(const std::string& path) {
             std::error_code ec;
-            const auto written = fs::last_write_time(path, ec);
+            const auto written = fs::last_write_time(UltraCanvas::PathFromUtf8(path), ec);
             if (ec) return false;
             const auto age = fs::file_time_type::clock::now() - written;
             // A timestamp in the future (a clock that was set back, a file
@@ -11095,13 +11209,39 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::StartThumbnailWorkersLocked() {
-        if (!thumbWorkers.empty() || thumbShutdown) return;
-        unsigned hw = std::thread::hardware_concurrency();
-        unsigned count = std::min(4u, std::max(1u, hw / 2));
-        thumbWorkers.reserve(count);
-        for (unsigned i = 0; i < count; ++i) {
+        if (thumbShutdown) return;
+        if (thumbWorkers.empty()) {
+            unsigned hw = std::thread::hardware_concurrency();
+            thumbWorkerBase = std::min(4u, std::max(1u, hw / 2));
+            thumbWorkers.reserve(thumbWorkerBase + kThumbExtraWorkersMax);
+            for (unsigned i = 0; i < thumbWorkerBase; ++i)
+                thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
+            return;
+        }
+        // Watchdog: one more worker for every job that has run past
+        // kThumbJobStuckAfter, so the stuck ones no longer hold up the rest.
+        const auto now = std::chrono::steady_clock::now();
+        unsigned stuck = 0;
+        const std::string* stuckKey = nullptr;
+        for (const auto& [key, started] : thumbJobsStarted) {
+            if (now - started < kThumbJobStuckAfter) continue;
+            ++stuck;
+            stuckKey = &key;
+        }
+        const unsigned target =
+                thumbWorkerBase + std::min(stuck, kThumbExtraWorkersMax);
+        while (thumbWorkers.size() < target) {
+            debugOutput << "UltraCanvasFilerWidget: a thumbnail job has run for "
+                        << "over 20 s (" << (stuckKey ? *stuckKey : std::string())
+                        << "); starting another worker" << std::endl;
             thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
         }
+    }
+
+    void UltraCanvasFilerWidget::NoteThumbJobLocked(const std::string& key,
+                                                    bool running) {
+        if (running) thumbJobsStarted[key] = std::chrono::steady_clock::now();
+        else thumbJobsStarted.erase(key);
     }
 
     void UltraCanvasFilerWidget::StopThumbnailWorkers() {
@@ -11128,6 +11268,7 @@ namespace UltraCanvas {
         thumbNativeBytes = 0;
         thumbHot.clear();
         thumbHotBytes = 0;
+        thumbFailedPaths.clear();
         textQueue.clear();
         textSlots.clear();
         peekQueue.clear();
@@ -11166,6 +11307,17 @@ namespace UltraCanvas {
         // so does a bitmap whose preview kind is switched off.
         if (e.category != FilerFileCategory::Image) return 0.0f;
         if (!ThumbnailEnabledFor(e)) return 0.0f;
+        {
+            // A picture whose thumbnail could not be made is drawn as its
+            // type glyph, and a glyph needs the whole square: a row shortened
+            // for the picture squeezed the glyph instead, so a folder whose
+            // thumbnails failed showed its glyphs at two sizes - one per row,
+            // changing whenever the thumbnail switches were touched.
+            const std::string& src =
+                    e.thumbnailPath.empty() ? e.path : e.thumbnailPath;
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            if (thumbFailedPaths.count(src) != 0) return 0.0f;
+        }
         std::lock_guard<std::mutex> lk(statsMutex);
         auto it = aspectCache.find(e.path);
         if (it != aspectCache.end()) return it->second;
@@ -11206,7 +11358,27 @@ namespace UltraCanvas {
         st.iconBudget = kNativeIconBudgetBytes;
         st.hotBudget = kHotThumbBudgetBytes;
         std::lock_guard<std::mutex> lk(thumbMutex);
+        st.inFlightEntries = thumbPathsInFlight.size();
+        st.workerCount = thumbWorkers.size();
+        const auto now = std::chrono::steady_clock::now();
+        for (const auto& [key, started] : thumbJobsStarted) {
+            const int secs = static_cast<int>(
+                    std::chrono::duration_cast<std::chrono::seconds>(
+                            now - started).count());
+            if (st.longestJobPath.empty() || secs > st.longestJobSeconds) {
+                st.longestJobSeconds = secs;
+                st.longestJobPath = key.substr(key.find(':') + 1);
+            }
+        }
         for (const auto& kv : thumbSlots) {
+            if (kv.second.state == ThumbState::Pending) {
+                ++st.pendingEntries;
+                continue;
+            }
+            if (kv.second.state == ThumbState::Failed) {
+                ++st.failedEntries;
+                continue;
+            }
             if (kv.second.state != ThumbState::Ready) continue;
             ++st.entries;
             st.storedBytes += kv.second.bytes;
@@ -11286,6 +11458,7 @@ namespace UltraCanvas {
                         req = std::move(*qit);
                         thumbQueue.erase(qit);
                         thumbPathsInFlight.insert(req.path);
+                        NoteThumbJobLocked("image:" + req.path, true);
                         break;
                     }
                     // Nothing to decode: read a text-content preview instead.
@@ -11309,6 +11482,7 @@ namespace UltraCanvas {
                             continue;
                         }
                         textPathsInFlight.insert(*tit);
+                        NoteThumbJobLocked("text:" + *tit, true);
                         textGeneration = thumbGeneration;
                         textPath = std::move(*tit);
                         textQueue.erase(tit);
@@ -11329,6 +11503,7 @@ namespace UltraCanvas {
                             continue;
                         }
                         peekPathsInFlight.insert(*pit);
+                        NoteThumbJobLocked("folder:" + *pit, true);
                         peekGeneration = thumbGeneration;
                         peekPath = std::move(*pit);
                         peekQueue.erase(pit);
@@ -11353,6 +11528,7 @@ namespace UltraCanvas {
                 {
                     std::lock_guard<std::mutex> lk(thumbMutex);
                     peekPathsInFlight.erase(peekPath);
+                    NoteThumbJobLocked("folder:" + peekPath, false);
                     if (thumbShutdown) return;
                     if (peekGeneration == thumbGeneration) {
                         FolderPeekSlot& slot = peekSlots[peekPath];
@@ -11383,6 +11559,7 @@ namespace UltraCanvas {
                 {
                     std::lock_guard<std::mutex> lk(thumbMutex);
                     textPathsInFlight.erase(textPath);
+                    NoteThumbJobLocked("text:" + textPath, false);
                     if (thumbShutdown) return;
                     if (textGeneration == thumbGeneration) {
                         TextPreviewSlot& slot = textSlots[textPath];
@@ -11581,6 +11758,7 @@ namespace UltraCanvas {
             {
                 std::lock_guard<std::mutex> lk(thumbMutex);
                 thumbPathsInFlight.erase(req.path);
+                NoteThumbJobLocked("image:" + req.path, false);
                 if (thumbShutdown) return;
                 if (req.generation == thumbGeneration) {
                     const std::string key = ThumbSlotKey(req.path, req.w, req.h,
@@ -11641,6 +11819,10 @@ namespace UltraCanvas {
                         } else {
                             slot.state = ThumbState::Failed;
                             producedNothing = true;
+                            // Its row no longer shrinks for it (EntryAspect).
+                            if (!nativeIcon &&
+                                thumbFailedPaths.insert(req.path).second)
+                                thumbFailuresChanged.store(true);
                         }
                     }
                     report = true;
@@ -11850,6 +12032,9 @@ namespace UltraCanvas {
         app->PostToUIThread([this, alive]() {
             if (!alive->load()) return;   // widget destroyed meanwhile
             thumbRedrawPosted.store(false);
+            // A picture given up on gives its row back the full height.
+            if (thumbFailuresChanged.exchange(false) && shrinkThumbnailRows)
+                InvalidateFilerLayout();
             RequestRedraw();
         });
     }
@@ -13030,7 +13215,10 @@ namespace UltraCanvas {
             FolderStats st;
             st.ready = true;
             std::error_code ec;
-            if (fs::is_directory(path, ec)) {
+            // UTF-8 in, UTF-16 on Windows: a plain string here goes through
+            // the ANSI code page and misses a Thai or CJK folder.
+            const fs::path walkRoot = PathFromUtf8(path);
+            if (fs::is_directory(walkRoot, ec)) {
                 // Guarded although every call takes an error_code: the
                 // iterator still builds a path object per entry, and a
                 // subtree the walk cannot represent must end the count, not
@@ -13038,7 +13226,7 @@ namespace UltraCanvas {
                 RunGuarded("folder size walk", path, [&]() {
                 uint64_t visited = 0;
                 for (fs::recursive_directory_iterator rit(
-                         path, fs::directory_options::skip_permission_denied, ec), end;
+                         walkRoot, fs::directory_options::skip_permission_denied, ec), end;
                      rit != end; rit.increment(ec)) {
                     if (ec) break;
                     if (visited++ >= kDirSizeEntryCap) { st.capped = true; break; }
@@ -13226,12 +13414,12 @@ namespace UltraCanvas {
         // Windows, where ::stat neither takes what path::c_str() returns nor
         // reaches a name outside the local codepage.
         std::error_code ec;
-        const auto dirTime = fs::last_write_time(path, ec);
+        const auto dirTime = fs::last_write_time(UltraCanvas::PathFromUtf8(path), ec);
         if (ec) return 0;   // gone or unreadable: signature 0
         uint64_t dirHash = fnv(1469598103934665603ull,
                 static_cast<uint64_t>(dirTime.time_since_epoch().count()));
 
-        for (fs::directory_iterator it(path, ec), end; it != end; it.increment(ec)) {
+        for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), ec), end; it != end; it.increment(ec)) {
             if (ec) break;
             const std::string name = PathToUtf8(it->path().filename());
             if (!includeHidden && !name.empty() && name[0] == '.') continue;
@@ -13261,7 +13449,8 @@ namespace UltraCanvas {
         // Only a real directory is watched: an archive interior or a file list
         // has no folder whose changes would mean anything here.
         const std::string target =
-                (folderWatchEnabled && !path.empty() && fs::is_directory(path, ec))
+                (folderWatchEnabled && !path.empty() &&
+                 fs::is_directory(PathFromUtf8(path), ec))
                         ? path : std::string();
 
         // The operating system can usually tell us the moment something
@@ -14066,11 +14255,16 @@ namespace UltraCanvas {
         // out of the way, exactly as it does in Explorer.
         if (e.isShortcut && !e.linkTarget.empty()) {
             std::error_code lec;
-            if (fs::is_directory(e.linkTarget, lec) && !lec) {
+            if (fs::is_directory(PathFromUtf8(e.linkTarget), lec) && !lec) {
                 SetPath(e.linkTarget);
                 return;
             }
         }
+        // A file the type filter dims is on display, not on offer: the user
+        // can see it is there, and opening it does nothing, as a disabled
+        // control does nothing. (Folders and archives entered above, filter
+        // or not; a Hide filter never lists such a file in the first place.)
+        if (!EntryPassesFileTypeFilter(e)) return;
         if (onFileActivated) {
             onFileActivated(e);
             return;
@@ -14090,7 +14284,7 @@ namespace UltraCanvas {
         // An application bundle is a directory, and launching it is the
         // platform's business: the "Other application" launch path already
         // knows what a .app is on macOS.
-        if (e.isBundle && fs::is_directory(e.path, ec) && !ec) {
+        if (e.isBundle && fs::is_directory(UltraCanvas::PathFromUtf8(e.path), ec) && !ec) {
             std::string bundleError;
             ShowLaunchPointer();
             if (!FileAssociations::OpenWithApplicationPath(e.path, {}, bundleError))
@@ -14100,7 +14294,7 @@ namespace UltraCanvas {
         // Only a real file — an entry inside an archive is a virtual path no
         // external application (or the kernel) can read. A program in there
         // is unpacked first and started from where it was unpacked to.
-        if (!fs::is_regular_file(e.path, ec) || ec) {
+        if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(e.path), ec) || ec) {
             if (CanExtractAndRun(e)) ExtractAndRunEntry(e);
             return;
         }
@@ -14148,7 +14342,7 @@ namespace UltraCanvas {
         // that can run Windows programs itself installs onFileActivated and
         // never reaches this.
         if (e.isShortcut && !e.linkTarget.empty() &&
-            fs::is_regular_file(e.linkTarget, ec) && !ec) {
+            fs::is_regular_file(PathFromUtf8(e.linkTarget), ec) && !ec) {
             FilerEntry target = e;
             target.path = e.linkTarget;
             target.name = PathToUtf8(PathFromUtf8(e.linkTarget).filename());

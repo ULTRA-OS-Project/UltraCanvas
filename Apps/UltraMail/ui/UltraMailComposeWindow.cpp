@@ -234,7 +234,7 @@ void ComposeView::RefreshAttachments() {
 }
 
 bool ComposeView::AttachFile(const std::string& path) {
-    std::ifstream is(PathFromUtf8(path), std::ios::binary);   // UTF-8 path
+    std::ifstream is(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!is) return false;
     Attachment a;
     a.filename  = PathToUtf8(PathFromUtf8(path).filename());

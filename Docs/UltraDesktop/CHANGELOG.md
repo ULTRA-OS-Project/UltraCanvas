@@ -1,3 +1,15 @@
+#### 2026-10-01 *0.1.1*
+- **The info panel keeps its last items on a short bar.** With five or more
+  virtual desktops on a 900 px screen the organiser left the panel less room
+  than its fourteen icons need, and the last of them (loudspeaker, battery,
+  Task Manager) were cut off with nothing to say so. The panel is a scrolling
+  toolbar, and the toolbar now marks the edge its items continue past with a
+  chevron that scrolls a page when clicked (`UltraCanvasToolbar` 1.6.0); the
+  wheel over the panel scrolls it as before.
+- The desktop runs straight from the build tree: configuring links
+  `build/share/media` to the repository's `media/`, where the bar icons and
+  the wallpaper are found.
+
 #### 2026-09-29 *0.1.0*
 - **First release.** UltraDesktop (`Apps/UltraDesktop`) is the ULTRA OS
   desktop: one screen-sized window at the bottom of the stack (the new

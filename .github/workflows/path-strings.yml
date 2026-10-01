@@ -8,12 +8,9 @@ name: UTF-8 file paths
 # Windows 10 machine this way. Convert with PathToUtf8 / PathFromUtf8
 # (UltraCanvas/include/UltraCanvasPathUtf8.h) - see AGENTS.md.
 #
-# It also reports the conversions hidden in a call - `fs::path p(str);`,
-# `fs::exists(str)` and the other std::filesystem functions, and a stream
-# opened from a string (`std::ifstream in(path)`) - judged by the argument's
-# nearest `std::string` declaration. Sites that predate the check are listed in
-# scripts/path_string_baseline.txt (empty for `.string()` / `fs::path(str)`;
-# the hidden kinds, added 2026-10, had accumulated); only additions fail. A site that is correct as it stands - a path built from a
+# Sites that predate the check would be listed in
+# scripts/path_string_baseline.txt (empty when the check was introduced); only
+# additions fail. A site that is correct as it stands - a path built from a
 # wide string - says so with `// path-string-ok: <why>`.
 
 # Trigger policy matches build.yml / locale-numbers.yml: `pull_request` covers

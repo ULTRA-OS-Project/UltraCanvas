@@ -31,6 +31,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -55,7 +56,7 @@ uint32_t ReadU32(const std::vector<uint8_t>& data, size_t offset) {
 class CfbReader {
 public:
     bool Load(const std::string& filePath, std::string& error) {
-        std::ifstream file(filePath, std::ios::binary);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
         if (!file.is_open()) {
             error = "Cannot open file: " + filePath;
             return false;

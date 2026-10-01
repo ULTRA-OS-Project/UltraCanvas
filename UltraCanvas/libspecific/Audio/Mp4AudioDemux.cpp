@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace AudioCodecs {
@@ -440,7 +441,7 @@ const int kAscSampleRates[13] = {
 };
 
 bool ReadFileBytes(const std::string& path, std::vector<uint8_t>& out) {
-    std::FILE* fp = std::fopen(path.c_str(), "rb");
+    std::FILE* fp = UltraCanvas::OpenFileUtf8(path, "rb");
     if (!fp) return false;
     if (std::fseek(fp, 0, SEEK_END) != 0) { std::fclose(fp); return false; }
     const long size = std::ftell(fp);
@@ -502,7 +503,7 @@ bool ParseAudioSpecificConfig(const uint8_t* asc, size_t size,
 }
 
 bool LooksLikeIsoBmff(const std::string& path) {
-    std::FILE* fp = std::fopen(path.c_str(), "rb");
+    std::FILE* fp = UltraCanvas::OpenFileUtf8(path, "rb");
     if (!fp) return false;
     uint8_t head[8] = {0};
     const size_t n = std::fread(head, 1, sizeof(head), fp);
@@ -524,7 +525,7 @@ bool LooksLikeIsoBmff(const std::string& path) {
 }
 
 bool LooksLikeRawAac(const std::string& path) {
-    std::FILE* fp = std::fopen(path.c_str(), "rb");
+    std::FILE* fp = UltraCanvas::OpenFileUtf8(path, "rb");
     if (!fp) return false;
     uint8_t head[4] = {0};
     const size_t n = std::fread(head, 1, sizeof(head), fp);

@@ -26,14 +26,17 @@
 //
 // Header-only on purpose: headless engines, VirtualFS and single-file test
 // builds use it without linking the UltraCanvas core.
-// Version: 1.0.0
-// Last Modified: 2026-09-27
+// PathFromUtf8 also takes a C string, a string_view or a path (passed
+// through), so wrapping any spelling of a name in it is always correct.
+// Version: 1.1.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
 
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace UltraCanvas {
 
@@ -140,6 +143,22 @@ namespace PathUtf8Detail {
 #else
         return std::filesystem::path(utf8);
 #endif
+    }
+
+    // The same for the other spellings of a UTF-8 name, so a call site never
+    // has to know which one it holds: a literal or a C string, a view - and a
+    // path, which already names its file and is passed through unchanged.
+    // Without these a const char* or string_view argument would pick the
+    // std::filesystem::path constructor, which reads the bytes in the Windows
+    // code page - the very conversion this header exists to avoid.
+    inline std::filesystem::path PathFromUtf8(const char* utf8) {
+        return PathFromUtf8(std::string(utf8 ? utf8 : ""));
+    }
+    inline std::filesystem::path PathFromUtf8(std::string_view utf8) {
+        return PathFromUtf8(std::string(utf8));
+    }
+    inline const std::filesystem::path& PathFromUtf8(const std::filesystem::path& p) {
+        return p;
     }
 
     // A path's name as UTF-8. Never throws, whatever the name holds.

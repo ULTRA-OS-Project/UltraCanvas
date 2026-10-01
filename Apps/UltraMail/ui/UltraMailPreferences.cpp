@@ -9,6 +9,7 @@
 #include <cctype>
 #include <fstream>
 #include <string>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraMail {
 
@@ -31,7 +32,7 @@ bool ParseBool(const std::string& v) {
 } // namespace
 
 bool Preferences::Load(const std::string& path) {
-    std::ifstream file(UltraCanvas::PathFromUtf8(path));   // UTF-8 path
+    std::ifstream file(UltraCanvas::PathFromUtf8(path));
     if (!file.is_open()) return false;   // absent file: caller keeps defaults
 
     std::string line;

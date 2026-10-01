@@ -14,8 +14,8 @@
 // the table are exactly the formatting Markdown cannot spell, and they are the
 // reason this element exists next to UltraCanvasTextArea.
 //
-// Version: 1.2.0
-// Last Modified: 2026-09-30
+// Version: 1.2.1
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -36,6 +36,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -350,7 +351,7 @@ namespace UltraCanvas {
             // The framework logo, embedded in the document's media store so the
             // document stays self-contained when it is saved.
             const std::string logoPath = NormalizePath(GetResourcesDir() + "media/images/UltraCanvas-logo.png");
-            std::ifstream logoFile(logoPath, std::ios::binary);
+            std::ifstream logoFile(UltraCanvas::PathFromUtf8(logoPath), std::ios::binary);
             if (logoFile) {
                 std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(logoFile)),
                                            std::istreambuf_iterator<char>());
@@ -729,8 +730,8 @@ namespace UltraCanvas {
         auto notes = std::make_shared<UltraCanvasLabel>("wysiwygNotes", 20, 704, 960, 56);
         notes->SetText("Known limits: columns in a multi-column section are not balanced, a right-to-left "
                        "paragraph keeps left-to-right indents, the input method's candidate window is not "
-                       "placed at the caret, and screen readers have no platform bridge yet (the "
-                       "accessibility model is there). See UltraCanvasRichTextEdit.md.");
+                       "placed at the caret, and macOS has no screen-reader bridge yet (Linux and Windows "
+                       "have one). See UltraCanvasRichTextEdit.md.");
         notes->SetFontSize(11);
         notes->SetTextColor(Color(120, 120, 120, 255));
         root->AddChild(notes);

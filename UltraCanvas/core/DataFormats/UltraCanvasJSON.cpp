@@ -15,6 +15,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -259,7 +260,7 @@ JSONValue Parse(const std::string& text, JSONParseResult* result,
 
 JSONValue ParseFile(const std::string& filePath, JSONParseResult* result,
                     const JSONParseOptions& options) {
-    FILE* file = std::fopen(filePath.c_str(), "rb");
+    FILE* file = UltraCanvas::OpenFileUtf8(filePath, "rb");
     if (!file) {
         SetError(result, "cannot open file: " + filePath, 0, std::string());
         return JSONValue();
@@ -362,7 +363,7 @@ bool SerializeToFile(const std::string& filePath, const JSONValue& value,
         // value serializes to at least two characters).
         return false;
     }
-    FILE* file = std::fopen(filePath.c_str(), "wb");
+    FILE* file = UltraCanvas::OpenFileUtf8(filePath, "wb");
     if (!file) return false;
     size_t written = std::fwrite(text.data(), 1, text.size(), file);
     bool ok = (written == text.size());

@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace {
 
@@ -286,7 +287,7 @@ UltraNetResult UltraNet_FtpDownload(const std::string& url,
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
 
     const char* mode = opt.resumeTransfer ? "ab" : "wb";
-    std::FILE* fp = std::fopen(localPath.c_str(), mode);
+    std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, mode);
     if (!fp) {
         return UltraNetResult::Error(UltraNetResultCode::AccessDenied,
                                      "cannot open local file for write");
@@ -322,7 +323,7 @@ UltraNetResult UltraNet_FtpUpload(const std::string& localPath,
     }
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
 
-    std::FILE* fp = std::fopen(localPath.c_str(), "rb");
+    std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "rb");
     if (!fp) {
         return UltraNetResult::Error(UltraNetResultCode::NotFound,
                                      "cannot open local file for read");

@@ -22,6 +22,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace UltraMail;
@@ -179,7 +180,7 @@ struct Fixture {
         REQUIRE(store.UpsertAccount(a).success);
 
         emlDir = (fs::temp_directory_path() / ("ultramail_sync_" + tag)).string();
-        fs::remove_all(emlDir);
+        fs::remove_all(UltraCanvas::PathFromUtf8(emlDir));
 
         fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("Sent", "sent") };
         fake.envelopes["INBOX"] = {
@@ -191,7 +192,7 @@ struct Fixture {
         fake.bodies["INBOX/2"] = BuildRaw("Ann <ann@x.com>", "Re: thanks", "thanks!");
         fake.bodies["INBOX/3"] = BuildRaw("List <list@x.com>", "Newsletter", "news");
     }
-    ~Fixture() { std::error_code ec; fs::remove_all(emlDir, ec); }
+    ~Fixture() { std::error_code ec; fs::remove_all(UltraCanvas::PathFromUtf8(emlDir), ec); }
 };
 
 int NeedsFor(LocalStore& s) {
@@ -371,8 +372,8 @@ TEST(fetch_bodies_writes_parseable_eml) {
     REQUIRE_EQ(fx.fake.lastBodyUids.size(), static_cast<std::size_t>(3));
 
     const std::string path = engine.BodyPath("erika", "INBOX", 1);
-    REQUIRE(fs::exists(path));
-    std::ifstream is(path, std::ios::binary);
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(path)));
+    std::ifstream is(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     std::string raw((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
     ParsedMessage pm = MimeCodec::Parse(raw);
     REQUIRE_EQ(pm.subject, std::string("Please reply"));

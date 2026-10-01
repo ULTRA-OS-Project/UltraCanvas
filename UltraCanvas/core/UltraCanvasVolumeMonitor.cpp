@@ -23,6 +23,7 @@
 #include <filesystem>
 #include <set>
 #include <utility>
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -103,7 +104,7 @@ namespace UltraCanvas {
         std::vector<fs::path> Subdirectories(const std::string& path) {
             std::vector<fs::path> dirs;
             std::error_code ec;
-            fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec);
+            fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), fs::directory_options::skip_permission_denied, ec);
             if (ec) return dirs;
             for (fs::directory_iterator end; it != end; it.increment(ec)) {
                 if (ec) break;

@@ -8,6 +8,7 @@
 #include "UltraCanvasSTLElement.h"
 
 #include <fstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -60,7 +61,7 @@ GraphicsFileInfo UltraCanvasSTLPlugin::GetFileInfo(const std::string& filePath) 
     info.formatType = GraphicsFormatType::ThreeD;
     info.supportedManipulations = GetSupportedManipulations();
 
-    std::ifstream in(filePath, std::ios::binary | std::ios::ate);
+    std::ifstream in(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
     if (in) {
         std::streamsize size = in.tellg();
         if (size > 0) info.fileSize = static_cast<size_t>(size);

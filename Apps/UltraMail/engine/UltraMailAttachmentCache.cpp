@@ -118,7 +118,7 @@ std::string AttachmentCache::Write(const Attachment& attachment) const {
 
 bool AttachmentCache::SaveAs(const Attachment& attachment, const std::string& destPath) const {
     std::error_code ec;
-    const fs::path p = PathFromUtf8(destPath);
+    fs::path p(UltraCanvas::PathFromUtf8(destPath));
     if (p.has_parent_path()) fs::create_directories(p.parent_path(), ec);
     return WriteBytes(p, attachment.data);
 }

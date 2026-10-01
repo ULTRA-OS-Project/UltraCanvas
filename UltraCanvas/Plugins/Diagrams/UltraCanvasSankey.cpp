@@ -6,6 +6,7 @@
 #include "Plugins/Diagrams/UltraCanvasSankey.h"
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
     UltraCanvasSankeyDiagram::UltraCanvasSankeyDiagram(const std::string &id, float x, float y,
@@ -100,7 +101,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSankeyDiagram::LoadFromCSV(const std::string &filePath) {
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) return false;
 
         ClearAll();
@@ -133,7 +134,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSankeyDiagram::SaveToSVG(const std::string &filePath) {
-        std::ofstream file(filePath);
+        std::ofstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) return false;
 
         auto bounds = GetLocalBounds();

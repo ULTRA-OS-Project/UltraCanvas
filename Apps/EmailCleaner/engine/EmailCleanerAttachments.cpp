@@ -30,9 +30,7 @@ std::string Lower(std::string s) {
 }
 
 bool ReadFile(const std::string& path, std::string& out) {
-    // The path holds the IMAP folder name ("Entwürfe", "Корзина"): open it as
-    // UTF-8, not through the narrow-string constructor's code page.
-    std::ifstream in(PathFromUtf8(path), std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!in) return false;
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -146,8 +144,7 @@ AttachmentFetch FetchAttachment(const std::string& mailCacheDir,
     if (path.empty()) return AttachmentFetch::NoSuchMessage;
 
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(PathFromUtf8(path), ec))
-        return AttachmentFetch::NoSuchMessage;
+    if (!std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(path), ec)) return AttachmentFetch::NoSuchMessage;
 
     std::string raw;
     if (!ReadFile(path, raw) || raw.empty()) return AttachmentFetch::Unreadable;

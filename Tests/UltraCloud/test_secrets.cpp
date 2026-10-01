@@ -15,6 +15,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCloud;
 namespace fs = std::filesystem;
@@ -88,7 +89,7 @@ TEST(legacy_file_secrets_migrate_once) {
     const std::string dir = TempDir("legacy-secrets");
     const std::vector<uint8_t> key(32, 0x3C);
     {
-        std::ofstream ks(fs::path(dir) / "cloud.key", std::ios::binary);
+        std::ofstream ks(UltraCanvas::PathFromUtf8(dir) / "cloud.key", std::ios::binary);
         ks.write(reinterpret_cast<const char*>(key.data()), static_cast<std::streamsize>(key.size()));
     }
     auto obfuscate = [&key](const std::string& plain) {
@@ -97,7 +98,7 @@ TEST(legacy_file_secrets_migrate_once) {
         return UltraNet_Base64Encode(bytes, false);
     };
     auto writeSecret = [&](const std::string& fileStem, const Credentials& c) {
-        std::ofstream os(fs::path(dir) / (fileStem + ".secret"), std::ios::binary);
+        std::ofstream os(UltraCanvas::PathFromUtf8(dir) / (fileStem + ".secret"), std::ios::binary);
         os << "username\n" << obfuscate(c.username) << "\n"
            << "password\n" << obfuscate(c.password) << "\n"
            << "token\n"    << obfuscate(c.token)    << "\n"
@@ -126,18 +127,18 @@ TEST(legacy_file_secrets_migrate_once) {
 
     // The migrated files are gone; the orphan and the key stay because a
     // secret file is still there.
-    REQUIRE(!fs::exists(fs::path(dir) / "nextcloud_erika.secret"));
-    REQUIRE(!fs::exists(fs::path(dir) / "dropbox_o.secret"));
-    REQUIRE(fs::exists(fs::path(dir) / "orphan.secret"));
-    REQUIRE(fs::exists(fs::path(dir) / "cloud.key"));
+    REQUIRE(!fs::exists(UltraCanvas::PathFromUtf8(dir) / "nextcloud_erika.secret"));
+    REQUIRE(!fs::exists(UltraCanvas::PathFromUtf8(dir) / "dropbox_o.secret"));
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(dir) / "orphan.secret"));
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(dir) / "cloud.key"));
 
     // Second run: nothing left to carry; a store that refuses keeps the file.
     REQUIRE_EQ(MigrateLegacyFileSecrets(dir, {a, b, c}, into), 0);
     std::error_code ec;
-    fs::remove(fs::path(dir) / "orphan.secret", ec);
+    fs::remove(UltraCanvas::PathFromUtf8(dir) / "orphan.secret", ec);
     REQUIRE_EQ(MigrateLegacyFileSecrets(dir, {a, b, c}, into), 0);
-    REQUIRE(!fs::exists(fs::path(dir) / "cloud.key"));
-    REQUIRE(!fs::exists(dir));                                // emptied, so removed
+    REQUIRE(!fs::exists(UltraCanvas::PathFromUtf8(dir) / "cloud.key"));
+    REQUIRE(!fs::exists(UltraCanvas::PathFromUtf8(dir)));                                // emptied, so removed
 
     // No directory at all is not an error.
     REQUIRE_EQ(MigrateLegacyFileSecrets(dir, {a}, into), 0);

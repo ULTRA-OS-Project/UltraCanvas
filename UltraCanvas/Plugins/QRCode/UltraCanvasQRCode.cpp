@@ -19,6 +19,7 @@
 
 #include <cairo/cairo.h>
 #include <vips/vips8>
+#include "UltraCanvasPathUtf8.h"
 #ifdef ULTRACANVAS_QRCODE_HAS_DECODER
 #include <zbar.h>
 #endif
@@ -166,7 +167,7 @@ namespace UltraCanvas {
         const int totalModules = data.size + 2 * quiet;
         const int px = totalModules * moduleSize;
 
-        std::ofstream f(filename);
+        std::ofstream f(UltraCanvas::PathFromUtf8(filename));
         if (!f) return false;
 
         f << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";

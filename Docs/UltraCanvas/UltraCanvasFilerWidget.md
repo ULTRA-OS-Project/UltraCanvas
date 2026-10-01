@@ -33,7 +33,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension, and a folder shows the first pictures inside it peeking out of the folder shape (see [Folder previews](#folder-previews)). Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. The grid's column count comes from the tile edge, which would leave a too-narrow-for-one-more-column strip empty on the right; by default (`SetFlexibleTileWidths(true)`) that leftover is distributed across the row Explorer-style, so the cells stretch smoothly with the window until the next column fits and the grid always fills the width. Only the cell widens (long names wrap later) — the image box keeps the square edge, centered, so resizing neither changes thumbnail sizes nor re-decodes anything. Set it to `false` for fixed-width tiles with the right-hand gap. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension, and a folder shows the first pictures inside it peeking out of the folder shape (see [Folder previews](#folder-previews)). Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image, or a picture whose thumbnail could not be made and draws its glyph instead) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. The grid's column count comes from the tile edge, which would leave a too-narrow-for-one-more-column strip empty on the right; by default (`SetFlexibleTileWidths(true)`) that leftover is distributed across the row Explorer-style, so the cells stretch smoothly with the window until the next column fits and the grid always fills the width. Only the cell widens (long names wrap later) — the image box keeps the square edge, centered, so resizing neither changes thumbnail sizes nor re-decodes anything. Set it to `false` for fixed-width tiles with the right-hand gap. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
@@ -736,8 +736,16 @@ re-queued by the next frame and usually comes straight back from the shared
 `GetThumbnailCacheStats()` reports what is held (entries, stored bytes, and
 the uncompressed size those bytes stand for — they differ under
 `SetCompressedThumbnails(true)`, which additionally keeps a 32 MB hot cache of
-the decompressed tiles being drawn). Rescanning the folder or changing the
-view drops everything.
+the decompressed tiles being drawn), and what is *not* held: thumbnails still
+waiting for a worker (`pendingEntries`, which includes the ones being made),
+being made right now (`inFlightEntries`) and given up on (`failedEntries`).
+Waiting tiles that never move while nothing is being made mean the workers are
+stuck; failed ones mean the files would not decode, and the log names each of
+them. `workerCount`, `longestJobPath` and `longestJobSeconds` name the job
+that has kept a worker busy longest: one running past 20 s is taken to be
+stuck, and another worker is started beside it (up to eight extra), so a
+single file that never finishes cannot stop every other thumbnail. Rescanning
+the folder or changing the view drops everything.
 
 ### Thumbnails between runs
 
@@ -2454,11 +2462,56 @@ field filters the shown folder, and the button — like Enter in the field, and
 like the button inside the field — escalates to the background sub-folder
 scan, which feeds its matches in through `AppendToFileList()` while it runs.
 
+## File type filter (load / save dialogs)
+
+A load or save dialog built on the widget wants the listing narrowed to the
+types its filter dropdown stands for — "Images (*.png, *.jpg)" — and has two
+ways of treating the other files. `SetFileTypeFilter(extensions, mode)` sets
+both at once:
+
+```cpp
+// A dialog's dropdown picked a FileFilter (UltraCanvasModalDialog.h):
+filer->SetFileTypeFilter(config.filters[config.selectedFilterIndex],
+                         FilerTypeFilterMode::ShowDimmed);
+// or by extension list — "png", ".png" and "*.png" all name the same type:
+filer->SetFileTypeFilter({"png", "jpg", "jpeg"}, FilerTypeFilterMode::Hide);
+// "*" (or an empty list) is "All files" and ends the filter:
+filer->ClearFileTypeFilter();
+```
+
+| Mode | The files of other types are |
+|---|---|
+| `FilerTypeFilterMode::Hide` (default) | left out of the listing, the way a file dialog lists |
+| `FilerTypeFilterMode::ShowDimmed` | kept in the listing and drawn **greyed out** — name, columns, icon or thumbnail and the badges on it, in every view type — so the user still sees what else the folder holds ("the photo *is* here, it is just not a PNG") while the picks on offer stand out |
+
+A dimmed entry can be selected and looked at (the info bar describes it), but
+it is on display, not on offer: a double-click or Enter on it does nothing and
+`onFileActivated` never fires for one, exactly as a disabled control does
+nothing. `EntryPassesFileTypeFilter(entry)` is the same question for a host —
+a dialog's OK button asks it about the selection before accepting a pick, and
+a save dialog can still adopt the greyed-out file's name from
+`onSelectionChanged` if it wants to. `SetFileTypeFilterMode(mode)` switches
+between the two without restating the extensions (a settings switch), and
+`SetDimmedEntryOpacity(0.38)` sets how faint a dimmed entry is drawn.
+
+Folders always pass the filter: they are how the user reaches the files, and
+so does a shortcut to a folder. An archive is a file and is dimmed like any
+other, but a double-click still enters it the way it enters a folder. The
+filter survives `SetPath()`, every rescan (file operations, the folder watch)
+and a [file list](#file-list-search-results), and combines with the
+[name filter](#name-filter-filter-as-you-type) — the type filter is applied
+first, so widening the name filter never brings a hidden type back.
+`GetTypeFilteredCount()` says how many files the shown listing left out (Hide)
+or dimmed (ShowDimmed); a Hide listing in a folder that has files of other
+types only shows **"No files of the chosen type"** rather than "Folder is
+empty!". The [hidden-items notice](#hidden-items-notice) is not involved: it
+reports what the system hides, not what the host asked for.
+
 ## Callbacks
 
 | Callback | Fired |
 |---|---|
-| `onFileActivated(entry)` | Double-click / Enter on a file |
+| `onFileActivated(entry)` | Double-click / Enter on a file — never on one a [type filter](#file-type-filter-load--save-dialogs) dims |
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
@@ -2513,4 +2566,6 @@ live).
 
 `Apps/DemoApp/UltraCanvasFilerExamples.cpp` (Widgets > Filer) shows the bundled
 `media` folder with buttons for every view type, sort field and direction, an Up
-button, and a status line wired to the callbacks.
+button, a *Types* row (All files / Images / Audio / Video with a "Show other
+types greyed out" switch — the [file type filter](#file-type-filter-load--save-dialogs)
+in both modes), and a status line wired to the callbacks.

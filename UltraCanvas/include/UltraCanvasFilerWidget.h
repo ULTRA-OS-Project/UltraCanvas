@@ -90,7 +90,12 @@
 // SetDetailsColumnVisible leaves Details columns out of the table.
 // SetEntryFilter narrows what the listing shows to the entries a host
 // predicate accepts - a file picker's "Files of type" filter.
-// Version: 1.35.0
+// A picture whose thumbnail could not be made no longer shortens its row
+// (the type glyph drawn instead keeps the full tile), and
+// GetThumbnailCacheStats also counts the thumbnails still waiting, being
+// made and given up on. A thumbnail job running past 20 s gets another
+// worker started beside it, so one stuck file cannot stop every thumbnail.
+// Version: 1.36.0
 // Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
@@ -410,6 +415,19 @@ namespace UltraCanvas {
         WhenAnyHidden
     };
 
+    // ===== WHAT A FILE TYPE FILTER DOES WITH THE OTHER FILES =====
+    // SetFileTypeFilter() names the file types a host is interested in - the
+    // extensions a load or save dialog's filter dropdown stands for. The
+    // files of every other type are then either left out of the listing, as
+    // a file dialog does, or kept in it and drawn greyed out - name and
+    // thumbnail alike - so the user still sees what else the folder holds
+    // ("the photo IS here, it is just not a PNG") while the picks on offer
+    // stand out. Folders are never filtered: they are the way to the files.
+    enum class FilerTypeFilterMode {
+        Hide,         // other types are not listed (a dialog's usual behaviour)
+        ShowDimmed    // other types stay listed, greyed out and not activatable
+    };
+
     // ===== ONE ENTRY OF THE DISPLAYED FOLDER =====
     struct FilerEntry {
         std::string name;            // file / folder name (no path)
@@ -653,6 +671,48 @@ namespace UltraCanvas {
         void SetFilterEmptyAction(const std::string& label,
                                   std::function<void()> action);
 
+        // ===== FILE TYPE FILTER (load / save dialogs) =====
+        // Narrows the listing to the files whose extension is in
+        // `extensions` (matched lowercase, with or without the leading dot;
+        // "*" or an empty list means every file and ends the filter). What
+        // happens to the other files is the mode's call: Hide leaves them out
+        // of the listing the way a file dialog does, ShowDimmed keeps them in
+        // it greyed out - text and thumbnail - and refuses to activate them
+        // (double-click / Enter do nothing, onFileActivated never fires for
+        // one), while they can still be selected and looked at. Folders
+        // always pass: they are how the user reaches the files (an archive is
+        // dimmed like any other file, but a double-click still enters it the
+        // way it enters a folder). The filter survives SetPath(), rescans and
+        // the name filter (both apply), so a dialog sets it once and
+        // navigates. A dialog hands over the FileFilter its dropdown picked
+        // (UltraCanvasModalDialog.h) through the second overload.
+        void SetFileTypeFilter(const std::vector<std::string>& extensions,
+                               FilerTypeFilterMode mode = FilerTypeFilterMode::Hide);
+        void SetFileTypeFilter(const FileFilter& filter,
+                               FilerTypeFilterMode mode = FilerTypeFilterMode::Hide) {
+            SetFileTypeFilter(filter.extensions, mode);
+        }
+        void ClearFileTypeFilter() {
+            SetFileTypeFilter(std::vector<std::string>{}, fileTypeFilterMode);
+        }
+        bool HasFileTypeFilter() const { return !fileTypeExtensions.empty(); }
+        const std::vector<std::string>& GetFileTypeFilter() const { return fileTypeExtensions; }
+        // Switches between hiding and dimming the other types without
+        // restating the extensions.
+        void SetFileTypeFilterMode(FilerTypeFilterMode mode);
+        FilerTypeFilterMode GetFileTypeFilterMode() const { return fileTypeFilterMode; }
+        // Whether `e` is one of the files the filter asks for (true for every
+        // folder, and for everything while no filter is set). A dialog's OK
+        // button asks this about the selection; a dimmed entry answers false.
+        bool EntryPassesFileTypeFilter(const FilerEntry& e) const;
+        // How many files the last listing left out (Hide) or dimmed
+        // (ShowDimmed) because of the type filter. A Hide listing with every
+        // file filtered out says so instead of "Folder is empty!".
+        int GetTypeFilteredCount() const { return typeFilteredCount; }
+        // The alpha a dimmed entry is drawn with (0..1); 0.38 by default.
+        void SetDimmedEntryOpacity(double opacity);
+        double GetDimmedEntryOpacity() const { return dimmedEntryOpacity; }
+
         // ===== TYPE-AHEAD (single-letter keyboard navigation) =====
         // Selects the next entry — after the current selection, wrapping
         // around — whose name starts with `ch` (case-insensitive); when the
@@ -849,6 +909,21 @@ namespace UltraCanvas {
             size_t hotBudget = 0;     // ceiling for the decompressed tiles
             size_t iconEntries = 0;   // how many of `entries` are icons
             size_t iconBytes = 0;     // and what they occupy
+            // The thumbnails not held: still waiting for a worker, being made
+            // by one right now, and given up on (the tile keeps its type
+            // glyph). Waiting ones that never move while nothing is made
+            // mean the workers are stuck; failed ones mean the files would
+            // not decode - the log names each of those.
+            size_t pendingEntries = 0;
+            size_t inFlightEntries = 0;
+            size_t failedEntries = 0;
+            // The background workers, and the job that has kept one of them
+            // busy longest right now (empty path / 0 when all are idle). A
+            // job running for minutes is what stops a whole folder's
+            // thumbnails: see kThumbJobStuckAfter in the source.
+            size_t workerCount = 0;
+            std::string longestJobPath;
+            int longestJobSeconds = 0;
         };
         ThumbCacheStats GetThumbnailCacheStats() const;
 
@@ -1618,6 +1693,14 @@ namespace UltraCanvas {
         std::string filterEmptyLabel;
         std::function<void()> onFilterEmptyAction;
         std::shared_ptr<UltraCanvasButton> filterEmptyButton;
+        // ===== FILE TYPE FILTER =====
+        // The wanted extensions (lowercase, no dot; empty = no filter), what
+        // becomes of the other files, how many the last listing hid or
+        // dimmed, and how faint a dimmed entry is drawn.
+        std::vector<std::string> fileTypeExtensions;
+        FilerTypeFilterMode fileTypeFilterMode = FilerTypeFilterMode::Hide;
+        int typeFilteredCount = 0;
+        double dimmedEntryOpacity = 0.38;
         bool showHiddenFiles = false;
         std::string fileListEmptyMessage;   // SetFileListEmptyMessage
         // Hidden-items notice (SetHiddenItemsNotice): when the host
@@ -2074,6 +2157,21 @@ namespace UltraCanvas {
         // via the global image cache and are not safe against two threads
         // rasterizing the same instance concurrently.
         std::unordered_set<std::string> thumbPathsInFlight;
+        // Files whose content thumbnail was given up on, at any size. The
+        // tile draws its type glyph instead, which needs the full square, so
+        // the layout does not shorten a row on behalf of a picture that will
+        // never be drawn (EntryAspect). Cleared with the cache.
+        std::unordered_set<std::string> thumbFailedPaths;
+        // When each running job (image, text read or folder listing) started,
+        // keyed "<kind>:<path>". Guarded by thumbMutex. What the watchdog in
+        // StartThumbnailWorkersLocked reads to tell a stuck worker, and what
+        // GetThumbnailCacheStats reports as the longest job.
+        std::unordered_map<std::string, std::chrono::steady_clock::time_point>
+                thumbJobsStarted;
+        unsigned thumbWorkerBase = 0;   // workers started for the widget
+        void NoteThumbJobLocked(const std::string& key, bool running);
+        // A worker added to thumbFailedPaths: the next repaint relays out.
+        std::atomic<bool> thumbFailuresChanged{false};
         // Compressed mode: LRU of decompressed pixmaps for the tiles being
         // drawn, so repaints never re-inflate. Guarded by thumbMutex.
         struct HotThumb {
@@ -2612,6 +2710,13 @@ namespace UltraCanvas {
         bool EntryMatchesNameFilter(const FilerEntry& e) const;
         // Erase the entries the active filter hides (no-op without one).
         void ApplyNameFilterToEntries();
+        // ===== FILE TYPE FILTER (helpers) =====
+        // Erase from `list` the files a Hide-mode type filter leaves out and
+        // add them to typeFilteredCount; a ShowDimmed filter only counts the
+        // files it will dim. A no-op without a filter.
+        void ApplyFileTypeFilter(std::vector<FilerEntry>& list);
+        // Drawn greyed out: a file a ShowDimmed type filter does not ask for.
+        bool IsDimmedEntry(const FilerEntry& e) const;
         // Create / show / hide the "no matches" action button to match the
         // current filter and listing; positioned under the notice each frame
         // by PositionFilterEmptyButton (called from Render, which measures

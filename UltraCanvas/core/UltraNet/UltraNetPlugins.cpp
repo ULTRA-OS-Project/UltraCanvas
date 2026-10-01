@@ -199,7 +199,7 @@ void UltraNet_RefreshPlugins() {
     if (dir.empty()) return;
 
     std::error_code ec;
-    auto it = std::filesystem::directory_iterator(dir, ec);
+    auto it = std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir), ec);
     if (ec) return;
 
     for (const auto& entry : it) {
@@ -208,7 +208,7 @@ void UltraNet_RefreshPlugins() {
         if (!IsPluginFile(path)) continue;
 
         const std::string canonical =
-            PathToUtf8(std::filesystem::weakly_canonical(path, ec));
+            PathToUtf8(std::filesystem::weakly_canonical(UltraCanvas::PathFromUtf8(path), ec));
         if (ec || canonical.empty()) continue;
 
         {

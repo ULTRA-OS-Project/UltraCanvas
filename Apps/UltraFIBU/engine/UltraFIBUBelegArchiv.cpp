@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 #if defined(_WIN32)
   #include <direct.h>
@@ -30,7 +31,7 @@ namespace {
 std::string Zahl(int64_t wert) { return std::to_string(wert); }
 
 bool LiesGanz(const std::string& pfad, std::string& inhalt, std::string& fehler) {
-    std::FILE* datei = std::fopen(pfad.c_str(), "rb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(pfad, "rb");
     if (datei == nullptr) {
         fehler = "Die Datei \"" + pfad + "\" ist nicht lesbar.";
         return false;
@@ -48,7 +49,7 @@ bool LiesGanz(const std::string& pfad, std::string& inhalt, std::string& fehler)
 
 bool SchreibeGanz(const std::string& pfad, const std::string& inhalt,
                   std::string& fehler) {
-    std::FILE* datei = std::fopen(pfad.c_str(), "wb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(pfad, "wb");
     if (datei == nullptr) {
         fehler = "Die Datei \"" + pfad + "\" ist nicht schreibbar.";
         return false;

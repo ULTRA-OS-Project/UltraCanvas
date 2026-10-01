@@ -33,6 +33,7 @@
 #include <map>
 #include <sstream>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -1084,7 +1085,7 @@ bool ColladaConverter::ValidateData(const std::vector<uint8_t>& data) const {
 }
 
 bool ColladaConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) return false;
     std::vector<char> head(4096);
     file.read(head.data(), static_cast<std::streamsize>(head.size()));
@@ -1651,7 +1652,7 @@ bool ColladaConverter::ExportToStream(const ModelDocument& document, std::ostrea
 
 bool ColladaConverter::Export(const ModelDocument& document, const std::string& filename,
                               const ConversionOptions& options) {
-    std::ofstream file(filename);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filename));
     if (!file) {
         options.Warn("COLLADA: cannot write " + filename);
         return false;

@@ -52,14 +52,14 @@ bool RamDiskDetail::SecureWipeDirectory(const std::string& path) {
     // casual recovery; it is not a guarantee, which is exactly why the
     // fallback reports IsTrueRam() == false.
     std::error_code ec;
-    if (!std::filesystem::exists(path, ec)) {
+    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(path), ec)) {
         return true;
     }
 
     bool allWiped = true;
     std::vector<char> zeros(64 * 1024, 0);
 
-    for (auto it = std::filesystem::recursive_directory_iterator(path, ec);
+    for (auto it = std::filesystem::recursive_directory_iterator(UltraCanvas::PathFromUtf8(path), ec);
          !ec && it != std::filesystem::recursive_directory_iterator(); ++it) {
         if (!it->is_regular_file(ec)) {
             continue;
@@ -88,7 +88,7 @@ bool RamDiskDetail::SecureWipeDirectory(const std::string& path) {
         out.flush();
     }
 
-    std::filesystem::remove_all(path, ec);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(path), ec);
     return allWiped && !ec;
 }
 

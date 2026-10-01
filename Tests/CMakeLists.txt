@@ -403,6 +403,41 @@ else()
     message(STATUS "  RichTextEditElementTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== AT-SPI BRIDGE TEST =====
+# The Linux screen-reader bridge end to end: a libatspi client (as Orca uses
+# it) finds AtspiBridgeTestApp on a private accessibility bus, reads its
+# document through AT-SPI and checks the events it sends. Built when the
+# libatspi headers are present; the test skips itself (77) without a display
+# or at-spi2-core.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(ATSPI_CLIENT QUIET atspi-2 gobject-2.0)
+    endif()
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(ATSPI_CLIENT_FOUND AND Python3_Interpreter_FOUND)
+        message(STATUS "  Building AtspiBridgeTest...")
+        add_executable(AtspiBridgeTestApp ${CMAKE_CURRENT_SOURCE_DIR}/AtspiBridgeTest/AtspiBridgeTestApp.cpp)
+        target_include_directories(AtspiBridgeTestApp PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+        target_compile_features(AtspiBridgeTestApp PRIVATE cxx_std_20)
+        target_link_libraries(AtspiBridgeTestApp PRIVATE UltraCanvas)
+        add_executable(AtspiBridgeTestClient ${CMAKE_CURRENT_SOURCE_DIR}/AtspiBridgeTest/AtspiBridgeTestClient.c)
+        target_include_directories(AtspiBridgeTestClient PRIVATE ${ATSPI_CLIENT_INCLUDE_DIRS})
+        target_link_libraries(AtspiBridgeTestClient PRIVATE ${ATSPI_CLIENT_LINK_LIBRARIES})
+        set_target_properties(AtspiBridgeTestApp AtspiBridgeTestClient PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        )
+        add_test(NAME AtspiBridgeTest
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AtspiBridgeTest/run_atspi_bridge_test.py
+                         $<TARGET_FILE:AtspiBridgeTestApp> $<TARGET_FILE:AtspiBridgeTestClient>
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        set_tests_properties(AtspiBridgeTest PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+        message(STATUS "    Test registered: AtspiBridgeTest")
+    else()
+        message(STATUS "  AtspiBridgeTest skipped (needs the atspi-2 development package and Python 3)")
+    endif()
+endif()
+
 # ===== TEXT INPUT UTF-8 TEST =====
 # Caret movement, Backspace/Delete, hit testing, masking and the length limit of
 # UltraCanvasTextInput all address the buffer by byte offset; this proves every
@@ -3147,29 +3182,10 @@ endif()
 
 message(STATUS "")
 
-# ===== FILER FOLDER PREVIEW TEST =====
-# Display > Folder previews: the geometry of the cards that peek out of a
-# folder icon (UltraCanvasFilerWidget::FolderPreviewCardRects) - at most two,
-# inside the box, above the front flap, front card right of and lower than the
-# back one, and a pure function of the box so the draw and the prefetch ask
-# the thumbnail cache for the same size.
-if(TARGET UltraCanvas)
-    message(STATUS "  Building FilerFolderPreviewTest...")
-    add_executable(FilerFolderPreviewTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/FilerFolderPreviewTest.cpp
-    )
-    target_include_directories(FilerFolderPreviewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(FilerFolderPreviewTest PRIVATE cxx_std_20)
-    target_link_libraries(FilerFolderPreviewTest PRIVATE UltraCanvas)
-    set_target_properties(FilerFolderPreviewTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME FilerFolderPreviewTest COMMAND FilerFolderPreviewTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: FilerFolderPreviewTest")
-else()
-    message(STATUS "  FilerFolderPreviewTest skipped (UltraCanvas target not present)")
-endif()
+# ===== FILER FOLDER PREVIEW TEST / FILER NAME ENCODING TEST =====
+# Defined in FilerTests.cmake, which the top level also includes on its own
+# (ULTRACANVAS_BUILD_FILER_TESTS) where BUILD_TESTS is off - the Windows row.
+include(${CMAKE_CURRENT_SOURCE_DIR}/FilerTests.cmake)
 
 message(STATUS "")
 
@@ -3322,33 +3338,6 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: FilerSourceTextFormatsTest")
 endif()
-
-# ===== FILER NAME ENCODING TEST =====
-# The file display draws German umlauts, Thai, Russian and Chinese names
-# intact, and a name in a legacy code page (Latin-1, or IBM437 out of a
-# Windows ZIP) decoded instead of as U+FFFD ("Namens•nderung").
-if(TARGET UltraCanvas)
-    message(STATUS "  Building FilerNameEncodingTest...")
-    add_executable(FilerNameEncodingTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/FilerNameEncodingTest.cpp
-    )
-    target_include_directories(FilerNameEncodingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(FilerNameEncodingTest PRIVATE cxx_std_20)
-    target_link_libraries(FilerNameEncodingTest PRIVATE UltraCanvas)
-    # Exported symbols, so the crash backtrace this test prints can name the
-    # frames in the test itself, not just the ones in libUltraCanvas.
-    set_target_properties(FilerNameEncodingTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-        ENABLE_EXPORTS ON
-    )
-    add_test(NAME FilerNameEncodingTest COMMAND FilerNameEncodingTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: FilerNameEncodingTest")
-else()
-    message(STATUS "  FilerNameEncodingTest skipped (UltraCanvas target not present)")
-endif()
-
-message(STATUS "")
 
 # ===== FILER SHORTCUT ENTRY TEST =====
 # What the file display makes of a .lnk it lists: type, category, info column
@@ -4087,3 +4076,24 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  DemoScrollTextTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== AUDIO STREAMING TEST =====
+# The live-audio building blocks (frame ring, packetiser) are header-only and
+# backend-free, so the test links nothing and needs no sound device.
+message(STATUS "  Building AudioStreamingTest...")
+add_executable(AudioStreamingTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/AudioStreamingTest.cpp
+)
+target_include_directories(AudioStreamingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(AudioStreamingTest PRIVATE cxx_std_20)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(AudioStreamingTest PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+find_package(Threads REQUIRED)
+target_link_libraries(AudioStreamingTest PRIVATE Threads::Threads)
+set_target_properties(AudioStreamingTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME AudioStreamingTest COMMAND AudioStreamingTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)

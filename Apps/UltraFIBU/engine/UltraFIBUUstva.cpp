@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraFIBU {
 
@@ -114,7 +115,7 @@ bool KennzahlArtFromText(const std::string& text, KennzahlArt& out) {
 
 bool UstvaMapping::Laden(const std::string& dateipfad, std::string& fehler) {
     kennzahlen_.clear();
-    std::FILE* datei = std::fopen(dateipfad.c_str(), "rb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(dateipfad, "rb");
     if (datei == nullptr) {
         fehler = "Die Kennzahlen-Datei \"" + dateipfad + "\" ist nicht lesbar.";
         return false;
@@ -592,7 +593,7 @@ ElsterErgebnis SchreibeUstvaXml(const UstvaBerechnung& berechnung,
         "UStVA_" + Zahl(berechnung.jahr) + "_" + berechnung.zeitraum + ".xml";
     const std::string pfad =
         zielVerzeichnis.empty() ? dateiname : zielVerzeichnis + "/" + dateiname;
-    std::FILE* datei = std::fopen(pfad.c_str(), "wb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(pfad, "wb");
     if (datei == nullptr) {
         ergebnis.fehler = "Die Datei \"" + pfad + "\" ist nicht schreibbar.";
         return ergebnis;
@@ -672,7 +673,7 @@ public:
                                               "libericapi.dylib" };
         for (const char* name : kNamen) {
             const std::string pfad = verzeichnis_ + "/" + name;
-            std::FILE* f = std::fopen(pfad.c_str(), "rb");
+            std::FILE* f = UltraCanvas::OpenFileUtf8(pfad, "rb");
             if (f != nullptr) {
                 std::fclose(f);
                 warum = "ERiC liegt unter " + pfad +

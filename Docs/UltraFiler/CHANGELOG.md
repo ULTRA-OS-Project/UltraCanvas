@@ -1,3 +1,39 @@
+#### 2026-10-01 *1.64.0*
+- **Thumbnail tiles that show no picture keep one size.** In a folder whose
+  pictures could not be turned into thumbnails, the type icons were drawn
+  smaller in some rows than in others, and pressing *Everything on* /
+  *Everything off* under *Settings > Display > Thumbnails* changed which rows
+  - the row had been shortened for a picture that never came. Such a tile
+  now keeps the full height.
+- **Settings > Extras > Cache says which thumbnails are missing.** A new line
+  counts the thumbnails of the display in front that are waiting, being made,
+  and could not be made, so a folder that stays on type icons can be told
+  apart: still working, stuck, or files that would not decode (the log then
+  names each file). When one job has been running for 10 s or more, the line
+  also names that file and how long it has run.
+- **Thumbnails no longer stop for good behind one stuck file.** A file that
+  never finished - typically a video in a OneDrive folder that is downloaded
+  before its first frame can be read - held a background worker forever, and
+  once all of them were held, no folder got a thumbnail again until UltraFiler
+  was restarted. After 20 s another worker takes over the rest.
+- **The Cache page reads plainly.** "In memory, previews: nothing of 96 MB"
+  now reads "empty (room for 96 MB)", and a filled cache "120 thumbnails,
+  3.1 MB (room for 96 MB)".
+- **Folder sizes and image files with Thai, CJK or other non-ASCII names**
+  are read correctly on Windows. (Framework side:
+  `Docs/UltraCanvas/changelog.d/filer-failed-thumbnail-row-height.md`.)
+#### 2026-10-01 *1.63.0*
+- **The export window chooses whether sizes and dates are shown.** Two
+  checkboxes along its bottom, **File size** and **Date**, add or drop the
+  size and modification date in all three exports - the listing's and the
+  CSV's columns, and the brackets behind a name in the tree
+  (`notes.txt  (1.2 KB, 2026-09-30 18:03)`). A change shows at once: the
+  text is written again from what was already read, without walking the
+  folder a second time. The tree starts with sizes only, the listing and the
+  CSV with both.
+- **The CSV export can mark paths as text.** Its window has a third
+  checkbox, **Add text marker**: ticked, every path starts with a `'`, which
+  a spreadsheet reads as "this is text" and shows the path as written.
 #### 2026-10-01 *1.62.1*
 - **Deleting the folder UltraFiler runs from no longer crashes it, and a
   file another program holds is no longer mistaken for a permissions

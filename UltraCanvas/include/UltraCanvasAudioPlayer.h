@@ -8,9 +8,11 @@
 #define ULTRACANVASAUDIOPLAYER_H
 
 #include "UltraCanvasAudio.h"
+#include "UltraCanvasAudioStreaming.h"
 #include <string>
 #include <memory>
 #include <functional>
+#include <cstdint>
 
 namespace UltraCanvas {
 
@@ -35,8 +37,21 @@ struct AudioPlaybackConfig {
     int   positionUpdateHz = 10;   // Frequency of onPositionChanged
 };
 
+// ===== STREAMING SINK CONFIG =====
+// A sink plays PCM the caller pushes as it is produced — a decoded call,
+// synthesised speech, a network stream — instead of a file or buffer loaded
+// up front. The device clock pulls from a bounded ring; the caller keeps it
+// topped up and reads GetSinkQueuedSeconds() to pace itself.
+struct AudioSinkConfig {
+    int sampleRate = 48000;
+    int channels = 1;
+    int bufferMs = 200;      // Ring capacity. The upper bound on added latency;
+                             // frames pushed beyond it are dropped and counted.
+};
+
 // ===== AUDIO PLAYER (NON-VISUAL) =====
-// Owns a backend stream and pumps audio from a UCAudio buffer or a file.
+// Owns a backend stream and pumps audio from a UCAudio buffer, a file, or a
+// streaming sink the caller pushes frames into.
 class UltraCanvasAudioPlayer {
 public:
     UltraCanvasAudioPlayer();
@@ -50,6 +65,27 @@ public:
     bool LoadFromFile(const std::string& filePath);
     bool LoadFromAudio(std::shared_ptr<UCAudio> audio);
     void Unload();
+
+    // ===== STREAMING SINK =====
+    // OpenSink replaces any loaded source, opens the output device at the
+    // sink's rate and channel count and starts playing at once; Pause / Play
+    // / Stop then apply to the sink, Seek does not. CloseSink (or Unload)
+    // releases the device. Push from any one thread; the audio thread pops.
+    bool OpenSink(const AudioSinkConfig& cfg);
+    bool IsSinkOpen() const;
+    // Interleaved float PCM at the sink's rate and channel count. Returns
+    // the frames queued; fewer than `frames` means the ring was full and the
+    // rest were dropped (see GetSinkDroppedFrames).
+    size_t PushSinkFrames(const float* interleaved, size_t frames);
+    size_t PushSinkFrames(const AudioLiveFrame& frame) {
+        return PushSinkFrames(frame.samples, frame.frameCount);
+    }
+    size_t GetSinkQueuedFrames() const;
+    double GetSinkQueuedSeconds() const;
+    void   ClearSink();                   // Drop queued frames (a seek, a hang-up)
+    void   CloseSink();
+    uint64_t GetSinkUnderrunCount() const; // Device callbacks that found the ring short
+    uint64_t GetSinkDroppedFrames() const; // Pushed frames that did not fit
 
     // ===== TRANSPORT =====
     bool Play();
@@ -81,6 +117,9 @@ public:
     std::function<void(double seconds)> onPositionChanged;
     std::function<void()> onEnded;
     std::function<void(const std::string& message)> onError;
+    // Sink only: the device asked for frames the ring did not have; silence
+    // was played in their place. Once per underrun episode, audio thread.
+    std::function<void()> onSinkUnderrun;
 
 private:
     struct Impl;
