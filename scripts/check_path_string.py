@@ -44,8 +44,8 @@ What is reported:
           std::ifstream f(str)  f.open(str)  fs::path p = str;
       Use PathFromUtf8(str). The argument counts as a string when it is
       `.c_str()`, a `+` concatenation with a literal or a string, or a name
-      the file declares as std::string - the check has no types, so it reads
-      the declarations of the same file. (PathFromUtf8 also takes a path, a C
+      whose nearest declaration above the use, in the same file, is a
+      std::string - the check has no types, so it reads the declarations. (PathFromUtf8 also takes a path, a C
       string and a string_view, so wrapping is never wrong.)
 
   fopen-narrow
@@ -131,6 +131,8 @@ FS_TWO_PATHS = {"copy", "copy_file", "rename", "create_symlink",
                 "relative", "proximate"}
 STRING_DECL_RE = re.compile(
     r"\b(?:const\s+)?(?:std::)?string\s*[&*]?\s*(\w+)\s*(?=[;=,\)\{\(\[])")
+PATH_DECL_RE = re.compile(
+    r"\b(?:std::filesystem|fs|filesystem)::path\s*[&*]?\s*(\w+)\s*(?=[;=,\)\{\(\[])")
 STREAM_DECL_RE = re.compile(r"\bstd::(?:i|o)?fstream\s+(\w+)")
 FS_CALL_RE = re.compile(
     r"(?<![\w:])(?:std::filesystem|fs|filesystem)::(\w+)\s*(\w+\s*)?([\({])")
@@ -182,7 +184,39 @@ def _top_level(text: str, ch: str) -> bool:
     return False
 
 
-def _is_utf8_string(arg: str, strings: set[str], raw: str) -> bool:
+class DeclaredTypes:
+    """Which names the file declares as std::string and which as a path, by
+    line. A name means whatever its nearest declaration above the use says:
+    `path` can be a std::string parameter in one function and an fs::path
+    member or local in the next, and only the nearer one is in scope."""
+
+    def __init__(self, text: str):
+        self.decls: dict[str, list[tuple[int, bool]]] = {}
+        starts = [0]
+        for m in re.finditer("\n", text):
+            starts.append(m.end())
+        import bisect
+        for rx, is_string in ((STRING_DECL_RE, True), (PATH_DECL_RE, False)):
+            for m in rx.finditer(text):
+                line = bisect.bisect_right(starts, m.start(1))
+                self.decls.setdefault(m.group(1), []).append((line, is_string))
+        for v in self.decls.values():
+            v.sort()
+        self.line = 0
+
+    def __contains__(self, name: str) -> bool:
+        best = None
+        for line, is_string in self.decls.get(name, ()):
+            if line > self.line:
+                break
+            best = is_string
+        if best is None:   # used above any declaration (a member, say)
+            kinds = {k for _, k in self.decls.get(name, ())}
+            return kinds == {True}
+        return best
+
+
+def _is_utf8_string(arg: str, strings, raw: str) -> bool:
     """Whether `arg` (string literals blanked) is a narrow UTF-8 string.
     `raw` is the same text with the literals kept, to tell L"" from ""."""
     a = arg.strip()
@@ -204,7 +238,7 @@ def _is_utf8_string(arg: str, strings: set[str], raw: str) -> bool:
 
 
 def implicit_findings(path: Path, number: int, code: str, raw: str,
-                      strings: set[str], streams: set[str]) -> list[Finding]:
+                      strings, streams: set[str]) -> list[Finding]:
     found: list[Finding] = []
 
     def check_args(open_at: int, which, what: str):
@@ -319,7 +353,7 @@ def check_file(path: Path) -> list[Finding]:
 
     findings: list[Finding] = []
     implicit = not (UTF8_NATIVE_OS & set(path.parts))
-    strings = set(STRING_DECL_RE.findall(text)) if implicit else set()
+    strings = DeclaredTypes(text) if implicit else set()
     streams = set(STREAM_DECL_RE.findall(text)) if implicit else set()
     in_block_comment = False
     for number, line in enumerate(text.splitlines(), start=1):
@@ -358,6 +392,7 @@ def check_file(path: Path) -> list[Finding]:
                 symbol="path"))
 
         if implicit:
+            strings.line = number
             raw = raw_line.split("//", 1)[0]
             findings.extend(implicit_findings(path, number, code, raw
                                               if len(raw) == len(code) else code,

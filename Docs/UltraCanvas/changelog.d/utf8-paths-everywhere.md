@@ -22,3 +22,12 @@
   - `Tests/PathUtf8Test.cpp`, which Windows CI runs under code page 1252,
     exercises each wrapped call - create, query, size, time, read, write,
     open, copy, rename, iterate, remove - on a Thai-and-emoji folder and file.
+- **`UCImageRaster::LoadFileToMemory` checks what it reads.** A file that
+  would not open, or whose size `tellg()` could not report, sent `-1` to
+  `malloc` - a request for every byte there is; an empty file got a
+  zero-byte buffer that read as success; and a read the disk broke off left
+  the tail of the buffer uninitialised for the decoder. Each is now an error
+  with its reason, and a failure leaves no stale size or ownership behind.
+- `check_path_string.py` reads a name as a string or a path by its nearest
+  declaration above the use, so `path` being an `fs::path` in one function and
+  a `std::string` in the next no longer reports the path one.

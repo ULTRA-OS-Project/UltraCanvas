@@ -4087,3 +4087,24 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  DemoScrollTextTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== AUDIO STREAMING TEST =====
+# The live-audio building blocks (frame ring, packetiser) are header-only and
+# backend-free, so the test links nothing and needs no sound device.
+message(STATUS "  Building AudioStreamingTest...")
+add_executable(AudioStreamingTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/AudioStreamingTest.cpp
+)
+target_include_directories(AudioStreamingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(AudioStreamingTest PRIVATE cxx_std_20)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(AudioStreamingTest PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+find_package(Threads REQUIRED)
+target_link_libraries(AudioStreamingTest PRIVATE Threads::Threads)
+set_target_properties(AudioStreamingTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME AudioStreamingTest COMMAND AudioStreamingTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)

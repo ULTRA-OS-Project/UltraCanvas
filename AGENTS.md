@@ -255,7 +255,6 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/DeviceExplorer/CHANGELOG.md` | DeviceExplorer |
 | `Docs/UltraDesktop/CHANGELOG.md` | UltraDesktop — the ULTRA OS desktop |
 | `Docs/EmailCleaner/CHANGELOG.md` | EmailCleaner |
-| `Docs/Ladybird/CHANGELOG.md` | The Ladybird browser port (built from its own tree, outside this repository) |
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
@@ -305,10 +304,10 @@ number anywhere else, and never introduce a new literal copy of one:
 - An app versions itself: it does not move when the framework releases, and a
   change to it belongs in its own file, not in the framework's. A framework
   change an app needs still goes in `Docs/UltraCanvas/CHANGELOG.md` — including
-  the Ladybird-driven ones, which land in `UltraCanvas/OS/MSWindows/` and
-  `UltraCanvas/core/` rather than in the port. Cross-reference such a change
-  from the app's changelog when a release depends on it; never describe it in
-  two files with two versions.
+  one a host application outside this repository asked for, which lands in
+  `UltraCanvas/OS/<Platform>/` and `UltraCanvas/core/`, not in that host.
+  Cross-reference such a change from the app's changelog when a release
+  depends on it; never describe it in two files with two versions.
 - The app changelogs were split out of the framework's on 2026-08-31.
   EmailCleaner's two entries were moved across verbatim (framework 0.3.87 and
   0.3.88 now point at them); every other app's earlier history was left where
@@ -490,6 +489,32 @@ Two rules about the second block, because it is the one that goes wrong:
 - **It is not a place to park work you were asked to do.** Anything inside the
   task's scope gets finished or explicitly reported as blocked; it does not
   become a recommendation.
+
+### The closing line
+
+The **last reply before the chat waits for the user** — every chat, whether
+or not code was written in it — ends with one line, after the three blocks:
+
+```
+Code needs to be PRed (N lines)
+```
+
+`N` is how many lines this checkout differs from the default branch:
+insertions plus deletions of the working tree against the merge base, plus
+every line of an untracked, non-ignored file — committed, uncommitted and
+untracked alike, because all of it still has to reach a pull request. Measure
+it, do not recall it:
+
+```
+git fetch origin main
+git diff --shortstat $(git merge-base origin/main HEAD)
+git ls-files -z --others --exclude-standard | xargs -0 -r cat | wc -l
+```
+
+Write `(0 lines)` when nothing differs — a missing line and a zero are not the
+same thing to a reader. When a pull request is already open for the branch,
+keep the line and add ` — open as PR #<n>` after it, so "needs to be PRed"
+is never read as "nobody has opened one" when someone has.
 
 `Next Task` and `Other recommendations` describe the repository, not the
 conversation. "Waiting for the test suite" belongs in `Next Task`; "the

@@ -1,3 +1,164 @@
+#### 2026-10-01 *0.9.112*
+- **Live audio: the recorder delivers frames as they arrive, and the player
+  plays frames as they are pushed.** Both engines were buffer and file based
+  — `UltraCanvasAudioRecorder` accumulated into a `UCAudio` for `TakeBuffer()`,
+  and `UltraCanvasAudioPlayer` played a file or a buffer loaded up front — so
+  a call, a speech recogniser or a streaming encoder had no path through the
+  framework. Now the recorder calls `onLiveFrame` for every captured frame,
+  in both modes, with interleaved float PCM (gain and mute applied, any
+  backend sample type converted) in frames of exactly `liveFrameMs` (10 for
+  Opus / WebRTC, 20 for speech engines; 0 passes the backend's chunks
+  through), with `firstFrameIndex` as a timestamp and the partial last frame
+  flushed, zero-padded, on `Stop()`; `AudioCaptureConfig::mode =
+  AudioCaptureMode::Live` additionally keeps nothing. `onBufferAvailable`,
+  which fired only for 32-bit float capture and handed over raw backend
+  bytes, is retired; it had no caller in the tree. And
+  `UltraCanvasAudioPlayer::OpenSink(AudioSinkConfig)` opens the device at a
+  given rate and channel count and plays whatever `PushSinkFrames` queues,
+  from a bounded ring whose `bufferMs` is the latency ceiling: frames beyond
+  it are dropped and counted, an underrun plays silence and fires
+  `onSinkUnderrun` once per episode, and `GetSinkQueuedSeconds()` lets the
+  producer pace itself. The building blocks — `AudioLiveFrame`, the
+  wait-free SPSC `AudioFrameRing`, `AudioFramePacketizer` — are header-only
+  in `UltraCanvasAudioStreaming.h`, backend-free, and covered by
+  `Tests/AudioStreamingTest.cpp`. Also fixed in passing: the player's device
+  callback dereferenced a null source when asked to fill with nothing loaded.
+  `Docs/UltraCanvas/UltraCanvasAudio.md` documents both modes.
+- **Can WebRTC be linked into UltraCanvas as a wrapper-style module the
+  browser and the applications share?** Two research documents answer it.
+  `Docs/Research/BrowserWebRTCInvestigation.md` establishes the facts: WebRTC
+  is a browser-native API, so the scripts a call site loads from a CDN are
+  wrappers and never the engine; Ladybird — an independent third-party
+  browser, used as the worked example because UltraCanvas once replaced its
+  Qt UI layer in a demonstration build — has no `RTCPeerConnection` on
+  `master` yet, but its maintainer's branch implements it in-tree as a helper
+  process on the pure-Rust `webrtc` crate (Opus audio on a live
+  Discord call; no video, no jitter buffer, sandbox still open), and the
+  engines a browser can vendor (`libwebrtc`, `webrtc-rs`, `str0m`,
+  `libdatachannel`, GStreamer `webrtcbin`, an own stack) are compared and
+  sized. `Docs/Research/UltraRTCDesignProposal.md` then designs **UltraRTC**:
+  an UltraCanvas-owned `UltraRtc_*` API over that engine (tier 2
+  `libdatachannel`, the host browser's `RTCPeerConnection` on WebAssembly),
+  the media pipeline built on the audio recorder, the IODeviceManager camera,
+  libopus and FFmpeg the framework already carries, the jitter buffer,
+  bandwidth estimator and vendored audio processing the engines leave out,
+  and the one-call-per-W3C-method binding at that helper-process seam, for
+  any browser that links the framework.
+  Everything is vendored, so no library is fetched at build time — which is
+  what "not loaded from the internet" comes down to. Proposal only, no code.
+
+#### 2026-10-01 *0.9.111*
+- **UltraCanvasFilerWidget: a file type filter for load and save dialogs, with
+  the other files hidden or greyed out.** `SetFileTypeFilter(extensions, mode)`
+  (or the `FileFilter` a dialog's dropdown picked) narrows the listing to the
+  wanted extensions. `FilerTypeFilterMode::Hide` leaves the other files out, as
+  a file dialog does; `FilerTypeFilterMode::ShowDimmed` keeps them in the
+  listing drawn greyed out - name, columns, icon and thumbnail alike, in every
+  view - so the user still sees what else the folder holds, while a
+  double-click or Enter on one does nothing and `onFileActivated` never fires
+  for it. Folders always pass, archives still open. The filter survives
+  `SetPath()`, rescans and the name filter; `EntryPassesFileTypeFilter()` tells
+  a dialog's OK button whether the selection is a valid pick,
+  `GetTypeFilteredCount()` how many files were hidden or dimmed, and a Hide
+  listing with every file filtered out says "No files of the chosen type"
+  instead of "Folder is empty!". `SetDimmedEntryOpacity()` sets how faint a
+  dimmed entry is (0.38 by default). The demo's Filer page gained a *Types* row
+  with the switch.
+
+#### 2026-10-01 *0.9.110*
+- **UltraCanvasFilerWidget: a shortcut's target path is converted with
+  `PathFromUtf8` before `std::filesystem` is asked about it.** The two checks
+  in `ActivateEntry` / `OpenEntryWithOS` passed the UTF-8 `linkTarget` string
+  straight to `fs::is_directory` / `fs::is_regular_file`, an implicit
+  `fs::path(utf8)` conversion that on Windows goes through the ANSI code page
+  and names a different file for a target outside it (see *File paths are
+  UTF-8* in AGENTS.md). The CI check cannot see an implicit conversion, which
+  is why it passed.
+
+#### 2026-10-01 *0.9.109*
+- **The delivery hook no longer reports pushed work as unpushed.**
+  `.claude/hooks/check-delivery.sh` treated a branch with no upstream as
+  entirely unpushed and listed its last 20 commits - so every cloud session,
+  whose branch is cut from `origin/main` before it is ever pushed, started
+  with a warning about 20 "unpushed" commits that `main` already held. A
+  branch with no upstream is now checked against every remote ref
+  (`git log HEAD --not --remotes`): only commits that are on no remote branch
+  are reported, which is the work that would actually be lost.
+- **Assistant chats end on how much code still needs a pull request.**
+  `AGENTS.md` (*Reporting back → The closing line*) and `CLAUDE.md` now require
+  the last reply before a chat waits for the user to end with
+  `Code needs to be PRed (N lines)`, where `N` is the lines the checkout
+  differs from the merge base with `origin/main` — committed, uncommitted and
+  untracked — measured with `git diff --shortstat` rather than remembered,
+  `(0 lines)` when nothing differs, and ` — open as PR #<n>` appended when a
+  pull request already exists.
+
+#### 2026-10-01 *0.9.108*
+- **A Windows crash now leaves a dump behind, and the crash message names
+  it.** The unhandled-exception filter writes a minidump - every thread's
+  stack, the module list, the memory the stacks refer to and the modules'
+  globals - to `%LOCALAPPDATA%\UltraCanvas\CrashDumps\<app>-<date>-<time>-<pid>.dmp`
+  before it shows the message box, and the box (and the log line after the
+  crash line) says where it is and to attach it to the bug report. The
+  writer is `MiniDumpWriteDump` from the `dbghelp.dll` every Windows ships,
+  resolved at startup since a crash handler can load nothing; the folder is
+  created then too. `ULTRACANVAS_CRASH_DUMP_DIR` names another folder,
+  `ULTRACANVAS_NO_CRASH_DUMP=1` writes none. Until now a crash on a user's
+  machine left the exception code and the faulting module and nothing else;
+  Windows itself keeps no dump for a desktop program unless a registry key
+  asks for one. Documented in *UltraCanvasWindowsDiagnostics.md*, with how
+  to open a dump and the registry key for Windows' own.
+- **The Filer no longer asks for administrator rights to delete a file a
+  running program holds, names the file that stopped a folder's delete, and
+  refuses to delete the application it is running from.** Deleting an
+  unpacked download from the UltraFiler that had been started out of it
+  asked *administrator permission needed* for `Resources` and `lib`, deleted
+  everything else, and crashed: the files the running program had loaded
+  answered Windows' "access denied", which the dialog took for a permission
+  problem, and the fonts, icons and plugins it had not loaded yet went,
+  after which the program fell over the first one it reached for.
+  - A failure inside a folder is reported for the **file that refused**
+    (`"libvips-42.dll" in "lib" could not be deleted.`, with a *Stopped at:*
+    line under the folder's path), not for the folder, which still had the
+    rest of its content and looked deletable.
+  - Before deciding that "access denied" means administrator rights, the
+    worker asks the lock probe (the Restart Manager) whether a program holds
+    the file. One that is held gets a **Delete: a file in the folder is in
+    use** dialog naming the program (*In use by: UltraFiler (4120)*), with
+    Skip / Try again and no administrator button: a loaded program file
+    cannot be deleted by anyone, and the consent prompt only cost a click.
+    When the holder is the running application itself the note says to
+    close it and delete from elsewhere.
+  - A delete that would take the running application apart - a victim at or
+    below the folder the executable runs from, or a folder holding it - is
+    **refused up front**, with *Cannot delete: UltraFiler is running from
+    here*, and nothing is touched.
+  - A **read-only file inside a folder** no longer stops the delete with
+    "access denied": it is lifted and removed, as *Delete anyway* lifts the
+    entry's own protection, so a folder unpacked with its read-only bits goes
+    in one pass and without a question about rights it never needed.
+  - The delete queue converts its paths with `PathFromUtf8` throughout
+    (`RemoveTreeWithProgress`, `CountTreeEntries`, the elevated finish): the
+    implicit `fs::path(std::string)` conversions named a different file for a
+    non-ASCII name on a Windows before 1903.
+- **A modal dialog widens to its footer, and its buttons take the style's
+  font size.** A footer row that needs more than the configured width - the
+  Filer's *Apply to all later permission failures* checkbox beside *Delete as
+  administrator / Try again / Skip / Stop* - ran off the right edge and the
+  last button was gone. `AutoSizeToContent` now measures the row (its
+  padding, every element and button, the gaps) and widens the window to it,
+  up to 90% of the monitor, before fitting the height to the text at the new
+  width. `ModalDialogStyle::buttonFontSize` (0 = the button's default) sets
+  the footer buttons' label size, applied after the role style and
+  re-applied by `SetStyle`.
+- **The Filer's operation dialogs read at the display's font size.** The
+  delete / copy / conflict / problem / summary dialogs set the message and
+  the buttons to `FilerStyle::fontSize` and the details, the note, the
+  *Apply to all* checkbox and the entry list to `smallFontSize`, so a host
+  running its UI at 9 (UltraFiler) gets dialogs at 9 instead of the dialog's
+  default 12 over a window of smaller text; the same sizes go on the *Cannot
+  Delete* and *Cannot delete: … is running from here* dialogs.
+
 #### 2026-10-01 *0.9.107*
 - **The framework's file dialog had no folder tree, and its labels sat on
   top of the fields.** `UltraCanvasFileDialog` — what every app with native

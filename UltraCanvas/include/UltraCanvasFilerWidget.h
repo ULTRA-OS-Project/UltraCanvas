@@ -415,6 +415,19 @@ namespace UltraCanvas {
         WhenAnyHidden
     };
 
+    // ===== WHAT A FILE TYPE FILTER DOES WITH THE OTHER FILES =====
+    // SetFileTypeFilter() names the file types a host is interested in - the
+    // extensions a load or save dialog's filter dropdown stands for. The
+    // files of every other type are then either left out of the listing, as
+    // a file dialog does, or kept in it and drawn greyed out - name and
+    // thumbnail alike - so the user still sees what else the folder holds
+    // ("the photo IS here, it is just not a PNG") while the picks on offer
+    // stand out. Folders are never filtered: they are the way to the files.
+    enum class FilerTypeFilterMode {
+        Hide,         // other types are not listed (a dialog's usual behaviour)
+        ShowDimmed    // other types stay listed, greyed out and not activatable
+    };
+
     // ===== ONE ENTRY OF THE DISPLAYED FOLDER =====
     struct FilerEntry {
         std::string name;            // file / folder name (no path)
@@ -657,6 +670,48 @@ namespace UltraCanvas {
         // notice again.
         void SetFilterEmptyAction(const std::string& label,
                                   std::function<void()> action);
+
+        // ===== FILE TYPE FILTER (load / save dialogs) =====
+        // Narrows the listing to the files whose extension is in
+        // `extensions` (matched lowercase, with or without the leading dot;
+        // "*" or an empty list means every file and ends the filter). What
+        // happens to the other files is the mode's call: Hide leaves them out
+        // of the listing the way a file dialog does, ShowDimmed keeps them in
+        // it greyed out - text and thumbnail - and refuses to activate them
+        // (double-click / Enter do nothing, onFileActivated never fires for
+        // one), while they can still be selected and looked at. Folders
+        // always pass: they are how the user reaches the files (an archive is
+        // dimmed like any other file, but a double-click still enters it the
+        // way it enters a folder). The filter survives SetPath(), rescans and
+        // the name filter (both apply), so a dialog sets it once and
+        // navigates. A dialog hands over the FileFilter its dropdown picked
+        // (UltraCanvasModalDialog.h) through the second overload.
+        void SetFileTypeFilter(const std::vector<std::string>& extensions,
+                               FilerTypeFilterMode mode = FilerTypeFilterMode::Hide);
+        void SetFileTypeFilter(const FileFilter& filter,
+                               FilerTypeFilterMode mode = FilerTypeFilterMode::Hide) {
+            SetFileTypeFilter(filter.extensions, mode);
+        }
+        void ClearFileTypeFilter() {
+            SetFileTypeFilter(std::vector<std::string>{}, fileTypeFilterMode);
+        }
+        bool HasFileTypeFilter() const { return !fileTypeExtensions.empty(); }
+        const std::vector<std::string>& GetFileTypeFilter() const { return fileTypeExtensions; }
+        // Switches between hiding and dimming the other types without
+        // restating the extensions.
+        void SetFileTypeFilterMode(FilerTypeFilterMode mode);
+        FilerTypeFilterMode GetFileTypeFilterMode() const { return fileTypeFilterMode; }
+        // Whether `e` is one of the files the filter asks for (true for every
+        // folder, and for everything while no filter is set). A dialog's OK
+        // button asks this about the selection; a dimmed entry answers false.
+        bool EntryPassesFileTypeFilter(const FilerEntry& e) const;
+        // How many files the last listing left out (Hide) or dimmed
+        // (ShowDimmed) because of the type filter. A Hide listing with every
+        // file filtered out says so instead of "Folder is empty!".
+        int GetTypeFilteredCount() const { return typeFilteredCount; }
+        // The alpha a dimmed entry is drawn with (0..1); 0.38 by default.
+        void SetDimmedEntryOpacity(double opacity);
+        double GetDimmedEntryOpacity() const { return dimmedEntryOpacity; }
 
         // ===== TYPE-AHEAD (single-letter keyboard navigation) =====
         // Selects the next entry — after the current selection, wrapping
@@ -1638,6 +1693,14 @@ namespace UltraCanvas {
         std::string filterEmptyLabel;
         std::function<void()> onFilterEmptyAction;
         std::shared_ptr<UltraCanvasButton> filterEmptyButton;
+        // ===== FILE TYPE FILTER =====
+        // The wanted extensions (lowercase, no dot; empty = no filter), what
+        // becomes of the other files, how many the last listing hid or
+        // dimmed, and how faint a dimmed entry is drawn.
+        std::vector<std::string> fileTypeExtensions;
+        FilerTypeFilterMode fileTypeFilterMode = FilerTypeFilterMode::Hide;
+        int typeFilteredCount = 0;
+        double dimmedEntryOpacity = 0.38;
         bool showHiddenFiles = false;
         std::string fileListEmptyMessage;   // SetFileListEmptyMessage
         // Hidden-items notice (SetHiddenItemsNotice): when the host
@@ -2647,6 +2710,13 @@ namespace UltraCanvas {
         bool EntryMatchesNameFilter(const FilerEntry& e) const;
         // Erase the entries the active filter hides (no-op without one).
         void ApplyNameFilterToEntries();
+        // ===== FILE TYPE FILTER (helpers) =====
+        // Erase from `list` the files a Hide-mode type filter leaves out and
+        // add them to typeFilteredCount; a ShowDimmed filter only counts the
+        // files it will dim. A no-op without a filter.
+        void ApplyFileTypeFilter(std::vector<FilerEntry>& list);
+        // Drawn greyed out: a file a ShowDimmed type filter does not ask for.
+        bool IsDimmedEntry(const FilerEntry& e) const;
         // Create / show / hide the "no matches" action button to match the
         // current filter and listing; positioned under the notice each frame
         // by PositionFilterEmptyButton (called from Render, which measures
@@ -3135,9 +3205,14 @@ namespace UltraCanvas {
         // Removes `path` and everything under it, crediting entries as it
         // goes: post-order, and a symlink is removed as the link it is —
         // std::filesystem::remove_all's semantics, which this replaces.
+        // `failedPath`, when given, names the entry the failure is about:
+        // a file deep inside `path` as often as `path` itself. A file that
+        // answers "permission denied" is retried once with its read-only
+        // bit lifted, as the entry's own delete lifts it before the attempt.
         static bool RemoveTreeWithProgress(const std::string& path,
                                            FileOpItemCredit& credit,
-                                           std::error_code& ec);
+                                           std::error_code& ec,
+                                           std::string* failedPath = nullptr);
         // Copies one file, in chunks once it is big enough for the ring to
         // move inside it (and for Cancel to be answered before it ends).
         static bool CopyFileWithProgress(const std::string& from,
@@ -3335,7 +3410,12 @@ namespace UltraCanvas {
         // before the attempt), a failed delete, or a failed delete that a
         // retry with administrator rights may resolve (Windows, when the
         // host wired UltraCanvasElevatedFileOperations).
-        enum class DeleteProblemKind { WriteProtected, Failed, NeedsPermission };
+        // A delete refused because a program holds the file - a running
+        // program's own executable or library above all - is InUse: Windows
+        // answers it with the same "access denied" as a permission problem,
+        // but no administrator can delete it either, so that dialog offers
+        // no such retry and names the program instead.
+        enum class DeleteProblemKind { WriteProtected, Failed, NeedsPermission, InUse };
 
         // One delete in flight: the real-filesystem victims not yet processed
         // and the choices the problem dialogs collected so far.
@@ -3368,6 +3448,13 @@ namespace UltraCanvas {
             FileOpStop stop = FileOpStop::Done;
             DeleteProblemKind stopKind = DeleteProblemKind::Failed;
             std::string stopReason;
+            // The entry the failure is about when it is not the victim
+            // itself: the file inside a folder that refused to go. Empty
+            // when the victim is a file, or failed on its own account.
+            std::string stopPath;
+            // Who holds it (InUse), as "Program (pid)", when the platform
+            // can say.
+            std::vector<std::string> stopHolders;
             // Runs when the queue is done, if the caller asked to be told.
             std::function<void(bool changed)> onDone;
             // Each entry goes to the trash instead of being removed.
@@ -3407,6 +3494,16 @@ namespace UltraCanvas {
         void ShowDeleteProblemDialog(const FilerEntry& entry,
                                      DeleteProblemKind kind,
                                      const std::string& reason);
+        // Refuses, with a dialog, a delete that would take the running
+        // application's own installation apart: a victim inside the
+        // folder the executable runs from, or a folder holding it.
+        // Deleting files out from under a running program ends it in a
+        // crash, and the files it has loaded cannot be deleted anyway.
+        // True = refused, nothing was touched.
+        bool RefuseDeletingOwnInstallation(const std::vector<FilerEntry>& victims);
+        // The dialog fonts of this widget: its own style's sizes, so every
+        // dialog it opens reads like the display under it.
+        ModalDialogStyle DialogStyleForFonts(const ModalDialogStyle& base) const;
 
         // Executable script activated: Run / Open (view it) / Cancel.
         void ShowRunOrOpenDialog(const FilerEntry& e);

@@ -34,6 +34,15 @@ struct UltraCanvasAudioPlayer::Impl {
     // Throttling: emit onPositionChanged at most positionUpdateHz
     std::atomic<size_t> framesSinceLastPosUpdate{0};
 
+    // Streaming sink. `ring` is written by PushSinkFrames (caller thread)
+    // and read by FillOutput (audio thread); everything else is atomic.
+    bool sinkOpen = false;
+    AudioSinkConfig sinkConfig;
+    AudioFrameRing ring;
+    std::atomic<uint64_t> sinkPlayedFrames{0};
+    std::atomic<uint64_t> sinkUnderruns{0};
+    std::atomic<bool> sinkInUnderrun{false};
+
     std::string lastError;
 
     UltraCanvasAudioPlayer* owner = nullptr;
@@ -71,10 +80,54 @@ struct UltraCanvasAudioPlayer::Impl {
         return true;
     }
 
+    bool OpenSinkStream() {
+        auto* backend = GetAudioBackend();
+        if (!backend) { EmitError("no audio backend"); return false; }
+
+        AudioStreamConfig sc;
+        sc.sampleRate = sinkConfig.sampleRate;
+        sc.channels = sinkConfig.channels;
+        sc.sampleType = AudioSampleType::PCM_F32;
+        sc.deviceId = config.deviceId;
+        stream = backend->OpenOutputStream(sc);
+        if (!stream) { EmitError("failed to open output stream"); return false; }
+
+        stream->SetVolume(config.mute ? 0.0f : config.volume);
+        stream->fillCallback = [this](void* out, size_t frames) -> size_t {
+            return FillFromSink(out, frames);
+        };
+        stream->errorCallback = [this](const std::string& e) { EmitError(e); };
+        return true;
+    }
+
+    size_t FillFromSink(void* out, size_t frames) {
+        // Audio thread. Pop what the ring has; the rest is silence, counted
+        // as one underrun per episode so a caller can see pacing trouble
+        // without being flooded.
+        float* dst = static_cast<float*>(out);
+        const size_t channels = static_cast<size_t>(sinkConfig.channels);
+        size_t got = ring.Pop(dst, frames);
+        if (got < frames) {
+            std::memset(dst + got * channels, 0, (frames - got) * channels * sizeof(float));
+            if (!sinkInUnderrun.exchange(true, std::memory_order_acq_rel)) {
+                sinkUnderruns.fetch_add(1, std::memory_order_relaxed);
+                if (owner && owner->onSinkUnderrun) owner->onSinkUnderrun();
+            }
+        } else {
+            sinkInUnderrun.store(false, std::memory_order_release);
+        }
+        uint64_t played = sinkPlayedFrames.fetch_add(got, std::memory_order_relaxed) + got;
+        position.store(sinkConfig.sampleRate > 0
+                           ? static_cast<double>(played) / sinkConfig.sampleRate : 0.0,
+                       std::memory_order_relaxed);
+        return frames;
+    }
+
     size_t FillOutput(void* out, size_t frames) {
         // Called on the backend audio thread. Must be lock-free and brief.
         if (!audio || !audio->IsValid() || frames == 0) {
-            std::memset(out, 0, frames * audio->GetInfo().BytesPerFrame());
+            if (audio && frames)
+                std::memset(out, 0, frames * audio->GetInfo().BytesPerFrame());
             return frames;
         }
         if (playbackDone.load(std::memory_order_acquire)) {
@@ -202,14 +255,68 @@ bool UltraCanvasAudioPlayer::LoadFromAudio(std::shared_ptr<UCAudio> audio) {
 void UltraCanvasAudioPlayer::Unload() {
     if (impl->stream) { impl->stream->Stop(); impl->stream.reset(); }
     impl->audio.reset();
+    impl->sinkOpen = false;
+    impl->ring.Clear();
     impl->position.store(0.0);
     impl->playCursorFrames.store(0);
     impl->playbackDone.store(false);
     impl->state = AudioPlaybackState::Idle;
 }
 
+// ===== STREAMING SINK =====
+bool UltraCanvasAudioPlayer::OpenSink(const AudioSinkConfig& cfg) {
+    Unload();
+    if (cfg.sampleRate <= 0 || cfg.channels <= 0) {
+        impl->EmitError("invalid sink configuration");
+        return false;
+    }
+    impl->sinkConfig = cfg;
+    impl->ring.Reset(AudioFramesForMilliseconds(cfg.bufferMs > 0 ? cfg.bufferMs : 200,
+                                                cfg.sampleRate),
+                     cfg.channels);
+    impl->sinkPlayedFrames.store(0);
+    impl->sinkUnderruns.store(0);
+    impl->sinkInUnderrun.store(false);
+    if (!impl->OpenSinkStream()) return false;
+    impl->sinkOpen = true;
+    if (!impl->stream->Start()) { impl->EmitError("stream start failed"); return false; }
+    impl->SetState(AudioPlaybackState::Playing);
+    return true;
+}
+
+bool UltraCanvasAudioPlayer::IsSinkOpen() const { return impl->sinkOpen; }
+
+size_t UltraCanvasAudioPlayer::PushSinkFrames(const float* interleaved, size_t frames) {
+    if (!impl->sinkOpen) return 0;
+    return impl->ring.Push(interleaved, frames);
+}
+
+size_t UltraCanvasAudioPlayer::GetSinkQueuedFrames() const {
+    return impl->sinkOpen ? impl->ring.GetAvailableFrames() : 0;
+}
+
+double UltraCanvasAudioPlayer::GetSinkQueuedSeconds() const {
+    if (!impl->sinkOpen || impl->sinkConfig.sampleRate <= 0) return 0.0;
+    return static_cast<double>(impl->ring.GetAvailableFrames()) / impl->sinkConfig.sampleRate;
+}
+
+void UltraCanvasAudioPlayer::ClearSink() { impl->ring.Clear(); }
+
+void UltraCanvasAudioPlayer::CloseSink() {
+    if (impl->sinkOpen) Unload();
+}
+
+uint64_t UltraCanvasAudioPlayer::GetSinkUnderrunCount() const { return impl->sinkUnderruns.load(); }
+uint64_t UltraCanvasAudioPlayer::GetSinkDroppedFrames() const { return impl->ring.GetDroppedFrames(); }
+
 // ===== TRANSPORT =====
 bool UltraCanvasAudioPlayer::Play() {
+    if (impl->sinkOpen) {
+        if (!impl->stream && !impl->OpenSinkStream()) return false;
+        if (!impl->stream->Start()) { impl->EmitError("stream start failed"); return false; }
+        impl->SetState(AudioPlaybackState::Playing);
+        return true;
+    }
     if (!impl->audio) return false;
     if (!impl->stream && !impl->OpenStream()) return false;
     impl->playbackDone.store(false, std::memory_order_release);
@@ -227,6 +334,7 @@ bool UltraCanvasAudioPlayer::Pause() {
 
 bool UltraCanvasAudioPlayer::Stop() {
     if (impl->stream) impl->stream->Stop();
+    if (impl->sinkOpen) { impl->ring.Clear(); impl->sinkPlayedFrames.store(0); }
     impl->position.store(0.0);
     impl->playCursorFrames.store(0);
     impl->playbackDone.store(false, std::memory_order_release);
@@ -235,7 +343,7 @@ bool UltraCanvasAudioPlayer::Stop() {
 }
 
 bool UltraCanvasAudioPlayer::Seek(double seconds) {
-    if (!impl->audio) return false;
+    if (!impl->audio || impl->sinkOpen) return false;
     double dur = impl->audio->GetDuration();
     double clamped = std::clamp(seconds, 0.0, dur);
     impl->position.store(clamped);
@@ -250,6 +358,7 @@ bool UltraCanvasAudioPlayer::Seek(double seconds) {
 AudioPlaybackState UltraCanvasAudioPlayer::GetState() const { return impl->state; }
 double UltraCanvasAudioPlayer::GetPosition() const { return impl->position.load(); }
 double UltraCanvasAudioPlayer::GetDuration() const {
+    // A sink has no end; GetPosition() reports the seconds played so far.
     return impl->audio ? impl->audio->GetDuration() : 0.0;
 }
 const std::string& UltraCanvasAudioPlayer::GetLastError() const { return impl->lastError; }
@@ -277,7 +386,8 @@ float UltraCanvasAudioPlayer::GetPlaybackRate() const { return impl->config.play
 
 void UltraCanvasAudioPlayer::SetOutputDevice(const std::string& deviceId) {
     impl->config.deviceId = deviceId;
-    // Device hot-swap requires reopening the stream
+    // Device hot-swap requires reopening the stream. The sink keeps its ring,
+    // so queued frames carry over to the new device.
     bool wasPlaying = impl->state == AudioPlaybackState::Playing;
     if (impl->stream) { impl->stream->Stop(); impl->stream.reset(); }
     if (wasPlaying) Play();

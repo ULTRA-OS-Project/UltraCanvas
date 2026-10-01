@@ -1826,7 +1826,24 @@ beside them:
   grants each later failing entry one silent retry before asking again, so a
   stubborn entry can never loop forever. An entry the trash refused gets the
   same dialog, titled for the trash, and is never deleted for good instead.
-- A delete that fails with **"Access is denied"** on Windows is the one Explorer
+- A failure **inside a folder** is reported for the file that refused, not
+  the folder: the question reads `"libvips-42.dll" in "lib" could not be
+  deleted.` and the facts add a *Stopped at:* line with the file's path under
+  the folder's. A read-only file inside a folder is not a failure at all: it
+  is lifted and removed, as *Delete anyway* lifts the entry's own protection,
+  so a folder unpacked with its read-only bits goes in one pass.
+- A file **a running program holds** — its executable, a DLL it has loaded —
+  answers "Access is denied" on Windows too, but no administrator can delete
+  it either. The worker asks the [lock probe](UltraCanvasFileLock.md) (the
+  Restart Manager) before it decides, and such a file gets **Delete: a file
+  in the folder is in use** — `"libvips-42.dll" in "lib" is in use by another
+  program.` with *In use by: UltraFiler (4120)* among the facts — with
+  **Skip** (the default) / **Try again** and an *Apply to all later files in
+  use* checkbox, and no administrator button. When the holder is the running
+  application itself the note says so and tells the user to close it and
+  delete from elsewhere.
+- A delete that fails with **"Access is denied"** on Windows and is held by
+  nobody is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
   user. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
@@ -1846,6 +1863,16 @@ beside them:
   another program") are not permission failures and keep the plain dialog,
   as does a process that already runs as administrator — asking again cannot
   change the system's answer there.
+
+A delete that would take **the running application's own installation**
+apart is refused before anything is touched: a victim at or below the folder
+the executable runs from, or a folder holding it, opens **Cannot delete:
+UltraFiler is running from here** and nothing is deleted. The files a running
+program has loaded cannot go, and the ones it has not loaded yet — fonts,
+icons, plugins — would go, and the program crashes the moment it reaches for
+one of them. That is how a Filer started from an unpacked download used to
+end when the download was deleted from inside it; the fix is to close the
+program and delete the folder from another file manager.
 
 With `SetProblemPolicy(FilerProblemPolicy::SkipAndReport)` a failed delete is
 not asked about at all: the entry stays, and the
@@ -2435,11 +2462,56 @@ field filters the shown folder, and the button — like Enter in the field, and
 like the button inside the field — escalates to the background sub-folder
 scan, which feeds its matches in through `AppendToFileList()` while it runs.
 
+## File type filter (load / save dialogs)
+
+A load or save dialog built on the widget wants the listing narrowed to the
+types its filter dropdown stands for — "Images (*.png, *.jpg)" — and has two
+ways of treating the other files. `SetFileTypeFilter(extensions, mode)` sets
+both at once:
+
+```cpp
+// A dialog's dropdown picked a FileFilter (UltraCanvasModalDialog.h):
+filer->SetFileTypeFilter(config.filters[config.selectedFilterIndex],
+                         FilerTypeFilterMode::ShowDimmed);
+// or by extension list — "png", ".png" and "*.png" all name the same type:
+filer->SetFileTypeFilter({"png", "jpg", "jpeg"}, FilerTypeFilterMode::Hide);
+// "*" (or an empty list) is "All files" and ends the filter:
+filer->ClearFileTypeFilter();
+```
+
+| Mode | The files of other types are |
+|---|---|
+| `FilerTypeFilterMode::Hide` (default) | left out of the listing, the way a file dialog lists |
+| `FilerTypeFilterMode::ShowDimmed` | kept in the listing and drawn **greyed out** — name, columns, icon or thumbnail and the badges on it, in every view type — so the user still sees what else the folder holds ("the photo *is* here, it is just not a PNG") while the picks on offer stand out |
+
+A dimmed entry can be selected and looked at (the info bar describes it), but
+it is on display, not on offer: a double-click or Enter on it does nothing and
+`onFileActivated` never fires for one, exactly as a disabled control does
+nothing. `EntryPassesFileTypeFilter(entry)` is the same question for a host —
+a dialog's OK button asks it about the selection before accepting a pick, and
+a save dialog can still adopt the greyed-out file's name from
+`onSelectionChanged` if it wants to. `SetFileTypeFilterMode(mode)` switches
+between the two without restating the extensions (a settings switch), and
+`SetDimmedEntryOpacity(0.38)` sets how faint a dimmed entry is drawn.
+
+Folders always pass the filter: they are how the user reaches the files, and
+so does a shortcut to a folder. An archive is a file and is dimmed like any
+other, but a double-click still enters it the way it enters a folder. The
+filter survives `SetPath()`, every rescan (file operations, the folder watch)
+and a [file list](#file-list-search-results), and combines with the
+[name filter](#name-filter-filter-as-you-type) — the type filter is applied
+first, so widening the name filter never brings a hidden type back.
+`GetTypeFilteredCount()` says how many files the shown listing left out (Hide)
+or dimmed (ShowDimmed); a Hide listing in a folder that has files of other
+types only shows **"No files of the chosen type"** rather than "Folder is
+empty!". The [hidden-items notice](#hidden-items-notice) is not involved: it
+reports what the system hides, not what the host asked for.
+
 ## Callbacks
 
 | Callback | Fired |
 |---|---|
-| `onFileActivated(entry)` | Double-click / Enter on a file |
+| `onFileActivated(entry)` | Double-click / Enter on a file — never on one a [type filter](#file-type-filter-load--save-dialogs) dims |
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
@@ -2494,4 +2566,6 @@ live).
 
 `Apps/DemoApp/UltraCanvasFilerExamples.cpp` (Widgets > Filer) shows the bundled
 `media` folder with buttons for every view type, sort field and direction, an Up
-button, and a status line wired to the callbacks.
+button, a *Types* row (All files / Images / Audio / Video with a "Show other
+types greyed out" switch — the [file type filter](#file-type-filter-load--save-dialogs)
+in both modes), and a status line wired to the callbacks.

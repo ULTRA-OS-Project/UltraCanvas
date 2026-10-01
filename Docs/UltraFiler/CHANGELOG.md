@@ -1,4 +1,4 @@
-#### 2026-10-01 *1.63.0*
+#### 2026-10-01 *1.64.0*
 - **Thumbnail tiles that show no picture keep one size.** In a folder whose
   pictures could not be turned into thumbnails, the type icons were drawn
   smaller in some rows than in others, and pressing *Everything on* /
@@ -22,6 +22,42 @@
 - **Folder sizes and image files with Thai, CJK or other non-ASCII names**
   are read correctly on Windows. (Framework side:
   `Docs/UltraCanvas/changelog.d/filer-failed-thumbnail-row-height.md`.)
+#### 2026-10-01 *1.63.0*
+- **The export window chooses whether sizes and dates are shown.** Two
+  checkboxes along its bottom, **File size** and **Date**, add or drop the
+  size and modification date in all three exports - the listing's and the
+  CSV's columns, and the brackets behind a name in the tree
+  (`notes.txt  (1.2 KB, 2026-09-30 18:03)`). A change shows at once: the
+  text is written again from what was already read, without walking the
+  folder a second time. The tree starts with sizes only, the listing and the
+  CSV with both.
+- **The CSV export can mark paths as text.** Its window has a third
+  checkbox, **Add text marker**: ticked, every path starts with a `'`, which
+  a spreadsheet reads as "this is text" and shows the path as written.
+#### 2026-10-01 *1.62.1*
+- **Deleting the folder UltraFiler runs from no longer crashes it, and a
+  file another program holds is no longer mistaken for a permissions
+  problem.** Deleting the unpacked download the running UltraFiler had been
+  started from asked *administrator permission needed* for `Resources` and
+  `lib`, deleted the rest, and crashed. Now a delete that would take the
+  running UltraFiler apart is refused up front (*Cannot delete: UltraFiler is
+  running from here*); a folder's delete that stops at a file names that
+  file (`"libvips-42.dll" in "lib" …`) with a *Stopped at:* line; a file a
+  program holds gets *Delete: a file in the folder is in use* naming the
+  program, with Skip / Try again and no administrator button; and a
+  read-only file inside a folder is lifted and removed instead of stopping
+  the delete. Framework-side, see the UltraCanvas changelog entry on the
+  Filer delete queue, the dialog auto-width and the Windows crash dumps.
+- **The operation dialogs use UltraFiler's font size.** Delete, copy, conflict,
+  problem and summary dialogs had the dialog's default 12 over a window at 9;
+  their message, buttons, details, note, *Apply to all* checkbox and entry
+  list now follow the display's sizes.
+- **No dialog button is pushed out of the window any more.** The *Delete:
+  administrator permission needed* dialog's row - an *Apply to all* checkbox
+  and four labelled buttons - was wider than the window and lost its *Stop*
+  button off the right edge; a dialog now widens to its footer row.
+- **A crash writes a dump.** `%LOCALAPPDATA%\UltraCanvas\CrashDumps\UltraFiler-<date>-<time>-<pid>.dmp`,
+  named in the crash message box; attach it to the bug report.
 #### 2026-09-30 *1.62.0*
 - **The last four questions join the new dialog.** Renaming onto a name that
   is taken shows both entries side by side and asks *Replace* (red) /

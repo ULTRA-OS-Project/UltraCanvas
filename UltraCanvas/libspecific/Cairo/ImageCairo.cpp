@@ -239,22 +239,34 @@ namespace UltraCanvas {
             // UTF-8 path: opened as UTF-16 on Windows, where a plain string
             // goes through the ANSI code page and misses non-ASCII names.
             std::ifstream file(PathFromUtf8(imagePath), std::ios::binary | std::ios::ate);
-            std::streamsize fileSize = file.tellg();
+            if (!file) throw std::runtime_error("the file could not be opened");
+            // tellg() answers -1 when the size cannot be had (a stream that
+            // failed after opening, a device that has no size), and that -1
+            // went straight to malloc - which on most platforms means a
+            // request for SIZE_MAX bytes. An empty file is no image either,
+            // and malloc(0) may hand back a pointer that reads as success.
+            const std::streamoff end = file.tellg();
+            if (end < 0) throw std::runtime_error("the file size could not be read");
+            if (end == 0) throw std::runtime_error("the file is empty");
+            const std::streamsize fileSize = static_cast<std::streamsize>(end);
             file.seekg(0);
-            imgDataPtr = (uint8_t *)malloc(fileSize);
-            if (imgDataPtr) {
-                file.read((char*)imgDataPtr, fileSize);
-                imgDataSize = fileSize;
-                ownData = true;
-            } else {
-                throw std::runtime_error("Not enough memory");
-            }
+            imgDataPtr = (uint8_t *)malloc(static_cast<size_t>(fileSize));
+            if (!imgDataPtr) throw std::runtime_error("Not enough memory");
+            ownData = true;
+            file.read((char*)imgDataPtr, fileSize);
+            // A file that shrank, or a read the disk broke off, leaves the
+            // tail of the buffer uninitialised: never hand that to a decoder.
+            if (file.gcount() != fileSize)
+                throw std::runtime_error("the file could not be read to the end");
+            imgDataSize = static_cast<size_t>(fileSize);
             file.close();
         } catch (std::exception& err) {
             if (imgDataPtr) {
                 free(imgDataPtr);
                 imgDataPtr = nullptr;
             }
+            ownData = false;
+            imgDataSize = 0;
             debugOutput << "UCImage::Load: Failed Failed to load image to memory " << imagePath << " Err:" << err.what() << std::endl;
             std::string access = DescribeFileReadError(imagePath);
             errorMessage = !access.empty()
