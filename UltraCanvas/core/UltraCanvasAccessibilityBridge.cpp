@@ -108,7 +108,7 @@ ScreenRect WindowRectToScreen(UltraCanvasWindowBase* window, const Rect2Df& rect
     ScreenRect out;
     if (!window) return out;
     int wx = 0, wy = 0;
-    window->GetWindowPosition(wx, wy);
+    window->GetContentScreenOrigin(wx, wy);
     const float scale = ScaleOf(window);
     out.x = wx + static_cast<int>(std::lround(rect.x * scale));
     out.y = wy + static_cast<int>(std::lround(rect.y * scale));
@@ -120,7 +120,7 @@ ScreenRect WindowRectToScreen(UltraCanvasWindowBase* window, const Rect2Df& rect
 Point2Df ScreenToWindow(UltraCanvasWindowBase* window, int x, int y) {
     if (!window) return Point2Df(0, 0);
     int wx = 0, wy = 0;
-    window->GetWindowPosition(wx, wy);
+    window->GetContentScreenOrigin(wx, wy);
     const float scale = ScaleOf(window);
     return Point2Df(static_cast<float>(x - wx) / scale, static_cast<float>(y - wy) / scale);
 }
@@ -129,7 +129,8 @@ ScreenRect ScreenBounds(UltraCanvasUIElement* element) {
     ScreenRect out;
     if (!element) return out;
     if (auto* window = AsWindow(element)) {
-        window->GetWindowPosition(out.x, out.y);
+        // The window's content area: what its elements are positioned in.
+        window->GetContentScreenOrigin(out.x, out.y);
         window->GetNativeWindowSize(out.width, out.height);
         return out;
     }
