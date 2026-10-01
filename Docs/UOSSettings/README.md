@@ -15,6 +15,29 @@ application opens the setting.
 
 ## Pages
 
+### Desktop
+
+UltraDesktop's settings, which used to be a window of the desktop's own.
+UOS-Settings opens on this page.
+
+| Field | What it does |
+|---|---|
+| **Taskbar** | The screen edge the taskbar sits on: Left, Top or Bottom. |
+| **Wallpaper** | The picture behind the desktop; empty is the framework's picture. *Browse...* opens the file dialog. |
+| **RAM disc** | The folder the desktop's drive button opens. |
+| **File manager** | The program the desktop's folder buttons start. |
+| **Virtual desktops** | How many the organiser offers (1-9); asked of the window manager, which may offer another number. |
+
+A dropdown is saved when it changes, a text field when it is left or Return
+is pressed. The fields go to UltraDesktop's settings file -
+`<config dir>/ultraos/desktop.json` (`$XDG_CONFIG_HOME`, else `~/.config`;
+`%APPDATA%` on Windows) - read, changed and written back, so the sticky notes
+UltraDesktop keeps in the same file are not touched. A running UltraDesktop
+checks the file once a second and rebuilds its bars when one of these fields
+changed. The file is read and written by UltraDesktop's own settings code
+(`Apps/UltraDesktop/ui/UltraDesktopSettings.*`, compiled into UOS-Settings
+too), so the two programs agree on it.
+
 ### File dialogs > Last used folder
 
 Where the framework's file dialog (`UltraCanvasFileDialog`) opens when the
@@ -53,6 +76,6 @@ app.UltraMail.folder=/home/me/Mail attachments
 | File | What it is |
 |---|---|
 | `main.cpp` | Starts the application and the window |
-| `ui/UOSSettingsWindow.*` | The window: page tree, pages, the Last used folder table |
+| `ui/UOSSettingsWindow.*` | The window: page tree, the Desktop page, the Last used folder table |
 | `UOS-Settings.desktop` | The freedesktop entry |
 | `media/appicon/UOS-Settings.{svg,png}` | The application icon |

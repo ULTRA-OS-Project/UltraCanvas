@@ -5,6 +5,11 @@
 // Apply - and takes effect the next time an application opens the setting.
 //
 // Pages:
+//   Desktop
+//       UltraDesktop's settings: the taskbar's edge, the wallpaper, the RAM
+//       disc, the file manager, the number of virtual desktops. Written to
+//       UltraDesktop's own settings file, which the running desktop watches
+//       and follows within a second.
 //   File dialogs > Last used folder
 //       One folder for every application (Global) or one per application
 //       (Individual); under Individual a table lists the applications, each
@@ -27,6 +32,8 @@ namespace UltraCanvas {
     class UltraCanvasTreeView;
     class UltraCanvasSegmentedControl;
     class UltraCanvasLabel;
+    class UltraCanvasDropdown;
+    class UltraCanvasTextInput;
 }
 
 namespace UOSSettings {
@@ -43,6 +50,13 @@ public:
     std::function<void()> onClosed;
 
 private:
+    void BuildDesktopPage();
+    // Re-reads the desktop's settings file into the page's fields.
+    void RefreshDesktopPage();
+    // Writes the page's fields to the desktop's settings file (only those -
+    // the sticky notes in it are UltraDesktop's).
+    void SaveDesktopPage();
+    void BrowseWallpaper();
     void BuildLastFolderPage();
     void ShowPage(const std::string& pageId);
     // Re-reads FileDialog.conf and fills the switch and the table from it.
@@ -55,6 +69,14 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTreeView> tree_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> pageArea_;
     std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasContainer>> pages_;
+
+    // ----- Desktop -----
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> edge_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> wallpaper_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> ramDisc_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> filer_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> desktops_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> desktopStatus_;
 
     // ----- Last used folder -----
     // One table row per application. Rows are made once and then updated in

@@ -11,9 +11,14 @@ if(NOT ULTRACANVAS_LIBRARY)
     return()
 endif()
 
+# The Desktop page reads and writes UltraDesktop's settings file through the
+# desktop's own settings code (no UI in it), so the two programs cannot
+# disagree about the file - whether or not UltraDesktop itself is built.
+set(UOSSETTINGS_DESKTOP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../UltraDesktop/ui)
 add_executable(UOSSettings
     main.cpp
     ui/UOSSettingsWindow.cpp
+    ${UOSSETTINGS_DESKTOP_DIR}/UltraDesktopSettings.cpp
 )
 # The program is called UOS-Settings; the CMake target cannot carry the hyphen
 # in every generator, so only the output name does.
@@ -24,7 +29,8 @@ set_target_properties(UOSSettings PROPERTIES
 target_include_directories(UOSSettings PRIVATE
     ${ULTRACANVAS_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui
+    ${UOSSETTINGS_DESKTOP_DIR})
 target_link_libraries(UOSSettings PRIVATE ${ULTRACANVAS_LIBRARY})
 if(TARGET fmt::fmt)
     target_link_libraries(UOSSettings PRIVATE fmt::fmt)

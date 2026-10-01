@@ -7,14 +7,20 @@
 
 #include "UOSSettingsWindow.h"
 
+#include "UltraDesktopSettings.h"   // Apps/UltraDesktop: the desktop's settings file
+
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasFileDialogSettings.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 
+#include <algorithm>
 #include <set>
 #include <utility>
 
@@ -49,6 +55,7 @@ namespace {
     // is drawn over them; the header keeps the same so the columns line up.
     constexpr int kScrollbarRoom = 22;
 
+    constexpr const char* kPageDesktop        = "desktop";
     constexpr const char* kSectionFileDialogs = "file-dialogs";
     constexpr const char* kPageLastFolder     = "file-dialogs/last-folder";
 
@@ -133,6 +140,7 @@ bool UOSSettingsWindow::Create() {
 
     TreeNodeData rootData("settings", "Settings");
     tree_->SetRootNode(rootData);
+    tree_->AddNode("settings", TreeNodeData(kPageDesktop, "Desktop"));
     tree_->AddNode("settings", TreeNodeData(kSectionFileDialogs, "File dialogs"));
     tree_->AddNode(kSectionFileDialogs, TreeNodeData(kPageLastFolder, "Last used folder"));
     tree_->SetRootVisible(false);
@@ -145,6 +153,7 @@ bool UOSSettingsWindow::Create() {
     pageArea_->SetBackgroundColor(Color(255, 255, 255, 255));
     content->AddChild(pageArea_);
 
+    BuildDesktopPage();
     BuildLastFolderPage();
     window_->AddChild(content);
 
@@ -175,10 +184,11 @@ bool UOSSettingsWindow::Create() {
         }
         ShowPage(node->data.nodeId);
     };
-    // The one page there is so far, open and selected.
+    // Opens on the desktop's page - what the desktop's settings button is
+    // usually pressed for - with the File dialogs section open below it.
     if (TreeNode* section = tree_->FindNode(kSectionFileDialogs)) tree_->ExpandNode(section);
-    if (TreeNode* page = tree_->FindNode(kPageLastFolder)) tree_->SelectNode(page);
-    ShowPage(kPageLastFolder);
+    if (TreeNode* page = tree_->FindNode(kPageDesktop)) tree_->SelectNode(page);
+    ShowPage(kPageDesktop);
 
     window_->SetEventCallback([](const UCEvent& event) {
         if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
@@ -201,6 +211,191 @@ void UOSSettingsWindow::ShowPage(const std::string& pageId) {
     for (auto& [id, page] : pages_) page->SetVisible(id == pageId);
     // Another application may have written the file since: show it as it is.
     if (pageId == kPageLastFolder) RefreshLastFolderPage();
+    if (pageId == kPageDesktop) RefreshDesktopPage();
+}
+
+// ===== DESKTOP =====
+
+void UOSSettingsWindow::BuildDesktopPage() {
+    auto page = std::make_shared<UltraCanvasContainer>("uos-page-desktop");
+    page->layout.SetFlexColumn().SetFlexGap(0)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto title = MakeLabel("uos-dt-title", "Desktop", kTitleFontSize);
+    title->SetFontWeight(FontWeight::Bold);
+    page->AddChild(title);
+    auto caption = MakeText("uos-dt-caption",
+            "The ULTRA OS desktop (UltraDesktop): where its taskbar sits, the "
+            "picture behind it, and what its buttons open.");
+    caption->SetMargin(6, 0, 0, 0);
+    page->AddChild(caption);
+
+    auto body = std::make_shared<UltraCanvasContainer>("uos-dt-body");
+    body->layout.SetFlexColumn().SetFlexGap(8)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    body->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    body->SetMargin(14, 0, 0, 0);
+
+    // caption | field [| extra], the captions in one column.
+    auto addRow = [&](const std::string& id, const std::string& captionText,
+                      const std::shared_ptr<UltraCanvasUIElement>& field,
+                      const std::shared_ptr<UltraCanvasUIElement>& extra = nullptr) {
+        auto row = std::make_shared<UltraCanvasContainer>(id);
+        row->layout.SetFlexRow().SetFlexGap(8)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->size.height = CSSLayout::Dimension::Px(30);
+        auto label = MakeLabel(id + "-label", captionText);
+        label->size.width = CSSLayout::Dimension::Px(130);
+        row->AddChild(label);
+        field->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        field->size.width = CSSLayout::Dimension::Px(0);
+        row->AddChild(field);
+        if (extra) {
+            extra->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            row->AddChild(extra);
+        }
+        body->AddChild(row);
+    };
+    // A text field is written when it is left or Return is pressed - not per
+    // keystroke, which would rebuild the desktop for every letter.
+    auto wireText = [this](const std::shared_ptr<UltraCanvasTextInput>& input) {
+        input->onEnterPressed = [this](const std::string&) {
+            SaveDesktopPage();
+            return true;
+        };
+        input->onFocusLost = [this]() { SaveDesktopPage(); };
+    };
+
+    edge_ = std::make_shared<UltraCanvasDropdown>("uos-dt-edge", 0, 0, 200, 28);
+    edge_->AddItem("Left", "left");
+    edge_->AddItem("Top", "top");
+    edge_->AddItem("Bottom", "bottom");
+    edge_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-edge-row", "Taskbar", edge_);
+
+    wallpaper_ = std::make_shared<UltraCanvasTextInput>("uos-dt-wallpaper", 0, 0, 260, 28);
+    wallpaper_->SetPlaceholder("The framework's picture");
+    wireText(wallpaper_);
+    auto browse = std::make_shared<UltraCanvasButton>("uos-dt-browse", 0, 0, 90, 28, "Browse...");
+    browse->SetFontSize(kTextFontSize);
+    browse->SetOnClick([this]() { BrowseWallpaper(); });
+    addRow("uos-dt-wallpaper-row", "Wallpaper", wallpaper_, browse);
+
+    ramDisc_ = std::make_shared<UltraCanvasTextInput>("uos-dt-ramdisc", 0, 0, 260, 28);
+    wireText(ramDisc_);
+    addRow("uos-dt-ramdisc-row", "RAM disc", ramDisc_);
+
+    filer_ = std::make_shared<UltraCanvasTextInput>("uos-dt-filer", 0, 0, 260, 28);
+    wireText(filer_);
+    addRow("uos-dt-filer-row", "File manager", filer_);
+
+    desktops_ = std::make_shared<UltraCanvasDropdown>("uos-dt-desktops", 0, 0, 120, 28);
+    for (int i = 1; i <= 9; ++i) desktops_->AddItem(std::to_string(i), std::to_string(i));
+    desktops_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-desktops-row", "Virtual desktops", desktops_);
+    page->AddChild(body);
+
+    desktopStatus_ = MakeLabel("uos-dt-status", "", kTextFontSize, kMutedTextColor);
+    desktopStatus_->SetMargin(10, 0, 0, 0);
+    page->AddChild(desktopStatus_);
+
+    auto spacer = std::make_shared<UltraCanvasContainer>("uos-dt-spacer");
+    spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    spacer->size.height = CSSLayout::Dimension::Px(24);
+    page->AddChild(spacer);
+
+    auto notes = std::make_shared<UltraCanvasContainer>("uos-dt-notes");
+    notes->layout.SetFlexColumn().SetFlexGap(6)
+                 .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    notes->SetBackgroundColor(kNoteBackground);
+    notes->SetBorderLeft(3, kNoteAccent);
+    notes->SetPadding(10, 12, 10, 12);
+    notes->AddChild(MakeText("uos-dt-note-1",
+            "Changes are saved at once - a text field when you leave it or press "
+            "Return - and a running desktop takes them over within a second.",
+            kNoteWidth, kNoteFontSize, kNoteTextColor));
+    notes->AddChild(MakeText("uos-dt-note-2",
+            "The RAM disc is the folder the desktop's drive button opens; the file "
+            "manager is the program its folder buttons start. Virtual desktops "
+            "are asked of the window manager, which may offer a different number.",
+            kNoteWidth, kNoteFontSize, kNoteTextColor));
+    page->AddChild(notes);
+
+    pages_[kPageDesktop] = page;
+    pageArea_->AddChild(page);
+}
+
+void UOSSettingsWindow::RefreshDesktopPage() {
+    UltraDesktop::DesktopSettings settings;
+    std::string error;
+    const std::string path = UltraDesktop::DesktopSettings::DefaultPath();
+    const bool read = settings.Load(path, &error);
+
+    refreshing_ = true;
+    if (edge_) {
+        edge_->SetSelectedIndex(settings.taskbarEdge == UltraDesktop::TaskbarEdge::Top ? 1
+                                : settings.taskbarEdge == UltraDesktop::TaskbarEdge::Bottom ? 2 : 0,
+                                false);
+    }
+    if (wallpaper_) wallpaper_->SetText(settings.wallpaper);
+    if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
+    if (filer_) filer_->SetText(settings.filerProgram);
+    if (desktops_) desktops_->SetSelectedIndex(std::clamp(settings.virtualDesktops, 1, 9) - 1, false);
+    refreshing_ = false;
+    if (desktopStatus_) {
+        desktopStatus_->SetText(read ? "Settings file: " + path
+                                     : "The settings file could not be read: " + error);
+    }
+}
+
+void UOSSettingsWindow::SaveDesktopPage() {
+    if (refreshing_) return;
+    const std::string path = UltraDesktop::DesktopSettings::DefaultPath();
+    if (path.empty()) return;
+    // Read, change, write: the sticky notes in the same file are the
+    // desktop's, and whatever it wrote last is kept.
+    UltraDesktop::DesktopSettings settings;
+    std::string error;
+    settings.Load(path, &error);
+    if (edge_) {
+        const int index = edge_->GetSelectedIndex();
+        settings.taskbarEdge = index == 1 ? UltraDesktop::TaskbarEdge::Top
+                             : index == 2 ? UltraDesktop::TaskbarEdge::Bottom
+                                          : UltraDesktop::TaskbarEdge::Left;
+    }
+    if (wallpaper_) settings.wallpaper = wallpaper_->GetText();
+    if (ramDisc_ && !ramDisc_->GetText().empty()) settings.ramDiscPath = ramDisc_->GetText();
+    if (filer_ && !filer_->GetText().empty()) settings.filerProgram = filer_->GetText();
+    if (desktops_) settings.virtualDesktops = std::clamp(desktops_->GetSelectedIndex() + 1, 1, 9);
+    if (!settings.Save(path, &error)) {
+        if (desktopStatus_) desktopStatus_->SetText("Not saved: " + error);
+        return;
+    }
+    if (desktopStatus_) desktopStatus_->SetText("Saved to " + path);
+}
+
+void UOSSettingsWindow::BrowseWallpaper() {
+    FileDialogOptions options;
+    options.title = "Choose a wallpaper";
+    options.parentWindow = window_.get();
+    options.AddFilter("Pictures", std::vector<std::string>{"jpg", "jpeg", "png", "webp",
+                                                           "avif", "heic", "bmp"});
+    UltraCanvasFileLoader::OpenFileDialog(options, [this](DialogResult result,
+                                                          const std::string& path) {
+        if (result != DialogResult::OK || path.empty() || !wallpaper_) return;
+        wallpaper_->SetText(path);
+        SaveDesktopPage();
+    });
 }
 
 // ===== FILE DIALOGS > LAST USED FOLDER =====

@@ -1,10 +1,15 @@
 #### 2026-10-01 *0.1.1*
-- **The ULTRA OS settings button starts UOS-Settings.** The system's
-  settings now have an application of their own, UOS-Settings, and the
-  taskbar's settings button launches it. The desktop's own page - taskbar
-  edge, wallpaper, RAM disc, file manager, virtual desktops - is one
-  right-click away on the same button (*Desktop settings...*), and is what
-  the button opens when UOS-Settings is not installed.
+- **The desktop's settings moved to UOS-Settings.** The system's settings now
+  have an application of their own, UOS-Settings, and the taskbar's *ULTRA OS
+  settings* button starts it. Its *Desktop* page holds what the desktop's own
+  settings window held - the taskbar's edge, the wallpaper, the RAM disc, the
+  file manager, the number of virtual desktops - and that window is gone.
+  - UOS-Settings writes the desktop's settings file; the desktop checks the
+    file once a second and, when one of those settings changed, takes it over
+    and rebuilds its bars, as Apply used to. The sticky notes in the same file
+    stay the desktop's: what is in memory wins and is written back.
+  - When UOS-Settings cannot be started, the button says so instead of
+    doing nothing.
 
 #### 2026-09-29 *0.1.0*
 - **First release.** UltraDesktop (`Apps/UltraDesktop`) is the ULTRA OS
