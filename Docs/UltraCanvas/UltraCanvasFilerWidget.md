@@ -1219,6 +1219,36 @@ files, the curation below, and the ignore patterns — and `WhenIgnored`
 everywhere else, so an ordinary folder stays quiet about its dot names but says
 so when a setting dropped something from it.
 
+## Hiding Details columns
+
+`SetDetailsColumnVisible(column, false)` leaves a Details column out of the
+table; `IsDetailsColumnVisible` reads it back. Name cannot be hidden: it is
+the flexible column that takes whatever width the others leave, so every
+column hidden is width the names get. The file dialog shows Name, Size, Type
+and Modified only:
+
+```cpp
+filer->SetDetailsColumnVisible(FilerDetailsColumn::CreatedDate, false);
+filer->SetDetailsColumnVisible(FilerDetailsColumn::Attributes, false);
+filer->SetDetailsColumnVisible(FilerDetailsColumn::Info, false);
+```
+
+## Entry filter
+
+`SetEntryFilter(predicate)` decides which entries the listing shows at all — a
+file picker's *Files of type* choice, or a folder picker that lists folders
+only. An entry the predicate answers `false` for is left out in every folder,
+whatever `SetShowHiddenFiles` says, and it is not counted as hidden: the
+hidden-items notice never offers it. Setting or clearing it rescans the folder
+on display; `nullptr` lists everything again.
+
+```cpp
+// UltraCanvasFileDialog: folders stay, files must match the chosen filter.
+filer->SetEntryFilter([filter](const FilerEntry& e) {
+    return e.isDirectory || e.isArchive || filter.Matches(e.name);
+});
+```
+
 ## Ignored names
 
 `SetIgnoredNamePatterns(patterns, onlyInFolder)` is the answer to clutter a
@@ -1595,7 +1625,9 @@ filer->SetProblemPolicy(FilerProblemPolicy::SkipAndReport);      // failures go 
 filer->SetProgressWindowDelay(0);               // the progress window at once
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
-filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
+filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels);
+                              // a taken name asks Replace (red) / Cancel with the
+                              // two entries side by side
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();           // into sibling folders; a taken folder
@@ -1716,8 +1748,9 @@ part:
   run directly, detached, with its own folder as working directory
   (`FileAssociations::ClassifyExecutable` / `LaunchExecutable`). An
   executable **script** (`#!` line) is as much a document as a program, so
-  it asks — *""X" is an executable script. Run it, or open it to view its
-  contents?"* — with **Run** / **Open** / **Cancel** buttons. A file whose
+  it asks — *""X" is an executable script."* with the file's path as the
+  fact, an [operation dialog](#the-operation-dialog) with **Run** (the
+  default) / **Open** / **Cancel** buttons. A file whose
   execute bit is set but whose content is neither (everything on a FAT
   mount, say) simply opens with its default application.
 
@@ -1815,8 +1848,9 @@ beside them:
   one consent prompt however many entries need it; a "Deleting as
   Administrator" progress window stands in for the wait, and the widget stays
   responsive because the helper is waited for off the UI thread. What the
-  helper still could not delete comes back in a **Cannot Delete** dialog with
-  the system's reason per entry; a declined prompt is reported through
+  helper still could not delete comes back in the [summary](#the-summary-at-the-end)
+  (*Delete finished*) with the system's reason beside each entry; a declined
+  prompt is reported through
   `onError` and leaves the entries in place. Sharing violations ("in use by
   another program") are not permission failures and keep the plain dialog,
   as does a process that already runs as administrator — asking again cannot
@@ -1961,9 +1995,10 @@ An archive that is **extracted only in part** - entries VirtualFS refused
 because they would have been written outside the destination (`../x`, an
 absolute path, a hard link climbing out), or entries it could not write (a
 file through a symbolic link the archive created) - opens an **Extraction
-Incomplete** dialog: *Not everything in "Download.zip" was extracted. The rest
-of the archive was unpacked.*, then each kind of problem with the entries it
-held back, one per line. The status line (`onError`) gets one sentence saying
+incomplete** [summary](#the-summary-at-the-end): *Not everything in
+"Download.zip" was extracted. The rest of the archive was unpacked.*, the
+archive's path, and the entries it held back in a list with the kind of
+problem beside each. The status line (`onError`) gets one sentence saying
 the archive was extracted only in part. An archive that could not be extracted
 at all still reports `Extraction failed for <archive>` there, now followed by
 the reason. The text comes from `UCVFSBridge::ExtractArchive`'s `outError`

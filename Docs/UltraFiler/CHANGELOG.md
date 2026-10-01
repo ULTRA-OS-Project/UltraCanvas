@@ -1,4 +1,4 @@
-#### 2026-10-01 *1.61.1*
+#### 2026-10-01 *1.62.1*
 - **Deleting the folder UltraFiler runs from no longer crashes it, and a
   file another program holds is no longer mistaken for a permissions
   problem.** Deleting the unpacked download the running UltraFiler had been
@@ -22,6 +22,20 @@
   button off the right edge; a dialog now widens to its footer row.
 - **A crash writes a dump.** `%LOCALAPPDATA%\UltraCanvas\CrashDumps\UltraFiler-<date>-<time>-<pid>.dmp`,
   named in the crash message box; attach it to the bug report.
+#### 2026-09-30 *1.62.0*
+- **The last four questions join the new dialog.** Renaming onto a name that
+  is taken shows both entries side by side and asks *Replace* (red) /
+  *Cancel*; an executable script's *Run* / *Open* / *Cancel* names the file;
+  an archive that was extracted only in part, and what an administrator delete
+  could not remove, end on the summary with the reason beside each entry.
+  **Eject RAM disc** asks the same way, *Eject* red and *Cancel* beside it,
+  instead of a Yes / No box. (Framework side: `Docs/UltraCanvas/CHANGELOG.md`
+  0.9.106.)
+#### 2026-09-30 *1.61.1*
+- **A dropped copy's question shows the file's size.** The confirmation a
+  Ctrl-drop (or a drop from another program) opens - *Copy* coloured, *Move*
+  beside it - names the size of a single file under *From* and *Into*, as the
+  move question already did for several entries.
 #### 2026-09-30 *1.61.0*
 - **A folder tree can be exported as CSV.** *Extras > Export > Folder tree
   as CSV* lists the folder and everything below it as a table - name, path,

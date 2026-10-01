@@ -87,8 +87,11 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.34.0
-// Last Modified: 2026-09-24
+// SetDetailsColumnVisible leaves Details columns out of the table.
+// SetEntryFilter narrows what the listing shows to the entries a host
+// predicate accepts - a file picker's "Files of type" filter.
+// Version: 1.35.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -709,6 +712,15 @@ namespace UltraCanvas {
         // reveals them like any hidden entry, and they count into
         // GetHiddenItemCount() / GetIgnoredItemCount(), so the notice above
         // offers them.
+        // Which entries the display lists at all: while set, a scanned entry
+        // the predicate answers false for is left out of the listing, in every
+        // folder and whatever SetShowHiddenFiles says - a file picker's
+        // "Files of type" filter, or a folder picker that lists folders only.
+        // Unlike the ignored names above this is not "hidden": nothing counts
+        // it into GetHiddenItemCount() and the notice never offers it. Setting
+        // or clearing it rescans the folder being shown.
+        void SetEntryFilter(std::function<bool(const FilerEntry&)> filter);
+
         void SetIgnoredNamePatterns(std::vector<std::string> patterns,
                                     const std::string& onlyInFolder = std::string());
         const std::vector<std::string>& GetIgnoredNamePatterns() const {
@@ -1180,6 +1192,11 @@ namespace UltraCanvas {
         void SetDetailsColumnWidth(FilerDetailsColumn column, int pixels);
         int  GetDetailsColumnWidth(FilerDetailsColumn column) const;
         void ResetDetailsColumnWidths();          // back to the built-in widths
+        // Leave a Details column out (Name always stays). A compact display -
+        // a file picker - shows Name, Size, Type and Modified so the name
+        // gets the width the others would take. All are shown by default.
+        void SetDetailsColumnVisible(FilerDetailsColumn column, bool visible);
+        bool IsDetailsColumnVisible(FilerDetailsColumn column) const;
 
         // List view column width (same value as FilerStyle::listColumnWidth).
         void SetListColumnWidth(int pixels);
@@ -1596,6 +1613,7 @@ namespace UltraCanvas {
         // centered action button of the "no matches" state (a real
         // UltraCanvasButton child, drawn by Render like the rename editor).
         std::string nameFilter;
+        std::function<bool(const FilerEntry&)> entryFilter;   // SetEntryFilter
         std::vector<FilerEntry> filterAllEntries;
         std::string filterEmptyLabel;
         std::function<void()> onFilterEmptyAction;
@@ -1783,6 +1801,7 @@ namespace UltraCanvas {
         // the other columns leave, so it always fills the table out to the
         // widget edge.
         std::vector<int> detailsColumnWidths;
+        uint32_t hiddenDetailsColumns = 0;   // bit per FilerDetailsColumn
 
         // BarSize columns: the name column on the left, the size label on the
         // right, the bar in between. 0 = auto for the value column (as wide as
