@@ -226,10 +226,11 @@ public:
     // carried out (two checkboxes there: moves, copies). A drag is the one
     // file operation that starts by accident - a press that wandered a few
     // pixels while the hand was on the way somewhere else - and it is done
-    // before it is seen, which is why the destructive half of it asks by
-    // default: moves. A move asked for with Cut and Paste asks under the
-    // same setting; a Ctrl+V copy never does.
-    FilerDropConfirmation dropConfirmation = FilerDropConfirmation::MoveOnly;
+    // before it is seen, which is why both halves of it ask by default. A
+    // move asked for with Cut and Paste asks under the same setting; a
+    // Ctrl+V copy never does. A config file written by an earlier release
+    // keeps the answer it saved.
+    FilerDropConfirmation dropConfirmation = FilerDropConfirmation::AlwaysConfirm;
 
     // ===== HANDLING > FILE OPERATIONS =====
     // The standing answers to the questions a copy, move or delete asks

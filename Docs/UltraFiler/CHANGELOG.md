@@ -1,3 +1,10 @@
+#### 2026-10-01 *1.62.1*
+- **A dropped copy asks by default too.** *Settings > Handling > File
+  operations > Ask before: Copying files by drag & drop* starts on, like the
+  checkbox for moves: a drag is the one file operation that starts by
+  accident, whichever verb it ends in, and the question offers the other verb
+  beside the one asked for. A config file written by an earlier release keeps
+  the answer it saved; a Ctrl+V copy still never asks.
 #### 2026-09-30 *1.62.0*
 - **The last four questions join the new dialog.** Renaming onto a name that
   is taken shows both entries side by side and asks *Replace* (red) /
