@@ -178,6 +178,28 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # alongside lib/ and share/ (see package-linux.sh).
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Every application runs from that directory, and GetResourcesDir()
+# (UltraCanvas/core/UltraCanvasConfig.cpp) looks for its resources at
+# <exe dir>/share/media, then <exe dir>/../share/media - the installed and
+# packaged layouts. Give the build tree the same share/, pointing at the
+# repository's media/ and Docs/, so an application started straight from the
+# build tree finds its icons, fonts, wallpaper and bundled documents without
+# an install step or a hand-made link. Links, not copies: media/ is over
+# 100 MB and a link follows edits to the sources. Only where a symlink is a
+# plain file operation; Windows and macOS lay Resources/ out differently
+# (SetResourcesDir) and get theirs from packaging.
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN
+   AND NOT CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
+    foreach(_uc_resource media Docs)
+        if(NOT EXISTS "${CMAKE_BINARY_DIR}/share/${_uc_resource}")
+            file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/share")
+            file(CREATE_LINK "${CMAKE_SOURCE_DIR}/${_uc_resource}"
+                 "${CMAKE_BINARY_DIR}/share/${_uc_resource}" SYMBOLIC)
+        endif()
+    endforeach()
+    unset(_uc_resource)
+endif()
+
 # ===== ANDROID DEFAULTS (phase 1: core library only) =====
 # Cache defaults only (no FORCE): -D on the command line still wins, so any of
 # these can be opted back in once its dependency exists in the NDK sysroot.
@@ -751,18 +773,9 @@ if(BUILD_DEMO_APP)
         ${ULTRACANVAS_LIBRARY}
     )
 
-    # The core library resolves fmt too, but its imported target is scoped to
-    # that directory — resolve again here (cheap) before falling back to a fetch.
-    if(NOT TARGET fmt::fmt)
-        find_package(fmt CONFIG QUIET)
-    endif()
-    if(NOT TARGET fmt::fmt)
-        FetchContent_Declare(
-                fmt
-                GIT_REPOSITORY https://github.com/fmtlib/fmt
-                GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
-        FetchContent_MakeAvailable(fmt)
-    endif()
+    # fmt::fmt is the core library's (UltraCanvas/CMakeLists.txt resolves it
+    # and makes it visible to every directory), the same target every other
+    # application links.
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
     # The message centre page (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp)

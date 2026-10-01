@@ -18,7 +18,9 @@ system.
   which the window title and `--version` print. The app does not move when
   the framework releases.
 - Build option: `BUILD_ULTRADESKTOP` (on by default); target and binary
-  `UltraDesktop`.
+  `UltraDesktop`. It runs straight from the build tree: configuring links
+  `build/share/media` to the repository's `media/`, where the bar icons and
+  the default wallpaper are found.
 
 ## Layout
 
