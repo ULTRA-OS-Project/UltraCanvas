@@ -26,6 +26,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::VectorStorage;
@@ -280,13 +281,13 @@ int main(int argc, char** argv) {
         // converter answers for the header it finds.
         const std::string bak = base + ".dwg_backup.bak";
         {
-            std::ofstream f(bak, std::ios::binary | std::ios::trunc);
+            std::ofstream f(UltraCanvas::PathFromUtf8(bak), std::ios::binary | std::ios::trunc);
             f << "AC1015";   // the version magic alone settles the question
         }
         Check(CanHandleGraphicsFile(bak), "a .bak holding a drawing is recognised");
         const std::string notBak = base + ".editor_backup.bak";
         {
-            std::ofstream f(notBak, std::ios::binary | std::ios::trunc);
+            std::ofstream f(UltraCanvas::PathFromUtf8(notBak), std::ios::binary | std::ios::trunc);
             f << "# somebody else's backup\n";
         }
         Check(!CanHandleGraphicsFile(notBak),

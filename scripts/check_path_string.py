@@ -37,9 +37,26 @@ What is reported:
 
           return std::filesystem::path(wpath);   // path-string-ok: wide
 
-What is NOT reported, and still wrong: a declaration `fs::path p(str);` and an
-implicit conversion `fs::exists(str)`. Neither is distinguishable from a
-correct use without the types, so review has to catch those.
+  path-implicit
+      A UTF-8 std::string handed straight to something that takes a path, so
+      the string is converted implicitly - through the code page:
+          fs::exists(str)  fs::remove(str, ec)  fs::directory_iterator(str)
+          std::ifstream f(str)  f.open(str)  fs::path p = str;
+      Use PathFromUtf8(str). The argument counts as a string when it is
+      `.c_str()`, a `+` concatenation with a literal or a string, or a name
+      whose nearest declaration above the use, in the same file, is a
+      std::string - the check has no types, so it reads the declarations. (PathFromUtf8 also takes a path, a C
+      string and a string_view, so wrapping is never wrong.)
+
+  fopen-narrow
+      `fopen(name, mode)` with anything but a literal: the narrow fopen reads
+      the name in the Windows code page. Use OpenFileUtf8(name, mode).
+
+What is still NOT reported: a string whose type the file does not spell out
+(an `auto`, a getter's return value) handed to a path parameter, and the
+declaration form `fs::path p(str);` with such a string. Review catches those.
+The two implicit kinds skip the Linux, macOS, Android, WASM and ULTRA OS
+platform folders, where a path's native string is the UTF-8 bytes.
 
 A site that is deliberately left alone says why and is skipped:
 
@@ -76,6 +93,8 @@ SEARCH_ROOTS = [
     "UltraAI",
     "UltraCloud",
     "VirtualFS",
+    "UltraNet",
+    "VideoFX",
     "Apps",
 ]
 # Tests/ is not scanned: the framework test suite builds on Linux only
@@ -84,7 +103,9 @@ SEARCH_ROOTS = [
 # added here and converted.
 SKIP_PARTS = {"third_party", "3rdparty", "build", "cmake-build-debug"}
 # The implementation of the rule itself.
-SKIP_NAMES = {"UltraCanvasPathUtf8.h"}
+SKIP_NAMES = {"UltraCanvasPathUtf8.h",
+              # Vendored single-header libraries.
+              "miniaudio.h", "qoi.h"}
 SOURCE_SUFFIXES = {".cpp", ".h", ".hpp", ".mm"}
 
 EXEMPT_RE = re.compile(r"//.*\bpath-string-ok\b\s*:?\s*(?P<reason>.*)")
@@ -92,6 +113,179 @@ EXEMPT_RE = re.compile(r"//.*\bpath-string-ok\b\s*:?\s*(?P<reason>.*)")
 TO_STRING_RE = re.compile(r"\.(?P<fn>string|generic_string)\s*\(\s*\)")
 FROM_STRING_RE = re.compile(
     r"(?<![\w:])(?P<fn>(?:fs|std::filesystem|filesystem)::path)\s*\(\s*(?!\))")
+
+# ---- path-implicit / fopen-narrow -------------------------------------------
+# Platform folders whose path is the UTF-8 bytes: implicit conversions there
+# are exact, so the two implicit kinds leave them alone.
+UTF8_NATIVE_OS = {"Linux", "MacOS", "Android", "WASM", "Wasm", "UltraOS"}
+FS_PATH_FUNCS = set("""exists is_directory is_regular_file is_symlink is_empty
+    file_size last_write_time remove remove_all create_directory
+    create_directories rename copy copy_file directory_iterator
+    recursive_directory_iterator status symlink_status canonical
+    weakly_canonical absolute space permissions resize_file equivalent
+    read_symlink hard_link_count create_symlink create_directory_symlink
+    create_hard_link relative proximate is_other is_fifo is_socket
+    is_block_file is_character_file""".split())
+FS_TWO_PATHS = {"copy", "copy_file", "rename", "create_symlink",
+                "create_directory_symlink", "create_hard_link", "equivalent",
+                "relative", "proximate"}
+STRING_DECL_RE = re.compile(
+    r"\b(?:const\s+)?(?:std::)?string\s*[&*]?\s*(\w+)\s*(?=[;=,\)\{\(\[])")
+PATH_DECL_RE = re.compile(
+    r"\b(?:std::filesystem|fs|filesystem)::path\s*[&*]?\s*(\w+)\s*(?=[;=,\)\{\(\[])")
+STREAM_DECL_RE = re.compile(r"\bstd::(?:i|o)?fstream\s+(\w+)")
+FS_CALL_RE = re.compile(
+    r"(?<![\w:])(?:std::filesystem|fs|filesystem)::(\w+)\s*(\w+\s*)?([\({])")
+STREAM_CTOR_RE = re.compile(r"\bstd::(?:i|o)?fstream\s*(\w+\s*)?([\({])")
+PATH_ASSIGN_RE = re.compile(
+    r"(?<![\w:])(?:std::filesystem|fs|filesystem)::path\s+\w+\s*=\s*([^;]+);")
+FOPEN_RE = re.compile(r"(?<![\w.>])(?:std::|::)?fopen\s*\(")
+ID_CHAIN_RE = re.compile(r"^[A-Za-z_]\w*(?:(?:\.|->)[A-Za-z_]\w*)*$")
+
+
+def _close_of(code: str, i: int) -> int:
+    """Index of the bracket closing the one at code[i], or -1."""
+    depth = 0
+    for j in range(i, len(code)):
+        if code[j] in "([{":
+            depth += 1
+        elif code[j] in ")]}":
+            depth -= 1
+            if depth == 0:
+                return j
+    return -1
+
+
+def _split_args(text: str) -> list[str]:
+    args, depth, cur = [], 0, ""
+    for c in text:
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        if c == "," and depth == 0:
+            args.append(cur)
+            cur = ""
+        else:
+            cur += c
+    args.append(cur)
+    return args
+
+
+def _top_level(text: str, ch: str) -> bool:
+    depth = 0
+    for c in text:
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        elif c == ch and depth == 0:
+            return True
+    return False
+
+
+class DeclaredTypes:
+    """Which names the file declares as std::string and which as a path, by
+    line. A name means whatever its nearest declaration above the use says:
+    `path` can be a std::string parameter in one function and an fs::path
+    member or local in the next, and only the nearer one is in scope."""
+
+    def __init__(self, text: str):
+        self.decls: dict[str, list[tuple[int, bool]]] = {}
+        starts = [0]
+        for m in re.finditer("\n", text):
+            starts.append(m.end())
+        import bisect
+        for rx, is_string in ((STRING_DECL_RE, True), (PATH_DECL_RE, False)):
+            for m in rx.finditer(text):
+                line = bisect.bisect_right(starts, m.start(1))
+                self.decls.setdefault(m.group(1), []).append((line, is_string))
+        for v in self.decls.values():
+            v.sort()
+        self.line = 0
+
+    def __contains__(self, name: str) -> bool:
+        best = None
+        for line, is_string in self.decls.get(name, ()):
+            if line > self.line:
+                break
+            best = is_string
+        if best is None:   # used above any declaration (a member, say)
+            kinds = {k for _, k in self.decls.get(name, ())}
+            return kinds == {True}
+        return best
+
+
+def _is_utf8_string(arg: str, strings, raw: str) -> bool:
+    """Whether `arg` (string literals blanked) is a narrow UTF-8 string.
+    `raw` is the same text with the literals kept, to tell L"" from ""."""
+    a = arg.strip()
+    if not a or "PathFromUtf8" in a or raw.strip().startswith(("L\"", "u8\"", "u\"", "U\"")):
+        return False
+    if a.endswith(".c_str()"):
+        return True
+    if ID_CHAIN_RE.match(a):
+        return re.split(r"\.|->", a)[-1] in strings
+    if a.startswith(("std::string(", "PathToUtf8(")):
+        return True
+    if _top_level(a, "+") and not _top_level(a, "/"):
+        for op in (o.strip() for o in a.split("+")):
+            if op.startswith('"'):
+                return True
+            if ID_CHAIN_RE.match(op) and re.split(r"\.|->", op)[-1] in strings:
+                return True
+    return False
+
+
+def implicit_findings(path: Path, number: int, code: str, raw: str,
+                      strings, streams: set[str]) -> list[Finding]:
+    found: list[Finding] = []
+
+    def check_args(open_at: int, which, what: str):
+        close = _close_of(code, open_at)
+        if close < 0:
+            return
+        args = _split_args(code[open_at + 1:close])
+        raws = _split_args(raw[open_at + 1:close]) if len(raw) == len(code) else args
+        for k in which(len(args)):
+            if _is_utf8_string(args[k], strings, raws[k] if k < len(raws) else args[k]):
+                found.append(Finding(
+                    path, number, "path-implicit",
+                    f"{what} takes a path, and a UTF-8 std::string converts to "
+                    f"one through the Windows code page - wrap it: "
+                    f"PathFromUtf8({args[k].strip()})",
+                    symbol=what))
+
+    for m in FS_CALL_RE.finditer(code):
+        fn, var = m.group(1), m.group(2)
+        if fn in FS_PATH_FUNCS and not var:
+            n = 2 if fn in FS_TWO_PATHS else 1
+            check_args(m.end() - 1, lambda c, n=n: range(min(c, n)), f"fs::{fn}")
+        elif fn in ("path", "directory_iterator", "recursive_directory_iterator") and var:
+            check_args(m.end() - 1, lambda c: range(min(c, 1)), f"fs::{fn}")
+    for m in STREAM_CTOR_RE.finditer(code):
+        check_args(m.end() - 1, lambda c: range(min(c, 1)), "fstream")
+    for name in streams:
+        for m in re.finditer(r"\b" + re.escape(name) + r"\s*(?:\.|->)\s*open\s*\(", code):
+            check_args(m.end() - 1, lambda c: range(min(c, 1)), "fstream::open")
+    m = PATH_ASSIGN_RE.search(code)
+    if m and _is_utf8_string(m.group(1), strings, m.group(1)):
+        found.append(Finding(
+            path, number, "path-implicit",
+            "fs::path = <UTF-8 std::string> converts through the Windows code "
+            "page - use PathFromUtf8", symbol="path="))
+    for m in FOPEN_RE.finditer(code):
+        close = _close_of(code, m.end() - 1)
+        if close < 0:
+            continue
+        args = _split_args(code[m.end():close])
+        if len(args) == 2 and not args[0].strip().startswith('"'):
+            found.append(Finding(
+                path, number, "fopen-narrow",
+                "fopen reads the name in the Windows code page - use "
+                "OpenFileUtf8(name, mode) (UltraCanvasPathUtf8.h)",
+                symbol="fopen"))
+    return found
 
 
 class Finding:
@@ -158,11 +352,15 @@ def check_file(path: Path) -> list[Finding]:
         return []
 
     findings: list[Finding] = []
+    implicit = not (UTF8_NATIVE_OS & set(path.parts))
+    strings = DeclaredTypes(text) if implicit else set()
+    streams = set(STREAM_DECL_RE.findall(text)) if implicit else set()
     in_block_comment = False
     for number, line in enumerate(text.splitlines(), start=1):
         if EXEMPT_RE.search(line):
             continue
         code = line
+        raw_line = line
         if in_block_comment:
             end = code.find("*/")
             if end < 0:
@@ -192,6 +390,13 @@ def check_file(path: Path) -> list[Finding]:
                 f"code page, not UTF-8 - use PathFromUtf8(s); if the argument "
                 f"is wide or char8_t, say so with `// path-string-ok: wide`",
                 symbol="path"))
+
+        if implicit:
+            strings.line = number
+            raw = raw_line.split("//", 1)[0]
+            findings.extend(implicit_findings(path, number, code, raw
+                                              if len(raw) == len(code) else code,
+                                              strings, streams))
 
     return findings
 

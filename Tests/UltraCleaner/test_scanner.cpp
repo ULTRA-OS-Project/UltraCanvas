@@ -9,6 +9,7 @@
 #include "UltraCleanerScanner.h"
 
 #include <filesystem>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCleaner;
 using ultracleaner_test::TempTree;
@@ -31,7 +32,7 @@ CleanRule ContentsRule(const std::string& root, int minAgeDays = 0) {
 void Backdate(const std::string& path, int days) {
     std::error_code ec;
     const auto now = std::filesystem::file_time_type::clock::now();
-    std::filesystem::last_write_time(path, now - std::chrono::hours(24 * days), ec);
+    std::filesystem::last_write_time(UltraCanvas::PathFromUtf8(path), now - std::chrono::hours(24 * days), ec);
 }
 
 } // namespace
@@ -131,8 +132,8 @@ TEST(ScannerFindsDanglingSymlinksOnly) {
     const std::string target = tree.File("links/real.txt", 5);
 
     std::error_code ec;
-    std::filesystem::create_symlink(target, root + "/good", ec);
-    std::filesystem::create_symlink(root + "/gone.txt", root + "/dangling", ec);
+    std::filesystem::create_symlink(UltraCanvas::PathFromUtf8(target), UltraCanvas::PathFromUtf8(root + "/good"), ec);
+    std::filesystem::create_symlink(UltraCanvas::PathFromUtf8(root + "/gone.txt"), UltraCanvas::PathFromUtf8(root + "/dangling"), ec);
     if (ec) return;   // no symlink support on this filesystem
 
     CleanRule rule;

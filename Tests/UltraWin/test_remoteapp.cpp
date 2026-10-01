@@ -21,6 +21,7 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace ultrawin_internal;
@@ -31,7 +32,7 @@ UltraWinConfig ScratchConfig() {
     static std::string root = [] {
         std::string r = fs::temp_directory_path() /
                         ("ultrawin-rail-" + std::to_string(getpid()));
-        fs::create_directories(r);
+        fs::create_directories(UltraCanvas::PathFromUtf8(r));
         return r;
     }();
     UltraWinConfig cfg;

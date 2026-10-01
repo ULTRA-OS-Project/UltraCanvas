@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::ModelConverter;
@@ -208,7 +209,7 @@ static void TestSamples(const std::string& mediaRoot) {
 
     size_t loaded = 0;
     for (const Sample& sample : Samples()) {
-        const std::filesystem::path path = std::filesystem::path(mediaRoot) / sample.RelativePath;
+        const std::filesystem::path path = UltraCanvas::PathFromUtf8(mediaRoot) / sample.RelativePath;
         if (!std::filesystem::exists(path)) {
             std::printf("  [FAIL] missing sample %s\n", path.string().c_str());
             ++failures;
@@ -240,7 +241,7 @@ static void TestSamples(const std::string& mediaRoot) {
     // covers the XML encoding; this covers the classic VRML one, which reaches
     // the same reader under a different extension entirely.
     {
-        const std::filesystem::path vrml = std::filesystem::path(mediaRoot) /
+        const std::filesystem::path vrml = UltraCanvas::PathFromUtf8(mediaRoot) /
                                            "VRML/E-45-Aircraft.wrl";
         ConversionOptions quiet;
         auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(vrml.string(), quiet);
@@ -254,7 +255,7 @@ static void TestSamples(const std::string& mediaRoot) {
     // layout nor an object model. Dispatch is by extension, so nothing but a
     // load proves the second one arrives anywhere.
     {
-        const std::filesystem::path ascii = std::filesystem::path(mediaRoot) /
+        const std::filesystem::path ascii = UltraCanvas::PathFromUtf8(mediaRoot) /
                                             "FBX/E-45-Aircraft-6.1-ascii.fbx";
         ConversionOptions quiet;
         auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(ascii.string(), quiet);
@@ -267,7 +268,7 @@ static void TestSamples(const std::string& mediaRoot) {
     // own check: the dispatch has to give back a document that is not empty
     // even though it has no mesh in it.
     {
-        const std::filesystem::path path = std::filesystem::path(mediaRoot) / "STEP/Box.step";
+        const std::filesystem::path path = UltraCanvas::PathFromUtf8(mediaRoot) / "STEP/Box.step";
         ConversionOptions quiet;
         auto exact = UltraCanvasModelFormatsPlugin::LoadModelDocument(path.string(), quiet);
         Check(exact != nullptr && exact->Meshes.empty() && !exact->Brep.Solids.empty(),
@@ -278,7 +279,7 @@ static void TestSamples(const std::string& mediaRoot) {
     // back — without the caller naming a converter at either end.
     std::printf("Converting between formats through the dispatch\n");
     const std::filesystem::path source =
-            std::filesystem::path(mediaRoot) / "3DS/E-45-Aircraft.3ds";
+            UltraCanvas::PathFromUtf8(mediaRoot) / "3DS/E-45-Aircraft.3ds";
     ConversionOptions quiet;
     auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(source.string(), quiet);
     Check(document != nullptr, "the 3DS sample loads");

@@ -29,6 +29,7 @@
 #include <fstream>
 #include <map>
 #include <sstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -606,7 +607,7 @@ FormatCapabilities DXFModelConverter::GetCapabilities() const {
 
 std::shared_ptr<ModelStorage::ModelDocument> DXFModelConverter::Import(
         const std::string& filename, const ConversionOptions& options) {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) {
         options.Warn("DXF: cannot read " + filename);
         return nullptr;
@@ -649,7 +650,7 @@ bool DXFModelConverter::ValidateData(const std::vector<uint8_t>& data) const {
 }
 
 bool DXFModelConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) return false;
     std::vector<uint8_t> head(4096);
     file.read(reinterpret_cast<char*>(head.data()), static_cast<std::streamsize>(head.size()));
@@ -658,7 +659,7 @@ bool DXFModelConverter::ValidateFile(const std::string& filename) const {
 }
 
 bool DXFModelConverter::HasThreeDimensionalGeometry(const std::string& filename) {
-    std::ifstream file(filename);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename));
     if (!file) return false;
     // Scan for an entity name this reader acts on, without building anything.
     // POLYLINE is only 3D when its flags say so, so it is checked properly by

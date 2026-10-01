@@ -97,7 +97,7 @@ void OnUiThread(std::function<void()> task) {
 bool EmailCleanerApp::Initialize(const std::string& dataDir,
                                  const std::string& mailDataDir) {
     std::error_code ec;
-    std::filesystem::create_directories(dataDir, ec);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dataDir), ec);
 
     const UltraDbResult opened = store_.Open("emailcleaner", dataDir + "/analysis.db");
     if (!opened) return false;
@@ -281,7 +281,7 @@ void EmailCleanerApp::ImportAccounts() {
     const std::string mailDb = mailDataDir_ + "/mail.db";
     int imported = 0;
 
-    if (std::filesystem::exists(mailDb, ec)) {
+    if (std::filesystem::exists(UltraCanvas::PathFromUtf8(mailDb), ec)) {
         UltraMail::LocalStore mailStore;
         if (mailStore.Open("emailcleaner-mailaccounts", mailDb)) {
             std::vector<UltraMail::Account> mailAccounts;

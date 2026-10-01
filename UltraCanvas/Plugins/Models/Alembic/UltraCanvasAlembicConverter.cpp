@@ -16,6 +16,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -472,7 +473,7 @@ std::shared_ptr<ModelDocument> AlembicConverter::ImportFromMemory(
 
 std::shared_ptr<ModelDocument> AlembicConverter::Import(const std::string& filename,
                                                         const ConversionOptions& options) {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) {
         options.Warn("Alembic: cannot open " + filename);
         return nullptr;
@@ -492,7 +493,7 @@ bool AlembicConverter::ValidateData(const std::vector<uint8_t>& data) const {
 }
 
 bool AlembicConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) return false;
     std::vector<uint8_t> head(32);
     file.read(reinterpret_cast<char*>(head.data()), static_cast<std::streamsize>(head.size()));

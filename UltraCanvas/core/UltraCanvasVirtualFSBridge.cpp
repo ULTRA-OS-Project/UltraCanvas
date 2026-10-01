@@ -14,6 +14,7 @@
 #include <cstring>
 #include <cstdio>
 #include <fstream>
+#include "UltraCanvasPathUtf8.h"
 
 // Compression libraries
 #ifdef VIRTUALFS_HAS_ZLIB
@@ -622,7 +623,7 @@ bool UltraCanvasVirtualFSBridge::ReadFromCHM(
             
             if (chmd->extract(chmd, file, tempPath.c_str()) == MSPACK_ERR_OK) {
                 // Read temp file
-                std::ifstream tempFile(tempPath, std::ios::binary | std::ios::ate);
+                std::ifstream tempFile(UltraCanvas::PathFromUtf8(tempPath), std::ios::binary | std::ios::ate);
                 if (tempFile) {
                     size_t size = tempFile.tellg();
                     tempFile.seekg(0);

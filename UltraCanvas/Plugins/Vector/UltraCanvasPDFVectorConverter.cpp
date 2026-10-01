@@ -31,6 +31,7 @@
 #include <map>
 #include <sstream>
 #include <variant>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace VectorConverter {
@@ -618,7 +619,7 @@ bool PDFVectorConverter::Export(
         const ConversionOptions& options) {
     std::string data = ExportToString(document, options);
     if (data.empty()) return false;
-    std::ofstream file(filename, std::ios::binary);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file.is_open()) {
         if (options.WarningCallback) {
             options.WarningCallback("Failed to create PDF file: " + filename);
@@ -650,7 +651,7 @@ bool PDFVectorConverter::ExportToStream(
 }
 
 bool PDFVectorConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file.is_open()) return false;
     char head[5] = {0};
     file.read(head, 5);

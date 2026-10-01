@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
@@ -337,13 +338,13 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
         // Only a regular file. A folder dropped on a drive is a recursive
         // copy, which this queue cannot report the progress of; saying so is
         // better than uploading the first file and going quiet.
-        if (std::filesystem::is_directory(argument, ec) && !ec) {
+        if (std::filesystem::is_directory(UltraCanvas::PathFromUtf8(argument), ec) && !ec) {
             error = "a folder cannot be uploaded from here, only files: " +
                     PathToUtf8(PathFromUtf8(argument).filename());
             return false;
         }
         ec.clear();
-        if (!std::filesystem::is_regular_file(argument, ec) || ec) {
+        if (!std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(argument), ec) || ec) {
             error = "not a file: " + argument;
             return false;
         }
@@ -444,11 +445,11 @@ bool UltraFilerRemoteDrives::Upload(const std::string& remoteFolder,
         return false;
     }
     std::error_code ec;
-    if (fs::is_directory(localFile, ec)) {
+    if (fs::is_directory(UltraCanvas::PathFromUtf8(localFile), ec)) {
         error = "folders cannot be uploaded - drop the files inside it";
         return false;
     }
-    if (!fs::is_regular_file(localFile, ec) || ec) {
+    if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(localFile), ec) || ec) {
         error = "cannot read " + localFile;
         return false;
     }
@@ -508,7 +509,7 @@ bool UltraFilerRemoteDrives::Download(const std::string& remoteFile,
         return false;
     }
     std::error_code ec;
-    if (!fs::is_directory(localFolder, ec) || ec) {
+    if (!fs::is_directory(UltraCanvas::PathFromUtf8(localFolder), ec) || ec) {
         error = "not a folder on this computer: " + localFolder;
         return false;
     }
@@ -591,7 +592,7 @@ void SweepPreviewCache(const std::string& directory) {
             DiskCache::kDefaultMaxAge);
     std::error_code ec;
     std::vector<fs::path> stale;
-    for (fs::directory_iterator it(directory, ec), end; it != end && !ec;
+    for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(directory), ec), end; it != end && !ec;
          it.increment(ec)) {
         std::error_code dec;
         if (!it->is_directory(dec) || dec) continue;
@@ -653,7 +654,7 @@ UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
     // Fetched before - in this run or an earlier one - and unchanged since,
     // since a change would have given it another folder.
     std::error_code ec;
-    if (fs::is_regular_file(target, ec) && !ec) {
+    if (fs::is_regular_file(UltraCanvas::PathFromUtf8(target), ec) && !ec) {
         DiskCache::Touch(targetPath);
         localPath = targetPath;
         return PreviewCopy::Ready;
@@ -973,13 +974,13 @@ void UltraFilerRemoteDrives::SaveDiskCache() {
     std::error_code ec;
     fs::create_directories(PathFromUtf8(target).parent_path(), ec);
     {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+        std::ofstream out(UltraCanvas::PathFromUtf8(temp), std::ios::binary | std::ios::trunc);
         if (!out) return;
         out << SerializeRemoteListings(listings);
-        if (!out) { out.close(); fs::remove(temp, ec); return; }
+        if (!out) { out.close(); fs::remove(UltraCanvas::PathFromUtf8(temp), ec); return; }
     }
-    fs::rename(temp, target, ec);
-    if (ec) fs::remove(temp, ec);
+    fs::rename(UltraCanvas::PathFromUtf8(temp), UltraCanvas::PathFromUtf8(target), ec);
+    if (ec) fs::remove(UltraCanvas::PathFromUtf8(temp), ec);
 }
 
 UltraCloud::CloudService* UltraFilerRemoteDrives::Service() {
@@ -1162,13 +1163,13 @@ void UltraFilerRemoteDrives::WorkerMain() {
             }
             std::error_code ec;
             if (previewError.empty()) {
-                fs::rename(job.argument, job.previewTarget, ec);
+                fs::rename(UltraCanvas::PathFromUtf8(job.argument), job.previewTarget, ec);
                 if (ec) previewError = "cannot store the preview: " + ec.message();
                 // Stamped now, whatever time the transfer gave the file, so
                 // the sweep counts its age from this look.
                 else DiskCache::Touch(job.previewTarget, std::chrono::seconds(0));
             }
-            if (!previewError.empty()) fs::remove(job.argument, ec);
+            if (!previewError.empty()) fs::remove(UltraCanvas::PathFromUtf8(job.argument), ec);
             {
                 std::lock_guard<std::mutex> lk(mutex_);
                 if (previewError.empty()) previews_.erase(job.path);

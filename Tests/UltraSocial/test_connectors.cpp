@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <fstream>
 #include <string>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraSocial;
 using ultrasocial_test::FakeHttpServer;
@@ -24,7 +25,7 @@ struct TempMedia {
     std::string path;
     explicit TempMedia(const std::string& name, const std::string& bytes = "PNGDATA") {
         path = name;
-        std::ofstream os(path, std::ios::binary);
+        std::ofstream os(UltraCanvas::PathFromUtf8(path), std::ios::binary);
         os << bytes;
     }
     ~TempMedia() { std::remove(path.c_str()); }

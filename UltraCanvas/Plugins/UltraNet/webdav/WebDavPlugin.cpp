@@ -39,6 +39,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace {
 
@@ -264,7 +265,7 @@ public:
     UltraNetResult Download(const std::string& url,
                             const std::string& localPath,
                             const UltraNetFileShareOptions& opt) override {
-        std::FILE* fp = std::fopen(localPath.c_str(), "wb");
+        std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "wb");
         if (!fp) return UltraNetResult::Error(
             UltraNetResultCode::AccessDenied, "cannot open local file");
         std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
@@ -284,7 +285,7 @@ public:
     UltraNetResult Upload(const std::string& localPath,
                           const std::string& url,
                           const UltraNetFileShareOptions& opt) override {
-        std::FILE* fp = std::fopen(localPath.c_str(), "rb");
+        std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "rb");
         if (!fp) return UltraNetResult::Error(
             UltraNetResultCode::NotFound, "cannot open local file");
         std::fseek(fp, 0, SEEK_END);

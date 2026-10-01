@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraFIBU {
 
@@ -98,7 +99,7 @@ bool EuSteuersatz::GueltigAm(const Date& datum) const {
 
 bool EuSteuersaetze::Laden(const std::string& dateipfad, std::string& fehler) {
     saetze_.clear();
-    std::FILE* datei = std::fopen(dateipfad.c_str(), "rb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(dateipfad, "rb");
     if (datei == nullptr) {
         fehler = "Die Datei \"" + dateipfad + "\" ist nicht lesbar.";
         return false;
@@ -494,7 +495,7 @@ OssDateiErgebnis SchreibeBopDatei(const OssBerechnung& berechnung,
         "_" + Zahl(berechnung.jahr) + "_" + berechnung.zeitraum + ".csv";
     const std::string pfad =
         zielVerzeichnis.empty() ? dateiname : zielVerzeichnis + "/" + dateiname;
-    std::FILE* datei = std::fopen(pfad.c_str(), "wb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(pfad, "wb");
     if (datei == nullptr) {
         ergebnis.fehler = "Die Datei \"" + pfad + "\" ist nicht schreibbar.";
         return ergebnis;

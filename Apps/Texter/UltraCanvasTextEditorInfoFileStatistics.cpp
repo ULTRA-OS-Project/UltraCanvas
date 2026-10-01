@@ -176,19 +176,19 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         row.modifiedStr = "—";
         row.location = "(not saved)";
 
-        if (!doc->filePath.empty() && std::filesystem::exists(doc->filePath)) {
-            std::filesystem::path p(doc->filePath);
+        if (!doc->filePath.empty() && std::filesystem::exists(UltraCanvas::PathFromUtf8(doc->filePath))) {
+            std::filesystem::path p(UltraCanvas::PathFromUtf8(doc->filePath));
             row.location = PathToUtf8(p.parent_path());
 
             std::error_code ec;
-            uintmax_t fileSize = std::filesystem::file_size(doc->filePath, ec);
+            uintmax_t fileSize = std::filesystem::file_size(UltraCanvas::PathFromUtf8(doc->filePath), ec);
             if (!ec) {
                 row.sizeBytes = fileSize;
                 row.sizeStr = FormatFileSize(fileSize);
                 totalBytes += fileSize;
             }
 
-            auto lastWriteTime = std::filesystem::last_write_time(doc->filePath, ec);
+            auto lastWriteTime = std::filesystem::last_write_time(UltraCanvas::PathFromUtf8(doc->filePath), ec);
             if (!ec) {
                 row.modifiedStr = FormatFileTime(lastWriteTime);
             }

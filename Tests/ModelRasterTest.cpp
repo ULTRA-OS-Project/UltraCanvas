@@ -34,6 +34,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 
@@ -492,7 +493,7 @@ int main() {
     TestWhatIsAModel();
     TestInspection(stlPath);
     TestFileToLayer(stlPath);
-    std::filesystem::remove(stlPath);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(stlPath));
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
                 failures, failures == 1 ? "" : "s");

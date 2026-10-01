@@ -42,6 +42,7 @@
 
 #include <sys/stat.h>
 #include <unistd.h>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace VirtualFS;
@@ -119,7 +120,7 @@ int main(int argc, char** argv) {
     fs::create_directories(work / "elsewhere");
     const std::string pid = std::to_string(getpid());
     const std::string absName = "/tmp/uc-zip-slip-abs-" + pid + ".txt";
-    fs::remove(absName, ec);
+    fs::remove(UltraCanvas::PathFromUtf8(absName), ec);
 
     std::printf("A hostile ZIP\n");
     {
@@ -210,7 +211,7 @@ int main(int argc, char** argv) {
         provider.Close();
     }
 
-    fs::remove(absName, ec);
+    fs::remove(UltraCanvas::PathFromUtf8(absName), ec);
     fs::remove_all(work, ec);
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
                 failures, failures == 1 ? "" : "s");

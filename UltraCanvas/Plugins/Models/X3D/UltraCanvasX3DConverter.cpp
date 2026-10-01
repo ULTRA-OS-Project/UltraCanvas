@@ -50,6 +50,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -2084,7 +2085,7 @@ bool BuildScene(const std::vector<uint8_t>& data, X3D::Scene& out,
 
 std::shared_ptr<ModelStorage::ModelDocument> X3DConverter::Import(
         const std::string& filename, const ConversionOptions& options) {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) {
         options.Warn("X3D: cannot open " + filename);
         return nullptr;
@@ -2124,7 +2125,7 @@ bool X3DConverter::ValidateData(const std::vector<uint8_t>& data) const {
 }
 
 bool X3DConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) return false;
     std::vector<char> head(4096);
     file.read(head.data(), static_cast<std::streamsize>(head.size()));
@@ -2640,7 +2641,7 @@ bool X3DConverter::ExportToStream(const ModelDocument& document, std::ostream& s
 
 bool X3DConverter::Export(const ModelDocument& document, const std::string& filename,
                           const ConversionOptions& options) {
-    std::ofstream file(filename);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filename));
     if (!file) {
         options.Warn("X3D: cannot write " + filename);
         return false;

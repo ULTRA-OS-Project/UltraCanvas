@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::ModelStorage;
@@ -216,7 +217,7 @@ static std::shared_ptr<ModelDocument> Load(const std::string& path, ConversionOp
 
 static void TestBox(const std::string& root) {
     std::printf("A hand-authored block\n");
-    const std::string path = (std::filesystem::path(root) / "Box.step").string();
+    const std::string path = (UltraCanvas::PathFromUtf8(root) / "Box.step").string();
 
     std::vector<std::string> warnings;
     ConversionOptions options;
@@ -265,7 +266,7 @@ static void TestBox(const std::string& root) {
 
 static void TestPin(const std::string& root) {
     std::printf("A cylindrical pin, in inches\n");
-    const std::string path = (std::filesystem::path(root) / "Pin.step").string();
+    const std::string path = (UltraCanvas::PathFromUtf8(root) / "Pin.step").string();
 
     ConversionOptions options;
     auto document = Load(path, options);
@@ -331,7 +332,7 @@ static void TestPin(const std::string& root) {
 
 static void TestNurbsSheet(const std::string& root) {
     std::printf("A rational NURBS sheet\n");
-    const std::string path = (std::filesystem::path(root) / "NurbsSheet.step").string();
+    const std::string path = (UltraCanvas::PathFromUtf8(root) / "NurbsSheet.step").string();
 
     ConversionOptions options;
     auto document = Load(path, options);
@@ -389,7 +390,7 @@ static void TestRoundTrip(const std::string& root) {
     StepConverter converter;
 
     for (const char* sample : {"Box.step", "Pin.step", "NurbsSheet.step"}) {
-        const std::string path = (std::filesystem::path(root) / sample).string();
+        const std::string path = (UltraCanvas::PathFromUtf8(root) / sample).string();
         ConversionOptions options;
         auto original = converter.Import(path, options);
         if (!original) { Check(false, std::string(sample) + " reads"); continue; }

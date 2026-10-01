@@ -32,6 +32,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::ModelConverter;
@@ -213,8 +214,8 @@ static void TestSamples(const std::string& mediaRoot) {
 
     for (const Sample& sample : samples) {
         const std::filesystem::path path =
-                std::filesystem::path(mediaRoot) / sample.RelativePath;
-        if (!std::filesystem::exists(path)) {
+                UltraCanvas::PathFromUtf8(mediaRoot) / sample.RelativePath;
+        if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(path))) {
             std::printf("  [SKIP] %s (sample not present)\n", sample.Extension);
             continue;
         }
@@ -234,7 +235,7 @@ static void TestSamples(const std::string& mediaRoot) {
     // STEP holds exact bodies and no mesh until something asks. The provider
     // asks - that is what TessellateOnImport is for - so a .step previews as
     // the solid it describes rather than as a blank tile.
-    const std::filesystem::path box = std::filesystem::path(mediaRoot) / "STEP/Box.step";
+    const std::filesystem::path box = UltraCanvas::PathFromUtf8(mediaRoot) / "STEP/Box.step";
     if (std::filesystem::exists(box)) {
         Mesh3D mesh;
         Check(LoadModelPreviewMesh(box.string(), mesh) && mesh.TriangleCount() > 0,
@@ -244,7 +245,7 @@ static void TestSamples(const std::string& mediaRoot) {
     // The cross-format figure this suite can pin without duplicating another:
     // the OBJ sample is the one every other suite measures at 8110 faces, and
     // a preview triangulates quads, so it must arrive as exactly twice that.
-    const std::filesystem::path obj = std::filesystem::path(mediaRoot) / "OBJ/E-45-Aircraft.obj";
+    const std::filesystem::path obj = UltraCanvas::PathFromUtf8(mediaRoot) / "OBJ/E-45-Aircraft.obj";
     if (std::filesystem::exists(obj)) {
         Mesh3D mesh;
         if (LoadModelPreviewMesh(obj.string(), mesh)) {

@@ -19,6 +19,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::Authenticator;
@@ -89,7 +90,7 @@ static void TestAddAndList() {
     Check(accounts[1].params.type == Otp::Type::Totp, "type is TOTP");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestNoSilentReplace() {
@@ -117,7 +118,7 @@ static void TestNoSilentReplace() {
           "re-added after explicit removal");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestCodeGeneration() {
@@ -155,7 +156,7 @@ static void TestCodeGeneration() {
     Check(missing.code == StoreResultCode::NotFound, "reported as NotFound");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestHotpCounterAdvances() {
@@ -189,7 +190,7 @@ static void TestHotpCounterAdvances() {
     Check(code == "969429", "counter survived the reopen (vector at counter 3)");
 
     reopened.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestTypeMismatch() {
@@ -216,7 +217,7 @@ static void TestTypeMismatch() {
           "HOTP advance refused for a TOTP account");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestRejectsBadUris() {
@@ -244,7 +245,7 @@ static void TestRejectsBadUris() {
     Check(store.Count() == 0, "nothing hostile was stored");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestSeedNeverOnDisk() {
@@ -258,7 +259,7 @@ static void TestSeedNeverOnDisk() {
           "account added");
     store.Close();
 
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     std::string bytes((std::istreambuf_iterator<char>(in)),
                       std::istreambuf_iterator<char>());
     Check(!bytes.empty(), "vault file is non-empty");
@@ -270,7 +271,7 @@ static void TestSeedNeverOnDisk() {
     Check(bytes.find("alice@example.com") == std::string::npos,
           "the account label does not appear in the file");
 
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestClosedStore() {
@@ -340,7 +341,7 @@ static void TestRenamePreservesSeed() {
           "the listing shows only the new key");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 // Renaming onto a name already in use would destroy that account's seed.
@@ -377,7 +378,7 @@ static void TestRenameRefusesCollision() {
     Check(store.GenerateTotp(keyB, 59, code, remaining), "second still generates");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 // Digits and period are what the app computes with; changing them must take
@@ -420,7 +421,7 @@ static void TestUpdateParameters() {
         Check(accounts[0].params.periodSeconds == 60, "period persisted");
         store.Close();
     }
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 // An edit that cannot be written back out must be refused before it is
@@ -456,7 +457,7 @@ static void TestUpdateRejectsBadParameters() {
     Check(store.Count() == 1, "still one account");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestChangePassword() {
@@ -490,7 +491,7 @@ static void TestChangePassword() {
               "the account survived the rekey");
         store.Close();
     }
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestReveal() {
@@ -532,7 +533,7 @@ static void TestReveal() {
     Check(params.accountName == "alice@example.com", "same account name");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 // ===========================================================================
@@ -587,7 +588,7 @@ static void TestLockAndUnlock() {
     Check(!store.IsLocked(), "a closed store is not 'locked' — it has no path");
     Check(store.Unlock(Buf("pw"), now).code == StoreResultCode::NotOpen,
           "Unlock after Close is refused: there is nothing to reopen");
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestUnlockThrottled() {
@@ -621,7 +622,7 @@ static void TestUnlockThrottled() {
     Check(store.SecondsUntilUnlockAllowed(now + 2) == 0, "delay cleared by success");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 static void TestAttach() {
@@ -662,7 +663,7 @@ static void TestAttach() {
     Check(store.List(accounts) && accounts.size() == 1, "the account is there");
 
     store.Close();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 int main() {

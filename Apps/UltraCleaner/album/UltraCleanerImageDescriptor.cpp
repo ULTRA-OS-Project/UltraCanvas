@@ -256,7 +256,7 @@ ImageDescriptor DescribeImage(const std::string& path) {
     descriptor.path = path;
 
     std::error_code ec;
-    const auto size = fs::file_size(path, ec);
+    const auto size = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
     descriptor.fileSize = ec ? 0 : static_cast<uint64_t>(size);
 
     auto header = UltraCanvas::UCImageRaster::Load(path, /*loadOnlyHeader=*/true);
