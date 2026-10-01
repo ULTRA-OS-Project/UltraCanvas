@@ -19,6 +19,7 @@ set(ULTRAMAIL_TEST_SOURCES
     test_richcomposer.cpp
     test_signature.cpp
     test_outbox.cpp
+    test_draftscopy.cpp
     test_scheduler.cpp
     test_oauth.cpp
     test_logincheck.cpp

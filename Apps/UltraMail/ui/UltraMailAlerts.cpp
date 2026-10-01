@@ -155,4 +155,21 @@ void AlertErrorRetry(UltraCanvasWindowBase* parent,
     UltraCanvasAlert::Show(opts);
 }
 
+void AlertWarningRetry(UltraCanvasWindowBase* parent,
+                       const std::string& summary, const std::string& detail,
+                       std::function<void()> onRetry) {
+    AlertOptions opts;
+    opts.severity      = AlertSeverity::Warning;
+    opts.message       = summary;
+    opts.details       = detail;
+    opts.title         = "UltraMail";
+    opts.parent        = parent;
+    opts.buttons       = DialogButtons::RetryCancel;
+    opts.defaultButton = DialogButton::Retry;
+    opts.onResult      = [onRetry](DialogResult r) {
+        if (r == DialogResult::Retry && onRetry) onRetry();
+    };
+    UltraCanvasAlert::Show(opts);
+}
+
 } // namespace UltraMail
