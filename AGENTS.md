@@ -482,6 +482,32 @@ Two rules about the second block, because it is the one that goes wrong:
   task's scope gets finished or explicitly reported as blocked; it does not
   become a recommendation.
 
+### The closing line
+
+The **last reply before the chat waits for the user** — every chat, whether
+or not code was written in it — ends with one line, after the three blocks:
+
+```
+Code needs to be PRed (N lines)
+```
+
+`N` is how many lines this checkout differs from the default branch:
+insertions plus deletions of the working tree against the merge base, plus
+every line of an untracked, non-ignored file — committed, uncommitted and
+untracked alike, because all of it still has to reach a pull request. Measure
+it, do not recall it:
+
+```
+git fetch origin main
+git diff --shortstat $(git merge-base origin/main HEAD)
+git ls-files -z --others --exclude-standard | xargs -0 -r cat | wc -l
+```
+
+Write `(0 lines)` when nothing differs — a missing line and a zero are not the
+same thing to a reader. When a pull request is already open for the branch,
+keep the line and add ` — open as PR #<n>` after it, so "needs to be PRed"
+is never read as "nobody has opened one" when someone has.
+
 `Next Task` and `Other recommendations` describe the repository, not the
 conversation. "Waiting for the test suite" belongs in `Next Task`; "the
 Alembic reader drops transforms" belongs in `Other recommendations` whether or

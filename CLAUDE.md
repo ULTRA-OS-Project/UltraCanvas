@@ -25,3 +25,7 @@ Quick pointers:
   3. **a pull request?** — its number and state, or the words "no pull
      request". Pushed is not in review, and the reader cannot tell the
      difference unless it is said.
+- The last reply before the chat waits for the user ends with the line
+  `Code needs to be PRed (N lines)` — `N` measured against the merge base
+  with `origin/main` (committed + uncommitted + untracked), `(0 lines)` when
+  nothing differs. See *The closing line* in `AGENTS.md`.
