@@ -1,3 +1,69 @@
+#### 2026-10-01 *0.9.115*
+- **`UltraCanvasBusyIndicator` comes in five kinds.** `BusyIndicatorStyle::kind`
+  (`BusyIndicatorKind`) picks `Ring` (the turning arc, still the default),
+  `DualRing` (two concentric arcs turning in opposite directions), `Dots` (a
+  row of dots swelling one after another), `Bar` (a segment sliding along a
+  track) or `Pulse` (a circle breathing in and out). New style fields
+  `dotCount` and `barFraction`; `thickness` is the bar height for `Bar`, and
+  `revolutionsPerSecond` is cycles per second for every kind. A second
+  `CreateBusyIndicator(id, x, y, w, h, kind)` overload builds one of a given
+  kind.
+- **DemoApp: a Busy Indicator page** (Basic UI). Every kind small, large and
+  in a second colour, a status-line row as an app uses one, and Start all /
+  Stop all / Show when stopped buttons.
+- **IODeviceManager's README documents printer status.** A new *Printer
+  Status* section shows `PrinterDevice::GetStatus()` and `GetSupplyLevels()`.
+  It says that both need an open session and return nothing otherwise, and
+  which backends report supply levels: CUPS, IPP and the Windows spooler
+  backend (through the driver) do, and a printer that reports none gives an
+  empty list rather than zero. DeviceExplorer 0.2.0 shows both for the
+  selected printer.
+- **CI runs the live IPP printer test.** `IODevicePrinterIPPLiveTest` prints
+  through the IPP backend to CUPS's reference printer, `ippeveprinter`, and
+  skipped wherever that program was missing - which included every CI run, so
+  the only test of the backend against a real IPP implementation never ran
+  there.
+  - The Linux rows now install `cups-ipp-utils` and `avahi-daemon`, and start
+    Avahi before the tests. `ippeveprinter` will not start without a DNS-SD
+    daemon, even with advertising off ("Unable to initialize DNS-SD"), and
+    the new step says so by name if Avahi cannot start. It also warns when
+    the runner has no IPv6 loopback, which `ippeveprinter` needs as well
+    ("Unable to create IPv6 listener").
+  - The test step sets `ULTRACANVAS_TEST_IPP_REQUIRED`. With it set, every
+    skip in the test becomes a failure, because in CI a skip looks like a
+    pass - the same reason `ULTRAFIBU_TEST_PG_REQUIRED` exists.
+  - `Gaps.md` now says what the test needs to run, including IPv6: a
+    container without it always skips.
+- **The Windows spooler backend reports ink and toner levels.**
+  `PrinterDevice::GetSupplyLevels()` (and the `supplies` in `GetStatus()`)
+  used to be empty on Windows, because the spooler has no supply-level API.
+  The backend now asks the printer's driver over its bidirectional channel:
+  `IBidiSpl` `GetAll` on `\Printer.Consumables`, which drivers with a status
+  monitor answer with each consumable's level, colour and type.
+  - A driver without bidi support, or a printer that does not answer, still
+    gives an empty list, never a made-up 0 %.
+  - A level outside 0–100 stays *not reported* (-1).
+  - The parsing is the new platform-neutral `IOSupplyLevelsFromBidi()`, tested
+    in `IODevicePrinterTest` on every platform. The COM call only runs on
+    Windows and is not yet verified against real hardware.
+- **…and when the driver says nothing, asks the printer over IPP.** A queue
+  that prints to a network address now gets its levels from the printer
+  itself (builds with UltraNet).
+  - The address comes from the queue's port: an IPP port's URL, or a
+    Standard TCP/IP port's host (from the port monitor, or a name such as
+    `IP_10.0.0.5`). It is tried at `/ipp/print`, `/ipp` and `/` on 631.
+  - A host that refuses the connection is not tried on its other paths. A
+    printer that does not answer is left alone for 60 s, because
+    `GetStatus()` and `GetSupplyLevels()` would otherwise each wait out the
+    5 s connect timeout.
+  - The guesses are the new `IppUrisForWindowsPort()`, tested in
+    `IODevicePrinterIPPTest`. The query is `Internal::QueryIppSupplyLevels()`,
+    now also what the IPP backend's own `GetSupplyLevels()` uses, and
+    `IODevicePrinterIPPLiveTest` checks it against `ippeveprinter`. That
+    includes the difference the fallback relies on: a wrong path on a live
+    host is not reported as unreachable.
+  - USB and WSD queues get the driver's answer only.
+
 #### 2026-10-01 *0.9.114*
 - **A picture whose thumbnail could not be made no longer shortens its row.**
   The thumbnail grid shortens a row of landscape pictures to the height they
