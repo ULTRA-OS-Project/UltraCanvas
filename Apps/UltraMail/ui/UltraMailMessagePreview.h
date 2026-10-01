@@ -131,7 +131,8 @@ private:
 
     // Fill (and show) the warning strip above the body, or hide it when the
     // message raised nothing.
-    void ShowSecurityWarning(const SenderStatus& status, const MessageSecurity& security);
+    void ShowSecurityWarning(const SenderStatus& status, const MessageSecurity& security,
+                             const std::string& raw);
 
     std::string          mailDir_;
     std::vector<Account> accounts_;

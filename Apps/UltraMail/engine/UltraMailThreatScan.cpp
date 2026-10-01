@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <regex>
 #include <set>
 
 namespace UltraMail {
@@ -190,6 +191,76 @@ const std::vector<std::string>& CredentialPhrases() {
         "verifizieren sie", "zahlung fehlgeschlagen",
     };
     return v;
+}
+
+// The advance-fee fraud ("Nigeria connection", 419 scam): a stranger offers
+// millions from a dead relative's estate, a dormant account or a contract,
+// and only needs the reader to pay the taxes or fees to release it. No single
+// phrase gives it away, so the rule counts the story's ingredients.
+const std::vector<std::string>& DeceasedPhrases() {
+    static const std::vector<std::string> v = {
+        "deceased", "late husband", "late wife", "late father", "late mother",
+        "late client", "next of kin", "inheritance", "inherit", "beneficiary",
+        "his estate", "her estate", "the estate of", "died in", "passed away",
+        "plane crash", "car accident", "unclaimed", "dormant account",
+        "no heir", "without a will", "verstorben", "erbschaft", "nachlass",
+    };
+    return v;
+}
+
+const std::vector<std::string>& FeePhrases() {
+    static const std::vector<std::string> v = {
+        "pay the tax", "pay the taxes", "taxes", "processing fee", "transfer fee",
+        "clearance fee", "release fee", "administrative fee", "legal fee",
+        "handling fee", "registration fee", "delivery fee", "stamp duty",
+        "small fee", "upfront", "advance payment", "western union", "moneygram",
+        "gift card", "bitcoin", "geb\xC3\xBChr", "steuern",
+    };
+    return v;
+}
+
+const std::vector<std::string>& AdvanceFeeStoryPhrases() {
+    static const std::vector<std::string> v = {
+        "nigeria", "lagos", "abuja", "ghana", "benin", "cote d'ivoire", "togo",
+        "barrister", "attorney at law", "central bank", "united nations",
+        "strictly confidential", "utmost confidentiality", "top secret",
+        "my share", "your share", "percent of the total", "% of the total",
+        "foreign partner", "trustworthy partner", "god bless", "dear friend",
+        "dear beloved", "compensation fund", "lottery", "you have won",
+        "consignment", "diplomat", "secure vault",
+    };
+    return v;
+}
+
+// A sum in the millions, as the scam writes it: "$12,500,000", "US$ 4.5
+// million", "10.5 million united states dollars", "USD 7,000,000". Returns the
+// phrase as found (for the reason), or "" when there is none.
+std::string LargeMoneySum(const std::string& textLower) {
+    static const std::regex digits(
+        R"((?:us\s?\$|\$|usd|eur|euro|€|£|gbp)\s?\d{1,3}(?:[,.' ]\d{3}){2,}(?:\.\d+)?)"
+        R"(|\d{1,3}(?:[,.' ]\d{3}){2,}(?:\.\d+)?\s?(?:us\s?dollars|usd|dollars|euros?|pounds|\$|€))");
+    static const std::regex words(
+        R"((?:(?:us\s?\$|\$|usd|eur|€|£)\s?)?\d+(?:[.,]\d+)?\s?(?:million|billion|m\b|mio)\s?)"
+        R"((?:(?:united states |us |u\.s\. |american )?dollars|usd|euros?|pounds|\(?\s?(?:us\s?\$|usd)\)?)?)");
+    std::smatch m;
+    if (std::regex_search(textLower, m, digits)) return m.str();
+    auto it = std::sregex_iterator(textLower.begin(), textLower.end(), words);
+    for (; it != std::sregex_iterator(); ++it) {
+        const std::string hit = it->str();
+        // "2 million" alone is a newspaper headline; with a currency it is an offer.
+        const bool currency = Contains(hit, "$") || Contains(hit, "usd") ||
+            Contains(hit, "dollar") || Contains(hit, "euro") || Contains(hit, "eur") ||
+            Contains(hit, "pound") || Contains(hit, "\xE2\x82\xAC") ||
+            Contains(hit, "\xC2\xA3");
+        if (currency) return Trim(hit);
+    }
+    return std::string();
+}
+
+const std::string* FirstPhraseIn(const std::string& textLower,
+                                 const std::vector<std::string>& phrases) {
+    for (const auto& p : phrases) if (Contains(textLower, p)) return &p;
+    return nullptr;
 }
 
 void Add(ThreatReport& r, int score, const char* code, const std::string& detail) {
@@ -493,6 +564,32 @@ ThreatReport ScanMessage(const ScanInput& input) {
         }
     }
 
+    // ---- Advance-fee fraud ("Nigeria connection" / 419) --------------------
+    {
+        const std::string story = Lower(input.subject) + "\n" + bodyLower;
+        const std::string sum = LargeMoneySum(story);
+        if (!sum.empty()) {
+            const std::string* deceased = FirstPhraseIn(story, DeceasedPhrases());
+            const std::string* fee      = FirstPhraseIn(story, FeePhrases());
+            const std::string* setting  = FirstPhraseIn(story, AdvanceFeeStoryPhrases());
+            const int parts = (deceased ? 1 : 0) + (fee ? 1 : 0) + (setting ? 1 : 0);
+            if (parts >= 1) {
+                std::string why = "The message promises a large sum of money (\"" + sum + "\")";
+                std::vector<std::string> extras;
+                if (deceased) extras.push_back("a dead relative, estate or inheritance (\"" + *deceased + "\")");
+                if (fee)      extras.push_back("taxes or fees to be paid first (\"" + *fee + "\")");
+                if (setting)  extras.push_back("\"" + *setting + "\"");
+                for (std::size_t i = 0; i < extras.size(); ++i)
+                    why += (i == 0 ? " and mentions " : (i + 1 == extras.size() ? " and " : ", ")) + extras[i];
+                why += ". That is the pattern of an advance-fee (\"Nigeria connection\") scam: "
+                       "the money never exists, the fees you pay are the theft.";
+                // Money plus one ingredient is worth a second look; money plus
+                // two (an estate *and* a fee, say) is the scam itself.
+                Add(report, parts >= 2 ? 50 : 25, "advance-fee-fraud", why);
+            }
+        }
+    }
+
     // ---- Reply-To pointing somewhere else ---------------------------------
     if (!input.replyTo.empty() && !senderReg.empty()) {
         const std::string replyReg = RegistrableDomain(DomainOfAddress(input.replyTo));
@@ -542,14 +639,14 @@ ThreatReport ScanMessage(const ScanInput& input) {
     return report;
 }
 
-ThreatReport ScanRawMessage(const std::string& rawMessage) {
-    ThreatReport empty;
-    if (rawMessage.empty()) return empty;
+namespace {
 
+// The scan's view of a raw RFC 5322 message; false when it does not parse.
+bool BuildScanInput(const std::string& rawMessage, ScanInput& in) {
+    if (rawMessage.empty()) return false;
     UltraNetMimeMessage msg;
-    if (!UltraNet_MimeParse(rawMessage, msg)) return empty;
+    if (!UltraNet_MimeParse(rawMessage, msg)) return false;
 
-    ScanInput in;
     in.subject         = msg.subject;
     in.fromName        = msg.from;
     in.fromAddr        = msg.from;
@@ -571,8 +668,57 @@ ThreatReport ScanRawMessage(const std::string& rawMessage) {
     std::vector<UltraNetMimeAttachmentView> atts;
     UltraNet_MimeCollectAttachments(msg, atts, /*includeInline=*/false);
     for (const auto& a : atts) in.attachmentNames.push_back(a.filename);
+    return true;
+}
 
+} // namespace
+
+ThreatReport ScanRawMessage(const std::string& rawMessage) {
+    ScanInput in;
+    if (!BuildScanInput(rawMessage, in)) return ThreatReport{};
     return ScanMessage(in);
+}
+
+DomainMismatch FindDomainMismatch(const ScanInput& input) {
+    DomainMismatch out;
+    const std::string senderDomain = DomainOfAddress(
+        input.fromAddr.empty() ? input.fromName : input.fromAddr);
+    const std::string senderReg = RegistrableDomain(senderDomain);
+    if (senderReg.empty()) return out;
+
+    const MessageLink* button   = nullptr;   // off-domain, with text
+    const MessageLink* footer   = nullptr;   // off-domain "unsubscribe" link
+    const MessageLink* bareLink = nullptr;   // off-domain, no text
+    const auto links = ExtractLinks(input.body, input.bodyIsHtml);   // outlives the picks
+    for (const auto& link : links) {
+        if (link.host.empty()) continue;
+        const std::string linkReg = RegistrableDomain(link.host);
+        if (linkReg.empty() || linkReg == senderReg) continue;
+        const std::string text = Trim(link.text);
+        if (text.empty()) {
+            if (!bareLink) bareLink = &link;
+        } else if (Contains(Lower(text), "unsubscribe")) {
+            if (!footer) footer = &link;
+        } else if (!button) {
+            button = &link;
+        }
+    }
+    if (!button) button = footer;
+    const MessageLink* pick = button ? button : bareLink;
+    if (!pick) return out;
+
+    out.found        = true;
+    out.senderDomain = senderDomain;
+    out.linkDomain   = pick->host;
+    out.linkText     = Trim(pick->text);
+    out.isButton     = button != nullptr;
+    return out;
+}
+
+DomainMismatch FindDomainMismatchInRaw(const std::string& rawMessage) {
+    ScanInput in;
+    if (!BuildScanInput(rawMessage, in)) return DomainMismatch{};
+    return FindDomainMismatch(in);
 }
 
 } // namespace UltraMail
