@@ -1,3 +1,15 @@
+#### 2026-10-01 *1.63.0*
+- **The export window chooses whether sizes and dates are shown.** Two
+  checkboxes along its bottom, **File size** and **Date**, add or drop the
+  size and modification date in all three exports - the listing's and the
+  CSV's columns, and the brackets behind a name in the tree
+  (`notes.txt  (1.2 KB, 2026-09-30 18:03)`). A change shows at once: the
+  text is written again from what was already read, without walking the
+  folder a second time. The tree starts with sizes only, the listing and the
+  CSV with both.
+- **The CSV export can mark paths as text.** Its window has a third
+  checkbox, **Add text marker**: ticked, every path starts with a `'`, which
+  a spreadsheet reads as "this is text" and shows the path as written.
 #### 2026-10-01 *1.62.1*
 - **Deleting the folder UltraFiler runs from no longer crashes it, and a
   file another program holds is no longer mistaken for a permissions
