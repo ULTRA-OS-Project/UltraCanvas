@@ -102,11 +102,16 @@ set(ULTRACANVAS_OCR_PLUGIN_TARGET ${PLUGIN_NAME} PARENT_SCOPE)
 set(ULTRACANVAS_OCR_PLUGIN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include PARENT_SCOPE)
 
 # ===== INSTALLATION =====
+# Part of the framework's package (UltraCanvas/CMakeLists.txt, INSTALLATION
+# AND THE CMAKE PACKAGE): imported as UltraCanvas::${PLUGIN_NAME} by
+# find_package(UltraCanvas). GNUInstallDirs is included here too because this
+# directory also configures standalone.
+include(GNUInstallDirs)
 install(TARGETS ${PLUGIN_NAME}
-    EXPORT UltraCanvasOCRPluginTargets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
+    EXPORT UltraCanvasTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/UltraCanvasOCRPlugin.h

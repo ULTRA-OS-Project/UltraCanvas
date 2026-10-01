@@ -53,8 +53,9 @@ before adding cross-module code.
   helpers where they exist:
 
   ```cpp
-  auto button = CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me");
-  // equivalent: std::make_shared<UltraCanvasButton>("MyButton", 101, 100, 50, 120, 40, "Click Me")
+  auto button = CreateButton("MyButton", 100, 50, 120, 40, "Click Me");   // identifier, x, y, w, h, text
+  // equivalent: std::make_shared<UltraCanvasButton>("MyButton", 100, 50, 120, 40, "Click Me")
+  // There is no numeric id argument on any element factory or constructor.
   ```
 
 - **Never hand-roll a UI element** — see
