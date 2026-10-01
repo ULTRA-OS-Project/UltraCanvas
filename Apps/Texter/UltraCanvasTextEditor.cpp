@@ -1,6 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.3.1 - Search match counting in one pass
+// Version: 2.3.2 - Live search starts at two characters
 // Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
@@ -5408,14 +5408,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         };
 
         // ── Search text changed (handles clearing) ──
+        // Below MinLiveSearchChars no live search runs, so the highlights of the
+        // longer term the user is deleting back from must not stay up.
         searchBar->onSearchTextChanged = [this](const std::string& text) {
-            if (text.empty()) {
+            if (!UltraCanvasSearchBar::IsLiveSearchText(text)) {
                 CancelAsyncMatchCount();
                 auto doc = GetActiveDocument();
                 if (doc && !doc->IsRichDocument() && doc->textArea) {
                     doc->textArea->ClearHighlights();
                 }
-                searchBar->UpdateMatchCount(0, 0);
+                if (searchBar) searchBar->ClearMatchCount();
             }
         };
 

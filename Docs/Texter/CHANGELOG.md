@@ -6,6 +6,11 @@
   matches are now found in a single pass. **Replace All** had the same problem
   on a large file and is fixed the same way. See
   `Docs/UltraCanvas/changelog.d/search-highlight-quadratic.md`.
+- **Search as you type starts at two characters.** A single letter matches
+  most of a document, so the search bar now waits for a second one before it
+  searches and highlights; deleting back below two clears the highlights and
+  the count. Enter, Find Next and Find Previous still search for a single
+  character.
 
 #### 2026-09-30 *1.55*
 - **Printing a word-processing tab (.docx, .odt, .doc) printed a blank page.**
