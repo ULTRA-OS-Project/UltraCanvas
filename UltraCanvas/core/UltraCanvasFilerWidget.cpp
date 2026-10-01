@@ -2334,6 +2334,7 @@ namespace UltraCanvas {
             added.push_back(std::move(e));
         }
         fileListPaths.insert(fileListPaths.end(), paths.begin(), paths.end());
+        ApplyFileTypeFilter(added);
         if (added.empty()) return;
 
         // The selection is held by index, and the sort below moves the
@@ -2410,6 +2411,85 @@ namespace UltraCanvas {
         // whatever its file is called.
         return matches(e.name) ||
                (!e.linkDisplayName.empty() && matches(e.linkDisplayName));
+    }
+
+    // ===== FILE TYPE FILTER (load / save dialogs) =====
+
+    namespace {
+        // "*.PNG", ".png" and "png" all name the same type; FilerEntry keeps
+        // its extension lowercase without the dot, so the wanted list is
+        // normalised to that form once, when it is set.
+        std::string NormalizeFilterExtension(std::string ext) {
+            while (!ext.empty() && (ext.front() == '*' || ext.front() == '.'))
+                ext.erase(ext.begin());
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            return ext;
+        }
+    }
+
+    void UltraCanvasFilerWidget::SetFileTypeFilter(const std::vector<std::string>& extensions,
+                                                   FilerTypeFilterMode mode) {
+        std::vector<std::string> wanted;
+        for (const std::string& raw : extensions) {
+            std::string ext = NormalizeFilterExtension(raw);
+            // "*" (or "*.*", which normalises to "") is "every file": a
+            // dialog's "All files" entry, and the end of the filter.
+            if (ext.empty()) { wanted.clear(); break; }
+            if (std::find(wanted.begin(), wanted.end(), ext) == wanted.end())
+                wanted.push_back(ext);
+        }
+        if (wanted == fileTypeExtensions && mode == fileTypeFilterMode) return;
+        fileTypeExtensions = std::move(wanted);
+        fileTypeFilterMode = mode;
+        // The listing is re-derived from disk: a Hide filter dropped entries
+        // the display no longer holds, and the prefetch cache serves a
+        // navigation only, so this is one scan per filter change - a
+        // dropdown pick, not a keystroke.
+        if (!currentPath.empty() || fileListMode) Refresh();
+        else RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetFileTypeFilterMode(FilerTypeFilterMode mode) {
+        SetFileTypeFilter(fileTypeExtensions, mode);
+    }
+
+    void UltraCanvasFilerWidget::SetDimmedEntryOpacity(double opacity) {
+        opacity = std::max(0.0, std::min(1.0, opacity));
+        if (opacity == dimmedEntryOpacity) return;
+        dimmedEntryOpacity = opacity;
+        RequestRedraw();
+    }
+
+    bool UltraCanvasFilerWidget::EntryPassesFileTypeFilter(const FilerEntry& e) const {
+        if (fileTypeExtensions.empty() || e.isDirectory) return true;
+        // A shortcut to a folder is a way to the files, like the folder is.
+        if (e.isShortcut && !e.linkTarget.empty()) {
+            std::error_code lec;
+            if (fs::is_directory(PathFromUtf8(e.linkTarget), lec) && !lec) return true;
+        }
+        return std::find(fileTypeExtensions.begin(), fileTypeExtensions.end(),
+                         e.extension) != fileTypeExtensions.end();
+    }
+
+    bool UltraCanvasFilerWidget::IsDimmedEntry(const FilerEntry& e) const {
+        return fileTypeFilterMode == FilerTypeFilterMode::ShowDimmed &&
+               !EntryPassesFileTypeFilter(e);
+    }
+
+    void UltraCanvasFilerWidget::ApplyFileTypeFilter(std::vector<FilerEntry>& list) {
+        if (fileTypeExtensions.empty()) return;
+        if (fileTypeFilterMode == FilerTypeFilterMode::ShowDimmed) {
+            for (const FilerEntry& e : list)
+                if (!EntryPassesFileTypeFilter(e)) ++typeFilteredCount;
+            return;
+        }
+        auto dropped = std::remove_if(list.begin(), list.end(),
+                                      [this](const FilerEntry& e) {
+                                          return !EntryPassesFileTypeFilter(e);
+                                      });
+        typeFilteredCount += static_cast<int>(std::distance(dropped, list.end()));
+        list.erase(dropped, list.end());
     }
 
     void UltraCanvasFilerWidget::ApplyNameFilterToEntries() {
@@ -3507,6 +3587,13 @@ namespace UltraCanvas {
         ignoredItemCount = showHiddenFiles ? 0 : ignored;
 
         for (FilerEntry& e : entries) DecorateEntry(e);
+
+        // A file type filter (a dialog's "Images (*.png, *.jpg)") goes first:
+        // the listing the name filter keeps beside itself must never hold a
+        // file the type filter hid, or widening the name filter would bring
+        // it back.
+        typeFilteredCount = 0;
+        ApplyFileTypeFilter(entries);
 
         // A live name filter narrows the listing; the full scan is kept so
         // the filter can be widened or dropped without another disk scan.
@@ -9839,6 +9926,11 @@ namespace UltraCanvas {
                 // Render.
                 DrawEmptyState(ctx, bounds,
                                "No matches for \"" + nameFilter + "\"");
+            } else if (typeFilteredCount > 0 &&
+                       fileTypeFilterMode == FilerTypeFilterMode::Hide) {
+                // The folder has files, just none of the type the host asked
+                // for - "Folder is empty!" would send the user elsewhere.
+                DrawEmptyState(ctx, bounds, "No files of the chosen type");
             } else if (!listingPendingStatus.empty()) {
                 // A remote folder still on its way: what is happening, under
                 // a turning ring - not "empty", which it may well not be.
@@ -9878,6 +9970,16 @@ namespace UltraCanvas {
             if (top + item.rect.height < bounds.y || top > bounds.y + bounds.height) continue;
             if (left + item.rect.width < bounds.x || left > bounds.x + bounds.width) continue;
             bool hov = (static_cast<int>(item.entryIndex) == hoveredIndex);
+            // A file the type filter does not ask for (ShowDimmed) is drawn
+            // greyed out as a whole - name, columns, icon or thumbnail, the
+            // badges on it - through the context's global alpha, the way a
+            // disabled button fades its icon. Hidden-mode filtering never
+            // gets here: those entries are not in the listing.
+            const bool dimmed = IsDimmedEntry(entries[item.entryIndex]);
+            if (dimmed) {
+                ctx->PushState();
+                ctx->SetAlpha(dimmedEntryOpacity);
+            }
             switch (viewType) {
                 case FilerViewType::Details: DrawDetailsRow(ctx, item, hov); break;
                 case FilerViewType::List:    DrawListItem(ctx, item, hov); break;
@@ -9885,6 +9987,7 @@ namespace UltraCanvas {
                 case FilerViewType::TreeMap: DrawTreeMapCell(ctx, item, hov); break;
                 default:                     DrawThumbnailTile(ctx, item, hov); break;
             }
+            if (dimmed) ctx->PopState();
             // Ghost entries that are pending a "cut": wash the tile toward the
             // background so it reads as dimmed until the move is pasted.
             if (IsCutEntry(entries[item.entryIndex])) {
@@ -14071,6 +14174,11 @@ namespace UltraCanvas {
                 return;
             }
         }
+        // A file the type filter dims is on display, not on offer: the user
+        // can see it is there, and opening it does nothing, as a disabled
+        // control does nothing. (Folders and archives entered above, filter
+        // or not; a Hide filter never lists such a file in the first place.)
+        if (!EntryPassesFileTypeFilter(e)) return;
         if (onFileActivated) {
             onFileActivated(e);
             return;
