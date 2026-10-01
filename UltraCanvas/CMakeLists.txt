@@ -187,7 +187,16 @@ endif()
 # (works offline); fall back to fetching the pinned revision.
 if(NOT TARGET fmt::fmt)
     find_package(fmt CONFIG QUIET)
-    if(NOT fmt_FOUND)
+    if(fmt_FOUND)
+        # find_package makes an imported target that only this directory and
+        # its children can see, and the applications are sibling scopes: Texter,
+        # UltraFiler and UltraViewer are added from the top level, the others
+        # from Apps/. Promote it, or a build with BUILD_DEMO_APP=OFF - the
+        # demo's own FetchContent used to supply a global target by accident -
+        # stops at generate time with "links to fmt::fmt but the target was
+        # not found". The fetched fallback below is global on its own.
+        set_target_properties(fmt::fmt PROPERTIES IMPORTED_GLOBAL TRUE)
+    else()
         include(FetchContent)
         FetchContent_Declare(
                 fmt

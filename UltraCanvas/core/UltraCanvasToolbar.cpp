@@ -1,6 +1,6 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
-// Version: 1.5.0
+// Version: 1.6.0
 // Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
@@ -129,7 +129,15 @@ namespace UltraCanvas {
             ApplyOverflowToChild(std::static_pointer_cast<UltraCanvasUIElement>(c));
         }
         HandleOverflow();
+        UpdatePointerFilter();
         InvalidateLayout();
+    }
+
+    void UltraCanvasToolbar::SetScrollHints(bool show) {
+        if (scrollHints == show) return;
+        scrollHints = show;
+        UpdatePointerFilter();
+        RequestRedraw();
     }
 
     void UltraCanvasToolbar::ApplyOverflowToChild(const std::shared_ptr<UltraCanvasUIElement>& child) {
@@ -539,6 +547,11 @@ namespace UltraCanvas {
         // Use base class rendering for background and border
         UltraCanvasContainer::Render(ctx, dirtyRect);
 
+        // Where the items run past an edge, say so over that edge.
+        if (overflowMode == ToolbarOverflowMode::Scroll) {
+            RenderScrollHints(ctx);
+        }
+
         // Render dock magnification effect if enabled
         if (toolbarAppearance.enableMagnification && hoveredItemIndex >= 0) {
             RenderDockMagnification(ctx);
@@ -624,44 +637,144 @@ namespace UltraCanvas {
         if (enable) {
             SetDragMode(toolbarDragMode == ToolbarDragMode::Movable
                         ? ToolbarDragMode::Both : ToolbarDragMode::ReorderItems);
-            InstallReorderFilter();
         } else {
             if (toolbarDragMode == ToolbarDragMode::ReorderItems) {
                 SetDragMode(ToolbarDragMode::DragNone);
             } else if (toolbarDragMode == ToolbarDragMode::Both) {
                 SetDragMode(ToolbarDragMode::Movable);
             }
-            RemoveReorderFilter();
+            reorderCandidate = -1;
+            reorderActive = false;
         }
+        UpdatePointerFilter();
     }
 
     void UltraCanvasToolbar::SetWindow(UltraCanvasWindowBase* win) {
-        if (win != GetWindow()) RemoveReorderFilter();
+        if (win != GetWindow() && pointerFilterInstalled) {
+            if (auto* old = GetWindow()) old->UnInstallWindowEventFilter(PointerFilterId());
+            pointerFilterInstalled = false;
+            reorderCandidate = -1;
+            reorderActive = false;
+        }
         UltraCanvasContainer::SetWindow(win);
-        if (IsItemReorderingEnabled()) InstallReorderFilter();
+        UpdatePointerFilter();
     }
 
-    std::string UltraCanvasToolbar::ReorderFilterId() const {
+    std::string UltraCanvasToolbar::PointerFilterId() const {
         std::ostringstream id;
-        id << "toolbar.reorder." << GetIdentifier() << '.' << static_cast<const void*>(this);
+        id << "toolbar.pointer." << GetIdentifier() << '.' << static_cast<const void*>(this);
         return id.str();
     }
 
-    void UltraCanvasToolbar::InstallReorderFilter() {
-        auto* win = GetWindow();
-        if (!win || reorderFilterInstalled) return;
-        win->InstallEventFilter(ReorderFilterId(),
-                                [this](const UCEvent& e) { return HandleReorderEvent(e); },
-                                {UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::MouseUp});
-        reorderFilterInstalled = true;
+    bool UltraCanvasToolbar::NeedsPointerFilter() const {
+        return IsItemReorderingEnabled() ||
+               (overflowMode == ToolbarOverflowMode::Scroll && scrollHints);
     }
 
-    void UltraCanvasToolbar::RemoveReorderFilter() {
-        if (!reorderFilterInstalled) return;
-        if (auto* win = GetWindow()) win->UnInstallWindowEventFilter(ReorderFilterId());
-        reorderFilterInstalled = false;
-        reorderCandidate = -1;
-        reorderActive = false;
+    void UltraCanvasToolbar::UpdatePointerFilter() {
+        auto* win = GetWindow();
+        const bool needed = win && NeedsPointerFilter();
+        if (needed && !pointerFilterInstalled) {
+            win->InstallEventFilter(PointerFilterId(),
+                                    [this](const UCEvent& e) { return HandlePointerEvent(e); },
+                                    {UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::MouseUp});
+            pointerFilterInstalled = true;
+        } else if (!needed && pointerFilterInstalled) {
+            if (win) win->UnInstallWindowEventFilter(PointerFilterId());
+            pointerFilterInstalled = false;
+            reorderCandidate = -1;
+            reorderActive = false;
+        }
+    }
+
+    bool UltraCanvasToolbar::HandlePointerEvent(const UCEvent& event) {
+        return HandleScrollHintEvent(event) || HandleReorderEvent(event);
+    }
+
+// ===== SCROLL HINTS =====
+
+    bool UltraCanvasToolbar::ScrollHintsActive() const {
+        if (overflowMode != ToolbarOverflowMode::Scroll || !scrollHints) return false;
+        const auto& bar = (toolbarOrientation == ToolbarOrientation::Vertical)
+                ? verticalScrollbar : horizontalScrollbar;
+        return bar && bar->GetMaxScrollPosition() > 0;
+    }
+
+    int UltraCanvasToolbar::ScrollHintAtLocal(const Point2Df& local) const {
+        if (!ScrollHintsActive()) return 0;
+        const Rect2Df b = GetLocalBounds();
+        if (!b.Contains(local)) return 0;
+        const bool vertical = toolbarOrientation == ToolbarOrientation::Vertical;
+        const auto& bar = vertical ? verticalScrollbar : horizontalScrollbar;
+        const int pos = bar->GetScrollPosition();
+        const int max = bar->GetMaxScrollPosition();
+        const float along = vertical ? local.y - b.y : local.x - b.x;
+        const float length = vertical ? b.height : b.width;
+        if (pos > 0 && along < ScrollHintSize) return -1;
+        if (pos < max && along >= length - ScrollHintSize) return +1;
+        return 0;
+    }
+
+    bool UltraCanvasToolbar::HandleScrollHintEvent(const UCEvent& event) {
+        if (event.type != UCEventType::MouseDown || event.button != UCMouseButton::Left) return false;
+        if (!IsVisible() || reorderActive || !ScrollHintsActive()) return false;
+        const Point2Df local = MapToLocal(Point2Df(static_cast<float>(event.pointerWindow.x),
+                                                   static_cast<float>(event.pointerWindow.y)));
+        const int direction = ScrollHintAtLocal(local);
+        if (direction == 0) return false;
+        // A page: what is in view less the hint over its edge, so the item
+        // under the chevron is the first one shown after the step.
+        const bool vertical = toolbarOrientation == ToolbarOrientation::Vertical;
+        const Rect2Di content = GetContentArea();
+        const int page = std::max(1, static_cast<int>(
+                (vertical ? content.height : content.width) - ScrollHintSize));
+        if (vertical) ScrollByVertical(direction * page);
+        else          ScrollByHorizontal(direction * page);
+        RequestRedraw();
+        return true;   // the item under the chevron does not get the press
+    }
+
+    void UltraCanvasToolbar::RenderScrollHints(IRenderContext* ctx) {
+        if (!ctx || !ScrollHintsActive()) return;
+        const bool vertical = toolbarOrientation == ToolbarOrientation::Vertical;
+        const auto& bar = vertical ? verticalScrollbar : horizontalScrollbar;
+        const int pos = bar->GetScrollPosition();
+        const int max = bar->GetMaxScrollPosition();
+        const Rect2Df b = GetLocalBounds();
+        const double s = ScrollHintSize;
+
+        // The strip covers the clipped edge of the item under it in the
+        // toolbar's own colour; the triangle points the way the items go.
+        auto chevron = [&](const Rect2Dd& strip, int direction) {
+            ctx->SetFillPaint(toolbarAppearance.backgroundColor);
+            ctx->FillRectangle(strip);
+            const double cx = strip.x + strip.width / 2.0;
+            const double cy = strip.y + strip.height / 2.0;
+            const double half = 5.0, depth = 3.0;
+            ctx->ClearPath();
+            if (vertical) {
+                const double tip = cy + direction * depth, base = cy - direction * depth;
+                ctx->MoveTo(cx - half, base);
+                ctx->LineTo(cx, tip);
+                ctx->LineTo(cx + half, base);
+            } else {
+                const double tip = cx + direction * depth, base = cx - direction * depth;
+                ctx->MoveTo(base, cy - half);
+                ctx->LineTo(tip, cy);
+                ctx->LineTo(base, cy + half);
+            }
+            ctx->ClosePath();
+            ctx->SetFillPaint(toolbarAppearance.foregroundColor);
+            ctx->FillPathPreserve();
+            ctx->ClearPath();
+        };
+        if (vertical) {
+            if (pos > 0)   chevron(Rect2Dd(b.x, b.y, b.width, s), -1);
+            if (pos < max) chevron(Rect2Dd(b.x, b.y + b.height - s, b.width, s), +1);
+        } else {
+            if (pos > 0)   chevron(Rect2Dd(b.x, b.y, s, b.height), -1);
+            if (pos < max) chevron(Rect2Dd(b.x + b.width - s, b.y, s, b.height), +1);
+        }
     }
 
     int UltraCanvasToolbar::ItemIndexAtLocal(const Point2Df& local) const {

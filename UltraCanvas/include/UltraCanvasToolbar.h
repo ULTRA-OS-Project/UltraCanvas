@@ -12,9 +12,11 @@
 // which anchor an UltraCanvasBadge to the item. With EnableItemReordering
 // the user drags items into a new order and onItemReordered says which moved
 // where; with ToolbarOverflowMode::Scroll a toolbar whose items outgrow it
-// scrolls them with the mouse wheel instead of clipping them.
-// Version: 1.5.0
-// Last Modified: 2026-09-29
+// scrolls them with the mouse wheel instead of clipping them, and a chevron
+// at the edge the items continue past says so and scrolls a page when
+// clicked (SetScrollHints).
+// Version: 1.6.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -248,7 +250,18 @@ namespace UltraCanvas {
         int      reorderIndex     = -1;   // where that item currently sits
         bool     reorderActive    = false;
         Point2Di reorderStart;
-        bool     reorderFilterInstalled = false;
+
+        // Scroll hints (ToolbarOverflowMode::Scroll): a chevron drawn over
+        // the edge the items continue past, and a page scroll on a click
+        // there. Shown only while there is something to scroll to, so a
+        // toolbar whose items fit looks as it always did.
+        static constexpr float ScrollHintSize = 12.0f;
+        bool scrollHints = true;
+
+        // The window-level pointer watch serves both the reorder drag and the
+        // hint click: an item's button consumes a press before this container
+        // would see it, so both have to look before the target does.
+        bool pointerFilterInstalled = false;
 
         // Magnification (for dock-style toolbars)
         int hoveredItemIndex = -1;
@@ -271,6 +284,12 @@ namespace UltraCanvas {
         void SetToolbarPosition(ToolbarPosition pos);
         void SetAppearance(const ToolbarAppearance& app);
         void SetOverflowMode(ToolbarOverflowMode mode);
+        // In Scroll mode, draw a chevron at the edge the items continue past
+        // and scroll a page that way when it is clicked (on by default). The
+        // wheel scrolls either way; the hint is for seeing that there is
+        // more, and for pointers without a wheel.
+        void SetScrollHints(bool show);
+        bool ScrollHintsEnabled() const { return scrollHints; }
         void SetVisibility(ToolbarVisibility vis);
         void SetDragMode(ToolbarDragMode mode);
         // The toolbar's thickness - height when horizontal, width when
@@ -404,12 +423,19 @@ namespace UltraCanvas {
         void ApplyAppearanceToChildren();
         void CreateOverflowMenu();
         void UpdateOverflowButton();
-        // Reordering: the window-level watch and the item geometry it needs.
-        void InstallReorderFilter();
-        void RemoveReorderFilter();
-        std::string ReorderFilterId() const;
+        // The window-level pointer watch (reorder drag, hint click) and the
+        // geometry the two need.
+        bool NeedsPointerFilter() const;
+        void UpdatePointerFilter();
+        std::string PointerFilterId() const;
+        bool HandlePointerEvent(const UCEvent& event);
         bool HandleReorderEvent(const UCEvent& event);
         int  ItemIndexAtLocal(const Point2Df& local) const;
+        bool ScrollHintsActive() const;
+        // -1: the hint at the start edge, +1: at the end edge, 0: neither.
+        int  ScrollHintAtLocal(const Point2Df& local) const;
+        bool HandleScrollHintEvent(const UCEvent& event);
+        void RenderScrollHints(IRenderContext* ctx);
         bool IsItem(const CSSLayout::Element* child) const;
         void ApplyOverflowToChild(const std::shared_ptr<UltraCanvasUIElement>& child);
         // Badge placement.

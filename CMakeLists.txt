@@ -178,6 +178,44 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # alongside lib/ and share/ (see package-linux.sh).
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Every application runs from that directory, and GetResourcesDir()
+# (UltraCanvas/core/UltraCanvasConfig.cpp) looks for its resources in the
+# platform's packaged place first (exe/Resources/ on Windows, the bundle's
+# Contents/Resources/ on macOS) and then at <exe dir>/share/media and
+# <exe dir>/../share/media. Give the build tree that share/, pointing at the
+# repository's media/ and Docs/, so an application started straight from the
+# build tree finds its icons, fonts, wallpaper and bundled documents on every
+# desktop platform without an install step or a hand-made link. Links, not
+# copies: media/ is over 100 MB and a link follows edits to the sources. On
+# Windows a symbolic link needs Developer Mode or elevation, so a directory
+# junction (which needs neither) is the second try and a copy the last; a
+# copied share/ is left alone on later configures, so delete it to refresh.
+# Android gets its resources from the APK and Emscripten from the preload.
+if(NOT ANDROID AND NOT EMSCRIPTEN AND NOT CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
+    foreach(_uc_resource media Docs)
+        set(_uc_link "${CMAKE_BINARY_DIR}/share/${_uc_resource}")
+        set(_uc_target "${CMAKE_SOURCE_DIR}/${_uc_resource}")
+        if(NOT EXISTS "${_uc_link}")
+            file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/share")
+            file(CREATE_LINK "${_uc_target}" "${_uc_link}" RESULT _uc_linked SYMBOLIC)
+            if(WIN32 AND NOT _uc_linked EQUAL 0)
+                file(TO_NATIVE_PATH "${_uc_link}" _uc_link_native)
+                file(TO_NATIVE_PATH "${_uc_target}" _uc_target_native)
+                execute_process(COMMAND cmd /c mklink /J "${_uc_link_native}" "${_uc_target_native}"
+                                RESULT_VARIABLE _uc_linked OUTPUT_QUIET ERROR_QUIET)
+            endif()
+            if(NOT _uc_linked EQUAL 0)
+                message(STATUS "share/${_uc_resource}: no link possible here, copying the directory")
+                file(COPY "${_uc_target}" DESTINATION "${CMAKE_BINARY_DIR}/share")
+            endif()
+        endif()
+    endforeach()
+    unset(_uc_resource)
+    unset(_uc_link)
+    unset(_uc_target)
+    unset(_uc_linked)
+endif()
+
 # ===== ANDROID DEFAULTS (phase 1: core library only) =====
 # Cache defaults only (no FORCE): -D on the command line still wins, so any of
 # these can be opted back in once its dependency exists in the NDK sysroot.
@@ -752,18 +790,9 @@ if(BUILD_DEMO_APP)
         ${ULTRACANVAS_LIBRARY}
     )
 
-    # The core library resolves fmt too, but its imported target is scoped to
-    # that directory — resolve again here (cheap) before falling back to a fetch.
-    if(NOT TARGET fmt::fmt)
-        find_package(fmt CONFIG QUIET)
-    endif()
-    if(NOT TARGET fmt::fmt)
-        FetchContent_Declare(
-                fmt
-                GIT_REPOSITORY https://github.com/fmtlib/fmt
-                GIT_TAG        123913715afeb8a437e6388b4473fcc4753e1c9a) # 11.1.4
-        FetchContent_MakeAvailable(fmt)
-    endif()
+    # fmt::fmt is the core library's (UltraCanvas/CMakeLists.txt resolves it
+    # and makes it visible to every directory), the same target every other
+    # application links.
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
     # The message centre page (Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp)
