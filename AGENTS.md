@@ -507,6 +507,17 @@ same thing to a reader. When a pull request is already open for the branch,
 keep the line and add ` — open as PR #<n>` after it, so "needs to be PRed"
 is never read as "nobody has opened one" when someone has.
 
+**This one is checked too.** The same `Stop` hook,
+`.claude/hooks/check-delivery.sh`, measures `N` itself and reads the reply
+being finished (`last_assistant_message`, or the transcript's last assistant
+text on older Claude Code builds). A reply whose last non-blank line is not
+`Code needs to be PRed (N lines)` with the measured `N` is blocked once, with
+the line it found and the line it expected; surrounding backticks or bold and
+the ` — open as PR #<n>` suffix are accepted. The hook does not fetch, so it
+measures against `origin/main` as the clone last saw it — fetch before
+measuring and the two agree. The `SessionStart --brief` message states the
+rule and the current `N`.
+
 `Next Task` and `Other recommendations` describe the repository, not the
 conversation. "Waiting for the test suite" belongs in `Next Task`; "the
 Alembic reader drops transforms" belongs in `Other recommendations` whether or
