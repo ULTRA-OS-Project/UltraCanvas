@@ -3,8 +3,9 @@
 // boundaries, search, split and repair.
 // Version: 1.2.0
 // Last Modified: 2026-10-01
-// V1.2.0: utf8_find_all - every match in one linear pass, for search
-//   highlighting and match counting on large documents.
+// V1.2.0: utf8_find_all / utf8_replace_all - every match in one linear
+//   pass, for search highlighting, match counting and Replace All on large
+//   documents.
 // V1.1.0: byte-offset boundary helpers (utf8_align_boundary /
 //   utf8_prev_boundary / utf8_next_boundary / utf8_boundaries /
 //   utf8_bytes_for_chars) plus utf8_make_valid, for buffers that address text
@@ -158,6 +159,13 @@ namespace UltraCanvas {
     // hangs the UI on a large document with a common search term.
     std::vector<int> utf8_find_all(const std::string& haystack, const std::string& needle,
                                    bool caseSensitive = true);
+
+    // Replace every non-overlapping match of `needle` with `rep` - the matches
+    // utf8_find_all reports, so case-insensitive matching works as it does
+    // there. Builds the result in one pass; replacing in place one match at a
+    // time shifts the rest of the string on every match and is quadratic.
+    std::string utf8_replace_all(const std::string& haystack, const std::string& needle,
+                                 const std::string& rep, bool caseSensitive = true);
 
     // Reverse find. Returns codepoint position, or -1.
     int utf8_rfind(const std::string& haystack, const std::string& needle,

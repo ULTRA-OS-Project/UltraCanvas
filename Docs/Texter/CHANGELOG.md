@@ -3,7 +3,8 @@
   document open (the ~940 KB framework changelog, say), each keystroke in the
   search bar made the editor find the matches to highlight one at a time, each
   search starting again from the top of the file - and the app froze. All
-  matches are now found in a single pass. See
+  matches are now found in a single pass. **Replace All** had the same problem
+  on a large file and is fixed the same way. See
   `Docs/UltraCanvas/changelog.d/search-highlight-quadratic.md`.
 
 #### 2026-09-30 *1.55*

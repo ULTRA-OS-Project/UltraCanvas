@@ -97,6 +97,33 @@ namespace UltraCanvas {
         return result;
     }
 
+    // One pass: copy the text between matches, then the replacement.
+    std::string utf8_replace_all(const std::string& haystack, const std::string& needle,
+                                 const std::string& rep, bool caseSensitive) {
+        const std::vector<int> matches = utf8_find_all(haystack, needle, caseSensitive);
+        if (matches.empty()) return haystack;
+        const int needleCp = static_cast<int>(g_utf8_strlen(needle.c_str(), -1));
+        const char* base = haystack.c_str();
+        const char* end = base + haystack.size();
+        std::string result;
+        result.reserve(haystack.size());
+        // Match positions ascend, so the codepoint-to-pointer walk only ever
+        // moves forward from where the previous match ended.
+        const char* copied = base;
+        int copiedCp = 0;
+        for (int matchCp : matches) {
+            const char* matchStart = g_utf8_offset_to_pointer(copied, matchCp - copiedCp);
+            const char* matchEnd = g_utf8_offset_to_pointer(matchStart, needleCp);
+            if (matchEnd > end) matchEnd = end;
+            result.append(copied, matchStart);
+            result += rep;
+            copied = matchEnd;
+            copiedCp = matchCp + needleCp;
+        }
+        result.append(copied, end);
+        return result;
+    }
+
     // Reverse find. Returns codepoint position, or -1.
     int utf8_rfind(const std::string& haystack, const std::string& needle,
                         int maxCp, bool caseSensitive) {

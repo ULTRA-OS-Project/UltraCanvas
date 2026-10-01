@@ -10,3 +10,10 @@
   every non-overlapping match in one pass — the same positions the loop
   produced, in 17 ms for the whole file. `HighlightMatches`, `CountMatches`,
   `GetCurrentMatchIndex` and UltraTexter's background match counter use it.
+- **Replace All hung the text area on a large document.**
+  `UltraCanvasTextArea::ReplaceText(..., all = true)` replaced one match at a
+  time in place: a fresh `utf8_find` from the start of the text, then a splice
+  that shifts everything after it - 6 s for the first 100 KB of the framework
+  changelog with one letter replaced, and no end in sight for the whole file.
+  The new `utf8_replace_all` finds the matches once and builds the result in a
+  single pass (27 ms for the whole ~940 KB), with the same output as before.

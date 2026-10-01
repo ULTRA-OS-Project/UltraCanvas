@@ -2850,16 +2850,10 @@ namespace UltraCanvas {
         if (findText.empty()) return;
 
         SaveState();
-        int findLen = utf8_length(findText);
         int replaceLen = utf8_length(replaceText);
 
         if (all) {
-            int pos = 0;
-            while ((pos = utf8_find(textContent, findText, pos, lastSearchCaseSensitive)) >= 0) {
-                utf8_replace(textContent, pos, findLen, replaceText);
-                pos += replaceLen;
-            }
-            SetText(textContent);
+            SetText(utf8_replace_all(textContent, findText, replaceText, lastSearchCaseSensitive));
         } else {
             if (HasSelection()) {
                 std::string selected = GetSelectedText();
