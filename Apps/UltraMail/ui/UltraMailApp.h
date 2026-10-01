@@ -306,6 +306,14 @@ private:
     // message is kept (the Drafts folder and the outbox, or the outbox only).
     void ReportNotSent(const std::string& fromAddr, const std::string& recipients,
                        const UltraNetResult& why, const Outbox::FlushStats& stats);
+    // Automatic retry of the outbox: a light timer runs a silent pass when
+    // OutboxRetryClock says one is due (nothing else sending, the vault open).
+    void StartOutboxRetryTimer();
+    void AutoRetryOutbox();
+    // After a pass: the next automatic one is scheduled, or the retries end
+    // when nothing waits any more.
+    void NoteOutboxPass();
+    int OutboxPending() const;
     // The IMAP side of the Drafts copies for a send worker: the IMAP plug-in
     // (null without it) and, from a snapshot of the accounts taken here on the
     // UI thread, each account's server, Drafts folder and sign-in.
@@ -414,6 +422,8 @@ private:
     void ShowAccountStatus();
     // Outbox flushing (FlushOutboxInBackground).
     bool outboxFlushInFlight_ = false;
+    OutboxRetryClock outboxRetry_;          // when the outbox tries again by itself
+    bool outboxRetryTimerStarted_ = false;
     struct PendingFlush {
         std::shared_ptr<IUltraNetPlugin>                 plugin;
         std::function<void(const Outbox::FlushStats&)>   onDone;

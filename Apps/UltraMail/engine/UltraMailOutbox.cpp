@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailOutbox.cpp
+// Version: 0.5.0 - OutboxRetryClock
 // Version: 0.4.0 - a Drafts copy until the message is sent (migration 3: the
 //                  Message-ID, reply headers and Drafts folder of each message)
 // Version: 0.3.0 - keeps an HTML draft's text version and inline pictures
@@ -368,6 +369,28 @@ Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp, const OptionsResolve
         }
     }
     return stats;
+}
+
+int64_t OutboxRetryClock::DelayAfter(int failures) {
+    static const int64_t kLadder[] = { 60, 120, 300, 600 };
+    constexpr int64_t kSteady = 1800;
+    if (failures < 1) failures = 1;
+    const size_t step = static_cast<size_t>(failures - 1);
+    return step < sizeof(kLadder) / sizeof(kLadder[0]) ? kLadder[step] : kSteady;
+}
+
+void OutboxRetryClock::Failed(int64_t now) {
+    ++failures_;
+    nextAt_ = now + DelayAfter(failures_);
+}
+
+void OutboxRetryClock::Succeeded() {
+    failures_ = 0;
+    nextAt_ = 0;
+}
+
+void OutboxRetryClock::RetryAt(int64_t when) {
+    if (nextAt_ == 0 || when < nextAt_) nextAt_ = when;
 }
 
 } // namespace UltraMail

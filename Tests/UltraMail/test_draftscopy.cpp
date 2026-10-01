@@ -241,3 +241,40 @@ TEST(without_a_drafts_keeper_flush_works_as_before) {
     REQUIRE_EQ(stats.draftsSaved, 0);
     REQUIRE_EQ(Pending(store), 0);
 }
+
+TEST(the_outbox_retries_less_often_the_longer_it_fails) {
+    OutboxRetryClock clock;
+    REQUIRE(!clock.Scheduled());
+    REQUIRE(!clock.Due(1000));
+    clock.Failed(1000);
+    REQUIRE_EQ(clock.NextAt(), int64_t(1060));      // 1 minute
+    REQUIRE(!clock.Due(1059));
+    REQUIRE(clock.Due(1060));
+    clock.Failed(1060);
+    REQUIRE_EQ(clock.NextAt(), int64_t(1180));      // 2 minutes
+    clock.Failed(1180);
+    REQUIRE_EQ(clock.NextAt(), int64_t(1480));      // 5 minutes
+    clock.Failed(1480);
+    REQUIRE_EQ(clock.NextAt(), int64_t(2080));      // 10 minutes
+    clock.Failed(2080);
+    REQUIRE_EQ(clock.NextAt(), int64_t(3880));      // then every 30
+    clock.Failed(3880);
+    REQUIRE_EQ(clock.NextAt(), int64_t(5680));
+    REQUIRE_EQ(clock.Failures(), 6);
+}
+
+TEST(the_outbox_retries_soon_when_the_connection_is_back) {
+    OutboxRetryClock clock;
+    for (int i = 0; i < 6; ++i) clock.Failed(0);    // next pass 30 min out
+    REQUIRE_EQ(clock.NextAt(), int64_t(1800));
+    clock.RetryAt(10);                              // woke from sleep
+    REQUIRE(clock.Due(10));
+    clock.RetryAt(500);                             // never later than scheduled
+    REQUIRE_EQ(clock.NextAt(), int64_t(10));
+    REQUIRE_EQ(clock.Failures(), 6);                // the ladder is not reset
+    clock.Succeeded();
+    REQUIRE(!clock.Scheduled());
+    REQUIRE_EQ(clock.Failures(), 0);
+    clock.Failed(100);
+    REQUIRE_EQ(clock.NextAt(), int64_t(160));       // back to 1 minute
+}

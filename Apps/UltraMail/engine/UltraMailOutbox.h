@@ -6,6 +6,7 @@
 // While a message waits, a copy of it is kept in the account's Drafts folder
 // on the server (DraftsKeeper): it is there on every device until the message
 // has gone out, and is deleted from Drafts once it has.
+// Version: 0.6.0 - OutboxRetryClock: when the outbox tries again by itself
 // Version: 0.5.0 - a copy in the Drafts folder until the message is sent; the
 //                  message keeps its Message-ID and its reply headers
 // Version: 0.4.0 - Flush with per-account session options (credentials, username, TLS)
@@ -133,6 +134,37 @@ private:
     // Deletes the sent `item`'s copy from its folder (flags it \Deleted).
     void RemoveDraftCopy(const OutboxItem& item, const DraftsKeeper& drafts, FlushStats& stats);
     OutboxStore& store_;
+};
+
+// When the outbox tries again by itself, for messages a pass left unsent.
+// Each failed pass waits longer before the next - 1, 2, 5 and 10 minutes,
+// then every 30 - so a server that is down is not hammered and a short drop
+// in the connection is over quickly. A pass that sends everything ends the
+// retries; a reason to think the connection is back (a wake from sleep, a
+// mail check that reached the server, a start with messages waiting) makes
+// the next pass due soon, without forgetting how many have failed.
+// Times are seconds on any clock that only moves forward.
+class OutboxRetryClock {
+public:
+    // A pass left messages unsent at `now`: the next one is due later.
+    void Failed(int64_t now);
+    // Nothing waits any more (or the waiting messages were all sent).
+    void Succeeded();
+    // The connection is probably back: the next pass is due at `when`
+    // (sooner than scheduled, never later).
+    void RetryAt(int64_t when);
+    // A pass should run now: one is scheduled and its time has come.
+    bool Due(int64_t now) const { return nextAt_ > 0 && now >= nextAt_; }
+    bool Scheduled() const { return nextAt_ > 0; }
+    int64_t NextAt() const { return nextAt_; }   // 0 = none scheduled
+    int Failures() const { return failures_; }
+
+    // The wait after the n-th failed pass in a row (n >= 1), in seconds.
+    static int64_t DelayAfter(int failures);
+
+private:
+    int     failures_ = 0;
+    int64_t nextAt_ = 0;
 };
 
 } // namespace UltraMail

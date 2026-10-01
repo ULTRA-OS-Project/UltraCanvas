@@ -250,8 +250,9 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   *(Implemented in UltraMail 0.10.14: Send queues the message in the local
   outbox and closes the compose window; the send runs in the background, a
   copy waits in the account's Drafts folder until the message has gone out,
-  and a message not sent is reported with Retry. Autosave and undo-send are
-  still to come.)*
+  a message not sent is reported with Retry and is tried again by itself -
+  after 1, 2, 5 and 10 minutes, then every 30, and at once when the
+  connection is back. Autosave and undo-send are still to come.)*
 
 ### 3.2 Everyday comfort features (v1.0)
 

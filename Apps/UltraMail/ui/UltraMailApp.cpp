@@ -1,7 +1,8 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
 // Version: 0.9.14 - Send queues the message, closes the compose window and sends
 //                   in the background, keeping a copy in Drafts until it has
-//                   gone out; a message not sent is reported with Retry
+//                   gone out; a message not sent is reported with Retry and
+//                   tried again by itself (OutboxRetryClock)
 // Version: 0.9.13 - a compose window per message: each has its own view, so a
 //                   second one no longer takes over the first one's buttons
 // Version: 0.9.12 - a signature per account (Account Settings > Signature): put
@@ -220,6 +221,10 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // Register accounts for background sync (the live loop starts only when the
     // IMAP plug-in is present).
     StartBackgroundSync();
+    // Messages left in the outbox by an earlier run go out by themselves,
+    // shortly after start (once the window is up and the network had a moment).
+    StartOutboxRetryTimer();
+    if (OutboxPending() > 0) outboxRetry_.RetryAt(NowMonotonicSec() + 20);
 
     // Migration: an existing vault made with a master password (before device
     // keys) stays locked after Initialize's silent attempt. Prompt once now so
@@ -1294,12 +1299,14 @@ void UltraMailApp::SendQueued(const std::string& fromAddr, const std::string& re
         // Nothing can be sent now: keep the copy in Drafts all the same.
         FlushOutboxInBackground(nullptr,
             [this, fromAddr, recipients, cannotSend](const Outbox::FlushStats& stats) {
+                NoteOutboxPass();
                 ReportNotSent(fromAddr, recipients, cannotSend, stats);
             });
         return;
     }
     FlushOutboxInBackground(plugin,
         [this, parent, fromAddr, recipients](const Outbox::FlushStats& stats) {
+            NoteOutboxPass();
             if (stats.failed == 0) {
                 AlertSuccess(parent, recipients.empty()
                     ? "The outbox was sent (" + std::to_string(stats.sent) + " message"
@@ -1335,7 +1342,9 @@ void UltraMailApp::ReportNotSent(const std::string& fromAddr, const std::string&
         where += " It could not be saved to the Drafts folder: "
                + sentence(FriendlyMessage(stats.lastDraftFailure));
     const std::string detail = WithDiagnostics(
-        sentence(FriendlyMessage(why)) + "\n\n" + where + "\n\nChoose Retry to send it again.",
+        sentence(FriendlyMessage(why)) + "\n\n" + where
+            + "\n\nUltraMail tries again by itself - in a minute, then less often, and "
+              "as soon as the connection is back. Choose Retry to send it now.",
         why.diagnostics);
     AlertWarningRetry(parent,
         "The message" + (recipients.empty() ? std::string() : " to " + recipients)
@@ -1346,6 +1355,53 @@ void UltraMailApp::ReportNotSent(const std::string& fromAddr, const std::string&
 
 void UltraMailApp::RetryOutbox(const std::string& fromAddr, const std::string& recipients) {
     EnsureVaultUnlocked([this, fromAddr, recipients]() { SendQueued(fromAddr, recipients); });
+}
+
+int UltraMailApp::OutboxPending() const {
+    int n = 0;
+    if (outbox_.IsOpen()) outbox_.PendingCount(n);
+    return n;
+}
+
+void UltraMailApp::NoteOutboxPass() {
+    if (OutboxPending() == 0) outboxRetry_.Succeeded();
+    else outboxRetry_.Failed(NowMonotonicSec());
+}
+
+void UltraMailApp::StartOutboxRetryTimer() {
+    if (outboxRetryTimerStarted_) return;
+    auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    outboxRetryTimerStarted_ = true;
+    app->StartTimer(30000, /*periodic=*/true, [this](UltraCanvas::TimerId) {
+        if (outboxRetry_.Due(NowMonotonicSec())) AutoRetryOutbox();
+    });
+}
+
+void UltraMailApp::AutoRetryOutbox() {
+    // A pass the user started is running, or the vault is locked: an
+    // automatic pass never prompts for a password. It stays due and runs on
+    // a later tick.
+    if (outboxFlushInFlight_ || !vault_.IsUnlocked()) return;
+    std::vector<OutboxItem> pending;
+    outbox_.ListPending(pending);
+    if (pending.empty()) { outboxRetry_.Succeeded(); return; }
+
+    const std::string from = pending.front().draft.fromAddr;
+    DiscoveryResult disc = SettingsForEmail(from);
+    auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
+    const bool canSend = plugin && dynamic_cast<IMailProtocolPlugin*>(plugin.get())
+                      && disc.found && !AutoDiscovery::SmtpServerUrl(disc.smtp).empty();
+    // Silent: the warning was shown when the message first failed. A pass
+    // that cannot send still saves the Drafts copies.
+    FlushOutboxInBackground(canSend ? plugin : nullptr,
+        [this](const Outbox::FlushStats& stats) {
+            NoteOutboxPass();
+            if (stats.sent > 0)
+                SetStatus(stats.sent == 1
+                    ? std::string("A waiting message was sent.")
+                    : std::to_string(stats.sent) + " waiting messages were sent.");
+        });
 }
 
 DraftsKeeper UltraMailApp::MakeDraftsKeeper() {
@@ -1568,6 +1624,9 @@ void UltraMailApp::OnWokeFromSleep() {
     // Whatever was unreachable before the sleep is a fresh question now: a
     // first failure after the wake is held back like one right after boot.
     offline_.Clear();
+    // Waiting messages too: the connection is probably back after the wake.
+    if (OutboxPending() > 0)
+        outboxRetry_.RetryAt(NowMonotonicSec() + kWakeSyncDelayMs / 1000 + 5);
     auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
     if (!app) return;
     wakeCheckPending_ = true;
@@ -1890,6 +1949,9 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 }
                 syncErrorReported_.erase(aid);   // recovered: arm the next report
                 offline_.Reached(aid);
+                // The server answered, so the connection is up: messages that
+                // failed to go out are worth another try now.
+                if (outboxRetry_.Failures() > 0) outboxRetry_.RetryAt(NowMonotonicSec());
                 accountError_.erase(aid);
                 NoteConnection(aid, ConnectionState::Connected);
                 vaultLockReported_ = false;

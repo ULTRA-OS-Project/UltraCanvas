@@ -16,6 +16,13 @@
   SMTP plug-in), where the message is kept (Drafts and the outbox, or the
   outbox only) and offers *Retry*. Without an SMTP plug-in or a known
   outgoing server, the Drafts copy is still saved.
+- **And it is tried again by itself.** A message left unsent goes out without
+  anyone pressing *Retry*: a minute later, then after 2, 5 and 10 minutes,
+  then every 30 - and at once when the connection is back (a mail check
+  reached the server, the computer woke from sleep, UltraMail started with
+  messages waiting). These attempts are silent; the warning is shown once,
+  and a message that then goes out says so on the status line. An attempt
+  never asks for the master password: with the vault locked it waits.
 - *Retry* sends to the account's outgoing server as it is now: a message
   queued before the server was known, or before it was corrected in Account
   Settings, goes out once it is.
