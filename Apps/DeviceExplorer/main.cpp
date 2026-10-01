@@ -2,13 +2,14 @@
 // DeviceExplorer - shows the devices connected to this computer, as the
 // IODeviceManager module finds them: a tree of printers, scanners and cameras
 // (grouped by category, connection or backend) on the left, and everything
-// known about the selected device on the right. It observes; it never opens,
-// configures or prints to a device.
+// known about the selected device on the right. It observes: the one thing it
+// opens a device for is to ask a printer for its status and ink or toner,
+// closing it again at once. It never configures a device or prints.
 //
 // Two ways in. Without arguments it opens the UltraCanvas window. With
 // --list it scans once, prints the same tree as text and exits - usable over
 // ssh and checkable in CI.
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 // Before the window header: on Linux that one reaches X11, whose `None`
@@ -16,6 +17,7 @@
 #include "UltraCanvasHardwareInfo.h"
 
 #include "ui/DeviceExplorerModel.h"
+#include "ui/DeviceExplorerPrinterQuery.h"
 #include "ui/DeviceExplorerWindow.h"
 
 #include "IODeviceManager/UltraCanvasIODeviceManager.h"
@@ -63,7 +65,8 @@ void PrintUsage(const char* programName) {
         "\n"
         "  (no options)        Open the DeviceExplorer window\n"
         "  --list              Scan once, print the device tree and exit\n"
-        "  --details           With --list: print every property of every device\n"
+        "  --details           With --list: print every property of every device,\n"
+        "                      and ask each printer for its status and supplies\n"
         "  --group <by>        Group the tree by category (default), connection\n"
         "                      or backend - in the window and with --list\n"
         "  --show-serials      With --list: print serial numbers unmasked\n"
@@ -100,8 +103,13 @@ int RunList(DeviceExplorer::DeviceGrouping grouping, bool details, bool showSeri
     const DeviceExplorer::IdentifierMask mask =
         showSerials ? DeviceExplorer::IdentifierMask{}
                     : DeviceExplorer::IdentifierMask(&UltraCanvasHardwareInfo::MaskIdentifier);
+    // Asking a printer opens it briefly, and a network printer can take
+    // seconds, so only --details does it.
+    DeviceExplorer::PrinterStatusMap printerStatus;
+    if (details) printerStatus = DeviceExplorer::QueryAllPrinterStatus(manager);
     const std::string text = DeviceExplorer::FormatInventoryText(
-        inventory, grouping, DescribeMachine(), details, mask);
+        inventory, grouping, DescribeMachine(), details, mask,
+        details ? &printerStatus : nullptr);
     std::fputs(text.c_str(), stdout);
     manager.Shutdown();
     return EXIT_SUCCESS;

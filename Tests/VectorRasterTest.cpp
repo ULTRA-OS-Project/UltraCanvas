@@ -18,6 +18,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include "UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -63,7 +64,7 @@ int main() {
         // that cannot rasterize SVG is a configuration, not a failure.
         std::cout << "  [SKIP] this build has no SVG rasterizer\n";
         Check(!IsVectorGraphicsPath("notes.txt"), "a plain text file is not vector artwork");
-        fs::remove(svgPath);
+        fs::remove(UltraCanvas::PathFromUtf8(svgPath));
         return g_failures == 0 ? 0 : 1;
     }
 
@@ -151,7 +152,7 @@ int main() {
     auto missing = RasterizeVectorFile("no-such-file.dxf", VectorRasterOptions(), error);
     Check(missing == nullptr && !error.empty(), "an unreadable path reports an error");
 
-    fs::remove(svgPath);
+    fs::remove(UltraCanvas::PathFromUtf8(svgPath));
 
     std::cout << (g_failures == 0 ? "=== PASSED ===\n" : "=== FAILED ===\n");
     return g_failures == 0 ? 0 : 1;

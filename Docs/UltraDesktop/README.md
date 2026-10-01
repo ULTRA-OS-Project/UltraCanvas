@@ -18,7 +18,9 @@ system.
   which the window title and `--version` print. The app does not move when
   the framework releases.
 - Build option: `BUILD_ULTRADESKTOP` (on by default); target and binary
-  `UltraDesktop`.
+  `UltraDesktop`. It runs straight from the build tree: configuring links
+  `build/share/media` to the repository's `media/`, where the bar icons and
+  the default wallpaper are found.
 
 ## Layout
 
@@ -87,6 +89,11 @@ windows stop short of the bars instead of covering them.
   1.2 MB/s", "Battery: 84%, charging"). Clicking opens what the icon is
   about: Email starts UltraMail, the network icons UltraNetMonitor, USB,
   keyboard and webcam DeviceExplorer, the rest the Task Manager.
+
+  When the organiser leaves the panel short of room — five or more desktops
+  on a 900 px screen — the panel scrolls rather than losing its last items:
+  a chevron over the edge marks where the icons continue, a click on it
+  scrolls a page, and so does the wheel over the panel.
 
 ### Windows the desktop opens
 

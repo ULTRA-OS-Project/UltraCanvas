@@ -69,7 +69,7 @@ bool UCIsPluginFile(const std::filesystem::path& path) {
 
 std::string UCPluginCanonicalPath(const std::filesystem::path& path) {
     std::error_code ec;
-    const std::filesystem::path canonical = std::filesystem::weakly_canonical(path, ec);
+    const std::filesystem::path canonical = std::filesystem::weakly_canonical(UltraCanvas::PathFromUtf8(path), ec);
     return ec ? PathToUtf8(path) : PathToUtf8(canonical);
 }
 

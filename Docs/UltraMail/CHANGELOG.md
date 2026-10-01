@@ -1,4 +1,4 @@
-#### 2026-10-01 *0.10.14*
+#### 2026-10-01 *0.10.15*
 - **Quote + and Quote − in the compose window's formatting toolbar.** They
   are the two quote-mark buttons at the end of the first row. They move the
   paragraph at the cursor, or every selected paragraph, one quote level in
@@ -7,6 +7,38 @@
     a quoted line out of the quote.
   - Each click can be undone.
   - The signature editor's toolbar does not show them.
+
+#### 2026-10-01 *0.10.14*
+- **Send works in the background, and nothing is lost on the way.** *Send*
+  puts the message in UltraMail's outbox - the local store, which survives a
+  crash or a restart - and closes the compose window at once; the message
+  goes out on a worker while you carry on. The window stays open only when
+  the message could not be queued (no recipient, no outbox), so nothing typed
+  is lost.
+- **A copy waits in the Drafts folder until the message is sent.** Before the
+  first attempt, the message is saved to the account's Drafts folder on the
+  server (the folder the server marks as Drafts, else "Drafts"), so it is
+  there on every device; once it has gone out, the copy is deleted from
+  Drafts. A copy that cannot be saved does not hold the message back - it is
+  still in the outbox, and the warning says so.
+- **A message that is not sent says so, with Retry.** The warning names the
+  reason (the server refused, no connection, no outgoing server known, no
+  SMTP plug-in), where the message is kept (Drafts and the outbox, or the
+  outbox only) and offers *Retry*. Without an SMTP plug-in or a known
+  outgoing server, the Drafts copy is still saved.
+- **And it is tried again by itself.** A message left unsent goes out without
+  anyone pressing *Retry*: a minute later, then after 2, 5 and 10 minutes,
+  then every 30 - and at once when the connection is back (a mail check
+  reached the server, the computer woke from sleep, UltraMail started with
+  messages waiting). These attempts are silent; the warning is shown once,
+  and a message that then goes out says so on the status line. An attempt
+  never asks for the master password: with the vault locked it waits.
+- *Retry* sends to the account's outgoing server as it is now: a message
+  queued before the server was known, or before it was corrected in Account
+  Settings, goes out once it is.
+- Replies keep their thread: the In-Reply-To and References headers are sent
+  (and kept in the outbox and the Drafts copy); they were dropped before.
+- The outbox files a message under the account that owns its From address.
 
 #### 2026-09-30 *0.10.13*
 - **Several compose windows at once work.** UltraMail had one compose view for

@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace UltraMail;
@@ -269,7 +270,7 @@ TEST(icon_cache_stores_fetches_and_remembers_misses) {
 
     const std::string path = cache.EnsureIconForAddress("notification@facebookmail.com");
     REQUIRE(!path.empty());
-    REQUIRE(fs::exists(path));
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(path)));
     REQUIRE(path.substr(path.size() - 4) == ".png");   // sniffed from the bytes
     REQUIRE_EQ(calls, 1);
 

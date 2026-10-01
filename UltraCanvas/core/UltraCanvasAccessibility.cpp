@@ -1,6 +1,6 @@
 // core/UltraCanvasAccessibility.cpp
 // The platform-neutral accessibility layer: listeners and text helpers.
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAccessibility.h"
@@ -14,14 +14,17 @@ namespace UltraCanvas {
 
 namespace {
 
+// Both live for the whole process, never destroyed: elements announce their
+// destruction (ElementDestroyed), and some are destroyed during static
+// destruction at exit, after a function-local static here would be gone.
 std::mutex& ListenerMutex() {
-    static std::mutex mutex;
-    return mutex;
+    static std::mutex* mutex = new std::mutex;
+    return *mutex;
 }
 
 std::map<int, UltraCanvasAccessibility::Listener>& Listeners() {
-    static std::map<int, UltraCanvasAccessibility::Listener> listeners;
-    return listeners;
+    static auto* listeners = new std::map<int, UltraCanvasAccessibility::Listener>;
+    return *listeners;
 }
 
 int& NextListenerId() {

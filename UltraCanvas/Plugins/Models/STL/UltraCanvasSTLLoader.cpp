@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cctype>
 #include <algorithm>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -67,7 +68,7 @@ namespace {
     }
 
     bool ReadWholeFile(const std::string& path, std::vector<uint8_t>& out, std::string* err) {
-        std::ifstream in(path, std::ios::binary | std::ios::ate);
+        std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::ate);
         if (!in) {
             SetError(err, "Cannot open file: " + path);
             return false;
@@ -287,7 +288,7 @@ bool UltraCanvasSTLLoader::Save(const std::string& filePath, const Mesh3D& mesh,
 
 bool UltraCanvasSTLLoader::WriteBinary(const std::string& filePath, const Mesh3D& mesh,
                                        std::string* outError) {
-    std::ofstream out(filePath, std::ios::binary | std::ios::trunc);
+    std::ofstream out(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::trunc);
     if (!out) {
         SetError(outError, "Cannot open file for writing: " + filePath);
         return false;
@@ -330,7 +331,7 @@ bool UltraCanvasSTLLoader::WriteBinary(const std::string& filePath, const Mesh3D
 
 bool UltraCanvasSTLLoader::WriteAscii(const std::string& filePath, const Mesh3D& mesh,
                                       std::string* outError) {
-    std::ofstream out(filePath, std::ios::trunc);
+    std::ofstream out(UltraCanvas::PathFromUtf8(filePath), std::ios::trunc);
     if (!out) {
         SetError(outError, "Cannot open file for writing: " + filePath);
         return false;

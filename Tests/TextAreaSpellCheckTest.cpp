@@ -14,6 +14,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
+#include "DisplayTestSupport.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasSpellChecker.h"
 
@@ -51,16 +52,15 @@ namespace {
 // entry describe the previous text.
 // In a real application the element is repainted because the spell service
 // posts a redraw through UltraCanvasApplication::PostToUIThread, which the
-// event loop drains. This harness drives frames by hand and never runs that
-// loop, so it marks the element dirty itself - what is under test here is the
-// spell pipeline, not the dirty-rect plumbing.
+// event loop drains. This harness drives frames by hand (DisplayTestSupport.h)
+// and never runs that loop, so it marks the element dirty itself - what is
+// under test here is the spell pipeline, not the dirty-rect plumbing.
 bool PumpUntil(const std::shared_ptr<UltraCanvasWindow>& window,
                const std::shared_ptr<UltraCanvasTextArea>& area,
                const std::function<bool()>& done,
                int maxFrames = 300) {
     for (int frame = 0; frame < maxFrames; ++frame) {
-        area->RequestRedraw();
-        window->UpdateAndRender();
+        DisplayTest::Frame(window, {area});
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         if (done()) return true;
     }
@@ -251,7 +251,7 @@ int main() {
         PumpUntilSpellErrors(window, area);
         area->SetSpellCheckEnabled(false);
         TEST("Disabling clears the reported errors", area->GetSpellErrors().empty());
-        window->UpdateAndRender();
+        DisplayTest::Frame(window, {area});
         TEST("Rendering while disabled reports nothing", area->GetSpellErrors().empty());
     }
 

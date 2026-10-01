@@ -60,8 +60,10 @@ if(ULTRACANVAS_USE_VENDORED_LIBCDR AND EXISTS "${ULTRACANVAS_LIBCDR_DIR}/src/CDR
         CXX_STANDARD 17
         CXX_VISIBILITY_PRESET hidden)
     target_compile_definitions(ultracanvas_libcdr PRIVATE LIBCDR_BUILD=1)
+    # BUILD_INTERFACE only: the plug-in's public header does not include
+    # libcdr, so an installed consumer needs the archive and never the headers.
     target_include_directories(ultracanvas_libcdr
-        PUBLIC  "${ULTRACANVAS_LIBCDR_DIR}/inc" ${LIBREVENGE_INCLUDE_DIRS}
+        PUBLIC  $<BUILD_INTERFACE:${ULTRACANVAS_LIBCDR_DIR}/inc> ${LIBREVENGE_INCLUDE_DIRS}
         PRIVATE "${ULTRACANVAS_LIBCDR_DIR}/src" ${LIBREVENGE_STREAM_INCLUDE_DIRS}
                 ${LCMS2_INCLUDE_DIRS} ${ICU_INCLUDE_DIRS} ${CDR_ZLIB_INCLUDE_DIRS}
                 ${ULTRACANVAS_BOOST_INCLUDE_DIR})
@@ -74,6 +76,12 @@ if(ULTRACANVAS_USE_VENDORED_LIBCDR AND EXISTS "${ULTRACANVAS_LIBCDR_DIR}/src/CDR
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(ultracanvas_libcdr PRIVATE -w)   # third-party code: its warnings are upstream's
     endif()
+    # The plug-in's link interface names this archive, so the package has to
+    # carry it (UltraCanvas/CMakeLists.txt, INSTALLATION AND THE CMAKE PACKAGE).
+    include(GNUInstallDirs)
+    install(TARGETS ultracanvas_libcdr
+        EXPORT UltraCanvasTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
     set(LIBCDR_LIBRARIES ultracanvas_libcdr)
     set(LIBCDR_INCLUDE_DIRS "${ULTRACANVAS_LIBCDR_DIR}/inc")
     set(LIBCDR_VERSION "0.1.7+ (vendored, patched)")
@@ -181,11 +189,16 @@ set(ULTRACANVAS_CDR_PLUGIN_TARGET ${PLUGIN_NAME} PARENT_SCOPE)
 set(ULTRACANVAS_CDR_PLUGIN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
 
 # ===== INSTALLATION =====
+# Part of the framework's package (UltraCanvas/CMakeLists.txt, INSTALLATION
+# AND THE CMAKE PACKAGE): imported as UltraCanvas::${PLUGIN_NAME} by
+# find_package(UltraCanvas). GNUInstallDirs is included here too because this
+# directory also configures standalone.
+include(GNUInstallDirs)
 install(TARGETS ${PLUGIN_NAME}
-    EXPORT UltraCanvasCDRPluginTargets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
+    EXPORT UltraCanvasTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 install(FILES ${CDR_PLUGIN_HEADERS}

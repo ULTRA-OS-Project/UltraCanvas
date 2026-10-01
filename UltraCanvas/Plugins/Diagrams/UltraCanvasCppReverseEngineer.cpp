@@ -1171,7 +1171,7 @@ CppReverseEngineerResult UltraCanvasCppReverseEngineer::ParseFile(
         const std::string& filePath, UltraCanvasUMLModel& model) {
     CppReverseEngineerResult result;
 
-    std::ifstream stream(filePath, std::ios::binary);
+    std::ifstream stream(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
     if (!stream) {
         result.unreadableFiles.push_back(filePath);
         return result;
@@ -1197,7 +1197,7 @@ CppReverseEngineerResult UltraCanvasCppReverseEngineer::ParseDirectory(
     namespace fs = std::filesystem;
 
     std::error_code ec;
-    if (!fs::exists(directoryPath, ec) || !fs::is_directory(directoryPath, ec)) {
+    if (!fs::exists(UltraCanvas::PathFromUtf8(directoryPath), ec) || !fs::is_directory(UltraCanvas::PathFromUtf8(directoryPath), ec)) {
         total.unreadableFiles.push_back(directoryPath);
         return total;
     }
@@ -1215,12 +1215,12 @@ CppReverseEngineerResult UltraCanvasCppReverseEngineer::ParseDirectory(
     };
 
     if (recursive) {
-        for (fs::recursive_directory_iterator it(directoryPath, ec), last; it != last; it.increment(ec)) {
+        for (fs::recursive_directory_iterator it(UltraCanvas::PathFromUtf8(directoryPath), ec), last; it != last; it.increment(ec)) {
             if (ec) break;
             consider(*it);
         }
     } else {
-        for (fs::directory_iterator it(directoryPath, ec), last; it != last; it.increment(ec)) {
+        for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(directoryPath), ec), last; it != last; it.increment(ec)) {
             if (ec) break;
             consider(*it);
         }

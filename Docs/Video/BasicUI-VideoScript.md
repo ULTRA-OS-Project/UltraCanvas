@@ -30,7 +30,7 @@ page links directly to its C++ source file and its documentation, so what you se
 is exactly what you can build.
 
 The first category in the tree is "Basic UI Elements" — the foundation of every
-UltraCanvas application. Twenty-four components: menus, toolbars, buttons, inputs,
+UltraCanvas application. Twenty-five components: menus, toolbars, buttons, inputs,
 containers, and indicators. Every one of them is fully implemented across all
 platforms. Let's walk through them.
 
@@ -334,9 +334,26 @@ Shown in the demo:
 - Minimal status dots
 - Overlay badges anchored to the corner of an icon
 
+### Busy Indicator
+
+The busy indicator says "working on it" when there is no percentage to show —
+a mail check, a network call, a folder scan. Five kinds share one API: create
+it, call Start when the work begins and Stop when it ends. The timer runs only
+while it is turning, so it can sit in a status line permanently at no cost.
+
+Shown in the demo:
+
+- Ring: a partial arc turning over a faint track — the classic
+- Dual Ring: two concentric arcs turning in opposite directions
+- Dots: a row of dots swelling one after another
+- Bar: a segment sliding along a thin track
+- Pulse: a circle breathing in and out
+- Each kind small, large and in a second colour, a status line as an app
+  uses one, and Start all / Stop all / Show when stopped
+
 ## 4. Conclusion — Basic UI Elements
 
-That's the Basic UI layer of UltraCanvas: twenty-four production-ready components,
+That's the Basic UI layer of UltraCanvas: twenty-five production-ready components,
 all fully implemented, all rendered by the framework itself, all pixel-identical on
 Windows, Linux, macOS, and UltraOS. Each follows the same API pattern — create the
 element, configure it through properties or the fluent builder, attach a callback —

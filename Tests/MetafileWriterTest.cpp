@@ -23,6 +23,7 @@
 #include <cstring>
 #include <fstream>
 #include <string>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::VectorStorage;
@@ -172,7 +173,7 @@ bool HaveTool(const char* probe) { return std::system(probe) == 0; }
 void CheckRender(const std::string& tag, const std::string& cmd, const std::string& png) {
     std::remove(png.c_str());
     std::system(cmd.c_str());
-    if (std::ifstream(png).fail()) {
+    if (std::ifstream(UltraCanvas::PathFromUtf8(png)).fail()) {
         // A core-only LibreOffice (no Draw module) cannot convert graphics
         // at all; that is missing infrastructure, not a bad file.
         std::printf("  note: %s produced no output; render checks skipped\n",

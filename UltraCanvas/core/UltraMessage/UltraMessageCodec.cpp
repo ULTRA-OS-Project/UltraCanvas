@@ -699,8 +699,8 @@ std::string ParentDirectory(const std::string& path) {
 bool EnsureDirectory(const std::string& path) {
     if (path.empty()) return false;
     std::error_code ec;
-    std::filesystem::create_directories(path, ec);
-    if (ec && !std::filesystem::is_directory(path, ec)) return false;
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(path), ec);
+    if (ec && !std::filesystem::is_directory(UltraCanvas::PathFromUtf8(path), ec)) return false;
 #ifndef _WIN32
     ::chmod(path.c_str(), 0700);
 #endif

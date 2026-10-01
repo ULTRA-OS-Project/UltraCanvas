@@ -62,6 +62,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraFIBU;
 
@@ -1788,7 +1789,7 @@ static void TestBelegeUndBuchungen() {
 //    would notice until the customer paid the wrong amount.
 
 static std::string LiesDatei(const std::string& pfad) {
-    std::FILE* f = std::fopen(pfad.c_str(), "rb");
+    std::FILE* f = UltraCanvas::OpenFileUtf8(pfad, "rb");
     if (f == nullptr) return std::string();
     std::string inhalt;
     char puffer[4096];
@@ -2076,7 +2077,7 @@ static void TestDatev() {
     // wrong column, so the loader refuses a gap rather than shifting silently.
     const std::string luecke = "luecke-test.csv";
     {
-        std::FILE* f = std::fopen(luecke.c_str(), "wb");
+        std::FILE* f = UltraCanvas::OpenFileUtf8(luecke, "wb");
         const char* inhalt = "1;Erste;text\n3;Dritte;text\n";
         std::fwrite(inhalt, 1, std::strlen(inhalt), f);
         std::fclose(f);
@@ -2252,7 +2253,7 @@ static void TestDatev() {
         if (stelle != std::string::npos)
             kaputtText.replace(stelle, 13, "\"Belegfeld X\"");
         const std::string kaputtDatei = "datev-kaputt.csv";
-        std::FILE* f = std::fopen(kaputtDatei.c_str(), "wb");
+        std::FILE* f = UltraCanvas::OpenFileUtf8(kaputtDatei, "wb");
         std::fwrite(kaputtText.data(), 1, kaputtText.size(), f);
         std::fclose(f);
 
@@ -2270,7 +2271,7 @@ static void TestDatev() {
     // A file that is not DATEV at all.
     {
         const std::string fremd = "kein-datev.csv";
-        std::FILE* f = std::fopen(fremd.c_str(), "wb");
+        std::FILE* f = UltraCanvas::OpenFileUtf8(fremd, "wb");
         const char* inhaltFremd = "\"IRGENDWAS\";1\r\n\"a\";\"b\"\r\n";
         std::fwrite(inhaltFremd, 1, std::strlen(inhaltFremd), f);
         std::fclose(f);
@@ -2297,7 +2298,7 @@ static void TestDatev() {
 // that protect the ledger: no partial import, and no accidental second one.
 
 static void SchreibeDatei(const std::string& pfad, const std::string& inhalt) {
-    std::FILE* f = std::fopen(pfad.c_str(), "wb");
+    std::FILE* f = UltraCanvas::OpenFileUtf8(pfad, "wb");
     std::fwrite(inhalt.data(), 1, inhalt.size(), f);
     std::fclose(f);
 }
@@ -4546,7 +4547,7 @@ static void TestUstva() {
 
         std::string inhalt;
         {
-            std::FILE* f = std::fopen(r.datei.c_str(), "rb");
+            std::FILE* f = UltraCanvas::OpenFileUtf8(r.datei, "rb");
             Check(f != nullptr, "the file exists");
             if (f) {
                 char puffer[8192]; size_t n = 0;
@@ -4592,7 +4593,7 @@ static void TestUstva() {
         Check(echt.ok, "a real submission writes too");
         std::string echtInhalt;
         {
-            std::FILE* f = std::fopen(echt.datei.c_str(), "rb");
+            std::FILE* f = UltraCanvas::OpenFileUtf8(echt.datei, "rb");
             if (f) {
                 char puffer[8192]; size_t n = 0;
                 while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0)
@@ -4826,7 +4827,7 @@ static void TestBelegArchiv() {
         // precisely the failure an archive exists to prevent.
         std::string kopie;
         {
-            std::FILE* f = std::fopen(eintrag.pfad.c_str(), "rb");
+            std::FILE* f = UltraCanvas::OpenFileUtf8(eintrag.pfad, "rb");
             Check(f != nullptr, "the archived file exists");
             if (f) {
                 char puffer[8192]; size_t n = 0;
@@ -5979,7 +5980,7 @@ static void TestOss() {
 
         std::string inhalt;
         {
-            std::FILE* f = std::fopen(r.datei.c_str(), "rb");
+            std::FILE* f = UltraCanvas::OpenFileUtf8(r.datei, "rb");
             if (f) {
                 char puffer[8192]; size_t n = 0;
                 while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0)

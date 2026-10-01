@@ -28,4 +28,5 @@ Quick pointers:
 - The last reply before the chat waits for the user ends with the line
   `Code needs to be PRed (N lines)` — `N` measured against the merge base
   with `origin/main` (committed + uncommitted + untracked), `(0 lines)` when
-  nothing differs. See *The closing line* in `AGENTS.md`.
+  nothing differs. See *The closing line* in `AGENTS.md`. The `Stop` hook
+  measures `N` too and blocks a reply that ends on another line or number.

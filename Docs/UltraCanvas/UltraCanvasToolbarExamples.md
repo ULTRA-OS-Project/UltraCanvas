@@ -4,7 +4,7 @@
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -19,7 +19,7 @@
 - **Preset Factories**: One-call construction of common toolbar shapes
 - **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves
 - **Auto-Hide and Drag Modes**: optional auto-hide, drag-to-move the toolbar (`ToolbarDragMode::Movable`) and drag-to-reorder its items (`EnableItemReordering`)
-- **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel
+- **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel; a chevron over the edge the items continue past says so, and a click on it scrolls a page (`SetScrollHints`)
 
 ## Header Include
 
@@ -43,6 +43,8 @@ void SetOrientation(ToolbarOrientation orient);
 void SetToolbarPosition(ToolbarPosition pos);
 void SetAppearance(const ToolbarAppearance& app);
 void SetOverflowMode(ToolbarOverflowMode mode);
+void SetScrollHints(bool show);          // Scroll mode: the chevron at the edge (default on)
+bool ScrollHintsEnabled() const;
 void SetVisibility(ToolbarVisibility vis);
 void SetDragMode(ToolbarDragMode mode);
 
@@ -181,6 +183,15 @@ of shrinking to fit (`flex-shrink: 0`), the ones past the edge are laid out
 beyond it, and the mouse wheel scrolls them into view along the toolbar's
 axis — no scrollbar is shown. A desktop taskbar's running-apps group is the
 case: it must not squeeze twenty icons into the room for eight.
+
+While there is something past an edge, a 12 px strip in the toolbar's colour
+covers that edge with a small chevron pointing the way the items go, so a
+clipped bar never looks like a complete one; a click on the strip scrolls a
+page (the visible length less the strip). The strip is drawn over the edge
+of the item under it and takes that press, which is why the hint is a window
+watch like the reorder drag and not a child. Nothing is drawn while the items
+fit, and `SetScrollHints(false)` turns the strips off for a toolbar that
+wants the wheel alone.
 
 ### ToolbarIconSize
 
@@ -437,7 +448,7 @@ auto ribbonToolbar = UltraCanvasToolbarBuilder("RibbonToolbar")
 ```cpp
 auto running = std::make_shared<UltraCanvasToolbar>("Running", 0, 0, 0, 0);
 running->SetOrientation(ToolbarOrientation::Vertical);
-running->SetOverflowMode(ToolbarOverflowMode::Scroll);   // wheel-scrolls when full
+running->SetOverflowMode(ToolbarOverflowMode::Scroll);   // wheel-scrolls when full, chevrons at the edges
 running->EnableItemReordering(true);                     // drag to reorder
 running->onItemReordered = [](int from, int to) { /* remember the order */ };
 

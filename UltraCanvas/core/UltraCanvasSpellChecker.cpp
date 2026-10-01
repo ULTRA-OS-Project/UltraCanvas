@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -911,7 +912,7 @@ bool UltraCanvasSpellChecker::LoadUserDictionary() {
     }
     if (path.empty()) return false;
 
-    std::ifstream input(path);
+    std::ifstream input(UltraCanvas::PathFromUtf8(path));
     if (!input) return false;   // Absent file is not an error on first run
 
     std::unordered_set<std::string> loaded;
@@ -941,13 +942,13 @@ bool UltraCanvasSpellChecker::SaveUserDictionary() const {
 
     // The default path lives under a directory the framework owns and which
     // will not exist on first run; without this every added word is lost.
-    const std::filesystem::path target(path);
+    const std::filesystem::path target(UltraCanvas::PathFromUtf8(path));
     if (target.has_parent_path()) {
         std::error_code directoryError;
         std::filesystem::create_directories(target.parent_path(), directoryError);
     }
 
-    std::ofstream output(path, std::ios::trunc);
+    std::ofstream output(UltraCanvas::PathFromUtf8(path), std::ios::trunc);
     if (!output) return false;
 
     output << "# UltraCanvas user dictionary\n";

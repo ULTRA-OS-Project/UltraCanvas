@@ -174,7 +174,7 @@ Result CloudService::UploadAndShare(const std::string& accountId, const std::str
     if (!r) return r;
 
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(localPath, ec))
+    if (!std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(localPath), ec))
         return Result::Error(ResultCode::IoError, "not a file: " + localPath);
 
     const std::string folder = NormalizePath(remoteFolder.empty() ? a.remoteFolder : remoteFolder);

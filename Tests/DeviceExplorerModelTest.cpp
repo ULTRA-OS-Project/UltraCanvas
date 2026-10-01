@@ -12,7 +12,7 @@
 // Fake devices registered with the manager stand in for hardware, so it runs
 // the same everywhere - no display, no printer, no camera.
 // Version: 1.0.0
-// Last Modified: 2026-09-23
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "DeviceExplorerModel.h"
@@ -240,6 +240,68 @@ int main() {
     const std::string detailed = FormatInventoryText(full, DeviceGrouping::Category, machine, true);
     Check(detailed.find("Serial number: SN-1234567890") != std::string::npos,
           "--details prints the properties");
+
+    // ===== PRINTER STATUS =====
+    std::cout << "Printer status\n";
+    {
+        PrinterStatusReport report;
+        report.answered = true;
+        report.queriedAt = 1700000000;
+        report.status.state = IOPrinterState::Stopped;
+        report.status.stateReason = "media-empty";
+        report.status.acceptingJobs = true;
+        report.status.jobsQueued = 2;
+        IOSupplyLevel black;
+        black.type = IOSupplyType::Toner;
+        black.color = IOSupplyColor::Black;
+        black.percentRemaining = 7;
+        IOSupplyLevel cyan;
+        cyan.type = IOSupplyType::Ink;
+        cyan.color = IOSupplyColor::Cyan;
+        cyan.percentRemaining = 72;
+        IOSupplyLevel box;
+        box.description = "Maintenance box";
+        IOSupplyLevel unnamed;
+        report.status.supplies = {black, cyan, box, unnamed};
+
+        const auto sections = DescribePrinterStatus(report);
+        const PropertySection* status = FindSection(sections, "Printer status");
+        Check(ValueOf(status, "State") == "Stopped", "printer state named for people");
+        Check(ValueOf(status, "Reason") == "media-empty", "state reason shown");
+        Check(ValueOf(status, "Accepting jobs") == "Yes", "accepting jobs shown");
+        Check(ValueOf(status, "Jobs queued") == "2", "queued jobs counted");
+        Check(!ValueOf(status, "Asked at").empty(), "when the printer was asked is shown");
+        const PropertySection* supplies = FindSection(sections, "Supplies");
+        Check(ValueOf(supplies, "Black toner") == "7 % - low", "low toner is flagged");
+        Check(ValueOf(supplies, "Cyan ink") == "72 %", "a supply level in percent");
+        Check(ValueOf(supplies, "Maintenance box") == "not reported",
+              "the printer's own name when colour and type say nothing; no level is not 0 %");
+        Check(ValueOf(supplies, "Supply") == "not reported", "a supply with no name at all still shows");
+
+        PrinterStatusReport quiet = report;
+        quiet.status.stateReason = "none";
+        quiet.status.supplies.clear();
+        const auto quietSections = DescribePrinterStatus(quiet);
+        Check(ValueOf(FindSection(quietSections, "Printer status"), "Reason").empty(),
+              "IPP's reason \"none\" is not shown");
+        Check(FindSection(quietSections, "Supplies") == nullptr, "no supplies, no supplies section");
+
+        PrinterStatusReport failed;
+        failed.error = "Connection refused";
+        const auto failedSections = DescribePrinterStatus(failed);
+        Check(failedSections.size() == 1 &&
+              ValueOf(FindSection(failedSections, "Printer status"), "Status") == "Could not ask the printer" &&
+              ValueOf(FindSection(failedSections, "Printer status"), "Reason") == "Connection refused",
+              "a printer that could not be asked says so and why");
+
+        PrinterStatusMap statuses;
+        statuses["p1"] = report;
+        const std::string listed = FormatInventoryText(full, DeviceGrouping::Category, machine, true,
+                                                       {}, &statuses);
+        Check(listed.find("Black toner: 7 % - low") != std::string::npos,
+              "--list --details prints a printer's supplies");
+        Check(listed.find("State: Stopped") != std::string::npos, "--list --details prints its state");
+    }
 
     // ===== NAMES =====
     DeviceGrouping parsed = DeviceGrouping::Category;

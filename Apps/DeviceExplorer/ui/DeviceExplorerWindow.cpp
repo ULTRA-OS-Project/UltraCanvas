@@ -1,5 +1,5 @@
 // Apps/DeviceExplorer/ui/DeviceExplorerWindow.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 // Before the window header: on Linux that one reaches X11, whose `None`
 // macro would otherwise break HardwareQuery::None in this header.
@@ -14,6 +14,7 @@
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
+#include <chrono>
 
 // DEVICEEXPLORER_VERSION comes from the build alone: CMake reads the first
 // line of Docs/DeviceExplorer/CHANGELOG.md (cmake/UltraCanvasVersion.cmake)
@@ -38,6 +39,15 @@ constexpr int   kTreeWidth    = 360;
 constexpr int   kTreeMinWidth = 240;
 constexpr int   kDetailsMin   = 360;
 constexpr unsigned kUiTimerMs = 200;
+// A printer's status is asked again when it is selected and the last answer
+// is older than this: fresh enough to click back and forth without asking
+// every time, stale enough that a refilled cartridge shows up.
+constexpr int64_t kPrinterStatusMaxAgeSeconds = 30;
+
+int64_t NowSeconds() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
 
 const char* const kSectionPrefix = "section:";
 
@@ -79,6 +89,7 @@ DeviceExplorerWindow::~DeviceExplorerWindow() {
     // is joined first; then the watcher, whose StopMonitoring() joins its
     // thread, so no change callback runs into a half-destroyed window.
     JoinScan();
+    JoinStatusQuery();
     auto& manager = IODeviceManager::GetInstance();
     manager.StopMonitoring();
     manager.SetDeviceChangeCallback(nullptr);
@@ -357,6 +368,8 @@ void DeviceExplorerWindow::JoinScan() {
 }
 
 void DeviceExplorerWindow::OnTimer() {
+    ApplyPendingPrinterStatus();
+
     std::optional<DeviceInventory> ready;
     {
         std::lock_guard<std::mutex> lock(pendingMutex_);
@@ -381,8 +394,58 @@ void DeviceExplorerWindow::OnTimer() {
 }
 
 void DeviceExplorerWindow::ApplyInventory(DeviceInventory inventory) {
+    // A rescan or a hot-plug change can mean a printer was swapped or woke
+    // up; what it said before is no longer worth showing.
+    statusCache_.clear();
     inventory_ = std::move(inventory);
     RebuildTree();
+}
+
+// ===== PRINTER STATUS =====
+
+void DeviceExplorerWindow::RequestPrinterStatus(const std::string& deviceId) {
+    if (deviceId == statusRunningId_ && statusBusy_) return;   // already being asked
+    if (statusBusy_) {
+        statusQueuedId_ = deviceId;   // latest selection wins
+        return;
+    }
+    JoinStatusQuery();
+    statusBusy_ = true;
+    statusRunningId_ = deviceId;
+    statusThread_ = std::thread([this, deviceId]() {
+        PrinterStatusReport report = QueryPrinterStatus(IODeviceManager::GetInstance(), deviceId);
+        {
+            std::lock_guard<std::mutex> lock(statusMutex_);
+            statusPending_ = std::make_pair(deviceId, std::move(report));
+        }
+        statusBusy_ = false;
+    });
+}
+
+void DeviceExplorerWindow::JoinStatusQuery() {
+    if (statusThread_.joinable()) statusThread_.join();
+}
+
+void DeviceExplorerWindow::ApplyPendingPrinterStatus() {
+    std::optional<std::pair<std::string, PrinterStatusReport>> ready;
+    {
+        std::lock_guard<std::mutex> lock(statusMutex_);
+        ready.swap(statusPending_);
+    }
+    if (ready) {
+        JoinStatusQuery();
+        statusRunningId_.clear();
+        statusCache_[ready->first] = std::move(ready->second);
+        // Only redraw when the answer is for what is on screen; an answer for
+        // a printer the user has already clicked away from just waits in the
+        // cache.
+        if (DeviceNodeId(ready->first) == selectedNodeId_) ShowDetailsFor(selectedNodeId_);
+    }
+    if (!statusBusy_ && !statusQueuedId_.empty()) {
+        const std::string next = statusQueuedId_;
+        statusQueuedId_.clear();
+        RequestPrinterStatus(next);
+    }
 }
 
 // ===== TREE =====
@@ -501,11 +564,28 @@ void DeviceExplorerWindow::ShowDetailsFor(const std::string& nodeId) {
         for (const DeviceRecord* record : group.devices) {
             if (DeviceNodeId(record->info.deviceId) != nodeId) continue;
             const IODeviceInfo& info = record->info;
+            std::vector<PropertySection> sections =
+                DescribeDevice(*record, &UltraCanvasHardwareInfo::MaskIdentifier);
+            if (info.category == IODeviceCategory::Printer) {
+                // Status first, where the eye lands: it is what someone
+                // selecting a printer usually came to see.
+                const auto cached = statusCache_.find(info.deviceId);
+                const bool fresh = cached != statusCache_.end() &&
+                                   NowSeconds() - cached->second.queriedAt <= kPrinterStatusMaxAgeSeconds;
+                std::vector<PropertySection> status;
+                if (cached != statusCache_.end()) {
+                    status = DescribePrinterStatus(cached->second);
+                } else {
+                    status.push_back({"Printer status", {{"State", "Asking the printer…"}}});
+                }
+                sections.insert(sections.begin(), status.begin(), status.end());
+                if (!fresh) RequestPrinterStatus(info.deviceId);
+            }
             ShowSections(DeviceDisplayName(info),
                          CategoryDisplayName(info.category) + " · " +
                              TransportDisplayName(info.transport) + " · " +
                              StateDisplayName(info.state),
-                         DescribeDevice(*record, &UltraCanvasHardwareInfo::MaskIdentifier));
+                         sections);
             return;
         }
     }
@@ -577,8 +657,10 @@ void DeviceExplorerWindow::ShowAbout() {
         "Shows the printers, scanners and cameras connected to this computer, "
         "as the IODeviceManager module finds them. Pick a device in the tree "
         "to see everything its backend reports about it.\n\n"
-        "DeviceExplorer only looks: it never opens, configures or prints to a "
-        "device. Serial numbers are masked.\n\n"
+        "DeviceExplorer only looks. The one thing it opens a device for is to "
+        "ask a selected printer for its status and ink or toner, and it closes "
+        "it again straight away; it never configures a device or prints. "
+        "Serial numbers are masked.\n\n"
         "Backends in this build:" + backends;
     UltraCanvasDialogManager::ShowInformation(message, "About DeviceExplorer", nullptr, window_.get());
 }

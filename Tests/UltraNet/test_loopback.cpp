@@ -23,6 +23,7 @@
 #include <string>
 #include <sys/types.h>
 #include <thread>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 #if !defined(_WIN32)
 #include <signal.h>
@@ -170,12 +171,12 @@ TEST(loopback_http_download_streams_to_disk) {
     // than std::string(path) — the latter doesn't compile on Windows.
     const std::string path =
         (std::filesystem::temp_directory_path() / "ultranet_loopback_dl.bin").string();
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
     auto res = UltraNet_HttpDownloadFile(Base() + "/big.bin", path);
     REQUIRE(bool(res));
-    REQUIRE(std::filesystem::exists(path));
-    REQUIRE_EQ(std::filesystem::file_size(path), static_cast<std::uintmax_t>(4096));
-    std::filesystem::remove(path);
+    REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(path)));
+    REQUIRE_EQ(std::filesystem::file_size(UltraCanvas::PathFromUtf8(path)), static_cast<std::uintmax_t>(4096));
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 TEST(loopback_session_reuses_connection) {
