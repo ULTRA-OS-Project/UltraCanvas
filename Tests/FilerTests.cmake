@@ -1,10 +1,12 @@
 # Tests/FilerTests.cmake
-# FilerFolderPreviewTest and FilerNameEncodingTest. Included by
+# FilerFolderPreviewTest, FilerNameEncodingTest, FilerHostIconsTest and
+# FilerShortcutEntryTest. Included by
 # Tests/CMakeLists.txt under BUILD_TESTS, and by the top-level CMakeLists.txt
 # on its own under ULTRACANVAS_BUILD_FILER_TESTS - so the Windows CI row,
 # which builds no full test suite, runs the file display against Thai, CJK and
 # emoji names on the platform where a name goes through UTF-16 and a code page
-# (the runner's is 1252). Paths are relative to this file, so either includer
+# (the runner's is 1252), asks the Windows shell for its icons, and reads
+# .lnk shortcuts where they are native. Paths are relative to this file, so either includer
 # works.
 
 set(_FT_DIR "${CMAKE_CURRENT_LIST_DIR}")
@@ -68,4 +70,53 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerNameEncodingTest")
 else()
     message(STATUS "  FilerNameEncodingTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILER HOST ICONS TEST =====
+# Display > File icons: the setting, and the cache key the host icon service
+# answers by - the key that decides whether a folder of four thousand ".txt"
+# files costs one icon lookup or four thousand. The lookups themselves are the
+# host's, so the test asserts that asking is harmless rather than what any one
+# desktop answers; it therefore passes on a build machine with no icon theme -
+# and on Windows it asks the real shell (SHGetFileInfo) the same questions.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerHostIconsTest...")
+    add_executable(FilerHostIconsTest
+        ${_FT_DIR}/FilerHostIconsTest.cpp
+    )
+    target_include_directories(FilerHostIconsTest PRIVATE ${_FT_INCLUDE_DIR})
+    target_compile_features(FilerHostIconsTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerHostIconsTest PRIVATE UltraCanvas)
+    set_target_properties(FilerHostIconsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerHostIconsTest COMMAND FilerHostIconsTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerHostIconsTest")
+else()
+    message(STATUS "  FilerHostIconsTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== FILER SHORTCUT ENTRY TEST =====
+# What the file display makes of a .lnk it lists: type, category, info column
+# and the resolved target on the entry. Builds its own shortcuts (and, off
+# Windows, its own Wine-prefix-shaped tree) inside the test; on Windows the
+# links name real paths, which is the system the format comes from.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerShortcutEntryTest...")
+    add_executable(FilerShortcutEntryTest
+        ${_FT_DIR}/FilerShortcutEntryTest.cpp
+    )
+    target_include_directories(FilerShortcutEntryTest PRIVATE
+        ${_FT_INCLUDE_DIR} ${_FT_DIR})
+    target_compile_features(FilerShortcutEntryTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerShortcutEntryTest PRIVATE UltraCanvas)
+    set_target_properties(FilerShortcutEntryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerShortcutEntryTest COMMAND FilerShortcutEntryTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerShortcutEntryTest")
+else()
+    message(STATUS "  FilerShortcutEntryTest skipped (UltraCanvas target not present)")
 endif()

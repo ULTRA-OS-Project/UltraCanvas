@@ -3229,36 +3229,10 @@ endif()
 
 message(STATUS "")
 
-# ===== FILER FOLDER PREVIEW TEST / FILER NAME ENCODING TEST =====
+# ===== FILER FOLDER PREVIEW / NAME ENCODING / HOST ICONS / SHORTCUT TESTS =====
 # Defined in FilerTests.cmake, which the top level also includes on its own
 # (ULTRACANVAS_BUILD_FILER_TESTS) where BUILD_TESTS is off - the Windows row.
 include(${CMAKE_CURRENT_SOURCE_DIR}/FilerTests.cmake)
-
-message(STATUS "")
-
-# ===== FILER HOST ICONS TEST =====
-# Display > File icons: the setting, and the cache key the host icon service
-# answers by - the key that decides whether a folder of four thousand ".txt"
-# files costs one icon lookup or four thousand. The lookups themselves are the
-# host's, so the test asserts that asking is harmless rather than what any one
-# desktop answers; it therefore passes on a build machine with no icon theme.
-if(TARGET UltraCanvas)
-    message(STATUS "  Building FilerHostIconsTest...")
-    add_executable(FilerHostIconsTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/FilerHostIconsTest.cpp
-    )
-    target_include_directories(FilerHostIconsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(FilerHostIconsTest PRIVATE cxx_std_20)
-    target_link_libraries(FilerHostIconsTest PRIVATE UltraCanvas)
-    set_target_properties(FilerHostIconsTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME FilerHostIconsTest COMMAND FilerHostIconsTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: FilerHostIconsTest")
-else()
-    message(STATUS "  FilerHostIconsTest skipped (UltraCanvas target not present)")
-endif()
 
 message(STATUS "")
 
@@ -3385,31 +3359,6 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: FilerSourceTextFormatsTest")
 endif()
-
-# ===== FILER SHORTCUT ENTRY TEST =====
-# What the file display makes of a .lnk it lists: type, category, info column
-# and the resolved target on the entry. Builds its own shortcuts (and its own
-# Wine-prefix-shaped tree) inside the test.
-if(TARGET UltraCanvas)
-    message(STATUS "  Building FilerShortcutEntryTest...")
-    add_executable(FilerShortcutEntryTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/FilerShortcutEntryTest.cpp
-    )
-    target_include_directories(FilerShortcutEntryTest PRIVATE
-        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
-    target_compile_features(FilerShortcutEntryTest PRIVATE cxx_std_20)
-    target_link_libraries(FilerShortcutEntryTest PRIVATE UltraCanvas)
-    set_target_properties(FilerShortcutEntryTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME FilerShortcutEntryTest COMMAND FilerShortcutEntryTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: FilerShortcutEntryTest")
-else()
-    message(STATUS "  FilerShortcutEntryTest skipped (UltraCanvas target not present)")
-endif()
-
-message(STATUS "")
 
 # ===== ICON RESOURCE TEST =====
 # The portable icon reader: an .ico file and the RT_GROUP_ICON / RT_ICON
