@@ -3318,14 +3318,17 @@ target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas)
 The package carries the whole element catalogue, FileLoader, JSON, and
 UltraDatabase and UltraNet when the installed build enabled them, plus
 `UltraCanvas::UltraCrypt` and `UltraCanvas::UltraVault` as separate targets.
-It re-finds cairo, pango, freetype, glib, tinyxml2 and libvips through
+The file-format plug-ins the build produced (CDR, XAR, EPS, the vector and
+3D-model converters, OCR, Vectorizer) are imported as
+`UltraCanvas::UltraCanvas<Name>Plugin` and listed in
+`ULTRACANVAS_PLUGIN_TARGETS`; link that list plus
+`UltraCanvas::UltraCanvasAllFormats` and every format is registered with
+FileLoader before `main()`, exactly as in-tree applications do it. The
+package re-finds cairo, pango, freetype, glib, tinyxml2 and libvips through
 pkg-config on your machine, so the `-dev` packages from step 1 are needed
-there too. The file-format converter plug-ins (CDR, XAR, EPS, the vector and
-3D-model converters, OCR, Vectorizer) are not in the package: they install as
-plain archives and are an in-tree concern for now. A static framework built
-against the vendored libcurl cannot be packaged at all and says so at
-configure time; build it shared, or against a system libcurl with WebSocket
-support.
+there too. A static framework built against the vendored libcurl cannot be
+packaged at all and says so at configure time; build it shared, or against
+a system libcurl with WebSocket support.
 
 Ask the assistant to **copy a small existing app, not to invent a structure**.
 `Apps/UltraAuthenticator/` is the cleanest template: a headless core library,
@@ -11840,31 +11843,52 @@ UltraCanvasButton is a customizable button control in the UltraCanvas framework 
 // Using constructor
 auto button = std::make_shared<UltraCanvasButton>(
     "MyButton",    // identifier
-    101,           // id
     100, 50,       // x, y position
     120, 40,       // width, height
     "Click Me"     // button text
 );
 
 // Using factory function
-auto button = CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me");
+auto button = CreateButton("MyButton", 100, 50, 120, 40, "Click Me");
 
-// Using auto-sized button
-auto button = CreateAutoButton("MyButton", 100, 50, "Click Me");
+// Size only: the position comes from the layout it is added to
+auto button = std::make_shared<UltraCanvasButton>("MyButton", 120, 40, "Click Me");
+
+// Text only: the layout sizes it as well
+auto button = std::make_shared<UltraCanvasButton>("MyButton", "Click Me");
+
+// With an icon beside the text
+auto button = CreateIconButton("MyButton", 100, 50, 120, 40, "media/icons/ok.png", "Click Me");
 ```
+
+There is no numeric id argument: an element is identified by its identifier
+string, and a button placed by a layout needs no position at all.
 
 ## Class Reference
 
-### Constructor
+### Constructors
 
 ```cpp
-UltraCanvasButton(
-    const std::string& identifier = "Button",
-    long id = 0,
-    long x = 0, long y = 0,
-    long w = 100, long h = 30,
-    const std::string& buttonText = "Button"
-);
+UltraCanvasButton(const std::string& identifier,
+                  float x, float y, float w, float h,
+                  const std::string& buttonText = "Button");
+UltraCanvasButton(const std::string& identifier,
+                  float w, float h,
+                  const std::string& buttonText = "Button");   // positioned by a layout
+UltraCanvasButton(const std::string& identifier,
+                  const std::string& buttonText);               // sized by a layout too
+```
+
+### Factories
+
+```cpp
+std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& identifier,
+                                                float x, float y, float w, float h,
+                                                const std::string& text = "Button");
+std::shared_ptr<UltraCanvasButton> CreateIconButton(const std::string& identifier,
+                                                    float x, float y, float w, float h,
+                                                    const std::string& iconPath,
+                                                    const std::string& text = "");
 ```
 
 ### Core Methods
@@ -11979,7 +12003,7 @@ button->onContextMenu = [menu, container](int windowX, int windowY) {
 ### Event Usage Example
 
 ```cpp
-auto button = CreateButton("MyButton", 1, 10, 10, 100, 30, "Click Me");
+auto button = CreateButton("MyButton", 10, 10, 100, 30, "Click Me");
 
 // Set click handler
 button->onClick = []() {
@@ -12080,7 +12104,7 @@ auto button = ButtonBuilder("MyButton", 10, 10, "Click Me")
 ### Standard Button
 
 ```cpp
-auto standardBtn = CreateButton("StandardButton", 1, 20, 20, 100, 30, "Standard");
+auto standardBtn = CreateButton("StandardButton", 20, 20, 100, 30, "Standard");
 standardBtn->onClick = []() {
     std::cerr << "Standard button clicked" << std::endl;
 };
@@ -12089,7 +12113,7 @@ standardBtn->onClick = []() {
 ### Colored Button
 
 ```cpp
-auto primaryBtn = CreateButton("PrimaryButton", 2, 20, 60, 100, 30, "Primary");
+auto primaryBtn = CreateButton("PrimaryButton", 20, 60, 100, 30, "Primary");
 primaryBtn->SetColors(
     Color(0, 123, 255, 255),  // Normal
     Color(0, 100, 225, 255),  // Hover
@@ -12119,7 +12143,7 @@ a `▾` character: a text renderer draws that glyph at a fraction of the
 section around it, while the icon fills the size it is given.
 
 ```cpp
-auto newButton = CreateButton("New", 1, 10, 10, 138, 28, "New folder");
+auto newButton = CreateButton("New", 10, 10, 138, 28, "New folder");
 newButton->SetSplitEnabled(true);
 newButton->SetSplitRatio(0.8f);              // 80 % action, 20 % arrow
 newButton->SetSplitSecondaryText("");        // the icon is the whole content
@@ -12147,7 +12171,7 @@ newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),   // normal
 ### Disabled Button
 
 ```cpp
-auto disabledBtn = CreateButton("DisabledButton", 3, 20, 140, 100, 30, "Disabled");
+auto disabledBtn = CreateButton("DisabledButton", 20, 140, 100, 30, "Disabled");
 disabledBtn->SetEnabled(false);
 ```
 
@@ -17917,7 +17941,7 @@ menus, toolbars, custom panels. The button only draws the accent; matching the
 key and invoking the action stays with the owner.
 
 ```cpp
-auto button = CreateButton("Apply", 1, 0, 0, 90, 28, "Apply");
+auto button = CreateButton("Apply", 0, 0, 90, 28, "Apply");
 button->SetMnemonicChar('A');            // underlines the first 'A'
 char letter = button->GetMnemonicChar(); // 'A'
 button->SetMnemonicIndex(3);             // or pick the character by index
@@ -51395,7 +51419,7 @@ split->SetPaneMinSize(0, 120);        // sidebar never narrower than 120 px
 
 sidebar->SetBackgroundColor(Color(232, 240, 252, 255));
 sidebar->SetPadding(8);
-sidebar->AddChild(CreateButton("Files", 1, 10, 10, 120, 28, "Files"));
+sidebar->AddChild(CreateButton("Files", 10, 10, 120, 28, "Files"));
 
 editor->SetBackgroundColor(Colors::White);
 editor->AddChild(myEditorWidget);
@@ -58393,7 +58417,7 @@ exists:
 ```cpp
 auto name   = CreateTextInput("archive-name", 0, 0, 240, 26);
 auto shot   = CreateImageElement("preview", 0, 0, 320, 240, "poster.png");
-auto accept = CreateButton("ok", 101, 0, 0, 104, 30, "Compress");
+auto accept = CreateButton("ok", 0, 0, 104, 30, "Compress");
 ```
 
 An element that belongs to a self-rendered view is added as a child of it and

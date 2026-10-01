@@ -26,6 +26,11 @@
 // A plugin element, from include/Plugins: the catalogue's charts, diagrams and
 // gauges are part of the same library and must come with the package.
 #include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
+// The format plug-ins and their registrar, when the package carries them.
+#include "UltraCanvasGraphicsPluginSystem.h"
+#ifdef PACKAGE_CONSUMER_HAS_ALL_FORMATS
+#include "UltraCanvasAllFormats.h"
+#endif
 
 #include <cstdlib>
 #include <iostream>
@@ -92,6 +97,22 @@ int main() {
 
     volatile auto keepWindowedCode = &WindowedMain;
     (void)keepWindowedCode;
+
+#ifdef PACKAGE_CONSUMER_HAS_ALL_FORMATS
+    // Linking the registrar registered every installed plug-in before main();
+    // calling it again is harmless and lets the list be printed. A package
+    // that carries plug-ins but registers none of them is broken.
+    RegisterAllFormatPlugins();
+    const std::vector<std::string> plugins = AutoRegisteredFormatPlugins();
+    const std::vector<std::string> extensions =
+        UltraCanvasGraphicsPluginRegistry::GetSupportedExtensions();
+    std::cout << "format plug-ins registered: " << plugins.size()
+              << ", extensions: " << extensions.size() << "\n";
+    if (!plugins.empty() && extensions.empty()) {
+        std::cerr << "plug-ins linked but no extension registered\n";
+        return EXIT_FAILURE;
+    }
+#endif
 
     std::cout << "UltraCanvas " << versionString << " installed package: OK\n";
     return EXIT_SUCCESS;

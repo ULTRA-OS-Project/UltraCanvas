@@ -137,14 +137,17 @@ target_link_libraries(MyApp PRIVATE UltraCanvas::UltraCanvas)
 The package carries the whole element catalogue, FileLoader, JSON, and
 UltraDatabase and UltraNet when the installed build enabled them, plus
 `UltraCanvas::UltraCrypt` and `UltraCanvas::UltraVault` as separate targets.
-It re-finds cairo, pango, freetype, glib, tinyxml2 and libvips through
+The file-format plug-ins the build produced (CDR, XAR, EPS, the vector and
+3D-model converters, OCR, Vectorizer) are imported as
+`UltraCanvas::UltraCanvas<Name>Plugin` and listed in
+`ULTRACANVAS_PLUGIN_TARGETS`; link that list plus
+`UltraCanvas::UltraCanvasAllFormats` and every format is registered with
+FileLoader before `main()`, exactly as in-tree applications do it. The
+package re-finds cairo, pango, freetype, glib, tinyxml2 and libvips through
 pkg-config on your machine, so the `-dev` packages from step 1 are needed
-there too. The file-format converter plug-ins (CDR, XAR, EPS, the vector and
-3D-model converters, OCR, Vectorizer) are not in the package: they install as
-plain archives and are an in-tree concern for now. A static framework built
-against the vendored libcurl cannot be packaged at all and says so at
-configure time; build it shared, or against a system libcurl with WebSocket
-support.
+there too. A static framework built against the vendored libcurl cannot be
+packaged at all and says so at configure time; build it shared, or against
+a system libcurl with WebSocket support.
 
 Ask the assistant to **copy a small existing app, not to invent a structure**.
 `Apps/UltraAuthenticator/` is the cleanest template: a headless core library,

@@ -250,7 +250,7 @@ exists:
 ```cpp
 auto name   = CreateTextInput("archive-name", 0, 0, 240, 26);
 auto shot   = CreateImageElement("preview", 0, 0, 320, 240, "poster.png");
-auto accept = CreateButton("ok", 101, 0, 0, 104, 30, "Compress");
+auto accept = CreateButton("ok", 0, 0, 104, 30, "Compress");
 ```
 
 An element that belongs to a self-rendered view is added as a child of it and

@@ -5,6 +5,9 @@
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
+# CMAKE_INSTALL_LIBDIR / _BINDIR for every install() below, the plug-in
+# directories' included - they are added before the INSTALLATION section.
+include(GNUInstallDirs)
 include(FetchContent)
 
 # Enable the C language: third_party/miniz/miniz.c (ZIP support for ODS/XLSX File
@@ -3314,7 +3317,8 @@ add_library(UltraCanvasAllFormats OBJECT
 target_compile_features(UltraCanvasAllFormats PRIVATE cxx_std_20)
 target_include_directories(UltraCanvasAllFormats
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Plugins>
+        $<INSTALL_INTERFACE:include/ultracanvas/Plugins>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${ULTRACANVAS_PLUGIN_INCLUDE_DIRS}
@@ -3385,11 +3389,12 @@ set(ULTRACANVAS_INCLUDE_DIRS
 # $<LINK_ONLY:...>. So the helper archives ride along; VirtualFS and fmt are
 # reached through their own packages (a cross-export-set reference resolves by
 # the other set's namespace, which is why a fetched fmt is told to install
-# itself above). The file-format plug-ins (ULTRACANVAS_PLUGIN_TARGETS) are not
-# exported: they each carry a converter library of their own, and nothing in
-# the core's interface needs them. They still install as plain archives from
-# their directories, so an in-tree application loses nothing.
-include(GNUInstallDirs)
+# itself above). The file-format plug-ins join the same export set from their
+# own directories (install(TARGETS ... EXPORT UltraCanvasTargets) in each
+# Plugins/*/CMakeLists.txt), together with what they carry - the vendored
+# libcdr archive, the Rust staticlib behind the Vectorizer - and the
+# UltraCanvasAllFormats registrar, so a consumer that links it has every
+# installed format registered before main(), as an in-tree application does.
 
 # The headers install as a mirror of this directory's layout under
 # include/ultracanvas - include/, Plugins/, libspecific/ and OS/ side by side -
@@ -3476,6 +3481,13 @@ else()
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         INCLUDES DESTINATION include/ultracanvas/include)
+    # The registrar is an OBJECT library (see its definition above for why);
+    # its objects install under lib/ultracanvas and the import is an object
+    # library too, so target_link_libraries(app UltraCanvas::UltraCanvasAllFormats)
+    # links every object in, which is what makes the registration happen.
+    install(TARGETS UltraCanvasAllFormats
+        EXPORT UltraCanvasTargets
+        OBJECTS DESTINATION ${CMAKE_INSTALL_LIBDIR}/ultracanvas)
     install(EXPORT UltraCanvasTargets
         FILE UltraCanvasTargets.cmake
         NAMESPACE UltraCanvas::
@@ -3507,6 +3519,11 @@ else()
         if(TARGET Iconv::Iconv)
             set(ULTRACANVAS_PACKAGE_NET_ICONV ON)
         endif()
+    endif()
+    # The EPS plug-in names ZLIB::ZLIB, an imported target the consumer re-finds.
+    set(ULTRACANVAS_PACKAGE_HAS_EPS OFF)
+    if(TARGET UltraCanvasEPSPlugin)
+        set(ULTRACANVAS_PACKAGE_HAS_EPS ON)
     endif()
     set(ULTRACANVAS_PACKAGE_HAS_VIPS OFF)
     if(ULTRACANVAS_HAS_VIPS)

@@ -15,9 +15,18 @@
 #   UltraCanvas::UltraVault      credential and secret storage, UI-free
 #   UltraCanvas::UltraDatabase   (when built) usable on its own, without the UI
 #   UltraCanvas::UltraNet        (when built against a system libcurl)
+#   UltraCanvas::UltraCanvas<X>Plugin
+#                                the file-format plug-ins this build produced
+#                                (CDR, XAR, EPS, Vector, Models, OCR,
+#                                Vectorizer); ULTRACANVAS_PLUGIN_TARGETS lists
+#                                the ones present
+#   UltraCanvas::UltraCanvasAllFormats
+#                                the registrar: link it and every plug-in above
+#                                is registered with FileLoader before main()
 #
 # Variables, for build systems that still want them:
-#   ULTRACANVAS_VERSION, ULTRACANVAS_INCLUDE_DIRS, ULTRACANVAS_LIBRARIES
+#   ULTRACANVAS_VERSION, ULTRACANVAS_INCLUDE_DIRS, ULTRACANVAS_LIBRARIES,
+#   ULTRACANVAS_PLUGIN_TARGETS
 #
 # Tests/PackageConsumer is the smallest application that uses this; CI builds
 # it against a fresh install on every pull request.
@@ -31,6 +40,9 @@ find_dependency(Threads)
 find_dependency(fmt CONFIG)
 if(@ULTRACANVAS_PACKAGE_HAS_VIRTUALFS@)
     find_dependency(VirtualFS CONFIG)
+endif()
+if(@ULTRACANVAS_PACKAGE_HAS_EPS@)
+    find_dependency(ZLIB)
 endif()
 if(@ULTRACANVAS_PACKAGE_HAS_NET@)
     find_dependency(CURL)
@@ -78,6 +90,19 @@ set(ULTRACANVAS_INCLUDE_DIRS
     "${PACKAGE_PREFIX_DIR}/include/ultracanvas/Plugins"
     ${_ultracanvas_dep_includes})
 set(ULTRACANVAS_LIBRARIES UltraCanvas::UltraCanvas)
+
+# The plug-ins this install carries, as imported targets - the same list the
+# in-tree build hands applications in ULTRACANVAS_PLUGIN_TARGETS.
+set(ULTRACANVAS_PLUGIN_TARGETS "")
+foreach(_ultracanvas_plugin
+        UltraCanvasVectorPlugin UltraCanvasModelsPlugin UltraCanvasCDRPlugin
+        UltraCanvasXARPlugin UltraCanvasEPSPlugin UltraCanvasOCRPlugin
+        UltraCanvasVectorizerPlugin)
+    if(TARGET UltraCanvas::${_ultracanvas_plugin})
+        list(APPEND ULTRACANVAS_PLUGIN_TARGETS UltraCanvas::${_ultracanvas_plugin})
+    endif()
+endforeach()
+unset(_ultracanvas_plugin)
 
 unset(_ultracanvas_dep_includes)
 unset(_ultracanvas_dep_libdirs)
