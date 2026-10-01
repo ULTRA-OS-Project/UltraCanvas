@@ -366,8 +366,8 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   display shows hidden files. Local folders only — the
   item is disabled on a remote drive and in the History, Favorites and
   Computer views.
-- **Extras > Export > Folder content / Folder tree content** (in the file
-  context menu's Extras submenu): writes a folder out as text and opens it
+- **Extras > Export > Folder content / Folder tree content / Folder tree as
+  CSV** (in the file context menu's Extras submenu): writes a folder out as text and opens it
   in a text window with **Save…** and **Close**. The folder is the selected
   one, or the shown folder while nothing is selected; the items are disabled
   for any other selection, on a remote drive and inside an archive.
@@ -375,8 +375,9 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   folder) and modification date in aligned columns, folders first — with a
   count and the total size at the end. *Folder tree content* draws the
   folder and everything below it with line characters, the way the `tree`
-  command does (`├──`, `└──`, `│`), folders marked with a trailing `/`, and
-  ends with the number of folders and files. Links and junctions are shown
+  command does (`├──`, `└──`, `│`), folders marked with a trailing `/` and
+  each file followed by its size (`notes.txt  (1.2 KB)`), and ends with the
+  number of folders and files and the files' total size. Links and junctions are shown
   with their target (`name -> target`) but never entered, a folder that
   cannot be read says so in its place, hidden entries are left out unless
   the display shows hidden files, and a tree stops after 200 000 entries.
@@ -385,6 +386,19 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   fixed-width font and can be edited before **Save…** writes it (UTF-8) to
   a file of your choosing, proposed as `<folder> - content.txt` /
   `<folder> - tree.txt`. Several export windows can be open at once.
+  *Folder tree as CSV* writes the same walk as a table for a spreadsheet:
+  a `Name;Path;Type;Size;Modified` header and one row per folder and file,
+  each folder followed by its content. *Type* is `Folder`, `Link`, or the
+  file's extension in capitals (`PDF file`; `File` without one); *Size* is
+  in plain bytes, empty for folders; *Modified* is local time as
+  `YYYY-MM-DD HH:MM:SS`. Fields are separated by `;`, and a field holding a
+  `;`, a comma, a quote or a line break is quoted (RFC 4180 quoting). There is no heading, and a tree over 200 000 entries
+  ends without a note, so the file stays a clean table. **Save…** proposes
+  `<folder> - files.csv` and writes it with CRLF line ends and a UTF-8 byte
+  order mark, so Excel opens non-ASCII names correctly. The semicolon is
+  what a spreadsheet set up for a decimal comma expects (German Excel opens
+  the file with a double-click); one set up for `,` asks for the separator
+  in its import dialog.
 - **Extras > Open prompt** (in the file context menu's Extras submenu):
   starts the operating system's command line program
   in the folder of the active tab, detached from UltraFiler (closing the file

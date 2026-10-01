@@ -19,10 +19,10 @@
 // "To Treeview" / "To Favorites" flags show and toggle where the folder is
 // pinned, and Unpin on pinned entries. The filer context menus' Extras
 // submenu ends with an app-provided block (extrasMenuProvider): "Find
-// text", an Export submenu - "Folder content" / "Folder tree content" open a
-// text window with the folder written out as a listing or as a tree drawn
-// with line characters, and save it (UltraFilerFolderExport) - "Open
-// prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
+// text", an Export submenu - "Folder content" / "Folder tree content" / "Folder
+// tree as CSV" open a text window with the folder written out as a listing,
+// as a tree drawn with line characters or as a CSV table, and save it
+// (UltraFilerFolderExport) - "Open prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
 // submenus whose "To Treeview" / "To Favorites" flags follow the current
 // selection. Folder icons: the main user folders carry one of their own
 // (media/icons), and any folder can be given a picture through "Set folder
@@ -1704,10 +1704,13 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
     MenuItemData exportTree = MenuItemData::Action("Folder tree content",
             [this]() { ExportFolder(FolderExportKind::Tree); });
     exportTree.enabled = canExport;
+    MenuItemData exportCsv = MenuItemData::Action("Folder tree as CSV",
+            [this]() { ExportFolder(FolderExportKind::Csv); });
+    exportCsv.enabled = canExport;
 
     return {
             findText,
-            MenuItemData::Submenu("Export", {exportContent, exportTree}),
+            MenuItemData::Submenu("Export", {exportContent, exportTree, exportCsv}),
             MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
             MenuItemData::Separator(),
             setIcon,
