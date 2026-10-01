@@ -961,11 +961,15 @@ engine; these classes hold the pixels being edited and hand them to it.
   character-offset helpers. Elements answer through
   `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
   `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
-  No platform bridge (AT-SPI, UIA) yet. See
+  Platform bridges: AT-SPI on Linux (`OS/Linux/UltraCanvasLinuxAccessibility`,
+  GIO D-Bus, tested end to end by `Tests/AtspiBridgeTest`) and UI Automation
+  on Windows (`OS/MSWindows/UltraCanvasWindowsAccessibility`, providers with
+  the Text pattern), sharing the tree, ids, geometry and text diffing in
+  `UltraCanvasAccessibilityBridge.h`; none for macOS yet. See
   `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with
-  selectable text: `CreateFile(utf8Path, w, h, error)` /
+  selectable text: `CreateForFile(utf8Path, w, h, error)` /
   `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
   `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
   work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.

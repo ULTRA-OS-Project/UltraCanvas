@@ -2170,6 +2170,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
         auto doc = documents[docIndex];
 
+#if !defined(ULTRACANVAS_PLUGIN_PDF)
+        // The PDF view is compiled only when MuPDF was found at configure
+        // time (ULTRACANVAS_PLUGIN_PDF). Without it this build cannot show a
+        // PDF, so say so instead of failing to link.
+        UltraCanvasDialogManager::ShowMessage(
+                "This build of Texter has no PDF support (MuPDF was not found "
+                "when it was built), so " + PathToUtf8(PathFromUtf8(filePath).filename()) +
+                " cannot be opened.",
+                "Open PDF", DialogType::Warning, DialogButtons::OK, nullptr);
+        (void)doc;
+        return false;
+#else
         // Build the PDF view at the same logical size as the textArea slot.
         // The container will resize it on layout passes.
         auto view = UltraCanvas::CreatePDFView(
@@ -2226,6 +2238,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         lastOpenedDirectory = PathToUtf8(p.parent_path());
         AddToRecentFiles(filePath);
         return true;
+#endif
     }
 
     bool UltraCanvasTextEditor::LoadFileIntoDocument(int docIndex, const std::string& filePath) {
@@ -2610,6 +2623,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = documents[docIndex];
 
             // PDF documents save via the MuPDF engine, not the text encoder.
+#if defined(ULTRACANVAS_PLUGIN_PDF)
             if (doc->IsPdf() && doc->pdfView) {
                 if (!doc->pdfView->SaveAs(filePath)) {
                     debugOutput << "Failed to save PDF: " << filePath << std::endl;
@@ -2628,6 +2642,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 AddToRecentFiles(filePath);
                 return true;
             }
+#endif
 
             std::string targetExt = PathToUtf8(PathFromUtf8(filePath).extension());
             if (!targetExt.empty() && targetExt[0] == '.') targetExt = targetExt.substr(1);

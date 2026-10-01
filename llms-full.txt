@@ -1133,11 +1133,15 @@ engine; these classes hold the pixels being edited and hand them to it.
   character-offset helpers. Elements answer through
   `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
   `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
-  No platform bridge (AT-SPI, UIA) yet. See
+  Platform bridges: AT-SPI on Linux (`OS/Linux/UltraCanvasLinuxAccessibility`,
+  GIO D-Bus, tested end to end by `Tests/AtspiBridgeTest`) and UI Automation
+  on Windows (`OS/MSWindows/UltraCanvasWindowsAccessibility`, providers with
+  the Text pattern), sharing the tree, ids, geometry and text diffing in
+  `UltraCanvasAccessibilityBridge.h`; none for macOS yet. See
   `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with
-  selectable text: `CreateFile(utf8Path, w, h, error)` /
+  selectable text: `CreateForFile(utf8Path, w, h, error)` /
   `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
   `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
   work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
@@ -5395,11 +5399,12 @@ What assistive technology — screen readers, magnifiers, braille displays —
 needs to know about an element, in a form that does not depend on the
 platform: its **role**, its **name**, for text a **text interface** (content,
 caret, selection, character boxes, formatting, words, lines, sentences) and an
-**event stream** saying what changed. A platform bridge (AT-SPI on Linux, UI
-Automation on Windows, NSAccessibility on macOS) is the layer that hands this
-to the operating system; the bridges are not written yet, so today the layer
-serves tests, in-application readers (read aloud, a braille panel) and future
-bridges.
+**event stream** saying what changed. A platform bridge hands this to the
+operating system, where screen readers find it: **AT-SPI** on Linux (Orca)
+and **UI Automation** on Windows (Narrator, NVDA, JAWS) - see
+[Platform bridges](#platform-bridges). There is no macOS bridge
+(NSAccessibility) yet. The same layer serves tests and in-application readers
+(read aloud, a braille panel).
 
 Header: `UltraCanvasAccessibility.h` (included by `UltraCanvasUIElement.h`).
 
@@ -5449,15 +5454,81 @@ UltraCanvasAccessibility::RemoveListener(id);
 ```
 
 The window announces `FocusChanged` when an element gains the focus; the rich
-text element announces edits, caret moves and selection changes. Elements build
-events only while someone listens (`HasListeners()`), so the layer costs nothing
-otherwise. Listeners are called on the thread that made the change (the UI
-thread).
+text element announces edits, caret moves and selection changes. Every element
+announces `ElementDestroyed` from its destructor, so a bridge can drop the id
+it gave it. Elements build events only while someone listens
+(`HasListeners()`), so the layer costs nothing otherwise. Listeners are called
+on the thread that made the change (the UI thread).
+
+`IAccessibleText::IsReadOnly()` (default false) tells a screen reader not to
+announce the text as editable; the rich text element answers its
+`IsReadOnly()`.
 
 ## Helpers
 
 `CharacterCount`, `ByteOffsetOfCharacter` and `CharacterOffsetOfByte` convert
 between the characters of the accessibility API and UTF-8 byte offsets.
+
+## Platform bridges
+
+Nothing to call: the application starts the bridge for its platform, and an
+element that describes itself (the three virtuals above) is reachable.
+
+**The tree.** The application holds its windows; a window holds its elements
+in container order. An element that has not described itself
+(`AccessibleRole::Unknown`) still appears - as a panel when it holds others,
+so a reader walks into it, else as a filler (AT-SPI) or custom control that is
+neither control nor content (UI Automation). Names are `GetAccessibleName()`,
+a window's title for a window. Positions are the element's place on the
+screen: window coordinates scaled by the window's device scale, from the
+window's content origin (`UltraCanvasWindowBase::GetContentScreenOrigin()`,
+below the title bar on Windows).
+
+**AT-SPI (Linux)** - `OS/Linux/UltraCanvasLinuxAccessibility`. The application
+registers on the accessibility bus with the registry (`Socket.Embed`) and
+answers there for the application (`Accessible`, `Application`), its windows
+(frames) and its elements (`Accessible`, `Component`, and `Text` for elements
+with text). Roles map to AT-SPI roles (`Document` → document text, `TextField`
+→ entry, `Button` → push button, ...); states include enabled, visible,
+showing, focusable, focused, editable or read-only, single/multi-line and, for
+a window, active. Text attributes use the names ATK and Orca read: `weight`,
+`style`, `underline`, `strikethrough`, `text-position`, `family-name`, `size`,
+`fg-color`, `bg-color`, `invalid` (spelling), plus `heading-level`,
+`list-item`, `link`, `revision` and `comment`. Events: focus
+(`StateChanged:focused` and `Focus`), window activation, `TextCaretMoved`,
+`TextSelectionChanged` and `TextChanged` as `delete`/`insert` with the text,
+worked out from the text the bridge last sent.
+
+It connects when the desktop has accessibility on (`org.a11y.Status`
+`IsEnabled` or `ScreenReaderEnabled`, which GNOME sets when Orca starts), and
+later when it is turned on; without a session bus it does nothing.
+`NO_AT_BRIDGE=1` keeps it off, `UC_ACCESSIBILITY_ALWAYS_ON=1` connects
+regardless. D-Bus is GIO's (already there through GTK); its calls are answered
+on the UI thread between events, through an fd watch on the event loop, with
+no thread of its own.
+
+**UI Automation (Windows)** - `OS/MSWindows/UltraCanvasWindowsAccessibility`.
+Each window answers `WM_GETOBJECT` with a fragment root; every element is a
+fragment (control type, name, automation id = identifier, framework
+"UltraCanvas", enabled, focusable, focused, offscreen, bounds, navigation,
+`SetFocus`, hit testing). An element with text offers the **Text pattern**:
+document, selection and point ranges that move and expand by character,
+format run, word, line, paragraph and document, find text, select, report one
+rectangle per line, and give font name and size, weight, italic, colours,
+super/subscript, underline/strikethrough, heading style ids, read-only and
+spelling/comment/insertion/deletion annotations (mixed where the runs of a
+range differ). Focus, text and caret/selection changes raise the matching
+events. `UIAutomationCore.dll` is loaded at run time, and the bridge does
+nothing until a client sends the first `WM_GETOBJECT`.
+
+**Testing.** `Tests/AtspiBridgeTest` runs a libatspi client - the library Orca
+uses - against a test application on a private accessibility bus: the tree,
+names, roles, states, text, words, sentences, attributes, extents, hit
+testing, moving the caret, and the insert/delete events of typing. It is built
+when the `atspi-2` development package is installed and skips itself without a
+display or at-spi2-core. The UI Automation bridge has no automated test yet:
+so far it is compile-checked (MinGW GCC and Clang) but has not been run
+against Narrator, NVDA or JAWS.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -45253,8 +45324,11 @@ the document's title as its name, and `GetAccessibleTextInterface()` - the
 paragraphs one per line (a table's cells tab-separated), caret and selection,
 character boxes, words, lines and sentences, and per-run formatting including
 headings, lists, links, tracked changes and comments. Edits, caret moves,
-selection changes and focus are announced to listeners. There is no platform
-bridge yet (AT-SPI, UI Automation), so a system screen reader does not see it.
+selection changes and focus are announced to listeners, and the platform
+bridges hand all of it to screen readers: AT-SPI on Linux (Orca), UI
+Automation on Windows (Narrator, NVDA, JAWS) - see
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges). There
+is no macOS bridge yet.
 
 ## Drag and drop
 
@@ -45563,9 +45637,8 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
-- **No screen-reader bridge.** The accessibility model is there (see
-  Accessibility above); the AT-SPI / UI Automation bridges that hand it to the
-  operating system are not.
+- **No macOS screen-reader bridge.** Linux (AT-SPI) and Windows (UI
+  Automation) have one; VoiceOver does not see the element yet.
 - **The input method's candidate window** is placed by the input method, not
   next to the caret.
 

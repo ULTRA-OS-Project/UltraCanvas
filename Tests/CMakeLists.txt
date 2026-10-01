@@ -403,6 +403,41 @@ else()
     message(STATUS "  RichTextEditElementTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== AT-SPI BRIDGE TEST =====
+# The Linux screen-reader bridge end to end: a libatspi client (as Orca uses
+# it) finds AtspiBridgeTestApp on a private accessibility bus, reads its
+# document through AT-SPI and checks the events it sends. Built when the
+# libatspi headers are present; the test skips itself (77) without a display
+# or at-spi2-core.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(ATSPI_CLIENT QUIET atspi-2 gobject-2.0)
+    endif()
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(ATSPI_CLIENT_FOUND AND Python3_Interpreter_FOUND)
+        message(STATUS "  Building AtspiBridgeTest...")
+        add_executable(AtspiBridgeTestApp ${CMAKE_CURRENT_SOURCE_DIR}/AtspiBridgeTest/AtspiBridgeTestApp.cpp)
+        target_include_directories(AtspiBridgeTestApp PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+        target_compile_features(AtspiBridgeTestApp PRIVATE cxx_std_20)
+        target_link_libraries(AtspiBridgeTestApp PRIVATE UltraCanvas)
+        add_executable(AtspiBridgeTestClient ${CMAKE_CURRENT_SOURCE_DIR}/AtspiBridgeTest/AtspiBridgeTestClient.c)
+        target_include_directories(AtspiBridgeTestClient PRIVATE ${ATSPI_CLIENT_INCLUDE_DIRS})
+        target_link_libraries(AtspiBridgeTestClient PRIVATE ${ATSPI_CLIENT_LINK_LIBRARIES})
+        set_target_properties(AtspiBridgeTestApp AtspiBridgeTestClient PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        )
+        add_test(NAME AtspiBridgeTest
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/AtspiBridgeTest/run_atspi_bridge_test.py
+                         $<TARGET_FILE:AtspiBridgeTestApp> $<TARGET_FILE:AtspiBridgeTestClient>
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+        set_tests_properties(AtspiBridgeTest PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+        message(STATUS "    Test registered: AtspiBridgeTest")
+    else()
+        message(STATUS "  AtspiBridgeTest skipped (needs the atspi-2 development package and Python 3)")
+    endif()
+endif()
+
 # ===== TEXT INPUT UTF-8 TEST =====
 # Caret movement, Backspace/Delete, hit testing, masking and the length limit of
 # UltraCanvasTextInput all address the buffer by byte offset; this proves every

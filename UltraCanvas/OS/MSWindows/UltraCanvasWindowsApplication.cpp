@@ -6,6 +6,7 @@
 
 // winsock2.h must precede windows.h (pulled in by the headers below) so the legacy winsock.h v1
 // is not included instead. Needed for select()/fd_set used to service host fd-watches.
+#include "UltraCanvasWindowsAccessibility.h"
 #include <winsock2.h>
 
 #include "../../include/UltraCanvasApplication.h"
@@ -132,6 +133,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindowsApplication::ShutdownNative() {
+        WindowsAccessibility::Shutdown();
+
         // Clean up wakeup mechanism
         ShutdownWakeUp();
 
