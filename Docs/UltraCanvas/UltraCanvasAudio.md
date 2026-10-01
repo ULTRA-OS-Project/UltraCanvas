@@ -141,6 +141,42 @@ Properties: `Volume`, `Mute`, `Loop`, `PlaybackRate`, `OutputDevice`.
 Callbacks: `onLoaded`, `onPlaybackStateChanged`, `onPositionChanged`, `onEnded`,
 `onError`.
 
+#### Streaming sink (live audio)
+
+A file or a `UCAudio` is played from a buffer that exists before `Play()`.
+Live audio — the far end of a call, synthesised speech, a network stream —
+does not exist up front, so the player also offers a **sink**: open it at the
+stream's rate and channel count, then push interleaved float PCM as it is
+produced. The device clock pulls from a bounded ring (`AudioFrameRing`,
+`UltraCanvasAudioStreaming.h`); the caller keeps it topped up.
+
+```cpp
+auto p = CreateAudioPlayer();
+AudioSinkConfig sink;
+sink.sampleRate = 48000;
+sink.channels = 1;
+sink.bufferMs = 200;                      // ring capacity = the latency ceiling
+p->OpenSink(sink);                        // opens the device and starts at once
+p->onSinkUnderrun = []{ /* the ring ran dry; silence was played */ };
+
+// From the decoder / network thread (one producer):
+size_t queued = p->PushSinkFrames(pcm, frames);   // < frames: ring was full
+if (p->GetSinkQueuedSeconds() > 0.12) { /* producer is ahead; slow down */ }
+
+p->SetVolume(0.8f);                       // volume, mute and device apply as usual
+p->CloseSink();                           // or Unload()
+```
+
+Sink API: `OpenSink(cfg)`, `IsSinkOpen()`, `PushSinkFrames(samples, frames)`
+(also takes an `AudioLiveFrame` straight from the recorder),
+`GetSinkQueuedFrames()`, `GetSinkQueuedSeconds()`, `ClearSink()`,
+`CloseSink()`, `GetSinkUnderrunCount()`, `GetSinkDroppedFrames()`. While a
+sink is open `Pause` / `Play` / `Stop` apply to it (`Stop` also empties the
+ring), `Seek` returns false, `GetDuration()` is 0 and `GetPosition()` is the
+seconds played. Frames pushed beyond `bufferMs` are dropped and counted, never
+partially written, so latency cannot creep up; an underrun plays silence and
+fires `onSinkUnderrun` once per episode, on the audio thread.
+
 ### Recording (non-visual)
 
 `UltraCanvasAudioRecorder.h` — `UltraCanvasAudioRecorder`
@@ -164,8 +200,42 @@ r->SaveToFile("clip.wav");              // or persist directly
 Transport: `Open / Start / Pause / Resume / Stop / Close`.
 Output: `TakeBuffer() -> UCAudio`, `SaveToFile(path, format)`, `Discard()`.
 Callbacks: `onRecordingStateChanged`, `onLevelChanged(peak, rms)`,
-`onBufferAvailable(samples, frames, channels)`, `onSilenceDetected`,
-`onClipping`, `onMaxDurationReached`, `onError`, `onPermissionChanged`.
+`onBufferAvailable(samples, frames, channels)`, `onLiveFrame(frame)`,
+`onSilenceDetected`, `onClipping`, `onMaxDurationReached`, `onError`,
+`onPermissionChanged`.
+
+#### Live capture mode
+
+`AudioCaptureMode::Record` (the default) accumulates for `TakeBuffer()` and
+`SaveToFile()`. A call, a speech recogniser or a streaming encoder wants the
+opposite: every frame delivered as it arrives, and nothing kept, so memory
+stays flat however long the session runs. That is `AudioCaptureMode::Live`:
+
+```cpp
+AudioCaptureConfig cfg;
+cfg.sampleRate = 48000;
+cfg.channels = 1;
+cfg.mode = AudioCaptureMode::Live;
+cfg.liveFrameMs = 10;                     // Opus / WebRTC frame; 20 for most speech engines
+
+auto r = CreateAudioRecorderWithConfig(cfg);
+r->onLiveFrame = [&](const AudioLiveFrame& f) {
+    // Audio thread. f.samples: f.frameCount * f.channels floats in [-1, 1],
+    // gain and mute applied, valid until this call returns.
+    encoder.Encode(f.samples, f.frameCount);          // or player->PushSinkFrames(f)
+};
+r->Open();
+r->Start();
+// ... Stop() flushes the partial last frame, zero-padded.
+```
+
+`liveFrameMs > 0` repacketises the backend's chunks (whatever period the
+device uses) into frames of exactly that duration through
+`AudioFramePacketizer`; `0` passes each backend chunk through as one frame.
+`AudioLiveFrame::firstFrameIndex` counts frames since `Start()`, which is the
+timestamp a codec or a jitter buffer needs. Level metering, `onClipping`,
+`onSilenceDetected` and `maxDurationMs` work in both modes; `TakeBuffer()`
+returns an empty buffer in Live mode.
 
 ### Devices & permission
 
@@ -278,6 +348,13 @@ The configure log says which route was taken — `Audio codec: AAC/M4A decode
   the element additionally stops the device. Earlier the device kept pulling
   frames past the end and the track audibly restarted from 0:00 while the
   state said `Stopped`.
+- Live audio: `UltraCanvasAudioStreaming.h` is header-only and backend-free.
+  `AudioFrameRing` is a wait-free single-producer / single-consumer ring of
+  interleaved float frames (the sink's queue); `AudioFramePacketizer` turns
+  arbitrary backend chunks into fixed-duration frames (the recorder's live
+  mode); `AudioLiveFrame` is the block both pass around. A call stack or a
+  codec can use them without a device, and `Tests/AudioStreamingTest.cpp`
+  does.
 - Decoders/encoders beyond miniaudio's built-ins live in
   `libspecific/Audio/AudioCodecsExtra.cpp`, compile-gated on the
   `ULTRACANVAS_HAS_*` defines set by CMake codec detection. The backend
