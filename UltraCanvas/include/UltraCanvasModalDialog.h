@@ -731,6 +731,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasFilerWidget> filerView;
         // Details / list / icon sizes for the listing.
         std::shared_ptr<UltraCanvasSegmentedControl> viewSelector;
+        int viewIndex = 0;   // the view button chosen (remembered across dialogs)
         std::shared_ptr<UltraCanvasTextInput> fileNameInput;
         std::shared_ptr<UltraCanvasDropdown> filterDropdown;
 
@@ -792,6 +793,8 @@ namespace UltraCanvas {
         std::vector<std::string> GetSelectedFilePaths() const;
 
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+        // Remembers the view and the window size for the next file dialog.
+        void PerformClose() override;
 
     protected:
         // The name field takes the focus (the listing for a folder picker),

@@ -4194,6 +4194,23 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasFilerWidget::SetDetailsColumnVisible(FilerDetailsColumn column, bool visible) {
+        const size_t index = static_cast<size_t>(column);
+        if (index == 0 || index >= kFilerDetailsColumnCount) return;   // Name stays
+        const uint32_t bit = 1u << index;
+        const uint32_t next = visible ? (hiddenDetailsColumns & ~bit) : (hiddenDetailsColumns | bit);
+        if (next == hiddenDetailsColumns) return;
+        hiddenDetailsColumns = next;
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
+    bool UltraCanvasFilerWidget::IsDetailsColumnVisible(FilerDetailsColumn column) const {
+        const size_t index = static_cast<size_t>(column);
+        if (index >= kFilerDetailsColumnCount) return false;
+        return index == 0 || !(hiddenDetailsColumns & (1u << index));
+    }
+
     void UltraCanvasFilerWidget::SetDetailsColumnWidth(FilerDetailsColumn column,
                                                        int pixels) {
         EnsureDetailsColumnWidths();
@@ -9008,6 +9025,7 @@ namespace UltraCanvas {
             if (!fileListMode &&
                 kDetailsColumnSpecs[i].id == FilerDetailsColumn::Path)
                 continue;
+            if (i != 0 && (hiddenDetailsColumns & (1u << i))) continue;
             vis.push_back(i);
         }
         return vis;

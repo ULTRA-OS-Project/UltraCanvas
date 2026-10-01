@@ -22,8 +22,18 @@
     with the current one marked (an `UltraCanvasSegmentedControl`).
   - The dialog window can be resized; the tree and the listing take up the
     space.
-  - The default size is 760 × 520 (was 600 × 450) to make room for the tree.
+  - The dialog remembers the view chosen and the size it was left at, per
+    user and for every application, in `FileDialog.conf` in the UltraCanvas
+    settings folder (`%APPDATA%\UltraCanvas`, `~/Library/Application
+    Support/UltraCanvas`, `$XDG_CONFIG_HOME/UltraCanvas` or
+    `~/.config/UltraCanvas`); it is written whenever the dialog closes.
+  - Details shows Name, Size, Type and Modified, so the name column gets
+    the width (it was squeezed to its 120 px minimum by seven columns).
+  - The default size is 900 × 560 (was 600 × 450) to make room for the tree.
 - **`UltraCanvasFilerWidget::SetEntryFilter(predicate)`** limits the listing
   to the entries a host accepts — the file dialog's *Files of type* filter,
   and folders only in a folder picker. Such entries are not "hidden" and are
   never counted into the hidden-items notice.
+- **`UltraCanvasFilerWidget::SetDetailsColumnVisible(column, visible)`**
+  leaves a Details column out of the table (Name always stays), so a compact
+  display gives the name the width the others would take.

@@ -15,6 +15,7 @@
 #include "UltraCanvasFilerWidget.h"     // the file dialog's listing
 #include "UltraCanvasSegmentedControl.h"
 #include <cstdlib>
+#include <fstream>
 #include <fmt/os.h>
 #include <iostream>
 #include <algorithm>
@@ -1198,11 +1199,89 @@ namespace UltraCanvas {
             if (rel.empty() || *rel.begin() == "..") return {};
             return rel;
         }
+
+        // The listing's layouts, in the order of the view buttons.
+        const FilerViewType kFileDialogViews[] = {
+                FilerViewType::Details, FilerViewType::List,
+                FilerViewType::ThumbnailsSmall, FilerViewType::ThumbnailsMedium,
+                FilerViewType::ThumbnailsBig, FilerViewType::ThumbnailsMaximized};
+        constexpr int kFileDialogViewCount = 6;
+
+        // ===== REMEMBERED STATE =====
+        // The view the user last chose and the size they last gave the
+        // window, kept per user for every application that shows this dialog:
+        // "FileDialog.conf" in the framework's settings folder (beside the
+        // spell checker's user dictionary).
+        struct FileDialogState {
+            int view = 0;     // index into kFileDialogViews
+            int width = 0;    // 0 = not remembered
+            int height = 0;
+        };
+        constexpr int kFileDialogMinWidth = 520;
+        constexpr int kFileDialogMinHeight = 380;
+        constexpr int kFileDialogMaxSide = 8000;
+
+        std::filesystem::path FileDialogStatePath() {
+            std::filesystem::path base;
+#if defined(_WIN32) || defined(_WIN64)
+            if (const wchar_t* appData = _wgetenv(L"APPDATA"))
+                base = std::filesystem::path(appData);   // path-string-ok: wide
+#elif defined(__APPLE__)
+            if (const char* home = std::getenv("HOME"))
+                base = PathFromUtf8(home) / "Library" / "Application Support";
+#else
+            if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
+                base = PathFromUtf8(xdg);
+            } else if (const char* home = std::getenv("HOME")) {
+                base = PathFromUtf8(home) / ".config";
+            }
+#endif
+            if (base.empty()) return {};
+            return base / "UltraCanvas" / "FileDialog.conf";
+        }
+
+        FileDialogState LoadFileDialogState() {
+            FileDialogState state;
+            const std::filesystem::path path = FileDialogStatePath();
+            if (path.empty()) return state;
+            std::ifstream in(path);
+            std::string line;
+            while (std::getline(in, line)) {
+                const size_t eq = line.find('=');
+                if (eq == std::string::npos) continue;
+                const std::string key = line.substr(0, eq);
+                int value = 0;
+                try { value = std::stoi(line.substr(eq + 1)); } catch (...) { continue; }
+                if (key == "view" && value >= 0 && value < kFileDialogViewCount) state.view = value;
+                else if (key == "width" && value >= kFileDialogMinWidth && value <= kFileDialogMaxSide) state.width = value;
+                else if (key == "height" && value >= kFileDialogMinHeight && value <= kFileDialogMaxSide) state.height = value;
+            }
+            return state;
+        }
+
+        void SaveFileDialogState(const FileDialogState& state) {
+            const std::filesystem::path path = FileDialogStatePath();
+            if (path.empty()) return;
+            std::error_code ec;
+            std::filesystem::create_directories(path.parent_path(), ec);
+            std::ofstream out(path, std::ios::trunc);
+            if (!out) return;
+            out << "view=" << state.view << "\n"
+                << "width=" << state.width << "\n"
+                << "height=" << state.height << "\n";
+        }
     } // namespace
 
     void UltraCanvasFileDialog::CreateFileDialog(const FileDialogConfig &config) {
         fileConfig = config;
-        UltraCanvasModalDialog::CreateDialog(config);
+        // Opens the way the user left it last time: same view, same size.
+        const FileDialogState remembered = LoadFileDialogState();
+        viewIndex = remembered.view;
+        if (remembered.width > 0 && remembered.height > 0) {
+            fileConfig.width = remembered.width;
+            fileConfig.height = remembered.height;
+        }
+        UltraCanvasModalDialog::CreateDialog(fileConfig);
 
         // The browser fills the dialog at the configured size; there is no
         // message text to fit the height to.
@@ -1302,13 +1381,11 @@ namespace UltraCanvas {
                                  "view-icons-large.svg", "view-icons-xlarge.svg"}) {
             viewSelector->AddSegment("", FileDialogIconPath(icon));
         }
-        viewSelector->SetSelectedIndex(0);
+        viewSelector->SetSelectedIndex(viewIndex);
         viewSelector->onSegmentSelected = [this](int index) {
-            static const FilerViewType kViews[] = {
-                FilerViewType::Details, FilerViewType::List,
-                FilerViewType::ThumbnailsSmall, FilerViewType::ThumbnailsMedium,
-                FilerViewType::ThumbnailsBig, FilerViewType::ThumbnailsMaximized};
-            if (filerView && index >= 0 && index < 6) filerView->SetViewType(kViews[index]);
+            if (index < 0 || index >= kFileDialogViewCount) return;
+            viewIndex = index;
+            if (filerView) filerView->SetViewType(kFileDialogViews[index]);
         };
         pathRow->AddChild(viewSelector);
         browser->AddChild(pathRow);
@@ -1344,7 +1421,15 @@ namespace UltraCanvas {
         // there navigates the dialog; opening a file chooses it.
         filerView = std::make_shared<UltraCanvasFilerWidget>("FileDialogListing");
         filerView->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        filerView->SetViewType(FilerViewType::Details);
+        filerView->SetViewType(kFileDialogViews[viewIndex]);
+        // A picker needs the name above all: Details shows Name, Size, Type
+        // and Modified, the others narrowed, so the name column gets the rest.
+        filerView->SetDetailsColumnVisible(FilerDetailsColumn::CreatedDate, false);
+        filerView->SetDetailsColumnVisible(FilerDetailsColumn::Attributes, false);
+        filerView->SetDetailsColumnVisible(FilerDetailsColumn::Info, false);
+        filerView->SetDetailsColumnWidth(FilerDetailsColumn::Size, 80);
+        filerView->SetDetailsColumnWidth(FilerDetailsColumn::Type, 105);
+        filerView->SetDetailsColumnWidth(FilerDetailsColumn::ModifiedDate, 145);
         filerView->SetShowHiddenFiles(showHiddenFiles);
         filerView->SetSelectionInfoVisible(false);
         filerView->SetActivateOpensWithDefaultApp(false);
@@ -1572,6 +1657,19 @@ namespace UltraCanvas {
         } else {
             revealTreeSelectionPending = true;
         }
+    }
+
+    void UltraCanvasFileDialog::PerformClose() {
+        // However it closes - OK, Cancel, Escape, the title bar - the view and
+        // the size it had are what the next file dialog opens with.
+        FileDialogState state;
+        state.view = viewIndex;
+        state.width = std::clamp(static_cast<int>(std::lround(GetWidth())),
+                                 kFileDialogMinWidth, kFileDialogMaxSide);
+        state.height = std::clamp(static_cast<int>(std::lround(GetHeight())),
+                                  kFileDialogMinHeight, kFileDialogMaxSide);
+        SaveFileDialogState(state);
+        UltraCanvasModalDialog::PerformClose();
     }
 
     void UltraCanvasFileDialog::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
@@ -2235,8 +2333,8 @@ namespace UltraCanvas {
 
     FileDialogConfig::FileDialogConfig() : DialogConfig() {
         buttons = DialogButtons::OKCancel;
-        width = 760;
-        height = 520;
+        width = 900;
+        height = 560;
         resizable = true;
         // Default filters
         filters = {

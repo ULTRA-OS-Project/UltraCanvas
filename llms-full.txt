@@ -21481,6 +21481,20 @@ files, the curation below, and the ignore patterns — and `WhenIgnored`
 everywhere else, so an ordinary folder stays quiet about its dot names but says
 so when a setting dropped something from it.
 
+## Hiding Details columns
+
+`SetDetailsColumnVisible(column, false)` leaves a Details column out of the
+table; `IsDetailsColumnVisible` reads it back. Name cannot be hidden: it is
+the flexible column that takes whatever width the others leave, so every
+column hidden is width the names get. The file dialog shows Name, Size, Type
+and Modified only:
+
+```cpp
+filer->SetDetailsColumnVisible(FilerDetailsColumn::CreatedDate, false);
+filer->SetDetailsColumnVisible(FilerDetailsColumn::Attributes, false);
+filer->SetDetailsColumnVisible(FilerDetailsColumn::Info, false);
+```
+
 ## Entry filter
 
 `SetEntryFilter(predicate)` decides which entries the listing shows at all — a

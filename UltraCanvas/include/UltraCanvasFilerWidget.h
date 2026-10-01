@@ -87,6 +87,7 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
+// SetDetailsColumnVisible leaves Details columns out of the table.
 // SetEntryFilter narrows what the listing shows to the entries a host
 // predicate accepts - a file picker's "Files of type" filter.
 // Version: 1.35.0
@@ -1191,6 +1192,11 @@ namespace UltraCanvas {
         void SetDetailsColumnWidth(FilerDetailsColumn column, int pixels);
         int  GetDetailsColumnWidth(FilerDetailsColumn column) const;
         void ResetDetailsColumnWidths();          // back to the built-in widths
+        // Leave a Details column out (Name always stays). A compact display -
+        // a file picker - shows Name, Size, Type and Modified so the name
+        // gets the width the others would take. All are shown by default.
+        void SetDetailsColumnVisible(FilerDetailsColumn column, bool visible);
+        bool IsDetailsColumnVisible(FilerDetailsColumn column) const;
 
         // List view column width (same value as FilerStyle::listColumnWidth).
         void SetListColumnWidth(int pixels);
@@ -1795,6 +1801,7 @@ namespace UltraCanvas {
         // the other columns leave, so it always fills the table out to the
         // widget edge.
         std::vector<int> detailsColumnWidths;
+        uint32_t hiddenDetailsColumns = 0;   // bit per FilerDetailsColumn
 
         // BarSize columns: the name column on the left, the size label on the
         // right, the bar in between. 0 = auto for the value column (as wide as
