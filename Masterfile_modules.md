@@ -993,6 +993,15 @@ applications never deal with compression formats themselves;
 `FileBytesResult::decompressedFrom` records the source format and
 `autoDecompress = false` opts out.
 
+The file dialogs follow `UltraCanvasDialogManager::SetUseNativeDialogs`: the
+platform's picker, or the framework's `UltraCanvasFileDialog`. What the
+framework's dialog remembers (view, size, Details column widths, last used
+folder - shared by all applications or per application) is
+`UltraCanvas::FileDialogSettings` in `UltraCanvasFileDialogSettings.h`, the
+file `FileDialog.conf` in the UltraCanvas settings folder; the ULTRA OS
+settings application (UOS-Settings, `Apps/UOSSettings`) edits the last used
+folder scope. Every write goes through `FileDialogSettings::Update()`.
+
 ### **4. Plug-ins for File Types**
 
 Per-format plug-ins under `UltraCanvas/Plugins/` (Charts, Diagrams, Text,

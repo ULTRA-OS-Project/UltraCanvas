@@ -424,6 +424,17 @@ if(BUILD_ULTRACLEANER)
     add_subdirectory(Apps/UltraCleaner)
 endif()
 
+# ===== UOS-SETTINGS =====
+# The ULTRA OS settings application: settings that belong to the system rather
+# than to one application, starting with where the file dialogs of all
+# applications open (FileDialog.conf, UltraCanvasFileDialogSettings.h).
+option(BUILD_UOS_SETTINGS "Build the UOS-Settings application" ON)
+if(BUILD_UOS_SETTINGS)
+    message(STATUS "")
+    message(STATUS "── Building UOS-Settings ──")
+    add_subdirectory(Apps/UOSSettings)
+endif()
+
 # ===== ULTRANETMONITOR =====
 # Shows which processes hold which network connections, live, from the
 # operating system's socket table (the NetworkMonitor module). Headless

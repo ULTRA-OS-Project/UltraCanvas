@@ -14,6 +14,7 @@
 #include "UltraCanvasVolumeMonitor.h"   // ListMountedVolumes
 #include "UltraCanvasFilerWidget.h"     // the file dialog's listing
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasFileDialogSettings.h"
 #include <cstdlib>
 #include <fstream>
 #include <fmt/os.h>
@@ -1207,95 +1208,27 @@ namespace UltraCanvas {
                 FilerViewType::ThumbnailsBig, FilerViewType::ThumbnailsMaximized};
         constexpr int kFileDialogViewCount = 6;
 
-        // ===== REMEMBERED STATE =====
-        // The view the user last chose and the size they last gave the
-        // window, kept per user for every application that shows this dialog:
-        // "FileDialog.conf" in the framework's settings folder (beside the
-        // spell checker's user dictionary).
-        struct FileDialogState {
-            int view = 0;     // index into kFileDialogViews
-            int width = 0;    // 0 = not remembered
-            int height = 0;
-            // Details columns the user can drag; Name takes what they leave.
-            int sizeColumn = 80;
-            int typeColumn = 105;
-            int modifiedColumn = 145;
-            std::string folder;   // UTF-8; the folder last shown
-        };
+        // Bounds for what is written back (FileDialogSettings ignores values
+        // outside them when it reads the file).
         constexpr int kFileDialogMinWidth = 520;
         constexpr int kFileDialogMinHeight = 380;
         constexpr int kFileDialogMaxSide = 8000;
         constexpr int kFileDialogMinColumn = 44;     // the widget's own minimum
         constexpr int kFileDialogMaxColumn = 2000;
 
-        std::filesystem::path FileDialogStatePath() {
-            std::filesystem::path base;
-#if defined(_WIN32) || defined(_WIN64)
-            if (const wchar_t* appData = _wgetenv(L"APPDATA"))
-                base = std::filesystem::path(appData);   // path-string-ok: wide
-#elif defined(__APPLE__)
-            if (const char* home = std::getenv("HOME"))
-                base = PathFromUtf8(home) / "Library" / "Application Support";
-#else
-            if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
-                base = PathFromUtf8(xdg);
-            } else if (const char* home = std::getenv("HOME")) {
-                base = PathFromUtf8(home) / ".config";
-            }
-#endif
-            if (base.empty()) return {};
-            return base / "UltraCanvas" / "FileDialog.conf";
-        }
-
-        FileDialogState LoadFileDialogState() {
-            FileDialogState state;
-            const std::filesystem::path path = FileDialogStatePath();
-            if (path.empty()) return state;
-            std::ifstream in(path);
-            std::string line;
-            while (std::getline(in, line)) {
-                const size_t eq = line.find('=');
-                if (eq == std::string::npos) continue;
-                const std::string key = line.substr(0, eq);
-                if (key == "folder") {
-                    state.folder = line.substr(eq + 1);
-                    continue;
-                }
-                int value = 0;
-                try { value = std::stoi(line.substr(eq + 1)); } catch (...) { continue; }
-                if (key == "view" && value >= 0 && value < kFileDialogViewCount) state.view = value;
-                else if (key == "width" && value >= kFileDialogMinWidth && value <= kFileDialogMaxSide) state.width = value;
-                else if (key == "height" && value >= kFileDialogMinHeight && value <= kFileDialogMaxSide) state.height = value;
-                else if (value >= kFileDialogMinColumn && value <= kFileDialogMaxColumn) {
-                    if (key == "column.size") state.sizeColumn = value;
-                    else if (key == "column.type") state.typeColumn = value;
-                    else if (key == "column.modified") state.modifiedColumn = value;
-                }
-            }
-            return state;
-        }
-
-        void SaveFileDialogState(const FileDialogState& state) {
-            const std::filesystem::path path = FileDialogStatePath();
-            if (path.empty()) return;
-            std::error_code ec;
-            std::filesystem::create_directories(path.parent_path(), ec);
-            std::ofstream out(path, std::ios::trunc);
-            if (!out) return;
-            out << "view=" << state.view << "\n"
-                << "width=" << state.width << "\n"
-                << "height=" << state.height << "\n"
-                << "column.size=" << state.sizeColumn << "\n"
-                << "column.type=" << state.typeColumn << "\n"
-                << "column.modified=" << state.modifiedColumn << "\n";
-            if (!state.folder.empty()) out << "folder=" << state.folder << "\n";
+        // The name the running application registered with
+        // UltraCanvasApplication::Initialize: the key of its own last folder.
+        std::string CurrentApplicationName() {
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            return app ? app->GetAppName() : std::string();
         }
     } // namespace
 
     void UltraCanvasFileDialog::CreateFileDialog(const FileDialogConfig &config) {
         fileConfig = config;
-        // Opens the way the user left it last time: same view, same size.
-        const FileDialogState remembered = LoadFileDialogState();
+        // Opens the way the user left it last time: same view, same size
+        // (UltraCanvasFileDialogSettings.h, FileDialog.conf).
+        const FileDialogSettings remembered = FileDialogSettings::Load();
         viewIndex = remembered.view;
         sizeColumnWidth = remembered.sizeColumn;
         typeColumnWidth = remembered.typeColumn;
@@ -1304,12 +1237,14 @@ namespace UltraCanvas {
             fileConfig.width = remembered.width;
             fileConfig.height = remembered.height;
         }
-        // The folder last shown, when the caller names none - a folder the
-        // caller does name is the one it means.
-        if (fileConfig.initialDirectory.empty() && !remembered.folder.empty()) {
+        // The last used folder - the one all applications share, or this
+        // application's own, as ULTRA OS settings has it - when the caller
+        // names none; a folder the caller does name is the one it means.
+        if (fileConfig.initialDirectory.empty()) {
+            const std::string last = remembered.LastFolderFor(CurrentApplicationName());
             std::error_code fec;
-            if (std::filesystem::is_directory(PathFromUtf8(remembered.folder), fec) && !fec)
-                fileConfig.initialDirectory = remembered.folder;
+            if (!last.empty() && std::filesystem::is_directory(PathFromUtf8(last), fec) && !fec)
+                fileConfig.initialDirectory = last;
         }
         UltraCanvasModalDialog::CreateDialog(fileConfig);
 
@@ -1693,27 +1628,41 @@ namespace UltraCanvas {
         // However it closes - OK, Cancel, Escape, the title bar - the view,
         // the size, the column widths and the folder it had are what the next
         // file dialog opens with.
-        FileDialogState state;
+        // Written through Update(): the file is re-read first, so what other
+        // applications (and ULTRA OS settings) wrote since this dialog opened
+        // is kept.
+        int sizeColumn = sizeColumnWidth, typeColumn = typeColumnWidth,
+            modifiedColumn = modifiedColumnWidth;
         if (filerView) {
             auto column = [this](FilerDetailsColumn c) {
                 return std::clamp(filerView->GetDetailsColumnWidth(c),
                                   kFileDialogMinColumn, kFileDialogMaxColumn);
             };
-            state.sizeColumn = column(FilerDetailsColumn::Size);
-            state.typeColumn = column(FilerDetailsColumn::Type);
-            state.modifiedColumn = column(FilerDetailsColumn::ModifiedDate);
+            sizeColumn = column(FilerDetailsColumn::Size);
+            typeColumn = column(FilerDetailsColumn::Type);
+            modifiedColumn = column(FilerDetailsColumn::ModifiedDate);
         }
+        std::string folder;
         {
             std::error_code fec;
             if (std::filesystem::is_directory(PathFromUtf8(currentDirectory), fec) && !fec)
-                state.folder = currentDirectory;
+                folder = currentDirectory;
         }
-        state.view = viewIndex;
-        state.width = std::clamp(static_cast<int>(std::lround(GetWidth())),
-                                 kFileDialogMinWidth, kFileDialogMaxSide);
-        state.height = std::clamp(static_cast<int>(std::lround(GetHeight())),
-                                  kFileDialogMinHeight, kFileDialogMaxSide);
-        SaveFileDialogState(state);
+        const int width = std::clamp(static_cast<int>(std::lround(GetWidth())),
+                                     kFileDialogMinWidth, kFileDialogMaxSide);
+        const int height = std::clamp(static_cast<int>(std::lround(GetHeight())),
+                                      kFileDialogMinHeight, kFileDialogMaxSide);
+        const int view = viewIndex;
+        const std::string appName = CurrentApplicationName();
+        FileDialogSettings::Update([&](FileDialogSettings& s) {
+            s.view = view;
+            s.width = width;
+            s.height = height;
+            s.sizeColumn = sizeColumn;
+            s.typeColumn = typeColumn;
+            s.modifiedColumn = modifiedColumn;
+            if (!folder.empty()) s.SetLastFolderFor(appName, folder);
+        });
         UltraCanvasModalDialog::PerformClose();
     }
 
