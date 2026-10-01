@@ -7751,16 +7751,20 @@ r->SaveToFile("clip.wav");              // or persist directly
 Transport: `Open / Start / Pause / Resume / Stop / Close`.
 Output: `TakeBuffer() -> UCAudio`, `SaveToFile(path, format)`, `Discard()`.
 Callbacks: `onRecordingStateChanged`, `onLevelChanged(peak, rms)`,
-`onBufferAvailable(samples, frames, channels)`, `onLiveFrame(frame)`,
-`onSilenceDetected`, `onClipping`, `onMaxDurationReached`, `onError`,
-`onPermissionChanged`.
+`onLiveFrame(frame)`, `onSilenceDetected`, `onClipping`,
+`onMaxDurationReached`, `onError`, `onPermissionChanged`.
 
-#### Live capture mode
+#### Live frames and live capture mode
 
-`AudioCaptureMode::Record` (the default) accumulates for `TakeBuffer()` and
-`SaveToFile()`. A call, a speech recogniser or a streaming encoder wants the
-opposite: every frame delivered as it arrives, and nothing kept, so memory
-stays flat however long the session runs. That is `AudioCaptureMode::Live`:
+`onLiveFrame` delivers every captured frame as it arrives, in either mode —
+a live waveform, an on-the-fly encoder, a call. (It replaces the earlier
+`onBufferAvailable`, which only fired for 32-bit float capture and handed
+over raw backend bytes; `onLiveFrame` converts any sample type and applies
+gain and mute.) `AudioCaptureMode::Record` (the default) also accumulates
+for `TakeBuffer()` and `SaveToFile()`. A call, a speech recogniser or a
+streaming encoder wants nothing kept, so memory stays flat however long the
+session runs: that is `AudioCaptureMode::Live`, where `onLiveFrame` is the
+only output:
 
 ```cpp
 AudioCaptureConfig cfg;
@@ -7785,8 +7789,8 @@ device uses) into frames of exactly that duration through
 `AudioFramePacketizer`; `0` passes each backend chunk through as one frame.
 `AudioLiveFrame::firstFrameIndex` counts frames since `Start()`, which is the
 timestamp a codec or a jitter buffer needs. Level metering, `onClipping`,
-`onSilenceDetected` and `maxDurationMs` work in both modes; `TakeBuffer()`
-returns an empty buffer in Live mode.
+`onSilenceDetected`, `maxDurationMs` and `onLiveFrame` work in both modes;
+`TakeBuffer()` returns an empty buffer in Live mode.
 
 ### Devices & permission
 

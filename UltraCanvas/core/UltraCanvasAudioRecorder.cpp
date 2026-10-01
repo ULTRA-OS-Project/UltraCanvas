@@ -113,10 +113,10 @@ struct UltraCanvasAudioRecorder::Impl {
         const float gain = config.inputGain;
         const bool isMuted = muted.load(std::memory_order_relaxed);
 
-        if (config.mode == AudioCaptureMode::Live) {
-            // Nothing is kept: convert to float, apply gain and mute, and
-            // hand the chunk to the packetiser, which calls onLiveFrame once
-            // per complete frame.
+        // Live frames, in both modes: convert to float, apply gain and mute,
+        // and hand the chunk to the packetiser, which calls onLiveFrame once
+        // per complete frame.
+        if (owner && owner->onLiveFrame) {
             const size_t sampleCountLive = frames * config.channels;
             liveChunk.resize(sampleCountLive);
             for (size_t i = 0; i < sampleCountLive; ++i) {
@@ -124,8 +124,11 @@ struct UltraCanvasAudioRecorder::Impl {
                         : SampleToFloat(srcBytes + i * bytesPerSample, config.sampleType) * gain;
                 liveChunk[i] = std::clamp(v, -1.0f, 1.0f);
             }
-            if (owner && owner->onLiveFrame)
-                livePacketizer.Feed(liveChunk.data(), frames, owner->onLiveFrame);
+            livePacketizer.Feed(liveChunk.data(), frames, owner->onLiveFrame);
+        }
+
+        if (config.mode == AudioCaptureMode::Live) {
+            // Nothing is kept.
         } else if (config.streamToFile && !config.streamFilePath.empty()) {
             // Append (or stream-to-file) raw bytes
             std::ofstream f(config.streamFilePath,
@@ -177,17 +180,6 @@ struct UltraCanvasAudioRecorder::Impl {
             }
             if (rms < config.silenceThreshold && owner && owner->onSilenceDetected) {
                 owner->onSilenceDetected();
-            }
-        }
-
-        // Per-chunk raw buffer event (only useful for live visualization /
-        // off-the-fly encoding). Convert to f32 lazily on demand by the user.
-        if (owner && owner->onBufferAvailable) {
-            // We pass the raw bytes reinterpreted as float only when format is f32.
-            // For other formats the user must reinterpret based on config.
-            if (config.sampleType == AudioSampleType::PCM_F32) {
-                owner->onBufferAvailable(
-                    reinterpret_cast<const float*>(srcBytes), frames, config.channels);
             }
         }
 
@@ -255,15 +247,13 @@ bool UltraCanvasAudioRecorder::Start() {
     impl->accumulatedSeconds = 0.0;
     impl->frameCount = 0;
     impl->buffer.clear();
-    if (impl->config.mode == AudioCaptureMode::Live) {
-        impl->livePacketizer.Reset(
-            AudioFramesForMilliseconds(impl->config.liveFrameMs, impl->config.sampleRate),
-            impl->config.channels, impl->config.sampleRate);
-        // Reserve for a generous backend period so the audio thread does not
-        // allocate once running; 100 ms covers every backend default.
-        impl->liveChunk.reserve(
-            AudioFramesForMilliseconds(100, impl->config.sampleRate) * impl->config.channels);
-    }
+    impl->livePacketizer.Reset(
+        AudioFramesForMilliseconds(impl->config.liveFrameMs, impl->config.sampleRate),
+        impl->config.channels, impl->config.sampleRate);
+    // Reserve for a generous backend period so the audio thread does not
+    // allocate once running; 100 ms covers every backend default.
+    impl->liveChunk.reserve(
+        AudioFramesForMilliseconds(100, impl->config.sampleRate) * impl->config.channels);
     impl->SetState(AudioRecordingState::Recording);
     return true;
 }
@@ -293,11 +283,10 @@ bool UltraCanvasAudioRecorder::Stop() {
         impl->accumulatedSeconds +=
             std::chrono::duration<double>(now - impl->startedAt).count();
     }
-    // Live mode: the device is stopped, so this runs on the caller's thread
-    // with no audio callback in flight. Deliver the partial last frame,
+    // The device is stopped, so this runs on the caller's thread with no
+    // audio callback in flight. Deliver the partial last live frame,
     // zero-padded, so an encoder sees the end of the speech.
-    if (impl->config.mode == AudioCaptureMode::Live && onLiveFrame)
-        impl->livePacketizer.Flush(onLiveFrame);
+    if (onLiveFrame) impl->livePacketizer.Flush(onLiveFrame);
     impl->SetState(AudioRecordingState::Stopped);
     return true;
 }

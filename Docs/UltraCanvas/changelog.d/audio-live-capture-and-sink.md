@@ -3,12 +3,15 @@
   — `UltraCanvasAudioRecorder` accumulated into a `UCAudio` for `TakeBuffer()`,
   and `UltraCanvasAudioPlayer` played a file or a buffer loaded up front — so
   a call, a speech recogniser or a streaming encoder had no path through the
-  framework. Now `AudioCaptureConfig::mode = AudioCaptureMode::Live` keeps
-  nothing and calls `onLiveFrame` with interleaved float PCM (gain and mute
-  applied, any backend sample type converted) in frames of exactly
-  `liveFrameMs` (10 for Opus / WebRTC, 20 for speech engines; 0 passes the
-  backend's chunks through), with `firstFrameIndex` as a timestamp and the
-  partial last frame flushed, zero-padded, on `Stop()`. And
+  framework. Now the recorder calls `onLiveFrame` for every captured frame,
+  in both modes, with interleaved float PCM (gain and mute applied, any
+  backend sample type converted) in frames of exactly `liveFrameMs` (10 for
+  Opus / WebRTC, 20 for speech engines; 0 passes the backend's chunks
+  through), with `firstFrameIndex` as a timestamp and the partial last frame
+  flushed, zero-padded, on `Stop()`; `AudioCaptureConfig::mode =
+  AudioCaptureMode::Live` additionally keeps nothing. `onBufferAvailable`,
+  which fired only for 32-bit float capture and handed over raw backend
+  bytes, is retired; it had no caller in the tree. And
   `UltraCanvasAudioPlayer::OpenSink(AudioSinkConfig)` opens the device at a
   given rate and channel count and plays whatever `PushSinkFrames` queues,
   from a bounded ring whose `bufferMs` is the latency ceiling: frames beyond
