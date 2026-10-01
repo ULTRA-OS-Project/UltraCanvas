@@ -572,6 +572,9 @@ namespace UltraCanvas {
 // ===== DIALOG MANAGER =====
     class UltraCanvasInputDialog;
     class UltraCanvasFileDialog;
+    class UltraCanvasFilerWidget;   // UltraCanvasFilerWidget.h includes this header
+    class UltraCanvasSegmentedControl;
+    struct FilerEntry;
     class UltraCanvasDialogManager {
         friend class UltraCanvasModalDialog;
     private:
@@ -718,16 +721,16 @@ namespace UltraCanvas {
         std::vector<std::string> selectedFiles;
         std::string currentDirectory;
 
-        // The current folder's entries, as shown in the listing.
-        std::vector<std::string> directoryList;
-        std::vector<std::string> fileList;
         bool showHiddenFiles = false;
 
         // ===== ELEMENTS =====
         std::shared_ptr<UltraCanvasTextInput> pathInput;
         std::shared_ptr<UltraCanvasButton> upButton;
         std::shared_ptr<UltraCanvasTreeView> folderTree;
-        std::shared_ptr<UltraCanvasTreeView> fileListView;
+        // The listing of the current folder: the framework's file display.
+        std::shared_ptr<UltraCanvasFilerWidget> filerView;
+        // Details / list / icon sizes for the listing.
+        std::shared_ptr<UltraCanvasSegmentedControl> viewSelector;
         std::shared_ptr<UltraCanvasTextInput> fileNameInput;
         std::shared_ptr<UltraCanvasDropdown> filterDropdown;
 
@@ -741,10 +744,13 @@ namespace UltraCanvas {
         // The name the dialog put into the name field for the listing's
         // selection; while the field still holds it, OK takes the selection.
         std::string autoFileName;
-        // A row of the listing was activated (double click, Enter) and is
-        // handled on the next loop pass; OK in the same key press must not act
-        // on it a second time.
+        // A file of the listing was activated (double click, Enter) and is
+        // accepted on the next loop pass, outside the widget's own handler;
+        // OK in between must not accept a second time.
         bool activationPending = false;
+        // Set while the dialog itself points the listing at a folder, so the
+        // listing's path notification is not taken for the user's navigation.
+        bool settingListingPath = false;
         // The tree row of the current folder is to be scrolled into view at
         // the next layout: before the first one the tree has no height.
         bool revealTreeSelectionPending = false;
@@ -806,9 +812,12 @@ namespace UltraCanvas {
         void SyncFolderTree();
 
         // ===== LISTING =====
-        void RebuildFileListView();
-        void OnListSelectionChanged();
-        void ActivateListEntry(const std::string& name, bool isDirectory);
+        void OnListingSelectionChanged(const std::vector<FilerEntry>& selected);
+        // The listing entered a folder of its own accord (double click, Enter).
+        void OnListingPathChanged(const std::string& path);
+        // Applies the file-type filter (and folders-only for a folder
+        // picker) to the listing.
+        void ApplyListingFilter();
 
         // ===== NAVIGATION =====
         // Makes `directory` the current folder. syncTree: select its row in

@@ -1219,6 +1219,22 @@ files, the curation below, and the ignore patterns — and `WhenIgnored`
 everywhere else, so an ordinary folder stays quiet about its dot names but says
 so when a setting dropped something from it.
 
+## Entry filter
+
+`SetEntryFilter(predicate)` decides which entries the listing shows at all — a
+file picker's *Files of type* choice, or a folder picker that lists folders
+only. An entry the predicate answers `false` for is left out in every folder,
+whatever `SetShowHiddenFiles` says, and it is not counted as hidden: the
+hidden-items notice never offers it. Setting or clearing it rescans the folder
+on display; `nullptr` lists everything again.
+
+```cpp
+// UltraCanvasFileDialog: folders stay, files must match the chosen filter.
+filer->SetEntryFilter([filter](const FilerEntry& e) {
+    return e.isDirectory || e.isArchive || filter.Matches(e.name);
+});
+```
+
 ## Ignored names
 
 `SetIgnoredNamePatterns(patterns, onlyInFolder)` is the answer to clutter a

@@ -2382,6 +2382,11 @@ namespace UltraCanvas {
         if (fileListMode) Refresh();
     }
 
+    void UltraCanvasFilerWidget::SetEntryFilter(std::function<bool(const FilerEntry&)> filter) {
+        entryFilter = std::move(filter);
+        if (!currentPath.empty() || fileListMode) Refresh();
+    }
+
     void UltraCanvasFilerWidget::Refresh() {
         CancelRename();
         CancelPendingRename();
@@ -3483,6 +3488,16 @@ namespace UltraCanvas {
             }
             entries = std::move(kept);
             heldBack += ignored;
+        }
+
+        // The host's own idea of what belongs in the listing (SetEntryFilter):
+        // a file picker's type filter. Not "hidden", so it counts nowhere.
+        if (entryFilter) {
+            entries.erase(std::remove_if(entries.begin(), entries.end(),
+                                         [this](const FilerEntry& e) {
+                                             return !entryFilter(e);
+                                         }),
+                          entries.end());
         }
 
         // Showing everything holds nothing back, whatever the scan counted

@@ -87,8 +87,10 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.34.0
-// Last Modified: 2026-09-24
+// SetEntryFilter narrows what the listing shows to the entries a host
+// predicate accepts - a file picker's "Files of type" filter.
+// Version: 1.35.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -709,6 +711,15 @@ namespace UltraCanvas {
         // reveals them like any hidden entry, and they count into
         // GetHiddenItemCount() / GetIgnoredItemCount(), so the notice above
         // offers them.
+        // Which entries the display lists at all: while set, a scanned entry
+        // the predicate answers false for is left out of the listing, in every
+        // folder and whatever SetShowHiddenFiles says - a file picker's
+        // "Files of type" filter, or a folder picker that lists folders only.
+        // Unlike the ignored names above this is not "hidden": nothing counts
+        // it into GetHiddenItemCount() and the notice never offers it. Setting
+        // or clearing it rescans the folder being shown.
+        void SetEntryFilter(std::function<bool(const FilerEntry&)> filter);
+
         void SetIgnoredNamePatterns(std::vector<std::string> patterns,
                                     const std::string& onlyInFolder = std::string());
         const std::vector<std::string>& GetIgnoredNamePatterns() const {
@@ -1596,6 +1607,7 @@ namespace UltraCanvas {
         // centered action button of the "no matches" state (a real
         // UltraCanvasButton child, drawn by Render like the rename editor).
         std::string nameFilter;
+        std::function<bool(const FilerEntry&)> entryFilter;   // SetEntryFilter
         std::vector<FilerEntry> filterAllEntries;
         std::string filterEmptyLabel;
         std::function<void()> onFilterEmptyAction;

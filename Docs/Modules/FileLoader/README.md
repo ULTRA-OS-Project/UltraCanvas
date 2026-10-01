@@ -49,7 +49,8 @@ default). A native picker blocks and runs the callback before the call
 returns; the framework's runs it when the dialog closes. The framework's
 dialog is built from elements: a path field with an *up* button, a folder
 tree (Home, Desktop, Documents, Downloads and the mounted drives) beside the
-listing of the current folder, and the file-name field and file-type dropdown
+listing of the current folder (an `UltraCanvasFilerWidget`, the UltraFiler
+display), and the file-name field and file-type dropdown
 below them.
 
 ```cpp

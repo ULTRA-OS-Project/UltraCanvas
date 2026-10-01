@@ -21481,6 +21481,22 @@ files, the curation below, and the ignore patterns — and `WhenIgnored`
 everywhere else, so an ordinary folder stays quiet about its dot names but says
 so when a setting dropped something from it.
 
+## Entry filter
+
+`SetEntryFilter(predicate)` decides which entries the listing shows at all — a
+file picker's *Files of type* choice, or a folder picker that lists folders
+only. An entry the predicate answers `false` for is left out in every folder,
+whatever `SetShowHiddenFiles` says, and it is not counted as hidden: the
+hidden-items notice never offers it. Setting or clearing it rescans the folder
+on display; `nullptr` lists everything again.
+
+```cpp
+// UltraCanvasFileDialog: folders stay, files must match the chosen filter.
+filer->SetEntryFilter([filter](const FilerEntry& e) {
+    return e.isDirectory || e.isArchive || filter.Matches(e.name);
+});
+```
+
 ## Ignored names
 
 `SetIgnoredNamePatterns(patterns, onlyInFolder)` is the answer to clutter a
@@ -49730,7 +49746,8 @@ animator:
 - `UltraCanvasTextArea` in Hex editing mode (`hexFirstVisibleRow`).
 - The `UltraCanvasNewDocumentDialog` document list (item indices, also used
   for click hit-testing). (`UltraCanvasFileDialog` used to be on this list; its
-  folders and files are now `UltraCanvasTreeView`s, which scroll smoothly.)
+  folder tree is an `UltraCanvasTreeView` and its listing an
+  `UltraCanvasFilerWidget`, both of which scroll smoothly.)
 
 ---
 
@@ -62923,7 +62940,8 @@ default). A native picker blocks and runs the callback before the call
 returns; the framework's runs it when the dialog closes. The framework's
 dialog is built from elements: a path field with an *up* button, a folder
 tree (Home, Desktop, Documents, Downloads and the mounted drives) beside the
-listing of the current folder, and the file-name field and file-type dropdown
+listing of the current folder (an `UltraCanvasFilerWidget`, the UltraFiler
+display), and the file-name field and file-type dropdown
 below them.
 
 ```cpp

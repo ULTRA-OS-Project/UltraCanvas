@@ -108,7 +108,8 @@ animator:
 - `UltraCanvasTextArea` in Hex editing mode (`hexFirstVisibleRow`).
 - The `UltraCanvasNewDocumentDialog` document list (item indices, also used
   for click hit-testing). (`UltraCanvasFileDialog` used to be on this list; its
-  folders and files are now `UltraCanvasTreeView`s, which scroll smoothly.)
+  folder tree is an `UltraCanvasTreeView` and its listing an
+  `UltraCanvasFilerWidget`, both of which scroll smoothly.)
 
 ---
 
