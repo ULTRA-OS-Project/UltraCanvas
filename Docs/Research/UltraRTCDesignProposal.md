@@ -3,8 +3,14 @@
 **Date:** 2026-10-01
 **Status:** Proposal — for review; no implementation yet
 **Companion:** [`BrowserWebRTCInvestigation.md`](BrowserWebRTCInvestigation.md)
-(the survey of what WebRTC is, where the Ladybird port stands, and which
-engines exist; this document assumes it)
+(the survey of what WebRTC is, where Ladybird stands, and which engines
+exist; this document assumes it)
+**On Ladybird:** [Ladybird](https://ladybird.org/) is an independent
+third-party browser project, not part of ULTRA OS or of this repository.
+UltraCanvas's only relation to it is a demonstration build, maintained
+outside this repository, in which UltraCanvas replaced Ladybird's Qt UI
+layer — *the demonstration build* below. It is the worked example of a
+browser that links the framework; the design holds for any such browser.
 **Sibling in shape:** [`UltraWinDesignProposal.md`](UltraWinDesignProposal.md)
 and [`UltraAndroidDesignProposal.md`](UltraAndroidDesignProposal.md) — an
 UltraCanvas-owned API over open source engines, so the engine can be swapped
@@ -20,10 +26,11 @@ UltraCanvas-owned API — so that the browser and the native applications
 share it, instead of the browser carrying a WebRTC engine of its own?**
 
 Yes. The framework already holds every peripheral piece a WebRTC stack needs
-except the protocol engine itself (§3), the Ladybird port already links
-UltraCanvas as a library and drives its event loop, and the port's own WebRTC
-work (upstream's `webrtc` branch) is shaped as a separate helper process with
-an IPC surface — exactly the seam a wrapper library slots into (§5).
+except the protocol engine itself (§3); the demonstration build shows that a
+browser can link UltraCanvas as a library and drive its event loop; and
+Ladybird's own WebRTC work (its `webrtc` branch) is shaped as a separate
+helper process with an IPC surface — exactly the seam a wrapper library slots
+into (§5).
 
 UltraRTC is that wrapper. One API, PascalCase free functions with the
 `UltraRtc_` prefix, opaque handles, `UltraRtcResult` from every blocking call,
@@ -39,7 +46,7 @@ Who calls it:
 
 | Consumer | What it gets |
 |---|---|
-| **The Ladybird port** | `RTCPeerConnection` and friends in LibWeb bound to UltraRTC instead of to a browser-private Rust process (§5) |
+| **A browser built on UltraCanvas** (the demonstration build of Ladybird is the example) | `RTCPeerConnection` and friends in its engine bound to UltraRTC instead of to a browser-private Rust process (§5) |
 | **UltraMessage / UltraSocial / UltraMail** | Voice and video calls between ULTRA OS users and with any browser or SIP-over-WebRTC gateway |
 | **UltraAI** | Realtime voice sessions with providers that speak WebRTC (OpenAI Realtime, LiveKit-hosted agents) — audio in and out without a WebSocket round-trip per chunk |
 | **UltraDesktop / UltraCloud** | Screen sharing and remote-assistance sessions to a browser, through a data channel plus a video track |
@@ -225,7 +232,7 @@ The engine sees **encoded RTP payloads in, encoded RTP payloads out**, SDP
 strings, ICE candidates, data-channel messages and state events. Everything
 that touches a device, a codec or a clock is UltraRTC's, in C++, so that the
 two engine tiers and the WASM binding behave identically to a caller and so
-that the audio pipeline is the same one the browser port ends up using.
+that the audio pipeline is the same one a browser binding ends up using.
 
 ### 4.2 Threads
 
@@ -239,10 +246,10 @@ nothing for the audio recorder.
 ### 4.3 Process placement
 
 UltraRTC is a library and takes no position on processes. A native app
-links it into its process. The browser port puts it in its WebRTC helper
-process (§5.2), which keeps UDP sockets and DTLS out of the renderer
-sandbox — the sandbox problem the upstream branch still has open is solved
-by placement, not by the engine.
+links it into its process. A browser puts it in its WebRTC helper process
+(§5.2), which keeps UDP sockets and DTLS out of the renderer sandbox — the
+sandbox problem Ladybird's branch still has open is solved by placement, not
+by the engine.
 
 ### 4.4 Elements
 
@@ -259,29 +266,31 @@ of tiles with mute / camera / share / hang-up `UltraCanvasButton`s and a
 
 ### 5.1 Why it fits
 
-The Ladybird port already embeds UltraCanvas: the framework's application
-object has hooks so a host loop can drive one iteration, and the Windows
-backend services the port's IPC sockets from inside the UltraCanvas loop
-(`UltraCanvasApplication.cpp`, `UltraCanvasWindowsApplication.cpp`). The
-port's splash and diagnostics are framework elements. So the port links the
-library, and a module in that library is reachable from it.
+The demonstration build already embeds UltraCanvas: the framework's
+application object has hooks so a host loop can drive one iteration, and the
+Windows backend services a host's IPC sockets from inside the UltraCanvas
+loop (`UltraCanvasApplication.cpp`, `UltraCanvasWindowsApplication.cpp`).
+That build's splash and diagnostics are framework elements. So a browser that
+links the library can reach a module in it.
 
-Upstream's `webrtc` branch shapes WebRTC as **WebContent → IPC →
+Ladybird's `webrtc` branch shapes WebRTC as **WebContent → IPC →
 `Services/WebRTCClient` (one helper process per peer connection) → engine**.
 The helper's job is exactly UltraRTC's API: create a peer, set descriptions,
 add candidates, move frames, raise events. That is the seam.
 
 ### 5.2 Two ways to bind, one recommended
 
-| Option | What changes in the port | Verdict |
+| Option | What changes in a Ladybird-based build | Verdict |
 |---|---|---|
-| **A. UltraRTC inside the helper process** | `Services/WebRTCClient` keeps its `.ipc` files and its one-process-per-peer model; its `src/` becomes a thin server that translates each IPC message to one `UltraRtc_*` call and each UltraRTC event to one IPC event. LibWeb's `WebRTC/` classes are untouched. | **Recommended.** Smallest diff against upstream, the renderer sandbox stays closed, and the port keeps merging upstream's LibWeb work |
+| **A. UltraRTC inside the helper process** | `Services/WebRTCClient` keeps its `.ipc` files and its one-process-per-peer model; its `src/` becomes a thin server that translates each IPC message to one `UltraRtc_*` call and each UltraRTC event to one IPC event. LibWeb's `WebRTC/` classes are untouched. | **Recommended.** Smallest diff against upstream, the renderer sandbox stays closed, and the build keeps rebasing onto upstream's LibWeb work |
 | B. UltraRTC in WebContent | LibWeb's `RTCPeerConnection` calls UltraRTC directly; no helper process | Simpler, but puts sockets and DTLS in the renderer and reopens the `SIGSYS` sandbox problem; rejected |
 
-With option A the port's own engine (the `ladybird_webrtc` crate) is
-replaced by the module, and the port's build drops its direct dependency on
-the `webrtc` crate because UltraRTC's vendored tree carries it. If upstream
-later changes engine, the port is unaffected: only the module's tier 1 is.
+With option A Ladybird's own engine (the `ladybird_webrtc` crate) is
+replaced by the module in that build, and the build drops its direct
+dependency on the `webrtc` crate because UltraRTC's vendored tree carries it.
+If Ladybird later changes engine, the build is unaffected: only the module's
+tier 1 is. This is a change carried in the demonstration build, downstream of
+Ladybird; it does not ask anything of Ladybird.
 
 ### 5.3 The binding table
 
@@ -299,7 +308,7 @@ Each W3C method becomes one call, which is why §2 is shaped as it is:
 | `getStats` | `UltraRtc_GetStats` — the JSON is the stats report |
 | `RTCRtpScriptTransform`, SFrame | `UltraRtc_SetEncodedFrameHook` — the worker transform sits between codec and packetiser |
 | `onicecandidate`, `ontrack`, `ondatachannel`, state events | the peer event callback |
-| `MediaStreamTrack` from `getUserMedia` | either a LibWeb-captured track pushed with `UltraRtc_SendAudioFrame` (what upstream does today, through `MediaStreamTrack → WebAudio → resample → Opus`) or an UltraRTC device track opened in the helper; both are supported so the port can start with upstream's path |
+| `MediaStreamTrack` from `getUserMedia` | either a LibWeb-captured track pushed with `UltraRtc_SendAudioFrame` (what upstream does today, through `MediaStreamTrack → WebAudio → resample → Opus`) or an UltraRTC device track opened in the helper; both are supported so a build can start with Ladybird's path |
 | `HTMLMediaElement.srcObject` playback | `UltraRtc_AttachPlayback` in the helper, with volume / mute / `setSinkId` mapped — which closes the "playback not driven by `srcObject`" gap in upstream's status page |
 
 What the wrapper must *not* do is normalise SDP, reorder m-lines or hide
@@ -307,7 +316,7 @@ transceiver identity: sites like Discord munge SDP and rely on JSEP's exact
 rules, and a layer that "helps" there breaks them. Hence the pass-through
 rule in §1.
 
-### 5.4 What stays in the port
+### 5.4 What stays in the browser
 
 The W3C object model, the IDL, the JavaScript-visible state machines,
 permission prompts, the `MediaStream` graph and Web Audio. UltraRTC provides
@@ -337,7 +346,7 @@ in `THIRD_PARTY_LICENSES.md`, rows added to `Docs/Dependencies.md` and
 
 | Dependency | Licence | Tier | How it is pinned |
 |---|---|---|---|
-| `webrtc` crate 0.17 and its tree (`ring`, `tokio`, `rtp`, `rtcp`, `sctp`, `dtls`, `srtp`, `ice`, `interceptor`, …) | MIT / Apache-2.0 / ISC | 1 | `cargo vendor` into `UltraCanvas/third_party/rust/`, `.cargo/config.toml` source replacement, `--offline` builds; the same `Cargo.lock` the port uses |
+| `webrtc` crate 0.17 and its tree (`ring`, `tokio`, `rtp`, `rtcp`, `sctp`, `dtls`, `srtp`, `ice`, `interceptor`, …) | MIT / Apache-2.0 / ISC | 1 | `cargo vendor` into `UltraCanvas/third_party/rust/`, `.cargo/config.toml` source replacement, `--offline` builds; the same `Cargo.lock` the demonstration build uses |
 | `libdatachannel`, `libjuice`, `libsrtp`, `usrsctp` | MPL-2.0, MPL-2.0, BSD-3, BSD-3 | 2 | copies under `UltraCanvas/third_party/`, `add_subdirectory` |
 | `webrtc-audio-processing` (Google APM, standalone) | BSD-3 | both, phase 4 | copy under `third_party/`, Meson replaced by a small CMake file |
 | libopus | BSD-3 | both | already a dependency |
@@ -355,7 +364,7 @@ it is satisfied the same way for the browser and for the native apps.
 |---|---|---|
 | 0 | This proposal reviewed; registry entry in `Masterfile_modules.md`; `UltraCanvas/{include,core}/UltraRTC/` skeleton with `UltraRtcResult`, handles, `Initialize` / `Shutdown` / `GetCapabilities` | approval |
 | 1 | **Data channels and Opus audio, Linux, tier 1.** Peer connection lifecycle, ICE/STUN/TURN config, data channels, microphone track with the recorder's new callback mode, streaming playback sink, a first jitter buffer. Test: a call between two UltraCanvas processes and between UltraCanvas and Chrome, through a public STUN server | corrosion shim crate; recorder callback mode; player push API |
-| 2 | **Browser binding.** `Services/WebRTCClient` in the port re-implemented over UltraRTC (option A); upstream's 28 browser checks pass; Discord voice call reproduces upstream's result | phase 1; the port on an upstream that carries `LibWeb/WebRTC/` |
+| 2 | **Browser binding.** `Services/WebRTCClient` in the demonstration build re-implemented over UltraRTC (option A); Ladybird's 28 browser checks pass; Discord voice call reproduces Ladybird's result | phase 1; the demonstration build rebased onto a Ladybird that carries `LibWeb/WebRTC/` |
 | 3 | **Video and bandwidth estimation.** Camera and screen tracks, FFmpeg low-latency encode/decode, TWCC-driven estimator, simulcast parameters. Test: a two-way video call with Chrome on a throttled link holds without freezing | phase 1 |
 | 4 | **Audio processing.** `webrtc-audio-processing` vendored; AEC/NS/AGC behind `UltraRtc_SetAudioProcessing`; a laptop call without headphones has no echo | phase 1 |
 | 5 | **Windows, macOS, Android**, camera and screen backends per §6; WASM binding | phases 1–3 |
@@ -370,10 +379,11 @@ IMPLEMENTED per function.
 
 ## 9. Decisions proposed (for review)
 
-1. **One engine for the browser and the apps, and it is the one upstream
-   Ladybird chose.** Tier 1 is the `webrtc` crate. Sharing the port's engine
-   is worth more than a C++-native engine: one SDP behaviour, one set of
-   interop bugs against Chrome, and the port's upstream merges keep working.
+1. **One engine for the browser and the apps, and it is the one Ladybird
+   chose.** Tier 1 is the `webrtc` crate. Sharing Ladybird's engine is worth
+   more than a C++-native engine: one SDP behaviour, one set of interop bugs
+   against Chrome, and the demonstration build's rebases onto Ladybird keep
+   working.
 2. **The wrapper owns the media pipeline; the engine owns the transport.**
    Codecs, jitter buffer, bandwidth estimation, audio processing and devices
    are UltraRTC's, so the tiers and the WASM binding are interchangeable to
@@ -381,8 +391,8 @@ IMPLEMENTED per function.
 3. **Bind the browser at the helper-process seam** (option A), never inside
    WebContent.
 4. **SDP is never rewritten by the wrapper.**
-5. **Vendor everything on day one**, with the port and the framework sharing
-   one `Cargo.lock`.
+5. **Vendor everything on day one**, with the demonstration build and the
+   framework sharing one `Cargo.lock`.
 6. **Do not write the audio processing.** Vendor Google's APM; it is the
    component nobody has rewritten well.
 
@@ -390,11 +400,12 @@ IMPLEMENTED per function.
 
 ## 10. Open questions
 
-- **Who owns the helper process in the port?** If upstream keeps evolving
-  `Services/WebRTCClient` with its own engine, the port carries a
-  replacement `src/` indefinitely. The alternative is to offer UltraRTC's C
-  ABI upstream as a pluggable engine; whether that is welcome is a
-  conversation with the Ladybird maintainers, not a design decision here.
+- **Who carries the helper-process replacement?** If Ladybird keeps evolving
+  `Services/WebRTCClient` with its own engine, the demonstration build carries
+  a replacement `src/` indefinitely, downstream. The alternative is to offer
+  UltraRTC's C ABI to Ladybird as a pluggable engine; whether a third-party
+  project wants that is the Ladybird maintainers' decision, not a design
+  decision here.
 - **Rust in the framework's core.** Today Rust is confined to one plugin.
   Tier 1 puts a Rust crate under `UltraCanvas/core/UltraRTC/`. If that is
   not acceptable, tier 2 becomes tier 1 and the JSEP-fidelity risk of

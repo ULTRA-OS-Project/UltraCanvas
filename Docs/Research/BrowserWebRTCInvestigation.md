@@ -5,9 +5,14 @@
 public sources on the date above (the Ladybird repository and the maintainer
 branch named in §3, the library READMEs, Mozilla's and WebKit's trees); nothing
 was built or run. Where a figure is quoted, its source is named.
-**Scope:** the ULTRA OS browser, which is the Ladybird port (built from its own
-tree, outside this repository — see the *Versioning* table in
-[`AGENTS.md`](../../AGENTS.md)). The question put to this document:
+**Scope:** a browser built on UltraCanvas. The worked example throughout is
+[Ladybird](https://ladybird.org/), an **independent third-party browser
+project** that is not part of ULTRA OS or of this repository. UltraCanvas's
+only relation to it is a demonstration build, maintained outside this
+repository, in which UltraCanvas replaced Ladybird's Qt UI layer; that build
+is called *the demonstration build* below, and nothing in it is Ladybird's
+doing or ours to direct. The findings apply to any browser that links the
+framework. The question put to this document:
 
 > Could the browser create its own WebRTC support, so that no WebRTC library
 > has to be loaded from the internet?
@@ -34,7 +39,7 @@ tree, outside this repository — see the *Versioning* table in
   browser with native WebRTC needs no library from the internet, and a browser
   *without* it cannot be rescued by one. The only thing a page-loaded library
   can do is detect that `RTCPeerConnection` is missing and give up.
-- **The ULTRA OS browser does not have WebRTC today.** Ladybird `master`
+- **Ladybird does not have WebRTC today.** Its `master`
   ships `getUserMedia` / `MediaStream` (merged 2026-04-21) and the Web Audio
   groundwork "needed to get webrtc working" (merged 2026-09-09), but no
   `RTCPeerConnection`. Its `vcpkg.json` lists no WebRTC engine.
@@ -61,10 +66,11 @@ tree, outside this repository — see the *Versioning* table in
   transport alone, `libwebrtc` is millions), and nothing about "not loading
   from the internet" requires it.
 - **Recommendation (§7):** track the upstream `webrtc` branch rather than
-  starting a second implementation; vendor its crate graph into the port's
-  tree the day it is adopted; and put the audio-processing gap (echo
-  cancellation, noise suppression, gain) on the list of things ULTRA OS will
-  have to supply, because no small engine ships it. The follow-on question —
+  starting a second implementation; vendor its crate graph into the
+  demonstration build's tree the day that build rebases onto it; and expect
+  the audio-processing gap (echo cancellation, noise suppression, gain) to
+  stay open until upstream or a wrapper module fills it, because no small
+  engine ships it. The follow-on question —
   whether that engine should instead sit behind an UltraCanvas-owned wrapper
   module that the browser *and* the native applications link — is answered
   yes in [`UltraRTCDesignProposal.md`](UltraRTCDesignProposal.md), which
@@ -172,23 +178,26 @@ What that document says works and does not (quoted or paraphrased from it):
 | Basic transport statistics | Sender-parameter application, ICE glare, track-scoped stats, DTMF, SFrame natively, codec controls, certificate management, data-channel buffering and typed errors |
 | Validated: 28 browser checks, 5 Rust service tests, Discord loopback with an echo bot, **one live speech call of acceptable quality** with uneven pacing | **Renderer sandbox**: WebContent terminates with `SIGSYS` when it is enabled; no long-running tests for navigation, helper death, device unplug, network change |
 
-Two things about this matter for ULTRA OS:
+Two things about this matter for a browser built on UltraCanvas:
 
-1. **It is the maintainer's own direction**, and the pieces are landing on
-   `master` one PR at a time (capture, Web Audio, Wasm atomics, next presumably
-   the IPC-to-Rust generator). It will arrive in the port by merging upstream,
-   not by anyone here writing it.
+1. **It is Ladybird's own direction**, decided by Ladybird's maintainers, and
+   the pieces are landing on their `master` one PR at a time (capture, Web
+   Audio, Wasm atomics, next presumably the IPC-to-Rust generator). The
+   demonstration build receives it by rebasing onto upstream; nobody in this
+   project writes it, and this project has no say in it.
 2. **It brings a Rust toolchain into the browser build.** This repository
    already has one (the Vectorizer plugin builds the `vtracer` crate through
-   corrosion — `Docs/Dependencies.md`, row *cargo / rustc*), so the port's
-   build environment will not be the first to need it.
+   corrosion — `Docs/Dependencies.md`, row *cargo / rustc*), so a build
+   environment that already compiles UltraCanvas will not be the first to
+   need it.
 
 ---
 
 ## 4. The engines a browser could carry, compared
 
-If the port ever has to choose for itself (the branch stalls, or ULTRA OS
-wants video before upstream has it), these are the realistic candidates. All
+If a browser built on UltraCanvas ever has to choose for itself (Ladybird's
+branch stalls, or video is wanted before upstream has it), these are the
+realistic candidates. All
 of them can be vendored; the *Fetched by* column is what each does out of the
 box.
 
@@ -199,7 +208,7 @@ box.
 | **`str0m`** | Rust, MIT / Apache-2.0; pluggable crypto (aws-lc-rs, RustCrypto, OpenSSL, CryptoKit, CNG) | ICE, DTLS, SRTP, SCTP, RTP, **TWCC bandwidth estimation**, simulcast, NACK, packetisation, fixed depacketise buffer | Capture, codecs, adaptive jitter buffer, TURN management, interface enumeration; no PeerConnection-shaped API | Small; sans-IO, no threads | `cargo` | SFUs (Lookback, others) |
 | **`libdatachannel`** + `libjuice` | C++17 / C, MPL-2.0 | Data channels (SCTP via `usrsctp`), media transport (SRTP via `libsrtp`, RTX), JSEP, trickle ICE; `libjuice` is a from-scratch ICE/STUN/TURN agent with no dependencies | Codecs, jitter buffer, congestion control, audio processing; BUNDLE-only | Small CMake tree; OpenSSL / GnuTLS / mbedTLS | `git` submodules or vcpkg | Many native apps, game engines |
 | **GStreamer `webrtcbin`** | C, LGPL-2.1 | ICE (libnice), DTLS, SRTP, SCTP, RTP with GStreamer's jitter buffers and congestion control elements, codecs via plugins, hardware encode | Audio processing (`webrtcdsp` plugin wraps Google's APM) | Pulls in all of GStreamer | distro packages | WebKitGTK / WPE (in progress, FOSDEM 2026 talk), Servo (option under discussion) |
-| **Own stack from the RFCs** | whatever the port chooses | — | Everything | — | nothing | Nobody today; Pion (Go), str0m and webrtc-rs are the only from-scratch stacks that reached production |
+| **Own stack from the RFCs** | whatever the browser chooses | — | Everything | — | nothing | Nobody today; Pion (Go), str0m and webrtc-rs are the only from-scratch stacks that reached production |
 
 Observations:
 
@@ -210,8 +219,8 @@ Observations:
   that list. Standalone pieces exist: PulseAudio's `webrtc-audio-processing`
   package is Google's APM split out of `libwebrtc` (BSD-3, Meson build, ~50 k
   lines), and `speexdsp` is a smaller echo canceller and noise suppressor.
-- **Codecs are a solved problem for the port.** FFmpeg is already linked, and
-  the branch simply enables `opus`, `openh264` and `vpx` features in vcpkg.
+- **Codecs are a solved problem for a Ladybird-based build.** FFmpeg is
+  already linked, and the branch simply enables `opus`, `openh264` and `vpx` features in vcpkg.
   Packetisation (RFC 7587 / 6184 / 7741) is in the Rust crates.
 - **`libwebrtc` is the one that cannot reasonably be vendored into this
   port.** It needs Chromium's build system and a 6 GB checkout, its BoringSSL
@@ -255,7 +264,7 @@ in an afternoon.
 ## 6. Keeping the engine out of the build's internet access
 
 Whichever engine, the "loaded from the internet" part is answered the same
-way the port already answers it for FFmpeg, Skia and OpenSSL:
+way Ladybird's build already answers it for FFmpeg, Skia and OpenSSL:
 
 | Engine | How to pin it into the tree |
 |---|---|
@@ -264,43 +273,44 @@ way the port already answers it for FFmpeg, Skia and OpenSSL:
 | `webrtc-audio-processing`, `speexdsp` | Same; Meson respectively autotools, both wrap in CMake easily. |
 | `libwebrtc` | Not practical — see §4. |
 
-The thing to decide is only *when* to vendor: the moment the port adopts the
-branch, so that a release can be rebuilt from the tag without crates.io or
-GitHub answering.
+The thing to decide is only *when* to vendor: the moment the demonstration
+build rebases onto the branch, so that a release can be rebuilt from the tag
+without crates.io or GitHub answering.
 
 ---
 
 ## 7. Recommendations
 
-1. **Do not start a second WebRTC implementation for the port.** Upstream's
-   maintainer is landing one, in-tree, with no `libwebrtc`, and its pieces are
-   already reaching `master`. The port's job is to merge upstream and to carry
-   the ULTRA OS-specific bits (audio device routing, the sandbox profile that
-   currently kills WebContent with `SIGSYS`).
+1. **Do not start a second WebRTC implementation for a Ladybird-based
+   build.** Ladybird's maintainer is landing one, in-tree, with no
+   `libwebrtc`, and its pieces are already reaching `master`. The
+   demonstration build's only job is to rebase onto upstream; the open items
+   (audio device routing, the sandbox profile that currently kills WebContent
+   with `SIGSYS`) are Ladybird's to close, not this project's.
 2. **Watch three upstream markers** and treat each as a trigger to re-test
-   the port: the IPC-generator-to-Rust commit landing on `master`,
+   the demonstration build: the IPC-generator-to-Rust commit landing on `master`,
    `Libraries/LibWeb/WebRTC/` appearing, and the first release that ships
    `Services/WebRTCClient`. The branch's `Documentation/WebRTC.md` is the
    status page to read.
-3. **Vendor the crate graph into the port's tree on adoption** (§6) so a
-   release builds offline and the engine's exact sources are in the
-   repository. Record the licences (`webrtc`, `ring`, `audiopus`, `cpal` and
-   their trees are MIT / Apache-2.0 / ISC) in the port's licence file as this
-   repository does in `THIRD_PARTY_LICENSES.md`.
+3. **Vendor the crate graph into the demonstration build's tree on
+   adoption** (§6) so a release builds offline and the engine's exact sources
+   are in the repository. Record the licences (`webrtc`, `ring`, `audiopus`,
+   `cpal` and their trees are MIT / Apache-2.0 / ISC) in that build's licence
+   file as this repository does in `THIRD_PARTY_LICENSES.md`.
 4. **Plan for the three gaps every lightweight engine leaves** — jitter
    buffer, bandwidth estimation, audio processing. If upstream does not fill
-   them by the time ULTRA OS wants calls to be usable on a laptop microphone
-   without headphones, the shortest path is `webrtc-audio-processing` (Google's
+   them by the time calls are wanted on a laptop microphone without
+   headphones, the shortest path is `webrtc-audio-processing` (Google's
    APM, standalone) for AEC/NS/AGC, and `str0m`'s TWCC estimator as the
    reference for bandwidth estimation.
 5. **Put the engine behind an UltraCanvas-owned wrapper and let the browser
    link that.** The framework rule that engines are wrapped behind an
    UltraCanvas-owned API (`UltraNet` over libcurl, `UltraCanvasJSON` over
-   yyjson) applies here too, and the port's helper-process design is the seam
-   a library slots into. [`UltraRTCDesignProposal.md`](UltraRTCDesignProposal.md)
+   yyjson) applies here too, and Ladybird's helper-process design is the
+   seam a library slots into. [`UltraRTCDesignProposal.md`](UltraRTCDesignProposal.md)
    lays out the module: the `UltraRtc_*` surface, the engine tiers, the media
    pipeline the framework already mostly has, and the one-call-per-W3C-method
-   binding table for the port.
+   binding table for a Ladybird-based build.
 
 ---
 
