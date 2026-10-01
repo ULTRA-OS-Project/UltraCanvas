@@ -22080,7 +22080,24 @@ beside them:
   grants each later failing entry one silent retry before asking again, so a
   stubborn entry can never loop forever. An entry the trash refused gets the
   same dialog, titled for the trash, and is never deleted for good instead.
-- A delete that fails with **"Access is denied"** on Windows is the one Explorer
+- A failure **inside a folder** is reported for the file that refused, not
+  the folder: the question reads `"libvips-42.dll" in "lib" could not be
+  deleted.` and the facts add a *Stopped at:* line with the file's path under
+  the folder's. A read-only file inside a folder is not a failure at all: it
+  is lifted and removed, as *Delete anyway* lifts the entry's own protection,
+  so a folder unpacked with its read-only bits goes in one pass.
+- A file **a running program holds** — its executable, a DLL it has loaded —
+  answers "Access is denied" on Windows too, but no administrator can delete
+  it either. The worker asks the [lock probe](UltraCanvasFileLock.md) (the
+  Restart Manager) before it decides, and such a file gets **Delete: a file
+  in the folder is in use** — `"libvips-42.dll" in "lib" is in use by another
+  program.` with *In use by: UltraFiler (4120)* among the facts — with
+  **Skip** (the default) / **Try again** and an *Apply to all later files in
+  use* checkbox, and no administrator button. When the holder is the running
+  application itself the note says so and tells the user to close it and
+  delete from elsewhere.
+- A delete that fails with **"Access is denied"** on Windows and is held by
+  nobody is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
   user. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
@@ -22100,6 +22117,16 @@ beside them:
   another program") are not permission failures and keep the plain dialog,
   as does a process that already runs as administrator — asking again cannot
   change the system's answer there.
+
+A delete that would take **the running application's own installation**
+apart is refused before anything is touched: a victim at or below the folder
+the executable runs from, or a folder holding it, opens **Cannot delete:
+UltraFiler is running from here** and nothing is deleted. The files a running
+program has loaded cannot go, and the ones it has not loaded yet — fonts,
+icons, plugins — would go, and the program crashes the moment it reaches for
+one of them. That is how a Filer started from an unpacked download used to
+end when the download was deleted from inside it; the fix is to close the
+program and delete the folder from another file manager.
 
 With `SetProblemPolicy(FilerProblemPolicy::SkipAndReport)` a failed delete is
 not asked about at all: the entry stays, and the
@@ -57646,7 +57673,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
-| Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | "Working on it" with no percentage — a turning ring for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
@@ -60442,6 +60469,53 @@ Windows 11 (10.0 build 26100)
 A driver, a codec or a third-party DLL in that field means the framework was
 the victim, not the cause.
 
+**The crash dump.** The same filter writes a minidump before it shows the
+message box, and the box (and the log line after the crash line) names the
+file:
+
+```
+Crash dump: C:\Users\me\AppData\Local\UltraCanvas\CrashDumps\UltraFiler-20261001-143052-4120.dmp
+Attach it to the bug report.
+```
+
+That is `%LOCALAPPDATA%\UltraCanvas\CrashDumps\<app>-<date>-<time>-<pid>.dmp`
+— paste `%LOCALAPPDATA%\UltraCanvas\CrashDumps` into Explorer's address bar
+to get there. The dump holds every thread's stack, the module list with
+versions, the memory the stacks point at and the modules' globals, which is
+what a debugger needs to say *where* the crash was and *how it got there*,
+and it is written with `MiniDumpWriteDump` from the `dbghelp.dll` every
+Windows ships (resolved at startup, since a crash handler can load nothing).
+Expect a few to a few tens of megabytes; a full memory dump is deliberately
+not taken. To read one: open it in WinDbg (`File → Open Crash Dump`, then
+`!analyze -v`; `.ecxr` and `k` for the faulting stack), or in Visual Studio
+(`File → Open`, *Debug with Native Only*). With the matching `.pdb` or the
+unstripped build beside it the stack has names; without them it still has
+the module and the offset of every frame, which `objdump` or `llvm-symbolizer`
+on the shipped binary turns into source lines.
+
+Two variables adjust it:
+
+| Variable | Effect |
+|---|---|
+| `ULTRACANVAS_CRASH_DUMP_DIR` | Another folder for the dumps (created if missing). |
+| `ULTRACANVAS_NO_CRASH_DUMP=1` | Write none - a test runner, a process that must not leave files behind. |
+
+Windows' own dumps are a separate mechanism and off by default for a desktop
+program: Windows Error Reporting only keeps a `Report.wer` (the exception code
+and the faulting module, no stack) under `%LOCALAPPDATA%\Microsoft\Windows\WER\ReportArchive`,
+and **Event Viewer → Windows Logs → Application** records the same two facts
+as an *Application Error* event. A second dump from Windows itself, for a
+crash the filter could not reach (one in the loader, or before
+`InstallWindowsCrashReporter` ran), needs the LocalDumps registry key:
+
+```
+reg add "HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\UltraFiler.exe" /v DumpFolder /t REG_EXPAND_SZ /d "%LOCALAPPDATA%\CrashDumps" /f
+reg add "HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\UltraFiler.exe" /v DumpType /t REG_DWORD /d 2 /f
+```
+
+(from an administrator prompt; `DumpType` 2 is a full dump, 1 a mini dump).
+Those land in `%LOCALAPPDATA%\CrashDumps\UltraFiler.exe.<pid>.dmp`.
+
 **No log at all.** The process died before any UltraCanvas code ran, so the
 problem is the loader, not the application. Go to the exit code and to
 **Event Viewer → Windows Logs → Application**, which records an entry naming
@@ -60800,7 +60874,7 @@ Declared in `UltraCanvas/OS/MSWindows/UltraCanvasWindowsDiagnostics.h`
 bool        AttachParentConsole();
 std::string GetWindowsVersionString();
 void        LogWindowsStartupBanner(const std::string& appName);
-void        InstallWindowsCrashReporter(const std::string& appName);
+void        InstallWindowsCrashReporter(const std::string& appName);   // the filter, the log line and the minidump
 void        ReportWindowsStartupFailure(const std::string& stage, const std::string& detail);
 std::string DescribeWin32Error(unsigned long error);
 ```
