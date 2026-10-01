@@ -1,3 +1,28 @@
+#### 2026-10-01 *0.9.121*
+- **Windows: an installed package whose ImageMagick coder carries a system
+  DLL's name is repaired on start.** Packages up to 0.9.92 shipped
+  `coders\mpr.dll`, and a newer package extracted over an older folder keeps
+  it, so the "procedure entry point `WNetGetConnectionW` could not be
+  located" box on "Delete as administrator" and on a double-click into
+  Photos came back on exactly the machines that had hit it. The image
+  subsystem now puts the package's coder folder right before anything can
+  load a coder (`UltraCanvasCoderModuleRepair`, new): the useless `mpr` and
+  `url` pseudo-formats are deleted with their `.la` files, and a real format
+  whose name Windows also uses (`dpx`, `vid`, whatever else `System32`
+  holds) is renamed to `<name>-coder.dll` with its `.la` pointed at the new
+  file, which ImageMagick opens through unchanged. Every change is written
+  to the framework log; a folder that cannot be written (a read-only
+  install) is reported there and left for `uc-diagnose.ps1` to list.
+  Deleting the files by hand is no longer needed.
+- **Windows: a default open that fails is reported, not handed to
+  `explorer.exe`.** 0.9.83 answered a registered handler that would not
+  start from our process by starting it from Explorer's, which hid the
+  reason. The reason was the `mpr.dll` coder shadowing the system's (fixed
+  in the package since, and repaired on start now), so the detour is gone:
+  `OpenWithDefaultApplication` launches through the shell as a double-click
+  does, with the loader's hard-error box still off on the launching thread,
+  and a launch that fails names the shell's error.
+
 #### 2026-10-01 *0.9.120*
 - **A word-processing document prints on Windows, through GutenPrint, and on an
   IPP printer without PDF.** It went to the printer only as the PDF
