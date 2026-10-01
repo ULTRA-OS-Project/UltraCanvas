@@ -7,7 +7,10 @@
 // StartDocPrinter with datatype "RAW" hands it to the device untouched. No
 // CUPS is involved, which is the whole point - only GutenPrint's *CUPS
 // driver* is Unix-only, not the library.
-// Version: 0.1.0
+//
+// Supply levels come from the driver's bidirectional channel (IBidiSpl), which
+// the spooler itself does not expose; a driver without one reports none.
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #ifdef _WIN32
@@ -21,11 +24,16 @@
 
 #include <windows.h>
 #include <winspool.h>
+#include <objbase.h>
+#include <bidispl.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace UltraCanvas {
@@ -105,6 +113,137 @@ std::vector<uint8_t> QueryPrinterInfo(HANDLE printer, DWORD level) {
         return {};
     }
     return buffer;
+}
+
+// ============================================================================
+// SUPPLY LEVELS (BIDI)
+// ============================================================================
+
+// The bidi class and interface IDs, spelled out: bidispl.h declares them, but
+// not every toolchain's uuid library defines them, and naming CLSID_BidiSpl
+// would then compile and fail to link. Values as in the Windows SDK.
+const CLSID kClsidBidiSpl = {0x2a614240, 0xa4c5, 0x4c33,
+                             {0xbd, 0x87, 0x1b, 0xc7, 0x09, 0x33, 0x16, 0x39}};
+const CLSID kClsidBidiRequest = {0xb9162a23, 0x45f9, 0x47cc,
+                                 {0x80, 0xf5, 0xfe, 0x0f, 0xe9, 0xb9, 0xe1, 0xa2}};
+const IID kIidBidiSpl = {0xd580dc0e, 0xde39, 0x4649,
+                         {0xba, 0xa8, 0xbf, 0x0b, 0x85, 0xa0, 0x3a, 0x97}};
+const IID kIidBidiRequest = {0x8f348bd7, 0x4b47, 0x4755,
+                             {0x8a, 0x9d, 0x0f, 0x42, 0x2d, 0xf3, 0xdc, 0x89}};
+
+// Releases a COM interface on every path out of the query below.
+template <typename T>
+class ComRef {
+public:
+    ComRef() = default;
+    ~ComRef() {
+        if (ptr) {
+            ptr->Release();
+        }
+    }
+    ComRef(const ComRef&) = delete;
+    ComRef& operator=(const ComRef&) = delete;
+
+    T* operator->() const { return ptr; }
+    T* Get() const { return ptr; }
+    void** Out() { return reinterpret_cast<void**>(&ptr); }
+
+private:
+    T* ptr = nullptr;
+};
+
+// COM for the duration of one query. The caller may be a worker thread that
+// has never touched COM, or the UI thread, which is already OLE-initialized
+// as an STA: that answers RPC_E_CHANGED_MODE, where COM is usable but not
+// ours to tear down.
+class ComScope {
+public:
+    ComScope() : hr(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
+    ~ComScope() {
+        if (SUCCEEDED(hr)) {
+            CoUninitialize();
+        }
+    }
+    ComScope(const ComScope&) = delete;
+    ComScope& operator=(const ComScope&) = delete;
+
+    bool Usable() const { return SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE; }
+
+private:
+    HRESULT hr;
+};
+
+// A string-typed bidi value is UTF-16 with a size in bytes that may or may
+// not count the terminator.
+std::string BidiText(const BYTE* data, ULONG size) {
+    if (!data || size < sizeof(wchar_t)) {
+        return {};
+    }
+    std::wstring text(reinterpret_cast<const wchar_t*>(data), size / sizeof(wchar_t));
+    while (!text.empty() && text.back() == L'\0') {
+        text.pop_back();
+    }
+    return WideToUtf8(text);
+}
+
+// Asks the printer's driver for every \Printer.Consumables value. A driver
+// with no bidi support, a printer that is off, or a port that cannot talk
+// back all end the same way - an empty list, which reads as "not reported".
+std::vector<IOSupplyLevel> QueryBidiSupplyLevels(const std::wstring& printerName) {
+    ComScope com;
+    if (!com.Usable()) {
+        return {};
+    }
+
+    ComRef<IBidiSpl> bidi;
+    if (FAILED(CoCreateInstance(kClsidBidiSpl, nullptr, CLSCTX_INPROC_SERVER,
+                                kIidBidiSpl, bidi.Out()))) {
+        return {};
+    }
+    if (FAILED(bidi->BindDevice(printerName.c_str(), BIDI_ACCESS_USER))) {
+        return {};
+    }
+
+    std::vector<IOBidiConsumableValue> values;
+    {
+        ComRef<IBidiRequest> request;
+        if (SUCCEEDED(CoCreateInstance(kClsidBidiRequest, nullptr, CLSCTX_INPROC_SERVER,
+                                       kIidBidiRequest, request.Out())) &&
+            SUCCEEDED(request->SetSchema(L"\\Printer.Consumables")) &&
+            SUCCEEDED(bidi->SendRecv(BIDI_ACTION_GET_ALL, request.Get()))) {
+            HRESULT answer = E_FAIL;
+            DWORD count = 0;
+            if (SUCCEEDED(request->GetResult(&answer)) && SUCCEEDED(answer) &&
+                SUCCEEDED(request->GetEnumCount(&count))) {
+                for (DWORD i = 0; i < count; ++i) {
+                    LPWSTR schema = nullptr;
+                    DWORD type = BIDI_NULL;
+                    BYTE* data = nullptr;
+                    ULONG size = 0;
+                    if (FAILED(request->GetOutputData(i, &schema, &type, &data, &size))) {
+                        continue;
+                    }
+                    IOBidiConsumableValue value;
+                    value.schema = FromWide(schema);
+                    if (type == BIDI_INT && data && size >= sizeof(int32_t)) {
+                        int32_t number = 0;
+                        std::memcpy(&number, data, sizeof(number));
+                        value.number = number;
+                        value.isNumber = true;
+                    } else if (type == BIDI_STRING || type == BIDI_TEXT ||
+                               type == BIDI_ENUM) {
+                        value.text = BidiText(data, size);
+                    }
+                    CoTaskMemFree(schema);
+                    CoTaskMemFree(data);
+                    values.push_back(std::move(value));
+                }
+            }
+        }
+    }
+
+    bidi->UnbindDevice();
+    return IOSupplyLevelsFromBidi(values);
 }
 
 // ============================================================================
@@ -398,11 +537,13 @@ protected:
         return status;
     }
 
-    // The Windows spooler reports no supply levels at all: PRINTER_STATUS_NO_TONER
-    // is the closest it comes, and that is a status bit rather than a level.
-    // Reading real levels needs SNMP or a vendor SDK, so this reports nothing
-    // rather than inventing a number.
-    std::vector<IOSupplyLevel> DoGetSupplyLevels() override { return {}; }
+    // The spooler itself has no supply levels - PRINTER_STATUS_NO_TONER is a
+    // status bit, not a level - so they are asked of the driver's bidi
+    // channel. A driver that does not answer it reports nothing rather than
+    // an invented number.
+    std::vector<IOSupplyLevel> DoGetSupplyLevels() override {
+        return QueryBidiSupplyLevels(Utf8ToWide(GetDeviceInfo().connectionPath));
+    }
 
     IODeviceResult DoCancelJob(int jobId) override {
         PrinterHandle handle(Utf8ToWide(GetDeviceInfo().connectionPath));

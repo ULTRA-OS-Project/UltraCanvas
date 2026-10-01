@@ -16,8 +16,9 @@
   question runs at a time, and a selection made meanwhile waits, so clicking
   through ten printers asks the last. Answers are kept for 30 seconds and
   dropped on a rescan. A printer that cannot be reached says *Could not ask
-  the printer* and why. The Windows spooler reports no ink or toner levels,
-  so a spooler printer shows its state only.
+  the printer* and why. On Windows the levels come from the printer's
+  driver (IODeviceManager's spooler backend asks it); a driver that does not
+  report them leaves the printer with its state only.
 - **`--list --details`** asks each printer the same way and prints the two
   sections after its other properties.
 - **Driverless network printers** (IPP Everywhere, AirPrint, Mopria) appear

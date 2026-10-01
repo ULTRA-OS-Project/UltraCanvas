@@ -172,10 +172,11 @@ if (printer->Connect()) {
 ```
 
 CUPS, the Windows spooler and IPP all report status. Supply levels come from
-CUPS (`marker-*`) and IPP (`marker-*` and PWG's `printer-supply`); the Windows
-spooler has no levels to give — reading them there needs SNMP or a vendor SDK
-— so a spooler printer's list is empty rather than zero. DeviceExplorer shows
-both for the selected printer.
+CUPS (`marker-*`), IPP (`marker-*` and PWG's `printer-supply`) and, on Windows,
+the printer driver's bidirectional channel (`IBidiSpl`, `\Printer.Consumables`)
+— the spooler itself has no levels. A driver without that channel, or a
+printer that does not answer, gives an empty list rather than zero.
+DeviceExplorer shows both for the selected printer.
 
 ### Your Own Devices
 

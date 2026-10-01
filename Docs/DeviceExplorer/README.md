@@ -89,8 +89,9 @@ the printer…* while DeviceExplorer asks — on a worker thread, since a networ
 printer can take seconds — and then the answer. The answer is kept for 30
 seconds, so clicking back and forth does not ask again; after that, or after a
 rescan, selecting the printer asks anew. A printer that cannot be reached says
-*Could not ask the printer* and why. The Windows spooler reports no ink or
-toner levels at all, so a spooler printer shows its state and no *Supplies*.
+*Could not ask the printer* and why. On Windows the levels come from the
+printer's driver; a driver that does not report them leaves the printer with
+its state and no *Supplies*.
 
 **A group** — how many devices it holds, how many are open or reporting an
 error, which backends searched it and how many each found, and the list of
@@ -227,4 +228,4 @@ asks, one printer after another, and the answer follows its other sections:
 | A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |
 | A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
 | *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
-| A printer shows no *Supplies* | It reported none — always the case through the Windows spooler, and common for printers that have no level sensors. |
+| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors, and on Windows for drivers that do not report levels to the system. If the vendor's own utility shows levels, the driver keeps them to itself. |
