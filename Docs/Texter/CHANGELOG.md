@@ -1,3 +1,12 @@
+#### 2026-10-01 *1.56*
+- **A word-processing tab prints on Windows, and on printers that do not read
+  PDF.** Print sent the document only as a PDF, which a Windows printer, a
+  GutenPrint printer and an IPP printer without PDF cannot take - they refused
+  the job with "Print Failed". The same pages now go along, and those printers
+  draw them: fonts, pictures, tables, headers and page numbers, with the
+  printer, copies, paper and page range chosen in the dialog. A framework
+  change, see `Docs/UltraCanvas/changelog.d/print-pages-beside-pdf.md`.
+
 #### 2026-09-30 *1.55*
 - **Printing a word-processing tab (.docx, .odt, .doc) printed a blank page.**
   File > Print read the tab's text area, which a word-processing tab keeps

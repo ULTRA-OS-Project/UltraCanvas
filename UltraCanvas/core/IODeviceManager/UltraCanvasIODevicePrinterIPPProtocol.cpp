@@ -654,7 +654,7 @@ bool IsSinglePageImage(const std::string& type) {
 // stack decodes - which is every image type except the two multi-page
 // printer rasters, which are already pages and need no drawing.
 bool CanDrawHere(const std::string& type) {
-    if (type == "text/plain") return true;
+    if (type == "text/plain" || type == kIppDrawnPagesType) return true;
     return StartsWith(type, "image/") && type != "image/pwg-raster" && type != "image/urf";
 }
 
@@ -1676,7 +1676,10 @@ void AddIppJobTemplate(IppGroup& job, const IOPrintOptions& options,
 // DOCUMENT PLAN
 // ============================================================================
 
+const char* const kIppDrawnPagesType = "application/x-ultracanvas-pages";
+
 std::string IppJobDocumentType(const IOPrintJob& job) {
+    if (job.pages && job.filePath.empty() && job.data.empty()) return kIppDrawnPagesType;
     if (!job.mimeType.empty()) {
         std::string type = Lower(job.mimeType);
         const size_t semicolon = type.find(';');

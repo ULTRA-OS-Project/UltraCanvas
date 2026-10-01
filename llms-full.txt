@@ -1140,9 +1140,20 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
   work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
 - **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
-  — `PrintDocumentWithDialog(name, bytes, mimeType, parent)`,
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent, pages)`,
   `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
   dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+  The optional `pages` (`IOPrintJob::pages`, an `IPrintPageSource`) is the
+  same document as pages to draw, for the renderers that cannot lay out a
+  PDF - Windows GDI, GutenPrint, IPP without PDF - which draw them instead of
+  refusing the job. `IPrintPageTarget::GetRenderContext()` lets a source draw
+  straight into a target's render context.
+- **RichDocumentPrintPages** / `CreateRichDocumentPrintPages(editor)`
+  (`UltraCanvasRichTextPrint.h`) — a word-processing document's pages as an
+  `IPrintPageSource`, the pages `ExportToPdf` writes, laid out by a hidden
+  element of its own. `UltraCanvasRichTextEdit::BeginPrintLayout` /
+  `RenderPrintPage` / `EndPrintLayout` draw them into any context. Tested by
+  `RichTextPrintTest`.
 - **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
   extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
   one line.
@@ -45512,6 +45523,31 @@ PDF, and `PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window)`
 prints one - which is what UltraTexter's Print does for a word-processing tab,
 and File > Export as PDF writes.
 
+A PDF reaches CUPS, and an IPP printer that reads PDF, as it is. The Windows
+GDI renderer, GutenPrint and an IPP printer without PDF cannot lay one out, so
+send the same pages along for them to draw:
+
+```cpp
+#include "UltraCanvasRichTextPrint.h"
+
+PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window,
+                        CreateRichDocumentPrintPages(*editor));
+```
+
+`CreateRichDocumentPrintPages` copies the document into an element of its own
+(the one on screen keeps its view) and returns an `IPrintPageSource`: the pages
+`ExportToPdf` writes, drawn straight into a printer page that has a render
+context (GutenPrint, IPP's PWG raster), or drawn off screen at up to 300 dpi
+and placed as an image on a Windows printer DC. A page the size of the sheet
+prints 1:1, lined up with the sheet's edges; a larger one is scaled down to
+fit, a smaller one centred.
+
+To draw the pages into a context of your own, `BeginPrintLayout(ctx)` lays
+the document out in the output state and returns the page count,
+`RenderPrintPage(ctx, index)` draws one page with its top-left corner at the
+context's origin (96 units to the inch), and `EndPrintLayout()` puts the view
+back. `ExportToPdf` is built on the same three.
+
 ## Zoom and scrolling sideways
 
 ```cpp
@@ -63749,6 +63785,30 @@ four hold, because its parameter set is the richer one.
 accepting it and falling back at print time: a caller that asked for
 GutenPrint needs to know it is not getting it.
 
+### A document and its pages, together
+
+A formatted document reaches a printer as a PDF (`PrintDocumentWithDialog`),
+which CUPS and a PDF-reading IPP printer print as it is. The Windows GDI
+renderer, GutenPrint and an IPP printer without PDF cannot: they print what
+they can draw, and nothing here lays a PDF out. So a job may carry the same
+document twice - as bytes, and as **`IOPrintJob::pages`**, an
+`IPrintPageSource` that draws it - and each renderer takes the form it can
+use:
+
+| Renderer | Takes |
+|---|---|
+| Native on CUPS | the bytes, unchanged; a job of pages alone is refused by name rather than queued empty |
+| Windows GDI, GutenPrint | the pages: `MakePageSourceForJob` returns them before looking at the bytes |
+| IPP | the bytes when the printer takes them (and can select the page range); otherwise the pages, as PWG raster (`kIppDrawnPagesType`) |
+
+A source that is more than lines of text and pictures draws through the
+rendering stack, so **`IPrintPageTarget::GetRenderContext()`** hands over the
+target's `IRenderContext` where it has one (`RasterPageTarget`: GutenPrint's
+page, IPP's raster page). It is null for a Windows printer DC, where the
+source draws its page off screen and places it with `DrawImage`. A
+word-processing document's pages are `RichDocumentPrintPages`
+(`UltraCanvasRichTextPrint.h`), outside this module.
+
 ### Option resolution
 
 The GutenPrint parameter model — media type → resolution → cartridge → inkset
@@ -63996,7 +64056,9 @@ even to a printer that claims `text/plain`, because what a printer's own text
 path does with UTF-8 is anybody's guess and a page drawn here is the same page
 on every printer. What cannot be done either way is refused by name rather
 than half-printed: a PDF to a printer that takes none (nothing here paginates
-PDF yet), and a page range on a document the printer cannot select pages from.
+PDF yet), and a page range on a document the printer cannot select pages from
+- unless the job carries the document's pages too, which are then drawn (see
+*A document and its pages, together*).
 
 **The transport is one Print-Job request** - the IPP message with the
 document directly after it, POSTed with `Content-Type: application/ipp`. It
@@ -64555,7 +64617,7 @@ absent.
 | Windows spooler backend: enumeration, capabilities, status, job queue | ✅ |
 | Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
 | **Windows GDI renderer** | ✅ `Native` now works on Windows. Prints raster images and plain text by drawing onto a printer DC; honours paper size, orientation, copies, collation, colour mode, duplex and quality through a driver-validated `DEVMODE`. |
-| Windows GDI renderer: PDF and other documents | ❌ refused by name with `NotSupported`, not half-printed. Needs the PDF plugin to paginate; the seam it would plug into is done. |
+| Windows GDI renderer: PDF and other documents | ⚠️ a PDF on its own is still refused by name with `NotSupported`, not half-printed - laying one out needs the PDF plugin. A PDF that comes with its pages (`IOPrintJob::pages`, as a formatted document's does: `CreateRichDocumentPrintPages`) prints: the pages are drawn. |
 | Windows GDI renderer: images from memory | ❌ the document loader is path-based, so a job carrying image bytes rather than a path is refused rather than spooled through a temp file behind the caller's back. |
 | XPS print path | ❌ GDI covers every driver Windows will show; XPS would matter for an XPS-only device or for higher-fidelity transparency. |
 | Windows printer maintenance | ❌ |
@@ -64570,7 +64632,7 @@ absent.
 | IPP: the same printer twice on Windows | ❌ a driverless printer also installed as a spooler queue is listed as `winspool:<name>` and again over IPP. Matching them needs the queue's port address, which the Windows backend does not read yet. |
 | IPP: `ipps://` with a self-signed certificate | ❌ TLS verification stays on, so a printer offering *only* `ipps://` - with the self-signed certificate nearly every printer has - is not reachable. One offering both is reached over `ipp://`. The fix is trust on first use (pin the certificate seen at discovery), not turning verification off. |
 | IPP: authentication | ❌ a printer answering HTTP 401 is reported as `AccessDenied` by name; no credentials are sent. |
-| IPP: PDF to a printer that takes no PDF | ❌ refused by name. Needs the PDF plugin to paginate, the same seam the GDI renderer is waiting on. |
+| IPP: PDF to a printer that takes no PDF | ⚠️ refused by name on its own (laying it out needs the PDF plugin). With its pages beside it (`IOPrintJob::pages`) the pages are drawn as PWG raster instead - also when the printer cannot select a page range from the PDF. |
 | IPP: AirPrint's URF raster | ❌ not written. A printer taking URF but not PWG raster - older AirPrint-only models - still prints PDF and JPEG as they are; text and other images are refused by name. |
 | IPP: document streaming | ❌ the request and document go as one HTTP body, so a document is in memory whole. Fine for the PDFs and photos this path carries; PWG raster is the heavier case - an A4 page of text at 300 dpi in grey is about 1.3 MB, because anti-aliased glyphs defeat run-length compression - so a long raster job would want `Create-Job` / `Send-Document` with a chunked body. |
 | IPP: tested against a live printer | ✅ `Tests/IODevicePrinterIPPLiveTest` starts CUPS's reference printer `ippeveprinter` and prints to it through the public API: text as PWG raster, a page range, a PDF as it is, a refusal, jobs. Skipped where `ippeveprinter` is not installed (`cups-ipp-utils`) - which includes CI today; adding that package to the Linux legs' dependencies would run it there. |
@@ -64579,7 +64641,7 @@ absent.
 | Cloud printing | ❌ architecture only |
 | **Integration with `UltraCanvasNativeDialogs::ShowPrintDialog()`** | ✅ the dialog now asks (`RequestPrintSettings()` → `NativePrintResult`) and the job goes through `PrinterDevice`, so the printer, copies, collation, paper size, orientation, duplex, quality and page range the user picked are the ones the queue receives. Texter and UltraFiler keep the `bool` signature they already call. |
 | Print dialog: "Print to File" destination | ❌ reported in the result (`printToFile`, `outputFilePath`) and refused by name, rather than silently spooled to a queue the user did not choose. Needs a renderer that writes a document rather than submitting one. |
-| Print dialog: printing anything but plain text | ❌ `PrintTextWithDialog()` is the only bridge; an image or a PDF from a dialog needs the same treatment, and for PDF the renderer gap two rows up. |
+| Print dialog: printing anything but plain text | ⚠️ `PrintDocumentWithDialog()` prints a document (a PDF), with its pages beside it for the renderers that must draw (`pages`); Texter prints word-processing tabs this way. An image file from a dialog has no bridge yet. |
 | Print dialog on Android | ❌ `RequestPrintSettings()` reports cancelled. Android prints through a Java-side `PrintManager` job, not a settings dialog that hands choices back; bridging it is a JNI slice. |
 | Print dialog on WASM | ❌ and will stay so: the browser's print UI neither reports what the user chose nor lets a page choose for them, by design. `ShowPrintDialog()` there still hands the text to the browser to print. |
 

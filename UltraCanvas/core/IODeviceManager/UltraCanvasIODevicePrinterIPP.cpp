@@ -444,6 +444,12 @@ public:
         IppDocumentPlan plan;
         IODeviceResult planned =
             PlanIppDocument(IppJobDocumentType(job), job.pageRange, facts->documents, plan);
+        // A document the printer cannot take as it is - a PDF to a printer
+        // without PDF, or with a page range it cannot select - is drawn from
+        // the pages that came with it, when they did.
+        if (job.pages && (!planned.success || !plan.passThrough)) {
+            planned = PlanIppDocument(kIppDrawnPagesType, job.pageRange, facts->documents, plan);
+        }
         if (!planned.success) return planned;
 
         if (!plan.passThrough) return DrawPwgRaster(job, facts->documents, payload);

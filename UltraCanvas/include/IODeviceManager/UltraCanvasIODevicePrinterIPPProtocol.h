@@ -410,8 +410,13 @@ void AddIppJobTemplate(IppGroup& job, const IOPrintOptions& options,
 // SENDING A DOCUMENT AS IT IS, OR DRAWING IT
 // ============================================================================
 
+// The type a job of pages that draw themselves (IOPrintJob::pages) is planned
+// as. No printer names it, so such a job is always drawn here, as PWG raster.
+extern const char* const kIppDrawnPagesType;
+
 // The MIME type of what a job holds: its declared type, or one inferred from
-// the file name. Empty when neither says.
+// the file name; kIppDrawnPagesType for a job that is only pages. Empty when
+// nothing says.
 std::string IppJobDocumentType(const IOPrintJob& job);
 
 struct IppDocumentPlan {

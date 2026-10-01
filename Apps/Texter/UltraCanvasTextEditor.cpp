@@ -18,6 +18,7 @@
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasRichTextPrint.h"
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 #include "UltraCanvasFileLoader.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -3722,7 +3723,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // A word-processing tab prints as what it looks like: its pages as a
         // PDF, fonts, pictures, tables, headers and page numbers included.
         // (Its text area is detached and empty, which is why reading that
-        // once printed a blank page.)
+        // once printed a blank page.) The same pages go along to be drawn by
+        // a printer that cannot take a PDF - Windows, GutenPrint, an IPP
+        // printer without PDF - which otherwise refused the job.
         if (doc->IsRichDocument() && doc->richEdit) {
             std::vector<uint8_t> pdf;
             std::string error;
@@ -3730,7 +3733,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 UltraCanvasDialogManager::ShowError(error, "Print Failed", nullptr, GetWindow());
                 return;
             }
-            const IODeviceResult printed = PrintDocumentWithDialog(docName, pdf, "application/pdf", GetWindow());
+            const IODeviceResult printed =
+                PrintDocumentWithDialog(docName, pdf, "application/pdf", GetWindow(),
+                                        CreateRichDocumentPrintPages(*doc->richEdit));
             if (!printed.success && printed.code != IODeviceResultCode::Cancelled) {
                 UltraCanvasDialogManager::ShowError(printed.message, "Print Failed", nullptr, GetWindow());
             }

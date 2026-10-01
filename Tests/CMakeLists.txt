@@ -3615,6 +3615,28 @@ else()
     message(STATUS "  OffscreenRenderTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== RICH TEXT PRINT TEST =====
+# A word-processing document's pages for the printers that cannot take its
+# PDF: drawn into a render context and placed as an image on a device with an
+# unprintable margin - and a job carrying both, handed to each renderer.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building RichTextPrintTest...")
+    add_executable(RichTextPrintTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/RichTextPrintTest.cpp
+    )
+    target_include_directories(RichTextPrintTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(RichTextPrintTest PRIVATE cxx_std_20)
+    target_link_libraries(RichTextPrintTest PRIVATE UltraCanvas)
+    set_target_properties(RichTextPrintTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME RichTextPrintTest COMMAND RichTextPrintTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: RichTextPrintTest")
+else()
+    message(STATUS "  RichTextPrintTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== PROCESS RUNNER TEST =====
 # RunProcessCaptured: the pipe behaviour that only misbehaves at scale - a
 # child that stops reading (SIGPIPE would kill us), a filter reading and
