@@ -71,7 +71,7 @@ int SkipOrFail() {
         std::cout << "FAILED: ULTRACANVAS_TEST_IPP_REQUIRED is set, so a skip is a failure\n";
         return EXIT_FAILURE;
     }
-    return SkipOrFail();
+    return kSkipped;
 }
 int g_passed = 0;
 int g_failed = 0;
