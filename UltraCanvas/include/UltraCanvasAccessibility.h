@@ -3,8 +3,9 @@
 // needs from an element, independent of the platform's accessibility API:
 // its role and name, for text its content, caret, selection, character
 // positions and formatting, and a stream of events telling a listener what
-// changed. A platform bridge (AT-SPI on Linux, UI Automation on Windows,
-// NSAccessibility on macOS) sits on top of it.
+// changed. The platform bridges sit on top of it: AT-SPI on Linux
+// (OS/Linux/UltraCanvasLinuxAccessibility), UI Automation on Windows
+// (OS/MSWindows/UltraCanvasWindowsAccessibility); none yet for macOS.
 //
 //     if (IAccessibleText* text = element->GetAccessibleTextInterface()) {
 //         int start = 0, end = 0;
@@ -15,7 +16,7 @@
 //
 // Offsets count characters (Unicode code points), as the platform APIs do,
 // not bytes.
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 #pragma once
 
