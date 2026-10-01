@@ -1,3 +1,21 @@
+#### 2026-10-01 *0.9.109*
+- **The delivery hook no longer reports pushed work as unpushed.**
+  `.claude/hooks/check-delivery.sh` treated a branch with no upstream as
+  entirely unpushed and listed its last 20 commits - so every cloud session,
+  whose branch is cut from `origin/main` before it is ever pushed, started
+  with a warning about 20 "unpushed" commits that `main` already held. A
+  branch with no upstream is now checked against every remote ref
+  (`git log HEAD --not --remotes`): only commits that are on no remote branch
+  are reported, which is the work that would actually be lost.
+- **Assistant chats end on how much code still needs a pull request.**
+  `AGENTS.md` (*Reporting back → The closing line*) and `CLAUDE.md` now require
+  the last reply before a chat waits for the user to end with
+  `Code needs to be PRed (N lines)`, where `N` is the lines the checkout
+  differs from the merge base with `origin/main` — committed, uncommitted and
+  untracked — measured with `git diff --shortstat` rather than remembered,
+  `(0 lines)` when nothing differs, and ` — open as PR #<n>` appended when a
+  pull request already exists.
+
 #### 2026-10-01 *0.9.108*
 - **A Windows crash now leaves a dump behind, and the crash message names
   it.** The unhandled-exception filter writes a minidump - every thread's
