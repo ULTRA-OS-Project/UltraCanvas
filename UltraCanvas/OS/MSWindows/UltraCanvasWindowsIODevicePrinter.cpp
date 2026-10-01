@@ -9,8 +9,10 @@
 // driver* is Unix-only, not the library.
 //
 // Supply levels come from the driver's bidirectional channel (IBidiSpl), which
-// the spooler itself does not expose; a driver without one reports none.
-// Version: 0.2.0
+// the spooler itself does not expose. When the driver says nothing and the
+// queue prints to a network address, the printer behind it is asked directly
+// over IPP (builds with UltraNet only).
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #ifdef _WIN32
@@ -20,6 +22,8 @@
 #include "../../include/IODeviceManager/UltraCanvasIODevicePrinter.h"
 #include "../../include/IODeviceManager/UltraCanvasIODevicePrinterGutenPrint.h"
 #include "../../include/IODeviceManager/UltraCanvasIODeviceManager.h"
+#include "../../include/IODeviceManager/UltraCanvasIODevicePrinterIPP.h"
+#include "../../include/IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.h"
 #include "../../include/UltraCanvasUtils.h"
 
 #include <windows.h>
@@ -27,6 +31,8 @@
 #include <objbase.h>
 #include <bidispl.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -245,6 +251,81 @@ std::vector<IOSupplyLevel> QueryBidiSupplyLevels(const std::wstring& printerName
     bidi->UnbindDevice();
     return IOSupplyLevelsFromBidi(values);
 }
+
+// ============================================================================
+// SUPPLY LEVELS (IPP, WHEN THE DRIVER KEEPS THEM)
+// ============================================================================
+
+#if defined(ULTRACANVAS_HAS_NET)
+
+// The address a Standard TCP/IP port is configured with, asked of its port
+// monitor. Empty for any other kind of port, or when the monitor will not
+// tell this user; the port's name is then all there is to go on.
+std::string TcpPortHostAddress(const std::wstring& port) {
+    std::wstring xcvName = L",XcvPort " + port;
+    PRINTER_DEFAULTSW defaults{nullptr, nullptr, SERVER_ACCESS_ENUMERATE};
+    HANDLE xcv = nullptr;
+    if (!OpenPrinterW(xcvName.data(), &xcv, &defaults)) {
+        return {};
+    }
+    std::string host;
+    for (const wchar_t* query : {L"HostAddress", L"IPAddress"}) {
+        wchar_t buffer[256] = {};
+        DWORD needed = 0;
+        DWORD status = ERROR_INVALID_FUNCTION;
+        if (XcvDataW(xcv, query, nullptr, 0, reinterpret_cast<PBYTE>(buffer),
+                     static_cast<DWORD>(sizeof(buffer) - sizeof(wchar_t)), &needed,
+                     &status) &&
+            status == ERROR_SUCCESS) {
+            host = FromWide(buffer);
+            if (!host.empty()) {
+                break;
+            }
+        }
+    }
+    ClosePrinter(xcv);
+    return host;
+}
+
+// The IPP addresses a queue's printer might answer at, from the ports it
+// prints to - several, comma-separated, for a pooled queue.
+std::vector<std::string> IppUrisForQueue(const std::wstring& printerName) {
+    PrinterHandle handle(printerName);
+    if (!handle.IsOpen()) {
+        return {};
+    }
+    std::vector<uint8_t> buffer = QueryPrinterInfo(handle.Get(), 2);
+    if (buffer.empty()) {
+        return {};
+    }
+    const PRINTER_INFO_2W* info = reinterpret_cast<const PRINTER_INFO_2W*>(buffer.data());
+    const std::wstring ports = info->pPortName ? info->pPortName : L"";
+
+    std::vector<std::string> uris;
+    size_t at = 0;
+    while (at <= ports.size()) {
+        size_t end = ports.find(L',', at);
+        if (end == std::wstring::npos) {
+            end = ports.size();
+        }
+        std::wstring port = ports.substr(at, end - at);
+        while (!port.empty() && port.front() == L' ') {
+            port.erase(0, 1);
+        }
+        if (!port.empty()) {
+            for (const std::string& uri :
+                 IppUrisForWindowsPort(WideToUtf8(port), TcpPortHostAddress(port))) {
+                if (std::find(uris.begin(), uris.end(), uri) == uris.end()) {
+                    uris.push_back(uri);
+                }
+            }
+        }
+        at = end + 1;
+    }
+    return uris;
+}
+
+#endif  // ULTRACANVAS_HAS_NET
 
 // ============================================================================
 // TRANSPORT
@@ -539,10 +620,18 @@ protected:
 
     // The spooler itself has no supply levels - PRINTER_STATUS_NO_TONER is a
     // status bit, not a level - so they are asked of the driver's bidi
-    // channel. A driver that does not answer it reports nothing rather than
-    // an invented number.
+    // channel, and failing that, of the printer itself over IPP when the
+    // queue prints to a network address. A printer neither route reaches
+    // reports nothing rather than an invented number.
     std::vector<IOSupplyLevel> DoGetSupplyLevels() override {
-        return QueryBidiSupplyLevels(Utf8ToWide(GetDeviceInfo().connectionPath));
+        std::vector<IOSupplyLevel> supplies =
+            QueryBidiSupplyLevels(Utf8ToWide(GetDeviceInfo().connectionPath));
+#if defined(ULTRACANVAS_HAS_NET)
+        if (supplies.empty()) {
+            supplies = AskPrinterOverIpp();
+        }
+#endif
+        return supplies;
     }
 
     IODeviceResult DoCancelJob(int jobId) override {
@@ -636,6 +725,66 @@ protected:
     IPrintTransportPtr GetTransport() override { return SharedWindowsTransport(); }
 
 private:
+#if defined(ULTRACANVAS_HAS_NET)
+    // A printer that is off costs the connect timeout per address, and
+    // GetStatus() and GetSupplyLevels() both end up here, so one that did not
+    // answer is left alone for a minute rather than asked twice in a row.
+    static constexpr std::chrono::seconds kIppRetryAfter{60};
+
+    // Runs under the device's mutex, like every Do* call, which also guards
+    // the members it remembers.
+    std::vector<IOSupplyLevel> AskPrinterOverIpp() {
+        const auto now = std::chrono::steady_clock::now();
+        if (ippGaveUp && now - ippGaveUpAt < kIppRetryAfter) {
+            return {};
+        }
+
+        // The address that answered last time first; the port's guesses after.
+        std::vector<std::string> candidates;
+        if (!ippUri.empty()) {
+            candidates.push_back(ippUri);
+        }
+        for (const std::string& uri :
+             IppUrisForQueue(Utf8ToWide(GetDeviceInfo().connectionPath))) {
+            if (std::find(candidates.begin(), candidates.end(), uri) == candidates.end()) {
+                candidates.push_back(uri);
+            }
+        }
+
+        // A host that did not take the connection will not take it on another
+        // path either, so its remaining guesses are skipped.
+        std::vector<std::string> unreachable;
+        for (const std::string& uri : candidates) {
+            const size_t hostStart = uri.find("//");
+            const std::string authority =
+                hostStart == std::string::npos ? uri : uri.substr(0, uri.find('/', hostStart + 2));
+            if (std::find(unreachable.begin(), unreachable.end(), authority) !=
+                unreachable.end()) {
+                continue;
+            }
+            std::vector<IOSupplyLevel> supplies;
+            const IODeviceResult asked = Internal::QueryIppSupplyLevels(uri, supplies);
+            if (asked.success) {
+                ippUri = uri;
+                ippGaveUp = false;
+                return supplies;
+            }
+            if (asked.code == IODeviceResultCode::ConnectionFailed) {
+                unreachable.push_back(authority);
+            }
+        }
+
+        ippUri.clear();
+        ippGaveUp = true;
+        ippGaveUpAt = now;
+        return {};
+    }
+
+    std::string ippUri;                                  // answered last time
+    bool ippGaveUp = false;
+    std::chrono::steady_clock::time_point ippGaveUpAt;
+#endif
+
     static void AddUnique(std::vector<IOPaperSize>& sizes, IOPaperSize size) {
         for (IOPaperSize existing : sizes) {
             if (existing == size) {

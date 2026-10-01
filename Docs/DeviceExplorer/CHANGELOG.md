@@ -17,8 +17,9 @@
   through ten printers asks the last. Answers are kept for 30 seconds and
   dropped on a rescan. A printer that cannot be reached says *Could not ask
   the printer* and why. On Windows the levels come from the printer's
-  driver (IODeviceManager's spooler backend asks it); a driver that does not
-  report them leaves the printer with its state only.
+  driver, or for a network printer whose driver keeps quiet, from the
+  printer over IPP (IODeviceManager's spooler backend does both). A printer
+  reached neither way shows its state only.
 - **`--list --details`** asks each printer the same way and prints the two
   sections after its other properties.
 - **Driverless network printers** (IPP Everywhere, AirPrint, Mopria) appear

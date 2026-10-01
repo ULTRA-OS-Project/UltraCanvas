@@ -90,7 +90,8 @@ printer can take seconds — and then the answer. The answer is kept for 30
 seconds, so clicking back and forth does not ask again; after that, or after a
 rescan, selecting the printer asks anew. A printer that cannot be reached says
 *Could not ask the printer* and why. On Windows the levels come from the
-printer's driver; a driver that does not report them leaves the printer with
+printer's driver, or, for a network printer whose driver does not report
+them, from the printer itself over IPP. A printer reached neither way shows
 its state and no *Supplies*.
 
 **A group** — how many devices it holds, how many are open or reporting an
@@ -228,4 +229,4 @@ asks, one printer after another, and the answer follows its other sections:
 | A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |
 | A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
 | *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
-| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors, and on Windows for drivers that do not report levels to the system. If the vendor's own utility shows levels, the driver keeps them to itself. |
+| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB or through a WSD port, it does not speak IPP, or a firewall blocks port 631. |

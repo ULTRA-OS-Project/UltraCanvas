@@ -64553,7 +64553,7 @@ absent.
 | GutenPrint: streaming a long document | ❌ the whole rasterised document is held in memory before the filter runs, because `RunProcessCaptured` takes its input as one block. A page of RGB at 360 dpi is ~36 MB, so this suits letters and photographs and would not suit a book. Fixed by teaching the process runner to pull input a block at a time, after which one page need exist at once. |
 | GutenPrint: per-model options beyond the PPD defaults | 🔨 media, resolution, colour mode and page size reach the raster header; the cartridge and inkset parameters in `IOPrintOptions` are resolved but not yet passed through as PPD options. |
 | Windows spooler backend: enumeration, capabilities, status, job queue | ✅ |
-| Windows spooler backend: supply levels | ✅ from the driver's bidi channel (`IBidiSpl` `GetAll` on `\Printer.Consumables`); the parsing is tested on every platform. A driver without bidi support reports none. Not yet verified against real hardware. |
+| Windows spooler backend: supply levels | ✅ from the driver's bidi channel (`IBidiSpl` `GetAll` on `\Printer.Consumables`), and when that is silent, from the printer over IPP at an address read from the queue's port (IPP port URL, or a Standard TCP/IP port's `HostAddress`). The parsing and the port-to-address guesses are tested on every platform, and the IPP query against `ippeveprinter`. Not yet verified against real Windows hardware. WSD ports carry no address the spooler gives out, so a WSD queue gets bidi only. |
 | Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
 | **Windows GDI renderer** | ✅ `Native` now works on Windows. Prints raster images and plain text by drawing onto a printer DC; honours paper size, orientation, copies, collation, colour mode, duplex and quality through a driver-validated `DEVMODE`. |
 | Windows GDI renderer: PDF and other documents | ❌ refused by name with `NotSupported`, not half-printed. Needs the PDF plugin to paginate; the seam it would plug into is done. |
@@ -64827,11 +64827,21 @@ if (printer->Connect()) {
 ```
 
 CUPS, the Windows spooler and IPP all report status. Supply levels come from
-CUPS (`marker-*`), IPP (`marker-*` and PWG's `printer-supply`) and, on Windows,
-the printer driver's bidirectional channel (`IBidiSpl`, `\Printer.Consumables`)
-— the spooler itself has no levels. A driver without that channel, or a
-printer that does not answer, gives an empty list rather than zero.
-DeviceExplorer shows both for the selected printer.
+CUPS (`marker-*`) and IPP (`marker-*` and PWG's `printer-supply`). On Windows
+the spooler itself has no levels, so the backend asks in two steps:
+
+1. The printer driver's bidirectional channel (`IBidiSpl`,
+   `\Printer.Consumables`), which drivers with a status monitor answer.
+2. If the driver says nothing and the queue prints to a network address, the
+   printer itself over IPP (builds with UltraNet). The address comes from the
+   queue's port: an IPP port's URL, or a Standard TCP/IP port's host, tried at
+   `/ipp/print`, `/ipp` and `/` on port 631. A printer that does not answer
+   is left alone for a minute, so a switched-off printer costs the connect
+   timeout (5 s) once, not on every call.
+
+A USB or WSD queue whose driver keeps quiet, or a printer that answers
+neither, gives an empty list rather than zero. DeviceExplorer shows both for
+the selected printer.
 
 ### Your Own Devices
 
@@ -72980,7 +72990,8 @@ printer can take seconds — and then the answer. The answer is kept for 30
 seconds, so clicking back and forth does not ask again; after that, or after a
 rescan, selecting the printer asks anew. A printer that cannot be reached says
 *Could not ask the printer* and why. On Windows the levels come from the
-printer's driver; a driver that does not report them leaves the printer with
+printer's driver, or, for a network printer whose driver does not report
+them, from the printer itself over IPP. A printer reached neither way shows
 its state and no *Supplies*.
 
 **A group** — how many devices it holds, how many are open or reporting an
@@ -73118,7 +73129,7 @@ asks, one printer after another, and the answer follows its other sections:
 | A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |
 | A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
 | *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
-| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors, and on Windows for drivers that do not report levels to the system. If the vendor's own utility shows levels, the driver keeps them to itself. |
+| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB or through a WSD port, it does not speak IPP, or a firewall blocks port 631. |
 
 ==============================================================================
 FILE: Docs/UltraDesktop/README.md

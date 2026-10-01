@@ -23,7 +23,7 @@
 // container without IPv6 skips here however it is set up. CI's Linux rows
 // install it, start Avahi, and set ULTRACANVAS_TEST_IPP_REQUIRED, which turns
 // a skip into a failure.
-// Version: 1.1.0
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -33,6 +33,7 @@
 
 #include "IODeviceManager/UltraCanvasIODeviceManager.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinter.h"
+#include "IODeviceManager/UltraCanvasIODevicePrinterIPP.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <chrono>
@@ -360,6 +361,29 @@ int main() {
 
     Check(printer->IsReady(), "it is idle and accepting jobs");
     Check(!printer->GetSupplyLevels().empty(), "it reports its supplies");
+
+    // --- The supply query the Windows spooler backend borrows -----------------
+    // When a Windows driver keeps its levels to itself, the backend guesses
+    // IPP addresses from the queue's port and asks each in turn. It moves on
+    // to the next path when one is wrong, and gives up on the host when it
+    // cannot connect - so those two failures must not look alike.
+    {
+        std::vector<IOSupplyLevel> supplies;
+        const IODeviceResult asked = Internal::QueryIppSupplyLevels(uri, supplies);
+        Check(asked.success && !supplies.empty(),
+              "asked directly, the printer reports its supplies: " + asked.message);
+
+        std::vector<IOSupplyLevel> none;
+        const IODeviceResult wrongPath = Internal::QueryIppSupplyLevels(
+            "ipp://localhost:" + std::to_string(port) + "/no/such/printer", none);
+        Check(!wrongPath.success && wrongPath.code != IODeviceResultCode::ConnectionFailed,
+              "a wrong path on the printer fails, but not as unreachable: " + wrongPath.message);
+
+        const IODeviceResult nobody =
+            Internal::QueryIppSupplyLevels("ipp://127.0.0.1:1/ipp/print", none);
+        Check(!nobody.success && nobody.code == IODeviceResultCode::ConnectionFailed,
+              "a host that takes no connection is unreachable: " + nobody.message);
+    }
 
     // --- Text, drawn here as PWG raster ---------------------------------------
     IOPrintJob text;
