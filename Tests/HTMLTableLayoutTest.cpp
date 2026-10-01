@@ -9,6 +9,7 @@
 //
 // Headless: builds the element tree with HTMLElementBuilder and lays it out
 // with the CSSLayout engine; text is measured on an offscreen render context.
+// Version: 1.7.0 - vertical-align on a shared image line
 // Version: 1.6.0 - images in a block without text share a line
 // Version: 1.5.0 - <img> border, background, padding, margins, border-radius
 // Version: 1.4.0 - object-fit, object-position
@@ -598,6 +599,14 @@ void TestImagesShareLine() {
     r = images("<div><img src='p.png'><br><img src='p.png'></div>", 400.f);
     if (r.size() == 2) Check(r[1].y >= r[0].y + 20.f - 0.5f, "<br> breaks the line");
     else Check(false, "two images (br)");
+    r = images("<div><img src='p.png' width='80' height='60'> "
+               "<img src='p.png' style='vertical-align:top'> "
+               "<img src='p.png' style='vertical-align:middle'> <img src='p.png'></div>", 400.f);
+    if (r.size() == 4) {
+        CheckNear(r[1].y, r[0].y, "vertical-align: top");
+        CheckNear(r[2].y + 10.f, r[0].y + 30.f, "vertical-align: middle");
+        CheckNear(r[3].y + 20.f, r[0].y + 60.f, "baseline: on the line's bottom");
+    } else Check(false, "four images (vertical-align)");
 }
 
 } // namespace

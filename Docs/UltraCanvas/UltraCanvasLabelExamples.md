@@ -268,8 +268,9 @@ label->SetInlineImages({ star });
 The HTML reader (`HTMLElementBuilder`) uses this for an `<img>` inside running
 text. Images in a block that has no text of its own go on lines of their own,
 placed by `text-align`: side by side on one wrapping line while only
-whitespace separates them, a space apart where the HTML has whitespace;
-`display:block` or `<br>` starts a new line.
+whitespace separates them, a space of their font apart where the HTML has
+whitespace, standing on the line's bottom unless `vertical-align` puts them at
+its top or middle; `display:block` or `<br>` starts a new line.
 
 ## Event Callbacks
 

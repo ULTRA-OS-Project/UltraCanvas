@@ -6,6 +6,7 @@
 // UltraCanvasImageElement fed through a caller-supplied resource loader.
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.6.0 - the gap between images is a space measured in their font
 // Version: 1.5.0 - images in a block without text share a wrapping line
 // Version: 1.4.0 - background-repeat
 // Version: 1.3.0 - background-position
@@ -92,6 +93,13 @@ private:
     std::vector<LabelTextLink> runLinks;
     // Images flowing in the current run, at U+FFFC placeholders of runPlain.
     std::vector<LabelInlineImage> runImages;
+
+    // The width of a space in a style's font, in px - the gap between two
+    // images a space apart. Measured on a small offscreen context made on
+    // first use, cached per font.
+    float SpaceWidth(const ComputedStyle& style);
+    std::shared_ptr<IRenderContext> measureContext;
+    std::unordered_map<std::string, float> spaceWidths;
 
     std::string MakeId(const std::string& hint);
 

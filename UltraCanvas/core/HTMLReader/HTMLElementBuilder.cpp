@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.12.0 - vertical-align on images sharing a line: top, middle, bottom
+// Version: 1.11.0 - the gap between images a space apart is a space of their font,
+//                   measured (SpaceWidth)
 // Version: 1.10.0 - borders per side (width, colour, dashed / dotted); <hr> is its
 //                   border box, as in a browser
 // Version: 1.9.0 - images in a block without text share a line, side by side (a
@@ -195,6 +198,19 @@ bool OnlyWhitespace(const std::vector<Node*>& run) {
         }
     }
     return true;
+}
+
+// The label font for a style: its family (monospace when asked), size,
+// weight and slant. FontStyle sizes are points; CSS sizes are px (96 dpi).
+// Inline <span size> markup converts the same way (PangoSize), so a 15px
+// button caption is no longer smaller than the 12px text around it.
+FontStyle FontOf(const ComputedStyle& style) {
+    FontStyle font;
+    font.fontFamily = style.monospace && style.fontFamily.empty() ? "monospace" : style.fontFamily;
+    font.fontSize = style.fontSizePx * 72.f / 96.f;
+    font.fontWeight = style.bold ? FontWeight::Bold : FontWeight::Normal;
+    font.fontSlant = style.italic ? FontSlant::Italic : FontSlant::Normal;
+    return font;
 }
 
 // The dash a border side is stroked with: none for solid, dashes three
@@ -508,6 +524,18 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             // collapse with the blocks around it.
             image->box.margin.top = CSSLayout::Dimension::Px(st.marginTop);
             image->box.margin.bottom = CSSLayout::Dimension::Px(st.marginBottom);
+            // vertical-align against the line's other images: top, middle,
+            // or standing on its bottom (baseline, bottom - the line has no
+            // text, so its baseline is its bottom).
+            switch (st.verticalAlign) {
+                case VerticalAlignMode::Top:
+                    image->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start); break;
+                case VerticalAlignMode::Middle:
+                    image->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center); break;
+                case VerticalAlignMode::Bottom:
+                case VerticalAlignMode::Baseline:
+                    break;
+            }
         }
         if (inlineImage && imageLine) {
             row->RemoveChild(image);
@@ -515,7 +543,7 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             // line it is lost as a browser loses it, rather than indenting
             // the next line.
             if (spaced && lastImage) {
-                const float space = st.fontSizePx * 0.28f;   // a space, in a common text face
+                const float space = SpaceWidth(st);
                 lastImage->box.margin.right = CSSLayout::Dimension::Px(lastImageMarginRight + space);
             }
             RegisterAnchors(node, image);
@@ -1386,17 +1414,33 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::PlaceByAutoMargins(
     return line;
 }
 
+float ElementBuilder::SpaceWidth(const ComputedStyle& style) {
+    const FontStyle font = FontOf(style);
+    const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize) + "|" +
+                            (style.bold ? "b" : "") + (style.italic ? "i" : "");
+    if (auto it = spaceWidths.find(key); it != spaceWidths.end()) return it->second;
+    float width = style.fontSizePx * 0.28f;          // no context: a common face's space
+    if (!measureContext) measureContext = CreateRenderContext(Size2Di(8, 8), nullptr);
+    if (measureContext) {
+        // "x x" less "xx": the space between two glyphs, as a line sets it.
+        auto measure = [&](const std::string& text) -> double {
+            auto layout = measureContext->CreateTextLayout(text, false);
+            if (!layout) return -1.0;
+            layout->SetFontStyle(font);
+            return layout->GetLayoutWidth();
+        };
+        const double spaced = measure("x x"), tight = measure("xx");
+        if (spaced > 0.0 && tight > 0.0 && spaced > tight)
+            width = static_cast<float>(spaced - tight);
+    }
+    spaceWidths[key] = width;
+    return width;
+}
+
 void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle& style,
                                     bool noWrap) {
     LabelStyle labelStyle;
-    labelStyle.fontStyle.fontFamily =
-        style.monospace && style.fontFamily.empty() ? "monospace" : style.fontFamily;
-    // FontStyle sizes are points; CSS sizes are px (96 dpi). Inline <span
-    // size> markup converts the same way (PangoSize), so a 15px button caption
-    // is no longer smaller than the 12px text around it.
-    labelStyle.fontStyle.fontSize = style.fontSizePx * 72.f / 96.f;
-    labelStyle.fontStyle.fontWeight = style.bold ? FontWeight::Bold : FontWeight::Normal;
-    labelStyle.fontStyle.fontSlant = style.italic ? FontSlant::Italic : FontSlant::Normal;
+    labelStyle.fontStyle = FontOf(style);
     labelStyle.textColor = ToColor(FlattenOverWhite(style.color));
     labelStyle.wrap = noWrap ? TextWrap::WrapNone
                     : style.preserveWhitespace ? TextWrap::WrapWordChar : TextWrap::WrapWord;
