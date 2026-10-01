@@ -1,3 +1,6 @@
+#### 2026-10-01 *0.9.123*
+- **AI sessions put the PR number at the front of the chat title.** `AGENTS.md` *Branch and pull-request rules* gains rule 7: once a session opens a pull request it renames itself `#<n> <current title>` (`set_session_title` in a Claude Code Remote session), swapping the number rather than stacking a second one when a replacement PR follows a merged one, so a chat list shows which PR each session drives. `CLAUDE.md` points at it; the maintainer rules renumber to 8 and 9.
+
 #### 2026-10-01 *0.9.122*
 - **The Filer's host-icon and shortcut tests run on Windows.**
   `FilerHostIconsTest` and `FilerShortcutEntryTest` join
