@@ -193,6 +193,10 @@ namespace UltraCanvas {
         // Typography
         float messageFontSize = 12.0f;
         float detailsFontSize = 11.0f;
+        // The footer buttons' label size; 0 keeps UltraCanvasButton's own
+        // default. An application that runs its UI at one size (the Filer at
+        // 9) sets all three so a dialog reads like the window under it.
+        float buttonFontSize = 0.0f;
 
         // Buttons
         float buttonWidth = 80.0f;
@@ -496,6 +500,9 @@ namespace UltraCanvas {
         // Width follows the label (never below style.buttonWidth), so a longer
         // caption is not ellipsized away.
         void SizeButtonToLabel(const std::shared_ptr<UltraCanvasButton>& button);
+        // style.buttonFontSize on one button, when it is set; after the role
+        // style, which carries a font size of its own.
+        void ApplyButtonFont(const std::shared_ptr<UltraCanvasButton>& button);
         void WireButtonCallbacks();
 
         // ===== TYPE-SPECIFIC =====
@@ -509,8 +516,13 @@ namespace UltraCanvas {
         // Combined Markdown source fed to the message area (message + details).
         std::string ComposeMessageMarkdown() const;
         // Grow/shrink the window height so the message fits, clamped to the
-        // monitor. Called from ShowModal() before the dialog is positioned.
+        // monitor, after widening it when the footer row (the checkbox and
+        // the buttons) needs more than the configured width. Called from
+        // ShowModal() before the dialog is positioned.
         void AutoSizeToContent();
+        // The width the footer's row asks for at the current layout: its
+        // padding, every visible element and button, and the gaps between.
+        float FooterContentWidth() const;
 
         // ===== EVENT HELPERS =====
         void OnDialogButtonClick(DialogButton button);

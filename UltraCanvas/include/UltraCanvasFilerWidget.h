@@ -3081,9 +3081,14 @@ namespace UltraCanvas {
         // Removes `path` and everything under it, crediting entries as it
         // goes: post-order, and a symlink is removed as the link it is —
         // std::filesystem::remove_all's semantics, which this replaces.
+        // `failedPath`, when given, names the entry the failure is about:
+        // a file deep inside `path` as often as `path` itself. A file that
+        // answers "permission denied" is retried once with its read-only
+        // bit lifted, as the entry's own delete lifts it before the attempt.
         static bool RemoveTreeWithProgress(const std::string& path,
                                            FileOpItemCredit& credit,
-                                           std::error_code& ec);
+                                           std::error_code& ec,
+                                           std::string* failedPath = nullptr);
         // Copies one file, in chunks once it is big enough for the ring to
         // move inside it (and for Cancel to be answered before it ends).
         static bool CopyFileWithProgress(const std::string& from,
@@ -3281,7 +3286,12 @@ namespace UltraCanvas {
         // before the attempt), a failed delete, or a failed delete that a
         // retry with administrator rights may resolve (Windows, when the
         // host wired UltraCanvasElevatedFileOperations).
-        enum class DeleteProblemKind { WriteProtected, Failed, NeedsPermission };
+        // A delete refused because a program holds the file - a running
+        // program's own executable or library above all - is InUse: Windows
+        // answers it with the same "access denied" as a permission problem,
+        // but no administrator can delete it either, so that dialog offers
+        // no such retry and names the program instead.
+        enum class DeleteProblemKind { WriteProtected, Failed, NeedsPermission, InUse };
 
         // One delete in flight: the real-filesystem victims not yet processed
         // and the choices the problem dialogs collected so far.
@@ -3314,6 +3324,13 @@ namespace UltraCanvas {
             FileOpStop stop = FileOpStop::Done;
             DeleteProblemKind stopKind = DeleteProblemKind::Failed;
             std::string stopReason;
+            // The entry the failure is about when it is not the victim
+            // itself: the file inside a folder that refused to go. Empty
+            // when the victim is a file, or failed on its own account.
+            std::string stopPath;
+            // Who holds it (InUse), as "Program (pid)", when the platform
+            // can say.
+            std::vector<std::string> stopHolders;
             // Runs when the queue is done, if the caller asked to be told.
             std::function<void(bool changed)> onDone;
             // Each entry goes to the trash instead of being removed.
@@ -3353,6 +3370,16 @@ namespace UltraCanvas {
         void ShowDeleteProblemDialog(const FilerEntry& entry,
                                      DeleteProblemKind kind,
                                      const std::string& reason);
+        // Refuses, with a dialog, a delete that would take the running
+        // application's own installation apart: a victim inside the
+        // folder the executable runs from, or a folder holding it.
+        // Deleting files out from under a running program ends it in a
+        // crash, and the files it has loaded cannot be deleted anyway.
+        // True = refused, nothing was touched.
+        bool RefuseDeletingOwnInstallation(const std::vector<FilerEntry>& victims);
+        // The dialog fonts of this widget: its own style's sizes, so every
+        // dialog it opens reads like the display under it.
+        ModalDialogStyle DialogStyleForFonts(const ModalDialogStyle& base) const;
 
         // Executable script activated: Run / Open (view it) / Cancel.
         void ShowRunOrOpenDialog(const FilerEntry& e);

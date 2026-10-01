@@ -1785,7 +1785,24 @@ beside them:
   grants each later failing entry one silent retry before asking again, so a
   stubborn entry can never loop forever. An entry the trash refused gets the
   same dialog, titled for the trash, and is never deleted for good instead.
-- A delete that fails with **"Access is denied"** on Windows is the one Explorer
+- A failure **inside a folder** is reported for the file that refused, not
+  the folder: the question reads `"libvips-42.dll" in "lib" could not be
+  deleted.` and the facts add a *Stopped at:* line with the file's path under
+  the folder's. A read-only file inside a folder is not a failure at all: it
+  is lifted and removed, as *Delete anyway* lifts the entry's own protection,
+  so a folder unpacked with its read-only bits goes in one pass.
+- A file **a running program holds** — its executable, a DLL it has loaded —
+  answers "Access is denied" on Windows too, but no administrator can delete
+  it either. The worker asks the [lock probe](UltraCanvasFileLock.md) (the
+  Restart Manager) before it decides, and such a file gets **Delete: a file
+  in the folder is in use** — `"libvips-42.dll" in "lib" is in use by another
+  program.` with *In use by: UltraFiler (4120)* among the facts — with
+  **Skip** (the default) / **Try again** and an *Apply to all later files in
+  use* checkbox, and no administrator button. When the holder is the running
+  application itself the note says so and tells the user to close it and
+  delete from elsewhere.
+- A delete that fails with **"Access is denied"** on Windows and is held by
+  nobody is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
   user. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
@@ -1804,6 +1821,16 @@ beside them:
   another program") are not permission failures and keep the plain dialog,
   as does a process that already runs as administrator — asking again cannot
   change the system's answer there.
+
+A delete that would take **the running application's own installation**
+apart is refused before anything is touched: a victim at or below the folder
+the executable runs from, or a folder holding it, opens **Cannot delete:
+UltraFiler is running from here** and nothing is deleted. The files a running
+program has loaded cannot go, and the ones it has not loaded yet — fonts,
+icons, plugins — would go, and the program crashes the moment it reaches for
+one of them. That is how a Filer started from an unpacked download used to
+end when the download was deleted from inside it; the fix is to close the
+program and delete the folder from another file manager.
 
 With `SetProblemPolicy(FilerProblemPolicy::SkipAndReport)` a failed delete is
 not asked about at all: the entry stays, and the

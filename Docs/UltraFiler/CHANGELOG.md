@@ -1,3 +1,27 @@
+#### 2026-10-01 *1.61.1*
+- **Deleting the folder UltraFiler runs from no longer crashes it, and a
+  file another program holds is no longer mistaken for a permissions
+  problem.** Deleting the unpacked download the running UltraFiler had been
+  started from asked *administrator permission needed* for `Resources` and
+  `lib`, deleted the rest, and crashed. Now a delete that would take the
+  running UltraFiler apart is refused up front (*Cannot delete: UltraFiler is
+  running from here*); a folder's delete that stops at a file names that
+  file (`"libvips-42.dll" in "lib" …`) with a *Stopped at:* line; a file a
+  program holds gets *Delete: a file in the folder is in use* naming the
+  program, with Skip / Try again and no administrator button; and a
+  read-only file inside a folder is lifted and removed instead of stopping
+  the delete. Framework-side, see the UltraCanvas changelog entry on the
+  Filer delete queue, the dialog auto-width and the Windows crash dumps.
+- **The operation dialogs use UltraFiler's font size.** Delete, copy, conflict,
+  problem and summary dialogs had the dialog's default 12 over a window at 9;
+  their message, buttons, details, note, *Apply to all* checkbox and entry
+  list now follow the display's sizes.
+- **No dialog button is pushed out of the window any more.** The *Delete:
+  administrator permission needed* dialog's row - an *Apply to all* checkbox
+  and four labelled buttons - was wider than the window and lost its *Stop*
+  button off the right edge; a dialog now widens to its footer row.
+- **A crash writes a dump.** `%LOCALAPPDATA%\UltraCanvas\CrashDumps\UltraFiler-<date>-<time>-<pid>.dmp`,
+  named in the crash message box; attach it to the bug report.
 #### 2026-09-30 *1.61.0*
 - **A folder tree can be exported as CSV.** *Extras > Export > Folder tree
   as CSV* lists the folder and everything below it as a table - name, path,
