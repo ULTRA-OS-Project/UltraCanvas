@@ -12,6 +12,7 @@
 #include <sstream>
 #include <cmath>
 #include <algorithm>
+#include "UltraCanvasPathUtf8.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -122,7 +123,7 @@ namespace {
 // =============================================================================
 
     void PyramidDataSource::LoadFromCSV(const std::string& filePath) {
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) return;
 
         levels.clear();

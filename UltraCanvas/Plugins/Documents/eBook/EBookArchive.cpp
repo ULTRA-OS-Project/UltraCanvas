@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -35,7 +36,7 @@ EBookArchive::~EBookArchive() {
 }
 
 bool EBookArchive::OpenFromFile(const std::string& filePath) {
-    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         lastError = "Failed to open file: " + filePath;
         return false;

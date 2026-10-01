@@ -14,11 +14,18 @@
 // UI timer applies - the shape UltraNetMonitor and UltraCleaner use. Hot-plug
 // changes arrive from IODeviceManager's watcher thread as a flag; the same
 // timer re-reads the registry, which the manager has already re-enumerated.
-// Version: 0.1.0
+//
+// Selecting a printer asks it for its status and supplies, which takes an
+// open session: a second worker opens the printer (if it is not open
+// already), reads, closes it again, and parks the report the same way. One
+// query runs at a time; a selection made meanwhile waits in one slot, so
+// clicking through ten printers asks the last one, not all ten.
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "DeviceExplorerModel.h"
+#include "DeviceExplorerPrinterQuery.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasColumnsTreeView.h"
@@ -37,6 +44,7 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace DeviceExplorer {
@@ -62,6 +70,11 @@ private:
     void JoinScan();
     void OnTimer();                     // UI thread
     void ApplyInventory(DeviceInventory inventory);
+
+    // ===== PRINTER STATUS =====
+    void RequestPrinterStatus(const std::string& deviceId);   // UI thread
+    void JoinStatusQuery();
+    void ApplyPendingPrinterStatus();                          // UI thread, from the timer
 
     // ===== TREE =====
     void RebuildTree();
@@ -109,6 +122,15 @@ private:
     std::mutex pendingMutex_;
     std::optional<DeviceInventory> pending_;    // guarded by pendingMutex_
     std::atomic<bool> hotplugChanged_{false};   // set on the watcher's thread
+
+    // ===== PRINTER STATUS WORKER =====
+    std::thread statusThread_;
+    std::atomic<bool> statusBusy_{false};
+    std::mutex statusMutex_;
+    std::optional<std::pair<std::string, PrinterStatusReport>> statusPending_;  // guarded
+    std::string statusQueuedId_;                // UI thread: asked while busy
+    std::string statusRunningId_;               // UI thread: being asked now
+    PrinterStatusMap statusCache_;              // UI thread, by device id
 };
 
 } // namespace DeviceExplorer

@@ -13,6 +13,7 @@
 #include "UltraSocialStore.h"
 
 #include <filesystem>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraSocial;
 using ultrasocial_test::FakeHttpServer;
@@ -33,12 +34,12 @@ struct TempVault {
         : dir((std::filesystem::temp_directory_path() /
                ("ultrasocial-outbox-" + tag)).string()),
           vault(dir) {
-        std::filesystem::remove_all(dir);
+        std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
         REQUIRE(vault.TryAutoUnlock());
     }
     ~TempVault() {
         vault.Lock();
-        std::filesystem::remove_all(dir);
+        std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
     }
 };
 

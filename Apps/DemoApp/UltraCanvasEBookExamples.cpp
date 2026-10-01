@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <string>
 #include <system_error>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -152,7 +153,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEBookExa
     const std::string defaultBook =
         NormalizePath(GetResourcesDir() + "media/ebooks/Game-of-rat-and-dragon.mobi");
     std::error_code ec;
-    if (std::filesystem::exists(defaultBook, ec)) {
+    if (std::filesystem::exists(UltraCanvas::PathFromUtf8(defaultBook), ec)) {
         reader->LoadDocument(defaultBook);
     } else {
         std::string sample = kSampleBook;

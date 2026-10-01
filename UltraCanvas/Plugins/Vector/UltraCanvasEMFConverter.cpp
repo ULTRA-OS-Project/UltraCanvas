@@ -28,6 +28,7 @@
 #include <functional>
 #include <map>
 #include <variant>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace VectorConverter {
@@ -661,7 +662,7 @@ std::string EMFConverter::ExportToString(
 }
 
 bool EMFConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file.is_open()) return false;
     std::string head(48, '\0');
     file.read(head.data(), static_cast<std::streamsize>(head.size()));

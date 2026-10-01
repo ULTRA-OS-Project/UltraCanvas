@@ -1291,7 +1291,7 @@ namespace UltraCanvas {
             FileDialogState state;
             const std::filesystem::path path = FileDialogStatePath();
             if (path.empty()) return state;
-            std::ifstream in(path);
+            std::ifstream in(UltraCanvas::PathFromUtf8(path));
             std::string line;
             while (std::getline(in, line)) {
                 const size_t eq = line.find('=');
@@ -1311,7 +1311,7 @@ namespace UltraCanvas {
             if (path.empty()) return;
             std::error_code ec;
             std::filesystem::create_directories(path.parent_path(), ec);
-            std::ofstream out(path, std::ios::trunc);
+            std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::trunc);
             if (!out) return;
             out << "view=" << state.view << "\n"
                 << "width=" << state.width << "\n"
@@ -1401,7 +1401,7 @@ namespace UltraCanvas {
         pathInput->onEnterPressed = [this](const std::string& text) {
             std::error_code ec;
             const std::filesystem::path typed = PathFromUtf8(text);
-            if (std::filesystem::is_directory(typed, ec)) {
+            if (std::filesystem::is_directory(UltraCanvas::PathFromUtf8(typed), ec)) {
                 GoToDirectory(text, true);
             } else if (fileConfig.dialogType != FileDialogType::SelectFolder &&
                        std::filesystem::is_directory(typed.parent_path(), ec)) {
@@ -1743,12 +1743,12 @@ namespace UltraCanvas {
     bool UltraCanvasFileDialog::GoToDirectory(const std::string& directory, bool syncTree) {
         std::error_code ec;
         const std::filesystem::path path = PathFromUtf8(directory);
-        if (!std::filesystem::is_directory(path, ec) || ec) {
+        if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(path), ec) || ec) {
             debugOutput << "Invalid path: " << directory << std::endl;
             if (pathInput) pathInput->SetText(currentDirectory);
             return false;
         }
-        std::filesystem::path canonical = std::filesystem::canonical(path, ec);
+        std::filesystem::path canonical = std::filesystem::canonical(UltraCanvas::PathFromUtf8(path), ec);
         currentDirectory = ec ? directory : PathToUtf8(canonical);
         RefreshFileList();
         if (syncTree) SyncFolderTree();

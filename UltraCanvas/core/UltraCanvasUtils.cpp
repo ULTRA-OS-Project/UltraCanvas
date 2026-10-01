@@ -47,6 +47,7 @@
 #include <cstdlib>
 #include <string>
 #include <unordered_map>
+#include "UltraCanvasPathUtf8.h"
 
 // ULTRACANVAS_VERSION is defined by UltraCanvas/CMakeLists.txt from the first
 // line of Docs/UltraCanvas/CHANGELOG.md, the same line the packaging scripts
@@ -1081,7 +1082,7 @@ namespace UltraCanvas {
         const char* xdgConfig = std::getenv("XDG_CONFIG_HOME");
         const std::string configDir = (xdgConfig && *xdgConfig)
                 ? std::string(xdgConfig) : home + "/.config";
-        std::ifstream in(configDir + "/user-dirs.dirs");
+        std::ifstream in(UltraCanvas::PathFromUtf8(configDir + "/user-dirs.dirs"));
         std::string line;
         while (std::getline(in, line)) {
             line = Trim(line);

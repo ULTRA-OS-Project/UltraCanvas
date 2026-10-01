@@ -22,6 +22,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace {
@@ -316,7 +317,7 @@ private:
     // Streamed rather than slurped: a print-ready raster of a photo page can
     // be hundreds of megabytes.
     static bool WriteFile(const std::string& path) {
-        FILE* file = std::fopen(path.c_str(), "rb");
+        FILE* file = UltraCanvas::OpenFileUtf8(path, "rb");
         if (!file) {
             return false;
         }

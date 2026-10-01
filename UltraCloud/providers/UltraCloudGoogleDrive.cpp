@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCloud::internal;
 
@@ -217,7 +218,7 @@ Result GoogleDriveProvider::UploadResumable(const Credentials& credentials,
 
     // The chunks. Google answers 308 (Resume Incomplete) to every chunk but
     // the last, which must not be followed as a redirect.
-    std::ifstream is(localPath, std::ios::binary);
+    std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
     if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
     std::vector<uint8_t> chunk;
     for (int64_t offset = 0; offset < total; offset += chunkSize_) {
@@ -255,7 +256,7 @@ Result GoogleDriveProvider::Upload(const Account&, const Credentials& credential
     if (total > simpleUploadLimit_)
         return UploadResumable(credentials, localPath, total, Leaf(p), parentId, existing, what);
 
-    std::ifstream is(localPath, std::ios::binary);
+    std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
     if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
     std::string data((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
 
@@ -300,7 +301,7 @@ Result GoogleDriveProvider::Download(const Account&, const Credentials& credenti
     UltraNetResult net = Send(credentials, req, resp);
     Result r = FromHttp(net, resp, "download " + remotePath);
     if (!r) return r;
-    std::ofstream os(localPath, std::ios::binary | std::ios::trunc);
+    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
     if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
     os.write(reinterpret_cast<const char*>(resp.body.data()),
              static_cast<std::streamsize>(resp.body.size()));

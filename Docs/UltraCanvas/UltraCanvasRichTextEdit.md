@@ -643,8 +643,11 @@ the document's title as its name, and `GetAccessibleTextInterface()` - the
 paragraphs one per line (a table's cells tab-separated), caret and selection,
 character boxes, words, lines and sentences, and per-run formatting including
 headings, lists, links, tracked changes and comments. Edits, caret moves,
-selection changes and focus are announced to listeners. There is no platform
-bridge yet (AT-SPI, UI Automation), so a system screen reader does not see it.
+selection changes and focus are announced to listeners, and the platform
+bridges hand all of it to screen readers: AT-SPI on Linux (Orca), UI
+Automation on Windows (Narrator, NVDA, JAWS) - see
+[UltraCanvasAccessibility](UltraCanvasAccessibility.md#platform-bridges). There
+is no macOS bridge yet.
 
 ## Drag and drop
 
@@ -953,9 +956,8 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Right-to-left paragraphs keep left-to-right indents**: a right-to-left
   paragraph's left indent is still on the left.
-- **No screen-reader bridge.** The accessibility model is there (see
-  Accessibility above); the AT-SPI / UI Automation bridges that hand it to the
-  operating system are not.
+- **No macOS screen-reader bridge.** Linux (AT-SPI) and Windows (UI
+  Automation) have one; VoiceOver does not see the element yet.
 - **The input method's candidate window** is placed by the input method, not
   next to the caret.
 

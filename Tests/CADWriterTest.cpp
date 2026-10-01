@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <string>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::VectorStorage;
@@ -186,7 +187,7 @@ int main(int argc, char** argv) {
     if (HaveTool("python3 -c 'import ezdxf' >/dev/null 2>&1")) {
         std::string script = base + "_check.py";
         {
-            std::ofstream f(script);
+            std::ofstream f(UltraCanvas::PathFromUtf8(script));
             f << "import sys, ezdxf\n"
                  "doc = ezdxf.readfile('" << dxfPath << "')\n"
                  "a = doc.audit()\n"
@@ -219,7 +220,7 @@ int main(int argc, char** argv) {
         std::remove(png.c_str());
         std::system(("soffice --headless --convert-to png --outdir . " + dxfPath +
                      " >/dev/null 2>&1").c_str());
-        if (std::ifstream(png).fail()) {
+        if (std::ifstream(UltraCanvas::PathFromUtf8(png)).fail()) {
             std::printf("  note: LibreOffice produced no output; "
                         "render checks skipped\n");
         } else {

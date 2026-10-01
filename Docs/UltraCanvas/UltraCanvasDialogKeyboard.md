@@ -166,7 +166,7 @@ menus, toolbars, custom panels. The button only draws the accent; matching the
 key and invoking the action stays with the owner.
 
 ```cpp
-auto button = CreateButton("Apply", 1, 0, 0, 90, 28, "Apply");
+auto button = CreateButton("Apply", 0, 0, 90, 28, "Apply");
 button->SetMnemonicChar('A');            // underlines the first 'A'
 char letter = button->GetMnemonicChar(); // 'A'
 button->SetMnemonicIndex(3);             // or pick the character by index

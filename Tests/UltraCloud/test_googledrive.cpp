@@ -13,6 +13,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCloud;
 
@@ -56,8 +57,8 @@ UltraNetResult FakeDrive(const UltraNetHttpRequest& req, UltraNetResponse& resp,
 }
 std::string WriteFile(const std::string& name, const std::string& content) {
     const std::string dir = (std::filesystem::temp_directory_path() / "ultracloud-gdrive").string();
-    std::filesystem::create_directories(dir);
-    std::ofstream(dir + "/" + name, std::ios::binary) << content;
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir));
+    std::ofstream(UltraCanvas::PathFromUtf8(dir + "/" + name), std::ios::binary) << content;
     return dir + "/" + name;
 }
 } // namespace

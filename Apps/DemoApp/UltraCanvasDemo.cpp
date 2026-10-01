@@ -18,6 +18,7 @@
 #include <iostream>
 #include <sstream>
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
     // Demo-wide scrollbar look: a light-blue track carrying a blue, round-ended
@@ -196,7 +197,7 @@ namespace UltraCanvas {
     std::string DemoHeaderContainer::LoadFileContent(const std::string& filePath) {
         if (filePath.empty()) return "";
 
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) {
             debugOutput << "Failed to open file: " << filePath << std::endl;
             return "// Error: Could not load file: " + filePath;
@@ -798,6 +799,19 @@ namespace UltraCanvas {
                 .AddVariant("badge", "Count (99+)")
                 .AddVariant("badge", "Status Dots")
                 .AddVariant("badge", "Overlay on Icon");
+
+        basicBuilder.AddItem("busyindicator", "Busy Indicator",
+                             "\"Working on it\" with no percentage: a turning ring, two counter-turning "
+                             "rings, swelling dots, a sliding bar or a pulsing circle",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateBusyIndicatorExamples(); },
+                             "DemoApp/UltraCanvasBusyIndicatorExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasBusyIndicator.md")
+                .AddVariant("busyindicator", "Ring")
+                .AddVariant("busyindicator", "Dual Ring")
+                .AddVariant("busyindicator", "Dots")
+                .AddVariant("busyindicator", "Bar")
+                .AddVariant("busyindicator", "Pulse");
 
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);

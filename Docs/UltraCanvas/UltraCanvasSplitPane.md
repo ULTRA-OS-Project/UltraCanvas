@@ -50,7 +50,7 @@ split->SetPaneMinSize(0, 120);        // sidebar never narrower than 120 px
 
 sidebar->SetBackgroundColor(Color(232, 240, 252, 255));
 sidebar->SetPadding(8);
-sidebar->AddChild(CreateButton("Files", 1, 10, 10, 120, 28, "Files"));
+sidebar->AddChild(CreateButton("Files", 10, 10, 120, 28, "Files"));
 
 editor->SetBackgroundColor(Colors::White);
 editor->AddChild(myEditorWidget);

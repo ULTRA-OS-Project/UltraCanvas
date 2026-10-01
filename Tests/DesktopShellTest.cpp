@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include "UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -42,8 +43,8 @@ void SetEnv(const char* name, const std::string& value) {
 
 fs::path MakeScratch() {
     const fs::path dir = fs::temp_directory_path() / ("ultracanvas-desktopshell-" + std::to_string(std::rand()));
-    fs::remove_all(dir);
-    fs::create_directories(dir);
+    fs::remove_all(UltraCanvas::PathFromUtf8(dir));
+    fs::create_directories(UltraCanvas::PathFromUtf8(dir));
     return dir;
 }
 

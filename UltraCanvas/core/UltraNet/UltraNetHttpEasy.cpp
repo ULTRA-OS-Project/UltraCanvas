@@ -14,6 +14,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 #ifndef _WIN32
 #include <sys/stat.h>
@@ -27,7 +28,7 @@ namespace ultranet_internal {
 namespace {
 
     bool FileReadable(const char* path) {
-        std::FILE* f = std::fopen(path, "rb");
+        std::FILE* f = UltraCanvas::OpenFileUtf8(path, "rb");
         if (!f) return false;
         std::fclose(f);
         return true;

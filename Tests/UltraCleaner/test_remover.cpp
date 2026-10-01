@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <utility>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCleaner;
 using ultracleaner_test::TempTree;
@@ -148,7 +149,7 @@ TEST(RemoverKeepsGoingPastAnyNumberOfFailures) {
     REQUIRE_EQ(result.failures.size(), static_cast<size_t>(59));
     REQUIRE_EQ(result.refusedByGuard, static_cast<size_t>(59));
     REQUIRE_EQ(result.removedItems, static_cast<size_t>(1));
-    REQUIRE(!std::filesystem::exists(last));
+    REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(last)));
     REQUIRE(tree.Exists("precious/keep.txt"));
     REQUIRE(!result.cancelled);
 }
@@ -204,12 +205,12 @@ TEST(XdgTrashMoveWritesATrashInfoRecord) {
     if (!MoveToPlatformTrash(victim, error)) return;   // no writable trash here
 
     const std::filesystem::path trashed =
-        std::filesystem::path(trash) / "files" / "trash-me.bin";
+        UltraCanvas::PathFromUtf8(trash) / "files" / "trash-me.bin";
     const std::filesystem::path info =
-        std::filesystem::path(trash) / "info" / "trash-me.bin.trashinfo";
+        UltraCanvas::PathFromUtf8(trash) / "info" / "trash-me.bin.trashinfo";
 
     std::error_code ec;
-    const bool movedAway = !std::filesystem::exists(victim, ec);
+    const bool movedAway = !std::filesystem::exists(UltraCanvas::PathFromUtf8(victim), ec);
     const bool inTrash = std::filesystem::exists(trashed, ec);
     const bool hasInfo = std::filesystem::exists(info, ec);
 
@@ -299,7 +300,7 @@ TEST(MoveToTrashLeavesWhatIsAlreadyInTheTrashAlone) {
 
     size_t entries = 0;
     std::error_code ec;
-    for (auto it = std::filesystem::directory_iterator(files, ec);
+    for (auto it = std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(files), ec);
          it != std::filesystem::directory_iterator(); ++it) {
         ++entries;
     }

@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 
@@ -56,7 +57,7 @@ static std::string gTmpDir;
 static std::string TmpPath(const std::string& name) { return gTmpDir + "/" + name; }
 
 static void WriteFile(const std::string& path, const void* data, size_t size) {
-    std::ofstream out(path, std::ios::binary);
+    std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     out.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));
 }
 
@@ -443,7 +444,7 @@ static void CheckModelShape(const UCRichDocument& doc, const char* label) {
 
 int main(int argc, char** argv) {
     gTmpDir = (argc > 1) ? argv[1] : ".";
-    std::filesystem::create_directories(gTmpDir);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(gTmpDir));
 
     // ===== 1. Markdown parse sanity =====
     UCRichDocument doc = BuildSampleDocument();
@@ -525,7 +526,7 @@ int main(int argc, char** argv) {
 #ifdef WORDTEST_FIXTURE_DIR
     {
         std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/legacy-word97.doc";
-        if (std::ifstream(fixture, std::ios::binary).good()) {
+        if (std::ifstream(UltraCanvas::PathFromUtf8(fixture), std::ios::binary).good()) {
             UCRichDocument legacy;
             std::string err;
             CHECK_MSG(UCWordDocumentIO::Load(fixture, legacy, err), err);

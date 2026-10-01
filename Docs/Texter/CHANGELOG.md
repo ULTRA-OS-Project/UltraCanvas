@@ -1,4 +1,4 @@
-#### 2026-10-01 *1.56*
+#### 2026-10-01 *1.57*
 - **Typing in the search bar no longer hangs on a large file.** With a big
   document open (the ~940 KB framework changelog, say), each keystroke in the
   search bar made the editor find the matches to highlight one at a time, each
@@ -11,6 +11,13 @@
   searches and highlights; deleting back below two clears the highlights and
   the count. Enter, Find Next and Find Previous still search for a single
   character.
+
+#### 2026-10-01 *1.56*
+- **Texter builds without MuPDF again.** Opening and saving PDFs needs the
+  PDF view, which the framework compiles only when MuPDF is found; Texter
+  called it regardless, so a build on a machine without MuPDF failed to link
+  (`UltraCanvasPDFView::LoadFromPath` / `SaveAs` undefined). Such a build now
+  links, and opening a PDF in it says that this build has no PDF support.
 
 #### 2026-09-30 *1.55*
 - **Printing a word-processing tab (.docx, .odt, .doc) printed a blank page.**

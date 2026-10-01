@@ -13,6 +13,7 @@
 #include <fstream>
 #include <queue>
 #include <limits>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -1746,7 +1747,7 @@ bool UltraCanvasGourceTree::HandleKeyDown(const UCEvent& event) {
 // ===== DATA EXPORT =====
 
 bool UltraCanvasGourceTree::SaveToSVG(const std::string& filePath) {
-    std::ofstream file(filePath);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filePath));
     if (!file.is_open()) return false;
     
     Rect2Di bounds = GetBounds();

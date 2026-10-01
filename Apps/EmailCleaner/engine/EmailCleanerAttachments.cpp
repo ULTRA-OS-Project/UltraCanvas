@@ -29,7 +29,7 @@ std::string Lower(std::string s) {
 }
 
 bool ReadFile(const std::string& path, std::string& out) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!in) return false;
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -143,7 +143,7 @@ AttachmentFetch FetchAttachment(const std::string& mailCacheDir,
     if (path.empty()) return AttachmentFetch::NoSuchMessage;
 
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(path, ec)) return AttachmentFetch::NoSuchMessage;
+    if (!std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(path), ec)) return AttachmentFetch::NoSuchMessage;
 
     std::string raw;
     if (!ReadFile(path, raw) || raw.empty()) return AttachmentFetch::Unreadable;
@@ -182,14 +182,14 @@ std::string WriteToCache(const std::string& cacheDir,
     if (cacheDir.empty()) return "";
 
     std::error_code ec;
-    std::filesystem::create_directories(cacheDir, ec);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(cacheDir), ec);
 
     const std::string safe = SafeAttachmentName(filename, mediaType);
     std::filesystem::path target = PathFromUtf8(cacheDir) / safe;
 
     // Belt and braces: whatever the sanitiser produced, the result has to sit
     // inside the cache directory.
-    const std::filesystem::path root = std::filesystem::weakly_canonical(cacheDir, ec);
+    const std::filesystem::path root = std::filesystem::weakly_canonical(UltraCanvas::PathFromUtf8(cacheDir), ec);
     const std::filesystem::path resolved =
         std::filesystem::weakly_canonical(target.parent_path(), ec);
     if (ec || resolved != root) return "";

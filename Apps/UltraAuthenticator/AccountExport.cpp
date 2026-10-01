@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <system_error>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace Authenticator {
@@ -121,7 +122,7 @@ StoreResult SealAccountExport(const std::vector<UltraCryptSecureBuffer>& uris,
     namespace fs = std::filesystem;
     const std::string tempPath = path + ".tmp";
     {
-        std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
+        std::ofstream out(UltraCanvas::PathFromUtf8(tempPath), std::ios::binary | std::ios::trunc);
         if (!out) {
             return StoreResult::Error(StoreResultCode::IoError,
                                       "could not create '" + tempPath + "'");
@@ -134,7 +135,7 @@ StoreResult SealAccountExport(const std::vector<UltraCryptSecureBuffer>& uris,
         if (!out) {
             out.close();
             std::error_code ec;
-            fs::remove(tempPath, ec);
+            fs::remove(UltraCanvas::PathFromUtf8(tempPath), ec);
             return StoreResult::Error(StoreResultCode::IoError,
                                       "could not write '" + tempPath + "'");
         }
@@ -144,10 +145,10 @@ StoreResult SealAccountExport(const std::vector<UltraCryptSecureBuffer>& uris,
     fs::permissions(tempPath,
                     fs::perms::owner_read | fs::perms::owner_write,
                     fs::perm_options::replace, ec);
-    fs::rename(tempPath, path, ec);
+    fs::rename(UltraCanvas::PathFromUtf8(tempPath), UltraCanvas::PathFromUtf8(path), ec);
     if (ec) {
         std::error_code ignored;
-        fs::remove(tempPath, ignored);
+        fs::remove(UltraCanvas::PathFromUtf8(tempPath), ignored);
         return StoreResult::Error(StoreResultCode::IoError,
                                   "could not save '" + path + "'");
     }
@@ -165,7 +166,7 @@ StoreResult OpenAccountExport(const std::string& path,
 
     namespace fs = std::filesystem;
     std::error_code ec;
-    const auto size = fs::file_size(path, ec);
+    const auto size = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
     if (ec) {
         return StoreResult::Error(StoreResultCode::IoError,
                                   "could not read '" + path + "'");
@@ -181,7 +182,7 @@ StoreResult OpenAccountExport(const std::string& path,
 
     std::vector<uint8_t> raw(static_cast<size_t>(size));
     {
-        std::ifstream in(path, std::ios::binary);
+        std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
         if (!in) {
             return StoreResult::Error(StoreResultCode::IoError,
                                       "could not open '" + path + "'");

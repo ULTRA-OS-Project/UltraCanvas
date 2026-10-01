@@ -16,8 +16,14 @@
 // Skipped - exit code 77, which ctest reports as skipped - where
 // ippeveprinter is not installed (it is in Debian and Ubuntu's
 // cups-ipp-utils) or will not start. It is a check against a real
-// implementation where one is to hand, not a dependency.
-// Version: 1.0.0
+// implementation where one is to hand, not a dependency. ippeveprinter
+// (CUPS 2.4) needs two things from the machine even with -r off: a running
+// DNS-SD daemon (Avahi on Linux), or it stops with "Unable to initialize
+// DNS-SD", and IPv6, or it stops with "Unable to create IPv6 listener" - so a
+// container without IPv6 skips here however it is set up. CI's Linux rows
+// install it, start Avahi, and set ULTRACANVAS_TEST_IPP_REQUIRED, which turns
+// a skip into a failure.
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -27,6 +33,7 @@
 
 #include "IODeviceManager/UltraCanvasIODeviceManager.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinter.h"
+#include "IODeviceManager/UltraCanvasIODevicePrinterIPP.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <chrono>
@@ -54,6 +61,19 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr int kSkipped = 77;
+
+// What a skip returns. CI sets ULTRACANVAS_TEST_IPP_REQUIRED on the rows that
+// install ippeveprinter, because there a skip is indistinguishable from a pass
+// and would let the test quietly stop running - the same reason
+// ULTRAFIBU_TEST_PG_REQUIRED exists for the multi-user database test.
+int SkipOrFail() {
+    const char* required = std::getenv("ULTRACANVAS_TEST_IPP_REQUIRED");
+    if (required && *required && std::string(required) != "0") {
+        std::cout << "FAILED: ULTRACANVAS_TEST_IPP_REQUIRED is set, so a skip is a failure\n";
+        return EXIT_FAILURE;
+    }
+    return kSkipped;
+}
 int g_passed = 0;
 int g_failed = 0;
 
@@ -135,7 +155,7 @@ private:
 };
 
 std::string ReadTail(const std::string& path) {
-    std::ifstream file(path);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path));
     std::stringstream contents;
     contents << file.rdbuf();
     const std::string text = contents.str();
@@ -147,7 +167,7 @@ std::string WaitForSpoolFile(const std::string& spool, int jobId, const std::str
     const std::string prefix = std::to_string(jobId) + "-";
     for (int attempt = 0; attempt < 100; ++attempt) {
         std::error_code error;
-        for (const auto& entry : fs::directory_iterator(spool, error)) {
+        for (const auto& entry : fs::directory_iterator(UltraCanvas::PathFromUtf8(spool), error)) {
             const std::string name = PathToUtf8(entry.path().filename());
             if (name.rfind(prefix, 0) == 0 && PathToUtf8(entry.path().extension()) == extension) {
                 return PathToUtf8(entry.path());
@@ -159,7 +179,7 @@ std::string WaitForSpoolFile(const std::string& spool, int jobId, const std::str
 }
 
 std::vector<uint8_t> ReadBytes(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     return std::vector<uint8_t>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 }
 
@@ -239,13 +259,13 @@ int main() {
     const std::string program = FindIppEvePrinter();
     if (program.empty()) {
         std::cout << "SKIPPED: ippeveprinter is not installed (Debian/Ubuntu: cups-ipp-utils)\n";
-        return kSkipped;
+        return SkipOrFail();
     }
 
     char pattern[] = "/tmp/uc-ipp-live-XXXXXX";
     if (!mkdtemp(pattern)) {
         std::cout << "SKIPPED: no temporary directory\n";
-        return kSkipped;
+        return SkipOrFail();
     }
     const std::string root = pattern;
     const std::string spool = root + "/spool";
@@ -256,7 +276,7 @@ int main() {
     // ippeveprinter stores without rendering, so a hand-made one will do.
     const std::string textPath = root + "/letter.txt";
     {
-        std::ofstream text(textPath);
+        std::ofstream text(UltraCanvas::PathFromUtf8(textPath));
         for (int line = 1; line <= 200; ++line) text << "Line " << line << " of a letter to the printer\n";
     }
     const std::string pdfPath = root + "/three-pages.pdf";
@@ -264,14 +284,14 @@ int main() {
                             "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
                             "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]>>endobj\n"
                             "trailer<</Root 1 0 R>>\n%%EOF\n";
-    { std::ofstream(pdfPath, std::ios::binary) << pdf; }
+    { std::ofstream(UltraCanvas::PathFromUtf8(pdfPath), std::ios::binary) << pdf; }
 
     const int port = 20000 + static_cast<int>(getpid() % 20000);
     ReferencePrinter reference;
     if (!reference.Start(program, spool, port, log)) {
         std::cout << "SKIPPED: ippeveprinter would not start\n";
         fs::remove_all(PathFromUtf8(root));
-        return kSkipped;
+        return SkipOrFail();
     }
 
     const std::string uri = "ipp://localhost:" + std::to_string(port) + "/ipp/print";
@@ -306,7 +326,7 @@ int main() {
             std::cout << "SKIPPED: ippeveprinter exited:\n" << ReadTail(log) << "\n";
             manager.Shutdown();
             fs::remove_all(PathFromUtf8(root));
-            return kSkipped;
+            return SkipOrFail();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
@@ -341,6 +361,29 @@ int main() {
 
     Check(printer->IsReady(), "it is idle and accepting jobs");
     Check(!printer->GetSupplyLevels().empty(), "it reports its supplies");
+
+    // --- The supply query the Windows spooler backend borrows -----------------
+    // When a Windows driver keeps its levels to itself, the backend guesses
+    // IPP addresses from the queue's port and asks each in turn. It moves on
+    // to the next path when one is wrong, and gives up on the host when it
+    // cannot connect - so those two failures must not look alike.
+    {
+        std::vector<IOSupplyLevel> supplies;
+        const IODeviceResult asked = Internal::QueryIppSupplyLevels(uri, supplies);
+        Check(asked.success && !supplies.empty(),
+              "asked directly, the printer reports its supplies: " + asked.message);
+
+        std::vector<IOSupplyLevel> none;
+        const IODeviceResult wrongPath = Internal::QueryIppSupplyLevels(
+            "ipp://localhost:" + std::to_string(port) + "/no/such/printer", none);
+        Check(!wrongPath.success && wrongPath.code != IODeviceResultCode::ConnectionFailed,
+              "a wrong path on the printer fails, but not as unreachable: " + wrongPath.message);
+
+        const IODeviceResult nobody =
+            Internal::QueryIppSupplyLevels("ipp://127.0.0.1:1/ipp/print", none);
+        Check(!nobody.success && nobody.code == IODeviceResultCode::ConnectionFailed,
+              "a host that takes no connection is unreachable: " + nobody.message);
+    }
 
     // --- Text, drawn here as PWG raster ---------------------------------------
     IOPrintJob text;

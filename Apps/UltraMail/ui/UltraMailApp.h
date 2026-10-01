@@ -135,6 +135,7 @@ private:
     // credentials (see ResolveCredentials). Runs on the send worker.
     UltraNetResult PrepareSmtp(const std::map<std::string, SmtpAccount>& accounts,
                                const std::string& accountId, UltraNetMailOptions& options);
+    // A null `plugin` (no SMTP plug-in) only saves the Drafts copies.
     // Flush the outbox on a worker and call `onDone` on the UI thread. SMTP to
     // a slow or failing server - connect and operation timeouts per queued
     // message, an OAuth2 token refresh - used to run on the UI thread and hold
@@ -279,22 +280,44 @@ private:
     std::string FolderWithRole(const std::string& accountId, FolderRole role) const;
     // Open the raw .eml source of a message in a read-only window.
     void OpenSourceViewer(const std::string& subject, const std::string& raw);
-    // Attempt to send a draft via the SMTP plug-in; report the outcome.
-    void HandleSendDraft(const Draft& draft);
-    // Re-flush the outbox after a failed send (the Retry button's action).
-    void RetryOutbox(const std::string& fromAddr);
+    // Queue a draft in the outbox (UltraMail's local store, which survives a
+    // crash or a restart), then send it in the background - saving a copy to
+    // the account's Drafts folder first, kept there until it has gone out -
+    // and report the outcome. True once the message is safely in the outbox,
+    // so its compose window can close; false when it was not queued (no
+    // recipient, no outbox) and the draft would be lost with the window.
+    bool HandleSendDraft(const Draft& draft);
+    // Send what waits in the outbox (the Retry button's action), opening the
+    // vault first. `recipients` names the message in the report ("" = the
+    // outbox as a whole).
+    void RetryOutbox(const std::string& fromAddr, const std::string& recipients = "");
     // "Add to contacts" / "Edit contact" from the message list's menu: the
     // contact editor for the message's sender, prefilled from the message
     // when new, loaded from the address book by address when not.
     void EditSenderContact(const MessageEnvelope& m, bool isNew);
     // File a message's sender in a section or group (adding it first when new).
     void AddSenderToContactGroup(const MessageEnvelope& m, const ContactPlace& place);
-    // Flush the outbox with the vault open and report the outcome. Split out
-    // of HandleSendDraft because unlocking is answered through a dialog, so the
-    // send continues in a callback rather than in line.
-    void FlushAndReport(const Draft& draft,
-                        UltraCanvas::UltraCanvasWindowBase* parent,
-                        const std::string& recipients);
+    // With the vault open: send the outbox in the background and report. When
+    // nothing can be sent now (no SMTP plug-in, no outgoing server), the Drafts
+    // copies are still saved and the reason is reported. Split out of
+    // HandleSendDraft because unlocking is answered through a dialog.
+    void SendQueued(const std::string& fromAddr, const std::string& recipients);
+    // A message was not sent: a warning with Retry, saying why and where the
+    // message is kept (the Drafts folder and the outbox, or the outbox only).
+    void ReportNotSent(const std::string& fromAddr, const std::string& recipients,
+                       const UltraNetResult& why, const Outbox::FlushStats& stats);
+    // Automatic retry of the outbox: a light timer runs a silent pass when
+    // OutboxRetryClock says one is due (nothing else sending, the vault open).
+    void StartOutboxRetryTimer();
+    void AutoRetryOutbox();
+    // After a pass: the next automatic one is scheduled, or the retries end
+    // when nothing waits any more.
+    void NoteOutboxPass();
+    int OutboxPending() const;
+    // The IMAP side of the Drafts copies for a send worker: the IMAP plug-in
+    // (null without it) and, from a snapshot of the accounts taken here on the
+    // UI thread, each account's server, Drafts folder and sign-in.
+    DraftsKeeper MakeDraftsKeeper();
 
     // Run `onUnlocked` with the credential vault open, prompting for the master
     // password first when it is still locked (and re-prompting on a wrong one).
@@ -399,6 +422,8 @@ private:
     void ShowAccountStatus();
     // Outbox flushing (FlushOutboxInBackground).
     bool outboxFlushInFlight_ = false;
+    OutboxRetryClock outboxRetry_;          // when the outbox tries again by itself
+    bool outboxRetryTimerStarted_ = false;
     struct PendingFlush {
         std::shared_ptr<IUltraNetPlugin>                 plugin;
         std::function<void(const Outbox::FlushStats&)>   onDone;

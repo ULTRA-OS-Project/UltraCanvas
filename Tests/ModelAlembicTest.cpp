@@ -36,6 +36,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::ModelStorage;
@@ -116,7 +117,7 @@ static void TestMetadataStrings() {
 static void TestSample(const std::string& fixtureRoot) {
     std::printf("The E-45 aircraft, as Blender exported it to Alembic\n");
     const std::string path =
-            (std::filesystem::path(fixtureRoot) / "Alembic/E-45-Aircraft.abc").string();
+            (UltraCanvas::PathFromUtf8(fixtureRoot) / "Alembic/E-45-Aircraft.abc").string();
 
     std::vector<std::string> warnings;
     ConversionOptions options;
@@ -237,10 +238,10 @@ static void TestAgainstTheObjExport(const std::string& fixtureRoot,
                                     const std::string& mediaRoot) {
     std::printf("The same aircraft, against the OBJ export\n");
     const std::string alembicPath =
-            (std::filesystem::path(fixtureRoot) / "Alembic/E-45-Aircraft.abc").string();
+            (UltraCanvas::PathFromUtf8(fixtureRoot) / "Alembic/E-45-Aircraft.abc").string();
     const std::string objPath =
-            (std::filesystem::path(mediaRoot) / "OBJ/E-45-Aircraft.obj").string();
-    if (!std::filesystem::exists(objPath)) {
+            (UltraCanvas::PathFromUtf8(mediaRoot) / "OBJ/E-45-Aircraft.obj").string();
+    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(objPath))) {
         std::printf("  (skipped: the OBJ sample is not present)\n");
         return;
     }
@@ -285,10 +286,10 @@ static void TestAgainstTheObjExport(const std::string& fixtureRoot,
 static void TestTheDemoCopy(const std::string& mediaRoot) {
     std::printf("The demo's copy, completed from the .blend\n");
     const std::string path =
-            (std::filesystem::path(mediaRoot) / "Alembic/E-45-Aircraft.abc").string();
+            (UltraCanvas::PathFromUtf8(mediaRoot) / "Alembic/E-45-Aircraft.abc").string();
     const std::string objPath =
-            (std::filesystem::path(mediaRoot) / "OBJ/E-45-Aircraft.obj").string();
-    if (!std::filesystem::exists(path)) {
+            (UltraCanvas::PathFromUtf8(mediaRoot) / "OBJ/E-45-Aircraft.obj").string();
+    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(path))) {
         std::printf("  (skipped: the demo copy is not present)\n");
         return;
     }
@@ -353,7 +354,7 @@ static void TestTheDemoCopy(const std::string& mediaRoot) {
     // this mesh out of Blender 4.0 — the same modifier stack, subdivided by
     // different releases, which moves a limit surface by a fraction of a
     // millimetre per vertex.
-    if (!std::filesystem::exists(objPath)) return;
+    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(objPath))) return;
     ConversionOptions quiet;
     OBJConverter objConverter;
     auto obj = objConverter.Import(objPath, quiet);

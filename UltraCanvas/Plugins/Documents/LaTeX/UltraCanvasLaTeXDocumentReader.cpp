@@ -2131,7 +2131,7 @@ void Reader::ParseInput(const std::string& name) {
         Diag("\\" + name + " limit reached; \"" + file + "\" skipped");
         return;
     }
-    std::filesystem::path path(file);
+    std::filesystem::path path(UltraCanvas::PathFromUtf8(file));
     if (path.is_relative()) path = PathFromUtf8(options_.baseDirectory) / path;
     std::error_code ec;
     if (!std::filesystem::is_regular_file(path, ec) && path.extension().empty()) path += ".tex";

@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "TesseractOCREngine.h"
+#include "UltraCanvasPathUtf8.h"
 
 #if defined(ULTRACANVAS_OCR_SUPPORT) && defined(ULTRACANVAS_OCR_TESSERACT_SUPPORT)
 
@@ -77,7 +78,7 @@ std::string TesseractOCREngine::ResolveDataPath(const std::string& userPath,
     auto probe = [&](const std::string& base) -> std::string {
         if (base.empty()) return {};
         std::error_code ec;
-        const fs::path b(base);
+        const fs::path b(UltraCanvas::PathFromUtf8(base));
         const fs::path direct = b / leaf;
         tried.push_back(PathToUtf8(direct));
         if (fs::exists(direct, ec)) return PathToUtf8(b);

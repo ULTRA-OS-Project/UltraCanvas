@@ -34,6 +34,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::VectorStorage;
@@ -405,7 +406,7 @@ void TestValidation() {
 // ===== EXTRA FILES FROM THE COMMAND LINE =====
 
 void WriteSvg(const VectorDocument& doc, const std::string& path) {
-    std::ofstream out(path);
+    std::ofstream out(UltraCanvas::PathFromUtf8(path));
     if (!out) return;
     out << "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"" << doc.Size.width
         << "\" height=\"" << doc.Size.height << "\" viewBox=\"0 0 " << doc.Size.width

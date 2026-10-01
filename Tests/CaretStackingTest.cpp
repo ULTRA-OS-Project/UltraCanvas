@@ -14,6 +14,7 @@
 // Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
+#include "DisplayTestSupport.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasMenu.h"
@@ -56,13 +57,11 @@ bool NearlyEqual(const Color& a, const Color& b, int tolerance = 24) {
     return close(a.r, b.r) && close(a.g, b.g) && close(a.b, b.b);
 }
 
-// The harness drives frames by hand instead of running the event loop, so it
-// marks the text area dirty itself - what is under test is the compositing
-// order, not the dirty-rect plumbing.
+// Frames are driven by hand (DisplayTestSupport.h); the text area is the one
+// element to mark dirty.
 void Frame(const std::shared_ptr<UltraCanvasWindow>& window,
            const std::shared_ptr<UltraCanvasTextArea>& area) {
-    area->RequestRedraw();
-    window->UpdateAndRender();
+    DisplayTest::Frame(window, {area});
 }
 
 // Is any pixel of the caret's rectangle showing the caret's colour?
@@ -112,22 +111,12 @@ int main() {
     window->AddChild(area);
     area->SetText("The first step for the fix\nis a caret to hide.\n");
 
-    // A caret only appears in a focused element of a focused window, and under
-    // Xvfb there is no window manager to activate the window - so hand the
-    // application the activation event the backend would have delivered.
-    UCEvent activate;
-    activate.type = UCEventType::WindowFocus;
-    activate.targetWindow = window;
-    activate.nativeWindowHandle = window->GetNativeHandle();
-    app.DispatchEvent(activate);
-    area->SetFocus(true);
-    if (!area->IsFocused()) SKIP_ALL("the window could not be activated");
+    // A caret only appears in a focused element of a focused window; under
+    // Xvfb the test activates the window itself (DisplayTestSupport.h).
+    if (!DisplayTest::FocusElement(app, window, area)) SKIP_ALL("the window could not be activated");
 
     auto& caret = UltraCanvasCaret::GetInstance();
-    for (int frame = 0; frame < 60 && !caret.IsOnWindow(window.get()); ++frame) {
-        Frame(window, area);
-    }
-    if (!caret.IsOnWindow(window.get())) SKIP_ALL("the text area never claimed the caret");
+    if (!DisplayTest::WaitForCaret(window, {area})) SKIP_ALL("the text area never claimed the caret");
 
     const Rect2Di caretRect = caret.GetRect();
     std::cerr << "   caret at " << caretRect.x << "," << caretRect.y
