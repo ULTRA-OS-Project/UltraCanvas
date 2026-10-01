@@ -246,7 +246,6 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/DeviceExplorer/CHANGELOG.md` | DeviceExplorer |
 | `Docs/UltraDesktop/CHANGELOG.md` | UltraDesktop — the ULTRA OS desktop |
 | `Docs/EmailCleaner/CHANGELOG.md` | EmailCleaner |
-| `Docs/Ladybird/CHANGELOG.md` | The Ladybird browser port (built from its own tree, outside this repository) |
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
@@ -296,10 +295,10 @@ number anywhere else, and never introduce a new literal copy of one:
 - An app versions itself: it does not move when the framework releases, and a
   change to it belongs in its own file, not in the framework's. A framework
   change an app needs still goes in `Docs/UltraCanvas/CHANGELOG.md` — including
-  the Ladybird-driven ones, which land in `UltraCanvas/OS/MSWindows/` and
-  `UltraCanvas/core/` rather than in the port. Cross-reference such a change
-  from the app's changelog when a release depends on it; never describe it in
-  two files with two versions.
+  one a host application outside this repository asked for, which lands in
+  `UltraCanvas/OS/<Platform>/` and `UltraCanvas/core/`, not in that host.
+  Cross-reference such a change from the app's changelog when a release
+  depends on it; never describe it in two files with two versions.
 - The app changelogs were split out of the framework's on 2026-08-31.
   EmailCleaner's two entries were moved across verbatim (framework 0.3.87 and
   0.3.88 now point at them); every other app's earlier history was left where
