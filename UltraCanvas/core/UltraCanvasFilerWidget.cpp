@@ -14066,7 +14066,7 @@ namespace UltraCanvas {
         // out of the way, exactly as it does in Explorer.
         if (e.isShortcut && !e.linkTarget.empty()) {
             std::error_code lec;
-            if (fs::is_directory(e.linkTarget, lec) && !lec) {
+            if (fs::is_directory(PathFromUtf8(e.linkTarget), lec) && !lec) {
                 SetPath(e.linkTarget);
                 return;
             }
@@ -14148,7 +14148,7 @@ namespace UltraCanvas {
         // that can run Windows programs itself installs onFileActivated and
         // never reaches this.
         if (e.isShortcut && !e.linkTarget.empty() &&
-            fs::is_regular_file(e.linkTarget, ec) && !ec) {
+            fs::is_regular_file(PathFromUtf8(e.linkTarget), ec) && !ec) {
             FilerEntry target = e;
             target.path = e.linkTarget;
             target.name = PathToUtf8(PathFromUtf8(e.linkTarget).filename());
