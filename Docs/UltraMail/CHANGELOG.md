@@ -5,6 +5,12 @@
   the HTML reader drew each one zero pixels tall. The fix is in the framework's
   HTML reader (see the framework changelog, "pictures with `height="auto"` are
   shown").
+- **Newsletters fit the reading pane, menus included.** A picture as wide as
+  its column made the whole 600px newsletter as wide as the picture's file -
+  often 2000px - so the text ran off the right of the pane and a centred menu
+  (Kickstarter's ART / COMICS / DESIGN …) was off screen entirely. Fixed in the
+  framework's HTML reader (see the framework changelog, "HTML mail no longer
+  runs off the right of the pane").
 
 #### 2026-10-01 *0.10.14*
 - **Send works in the background, and nothing is lost on the way.** *Send*

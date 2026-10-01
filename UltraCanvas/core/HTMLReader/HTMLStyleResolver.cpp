@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.2.2 - a later width declaration replaces an earlier one (px vs %)
 // Version: 1.2.1 - width/height="auto" on <img>/<table>/<td> is no size, not 0px
 // Version: 1.2.0 - table presentational attributes (nowrap, valign,
 //                  cellpadding, cellspacing, tr align); white-space: nowrap;
@@ -722,9 +723,20 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         }
     }
     else if (prop == "width") {
+        // The later declaration replaces the earlier one: width:100%!important
+        // over an inline width:600px (a newsletter's narrow-screen rule) is
+        // 100%, not 600px with a percentage beside it.
         if (auto len = CssLength::Parse(lower)) {
-            if (len->unit == CssUnit::Percent) s.widthPercent = len->value;
-            else if (len->unit != CssUnit::Auto) s.widthPx = len->ToPx(em, rem);
+            if (len->unit == CssUnit::Percent) {
+                s.widthPercent = len->value;
+                s.widthPx.reset();
+            } else if (len->unit == CssUnit::Auto) {
+                s.widthPercent.reset();
+                s.widthPx.reset();
+            } else {
+                s.widthPx = len->ToPx(em, rem);
+                s.widthPercent.reset();
+            }
         }
     }
     else if (prop == "height") {
