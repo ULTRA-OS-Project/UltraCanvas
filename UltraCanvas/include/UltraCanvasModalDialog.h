@@ -732,6 +732,10 @@ namespace UltraCanvas {
         // Details / list / icon sizes for the listing.
         std::shared_ptr<UltraCanvasSegmentedControl> viewSelector;
         int viewIndex = 0;   // the view button chosen (remembered across dialogs)
+        // Details column widths (remembered across dialogs).
+        int sizeColumnWidth = 80;
+        int typeColumnWidth = 105;
+        int modifiedColumnWidth = 145;
         std::shared_ptr<UltraCanvasTextInput> fileNameInput;
         std::shared_ptr<UltraCanvasDropdown> filterDropdown;
 
