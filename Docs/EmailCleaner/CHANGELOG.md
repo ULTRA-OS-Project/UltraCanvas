@@ -39,6 +39,15 @@
   EmailCleaner knows it, and by name (`Trash`, `[Gmail]/Bin`, `Deleted Items`,
   `Papierkorb`, ...) - so what was moved does not come back from there either;
   rows an earlier scan stored for a Trash folder are removed.
+- **Opened attachments no longer pile up.** Opening an attachment writes a
+  copy into `<data dir>/attachments` for the viewer, and none was ever
+  deleted. The folder is now pruned at every start, before any viewer has a
+  file open: what was not opened for a week goes, then the oldest until the
+  rest fits in 256 MB (`PruneAttachmentCache`, on UltraMail's
+  `AttachmentCache::Prune`, the rule UltraMail applies to its own copies).
+  Opening an attachment again makes its copy new. `WriteToCache` also builds
+  its paths through `PathFromUtf8` now, so a data folder or an attachment
+  named in Thai or with an emoji works on Windows too.
 
 #### 2026-09-29 *0.4.0*
 - **EmailCleaner can have accounts of its own.** Until now every account came

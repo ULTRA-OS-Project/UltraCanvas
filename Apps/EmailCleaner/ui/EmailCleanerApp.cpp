@@ -127,6 +127,10 @@ bool EmailCleanerApp::Initialize(const std::string& dataDir,
     // this adds the oauth.ini in UltraMail's data folder, as UltraMail does.
     UltraMail::OAuthApps::LoadFile(mailDataDir + "/oauth.ini");
 
+    // Attachments opened in the viewer are copies; prune them now, before any
+    // viewer has one open (a week unopened, then down to 256 MB).
+    PruneAttachmentCache(dataDir_ + "/attachments");
+
     LoadRules();
     ImportAccounts();
     store_.ListAccounts(accounts_);

@@ -213,7 +213,9 @@ either can be true without the other.
 A message with attachments carries an **Attachments** button in the message
 list. The index holds only metadata — the bytes stay in the .eml UltraMail
 cached and are read back on demand — so what you open is the message as it
-arrived.
+arrived. The copy written for the viewer (`<EmailCleaner data
+dir>/attachments`) is pruned at every start: what was not opened for a week
+goes, then the oldest until the rest fits in 256 MB.
 
 Executable, script and macro-bearing attachments are **not** opened and **not**
 copied anywhere. There is no button for them, only a note saying why: an app

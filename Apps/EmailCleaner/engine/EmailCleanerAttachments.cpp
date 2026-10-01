@@ -5,6 +5,7 @@
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "EmailCleanerClassifier.h"
+#include "UltraMailAttachmentCache.h"
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -182,14 +183,15 @@ std::string WriteToCache(const std::string& cacheDir,
     if (cacheDir.empty()) return "";
 
     std::error_code ec;
-    std::filesystem::create_directories(cacheDir, ec);
+    const std::filesystem::path dir = PathFromUtf8(cacheDir);
+    std::filesystem::create_directories(dir, ec);
 
     const std::string safe = SafeAttachmentName(filename, mediaType);
-    std::filesystem::path target = PathFromUtf8(cacheDir) / safe;
+    std::filesystem::path target = dir / PathFromUtf8(safe);
 
     // Belt and braces: whatever the sanitiser produced, the result has to sit
     // inside the cache directory.
-    const std::filesystem::path root = std::filesystem::weakly_canonical(cacheDir, ec);
+    const std::filesystem::path root = std::filesystem::weakly_canonical(dir, ec);
     const std::filesystem::path resolved =
         std::filesystem::weakly_canonical(target.parent_path(), ec);
     if (ec || resolved != root) return "";
@@ -202,6 +204,12 @@ std::string WriteToCache(const std::string& cacheDir,
     if (!out.good()) return "";
     out.close();
     return PathToUtf8(target);
+}
+
+int PruneAttachmentCache(const std::string& cacheDir, int64_t maxAgeSeconds,
+                         uint64_t maxBytes) {
+    if (cacheDir.empty()) return 0;
+    return UltraMail::AttachmentCache(cacheDir).Prune(maxAgeSeconds, maxBytes).removed;
 }
 
 } // namespace EmailCleaner

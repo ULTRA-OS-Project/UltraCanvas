@@ -6,6 +6,7 @@
 #include "test_framework.h"
 
 #include "EmailCleanerAttachments.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <chrono>
 #include <filesystem>
@@ -227,4 +228,53 @@ TEST(Attachment_StatusStringsRoundTrip) {
     REQUIRE_EQ(ToString(AttachmentFetch::NoSuchMessage), std::string("no-such-message"));
     REQUIRE_EQ(ToString(AttachmentFetch::NoSuchPart), std::string("no-such-part"));
     REQUIRE_EQ(ToString(AttachmentFetch::Unreadable), std::string("unreadable"));
+}
+
+// ---- The attachment cache is pruned ------------------------------------------
+
+TEST(Attachment_CacheIsPrunedOfCopiesNotOpenedForAWeek) {
+    // The cache holds copies made only for the viewer; the message keeps the
+    // original. What was not opened for a week goes at the next start.
+    const std::filesystem::path root = TempDir();
+    const std::string cache = UltraCanvas::PathToUtf8(root / "attachments");
+    const std::vector<uint8_t> bytes = { 'a', 'b', 'c' };
+
+    const std::string old   = WriteToCache(cache, "old.pdf", "application/pdf", bytes);
+    const std::string fresh = WriteToCache(cache, "fresh.pdf", "application/pdf", bytes);
+    REQUIRE(!old.empty());
+    REQUIRE(!fresh.empty());
+    std::filesystem::last_write_time(UltraCanvas::PathFromUtf8(old),
+        std::filesystem::file_time_type::clock::now() - std::chrono::hours(24 * 8));
+
+    REQUIRE_EQ(PruneAttachmentCache(cache), 1);
+    REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(old)));
+    REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(fresh)));
+
+    // Opening it again writes it again, which makes it new.
+    const std::string again = WriteToCache(cache, "old.pdf", "application/pdf", bytes);
+    REQUIRE_EQ(again, old);
+    REQUIRE_EQ(PruneAttachmentCache(cache), 0);
+
+    // The size cap keeps the newest; an absent cache is not an error.
+    REQUIRE_EQ(PruneAttachmentCache(cache, 0, 3), 1);
+    REQUIRE_EQ(PruneAttachmentCache(UltraCanvas::PathToUtf8(root / "absent")), 0);
+    REQUIRE_EQ(PruneAttachmentCache(""), 0);
+    std::filesystem::remove_all(root);
+}
+
+TEST(Attachment_CacheWorksInAFolderWithANonAsciiName) {
+    // File and folder names are UTF-8 on every platform (AGENTS.md): a data
+    // folder under a Thai user name must still take the copies.
+    const std::filesystem::path root = TempDir();
+    const std::string cache = UltraCanvas::PathToUtf8(root) +
+        "/\xe0\xb8\x9c\xe0\xb8\xb9\xe0\xb9\x89\xe0\xb9\x83\xe0\xb8\x8a\xe0\xb9\x89/attachments";
+    const std::vector<uint8_t> bytes = { 'x' };
+
+    const std::string path = WriteToCache(cache, "\xe0\xb9\x83\xe0\xb8\x9a\xe0\xb9\x80\xe0\xb8\xaa\xe0\xb8\xa3\xe0\xb9\x87\xe0\xb8\x88.txt",
+                                          "text/plain", bytes);
+    REQUIRE(!path.empty());
+    REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(path)));
+    REQUIRE_EQ(PruneAttachmentCache(cache, -1, 0), 1);
+    REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(path)));
+    std::filesystem::remove_all(root);
 }
