@@ -14,6 +14,7 @@
 
 #include "tinyxml2.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <map>
@@ -104,12 +105,38 @@ public:
             error = "The Word document has no body: " + filePath;
             return false;
         }
+        // A picture placed from the page's edge needs the page's margin, which
+        // the section at the end of the body states.
+        if (auto* sectPr = body->FirstChildElement("w:sectPr")) {
+            if (auto* margins = sectPr->FirstChildElement("w:pgMar")) {
+                pageMarginLeftPt_ = static_cast<float>(margins->IntAttribute("w:left", 1440)) / 20.0f;
+            }
+        }
+        parsingBody_ = true;
         for (auto* elem = body->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
             std::string tag = elem->Name() ? elem->Name() : "";
             if (tag == "w:p") ParseParagraph(elem);
             else if (tag == "w:tbl") ParseTable(elem);
+            else if (tag == "w:bookmarkStart" && std::string(Attr(elem, "w:name")) != "_GoBack") {
+                pendingBookmarks_.push_back(Attr(elem, "w:name"));
+            } else if (tag == "w:sdt") {
+                // A content control round the table of contents: its paragraphs.
+                if (auto* content = elem->FirstChildElement("w:sdtContent")) {
+                    for (auto* inner = content->FirstChildElement(); inner; inner = inner->NextSiblingElement()) {
+                        std::string innerTag = inner->Name() ? inner->Name() : "";
+                        if (innerTag == "w:p") ParseParagraph(inner);
+                        else if (innerTag == "w:tbl") ParseTable(inner);
+                    }
+                }
+            }
         }
+        pendingBookmarks_.clear();
+        parsingBody_ = false;
+        ApplySections(body->FirstChildElement("w:sectPr"));
         LoadSection(body->FirstChildElement("w:sectPr"));
+        LoadNotes(RichNote::Kind::Footnote);
+        LoadNotes(RichNote::Kind::Endnote);
+        LoadComments();
         LoadMetadata();
         return true;
     }
@@ -138,6 +165,7 @@ private:
         Geometry geometry;
     };
     static constexpr float kUnset = -1.0e9f;
+    float pageMarginLeftPt_ = 72.0f;        // w:pgMar w:left, for page-relative pictures
 
     // ===== TABLE BORDERS =====
     // A table's six border positions; a side not stated stays unset so a
@@ -155,6 +183,7 @@ private:
         const std::string val = Attr(e, "w:val");
         if (val == "nil" || val == "none" || val.empty()) return spec;
         spec.border.widthPt = std::max(0.25f, static_cast<float>(e->IntAttribute("w:sz", 4)) / 8.0f);
+        spec.border.style = RichBorderStyleFromName(val);
         const std::string color = Attr(e, "w:color");
         if (color.size() == 6 && color != "auto") spec.border.color = "#" + color;
         return spec;
@@ -219,6 +248,113 @@ private:
     RichListNumbering numbering_;
     std::map<std::string, int> mediaByTarget_;              // package path -> media index
     bool pendingPageBreak_ = false;
+    // Footnote and endnote references met in the body: "f<id>" / "e<id>" ->
+    // index into doc_->notes. Their text is read from the notes parts after
+    // the body.
+    std::map<std::string, int> noteIndexById_;
+    // Bookmarks started between paragraphs, for the next one.
+    std::vector<std::string> pendingBookmarks_;
+    // Sections: each paragraph w:sectPr ends one, after the block index given.
+    struct SectionEnd { int lastBlock; RichSectionSetup setup; };
+    std::vector<SectionEnd> sectionEnds_;
+    bool parsingBody_ = false;
+
+    static RichSectionSetup ReadSectionSetup(tinyxml2::XMLElement* sectPr) {
+        RichSectionSetup setup;
+        if (!sectPr) return setup;
+        if (auto* cols = sectPr->FirstChildElement("w:cols")) {
+            setup.columns = std::clamp(cols->IntAttribute("w:num", 1), 1, 9);
+            setup.columnGapPt = static_cast<float>(cols->IntAttribute("w:space", 720)) / 20.0f;
+        }
+        const std::string type = sectPr->FirstChildElement("w:type") ? Attr(sectPr->FirstChildElement("w:type"), "w:val") : "";
+        setup.newPage = type != "continuous";
+        return setup;
+    }
+
+    // The sections, now that the body is read: the first one's setup is the
+    // document's, each later one starts at the block after the one before
+    // ended.
+    void ApplySections(tinyxml2::XMLElement* bodySectPr) {
+        std::vector<SectionEnd> sections = sectionEnds_;
+        sections.push_back({static_cast<int>(doc_->blocks.size()) - 1, ReadSectionSetup(bodySectPr)});
+        doc_->firstSection = sections.front().setup;
+        for (size_t k = 1; k < sections.size(); k++) {
+            const int start = sections[k - 1].lastBlock + 1;
+            if (start <= 0 || start >= static_cast<int>(doc_->blocks.size())) continue;
+            RichDocBlock& block = doc_->blocks[static_cast<size_t>(start)];
+            block.sectionStart = true;
+            block.section = sections[k].setup;
+        }
+    }
+    // Comments: w:id -> index into doc_->comments, and those whose range the
+    // text being read is inside (ranges may cross paragraphs).
+    std::map<std::string, int> commentIndexById_;
+    std::vector<int> activeComments_;
+
+    // The revision entry for an author and date, shared by every change
+    // they made then.
+    int RevisionFor(const std::string& author, const std::string& date) {
+        for (size_t i = 0; i < doc_->revisions.size(); i++) {
+            if (doc_->revisions[i].author == author && doc_->revisions[i].date == date) return static_cast<int>(i);
+        }
+        doc_->revisions.push_back({author, date});
+        return static_cast<int>(doc_->revisions.size()) - 1;
+    }
+
+    int CommentFor(const std::string& id) {
+        auto found = commentIndexById_.find(id);
+        if (found != commentIndexById_.end()) return found->second;
+        doc_->comments.emplace_back();
+        const int index = static_cast<int>(doc_->comments.size()) - 1;
+        commentIndexById_[id] = index;
+        return index;
+    }
+
+    // word/comments.xml: author, initials, date and text of each comment the
+    // body marks.
+    void LoadComments() {
+        if (commentIndexById_.empty()) return;
+        std::string partName = "word/comments.xml";
+        for (const auto& [id, rel] : relationships_) {
+            const std::string file = "comments.xml";
+            if (!rel.external && rel.target.size() >= file.size()
+                && rel.target.compare(rel.target.size() - file.size(), file.size(), file) == 0) {
+                partName = ResolvePartPath(rel.target);
+            }
+        }
+        std::string xml;
+        if (!zip_.ReadEntry(partName, xml)) return;
+        ProtectWhitespaceRuns(xml);
+        tinyxml2::XMLDocument part;
+        if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !part.RootElement()) return;
+        for (auto* c = part.RootElement()->FirstChildElement("w:comment"); c; c = c->NextSiblingElement("w:comment")) {
+            auto found = commentIndexById_.find(Attr(c, "w:id"));
+            if (found == commentIndexById_.end()) continue;
+            RichComment& comment = doc_->comments[static_cast<size_t>(found->second)];
+            comment.author = Attr(c, "w:author");
+            comment.initials = Attr(c, "w:initials");
+            comment.date = Attr(c, "w:date");
+            std::string text;
+            for (auto* p = c->FirstChildElement("w:p"); p; p = p->NextSiblingElement("w:p")) {
+                if (p != c->FirstChildElement("w:p")) text += "\n";
+                text += ElementText(p);
+            }
+            for (size_t at; (at = text.find(kKeptSpaceMarker)) != std::string::npos;) text.replace(at, 3, " ");
+            comment.text = text;
+        }
+    }
+
+    // The w:t text under an element, w:tab as a tab.
+    static std::string ElementText(tinyxml2::XMLElement* e) {
+        std::string text;
+        for (auto* child = e->FirstChildElement(); child; child = child->NextSiblingElement()) {
+            const std::string tag = child->Name() ? child->Name() : "";
+            if (tag == "w:t") text += child->GetText() ? child->GetText() : "";
+            else if (tag == "w:tab") text += "\t";
+            else text += ElementText(child);
+        }
+        return text;
+    }
 
     static const char* Attr(const tinyxml2::XMLElement* e, const char* name) {
         const char* v = e->Attribute(name);
@@ -298,6 +434,25 @@ private:
                 tableStyles_[id] = tableStyle;
                 if (std::string(Attr(style, "w:default")) == "1") defaultTableStyle_ = id;
                 continue;
+            }
+            // The document's named paragraph and character styles.
+            const std::string type = Attr(style, "w:type");
+            if (!id.empty() && (type == "paragraph" || type == "character")) {
+                RichStyle named;
+                named.id = id;
+                named.name = name ? Attr(name, "w:val") : id;
+                named.kind = type == "character" ? RichStyle::Kind::Character : RichStyle::Kind::Paragraph;
+                if (auto* basedOn = style->FirstChildElement("w:basedOn")) named.basedOn = Attr(basedOn, "w:val");
+                if (auto* next = style->FirstChildElement("w:next")) named.nextStyle = Attr(next, "w:val");
+                named.character = ReadStyleCharacter(style->FirstChildElement("w:rPr"));
+                if (named.kind == RichStyle::Kind::Paragraph) {
+                    named.paragraph = ReadStyleParagraph(style->FirstChildElement("w:pPr"));
+                    // Word's heading styles by name, whether or not they state
+                    // an outline level.
+                    const int level = HeadingLevelForStyle(id);
+                    if (level > 0) named.paragraph.headingLevel = level;
+                }
+                doc_->styles.push_back(std::move(named));
             }
             if (id.empty() || std::string(Attr(style, "w:type")) != "paragraph") continue;
             StyleGeometry entry;
@@ -549,6 +704,83 @@ private:
     }
 
     // Returns 1..6 when the paragraph style is a heading, else 0.
+    // The named paragraph style a paragraph has ("" = the default one).
+    std::string ParagraphStyleId(tinyxml2::XMLElement* p) const {
+        auto* pPr = p ? p->FirstChildElement("w:pPr") : nullptr;
+        auto* pStyle = pPr ? pPr->FirstChildElement("w:pStyle") : nullptr;
+        const std::string id = pStyle ? Attr(pStyle, "w:val") : "";
+        if (id.empty() || id == defaultParagraphStyle_ || !doc_->FindStyle(id)) return "";
+        return id;
+    }
+
+    // What a paragraph's style (and the default style under it) gives its text.
+    RichStyleCharacter ParagraphStyleCharacter(tinyxml2::XMLElement* p) const {
+        auto* pPr = p ? p->FirstChildElement("w:pPr") : nullptr;
+        auto* pStyle = pPr ? pPr->FirstChildElement("w:pStyle") : nullptr;
+        const std::string id = pStyle ? Attr(pStyle, "w:val") : defaultParagraphStyle_;
+        RichStyleCharacter character = doc_->ResolveStyle(id).character;
+        // Sizes and fonts reach the text through the paragraph's own font
+        // (paragraphFontSizePt / paragraphFontFamily), as before.
+        character.fontSizePt.reset();
+        character.fontFamily.reset();
+        return character;
+    }
+
+    // A w:style's character properties.
+    static RichStyleCharacter ReadStyleCharacter(tinyxml2::XMLElement* rPr) {
+        RichStyleCharacter character;
+        if (!rPr) return character;
+        if (rPr->FirstChildElement("w:b")) character.bold = ToggleOn(rPr, "w:b");
+        if (rPr->FirstChildElement("w:i")) character.italic = ToggleOn(rPr, "w:i");
+        if (rPr->FirstChildElement("w:u")) character.underline = ToggleOn(rPr, "w:u");
+        if (rPr->FirstChildElement("w:strike")) character.strikethrough = ToggleOn(rPr, "w:strike");
+        if (auto* sz = rPr->FirstChildElement("w:sz")) character.fontSizePt = sz->FloatAttribute("w:val", 0.0f) / 2.0f;
+        if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
+            const std::string family = Attr(fonts, "w:ascii");
+            if (!family.empty()) character.fontFamily = family;
+        }
+        if (auto* color = rPr->FirstChildElement("w:color")) {
+            const std::string v = Attr(color, "w:val");
+            if (v.size() == 6 && v != "auto") character.color = "#" + v;
+        }
+        return character;
+    }
+
+    // A w:style's paragraph properties.
+    static RichStyleParagraph ReadStyleParagraph(tinyxml2::XMLElement* pPr) {
+        RichStyleParagraph paragraph;
+        if (!pPr) return paragraph;
+        if (auto* jc = pPr->FirstChildElement("w:jc")) {
+            const std::string v = Attr(jc, "w:val");
+            paragraph.align = v == "center" ? RichTextAlign::Center
+                            : (v == "right" || v == "end") ? RichTextAlign::Right
+                            : (v == "both" || v == "distribute") ? RichTextAlign::Justify : RichTextAlign::Left;
+        }
+        if (auto* ind = pPr->FirstChildElement("w:ind")) {
+            for (const char* name : {"w:left", "w:start"}) {
+                if (ind->Attribute(name)) paragraph.leftIndentPt = static_cast<float>(ind->IntAttribute(name, 0)) / 20.0f;
+            }
+            for (const char* name : {"w:right", "w:end"}) {
+                if (ind->Attribute(name)) paragraph.rightIndentPt = static_cast<float>(ind->IntAttribute(name, 0)) / 20.0f;
+            }
+            if (ind->Attribute("w:firstLine")) paragraph.firstLineIndentPt = static_cast<float>(ind->IntAttribute("w:firstLine", 0)) / 20.0f;
+            if (ind->Attribute("w:hanging")) paragraph.firstLineIndentPt = -static_cast<float>(ind->IntAttribute("w:hanging", 0)) / 20.0f;
+        }
+        if (auto* spacing = pPr->FirstChildElement("w:spacing")) {
+            if (spacing->Attribute("w:before")) paragraph.spaceBeforePt = static_cast<float>(spacing->IntAttribute("w:before", 0)) / 20.0f;
+            if (spacing->Attribute("w:after")) paragraph.spaceAfterPt = static_cast<float>(spacing->IntAttribute("w:after", 0)) / 20.0f;
+            const std::string rule = Attr(spacing, "w:lineRule");
+            if (spacing->Attribute("w:line") && (rule.empty() || rule == "auto")) {
+                paragraph.lineSpacing = static_cast<float>(spacing->IntAttribute("w:line", 240)) / 240.0f;
+            }
+        }
+        if (auto* outline = pPr->FirstChildElement("w:outlineLvl")) {
+            const int level = outline->IntAttribute("w:val", 9) + 1;
+            if (level >= 1 && level <= 6) paragraph.headingLevel = level;
+        }
+        return paragraph;
+    }
+
     int HeadingLevelForStyle(const std::string& styleId) const {
         std::string name;
         auto it = styleNames_.find(styleId);
@@ -600,17 +832,40 @@ private:
         std::string fieldInstruction;
         bool inFieldResult = false;
         RichTextRun::Field field = RichTextRun::Field::Plain;
+        std::string fieldArgument;           // SEQ's label, REF's / PAGEREF's bookmark
+        RichTextRun::Change change = RichTextRun::Change::Unchanged;   // inside w:ins / w:del
+        int revision = -1;
+        // What the paragraph's style gives its text, under each run's own.
+        RichStyleCharacter paragraphCharacter;
     };
 
-    // PAGE -> page number, NUMPAGES / SECTIONPAGES -> page count.
-    static RichTextRun::Field FieldForInstruction(const std::string& instruction) {
+    // PAGE -> page number, NUMPAGES / SECTIONPAGES -> page count, SEQ label
+    // -> caption number, REF / PAGEREF bookmark -> cross-reference. The
+    // label or bookmark goes to `argument`.
+    static RichTextRun::Field FieldForInstruction(const std::string& instruction,
+                                                  std::string* argument = nullptr) {
+        std::vector<std::string> words;
         std::string word;
-        for (char c : instruction) {
-            if (c == ' ' || c == '\t') { if (!word.empty()) break; continue; }
-            word.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+        for (char c : instruction + " ") {
+            if (c == ' ' || c == '\t') {
+                if (!word.empty()) words.push_back(word);
+                word.clear();
+                continue;
+            }
+            word.push_back(c);
         }
-        if (word == "PAGE") return RichTextRun::Field::PageNumber;
-        if (word == "NUMPAGES" || word == "SECTIONPAGES") return RichTextRun::Field::PageCount;
+        if (words.empty()) return RichTextRun::Field::Plain;
+        std::string name = words[0];
+        for (char& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        if (argument) argument->clear();
+        if (name == "PAGE") return RichTextRun::Field::PageNumber;
+        if (name == "NUMPAGES" || name == "SECTIONPAGES") return RichTextRun::Field::PageCount;
+        const bool sequence = name == "SEQ", reference = name == "REF", pageReference = name == "PAGEREF";
+        if ((sequence || reference || pageReference) && words.size() > 1 && words[1][0] != '\\') {
+            if (argument) *argument = words[1];
+            return sequence ? RichTextRun::Field::Sequence
+                 : reference ? RichTextRun::Field::Reference : RichTextRun::Field::PageReference;
+        }
         return RichTextRun::Field::Plain;
     }
 
@@ -629,10 +884,19 @@ private:
 
     void ParseRunProperties(tinyxml2::XMLElement* rPr, RichTextRun& run) const {
         if (!rPr) return;
-        run.bold = ToggleOn(rPr, "w:b");
-        run.italic = ToggleOn(rPr, "w:i");
-        run.strikethrough = ToggleOn(rPr, "w:strike");
-        run.underline = ToggleOn(rPr, "w:u");
+        // A character style first; the run's own properties then override it.
+        if (auto* rStyle = rPr->FirstChildElement("w:rStyle")) {
+            const std::string id = Attr(rStyle, "w:val");
+            if (doc_->FindStyle(id)) {
+                run.characterStyleId = id;
+                doc_->ResolveStyle(id).character.ApplyTo(run);
+            }
+        }
+        // Only what is stated: the paragraph's style may have given the rest.
+        if (rPr->FirstChildElement("w:b")) run.bold = ToggleOn(rPr, "w:b");
+        if (rPr->FirstChildElement("w:i")) run.italic = ToggleOn(rPr, "w:i");
+        if (rPr->FirstChildElement("w:strike")) run.strikethrough = ToggleOn(rPr, "w:strike");
+        if (rPr->FirstChildElement("w:u")) run.underline = ToggleOn(rPr, "w:u");
         if (auto* vertAlign = rPr->FirstChildElement("w:vertAlign")) {
             std::string v = Attr(vertAlign, "w:val");
             run.superscript = (v == "superscript");
@@ -663,6 +927,12 @@ private:
                 run.code = true;
             }
         }
+    }
+
+    // An EMU count (integer, may be negative); 0 when absent.
+    static long long ParseEmu(const char* text) {
+        if (!text) return 0;
+        return std::strtoll(text, nullptr, 10);     // integers only: no locale decimal point involved
     }
 
     void ParseDrawing(tinyxml2::XMLElement* drawing, InlineContext& ctx) {
@@ -700,19 +970,57 @@ private:
             return;
         }
 
-        RichDocBlock block;
-        block.type = RichBlockType::Image;
-        block.mediaIndex = mediaIndex;
-        block.imageWidthPt = widthPt;
-        block.imageHeightPt = heightPt;
-        block.imageAltText = altText;
-        ctx.trailingImages.push_back(std::move(block));
+        // <wp:anchor>: a floating picture. It stays in the run stream where it
+        // is anchored, carrying how text wraps round it and where it sits.
+        auto* anchor = drawing->FirstChildElement("wp:anchor");
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        run.mediaIndex = mediaIndex;
+        run.imageWidthPt = widthPt;
+        run.imageHeightPt = heightPt;
+        run.imageAltText = altText;
+        run.imageWrap = RichTextRun::ImageWrap::Square;
+        if (anchor) {
+            if (anchor->FirstChildElement("wp:wrapTopAndBottom")) {
+                run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            } else if (anchor->FirstChildElement("wp:wrapNone")) {
+                run.imageWrap = Attr(anchor, "behindDoc") == std::string("1")
+                    ? RichTextRun::ImageWrap::BehindText : RichTextRun::ImageWrap::InFrontOfText;
+            }
+            if (auto* positionH = anchor->FirstChildElement("wp:positionH")) {
+                const std::string from = Attr(positionH, "relativeFrom");
+                if (auto* align = positionH->FirstChildElement("wp:align")) {
+                    const std::string side = align->GetText() ? align->GetText() : "";
+                    run.imageFloatAlign = side == "right" || side == "outside" ? RichTextAlign::Right
+                                        : side == "center" ? RichTextAlign::Center : RichTextAlign::Left;
+                } else if (auto* offset = positionH->FirstChildElement("wp:posOffset")) {
+                    float x = static_cast<float>(ParseEmu(offset->GetText())) / kEmuPerPoint;
+                    // From the page's edge: the text column starts a margin in.
+                    if (from == "page") x -= pageMarginLeftPt_;
+                    run.imageFloatAlign = RichTextAlign::Default;
+                    run.imageOffsetXPt = std::max(0.0f, x);
+                }
+            }
+            if (auto* positionV = anchor->FirstChildElement("wp:positionV")) {
+                const std::string from = Attr(positionV, "relativeFrom");
+                auto* offset = positionV->FirstChildElement("wp:posOffset");
+                // Only an offset from the paragraph (or its line) has a meaning
+                // once pages are laid out afresh; others sit at the paragraph.
+                if (offset && (from == "paragraph" || from == "line")) {
+                    run.imageOffsetYPt = static_cast<float>(ParseEmu(offset->GetText())) / kEmuPerPoint;
+                }
+            }
+        }
+        run.lineBreakBefore = ctx.pendingLineBreak;
+        ctx.pendingLineBreak = false;
+        ctx.runs.push_back(std::move(run));
     }
 
     void ParseRun(tinyxml2::XMLElement* runElem, const std::string& linkTarget,
                   InlineContext& ctx) {
         RichTextRun props;
         props.linkTarget = linkTarget;
+        ctx.paragraphCharacter.ApplyTo(props);
         ParseRunProperties(runElem->FirstChildElement("w:rPr"), props);
 
         for (auto* child = runElem->FirstChildElement(); child;
@@ -725,7 +1033,7 @@ private:
                     ctx.inFieldResult = false;
                     ctx.field = RichTextRun::Field::Plain;
                 } else if (type == "separate") {
-                    ctx.field = FieldForInstruction(ctx.fieldInstruction);
+                    ctx.field = FieldForInstruction(ctx.fieldInstruction, &ctx.fieldArgument);
                     ctx.inFieldResult = true;
                 } else if (type == "end") {
                     ctx.inFieldResult = false;
@@ -733,9 +1041,12 @@ private:
                 }
             } else if (tag == "w:instrText") {
                 if (child->GetText()) ctx.fieldInstruction += child->GetText();
-            } else if (tag == "w:t") {
+            } else if (tag == "w:t" || tag == "w:delText") {
                 RichTextRun run = props;
-                if (ctx.inFieldResult || ctx.field != RichTextRun::Field::Plain) run.field = ctx.field;
+                if (ctx.inFieldResult || ctx.field != RichTextRun::Field::Plain) {
+                    run.field = ctx.field;
+                    if (run.field != RichTextRun::Field::Plain) run.fieldArgument = ctx.fieldArgument;
+                }
                 run.text = child->GetText() ? child->GetText() : "";
                 for (size_t at; (at = run.text.find(kKeptSpaceMarker)) != std::string::npos;) {
                     run.text.replace(at, 3, " ");
@@ -772,7 +1083,19 @@ private:
                 ctx.runs.push_back(std::move(run));
             } else if (tag == "w:drawing" || tag == "w:pict") {
                 ParseDrawing(child, ctx);
+            } else if (tag == "w:footnoteReference" || tag == "w:endnoteReference") {
+                const bool endnote = tag == "w:endnoteReference";
+                RichTextRun run = props;
+                run.noteIndex = NoteFor(endnote ? RichNote::Kind::Endnote : RichNote::Kind::Footnote,
+                                        Attr(child, "w:id"));
+                run.superscript = true;
+                run.text = "*";                       // numbered once all are read
+                run.lineBreakBefore = ctx.pendingLineBreak;
+                ctx.pendingLineBreak = false;
+                ctx.runs.push_back(std::move(run));
             }
+            // w:footnoteRef / w:endnoteRef, the mark inside a note's own
+            // text, is drawn by the view: nothing to keep.
         }
     }
 
@@ -782,7 +1105,22 @@ private:
              child = child->NextSiblingElement()) {
             std::string tag = child->Name() ? child->Name() : "";
             if (tag == "w:r") {
+                const size_t before = ctx.runs.size();
                 ParseRun(child, linkTarget, ctx);
+                for (size_t r = before; r < ctx.runs.size(); r++) {
+                    ctx.runs[r].commentIds = activeComments_;
+                    ctx.runs[r].change = ctx.change;
+                    ctx.runs[r].revision = ctx.revision;
+                }
+            } else if (tag == "w:commentRangeStart") {
+                const int index = CommentFor(Attr(child, "w:id"));
+                if (std::find(activeComments_.begin(), activeComments_.end(), index) == activeComments_.end()) {
+                    activeComments_.push_back(index);
+                }
+            } else if (tag == "w:commentRangeEnd") {
+                const int index = CommentFor(Attr(child, "w:id"));
+                activeComments_.erase(std::remove(activeComments_.begin(), activeComments_.end(), index),
+                                      activeComments_.end());
             } else if (tag == "m:oMath") {
                 // Embedded equations become $latex$ text for the markdown
                 // pipeline (which renders inline math).
@@ -817,15 +1155,27 @@ private:
             } else if (tag == "w:fldSimple") {
                 // <w:fldSimple w:instr="PAGE"><w:r><w:t>3</w:t></w:r></w:fldSimple>
                 const RichTextRun::Field saved = ctx.field;
-                ctx.field = FieldForInstruction(Attr(child, "w:instr"));
+                const std::string savedArgument = ctx.fieldArgument;
+                ctx.field = FieldForInstruction(Attr(child, "w:instr"), &ctx.fieldArgument);
                 ParseInlineContainer(child, linkTarget, ctx);
                 ctx.field = saved;
-            } else if (tag == "w:ins" || tag == "w:smartTag" || tag == "w:sdt"
-                       || tag == "w:sdtContent") {
-                // Accepted tracked insertions and content-control wrappers.
+                ctx.fieldArgument = savedArgument;
+            } else if (tag == "w:ins" || tag == "w:del" || tag == "w:moveTo" || tag == "w:moveFrom") {
+                // Tracked changes: the text inside is marked inserted or
+                // deleted (a move is a deletion here and an insertion there).
+                const RichTextRun::Change savedChange = ctx.change;
+                const int savedRevision = ctx.revision;
+                ctx.change = (tag == "w:ins" || tag == "w:moveTo") ? RichTextRun::Change::Inserted
+                                                                    : RichTextRun::Change::Deleted;
+                ctx.revision = RevisionFor(Attr(child, "w:author"), Attr(child, "w:date"));
+                ParseInlineContainer(child, linkTarget, ctx);
+                ctx.change = savedChange;
+                ctx.revision = savedRevision;
+            } else if (tag == "w:smartTag" || tag == "w:sdt" || tag == "w:sdtContent") {
+                // Content-control wrappers.
                 ParseInlineContainer(child, linkTarget, ctx);
             }
-            // w:del (tracked deletions), bookmarks, proofing marks: skipped.
+            // Bookmark ends, proofing marks: nothing to keep.
         }
     }
 
@@ -917,7 +1267,70 @@ private:
         }
 
         InlineContext ctx;
+        // Formatting a heading, quote or code block has by its kind (heading
+        // bold, quote italics) stays the block's, not its runs' - as the ODT
+        // reader does, so Markdown does not double it up.
+        if (block.type != RichBlockType::Heading && block.type != RichBlockType::BlockQuote
+            && block.type != RichBlockType::CodeBlock) {
+            ctx.paragraphCharacter = ParagraphStyleCharacter(p);
+        }
+        block.styleId = ParagraphStyleId(p);
+        if (auto* pPr = p->FirstChildElement("w:pPr"); pPr && pPr->FirstChildElement("w:bidi")) {
+            block.rightToLeft = ToggleOn(pPr, "w:bidi");
+        }
+        // A table of contents entry: Word's "TOC 1".."TOC 9" styles (which
+        // a file may use without defining).
+        std::string rawStyle;
+        if (auto* pPr = p->FirstChildElement("w:pPr")) {
+            if (auto* pStyle = pPr->FirstChildElement("w:pStyle")) rawStyle = Attr(pStyle, "w:val");
+        }
+        if (!rawStyle.empty()) {
+            const std::string styleName = ToLower(styleNames_.count(rawStyle) ? styleNames_[rawStyle] : rawStyle);
+            for (const std::string& candidate : {styleName, ToLower(rawStyle)}) {
+                if (candidate.rfind("toc", 0) == 0) {
+                    const size_t digit = candidate.find_first_of("123456789");
+                    if (digit != std::string::npos && candidate.find_first_not_of(" 0123456789", 3) == std::string::npos) {
+                        block.tocLevel = candidate[digit] - '0';
+                        break;
+                    }
+                }
+            }
+        }
+        // A section ends with this paragraph.
+        tinyxml2::XMLElement* endsSection = nullptr;
+        if (auto* pPr = p->FirstChildElement("w:pPr")) endsSection = pPr->FirstChildElement("w:sectPr");
+        struct SectionEndGuard {
+            DocxReader* reader;
+            tinyxml2::XMLElement* sectPr;
+            ~SectionEndGuard() {
+                if (sectPr && reader->parsingBody_) {
+                    reader->sectionEnds_.push_back({static_cast<int>(reader->doc_->blocks.size()) - 1,
+                                                    ReadSectionSetup(sectPr)});
+                }
+            }
+        } sectionEndGuard{this, endsSection};
+        // Bookmarks started in the paragraph (or just before it) mark it.
+        block.bookmarks = std::move(pendingBookmarks_);
+        pendingBookmarks_.clear();
+        for (auto* child = p->FirstChildElement("w:bookmarkStart"); child;
+             child = child->NextSiblingElement("w:bookmarkStart")) {
+            const std::string name = Attr(child, "w:name");
+            if (!name.empty() && name != "_GoBack") block.bookmarks.push_back(name);
+        }
         ParseInlineContainer(p, "", ctx);
+        // A field's result may come in several runs ("Figure " "3"); the
+        // model's field is one run, whose text an update replaces whole.
+        for (size_t r = 1; r < ctx.runs.size();) {
+            RichTextRun& previous = ctx.runs[r - 1];
+            const RichTextRun& run = ctx.runs[r];
+            if (run.field != RichTextRun::Field::Plain && run.field == previous.field
+                && run.fieldArgument == previous.fieldArgument && !run.lineBreakBefore) {
+                previous.text += run.text;
+                ctx.runs.erase(ctx.runs.begin() + static_cast<std::ptrdiff_t>(r));
+            } else {
+                r++;
+            }
+        }
         block.runs = std::move(ctx.runs);
         ApplyParagraphMark(block, p->FirstChildElement("w:pPr"));
 
@@ -1074,6 +1487,7 @@ private:
                 for (auto* p = tc->FirstChildElement("w:p"); p;
                      p = p->NextSiblingElement("w:p")) {
                     if (!firstParagraph) ctx.pendingLineBreak = true;
+                    ctx.paragraphCharacter = ParagraphStyleCharacter(p);
                     // Alignment is a paragraph property; the cell takes its
                     // first paragraph's, and its frame where the cell has none.
                     if (firstParagraph) {
@@ -1270,6 +1684,69 @@ private:
         while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
     }
 
+    int NoteFor(RichNote::Kind kind, const std::string& id) {
+        const std::string key = (kind == RichNote::Kind::Endnote ? "e" : "f") + id;
+        auto found = noteIndexById_.find(key);
+        if (found != noteIndexById_.end()) return found->second;
+        RichNote note;
+        note.kind = kind;
+        doc_->notes.push_back(std::move(note));
+        const int index = static_cast<int>(doc_->notes.size()) - 1;
+        noteIndexById_[key] = index;
+        return index;
+    }
+
+    // word/footnotes.xml or word/endnotes.xml: each referenced note's
+    // paragraphs, read like the body's.
+    void LoadNotes(RichNote::Kind kind) {
+        const bool endnote = kind == RichNote::Kind::Endnote;
+        const char* prefix = endnote ? "e" : "f";
+        bool any = false;
+        for (const auto& [key, index] : noteIndexById_) any = any || key[0] == prefix[0];
+        if (!any) return;
+        std::string partName = endnote ? "word/endnotes.xml" : "word/footnotes.xml";
+        for (const auto& [id, rel] : relationships_) {
+            const std::string file = endnote ? "endnotes.xml" : "footnotes.xml";
+            if (!rel.external && rel.target.size() >= file.size()
+                && rel.target.compare(rel.target.size() - file.size(), file.size(), file) == 0) {
+                partName = ResolvePartPath(rel.target);
+            }
+        }
+        std::string xml;
+        if (!zip_.ReadEntry(partName, xml)) return;
+        ProtectWhitespaceRuns(xml);
+        tinyxml2::XMLDocument part;
+        if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        auto* root = part.RootElement();
+        if (!root) return;
+        const char* noteTag = endnote ? "w:endnote" : "w:footnote";
+        for (auto* note = root->FirstChildElement(noteTag); note; note = note->NextSiblingElement(noteTag)) {
+            auto found = noteIndexById_.find(prefix + std::string(Attr(note, "w:id")));
+            if (found == noteIndexById_.end()) continue;     // separators, unreferenced notes
+            const size_t start = doc_->blocks.size();
+            for (auto* elem = note->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
+                std::string tag = elem->Name() ? elem->Name() : "";
+                if (tag == "w:p") ParseParagraph(elem);
+                else if (tag == "w:tbl") ParseTable(elem);
+            }
+            std::vector<RichDocBlock> blocks(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                                             std::make_move_iterator(doc_->blocks.end()));
+            doc_->blocks.resize(start);
+            // The space Word puts after the note's own mark.
+            if (!blocks.empty() && !blocks.front().runs.empty()) {
+                std::string& text = blocks.front().runs.front().text;
+                const size_t lead = text.find_first_not_of(' ');
+                text.erase(0, lead == std::string::npos ? text.size() : lead);
+                if (text.empty()) blocks.front().runs.erase(blocks.front().runs.begin());
+            }
+            if (blocks.empty()) blocks.emplace_back();
+            if (found->second < static_cast<int>(doc_->notes.size())) {
+                doc_->notes[static_cast<size_t>(found->second)].blocks = std::move(blocks);
+            }
+        }
+        doc_->UpdateNoteMarks();
+    }
+
     void LoadMetadata() {
         std::string coreXml;
         if (!zip_.ReadEntry("docProps/core.xml", coreXml)) return;
@@ -1359,6 +1836,8 @@ private:
         return "word/media/image" + std::to_string(mediaIndex + 1) + "." + ext;
     }
 
+    int bookmarkId_ = 0;
+
     int HyperlinkRelIndex(const std::string& url) {
         for (size_t i = 0; i < hyperlinks_.size(); ++i) {
             if (hyperlinks_[i] == url) return static_cast<int>(i);
@@ -1367,14 +1846,46 @@ private:
         return static_cast<int>(hyperlinks_.size()) - 1;
     }
 
-    static void WriteRunProperties(std::ostringstream& xml, const RichTextRun& run,
-                                   bool asHyperlink) {
+    // What the styles of the paragraph being written give its text: a run
+    // that is *not* bold where they are must say so, or Word shows it bold.
+    RichStyleCharacter paragraphBase_;
+
+    RichStyleCharacter ParagraphBase(const RichDocBlock& block) const {
+        std::string id = block.styleId;
+        if (id.empty() || !doc_->FindStyle(id)) {
+            id = block.type == RichBlockType::Heading ? "Heading" + std::to_string(std::clamp(block.headingLevel, 1, 6))
+               : block.type == RichBlockType::BlockQuote ? "Quote" : "Normal";
+        }
+        if (doc_->FindStyle(id)) {
+            RichStyleCharacter base = doc_->ResolveStyle(id).character;
+            // A heading's bold and a quote's italics belong to the block's
+            // kind (its runs are read without them): never switched off here.
+            if (block.type == RichBlockType::Heading) base.bold.reset();
+            if (block.type == RichBlockType::BlockQuote) base.italic.reset();
+            return base;
+        }
+        return RichStyleCharacter{};              // the writer's own styles: nothing to undo
+    }
+
+    void WriteRunProperties(std::ostringstream& xml, const RichTextRun& run, bool asHyperlink) const {
+        RichStyleCharacter base = paragraphBase_;
+        if (!run.characterStyleId.empty() && doc_->FindStyle(run.characterStyleId)) {
+            base.Overlay(doc_->ResolveStyle(run.characterStyleId).character);
+        }
+        const bool boldOff = !run.bold && base.bold.value_or(false);
+        const bool italicOff = !run.italic && base.italic.value_or(false);
+        const bool strikeOff = !run.strikethrough && base.strikethrough.value_or(false);
+        const bool underlineOff = !run.underline && !asHyperlink && base.underline.value_or(false);
         bool hasProps = run.bold || run.italic || run.underline || run.strikethrough
                         || run.code || run.subscript || run.superscript
                         || !run.color.empty() || !run.fontFamily.empty()
-                        || run.fontSizePt > 0 || !run.highlightColor.empty() || asHyperlink;
+                        || run.fontSizePt > 0 || !run.highlightColor.empty() || asHyperlink
+                        || !run.characterStyleId.empty() || boldOff || italicOff || strikeOff || underlineOff;
         if (!hasProps) return;
         xml << "<w:rPr>";
+        // The character style first (CT_RPr's order); the run's own
+        // properties after it are what it looks like in any case.
+        if (!run.characterStyleId.empty()) xml << "<w:rStyle w:val=\"" << EscapeXml(run.characterStyleId) << "\"/>";
         if (run.code) {
             xml << "<w:rFonts w:ascii=\"Courier New\" w:hAnsi=\"Courier New\"/>";
         } else if (!run.fontFamily.empty()) {
@@ -1384,8 +1895,11 @@ private:
         // In the order CT_RPr requires: b, i, strike, color, sz, u, shd,
         // vertAlign (Word rejects a run whose properties are out of order).
         if (run.bold) xml << "<w:b/>";
+        else if (boldOff) xml << "<w:b w:val=\"0\"/>";
         if (run.italic) xml << "<w:i/>";
+        else if (italicOff) xml << "<w:i w:val=\"0\"/>";
         if (run.strikethrough) xml << "<w:strike/>";
+        else if (strikeOff) xml << "<w:strike w:val=\"0\"/>";
         if (!run.color.empty()) {
             std::string hex = run.color;
             if (!hex.empty() && hex[0] == '#') hex = hex.substr(1);
@@ -1398,6 +1912,7 @@ private:
                 << "<w:szCs w:val=\"" << static_cast<int>(run.fontSizePt * 2 + 0.5f) << "\"/>";
         }
         if (run.underline || asHyperlink) xml << "<w:u w:val=\"single\"/>";
+        else if (underlineOff) xml << "<w:u w:val=\"none\"/>";
         // Any highlight colour, as character shading (w:highlight knows only
         // sixteen named colours).
         if (run.highlightColor.size() == 7) {
@@ -1410,11 +1925,13 @@ private:
     }
 
     // Splits run text on tabs/newlines into w:t / w:tab / w:br sequence.
-    static void WriteRunText(std::ostringstream& xml, const std::string& text) {
+    // `deleted`: the text of a tracked deletion, which Word keeps in w:delText.
+    static void WriteRunText(std::ostringstream& xml, const std::string& text, bool deleted = false) {
         std::string pending;
         auto flush = [&]() {
             if (pending.empty()) return;
-            xml << "<w:t xml:space=\"preserve\">" << EscapeXml(pending) << "</w:t>";
+            xml << (deleted ? "<w:delText xml:space=\"preserve\">" : "<w:t xml:space=\"preserve\">")
+                << EscapeXml(pending) << (deleted ? "</w:delText>" : "</w:t>");
             pending.clear();
         };
         for (char c : text) {
@@ -1425,21 +1942,114 @@ private:
         flush();
     }
 
+    static std::string FieldInstruction(const RichTextRun& run) {
+        switch (run.field) {
+            case RichTextRun::Field::PageNumber: return " PAGE ";
+            case RichTextRun::Field::PageCount: return " NUMPAGES ";
+            case RichTextRun::Field::Sequence: return " SEQ " + run.fieldArgument + " \\* ARABIC ";
+            case RichTextRun::Field::Reference: return " REF " + run.fieldArgument + " \\h ";
+            case RichTextRun::Field::PageReference: return " PAGEREF " + run.fieldArgument + " \\h ";
+            default: return "";
+        }
+    }
+
+    // Comment ranges open where the text being written is: a range starts at
+    // the first run under the comment and ends before the first after it
+    // that is not, which may be paragraphs later.
+    std::vector<int> openComments_;
+    std::set<int> writtenComments_;
+
+    static void WriteCommentEnd(std::ostringstream& xml, int id) {
+        xml << "<w:commentRangeEnd w:id=\"" << id << "\"/><w:r>"
+            << "<w:commentReference w:id=\"" << id << "\"/></w:r>";
+    }
+
+    void UpdateOpenComments(std::ostringstream& xml, const std::vector<int>& wanted) {
+        for (size_t i = 0; i < openComments_.size();) {
+            const int id = openComments_[i];
+            if (std::find(wanted.begin(), wanted.end(), id) == wanted.end()) {
+                WriteCommentEnd(xml, id);
+                openComments_.erase(openComments_.begin() + static_cast<std::ptrdiff_t>(i));
+            } else {
+                i++;
+            }
+        }
+        for (int id : wanted) {
+            if (id < 0 || id >= static_cast<int>(doc_->comments.size())) continue;
+            if (std::find(openComments_.begin(), openComments_.end(), id) != openComments_.end()) continue;
+            if (writtenComments_.count(id)) continue;       // one range per comment
+            xml << "<w:commentRangeStart w:id=\"" << id << "\"/>";
+            openComments_.push_back(id);
+            writtenComments_.insert(id);
+        }
+    }
+
+    std::string BuildCommentsXml() const {
+        std::ostringstream xml;
+        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:comments " << kPartNamespaces << ">";
+        for (int id : writtenComments_) {
+            const RichComment& comment = doc_->comments[static_cast<size_t>(id)];
+            xml << "<w:comment w:id=\"" << id << "\" w:author=\"" << EscapeXml(comment.author) << "\"";
+            if (!comment.date.empty()) xml << " w:date=\"" << EscapeXml(comment.date) << "\"";
+            if (!comment.initials.empty()) xml << " w:initials=\"" << EscapeXml(comment.initials) << "\"";
+            xml << ">";
+            size_t start = 0;
+            do {
+                const size_t end = comment.text.find('\n', start);
+                const std::string line = comment.text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                xml << "<w:p><w:r><w:t xml:space=\"preserve\">" << EscapeXml(line) << "</w:t></w:r></w:p>";
+                start = end == std::string::npos ? std::string::npos : end + 1;
+            } while (start != std::string::npos);
+            xml << "</w:comment>";
+        }
+        xml << "</w:comments>\n";
+        return xml.str();
+    }
+
     void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
         for (const auto& run : runs) {
+            UpdateOpenComments(xml, run.commentIds);
             bool isLink = !run.linkTarget.empty();
-            if (isLink) {
+            if (isLink && run.linkTarget[0] == '#') {
+                // A link inside the document, to a bookmark.
+                xml << "<w:hyperlink w:anchor=\"" << EscapeXml(run.linkTarget.substr(1)) << "\">";
+            } else if (isLink) {
                 xml << "<w:hyperlink r:id=\"rIdLink"
                     << (HyperlinkRelIndex(run.linkTarget) + 1) << "\">";
             }
-            if (run.field != RichTextRun::Field::Plain) {
+            // A tracked change wraps the run: w:ins, or w:del with its text in
+            // w:delText.
+            std::string closeChange;
+            if (run.change != RichTextRun::Change::Unchanged) {
+                const bool inserted = run.change == RichTextRun::Change::Inserted;
+                const RichRevision* revision = run.revision >= 0 && run.revision < static_cast<int>(doc_->revisions.size())
+                                             ? &doc_->revisions[static_cast<size_t>(run.revision)] : nullptr;
+                xml << (inserted ? "<w:ins" : "<w:del") << " w:id=\"" << ++revisionId_ << "\" w:author=\""
+                    << EscapeXml(revision ? revision->author : "") << "\"";
+                if (revision && !revision->date.empty()) xml << " w:date=\"" << EscapeXml(revision->date) << "\"";
+                xml << ">";
+                closeChange = inserted ? "</w:ins>" : "</w:del>";
+            }
+            if (run.field != RichTextRun::Field::Plain && closeChange.empty()) {
                 // A page number or count: a simple field showing its last value.
-                xml << "<w:fldSimple w:instr=\""
-                    << (run.field == RichTextRun::Field::PageNumber ? " PAGE " : " NUMPAGES ")
-                    << "\"><w:r>";
+                xml << "<w:fldSimple w:instr=\"" << EscapeXml(FieldInstruction(run)) << "\"><w:r>";
                 WriteRunProperties(xml, run, false);
                 WriteRunText(xml, run.text);
                 xml << "</w:r></w:fldSimple>";
+                if (isLink) xml << "</w:hyperlink>";
+                continue;
+            }
+            if (run.IsNoteReference()) {
+                auto id = noteIds_.find(run.noteIndex);
+                if (id != noteIds_.end()) {
+                    const bool endnote = doc_->notes[static_cast<size_t>(run.noteIndex)].kind == RichNote::Kind::Endnote;
+                    xml << "<w:r>";
+                    WriteRunProperties(xml, run, false);
+                    if (run.lineBreakBefore) xml << "<w:br/>";
+                    xml << (endnote ? "<w:endnoteReference w:id=\"" : "<w:footnoteReference w:id=\"")
+                        << id->second << "\"/></w:r>";
+                }
+                xml << closeChange;
                 if (isLink) xml << "</w:hyperlink>";
                 continue;
             }
@@ -1447,16 +2057,18 @@ private:
             if (run.IsInlineImage()) {
                 if (run.lineBreakBefore) xml << "<w:br/>";
                 WriteDrawing(xml, run.mediaIndex, run.imageWidthPt, run.imageHeightPt,
-                             run.imageAltText, ++inlineDrawingId_);
+                             run.imageAltText, ++inlineDrawingId_,
+                             run.IsFloatingImage() ? &run : nullptr);
             } else {
                 WriteRunProperties(xml, run, isLink);
                 if (run.lineBreakBefore) xml << "<w:br/>";
-                WriteRunText(xml, run.text);
+                WriteRunText(xml, run.text, run.IsDeleted());
             }
-            xml << "</w:r>";
+            xml << "</w:r>" << closeChange;
             if (isLink) xml << "</w:hyperlink>";
         }
     }
+    int revisionId_ = 1000;
 
     static const char* JcValue(RichTextAlign align) {
         switch (align) {
@@ -1479,7 +2091,7 @@ private:
                 if (!border.IsVisible()) return;
                 const long eighths = std::max(2L, std::lround(border.widthPt * 8.0f));
                 const std::string color = border.color.size() == 7 ? border.color.substr(1) : "auto";
-                pPr << "<w:" << name << " w:val=\"single\" w:sz=\"" << std::to_string(eighths)
+                pPr << "<w:" << name << " w:val=\"" << RichBorderStyleWordName(border.style) << "\" w:sz=\"" << std::to_string(eighths)
                     << "\" w:space=\"4\" w:color=\"" << EscapeXml(color) << "\"/>";
             };
             if (block.paragraphBorderTop.IsVisible() || block.paragraphBorderBottom.IsVisible()
@@ -1506,6 +2118,7 @@ private:
             }
             pPr << "</w:tabs>";
         }
+        if (block.rightToLeft) pPr << "<w:bidi/>";
         if (block.spaceBeforePt >= 0.0f || block.spaceAfterPt >= 0.0f || block.lineSpacing > 0.0f
             || block.lineHeightPt > 0.0f) {
             pPr << "<w:spacing";
@@ -1532,9 +2145,16 @@ private:
     }
 
     void WriteParagraph(std::ostringstream& xml, const RichDocBlock& block) {
+        paragraphBase_ = ParagraphBase(block);
         xml << "<w:p>";
         std::ostringstream pPr;
-        if (block.type == RichBlockType::Heading) {
+        // The paragraph's own named style, when it has one the file carries.
+        const bool named = !block.styleId.empty() && doc_->FindStyle(block.styleId);
+        if (named && block.type != RichBlockType::ListItem && block.type != RichBlockType::HorizontalRule) {
+            pPr << "<w:pStyle w:val=\"" << EscapeXml(block.styleId) << "\"/>";
+        } else if (block.tocLevel > 0 && block.type == RichBlockType::Paragraph) {
+            pPr << "<w:pStyle w:val=\"TOC" << std::clamp(block.tocLevel, 1, 9) << "\"/>";
+        } else if (block.type == RichBlockType::Heading) {
             pPr << "<w:pStyle w:val=\"Heading" << std::clamp(block.headingLevel, 1, 6)
                 << "\"/>";
         } else if (block.type == RichBlockType::BlockQuote) {
@@ -1567,8 +2187,15 @@ private:
             }
             pPr << "</w:rPr>";
         }
+        pPr << pendingSectPr_;                // the section this paragraph ends
+        pendingSectPr_.clear();
         std::string pPrStr = pPr.str();
         if (!pPrStr.empty()) xml << "<w:pPr>" << pPrStr << "</w:pPr>";
+        for (const std::string& name : block.bookmarks) {
+            const int id = ++bookmarkId_;
+            xml << "<w:bookmarkStart w:id=\"" << id << "\" w:name=\"" << EscapeXml(name)
+                << "\"/><w:bookmarkEnd w:id=\"" << id << "\"/>";
+        }
 
         if (block.type == RichBlockType::CodeBlock) {
             // Collapse per-line runs into one monospace run with breaks.
@@ -1594,14 +2221,15 @@ private:
     // The <w:drawing> element alone. A picture is the same markup whether it
     // is a paragraph of its own or sits inside a line; only the wrapping differs.
     void WriteDrawing(std::ostringstream& xml, int mediaIndex, float widthPtIn,
-                      float heightPtIn, const std::string& altText, int drawingId) {
+                      float heightPtIn, const std::string& altText, int drawingId,
+                      const RichTextRun* floating = nullptr) {
         if (mediaIndex < 0 || mediaIndex >= static_cast<int>(doc_->media.size())) return;
         RichDocBlock shim;
         shim.mediaIndex = mediaIndex;
         shim.imageWidthPt = widthPtIn;
         shim.imageHeightPt = heightPtIn;
         shim.imageAltText = altText;
-        WriteDrawingElement(xml, shim, drawingId);
+        WriteDrawingElement(xml, shim, drawingId, floating);
     }
 
     void WriteImage(std::ostringstream& xml, const RichDocBlock& block, int drawingId) {
@@ -1613,7 +2241,8 @@ private:
         xml << "</w:r></w:p>\n";
     }
 
-    void WriteDrawingElement(std::ostringstream& xml, const RichDocBlock& block, int drawingId) {
+    void WriteDrawingElement(std::ostringstream& xml, const RichDocBlock& block, int drawingId,
+                             const RichTextRun* floating = nullptr) {
         float widthPt = block.imageWidthPt;
         float heightPt = block.imageHeightPt;
         if (widthPt <= 0 || heightPt <= 0) {
@@ -1631,10 +2260,43 @@ private:
         std::string name = block.imageAltText.empty()
             ? "Image " + std::to_string(drawingId) : block.imageAltText;
 
-        xml << "<w:drawing>"
-            << "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
-            << "<wp:extent cx=\"" << cx << "\" cy=\"" << cy << "\"/>"
-            << "<wp:docPr id=\"" << drawingId << "\" name=\"" << EscapeXml(name) << "\"/>"
+        xml << "<w:drawing>";
+        if (floating) {
+            // A floating picture: where it sits and how text wraps round it,
+            // in the element order CT_Anchor requires.
+            using Wrap = RichTextRun::ImageWrap;
+            const Wrap wrap = floating->imageWrap;
+            const long long gap = static_cast<long long>(9.0f * kEmuPerPoint);      // Word's 0.32 cm
+            xml << "<wp:anchor distT=\"0\" distB=\"0\" distL=\"" << gap << "\" distR=\"" << gap
+                << "\" simplePos=\"0\" relativeHeight=\"" << (251658240 + drawingId) << "\" behindDoc=\""
+                << (wrap == Wrap::BehindText ? 1 : 0)
+                << "\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">"
+                << "<wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"column\">";
+            switch (floating->imageFloatAlign) {
+                case RichTextAlign::Right:  xml << "<wp:align>right</wp:align>"; break;
+                case RichTextAlign::Center: xml << "<wp:align>center</wp:align>"; break;
+                case RichTextAlign::Default:
+                    xml << "<wp:posOffset>" << static_cast<long long>(floating->imageOffsetXPt * kEmuPerPoint)
+                        << "</wp:posOffset>";
+                    break;
+                default: xml << "<wp:align>left</wp:align>"; break;
+            }
+            xml << "</wp:positionH><wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>"
+                << static_cast<long long>(floating->imageOffsetYPt * kEmuPerPoint)
+                << "</wp:posOffset></wp:positionV>"
+                << "<wp:extent cx=\"" << cx << "\" cy=\"" << cy << "\"/>"
+                << "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>";
+            switch (wrap) {
+                case Wrap::TopAndBottom: xml << "<wp:wrapTopAndBottom/>"; break;
+                case Wrap::BehindText:
+                case Wrap::InFrontOfText: xml << "<wp:wrapNone/>"; break;
+                default: xml << "<wp:wrapSquare wrapText=\"bothSides\"/>"; break;
+            }
+        } else {
+            xml << "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
+                << "<wp:extent cx=\"" << cx << "\" cy=\"" << cy << "\"/>";
+        }
+        xml << "<wp:docPr id=\"" << drawingId << "\" name=\"" << EscapeXml(name) << "\"/>"
             << "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
             << "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
             << "<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
@@ -1645,7 +2307,8 @@ private:
             << "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" << cx
             << "\" cy=\"" << cy << "\"/></a:xfrm>"
             << "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>"
-            << "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>";
+            << "</pic:pic></a:graphicData></a:graphic>"
+            << (floating ? "</wp:anchor>" : "</wp:inline>") << "</w:drawing>";
     }
 
     // w:tcBorders then w:shd, in the order CT_TcPr requires (after vMerge).
@@ -1658,7 +2321,7 @@ private:
             }
             const long eighths = std::max(2L, std::lround(border.widthPt * 8.0f));
             const std::string color = border.color.size() == 7 ? border.color.substr(1) : "auto";
-            xml << "<w:" << name << " w:val=\"single\" w:sz=\"" << std::to_string(eighths)
+            xml << "<w:" << name << " w:val=\"" << RichBorderStyleWordName(border.style) << "\" w:sz=\"" << std::to_string(eighths)
                 << "\" w:space=\"0\" w:color=\"" << EscapeXml(color) << "\"/>";
         };
         side("top", cell.borderTop);
@@ -1788,6 +2451,7 @@ private:
                 if (row.header) {
                     for (auto& run : runs) run.bold = true;
                 }
+                paragraphBase_ = ParagraphBase(RichDocBlock{});     // a cell's paragraph is Normal
                 WriteRuns(xml, runs);
                 xml << "</w:p></w:tc>";
             }
@@ -1810,6 +2474,13 @@ private:
             if (block.type == RichBlockType::ListItem && WordFormatInternal::StartsNewList(blocks, index)) {
                 currentListNumId_ = AddListDefinition(index);
             }
+            // The last block of a section carries the section's properties;
+            // a table or picture cannot, so a paragraph after it does.
+            const bool endsSection = &blocks == &doc_->blocks && index + 1 < blocks.size()
+                                     && blocks[index + 1].sectionStart;
+            const bool viaParagraph = block.type != RichBlockType::Table && block.type != RichBlockType::Image
+                                      && block.type != RichBlockType::PageBreak;
+            if (endsSection && viaParagraph) pendingSectPr_ = SectionBreakXml(doc_->SectionFor(static_cast<int>(index)));
             switch (block.type) {
                 case RichBlockType::Table:
                     WriteTable(body, block);
@@ -1830,9 +2501,52 @@ private:
                     WriteParagraph(body, block);
                     break;
             }
+            if (endsSection && !viaParagraph) {
+                body << "<w:p><w:pPr>" << SectionBreakXml(doc_->SectionFor(static_cast<int>(index))) << "</w:pPr></w:p>\n";
+            }
+            pendingSectPr_.clear();
         }
         blocks_ = savedBlocks;
         return body.str();
+    }
+
+    // Sections: a paragraph's w:sectPr ends one. Its type says how the section
+    // it ends began (on a new page or continuing the page).
+    std::string pendingSectPr_;               // for the paragraph being written
+
+    static std::string SectionColumnsXml(const RichSectionSetup& section) {
+        if (section.columns <= 1) return "";
+        return "<w:cols w:num=\"" + std::to_string(section.columns) + "\" w:space=\""
+             + std::to_string(std::lround(section.columnGapPt * 20.0f)) + "\"/>";
+    }
+
+    static std::string SectionTypeXml(const RichSectionSetup& section) {
+        return std::string("<w:type w:val=\"") + (section.newPage ? "nextPage" : "continuous") + "\"/>";
+    }
+
+    std::string SectionBreakXml(const RichSectionSetup& section) const {
+        return "<w:sectPr>" + SectionTypeXml(section) + PageGeometryXml() + SectionColumnsXml(section) + "</w:sectPr>";
+    }
+
+    // The page size and margins, Word's defaults (A4, 2 cm margins) where
+    // the document states no page.
+    std::string PageGeometryXml() const {
+        const RichPageSetup& page = doc_->page;
+        auto twips = [](float pt) { return std::lround(pt * 20.0f); };
+        const bool hasPage = page.HasPage();
+        std::ostringstream xml;
+        xml << "<w:pgSz w:w=\"" << (hasPage ? twips(page.widthPt) : 11906)
+            << "\" w:h=\"" << (hasPage ? twips(page.heightPt) : 16838) << "\""
+            << (hasPage && page.widthPt > page.heightPt ? " w:orient=\"landscape\"" : "") << "/>";
+        const float headerTop = page.headerTopPt > 0.0f ? page.headerTopPt : 35.45f;
+        const float footerBottom = page.footerBottomPt > 0.0f ? page.footerBottomPt : 35.45f;
+        xml << "<w:pgMar w:top=\"" << (hasPage ? twips(page.marginTopPt) : 1134)
+            << "\" w:right=\"" << (hasPage ? twips(page.marginRightPt) : 1134)
+            << "\" w:bottom=\"" << (hasPage ? twips(page.marginBottomPt) : 1134)
+            << "\" w:left=\"" << (hasPage ? twips(page.marginLeftPt) : 1134)
+            << "\" w:header=\"" << twips(headerTop) << "\" w:footer=\"" << twips(footerBottom)
+            << "\" w:gutter=\"0\"/>";
+        return xml.str();
     }
 
     static constexpr const char* kPartNamespaces =
@@ -1843,6 +2557,64 @@ private:
     // The headers and footers as their own parts, referenced from sectPr.
     struct FurniturePart { std::string name; std::string kind; std::string type; std::string xml; };
     std::vector<FurniturePart> furnitureParts_;
+
+    // Footnote and endnote ids by note, from 1 in the order the references
+    // appear (0 and -1 are Word's separator notes). Only notes something
+    // refers to are written.
+    std::map<int, int> noteIds_;
+    void NumberNotes() {
+        int footnotes = 0, endnotes = 0;
+        for (const UCRichDocument::NoteReference& reference : doc_->NoteReferences()) {
+            if (noteIds_.count(reference.noteIndex)) continue;
+            const bool endnote = doc_->notes[static_cast<size_t>(reference.noteIndex)].kind == RichNote::Kind::Endnote;
+            noteIds_[reference.noteIndex] = endnote ? ++endnotes : ++footnotes;
+        }
+    }
+
+    // footnotes.xml / endnotes.xml, as parts beside the headers.
+    void AddNotesPart(RichNote::Kind kind) {
+        const bool endnote = kind == RichNote::Kind::Endnote;
+        const std::string element = endnote ? "endnote" : "footnote";
+        std::vector<std::pair<int, int>> ordered;     // id, note
+        for (const auto& [note, id] : noteIds_) {
+            if (doc_->notes[static_cast<size_t>(note)].kind == kind) ordered.emplace_back(id, note);
+        }
+        if (ordered.empty()) return;
+        std::sort(ordered.begin(), ordered.end());
+        std::ostringstream xml;
+        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:" << element << "s "
+            << kPartNamespaces << ">"
+            << "<w:" << element << " w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:"
+            << element << ">"
+            << "<w:" << element << " w:type=\"continuationSeparator\" w:id=\"0\"><w:p><w:r>"
+               "<w:continuationSeparator/></w:r></w:p></w:" << element << ">";
+        for (const auto& [id, note] : ordered) {
+            std::vector<RichDocBlock> blocks = doc_->notes[static_cast<size_t>(note)].blocks;
+            if (blocks.empty()) blocks.emplace_back();
+            std::string body = WriteBlocks(blocks);
+            // The note's own mark opens its first paragraph, after its
+            // properties.
+            const std::string mark = "<w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:" + element
+                                   + "Ref/></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r>";
+            size_t at = std::string::npos;
+            for (size_t p = body.find("<w:p"); p != std::string::npos; p = body.find("<w:p", p + 1)) {
+                const char next = p + 4 < body.size() ? body[p + 4] : '\0';
+                if (next == '>' || next == ' ') { at = p; break; }
+            }
+            if (at != std::string::npos) {
+                size_t insert = body.find('>', at) + 1;
+                if (body.compare(insert, 7, "<w:pPr>") == 0) insert = body.find("</w:pPr>", insert) + 8;
+                body.insert(insert, mark);
+            }
+            xml << "<w:" << element << " w:id=\"" << id << "\">" << body << "</w:" << element << ">";
+        }
+        xml << "</w:" << element << "s>\n";
+        FurniturePart part;
+        part.kind = element + "s";
+        part.name = element + "s.xml";
+        part.xml = xml.str();
+        furnitureParts_.push_back(std::move(part));
+    }
 
     std::string SectionPropertiesXml() {
         const UCRichDocument& doc = *doc_;
@@ -1865,31 +2637,41 @@ private:
         part(doc.pageFurniture.footer, "footer", "default");
         if (doc.firstPageDiffers) part(doc.firstPageFurniture.footer, "footer", "first");
 
-        // Word's defaults (A4, 2 cm margins) where the document states no page.
-        const RichPageSetup& page = doc.page;
-        auto twips = [](float pt) { return std::lround(pt * 20.0f); };
-        const bool hasPage = page.HasPage();
+        // The last section's: the one the body's own w:sectPr ends.
+        const RichSectionSetup& last = doc.SectionFor(static_cast<int>(doc.blocks.size()) - 1);
+        const bool sectioned = doc.HasColumns() || std::any_of(doc.blocks.begin(), doc.blocks.end(),
+                                                               [](const RichDocBlock& b) { return b.sectionStart; });
         std::ostringstream xml;
         xml << "<w:sectPr>" << refs.str();
-        xml << "<w:pgSz w:w=\"" << (hasPage ? twips(page.widthPt) : 11906)
-            << "\" w:h=\"" << (hasPage ? twips(page.heightPt) : 16838) << "\""
-            << (hasPage && page.widthPt > page.heightPt ? " w:orient=\"landscape\"" : "") << "/>";
-        const float headerTop = page.headerTopPt > 0.0f ? page.headerTopPt : 35.45f;
-        const float footerBottom = page.footerBottomPt > 0.0f ? page.footerBottomPt : 35.45f;
-        xml << "<w:pgMar w:top=\"" << (hasPage ? twips(page.marginTopPt) : 1134)
-            << "\" w:right=\"" << (hasPage ? twips(page.marginRightPt) : 1134)
-            << "\" w:bottom=\"" << (hasPage ? twips(page.marginBottomPt) : 1134)
-            << "\" w:left=\"" << (hasPage ? twips(page.marginLeftPt) : 1134)
-            << "\" w:header=\"" << twips(headerTop) << "\" w:footer=\"" << twips(footerBottom)
-            << "\" w:gutter=\"0\"/>";
+        if (sectioned) xml << SectionTypeXml(last);
+        xml << PageGeometryXml() << SectionColumnsXml(last);
         if (doc.firstPageDiffers) xml << "<w:titlePg/>";
         xml << "</w:sectPr>";
         return xml.str();
     }
 
     std::string BuildDocumentXml() {
-        const std::string body = WriteBlocks(doc_->blocks);
+        NumberNotes();
+        std::string body = WriteBlocks(doc_->blocks);
+        if (!openComments_.empty()) {
+            // A comment running to the end of the document ends here.
+            std::ostringstream close;
+            close << "<w:p>";
+            for (int id : openComments_) WriteCommentEnd(close, id);
+            close << "</w:p>\n";
+            openComments_.clear();
+            body += close.str();
+        }
         const std::string sectPr = SectionPropertiesXml();
+        if (!writtenComments_.empty()) {
+            FurniturePart part;
+            part.kind = "comments";
+            part.name = "comments.xml";
+            part.xml = BuildCommentsXml();
+            furnitureParts_.push_back(std::move(part));
+        }
+        AddNotesPart(RichNote::Kind::Footnote);
+        AddNotesPart(RichNote::Kind::Endnote);
         std::ostringstream xml;
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<w:document "
@@ -2023,18 +2805,80 @@ private:
         return xml.str();
     }
 
-    static std::string BuildStylesXml() {
+    // One named style as Word writes it: name, what it is based on and what
+    // follows it, then its paragraph and character properties, each in the
+    // element order the schema requires.
+    static void WriteNamedStyle(std::ostringstream& xml, const RichStyle& style, bool isDefault) {
+        const bool paragraph = style.kind == RichStyle::Kind::Paragraph;
+        xml << "<w:style w:type=\"" << (paragraph ? "paragraph" : "character") << "\""
+            << (isDefault ? " w:default=\"1\"" : "") << " w:styleId=\"" << EscapeXml(style.id) << "\">"
+            << "<w:name w:val=\"" << EscapeXml(style.name.empty() ? style.id : style.name) << "\"/>";
+        if (!style.basedOn.empty()) xml << "<w:basedOn w:val=\"" << EscapeXml(style.basedOn) << "\"/>";
+        if (paragraph && !style.nextStyle.empty()) xml << "<w:next w:val=\"" << EscapeXml(style.nextStyle) << "\"/>";
+        if (paragraph && !style.paragraph.IsEmpty()) {
+            const RichStyleParagraph& p = style.paragraph;
+            xml << "<w:pPr>";
+            if (p.headingLevel && *p.headingLevel > 0) xml << "<w:keepNext/>";
+            if (p.spaceBeforePt || p.spaceAfterPt || p.lineSpacing) {
+                xml << "<w:spacing";
+                if (p.spaceBeforePt) xml << " w:before=\"" << Twips(*p.spaceBeforePt) << "\"";
+                if (p.spaceAfterPt) xml << " w:after=\"" << Twips(*p.spaceAfterPt) << "\"";
+                if (p.lineSpacing) xml << " w:line=\"" << std::lround(*p.lineSpacing * 240.0f) << "\" w:lineRule=\"auto\"";
+                xml << "/>";
+            }
+            if (p.leftIndentPt || p.rightIndentPt || p.firstLineIndentPt) {
+                xml << "<w:ind";
+                if (p.leftIndentPt) xml << " w:left=\"" << Twips(*p.leftIndentPt) << "\"";
+                if (p.rightIndentPt) xml << " w:right=\"" << Twips(*p.rightIndentPt) << "\"";
+                if (p.firstLineIndentPt && *p.firstLineIndentPt >= 0.0f) xml << " w:firstLine=\"" << Twips(*p.firstLineIndentPt) << "\"";
+                if (p.firstLineIndentPt && *p.firstLineIndentPt < 0.0f) xml << " w:hanging=\"" << Twips(-*p.firstLineIndentPt) << "\"";
+                xml << "/>";
+            }
+            if (p.align && *p.align != RichTextAlign::Default) {
+                const char* jc = *p.align == RichTextAlign::Center ? "center" : *p.align == RichTextAlign::Right ? "right"
+                               : *p.align == RichTextAlign::Justify ? "both" : "left";
+                xml << "<w:jc w:val=\"" << jc << "\"/>";
+            }
+            if (p.headingLevel && *p.headingLevel > 0) xml << "<w:outlineLvl w:val=\"" << (*p.headingLevel - 1) << "\"/>";
+            xml << "</w:pPr>";
+        }
+        if (!style.character.IsEmpty()) {
+            const RichStyleCharacter& c = style.character;
+            xml << "<w:rPr>";
+            const std::string family = c.code && *c.code ? std::string("Courier New") : c.fontFamily.value_or("");
+            if (!family.empty()) xml << "<w:rFonts w:ascii=\"" << EscapeXml(family) << "\" w:hAnsi=\"" << EscapeXml(family) << "\"/>";
+            if (c.bold) xml << (*c.bold ? "<w:b/>" : "<w:b w:val=\"0\"/>");
+            if (c.italic) xml << (*c.italic ? "<w:i/>" : "<w:i w:val=\"0\"/>");
+            if (c.strikethrough) xml << (*c.strikethrough ? "<w:strike/>" : "<w:strike w:val=\"0\"/>");
+            if (c.color && c.color->size() == 7) xml << "<w:color w:val=\"" << EscapeXml(c.color->substr(1)) << "\"/>";
+            if (c.fontSizePt && *c.fontSizePt > 0.0f) {
+                const long half = std::lround(*c.fontSizePt * 2.0f);
+                xml << "<w:sz w:val=\"" << half << "\"/><w:szCs w:val=\"" << half << "\"/>";
+            }
+            if (c.underline) xml << (*c.underline ? "<w:u w:val=\"single\"/>" : "<w:u w:val=\"none\"/>");
+            xml << "</w:rPr>";
+        }
+        xml << "</w:style>\n";
+    }
+
+    std::string BuildStylesXml() const {
         std::ostringstream xml;
+        // The styles the writer names itself, unless the document has its own
+        // of that name - then the document's is written instead.
+        auto documentHas = [&](const std::string& id) { return doc_->FindStyle(id) != nullptr; };
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
             << "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">\n"
             << "<w:docDefaults><w:rPrDefault><w:rPr>"
                "<w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\"/>"
                "<w:sz w:val=\"22\"/><w:szCs w:val=\"22\"/>"
-               "</w:rPr></w:rPrDefault></w:docDefaults>\n"
-            << "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\">"
-               "<w:name w:val=\"Normal\"/></w:style>\n";
+               "</w:rPr></w:rPrDefault></w:docDefaults>\n";
+        if (!documentHas("Normal")) {
+            xml << "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\">"
+                   "<w:name w:val=\"Normal\"/></w:style>\n";
+        }
         static const int headingSizesHalfPt[6] = {36, 32, 28, 26, 24, 22};
         for (int level = 1; level <= 6; ++level) {
+            if (documentHas("Heading" + std::to_string(level))) continue;
             xml << "<w:style w:type=\"paragraph\" w:styleId=\"Heading" << level << "\">"
                 << "<w:name w:val=\"heading " << level << "\"/>"
                 << "<w:basedOn w:val=\"Normal\"/>"
@@ -2044,19 +2888,26 @@ private:
                 << "\"/><w:szCs w:val=\"" << headingSizesHalfPt[level - 1]
                 << "\"/></w:rPr></w:style>\n";
         }
-        xml << "<w:style w:type=\"paragraph\" w:styleId=\"Quote\">"
-               "<w:name w:val=\"Quote\"/><w:basedOn w:val=\"Normal\"/>"
-               "<w:pPr><w:ind w:left=\"567\" w:right=\"567\"/></w:pPr>"
-               "<w:rPr><w:i/></w:rPr></w:style>\n"
-            << "<w:style w:type=\"paragraph\" w:styleId=\"CodeBlock\">"
-               "<w:name w:val=\"Code Block\"/><w:basedOn w:val=\"Normal\"/>"
-               "<w:pPr><w:ind w:left=\"284\"/></w:pPr>"
-               "<w:rPr><w:rFonts w:ascii=\"Courier New\" w:hAnsi=\"Courier New\"/>"
-               "<w:sz w:val=\"20\"/></w:rPr></w:style>\n"
-            << "<w:style w:type=\"paragraph\" w:styleId=\"ListParagraph\">"
-               "<w:name w:val=\"List Paragraph\"/><w:basedOn w:val=\"Normal\"/>"
-               "<w:pPr><w:ind w:left=\"720\"/><w:contextualSpacing/></w:pPr></w:style>\n"
-            << "<w:style w:type=\"table\" w:styleId=\"TableGrid\">"
+        if (!documentHas("Quote")) {
+            xml << "<w:style w:type=\"paragraph\" w:styleId=\"Quote\">"
+                   "<w:name w:val=\"Quote\"/><w:basedOn w:val=\"Normal\"/>"
+                   "<w:pPr><w:ind w:left=\"567\" w:right=\"567\"/></w:pPr>"
+                   "<w:rPr><w:i/></w:rPr></w:style>\n";
+        }
+        if (!documentHas("CodeBlock")) {
+            xml << "<w:style w:type=\"paragraph\" w:styleId=\"CodeBlock\">"
+                   "<w:name w:val=\"Code Block\"/><w:basedOn w:val=\"Normal\"/>"
+                   "<w:pPr><w:ind w:left=\"284\"/></w:pPr>"
+                   "<w:rPr><w:rFonts w:ascii=\"Courier New\" w:hAnsi=\"Courier New\"/>"
+                   "<w:sz w:val=\"20\"/></w:rPr></w:style>\n";
+        }
+        if (!documentHas("ListParagraph")) {
+            xml << "<w:style w:type=\"paragraph\" w:styleId=\"ListParagraph\">"
+                   "<w:name w:val=\"List Paragraph\"/><w:basedOn w:val=\"Normal\"/>"
+                   "<w:pPr><w:ind w:left=\"720\"/><w:contextualSpacing/></w:pPr></w:style>\n";
+        }
+        for (const RichStyle& style : doc_->styles) WriteNamedStyle(xml, style, style.id == "Normal");
+        xml << "<w:style w:type=\"table\" w:styleId=\"TableGrid\">"
                "<w:name w:val=\"Table Grid\"/></w:style>\n"
             << "</w:styles>\n";
         return xml.str();
@@ -2156,12 +3007,19 @@ bool UCWordDocumentIO::LoadDocx(const std::string& filePath, UCRichDocument& out
                                 std::string& outError) {
     outDocument = UCRichDocument{};
     DocxReader reader;
-    return reader.Load(filePath, outDocument, outError);
+    if (!reader.Load(filePath, outDocument, outError)) return false;
+    outDocument.ReadCheckboxPrefixes();
+    return true;
 }
 
 bool UCWordDocumentIO::SaveDocx(const std::string& filePath, const UCRichDocument& document,
                                 std::string& outError) {
     DocxWriter writer;
+    // The format has no check list: its items go out as a ballot box
+    // opening their text, which is what reads back in.
+    for (const RichDocBlock& block : document.blocks) {
+        if (block.checkbox) return writer.Save(filePath, document.WithCheckboxesAsPrefixes(), outError);
+    }
     return writer.Save(filePath, document, outError);
 }
 

@@ -1,10 +1,4 @@
-#### 2026-09-29 *0.10.9*
-- **Syncing no longer writes debug lines to the terminal.** Four `[UMSTREAM]`
-  traces left over from the streaming-inbox work printed to stderr on every
-  folder sync, flag reconcile and received message (`UltraMailSyncEngine.cpp`,
-  `UltraMailApp.cpp`). They are gone - and with them a data race: the
-  per-batch trace read the selected account, which belongs to the UI thread,
-  from the sync worker.
+#### 2026-10-01 *0.10.14*
 - **The message cache no longer only grows.** Every message body UltraMail
   downloads is kept as `mail/<account>/<folder>/<uid>.eml`, and none was ever
   deleted: a message expunged on the server, moved to Trash or Junk, deleted,
@@ -28,6 +22,141 @@
   there, are untouched. `AttachmentCache` also builds its paths through
   `PathFromUtf8` now, so an attachment named in Thai or with an emoji is
   written where it should be on Windows too.
+
+#### 2026-09-30 *0.10.13*
+- **Several compose windows at once work.** UltraMail had one compose view for
+  every compose window, so opening a second message rebound the first window's
+  Send, Cancel, attachment buttons and formatting toolbar to the second: Send
+  in the first window sent the second message, Cancel closed the other window.
+  Each compose window now has its own view, and its entry is dropped once the
+  window has closed (the windows used to be kept until UltraMail quit).
+- What answers after a compose window closed - the file or cloud picker, the
+  "send as plain text?" question, a Link… or Picture… dialog - finds the
+  window gone and changes nothing.
+
+#### 2026-09-30 *0.10.12*
+- **The compose window has the full formatting toolbar.** The signature
+  editor's tools now sit above every message body: bold, italic, underline,
+  strikethrough, font, size and text colour in one row; left / centre /
+  right, bulleted and numbered lists, a horizontal line, *Link…* and
+  *Picture…* in the next. The small B / I / U / list row that only formatted
+  replies had is gone. Both windows share one toolbar (`UltraMailFormatBar`),
+  so they cannot drift apart.
+- **Plain text | Formatted.** The switch at the right end of the toolbar
+  decides how the message is written and sent. A new message starts as plain
+  text, with only the switch showing. *Formatted* turns what is written into
+  the rich editor, `> ` quotes becoming quote bars, and shows the tools; the
+  message is then sent as HTML with a plain-text version. Replies and forwards
+  of HTML mail, and mail signed with an HTML signature, open formatted.
+  Switching back to plain text asks first when there is something to lose,
+  since formatting, links and pictures are dropped.
+- The compose window is 40 px taller, for the second toolbar row.
+- Fixed while building it: a toolbar row of buttons sized to their labels
+  widened the whole compose window past its right edge, hiding the switch and
+  *Cancel*. The rows are now capped at the window's width.
+
+#### 2026-09-30 *0.10.11*
+- **A signature per account.** *Account Settings* has a new *Signature* row,
+  which shows the account's signature in a few words, and an *Edit signature…*
+  button that opens the signature editor. The account signs with nothing, with
+  plain text, or with HTML.
+  - *Plain text* is typed into a text box. It goes into the message below a
+    `-- ` line, the separator mail programs recognise as the start of a
+    signature (one the user wrote themselves is not doubled).
+  - *HTML* is designed in a WYSIWYG editor (`UltraCanvasRichTextEdit`) with
+    two rows of tools: bold, italic, underline, strikethrough, font, size and
+    text colour; left / centre / right, bulleted and numbered lists, a
+    horizontal line, *Link…* (a web page or an e-mail address) and
+    *Picture…* (a logo or photo, stored with the signature and sent as an
+    inline part of the message). *HTML source* switches to the markup, coloured
+    as HTML, for a signature made elsewhere; *Design* reads it back.
+  - Both versions are kept whichever is chosen, so switching loses neither. A
+    first switch to HTML starts from the plain-text signature.
+  - *Add the signature to replies and forwards too* is on by default.
+- **Where it goes.** New mail, replies and forwards get the signature of the
+  account they are sent from, below the line the message is written on and
+  above the quoted or forwarded text. An HTML signature makes the message a
+  formatted one: a plain-text reply is turned into the rich editor first, its
+  `> ` quotes becoming quote bars, and is sent as HTML with a plain-text
+  version beside it.
+- The editor saves on its own *Save*, not with the account page's, which
+  checks the sign-in first: a signature can be changed while the server is
+  unreachable. The signature is kept in the local store (schema 8) and is left
+  alone when the account's servers are saved or the address is added again.
+- Demo: `ULTRAMAIL_DEMO_SIGNATURE=1` opens the editor on a sample HTML
+  signature; `=2` (with `ULTRAMAIL_DEMO_MAIL=1`) opens a new message signed
+  with it.
+
+#### 2026-09-30 *0.10.10*
+- **New mail is fetched as soon as UltraMail starts.** The first check used to
+  wait for the five-minute timer (it ran at start only when the vault needed a
+  password), so the inbox showed what was cached until *Update* was pressed, and
+  nothing on screen said a check was due. Now every account is checked right after
+  the window appears: the *Update* button reads "Updating…", the status line says
+  "Checking …" with its spinner and the connection pill turns "Checking…", then
+  "Connected". A network that is not up yet right after boot gets the usual grace
+  period - status line and a retry, no alert.
+- **And right after the computer wakes from sleep.** The five-minute timer cannot
+  tell that the machine slept, so after a wake the inbox could stay as it was
+  before the sleep for minutes. A light 15-second check (`WakeDetector`) notices
+  that far more time passed between two of its ticks than it should have, and
+  every account is checked 5 seconds later, once Wi-Fi has had a moment to
+  reconnect. What was offline before the sleep starts a fresh grace period, so a
+  network that is still coming back shows on the status line, not in an alert.
+- **A Settings window, like UltraFiler's.** The gear at the right end of the
+  toolbar (UltraFiler's gear button) opens it: a page tree on the left, and
+  pages with their notes and a *Restore default* button.
+  - *Privacy > Images*: remote pictures load **always**, **only from trusted
+    websites, trusted senders and contacts** (the default), or **never by
+    themselves**. Trusted websites are new: mail from such a domain (or a
+    subdomain) shows its pictures, and a picture hosted there loads in any
+    message. The "Always from <sender>" list can be edited here. Junk and
+    suspicious mail still never load pictures by themselves.
+  - *Reading > Messages*: HTML mail formatted or as plain text, and the message
+    text size (11-16 px). *Reading > Layout*: the reading pane.
+    *Privacy > Sender icons*: downloading the known senders' icons.
+  - The reading-pane and sender-icon switches moved here from each account's
+    *Account Settings*, since they were never per account.
+  - The start page (no account yet) carries the same gear in its top-right
+    corner, so privacy can be set before the first account is added.
+- **HTML mail is laid out for the width of the preview pane.** A newsletter's
+  `@media (min-width: …)` rules (side-by-side columns from 480px up) are answered for
+  the pane's width when the message is opened; resizing the pane does not re-lay the
+  message out yet. The HTML rendering improvements behind it (tables, buttons,
+  background pictures, rounded borderless buttons) are framework changes - see the
+  pending `html-mail-table-layout` and `html-media-backgrounds` entries in
+  `Docs/UltraCanvas/CHANGELOG.md`.
+
+#### 2026-09-30 *0.10.9*
+- **No "New mail could not be fetched" alert while the network is still
+  coming up.** Right after the computer starts, the first background sync
+  often runs before the connection is there, and the alert it raised
+  ("Could not resolve host") was a false alarm. A background sync that cannot
+  reach the server at all — no name resolution, no route, nobody listening,
+  a timed-out connection — now shows the reason on the status line only, and
+  UltraMail tries the account again every minute. The alert appears only
+  when the account has stayed unreachable for ten minutes, and then once.
+  - Mail arrives within a minute of the network coming up, instead of at
+    the next five-minute sync.
+  - Opening a folder while the server cannot be reached takes the same
+    grace period; it used to raise "That folder could not be fetched" once.
+  - A failure the server itself produced — a rejected password, an
+    untrusted certificate — is reported at once, as before, and so is any
+    failure of a sync you asked for with Update.
+  - The engine's sync outcome now carries UltraNet's result code, and a
+    failed inbox fetch keeps its connection details for the alert.
+- **A connection pill at the right end of the status line** shows how the
+  selected account's last contact with its mail server went: *Not checked*,
+  *Checking…*, *Connected* (green), *Offline* (amber — the server could not
+  be reached) or *Failed* (red — the server answered but refused the
+  request). Hovering it shows the account, the server, the state, the time
+  of the last contact and the last attempt, the reason for a failure, how
+  many attempts in a row have failed, and what happens next.
+- The `[UMSTREAM]` debug lines the sync engine and the progress callback
+  printed to stderr on every fetch since 0.9.51 are gone.
+- `ULTRAMAIL_DEMO_COLLECT=1` now leaves the main window on top of the seeded
+  mail; `ULTRAMAIL_DEMO_COLLECT=contacts` opens the contact manager as it
+  always did.
 
 #### 2026-09-29 *0.10.8*
 - **Replies and forwards keep an HTML message's formatting.** Answering or

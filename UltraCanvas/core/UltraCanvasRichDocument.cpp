@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <locale>
+#include <map>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -175,8 +176,11 @@ std::string RunsToReadableText(const std::vector<RichTextRun>& runs) {
     std::string out;
     for (const auto& run : runs) {
         if (run.lineBreakBefore) out += '\n';
+        if (run.IsDeleted()) continue;          // a tracked deletion: the text as it will be
         if (run.IsInlineImage()) {
             out += "[" + (run.imageAltText.empty() ? std::string("image") : run.imageAltText) + "]";
+        } else if (run.IsNoteReference()) {
+            out += "[" + run.text + "]";
         } else {
             out += run.text;
         }
@@ -199,6 +203,9 @@ std::string RunToMarkdown(const RichTextRun& run, bool inTableCell,
         }
         return "[" + alt + "]";
     }
+
+    // A note reference is Markdown's footnote reference.
+    if (run.IsNoteReference()) return "[^" + run.text + "]";
 
     std::string lead, core, trail;
     SplitEdgeWhitespace(run.text, lead, core, trail);
@@ -244,6 +251,7 @@ std::string RunsToMarkdown(const std::vector<RichTextRun>& runs, bool inTableCel
             // normal flow, "<br>" is avoided; inside table cells fall back to a space.
             out += inTableCell ? " " : "  \n";
         }
+        if (run.IsDeleted()) continue;
         out += RunToMarkdown(run, inTableCell, mediaPaths);
     }
     return out;
@@ -286,6 +294,10 @@ size_t FindClosingMarker(const std::string& text, size_t from, const std::string
 
 void ParseInlineMarkdown(const std::string& text, const InlineStyleState& style,
                          std::vector<RichTextRun>& runs);
+
+// Footnote labels met while FromMarkdown reads a document, in order: a
+// reference's noteIndex is its label's place here. Null outside that.
+thread_local std::vector<std::string>* gMarkdownNoteLabels = nullptr;
 
 // Handles a *...* / **...** / ***...*** / ~~...~~ span. Returns true and
 // advances pos past the span when a well-formed closing marker exists.
@@ -385,6 +397,24 @@ void ParseInlineMarkdown(const std::string& text, const InlineStyleState& style,
                     pos = closeParen + 1;
                     continue;
                 }
+            }
+        }
+        // A footnote reference "[^label]", while a document is being read.
+        if (c == '[' && gMarkdownNoteLabels && pos + 2 < text.size() && text[pos + 1] == '^') {
+            const size_t close = text.find(']', pos + 2);
+            if (close != std::string::npos && close > pos + 2 && text.find(' ', pos + 2) > close) {
+                AppendTextRun(runs, pending, style);
+                pending.clear();
+                const std::string label = text.substr(pos + 2, close - pos - 2);
+                auto found = std::find(gMarkdownNoteLabels->begin(), gMarkdownNoteLabels->end(), label);
+                RichTextRun reference;
+                reference.noteIndex = static_cast<int>(found - gMarkdownNoteLabels->begin());
+                if (found == gMarkdownNoteLabels->end()) gMarkdownNoteLabels->push_back(label);
+                reference.text = label;
+                reference.superscript = true;
+                runs.push_back(reference);
+                pos = close + 1;
+                continue;
             }
         }
         if (c == '[' && TryParseLink(text, pos, style, runs, pending)) {
@@ -704,6 +734,73 @@ UCRichDocument UCRichDocument::WithFirstPageFurnitureInline() const {
     return flat;
 }
 
+namespace {
+const char* const kBallotBox = "\xE2\x98\x90";          // ☐ U+2610
+const char* const kBallotBoxChecked = "\xE2\x98\x92";   // ☒ U+2612
+const char* const kBallotBoxTicked = "\xE2\x98\x91";    // ☑ U+2611
+const char* const kNoBreakSpace = "\xC2\xA0";
+} // namespace
+
+int UCRichDocument::ReadCheckboxPrefixes() {
+    int converted = 0;
+    for (RichDocBlock& block : blocks) {
+        if (block.checkbox) continue;
+        if (block.type != RichBlockType::ListItem && block.type != RichBlockType::Paragraph) continue;
+        if (block.type == RichBlockType::ListItem && block.orderedList) continue;
+        // The box is the first visible character; a picture or a break first
+        // means it is not a check box.
+        size_t first = 0;
+        while (first < block.runs.size() && block.runs[first].text.empty()
+               && !block.runs[first].lineBreakBefore && !block.runs[first].IsInlineImage()) {
+            ++first;
+        }
+        if (first >= block.runs.size()) continue;
+        RichTextRun& run = block.runs[first];
+        if (run.IsInlineImage() || run.lineBreakBefore || run.text.size() < 3) continue;
+        const std::string box = run.text.substr(0, 3);
+        const bool ticked = box == kBallotBoxChecked || box == kBallotBoxTicked;
+        if (!ticked && box != kBallotBox) continue;
+        size_t cut = 3;
+        // The space Word puts between the box and the text goes with it.
+        while (cut < run.text.size() && (run.text[cut] == ' ' || run.text[cut] == '\t')) ++cut;
+        if (run.text.compare(cut, 2, kNoBreakSpace) == 0) cut += 2;
+        run.text.erase(0, cut);
+        if (run.text.empty() && block.runs.size() > 1) block.runs.erase(block.runs.begin() + static_cast<long>(first));
+        if (block.type == RichBlockType::Paragraph) {
+            block.type = RichBlockType::ListItem;
+            block.listLevel = 0;
+        }
+        block.orderedList = false;
+        block.checkbox = true;
+        block.checked = ticked;
+        if (block.bulletText == kNoBreakSpace) block.bulletText.clear();
+        ++converted;
+    }
+    return converted;
+}
+
+UCRichDocument UCRichDocument::WithCheckboxesAsPrefixes() const {
+    UCRichDocument out = *this;
+    for (RichDocBlock& block : out.blocks) {
+        if (!block.checkbox || block.type != RichBlockType::ListItem) continue;
+        RichTextRun box;
+        if (!block.runs.empty() && !block.runs.front().IsInlineImage()) {
+            box = block.runs.front();       // the text's own font and size
+            box.linkTarget.clear();
+            box.lineBreakBefore = false;
+            box.field = RichTextRun::Field::Plain;
+        }
+        box.text = std::string(block.checked ? kBallotBoxChecked : kBallotBox) + " ";
+        block.runs.insert(block.runs.begin(), box);
+        // The box stands where the bullet would; a bullet beside it would be
+        // two markers for one item.
+        block.bulletText = kNoBreakSpace;
+        block.checkbox = false;
+        block.checked = false;
+    }
+    return out;
+}
+
 std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& options) const {
     // Text output has no pages: the first page's header and footer go before
     // and after the body, set off by rules.
@@ -748,7 +845,11 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
             case RichBlockType::Heading: {
                 blockSeparator();
                 int level = std::clamp(block.headingLevel, 1, 6);
-                md << std::string(level, '#') << ' ' << RunsToMarkdown(block.runs, false, &mediaPaths) << "\n";
+                // A heading is bold already: a heading style's bold on its runs
+                // would otherwise come out as "# **Title**".
+                std::vector<RichTextRun> runs = block.runs;
+                for (RichTextRun& run : runs) run.bold = false;
+                md << std::string(level, '#') << ' ' << RunsToMarkdown(runs, false, &mediaPaths) << "\n";
                 break;
             }
             case RichBlockType::ListItem: {
@@ -760,7 +861,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
                    // A list that starts at N (or runs on past an interruption)
                    // spells N on its item: Markdown starts a list at its first
                    // number and counts on from there.
-                   << (!block.orderedList ? std::string("- ")
+                   << (!block.orderedList ? std::string(block.checkbox ? (block.checked ? "- [x] " : "- [ ] ") : "- ")
                        : std::to_string(block.listStartNumber > 0 ? block.listStartNumber : 1) + ". ")
                    << RunsToMarkdown(block.runs, false, &mediaPaths) << "\n";
                 break;
@@ -834,6 +935,30 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
         out << QuoteLines(md.str(), block.quoteLevel);
         previousQuote = block.quoteLevel;
     }
+    // The notes, as footnote definitions after the body - footnotes, then
+    // endnotes, each once, in the order of their first reference. A note of
+    // several paragraphs continues indented.
+    const std::vector<std::string> marks = NoteMarks();
+    const std::vector<NoteReference> references = NoteReferences();
+    std::vector<bool> written(notes.size(), false);
+    bool firstNote = true;
+    for (RichNote::Kind kind : {RichNote::Kind::Footnote, RichNote::Kind::Endnote}) {
+        for (const NoteReference& reference : references) {
+            const size_t index = static_cast<size_t>(reference.noteIndex);
+            const RichNote& note = notes[index];
+            if (note.kind != kind || written[index] || marks[index].empty()) continue;
+            written[index] = true;
+            out << (firstNote ? "\n" : "") << "[^" << marks[index] << "]: ";
+            firstNote = false;
+            bool firstParagraph = true;
+            for (const RichDocBlock& noteBlock : note.blocks) {
+                if (!firstParagraph) out << "\n    ";
+                out << RunsToMarkdown(noteBlock.runs, false, &mediaPaths);
+                firstParagraph = false;
+            }
+            out << "\n";
+        }
+    }
     return out.str();
 }
 
@@ -861,6 +986,41 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
             start = nl + 1;
         }
     }
+
+    // Footnote definitions - "[^label]: text", continued by indented lines -
+    // are taken out of the flow first; references anywhere then find them.
+    std::vector<std::pair<std::string, std::vector<std::string>>> noteDefinitions;
+    {
+        std::vector<std::string> kept;
+        for (size_t li = 0; li < lines.size(); ++li) {
+            const std::string& line = lines[li];
+            const size_t close = line.find("]:");
+            if (line.rfind("[^", 0) == 0 && close != std::string::npos && close > 2
+                && line.find(' ', 2) > close) {
+                std::vector<std::string> paragraphs{line.substr(close + 2)};
+                while (li + 1 < lines.size()
+                       && (lines[li + 1].rfind("    ", 0) == 0 || lines[li + 1].rfind("\t", 0) == 0)) {
+                    ++li;
+                    const size_t text = lines[li].find_first_not_of(" \t");
+                    paragraphs.push_back(text == std::string::npos ? std::string() : lines[li].substr(text));
+                }
+                for (std::string& paragraph : paragraphs) {
+                    const size_t text = paragraph.find_first_not_of(" \t");
+                    paragraph = text == std::string::npos ? std::string() : paragraph.substr(text);
+                }
+                noteDefinitions.emplace_back(line.substr(2, close - 2), std::move(paragraphs));
+                continue;
+            }
+            kept.push_back(line);
+        }
+        lines = std::move(kept);
+    }
+    std::vector<std::string> noteLabels;
+    for (const auto& definition : noteDefinitions) noteLabels.push_back(definition.first);
+    struct LabelScope {
+        explicit LabelScope(std::vector<std::string>* labels) { gMarkdownNoteLabels = labels; }
+        ~LabelScope() { gMarkdownNoteLabels = nullptr; }
+    } labelScope(&noteLabels);
 
     auto parseInlineToBlock = [](const std::string& text, RichDocBlock& block) {
         ParseInlineMarkdown(text, InlineStyleState{}, block.runs);
@@ -995,7 +1155,16 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
                 block.type = RichBlockType::ListItem;
                 block.orderedList = info.ordered;
                 block.listLevel = info.level;
-                parseInlineToBlock(info.content, block);
+                // GitHub task list: "- [ ] todo" / "- [x] done".
+                std::string content = info.content;
+                if (!info.ordered && content.size() >= 3 && content[0] == '['
+                    && (content[1] == ' ' || content[1] == 'x' || content[1] == 'X') && content[2] == ']'
+                    && (content.size() == 3 || content[3] == ' ')) {
+                    block.checkbox = true;
+                    block.checked = content[1] != ' ';
+                    content.erase(0, std::min<size_t>(4, content.size()));
+                }
+                parseInlineToBlock(content, block);
                 doc.blocks.push_back(std::move(block));
                 continue;
             }
@@ -1039,6 +1208,823 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
         doc.blocks.push_back(std::move(block));
     }
 
+    // One note per label, in the order labels were met; a definition's text
+    // becomes its paragraphs (a reference inside a note stays text).
+    gMarkdownNoteLabels = nullptr;
+    for (const std::string& label : noteLabels) {
+        RichNote note;
+        for (const auto& [defined, paragraphs] : noteDefinitions) {
+            if (defined != label) continue;
+            for (const std::string& paragraph : paragraphs) {
+                RichDocBlock block;
+                ParseInlineMarkdown(paragraph, InlineStyleState{}, block.runs);
+                note.blocks.push_back(std::move(block));
+            }
+            break;
+        }
+        if (note.blocks.empty()) note.blocks.emplace_back();
+        doc.notes.push_back(std::move(note));
+    }
+    if (!doc.notes.empty()) doc.UpdateNoteMarks();
+    return doc;
+}
+
+// ===== HTML PARSER =====
+
+namespace {
+
+std::vector<uint8_t> DecodeBase64Data(const std::string& in) {
+    auto value = [](char c) -> int {
+        if (c >= 'A' && c <= 'Z') return c - 'A';
+        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+        if (c >= '0' && c <= '9') return c - '0' + 52;
+        if (c == '+' || c == '-') return 62;
+        if (c == '/' || c == '_') return 63;
+        return -1;
+    };
+    std::vector<uint8_t> out;
+    unsigned int buffer = 0;
+    int bits = 0;
+    for (char c : in) {
+        const int v = value(c);
+        if (v < 0) continue;              // padding, whitespace
+        buffer = (buffer << 6) | static_cast<unsigned int>(v);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back(static_cast<uint8_t>((buffer >> bits) & 0xFF));
+        }
+    }
+    return out;
+}
+
+void AppendCodePoint(std::string& out, uint32_t cp) {
+    if (cp < 0x80) {
+        out += static_cast<char>(cp);
+    } else if (cp < 0x800) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp < 0x110000) {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+}
+
+std::string LowerAscii(std::string s) {
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+std::string TrimAscii(const std::string& s) {
+    const size_t first = s.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return "";
+    return s.substr(first, s.find_last_not_of(" \t\r\n") - first + 1);
+}
+
+// &amp; &#233; &#x2014; and the named entities pasted HTML commonly uses.
+std::string DecodeEntities(const std::string& text) {
+    static const std::map<std::string, uint32_t> named = {
+        {"amp", '&'}, {"lt", '<'}, {"gt", '>'}, {"quot", '"'}, {"apos", '\''}, {"nbsp", 0xA0},
+        {"mdash", 0x2014}, {"ndash", 0x2013}, {"hellip", 0x2026}, {"lsquo", 0x2018}, {"rsquo", 0x2019},
+        {"ldquo", 0x201C}, {"rdquo", 0x201D}, {"laquo", 0xAB}, {"raquo", 0xBB}, {"copy", 0xA9},
+        {"reg", 0xAE}, {"trade", 0x2122}, {"euro", 0x20AC}, {"pound", 0xA3}, {"yen", 0xA5},
+        {"cent", 0xA2}, {"sect", 0xA7}, {"para", 0xB6}, {"deg", 0xB0}, {"middot", 0xB7},
+        {"bull", 0x2022}, {"times", 0xD7}, {"divide", 0xF7}, {"plusmn", 0xB1}, {"shy", 0xAD},
+        {"auml", 0xE4}, {"ouml", 0xF6}, {"uuml", 0xFC}, {"Auml", 0xC4}, {"Ouml", 0xD6},
+        {"Uuml", 0xDC}, {"szlig", 0xDF}, {"eacute", 0xE9}, {"egrave", 0xE8}, {"agrave", 0xE0},
+        {"ccedil", 0xE7}, {"ecirc", 0xEA}, {"iacute", 0xED}, {"oacute", 0xF3}, {"uacute", 0xFA},
+        {"ntilde", 0xF1}, {"aacute", 0xE1}, {"zwnj", 0x200C}, {"zwj", 0x200D}, {"ensp", 0x2002},
+        {"emsp", 0x2003}, {"thinsp", 0x2009}, {"larr", 0x2190}, {"rarr", 0x2192}};
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); i++) {
+        if (text[i] != '&') {
+            out += text[i];
+            continue;
+        }
+        const size_t semi = text.find(';', i + 1);
+        if (semi == std::string::npos || semi - i > 12) {
+            out += '&';
+            continue;
+        }
+        const std::string entity = text.substr(i + 1, semi - i - 1);
+        uint32_t cp = 0;
+        bool ok = false;
+        if (!entity.empty() && entity[0] == '#') {
+            const bool hex = entity.size() > 1 && (entity[1] == 'x' || entity[1] == 'X');
+            for (size_t k = hex ? 2 : 1; k < entity.size(); k++) {
+                const char c = entity[k];
+                int digit = -1;
+                if (c >= '0' && c <= '9') digit = c - '0';
+                else if (hex && c >= 'a' && c <= 'f') digit = c - 'a' + 10;
+                else if (hex && c >= 'A' && c <= 'F') digit = c - 'A' + 10;
+                if (digit < 0) { ok = false; break; }
+                cp = cp * (hex ? 16u : 10u) + static_cast<uint32_t>(digit);
+                ok = cp < 0x110000;
+                if (!ok) break;
+            }
+        } else {
+            auto found = named.find(entity);
+            if (found != named.end()) {
+                cp = found->second;
+                ok = true;
+            }
+        }
+        if (!ok) {
+            out += '&';
+            continue;
+        }
+        AppendCodePoint(out, cp);
+        i = semi;
+    }
+    return out;
+}
+
+struct HtmlToken {
+    enum class Kind { Text, Open, Close } kind = Kind::Text;
+    std::string name;
+    std::string text;                      // Text: raw character data
+    std::map<std::string, std::string> attributes;
+    bool selfClosing = false;
+};
+
+std::vector<HtmlToken> TokenizeHtml(const std::string& html) {
+    std::vector<HtmlToken> tokens;
+    size_t i = 0;
+    while (i < html.size()) {
+        if (html[i] != '<') {
+            const size_t next = html.find('<', i);
+            HtmlToken text;
+            text.text = html.substr(i, next == std::string::npos ? std::string::npos : next - i);
+            tokens.push_back(std::move(text));
+            i = next == std::string::npos ? html.size() : next;
+            continue;
+        }
+        if (html.compare(i, 4, "<!--") == 0) {
+            const size_t end = html.find("-->", i + 4);
+            i = end == std::string::npos ? html.size() : end + 3;
+            continue;
+        }
+        if (i + 1 < html.size() && (html[i + 1] == '!' || html[i + 1] == '?')) {
+            // Doctype, processing instructions, Word's <![if ...]> markers.
+            const size_t end = html.find('>', i);
+            i = end == std::string::npos ? html.size() : end + 1;
+            continue;
+        }
+        // A tag, up to its '>' (outside quoted attribute values).
+        size_t j = i + 1;
+        char quote = 0;
+        for (; j < html.size(); j++) {
+            if (quote) { if (html[j] == quote) quote = 0; continue; }
+            if (html[j] == '"' || html[j] == '\'') quote = html[j];
+            else if (html[j] == '>') break;
+        }
+        const std::string inner = html.substr(i + 1, j - i - 1);
+        i = j < html.size() ? j + 1 : html.size();
+        HtmlToken tag;
+        size_t k = 0;
+        if (!inner.empty() && inner[0] == '/') {
+            tag.kind = HtmlToken::Kind::Close;
+            k = 1;
+        } else {
+            tag.kind = HtmlToken::Kind::Open;
+        }
+        while (k < inner.size() && (std::isalnum(static_cast<unsigned char>(inner[k])) || inner[k] == ':' || inner[k] == '-')) {
+            tag.name += static_cast<char>(std::tolower(static_cast<unsigned char>(inner[k])));
+            k++;
+        }
+        if (tag.name.empty()) {
+            // Not a tag after all ("a < b"): the text it was.
+            HtmlToken text;
+            text.text = "<" + inner + (j < html.size() ? ">" : "");
+            tokens.push_back(std::move(text));
+            continue;
+        }
+        tag.selfClosing = !inner.empty() && inner.back() == '/';
+        // Attributes: name, name=value, name="value", name='value'.
+        while (k < inner.size()) {
+            while (k < inner.size() && (std::isspace(static_cast<unsigned char>(inner[k])) || inner[k] == '/')) k++;
+            std::string name;
+            while (k < inner.size() && !std::isspace(static_cast<unsigned char>(inner[k])) && inner[k] != '='
+                   && inner[k] != '/' && inner[k] != '>') {
+                name += static_cast<char>(std::tolower(static_cast<unsigned char>(inner[k])));
+                k++;
+            }
+            while (k < inner.size() && std::isspace(static_cast<unsigned char>(inner[k]))) k++;
+            std::string value;
+            if (k < inner.size() && inner[k] == '=') {
+                k++;
+                while (k < inner.size() && std::isspace(static_cast<unsigned char>(inner[k]))) k++;
+                if (k < inner.size() && (inner[k] == '"' || inner[k] == '\'')) {
+                    const char q = inner[k++];
+                    const size_t end = inner.find(q, k);
+                    value = inner.substr(k, end == std::string::npos ? std::string::npos : end - k);
+                    k = end == std::string::npos ? inner.size() : end + 1;
+                } else {
+                    while (k < inner.size() && !std::isspace(static_cast<unsigned char>(inner[k]))) value += inner[k++];
+                }
+            }
+            if (!name.empty()) tag.attributes[name] = DecodeEntities(value);
+        }
+        // Whatever script, style and head hold is not text.
+        if (tag.kind == HtmlToken::Kind::Open && !tag.selfClosing
+            && (tag.name == "script" || tag.name == "style" || tag.name == "head" || tag.name == "title"
+                || tag.name == "xml" || tag.name == "template")) {
+            const std::string lower = LowerAscii(html.substr(i));
+            const size_t end = lower.find("</" + tag.name);
+            if (end == std::string::npos) break;
+            i += end;
+            const size_t close = html.find('>', i);
+            i = close == std::string::npos ? html.size() : close + 1;
+            continue;
+        }
+        tokens.push_back(std::move(tag));
+    }
+    return tokens;
+}
+
+// A CSS number with its unit, read without the process locale.
+bool ParseCssLength(const std::string& value, float& number, std::string& unit) {
+    size_t k = 0;
+    bool negative = false;
+    if (k < value.size() && (value[k] == '-' || value[k] == '+')) negative = value[k++] == '-';
+    double whole = 0.0, fraction = 0.0, scale = 1.0;
+    bool digits = false;
+    while (k < value.size() && std::isdigit(static_cast<unsigned char>(value[k]))) {
+        whole = whole * 10.0 + (value[k++] - '0');
+        digits = true;
+    }
+    if (k < value.size() && value[k] == '.') {
+        k++;
+        while (k < value.size() && std::isdigit(static_cast<unsigned char>(value[k]))) {
+            scale /= 10.0;
+            fraction += (value[k++] - '0') * scale;
+            digits = true;
+        }
+    }
+    if (!digits) return false;
+    number = static_cast<float>((whole + fraction) * (negative ? -1.0 : 1.0));
+    unit = LowerAscii(TrimAscii(value.substr(k)));
+    return true;
+}
+
+// "#rgb", "#rrggbb", "rgb(r, g, b)" and the basic colour names, as "#RRGGBB";
+// "" for anything else (including "transparent" and "inherit").
+std::string CssColor(std::string value) {
+    value = LowerAscii(TrimAscii(value));
+    static const std::map<std::string, std::string> names = {
+        {"black", "#000000"}, {"white", "#FFFFFF"}, {"red", "#FF0000"}, {"green", "#008000"},
+        {"blue", "#0000FF"}, {"yellow", "#FFFF00"}, {"gray", "#808080"}, {"grey", "#808080"},
+        {"silver", "#C0C0C0"}, {"maroon", "#800000"}, {"purple", "#800080"}, {"fuchsia", "#FF00FF"},
+        {"magenta", "#FF00FF"}, {"lime", "#00FF00"}, {"olive", "#808000"}, {"navy", "#000080"},
+        {"teal", "#008080"}, {"aqua", "#00FFFF"}, {"cyan", "#00FFFF"}, {"orange", "#FFA500"}};
+    auto named = names.find(value);
+    if (named != names.end()) return named->second;
+    auto hexDigit = [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; };
+    if (!value.empty() && value[0] == '#') {
+        std::string hex = value.substr(1);
+        if (hex.size() == 3 && hexDigit(hex[0]) && hexDigit(hex[1]) && hexDigit(hex[2])) {
+            hex = std::string{hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]};
+        }
+        if (hex.size() != 6 || !std::all_of(hex.begin(), hex.end(), hexDigit)) return "";
+        for (char& c : hex) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return "#" + hex;
+    }
+    if (value.rfind("rgb", 0) == 0) {
+        const size_t open = value.find('('), close = value.find(')');
+        if (open == std::string::npos || close == std::string::npos) return "";
+        std::string inner = value.substr(open + 1, close - open - 1);
+        int channels[3] = {0, 0, 0};
+        int count = 0;
+        size_t start = 0;
+        while (count < 3 && start <= inner.size()) {
+            const size_t comma = inner.find_first_of(", ", start);
+            const std::string part = TrimAscii(inner.substr(start, comma == std::string::npos ? std::string::npos : comma - start));
+            if (!part.empty()) {
+                float number = 0.0f;
+                std::string unit;
+                if (!ParseCssLength(part, number, unit)) return "";
+                if (unit == "%") number = number * 255.0f / 100.0f;
+                channels[count++] = std::clamp(static_cast<int>(number + 0.5f), 0, 255);
+            }
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+        if (count < 3) return "";
+        static const char* digits = "0123456789ABCDEF";
+        std::string out = "#";
+        for (int c : channels) {
+            out += digits[c >> 4];
+            out += digits[c & 15];
+        }
+        return out;
+    }
+    return "";
+}
+
+struct HtmlFormat {
+    bool bold = false, italic = false, underline = false, strike = false, code = false;
+    bool subscript = false, superscript = false;
+    std::string color, highlight, fontFamily, link;
+    float fontSizePt = 0.0f;
+};
+
+// The declarations of a style attribute that set character formatting or a
+// paragraph's alignment.
+void ApplyCss(const std::string& css, HtmlFormat& format, RichTextAlign* align) {
+    size_t start = 0;
+    while (start < css.size()) {
+        const size_t semi = css.find(';', start);
+        const std::string declaration = css.substr(start, semi == std::string::npos ? std::string::npos : semi - start);
+        start = semi == std::string::npos ? css.size() : semi + 1;
+        const size_t colon = declaration.find(':');
+        if (colon == std::string::npos) continue;
+        const std::string property = LowerAscii(TrimAscii(declaration.substr(0, colon)));
+        std::string value = TrimAscii(declaration.substr(colon + 1));
+        const std::string lower = LowerAscii(value);
+        if (lower.find("!important") != std::string::npos) value = TrimAscii(value.substr(0, lower.find("!important")));
+        if (property == "font-weight") {
+            float weight = 0.0f;
+            std::string unit;
+            if (lower == "bold" || lower == "bolder") format.bold = true;
+            else if (lower == "normal" || lower == "lighter") format.bold = false;
+            else if (ParseCssLength(lower, weight, unit)) format.bold = weight >= 600.0f;
+        } else if (property == "font-style") {
+            format.italic = lower == "italic" || lower == "oblique";
+        } else if (property == "text-decoration" || property == "text-decoration-line") {
+            if (lower.find("underline") != std::string::npos) format.underline = true;
+            if (lower.find("line-through") != std::string::npos) format.strike = true;
+            if (lower == "none") format.underline = format.strike = false;
+        } else if (property == "color") {
+            const std::string color = CssColor(value);
+            if (!color.empty()) format.color = color == "#000000" ? "" : color;
+        } else if (property == "background-color" || property == "background" || property == "mso-highlight") {
+            const std::string color = CssColor(value);
+            if (!color.empty() && color != "#FFFFFF") format.highlight = color;
+        } else if (property == "font-family") {
+            std::string family = value.substr(0, value.find(','));
+            family.erase(std::remove(family.begin(), family.end(), '"'), family.end());
+            family.erase(std::remove(family.begin(), family.end(), '\''), family.end());
+            family = TrimAscii(family);
+            const std::string generic = LowerAscii(family);
+            if (generic == "monospace") format.code = true;
+            else if (generic != "serif" && generic != "sans-serif" && generic != "inherit" && !family.empty()) {
+                format.fontFamily = family;
+            }
+        } else if (property == "font-size") {
+            float size = 0.0f;
+            std::string unit;
+            if (ParseCssLength(lower, size, unit)) {
+                if (unit == "pt") format.fontSizePt = size;
+                else if (unit == "px") format.fontSizePt = size * 0.75f;
+            }
+        } else if (property == "vertical-align") {
+            if (lower == "super") format.superscript = true;
+            else if (lower == "sub") format.subscript = true;
+        } else if (property == "text-align" && align) {
+            if (lower == "center") *align = RichTextAlign::Center;
+            else if (lower == "right" || lower == "end") *align = RichTextAlign::Right;
+            else if (lower == "justify") *align = RichTextAlign::Justify;
+            else if (lower == "left" || lower == "start") *align = RichTextAlign::Default;
+        }
+    }
+}
+
+class HtmlReader {
+public:
+    explicit HtmlReader(UCRichDocument& doc) : doc_(doc) {}
+
+    void Read(const std::string& html) {
+        formats_.push_back(HtmlFormat{});
+        for (const HtmlToken& token : TokenizeHtml(html)) {
+            if (token.kind == HtmlToken::Kind::Text) Text(token.text);
+            else if (token.kind == HtmlToken::Kind::Open) Open(token);
+            else Close(token.name);
+        }
+        while (!tables_.empty()) EndTable();
+        Flush();
+    }
+
+private:
+    UCRichDocument& doc_;
+    std::vector<HtmlFormat> formats_;
+    std::vector<std::string> formatTags_;          // the element each pushed format belongs to
+    RichDocBlock block_;
+    bool blockOpen_ = false;
+    bool pre_ = false;
+    bool lastSpace_ = true;                          // collapse leading / repeated white space
+    bool pendingBreak_ = false;
+    int quoteDepth_ = 0;
+    std::vector<bool> lists_;                        // ordered?
+    struct Table {
+        RichDocBlock block;
+        bool inCell = false;
+        bool inHead = false;
+    };
+    std::vector<Table> tables_;
+    RichTextAlign align_ = RichTextAlign::Default;
+
+    static bool IsBlockTag(const std::string& name) {
+        static const char* tags[] = {"p", "div", "section", "article", "header", "footer", "main", "aside",
+                                     "nav", "center", "address", "figure", "figcaption", "dt", "dd", "dl",
+                                     "form", "fieldset", "details", "summary", "body", "html"};
+        for (const char* tag : tags) if (name == tag) return true;
+        return false;
+    }
+
+    static int HeadingLevel(const std::string& name) {
+        return name.size() == 2 && name[0] == 'h' && name[1] >= '1' && name[1] <= '6' ? name[1] - '0' : 0;
+    }
+
+    RichTableCell* CurrentCell() {
+        if (tables_.empty() || !tables_.back().inCell) return nullptr;
+        auto& rows = tables_.back().block.tableRows;
+        if (rows.empty() || rows.back().cells.empty()) return nullptr;
+        return &rows.back().cells.back();
+    }
+
+    std::vector<RichTextRun>& Runs() {
+        if (RichTableCell* cell = CurrentCell()) return cell->runs;
+        if (!blockOpen_) StartBlock(DefaultBlockType());
+        return block_.runs;
+    }
+
+    RichBlockType DefaultBlockType() const {
+        if (!lists_.empty()) return RichBlockType::ListItem;
+        return quoteDepth_ > 0 ? RichBlockType::BlockQuote : RichBlockType::Paragraph;
+    }
+
+    void StartBlock(RichBlockType type) {
+        Flush();
+        block_ = RichDocBlock{};
+        block_.type = type;
+        block_.align = align_;
+        if (type == RichBlockType::ListItem) {
+            block_.listLevel = std::max(0, static_cast<int>(lists_.size()) - 1);
+            block_.orderedList = !lists_.empty() && lists_.back();
+        }
+        blockOpen_ = true;
+        lastSpace_ = true;
+        pendingBreak_ = false;
+    }
+
+    void Flush() {
+        if (!blockOpen_) return;
+        blockOpen_ = false;
+        // Trailing white space of the last line goes.
+        while (!block_.runs.empty()) {
+            std::string& text = block_.runs.back().text;
+            if (block_.runs.back().IsInlineImage()) break;
+            const size_t end = text.find_last_not_of(' ');
+            if (end == std::string::npos && !block_.runs.back().lineBreakBefore) {
+                block_.runs.pop_back();
+                continue;
+            }
+            text.erase(end == std::string::npos ? 0 : end + 1);
+            break;
+        }
+        const bool empty = block_.runs.empty();
+        if (empty && block_.type != RichBlockType::HorizontalRule) return;
+        doc_.blocks.push_back(std::move(block_));
+        block_ = RichDocBlock{};
+    }
+
+    RichTextRun RunWithFormat() const {
+        const HtmlFormat& f = formats_.back();
+        RichTextRun run;
+        run.bold = f.bold;
+        run.italic = f.italic;
+        run.underline = f.underline;
+        run.strikethrough = f.strike;
+        run.code = f.code;
+        run.subscript = f.subscript;
+        run.superscript = f.superscript;
+        run.color = f.color;
+        run.highlightColor = f.highlight;
+        run.fontFamily = f.fontFamily;
+        run.fontSizePt = f.fontSizePt;
+        run.linkTarget = f.link;
+        return run;
+    }
+
+    void Text(const std::string& raw) {
+        std::string text;
+        if (pre_) {
+            text = raw;
+        } else {
+            // White space collapses; a space at the start of a line goes.
+            for (char c : raw) {
+                const bool space = c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f';
+                if (space) {
+                    if (!lastSpace_) text += ' ';
+                    lastSpace_ = true;
+                } else {
+                    text += c;
+                    lastSpace_ = false;
+                }
+            }
+        }
+        if (text.empty()) return;
+        text = DecodeEntities(text);
+        // A no-break space is a space here.
+        for (size_t at; (at = text.find("\xC2\xA0")) != std::string::npos;) text.replace(at, 2, " ");
+        if (text.find_first_not_of(' ') == std::string::npos && Runs().empty() && !pendingBreak_) return;
+        std::vector<RichTextRun>& runs = Runs();
+        // Preformatted text: its line feeds are line breaks.
+        size_t start = 0;
+        while (start <= text.size()) {
+            const size_t newline = pre_ ? text.find('\n', start) : std::string::npos;
+            std::string piece = text.substr(start, newline == std::string::npos ? std::string::npos : newline - start);
+            if (!piece.empty() && piece.back() == '\r') piece.pop_back();
+            if (!piece.empty() || pendingBreak_) {
+                RichTextRun run = RunWithFormat();
+                run.text = piece;
+                run.lineBreakBefore = pendingBreak_ && !runs.empty();
+                pendingBreak_ = false;
+                runs.push_back(std::move(run));
+            }
+            if (newline == std::string::npos) break;
+            pendingBreak_ = true;
+            start = newline + 1;
+        }
+    }
+
+    void PushFormat(const std::string& tag, const HtmlFormat& format) {
+        formats_.push_back(format);
+        formatTags_.push_back(tag);
+    }
+
+    void Open(const HtmlToken& token) {
+        const std::string& name = token.name;
+        auto attribute = [&](const char* key) -> std::string {
+            auto found = token.attributes.find(key);
+            return found == token.attributes.end() ? "" : found->second;
+        };
+        RichTextAlign align = align_;
+        const std::string dirAttribute = LowerAscii(attribute("dir"));
+        const std::string alignAttribute = LowerAscii(attribute("align"));
+        if (alignAttribute == "center") align = RichTextAlign::Center;
+        else if (alignAttribute == "right") align = RichTextAlign::Right;
+        else if (alignAttribute == "justify") align = RichTextAlign::Justify;
+        HtmlFormat format = formats_.back();
+        const std::string style = attribute("style");
+        // Word marks its list numbers and other layout-only text this way.
+        const bool ignored = LowerAscii(style).find("mso-list:ignore") != std::string::npos
+                          || LowerAscii(style).find("display:none") != std::string::npos;
+        ApplyCss(style, format, &align);
+
+        if (name == "br") {
+            if (RichTableCell* cell = CurrentCell()) {
+                if (!cell->runs.empty()) pendingBreak_ = true;
+            } else if (blockOpen_) {
+                pendingBreak_ = true;
+            }
+            lastSpace_ = true;
+            return;
+        }
+        if (name == "hr") {
+            Flush();
+            RichDocBlock rule;
+            rule.type = RichBlockType::HorizontalRule;
+            doc_.blocks.push_back(std::move(rule));
+            return;
+        }
+        if (name == "img") {
+            Image(token);
+            return;
+        }
+        if (name == "table") {
+            Flush();
+            Table table;
+            table.block.type = RichBlockType::Table;
+            tables_.push_back(std::move(table));
+            return;
+        }
+        if (!tables_.empty()) {
+            Table& table = tables_.back();
+            if (name == "thead") { table.inHead = true; return; }
+            if (name == "tr") {
+                table.block.tableRows.emplace_back();
+                table.block.tableRows.back().header = table.inHead;
+                table.inCell = false;
+                return;
+            }
+            if (name == "td" || name == "th") {
+                if (table.block.tableRows.empty()) table.block.tableRows.emplace_back();
+                RichTableCell cell;
+                const std::string span = attribute("colspan"), rows = attribute("rowspan");
+                if (!span.empty() && std::isdigit(static_cast<unsigned char>(span[0]))) cell.columnSpan = std::clamp(std::atoi(span.c_str()), 1, 64);
+                if (!rows.empty() && std::isdigit(static_cast<unsigned char>(rows[0]))) cell.rowSpan = std::clamp(std::atoi(rows.c_str()), 1, 1000);
+                cell.align = align;
+                table.block.tableRows.back().cells.push_back(std::move(cell));
+                table.inCell = true;
+                lastSpace_ = true;
+                pendingBreak_ = false;
+                HtmlFormat cellFormat = format;
+                if (name == "th") cellFormat.bold = true;
+                PushFormat(name, cellFormat);
+                return;
+            }
+        }
+        const int heading = HeadingLevel(name);
+        if (heading > 0 || IsBlockTag(name) || name == "li" || name == "pre" || name == "blockquote"
+            || name == "ul" || name == "ol") {
+            if (RichTableCell* cell = CurrentCell()) {
+                // Paragraphs inside a cell: lines of the cell.
+                if (!cell->runs.empty()) pendingBreak_ = true;
+                lastSpace_ = true;
+                PushFormat(name, format);
+                return;
+            }
+            if (name == "ul" || name == "ol") {
+                Flush();
+                lists_.push_back(name == "ol");
+                PushFormat(name, format);
+                return;
+            }
+            if (name == "blockquote") {
+                Flush();
+                quoteDepth_++;
+                PushFormat(name, format);
+                return;
+            }
+            if (name == "pre") {
+                StartBlock(RichBlockType::CodeBlock);
+                pre_ = true;
+                format.code = false;              // the code block is monospaced already
+                PushFormat(name, format);
+                return;
+            }
+            if (name == "li") {
+                align_ = align;
+                StartBlock(RichBlockType::ListItem);
+                PushFormat(name, format);
+                return;
+            }
+            if (heading > 0) {
+                align_ = align;
+                StartBlock(RichBlockType::Heading);
+                block_.headingLevel = heading;
+                block_.rightToLeft = dirAttribute == "rtl";
+                format.bold = false;              // a heading is bold by being one
+                PushFormat(name, format);
+                return;
+            }
+            // A paragraph inside a list item continues the item.
+            if (!(blockOpen_ && block_.type == RichBlockType::ListItem && block_.runs.empty())) {
+                const RichTextAlign saved = align_;
+                align_ = align;
+                if (name != "body" && name != "html") StartBlock(DefaultBlockType());
+                align_ = saved;
+                if (name != "body" && name != "html") {
+                    block_.align = align;
+                    block_.rightToLeft = dirAttribute == "rtl";
+                }
+            }
+            PushFormat(name, format);
+            return;
+        }
+        if (token.selfClosing) return;
+        // Inline elements.
+        if (name == "b" || name == "strong") format.bold = true;
+        else if (name == "i" || name == "em" || name == "cite" || name == "dfn" || name == "var") format.italic = true;
+        else if (name == "u" || name == "ins") format.underline = true;
+        else if (name == "s" || name == "strike" || name == "del") format.strike = true;
+        else if (name == "code" || name == "tt" || name == "kbd" || name == "samp") format.code = true;
+        else if (name == "sub") format.subscript = true;
+        else if (name == "sup") format.superscript = true;
+        else if (name == "mark") format.highlight = "#FFFF00";
+        else if (name == "a") {
+            const std::string href = attribute("href");
+            if (!href.empty() && LowerAscii(href).rfind("javascript:", 0) != 0) format.link = href;
+        } else if (name == "font") {
+            const std::string color = CssColor(attribute("color"));
+            if (!color.empty()) format.color = color;
+            const std::string face = attribute("face");
+            if (!face.empty()) format.fontFamily = TrimAscii(face.substr(0, face.find(',')));
+        }
+        if (ignored) format.color = "\x01";         // marks text to drop
+        PushFormat(name, format);
+    }
+
+    void Close(const std::string& name) {
+        // Pop back to the matching element (tolerating unclosed inner ones).
+        auto it = std::find(formatTags_.rbegin(), formatTags_.rend(), name);
+        if (it != formatTags_.rend()) {
+            const size_t keep = static_cast<size_t>(formatTags_.rend() - it) - 1;
+            formatTags_.resize(keep);
+            formats_.resize(keep + 1);
+        }
+        if (name == "table") {
+            if (!tables_.empty()) EndTable();
+            return;
+        }
+        if (!tables_.empty()) {
+            if (name == "thead") tables_.back().inHead = false;
+            if (name == "td" || name == "th") tables_.back().inCell = false;
+            if (name == "td" || name == "th" || name == "tr" || name == "thead" || name == "tbody") return;
+            if (tables_.back().inCell) return;       // block ends inside a cell: nothing to do
+        }
+        if (name == "ul" || name == "ol") {
+            Flush();
+            if (!lists_.empty()) lists_.pop_back();
+        } else if (name == "blockquote") {
+            Flush();
+            quoteDepth_ = std::max(0, quoteDepth_ - 1);
+        } else if (name == "pre") {
+            Flush();
+            pre_ = false;
+        } else if (name == "li" || HeadingLevel(name) > 0 || IsBlockTag(name)) {
+            if (name != "body" && name != "html") Flush();
+            align_ = RichTextAlign::Default;
+        }
+    }
+
+    void EndTable() {
+        Table table = std::move(tables_.back());
+        tables_.pop_back();
+        // Rows without cells go; a header row is one whose cells are all th.
+        auto& rows = table.block.tableRows;
+        rows.erase(std::remove_if(rows.begin(), rows.end(), [](const RichTableRow& r) { return r.cells.empty(); }),
+                   rows.end());
+        if (rows.empty()) return;
+        if (RichTableCell* outer = CurrentCell()) {
+            // A table inside a cell: its text, row by row.
+            for (const RichTableRow& row : rows) {
+                for (const RichTableCell& cell : row.cells) {
+                    for (RichTextRun run : cell.runs) outer->runs.push_back(std::move(run));
+                    RichTextRun gap;
+                    gap.text = " ";
+                    outer->runs.push_back(gap);
+                }
+                pendingBreak_ = true;
+            }
+            return;
+        }
+        Flush();
+        doc_.blocks.push_back(std::move(table.block));
+    }
+
+    void Image(const HtmlToken& token) {
+        auto attribute = [&](const char* key) -> std::string {
+            auto found = token.attributes.find(key);
+            return found == token.attributes.end() ? "" : found->second;
+        };
+        const std::string src = attribute("src");
+        if (LowerAscii(src).rfind("data:", 0) != 0) return;   // only pictures carried along
+        const size_t comma = src.find(',');
+        const size_t semicolon = src.find(';');
+        if (comma == std::string::npos) return;
+        const std::string mime = LowerAscii(src.substr(5, (semicolon < comma ? semicolon : comma) - 5));
+        if (mime.rfind("image/", 0) != 0 || src.find(";base64", 0) == std::string::npos) return;
+        std::vector<uint8_t> data = DecodeBase64Data(src.substr(comma + 1));
+        if (data.empty()) return;
+        const std::string extension = mime.substr(6) == "jpeg" ? "jpg" : mime.substr(6);
+        const int media = doc_.AddMedia("pasted." + extension, mime, std::move(data));
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        run.mediaIndex = media;
+        run.imageAltText = attribute("alt");
+        float value = 0.0f;
+        std::string unit;
+        if (ParseCssLength(attribute("width"), value, unit)) run.imageWidthPt = value * 0.75f;
+        if (ParseCssLength(attribute("height"), value, unit)) run.imageHeightPt = value * 0.75f;
+        Runs().push_back(std::move(run));
+        lastSpace_ = false;
+    }
+};
+
+} // namespace
+
+UCRichDocument UCRichDocument::FromHTML(const std::string& html) {
+    UCRichDocument doc;
+    HtmlReader reader(doc);
+    reader.Read(html);
+    // Text Word marked as layout only (its list numbers) is dropped.
+    auto clean = [](std::vector<RichTextRun>& runs) {
+        runs.erase(std::remove_if(runs.begin(), runs.end(), [](const RichTextRun& r) { return r.color == "\x01"; }),
+                   runs.end());
+        if (!runs.empty()) {
+            runs.front().lineBreakBefore = false;
+            const size_t lead = runs.front().text.find_first_not_of(' ');
+            if (!runs.front().IsInlineImage()) runs.front().text.erase(0, lead == std::string::npos ? runs.front().text.size() : lead);
+        }
+    };
+    for (RichDocBlock& block : doc.blocks) {
+        clean(block.runs);
+        for (RichTableRow& row : block.tableRows) {
+            for (RichTableCell& cell : row.cells) clean(cell.runs);
+        }
+    }
+    doc.blocks.erase(std::remove_if(doc.blocks.begin(), doc.blocks.end(), [](const RichDocBlock& b) {
+                         return b.type == RichBlockType::Paragraph && b.runs.empty();
+                     }), doc.blocks.end());
     return doc;
 }
 
@@ -1075,11 +2061,26 @@ std::string RunsToHtml(const std::vector<RichTextRun>& runs,
     std::string out;
     for (const auto& run : MergeAdjacentRuns(runs)) {
         if (run.lineBreakBefore && !out.empty()) out += "<br/>";
+        if (run.IsDeleted()) continue;
+        if (run.IsNoteReference()) {
+            const std::string mark = EscapeHtml(run.text);
+            out += "<sup><a href=\"#note-" + mark + "\">" + mark + "</a></sup>";
+            continue;
+        }
         if (run.IsInlineImage()) {
             const std::string alt = EscapeHtml(run.imageAltText);
             const std::string src = media ? HtmlImageSrc(run.mediaIndex, *media, imageSource) : "";
             if (!src.empty()) {
-                out += "<img alt=\"" + alt + "\" src=\"" + EscapeHtml(src) + "\""
+                // A floating picture floats in HTML too, at its side.
+                std::string floatStyle;
+                if (run.IsFloatingImage() && run.imageWrap == RichTextRun::ImageWrap::Square) {
+                    floatStyle = run.imageFloatAlign == RichTextAlign::Right
+                        ? " style=\"float:right;margin:0 0 0.5em 1em\""
+                        : " style=\"float:left;margin:0 1em 0.5em 0\"";
+                } else if (run.IsFloatingImage() && run.imageWrap == RichTextRun::ImageWrap::TopAndBottom) {
+                    floatStyle = " style=\"display:block\"";
+                }
+                out += "<img alt=\"" + alt + "\"" + floatStyle + " src=\"" + EscapeHtml(src) + "\""
                      + HtmlImageSize(run.imageWidthPt, run.imageHeightPt) + "/>";
             } else {
                 out += "[" + alt + "]";
@@ -1117,7 +2118,8 @@ std::string CellFrameCss(const RichTableCell& cell) {
     auto side = [&](const char* name, const RichBorder& border) {
         css << "border-" << name << ":";
         if (border.IsVisible()) {
-            css << border.widthPt << "pt solid " << (border.color.empty() ? "#000000" : border.color) << ";";
+            // CSS names the four line styles as ODF does.
+            css << border.widthPt << "pt " << RichBorderStyleOdfName(border.style) << " " << (border.color.empty() ? "#000000" : border.color) << ";";
         } else {
             css << "none;";
         }
@@ -1179,7 +2181,7 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
         switch (block.type) {
             case RichBlockType::Heading: {
                 int level = std::clamp(block.headingLevel, 1, 6);
-                html << "<h" << level;
+                html << "<h" << level << (block.rightToLeft ? " dir=\"rtl\"" : "");
                 if (const char* alignCss = AlignCss(block.align)) html << " style=\"text-align:" << alignCss << "\"";
                 html << ">" << runsHtml(block.runs) << "</h" << level << ">\n";
                 break;
@@ -1211,6 +2213,10 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
                     html << "<li value=\"" << block.listStartNumber << "\">";
                 } else {
                     html << "<li>";
+                }
+                if (block.checkbox) {
+                    html << (block.checked ? "<input type=\"checkbox\" disabled checked> "
+                                           : "<input type=\"checkbox\" disabled> ");
                 }
                 html << runsHtml(block.runs) << "</li>\n";
                 break;
@@ -1280,8 +2286,9 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
                     frame.backgroundColor = block.paragraphBackground;
                     css += CellFrameCss(frame);
                 }
-                if (!css.empty()) html << "<p style=\"" << EscapeHtml(css) << "\">";
-                else html << "<p>";
+                const char* dir = block.rightToLeft ? " dir=\"rtl\"" : "";
+                if (!css.empty()) html << "<p" << dir << " style=\"" << EscapeHtml(css) << "\">";
+                else html << "<p" << dir << ">";
                 html << runsHtml(block.runs) << "</p>\n";
                 break;
             }
@@ -1289,6 +2296,28 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
     }
     closeListsTo(-1);
     quoteTo(0);
+    // The notes after the body, each with the mark its references link to.
+    const std::vector<std::string> marks = NoteMarks();
+    std::vector<bool> written(notes.size(), false);
+    bool opened = false;
+    for (RichNote::Kind kind : {RichNote::Kind::Footnote, RichNote::Kind::Endnote}) {
+        for (const NoteReference& reference : NoteReferences()) {
+            const size_t index = static_cast<size_t>(reference.noteIndex);
+            if (notes[index].kind != kind || written[index] || marks[index].empty()) continue;
+            written[index] = true;
+            if (!opened) {
+                html << "<section class=\"notes\"><hr/>\n";
+                opened = true;
+            }
+            const std::string mark = EscapeHtml(marks[index]);
+            html << "<div id=\"note-" << mark << "\"><sup>" << mark << "</sup> ";
+            for (const RichDocBlock& noteBlock : notes[index].blocks) {
+                html << "<p>" << runsHtml(noteBlock.runs) << "</p>";
+            }
+            html << "</div>\n";
+        }
+    }
+    if (opened) html << "</section>\n";
     return html.str();
 }
 
@@ -1326,10 +2355,34 @@ std::string UCRichDocument::ToPlainText() const {
                 text << "----------\n";
                 break;
             default:
+                if (block.checkbox) text << (block.checked ? "[x] " : "[ ] ");
                 text << RunsToReadableText(block.runs) << "\n";
                 break;
         }
         out << QuoteLines(text.str(), block.quoteLevel);
+    }
+    // The notes after a rule: "[1] text".
+    const std::vector<std::string> marks = NoteMarks();
+    std::vector<bool> written(notes.size(), false);
+    bool ruled = false;
+    for (RichNote::Kind kind : {RichNote::Kind::Footnote, RichNote::Kind::Endnote}) {
+        for (const NoteReference& reference : NoteReferences()) {
+            const size_t index = static_cast<size_t>(reference.noteIndex);
+            if (notes[index].kind != kind || written[index] || marks[index].empty()) continue;
+            written[index] = true;
+            if (!ruled) {
+                out << "\n----------\n";
+                ruled = true;
+            }
+            out << "[" << marks[index] << "] ";
+            bool firstParagraph = true;
+            for (const RichDocBlock& noteBlock : notes[index].blocks) {
+                if (!firstParagraph) out << "\n    ";
+                out << RunsToReadableText(noteBlock.runs);
+                firstParagraph = false;
+            }
+            out << "\n";
+        }
     }
     return out.str();
 }
@@ -1352,6 +2405,462 @@ int RichDocOrderedItemNumber(const std::vector<RichDocBlock>& blocks, size_t ind
         number++;
     }
     return number;
+}
+
+// ===== NOTES =====
+
+std::vector<UCRichDocument::NoteReference> UCRichDocument::NoteReferences() const {
+    std::vector<NoteReference> out;
+    auto scan = [&](const std::vector<RichTextRun>& runs, int block, int row, int cell) {
+        for (size_t r = 0; r < runs.size(); r++) {
+            if (runs[r].noteIndex >= 0 && runs[r].noteIndex < static_cast<int>(notes.size())) {
+                out.push_back({block, row, cell, static_cast<int>(r), runs[r].noteIndex});
+            }
+        }
+    };
+    for (size_t b = 0; b < blocks.size(); b++) {
+        const RichDocBlock& block = blocks[b];
+        scan(block.runs, static_cast<int>(b), -1, -1);
+        for (size_t r = 0; r < block.tableRows.size(); r++) {
+            for (size_t c = 0; c < block.tableRows[r].cells.size(); c++) {
+                scan(block.tableRows[r].cells[c].runs, static_cast<int>(b), static_cast<int>(r), static_cast<int>(c));
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<std::string> UCRichDocument::NoteMarks() const {
+    std::vector<std::string> marks(notes.size());
+    int footnotes = 0, endnotes = 0;
+    for (const NoteReference& reference : NoteReferences()) {
+        std::string& mark = marks[static_cast<size_t>(reference.noteIndex)];
+        if (!mark.empty()) continue;            // referred to again: same mark
+        if (notes[static_cast<size_t>(reference.noteIndex)].kind == RichNote::Kind::Endnote) {
+            mark = FormatListNumber(++endnotes, RichNumberFormat::LowerRoman);
+        } else {
+            mark = std::to_string(++footnotes);
+        }
+    }
+    return marks;
+}
+
+bool UCRichDocument::UpdateNoteMarks() {
+    const std::vector<std::string> marks = NoteMarks();
+    bool changed = false;
+    auto update = [&](std::vector<RichTextRun>& runs) {
+        for (RichTextRun& run : runs) {
+            if (run.noteIndex < 0 || run.noteIndex >= static_cast<int>(marks.size())) continue;
+            const std::string& mark = marks[static_cast<size_t>(run.noteIndex)];
+            if (!mark.empty() && run.text != mark) {
+                run.text = mark;
+                changed = true;
+            }
+            run.superscript = true;
+        }
+    };
+    for (RichDocBlock& block : blocks) {
+        update(block.runs);
+        for (RichTableRow& row : block.tableRows) {
+            for (RichTableCell& cell : row.cells) update(cell.runs);
+        }
+    }
+    return changed;
+}
+
+// ===== BOOKMARKS, CAPTIONS, CROSS-REFERENCES, CONTENTS =====
+
+namespace {
+
+// Every run list of the body (paragraphs and table cells) with its block.
+template <typename Blocks, typename Visit>
+void ForEachBodyRuns(Blocks& blocks, Visit visit) {
+    for (size_t b = 0; b < blocks.size(); b++) {
+        visit(blocks[b].runs, static_cast<int>(b));
+        for (auto& row : blocks[b].tableRows) {
+            for (auto& cell : row.cells) visit(cell.runs, static_cast<int>(b));
+        }
+    }
+}
+
+// A paragraph's text as a reference or a contents entry shows it: no object
+// placeholders, no line breaks, trimmed.
+std::string ShownText(const std::vector<RichTextRun>& runs) {
+    std::string text;
+    for (const RichTextRun& run : runs) {
+        if (run.IsInlineImage() || run.IsNoteReference()) continue;
+        if (run.lineBreakBefore && !text.empty()) text += ' ';
+        text += run.text;
+    }
+    for (size_t at; (at = text.find('\t')) != std::string::npos;) text[at] = ' ';
+    const size_t first = text.find_first_not_of(' ');
+    if (first == std::string::npos) return "";
+    return text.substr(first, text.find_last_not_of(' ') - first + 1);
+}
+
+} // namespace
+
+const RichSectionSetup& UCRichDocument::SectionFor(int index) const {
+    for (int i = std::min(index, static_cast<int>(blocks.size()) - 1); i >= 0; i--) {
+        if (blocks[static_cast<size_t>(i)].sectionStart) return blocks[static_cast<size_t>(i)].section;
+    }
+    return firstSection;
+}
+
+bool UCRichDocument::HasColumns() const {
+    if (firstSection.columns > 1) return true;
+    for (const RichDocBlock& block : blocks) {
+        if (block.sectionStart && block.section.columns > 1) return true;
+    }
+    return false;
+}
+
+bool UCRichDocument::HasTrackedChanges() const {
+    bool any = false;
+    ForEachBodyRuns(blocks, [&](const std::vector<RichTextRun>& runs, int) {
+        for (const RichTextRun& run : runs) any = any || run.change != RichTextRun::Change::Unchanged;
+    });
+    return any;
+}
+
+std::vector<int> UCRichDocument::ActiveComments() const {
+    std::vector<int> out;
+    std::vector<bool> seen(comments.size(), false);
+    ForEachBodyRuns(blocks, [&](const std::vector<RichTextRun>& runs, int) {
+        for (const RichTextRun& run : runs) {
+            for (int id : run.commentIds) {
+                if (id < 0 || id >= static_cast<int>(comments.size()) || seen[static_cast<size_t>(id)]) continue;
+                seen[static_cast<size_t>(id)] = true;
+                out.push_back(id);
+            }
+        }
+    });
+    return out;
+}
+
+std::vector<UCRichDocument::BookmarkInfo> UCRichDocument::Bookmarks() const {
+    std::vector<BookmarkInfo> out;
+    for (size_t b = 0; b < blocks.size(); b++) {
+        for (const std::string& name : blocks[b].bookmarks) out.push_back({name, static_cast<int>(b)});
+    }
+    return out;
+}
+
+int UCRichDocument::FindBookmark(const std::string& name) const {
+    if (name.empty()) return -1;
+    for (size_t b = 0; b < blocks.size(); b++) {
+        for (const std::string& mark : blocks[b].bookmarks) {
+            if (mark == name) return static_cast<int>(b);
+        }
+    }
+    return -1;
+}
+
+std::string UCRichDocument::UniqueBookmarkName(const std::string& base) const {
+    if (!base.empty() && FindBookmark(base) < 0) return base;
+    for (int n = 1;; n++) {
+        const std::string name = base + std::to_string(n);
+        if (FindBookmark(name) < 0) return name;
+    }
+}
+
+bool UCRichDocument::UpdateFields() {
+    bool changed = false;
+    std::map<std::string, int> counters;
+    std::map<int, std::string> captions;          // block -> "Figure 3"
+    ForEachBodyRuns(blocks, [&](std::vector<RichTextRun>& runs, int block) {
+        for (RichTextRun& run : runs) {
+            if (run.field != RichTextRun::Field::Sequence) continue;
+            const std::string number = std::to_string(++counters[run.fieldArgument]);
+            if (run.text != number) {
+                run.text = number;
+                changed = true;
+            }
+            if (!captions.count(block)) captions[block] = run.fieldArgument + " " + number;
+        }
+    });
+    ForEachBodyRuns(blocks, [&](std::vector<RichTextRun>& runs, int) {
+        for (RichTextRun& run : runs) {
+            if (run.field != RichTextRun::Field::Reference) continue;
+            const int target = FindBookmark(run.fieldArgument);
+            if (target < 0) continue;              // left as last shown
+            auto caption = captions.find(target);
+            std::string value = caption != captions.end() ? caption->second
+                                                           : ShownText(blocks[static_cast<size_t>(target)].runs);
+            if (value.empty()) value = run.fieldArgument;
+            if (run.text != value) {
+                run.text = value;
+                changed = true;
+            }
+        }
+    });
+    return changed;
+}
+
+bool UCRichDocument::UpdatePageReferences(const std::vector<int>& blockPages) {
+    bool changed = false;
+    ForEachBodyRuns(blocks, [&](std::vector<RichTextRun>& runs, int) {
+        for (RichTextRun& run : runs) {
+            if (run.field != RichTextRun::Field::PageReference) continue;
+            const int target = FindBookmark(run.fieldArgument);
+            if (target < 0 || target >= static_cast<int>(blockPages.size())) continue;
+            const std::string page = std::to_string(blockPages[static_cast<size_t>(target)]);
+            if (run.text != page) {
+                run.text = page;
+                changed = true;
+            }
+        }
+    });
+    return changed;
+}
+
+std::vector<RichDocBlock> UCRichDocument::BuildTableOfContents(int maxLevel) {
+    std::vector<RichDocBlock> entries;
+    // The page numbers line up at the text column's right edge.
+    const float columnPt = page.HasPage() ? page.widthPt - page.marginLeftPt - page.marginRightPt
+                                          : 595.3f - 2.0f * 56.7f;
+    for (RichDocBlock& block : blocks) {
+        if (block.type != RichBlockType::Heading || block.tocLevel > 0) continue;
+        if (block.headingLevel < 1 || block.headingLevel > maxLevel) continue;
+        const std::string text = ShownText(block.runs);
+        if (text.empty()) continue;
+        if (block.bookmarks.empty()) block.bookmarks.push_back(UniqueBookmarkName("_Toc"));
+        const std::string target = block.bookmarks.front();
+
+        RichDocBlock entry;
+        entry.tocLevel = block.headingLevel;
+        const std::string style = "TOC" + std::to_string(block.headingLevel);
+        if (FindStyle(style)) entry.styleId = style;
+        entry.leftIndentPt = 12.0f * static_cast<float>(block.headingLevel - 1);
+        entry.tabStops.push_back({std::max(columnPt, 72.0f), RichTabKind::Right});
+        RichTextRun title;
+        title.text = text;
+        RichTextRun tab;
+        tab.text = "\t";
+        RichTextRun pageNumber;
+        pageNumber.field = RichTextRun::Field::PageReference;
+        pageNumber.fieldArgument = target;
+        pageNumber.text = "1";
+        entry.runs = {title, tab, pageNumber};
+        entries.push_back(std::move(entry));
+    }
+    if (entries.empty()) {
+        // Kept as a one-line placeholder, so the next update finds its place.
+        RichDocBlock entry;
+        entry.tocLevel = 1;
+        RichTextRun note;
+        note.text = "No headings found.";
+        entry.runs = {note};
+        entries.push_back(std::move(entry));
+    }
+    return entries;
+}
+
+bool UCRichDocument::UpdateTableOfContents(int maxLevel) {
+    size_t first = 0;
+    while (first < blocks.size() && blocks[first].tocLevel <= 0) first++;
+    if (first == blocks.size()) return false;
+    size_t end = first;
+    while (end < blocks.size() && blocks[end].tocLevel > 0) end++;
+    std::vector<RichDocBlock> entries = BuildTableOfContents(maxLevel);
+    blocks.erase(blocks.begin() + static_cast<std::ptrdiff_t>(first), blocks.begin() + static_cast<std::ptrdiff_t>(end));
+    blocks.insert(blocks.begin() + static_cast<std::ptrdiff_t>(first), entries.begin(), entries.end());
+    return true;
+}
+
+// ===== NAMED STYLES =====
+
+void RichStyleCharacter::ApplyTo(RichTextRun& run) const {
+    if (bold) run.bold = *bold;
+    if (italic) run.italic = *italic;
+    if (underline) run.underline = *underline;
+    if (strikethrough) run.strikethrough = *strikethrough;
+    if (code) run.code = *code;
+    if (fontFamily) run.fontFamily = *fontFamily;
+    if (fontSizePt) run.fontSizePt = *fontSizePt;
+    if (color) run.color = *color;
+    if (highlightColor) run.highlightColor = *highlightColor;
+}
+
+void RichStyleCharacter::Overlay(const RichStyleCharacter& over) {
+    if (over.bold) bold = over.bold;
+    if (over.italic) italic = over.italic;
+    if (over.underline) underline = over.underline;
+    if (over.strikethrough) strikethrough = over.strikethrough;
+    if (over.code) code = over.code;
+    if (over.fontFamily) fontFamily = over.fontFamily;
+    if (over.fontSizePt) fontSizePt = over.fontSizePt;
+    if (over.color) color = over.color;
+    if (over.highlightColor) highlightColor = over.highlightColor;
+}
+
+void RichStyleParagraph::ApplyTo(RichDocBlock& block) const {
+    if (headingLevel && (block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading)) {
+        if (*headingLevel >= 1 && *headingLevel <= 6) {
+            block.type = RichBlockType::Heading;
+            block.headingLevel = *headingLevel;
+        } else {
+            block.type = RichBlockType::Paragraph;
+            block.headingLevel = 0;
+        }
+    }
+    if (align) block.align = *align;
+    if (leftIndentPt) block.leftIndentPt = *leftIndentPt;
+    if (rightIndentPt) block.rightIndentPt = *rightIndentPt;
+    if (firstLineIndentPt) block.firstLineIndentPt = *firstLineIndentPt;
+    if (spaceBeforePt) block.spaceBeforePt = *spaceBeforePt;
+    if (spaceAfterPt) block.spaceAfterPt = *spaceAfterPt;
+    if (lineSpacing) block.lineSpacing = *lineSpacing;
+}
+
+void RichStyleParagraph::Overlay(const RichStyleParagraph& over) {
+    if (over.headingLevel) headingLevel = over.headingLevel;
+    if (over.align) align = over.align;
+    if (over.leftIndentPt) leftIndentPt = over.leftIndentPt;
+    if (over.rightIndentPt) rightIndentPt = over.rightIndentPt;
+    if (over.firstLineIndentPt) firstLineIndentPt = over.firstLineIndentPt;
+    if (over.spaceBeforePt) spaceBeforePt = over.spaceBeforePt;
+    if (over.spaceAfterPt) spaceAfterPt = over.spaceAfterPt;
+    if (over.lineSpacing) lineSpacing = over.lineSpacing;
+}
+
+const RichStyle* UCRichDocument::FindStyle(const std::string& id) const {
+    for (const RichStyle& style : styles) {
+        if (style.id == id) return &style;
+    }
+    return nullptr;
+}
+
+RichStyle UCRichDocument::ResolveStyle(const std::string& id) const {
+    // The chain from the root down, then folded root first so the style's own
+    // properties win. Bounded: a cycle in a file's basedOn cannot hang it.
+    std::vector<const RichStyle*> chain;
+    for (const RichStyle* style = FindStyle(id); style && chain.size() < 16;
+         style = style->basedOn.empty() || style->basedOn == style->id ? nullptr : FindStyle(style->basedOn)) {
+        chain.push_back(style);
+    }
+    RichStyle resolved;
+    if (chain.empty()) {
+        resolved.id = id;
+        return resolved;
+    }
+    resolved = *chain.front();
+    resolved.character = RichStyleCharacter{};
+    resolved.paragraph = RichStyleParagraph{};
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+        resolved.character.Overlay((*it)->character);
+        resolved.paragraph.Overlay((*it)->paragraph);
+    }
+    return resolved;
+}
+
+bool UCRichDocument::StyleDerivesFrom(const std::string& id, const std::string& ancestorId) const {
+    std::string current = id;
+    for (int depth = 0; depth < 16 && !current.empty(); ++depth) {
+        if (current == ancestorId) return true;
+        const RichStyle* style = FindStyle(current);
+        if (!style || style->basedOn == current) return false;
+        current = style->basedOn;
+    }
+    return false;
+}
+
+std::vector<RichStyle> UCRichDocument::DefaultStyles() {
+    std::vector<RichStyle> out;
+    auto paragraph = [&](const std::string& id, const std::string& name, const std::string& basedOn) -> RichStyle& {
+        RichStyle style;
+        style.id = id;
+        style.name = name;
+        style.basedOn = basedOn;
+        out.push_back(style);
+        return out.back();
+    };
+    paragraph("Normal", "Normal", "");
+    {
+        RichStyle& title = paragraph("Title", "Title", "Normal");
+        title.character.fontSizePt = 26.0f;
+        title.character.bold = true;
+        title.paragraph.spaceAfterPt = 6.0f;
+        title.nextStyle = "Normal";
+    }
+    {
+        RichStyle& subtitle = paragraph("Subtitle", "Subtitle", "Normal");
+        subtitle.character.fontSizePt = 15.0f;
+        subtitle.character.color = "#595959";
+        subtitle.nextStyle = "Normal";
+    }
+    static const float headingSizes[6] = {20.0f, 16.0f, 14.0f, 12.0f, 11.0f, 11.0f};
+    for (int level = 1; level <= 6; level++) {
+        RichStyle& heading = paragraph("Heading" + std::to_string(level), "Heading " + std::to_string(level), "Normal");
+        heading.paragraph.headingLevel = level;
+        heading.paragraph.spaceBeforePt = level <= 2 ? 12.0f : 8.0f;
+        heading.paragraph.spaceAfterPt = 4.0f;
+        heading.character.bold = true;
+        heading.character.fontSizePt = headingSizes[level - 1];
+        heading.nextStyle = "Normal";
+    }
+    {
+        RichStyle& quote = paragraph("Quote", "Quote", "Normal");
+        quote.character.italic = true;
+        quote.paragraph.leftIndentPt = 36.0f;
+        quote.paragraph.rightIndentPt = 36.0f;
+    }
+    {
+        RichStyle& code = paragraph("CodeBlock", "Code", "Normal");
+        code.character.code = true;
+        code.character.fontFamily = "Courier New";
+    }
+    {
+        RichStyle& caption = paragraph("Caption", "Caption", "Normal");
+        caption.character.italic = true;
+        caption.character.fontSizePt = 9.0f;
+        caption.paragraph.spaceAfterPt = 10.0f;
+    }
+    auto character = [&](const std::string& id, const std::string& name) -> RichStyle& {
+        RichStyle style;
+        style.id = id;
+        style.name = name;
+        style.kind = RichStyle::Kind::Character;
+        out.push_back(style);
+        return out.back();
+    };
+    character("Strong", "Strong").character.bold = true;
+    character("Emphasis", "Emphasis").character.italic = true;
+    {
+        RichStyle& code = character("SourceText", "Source Text");
+        code.character.code = true;
+    }
+    return out;
+}
+
+const char* RichBorderStyleWordName(RichBorderStyle style) {
+    switch (style) {
+        case RichBorderStyle::Dotted: return "dotted";
+        case RichBorderStyle::Dashed: return "dashed";
+        case RichBorderStyle::Double: return "double";
+        default:                      return "single";
+    }
+}
+
+const char* RichBorderStyleOdfName(RichBorderStyle style) {
+    switch (style) {
+        case RichBorderStyle::Dotted: return "dotted";
+        case RichBorderStyle::Dashed: return "dashed";
+        case RichBorderStyle::Double: return "double";
+        default:                      return "solid";
+    }
+}
+
+RichBorderStyle RichBorderStyleFromName(const std::string& name) {
+    const std::string lower = ToLowerCopy(name);
+    if (lower.find("double") != std::string::npos || lower.find("triple") != std::string::npos
+        || lower.find("thinthick") != std::string::npos || lower.find("thickthin") != std::string::npos) {
+        return RichBorderStyle::Double;
+    }
+    // "dotDash" and "dotDotDash" read as dashes: the dash is what the eye sees.
+    if (lower.find("dash") != std::string::npos) return RichBorderStyle::Dashed;
+    if (lower.find("dot") != std::string::npos) return RichBorderStyle::Dotted;
+    return RichBorderStyle::Solid;
 }
 
 std::string FormatListNumber(int number, RichNumberFormat format) {

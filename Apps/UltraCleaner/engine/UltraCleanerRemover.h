@@ -12,6 +12,13 @@
 // allowed roots before anything happens to it. The scan already checked, but
 // a scan and a clean are separated by however long the user spent reading
 // the list, and the check is cheap.
+//
+// A failure never ends the run. An item that will not go — a temp file
+// another program still holds open, a path the guard refuses — is recorded
+// in the report's failure list and the remover moves on to the next one.
+// There used to be a limit of fifty failures after which the run stopped; on
+// Windows a temp directory routinely holds more than fifty files in use, so
+// the limit turned a clean of 1400 items into six removed and a warning.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -34,14 +41,13 @@ enum class RemovalMode {
 
 struct RemovalOptions {
     RemovalMode mode = RemovalMode::Simulate;
-    // Stop after this many failures; 0 = never stop. A wall of "permission
-    // denied" usually means the user needs an elevated run, not 4000 lines.
-    size_t failureLimit = 50;
 };
 
 // ===== RESULT =====
 struct RemovalFailure {
     std::string path;
+    // Why it stayed, as the platform words it. Many items usually share one
+    // reason, so a UI groups the list by this text rather than repeating it.
     std::string reason;
 };
 

@@ -1665,6 +1665,7 @@ add_executable(CSSLayoutAutoExpandTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
@@ -1696,6 +1697,7 @@ add_executable(CSSLayoutSafeAlignTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
@@ -1717,6 +1719,38 @@ add_test(
 )
 message(STATUS "    Test registered: CSSLayoutSafeAlignTest")
 
+# ===== CSS LAYOUT BLOCK MARGIN TEST =====
+# Block layout (the default display) offsets each in-flow child by its margin
+# and adds the margin to the stack, so SetMargin() works inside an ordinary
+# container or group box. Pure geometry.
+message(STATUS "  Building CSSLayoutBlockMarginTest...")
+add_executable(CSSLayoutBlockMarginTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutBlockMarginTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(CSSLayoutBlockMarginTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutBlockMarginTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutBlockMarginTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutBlockMarginTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutBlockMarginTest
+    COMMAND CSSLayoutBlockMarginTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutBlockMarginTest")
+
 # ===== DIALOG ICON LAYOUT TEST =====
 # The modal dialog's content row with and without the severity icon: hiding it
 # must drop its column and the flex gap after it, so an element centred in the
@@ -1728,6 +1762,7 @@ add_executable(DialogIconLayoutTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
@@ -3767,6 +3802,7 @@ add_executable(CSSLayoutFormGridTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp

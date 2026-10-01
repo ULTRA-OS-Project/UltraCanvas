@@ -24,8 +24,8 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
-// Version: 1.0.0
-// Last Modified: 2026-09-29
+// Version: 1.1.0
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -39,6 +39,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <new>
 #include <sstream>
 
 #include <dirent.h>
@@ -544,8 +545,12 @@ bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     return true;
 }
 
-bool CaptureScreen(const std::string& pngPath, std::string& error) {
-    std::lock_guard<std::mutex> lock(g_queryMutex);
+// XGetImage on the root window into a BGRx buffer: the layout cairo's RGB24
+// surfaces use, and the one the QR scanner reads as BGRA32, so the same rows
+// serve the PNG writer and an in-memory consumer alike. Caller holds
+// g_queryMutex.
+bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error) {
+    out = DesktopScreenImage();
     Display* d = QueryDisplay();
     if (!d) {
         error = "No X display: the screen cannot be captured.";
@@ -555,6 +560,10 @@ bool CaptureScreen(const std::string& pngPath, std::string& error) {
     const int screen = DefaultScreen(d);
     const int width = DisplayWidth(d, screen);
     const int height = DisplayHeight(d, screen);
+    if (width <= 0 || height <= 0) {
+        error = "The X server reports an empty screen.";
+        return false;
+    }
     XImage* image = XGetImage(d, RootOf(d), 0, 0, static_cast<unsigned>(width),
                               static_cast<unsigned>(height), AllPlanes, ZPixmap);
     if (!image) {
@@ -562,15 +571,16 @@ bool CaptureScreen(const std::string& pngPath, std::string& error) {
         return false;
     }
 
-    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, width, height);
-    if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-        cairo_surface_destroy(surface);
+    const int stride = width * 4;
+    try {
+        out.pixels.resize(static_cast<size_t>(height) * static_cast<size_t>(stride));
+    } catch (const std::bad_alloc&) {
         XDestroyImage(image);
+        out = DesktopScreenImage();
         error = "Not enough memory for a " + std::to_string(width) + "x" + std::to_string(height) + " image.";
         return false;
     }
-    unsigned char* dst = cairo_image_surface_get_data(surface);
-    const int stride = cairo_image_surface_get_stride(surface);
+    unsigned char* dst = out.pixels.data();
     const bool nativeLayout = image->bits_per_pixel == 32 && image->red_mask == 0xFF0000 &&
                               image->green_mask == 0x00FF00 && image->blue_mask == 0x0000FF &&
                               image->byte_order == LSBFirst;
@@ -599,9 +609,33 @@ bool CaptureScreen(const std::string& pngPath, std::string& error) {
             }
         }
     }
-    cairo_surface_mark_dirty(surface);
     XDestroyImage(image);
+    out.width = width;
+    out.height = height;
+    out.stride = stride;
+    return true;
+}
 
+bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
+    std::lock_guard<std::mutex> lock(g_queryMutex);
+    return CaptureScreenLocked(out, error);
+}
+
+bool CaptureScreen(const std::string& pngPath, std::string& error) {
+    std::lock_guard<std::mutex> lock(g_queryMutex);
+    DesktopScreenImage shot;
+    if (!CaptureScreenLocked(shot, error)) return false;
+
+    // The buffer is already in cairo's RGB24 layout, so the surface can sit
+    // on it directly; nothing is copied.
+    cairo_surface_t* surface = cairo_image_surface_create_for_data(
+        shot.pixels.data(), CAIRO_FORMAT_RGB24, shot.width, shot.height, shot.stride);
+    if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+        error = std::string("Could not wrap the screen image: ") +
+                cairo_status_to_string(cairo_surface_status(surface));
+        cairo_surface_destroy(surface);
+        return false;
+    }
     const cairo_status_t status = cairo_surface_write_to_png(surface, pngPath.c_str());
     cairo_surface_destroy(surface);
     if (status != CAIRO_STATUS_SUCCESS) {

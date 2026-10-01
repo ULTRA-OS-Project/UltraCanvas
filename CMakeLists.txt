@@ -1533,6 +1533,18 @@ if (BUILD_TESTS)
     add_test(NAME HTMLImageAlignTest COMMAND HTMLImageAlignTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # HTML tables on the CSSLayout table engine: shared columns, spans, px/%
+    # widths, nowrap, mail buttons (builder + layout, headless).
+    add_executable(HTMLTableLayoutTest Tests/HTMLTableLayoutTest.cpp)
+    target_include_directories(HTMLTableLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLTableLayoutTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLTableLayoutTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLTableLayoutTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLTableLayoutTest COMMAND HTMLTableLayoutTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # UltraCanvasJSON unit tests (DataFormats section). Compiles only the JSON
     # module and its vendored engine, so it runs headless without the UI stack.
     add_executable(JSONTests

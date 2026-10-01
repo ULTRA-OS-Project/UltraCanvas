@@ -176,6 +176,12 @@ options.servers   = {"9.9.9.9", "[2620:fe::fe]:53"};
 options.timeoutMs = 2000;
 std::vector<std::string> a;
 UltraNet_DnsResolve("example.com", a, UltraNetDnsType::A, options);
+
+// The reverse lookup takes the same options. Without servers it is the
+// system resolver (hosts file included) under the deadline; with servers it
+// is a PTR query for the address's reverse name at those servers.
+std::string host;
+UltraNet_DnsReverseLookup("9.9.9.9", host, options);
 ```
 
 ```cpp

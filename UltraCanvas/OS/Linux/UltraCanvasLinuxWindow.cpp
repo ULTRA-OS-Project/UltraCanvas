@@ -540,16 +540,155 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvas: XCreateIC() failed" << std::endl;
             return false;
         }
+        activeXic = xic;
+
+        // A second, on-the-spot context, when the input method offers it.
+        if (XGetIMValues(xim, XNQueryInputStyle, &styles, nullptr) == nullptr && styles) {
+            XIMStyle inlineStyle = 0;
+            for (unsigned short i = 0; i < styles->count_styles && !inlineStyle; i++) {
+                const XIMStyle style = styles->supported_styles[i];
+                if (style == (XIMPreeditCallbacks | XIMStatusNothing) || style == (XIMPreeditCallbacks | XIMStatusNone)) {
+                    inlineStyle = style;
+                }
+            }
+            XFree(styles);
+            if (inlineStyle) {
+                preeditStart = {reinterpret_cast<XPointer>(this), reinterpret_cast<XIMProc>(&UltraCanvasLinuxWindow::OnPreeditStart)};
+                preeditDone = {reinterpret_cast<XPointer>(this), reinterpret_cast<XIMProc>(&UltraCanvasLinuxWindow::OnPreeditDone)};
+                preeditDraw = {reinterpret_cast<XPointer>(this), reinterpret_cast<XIMProc>(&UltraCanvasLinuxWindow::OnPreeditDraw)};
+                preeditCaret = {reinterpret_cast<XPointer>(this), reinterpret_cast<XIMProc>(&UltraCanvasLinuxWindow::OnPreeditCaret)};
+                XVaNestedList callbacks = XVaCreateNestedList(0,
+                                                              XNPreeditStartCallback, &preeditStart,
+                                                              XNPreeditDoneCallback, &preeditDone,
+                                                              XNPreeditDrawCallback, &preeditDraw,
+                                                              XNPreeditCaretCallback, &preeditCaret,
+                                                              nullptr);
+                xicInline = XCreateIC(xim,
+                                      XNInputStyle, inlineStyle,
+                                      XNClientWindow, xWindow,
+                                      XNFocusWindow, xWindow,
+                                      XNPreeditAttributes, callbacks,
+                                      nullptr);
+                XFree(callbacks);
+            }
+        }
 
         debugOutput << "UltraCanvas: XIC created for window " << xWindow << std::endl;
         return true;
     }
 
     void UltraCanvasLinuxWindow::DestroyXIC() {
+        if (xicInline) {
+            XDestroyIC(xicInline);
+            xicInline = nullptr;
+        }
         if (xic) {
             XDestroyIC(xic);
             xic = nullptr;
         }
+        activeXic = nullptr;
+    }
+
+    XIC UltraCanvasLinuxWindow::GetXIC() const {
+        XIC want = xic;
+        const UltraCanvasUIElement* focused = GetFocusedElement();
+        if (xicInline && focused && focused->DrawsTextComposition()) want = xicInline;
+        if (want != activeXic) {
+            // The focused element changed kind: the other context gets the
+            // input method's attention.
+            if (activeXic) XUnsetICFocus(activeXic);
+            if (want) XSetICFocus(want);
+            activeXic = want;
+        }
+        return want;
+    }
+
+    void UltraCanvasLinuxWindow::UnfocusXICs() {
+        if (xic) XUnsetICFocus(xic);
+        if (xicInline) XUnsetICFocus(xicInline);
+    }
+
+    // ===== ON-THE-SPOT PRE-EDIT =====
+
+    int UltraCanvasLinuxWindow::OnPreeditStart(XIC, XPointer client, XPointer) {
+        auto* window = reinterpret_cast<UltraCanvasLinuxWindow*>(client);
+        window->preedit.clear();
+        return -1;                            // no length limit
+    }
+
+    void UltraCanvasLinuxWindow::OnPreeditDone(XIC, XPointer client, XPointer) {
+        auto* window = reinterpret_cast<UltraCanvasLinuxWindow*>(client);
+        window->preedit.clear();
+        window->PushComposition(0);
+    }
+
+    void UltraCanvasLinuxWindow::OnPreeditDraw(XIC, XPointer client, XPointer callData) {
+        auto* window = reinterpret_cast<UltraCanvasLinuxWindow*>(client);
+        auto* draw = reinterpret_cast<XIMPreeditDrawCallbackStruct*>(callData);
+        if (!draw) return;
+        // The new text, as code points. Multibyte text is in the locale's
+        // encoding, UTF-8 for any locale an input method is used in.
+        std::u32string replacement;
+        if (draw->text) {
+            if (draw->text->encoding_is_wchar) {
+                for (unsigned short i = 0; draw->text->string.wide_char && i < draw->text->length; i++) {
+                    replacement += static_cast<char32_t>(draw->text->string.wide_char[i]);
+                }
+            } else if (const char* bytes = draw->text->string.multi_byte) {
+                const std::string utf8(bytes);
+                for (size_t i = 0; i < utf8.size();) {
+                    const unsigned char c = static_cast<unsigned char>(utf8[i]);
+                    const int length = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+                    char32_t cp = length == 1 ? c : length == 2 ? (c & 0x1F) : length == 3 ? (c & 0x0F) : (c & 0x07);
+                    for (int k = 1; k < length && i + static_cast<size_t>(k) < utf8.size(); k++) {
+                        cp = (cp << 6) | (static_cast<unsigned char>(utf8[i + static_cast<size_t>(k)]) & 0x3F);
+                    }
+                    replacement += cp;
+                    i += static_cast<size_t>(length);
+                }
+            }
+        }
+        const size_t first = std::min(static_cast<size_t>(std::max(0, draw->chg_first)), window->preedit.size());
+        const size_t count = std::min(static_cast<size_t>(std::max(0, draw->chg_length)), window->preedit.size() - first);
+        window->preedit.replace(first, count, replacement);
+        window->PushComposition(draw->caret);
+    }
+
+    void UltraCanvasLinuxWindow::OnPreeditCaret(XIC, XPointer client, XPointer callData) {
+        auto* window = reinterpret_cast<UltraCanvasLinuxWindow*>(client);
+        auto* caret = reinterpret_cast<XIMPreeditCaretCallbackStruct*>(callData);
+        if (!caret) return;
+        if (caret->direction == XIMAbsolutePosition) {
+            caret->position = std::clamp(caret->position, 0, static_cast<int>(window->preedit.size()));
+            window->PushComposition(caret->position);
+        }
+    }
+
+    void UltraCanvasLinuxWindow::PushComposition(int caretCharacters) {
+        UCEvent event;
+        event.type = UCEventType::TextComposition;
+        event.nativeWindowHandle = xWindow;
+        caretCharacters = std::clamp(caretCharacters, 0, static_cast<int>(preedit.size()));
+        for (size_t i = 0; i < preedit.size(); i++) {
+            if (static_cast<int>(i) == caretCharacters) event.compositionCursor = static_cast<int>(event.text.size());
+            const char32_t cp = preedit[i];
+            if (cp < 0x80) event.text += static_cast<char>(cp);
+            else if (cp < 0x800) {
+                event.text += static_cast<char>(0xC0 | (cp >> 6));
+                event.text += static_cast<char>(0x80 | (cp & 0x3F));
+            } else if (cp < 0x10000) {
+                event.text += static_cast<char>(0xE0 | (cp >> 12));
+                event.text += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                event.text += static_cast<char>(0x80 | (cp & 0x3F));
+            } else {
+                event.text += static_cast<char>(0xF0 | (cp >> 18));
+                event.text += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+                event.text += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                event.text += static_cast<char>(0x80 | (cp & 0x3F));
+            }
+        }
+        if (event.compositionCursor < 0) event.compositionCursor = static_cast<int>(event.text.size());
+        if (auto* application = UltraCanvasApplication::GetInstance()) application->PushEvent(event);
     }
 
     void UltraCanvasLinuxWindow::DestroyNativeCairoSurface() {

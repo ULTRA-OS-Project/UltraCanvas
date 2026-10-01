@@ -18,6 +18,7 @@
 #include <mutex>
 #include <stack>
 #include <cmath>
+#include <algorithm>
 
 namespace UltraCanvas {
     class ITextLayout;
@@ -616,23 +617,79 @@ namespace UltraCanvas {
             );
         }
 
-        // Draw filled rectangle with border
+        // A stroke is centred on its path, so an outline of width w along a
+        // rectangle with whole-pixel edges lies half outside it and is smeared
+        // over two rows of pixels on each side: a 1px border came out as a
+        // 2px grey haze. Inset the path by w / 2 and the stroke's outer edge
+        // lands exactly on the rectangle's edge, on whole pixels, and the
+        // outline stays inside the bounds it was given. The centre does not
+        // move, so anything centred in the rectangle stays centred.
+    private:
+        // GetCapCentreOffset's per-font results for this context. Per context,
+        // not process-wide: two contexts can measure the same font differently
+        // (device scale, font options), and InvalidateFontMetricsCache clears
+        // just this one when its configuration changes.
+        std::unordered_map<std::string, double> capCentreCache;
+
+    public:
+        // Distance from the top of a single line of `font`, as DrawText and
+        // DrawTextLayout place it, to the middle of a capital letter (half-way
+        // between the cap top and the baseline). Centring text on that point
+        // rather than on its line box - which holds the ascender and descender
+        // space too - puts a mixed-case label level with a box or icon centred
+        // beside it, and the same for every label in the font, so rows stay
+        // level with each other. Measured once per font and cached.
+        double GetCapCentreOffset(const FontStyle& font);
+
+        // Top y at which to DrawText a single line of `font` so that its
+        // capitals are centred on `row`. Defined after ITextLayout below.
+        int TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
+
+        // Forget every cached font measurement (GetCapCentreOffset and the
+        // text layouts' cap heights). A backend calls this whenever a font
+        // would measure differently from now on: its resolution, font
+        // options, hinting or device scale changed. Callers never need to.
+        virtual void InvalidateFontMetricsCache() { capCentreCache.clear(); }
+
+        static Rect2Dd InsetForStroke(const Rect2Dd& rect, float strokeWidth) {
+            double inset = strokeWidth / 2.0;
+            double w = rect.width - 2.0 * inset;
+            double h = rect.height - 2.0 * inset;
+            if (w <= 0 || h <= 0) {
+                // Too small to hold the stroke: keep it centred on the rectangle's centre.
+                return Rect2Dd(rect.x + rect.width / 2.0, rect.y + rect.height / 2.0, 0, 0);
+            }
+            return Rect2Dd(rect.x + inset, rect.y + inset, w, h);
+        }
+
+        // Draw filled rectangle with border. The border is drawn inside the
+        // rectangle (see InsetForStroke), so the outline's outer edge is the
+        // rectangle's edge.
         void DrawFilledRectangle(const Rect2Dd& rect, const Color& fillColor,
                         float borderWidth = 1.0f, const Color& borderColor = Colors::Transparent, float borderRadius = 0.0f) {
 
             if (fillColor.a == 0 && borderColor.a == 0) return;
 
+            const bool stroked = borderWidth > 0 && borderColor.a > 0;
+            Rect2Dd path = stroked ? InsetForStroke(rect, borderWidth) : rect;
+            double radius = borderRadius;
+            if (stroked && radius > 0) {
+                // The outline's outer corner keeps borderRadius; the path runs
+                // half a stroke inside it.
+                radius = std::max(0.0, radius - borderWidth / 2.0);
+            }
+
             PushState();
-            if (borderRadius > 0) {
-                RoundedRect(rect.x, rect.y, rect.width, rect.height, borderRadius);
+            if (radius > 0) {
+                RoundedRect(path.x, path.y, path.width, path.height, radius);
             } else {
-                Rect(rect.x, rect.y, rect.width, rect.height);
+                Rect(path.x, path.y, path.width, path.height);
             }
             if (fillColor.a > 0) {
                 SetFillPaint(fillColor);
                 FillPathPreserve();
             }
-            if (borderWidth > 0 && borderColor.a > 0) {
+            if (stroked) {
                 SetStrokePaint(borderColor);
                 SetStrokeWidth(borderWidth);
                 StrokePathPreserve();
@@ -641,15 +698,24 @@ namespace UltraCanvas {
             PopState();
         }
 
+        // Draw a filled circle with border. As with DrawFilledRectangle the
+        // border is drawn inside the radius, so a ring of radius r spans
+        // exactly 2r pixels and does not overhang the box it was measured for.
         void DrawFilledCircle(const Point2Dd& center, float radius, const Color& fillColor, const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f) {
+            const bool stroked = borderWidth > 0 && borderColor.a > 0;
+            double pathRadius = radius;
+            if (stroked) {
+                pathRadius = std::max(0.0, pathRadius - borderWidth / 2.0);
+            }
+
             PushState();
             ClearPath();
-            Circle(center.x, center.y, radius);
+            Circle(center.x, center.y, pathRadius);
             if (fillColor.a > 0) {
                 SetFillPaint(fillColor);
                 FillPathPreserve();
             }
-            if (borderWidth > 0) {
+            if (stroked) {
                 SetStrokeWidth(borderWidth);
                 SetStrokePaint(borderColor);
                 StrokePathPreserve();
@@ -772,6 +838,15 @@ namespace UltraCanvas {
         int lengthBytes; // length in bytes
     };
 
+    // A laid-out line's bytes and its vertical extent, in layout pixels (the
+    // same coordinates IndexToPos uses), line spacing included.
+    struct LayoutLineExtent {
+        int startByte = 0;
+        int lengthBytes = 0;
+        float top = 0.0f;
+        float height = 0.0f;
+    };
+
     // ===== UCTextAttribute =====
 
     class ITextAttribute {
@@ -837,6 +912,10 @@ namespace UltraCanvas {
 
         // hyphens on/off
         std::unique_ptr<ITextAttribute> CreateHypenation(bool enable);
+
+        // false: no line break inside the range (a formula, a word that must
+        // stay whole)
+        std::unique_ptr<ITextAttribute> CreateAllowBreaks(bool allow);
 
         // Language tag (e.g. "en-US")
         std::unique_ptr<ITextAttribute> CreateLanguage(const std::string& lang);
@@ -963,6 +1042,10 @@ namespace UltraCanvas {
 //        void GetSize(int& widthPangoUnits, int& heightPangoUnits) const = 0;
         virtual double GetBaseline() const = 0;
 //        int GetBaselinePangoUnits() const = 0;
+        // Height of a capital letter in the layout's font, baseline to cap
+        // top, in pixels. Measured from the font once and cached, so it is
+        // the same for every layout in that font whatever text it holds.
+        virtual double GetCapHeight() = 0;
         virtual int GetLineCount() const = 0;
 
         // ===== HIT TESTING & POSITION =====
@@ -978,6 +1061,8 @@ namespace UltraCanvas {
 
         // ===== LINE ACCESS =====
         virtual std::vector<LayoutLineRange> GetLineByteRanges() const = 0;
+        // Every line's bytes and vertical extent, top to bottom.
+        virtual std::vector<LayoutLineExtent> GetLineExtents() const = 0;
 
         // ===== ITERATOR =====
 //        UCTextLayoutIter GetIter() const = 0;
@@ -987,6 +1072,39 @@ namespace UltraCanvas {
     inline std::unique_ptr<ITextLayout> IRenderContext::CreateTextLayout()
     {
         return CreateTextLayout("", false);
+    }
+
+    inline double IRenderContext::GetCapCentreOffset(const FontStyle& font)
+    {
+        // One entry per font this context has drawn with; a handful in practice.
+        auto& cache = capCentreCache;
+        std::string key = font.fontFamily + '|' + std::to_string(font.fontSize) + '|' +
+                          std::to_string(static_cast<int>(font.fontWeight)) + '|' +
+                          std::to_string(static_cast<int>(font.fontSlant));
+        auto found = cache.find(key);
+        if (found != cache.end()) return found->second;
+
+        double capCentre = 0;
+        auto probe = CreateTextLayout("H", false);
+        if (probe) {
+            probe->SetFontStyle(font);
+            double capHeight = probe->GetCapHeight();
+            if (capHeight > 0) {
+                // Layout top to the middle of a capital, plus the offset
+                // DrawTextLayout adds when it places the layout.
+                capCentre = probe->GetBaseline() - capHeight / 2.0 + probe->GetLayoutVerticalOffset();
+            } else {
+                // Nothing to measure (an icon font, an empty face): the line box's middle.
+                capCentre = probe->GetLayoutHeight() / 2.0 + probe->GetLayoutVerticalOffset();
+            }
+        }
+        cache.emplace(key, capCentre);
+        return capCentre;
+    }
+
+    inline int IRenderContext::TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font)
+    {
+        return static_cast<int>(std::lround(row.y + row.height / 2.0 - GetCapCentreOffset(font)));
     }
 
     // factory

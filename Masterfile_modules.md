@@ -950,6 +950,30 @@ engine; these classes hold the pixels being edited and hand them to it.
   `SetAntialias`, and text outlines `AppendTextPath` /
   `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
   the Cairo backend implements all of it. Tested by `RenderContextTest`.
+- **UltraCanvasAccessibility** (`UltraCanvasAccessibility.h`) — the
+  platform-neutral accessibility layer: `AccessibleRole`,
+  `IAccessibleText` (text, caret, selection, character bounds, attributes,
+  `GetTextAtOffset` by character/word/line/sentence/paragraph),
+  `AccessibilityEvent`, and `UltraCanvasAccessibility::AddListener` /
+  `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
+  character-offset helpers. Elements answer through
+  `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
+  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
+  No platform bridge (AT-SPI, UIA) yet. See
+  `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
+- **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
+  through the ordinary `IRenderContext` (units: points), as vectors with
+  selectable text: `CreateFile(utf8Path, w, h, error)` /
+  `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
+  `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
+  work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
+- **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent)`,
+  `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
+  dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+- **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
+  extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
+  one line.
 
 ### **2. UltraAI**
 
@@ -1025,10 +1049,12 @@ future.
   Google Drive
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
-- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync` (each also with an
-  `UltraNetDnsOptions` - the name servers to ask for that call only, and the
-  deadline), `UltraNet_DnsReverseLookup`, `UltraNet_DnsClearCache`,
-  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`
+- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
+  (each also with an `UltraNetDnsOptions` - the name servers to ask for that
+  call only, and the deadline; the reverse lookup without servers is the
+  system resolver under the deadline), `UltraNet_DnsClearCache`,
+  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`,
+  `UltraNet_DnsReverseNameToAddress`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
 - `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
   `UltraNet_UrlDecode`

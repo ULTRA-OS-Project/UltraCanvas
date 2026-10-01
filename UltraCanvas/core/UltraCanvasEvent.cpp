@@ -31,7 +31,7 @@ namespace UltraCanvas {
             // Keyboard Events
             "KeyDown",
             "KeyUp",
-            "TextInput",        // Added for text input events
+            "TextInput", "TextComposition",        // Added for text input events
 
             // Window Events
             "WindowCloseRequest",

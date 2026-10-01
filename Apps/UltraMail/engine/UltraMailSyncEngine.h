@@ -41,11 +41,36 @@ struct SyncOutcome {
     // On a network failure, the connection chain the plug-in reported
     // (UltraNetResult::diagnostics): component, server, TLS, libraries, roots.
     std::string diagnostics;
+    // Why it failed, as UltraNet classified it (Success when ok, Unknown for
+    // a failure that did not come from UltraNet). The app reads it to tell
+    // "the network is not there" from "the server said no".
+    UltraNetResultCode code = UltraNetResultCode::Success;
 
     explicit operator bool() const { return ok; }
-    static SyncOutcome Fail(const std::string& m) { return SyncOutcome{false, m, {}, {}}; }
+    static SyncOutcome Fail(const std::string& m) {
+        return SyncOutcome{false, m, {}, {}, UltraNetResultCode::Unknown};
+    }
     static SyncOutcome Fail(const UltraNetResult& r) {
-        return SyncOutcome{false, r.message, {}, r.diagnostics};
+        return SyncOutcome{false, r.message, {}, r.diagnostics, r.code};
+    }
+
+    // True when the failure means the server could not be reached at all -
+    // no name resolution, no route, nobody listening, or the connection timed
+    // out - which right after boot, or on a laptop between two networks,
+    // usually means the network is not up yet rather than that anything is
+    // wrong with the account. A failure the server itself produced (a rejected
+    // password, an untrusted certificate, a refused mailbox) is never this.
+    bool NetworkUnreachable() const {
+        switch (code) {
+            case UltraNetResultCode::HostNotFound:
+            case UltraNetResultCode::ConnectionRefused:
+            case UltraNetResultCode::ConnectionReset:
+            case UltraNetResultCode::ConnectionTimeout:
+            case UltraNetResultCode::Timeout:
+                return !ok;
+            default:
+                return false;
+        }
     }
 };
 

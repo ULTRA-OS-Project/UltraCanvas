@@ -772,12 +772,12 @@ static void TestTableCellEditing() {
     CHECK(ed.Undo());
     CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 1, 0)), std::string("beta"));
 
-    // --- a selection never spans two cells ---
+    // --- a selection across two cells is a block of cells, never text ---
     ed.SetSelection(RichDocPosition(1, 0, 0, 0), RichDocPosition(1, 1, 1, 5));
-    CHECK(ed.GetSelectionRange().start.SameContainer(ed.GetSelectionRange().end));
-    // ...nor out of a cell into a following block.
+    CHECK(ed.HasCellSelection());
+    // ...and out of a cell into a following block it stops at the table.
     ed.SetSelection(RichDocPosition(1, 0, 0, 0), RichDocPosition(2, 5));
-    CHECK(ed.GetSelectionRange().start.SameContainer(ed.GetSelectionRange().end));
+    CHECK(ed.GetSelectionRange().end.InCell() && ed.GetSelectionRange().end.blockIndex == 1);
     // Ordinary block-to-block selections still span freely.
     ed.SetSelection(RichDocPosition(0, 0), RichDocPosition(2, 5));
     CHECK(!ed.GetSelectionRange().start.SameContainer(ed.GetSelectionRange().end));
@@ -1305,6 +1305,568 @@ static void TestInlineImages() {
           || match.start.byteOffset >= 0);   // finding it is harmless; crashing is not
 }
 
+static void TestCellSelection() {
+    std::cout << "\n--- Cell selection ---\n";
+
+    UCRichDocumentEditor ed(BuildTableDocument());   // "before" | alpha beta / gamma delta | "after"
+    // Dragging from one cell into another selects cells, not text.
+    ed.SetCaret(RichDocPosition(1, 0, 0, 2));
+    ed.SetCaret(RichDocPosition(1, 1, 1, 1), /*extend*/ true);
+    CHECK(ed.HasCellSelection());
+    int top = -1, left = -1, bottom = -1, right = -1;
+    CHECK(ed.GetCellSelectionRect(top, left, bottom, right));
+    CHECK_EQ(top, 0);
+    CHECK_EQ(left, 0);
+    CHECK_EQ(bottom, 1);
+    CHECK_EQ(right, 1);
+    CHECK_EQ(ed.SelectedCells().size(), size_t(4));
+
+    // Formatting applies to every selected cell.
+    ed.ToggleBold();
+    CHECK(ed.GetBlock(1).tableRows[0].cells[0].runs[0].bold);
+    CHECK(ed.GetBlock(1).tableRows[1].cells[1].runs[0].bold);
+    CHECK(RichCharFormatState::IsOn(ed.GetFormatState().bold));
+
+    // Copy gives a table of the selected cells, plain text as tab/newline.
+    std::vector<RichDocBlock> copied = ed.ExtractRange(ed.GetSelectionRange());
+    CHECK_EQ(copied.size(), size_t(1));
+    CHECK(copied[0].type == RichBlockType::Table && copied[0].tableRows.size() == 2);
+    CHECK_EQ(ed.RangeToPlainText(ed.GetSelectionRange()), std::string("alpha\tbeta\ngamma\tdelta\n"));
+
+    // Alignment in a cell selection is each cell's own.
+    ed.SetAlignment(RichTextAlign::Right);
+    CHECK(ed.GetBlock(1).tableRows[0].cells[1].align == RichTextAlign::Right);
+
+    // Delete empties the cells; the table keeps its shape.
+    CHECK(ed.DeleteSelection());
+    CHECK_EQ(ed.GetBlockCount(), 3);
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 0, 0)), std::string(""));
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 1, 0)), std::string(""));
+    CHECK(ed.GetCaret() == RichDocPosition(1, 0, 0, 0));
+    CHECK(ed.Undo());
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 1, 0)), std::string("delta"));
+
+    // Pasting a copied table into a cell fills the grid from there.
+    ed.SetCaret(RichDocPosition(1, 0, 0, 0));
+    ed.SetCaret(RichDocPosition(1, 0, 1, 0), true);   // alpha, beta
+    std::vector<RichDocBlock> row = ed.ExtractRange(ed.GetSelectionRange());
+    ed.SetCaret(RichDocPosition(1, 1, 0, 0));
+    ed.InsertBlocks(row);
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 0, 0)), std::string("alpha"));
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 1, 0)), std::string("beta"));
+    CHECK(ed.Undo());
+
+    // Pasting paragraphs into a cell keeps them in the cell, as lines.
+    ed.SetCaret(RichDocPosition(1, 0, 0, 5));
+    ed.InsertBlocks(ed.ExtractRange(RichDocRange(RichDocPosition(0, 0), RichDocPosition(2, 5))));
+    CHECK_EQ(ed.GetBlockCount(), 3);
+    CHECK(ed.TextAt(RichDocPosition(1, 0, 0, 0)).find("alphabefore the table\n") == 0);
+    CHECK(ed.Undo());
+
+    // Typing over a cell selection replaces it, in the first cell.
+    ed.SetCaret(RichDocPosition(1, 0, 0, 0));
+    ed.SetCaret(RichDocPosition(1, 0, 1, 2), true);
+    ed.InsertText("X");
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 0, 0)), std::string("X"));
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 1, 0)), std::string(""));
+    CHECK(ed.Undo());
+
+    // Merge the selection into one cell, the others' text appended.
+    ed.SelectCellRange(1, 0, 0, 1, 0);          // alpha over gamma
+    CHECK(ed.HasCellSelection());
+    CHECK(ed.MergeSelectedCells());
+    CHECK_EQ(ed.GetBlock(1).tableRows[0].cells[0].rowSpan, 2);
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 0, 0)), std::string("alpha\ngamma"));
+    CHECK(!ed.HasSelection());
+    CHECK(ed.Undo());
+
+    // Out of the table from a cell: the selection stops at the table's edge.
+    ed.SetCaret(RichDocPosition(1, 0, 1, 1));
+    ed.SetCaret(RichDocPosition(2, 3), true);
+    CHECK(ed.HasCellSelection());
+    CHECK(ed.GetCaret().SameContainer(RichDocPosition(1, 1, 1, 0)));
+
+    // Into a table from outside: the table is taken whole.
+    ed.SetCaret(RichDocPosition(0, 2));
+    ed.SetCaret(RichDocPosition(1, 0, 0, 1), true);
+    CHECK(!ed.HasCellSelection());
+    CHECK(ed.GetCaret() == RichDocPosition(2, 0));
+    // ...and backing out of it again leaves it.
+    ed.SetCaret(RichDocPosition(1, 1, 1, 3), true);
+    CHECK(ed.GetCaret().blockIndex == 0);
+}
+
+static void TestMoveRange() {
+    std::cout << "\n--- Drag and drop ---\n";
+    {
+        UCRichDocumentEditor ed(MakeDocument({"one two three"}));
+        // "two " to the end of the paragraph.
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(0, 4), RichDocPosition(0, 8)), RichDocPosition(0, 13)));
+        CHECK_EQ(Shape(ed), std::string("one threetwo "));
+        CHECK(ed.HasSelection());
+        CHECK_EQ(ed.RangeToPlainText(ed.GetSelectionRange()), std::string("two "));
+        CHECK(ed.Undo());
+        CHECK_EQ(Shape(ed), std::string("one two three"));
+        // ...and to the front.
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(0, 8), RichDocPosition(0, 13)), RichDocPosition(0, 0)));
+        CHECK_EQ(Shape(ed), std::string("threeone two "));
+        CHECK(ed.Undo());
+        // Onto itself is refused.
+        CHECK(!ed.MoveRange(RichDocRange(RichDocPosition(0, 4), RichDocPosition(0, 8)), RichDocPosition(0, 6)));
+        // Copy leaves the original.
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(0, 0), RichDocPosition(0, 3)), RichDocPosition(0, 13), true));
+        CHECK_EQ(Shape(ed), std::string("one two threeone"));
+    }
+    {
+        // Across paragraphs: the moved text's paragraph structure goes with it.
+        UCRichDocumentEditor ed(MakeDocument({"first", "second", "third", "fourth"}));
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(0, 0), RichDocPosition(1, 6)), RichDocPosition(3, 6)));
+        CHECK_EQ(Shape(ed), std::string("|third|fourthfirst|second"));
+        CHECK(ed.Undo());
+        CHECK_EQ(Shape(ed), std::string("first|second|third|fourth"));
+        // A word from a later paragraph into an earlier one.
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(3, 0), RichDocPosition(3, 4)), RichDocPosition(0, 5)));
+        CHECK_EQ(Shape(ed), std::string("firstfour|second|third|th"));
+    }
+    {
+        // Into a table cell.
+        UCRichDocumentEditor ed(BuildTableDocument());
+        CHECK(ed.MoveRange(RichDocRange(RichDocPosition(0, 0), RichDocPosition(0, 6)), RichDocPosition(1, 0, 0, 5)));
+        CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 0, 0)), std::string("alphabefore"));
+        CHECK_EQ(ed.BlockText(0), std::string(" the table"));
+    }
+}
+
+static void TestAutoFormat() {
+    std::cout << "\n--- Autoformat ---\n";
+    auto typeAll = [](UCRichDocumentEditor& ed, const std::string& text) {
+        // One character (one UTF-8 sequence) per keystroke, as a keyboard types.
+        for (size_t i = 0; i < text.size();) {
+            size_t n = 1;
+            while (i + n < text.size() && (static_cast<unsigned char>(text[i + n]) & 0xC0) == 0x80) n++;
+            ed.TypeText(text.substr(i, n));
+            i += n;
+        }
+    };
+    {
+        UCRichDocumentEditor ed(MakeDocument({""}));
+        ed.SetAutoFormatEnabled(true);
+        typeAll(ed, "\"Hi,\" she said. It's (c) 2026... a--b and c -- d -> e");
+        CHECK_EQ(ed.BlockText(0), std::string("\xE2\x80\x9CHi,\xE2\x80\x9D she said. It\xE2\x80\x99s \xC2\xA9 2026\xE2\x80\xA6 a\xE2\x80\x94" "b and c \xE2\x80\x93 d \xE2\x86\x92 e"));
+        // Undo right after a correction takes back only the correction.
+        UCRichDocumentEditor ed2(MakeDocument({""}));
+        ed2.SetAutoFormatEnabled(true);
+        typeAll(ed2, "(c)");
+        CHECK_EQ(ed2.BlockText(0), std::string("\xC2\xA9"));
+        CHECK(ed2.Undo());
+        CHECK_EQ(ed2.BlockText(0), std::string("(c)"));
+    }
+    {
+        UCRichDocumentEditor ed(MakeDocument({""}));
+        ed.SetAutoFormatEnabled(true);
+        typeAll(ed, "1. first");
+        CHECK(ed.GetBlock(0).type == RichBlockType::ListItem && ed.GetBlock(0).orderedList);
+        CHECK_EQ(ed.BlockText(0), std::string("first"));
+        ed.TypeEnter();
+        typeAll(ed, "second");
+        CHECK(ed.GetBlock(1).type == RichBlockType::ListItem);
+        ed.TypeEnter();
+        ed.TypeEnter();             // empty item: leaves the list
+        typeAll(ed, "## Title");
+        CHECK(ed.GetBlock(2).type == RichBlockType::Heading && ed.GetBlock(2).headingLevel == 2);
+        CHECK_EQ(ed.BlockText(2), std::string("Title"));
+        ed.TypeEnter();
+        typeAll(ed, "[ ] task");
+        CHECK(ed.GetBlock(3).checkbox && !ed.GetBlock(3).checked);
+        ed.TypeEnter();
+        ed.TypeEnter();
+        typeAll(ed, "---");
+        ed.TypeEnter();
+        CHECK(ed.GetBlock(4).type == RichBlockType::HorizontalRule);
+        typeAll(ed, "- bullet");
+        CHECK(ed.GetBlock(5).type == RichBlockType::ListItem && !ed.GetBlock(5).orderedList);
+        // The list start comes from the number typed.
+        ed.TypeEnter();
+        ed.TypeEnter();
+        typeAll(ed, "3) third");
+        CHECK(ed.GetBlock(6).orderedList && ed.GetBlock(6).listStartNumber == 3
+              && ed.GetBlock(6).numberTemplate == "%1)");
+    }
+    {
+        // Off: text goes in exactly as typed.
+        UCRichDocumentEditor ed(MakeDocument({""}));
+        typeAll(ed, "\"x\" -- 1. ");
+        CHECK_EQ(ed.BlockText(0), std::string("\"x\" -- 1. "));
+        // Code keeps straight quotes.
+        UCRichDocumentEditor code(MakeDocument({""}));
+        code.SetAutoFormatEnabled(true);
+        code.ToggleCode();
+        typeAll(code, "\"s\"");
+        CHECK_EQ(code.BlockText(0), std::string("\"s\""));
+    }
+}
+
+static void TestFieldsAndContents() {
+    std::cout << "\n--- Bookmarks, captions, cross-references, contents ---\n";
+    UCRichDocumentEditor ed(MakeDocument({"Introduction", "A picture follows.", "Results", "See above."}));
+    ed.SetCaret(RichDocPosition(0, 0));
+    CHECK(ed.ApplyParagraphStyle("Heading1"));
+    ed.SetCaret(RichDocPosition(2, 0));
+    CHECK(ed.ApplyParagraphStyle("Heading2"));
+
+    // Captions number themselves in document order.
+    ed.SetCaret(RichDocPosition(1, 3));
+    const std::string second = ed.InsertCaption("Figure", "Later one");
+    ed.SetCaret(RichDocPosition(0, 2));
+    const std::string first = ed.InsertCaption("Figure", "Earlier one");
+    CHECK(!first.empty() && !second.empty() && first != second);
+    CHECK_EQ(ed.BlockText(1), std::string("Figure 1: Earlier one"));
+    CHECK_EQ(ed.BlockText(3), std::string("Figure 2: Later one"));
+    CHECK_EQ(ed.GetBlock(1).styleId, std::string("Caption"));
+
+    // A cross-reference shows the caption's label and number.
+    const int last = ed.GetBlockCount() - 1;
+    ed.SetCaret(RichDocPosition(last, ed.BlockTextLength(last)));
+    ed.InsertText(" ");
+    CHECK(ed.InsertCrossReference(second, RichTextRun::Field::Reference));
+    CHECK_EQ(ed.BlockText(last), std::string("See above. Figure 2"));
+    CHECK(!ed.InsertCrossReference("no-such-bookmark", RichTextRun::Field::Reference));
+
+    // A bookmark by name; a reference to a plain paragraph shows its text.
+    ed.SetCaret(RichDocPosition(2, 0));
+    CHECK(ed.AddBookmark("intro-text"));
+    CHECK(!ed.AddBookmark("intro-text"));
+    ed.SetCaret(RichDocPosition(last, ed.BlockTextLength(last)));
+    ed.InsertText(", ");
+    CHECK(ed.InsertCrossReference("intro-text", RichTextRun::Field::Reference));
+    CHECK(ed.BlockText(last).find("A picture follows.") != std::string::npos);
+
+    // A table of contents at the top: one entry per heading.
+    ed.SetCaret(RichDocPosition(0, 0));
+    CHECK(ed.InsertTableOfContents());
+    CHECK(ed.GetBlock(0).tocLevel == 1 && ed.GetBlock(1).tocLevel == 2);
+    CHECK(ed.BlockText(0).rfind("Introduction\t", 0) == 0);
+    CHECK(ed.BlockText(1).rfind("Results\t", 0) == 0);
+    CHECK(ed.GetBlock(2).tocLevel == 0);
+    // The entry's page number points at a bookmark on its heading.
+    const std::string target = ed.GetBlock(0).runs.back().fieldArgument;
+    CHECK(ed.GetBlock(0).runs.back().field == RichTextRun::Field::PageReference);
+    const int heading = ed.GetDocument()->FindBookmark(target);
+    CHECK(heading >= 0 && ed.GetBlock(heading).type == RichBlockType::Heading);
+    std::vector<int> pages(static_cast<size_t>(ed.GetBlockCount()), 1);
+    pages[static_cast<size_t>(heading)] = 4;
+    CHECK(ed.GetDocument()->UpdatePageReferences(pages));
+    CHECK(ed.BlockText(0) == "Introduction\t4");
+
+    // A heading added later appears when the contents are updated.
+    const int end = ed.GetBlockCount() - 1;
+    ed.SetCaret(RichDocPosition(end, ed.BlockTextLength(end)));
+    ed.SplitBlock();
+    ed.InsertText("Conclusion");
+    CHECK(ed.ApplyParagraphStyle("Heading1"));
+    CHECK(ed.UpdateTableOfContents());
+    CHECK(ed.GetBlock(2).tocLevel == 1 && ed.BlockText(2).rfind("Conclusion", 0) == 0);
+    ed.Undo();
+    CHECK(ed.GetBlock(2).tocLevel == 0);
+
+    // A pasted copy of a bookmarked paragraph does not take the bookmark.
+    const int bookmarked = ed.GetDocument()->FindBookmark("intro-text");
+    ed.SetSelection(RichDocPosition(bookmarked, 0), RichDocPosition(bookmarked + 1, 0));
+    const std::vector<RichDocBlock> copied = ed.ExtractRange(ed.GetSelectionRange());
+    ed.SetCaret(RichDocPosition(ed.GetBlockCount() - 1, 0));
+    ed.InsertBlocks(copied);
+    int count = 0;
+    for (const auto& b : ed.GetDocument()->Bookmarks()) count += b.name == "intro-text" ? 1 : 0;
+    CHECK(count == 1);
+}
+
+static void TestComments() {
+    std::cout << "\n--- Comments ---\n";
+    UCRichDocumentEditor ed(MakeDocument({"The quick brown fox", "jumps over the lazy dog"}));
+    ed.SetSelection(RichDocPosition(0, 4), RichDocPosition(1, 5));
+    const int first = ed.AddComment("Too long?", "Ada Lovelace", "2026-09-29T10:00:00Z");
+    CHECK(first == 0);
+    CHECK_EQ(ed.GetDocument()->comments[0].initials, std::string("AL"));
+    RichDocRange range;
+    CHECK(ed.CommentRange(first, range));
+    CHECK(range.start == RichDocPosition(0, 4) && range.end == RichDocPosition(1, 5));
+    CHECK(ed.CommentsAt(RichDocPosition(0, 10)) == std::vector<int>{first});
+    CHECK(ed.CommentsAt(RichDocPosition(1, 10)).empty());
+    // With no selection, the word at the caret.
+    ed.SetCaret(RichDocPosition(1, 17));
+    const int second = ed.AddComment("Which dog?", "Grace");
+    CHECK(ed.CommentRange(second, range) && range.start == RichDocPosition(1, 15) && range.end == RichDocPosition(1, 19));
+    CHECK(ed.GetDocument()->ActiveComments() == (std::vector<int>{first, second}));
+    // Typing inside a comment's text extends it.
+    ed.SetCaret(RichDocPosition(0, 6));
+    ed.InsertText("XY");
+    CHECK(ed.CommentsAt(RichDocPosition(0, 7)) == std::vector<int>{first});
+    // Removing is one undo step.
+    CHECK(ed.RemoveComment(first));
+    CHECK(ed.GetDocument()->ActiveComments() == std::vector<int>{second});
+    ed.Undo();
+    CHECK(ed.GetDocument()->ActiveComments().size() == 2);
+    // Deleting the text a comment is on removes it from view.
+    ed.SetSelection(RichDocPosition(1, 14), RichDocPosition(1, 19));
+    ed.DeleteSelection();
+    CHECK(ed.GetDocument()->ActiveComments() == std::vector<int>{first});
+    CHECK(ed.SetCommentResolved(first, true) && ed.GetDocument()->comments[0].resolved);
+    CHECK(ed.SetCommentText(first, "Fine now.") && ed.GetDocument()->comments[0].text == "Fine now.");
+}
+
+static void TestTrackedChanges() {
+    std::cout << "\n--- Tracked changes ---\n";
+    UCRichDocumentEditor ed(MakeDocument({"The quick brown fox", "jumps over the dog"}));
+    ed.SetRevisionAuthor("Ada", "2026-09-29T10:00:00Z");
+    ed.SetTrackChanges(true);
+    // Typing is an insertion.
+    ed.SetCaret(RichDocPosition(0, 4));
+    ed.InsertText("very ");
+    CHECK_EQ(ed.BlockText(0), std::string("The very quick brown fox"));
+    bool inserted = false;
+    for (const auto& r : ed.GetBlock(0).runs) inserted = inserted || (r.text == "very " && r.change == RichTextRun::Change::Inserted);
+    CHECK(inserted);
+    CHECK(ed.GetDocument()->revisions.size() == 1 && ed.GetDocument()->revisions[0].author == "Ada");
+    // Deleting keeps the text, marked; the caret goes past it (Delete) or
+    // before it (Backspace).
+    ed.SetSelection(RichDocPosition(0, 15), RichDocPosition(0, 21));      // "brown "
+    CHECK(ed.DeleteSelection());
+    CHECK_EQ(ed.BlockText(0), std::string("The very quick brown fox"));
+    CHECK(ed.GetCaret() == RichDocPosition(0, 21));
+    bool deleted = false;
+    for (const auto& r : ed.GetBlock(0).runs) deleted = deleted || (r.text == "brown " && r.IsDeleted());
+    CHECK(deleted);
+    ed.SetCaret(RichDocPosition(1, 5));
+    CHECK(ed.DeleteBackward());
+    CHECK(ed.GetCaret() == RichDocPosition(1, 4));
+    CHECK_EQ(ed.BlockText(1), std::string("jumps over the dog"));
+    // Deleting a tracked insertion takes it back.
+    ed.SetSelection(RichDocPosition(0, 4), RichDocPosition(0, 9));        // "very "
+    ed.DeleteSelection();
+    CHECK_EQ(ed.BlockText(0), std::string("The quick brown fox"));
+    // The text as it will be, in exports.
+    CHECK(ed.GetDocument()->ToPlainText().find("The quick fox") != std::string::npos);
+    CHECK(ed.GetDocument()->ToMarkdown().find("jump over") != std::string::npos);
+    // Accepting drops deleted text; rejecting drops inserted.
+    ed.SetCaret(RichDocPosition(1, 0));
+    ed.InsertText("He ");
+    UCRichDocument before = *ed.GetDocument();
+    CHECK(ed.AcceptAllChanges());
+    CHECK_EQ(ed.BlockText(0), std::string("The quick fox"));
+    CHECK_EQ(ed.BlockText(1), std::string("He jump over the dog"));
+    CHECK(!ed.GetDocument()->HasTrackedChanges());
+    ed.Undo();
+    CHECK(ed.GetDocument()->HasTrackedChanges());
+    CHECK(ed.RejectAllChanges());
+    CHECK_EQ(ed.BlockText(0), std::string("The quick brown fox"));
+    CHECK_EQ(ed.BlockText(1), std::string("jumps over the dog"));
+    // One change at a time.
+    ed.SetCaret(RichDocPosition(0, 0));
+    ed.InsertText("A: ");
+    ed.SetCaret(RichDocPosition(1, 0));
+    ed.InsertText("B: ");
+    RichDocRange next;
+    // From the start of the first change, the next one is the second.
+    CHECK(ed.NextChange(RichDocPosition(0, 0), next) && next.start == RichDocPosition(1, 0));
+    CHECK(ed.NextChange(RichDocPosition(0, 5), next) && next.start == RichDocPosition(1, 0) && next.end == RichDocPosition(1, 3));
+    ed.SetCaret(RichDocPosition(1, 1));
+    CHECK(ed.RejectChangeAt(ed.GetCaret()));
+    CHECK_EQ(ed.BlockText(1), std::string("jumps over the dog"));
+    CHECK(ed.AcceptChangeAt(RichDocPosition(0, 1)));
+    CHECK(!ed.GetDocument()->HasTrackedChanges());
+    CHECK_EQ(ed.BlockText(0), std::string("A: The quick brown fox"));
+    // Untracked typing next to a change is not part of it.
+    ed.SetTrackChanges(false);
+    ed.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 3));
+    ed.SetTrackChanges(true);
+    ed.DeleteSelection();
+    ed.SetTrackChanges(false);
+    ed.SetCaret(RichDocPosition(0, 3));
+    ed.InsertText("x");
+    bool plain = false;
+    for (const auto& r : ed.GetBlock(0).runs) plain = plain || (r.text.find('x') != std::string::npos && r.change == RichTextRun::Change::Unchanged);
+    CHECK(plain);
+}
+
+static void TestSections() {
+    std::cout << "\n--- Sections ---\n";
+    UCRichDocumentEditor ed(MakeDocument({"Title", "Body one", "Body two", "After"}));
+    CHECK(ed.CurrentSection().columns == 1);
+    ed.SetCaret(RichDocPosition(1, 0));
+    CHECK(ed.InsertSectionBreak(false));
+    CHECK(ed.GetBlockCount() == 4 && ed.GetBlock(1).sectionStart);
+    CHECK(ed.SetSectionColumns(2, 18.0f));
+    CHECK(ed.GetBlock(1).section.columns == 2 && ed.GetDocument()->SectionFor(2).columns == 2);
+    CHECK(ed.GetDocument()->SectionFor(0).columns == 1);
+    // A break in mid-paragraph splits it; the new section is like the old.
+    ed.SetCaret(RichDocPosition(3, 2));
+    CHECK(ed.InsertSectionBreak(true));
+    CHECK(ed.GetBlockCount() == 5 && ed.BlockText(3) == "Af" && ed.BlockText(4) == "ter");
+    CHECK(ed.GetBlock(4).sectionStart && ed.GetBlock(4).section.newPage && ed.GetBlock(4).section.columns == 2);
+    CHECK(ed.SetSectionColumns(1));
+    CHECK(ed.GetDocument()->SectionFor(4).columns == 1 && ed.GetDocument()->SectionFor(3).columns == 2);
+    ed.Undo();
+    CHECK(ed.GetDocument()->SectionFor(4).columns == 2);
+    CHECK(ed.GetDocument()->HasColumns());
+}
+
+static void TestHtmlImport() {
+    std::cout << "\n--- HTML import (rich paste) ---\n";
+    // A browser's selection.
+    UCRichDocument doc = UCRichDocument::FromHTML(
+        "<html><head><style>p{color:red}</style><title>x</title></head><body>"
+        "<h2>Section &amp; title</h2>"
+        "<p style=\"text-align:center\">Some <b>bold</b>, <i>italic</i> and <span style=\"color:rgb(255, 0, 0);font-weight:700\">red bold</span>"
+        " text with a <a href=\"https://example.com\">link</a>.</p>"
+        "<ul><li>first</li><li>second<ul><li>nested</li></ul></li></ul>"
+        "<ol><li><p>numbered</p></li></ol>"
+        "<blockquote><p>quoted</p></blockquote>"
+        "<pre>line one\nline two</pre>"
+        "<table><thead><tr><th>Name</th><th>Qty</th></tr></thead><tbody><tr><td>apple</td><td colspan=\"1\">3</td></tr></tbody></table>"
+        "<hr><p>caf&eacute; &#8212; &#x263A; x&nbsp;&nbsp;y</p>"
+        "<script>alert('no')</script></body></html>");
+    CHECK(doc.blocks.size() >= 10);
+    if (doc.blocks.size() < 10) return;
+    CHECK(doc.blocks[0].type == RichBlockType::Heading && doc.blocks[0].headingLevel == 2);
+    CHECK_EQ(UCRichDocument::ConcatenateRunText(doc.blocks[0].runs), std::string("Section & title"));
+    const RichDocBlock& para = doc.blocks[1];
+    CHECK(para.align == RichTextAlign::Center);
+    CHECK_EQ(UCRichDocument::ConcatenateRunText(para.runs), std::string("Some bold, italic and red bold text with a link."));
+    bool bold = false, italic = false, red = false, link = false;
+    for (const auto& r : para.runs) {
+        bold = bold || (r.text == "bold" && r.bold);
+        italic = italic || (r.text == "italic" && r.italic);
+        red = red || (r.text == "red bold" && r.bold && r.color == "#FF0000");
+        link = link || (r.text == "link" && r.linkTarget == "https://example.com");
+    }
+    CHECK(bold && italic && red && link);
+    CHECK(doc.blocks[2].type == RichBlockType::ListItem && !doc.blocks[2].orderedList && doc.blocks[2].listLevel == 0);
+    CHECK(doc.blocks[4].type == RichBlockType::ListItem && doc.blocks[4].listLevel == 1
+          && UCRichDocument::ConcatenateRunText(doc.blocks[4].runs) == "nested");
+    CHECK(doc.blocks[5].type == RichBlockType::ListItem && doc.blocks[5].orderedList
+          && UCRichDocument::ConcatenateRunText(doc.blocks[5].runs) == "numbered");
+    CHECK(doc.blocks[6].type == RichBlockType::BlockQuote);
+    CHECK(doc.blocks[7].type == RichBlockType::CodeBlock
+          && UCRichDocument::ConcatenateRunText(doc.blocks[7].runs) == "line one\nline two");
+    const RichDocBlock& table = doc.blocks[8];
+    CHECK(table.type == RichBlockType::Table && table.tableRows.size() == 2 && table.tableRows[0].header
+          && table.tableRows[0].cells.size() == 2 && table.tableRows[0].cells[0].runs[0].bold
+          && UCRichDocument::ConcatenateRunText(table.tableRows[1].cells[0].runs) == "apple");
+    CHECK(doc.blocks[9].type == RichBlockType::HorizontalRule);
+    CHECK(doc.blocks.size() > 10 && UCRichDocument::ConcatenateRunText(doc.blocks[10].runs) == "caf\xC3\xA9 \xE2\x80\x94 \xE2\x98\xBA x  y");
+    CHECK(UCRichDocument::ConcatenateRunText(doc.blocks.back().runs).find("alert") == std::string::npos);
+
+    // Word's clipboard: list numbers in mso-list:Ignore spans, conditional
+    // comments, o:p tags, a style in points.
+    UCRichDocument word = UCRichDocument::FromHTML(
+        "<p class=MsoListParagraph style='mso-list:l0 level1 lfo1'><![if !supportLists]><span style='mso-list:Ignore'>1.<span>&nbsp;&nbsp;</span></span><![endif]>"
+        "<span style='font-size:14.0pt;font-family:\"Arial\",sans-serif'>Word item<o:p></o:p></span></p>");
+    CHECK(word.blocks.size() == 1);
+    if (!word.blocks.empty()) {
+        CHECK_EQ(UCRichDocument::ConcatenateRunText(word.blocks[0].runs), std::string("Word item"));
+        CHECK(!word.blocks[0].runs.empty() && word.blocks[0].runs.back().fontSizePt == 14.0f
+              && word.blocks[0].runs.back().fontFamily == "Arial");
+    }
+
+    // A picture inlined as a data: URI, and our own HTML read back.
+    const std::string png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+    UCRichDocument pictured = UCRichDocument::FromHTML("<p>see <img src=\"data:image/png;base64," + png + "\" alt=\"dot\" width=\"40\"></p>");
+    CHECK(pictured.media.size() == 1 && pictured.blocks.size() == 1);
+    if (!pictured.blocks.empty()) {
+        const auto& runs = pictured.blocks[0].runs;
+        CHECK(runs.size() == 2 && runs[1].IsInlineImage() && runs[1].imageAltText == "dot" && runs[1].imageWidthPt == 30.0f);
+    }
+    UCRichDocument ours = UCRichDocument::FromMarkdown("# Title\n\nA **bold** word and *italics*.\n\n- one\n- two\n");
+    UCRichDocument back = UCRichDocument::FromHTML(ours.ToHTML());
+    CHECK_EQ(back.ToMarkdown(), ours.ToMarkdown());
+}
+
+static void TestNamedStyles() {
+    std::cout << "\n--- Named styles ---\n";
+    UCRichDocumentEditor ed(MakeDocument({"Chapter one", "Body text here", "More body"}));
+
+    // A heading style makes a heading, with its look.
+    ed.SetCaret(RichDocPosition(0, 3));
+    CHECK(ed.ApplyParagraphStyle("Heading1"));
+    CHECK(ed.GetBlock(0).type == RichBlockType::Heading && ed.GetBlock(0).headingLevel == 1);
+    CHECK(ed.GetBlock(0).runs[0].bold && ed.GetBlock(0).runs[0].fontSizePt == 20.0f);
+    CHECK_EQ(ed.CurrentParagraphStyle(), std::string("Heading1"));
+    CHECK(!ed.GetDocument()->styles.empty());
+
+    // A word formatted directly keeps its own value when the style changes.
+    ed.SetSelection(RichDocPosition(0, 0), RichDocPosition(0, 7));
+    ed.SetFontSize(30.0f);
+    RichStyle heading = *ed.GetDocument()->FindStyle("Heading1");
+    heading.character.fontSizePt = 24.0f;
+    heading.character.color = "#AA0000";
+    CHECK(ed.UpdateStyle(heading));
+    const RichDocBlock& h = ed.GetBlock(0);
+    bool sawDirect = false, sawStyled = false;
+    for (const auto& run : h.runs) {
+        if (run.text == "Chapter") { sawDirect = run.fontSizePt == 30.0f && run.color == "#AA0000"; }
+        if (run.text == " one") { sawStyled = run.fontSizePt == 24.0f && run.color == "#AA0000"; }
+    }
+    CHECK(sawDirect);
+    CHECK(sawStyled);
+    // One undo takes back the style and the text together.
+    CHECK(ed.Undo());
+    CHECK(ed.GetDocument()->FindStyle("Heading1")->character.fontSizePt.value_or(0) == 20.0f);
+    for (const auto& run : ed.GetBlock(0).runs) CHECK(run.color.empty());
+    CHECK(ed.Redo());
+
+    // Enter after a heading gives body text in the Normal style.
+    ed.SetCaret(ed.ContainerEnd(RichDocPosition(0, 0)));
+    ed.SplitBlock();
+    CHECK(ed.GetBlock(1).type == RichBlockType::Paragraph && ed.GetBlock(1).styleId.empty());
+
+    // Back to Normal: the heading's look is taken back, the direct size kept.
+    ed.SetCaret(RichDocPosition(0, 2));
+    CHECK(ed.ApplyParagraphStyle("Normal"));
+    CHECK(ed.GetBlock(0).type == RichBlockType::Paragraph);
+    for (const auto& run : ed.GetBlock(0).runs) {
+        CHECK(!run.bold);
+        if (run.text == " one") CHECK(run.fontSizePt == 0.0f && run.color.empty());
+    }
+
+    // A style based on another follows a change to it.
+    RichStyle derived;
+    derived.id = "Chapter";
+    derived.name = "Chapter";
+    derived.basedOn = "Heading1";
+    derived.character.italic = true;
+    CHECK(ed.UpdateStyle(derived));
+    ed.SetCaret(RichDocPosition(2, 0));
+    CHECK(ed.ApplyParagraphStyle("Chapter"));
+    CHECK(ed.GetBlock(2).type == RichBlockType::Heading && ed.GetBlock(2).runs[0].italic);
+    RichStyle base = *ed.GetDocument()->FindStyle("Heading1");
+    base.character.underline = true;
+    CHECK(ed.UpdateStyle(base));
+    CHECK(ed.GetBlock(2).runs[0].underline && ed.GetBlock(2).runs[0].italic);
+
+    // Character styles.
+    ed.SetSelection(RichDocPosition(3, 0), RichDocPosition(3, 4));
+    CHECK(ed.ApplyCharacterStyle("Strong"));
+    CHECK(ed.GetBlock(3).runs[0].bold && ed.GetBlock(3).runs[0].characterStyleId == "Strong");
+    RichStyle strong = *ed.GetDocument()->FindStyle("Strong");
+    strong.character.color = "#0000FF";
+    CHECK(ed.UpdateStyle(strong));
+    CHECK_EQ(ed.GetBlock(3).runs[0].color, std::string("#0000FF"));
+    ed.SetSelection(RichDocPosition(3, 0), RichDocPosition(3, 4));
+    CHECK(ed.ApplyCharacterStyle(""));
+    CHECK(!ed.GetBlock(3).runs[0].bold && ed.GetBlock(3).runs[0].color.empty());
+
+    // Deleting a style: its paragraphs take the one it was based on.
+    CHECK(ed.DeleteStyle("Chapter"));
+    CHECK_EQ(ed.GetBlock(2).styleId, std::string("Heading1"));
+    CHECK(!ed.GetBlock(2).runs[0].italic);
+    CHECK(!ed.ApplyParagraphStyle("NoSuchStyle"));
+
+    // A style from the caret's paragraph.
+    ed.SetCaret(RichDocPosition(2, 1));
+    const RichStyle captured = ed.StyleFromCaret("Mine", "My Style");
+    CHECK(captured.paragraph.headingLevel.value_or(0) == 1 && captured.character.bold.value_or(false));
+}
+
 int main() {
     TestPositionsAndNavigation();
     TestTypingAndDeleting();
@@ -1324,6 +1886,15 @@ int main() {
     TestTableMergeAndSplit();
     TestTableCaretFollowsStructure();
     TestInlineImages();
+    TestCellSelection();
+    TestMoveRange();
+    TestAutoFormat();
+    TestNamedStyles();
+    TestFieldsAndContents();
+    TestComments();
+    TestTrackedChanges();
+    TestSections();
+    TestHtmlImport();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

@@ -9,6 +9,7 @@
 #include "test_framework.h"
 
 #include "UltraMailSyncEngine.h"
+#include "UltraMailSyncService.h"
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
 
@@ -67,10 +68,19 @@ public:
         out.uidValidity = uidValidity;
         return UltraNetResult::Ok();
     }
+    // Set to fail every envelope fetch with this UltraNet code — the way the
+    // IMAP plug-in fails when the server cannot be reached (HostNotFound) or
+    // refuses the sign-in (AuthenticationFailed).
+    UltraNetResultCode fetchEnvelopesFail = UltraNetResultCode::Success;
     UltraNetResult FetchEnvelopes(const std::string&, const std::string& folder,
                                   uint32_t sinceUid, std::vector<UltraNetMailEnvelope>& out,
                                   const UltraNetMailOptions&) override {
         out.clear();
+        if (fetchEnvelopesFail != UltraNetResultCode::Success) {
+            UltraNetResult r = UltraNetResult::Error(fetchEnvelopesFail, "could not fetch");
+            r.diagnostics = "Server: imaps://x/";
+            return r;
+        }
         auto it = envelopes.find(folder);
         if (it != envelopes.end())
             for (const auto& e : it->second)
@@ -198,6 +208,56 @@ int UnreadFor(LocalStore& s) {
 }
 
 } // namespace
+
+TEST(sync_outcome_classifies_a_network_gap) {
+    // The codes UltraNet produces when the server is not there at all …
+    for (auto c : {UltraNetResultCode::HostNotFound, UltraNetResultCode::ConnectionRefused,
+                   UltraNetResultCode::ConnectionReset, UltraNetResultCode::ConnectionTimeout,
+                   UltraNetResultCode::Timeout}) {
+        SyncOutcome o = SyncOutcome::Fail(UltraNetResult::Error(c, "gap"));
+        REQUIRE(!o.ok);
+        REQUIRE(o.code == c);
+        REQUIRE(o.NetworkUnreachable());
+    }
+    // … and the ones that prove it answered.
+    for (auto c : {UltraNetResultCode::AuthenticationFailed, UltraNetResultCode::TlsCertificateInvalid,
+                   UltraNetResultCode::TlsHandshakeFailed, UltraNetResultCode::AccessDenied,
+                   UltraNetResultCode::NotFound, UltraNetResultCode::Unknown}) {
+        SyncOutcome o = SyncOutcome::Fail(UltraNetResult::Error(c, "no"));
+        REQUIRE(!o.NetworkUnreachable());
+    }
+    // A failure that did not come from UltraNet carries no code.
+    SyncOutcome local = SyncOutcome::Fail("disk full");
+    REQUIRE(local.code == UltraNetResultCode::Unknown);
+    REQUIRE(!local.NetworkUnreachable());
+    // Success is never a gap.
+    REQUIRE(!SyncOutcome{}.NetworkUnreachable());
+}
+
+TEST(sync_now_keeps_the_inbox_failure_code_and_details) {
+    Fixture fx("syncnow-fail");
+    SyncService svc(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+
+    fx.fake.fetchEnvelopesFail = UltraNetResultCode::HostNotFound;
+    SyncOutcome r = svc.SyncNow("erika", "imaps://x/", opts);
+    REQUIRE(!r.ok);
+    REQUIRE(r.code == UltraNetResultCode::HostNotFound);
+    REQUIRE(r.NetworkUnreachable());
+    REQUIRE_EQ(r.message, std::string("could not fetch"));
+    REQUIRE_EQ(r.diagnostics, std::string("Server: imaps://x/"));
+    REQUIRE_EQ(r.stats.folders, 2);           // the folder LIST before it still counts
+
+    fx.fake.fetchEnvelopesFail = UltraNetResultCode::AuthenticationFailed;
+    r = svc.SyncNow("erika", "imaps://x/", opts);
+    REQUIRE(!r.ok);
+    REQUIRE(!r.NetworkUnreachable());
+
+    fx.fake.fetchEnvelopesFail = UltraNetResultCode::Success;
+    r = svc.SyncNow("erika", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE(r.code == UltraNetResultCode::Success);
+}
 
 TEST(sync_folders_populates_store) {
     Fixture fx("folders");

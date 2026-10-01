@@ -36,6 +36,12 @@ namespace UltraCanvas {
         KeyDown,
         KeyUp,
         TextInput,        // Added for text input events
+        // An input method's text being composed (pre-edit), not yet typed:
+        // `text` is the whole of it ("" when composing ends),
+        // `compositionCursor` the byte offset of its caret. Sent only to an
+        // element whose DrawsTextComposition() is true; the committed text
+        // then arrives as a KeyDown with `text`.
+        TextComposition,
 
         // Window Events
         WindowCloseRequest,
@@ -328,6 +334,7 @@ namespace UltraCanvas {
         UCKeys virtualKey = UCKeys::Unknown;                  // Virtual key code (cross-platform)
         char character = 0;                  // Character representation
         std::string text;                    // For multi-character input (IME, etc.)
+        int compositionCursor = -1;          // TextComposition: caret byte offset in `text`
 
         // Modifier keys
         bool ctrl = false, shift = false, alt = false, meta = false;
@@ -389,7 +396,7 @@ namespace UltraCanvas {
         }
 
         bool IsKeyboardEvent() const {
-            return type >= UCEventType::KeyDown && type <= UCEventType::TextInput;
+            return type >= UCEventType::KeyDown && type <= UCEventType::TextComposition;
         }
 
         bool IsWindowEvent() const {

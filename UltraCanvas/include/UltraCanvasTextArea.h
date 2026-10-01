@@ -739,6 +739,10 @@ namespace UltraCanvas {
         float MaxVerticalScroll();
         float MaxHorizontalScroll() const;
         void ScrollTo(int line);
+        // Pixels one scroll line is tall: the laid-out line height once known.
+        float ScrollStepHeight() const;
+        // Lines that fit the visible text area: one page for the page keys.
+        int PageLineCount() const;
         void ScrollUp(int lines = 1);
         void ScrollDown(int lines = 1);
         void ScrollLeft(int chars = 1);

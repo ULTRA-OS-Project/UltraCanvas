@@ -28,7 +28,7 @@
   stayed in the analysis - the map, the counts, the message list - until the
   account was scanned again, and even that did not help: the body is still in
   the mail cache it was read from (UltraMail kept every cached `.eml` for
-  good until its 0.10.9, and removes one only at its next sync of the folder
+  good until its 0.10.14, and removes one only at its next sync of the folder
   now), so the scan analysed it again. Now the
   moved messages are taken out of the analysis as soon as the moves come
   back, and the move is remembered (schema 5, `moved_messages`), so neither

@@ -7,6 +7,7 @@
 // Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraMailApp.h"
+#include "ui/UltraMailSettingsDialog.h"
 #include "ui/UltraMailAlerts.h"
 
 #include "UltraCanvasApplication.h"
@@ -77,5 +78,8 @@ int main() {
     window->Show();
 
     app.Run();
+    // The settings window's widgets go while the application is still alive,
+    // not at static destruction after main() returns.
+    UltraMail::SettingsDialog::Shutdown();
     return EXIT_SUCCESS;
 }

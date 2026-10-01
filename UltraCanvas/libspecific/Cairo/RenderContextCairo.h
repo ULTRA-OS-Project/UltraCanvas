@@ -91,12 +91,17 @@ namespace UltraCanvas {
 //        bool CreateStagingSurface();
 //        void SwitchToSurface(cairo_surface_t* s);
 
-        std::string GenerateTextCacheKey(const std::string& text, const Size2Di &sz, bool isMarkup);
+        bool InitializeForSurface(cairo_surface_t* oldCairoSurface);
+
+                std::string GenerateTextCacheKey(const std::string& text, const Size2Di &sz, bool isMarkup);
 
     public:
         ~RenderContextCairo() override;
 
         bool CreateSurface(const Size2Di & sz, NativeSurfacePtr createSimilarToSurface) override;
+        // Draws onto `target` (a PDF surface, a recording surface) instead of
+        // a surface of its own; takes ownership of it.
+        bool AttachSurface(cairo_surface_t* target, const Size2Di& size);
 
         bool ResizeSurface(const Size2Di& sz) override;
         Size2Di GetSurfaceSize() const override { return surfaceSize; }
@@ -313,6 +318,12 @@ namespace UltraCanvas {
         static void SetTextHintMetrics(cairo_hint_metrics_t metrics);
         static cairo_hint_metrics_t GetTextHintMetrics();
         void ApplyPangoFontOptions();
+        // Also drops the cap heights cached on this context's PangoContext.
+        void InvalidateFontMetricsCache() override;
+        // After a change to the process-wide text font options: clears the
+        // shared layout cache and re-applies the options to every context,
+        // which drops its own measurements. The Set* setters go through here.
+        static void InvalidateAllFontMetricsCaches();
 
         // ===== CAIRO-SPECIFIC METHODS =====
         void SetCairoColor(const Color &color);

@@ -173,6 +173,55 @@ void SetAntialias(AntialiasMode mode);
 Geometry antialiasing for the fills and strokes that follow (text keeps
 its own hinting settings). `NoAntialias` is what a pixel-exact tool wants.
 
+### Crisp borders
+
+A stroke is centred on its path, so a 1px outline along a rectangle with
+whole-pixel edges lies half outside it and is antialiased over two rows of
+pixels on each side. `DrawFilledRectangle` and `DrawFilledCircle` therefore
+inset their path by half the border width: the outline sits on whole
+pixels, its outer edge is the rectangle's edge (or the circle's radius),
+and the centre does not move. A rounded corner keeps its outer radius. To
+stroke a path of your own the same way:
+
+```cpp
+Rect2Dd path = IRenderContext::InsetForStroke(rect, strokeWidth);
+ctx->Rect(path.x, path.y, path.width, path.height);
+ctx->SetStrokeWidth(strokeWidth);
+ctx->Stroke();
+```
+
+## Centring text on its capitals
+
+```cpp
+double GetCapCentreOffset(const FontStyle& font);                    // layout top → middle of a capital
+int    TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
+double ITextLayout::GetCapHeight();                                  // baseline → cap top, pixels
+```
+
+A line box holds the ascender and descender space, so centring it (or the
+font's ascent + descent band) puts a mixed-case label a shade below a box
+or icon centred beside it. The framework centres single-line text on the
+middle of a capital letter instead: half-way between the cap top and the
+baseline. A layout drawn with `VerticalAlignment::Middle` into a box of
+known height does this by itself, which covers `DrawTextInRect` and so
+buttons, list cells, dropdowns and tabs. Text placed at a point with
+`DrawText` gets the same line from `TextTopCentredOnCaps`:
+
+```cpp
+ctx->SetFontStyle(font);
+int y = ctx->TextTopCentredOnCaps(rowRect, font);   // same centre line as a box centred on rowRect
+ctx->DrawText(label, Point2Di(x, y));
+```
+
+The cap height is measured once per font from the ink of a capital H and
+cached, so asking per row costs a map lookup. The caches belong to the
+context (and, for layouts, to its Pango context), not to the process: two
+contexts can measure the same font differently, and a backend calls
+`InvalidateFontMetricsCache()` on a context whenever its resolution, font
+options, hinting or device scale change, so nothing measured under the old
+settings survives them. Callers never need to call it. A font with no
+measurable ink falls back to the line box's middle.
+
 ## Text outlines
 
 ```cpp

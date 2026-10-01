@@ -98,7 +98,10 @@ would destroy a working second factor.
 **Untrusted input.** Scanned QR codes and typed keys go through the same
 strict parser; a malformed seed is refused rather than silently turned into
 a different one. Camera frames are decoded in memory and never written to
-disk as images.
+disk as images, and so is a capture of the screen when you read the code
+off a browser window: no screenshot is saved. An image file you open is
+only read; it is not copied and not added to your recent files. Delete it
+once the account is in, because that file *is* the seed.
 
 ## What it does not protect against
 
@@ -150,8 +153,9 @@ values are clamped, never trusted.
 
 ## Everyday advice
 
-- Enrol by scanning where you can; typing a 32-character key is the
-  fallback.
+- Enrol by scanning where you can: with the camera, from the screen when
+  the code is in a browser window on the same machine, or from an image.
+  Typing a 32-character key is the fallback.
 - Take a backup after enrolling anything important, with a passphrase you
   will still know in a year. Keep it off cloud folders unless you accept
   that the passphrase is then the only thing protecting it.
