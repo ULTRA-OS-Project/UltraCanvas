@@ -745,6 +745,9 @@ namespace UltraCanvas {
         // handled on the next loop pass; OK in the same key press must not act
         // on it a second time.
         bool activationPending = false;
+        // The tree row of the current folder is to be scrolled into view at
+        // the next layout: before the first one the tree has no height.
+        bool revealTreeSelectionPending = false;
 
     public:
         // Callbacks
@@ -781,6 +784,8 @@ namespace UltraCanvas {
         // Path helpers
         std::string GetSelectedFilePath() const;
         std::vector<std::string> GetSelectedFilePaths() const;
+
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
     protected:
         // The name field takes the focus (the listing for a folder picker),

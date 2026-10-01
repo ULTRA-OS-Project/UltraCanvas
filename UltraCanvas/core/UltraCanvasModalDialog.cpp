@@ -1300,7 +1300,7 @@ namespace UltraCanvas {
         panes->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
 
         folderTree = std::make_shared<UltraCanvasTreeView>("FileDialogFolders");
-        folderTree->size.width = CSSLayout::Dimension::Px(220);
+        folderTree->size.width = CSSLayout::Dimension::Px(260);
         folderTree->layoutItem.SetFlexShrink(0);
         folderTree->SetFontSize(fontSize);
         folderTree->SetRowHeight(22);
@@ -1550,7 +1550,19 @@ namespace UltraCanvas {
         syncingTree = true;
         folderTree->SelectNode(node);
         syncingTree = false;
-        folderTree->ScrollTo(node);
+        if (folderTree->GetHeight() > 0) {
+            folderTree->ScrollTo(node);
+        } else {
+            revealTreeSelectionPending = true;
+        }
+    }
+
+    void UltraCanvasFileDialog::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        UltraCanvasModalDialog::Arrange(finalRect, ctx);
+        if (revealTreeSelectionPending && folderTree && folderTree->GetHeight() > 0) {
+            revealTreeSelectionPending = false;
+            folderTree->ScrollTo(folderTree->GetFirstSelectedNode());
+        }
     }
 
 // ----- listing -----
