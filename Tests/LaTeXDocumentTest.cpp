@@ -18,6 +18,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 
@@ -49,7 +50,7 @@ static const unsigned char kTinyPng[] = {
 static std::string gTmpDir;
 
 static void WriteFile(const std::string& path, const std::string& text) {
-    std::ofstream out(path, std::ios::binary);
+    std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     out.write(text.data(), static_cast<std::streamsize>(text.size()));
 }
 
@@ -565,12 +566,12 @@ static void TestDetection() {
 // ===== 9. The shipped corpus =====
 static void TestCorpus(const std::string& dir) {
     std::error_code ec;
-    if (!std::filesystem::is_directory(dir, ec)) {
+    if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(dir), ec)) {
         std::cout << "  (corpus directory not found, skipped: " << dir << ")\n";
         return;
     }
     int files = 0, formulaOnly = 0;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+    for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir), ec)) {
         if (entry.path().extension() != ".tex") continue;
         ++files;
         UCRichDocument doc;
@@ -597,7 +598,7 @@ static void TestCorpus(const std::string& dir) {
 int main(int argc, char** argv) {
     gTmpDir = (argc > 1) ? argv[1] : ".";
     std::error_code ec;
-    std::filesystem::create_directories(gTmpDir, ec);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(gTmpDir), ec);
     std::string corpus = (argc > 2) ? argv[2] : "../../media/LaTex";
 
     std::cout << "LaTeXDocumentTest\n";

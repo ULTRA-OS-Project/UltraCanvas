@@ -88,6 +88,7 @@ namespace UltraCanvas {
         void InvalidateWindowNative() override;
         NativeWindowHandle GetNativeHandle() const override;
         void GetWindowPosition(int& x, int& y) const override;
+        void GetContentScreenOrigin(int& x, int& y) const override;
 
         void GetScreenSize(int& width, int& height) const override;
         void GetScreenBounds(int& x, int& y, int& width, int& height) const override;

@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::ModelConverter;
@@ -134,7 +135,7 @@ int main(int argc, char** argv) {
     };
     for (const std::string& relative : samples) {
         const fs::path path = media / relative;
-        if (!fs::exists(path)) {
+        if (!fs::exists(UltraCanvas::PathFromUtf8(path))) {
             std::printf("  [SKIP] %s (not in this checkout)\n", relative.c_str());
             continue;
         }

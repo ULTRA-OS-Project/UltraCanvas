@@ -24,6 +24,7 @@
 #include "UltraCrypt/UltraCryptCore.h"
 #include "Plugins/Documents/UCDCryptoEnvelope.h"
 #include <cstring>
+#include "UltraCanvasPathUtf8.h"
 
 // XML/JSON parsing (assuming we have a JSON library like nlohmann/json)
 #ifdef ULTRACANVAS_USE_JSON
@@ -1399,7 +1400,7 @@ std::vector<uint8_t> UltraCanvasDocument::Base64Decode(const std::string& input)
 namespace UCDocumentUtils {
 
 std::vector<uint8_t> ReadBinaryFile(const std::string& filePath) {
-    std::ifstream file(filePath, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
     if (!file.is_open()) {
         return {};
     }
@@ -1415,7 +1416,7 @@ std::vector<uint8_t> ReadBinaryFile(const std::string& filePath) {
 }
 
 bool WriteBinaryFile(const std::string& filePath, const std::vector<uint8_t>& data) {
-    std::ofstream file(filePath, std::ios::binary);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
     if (!file.is_open()) {
         return false;
     }

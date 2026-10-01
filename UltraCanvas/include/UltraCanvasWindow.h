@@ -395,6 +395,15 @@ namespace UltraCanvas {
             y = config_.y;
         }
 
+        /// Screen position, in native screen pixels, of the top-left corner of
+        /// the window's CONTENT - where window coordinate (0, 0) is drawn.
+        /// Differs from GetWindowPosition() where that reports the outer frame
+        /// (Windows: the title bar and borders). Screen readers and other
+        /// assistive technology are told where elements are through this.
+        virtual void GetContentScreenOrigin(int& x, int& y) const {
+            GetWindowPosition(x, y);
+        }
+
         void GetWindowSize(int& w, int& h) const {
             w = config_.width;
             h = config_.height;

@@ -101,6 +101,10 @@ UltraCanvas/
 
 ## Building
 
+New to the framework? [`Docs/GettingStarted.md`](Docs/GettingStarted.md) is the
+step list for building an application on UltraCanvas and its modules, with an
+AI coding assistant (Claude Code in particular) doing most of the typing.
+
 **Prerequisites**
 
 Install the required dependencies for your platform:

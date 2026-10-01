@@ -425,7 +425,7 @@ UltraWinResult UltraWin_VmProvision(const UltraWinVmOptions& options) {
 
     const std::string vmDir = VmDirectory();
     std::error_code ec;
-    fs::create_directories(vmDir, ec);
+    fs::create_directories(UltraCanvas::PathFromUtf8(vmDir), ec);
     if (ec)
         return UltraWinResult::Error(UltraWinResultCode::IoError,
                                      "cannot create " + vmDir);
@@ -433,7 +433,7 @@ UltraWinResult UltraWin_VmProvision(const UltraWinVmOptions& options) {
 
     auto manifest = ReadManifest(vmDir);
     const bool existed = !manifest.empty();
-    if (existed && fs::exists(disk)) {
+    if (existed && fs::exists(UltraCanvas::PathFromUtf8(disk))) {
         // Re-provision only swaps the install media; the disk (and its
         // sizes) stay — deleting a Windows install must be explicit.
         manifest["windows_iso"] = options.windowsIsoPath;
@@ -519,7 +519,7 @@ UltraWinResult UltraWin_VmStart() {
     const std::string disk = PathToUtf8(PathFromUtf8(vmDir) / "disk.qcow2");
     const std::string qmpSock = QmpSocketPath();
     std::error_code ec;
-    fs::remove(qmpSock, ec);  // stale socket from a previous run
+    fs::remove(UltraCanvas::PathFromUtf8(qmpSock), ec);  // stale socket from a previous run
 
     // Home share: a virtiofsd instance exporting $HOME, attached below as
     // a vhost-user-fs device (needs the shared memfd memory backend). The
@@ -532,7 +532,7 @@ UltraWinResult UltraWin_VmStart() {
         virtiofsd = FindVirtiofsdBinary();
     pid_t vfsPid = 0;
     if (!virtiofsd.empty()) {
-        fs::remove(vfsSock, ec);
+        fs::remove(UltraCanvas::PathFromUtf8(vfsSock), ec);
         vfsPid = fork();
         if (vfsPid == 0) {
             setpgid(0, 0);
@@ -552,9 +552,9 @@ UltraWinResult UltraWin_VmStart() {
             _exit(127);
         }
         // The vhost socket must exist before QEMU parses its chardev.
-        for (int i = 0; i < 50 && !fs::exists(vfsSock); ++i)
+        for (int i = 0; i < 50 && !fs::exists(UltraCanvas::PathFromUtf8(vfsSock)); ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        if (vfsPid > 0 && !fs::exists(vfsSock)) {
+        if (vfsPid > 0 && !fs::exists(UltraCanvas::PathFromUtf8(vfsSock))) {
             kill(vfsPid, SIGKILL);
             int status = 0;
             waitpid(vfsPid, &status, 0);

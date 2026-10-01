@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraFIBU {
 
@@ -73,7 +74,7 @@ bool SiehtWieUtf8Aus(const std::string& text) {
 }
 
 bool LiesDatei(const std::string& pfad, std::string& roh, std::string& fehler) {
-    std::FILE* datei = std::fopen(pfad.c_str(), "rb");
+    std::FILE* datei = UltraCanvas::OpenFileUtf8(pfad, "rb");
     if (datei == nullptr) {
         fehler = "Die Datei \"" + pfad + "\" ist nicht lesbar.";
         return false;

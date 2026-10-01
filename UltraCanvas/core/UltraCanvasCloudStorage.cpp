@@ -27,6 +27,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -192,7 +193,7 @@ namespace UltraCanvas {
         const char* homeEnv = std::getenv("HOME");
         const std::string home = homeEnv ? std::string(homeEnv) : std::string();
         if (home.empty()) return folders;
-        const std::filesystem::path homePath(home);
+        const std::filesystem::path homePath(UltraCanvas::PathFromUtf8(home));
 #if defined(__APPLE__)
         // macOS 12+ gives every File Provider extension its own folder under
         // ~/Library/CloudStorage, named "<Provider>-<account>": "OneDrive-

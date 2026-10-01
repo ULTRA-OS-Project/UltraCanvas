@@ -24,6 +24,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 #if !defined(_WIN32)
 #include <sys/stat.h>
@@ -72,13 +73,13 @@ int main() {
                 VirtualFSRamDiskBackingToString(disk.backing));
 
     CHECK(disk.IsValid(), "created disc reports valid");
-    CHECK(fs::is_directory(disk.mountPath), "mount path is a real directory");
+    CHECK(fs::is_directory(UltraCanvas::PathFromUtf8(disk.mountPath)), "mount path is a real directory");
 
     // --- 2. The OS can see it: write through plain stdio, not VirtualFS ----
     const std::string probe = disk.mountPath + "/probe.txt";
     const char* payload = "ultravfs ram disc probe";
     {
-        std::FILE* f = std::fopen(probe.c_str(), "wb");
+        std::FILE* f = UltraCanvas::OpenFileUtf8(probe, "wb");
         CHECK(f != nullptr, "plain fopen() can create a file on the disc");
         if (f) {
             std::fwrite(payload, 1, std::strlen(payload), f);
@@ -88,7 +89,7 @@ int main() {
 
     char readBack[64] = {};
     {
-        std::FILE* f = std::fopen(probe.c_str(), "rb");
+        std::FILE* f = UltraCanvas::OpenFileUtf8(probe, "rb");
         if (f) {
             std::fread(readBack, 1, sizeof(readBack) - 1, f);
             std::fclose(f);
@@ -174,8 +175,8 @@ int main() {
     const std::string mountPath = disk.mountPath;
     CHECK(VirtualFS_DestroyRamDisk(disk) == VirtualFSResult::Success,
           "disc is destroyed");
-    CHECK(!fs::exists(mountPath), "mount path is gone after destroy");
-    CHECK(!fs::exists(probe), "disc contents went with it");
+    CHECK(!fs::exists(UltraCanvas::PathFromUtf8(mountPath)), "mount path is gone after destroy");
+    CHECK(!fs::exists(UltraCanvas::PathFromUtf8(probe)), "disc contents went with it");
     CHECK(!disk.IsValid(), "handle is reset after destroy");
 
     // Destroying left the manager pointed somewhere usable, not at a mount
@@ -184,7 +185,7 @@ int main() {
         VirtualFS_GetTempDirectory();
     CHECK(tempAfter != mountPath,
           "temp directory moved off the disc when it was destroyed");
-    CHECK(fs::is_directory(tempAfter), "temp directory is usable again");
+    CHECK(fs::is_directory(UltraCanvas::PathFromUtf8(tempAfter)), "temp directory is usable again");
 
     VirtualFSRamDisk stale;
     stale.name = "unittest";

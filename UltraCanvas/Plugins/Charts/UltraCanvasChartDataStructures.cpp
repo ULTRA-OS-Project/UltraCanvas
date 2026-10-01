@@ -7,12 +7,13 @@
 #include <sstream>
 #include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
 #include "Plugins/Charts/UltraCanvasChartDataStructures.h"
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
     // ChartDataVector
     void ChartDataVector::LoadFromCSV(const std::string &filePath) {
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) {
             throw std::runtime_error("Cannot open CSV file: " + filePath);
         }
@@ -105,7 +106,7 @@ namespace UltraCanvas {
     }
 
     void ChartDataStream::CalculatePointCount() const {
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) {
             totalPoints = 0;
             return;
@@ -130,7 +131,7 @@ namespace UltraCanvas {
     }
 
     void ChartDataStream::LoadChunk(size_t targetIndex) const {
-        std::ifstream file(filePath);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath));
         if (!file.is_open()) return;
 
         // Calculate chunk start

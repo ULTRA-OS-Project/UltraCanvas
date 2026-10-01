@@ -1,15 +1,18 @@
 // include/UltraCanvasBusyIndicator.h
-// Busy indicator: the turning ring that says "working on it" when there is no
-// percentage to show — a mail fetch, a network call, a folder scan. A partial
-// arc turns over a faint full track while Start() is in effect; Stop() halts
-// the timer and (by default) leaves the space blank, so the indicator can sit
-// permanently in a status line and cost nothing while idle.
+// Busy indicator: the animation that says "working on it" when there is no
+// percentage to show — a mail fetch, a network call, a folder scan. Five
+// kinds: a partial arc turning over a faint track (Ring), two concentric arcs
+// turning against each other (DualRing), dots swelling in
+// turn (Dots), a segment sliding along a track (Bar) and a circle that
+// breathes in and out (Pulse). Start() runs it; Stop() halts the timer and
+// (by default) leaves the space blank, so the indicator can sit permanently
+// in a status line and cost nothing while idle.
 //
 // For a known fraction use UltraCanvasGaugeDiagramElement (GaugeMode::LinearBar)
 // or UltraCanvasProgressDialog; this element has no value.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-28
+// Version: 1.1.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -23,13 +26,27 @@
 
 namespace UltraCanvas {
 
+// ===== BUSY INDICATOR KIND =====
+    enum class BusyIndicatorKind {
+        Ring,    // a partial arc turning over a faint full ring (square element)
+        DualRing,// two concentric arcs turning in opposite directions (square element)
+        Dots,    // dotCount dots in a row, swelling and brightening in turn
+        Bar,     // a segment sliding left to right along a track (wide element)
+        Pulse    // a filled circle breathing in and out over a faint disc
+    };
+
 // ===== BUSY INDICATOR STYLE =====
     struct BusyIndicatorStyle {
-        Color arcColor   = Color(0, 120, 215, 255);   // the turning arc
-        Color trackColor = Color(0, 0, 0, 28);        // the faint full ring behind it; alpha 0 = none
-        float thickness  = 0.0f;       // stroke width in px; <= 0 means side / 8
-        float arcDegrees = 270.0f;     // length of the turning arc
-        float revolutionsPerSecond = 1.0f;
+        BusyIndicatorKind kind = BusyIndicatorKind::Ring;
+        Color arcColor   = Color(0, 120, 215, 255);   // the moving part: arc, dots, segment, circle
+        Color trackColor = Color(0, 0, 0, 28);        // the faint still part behind it; alpha 0 = none
+        float thickness  = 0.0f;       // Ring/DualRing: stroke width, <= 0 means side / 8;
+                                       // Bar: bar height, <= 0 means the element height
+        float arcDegrees = 270.0f;     // Ring: length of the turning arc; DualRing: each
+                                       // ring's arc is half of this
+        int   dotCount   = 3;          // Dots: how many, clamped to 2..12
+        float barFraction = 0.3f;      // Bar: segment length as a share of the width, 0.05..0.9
+        float revolutionsPerSecond = 1.0f;   // animation cycles per second, every kind
         unsigned int frameIntervalMs = 33;   // ~30 fps
         bool  hideWhenStopped = true;  // false draws the idle track (and a still arc)
     };
@@ -58,16 +75,34 @@ namespace UltraCanvas {
         BusyIndicatorStyle style;
         TimerId timerId = InvalidTimerId;
         std::chrono::steady_clock::time_point startedAt{};
-        double stoppedAngle = 0.0;   // radians; where the arc rests after Stop()
+        double stoppedPhase = 0.0;   // cycles, 0..1; where the animation rests after Stop()
 
-        double CurrentAngle() const;
+        double CurrentPhase() const;   // 0..1 through the current cycle
+        void RenderRing(IRenderContext* ctx, float w, float h, double phase);
+        void RenderDualRing(IRenderContext* ctx, float w, float h, double phase);
+        void RenderDots(IRenderContext* ctx, float w, float h, double phase);
+        void RenderBar(IRenderContext* ctx, float w, float h, double phase);
+        void RenderPulse(IRenderContext* ctx, float w, float h, double phase);
     };
 
 // ===== FACTORY =====
-    // A square indicator `size` px on a side.
+    // A square indicator `size` px on a side (a Ring by default).
     inline std::shared_ptr<UltraCanvasBusyIndicator> CreateBusyIndicator(
             const std::string& identifier, float x, float y, float size = 16.0f) {
         return std::make_shared<UltraCanvasBusyIndicator>(identifier, x, y, size, size);
+    }
+
+    // An indicator of the given kind and size. Dots and Bar want a wide box
+    // (e.g. 36 x 10 for Dots, 120 x 4 for Bar); Ring, DualRing and Pulse a
+    // square one.
+    inline std::shared_ptr<UltraCanvasBusyIndicator> CreateBusyIndicator(
+            const std::string& identifier, float x, float y, float w, float h,
+            BusyIndicatorKind kind) {
+        auto indicator = std::make_shared<UltraCanvasBusyIndicator>(identifier, x, y, w, h);
+        BusyIndicatorStyle style = indicator->GetStyle();
+        style.kind = kind;
+        indicator->SetStyle(style);
+        return indicator;
     }
 
 } // namespace UltraCanvas

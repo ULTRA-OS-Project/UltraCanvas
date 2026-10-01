@@ -17,6 +17,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include "../../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -918,7 +919,7 @@ std::shared_ptr<ModelStorage::ModelDocument> MS3DConverter::ImportFromMemory(
 
 std::shared_ptr<ModelStorage::ModelDocument> MS3DConverter::Import(
         const std::string& filename, const ConversionOptions& options) {
-    std::ifstream stream(filename, std::ios::binary);
+    std::ifstream stream(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!stream) {
         options.Warn("MS3D: cannot open " + filename);
         return nullptr;
@@ -948,7 +949,7 @@ bool MS3DConverter::ValidateData(const std::vector<uint8_t>& data) const {
 }
 
 bool MS3DConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream stream(filename, std::ios::binary);
+    std::ifstream stream(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!stream) return false;
     std::vector<uint8_t> head(sizeof(kMagic));
     stream.read(reinterpret_cast<char*>(head.data()),

@@ -1,5 +1,5 @@
 // Apps/DeviceExplorer/ui/DeviceExplorerModel.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DeviceExplorerModel.h"
 
@@ -506,11 +506,114 @@ std::vector<PropertySection> DescribeComputer(const DeviceInventory& inventory,
     return sections;
 }
 
+// ============================================================================
+// PRINTER STATUS
+// ============================================================================
+
+std::string PrinterStateDisplayName(IOPrinterState state) {
+    switch (state) {
+        case IOPrinterState::Idle:     return "Ready";
+        case IOPrinterState::Printing: return "Printing";
+        case IOPrinterState::Stopped:  return "Stopped";
+        case IOPrinterState::Unknown:  return "Unknown";
+    }
+    return "Unknown";
+}
+
+namespace {
+
+const char* SupplyColorName(IOSupplyColor color) {
+    switch (color) {
+        case IOSupplyColor::Black:        return "Black";
+        case IOSupplyColor::Cyan:         return "Cyan";
+        case IOSupplyColor::Magenta:      return "Magenta";
+        case IOSupplyColor::Yellow:       return "Yellow";
+        case IOSupplyColor::LightCyan:    return "Light cyan";
+        case IOSupplyColor::LightMagenta: return "Light magenta";
+        case IOSupplyColor::LightBlack:   return "Light black";
+        case IOSupplyColor::Red:          return "Red";
+        case IOSupplyColor::Blue:         return "Blue";
+        case IOSupplyColor::Gray:         return "Gray";
+        case IOSupplyColor::PhotoBlack:   return "Photo black";
+        default:                          return "";
+    }
+}
+
+const char* SupplyTypeName(IOSupplyType type) {
+    switch (type) {
+        case IOSupplyType::Ink:       return "ink";
+        case IOSupplyType::Toner:     return "toner";
+        case IOSupplyType::Drum:      return "drum";
+        case IOSupplyType::Fuser:     return "fuser";
+        case IOSupplyType::WasteTank: return "waste tank";
+        case IOSupplyType::Staples:   return "staples";
+        case IOSupplyType::Paper:     return "paper";
+        case IOSupplyType::Unknown:   return "";
+    }
+    return "";
+}
+
+std::string Capitalised(std::string text) {
+    if (!text.empty()) text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
+    return text;
+}
+
+} // namespace
+
+std::string SupplyDisplayName(const IOSupplyLevel& supply) {
+    const std::string color = SupplyColorName(supply.color);
+    const std::string type = SupplyTypeName(supply.type);
+    // Colour and type say it best when both are known ("Cyan ink"). Otherwise
+    // the printer's own words, which name things our enums do not ("Maintenance
+    // box"), and only then whichever half we have.
+    if (!color.empty() && !type.empty()) return color + " " + type;
+    if (!supply.description.empty()) return supply.description;
+    if (!color.empty()) return color;
+    if (!type.empty()) return Capitalised(type);
+    return "Supply";
+}
+
+std::string SupplyLevelText(const IOSupplyLevel& supply) {
+    if (!supply.IsKnown()) return "not reported";
+    std::string text = std::to_string(supply.percentRemaining) + " %";
+    if (supply.IsLow()) text += " - low";
+    return text;
+}
+
+std::vector<PropertySection> DescribePrinterStatus(const PrinterStatusReport& report) {
+    std::vector<PropertySection> sections;
+    PropertySection status{"Printer status", {}};
+    if (!report.answered) {
+        status.rows.push_back({"Status", "Could not ask the printer"});
+        AddRow(status, "Reason", report.error);
+        sections.push_back(std::move(status));
+        return sections;
+    }
+    const IOPrinterStatus& s = report.status;
+    status.rows.push_back({"State", PrinterStateDisplayName(s.state)});
+    // "none" is IPP's word for "nothing to report"; saying it is noise.
+    if (!s.stateReason.empty() && s.stateReason != "none") {
+        status.rows.push_back({"Reason", s.stateReason});
+    }
+    status.rows.push_back({"Accepting jobs", s.acceptingJobs ? "Yes" : "No"});
+    status.rows.push_back({"Jobs queued", std::to_string(s.jobsQueued)});
+    AddRow(status, "Asked at", FormatTime(report.queriedAt));
+    sections.push_back(std::move(status));
+
+    PropertySection supplies{"Supplies", {}};
+    for (const IOSupplyLevel& supply : s.supplies) {
+        supplies.rows.push_back({SupplyDisplayName(supply), SupplyLevelText(supply)});
+    }
+    AddSection(sections, std::move(supplies));
+    return sections;
+}
+
 std::string FormatInventoryText(const DeviceInventory& inventory,
                                 DeviceGrouping grouping,
                                 const MachineSummary& machine,
                                 bool details,
-                                const IdentifierMask& mask) {
+                                const IdentifierMask& mask,
+                                const PrinterStatusMap* printerStatus) {
     std::ostringstream out;
     const std::string host = machine.hostName.empty() ? std::string("This computer") : machine.hostName;
     out << host << "  (" << CountText(inventory.devices.size(), "device", "devices")
@@ -534,7 +637,16 @@ std::string FormatInventoryText(const DeviceInventory& inventory,
                 << BackendOf(record.info) << ", " << StateDisplayName(record.info.state) << "]\n";
             if (!details) continue;
             const std::string branch = trunk + (lastDevice ? "   " : "│  ");
-            for (const PropertySection& section : DescribeDevice(record, mask)) {
+            std::vector<PropertySection> sections = DescribeDevice(record, mask);
+            if (printerStatus) {
+                const auto found = printerStatus->find(record.info.deviceId);
+                if (found != printerStatus->end()) {
+                    for (PropertySection& extra : DescribePrinterStatus(found->second)) {
+                        sections.push_back(std::move(extra));
+                    }
+                }
+            }
+            for (const PropertySection& section : sections) {
                 out << branch << "  " << section.title << "\n";
                 for (const PropertyRow& row : section.rows) {
                     out << branch << "    " << row.name << ": " << row.value << "\n";

@@ -365,7 +365,7 @@ std::vector<VirtualFSEntry> VirtualFSManager::ListRealDirectory(const std::strin
     std::vector<VirtualFSEntry> entries;
     
     try {
-        std::filesystem::path fsPath(path);
+        std::filesystem::path fsPath(UltraCanvas::PathFromUtf8(path));
         
         if (!std::filesystem::exists(fsPath)) {
             return entries;
@@ -431,7 +431,7 @@ bool VirtualFSManager::Exists(const std::string& path) {
     auto resolved = ResolvePath(normalized);
     
     if (resolved.archiveStack.empty()) {
-        return std::filesystem::exists(normalized);
+        return std::filesystem::exists(UltraCanvas::PathFromUtf8(normalized));
     }
     
     std::string innerPath;
@@ -483,7 +483,7 @@ VirtualFSEntry VirtualFSManager::GetRealFSInfo(const std::string& path) {
     VirtualFSEntry entry;
     
     try {
-        std::filesystem::path fsPath(path);
+        std::filesystem::path fsPath(UltraCanvas::PathFromUtf8(path));
         
         if (!std::filesystem::exists(fsPath)) {
             return entry;
@@ -580,7 +580,7 @@ VirtualFSResult VirtualFSManager::ReadFile(const std::string& path, std::vector<
 
 VirtualFSResult VirtualFSManager::ReadFromRealFS(const std::string& path, std::vector<uint8_t>& outData) {
     try {
-        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::ate);
         if (!file) {
             return VirtualFSResult::NotFound;
         }
@@ -612,7 +612,7 @@ VirtualFSResult VirtualFSManager::ReadFilePartial(
     if (resolved.archiveStack.empty()) {
         // Real filesystem partial read
         try {
-            std::ifstream file(normalized, std::ios::binary | std::ios::ate);
+            std::ifstream file(UltraCanvas::PathFromUtf8(normalized), std::ios::binary | std::ios::ate);
             if (!file) {
                 return VirtualFSResult::NotFound;
             }
@@ -968,7 +968,7 @@ std::string VirtualFSManager::DetectFormat(const std::string& path) {
     std::vector<uint8_t> header(64);
     
     try {
-        std::ifstream file(path, std::ios::binary);
+        std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary);
         if (!file) {
             return "";
         }
@@ -1216,11 +1216,11 @@ std::shared_ptr<IVirtualFSProvider> VirtualFSManager::OpenNestedArchive(
             VirtualFSPath::GetFileName(pathInOuter);
         
         {
-            std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
+            std::ofstream out(UltraCanvas::PathFromUtf8(tempPath), std::ios::binary | std::ios::trunc);
             if (!out.write(reinterpret_cast<const char*>(data->data()),
                            static_cast<std::streamsize>(data->size()))) {
                 std::error_code ec;
-                std::filesystem::remove(tempPath, ec);
+                std::filesystem::remove(UltraCanvas::PathFromUtf8(tempPath), ec);
                 return nullptr;
             }
         }
@@ -1230,7 +1230,7 @@ std::shared_ptr<IVirtualFSProvider> VirtualFSManager::OpenNestedArchive(
     if (opened != VirtualFSResult::Success) {
         if (!tempPath.empty()) {
             std::error_code ec;
-            std::filesystem::remove(tempPath, ec);
+            std::filesystem::remove(UltraCanvas::PathFromUtf8(tempPath), ec);
         }
         return nullptr;
     }
@@ -1242,7 +1242,7 @@ std::shared_ptr<IVirtualFSProvider> VirtualFSManager::OpenNestedArchive(
         instance->Close();
         if (!tempPath.empty()) {
             std::error_code ec;
-            std::filesystem::remove(tempPath, ec);
+            std::filesystem::remove(UltraCanvas::PathFromUtf8(tempPath), ec);
         }
         it->second.lastAccess = std::chrono::steady_clock::now();
         return it->second.provider;

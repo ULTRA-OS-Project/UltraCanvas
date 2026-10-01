@@ -19,6 +19,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using UltraCanvas::PathFromUtf8;
 using UltraCanvas::PathToUtf8;
@@ -104,10 +105,10 @@ int LoadProviderPlugins() {
 
     std::error_code ec;
     const std::filesystem::path dir = GetPluginDirectory();
-    if (!std::filesystem::is_directory(dir, ec)) return 0;
+    if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(dir), ec)) return 0;
 
     int loaded = 0;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+    for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir), ec)) {
         if (!entry.is_regular_file(ec) || !IsPluginLibrary(entry.path())) continue;
         const std::size_t before = ListProviders().size();
 #if defined(_WIN32)

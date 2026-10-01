@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -193,7 +194,7 @@ bool UCZipPackageWriter::Open(const std::string& filePath) {
     impl_->entries.clear();
     impl_->offset = 0;
     impl_->finalized = false;
-    impl_->file = std::fopen(filePath.c_str(), "wb");
+    impl_->file = UltraCanvas::OpenFileUtf8(filePath, "wb");
     if (!impl_->file) {
         lastError_ = "Cannot create file: " + filePath;
         return false;

@@ -15,6 +15,7 @@
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasAccessibilityBridge.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1604,8 +1605,52 @@ int main() {
             editor.SetCaret(RichDocPosition(1, 0));
             edit->InsertText("x");
             TEST("Edits are announced", std::find(events.begin(), events.end(), AccessibilityEventType::TextChanged) != events.end());
+            TEST("An editable document is not read-only", !text->IsReadOnly());
+            edit->SetReadOnly(true);
+            TEST("...a read-only one says so", text->IsReadOnly());
+            edit->SetReadOnly(false);
             UltraCanvasAccessibility::RemoveListener(listener);
         }
+
+        // What the platform bridges (AT-SPI, UI Automation) build on.
+        namespace AB = AccessibilityBridge;
+        TEST("The editor's parent in the tree is its window", AB::Parent(edit.get()) == window.get());
+        TEST("A window has no parent element", AB::Parent(window.get()) == nullptr);
+        TEST("The window lists the editor", AB::IndexInParent(edit.get()) >= 0);
+        TEST("The window is one of the application's", AB::IndexInParent(window.get()) >= 0);
+        TEST("The editor is live", AB::IsLive(edit.get()));
+        const AB::ScreenRect onScreen = AB::ScreenBounds(edit.get());
+        TEST("It has a size on the screen", onScreen.width > 0 && onScreen.height > 0);
+        TEST("Hit testing its middle finds it",
+             AB::HitTest(window.get(), onScreen.x + onScreen.width / 2, onScreen.y + onScreen.height / 2) == edit.get());
+        int start = 0;
+        std::string removed, inserted;
+        TEST("A typed word is an insertion",
+             AB::Difference("caf\xC3\xA9 au lait", "caf\xC3\xA9 noir au lait", start, removed, inserted) &&
+             start == 5 && removed.empty() && inserted == "noir ");
+        TEST("A replaced character is a deletion and an insertion, whole characters",
+             AB::Difference("a\xC3\xA9" "b", "a\xC3\xA8" "b", start, removed, inserted) &&
+             start == 1 && removed == "\xC3\xA9" && inserted == "\xC3\xA8");
+        TEST("Equal texts are no change", !AB::Difference("same", "same", start, removed, inserted));
+        TEST("Substrings count characters", AB::Substring("caf\xC3\xA9s", 3, 5) == "\xC3\xA9s" && AB::Substring("abc", 1, -1) == "bc");
+        TEST("Code points", AB::CodePointAt("a\xC3\xA9\xE2\x82\xAC", 1) == 0xE9 && AB::CodePointAt("a\xC3\xA9\xE2\x82\xAC", 2) == 0x20AC);
+
+        AB::IdMap ids;
+        auto temporary = std::make_shared<UltraCanvasRichTextEdit>("temporary", 0, 0, 10, 10);
+        const uint32_t id = ids.IdOf(temporary.get());
+        TEST("Ids are stable", id != 0 && ids.IdOf(temporary.get()) == id && ids.ElementOf(id) == temporary.get());
+        UltraCanvasUIElement* raw = temporary.get();
+        UltraCanvasUIElement* destroyed = nullptr;
+        const int listener = UltraCanvasAccessibility::AddListener([&](const AccessibilityEvent& e) {
+            if (e.type == AccessibilityEventType::ElementDestroyed) {
+                if (e.element == raw) destroyed = e.element;
+                ids.Forget(e.element);
+            }
+        });
+        temporary.reset();
+        TEST("A destroyed element is announced", destroyed == raw);
+        TEST("...so a bridge drops its id", ids.ElementOf(id) == nullptr);
+        UltraCanvasAccessibility::RemoveListener(listener);
     }
 
     std::cerr << "\n========================================" << std::endl;

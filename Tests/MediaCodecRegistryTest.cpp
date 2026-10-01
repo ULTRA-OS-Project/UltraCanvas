@@ -19,6 +19,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 
@@ -50,7 +51,7 @@ bool RegistryHas(MediaCodecKind kind, const std::string& ext) {
 }
 
 void WriteFile(const std::string& path, const std::vector<uint8_t>& bytes) {
-    std::ofstream f(path, std::ios::binary);
+    std::ofstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     f.write(reinterpret_cast<const char*>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));
 }
@@ -148,7 +149,7 @@ void TestTypeScriptIsNotVideo() {
 // A stand-in for an application-supplied codec: a "format" whose file is just
 // a frame count, decoded into that many frames of silence.
 std::shared_ptr<UCAudio> DecodeFakeFormat(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f) return nullptr;
     std::string magic(4, '\0');
     f.read(magic.data(), 4);
@@ -170,7 +171,7 @@ std::shared_ptr<UCAudio> DecodeFakeFormat(const std::string& path) {
 bool encodeCalled = false;
 bool EncodeFakeFormat(const std::string& path, const UCAudio& audio) {
     encodeCalled = true;
-    std::ofstream f(path, std::ios::binary);
+    std::ofstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!f) return false;
     f.write("UCPX", 4);
     const uint32_t frames = static_cast<uint32_t>(audio.GetInfo().frameCount);
@@ -208,7 +209,7 @@ void TestApplicationSuppliedCodec() {
     // that is the part that proves the plugin is wired into loading rather
     // than merely described.
     {
-        std::ofstream f(path, std::ios::binary);
+        std::ofstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
         const uint32_t frames = 4000;
         f.write("UCPX", 4);
         f.write(reinterpret_cast<const char*>(&frames), sizeof(frames));

@@ -19,6 +19,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::Authenticator;
@@ -68,7 +69,7 @@ static std::string MakeVault(const char* name, const std::string& password) {
 }
 
 static std::vector<uint8_t> ReadFile(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)),
                                 std::istreambuf_iterator<char>());
 }
@@ -119,9 +120,9 @@ static void TestRoundTrip() {
         store.Close();
     }
 
-    std::filesystem::remove(vaultPath);
-    std::filesystem::remove(exportPath);
-    std::filesystem::remove(restorePath);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(vaultPath));
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(exportPath));
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(restorePath));
 }
 
 // The rule from §3.5: a backup must not open with the device password.
@@ -138,10 +139,10 @@ static void TestRefusesMasterPasswordAsPassphrase() {
                                       exportPath, exported);
     Check(!res, "reusing the master password is refused");
     Check(res.code == StoreResultCode::InvalidArgument, "reported as InvalidArgument");
-    Check(!std::filesystem::exists(exportPath), "and no file is written");
+    Check(!std::filesystem::exists(UltraCanvas::PathFromUtf8(exportPath)), "and no file is written");
 
     store.Close();
-    std::filesystem::remove(vaultPath);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(vaultPath));
 }
 
 static void TestWrongPassphraseAndTampering() {
@@ -173,7 +174,7 @@ static void TestWrongPassphraseAndTampering() {
     {
         std::vector<uint8_t> tampered = original;
         tampered[tampered.size() - 1] ^= 0x01;
-        std::ofstream out(exportPath, std::ios::binary | std::ios::trunc);
+        std::ofstream out(UltraCanvas::PathFromUtf8(exportPath), std::ios::binary | std::ios::trunc);
         out.write(reinterpret_cast<const char*>(tampered.data()),
                   static_cast<std::streamsize>(tampered.size()));
     }
@@ -187,15 +188,15 @@ static void TestWrongPassphraseAndTampering() {
     {
         std::vector<uint8_t> tampered = original;
         tampered[8] = 99;              // format version
-        std::ofstream out(exportPath, std::ios::binary | std::ios::trunc);
+        std::ofstream out(UltraCanvas::PathFromUtf8(exportPath), std::ios::binary | std::ios::trunc);
         out.write(reinterpret_cast<const char*>(tampered.data()),
                   static_cast<std::streamsize>(tampered.size()));
     }
     Check(!OpenAccountExport(exportPath, Buf("backup-pass"), uris),
           "an edited header is refused");
 
-    std::filesystem::remove(vaultPath);
-    std::filesystem::remove(exportPath);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(vaultPath));
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(exportPath));
 }
 
 // The point of encrypting the backup: nothing readable on disk.
@@ -221,8 +222,8 @@ static void TestNoSeedOnDisk() {
     Check(text.find("backup-pass") == std::string::npos,
           "and neither is the passphrase");
 
-    std::filesystem::remove(vaultPath);
-    std::filesystem::remove(exportPath);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(vaultPath));
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(exportPath));
 }
 
 // Restoring over a live vault must never destroy a working second factor.
@@ -273,9 +274,9 @@ static void TestImportNeverOverwrites() {
         store.Close();
     }
 
-    std::filesystem::remove(vaultPath);
-    std::filesystem::remove(exportPath);
-    std::filesystem::remove(partialPath);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(vaultPath));
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(exportPath));
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(partialPath));
 }
 
 // A hostile or truncated file must be refused rather than read past its end.
@@ -288,7 +289,7 @@ static void TestRejectsMalformedFiles() {
           "a missing file is refused");
 
     {
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
         const char junk[] = "not a backup at all, just some bytes here";
         out.write(junk, sizeof(junk) - 1);
     }
@@ -298,7 +299,7 @@ static void TestRejectsMalformedFiles() {
 
     // Correct magic, nothing after it.
     {
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        std::ofstream out(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
         const char header[] = {'U','C','A','E','X','P','R','T', 1, 0};
         out.write(header, sizeof(header));
     }
@@ -308,7 +309,7 @@ static void TestRejectsMalformedFiles() {
     Check(!SealAccountExport({}, Buf(""), path),
           "an empty passphrase is refused when sealing");
 
-    std::filesystem::remove(path);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path));
 }
 
 // An empty vault is a legitimate thing to back up.
@@ -333,8 +334,8 @@ static void TestEmptyVaultRoundTrips() {
           "and does nothing");
     store.Close();
 
-    std::filesystem::remove(vaultPath);
-    std::filesystem::remove(exportPath);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(vaultPath));
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(exportPath));
 }
 
 static void TestClosedStore() {

@@ -23,6 +23,14 @@ namespace UltraCanvas {
         if (!children.empty()) {
             children.clear();
         }
+        // A platform accessibility bridge may still hold this element under
+        // an id a screen reader can ask about.
+        if (UltraCanvasAccessibility::HasListeners()) {
+            AccessibilityEvent gone;
+            gone.type = AccessibilityEventType::ElementDestroyed;
+            gone.element = this;
+            UltraCanvasAccessibility::Notify(gone);
+        }
         auto app = UltraCanvasApplication::GetInstance();
         if (app) {
             app->CleanupElementReferences(this);

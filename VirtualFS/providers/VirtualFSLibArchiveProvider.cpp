@@ -475,13 +475,13 @@ VirtualFSResult VirtualFSLibArchiveProvider::Open(
     pImpl->archivePath = archivePath;
     pImpl->openOptions = options;
     
-    if (!std::filesystem::exists(archivePath)) {
+    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(archivePath))) {
         pImpl->lastError = "Archive file not found: " + archivePath;
         return VirtualFSResult::NotFound;
     }
     
     std::error_code ec;
-    const uint64_t archiveSize = std::filesystem::file_size(archivePath, ec);
+    const uint64_t archiveSize = std::filesystem::file_size(UltraCanvas::PathFromUtf8(archivePath), ec);
     return FinishOpen(options, ec ? 0 : archiveSize);
 }
 
@@ -896,18 +896,18 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractFile(
     if (result != VirtualFSResult::Success) return result;
     
     if (options.createDirectories) {
-        std::filesystem::path dest(destPath);
+        std::filesystem::path dest(UltraCanvas::PathFromUtf8(destPath));
         if (dest.has_parent_path()) {
             std::filesystem::create_directories(dest.parent_path());
         }
     }
     
-    if (std::filesystem::exists(destPath) && !options.overwriteExisting) {
+    if (std::filesystem::exists(UltraCanvas::PathFromUtf8(destPath)) && !options.overwriteExisting) {
         pImpl->lastError = "File already exists: " + destPath;
         return VirtualFSResult::AlreadyExists;
     }
     
-    std::ofstream file(destPath, std::ios::binary);
+    std::ofstream file(UltraCanvas::PathFromUtf8(destPath), std::ios::binary);
     if (!file) {
         pImpl->lastError = "Failed to create file: " + destPath;
         return VirtualFSResult::WriteError;
@@ -932,7 +932,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     if (!pImpl->isOpen) return VirtualFSResult::ArchiveNotOpen;
     
     std::error_code ec;
-    std::filesystem::create_directories(destDirectory, ec);
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(destDirectory), ec);
     // The destination with its own symbolic links resolved (macOS /tmp is
     // /private/tmp, a BSD /home is often /usr/home): SECURE_SYMLINKS below
     // refuses any path that runs through a link, and must only ever find the
@@ -1144,12 +1144,12 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddFile(
     
     if (!pImpl->writeArchive) return VirtualFSResult::ArchiveNotOpen;
     
-    if (!std::filesystem::exists(sourcePath)) {
+    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(sourcePath))) {
         pImpl->lastError = "Source file not found: " + sourcePath;
         return VirtualFSResult::NotFound;
     }
     
-    std::ifstream file(sourcePath, std::ios::binary | std::ios::ate);
+    std::ifstream file(UltraCanvas::PathFromUtf8(sourcePath), std::ios::binary | std::ios::ate);
     if (!file) {
         pImpl->lastError = "Failed to open source file";
         return VirtualFSResult::ReadError;
@@ -1209,12 +1209,12 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddDirectory(
     
     if (!pImpl->writeArchive) return VirtualFSResult::ArchiveNotOpen;
     
-    if (!std::filesystem::exists(sourcePath)) {
+    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(sourcePath))) {
         pImpl->lastError = "Source directory not found";
         return VirtualFSResult::NotFound;
     }
     
-    std::filesystem::path srcPath(sourcePath);
+    std::filesystem::path srcPath(UltraCanvas::PathFromUtf8(sourcePath));
     
     size_t filesAdded = 0;
     auto addEntry = [&](const std::filesystem::directory_entry& dirEntry) -> VirtualFSResult {
@@ -1392,7 +1392,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntries(
 
     std::string tempPath = pImpl->archivePath + ".vfs-rewrite.tmp";
     std::error_code ec;
-    std::filesystem::remove(tempPath, ec);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(tempPath), ec);
 
     VirtualFSResult result;
     bool handledByFastPath = false;
@@ -1402,14 +1402,14 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntries(
     }
 
     if (result != VirtualFSResult::Success) {
-        std::filesystem::remove(tempPath, ec);
+        std::filesystem::remove(UltraCanvas::PathFromUtf8(tempPath), ec);
         return result;
     }
 
-    std::filesystem::rename(tempPath, pImpl->archivePath, ec);
+    std::filesystem::rename(UltraCanvas::PathFromUtf8(tempPath), UltraCanvas::PathFromUtf8(pImpl->archivePath), ec);
     if (ec) {
         pImpl->lastError = "Failed to replace archive: " + ec.message();
-        std::filesystem::remove(tempPath, ec);
+        std::filesystem::remove(UltraCanvas::PathFromUtf8(tempPath), ec);
         return VirtualFSResult::WriteError;
     }
 

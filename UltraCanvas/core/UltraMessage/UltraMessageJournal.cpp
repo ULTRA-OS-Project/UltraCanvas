@@ -12,6 +12,7 @@
 
 #include <fstream>
 #include <map>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraMessage {
 namespace Internal {
@@ -588,7 +589,7 @@ UltraMsgResult Journal::SetAdapterEnabled(const std::string& name, bool enabled)
 
 UltraMsgResult Journal::Export(const UltraMsgQuery& query, const std::string& path, int64_t& outCount) {
     outCount = 0;
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    std::ofstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!file) return UltraMsgResult::Error(UltraMsgResultCode::JournalError, "cannot write " + path);
     UltraMsgQuery page = query;
     page.limit = 500;

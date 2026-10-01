@@ -3,8 +3,9 @@
 // needs from an element, independent of the platform's accessibility API:
 // its role and name, for text its content, caret, selection, character
 // positions and formatting, and a stream of events telling a listener what
-// changed. A platform bridge (AT-SPI on Linux, UI Automation on Windows,
-// NSAccessibility on macOS) sits on top of it.
+// changed. The platform bridges sit on top of it: AT-SPI on Linux
+// (OS/Linux/UltraCanvasLinuxAccessibility), UI Automation on Windows
+// (OS/MSWindows/UltraCanvasWindowsAccessibility); none yet for macOS.
 //
 //     if (IAccessibleText* text = element->GetAccessibleTextInterface()) {
 //         int start = 0, end = 0;
@@ -15,7 +16,7 @@
 //
 // Offsets count characters (Unicode code points), as the platform APIs do,
 // not bytes.
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -91,6 +92,9 @@ public:
     // with its extent. Lines come from the element's layout; the other units
     // from the text (see UltraCanvasAccessibility::TextUnitAt).
     virtual std::string GetTextAtOffset(int offset, AccessibleTextBoundary boundary, int& start, int& end) const;
+    // True when the user cannot change the text (a viewer, a locked field);
+    // a screen reader then does not announce it as editable.
+    virtual bool IsReadOnly() const { return false; }
 };
 
 enum class AccessibilityEventType {
@@ -98,7 +102,8 @@ enum class AccessibilityEventType {
     TextChanged,        // its text changed; offset/length give what is new, when known (else -1)
     CaretMoved,         // offset = the new caret offset
     SelectionChanged,
-    NameChanged
+    NameChanged,
+    ElementDestroyed    // `element` is being destroyed; drop any reference to it
 };
 
 struct AccessibilityEvent {
