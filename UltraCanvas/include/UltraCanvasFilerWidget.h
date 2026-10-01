@@ -90,7 +90,11 @@
 // SetDetailsColumnVisible leaves Details columns out of the table.
 // SetEntryFilter narrows what the listing shows to the entries a host
 // predicate accepts - a file picker's "Files of type" filter.
-// Version: 1.35.0
+// A picture whose thumbnail could not be made no longer shortens its row
+// (the type glyph drawn instead keeps the full tile), and
+// GetThumbnailCacheStats also counts the thumbnails still waiting, being
+// made and given up on.
+// Version: 1.36.0
 // Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
@@ -849,6 +853,14 @@ namespace UltraCanvas {
             size_t hotBudget = 0;     // ceiling for the decompressed tiles
             size_t iconEntries = 0;   // how many of `entries` are icons
             size_t iconBytes = 0;     // and what they occupy
+            // The thumbnails not held: still waiting for a worker, being made
+            // by one right now, and given up on (the tile keeps its type
+            // glyph). Waiting ones that never move while nothing is made
+            // mean the workers are stuck; failed ones mean the files would
+            // not decode - the log names each of those.
+            size_t pendingEntries = 0;
+            size_t inFlightEntries = 0;
+            size_t failedEntries = 0;
         };
         ThumbCacheStats GetThumbnailCacheStats() const;
 
@@ -2074,6 +2086,13 @@ namespace UltraCanvas {
         // via the global image cache and are not safe against two threads
         // rasterizing the same instance concurrently.
         std::unordered_set<std::string> thumbPathsInFlight;
+        // Files whose content thumbnail was given up on, at any size. The
+        // tile draws its type glyph instead, which needs the full square, so
+        // the layout does not shorten a row on behalf of a picture that will
+        // never be drawn (EntryAspect). Cleared with the cache.
+        std::unordered_set<std::string> thumbFailedPaths;
+        // A worker added to thumbFailedPaths: the next repaint relays out.
+        std::atomic<bool> thumbFailuresChanged{false};
         // Compressed mode: LRU of decompressed pixmaps for the tiles being
         // drawn, so repaints never re-inflate. Guarded by thumbMutex.
         struct HotThumb {

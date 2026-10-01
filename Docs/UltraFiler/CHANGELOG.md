@@ -1,3 +1,16 @@
+#### 2026-10-01 *1.63.0*
+- **Thumbnail tiles that show no picture keep one size.** In a folder whose
+  pictures could not be turned into thumbnails, the type icons were drawn
+  smaller in some rows than in others, and pressing *Everything on* /
+  *Everything off* under *Settings > Display > Thumbnails* changed which rows
+  - the row had been shortened for a picture that never came. Such a tile
+  now keeps the full height.
+- **Settings > Extras > Cache says which thumbnails are missing.** A new line
+  counts the thumbnails of the display in front that are waiting, being made,
+  and could not be made, so a folder that stays on type icons can be told
+  apart: still working, stuck, or files that would not decode (the log then
+  names each file). (Framework side: `Docs/UltraCanvas/changelog.d/`
+  `filer-failed-thumbnail-row-height.md`.)
 #### 2026-09-30 *1.62.0*
 - **The last four questions join the new dialog.** Renaming onto a name that
   is taken shows both entries side by side and asks *Replace* (red) /

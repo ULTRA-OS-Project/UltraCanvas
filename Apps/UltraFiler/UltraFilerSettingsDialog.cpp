@@ -265,6 +265,7 @@ namespace {
         std::shared_ptr<UltraCanvasLabel>  cacheMemoryLine;
         std::shared_ptr<UltraCanvasLabel>  cacheIconLine;
         std::shared_ptr<UltraCanvasLabel>  cacheHotLine;
+        std::shared_ptr<UltraCanvasLabel>  cacheMissingLine;
         std::shared_ptr<UltraCanvasLabel>  cacheLocationLine;
         std::shared_ptr<UltraCanvasLabel>  cacheStatus;
 
@@ -2109,6 +2110,7 @@ namespace {
             SetLine(d->cacheMemoryLine, "In memory: not available.");
             SetLine(d->cacheIconLine, "");
             SetLine(d->cacheHotLine, "");
+            SetLine(d->cacheMissingLine, "");
             return;
         }
         const UltraCanvasFilerWidget::ThumbCacheStats memory =
@@ -2139,6 +2141,17 @@ namespace {
                           "the display is not being drawn."
                         : "In memory, unpacked for drawing: not used while "
                           "thumbnails are held uncompressed.");
+        // The thumbnails the display in front does NOT have, and why: the
+        // one figure that tells "still on its way" from "the workers are
+        // stuck" (waiting, nothing being made) and from "the files would not
+        // decode" (could not be made - the log names each file).
+        const size_t waiting = memory.pendingEntries -
+                std::min(memory.pendingEntries, memory.inFlightEntries);
+        SetLine(d->cacheMissingLine,
+                "Not shown yet: " + std::to_string(waiting) + " waiting, " +
+                std::to_string(memory.inFlightEntries) + " being made, " +
+                std::to_string(memory.failedEntries) +
+                " could not be made (the tile keeps its type icon).");
     }
 
     // A switch in the window's text size, laid out like the page's other
@@ -2197,10 +2210,12 @@ namespace {
         d->cacheMemoryLine = MakeText("ufl-set-cache-memory-line", "");
         d->cacheIconLine = MakeText("ufl-set-cache-icon-line", "");
         d->cacheHotLine = MakeText("ufl-set-cache-hot-line", "");
+        d->cacheMissingLine = MakeText("ufl-set-cache-missing-line", "");
         parts.body->AddChild(d->cacheDiskLine);
         parts.body->AddChild(d->cacheMemoryLine);
         parts.body->AddChild(d->cacheIconLine);
         parts.body->AddChild(d->cacheHotLine);
+        parts.body->AddChild(d->cacheMissingLine);
 
         d->cacheLocationLine = MakeText("ufl-set-cache-location", "", kTextWidth,
                                         kNoteFontSize, kNoteTextColor);

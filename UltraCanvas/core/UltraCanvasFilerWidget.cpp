@@ -10916,6 +10916,7 @@ namespace UltraCanvas {
         thumbNativeBytes = 0;
         thumbHot.clear();
         thumbHotBytes = 0;
+        thumbFailedPaths.clear();
         textQueue.clear();
         textSlots.clear();
         peekQueue.clear();
@@ -10954,6 +10955,17 @@ namespace UltraCanvas {
         // so does a bitmap whose preview kind is switched off.
         if (e.category != FilerFileCategory::Image) return 0.0f;
         if (!ThumbnailEnabledFor(e)) return 0.0f;
+        {
+            // A picture whose thumbnail could not be made is drawn as its
+            // type glyph, and a glyph needs the whole square: a row shortened
+            // for the picture squeezed the glyph instead, so a folder whose
+            // thumbnails failed showed its glyphs at two sizes - one per row,
+            // changing whenever the thumbnail switches were touched.
+            const std::string& src =
+                    e.thumbnailPath.empty() ? e.path : e.thumbnailPath;
+            std::lock_guard<std::mutex> lk(thumbMutex);
+            if (thumbFailedPaths.count(src) != 0) return 0.0f;
+        }
         std::lock_guard<std::mutex> lk(statsMutex);
         auto it = aspectCache.find(e.path);
         if (it != aspectCache.end()) return it->second;
@@ -10994,7 +11006,16 @@ namespace UltraCanvas {
         st.iconBudget = kNativeIconBudgetBytes;
         st.hotBudget = kHotThumbBudgetBytes;
         std::lock_guard<std::mutex> lk(thumbMutex);
+        st.inFlightEntries = thumbPathsInFlight.size();
         for (const auto& kv : thumbSlots) {
+            if (kv.second.state == ThumbState::Pending) {
+                ++st.pendingEntries;
+                continue;
+            }
+            if (kv.second.state == ThumbState::Failed) {
+                ++st.failedEntries;
+                continue;
+            }
             if (kv.second.state != ThumbState::Ready) continue;
             ++st.entries;
             st.storedBytes += kv.second.bytes;
@@ -11429,6 +11450,10 @@ namespace UltraCanvas {
                         } else {
                             slot.state = ThumbState::Failed;
                             producedNothing = true;
+                            // Its row no longer shrinks for it (EntryAspect).
+                            if (!nativeIcon &&
+                                thumbFailedPaths.insert(req.path).second)
+                                thumbFailuresChanged.store(true);
                         }
                     }
                     report = true;
@@ -11638,6 +11663,9 @@ namespace UltraCanvas {
         app->PostToUIThread([this, alive]() {
             if (!alive->load()) return;   // widget destroyed meanwhile
             thumbRedrawPosted.store(false);
+            // A picture given up on gives its row back the full height.
+            if (thumbFailuresChanged.exchange(false) && shrinkThumbnailRows)
+                InvalidateFilerLayout();
             RequestRedraw();
         });
     }
