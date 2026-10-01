@@ -3,6 +3,7 @@
 //                  message_text_size
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailPreferences.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 
 #include <algorithm>
 #include <cctype>
@@ -30,7 +31,7 @@ bool ParseBool(const std::string& v) {
 } // namespace
 
 bool Preferences::Load(const std::string& path) {
-    std::ifstream file(path);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path));   // UTF-8 path
     if (!file.is_open()) return false;   // absent file: caller keeps defaults
 
     std::string line;
@@ -85,7 +86,7 @@ bool Preferences::Load(const std::string& path) {
 }
 
 bool Preferences::Save(const std::string& path) const {
-    std::ofstream file(path, std::ios::trunc);
+    std::ofstream file(UltraCanvas::PathFromUtf8(path), std::ios::trunc);
     if (!file.is_open()) return false;
     file << "# UltraMail preferences — view options remembered between runs.\n";
     file << "reading_pane = " << (showReadingPane ? "true" : "false") << "\n";

@@ -105,12 +105,18 @@ before adding cross-module code.
   Windows before 10 version 1903 ignores it. For the same reason, hand a
   path to a Win32 call through the `W` API (`LoadLibraryW(p.c_str())`), not
   the `A` one. `scripts/check_path_string.py` enforces this in CI
-  (`path-strings.yml`), and `scripts/path_string_baseline.txt` is empty and
-  must stay that way. A path built from a wide string or a `std::u8string`
+  (`path-strings.yml`). Besides `.string()` and `fs::path(str)` it reports
+  the conversions that hide in a call: a declaration `fs::path p(str);`, an
+  implicit `fs::exists(str)` / `fs::create_directories(dir)` /
+  `fs::directory_iterator(root)`, and a stream opened from a string,
+  `std::ifstream in(path)` - write `fs::exists(PathFromUtf8(str))` and
+  `std::ifstream in(PathFromUtf8(path))`. Those it decides by the argument's
+  nearest declaration (a `std::string`), so one whose type is not written
+  down (`auto`, a function result) still needs review.
+  `scripts/path_string_baseline.txt` holds the sites of those kinds that
+  predate the check (about 400 in 2026-10): debt to work off, never a place
+  to add a new one. A path built from a wide string or a `std::u8string`
   is already correct; say so at the site with `// path-string-ok: <why>`.
-  The check cannot see a declaration `fs::path p(str);` or an implicit
-  `fs::exists(str)`, so review catches those: write
-  `fs::exists(PathFromUtf8(str))`.
 - **No function of ours is named like a Win32 A/W macro.** `<windows.h>`
   `#define`s thousands of names to their `W` variant (`CreateFile` →
   `CreateFileW`, `LoadImage`, `SendMessage`, `GetMessage`, `ReplaceText`, …),

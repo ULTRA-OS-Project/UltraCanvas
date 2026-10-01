@@ -22,6 +22,14 @@
   there, are untouched. `AttachmentCache` also builds its paths through
   `PathFromUtf8` now, so an attachment named in Thai or with an emoji is
   written where it should be on Windows too.
+- **Mail in a folder with a non-ASCII name is cached on Windows too.** Every
+  downloaded message was written to the body cache through a narrow-string
+  file stream, which Windows opens in its code page: for a folder such as
+  "Entwürfe" or "Корзина" the write failed, so its messages could not be
+  read, and EmailCleaner never saw them either. The same pattern was in the
+  sender-icon cache, the preferences file, the data folder at start-up, the
+  plug-in folder lookup and adding a file to a message being composed. All
+  go through `PathFromUtf8` now - found by the extended UTF-8 path check.
 
 #### 2026-09-30 *0.10.13*
 - **Several compose windows at once work.** UltraMail had one compose view for

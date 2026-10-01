@@ -122,7 +122,7 @@ UltraMailApp::~UltraMailApp() {
 
 bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError) {
     std::error_code ec;
-    std::filesystem::create_directories(dataDir, ec);
+    std::filesystem::create_directories(PathFromUtf8(dataDir), ec);
     if (ec && outError) *outError = ec.message();
     const std::string dbPath = dataDir + "/mail.db";
 
@@ -760,7 +760,7 @@ std::string UltraMailApp::ResolvePluginDirectory() {
         // The build tree puts the executable at <build>/ and the DSOs at
         // <build>/Plugins/UltraNet; an installed or copied app may sit one
         // or two levels deeper (bin/, Apps/UltraMail/).
-        fs::path base = exeDir;
+        fs::path base = PathFromUtf8(exeDir);
         for (int up = 0; up < 3; ++up) {
             candidates.push_back(base / relative);
             base = base.parent_path();

@@ -264,7 +264,9 @@ std::string SyncEngine::WriteBody(const std::string& accountId, const std::strin
     const std::string path = BodyPath(accountId, folder, uid);
     std::error_code ec;
     fs::create_directories(PathFromUtf8(path).parent_path(), ec);
-    std::ofstream os(path, std::ios::binary | std::ios::trunc);
+    // UTF-8: the path carries the IMAP folder name ("Entwürfe", "Корзина"),
+    // which the narrow-string constructor would open in the Windows code page.
+    std::ofstream os(PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!os) return std::string();
     os.write(raw.data(), static_cast<std::streamsize>(raw.size()));
     if (!os) return std::string();
