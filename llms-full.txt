@@ -21481,6 +21481,36 @@ files, the curation below, and the ignore patterns — and `WhenIgnored`
 everywhere else, so an ordinary folder stays quiet about its dot names but says
 so when a setting dropped something from it.
 
+## Hiding Details columns
+
+`SetDetailsColumnVisible(column, false)` leaves a Details column out of the
+table; `IsDetailsColumnVisible` reads it back. Name cannot be hidden: it is
+the flexible column that takes whatever width the others leave, so every
+column hidden is width the names get. The file dialog shows Name, Size, Type
+and Modified only:
+
+```cpp
+filer->SetDetailsColumnVisible(FilerDetailsColumn::CreatedDate, false);
+filer->SetDetailsColumnVisible(FilerDetailsColumn::Attributes, false);
+filer->SetDetailsColumnVisible(FilerDetailsColumn::Info, false);
+```
+
+## Entry filter
+
+`SetEntryFilter(predicate)` decides which entries the listing shows at all — a
+file picker's *Files of type* choice, or a folder picker that lists folders
+only. An entry the predicate answers `false` for is left out in every folder,
+whatever `SetShowHiddenFiles` says, and it is not counted as hidden: the
+hidden-items notice never offers it. Setting or clearing it rescans the folder
+on display; `nullptr` lists everything again.
+
+```cpp
+// UltraCanvasFileDialog: folders stay, files must match the chosen filter.
+filer->SetEntryFilter([filter](const FilerEntry& e) {
+    return e.isDirectory || e.isArchive || filter.Matches(e.name);
+});
+```
+
 ## Ignored names
 
 `SetIgnoredNamePatterns(patterns, onlyInFolder)` is the answer to clutter a
@@ -49733,8 +49763,10 @@ animator:
   sheet model (`SetScrollPosition(row, col)`), read by the grid painter, the
   header painters, hit-testing and the scrollbar fractions.
 - `UltraCanvasTextArea` in Hex editing mode (`hexFirstVisibleRow`).
-- The `UltraCanvasFileDialog` file list and the `UltraCanvasNewDocumentDialog`
-  document list (item indices, also used for click hit-testing).
+- The `UltraCanvasNewDocumentDialog` document list (item indices, also used
+  for click hit-testing). (`UltraCanvasFileDialog` used to be on this list; its
+  folder tree is an `UltraCanvasTreeView` and its listing an
+  `UltraCanvasFilerWidget`, both of which scroll smoothly.)
 
 ---
 
@@ -62924,7 +62956,12 @@ open multiple, save, select folder) follows
 `UltraCanvasDialogManager::SetUseNativeDialogs`: the platform's picker when
 it is on, the framework's `UltraCanvasFileDialog` when it is off (the
 default). A native picker blocks and runs the callback before the call
-returns; the framework's runs it when the dialog closes.
+returns; the framework's runs it when the dialog closes. The framework's
+dialog is built from elements: a path field with an *up* button, a folder
+tree (Home, Desktop, Documents, Downloads and the mounted drives) beside the
+listing of the current folder (an `UltraCanvasFilerWidget`, the UltraFiler
+display), and the file-name field and file-type dropdown
+below them.
 
 ```cpp
 // Decode an image into a UCImage

@@ -2382,6 +2382,11 @@ namespace UltraCanvas {
         if (fileListMode) Refresh();
     }
 
+    void UltraCanvasFilerWidget::SetEntryFilter(std::function<bool(const FilerEntry&)> filter) {
+        entryFilter = std::move(filter);
+        if (!currentPath.empty() || fileListMode) Refresh();
+    }
+
     void UltraCanvasFilerWidget::Refresh() {
         CancelRename();
         CancelPendingRename();
@@ -3485,6 +3490,16 @@ namespace UltraCanvas {
             heldBack += ignored;
         }
 
+        // The host's own idea of what belongs in the listing (SetEntryFilter):
+        // a file picker's type filter. Not "hidden", so it counts nowhere.
+        if (entryFilter) {
+            entries.erase(std::remove_if(entries.begin(), entries.end(),
+                                         [this](const FilerEntry& e) {
+                                             return !entryFilter(e);
+                                         }),
+                          entries.end());
+        }
+
         // Showing everything holds nothing back, whatever the scan counted
         // (a prefetched listing carries the hidden entries, and the curation
         // is suspended) - so the notice has nothing to offer either.
@@ -4177,6 +4192,23 @@ namespace UltraCanvas {
             SetMouseCursor(UCMouseCursor::Default);
         }
         RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetDetailsColumnVisible(FilerDetailsColumn column, bool visible) {
+        const size_t index = static_cast<size_t>(column);
+        if (index == 0 || index >= kFilerDetailsColumnCount) return;   // Name stays
+        const uint32_t bit = 1u << index;
+        const uint32_t next = visible ? (hiddenDetailsColumns & ~bit) : (hiddenDetailsColumns | bit);
+        if (next == hiddenDetailsColumns) return;
+        hiddenDetailsColumns = next;
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
+    bool UltraCanvasFilerWidget::IsDetailsColumnVisible(FilerDetailsColumn column) const {
+        const size_t index = static_cast<size_t>(column);
+        if (index >= kFilerDetailsColumnCount) return false;
+        return index == 0 || !(hiddenDetailsColumns & (1u << index));
     }
 
     void UltraCanvasFilerWidget::SetDetailsColumnWidth(FilerDetailsColumn column,
@@ -8999,6 +9031,7 @@ namespace UltraCanvas {
             if (!fileListMode &&
                 kDetailsColumnSpecs[i].id == FilerDetailsColumn::Path)
                 continue;
+            if (i != 0 && (hiddenDetailsColumns & (1u << i))) continue;
             vis.push_back(i);
         }
         return vis;
