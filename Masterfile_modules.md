@@ -1805,9 +1805,10 @@ time: without it the same API links from a stub whose calls return
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
 frame, still images with sub-pixel pan and zoom and one-call slideshows,
+background music (fades, looping, ducking under the segments' own sound),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
-multi-track audio mixing, hardware encoders beyond the platform ones picked
+several free audio tracks, hardware encoders beyond the platform ones picked
 automatically (VideoToolbox, Media Foundation), project files.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
@@ -1817,7 +1818,8 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
-  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`
+  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
+  `VideoFXMusic` (`VideoFXExportSettings::music`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -1849,8 +1851,9 @@ automatically (VideoToolbox, Media Foundation), project files.
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
-  ContainViewRect, MakeBlurredBackdrop, RenderView}`
-  (the last eight in `core/VideoFXKenBurns.h`, no FFmpeg dependency)
+  ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
+  MusicEnvelope, MusicDucker, SlideshowSecondsForMusic}`
+  (`core/VideoFXKenBurns.h` and `core/VideoFXMusic.h` have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 
