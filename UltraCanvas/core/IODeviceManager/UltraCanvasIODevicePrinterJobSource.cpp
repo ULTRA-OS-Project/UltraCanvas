@@ -150,6 +150,15 @@ IODeviceResult MakeImageSource(const IOPrintJob& job,
 IODeviceResult MakePageSourceForJob(const IOPrintJob& job,
                                     IPrintPageSourcePtr& outPages,
                                     std::string& outContentType) {
+    // Pages that draw themselves need nothing worked out, and they are why a
+    // job carries them: a document (a PDF) beside them is one a renderer
+    // that has come this far cannot lay out.
+    if (job.pages) {
+        outPages = job.pages;
+        outContentType.clear();
+        return IODeviceResult::Ok();
+    }
+
     const std::string type = ResolveType(job);
     if (type.empty()) {
         return IODeviceResult::Error(

@@ -12,11 +12,13 @@
 // Author: UltraCanvas Framework
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.h"
+#include "IODeviceManager/UltraCanvasIODevicePrinterPage.h"
 #include "IODeviceManager/UltraCanvasIODevicePrinterPwgRaster.h"
 
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -947,6 +949,32 @@ void TestDocumentPlan() {
 
     r = PlanIppDocument("", {}, reference, plan);
     Check(!r.success && r.code == IODeviceResultCode::InvalidArgument, "no type, no plan");
+
+    // Pages that draw themselves (a formatted document's): always drawn here,
+    // which is what lets a printer without PDF print a document whose PDF it
+    // cannot take.
+    class OnePage : public IPrintPageSource {
+    public:
+        IODeviceResult Prepare(IPrintPageTarget&) override { return IODeviceResult::Ok(); }
+        int GetPageCount() const override { return 1; }
+        IODeviceResult DrawPage(int, IPrintPageTarget&) override { return IODeviceResult::Ok(); }
+    };
+    IOPrintJob pagesOnly;
+    pagesOnly.pages = std::make_shared<OnePage>();
+    CheckEqual(IppJobDocumentType(pagesOnly), std::string(kIppDrawnPagesType),
+               "a job of pages alone is planned as pages to draw");
+    IOPrintJob pdfWithPages = pagesOnly;
+    pdfWithPages.data = {'%', 'P', 'D', 'F'};
+    pdfWithPages.mimeType = "application/pdf";
+    CheckEqual(IppJobDocumentType(pdfWithPages), std::string("application/pdf"),
+               "  one with a PDF beside them is planned as the PDF first");
+    r = PlanIppDocument(kIppDrawnPagesType, {2}, noPdf, plan);
+    Check(r.success && !plan.passThrough && plan.documentFormat == "image/pwg-raster" &&
+              !plan.sendPageRange,
+          "  pages are drawn as PWG raster, the range selected here, where a PDF was refused");
+    r = PlanIppDocument(kIppDrawnPagesType, {}, pdfOnly, plan);
+    Check(!r.success && r.code == IODeviceResultCode::NotSupported,
+          "  and refused by a printer that takes no PWG raster either");
 }
 
 void TestRasterChoices() {

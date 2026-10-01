@@ -27,6 +27,10 @@
 
 namespace UltraCanvas {
 
+// Only ever a pointer here: the targets that draw through the rendering stack
+// hand theirs over, and this header must stay linkable without that stack.
+class IRenderContext;
+
 // ============================================================================
 // PAGE GEOMETRY
 // ============================================================================
@@ -120,6 +124,18 @@ public:
 
     // Distance from the top of a line box to its baseline.
     virtual int GetAscent(int pixelHeight) const = 0;
+
+    // The UltraCanvas render context this page is drawn with, when the
+    // target is one - one unit per device dot, origin at the printable
+    // area's top-left, as for every other call here. A source whose pages
+    // are more than lines of text and pictures (a formatted document) draws
+    // into it directly, at the device's own resolution, instead of handing
+    // over a bitmap through DrawImage.
+    //
+    // Null by default and for a target over a device the rendering stack
+    // cannot draw on - a Windows printer DC - where such a source draws its
+    // page off screen and uses DrawImage.
+    virtual IRenderContext* GetRenderContext() { return nullptr; }
 };
 
 // ============================================================================
