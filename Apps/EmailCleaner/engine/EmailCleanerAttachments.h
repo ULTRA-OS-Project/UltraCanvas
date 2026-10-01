@@ -63,7 +63,9 @@ AttachmentFetch FetchAttachment(const std::string& mailCacheDir,
 
 // Write bytes into `cacheDir` under a sanitised version of `filename`, so a
 // path-based viewer can open them. Returns the written path, or empty on
-// failure. Refuses names that would escape the directory.
+// failure. Refuses names that would escape the directory. Never overwrites a
+// different file: the same bytes reuse the copy already there, other bytes
+// with the same name get "name (1).ext", "name (2).ext", ...
 std::string WriteToCache(const std::string& cacheDir,
                          const std::string& filename,
                          const std::string& mediaType,

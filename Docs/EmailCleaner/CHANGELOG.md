@@ -48,6 +48,14 @@
   Opening an attachment again makes its copy new. `WriteToCache` also builds
   its paths through `PathFromUtf8` now, so a data folder or an attachment
   named in Thai or with an emoji works on Windows too.
+- **Two attachments with the same name no longer overwrite each other.**
+  The viewer's copy was written under the attachment's name, truncating
+  whatever was there: opening a second "invoice.pdf" from another sender
+  replaced the first - even while it was still open in a viewer. The copies
+  are now written through UltraMail's `AttachmentCache`: the same bytes reuse
+  the copy already there, different bytes get "invoice (1).pdf". And an
+  attachment is read back from a folder with a non-ASCII name ("Entwürfe",
+  "Корзина") on Windows too: the cached message is opened as UTF-8.
 
 #### 2026-09-29 *0.4.0*
 - **EmailCleaner can have accounts of its own.** Until now every account came

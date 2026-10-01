@@ -278,3 +278,61 @@ TEST(Attachment_CacheWorksInAFolderWithANonAsciiName) {
     REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(path)));
     std::filesystem::remove_all(root);
 }
+
+// ---- Copies never overwrite each other ----------------------------------------
+
+namespace {
+std::string ReadAll(const std::string& utf8Path) {
+    std::ifstream in(UltraCanvas::PathFromUtf8(utf8Path), std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+} // namespace
+
+TEST(Attachment_SameNameDifferentContentGetsItsOwnCopy) {
+    // Two senders, two different "invoice.pdf". The second must not replace
+    // the first - which may still be open in a viewer.
+    const std::filesystem::path root = TempDir();
+    const std::string cache = UltraCanvas::PathToUtf8(root / "attachments");
+    const std::vector<uint8_t> first  = { 'f', 'i', 'r', 's', 't' };
+    const std::vector<uint8_t> second = { 's', 'e', 'c', 'o', 'n', 'd' };
+
+    const std::string a = WriteToCache(cache, "invoice.pdf", "application/pdf", first);
+    const std::string b = WriteToCache(cache, "invoice.pdf", "application/pdf", second);
+    REQUIRE(!a.empty());
+    REQUIRE(!b.empty());
+    REQUIRE(a != b);
+    REQUIRE(b.find("invoice (1).pdf") != std::string::npos);
+    REQUIRE_EQ(ReadAll(a), std::string("first"));    // untouched
+    REQUIRE_EQ(ReadAll(b), std::string("second"));
+
+    // Opening the first again reuses its copy rather than making a third.
+    REQUIRE_EQ(WriteToCache(cache, "invoice.pdf", "application/pdf", first), a);
+    REQUIRE_EQ(WriteToCache(cache, "invoice.pdf", "application/pdf", second), b);
+    std::size_t files = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(root / "attachments")) {
+        (void)entry;
+        ++files;
+    }
+    REQUIRE_EQ(files, static_cast<std::size_t>(2));
+    std::filesystem::remove_all(root);
+}
+
+TEST(Attachment_FetchFromAFolderWithANonAsciiName) {
+    // The cached message's path holds the IMAP folder name, which is often
+    // not ASCII ("Entw\xc3\xbcrfe", "\xd0\x9a\xd0\xbe\xd1\x80\xd0\xb7\xd0\xb8\xd0\xbd\xd0\xb0"); it is opened as UTF-8.
+    const std::filesystem::path root = TempDir();
+    const std::string folder = "Entw\xc3\xbcrfe";
+    const std::filesystem::path dir =
+        root / "erika" / UltraCanvas::PathFromUtf8(folder);
+    std::filesystem::create_directories(dir);
+    {
+        std::ofstream out(dir / "7.eml", std::ios::binary);
+        out << MessageWith("photo.png", "image/png");
+    }
+
+    std::vector<uint8_t> bytes;
+    REQUIRE(FetchAttachment(UltraCanvas::PathToUtf8(root), "erika", folder, 7,
+                            Record("photo.png", "image/png"), bytes) == AttachmentFetch::Ok);
+    REQUIRE_EQ(AsText(bytes), std::string("Hello!"));
+    std::filesystem::remove_all(root);
+}
