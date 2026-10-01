@@ -153,6 +153,41 @@ addresses:
 ULTRACANVAS_IPP_PRINTERS=ipp://192.168.1.20/ipp/print ./MyApp
 ```
 
+### Printer Status
+
+`GetStatus()` reports what a printer is doing — idle, printing or stopped, the
+reason (`media-empty`, `door-open`, `paused`), whether it accepts jobs and how
+many are queued — and `GetSupplyLevels()` its ink or toner, with a percentage
+where the printer gives one. Both need an open session and return nothing
+otherwise:
+
+```cpp
+if (printer->Connect()) {
+    IOPrinterStatus status = printer->GetStatus();
+    for (const IOSupplyLevel& supply : printer->GetSupplyLevels()) {
+        if (supply.IsLow()) { /* supply.description, supply.percentRemaining */ }
+    }
+    printer->Disconnect();
+}
+```
+
+CUPS, the Windows spooler and IPP all report status. Supply levels come from
+CUPS (`marker-*`) and IPP (`marker-*` and PWG's `printer-supply`). On Windows
+the spooler itself has no levels, so the backend asks in two steps:
+
+1. The printer driver's bidirectional channel (`IBidiSpl`,
+   `\Printer.Consumables`), which drivers with a status monitor answer.
+2. If the driver says nothing and the queue prints to a network address, the
+   printer itself over IPP (builds with UltraNet). The address comes from the
+   queue's port: an IPP port's URL, or a Standard TCP/IP port's host, tried at
+   `/ipp/print`, `/ipp` and `/` on port 631. A printer that does not answer
+   is left alone for a minute, so a switched-off printer costs the connect
+   timeout (5 s) once, not on every call.
+
+A USB or WSD queue whose driver keeps quiet, or a printer that answers
+neither, gives an empty list rather than zero. DeviceExplorer shows both for
+the selected printer.
+
 ### Your Own Devices
 
 Hardware reached through an application's own code registers with the manager
