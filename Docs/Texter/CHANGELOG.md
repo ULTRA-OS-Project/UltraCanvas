@@ -1,4 +1,4 @@
-#### 2026-10-01 *1.56*
+#### 2026-10-01 *1.57*
 - **A word-processing tab prints on Windows, and on printers that do not read
   PDF.** Print sent the document only as a PDF, which a Windows printer, a
   GutenPrint printer and an IPP printer without PDF cannot take - they refused
@@ -6,6 +6,13 @@
   draw them: fonts, pictures, tables, headers and page numbers, with the
   printer, copies, paper and page range chosen in the dialog. A framework
   change, see `Docs/UltraCanvas/changelog.d/print-pages-beside-pdf.md`.
+
+#### 2026-10-01 *1.56*
+- **Texter builds without MuPDF again.** Opening and saving PDFs needs the
+  PDF view, which the framework compiles only when MuPDF is found; Texter
+  called it regardless, so a build on a machine without MuPDF failed to link
+  (`UltraCanvasPDFView::LoadFromPath` / `SaveAs` undefined). Such a build now
+  links, and opening a PDF in it says that this build has no PDF support.
 
 #### 2026-09-30 *1.55*
 - **Printing a word-processing tab (.docx, .odt, .doc) printed a blank page.**

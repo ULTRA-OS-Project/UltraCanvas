@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraAIApp {
 
@@ -74,7 +75,7 @@ namespace {
 // a path rather than pasted JSON — an API-format workflow is thousands of
 // characters.
 bool ReadTextFile(const std::string& path, std::string& outText) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!in) return false;
     std::ostringstream buffer;
     buffer << in.rdbuf();

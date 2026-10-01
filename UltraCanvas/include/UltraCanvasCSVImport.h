@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <initializer_list>
 #include "UltraCanvasFileError.h"
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -312,7 +313,7 @@ inline std::string CSVDescribeOpenError(const std::string& path) {
 // On failure 'error' (when provided) receives a descriptive reason.
 inline bool CSVReadFileRaw(const std::string& path, std::string& out,
                            std::string* error = nullptr) {
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!file.is_open()) {
         if (error) *error = CSVDescribeOpenError(path);
         return false;

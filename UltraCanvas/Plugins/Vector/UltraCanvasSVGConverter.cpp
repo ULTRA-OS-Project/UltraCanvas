@@ -32,6 +32,7 @@
 #include <set>
 #include <sstream>
 #include <variant>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace VectorConverter {
@@ -1420,7 +1421,7 @@ bool SVGConverter::Export(
         const ConversionOptions& options) {
     std::string data = ExportToString(document, options);
     if (data.empty()) return false;
-    std::ofstream file(filename, std::ios::binary);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file.is_open()) {
         if (options.WarningCallback)
             options.WarningCallback("Failed to create SVG file: " + filename);
@@ -1451,7 +1452,7 @@ bool SVGConverter::ExportToStream(
 }
 
 bool SVGConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file.is_open()) return false;
     std::string head(512, '\0');
     file.read(head.data(), static_cast<std::streamsize>(head.size()));

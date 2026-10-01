@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -361,7 +362,7 @@ bool TryParseRealHeaders(UltraCanvasCppReverseEngineer& engineer,
         std::vector<std::string> paths;
         for (const char* header : headers) {
             std::string path = std::string(root) + "/" + header;
-            if (std::filesystem::is_regular_file(path, ec)) paths.push_back(path);
+            if (std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(path), ec)) paths.push_back(path);
         }
         if (paths.empty()) continue;
 

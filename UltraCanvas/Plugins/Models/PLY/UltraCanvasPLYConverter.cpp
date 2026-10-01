@@ -16,6 +16,7 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 namespace ModelConverter {
@@ -563,7 +564,7 @@ std::shared_ptr<ModelDocument> PLYConverter::ImportFromStream(std::istream& stre
 
 std::shared_ptr<ModelDocument> PLYConverter::Import(const std::string& filename,
                                                     const ConversionOptions& options) {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) {
         options.Warn("PLY: cannot open " + filename);
         return nullptr;
@@ -779,7 +780,7 @@ bool PLYConverter::ExportToStream(const ModelDocument& document, std::ostream& s
 
 bool PLYConverter::Export(const ModelDocument& document, const std::string& filename,
                           const ConversionOptions& options) {
-    std::ofstream file(filename, std::ios::binary);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) {
         options.Warn("PLY: cannot write " + filename);
         return false;
@@ -829,7 +830,7 @@ bool PLYConverter::ValidateData(const std::vector<uint8_t>& data) const {
 }
 
 bool PLYConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) return false;
     std::vector<uint8_t> head(8);
     file.read(reinterpret_cast<char*>(head.data()), static_cast<std::streamsize>(head.size()));

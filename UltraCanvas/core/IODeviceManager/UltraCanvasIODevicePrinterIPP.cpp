@@ -17,7 +17,11 @@
 // The protocol arithmetic lives next door in ...IPPProtocol.cpp and the page
 // format in ...PwgRaster.cpp, so both can be tested without a network; this
 // file is the part that needs one.
-// Version: 0.1.0
+//
+// The Windows spooler backend borrows one piece of it: when a queue's driver
+// keeps its ink levels to itself, QueryIppSupplyLevels asks the printer
+// behind the queue directly.
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPP.h"
@@ -634,16 +638,9 @@ protected:
     }
 
     std::vector<IOSupplyLevel> DoGetSupplyLevels() override {
-        IppMessage response;
-        if (!GetPrinterAttributes({"marker-levels", "marker-names", "marker-types",
-                                   "marker-colors", "printer-supply",
-                                   "printer-supply-description"},
-                                  response)
-                 .success) {
-            return {};
-        }
-        const IppGroup* printer = response.FindGroup(IppTag::PrinterGroup);
-        return printer ? IppSuppliesFromAttributes(*printer) : std::vector<IOSupplyLevel>();
+        std::vector<IOSupplyLevel> supplies;
+        Internal::QueryIppSupplyLevels(Uri(), supplies);
+        return supplies;
     }
 
     IODeviceResult DoCancelJob(int jobId) override {
@@ -934,6 +931,29 @@ namespace Internal {
 
 void RegisterIppPrinterBackend(IODeviceManager& manager) {
     manager.RegisterEnumerator(IODeviceCategory::Printer, "IPP", EnumerateIppPrinters);
+}
+
+IODeviceResult QueryIppSupplyLevels(const std::string& printerUri,
+                                    std::vector<IOSupplyLevel>& outSupplies) {
+    outSupplies.clear();
+    IppMessage request = MakeIppRequest(IppOperation::GetPrinterAttributes, NextRequestId(),
+                                        printerUri, RequestingUserName());
+    std::vector<IppValue> wanted;
+    for (const char* name : {"marker-levels", "marker-names", "marker-types", "marker-colors",
+                             "printer-supply", "printer-supply-description"}) {
+        wanted.push_back(IppValue::Keyword(name));
+    }
+    request.groups.front().Set("requested-attributes", std::move(wanted));
+
+    IppMessage response;
+    IODeviceResult asked =
+        SendIpp(printerUri, request, nullptr, kMetadataTimeoutMs, response, IODeviceId());
+    if (asked.success) {
+        if (const IppGroup* printer = response.FindGroup(IppTag::PrinterGroup)) {
+            outSupplies = IppSuppliesFromAttributes(*printer);
+        }
+    }
+    return asked;
 }
 
 }  // namespace Internal

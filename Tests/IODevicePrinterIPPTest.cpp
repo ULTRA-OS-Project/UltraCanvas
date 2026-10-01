@@ -8,7 +8,7 @@
 // written here from the specification (PWG 5102.4), not from the writer - a
 // round trip through the writer's own idea of the format would pass however
 // wrong that idea was.
-// Version: 1.0.0
+// Version: 1.1.0
 // Author: UltraCanvas Framework
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.h"
@@ -462,6 +462,51 @@ void TestAddresses() {
     CheckEqual(IppNormalizePrinterUri("ipp://h/ipp/print"), std::string("ipp://h/ipp/print"),
                "an ipp URI without a port is kept without one");
     CheckEqual(IppNormalizePrinterUri("smb://h/q"), std::string(), "an smb address is refused");
+}
+
+void CheckUris(const std::vector<std::string>& got, const std::vector<std::string>& want,
+               const std::string& what) {
+    const bool same = got == want;
+    Check(same, what);
+    if (!same) {
+        std::cout << "         got";
+        for (const std::string& uri : got) std::cout << " \"" << uri << "\"";
+        std::cout << "\n";
+    }
+}
+
+void TestWindowsPortAddresses() {
+    std::cout << "\n=== Windows queue ports as IPP addresses ===\n";
+    using Uris = std::vector<std::string>;
+    const Uris guesses = {"ipp://10.0.0.5:631/ipp/print", "ipp://10.0.0.5:631/ipp",
+                          "ipp://10.0.0.5:631/"};
+
+    CheckUris(IppUrisForWindowsPort("http://10.0.0.5:631/ipp/print", ""),
+               Uris{"ipp://10.0.0.5:631/ipp/print"}, "an IPP port is its own address");
+    CheckUris(IppUrisForWindowsPort("IP_10.0.0.5", ""), guesses,
+               "IP_<address> is guessed at /ipp/print, /ipp and the root, on 631");
+    CheckUris(IppUrisForWindowsPort("10.0.0.5_1", ""), guesses,
+               "  and so is <address>_<n>, the second port Windows makes for one host");
+    CheckUris(IppUrisForWindowsPort("10.0.0.5", ""), guesses, "  and a bare address");
+    CheckUris(IppUrisForWindowsPort("Office laser", "printer.example.com"),
+               Uris{"ipp://printer.example.com:631/ipp/print",
+                    "ipp://printer.example.com:631/ipp", "ipp://printer.example.com:631/"},
+               "a configured host address wins over whatever the port is called");
+    CheckUris(IppUrisForWindowsPort("IP_10.0.0.5", "10.0.0.9"),
+               Uris{"ipp://10.0.0.9:631/ipp/print", "ipp://10.0.0.9:631/ipp",
+                    "ipp://10.0.0.9:631/"},
+               "  even when the name looks like an address");
+    CheckEqual(IppUrisForWindowsPort("x", "fe80::1").front(),
+               std::string("ipp://[fe80::1]:631/ipp/print"), "an IPv6 host is bracketed");
+    CheckUris(IppUrisForWindowsPort("x", "bad host/path"), Uris{},
+               "a host address that would bend the URI is ignored");
+
+    for (const char* port : {"USB001", "LPT1:", "FILE:", "PORTPROMPT:", "nul:",
+                             "WSD-6c3e2a1b-55d2-4b1f-9a9e-0a1b2c3d4e5f", "IP_10.0.0", "10.0.0.256",
+                             "IP_printer", "TS001"}) {
+        CheckUris(IppUrisForWindowsPort(port, ""), Uris{},
+                   std::string("no address in '") + port + "'");
+    }
 }
 
 void TestInstanceNames() {
@@ -1174,6 +1219,7 @@ int main() {
     TestMalformed();
     TestStatus();
     TestAddresses();
+    TestWindowsPortAddresses();
     TestInstanceNames();
     TestCupsMatching();
     TestMediaNames();

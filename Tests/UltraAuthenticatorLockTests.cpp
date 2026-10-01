@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas::Authenticator;
 
@@ -116,16 +117,16 @@ static void TestPreferencesRoundTrip() {
     const std::string path =
         (std::filesystem::temp_directory_path() / "ultraauth-prefs-test.ini").string();
     std::error_code ec;
-    std::filesystem::remove(path, ec);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path), ec);
     Check(p.Save(path), "save succeeds");
-    Check(!std::filesystem::exists(path + ".tmp"), "temporary file is renamed away");
+    Check(!std::filesystem::exists(UltraCanvas::PathFromUtf8(path + ".tmp")), "temporary file is renamed away");
     Check(Preferences::Load(path) == p, "load reads back what was saved");
 
     // Saving over an existing file replaces it entirely.
     Preferences q;
     Check(q.Save(path), "second save succeeds");
     Check(Preferences::Load(path) == q, "second save replaced the first");
-    std::filesystem::remove(path, ec);
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(path), ec);
 
     Check(!p.Save("/nonexistent/dir/settings.ini"), "save into a missing directory fails");
 }

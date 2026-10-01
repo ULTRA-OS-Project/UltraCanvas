@@ -1,7 +1,7 @@
 // core/IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.cpp
 // IPP encoding, decoding and the mapping between IPP attributes and this
 // module's printer vocabulary. See the header for what is here and why.
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.h"
@@ -1094,6 +1094,75 @@ std::string IppNormalizePrinterUri(const std::string& address) {
     uri += "/" + parts.path;
     if (!parts.query.empty()) uri += "?" + parts.query;
     return uri;
+}
+
+namespace {
+
+// "10.0.0.5" and nothing else: four decimal parts, each 0-255.
+bool IsDottedIPv4(const std::string& text) {
+    int parts = 0;
+    size_t at = 0;
+    while (at <= text.size()) {
+        size_t end = text.find('.', at);
+        if (end == std::string::npos) end = text.size();
+        const std::string part = text.substr(at, end - at);
+        if (part.empty() || part.size() > 3) return false;
+        for (char c : part) {
+            if (c < '0' || c > '9') return false;
+        }
+        if (std::stoi(part) > 255) return false;
+        ++parts;
+        at = end + 1;
+    }
+    return parts == 4;
+}
+
+// A host as a port monitor reports it: a name or an address, nothing that
+// would change the shape of a URI around it.
+bool IsPlainHost(const std::string& host) {
+    if (host.empty()) return false;
+    for (char c : host) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        if (!(std::isalnum(u) || c == '.' || c == '-' || c == '_' || c == ':')) return false;
+    }
+    return true;
+}
+
+} // namespace
+
+std::vector<std::string> IppUrisForWindowsPort(const std::string& portName,
+                                               const std::string& hostAddress) {
+    std::string port = portName;
+    while (!port.empty() && std::isspace(static_cast<unsigned char>(port.front()))) port.erase(0, 1);
+    while (!port.empty() && std::isspace(static_cast<unsigned char>(port.back()))) port.pop_back();
+
+    // An IPP port is already an address.
+    const std::string asUri = IppNormalizePrinterUri(port);
+    if (!asUri.empty()) return {asUri};
+
+    std::string host = hostAddress;
+    while (!host.empty() && std::isspace(static_cast<unsigned char>(host.front()))) host.erase(0, 1);
+    while (!host.empty() && std::isspace(static_cast<unsigned char>(host.back()))) host.pop_back();
+    if (!IsPlainHost(host)) {
+        host.clear();
+        // Only a name that *is* an address is read as one: "IP_10.0.0.5" and
+        // "10.0.0.5_1" are how Windows names the ports it creates, but a word
+        // could be a USB port or a fax as easily as a host.
+        std::string name = port;
+        if (name.size() > 3 && EqualsIgnoreCase(name.substr(0, 3), "IP_")) name.erase(0, 3);
+        const size_t underscore = name.rfind('_');
+        if (underscore != std::string::npos && underscore + 1 < name.size() &&
+            name.find_first_not_of("0123456789", underscore + 1) == std::string::npos) {
+            name.erase(underscore);
+        }
+        if (IsDottedIPv4(name)) host = name;
+    }
+    if (host.empty()) return {};
+
+    // A bare IPv6 literal needs brackets to survive in a URI.
+    if (host.find(':') != std::string::npos && host.front() != '[') host = "[" + host + "]";
+    const std::string base = "ipp://" + host + ":631";
+    return {base + "/ipp/print", base + "/ipp", base + "/"};
 }
 
 std::string IppTxtValue(const std::vector<std::string>& txt, const std::string& key) {

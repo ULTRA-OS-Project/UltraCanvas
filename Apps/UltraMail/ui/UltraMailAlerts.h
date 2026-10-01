@@ -71,4 +71,11 @@ void AlertErrorRetry(UltraCanvas::UltraCanvasWindowBase* parent,
                      const std::string& summary, const std::string& detail,
                      std::function<void()> onRetry);
 
+// A warning alert offering Retry / Cancel - for something that did not work
+// yet but is not lost (a message waiting in the outbox and in Drafts).
+// `onRetry` runs only when the user chooses Retry.
+void AlertWarningRetry(UltraCanvas::UltraCanvasWindowBase* parent,
+                       const std::string& summary, const std::string& detail,
+                       std::function<void()> onRetry);
+
 } // namespace UltraMail

@@ -1,7 +1,7 @@
 // include/IODeviceManager/UltraCanvasIODevicePrinterTypes.h
 // Printer vocabulary: page setup, print options, the GutenPrint parameter
 // model, job description and printer status.
-// Version: 0.1.0
+// Version: 0.1.1
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -497,5 +497,33 @@ struct IOPrinterStatus {
 };
 
 const char* IOPrinterStateToString(IOPrinterState state);
+
+// ============================================================================
+// WINDOWS BIDI CONSUMABLES
+// ============================================================================
+//
+// Windows reports supply levels through the printer driver's bidirectional
+// channel (IBidiSpl), not the spooler: a "GetAll" on \Printer.Consumables
+// answers one value per schema path, such as
+//
+//     \Printer.Consumables.BlackToner:Level   BIDI_INT     72
+//     \Printer.Consumables.BlackToner:Color   BIDI_STRING  "Black"
+//     \Printer.Consumables.BlackToner:Type    BIDI_ENUM    "Toner"
+//
+// The COM call lives in the Windows backend; turning its answers into supply
+// levels is plain string work, kept here so it is tested on every platform.
+struct IOBidiConsumableValue {
+    std::string schema;       // the full schema path the driver answered
+    std::string text;         // BIDI_STRING, BIDI_TEXT or BIDI_ENUM
+    int number = 0;           // BIDI_INT
+    bool isNumber = false;
+};
+
+// One supply per consumable name, in the order the driver first named it.
+// A Level outside 0-100 stays "not reported" (-1) rather than being clamped
+// into a number the printer never gave. Values outside \Printer.Consumables
+// are ignored.
+std::vector<IOSupplyLevel> IOSupplyLevelsFromBidi(
+    const std::vector<IOBidiConsumableValue>& values);
 
 } // namespace UltraCanvas

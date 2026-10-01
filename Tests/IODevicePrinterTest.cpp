@@ -17,8 +17,8 @@
 // version this replaces was a FIXME that returned its input unchanged, so a
 // caller asking for 2880 dpi on plain paper got a silent substitution in the
 // output tray instead of an answer.
-// Version: 1.0.0
-// Last Modified: 2026-09-14
+// Version: 1.1.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "IODeviceManager/UltraCanvasIODevicePrinter.h"
@@ -1140,6 +1140,64 @@ void TestCupsRasterStream() {
           "an invalid page appends nothing");
 }
 
+// What a Windows driver's bidi channel answers for \Printer.Consumables,
+// turned into supply levels. The COM call itself only runs on Windows; this
+// half decides what a user sees, so it is checked on every platform.
+IOBidiConsumableValue BidiNumberValue(const std::string& schema, int number) {
+    IOBidiConsumableValue value;
+    value.schema = schema;
+    value.number = number;
+    value.isNumber = true;
+    return value;
+}
+
+IOBidiConsumableValue BidiTextValue(const std::string& schema, const std::string& text) {
+    IOBidiConsumableValue value;
+    value.schema = schema;
+    value.text = text;
+    return value;
+}
+
+void TestSupplyLevelsFromBidi() {
+    std::cout << "\nSupply levels from a Windows bidi answer\n";
+
+    const std::vector<IOSupplyLevel> supplies = IOSupplyLevelsFromBidi({
+        BidiNumberValue("\\Printer.Consumables.BlackToner:Level", 72),
+        BidiTextValue("\\Printer.Consumables.BlackToner:Color", "Black"),
+        BidiTextValue("\\Printer.Consumables.BlackToner:Type", "Toner"),
+        BidiTextValue("\\Printer.Consumables.BlackToner:Model", "HP 305A"),
+        BidiTextValue("\\printer.consumables.LightCyan:Color", "light-cyan"),
+        BidiTextValue("\\Printer.Consumables.LightCyan:Type", "Ink"),
+        BidiNumberValue("\\Printer.Consumables.LightCyan:Level", 7),
+        BidiTextValue("\\Printer.Consumables.LightCyan:Description", "Light cyan cartridge"),
+        BidiTextValue("\\Printer.Consumables.LightCyan:Model", "XL 912"),
+        BidiNumberValue("\\Printer.Consumables.Waste:Level", -2),
+        BidiTextValue("\\Printer.Consumables.Waste:Type", "WasteToner"),
+        BidiTextValue("\\Printer.Status:Summary", "Ready"),
+    });
+
+    Check(supplies.size() == 3, "one supply per consumable, nothing from outside Consumables");
+    if (supplies.size() != 3) return;
+
+    Check(supplies[0].description == "HP 305A", "a Model names a supply that has no Description");
+    Check(supplies[0].type == IOSupplyType::Toner, "Type Toner is toner");
+    Check(supplies[0].color == IOSupplyColor::Black, "Color Black is black");
+    Check(supplies[0].percentRemaining == 72, "Level is the percentage left");
+    Check(!supplies[0].IsLow(), "72 % is not low");
+
+    Check(supplies[1].description == "Light cyan cartridge",
+          "a Description wins over a Model, whichever comes first");
+    Check(supplies[1].color == IOSupplyColor::LightCyan, "light-cyan is light cyan");
+    Check(supplies[1].type == IOSupplyType::Ink, "Type Ink is ink");
+    Check(supplies[1].IsLow(), "7 % is low");
+
+    Check(supplies[2].description == "Waste", "with neither, the consumable's name is shown");
+    Check(supplies[2].type == IOSupplyType::WasteTank, "WasteToner is a waste tank");
+    Check(!supplies[2].IsKnown(), "a Level outside 0-100 stays not reported");
+
+    Check(IOSupplyLevelsFromBidi({}).empty(), "a driver that answers nothing reports nothing");
+}
+
 int main() {
     std::cout << "IODeviceManager printer tests\n";
     std::cout << "=============================\n";
@@ -1168,6 +1226,7 @@ int main() {
     TestParsingTheModelListing();
     TestMatchingAPrinterToAModel();
     TestCupsRasterStream();
+    TestSupplyLevelsFromBidi();
 
     std::cout << "\n";
     if (g_failures == 0) {

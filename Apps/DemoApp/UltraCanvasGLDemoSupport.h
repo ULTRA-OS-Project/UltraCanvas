@@ -8,6 +8,7 @@
 #include "UltraCanvasUIElement.h"
 #include <memory>
 #include <string>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -260,7 +261,7 @@ struct Mesh {
 // a, a/t, a//n and a/t/n index forms, negative indices, and polygon
 // triangulation (fan). Computes smooth normals when the file has none.
 inline bool LoadOBJ(const std::string& path, Mesh& out) {
-    std::ifstream file(path);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path));
     if (!file.is_open()) {
         std::cerr << "[GLDemo] Could not open OBJ: " << path << std::endl;
         return false;

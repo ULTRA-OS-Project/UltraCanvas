@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/LaTeX/UltraCanvasLaTeXBackend.h"
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_PLUGIN_LATEX
 
@@ -51,7 +52,7 @@ inline LineJoin ToUCJoin(Join j) {
 
 bool FileExists(const std::string& path) {
     if (path.empty()) return false;
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     return f.good();
 }
 

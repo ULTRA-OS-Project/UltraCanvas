@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace ultranet_apistatus;
 
@@ -69,7 +70,7 @@ std::string BuiltPluginDir() {
 bool DirectoryHasPlugins(const std::string& dir) {
     if (dir.empty()) return false;
     std::error_code ec;
-    auto it = std::filesystem::directory_iterator(dir, ec);
+    auto it = std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir), ec);
     if (ec) return false;
     for (const auto& entry : it) {
         const std::string ext = entry.path().extension().string();

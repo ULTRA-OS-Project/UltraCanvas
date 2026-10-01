@@ -22,6 +22,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include "UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -54,7 +55,7 @@ void WriteTextFile(const fs::path& path, const std::string& text) {
 bool SamePath(const std::string& got, const fs::path& expected) {
     if (got.empty()) return false;
     std::error_code ec;
-    return fs::equivalent(got, expected, ec) && !ec;
+    return fs::equivalent(UltraCanvas::PathFromUtf8(got), expected, ec) && !ec;
 }
 
 const FilerEntry* FindEntry(const UltraCanvasFilerWidget& filer,

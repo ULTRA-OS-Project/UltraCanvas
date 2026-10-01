@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraMail;
 
@@ -67,7 +68,7 @@ TEST(preferences_old_file_keeps_defaults) {
     const std::string path =
         (std::filesystem::temp_directory_path() / "ultramail_prefs_old.ini").string();
     {
-        std::ofstream f(path);
+        std::ofstream f(UltraCanvas::PathFromUtf8(path));
         f << "reading_pane = true\nfetch_sender_icons = true\nremote_images_from = a@b.c\n"
              "message_text_size = 400\n";
     }

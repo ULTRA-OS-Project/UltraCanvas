@@ -14,6 +14,7 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -1022,7 +1023,7 @@ bool UltraCanvasMindMapIO::WriteSvgFile(const std::string& filePath,
                                         const MindMapModel& model,
                                         const MindMapLayoutResult& layout,
                                         const MindMapSvgOptions& options) {
-    std::ofstream file(filePath, std::ios::binary);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
     if (!file) return false;
     file << ToSvg(model, layout, options);
     return file.good();

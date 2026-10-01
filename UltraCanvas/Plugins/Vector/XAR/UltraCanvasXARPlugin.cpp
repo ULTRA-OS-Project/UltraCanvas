@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <iostream>
 #include <zlib.h>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -1079,7 +1080,7 @@ namespace UltraCanvas {
     XARDocument::~XARDocument() = default;
 
     bool XARDocument::LoadFromFile(const std::string& filepath) {
-        std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filepath), std::ios::binary | std::ios::ate);
         if (!file.is_open()) return false;
         size_t fileSize = static_cast<size_t>(file.tellg());
         file.seekg(0, std::ios::beg);
@@ -3500,7 +3501,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasXARPlugin::ValidateFile(const std::string& filePath) {
-        std::ifstream file(filePath, std::ios::binary);
+        std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
         if (!file.is_open()) return false;
         uint8_t header[8];
         file.read(reinterpret_cast<char*>(header), 8);

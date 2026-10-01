@@ -1,3 +1,223 @@
+#### 2026-10-01 *0.9.117*
+- **Screen readers reach UltraCanvas applications on Linux and Windows.** The
+  platform-neutral accessibility model (`UltraCanvasAccessibility.h`) now has
+  platform bridges:
+  - **AT-SPI on Linux** (`OS/Linux/UltraCanvasLinuxAccessibility`): the
+    application registers on the accessibility bus and answers for its
+    windows (frames) and elements - roles, names, states, extents, hit
+    testing, focus, and for text the `Text` interface (text, caret,
+    selection, characters, words, sentences, lines, attributes, character
+    and range extents). Focus, window activation, caret and selection
+    changes and text inserted or deleted are signalled. It connects when the
+    desktop turns accessibility on (`org.a11y.Status`), also later, never
+    without a session bus; `NO_AT_BRIDGE=1` keeps it off and
+    `UC_ACCESSIBILITY_ALWAYS_ON=1` forces it on. GDBus calls are answered on
+    the UI thread through an fd watch on the event loop.
+  - **UI Automation on Windows** (`OS/MSWindows/UltraCanvasWindowsAccessibility`):
+    `WM_GETOBJECT` returns a fragment root per window, every element is a
+    fragment, and text elements offer the Text pattern with ranges by
+    character, format run, word, line, paragraph and document, text
+    attributes, heading style ids and spelling/comment/revision
+    annotations; focus, text and selection events are raised.
+    `UIAutomationCore.dll` is loaded at run time. Compile-checked; not yet
+    run against Narrator, NVDA or JAWS.
+  - Shared by both: `UltraCanvasAccessibilityBridge.h` (tree walk, element
+    ids, screen geometry, hit testing, text diffing).
+  - `IAccessibleText::IsReadOnly()`; `AccessibilityEventType::ElementDestroyed`,
+    announced by every element's destructor;
+    `UltraCanvasWindowBase::GetContentScreenOrigin()` - the screen position
+    of a window's content, below the title bar on Windows.
+  - `Tests/AtspiBridgeTest` drives the AT-SPI bridge with a libatspi client
+    on a private accessibility bus (built when `atspi-2` headers are
+    present; skips without at-spi2-core).
+
+#### 2026-10-01 *0.9.116*
+- **Configuring with `BUILD_DEMO_APP=OFF` failed on `fmt::fmt`.** The core
+  library resolved fmt with `find_package`, whose imported target is visible
+  only inside `UltraCanvas/`; the applications added from the top level
+  (Texter, UltraFiler, UltraViewer) link the same name and stopped the
+  generate step with "target fmt::fmt not found". It only ever worked because
+  the demo app's own FetchContent happened to supply a global target. The
+  core now promotes the found target to global (`IMPORTED_GLOBAL`), so every
+  application sees it whether or not the demo is built, and the demo's
+  duplicate lookup is gone. Packagers can build without the demo.
+- **The build tree finds the resources, on every desktop platform.**
+  `GetResourcesDir()` looked for `media/` only in the packaged place
+  (`<exe dir>/share/` on Linux, `exe/Resources/` on Windows, the bundle's
+  `Contents/Resources/` on macOS), which no build tree had: an application
+  started from `build/` found no icons, fonts or wallpaper until someone
+  linked or copied the resources by hand. `SetResourcesDir` (1.1.0) now
+  probes the packaged place first and then `<exe dir>/share/` and
+  `<exe dir>/../share/` on Windows and macOS as it already did on Linux, and
+  configuring links `build/share/media` and `build/share/Docs` to the
+  repository's directories (a symlink; on Windows a directory junction when a
+  symlink needs privileges the build does not have, and a copy as the last
+  resort). Links, not copies, where possible: `media/` is over 100 MB and a
+  link follows edits. The probe goes through `PathFromUtf8`, so a build path
+  with non-ASCII characters works on Windows too.
+- **`UltraCanvasToolbar` 1.6.0: a scrolling toolbar shows where it
+  continues.** In `ToolbarOverflowMode::Scroll` the items past the edge were
+  simply cut off, so a bar with more items than room looked complete and the
+  wheel was the only way to find the rest - and a window manager that takes
+  the wheel over a desktop window (openbox does, by default) left no way at
+  all. While there is something past an edge, a 12 px strip in the toolbar's
+  colour now covers that edge with a chevron pointing the way the items go,
+  and a click on it scrolls a page. Nothing is drawn while the items fit;
+  `SetScrollHints(false)` turns it off. The hint shares the window-level
+  pointer watch the reorder drag uses, since the item under the strip would
+  otherwise take the press.
+
+#### 2026-10-01 *0.9.115*
+- **`UltraCanvasBusyIndicator` comes in five kinds.** `BusyIndicatorStyle::kind`
+  (`BusyIndicatorKind`) picks `Ring` (the turning arc, still the default),
+  `DualRing` (two concentric arcs turning in opposite directions), `Dots` (a
+  row of dots swelling one after another), `Bar` (a segment sliding along a
+  track) or `Pulse` (a circle breathing in and out). New style fields
+  `dotCount` and `barFraction`; `thickness` is the bar height for `Bar`, and
+  `revolutionsPerSecond` is cycles per second for every kind. A second
+  `CreateBusyIndicator(id, x, y, w, h, kind)` overload builds one of a given
+  kind.
+- **DemoApp: a Busy Indicator page** (Basic UI). Every kind small, large and
+  in a second colour, a status-line row as an app uses one, and Start all /
+  Stop all / Show when stopped buttons.
+- **IODeviceManager's README documents printer status.** A new *Printer
+  Status* section shows `PrinterDevice::GetStatus()` and `GetSupplyLevels()`.
+  It says that both need an open session and return nothing otherwise, and
+  which backends report supply levels: CUPS, IPP and the Windows spooler
+  backend (through the driver) do, and a printer that reports none gives an
+  empty list rather than zero. DeviceExplorer 0.2.0 shows both for the
+  selected printer.
+- **CI runs the live IPP printer test.** `IODevicePrinterIPPLiveTest` prints
+  through the IPP backend to CUPS's reference printer, `ippeveprinter`, and
+  skipped wherever that program was missing - which included every CI run, so
+  the only test of the backend against a real IPP implementation never ran
+  there.
+  - The Linux rows now install `cups-ipp-utils` and `avahi-daemon`, and start
+    Avahi before the tests. `ippeveprinter` will not start without a DNS-SD
+    daemon, even with advertising off ("Unable to initialize DNS-SD"), and
+    the new step says so by name if Avahi cannot start. It also warns when
+    the runner has no IPv6 loopback, which `ippeveprinter` needs as well
+    ("Unable to create IPv6 listener").
+  - The test step sets `ULTRACANVAS_TEST_IPP_REQUIRED`. With it set, every
+    skip in the test becomes a failure, because in CI a skip looks like a
+    pass - the same reason `ULTRAFIBU_TEST_PG_REQUIRED` exists.
+  - `Gaps.md` now says what the test needs to run, including IPv6: a
+    container without it always skips.
+- **The Windows spooler backend reports ink and toner levels.**
+  `PrinterDevice::GetSupplyLevels()` (and the `supplies` in `GetStatus()`)
+  used to be empty on Windows, because the spooler has no supply-level API.
+  The backend now asks the printer's driver over its bidirectional channel:
+  `IBidiSpl` `GetAll` on `\Printer.Consumables`, which drivers with a status
+  monitor answer with each consumable's level, colour and type.
+  - A driver without bidi support, or a printer that does not answer, still
+    gives an empty list, never a made-up 0 %.
+  - A level outside 0–100 stays *not reported* (-1).
+  - The parsing is the new platform-neutral `IOSupplyLevelsFromBidi()`, tested
+    in `IODevicePrinterTest` on every platform. The COM call only runs on
+    Windows and is not yet verified against real hardware.
+- **…and when the driver says nothing, asks the printer over IPP.** A queue
+  that prints to a network address now gets its levels from the printer
+  itself (builds with UltraNet).
+  - The address comes from the queue's port: an IPP port's URL, or a
+    Standard TCP/IP port's host (from the port monitor, or a name such as
+    `IP_10.0.0.5`). It is tried at `/ipp/print`, `/ipp` and `/` on 631.
+  - A host that refuses the connection is not tried on its other paths. A
+    printer that does not answer is left alone for 60 s, because
+    `GetStatus()` and `GetSupplyLevels()` would otherwise each wait out the
+    5 s connect timeout.
+  - The guesses are the new `IppUrisForWindowsPort()`, tested in
+    `IODevicePrinterIPPTest`. The query is `Internal::QueryIppSupplyLevels()`,
+    now also what the IPP backend's own `GetSupplyLevels()` uses, and
+    `IODevicePrinterIPPLiveTest` checks it against `ippeveprinter`. That
+    includes the difference the fallback relies on: a wrong path on a live
+    host is not reported as unreachable.
+  - USB and WSD queues get the driver's answer only.
+
+#### 2026-10-01 *0.9.114*
+- **A picture whose thumbnail could not be made no longer shortens its row.**
+  The thumbnail grid shortens a row of landscape pictures to the height they
+  are drawn at, measured from the file headers. A file whose decode was given
+  up on is drawn as its type glyph instead, and that glyph was squeezed into
+  the shortened row - so a folder whose thumbnails failed showed its glyphs at
+  two sizes, row by row, and the sizes changed whenever the Display >
+  Thumbnails switches were touched. A failed file now counts as full height,
+  and the row relays out when the failure is known.
+- **`GetThumbnailCacheStats()` counts the thumbnails that are not shown** -
+  `pendingEntries` (waiting, including those being made), `inFlightEntries`
+  (being made now) and `failedEntries` (given up on) - so a host can tell
+  "still on its way" from "the workers are stuck" from "the files would not
+  decode".
+- **A stuck thumbnail job no longer stops every thumbnail after it.** The
+  Filer widget makes thumbnails on two to four background workers, and a job
+  that never finishes - a video in a cloud folder downloaded in full before
+  its first frame can be read, a drive that stopped answering, a shell call
+  that never returns - kept its worker for good. With every worker on such a
+  job, no thumbnail was made again in any folder for the rest of the session,
+  not even the ones waiting in the disk cache. A job running past 20 s now
+  gets one more worker started beside it (up to eight extra), and the log
+  names it. `GetThumbnailCacheStats()` reports `workerCount` and the longest
+  running job (`longestJobPath`, `longestJobSeconds`).
+- **Three more Filer paths and the image file reader are UTF-8 on Windows.**
+  The folder-size walk, `StatEntryForPath`, the folder watcher's directory
+  test and `UCImageRaster::LoadFileToMemory` handed a UTF-8 string straight
+  to `std::filesystem` / `std::ifstream`, which on Windows goes through the
+  ANSI code page and misses a Thai or CJK name. They go through
+  `PathFromUtf8` now.
+- **Every file name is UTF-8 on Windows - the implicit conversions too.**
+  `PathToUtf8` / `PathFromUtf8` had replaced `.string()` and `fs::path(str)`,
+  but a UTF-8 `std::string` handed *straight* to something that takes a path
+  converts the same way, through the ANSI code page: `fs::exists(str)`,
+  `fs::remove(str, ec)`, `fs::directory_iterator(str)`, `std::ifstream f(str)`,
+  `f.open(str)`, `fs::path p = str;` - and `fopen(name, mode)` reads the name
+  in it too. On a Windows whose code page lacks a character of the name, each
+  of these named a different file: an image, document, model, font, PDF, mail
+  attachment, cloud cache or setting under a Thai, CJK or emoji folder name
+  was "not found". 774 such sites in 243 files - framework, plugins,
+  VirtualFS, UltraCloud, UltraNet, SmartHome, UltraAI, every application and
+  the tests - now go through `PathFromUtf8` / `OpenFileUtf8`.
+  - `PathFromUtf8` also takes a `const char*`, a `std::string_view` and a
+    `std::filesystem::path` (returned unchanged), so wrapping a name in it is
+    correct whichever of these it is; a C string or view used to pick the
+    code-page `path` constructor instead.
+  - `scripts/check_path_string.py` reports the implicit forms as
+    `path-implicit` and `fopen-narrow` (537 findings before this change, none
+    after), and now also scans `UltraNet/` and `VideoFX/`. Linux, macOS,
+    Android, WASM and ULTRA OS platform code is exempt from the two new kinds:
+    a path's native string is the UTF-8 bytes there.
+  - `Tests/PathUtf8Test.cpp`, which Windows CI runs under code page 1252,
+    exercises each wrapped call - create, query, size, time, read, write,
+    open, copy, rename, iterate, remove - on a Thai-and-emoji folder and file.
+- **`UCImageRaster::LoadFileToMemory` checks what it reads.** A file that
+  would not open, or whose size `tellg()` could not report, sent `-1` to
+  `malloc` - a request for every byte there is; an empty file got a
+  zero-byte buffer that read as success; and a read the disk broke off left
+  the tail of the buffer uninitialised for the decoder. Each is now an error
+  with its reason, and a failure leaves no stale size or ownership behind.
+- `check_path_string.py` reads a name as a string or a path by its nearest
+  declaration above the use, so `path` being an `fs::path` in one function and
+  a `std::string` in the next no longer reports the path one.
+- **The Filer's name tests run on Windows.** `FilerFolderPreviewTest` and
+  `FilerNameEncodingTest` move to `Tests/FilerTests.cmake`, which
+  `Tests/CMakeLists.txt` includes as before and the top level includes on its
+  own under the new `ULTRACANVAS_BUILD_FILER_TESTS` option - the pattern the
+  CDR tests use. The Windows CI rows turn it on and run both: the
+  name-encoding test writes German, Thai, Russian, Chinese and emoji names to
+  a real folder and lists them through `UltraCanvasFilerWidget`, so the file
+  display itself is now tested on the platform where a name goes through
+  UTF-16 and the runner's code page 1252.
+
+#### 2026-10-01 *0.9.113*
+- **The closing line is checked, not just asked for.** The `Stop` hook
+  `.claude/hooks/check-delivery.sh` now measures how many lines the checkout
+  differs from the merge base with `origin/main` (committed, uncommitted and
+  untracked) and reads the reply being finished: a reply whose last line is not
+  `Code needs to be PRed (N lines)` with that `N` is blocked once, naming the
+  line it found and the one expected. Backticks, bold and the
+  ` — open as PR #<n>` suffix are accepted; the line quoted earlier in a reply
+  is not. The reply comes from `last_assistant_message`, or the transcript on
+  older Claude Code builds; when neither is readable the line is not checked.
+  The `SessionStart` brief now states the rule and the current `N`.
+
 #### 2026-10-01 *0.9.112*
 - **Live audio: the recorder delivers frames as they arrive, and the player
   plays frames as they are pushed.** Both engines were buffer and file based

@@ -14,6 +14,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraCloud {
 
@@ -238,7 +239,7 @@ Result WebDavProvider::MakeDirectory(const Account& account, const Credentials& 
 
 Result WebDavProvider::Upload(const Account& account, const Credentials& credentials,
                               const std::string& localPath, const std::string& remotePath) {
-    std::ifstream is(localPath, std::ios::binary);
+    std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
     if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
     UltraNetHttpRequest req;
     req.url = DavUrl(account, remotePath);
@@ -259,7 +260,7 @@ Result WebDavProvider::Download(const Account& account, const Credentials& crede
     UltraNetResult net = Send(credentials, req, resp);
     Result r = FromHttp(net, resp, "download " + remotePath);
     if (!r) return r;
-    std::ofstream os(localPath, std::ios::binary | std::ios::trunc);
+    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
     if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
     os.write(reinterpret_cast<const char*>(resp.body.data()),
              static_cast<std::streamsize>(resp.body.size()));

@@ -12,6 +12,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace EmailCleaner;
 
@@ -207,15 +208,15 @@ TEST(Attachment_WriteLandsInsideTheCacheDirectory) {
     const std::string path = WriteToCache((root / "cache").string(),
                                           "report.pdf", "application/pdf", bytes);
     REQUIRE(!path.empty());
-    REQUIRE(std::filesystem::exists(path));
-    REQUIRE_EQ(std::filesystem::file_size(path), static_cast<std::uintmax_t>(3));
+    REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(path)));
+    REQUIRE_EQ(std::filesystem::file_size(UltraCanvas::PathFromUtf8(path)), static_cast<std::uintmax_t>(3));
     REQUIRE(path.find("cache") != std::string::npos);
 
     // Even a hostile name stays put.
     const std::string escaped = WriteToCache((root / "cache").string(),
                                              "../../escaped.txt", "text/plain", bytes);
     REQUIRE(!escaped.empty());
-    REQUIRE(std::filesystem::path(escaped).parent_path() ==
+    REQUIRE(UltraCanvas::PathFromUtf8(escaped).parent_path() ==
             std::filesystem::path((root / "cache").string()));
     REQUIRE(!std::filesystem::exists(root / "escaped.txt"));
     std::filesystem::remove_all(root);

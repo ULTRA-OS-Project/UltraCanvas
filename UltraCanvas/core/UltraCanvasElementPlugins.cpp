@@ -280,7 +280,7 @@ bool UltraCanvas_AddPluginDirectory(const std::string& directory) {
         r.pluginDirectories.push_back(directory);
     }
     std::error_code ec;
-    return std::filesystem::is_directory(directory, ec);
+    return std::filesystem::is_directory(UltraCanvas::PathFromUtf8(directory), ec);
 }
 
 int UltraCanvas_RefreshElementPlugins() {
@@ -309,7 +309,7 @@ int UltraCanvas_RefreshElementPlugins() {
     int loadedCount = 0;
     for (const std::string& directory : directories) {
         std::error_code ec;
-        std::filesystem::directory_iterator it(directory, ec);
+        std::filesystem::directory_iterator it(UltraCanvas::PathFromUtf8(directory), ec);
         if (ec) continue;                       // absent directory: fine, skip
         for (const auto& entry : it) {
             if (!entry.is_regular_file(ec) || !UCIsPluginFile(entry.path())) continue;

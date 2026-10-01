@@ -8,7 +8,7 @@
 # the Windows spooler, eSCL) — UltraCanvas/CMakeLists.txt decides that, so this
 # file adds nothing for it.
 #
-# Version: 0.1.0
+# Version: 0.2.0
 # Author: UltraCanvas Framework / ULTRA OS
 
 # Needs the UltraCanvas UI library, built by add_subdirectory(UltraCanvas)
@@ -22,6 +22,7 @@ endif()
 add_executable(DeviceExplorer
     main.cpp
     ui/DeviceExplorerModel.cpp
+    ui/DeviceExplorerPrinterQuery.cpp
     ui/DeviceExplorerWindow.cpp
 )
 

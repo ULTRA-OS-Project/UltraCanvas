@@ -12,6 +12,7 @@
 #include <random>
 #include <cstring>
 #include <atomic>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 // OpenThread includes (conditional)
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
@@ -391,7 +392,7 @@ std::vector<std::string> ThreadProtocol::GetAvailableAdapters() const {
         // For now, add common defaults
         if (strstr(pattern, "*") == nullptr) {
             // Check if file exists
-            FILE* f = fopen(pattern, "r");
+            FILE* f = UltraCanvas::OpenFileUtf8(pattern, "r");
             if (f) {
                 fclose(f);
                 adapters.push_back(pattern);

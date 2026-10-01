@@ -42,6 +42,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -634,7 +635,7 @@ namespace {
     std::vector<std::string> CollectSampleTracks(const std::string& dir) {
         std::vector<std::string> names;
         std::error_code ec;
-        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        for (const auto& entry : std::filesystem::directory_iterator(UltraCanvas::PathFromUtf8(dir), ec)) {
             if (!entry.is_regular_file()) continue;
             std::string ext = PathToUtf8(entry.path().extension());
             if (!ext.empty()) ext.erase(0, 1);
@@ -654,7 +655,7 @@ namespace {
         if (intro.find_first_not_of(" \t\r\n") != std::string::npos) {
             combined += intro + "\n\n";
         }
-        if (std::ifstream(base + svgName).good()) {
+        if (std::ifstream(UltraCanvas::PathFromUtf8(base + svgName)).good()) {
             combined += "![AudioFX architecture](" + svgName + ")\n\n";
         }
 

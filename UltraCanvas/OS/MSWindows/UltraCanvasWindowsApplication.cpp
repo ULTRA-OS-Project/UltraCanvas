@@ -6,6 +6,7 @@
 
 // winsock2.h must precede windows.h (pulled in by the headers below) so the legacy winsock.h v1
 // is not included instead. Needed for select()/fd_set used to service host fd-watches.
+#include "UltraCanvasWindowsAccessibility.h"
 #include <winsock2.h>
 
 #include "../../include/UltraCanvasApplication.h"
@@ -22,6 +23,7 @@
 #include <pango/pangocairo.h>
 #include <fontconfig/fontconfig.h>
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasPathUtf8.h"
 
 // Link against IME library
 #pragma comment(lib, "imm32.lib")
@@ -131,6 +133,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindowsApplication::ShutdownNative() {
+        WindowsAccessibility::Shutdown();
+
         // Clean up wakeup mechanism
         ShutdownWakeUp();
 
@@ -1040,7 +1044,7 @@ namespace UltraCanvas {
 
         for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
             std::string path = dir + kEmbeddedAllFonts[i];
-            if (!std::filesystem::exists(path)) {
+            if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(path))) {
                 debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
                 continue;
             }

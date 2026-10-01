@@ -7,6 +7,7 @@
 #include "UltraCanvasUtils.h"   // TrimWhitespace, Split
 #include <fstream>
 #include <sstream>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -68,7 +69,7 @@ namespace UltraCanvas {
 
 // ===== Save =====
     bool SaveMenuLayoutSet(const MenuLayoutSet& set, const std::string& filePath) {
-        std::ofstream f(filePath, std::ios::out | std::ios::trunc);
+        std::ofstream f(UltraCanvas::PathFromUtf8(filePath), std::ios::out | std::ios::trunc);
         if (!f.is_open()) return false;
 
         f << "# UltraCanvas menu layout\n";
@@ -89,7 +90,7 @@ namespace UltraCanvas {
 
 // ===== Load =====
     bool LoadMenuLayoutSet(MenuLayoutSet& out, const std::string& filePath) {
-        std::ifstream f(filePath);
+        std::ifstream f(UltraCanvas::PathFromUtf8(filePath));
         if (!f.is_open()) return false;
 
         out.menus.clear();

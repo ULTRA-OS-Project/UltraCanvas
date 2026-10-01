@@ -93,8 +93,8 @@ namespace UltraCanvas {
     bool ReadApplicationBundle(const std::string& path, UCAppBundle& out) {
         std::error_code ec;
         if (!IsBundlePath(path)) return false;
-        if (!fs::is_directory(path, ec) || ec) return false;
-        const fs::path root(path);
+        if (!fs::is_directory(UltraCanvas::PathFromUtf8(path), ec) || ec) return false;
+        const fs::path root(UltraCanvas::PathFromUtf8(path));
         const fs::path contents = root / "Contents";
         UCPropertyList info;
         // Applications keep Info.plist under Contents; a framework or a
@@ -156,8 +156,8 @@ namespace UltraCanvas {
 
     bool IsFinderAliasFile(const std::string& path) {
         std::error_code ec;
-        if (!fs::is_regular_file(path, ec) || ec) return false;
-        std::ifstream in(path, std::ios::binary);
+        if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(path), ec) || ec) return false;
+        std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
         if (!in) return false;
         char magic[4] = {};
         in.read(magic, sizeof(magic));
