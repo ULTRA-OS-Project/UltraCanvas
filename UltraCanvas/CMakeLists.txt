@@ -533,6 +533,12 @@ set(ULTRACANVAS_CORE_SOURCES
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElevatedFileOperations.cpp
+        # An installed Windows package whose ImageMagick coder carries a
+        # system DLL's name (mpr.dll, 0.9.92 and older, or a newer package
+        # extracted over it) is put right before the image subsystem starts.
+        # Windows backend under OS/MSWindows/, picked up by the platform
+        # glob; every other platform gets the no-op in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCoderModuleRepair.cpp
         # "Extract and run": a program inside an archive, unpacked to a run
         # folder, started, and its folder removed once it has ended. POSIX
         # launch in here; the Windows one (a job object) under OS/MSWindows/.

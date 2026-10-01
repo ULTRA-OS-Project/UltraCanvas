@@ -248,6 +248,30 @@ add_test(NAME ArchiveRunTest COMMAND ArchiveRunTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ArchiveRunTest")
 
+# ===== CODER MODULE REPAIR TEST =====
+# The repair of an installed Windows package whose ImageMagick coder carries
+# a system DLL's name, on a scratch coder folder: the pseudo-formats deleted,
+# a real format renamed with its .la pointed at the new file, the rest left
+# alone, and nothing touched twice. Built from the module's own sources.
+message(STATUS "  Building CoderModuleRepairTest...")
+set(CODER_MODULE_REPAIR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/CoderModuleRepairTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasCoderModuleRepair.cpp
+)
+if(WIN32)
+    list(APPEND CODER_MODULE_REPAIR_SOURCES
+        ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp)
+endif()
+add_executable(CoderModuleRepairTest ${CODER_MODULE_REPAIR_SOURCES})
+target_include_directories(CoderModuleRepairTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(CoderModuleRepairTest PRIVATE cxx_std_20)
+set_target_properties(CoderModuleRepairTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME CoderModuleRepairTest COMMAND CoderModuleRepairTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: CoderModuleRepairTest")
+
 # ===== TRASH TEST =====
 # MoveToTrash's freedesktop.org backend (Linux, the BSDs), built from its own
 # sources like the file-lock test above and pointed at a private

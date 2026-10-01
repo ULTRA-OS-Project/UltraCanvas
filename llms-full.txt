@@ -551,6 +551,21 @@ the backing implementation can be replaced without affecting callers.
   the host wired the helper. See
   `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
 
+- **UltraCanvasCoderModuleRepair** (`UltraCanvasCoderModuleRepair.h`) —
+  repairs an installed Windows package whose ImageMagick coder carries a
+  Windows system DLL's name (`mpr.dll` in packages up to 0.9.92, or left by a
+  newer package extracted over an older one): once loaded, such a coder
+  answered every later import of that name in the process, and the shell's
+  own DLLs failed with "entry point not found". The image subsystem calls
+  `RepairPackagedCoderModules(exeDir)` on Windows before anything can load a
+  coder; the pseudo-formats `mpr` and `url` are deleted, a real format (`dpx`,
+  `vid`, anything else `System32` holds) is renamed to `<name>-coder.dll` with
+  its `.la` pointed at the new file. Platform-free half (and the no-op for
+  other platforms) in `core/UltraCanvasCoderModuleRepair.cpp`, the System32
+  lookup in `OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp`,
+  `Tests/CoderModuleRepairTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md`.
+
 - **UltraCanvasTrash** (`UltraCanvasTrash.h`) — moves files and folders into
   the desktop's trash, from where the system's own file manager restores them.
   `MoveToTrash(path, error)`, `TrashAvailable()`, `TrashDisplayName()`
@@ -14269,6 +14284,88 @@ Diagrams → Class Diagram, five buttons:
 - [`UltraCanvasDiagramRouting.md`](UltraCanvasDiagramRouting.md) — the shared orthogonal router
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md
+==============================================================================
+
+# UltraCanvasCoderModuleRepair
+
+**Header:** `UltraCanvas/include/UltraCanvasCoderModuleRepair.h`
+**Sources:** `core/UltraCanvasCoderModuleRepair.cpp` (platform-free half and
+the no-op for every platform but Windows),
+`OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp` (System32 lookup)
+**Test:** `Tests/CoderModuleRepairTest.cpp`
+
+Repairs an installed Windows package in which an ImageMagick coder module
+carries the file name of a Windows system DLL. The image subsystem calls it
+on Windows before anything can load a coder; no application code needs to.
+
+## Why it exists
+
+Windows keys the modules of a process by base name. ImageMagick loads every
+coder into the process the first time libvips asks it whether it recognises
+a file, and with `coders\mpr.dll` (the `MPR:` in-memory image registry) among
+them, every later import of `MPR.dll` by a Windows component the shell loads
+in here - `pcacli.dll` for the `runas` verb behind "Delete as administrator",
+`daxexec.dll` for a Store app - was bound to the coder and failed with
+*The procedure entry point `WNetGetConnectionW` could not be located*.
+`package-win.sh` ships no such file any more, but a package extracted over
+an older folder keeps the old coders, and every extraction of 0.9.92 or older
+has them. See [*"Entry point not found" in a Windows
+DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).
+
+## What it does
+
+For every `*.dll` in `<exe>\lib\ImageMagick-*\modules-Q16HDRI\coders` whose
+name is one Windows itself uses (`mpr`, `url`, `dpx`, `vid` always, plus
+whatever the machine's `System32` holds):
+
+- a pseudo-format of no use here (`mpr`, `url`) is deleted, with its `.la`;
+- a real format (`dpx`: SMPTE DPX, which the export dialog offers) is renamed
+  to `<name>-coder.dll` and its `.la` rewritten so `dlname=` and
+  `library_names=` name the new file. ImageMagick opens a coder through its
+  `.la`, so the rename is invisible to it, and the process then holds a
+  module no system DLL is called;
+- a renamable coder with no `.la` beside it is deleted, since nothing could
+  point ImageMagick at the new name.
+
+The repair is idempotent, a missing folder is nothing to do, and a package
+re-extracted over a repaired one (the original back beside the renamed file)
+is repaired again. Every change and every failure is written to the
+framework log (`ULTRACANVAS_DEBUG_LOG`); a folder the process cannot write
+leaves the files in place, where `uc-diagnose.ps1 -CheckOnly` lists them.
+
+## API
+
+```cpp
+namespace UltraCanvas::CoderModuleRepair {
+    struct CoderModuleRepairResult {
+        std::vector<std::string> removed;   // "mpr.dll", "mpr.la"
+        std::vector<std::string> renamed;   // "dpx.dll -> dpx-coder.dll"
+        std::vector<std::string> failed;    // "mpr.dll: <why>"
+        bool Changed() const;
+    };
+    std::string LowerCaseName(const std::string& name);
+    bool IsKnownSystemDllName(const std::string& lowerName);   // mpr, url, dpx, vid
+    bool IsDroppableCoder(const std::string& lowerName);        // mpr, url
+    std::string RenamedCoderFileName(const std::string& dllName);
+    std::string RewriteLibtoolArchive(const std::string& laText, const std::string& dlName);
+    CoderModuleRepairResult RepairCoderModules(const std::string& codersDirUtf8,
+            const std::function<bool(const std::string& lowerName)>& isSystemDllName);
+    CoderModuleRepairResult RepairPackagedCoderModules(const std::string& exeDirUtf8);
+    bool NativeIsSystemDllName(const std::string& lowerName);   // Windows backend
+}
+```
+
+`RepairPackagedCoderModules` is the entry point `UCImageRaster::
+InitializeImageSubsysterm` uses on Windows; on every other platform it
+returns an empty result. `RepairCoderModules` with an explicit predicate is
+what the test drives on any platform.
+
+## Version
+
+- 1.0.0 (2026-10-01): first version.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
 ==============================================================================
 
@@ -20203,13 +20300,20 @@ code.
 
 ## Version
 
+- 1.2.3 (2026-10-01): the Windows `explorer.exe` detour of 1.2.2 is gone. It
+  answered a registered handler that would not start from our process by
+  starting it from Explorer's, which hid the reason; the reason was the
+  packaged `mpr.dll` coder, kept out of the package since and repaired in an
+  installed one on start ([`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)).
+  A default open that fails now names the shell's error. The loader's
+  hard-error box stays off on the launching thread.
 - 1.2.2 (2026-09-29): Windows launches no longer put up the loader's modal
   "entry point not found" box: the shell loads a packaged app's activation
   DLL (`daxexec.dll`, for Photos and other Store apps) into the calling
   process, and hard-error boxes are now off on that thread around every
   launch. When the default open still fails for a registered handler, the
   file is handed to `explorer.exe`, which activates the app from its own
-  process. (Why the import failed at all - a packaged ImageMagick coder
+  process (removed again in 1.2.3). (Why the import failed at all - a packaged ImageMagick coder
   named `mpr.dll` shadowing the system's - is a packaging bug, fixed the
   same day; see [*"Entry point not found" in a Windows
   DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).)
@@ -60906,11 +61010,17 @@ and `url.dll` are pseudo-formats of no use here and are dropped, with their
 to point there: ImageMagick opens a coder through the `.la` (`dlname=` names
 the file to load), so the rename costs it nothing, and the process holds a
 module called `dpx-coder.dll`, a name no system DLL has. The build then refuses
-a package that carries a system DLL's name anywhere. For a package already
-extracted, `uc-diagnose.ps1 -CheckOnly` lists the offending files under *DLLs
-named like Windows system DLLs*; deleting them (with the `.la` beside each)
-fixes that installation, and so does extracting a newer package into a fresh
-folder rather than over the old one.
+a package that carries a system DLL's name anywhere.
+
+A package already extracted repairs itself: before the image subsystem
+starts, the application applies the same two rules to its own coder folder
+(`UltraCanvasCoderModuleRepair`, see
+[`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)) and
+logs every file it deleted or renamed. That also covers a newer package
+extracted over an older folder, which keeps the old coders. Only a folder the
+process cannot write is left as it is; `uc-diagnose.ps1 -CheckOnly` lists
+such files under *DLLs named like Windows system DLLs*, and deleting them
+(with the `.la` beside each) by hand fixes that installation.
 
 The general rule for anyone adding a DLL to the package: **no DLL may carry
 the base name of a Windows system DLL**, in a subdirectory or not. A plug-in

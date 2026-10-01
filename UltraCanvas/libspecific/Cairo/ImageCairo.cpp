@@ -8,6 +8,7 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
+#include "UltraCanvasCoderModuleRepair.h"
 // The bundled QOI file-format codec (always compiled) - see
 // SavePixmapAsQoiFile at the bottom of this file.
 #include "qoi.h"
@@ -162,6 +163,18 @@ namespace UltraCanvas {
                exeDir + "\\etc\\ImageMagick-7;" + exeDir + "\\lib\\ImageMagick-7.1.2\\config-Q16HDRI");
         setEnv("MAGICK_CODER_MODULE_PATH",
                exeDir + "\\lib\\ImageMagick-7.1.2\\modules-Q16HDRI\\coders");
+        // Before anything can load a coder: a coder carrying a Windows
+        // system DLL's name (mpr.dll in packages up to 0.9.92, or left
+        // behind by a newer package extracted over an older one) would
+        // answer every later import of that name in this process. See
+        // UltraCanvasCoderModuleRepair.h.
+        const auto repair = CoderModuleRepair::RepairPackagedCoderModules(exeDir);
+        for (const std::string& f : repair.removed)
+            debugOutput << "  Coder module removed (a Windows system DLL has its name): " << f << std::endl;
+        for (const std::string& f : repair.renamed)
+            debugOutput << "  Coder module renamed (a Windows system DLL has its name): " << f << std::endl;
+        for (const std::string& f : repair.failed)
+            debugOutput << "  Coder module could not be repaired: " << f << std::endl;
 #endif
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
