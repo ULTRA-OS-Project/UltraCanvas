@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <mutex>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>    // GetCurrentProcessId, for the temporary's name
@@ -193,7 +194,7 @@ namespace {
         const std::wstring wideMode(mode, mode + std::strlen(mode));
         return _wfopen(wide.c_str(), wideMode.c_str());
 #else
-        return std::fopen(path.c_str(), mode);
+        return UltraCanvas::OpenFileUtf8(path, mode);
 #endif
     }
 

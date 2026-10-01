@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <fstream>
 #include <string>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCloud::internal;
 
@@ -141,7 +142,7 @@ Result DropboxProvider::MakeDirectory(const Account&, const Credentials& credent
 Result DropboxProvider::Upload(const Account&, const Credentials& credentials,
                                const std::string& localPath, const std::string& remotePath) {
     const int64_t total = FileSize(localPath);
-    std::ifstream is(localPath, std::ios::binary);
+    std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
     if (total < 0 || !is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
     const std::string what = "upload " + remotePath;
 
@@ -210,7 +211,7 @@ Result DropboxProvider::Download(const Account&, const Credentials& credentials,
     UltraNetResult net = Send(credentials, req, resp);
     Result r = FromHttp(net, resp, "download " + remotePath);
     if (!r) return r;
-    std::ofstream os(localPath, std::ios::binary | std::ios::trunc);
+    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
     if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
     os.write(reinterpret_cast<const char*>(resp.body.data()),
              static_cast<std::streamsize>(resp.body.size()));

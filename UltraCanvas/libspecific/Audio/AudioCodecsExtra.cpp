@@ -22,6 +22,7 @@
 #include <cstring>
 #include <vector>
 
+#include "UltraCanvasPathUtf8.h"
 #ifdef ULTRACANVAS_HAS_LIBFLAC
 #include <FLAC/stream_encoder.h>
 #endif
@@ -54,7 +55,7 @@ FILE* OpenFileUtf8(const std::string& path, const char* mode) {
     std::wstring wmode(mode, mode + std::strlen(mode));
     return _wfopen(wpath.c_str(), wmode.c_str());
 #else
-    return std::fopen(path.c_str(), mode);
+    return UltraCanvas::OpenFileUtf8(path, mode);
 #endif
 }
 

@@ -29,6 +29,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "../../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 #if !defined(_WIN32)
 #include <csignal>
@@ -98,7 +99,7 @@ public:
             "-keyout \"" + keyPath_ + "\" -out \"" + certPath_ + "\" "
             "> /dev/null 2>&1";
         if (std::system(gen.c_str()) != 0 ||
-            !std::filesystem::exists(certPath_)) {
+            !std::filesystem::exists(UltraCanvas::PathFromUtf8(certPath_))) {
             whyNot_ = "openssl could not generate a self-signed probe certificate";
             outWhyNot = whyNot_;
             return false;

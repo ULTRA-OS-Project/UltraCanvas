@@ -18,6 +18,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::Authenticator;
@@ -44,7 +45,7 @@ static bool BufferEquals(const UltraCryptSecureBuffer& buffer,
 }
 
 static std::vector<uint8_t> ReadFileBytes(const std::string& path) {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::ate);
     if (!file) return {};
     const std::streamoff size = file.tellg();
     std::vector<uint8_t> data(static_cast<size_t>(size));
@@ -55,7 +56,7 @@ static std::vector<uint8_t> ReadFileBytes(const std::string& path) {
 
 static void WriteFileBytes(const std::string& path,
                            const std::vector<uint8_t>& data) {
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    std::ofstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     file.write(reinterpret_cast<const char*>(data.data()),
                static_cast<std::streamsize>(data.size()));
 }

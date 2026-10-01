@@ -16,6 +16,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace UltraCloud {
 namespace internal {
@@ -64,7 +65,7 @@ inline std::string Query(const std::vector<std::pair<std::string, std::string>>&
 // Size of a local file, -1 when it cannot be read.
 inline int64_t FileSize(const std::string& path) {
     std::error_code ec;
-    auto size = std::filesystem::file_size(path, ec);
+    auto size = std::filesystem::file_size(UltraCanvas::PathFromUtf8(path), ec);
     return ec ? -1 : static_cast<int64_t>(size);
 }
 // Bytes [offset, offset + size) of the file into `out` (short at the end).

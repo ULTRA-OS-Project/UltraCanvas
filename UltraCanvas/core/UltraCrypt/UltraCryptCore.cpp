@@ -17,6 +17,7 @@
 #include <fstream>
 #include <mutex>
 #include <new>
+#include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACRYPT_HAVE_SODIUM
 #include <sodium.h>
@@ -454,7 +455,7 @@ UltraCryptResult UltraCrypt_HashFile(UltraCryptHashAlgorithm algorithm,
                                      std::vector<uint8_t>& outDigest) {
     if (!EnsureReady()) return NoBackend();
 
-    std::ifstream file(filePath, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
     if (!file) {
         return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
                                        "could not open file: " + filePath);

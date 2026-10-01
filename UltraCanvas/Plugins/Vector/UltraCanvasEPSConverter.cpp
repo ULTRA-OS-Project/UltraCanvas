@@ -20,6 +20,7 @@
 #include <functional>
 #include <sstream>
 #include <variant>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
     namespace VectorConverter {
@@ -488,7 +489,7 @@ namespace UltraCanvas {
                 const ConversionOptions& options) {
             std::string data = ExportToString(document, options);
             if (data.empty()) return false;
-            std::ofstream file(filename, std::ios::binary);
+            std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
             if (!file.is_open()) {
                 if (options.WarningCallback) {
                     options.WarningCallback("Failed to create EPS file: " + filename);
@@ -520,7 +521,7 @@ namespace UltraCanvas {
         }
 
         bool EPSConverter::ValidateFile(const std::string& filename) const {
-            std::ifstream file(filename, std::ios::binary);
+            std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
             if (!file.is_open()) return false;
             char head[4] = {0};
             file.read(head, 4);

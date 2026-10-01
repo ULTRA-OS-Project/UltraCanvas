@@ -7,11 +7,12 @@
 // Kept free of every UltraCanvas UI header on purpose, so the window, the
 // headless --list mode and the test all build the same tree from the same
 // code, and the test needs nothing but the IODeviceManager sources to run.
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "IODeviceManager/UltraCanvasIODeviceManager.h"
+#include "IODeviceManager/UltraCanvasIODevicePrinterTypes.h"
 #include "IODeviceManager/UltraCanvasIODeviceTypes.h"
 
 #include <cstdint>
@@ -149,11 +150,48 @@ std::vector<PropertySection> DescribeComputer(const DeviceInventory& inventory,
                                               const MachineSummary& machine,
                                               bool monitoring);
 
-// The whole tree as indented text, for --list.
+// ============================================================================
+// PRINTER STATUS
+// ============================================================================
+//
+// What a printer says about itself right now: its state, why, whether it takes
+// jobs, how many are queued, and its ink or toner. Only an open session can
+// ask (PrinterDevice::GetStatus returns nothing otherwise), so the query in
+// DeviceExplorerPrinterQuery opens the printer briefly and closes it again;
+// this struct is what that query found, and the functions below only format
+// it, so they need no printer and no library.
+
+struct PrinterStatusReport {
+    bool answered = false;          // the printer was reached and asked
+    std::string error;              // why not, when !answered
+    UltraCanvas::IOPrinterStatus status;
+    int64_t queriedAt = 0;          // seconds since the epoch
+};
+
+// "Ready", "Printing", "Stopped", "Unknown".
+std::string PrinterStateDisplayName(UltraCanvas::IOPrinterState state);
+
+// "Black toner", "Cyan ink", or the printer's own description when it gave
+// one the type and colour cannot say better.
+std::string SupplyDisplayName(const UltraCanvas::IOSupplyLevel& supply);
+
+// "72 %", "8 % - low", "not reported".
+std::string SupplyLevelText(const UltraCanvas::IOSupplyLevel& supply);
+
+// "Printer status" (state, reason, accepting jobs, queued jobs, when asked)
+// and, when the printer reports any, "Supplies". A printer that could not be
+// asked gets one section saying so and why.
+std::vector<PropertySection> DescribePrinterStatus(const PrinterStatusReport& report);
+
+using PrinterStatusMap = std::map<UltraCanvas::IODeviceId, PrinterStatusReport>;
+
+// The whole tree as indented text, for --list. With `details`, each printer
+// that has an entry in `printerStatus` also gets its status sections.
 std::string FormatInventoryText(const DeviceInventory& inventory,
                                 DeviceGrouping grouping,
                                 const MachineSummary& machine,
                                 bool details,
-                                const IdentifierMask& mask = {});
+                                const IdentifierMask& mask = {},
+                                const PrinterStatusMap* printerStatus = nullptr);
 
 } // namespace DeviceExplorer

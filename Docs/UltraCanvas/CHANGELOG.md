@@ -1,3 +1,425 @@
+#### 2026-10-01 *0.9.119*
+- **`cmake --install` now writes a working CMake package, so an application outside this repository builds with `find_package(UltraCanvas CONFIG REQUIRED)` and `target_link_libraries(app PRIVATE UltraCanvas::UltraCanvas)`.** The `install(EXPORT UltraCanvasTargets)` block in `UltraCanvas/CMakeLists.txt` had been commented out since the start, and the root still installed an `UltraCanvasConfig.cmake` that included a `UltraCanvasTargets.cmake` nothing generated - so the only out-of-tree route was a submodule and `add_subdirectory()` of the whole tree. The export set now holds the core and every in-tree target its link interface names (`UltraCanvasTextUtils`, `UltraCrypt`, `UltraVault`, `UltraCanvasBase32`, `UltraDatabase`, `uc-yyjson` in a static build, `UltraNet` when it links a system libcurl), VirtualFS and fmt are reached through their own packages (a fetched fmt is now told to install one), and `UltraCanvasConfig.cmake.in` - moved to `UltraCanvas/cmake/`, generated with `configure_package_config_file` where its inputs are in scope - re-finds Threads, fmt, VirtualFS, CURL, OpenSSL, Iconv and the pkg-config libraries the public headers include. The headers install as a mirror of the source layout under `include/ultracanvas/` (`include/`, `Plugins/`, `libspecific/`, `OS/` side by side), because the public headers reach across it with `../libspecific/...`, `../OS/<Platform>/...` and `Plugins/...` includes; the install interface is `include/ultracanvas/include` and `include/ultracanvas/Plugins`, as the build interface is. A shared core built against the vendored libcurl installs that `libcurl.so.4` next to itself; a static one cannot be packaged and the configure summary says why. The format plug-ins (CDR with its vendored libcdr archive, XAR, EPS, Vector, Models, OCR, Vectorizer with its Rust staticlib installed by path) join the export set from their own directories as `UltraCanvas::UltraCanvas<Name>Plugin`, listed in `ULTRACANVAS_PLUGIN_TARGETS`, and the `UltraCanvasAllFormats` registrar is exported as an object library, so an out-of-tree application registers every installed format the way an in-tree one does. `Tests/PackageConsumer` is a two-file application that builds against the installed package alone, and the Linux CI leg installs into a scratch prefix and builds and runs it on every pull request. `Docs/GettingStarted.md` describes the route.
+- **The documented `CreateButton` form took an argument that does not exist.** `AGENTS.md`, `UltraCanvasButtonExamples.md`, the element catalogue, `UltraCanvasSplitPane.md` and `UltraCanvasDialogKeyboard.md` all showed `CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me")` - identifier, a numeric id, then geometry - and the button doc's class reference declared a constructor with `long id`. No element factory or constructor takes an id, and `CreateAutoButton` never existed either; an assistant copying the documented form got a compile error on its first button. The examples now show the real signatures: identifier, x, y, w, h, text, the size-only and text-only constructors a layout positions, and `CreateIconButton` with the icon path before the text.
+- **Docs: a getting-started guide for building an application with UltraCanvas and an AI assistant.** `Docs/GettingStarted.md` is the step list a new programmer follows: toolchain per OS, first full build, pointing Claude Code (or any other assistant) at `AGENTS.md`/`llms.txt`, the in-tree and out-of-tree app layouts with a minimal CMake and `main.cpp` skeleton, building UI from the element catalogue, the module table with CMake targets and docs, the local checks to run before a push, versioning through the app changelog, the branch/PR/`## Delivery` workflow and packaging — plus prompt recipes and a checklist. Linked from `README.md`.
+
+#### 2026-10-01 *0.9.118*
+- **Configure warns when a build will have no spell-check backend.** With
+  Hunspell absent and no native backend to fall back on (Linux without
+  enchant-2, Windows without the spell-check API, Android, WASM), the library
+  built with a `STATUS` line and spell checking was silently off: the service
+  reported zero dictionaries, named its backend "Hunspell (not compiled in)",
+  and `TextAreaSpellCheckTest` skipped. That case is now a CMake `WARNING`
+  that names the package to install on each platform and points at
+  `Docs/Dependencies.md`. A missing Hunspell beside a working native backend
+  stays a `STATUS` line.
+- **`TextMetricsScreenshotTest`: the text-metrics and crisp-border rules,
+  checked on composited pixels.** A window with a checkbox, a radio, buttons,
+  two text fields, a list view and the UltraMail filter menu is rendered under
+  Xvfb and read back: a caps-only label and the indicator beside it share a
+  centre line within a pixel, a checkbox border is one pixel wide, the caret
+  spans the text's line box, the selection highlight and the caret are on
+  screen, and the menu's radio outline is a circle. It skips itself without
+  a display. With `ULTRACANVAS_SCREENSHOT_DIR=<dir>` it also writes the
+  window as PPM screenshots for a person to look at, and with `GDK_SCALE=2`
+  it renders at 2x (the PPM is read back at logical size; an X screenshot
+  shows the 2x pixels). `AGENTS.md` now says how a test gets a focused window
+  under Xvfb (there is no window manager to activate it, so the test
+  dispatches the activation event itself) and why a text input shows no
+  caret while a selection exists.
+- **`Tests/DisplayTestSupport.h` holds what a display test would otherwise
+  copy.** Activating the window, focusing an element, driving a frame
+  without an event loop and waiting for the shared caret were written out
+  in each test that opens a window under Xvfb; `CaretStackingTest`,
+  `TextMetricsScreenshotTest` and `TextAreaSpellCheckTest` now share them.
+- **The screenshot test's pixel predicates take their colours from the
+  styles.** Ink was "darker than mid-grey" and the selection "bluer than it
+  is red", which assumed dark text on a light theme. A pixel is now ink when
+  it is nearer the element's text colour than its background, and the
+  selection is matched against the style's selection colour composited over
+  the field's background, so a dark theme measures the same way.
+
+#### 2026-10-01 *0.9.117*
+- **Screen readers reach UltraCanvas applications on Linux and Windows.** The
+  platform-neutral accessibility model (`UltraCanvasAccessibility.h`) now has
+  platform bridges:
+  - **AT-SPI on Linux** (`OS/Linux/UltraCanvasLinuxAccessibility`): the
+    application registers on the accessibility bus and answers for its
+    windows (frames) and elements - roles, names, states, extents, hit
+    testing, focus, and for text the `Text` interface (text, caret,
+    selection, characters, words, sentences, lines, attributes, character
+    and range extents). Focus, window activation, caret and selection
+    changes and text inserted or deleted are signalled. It connects when the
+    desktop turns accessibility on (`org.a11y.Status`), also later, never
+    without a session bus; `NO_AT_BRIDGE=1` keeps it off and
+    `UC_ACCESSIBILITY_ALWAYS_ON=1` forces it on. GDBus calls are answered on
+    the UI thread through an fd watch on the event loop.
+  - **UI Automation on Windows** (`OS/MSWindows/UltraCanvasWindowsAccessibility`):
+    `WM_GETOBJECT` returns a fragment root per window, every element is a
+    fragment, and text elements offer the Text pattern with ranges by
+    character, format run, word, line, paragraph and document, text
+    attributes, heading style ids and spelling/comment/revision
+    annotations; focus, text and selection events are raised.
+    `UIAutomationCore.dll` is loaded at run time. Compile-checked; not yet
+    run against Narrator, NVDA or JAWS.
+  - Shared by both: `UltraCanvasAccessibilityBridge.h` (tree walk, element
+    ids, screen geometry, hit testing, text diffing).
+  - `IAccessibleText::IsReadOnly()`; `AccessibilityEventType::ElementDestroyed`,
+    announced by every element's destructor;
+    `UltraCanvasWindowBase::GetContentScreenOrigin()` - the screen position
+    of a window's content, below the title bar on Windows.
+  - `Tests/AtspiBridgeTest` drives the AT-SPI bridge with a libatspi client
+    on a private accessibility bus (built when `atspi-2` headers are
+    present; skips without at-spi2-core).
+
+#### 2026-10-01 *0.9.116*
+- **Configuring with `BUILD_DEMO_APP=OFF` failed on `fmt::fmt`.** The core
+  library resolved fmt with `find_package`, whose imported target is visible
+  only inside `UltraCanvas/`; the applications added from the top level
+  (Texter, UltraFiler, UltraViewer) link the same name and stopped the
+  generate step with "target fmt::fmt not found". It only ever worked because
+  the demo app's own FetchContent happened to supply a global target. The
+  core now promotes the found target to global (`IMPORTED_GLOBAL`), so every
+  application sees it whether or not the demo is built, and the demo's
+  duplicate lookup is gone. Packagers can build without the demo.
+- **The build tree finds the resources, on every desktop platform.**
+  `GetResourcesDir()` looked for `media/` only in the packaged place
+  (`<exe dir>/share/` on Linux, `exe/Resources/` on Windows, the bundle's
+  `Contents/Resources/` on macOS), which no build tree had: an application
+  started from `build/` found no icons, fonts or wallpaper until someone
+  linked or copied the resources by hand. `SetResourcesDir` (1.1.0) now
+  probes the packaged place first and then `<exe dir>/share/` and
+  `<exe dir>/../share/` on Windows and macOS as it already did on Linux, and
+  configuring links `build/share/media` and `build/share/Docs` to the
+  repository's directories (a symlink; on Windows a directory junction when a
+  symlink needs privileges the build does not have, and a copy as the last
+  resort). Links, not copies, where possible: `media/` is over 100 MB and a
+  link follows edits. The probe goes through `PathFromUtf8`, so a build path
+  with non-ASCII characters works on Windows too.
+- **`UltraCanvasToolbar` 1.6.0: a scrolling toolbar shows where it
+  continues.** In `ToolbarOverflowMode::Scroll` the items past the edge were
+  simply cut off, so a bar with more items than room looked complete and the
+  wheel was the only way to find the rest - and a window manager that takes
+  the wheel over a desktop window (openbox does, by default) left no way at
+  all. While there is something past an edge, a 12 px strip in the toolbar's
+  colour now covers that edge with a chevron pointing the way the items go,
+  and a click on it scrolls a page. Nothing is drawn while the items fit;
+  `SetScrollHints(false)` turns it off. The hint shares the window-level
+  pointer watch the reorder drag uses, since the item under the strip would
+  otherwise take the press.
+
+#### 2026-10-01 *0.9.115*
+- **`UltraCanvasBusyIndicator` comes in five kinds.** `BusyIndicatorStyle::kind`
+  (`BusyIndicatorKind`) picks `Ring` (the turning arc, still the default),
+  `DualRing` (two concentric arcs turning in opposite directions), `Dots` (a
+  row of dots swelling one after another), `Bar` (a segment sliding along a
+  track) or `Pulse` (a circle breathing in and out). New style fields
+  `dotCount` and `barFraction`; `thickness` is the bar height for `Bar`, and
+  `revolutionsPerSecond` is cycles per second for every kind. A second
+  `CreateBusyIndicator(id, x, y, w, h, kind)` overload builds one of a given
+  kind.
+- **DemoApp: a Busy Indicator page** (Basic UI). Every kind small, large and
+  in a second colour, a status-line row as an app uses one, and Start all /
+  Stop all / Show when stopped buttons.
+- **IODeviceManager's README documents printer status.** A new *Printer
+  Status* section shows `PrinterDevice::GetStatus()` and `GetSupplyLevels()`.
+  It says that both need an open session and return nothing otherwise, and
+  which backends report supply levels: CUPS, IPP and the Windows spooler
+  backend (through the driver) do, and a printer that reports none gives an
+  empty list rather than zero. DeviceExplorer 0.2.0 shows both for the
+  selected printer.
+- **CI runs the live IPP printer test.** `IODevicePrinterIPPLiveTest` prints
+  through the IPP backend to CUPS's reference printer, `ippeveprinter`, and
+  skipped wherever that program was missing - which included every CI run, so
+  the only test of the backend against a real IPP implementation never ran
+  there.
+  - The Linux rows now install `cups-ipp-utils` and `avahi-daemon`, and start
+    Avahi before the tests. `ippeveprinter` will not start without a DNS-SD
+    daemon, even with advertising off ("Unable to initialize DNS-SD"), and
+    the new step says so by name if Avahi cannot start. It also warns when
+    the runner has no IPv6 loopback, which `ippeveprinter` needs as well
+    ("Unable to create IPv6 listener").
+  - The test step sets `ULTRACANVAS_TEST_IPP_REQUIRED`. With it set, every
+    skip in the test becomes a failure, because in CI a skip looks like a
+    pass - the same reason `ULTRAFIBU_TEST_PG_REQUIRED` exists.
+  - `Gaps.md` now says what the test needs to run, including IPv6: a
+    container without it always skips.
+- **The Windows spooler backend reports ink and toner levels.**
+  `PrinterDevice::GetSupplyLevels()` (and the `supplies` in `GetStatus()`)
+  used to be empty on Windows, because the spooler has no supply-level API.
+  The backend now asks the printer's driver over its bidirectional channel:
+  `IBidiSpl` `GetAll` on `\Printer.Consumables`, which drivers with a status
+  monitor answer with each consumable's level, colour and type.
+  - A driver without bidi support, or a printer that does not answer, still
+    gives an empty list, never a made-up 0 %.
+  - A level outside 0–100 stays *not reported* (-1).
+  - The parsing is the new platform-neutral `IOSupplyLevelsFromBidi()`, tested
+    in `IODevicePrinterTest` on every platform. The COM call only runs on
+    Windows and is not yet verified against real hardware.
+- **…and when the driver says nothing, asks the printer over IPP.** A queue
+  that prints to a network address now gets its levels from the printer
+  itself (builds with UltraNet).
+  - The address comes from the queue's port: an IPP port's URL, or a
+    Standard TCP/IP port's host (from the port monitor, or a name such as
+    `IP_10.0.0.5`). It is tried at `/ipp/print`, `/ipp` and `/` on 631.
+  - A host that refuses the connection is not tried on its other paths. A
+    printer that does not answer is left alone for 60 s, because
+    `GetStatus()` and `GetSupplyLevels()` would otherwise each wait out the
+    5 s connect timeout.
+  - The guesses are the new `IppUrisForWindowsPort()`, tested in
+    `IODevicePrinterIPPTest`. The query is `Internal::QueryIppSupplyLevels()`,
+    now also what the IPP backend's own `GetSupplyLevels()` uses, and
+    `IODevicePrinterIPPLiveTest` checks it against `ippeveprinter`. That
+    includes the difference the fallback relies on: a wrong path on a live
+    host is not reported as unreachable.
+  - USB and WSD queues get the driver's answer only.
+
+#### 2026-10-01 *0.9.114*
+- **A picture whose thumbnail could not be made no longer shortens its row.**
+  The thumbnail grid shortens a row of landscape pictures to the height they
+  are drawn at, measured from the file headers. A file whose decode was given
+  up on is drawn as its type glyph instead, and that glyph was squeezed into
+  the shortened row - so a folder whose thumbnails failed showed its glyphs at
+  two sizes, row by row, and the sizes changed whenever the Display >
+  Thumbnails switches were touched. A failed file now counts as full height,
+  and the row relays out when the failure is known.
+- **`GetThumbnailCacheStats()` counts the thumbnails that are not shown** -
+  `pendingEntries` (waiting, including those being made), `inFlightEntries`
+  (being made now) and `failedEntries` (given up on) - so a host can tell
+  "still on its way" from "the workers are stuck" from "the files would not
+  decode".
+- **A stuck thumbnail job no longer stops every thumbnail after it.** The
+  Filer widget makes thumbnails on two to four background workers, and a job
+  that never finishes - a video in a cloud folder downloaded in full before
+  its first frame can be read, a drive that stopped answering, a shell call
+  that never returns - kept its worker for good. With every worker on such a
+  job, no thumbnail was made again in any folder for the rest of the session,
+  not even the ones waiting in the disk cache. A job running past 20 s now
+  gets one more worker started beside it (up to eight extra), and the log
+  names it. `GetThumbnailCacheStats()` reports `workerCount` and the longest
+  running job (`longestJobPath`, `longestJobSeconds`).
+- **Three more Filer paths and the image file reader are UTF-8 on Windows.**
+  The folder-size walk, `StatEntryForPath`, the folder watcher's directory
+  test and `UCImageRaster::LoadFileToMemory` handed a UTF-8 string straight
+  to `std::filesystem` / `std::ifstream`, which on Windows goes through the
+  ANSI code page and misses a Thai or CJK name. They go through
+  `PathFromUtf8` now.
+- **Every file name is UTF-8 on Windows - the implicit conversions too.**
+  `PathToUtf8` / `PathFromUtf8` had replaced `.string()` and `fs::path(str)`,
+  but a UTF-8 `std::string` handed *straight* to something that takes a path
+  converts the same way, through the ANSI code page: `fs::exists(str)`,
+  `fs::remove(str, ec)`, `fs::directory_iterator(str)`, `std::ifstream f(str)`,
+  `f.open(str)`, `fs::path p = str;` - and `fopen(name, mode)` reads the name
+  in it too. On a Windows whose code page lacks a character of the name, each
+  of these named a different file: an image, document, model, font, PDF, mail
+  attachment, cloud cache or setting under a Thai, CJK or emoji folder name
+  was "not found". 774 such sites in 243 files - framework, plugins,
+  VirtualFS, UltraCloud, UltraNet, SmartHome, UltraAI, every application and
+  the tests - now go through `PathFromUtf8` / `OpenFileUtf8`.
+  - `PathFromUtf8` also takes a `const char*`, a `std::string_view` and a
+    `std::filesystem::path` (returned unchanged), so wrapping a name in it is
+    correct whichever of these it is; a C string or view used to pick the
+    code-page `path` constructor instead.
+  - `scripts/check_path_string.py` reports the implicit forms as
+    `path-implicit` and `fopen-narrow` (537 findings before this change, none
+    after), and now also scans `UltraNet/` and `VideoFX/`. Linux, macOS,
+    Android, WASM and ULTRA OS platform code is exempt from the two new kinds:
+    a path's native string is the UTF-8 bytes there.
+  - `Tests/PathUtf8Test.cpp`, which Windows CI runs under code page 1252,
+    exercises each wrapped call - create, query, size, time, read, write,
+    open, copy, rename, iterate, remove - on a Thai-and-emoji folder and file.
+- **`UCImageRaster::LoadFileToMemory` checks what it reads.** A file that
+  would not open, or whose size `tellg()` could not report, sent `-1` to
+  `malloc` - a request for every byte there is; an empty file got a
+  zero-byte buffer that read as success; and a read the disk broke off left
+  the tail of the buffer uninitialised for the decoder. Each is now an error
+  with its reason, and a failure leaves no stale size or ownership behind.
+- `check_path_string.py` reads a name as a string or a path by its nearest
+  declaration above the use, so `path` being an `fs::path` in one function and
+  a `std::string` in the next no longer reports the path one.
+- **The Filer's name tests run on Windows.** `FilerFolderPreviewTest` and
+  `FilerNameEncodingTest` move to `Tests/FilerTests.cmake`, which
+  `Tests/CMakeLists.txt` includes as before and the top level includes on its
+  own under the new `ULTRACANVAS_BUILD_FILER_TESTS` option - the pattern the
+  CDR tests use. The Windows CI rows turn it on and run both: the
+  name-encoding test writes German, Thai, Russian, Chinese and emoji names to
+  a real folder and lists them through `UltraCanvasFilerWidget`, so the file
+  display itself is now tested on the platform where a name goes through
+  UTF-16 and the runner's code page 1252.
+
+#### 2026-10-01 *0.9.113*
+- **The closing line is checked, not just asked for.** The `Stop` hook
+  `.claude/hooks/check-delivery.sh` now measures how many lines the checkout
+  differs from the merge base with `origin/main` (committed, uncommitted and
+  untracked) and reads the reply being finished: a reply whose last line is not
+  `Code needs to be PRed (N lines)` with that `N` is blocked once, naming the
+  line it found and the one expected. Backticks, bold and the
+  ` — open as PR #<n>` suffix are accepted; the line quoted earlier in a reply
+  is not. The reply comes from `last_assistant_message`, or the transcript on
+  older Claude Code builds; when neither is readable the line is not checked.
+  The `SessionStart` brief now states the rule and the current `N`.
+
+#### 2026-10-01 *0.9.112*
+- **Live audio: the recorder delivers frames as they arrive, and the player
+  plays frames as they are pushed.** Both engines were buffer and file based
+  — `UltraCanvasAudioRecorder` accumulated into a `UCAudio` for `TakeBuffer()`,
+  and `UltraCanvasAudioPlayer` played a file or a buffer loaded up front — so
+  a call, a speech recogniser or a streaming encoder had no path through the
+  framework. Now the recorder calls `onLiveFrame` for every captured frame,
+  in both modes, with interleaved float PCM (gain and mute applied, any
+  backend sample type converted) in frames of exactly `liveFrameMs` (10 for
+  Opus / WebRTC, 20 for speech engines; 0 passes the backend's chunks
+  through), with `firstFrameIndex` as a timestamp and the partial last frame
+  flushed, zero-padded, on `Stop()`; `AudioCaptureConfig::mode =
+  AudioCaptureMode::Live` additionally keeps nothing. `onBufferAvailable`,
+  which fired only for 32-bit float capture and handed over raw backend
+  bytes, is retired; it had no caller in the tree. And
+  `UltraCanvasAudioPlayer::OpenSink(AudioSinkConfig)` opens the device at a
+  given rate and channel count and plays whatever `PushSinkFrames` queues,
+  from a bounded ring whose `bufferMs` is the latency ceiling: frames beyond
+  it are dropped and counted, an underrun plays silence and fires
+  `onSinkUnderrun` once per episode, and `GetSinkQueuedSeconds()` lets the
+  producer pace itself. The building blocks — `AudioLiveFrame`, the
+  wait-free SPSC `AudioFrameRing`, `AudioFramePacketizer` — are header-only
+  in `UltraCanvasAudioStreaming.h`, backend-free, and covered by
+  `Tests/AudioStreamingTest.cpp`. Also fixed in passing: the player's device
+  callback dereferenced a null source when asked to fill with nothing loaded.
+  `Docs/UltraCanvas/UltraCanvasAudio.md` documents both modes.
+- **Can WebRTC be linked into UltraCanvas as a wrapper-style module the
+  browser and the applications share?** Two research documents answer it.
+  `Docs/Research/BrowserWebRTCInvestigation.md` establishes the facts: WebRTC
+  is a browser-native API, so the scripts a call site loads from a CDN are
+  wrappers and never the engine; Ladybird — an independent third-party
+  browser, used as the worked example because UltraCanvas once replaced its
+  Qt UI layer in a demonstration build — has no `RTCPeerConnection` on
+  `master` yet, but its maintainer's branch implements it in-tree as a helper
+  process on the pure-Rust `webrtc` crate (Opus audio on a live
+  Discord call; no video, no jitter buffer, sandbox still open), and the
+  engines a browser can vendor (`libwebrtc`, `webrtc-rs`, `str0m`,
+  `libdatachannel`, GStreamer `webrtcbin`, an own stack) are compared and
+  sized. `Docs/Research/UltraRTCDesignProposal.md` then designs **UltraRTC**:
+  an UltraCanvas-owned `UltraRtc_*` API over that engine (tier 2
+  `libdatachannel`, the host browser's `RTCPeerConnection` on WebAssembly),
+  the media pipeline built on the audio recorder, the IODeviceManager camera,
+  libopus and FFmpeg the framework already carries, the jitter buffer,
+  bandwidth estimator and vendored audio processing the engines leave out,
+  and the one-call-per-W3C-method binding at that helper-process seam, for
+  any browser that links the framework.
+  Everything is vendored, so no library is fetched at build time — which is
+  what "not loaded from the internet" comes down to. Proposal only, no code.
+
+#### 2026-10-01 *0.9.111*
+- **UltraCanvasFilerWidget: a file type filter for load and save dialogs, with
+  the other files hidden or greyed out.** `SetFileTypeFilter(extensions, mode)`
+  (or the `FileFilter` a dialog's dropdown picked) narrows the listing to the
+  wanted extensions. `FilerTypeFilterMode::Hide` leaves the other files out, as
+  a file dialog does; `FilerTypeFilterMode::ShowDimmed` keeps them in the
+  listing drawn greyed out - name, columns, icon and thumbnail alike, in every
+  view - so the user still sees what else the folder holds, while a
+  double-click or Enter on one does nothing and `onFileActivated` never fires
+  for it. Folders always pass, archives still open. The filter survives
+  `SetPath()`, rescans and the name filter; `EntryPassesFileTypeFilter()` tells
+  a dialog's OK button whether the selection is a valid pick,
+  `GetTypeFilteredCount()` how many files were hidden or dimmed, and a Hide
+  listing with every file filtered out says "No files of the chosen type"
+  instead of "Folder is empty!". `SetDimmedEntryOpacity()` sets how faint a
+  dimmed entry is (0.38 by default). The demo's Filer page gained a *Types* row
+  with the switch.
+
+#### 2026-10-01 *0.9.110*
+- **UltraCanvasFilerWidget: a shortcut's target path is converted with
+  `PathFromUtf8` before `std::filesystem` is asked about it.** The two checks
+  in `ActivateEntry` / `OpenEntryWithOS` passed the UTF-8 `linkTarget` string
+  straight to `fs::is_directory` / `fs::is_regular_file`, an implicit
+  `fs::path(utf8)` conversion that on Windows goes through the ANSI code page
+  and names a different file for a target outside it (see *File paths are
+  UTF-8* in AGENTS.md). The CI check cannot see an implicit conversion, which
+  is why it passed.
+
+#### 2026-10-01 *0.9.109*
+- **The delivery hook no longer reports pushed work as unpushed.**
+  `.claude/hooks/check-delivery.sh` treated a branch with no upstream as
+  entirely unpushed and listed its last 20 commits - so every cloud session,
+  whose branch is cut from `origin/main` before it is ever pushed, started
+  with a warning about 20 "unpushed" commits that `main` already held. A
+  branch with no upstream is now checked against every remote ref
+  (`git log HEAD --not --remotes`): only commits that are on no remote branch
+  are reported, which is the work that would actually be lost.
+- **Assistant chats end on how much code still needs a pull request.**
+  `AGENTS.md` (*Reporting back → The closing line*) and `CLAUDE.md` now require
+  the last reply before a chat waits for the user to end with
+  `Code needs to be PRed (N lines)`, where `N` is the lines the checkout
+  differs from the merge base with `origin/main` — committed, uncommitted and
+  untracked — measured with `git diff --shortstat` rather than remembered,
+  `(0 lines)` when nothing differs, and ` — open as PR #<n>` appended when a
+  pull request already exists.
+
+#### 2026-10-01 *0.9.108*
+- **A Windows crash now leaves a dump behind, and the crash message names
+  it.** The unhandled-exception filter writes a minidump - every thread's
+  stack, the module list, the memory the stacks refer to and the modules'
+  globals - to `%LOCALAPPDATA%\UltraCanvas\CrashDumps\<app>-<date>-<time>-<pid>.dmp`
+  before it shows the message box, and the box (and the log line after the
+  crash line) says where it is and to attach it to the bug report. The
+  writer is `MiniDumpWriteDump` from the `dbghelp.dll` every Windows ships,
+  resolved at startup since a crash handler can load nothing; the folder is
+  created then too. `ULTRACANVAS_CRASH_DUMP_DIR` names another folder,
+  `ULTRACANVAS_NO_CRASH_DUMP=1` writes none. Until now a crash on a user's
+  machine left the exception code and the faulting module and nothing else;
+  Windows itself keeps no dump for a desktop program unless a registry key
+  asks for one. Documented in *UltraCanvasWindowsDiagnostics.md*, with how
+  to open a dump and the registry key for Windows' own.
+- **The Filer no longer asks for administrator rights to delete a file a
+  running program holds, names the file that stopped a folder's delete, and
+  refuses to delete the application it is running from.** Deleting an
+  unpacked download from the UltraFiler that had been started out of it
+  asked *administrator permission needed* for `Resources` and `lib`, deleted
+  everything else, and crashed: the files the running program had loaded
+  answered Windows' "access denied", which the dialog took for a permission
+  problem, and the fonts, icons and plugins it had not loaded yet went,
+  after which the program fell over the first one it reached for.
+  - A failure inside a folder is reported for the **file that refused**
+    (`"libvips-42.dll" in "lib" could not be deleted.`, with a *Stopped at:*
+    line under the folder's path), not for the folder, which still had the
+    rest of its content and looked deletable.
+  - Before deciding that "access denied" means administrator rights, the
+    worker asks the lock probe (the Restart Manager) whether a program holds
+    the file. One that is held gets a **Delete: a file in the folder is in
+    use** dialog naming the program (*In use by: UltraFiler (4120)*), with
+    Skip / Try again and no administrator button: a loaded program file
+    cannot be deleted by anyone, and the consent prompt only cost a click.
+    When the holder is the running application itself the note says to
+    close it and delete from elsewhere.
+  - A delete that would take the running application apart - a victim at or
+    below the folder the executable runs from, or a folder holding it - is
+    **refused up front**, with *Cannot delete: UltraFiler is running from
+    here*, and nothing is touched.
+  - A **read-only file inside a folder** no longer stops the delete with
+    "access denied": it is lifted and removed, as *Delete anyway* lifts the
+    entry's own protection, so a folder unpacked with its read-only bits goes
+    in one pass and without a question about rights it never needed.
+  - The delete queue converts its paths with `PathFromUtf8` throughout
+    (`RemoveTreeWithProgress`, `CountTreeEntries`, the elevated finish): the
+    implicit `fs::path(std::string)` conversions named a different file for a
+    non-ASCII name on a Windows before 1903.
+- **A modal dialog widens to its footer, and its buttons take the style's
+  font size.** A footer row that needs more than the configured width - the
+  Filer's *Apply to all later permission failures* checkbox beside *Delete as
+  administrator / Try again / Skip / Stop* - ran off the right edge and the
+  last button was gone. `AutoSizeToContent` now measures the row (its
+  padding, every element and button, the gaps) and widens the window to it,
+  up to 90% of the monitor, before fitting the height to the text at the new
+  width. `ModalDialogStyle::buttonFontSize` (0 = the button's default) sets
+  the footer buttons' label size, applied after the role style and
+  re-applied by `SetStyle`.
+- **The Filer's operation dialogs read at the display's font size.** The
+  delete / copy / conflict / problem / summary dialogs set the message and
+  the buttons to `FilerStyle::fontSize` and the details, the note, the
+  *Apply to all* checkbox and the entry list to `smallFontSize`, so a host
+  running its UI at 9 (UltraFiler) gets dialogs at 9 instead of the dialog's
+  default 12 over a window of smaller text; the same sizes go on the *Cannot
+  Delete* and *Cannot delete: … is running from here* dialogs.
+
 #### 2026-10-01 *0.9.107*
 - **The framework's file dialog had no folder tree, and its labels sat on
   top of the fields.** `UltraCanvasFileDialog` — what every app with native

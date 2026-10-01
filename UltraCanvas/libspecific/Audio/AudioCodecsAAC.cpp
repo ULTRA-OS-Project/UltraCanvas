@@ -25,6 +25,7 @@
 #include <cstring>
 #include <vector>
 
+#include "../../include/UltraCanvasPathUtf8.h"
 #ifdef ULTRACANVAS_HAS_FAAD
 #include <neaacdec.h>
 #endif
@@ -78,7 +79,7 @@ constexpr size_t kMaxDecodedSamples = 256u * 1024u * 1024u;
 }
 
 [[maybe_unused]] bool ReadWholeFile(const std::string& path, std::vector<uint8_t>& out) {
-    std::FILE* fp = std::fopen(path.c_str(), "rb");
+    std::FILE* fp = UltraCanvas::OpenFileUtf8(path, "rb");
     if (!fp) return false;
     if (std::fseek(fp, 0, SEEK_END) != 0) { std::fclose(fp); return false; }
     const long size = std::ftell(fp);

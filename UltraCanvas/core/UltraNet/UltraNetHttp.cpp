@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <memory>
 #include <utility>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace {
     bool IEquals(const std::string& a, const std::string& b) {
@@ -173,7 +174,7 @@ UltraNetResult UltraNet_HttpDownloadFile(const std::string& url,
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                      "localPath is empty");
     }
-    std::FILE* fp = std::fopen(localPath.c_str(), "wb");
+    std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "wb");
     if (!fp) {
         return UltraNetResult::Error(UltraNetResultCode::AccessDenied,
                                      "cannot open local file for write");
@@ -205,7 +206,7 @@ UltraNetResult UltraNet_HttpUploadFile(const std::string& url,
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
     outResponse = {};
 
-    std::FILE* fp = std::fopen(localPath.c_str(), "rb");
+    std::FILE* fp = UltraCanvas::OpenFileUtf8(localPath, "rb");
     if (!fp) {
         return UltraNetResult::Error(UltraNetResultCode::NotFound,
                                      "cannot open local file for read");

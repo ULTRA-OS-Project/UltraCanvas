@@ -1,3 +1,10 @@
+#### 2026-10-01 *1.56*
+- **Texter builds without MuPDF again.** Opening and saving PDFs needs the
+  PDF view, which the framework compiles only when MuPDF is found; Texter
+  called it regardless, so a build on a machine without MuPDF failed to link
+  (`UltraCanvasPDFView::LoadFromPath` / `SaveAs` undefined). Such a build now
+  links, and opening a PDF in it says that this build has no PDF support.
+
 #### 2026-09-30 *1.55*
 - **Printing a word-processing tab (.docx, .odt, .doc) printed a blank page.**
   File > Print read the tab's text area, which a word-processing tab keeps

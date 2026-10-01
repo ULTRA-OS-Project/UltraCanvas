@@ -182,10 +182,10 @@ VirtualFSResult PlatformCreate(const std::string& name,
     const std::string path = FallbackPathFor(name);
 
     std::error_code ec;
-    if (std::filesystem::exists(path, ec)) {
+    if (std::filesystem::exists(UltraCanvas::PathFromUtf8(path), ec)) {
         return VirtualFSResult::AlreadyExists;
     }
-    if (!std::filesystem::create_directories(path, ec) || ec) {
+    if (!std::filesystem::create_directories(UltraCanvas::PathFromUtf8(path), ec) || ec) {
         return VirtualFSResult::Error;
     }
     RestrictToCurrentUser(path);
@@ -209,7 +209,7 @@ VirtualFSResult PlatformDestroy(const VirtualFSRamDisk& disk) {
     }
 
     std::error_code ec;
-    if (!std::filesystem::exists(disk.mountPath, ec)) {
+    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(disk.mountPath), ec)) {
         return VirtualFSResult::Success;  // already gone
     }
     // The fallback wrote to real storage, so overwrite before unlinking.
@@ -240,7 +240,7 @@ std::vector<VirtualFSRamDisk> PlatformList() {
         disk.deviceId = drive;
 
         std::error_code spaceEc;
-        const auto space = std::filesystem::space(root, spaceEc);
+        const auto space = std::filesystem::space(UltraCanvas::PathFromUtf8(root), spaceEc);
         disk.capacityBytes = spaceEc ? 0 : space.capacity;
 
         discs.push_back(disk);

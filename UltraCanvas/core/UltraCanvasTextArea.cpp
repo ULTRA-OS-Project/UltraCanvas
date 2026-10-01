@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 // Constructor
@@ -2558,7 +2559,7 @@ namespace UltraCanvas {
             RequestRedraw();
         }
         if (!result) {
-            std::filesystem::path p(filename);
+            std::filesystem::path p(UltraCanvas::PathFromUtf8(filename));
             std::string ext = PathToUtf8(p.extension());
             if (!ext.empty() && ext[0] == '.') {
                 ext = ext.substr(1);

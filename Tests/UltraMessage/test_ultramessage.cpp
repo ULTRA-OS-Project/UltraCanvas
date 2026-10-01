@@ -21,6 +21,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using UltraCanvas::JSONValue;
 using namespace std::chrono_literals;
@@ -606,7 +607,7 @@ TEST(journal_stores_persistent_topics_and_queries) {
     int64_t exported = 0;
     REQUIRE(UltraMsg_Export(a.handle, all, path, &exported).ok);
     REQUIRE_EQ(exported, static_cast<int64_t>(2));   // one dismissed, one deleted
-    std::ifstream file(path);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path));
     int lines = 0;
     std::string line;
     while (std::getline(file, line)) if (!line.empty()) ++lines;

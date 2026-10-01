@@ -775,12 +775,12 @@ namespace UltraCanvas {
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
             const std::filesystem::path cdrPath = TempPath(".cdr");
             {
-                std::ofstream out(cdrPath, std::ios::binary);
+                std::ofstream out(UltraCanvas::PathFromUtf8(cdrPath), std::ios::binary);
                 out.write(data.data(), static_cast<std::streamsize>(data.size()));
             }
             auto doc = Import(PathToUtf8(cdrPath), options);
             std::error_code ec;
-            std::filesystem::remove(cdrPath, ec);
+            std::filesystem::remove(UltraCanvas::PathFromUtf8(cdrPath), ec);
             return doc;
 #else
             (void)data;
@@ -801,7 +801,7 @@ namespace UltraCanvas {
                 const ConversionOptions& options) {
             std::string data = ExportToString(document, options);
             if (data.empty()) return false;
-            std::ofstream file(filename, std::ios::binary);
+            std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
             if (!file.is_open()) {
                 if (options.WarningCallback) {
                     options.WarningCallback("Failed to create CDR file: " + filename);
@@ -833,7 +833,7 @@ namespace UltraCanvas {
         }
 
         bool CDRConverter::ValidateFile(const std::string& filename) const {
-            std::ifstream file(filename, std::ios::binary);
+            std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
             if (!file.is_open()) return false;
             char head[12] = {0};
             file.read(head, 12);

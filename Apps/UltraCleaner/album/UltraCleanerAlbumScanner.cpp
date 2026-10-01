@@ -31,7 +31,7 @@ constexpr fs::directory_options kWalkOptions =
 // compare the files directly, which ComparePixels below effectively does.
 uint64_t ContentDigest(const std::string& path, bool& ok) {
     ok = false;
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary);
     if (!file) return 0;
     // FNV-1a over the whole file.
     uint64_t hash = 1469598103934665603ull;
@@ -177,7 +177,7 @@ AlbumScanReport AlbumScanner::Scan(const std::string& folder,
     };
 
     if (options.recursive) {
-        fs::recursive_directory_iterator it(folder, kWalkOptions, ec), end;
+        fs::recursive_directory_iterator it(UltraCanvas::PathFromUtf8(folder), kWalkOptions, ec), end;
         if (!ec) {
             for (; it != end; it.increment(ec)) {
                 if (cancelRequested_) break;
@@ -187,7 +187,7 @@ AlbumScanReport AlbumScanner::Scan(const std::string& folder,
             }
         }
     } else {
-        fs::directory_iterator it(folder, kWalkOptions, ec), end;
+        fs::directory_iterator it(UltraCanvas::PathFromUtf8(folder), kWalkOptions, ec), end;
         if (!ec) {
             for (; it != end; it.increment(ec)) {
                 if (cancelRequested_) break;

@@ -14,6 +14,7 @@
 #include <ctime>
 #include <fstream>
 #include <sstream>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -340,7 +341,7 @@ std::string UltraCanvasGitGraph::ToMermaidText() const {
 }
 
 bool UltraCanvasGitGraph::SaveToMermaid(const std::string& filePath) const {
-    std::ofstream file(filePath);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filePath));
     if (!file.is_open()) {
         lastError = "cannot open '" + filePath + "' for writing";
         return false;
@@ -3301,7 +3302,7 @@ std::string UltraCanvasGitGraph::ToJSON() const {
 }
 
 bool UltraCanvasGitGraph::SaveToJSON(const std::string& filePath) const {
-    std::ofstream file(filePath);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filePath));
     if (!file.is_open()) {
         lastError = "cannot open '" + filePath + "' for writing";
         return false;
@@ -3317,7 +3318,7 @@ bool UltraCanvasGitGraph::SaveToJSON(const std::string& filePath) const {
 bool UltraCanvasGitGraph::SaveToSVG(const std::string& filePath) {
     if (needsLayout) PerformLayout();
 
-    std::ofstream file(filePath);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filePath));
     if (!file.is_open()) return false;
 
     // Size the canvas from the real node bounding box rather than the content

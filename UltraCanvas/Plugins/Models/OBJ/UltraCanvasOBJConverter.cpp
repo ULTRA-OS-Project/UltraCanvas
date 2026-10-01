@@ -30,6 +30,7 @@
 #include <sstream>
 #include <locale>
 #include <unordered_map>
+#include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
 
@@ -471,10 +472,10 @@ private:
         // whitespace-separated, but a name may itself contain spaces. Try the
         // whole remainder first, which is right far more often.
         const std::string path = baseDirectory_ + reference;
-        std::ifstream file(path);
+        std::ifstream file(UltraCanvas::PathFromUtf8(path));
         if (!file) {
             for (const std::string& candidate : SplitWhitespace(reference)) {
-                std::ifstream each(baseDirectory_ + candidate);
+                std::ifstream each(UltraCanvas::PathFromUtf8(baseDirectory_ + candidate));
                 if (each) { ParseMaterialLibrary(each); return; }
             }
             options_.Warn("OBJ: material library '" + reference +
@@ -843,7 +844,7 @@ FormatCapabilities OBJConverter::GetCapabilities() const {
 
 std::shared_ptr<ModelStorage::ModelDocument> OBJConverter::Import(
         const std::string& filename, const ConversionOptions& options) {
-    std::ifstream file(filename);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename));
     if (!file) {
         options.Warn("OBJ: cannot read " + filename);
         return nullptr;
@@ -914,7 +915,7 @@ std::string OBJConverter::BuildMaterialLibrary(const ModelDocument& document,
 
 bool OBJConverter::Export(const ModelDocument& document, const std::string& filename,
                           const ConversionOptions& options) {
-    std::ofstream file(filename);
+    std::ofstream file(UltraCanvas::PathFromUtf8(filename));
     if (!file) {
         options.Warn("OBJ: cannot write " + filename);
         return false;
@@ -925,7 +926,7 @@ bool OBJConverter::Export(const ModelDocument& document, const std::string& file
     if (!document.Materials.empty()) {
         libraryName = FileStem(filename) + ".mtl";
         const std::string libraryPath = DirectoryOf(filename) + libraryName;
-        std::ofstream library(libraryPath);
+        std::ofstream library(UltraCanvas::PathFromUtf8(libraryPath));
         if (library) {
             library << BuildMaterialLibrary(document, options.Precision);
         } else {
@@ -988,7 +989,7 @@ bool OBJConverter::ValidateData(const std::vector<uint8_t>& data) const {
 }
 
 bool OBJConverter::ValidateFile(const std::string& filename) const {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file) return false;
     std::vector<uint8_t> head(8192);
     file.read(reinterpret_cast<char*>(head.data()), static_cast<std::streamsize>(head.size()));

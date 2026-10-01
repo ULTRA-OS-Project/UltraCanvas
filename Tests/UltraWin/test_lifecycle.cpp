@@ -14,6 +14,7 @@
 #include <filesystem>
 
 #include <unistd.h>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 namespace fs = std::filesystem;
 
@@ -27,7 +28,7 @@ std::string ScratchRoot() {
                         ("ultrawin-tests-" + std::to_string(getpid()));
         return r;
     }();
-    fs::create_directories(root);
+    fs::create_directories(UltraCanvas::PathFromUtf8(root));
     return root;
 }
 

@@ -17,6 +17,7 @@
 #include <string>
 #include <system_error>
 #include <vector>
+#include "UltraCanvasPathUtf8.h"
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
@@ -69,7 +70,7 @@ namespace {
 
     bool DirectoryExists(const std::string& path) {
         std::error_code ec;
-        return !path.empty() && fs::is_directory(path, ec) && !ec;
+        return !path.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(path), ec) && !ec;
     }
 
 } // namespace

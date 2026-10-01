@@ -23,6 +23,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include "../../include/UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_HAS_DATABASE
 #include "UltraDatabase/UltraDatabase.h"
@@ -750,7 +751,7 @@ NetworkMonitorResult NetworkMonitor_ExportEventsCsv(NetworkMonitorStoreHandle st
     if (rowsWritten) *rowsWritten = 0;
     std::vector<RecordedConnectionEvent> events;
     if (NetworkMonitorResult read = NetworkMonitor_QueryConnectionEvents(store, query, events); !read) return read;
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    std::ofstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!file) {
         return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError, "Could not write " + path);
     }
@@ -905,7 +906,7 @@ NetworkMonitorResult NetworkMonitor_ExportFlowsCsv(NetworkMonitorStoreHandle sto
     std::vector<RecordedFlow> flows;
     if (NetworkMonitorResult read = NetworkMonitor_QueryFlows(store, query, flows); !read) return read;
 
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    std::ofstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!file) {
         return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError,
                                            "Could not write " + path);

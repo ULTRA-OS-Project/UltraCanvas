@@ -198,6 +198,12 @@ namespace UltraCanvas {
         button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     }
 
+    void UltraCanvasModalDialog::ApplyButtonFont(
+            const std::shared_ptr<UltraCanvasButton>& button) {
+        if (!button || style.buttonFontSize <= 0.0f) return;
+        button->SetFontSize(style.buttonFontSize);
+    }
+
     void UltraCanvasModalDialog::CreateDialogButtons() {
         // Clear existing buttons
         dialogButtons.clear();
@@ -210,6 +216,7 @@ namespace UltraCanvas {
                     static_cast<long>(style.buttonWidth), static_cast<long>(style.buttonHeight));
             button->SetText(text);
             SizeButtonToLabel(button);
+            ApplyButtonFont(button);
             dialogButtons.push_back(DialogButtonEntry{button, btn, ButtonToResult(btn)});
         };
 
@@ -475,6 +482,7 @@ namespace UltraCanvas {
             messageArea->SetFontSize(style.messageFontSize);
             messageArea->SetTextColor(style.messageTextColor);
         }
+        for (auto& entry : dialogButtons) ApplyButtonFont(entry.button);
 
         UpdateIconAppearance();
     }
@@ -581,15 +589,36 @@ namespace UltraCanvas {
         // Run one layout pass at the current size so the message area receives a
         // definite content width; its wrapped/Markdown height is meaningless
         // until then. Nothing is drawn here.
-        CSSLayout::LayoutContext lctx;
-        lctx.viewportWidth  = GetWidth();
-        lctx.viewportHeight = GetHeight();
-        CSSLayout::MeasureConstraints mc{
-                { CSSLayout::ConstraintMode::Exact, static_cast<float>(GetWidth())  },
-                { CSSLayout::ConstraintMode::Exact, static_cast<float>(GetHeight()) }
+        auto layoutPass = [this]() {
+            CSSLayout::LayoutContext lctx;
+            lctx.viewportWidth  = GetWidth();
+            lctx.viewportHeight = GetHeight();
+            CSSLayout::MeasureConstraints mc{
+                    { CSSLayout::ConstraintMode::Exact, static_cast<float>(GetWidth())  },
+                    { CSSLayout::ConstraintMode::Exact, static_cast<float>(GetHeight()) }
+            };
+            Measure(mc, lctx);
+            Arrange(finalBounds, lctx);
         };
-        Measure(mc, lctx);
-        Arrange(finalBounds, lctx);
+        layoutPass();
+
+        // The footer first: its elements do not shrink, so a checkbox and
+        // four labelled buttons that together need more than the configured
+        // width run off the right edge, and the last button is simply gone.
+        // Widen the window to what the row needs (up to most of the monitor)
+        // and lay out again, since the message wraps at the new width.
+        int screenW = 0, screenH = 0;
+        GetScreenSize(screenW, screenH);
+        {
+            int desiredWidth = static_cast<int>(std::ceil(FooterContentWidth()));
+            if (screenW > 0) desiredWidth = std::min(desiredWidth,
+                                                     static_cast<int>(screenW * 0.9f));
+            if (desiredWidth > static_cast<int>(GetWidth())) {
+                SetWindowSize(desiredWidth, static_cast<int>(GetHeight()));
+                InvalidateLayout();
+                layoutPass();
+            }
+        }
 
         float textHeight = messageArea->MeasureContentHeight();
 
@@ -626,8 +655,6 @@ namespace UltraCanvas {
         int minH = std::max(dialogConfig.minHeight,
                             static_cast<int>(2.0f * style.padding + iconBlock + style.buttonAreaHeight));
         int capH = desired;
-        int screenW = 0, screenH = 0;
-        GetScreenSize(screenW, screenH);
         if (screenH > 0) capH = static_cast<int>(screenH * 0.85f);
         if (dialogConfig.maxHeight > 0) capH = std::min(capH, dialogConfig.maxHeight);
         capH = std::max(capH, minH);
@@ -641,6 +668,25 @@ namespace UltraCanvas {
             // force a fresh pass so the new height propagates to the sections.
             InvalidateLayout();
         }
+    }
+
+    float UltraCanvasModalDialog::FooterContentWidth() const {
+        if (!footerSection) return 0.0f;
+        // The row as laid out: each element at the width it measured itself
+        // to (a label-sized button, an explicitly sized checkbox), the
+        // spacer at whatever it got - zero once the row overflows - and the
+        // footer's own horizontal padding on both sides.
+        float width = 2.0f * style.padding;
+        int visible = 0;
+        for (const auto& child : footerSection->GetChildren()) {
+            if (!child || !child->IsVisible()) continue;
+            if (child.get() == footerSpacer.get()) continue;
+            width += child->GetWidth();
+            ++visible;
+        }
+        if (visible > 1) width += style.buttonSpacing * static_cast<float>(visible - 1);
+        if (footerSpacer && footerSpacer->IsVisible()) width += style.buttonSpacing;
+        return width;
     }
 
     void UltraCanvasModalDialog::PerformClose() {
@@ -964,6 +1010,7 @@ namespace UltraCanvas {
             default:
                 break;
         }
+        ApplyButtonFont(button);   // after the role style: it sets a size too
         button->onClick = [this, buttonResult, callback]() {
             if (callback) callback();
             CloseDialog(buttonResult);
@@ -1319,7 +1366,7 @@ namespace UltraCanvas {
         pathInput->onEnterPressed = [this](const std::string& text) {
             std::error_code ec;
             const std::filesystem::path typed = PathFromUtf8(text);
-            if (std::filesystem::is_directory(typed, ec)) {
+            if (std::filesystem::is_directory(UltraCanvas::PathFromUtf8(typed), ec)) {
                 GoToDirectory(text, true);
             } else if (fileConfig.dialogType != FileDialogType::SelectFolder &&
                        std::filesystem::is_directory(typed.parent_path(), ec)) {
@@ -1690,12 +1737,12 @@ namespace UltraCanvas {
     bool UltraCanvasFileDialog::GoToDirectory(const std::string& directory, bool syncTree) {
         std::error_code ec;
         const std::filesystem::path path = PathFromUtf8(directory);
-        if (!std::filesystem::is_directory(path, ec) || ec) {
+        if (!std::filesystem::is_directory(UltraCanvas::PathFromUtf8(path), ec) || ec) {
             debugOutput << "Invalid path: " << directory << std::endl;
             if (pathInput) pathInput->SetText(currentDirectory);
             return false;
         }
-        std::filesystem::path canonical = std::filesystem::canonical(path, ec);
+        std::filesystem::path canonical = std::filesystem::canonical(UltraCanvas::PathFromUtf8(path), ec);
         currentDirectory = ec ? directory : PathToUtf8(canonical);
         RefreshFileList();
         if (syncTree) SyncFolderTree();

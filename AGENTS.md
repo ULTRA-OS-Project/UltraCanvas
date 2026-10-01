@@ -53,8 +53,9 @@ before adding cross-module code.
   helpers where they exist:
 
   ```cpp
-  auto button = CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me");
-  // equivalent: std::make_shared<UltraCanvasButton>("MyButton", 101, 100, 50, 120, 40, "Click Me")
+  auto button = CreateButton("MyButton", 100, 50, 120, 40, "Click Me");   // identifier, x, y, w, h, text
+  // equivalent: std::make_shared<UltraCanvasButton>("MyButton", 100, 50, 120, 40, "Click Me")
+  // There is no numeric id argument on any element factory or constructor.
   ```
 
 - **Never hand-roll a UI element** — see
@@ -108,9 +109,18 @@ before adding cross-module code.
   (`path-strings.yml`), and `scripts/path_string_baseline.txt` is empty and
   must stay that way. A path built from a wide string or a `std::u8string`
   is already correct; say so at the site with `// path-string-ok: <why>`.
-  The check cannot see a declaration `fs::path p(str);` or an implicit
-  `fs::exists(str)`, so review catches those: write
-  `fs::exists(PathFromUtf8(str))`.
+  The implicit forms are just as wrong and are checked too: a UTF-8 string
+  handed straight to `fs::exists(str)`, `fs::remove(str, ec)`,
+  `fs::directory_iterator(str)`, `std::ifstream f(str)`, `f.open(str)` or
+  `fs::path p = str;` converts through the code page as well (`path-implicit`),
+  and `fopen(name, mode)` reads the name in it (`fopen-narrow`). Write
+  `fs::exists(PathFromUtf8(str))` and `OpenFileUtf8(name, mode)`.
+  `PathFromUtf8` also takes a C string, a `string_view` and a path (passed
+  through), so wrapping is never wrong. The check reads the file's own
+  declarations to tell a string from a path, so a string it cannot see the
+  type of (an `auto`, a getter's result) is still review's to catch.
+  `Tests/PathUtf8Test.cpp` runs every one of these calls on a Thai-and-emoji
+  folder in Windows CI, under code page 1252.
 - **No function of ours is named like a Win32 A/W macro.** `<windows.h>`
   `#define`s thousands of names to their `W` variant (`CreateFile` →
   `CreateFileW`, `LoadImage`, `SendMessage`, `GetMessage`, `ReplaceText`, …),
@@ -215,6 +225,16 @@ brew install cmake cairo pango freetype vips harfbuzz
 mkdir build && cd build && cmake .. && make
 ```
 
+The executables land in `build/`, and configuring also links
+`build/share/media` and `build/share/Docs` to the repository's directories
+(a symlink; on Windows a directory junction when a symlink needs privileges
+the build does not have, and a copy as the last resort), which is where
+`GetResourcesDir()` looks after the platform's packaged place
+(`exe/Resources/` on Windows, the bundle's `Contents/Resources/` on macOS).
+An application started straight from the build tree therefore finds its
+icons, fonts, wallpapers and bundled documents on every desktop platform
+without an install step.
+
 The project now defaults to Clang on Linux, so install the `clang` package
 alongside the existing deps. The build uses the system default linker (GNU ld,
 same as CI); with a newer Clang on an older distro it automatically drops to
@@ -223,6 +243,35 @@ DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
+
+**Tests that need a display.** A few tests under `Tests/` open a real window
+and read the composited pixels back (`CaretStackingTest`,
+`TextMetricsScreenshotTest`, `TextAreaSpellCheckTest`). They skip themselves
+without a `DISPLAY`, so a bare CI machine passes them; to run one, give it a
+display with `xvfb-run -a ./build/bin/TextMetricsScreenshotTest`. Two things
+about a window under Xvfb catch people out:
+
+- There is no window manager, so the window is never activated, and a window
+  that is never activated draws no caret and reports no focused element. That
+  is correct behaviour, not a bug in the test. A test that needs focus hands the
+  application the activation event the backend would have delivered and then
+  focuses the element: `DisplayTest::FocusElement(app, window, element)` in
+  `Tests/DisplayTestSupport.h` does both and says whether it worked. Driving
+  it from outside with `xdotool windowfocus` works too but is slower and needs
+  another package.
+- There is no event loop unless the test runs one, so frames are driven by
+  hand: `DisplayTest::Frame(window, {elements})` marks them dirty and renders
+  once, and `DisplayTest::WaitForCaret` drives frames until the shared caret is
+  claimed. A text input shows its caret only while nothing is selected, so
+  measure the caret before making a selection.
+
+`TextMetricsScreenshotTest` doubles as the screenshot fixture for the
+text-metrics and crisp-border rules: with `ULTRACANVAS_SCREENSHOT_DIR=<dir>` it
+writes the window as PPM files (the caret, a selection, the popup menu) that
+any image tool converts. With `GDK_SCALE=2` it renders at 2x and skips its
+pixel assertions, which are written for whole logical pixels; the PPM is
+still read back at logical size, so for the actual 2x pixels take an X
+screenshot of the Xvfb display instead (`import -window root shot.png`).
 
 `-DULTRACANVAS_BUILD_NET_TESTS=ON` adds two UltraNet binaries: `UltraNetTests`
 (pass/fail suite) and `UltraNetApiStatus`, which probes every public
@@ -246,7 +295,6 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/DeviceExplorer/CHANGELOG.md` | DeviceExplorer |
 | `Docs/UltraDesktop/CHANGELOG.md` | UltraDesktop — the ULTRA OS desktop |
 | `Docs/EmailCleaner/CHANGELOG.md` | EmailCleaner |
-| `Docs/Ladybird/CHANGELOG.md` | The Ladybird browser port (built from its own tree, outside this repository) |
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
@@ -297,10 +345,10 @@ number anywhere else, and never introduce a new literal copy of one:
 - An app versions itself: it does not move when the framework releases, and a
   change to it belongs in its own file, not in the framework's. A framework
   change an app needs still goes in `Docs/UltraCanvas/CHANGELOG.md` — including
-  the Ladybird-driven ones, which land in `UltraCanvas/OS/MSWindows/` and
-  `UltraCanvas/core/` rather than in the port. Cross-reference such a change
-  from the app's changelog when a release depends on it; never describe it in
-  two files with two versions.
+  one a host application outside this repository asked for, which lands in
+  `UltraCanvas/OS/<Platform>/` and `UltraCanvas/core/`, not in that host.
+  Cross-reference such a change from the app's changelog when a release
+  depends on it; never describe it in two files with two versions.
 - The app changelogs were split out of the framework's on 2026-08-31.
   EmailCleaner's two entries were moved across verbatim (framework 0.3.87 and
   0.3.88 now point at them); every other app's earlier history was left where
@@ -482,6 +530,43 @@ Two rules about the second block, because it is the one that goes wrong:
 - **It is not a place to park work you were asked to do.** Anything inside the
   task's scope gets finished or explicitly reported as blocked; it does not
   become a recommendation.
+
+### The closing line
+
+The **last reply before the chat waits for the user** — every chat, whether
+or not code was written in it — ends with one line, after the three blocks:
+
+```
+Code needs to be PRed (N lines)
+```
+
+`N` is how many lines this checkout differs from the default branch:
+insertions plus deletions of the working tree against the merge base, plus
+every line of an untracked, non-ignored file — committed, uncommitted and
+untracked alike, because all of it still has to reach a pull request. Measure
+it, do not recall it:
+
+```
+git fetch origin main
+git diff --shortstat $(git merge-base origin/main HEAD)
+git ls-files -z --others --exclude-standard | xargs -0 -r cat | wc -l
+```
+
+Write `(0 lines)` when nothing differs — a missing line and a zero are not the
+same thing to a reader. When a pull request is already open for the branch,
+keep the line and add ` — open as PR #<n>` after it, so "needs to be PRed"
+is never read as "nobody has opened one" when someone has.
+
+**This one is checked too.** The same `Stop` hook,
+`.claude/hooks/check-delivery.sh`, measures `N` itself and reads the reply
+being finished (`last_assistant_message`, or the transcript's last assistant
+text on older Claude Code builds). A reply whose last non-blank line is not
+`Code needs to be PRed (N lines)` with the measured `N` is blocked once, with
+the line it found and the line it expected; surrounding backticks or bold and
+the ` — open as PR #<n>` suffix are accepted. The hook does not fetch, so it
+measures against `origin/main` as the clone last saw it — fetch before
+measuring and the two agree. The `SessionStart --brief` message states the
+rule and the current `N`.
 
 `Next Task` and `Other recommendations` describe the repository, not the
 conversation. "Waiting for the test suite" belongs in `Next Task`; "the

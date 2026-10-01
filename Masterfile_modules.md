@@ -651,13 +651,15 @@ the backing implementation can be replaced without affecting callers.
   `CreateWaveSeparator`. See `Docs/UltraCanvas/UltraCanvasWaveSeparator.md`.
 
 - **UltraCanvasToolbar item badges, reordering and scrolling**
-  (`UltraCanvasToolbar.h`, 1.5.0) — `SetItemBadge` / `SetItemBadgeCount` /
+  (`UltraCanvasToolbar.h`, 1.6.0) — `SetItemBadge` / `SetItemBadgeCount` /
   `SetItemBadgeDot` / `ClearItemBadge` / `GetItemBadge` anchor an
   `UltraCanvasBadge` to an item; `EnableItemReordering` lets the user drag an
   item along the bar (`onItemReordered(from, to)` on release) and `MoveItem` /
   `GetItemIndex` / `GetItemOrder` / `GetItems` do the same from code;
   `ToolbarOverflowMode::Scroll` keeps items at their size and scrolls a full
-  bar with the mouse wheel. `WindowType::Desktop` (`UltraCanvasWindow.h`) is
+  bar with the mouse wheel, with a chevron over the edge the items continue
+  past that scrolls a page when clicked (`SetScrollHints`).
+  `WindowType::Desktop` (`UltraCanvasWindow.h`) is
   the screen-sized window at the bottom of the stack a desktop draws into.
 
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
@@ -959,11 +961,15 @@ engine; these classes hold the pixels being edited and hand them to it.
   character-offset helpers. Elements answer through
   `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
   `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
-  No platform bridge (AT-SPI, UIA) yet. See
+  Platform bridges: AT-SPI on Linux (`OS/Linux/UltraCanvasLinuxAccessibility`,
+  GIO D-Bus, tested end to end by `Tests/AtspiBridgeTest`) and UI Automation
+  on Windows (`OS/MSWindows/UltraCanvasWindowsAccessibility`, providers with
+  the Text pattern), sharing the tree, ids, geometry and text diffing in
+  `UltraCanvasAccessibilityBridge.h`; none for macOS yet. See
   `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
 - **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
   through the ordinary `IRenderContext` (units: points), as vectors with
-  selectable text: `CreateFile(utf8Path, w, h, error)` /
+  selectable text: `CreateForFile(utf8Path, w, h, error)` /
   `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
   `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
   work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.

@@ -7,7 +7,12 @@
 // StartDocPrinter with datatype "RAW" hands it to the device untouched. No
 // CUPS is involved, which is the whole point - only GutenPrint's *CUPS
 // driver* is Unix-only, not the library.
-// Version: 0.1.0
+//
+// Supply levels come from the driver's bidirectional channel (IBidiSpl), which
+// the spooler itself does not expose. When the driver says nothing and the
+// queue prints to a network address, the printer behind it is asked directly
+// over IPP (builds with UltraNet only).
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #ifdef _WIN32
@@ -17,15 +22,24 @@
 #include "../../include/IODeviceManager/UltraCanvasIODevicePrinter.h"
 #include "../../include/IODeviceManager/UltraCanvasIODevicePrinterGutenPrint.h"
 #include "../../include/IODeviceManager/UltraCanvasIODeviceManager.h"
+#include "../../include/IODeviceManager/UltraCanvasIODevicePrinterIPP.h"
+#include "../../include/IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.h"
 #include "../../include/UltraCanvasUtils.h"
 
 #include <windows.h>
 #include <winspool.h>
+#include <objbase.h>
+#include <bidispl.h>
 
+#include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace UltraCanvas {
@@ -106,6 +120,212 @@ std::vector<uint8_t> QueryPrinterInfo(HANDLE printer, DWORD level) {
     }
     return buffer;
 }
+
+// ============================================================================
+// SUPPLY LEVELS (BIDI)
+// ============================================================================
+
+// The bidi class and interface IDs, spelled out: bidispl.h declares them, but
+// not every toolchain's uuid library defines them, and naming CLSID_BidiSpl
+// would then compile and fail to link. Values as in the Windows SDK.
+const CLSID kClsidBidiSpl = {0x2a614240, 0xa4c5, 0x4c33,
+                             {0xbd, 0x87, 0x1b, 0xc7, 0x09, 0x33, 0x16, 0x39}};
+const CLSID kClsidBidiRequest = {0xb9162a23, 0x45f9, 0x47cc,
+                                 {0x80, 0xf5, 0xfe, 0x0f, 0xe9, 0xb9, 0xe1, 0xa2}};
+const IID kIidBidiSpl = {0xd580dc0e, 0xde39, 0x4649,
+                         {0xba, 0xa8, 0xbf, 0x0b, 0x85, 0xa0, 0x3a, 0x97}};
+const IID kIidBidiRequest = {0x8f348bd7, 0x4b47, 0x4755,
+                             {0x8a, 0x9d, 0x0f, 0x42, 0x2d, 0xf3, 0xdc, 0x89}};
+
+// Releases a COM interface on every path out of the query below.
+template <typename T>
+class ComRef {
+public:
+    ComRef() = default;
+    ~ComRef() {
+        if (ptr) {
+            ptr->Release();
+        }
+    }
+    ComRef(const ComRef&) = delete;
+    ComRef& operator=(const ComRef&) = delete;
+
+    T* operator->() const { return ptr; }
+    T* Get() const { return ptr; }
+    void** Out() { return reinterpret_cast<void**>(&ptr); }
+
+private:
+    T* ptr = nullptr;
+};
+
+// COM for the duration of one query. The caller may be a worker thread that
+// has never touched COM, or the UI thread, which is already OLE-initialized
+// as an STA: that answers RPC_E_CHANGED_MODE, where COM is usable but not
+// ours to tear down.
+class ComScope {
+public:
+    ComScope() : hr(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
+    ~ComScope() {
+        if (SUCCEEDED(hr)) {
+            CoUninitialize();
+        }
+    }
+    ComScope(const ComScope&) = delete;
+    ComScope& operator=(const ComScope&) = delete;
+
+    bool Usable() const { return SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE; }
+
+private:
+    HRESULT hr;
+};
+
+// A string-typed bidi value is UTF-16 with a size in bytes that may or may
+// not count the terminator.
+std::string BidiText(const BYTE* data, ULONG size) {
+    if (!data || size < sizeof(wchar_t)) {
+        return {};
+    }
+    std::wstring text(reinterpret_cast<const wchar_t*>(data), size / sizeof(wchar_t));
+    while (!text.empty() && text.back() == L'\0') {
+        text.pop_back();
+    }
+    return WideToUtf8(text);
+}
+
+// Asks the printer's driver for every \Printer.Consumables value. A driver
+// with no bidi support, a printer that is off, or a port that cannot talk
+// back all end the same way - an empty list, which reads as "not reported".
+std::vector<IOSupplyLevel> QueryBidiSupplyLevels(const std::wstring& printerName) {
+    ComScope com;
+    if (!com.Usable()) {
+        return {};
+    }
+
+    ComRef<IBidiSpl> bidi;
+    if (FAILED(CoCreateInstance(kClsidBidiSpl, nullptr, CLSCTX_INPROC_SERVER,
+                                kIidBidiSpl, bidi.Out()))) {
+        return {};
+    }
+    if (FAILED(bidi->BindDevice(printerName.c_str(), BIDI_ACCESS_USER))) {
+        return {};
+    }
+
+    std::vector<IOBidiConsumableValue> values;
+    {
+        ComRef<IBidiRequest> request;
+        if (SUCCEEDED(CoCreateInstance(kClsidBidiRequest, nullptr, CLSCTX_INPROC_SERVER,
+                                       kIidBidiRequest, request.Out())) &&
+            SUCCEEDED(request->SetSchema(L"\\Printer.Consumables")) &&
+            SUCCEEDED(bidi->SendRecv(BIDI_ACTION_GET_ALL, request.Get()))) {
+            HRESULT answer = E_FAIL;
+            DWORD count = 0;
+            if (SUCCEEDED(request->GetResult(&answer)) && SUCCEEDED(answer) &&
+                SUCCEEDED(request->GetEnumCount(&count))) {
+                for (DWORD i = 0; i < count; ++i) {
+                    LPWSTR schema = nullptr;
+                    DWORD type = BIDI_NULL;
+                    BYTE* data = nullptr;
+                    ULONG size = 0;
+                    if (FAILED(request->GetOutputData(i, &schema, &type, &data, &size))) {
+                        continue;
+                    }
+                    IOBidiConsumableValue value;
+                    value.schema = FromWide(schema);
+                    if (type == BIDI_INT && data && size >= sizeof(int32_t)) {
+                        int32_t number = 0;
+                        std::memcpy(&number, data, sizeof(number));
+                        value.number = number;
+                        value.isNumber = true;
+                    } else if (type == BIDI_STRING || type == BIDI_TEXT ||
+                               type == BIDI_ENUM) {
+                        value.text = BidiText(data, size);
+                    }
+                    CoTaskMemFree(schema);
+                    CoTaskMemFree(data);
+                    values.push_back(std::move(value));
+                }
+            }
+        }
+    }
+
+    bidi->UnbindDevice();
+    return IOSupplyLevelsFromBidi(values);
+}
+
+// ============================================================================
+// SUPPLY LEVELS (IPP, WHEN THE DRIVER KEEPS THEM)
+// ============================================================================
+
+#if defined(ULTRACANVAS_HAS_NET)
+
+// The address a Standard TCP/IP port is configured with, asked of its port
+// monitor. Empty for any other kind of port, or when the monitor will not
+// tell this user; the port's name is then all there is to go on.
+std::string TcpPortHostAddress(const std::wstring& port) {
+    std::wstring xcvName = L",XcvPort " + port;
+    PRINTER_DEFAULTSW defaults{nullptr, nullptr, SERVER_ACCESS_ENUMERATE};
+    HANDLE xcv = nullptr;
+    if (!OpenPrinterW(xcvName.data(), &xcv, &defaults)) {
+        return {};
+    }
+    std::string host;
+    for (const wchar_t* query : {L"HostAddress", L"IPAddress"}) {
+        wchar_t buffer[256] = {};
+        DWORD needed = 0;
+        DWORD status = ERROR_INVALID_FUNCTION;
+        if (XcvDataW(xcv, query, nullptr, 0, reinterpret_cast<PBYTE>(buffer),
+                     static_cast<DWORD>(sizeof(buffer) - sizeof(wchar_t)), &needed,
+                     &status) &&
+            status == ERROR_SUCCESS) {
+            host = FromWide(buffer);
+            if (!host.empty()) {
+                break;
+            }
+        }
+    }
+    ClosePrinter(xcv);
+    return host;
+}
+
+// The IPP addresses a queue's printer might answer at, from the ports it
+// prints to - several, comma-separated, for a pooled queue.
+std::vector<std::string> IppUrisForQueue(const std::wstring& printerName) {
+    PrinterHandle handle(printerName);
+    if (!handle.IsOpen()) {
+        return {};
+    }
+    std::vector<uint8_t> buffer = QueryPrinterInfo(handle.Get(), 2);
+    if (buffer.empty()) {
+        return {};
+    }
+    const PRINTER_INFO_2W* info = reinterpret_cast<const PRINTER_INFO_2W*>(buffer.data());
+    const std::wstring ports = info->pPortName ? info->pPortName : L"";
+
+    std::vector<std::string> uris;
+    size_t at = 0;
+    while (at <= ports.size()) {
+        size_t end = ports.find(L',', at);
+        if (end == std::wstring::npos) {
+            end = ports.size();
+        }
+        std::wstring port = ports.substr(at, end - at);
+        while (!port.empty() && port.front() == L' ') {
+            port.erase(0, 1);
+        }
+        if (!port.empty()) {
+            for (const std::string& uri :
+                 IppUrisForWindowsPort(WideToUtf8(port), TcpPortHostAddress(port))) {
+                if (std::find(uris.begin(), uris.end(), uri) == uris.end()) {
+                    uris.push_back(uri);
+                }
+            }
+        }
+        at = end + 1;
+    }
+    return uris;
+}
+
+#endif  // ULTRACANVAS_HAS_NET
 
 // ============================================================================
 // TRANSPORT
@@ -398,11 +618,21 @@ protected:
         return status;
     }
 
-    // The Windows spooler reports no supply levels at all: PRINTER_STATUS_NO_TONER
-    // is the closest it comes, and that is a status bit rather than a level.
-    // Reading real levels needs SNMP or a vendor SDK, so this reports nothing
-    // rather than inventing a number.
-    std::vector<IOSupplyLevel> DoGetSupplyLevels() override { return {}; }
+    // The spooler itself has no supply levels - PRINTER_STATUS_NO_TONER is a
+    // status bit, not a level - so they are asked of the driver's bidi
+    // channel, and failing that, of the printer itself over IPP when the
+    // queue prints to a network address. A printer neither route reaches
+    // reports nothing rather than an invented number.
+    std::vector<IOSupplyLevel> DoGetSupplyLevels() override {
+        std::vector<IOSupplyLevel> supplies =
+            QueryBidiSupplyLevels(Utf8ToWide(GetDeviceInfo().connectionPath));
+#if defined(ULTRACANVAS_HAS_NET)
+        if (supplies.empty()) {
+            supplies = AskPrinterOverIpp();
+        }
+#endif
+        return supplies;
+    }
 
     IODeviceResult DoCancelJob(int jobId) override {
         PrinterHandle handle(Utf8ToWide(GetDeviceInfo().connectionPath));
@@ -495,6 +725,66 @@ protected:
     IPrintTransportPtr GetTransport() override { return SharedWindowsTransport(); }
 
 private:
+#if defined(ULTRACANVAS_HAS_NET)
+    // A printer that is off costs the connect timeout per address, and
+    // GetStatus() and GetSupplyLevels() both end up here, so one that did not
+    // answer is left alone for a minute rather than asked twice in a row.
+    static constexpr std::chrono::seconds kIppRetryAfter{60};
+
+    // Runs under the device's mutex, like every Do* call, which also guards
+    // the members it remembers.
+    std::vector<IOSupplyLevel> AskPrinterOverIpp() {
+        const auto now = std::chrono::steady_clock::now();
+        if (ippGaveUp && now - ippGaveUpAt < kIppRetryAfter) {
+            return {};
+        }
+
+        // The address that answered last time first; the port's guesses after.
+        std::vector<std::string> candidates;
+        if (!ippUri.empty()) {
+            candidates.push_back(ippUri);
+        }
+        for (const std::string& uri :
+             IppUrisForQueue(Utf8ToWide(GetDeviceInfo().connectionPath))) {
+            if (std::find(candidates.begin(), candidates.end(), uri) == candidates.end()) {
+                candidates.push_back(uri);
+            }
+        }
+
+        // A host that did not take the connection will not take it on another
+        // path either, so its remaining guesses are skipped.
+        std::vector<std::string> unreachable;
+        for (const std::string& uri : candidates) {
+            const size_t hostStart = uri.find("//");
+            const std::string authority =
+                hostStart == std::string::npos ? uri : uri.substr(0, uri.find('/', hostStart + 2));
+            if (std::find(unreachable.begin(), unreachable.end(), authority) !=
+                unreachable.end()) {
+                continue;
+            }
+            std::vector<IOSupplyLevel> supplies;
+            const IODeviceResult asked = Internal::QueryIppSupplyLevels(uri, supplies);
+            if (asked.success) {
+                ippUri = uri;
+                ippGaveUp = false;
+                return supplies;
+            }
+            if (asked.code == IODeviceResultCode::ConnectionFailed) {
+                unreachable.push_back(authority);
+            }
+        }
+
+        ippUri.clear();
+        ippGaveUp = true;
+        ippGaveUpAt = now;
+        return {};
+    }
+
+    std::string ippUri;                                  // answered last time
+    bool ippGaveUp = false;
+    std::chrono::steady_clock::time_point ippGaveUpAt;
+#endif
+
     static void AddUnique(std::vector<IOPaperSize>& sizes, IOPaperSize size) {
         for (IOPaperSize existing : sizes) {
             if (existing == size) {

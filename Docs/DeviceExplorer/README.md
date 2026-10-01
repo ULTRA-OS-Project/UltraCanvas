@@ -9,8 +9,12 @@ It is that module's user interface: a structured tree of everything found on
 the left, and everything the module knows about the selected entry on the
 right.
 
-It **only looks**. It never opens a session with a device, changes a setting,
-prints, scans or captures. Nothing it shows is written anywhere.
+It **only looks**. It never changes a setting, prints, scans or captures, and
+nothing it shows is written anywhere. The one thing it opens a device for is
+to ask a selected printer for its status and ink or toner — a printer only
+answers that over an open session — and it closes the printer again as soon as
+it has the answer. A printer another part of the application already has open
+is asked without being closed.
 
 - Source: [`Apps/DeviceExplorer`](../../Apps/DeviceExplorer/README.md)
 - Version: its own, from the first line of [`CHANGELOG.md`](CHANGELOG.md).
@@ -71,12 +75,24 @@ Select a row to see everything known about it, in titled sections.
 
 | Section | Contents |
 |---|---|
+| Printer status *(printers)* | State (Ready, Printing, Stopped), the printer's reason (`media-empty`, `door-open`, `paused` …), whether it accepts jobs, how many are queued, and when it was asked |
+| Supplies *(printers)* | Each ink or toner cartridge, drum or waste tank the printer reports, with its level in percent — *low* at 10 % or less, *not reported* when the printer gives no level |
 | General | Name, type, manufacturer, model, serial number (masked), description, location |
 | Connection | Connection (USB, Network, …), backend, connection path (device node, CUPS/IPP URI), device id |
 | Status | State, whether this application holds a session, last error |
 | Backend details | Whatever else the backend reported (driver, PPD, capabilities …) |
 
 Rows the backend left empty are not shown.
+
+For a printer, the two status sections come first. Selecting it shows *Asking
+the printer…* while DeviceExplorer asks — on a worker thread, since a network
+printer can take seconds — and then the answer. The answer is kept for 30
+seconds, so clicking back and forth does not ask again; after that, or after a
+rescan, selecting the printer asks anew. A printer that cannot be reached says
+*Could not ask the printer* and why. On Windows the levels come from the
+printer's driver, or, for a network printer whose driver does not report
+them, from the printer itself over IPP. A printer reached neither way shows
+its state and no *Supplies*.
 
 **A group** — how many devices it holds, how many are open or reporting an
 error, which backends searched it and how many each found, and the list of
@@ -132,9 +148,15 @@ found when it was configured; the computer node lists them.
 
 | Category | Linux | Windows | macOS | Network |
 |---|---|---|---|---|
-| Printers | CUPS | Windows spooler | CUPS | — |
+| Printers | CUPS | Windows spooler | CUPS | IPP driverless: IPP Everywhere, AirPrint, Mopria (all platforms) |
 | Scanners | SANE | — | — | eSCL (AirScan / Mopria) |
 | Cameras | V4L2 | — | — | — |
+
+Network scanners and printers are found over DNS-SD. One DNS-SD cannot reach
+— on another subnet — is named in `ULTRACANVAS_ESCL_SCANNERS` or
+`ULTRACANVAS_IPP_PRINTERS` (a comma-separated list of addresses) before
+DeviceExplorer starts. A driverless printer that a CUPS queue already reaches
+is listed once, under CUPS.
 
 Planned categories (microphones, speakers, storage, serial, Bluetooth, GPIO …)
 appear in the tree automatically once IODeviceManager has a backend for them;
@@ -158,7 +180,8 @@ shown. `--list --show-serials` prints them in full on the command line.
 DeviceExplorer                         open the window
 DeviceExplorer --group connection      open it grouped by connection
 DeviceExplorer --list                  scan once, print the tree, exit
-DeviceExplorer --list --details        ... with every property of every device
+DeviceExplorer --list --details        ... with every property of every device,
+                                       and each printer's status and supplies
 DeviceExplorer --list --group backend  ... grouped by backend
 DeviceExplorer --list --show-serials   ... with serial numbers unmasked
 DeviceExplorer --version
@@ -178,6 +201,23 @@ workstation  (3 devices, grouped by Category)
    └─ Integrated Webcam  [USB, V4L2, Available (not open)]
 ```
 
+With `--details`, a printer is asked for its status the same way the window
+asks, one printer after another, and the answer follows its other sections:
+
+```
+│  └─ OfficeLaser  [Unknown connection, CUPS, Offline]
+│       …  General, Connection, Status, Backend details …
+│       Printer status
+│         State: Stopped
+│         Reason: paused
+│         Accepting jobs: Yes
+│         Jobs queued: 0
+│         Asked at: 2026-09-29 12:23:52
+│       Supplies
+│         Black toner: 7 % - low
+│         Cyan ink: 72 %
+```
+
 ## Troubleshooting
 
 | Symptom | Cause |
@@ -187,3 +227,6 @@ workstation  (3 devices, grouped by Category)
 | *Cameras (0)* on Linux | No `/dev/video*` node the user can open — check membership of the `video` group. |
 | A device stays after it was unplugged, or a new one does not appear | No hot-plug watcher: on Linux the framework was built without libudev (install `libudev-dev` and reconfigure), on macOS and Windows there is none yet. Press **Rescan**. |
 | A network printer or scanner that just came online is missing | Network devices are not kernel events, so no watcher sees them; press **Rescan**. |
+| A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
+| *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
+| A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB or through a WSD port, it does not speak IPP, or a firewall blocks port 631. |

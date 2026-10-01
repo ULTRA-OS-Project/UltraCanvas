@@ -70,6 +70,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include "UltraCanvasPathUtf8.h"
 
 #if defined(__ANDROID__)
 #include <android/log.h>
@@ -196,7 +197,7 @@ namespace UltraCanvas {
                     stream_ = &DefaultStream();
                     return;
                 }
-                file_.open(path, std::ios::out | std::ios::app);
+                file_.open(UltraCanvas::PathFromUtf8(path), std::ios::out | std::ios::app);
                 stream_ = file_.is_open() ? static_cast<std::ostream*>(&file_)
                                           : &DefaultStream();
                 enabled_ = true;
@@ -247,7 +248,7 @@ namespace UltraCanvas {
 
                 // Anything else is a path. Keep the original spelling: the
                 // lower-cased copy is only for keyword matching.
-                file_.open(requested, std::ios::out | std::ios::app);
+                file_.open(UltraCanvas::PathFromUtf8(requested), std::ios::out | std::ios::app);
                 if (file_.is_open()) {
                     stream_ = &file_;
                 }

@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
 
 using namespace UltraSocial;
 
@@ -118,7 +119,7 @@ TEST(store_history_roundtrip) {
 TEST(vault_roundtrip) {
     std::string dir =
         (std::filesystem::temp_directory_path() / "ultrasocial-vault-test").string();
-    std::filesystem::remove_all(dir);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 
     {
         CredentialVault vault(dir);
@@ -126,7 +127,7 @@ TEST(vault_roundtrip) {
         REQUIRE(!vault.Store("acct-1", "x"));          // locked: refused, not dropped
         REQUIRE(vault.TryAutoUnlock());
         REQUIRE(vault.IsUnlocked());
-        REQUIRE(std::filesystem::exists(std::filesystem::path(dir) / "device.key"));
+        REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(dir) / "device.key"));
         REQUIRE_EQ(vault.KeyFor("acct-1"), std::string{"social.ultrasocial.acct-1"});
 
         REQUIRE(vault.Store("acct-1", "{\"token\":\"secret\"}"));
@@ -140,7 +141,7 @@ TEST(vault_roundtrip) {
                             std::istreambuf_iterator<char>());
         REQUIRE(!content.empty());
         REQUIRE(content.find("secret") == std::string::npos);
-        REQUIRE(!std::filesystem::exists(std::filesystem::path(dir) / "vault.key"));
+        REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(dir) / "vault.key"));
         vault.Lock();
     }
     {
@@ -157,7 +158,7 @@ TEST(vault_roundtrip) {
         REQUIRE(!vault.Remove("acct-1"));
         vault.Lock();
     }
-    std::filesystem::remove_all(dir);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 }
 
 // A vault written by UltraSocial 0.1 (secrets XOR-ed against vault.key, one
@@ -166,8 +167,8 @@ TEST(vault_roundtrip) {
 TEST(vault_migrates_legacy_format) {
     std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "ultrasocial-vault-migrate";
-    std::filesystem::remove_all(dir);
-    std::filesystem::create_directories(dir);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir));
 
     const std::vector<uint8_t> key(32, 0x5A);
     {
@@ -206,5 +207,5 @@ TEST(vault_migrates_legacy_format) {
     REQUIRE(vault.Exists());
 
     vault.Lock();
-    std::filesystem::remove_all(dir);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 }

@@ -74,7 +74,7 @@ namespace UltraCanvas {
         /// Ensure the config directory exists
         bool EnsureConfigDirectory() {
             try {
-                std::filesystem::create_directories(configDir);
+                std::filesystem::create_directories(UltraCanvas::PathFromUtf8(configDir));
                 return true;
             } catch (const std::exception& e) {
                 debugOutput << "UltraTexter: Failed to create config directory: "
@@ -87,7 +87,7 @@ namespace UltraCanvas {
 
         /// Load all settings from config file
         bool Load() {
-            std::ifstream file(configPath);
+            std::ifstream file(UltraCanvas::PathFromUtf8(configPath));
             if (!file.is_open()) return false;
 
             settings.clear();
@@ -110,7 +110,7 @@ namespace UltraCanvas {
         bool Save() {
             if (!EnsureConfigDirectory()) return false;
 
-            std::ofstream file(configPath);
+            std::ofstream file(UltraCanvas::PathFromUtf8(configPath));
             if (!file.is_open()) return false;
 
             file << "# UltraTexter Configuration" << std::endl;
@@ -170,7 +170,7 @@ namespace UltraCanvas {
         static std::string NormalizeRecentPath(const std::string& filePath) {
             if (filePath.empty()) return "";
 
-            std::filesystem::path p(filePath);
+            std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
             std::error_code ec;
 
             // weakly_canonical resolves the part of the path that exists and
@@ -189,7 +189,7 @@ namespace UltraCanvas {
         /// newest first).
         std::vector<std::string> LoadRecentFiles() {
             std::vector<std::string> files;
-            std::ifstream file(recentFilesPath);
+            std::ifstream file(UltraCanvas::PathFromUtf8(recentFilesPath));
             if (!file.is_open()) return files;
 
             std::string line;
@@ -212,7 +212,7 @@ namespace UltraCanvas {
         bool SaveRecentFiles(const std::vector<std::string>& files) {
             if (!EnsureConfigDirectory()) return false;
 
-            std::ofstream file(recentFilesPath);
+            std::ofstream file(UltraCanvas::PathFromUtf8(recentFilesPath));
             if (!file.is_open()) return false;
 
             for (const auto& path : files) {
@@ -264,7 +264,7 @@ namespace UltraCanvas {
         void SaveSearchHistory(const std::vector<std::string>& searchHist,
                                                      const std::vector<std::string>& replaceHist) {
             std::string historyPath = GetConfigDirectory() + "/search_history.txt";
-            std::ofstream out(historyPath);
+            std::ofstream out(UltraCanvas::PathFromUtf8(historyPath));
             if (!out.is_open()) return;
 
             out << "[find]" << std::endl;
@@ -280,7 +280,7 @@ namespace UltraCanvas {
         void LoadSearchHistory(std::vector<std::string>& searchHist,
                                                      std::vector<std::string>& replaceHist) {
             std::string historyPath = GetConfigDirectory() + "/search_history.txt";
-            std::ifstream in(historyPath);
+            std::ifstream in(UltraCanvas::PathFromUtf8(historyPath));
             if (!in.is_open()) return;
 
             std::string line;
@@ -326,7 +326,7 @@ namespace UltraCanvas {
         bool SaveSession(const std::vector<SessionDocument>& docs, int activeIndex) {
             if (!EnsureConfigDirectory()) return false;
 
-            std::ofstream file(sessionPath);
+            std::ofstream file(UltraCanvas::PathFromUtf8(sessionPath));
             if (!file.is_open()) {
                 debugOutput << "UltraTexter: SaveSession failed to open " << sessionPath << std::endl;
                 return false;
@@ -354,7 +354,7 @@ namespace UltraCanvas {
             std::vector<SessionDocument> docs;
             activeIndex = 0;
 
-            std::ifstream file(sessionPath);
+            std::ifstream file(UltraCanvas::PathFromUtf8(sessionPath));
             if (!file.is_open()) return docs;
 
             SessionDocument current;
