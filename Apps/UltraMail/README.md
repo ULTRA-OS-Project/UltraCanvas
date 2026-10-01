@@ -92,7 +92,9 @@ Apps/UltraMail/
     UltraMailSender.{h,cpp}       send a Draft via the SMTP plug-in
                                   (IMailProtocolPlugin)
     UltraMailOutbox.{h,cpp}       persistent send queue on UltraDatabase:
-                                  Enqueue + Flush (sent->remove, fail->retry)
+                                  Enqueue + Flush (sent->remove, fail->retry);
+                                  a copy in the Drafts folder (IMAP APPEND)
+                                  until sent, then deleted (DraftsKeeper)
     UltraMailSyncService.{h,cpp}  full-account sync (folders+inbox+bodies) over
                                   the SyncEngine, sync + background-thread variants
     UltraMailSyncScheduler.{h,cpp} per-account interval tracking; DueAccounts(now);

@@ -247,6 +247,11 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   close; **Send** puts the message into the **Outbox** queue, which the
   engine flushes when online (so send never blocks and survives
   restarts); optional "undo send" delay of 0–30 s.
+  *(Implemented in UltraMail 0.10.14: Send queues the message in the local
+  outbox and closes the compose window; the send runs in the background, a
+  copy waits in the account's Drafts folder until the message has gone out,
+  and a message not sent is reported with Retry. Autosave and undo-send are
+  still to come.)*
 
 ### 3.2 Everyday comfort features (v1.0)
 
