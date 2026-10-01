@@ -17,8 +17,8 @@
 # through (stop_hook_active) so it can commit, push, or say plainly what it
 # is leaving behind and why.
 #
-# Version: 1.1.0
-# Last Modified: 2026-09-24
+# Version: 1.1.1
+# Last Modified: 2026-10-01
 # Author: UltraCanvas Framework
 set -u
 
@@ -45,16 +45,19 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
 dirty="$(git status --porcelain 2>/dev/null)"
 
-# Commits that exist only in this clone. No upstream at all counts: a branch
-# that was never pushed is as lost as an uncommitted file.
+# Commits that exist only in this clone. A branch with no upstream is checked
+# against every remote ref instead: a fresh branch cut from origin/main holds
+# only commits the remote already has, and listing them as unpushed sent
+# sessions chasing work that was never at risk. Commits on no remote ref at
+# all are as lost as an uncommitted file.
 unpushed=""
 branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 if [ -n "$branch" ] && [ "$branch" != "HEAD" ]; then
     if git rev-parse --abbrev-ref '@{u}' >/dev/null 2>&1; then
         unpushed="$(git log --oneline '@{u}..HEAD' 2>/dev/null)"
     else
-        unpushed="$(git log --oneline -n 20 2>/dev/null | head -n 20)"
-        [ -n "$unpushed" ] && unpushed="(branch '$branch' has no upstream - nothing has been pushed)
+        unpushed="$(git log --oneline -n 20 HEAD --not --remotes 2>/dev/null)"
+        [ -n "$unpushed" ] && unpushed="(branch '$branch' has no upstream - these commits are on no remote branch)
 $unpushed"
     fi
 fi
