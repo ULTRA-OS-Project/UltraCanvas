@@ -1,3 +1,11 @@
+#### 2026-10-01 *0.10.15*
+- **Pictures in newsletters built from mail templates are shown.** Mail whose
+  images carry `height="auto"` (Kickstarter's, and most Beefree / Braze
+  newsletters) showed none of them - not even after *Show images* - because
+  the HTML reader drew each one zero pixels tall. The fix is in the framework's
+  HTML reader (see the framework changelog, "pictures with `height="auto"` are
+  shown").
+
 #### 2026-10-01 *0.10.14*
 - **Send works in the background, and nothing is lost on the way.** *Send*
   puts the message in UltraMail's outbox - the local store, which survives a

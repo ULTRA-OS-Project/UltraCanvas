@@ -1,10 +1,11 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.4.0 - width/height="auto" on <img> is no size
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -444,6 +445,45 @@ static void TestHtml4Entities() {
 }
 
 // The presentational table attributes of mail HTML, <nobr>, and a:link.
+// Mail templates (Beefree, Braze) write width="580" height="auto" on every
+// <img>: "auto" is no height, so the picture keeps its aspect ratio. Read as
+// 0px it drew every image of such a newsletter zero pixels tall.
+static void TestImageAutoAttributes() {
+    Parser parser;
+    Document doc = parser.Parse(
+        "<html><body>"
+        "<img id='a' src='a.png' width='580' height='auto' style='width:100%;height:auto'>"
+        "<img id='b' src='b.png' width='auto' height='auto'>"
+        "<img id='c' src='c.png' width='32' height='24'>"
+        "</body></html>");
+    StyleResolver resolver;
+    ResolverOptions options;
+    options.baseFontSizePx = 12.f;
+    resolver.Resolve(doc, options);
+
+    std::function<Node*(Node*, const std::string&)> find = [&](Node* n, const std::string& id) -> Node* {
+        if (n->IsElement() && n->GetAttribute("id") == id) return n;
+        for (auto& c : n->children)
+            if (Node* hit = find(c.get(), id)) return hit;
+        return nullptr;
+    };
+    Node* a = find(doc.root.get(), "a");
+    Node* b = find(doc.root.get(), "b");
+    Node* c = find(doc.root.get(), "c");
+    CHECK(a && b && c);
+    if (!a || !b || !c) return;
+    const ComputedStyle& sa = resolver.StyleOf(a);
+    CHECK(!sa.heightPx.has_value());
+    CHECK(sa.widthPercent.has_value() && Near(*sa.widthPercent, 100.f));
+    const ComputedStyle& sb = resolver.StyleOf(b);
+    CHECK(!sb.heightPx.has_value());
+    CHECK(!sb.widthPx.has_value());
+    CHECK(!sb.widthPercent.has_value());
+    const ComputedStyle& sc = resolver.StyleOf(c);
+    CHECK(sc.widthPx.has_value() && Near(*sc.widthPx, 32.f));
+    CHECK(sc.heightPx.has_value() && Near(*sc.heightPx, 24.f));
+}
+
 static void TestMailTableStyles() {
     Parser parser;
     Document doc = parser.Parse(
@@ -562,6 +602,7 @@ int main() {
     TestReadingModeOverride();
     TestHtml4Entities();
     TestMailTableStyles();
+    TestImageAutoAttributes();
     TestMediaAndBackgrounds();
 
     std::printf("%s: %d checks, %d failures\n",
