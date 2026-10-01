@@ -2061,11 +2061,14 @@ namespace {
     // of 96 MB" is three facts where one will do.
     std::string FormatUsage(uint64_t used, uint64_t budget, size_t entries,
                             const char* noun) {
-        if (entries == 0) return "nothing of " + FormatBytes(budget);
+        // "nothing of 96 MB" read as a riddle; say what it is: what is held
+        // now, and the most it may hold.
+        const std::string limit = " (room for " + FormatBytes(budget) + ")";
+        if (entries == 0) return "empty" + limit;
         const std::string count = entries == 1
                 ? "1 " + std::string(noun)
                 : std::to_string(entries) + " " + std::string(noun) + "s";
-        return count + ", " + FormatBytes(used) + " of " + FormatBytes(budget);
+        return count + ", " + FormatBytes(used) + limit;
     }
 
     void SetLine(const std::shared_ptr<UltraCanvasLabel>& label,
@@ -2151,7 +2154,15 @@ namespace {
                 "Not shown yet: " + std::to_string(waiting) + " waiting, " +
                 std::to_string(memory.inFlightEntries) + " being made, " +
                 std::to_string(memory.failedEntries) +
-                " could not be made (the tile keeps its type icon).");
+                " could not be made (the tile keeps its type icon)." +
+                // A job running this long is what holds up a whole folder;
+                // naming it is how the culprit is found.
+                (memory.longestJobSeconds >= 10
+                         ? " Slowest job: \"" + memory.longestJobPath +
+                           "\", running for " +
+                           std::to_string(memory.longestJobSeconds) + " s (" +
+                           std::to_string(memory.workerCount) + " workers)."
+                         : std::string()));
     }
 
     // A switch in the window's text size, laid out like the page's other

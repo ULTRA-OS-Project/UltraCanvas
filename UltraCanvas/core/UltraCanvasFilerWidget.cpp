@@ -2751,12 +2751,13 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::StatEntryForPath(const std::string& path,
                                                   FilerEntry& e) const {
         std::error_code ec;
-        fs::file_status st = fs::symlink_status(path, ec);
+        const fs::path native = PathFromUtf8(path);
+        fs::file_status st = fs::symlink_status(native, ec);
         if (ec || !fs::exists(st)) return false;
-        e.name = PathToUtf8(PathFromUtf8(path).filename());
+        e.name = PathToUtf8(native.filename());
         e.path = path;
         e.isSymlink = fs::is_symlink(st);
-        e.isDirectory = fs::is_directory(path, ec) && !ec;
+        e.isDirectory = fs::is_directory(native, ec) && !ec;
         // Dot names plus the platform's own notion of hidden (the attribute
         // bit on Windows, UF_HIDDEN on macOS) - so NTUSER.DAT and the
         // profile-folder compatibility junctions filter like dot files do.
@@ -10341,6 +10342,15 @@ namespace UltraCanvas {
         // a moment is longer than the microseconds an immediate retry takes.
         constexpr uint8_t kUnreadableMaxAttempts = 4;
         constexpr auto kUnreadableRetryDelay = std::chrono::milliseconds(300);
+        // A job that has kept a worker this long is taken to be stuck - a
+        // video in a cloud folder being downloaded in full before its first
+        // frame can be read, a file on a drive that stopped answering, a
+        // shell call that never returns. Nothing can interrupt it, but with
+        // every worker on such a job no other thumbnail in any folder was
+        // made again for the rest of the session; so for each stuck job one
+        // more worker is started, up to kThumbExtraWorkersMax.
+        constexpr auto kThumbJobStuckAfter = std::chrono::seconds(20);
+        constexpr unsigned kThumbExtraWorkersMax = 8;
 
         // ===== FOLDER CONTENT PREVIEWS =====
         // Below this icon edge a picture inside a folder is a smudge: the
@@ -10883,13 +10893,39 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::StartThumbnailWorkersLocked() {
-        if (!thumbWorkers.empty() || thumbShutdown) return;
-        unsigned hw = std::thread::hardware_concurrency();
-        unsigned count = std::min(4u, std::max(1u, hw / 2));
-        thumbWorkers.reserve(count);
-        for (unsigned i = 0; i < count; ++i) {
+        if (thumbShutdown) return;
+        if (thumbWorkers.empty()) {
+            unsigned hw = std::thread::hardware_concurrency();
+            thumbWorkerBase = std::min(4u, std::max(1u, hw / 2));
+            thumbWorkers.reserve(thumbWorkerBase + kThumbExtraWorkersMax);
+            for (unsigned i = 0; i < thumbWorkerBase; ++i)
+                thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
+            return;
+        }
+        // Watchdog: one more worker for every job that has run past
+        // kThumbJobStuckAfter, so the stuck ones no longer hold up the rest.
+        const auto now = std::chrono::steady_clock::now();
+        unsigned stuck = 0;
+        const std::string* stuckKey = nullptr;
+        for (const auto& [key, started] : thumbJobsStarted) {
+            if (now - started < kThumbJobStuckAfter) continue;
+            ++stuck;
+            stuckKey = &key;
+        }
+        const unsigned target =
+                thumbWorkerBase + std::min(stuck, kThumbExtraWorkersMax);
+        while (thumbWorkers.size() < target) {
+            debugOutput << "UltraCanvasFilerWidget: a thumbnail job has run for "
+                        << "over 20 s (" << (stuckKey ? *stuckKey : std::string())
+                        << "); starting another worker" << std::endl;
             thumbWorkers.emplace_back([this]() { ThumbnailWorkerMain(); });
         }
+    }
+
+    void UltraCanvasFilerWidget::NoteThumbJobLocked(const std::string& key,
+                                                    bool running) {
+        if (running) thumbJobsStarted[key] = std::chrono::steady_clock::now();
+        else thumbJobsStarted.erase(key);
     }
 
     void UltraCanvasFilerWidget::StopThumbnailWorkers() {
@@ -11007,6 +11043,17 @@ namespace UltraCanvas {
         st.hotBudget = kHotThumbBudgetBytes;
         std::lock_guard<std::mutex> lk(thumbMutex);
         st.inFlightEntries = thumbPathsInFlight.size();
+        st.workerCount = thumbWorkers.size();
+        const auto now = std::chrono::steady_clock::now();
+        for (const auto& [key, started] : thumbJobsStarted) {
+            const int secs = static_cast<int>(
+                    std::chrono::duration_cast<std::chrono::seconds>(
+                            now - started).count());
+            if (st.longestJobPath.empty() || secs > st.longestJobSeconds) {
+                st.longestJobSeconds = secs;
+                st.longestJobPath = key.substr(key.find(':') + 1);
+            }
+        }
         for (const auto& kv : thumbSlots) {
             if (kv.second.state == ThumbState::Pending) {
                 ++st.pendingEntries;
@@ -11095,6 +11142,7 @@ namespace UltraCanvas {
                         req = std::move(*qit);
                         thumbQueue.erase(qit);
                         thumbPathsInFlight.insert(req.path);
+                        NoteThumbJobLocked("image:" + req.path, true);
                         break;
                     }
                     // Nothing to decode: read a text-content preview instead.
@@ -11118,6 +11166,7 @@ namespace UltraCanvas {
                             continue;
                         }
                         textPathsInFlight.insert(*tit);
+                        NoteThumbJobLocked("text:" + *tit, true);
                         textGeneration = thumbGeneration;
                         textPath = std::move(*tit);
                         textQueue.erase(tit);
@@ -11138,6 +11187,7 @@ namespace UltraCanvas {
                             continue;
                         }
                         peekPathsInFlight.insert(*pit);
+                        NoteThumbJobLocked("folder:" + *pit, true);
                         peekGeneration = thumbGeneration;
                         peekPath = std::move(*pit);
                         peekQueue.erase(pit);
@@ -11162,6 +11212,7 @@ namespace UltraCanvas {
                 {
                     std::lock_guard<std::mutex> lk(thumbMutex);
                     peekPathsInFlight.erase(peekPath);
+                    NoteThumbJobLocked("folder:" + peekPath, false);
                     if (thumbShutdown) return;
                     if (peekGeneration == thumbGeneration) {
                         FolderPeekSlot& slot = peekSlots[peekPath];
@@ -11192,6 +11243,7 @@ namespace UltraCanvas {
                 {
                     std::lock_guard<std::mutex> lk(thumbMutex);
                     textPathsInFlight.erase(textPath);
+                    NoteThumbJobLocked("text:" + textPath, false);
                     if (thumbShutdown) return;
                     if (textGeneration == thumbGeneration) {
                         TextPreviewSlot& slot = textSlots[textPath];
@@ -11390,6 +11442,7 @@ namespace UltraCanvas {
             {
                 std::lock_guard<std::mutex> lk(thumbMutex);
                 thumbPathsInFlight.erase(req.path);
+                NoteThumbJobLocked("image:" + req.path, false);
                 if (thumbShutdown) return;
                 if (req.generation == thumbGeneration) {
                     const std::string key = ThumbSlotKey(req.path, req.w, req.h,
@@ -12846,7 +12899,10 @@ namespace UltraCanvas {
             FolderStats st;
             st.ready = true;
             std::error_code ec;
-            if (fs::is_directory(path, ec)) {
+            // UTF-8 in, UTF-16 on Windows: a plain string here goes through
+            // the ANSI code page and misses a Thai or CJK folder.
+            const fs::path walkRoot = PathFromUtf8(path);
+            if (fs::is_directory(walkRoot, ec)) {
                 // Guarded although every call takes an error_code: the
                 // iterator still builds a path object per entry, and a
                 // subtree the walk cannot represent must end the count, not
@@ -12854,7 +12910,7 @@ namespace UltraCanvas {
                 RunGuarded("folder size walk", path, [&]() {
                 uint64_t visited = 0;
                 for (fs::recursive_directory_iterator rit(
-                         path, fs::directory_options::skip_permission_denied, ec), end;
+                         walkRoot, fs::directory_options::skip_permission_denied, ec), end;
                      rit != end; rit.increment(ec)) {
                     if (ec) break;
                     if (visited++ >= kDirSizeEntryCap) { st.capped = true; break; }
@@ -13077,7 +13133,8 @@ namespace UltraCanvas {
         // Only a real directory is watched: an archive interior or a file list
         // has no folder whose changes would mean anything here.
         const std::string target =
-                (folderWatchEnabled && !path.empty() && fs::is_directory(path, ec))
+                (folderWatchEnabled && !path.empty() &&
+                 fs::is_directory(PathFromUtf8(path), ec))
                         ? path : std::string();
 
         // The operating system can usually tell us the moment something

@@ -11,3 +11,19 @@
   (being made now) and `failedEntries` (given up on) - so a host can tell
   "still on its way" from "the workers are stuck" from "the files would not
   decode".
+- **A stuck thumbnail job no longer stops every thumbnail after it.** The
+  Filer widget makes thumbnails on two to four background workers, and a job
+  that never finishes - a video in a cloud folder downloaded in full before
+  its first frame can be read, a drive that stopped answering, a shell call
+  that never returns - kept its worker for good. With every worker on such a
+  job, no thumbnail was made again in any folder for the rest of the session,
+  not even the ones waiting in the disk cache. A job running past 20 s now
+  gets one more worker started beside it (up to eight extra), and the log
+  names it. `GetThumbnailCacheStats()` reports `workerCount` and the longest
+  running job (`longestJobPath`, `longestJobSeconds`).
+- **Three more Filer paths and the image file reader are UTF-8 on Windows.**
+  The folder-size walk, `StatEntryForPath`, the folder watcher's directory
+  test and `UCImageRaster::LoadFileToMemory` handed a UTF-8 string straight
+  to `std::filesystem` / `std::ifstream`, which on Windows goes through the
+  ANSI code page and misses a Thai or CJK name. They go through
+  `PathFromUtf8` now.

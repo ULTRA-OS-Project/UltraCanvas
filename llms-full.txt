@@ -21003,7 +21003,11 @@ waiting for a worker (`pendingEntries`, which includes the ones being made),
 being made right now (`inFlightEntries`) and given up on (`failedEntries`).
 Waiting tiles that never move while nothing is being made mean the workers are
 stuck; failed ones mean the files would not decode, and the log names each of
-them. Rescanning the folder or changing the view drops everything.
+them. `workerCount`, `longestJobPath` and `longestJobSeconds` name the job
+that has kept a worker busy longest: one running past 20 s is taken to be
+stuck, and another worker is started beside it (up to eight extra), so a
+single file that never finishes cannot stop every other thumbnail. Rescanning
+the folder or changing the view drops everything.
 
 ### Thumbnails between runs
 

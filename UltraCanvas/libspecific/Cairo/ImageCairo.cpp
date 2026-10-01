@@ -236,7 +236,9 @@ namespace UltraCanvas {
             ownData = false;
         }
         try {
-            std::ifstream file(imagePath, std::ios::binary | std::ios::ate);
+            // UTF-8 path: opened as UTF-16 on Windows, where a plain string
+            // goes through the ANSI code page and misses non-ASCII names.
+            std::ifstream file(PathFromUtf8(imagePath), std::ios::binary | std::ios::ate);
             std::streamsize fileSize = file.tellg();
             file.seekg(0);
             imgDataPtr = (uint8_t *)malloc(fileSize);

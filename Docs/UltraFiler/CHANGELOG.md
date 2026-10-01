@@ -9,8 +9,19 @@
   counts the thumbnails of the display in front that are waiting, being made,
   and could not be made, so a folder that stays on type icons can be told
   apart: still working, stuck, or files that would not decode (the log then
-  names each file). (Framework side: `Docs/UltraCanvas/changelog.d/`
-  `filer-failed-thumbnail-row-height.md`.)
+  names each file). When one job has been running for 10 s or more, the line
+  also names that file and how long it has run.
+- **Thumbnails no longer stop for good behind one stuck file.** A file that
+  never finished - typically a video in a OneDrive folder that is downloaded
+  before its first frame can be read - held a background worker forever, and
+  once all of them were held, no folder got a thumbnail again until UltraFiler
+  was restarted. After 20 s another worker takes over the rest.
+- **The Cache page reads plainly.** "In memory, previews: nothing of 96 MB"
+  now reads "empty (room for 96 MB)", and a filled cache "120 thumbnails,
+  3.1 MB (room for 96 MB)".
+- **Folder sizes and image files with Thai, CJK or other non-ASCII names**
+  are read correctly on Windows. (Framework side:
+  `Docs/UltraCanvas/changelog.d/filer-failed-thumbnail-row-height.md`.)
 #### 2026-09-30 *1.62.0*
 - **The last four questions join the new dialog.** Renaming onto a name that
   is taken shows both entries side by side and asks *Replace* (red) /
