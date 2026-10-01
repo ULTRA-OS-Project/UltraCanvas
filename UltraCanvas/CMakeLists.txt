@@ -1144,6 +1144,33 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     message(STATUS "  NSSpellChecker: available (native macOS spell backend)")
 endif()
 
+# A missing Hunspell is only a STATUS line while a native backend covers for
+# it. With no backend at all the library still builds, but every spell-check
+# feature is silently off - the service reports zero dictionaries, the
+# runtime names its backend "Hunspell (not compiled in)", and
+# TextAreaSpellCheckTest skips - which has cost a reader a detour before.
+# That deserves a WARNING naming the package to install.
+set(_uc_spell_backend_available ${HUNSPELL_FOUND})
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ENCHANT_FOUND)
+    set(_uc_spell_backend_available TRUE)
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows" AND ULTRACANVAS_HAVE_SPELLCHECK_API)
+    set(_uc_spell_backend_available TRUE)
+elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+    set(_uc_spell_backend_available TRUE)
+endif()
+if(NOT _uc_spell_backend_available)
+    message(WARNING
+        "No spell-check backend: Hunspell was not found and this platform has no "
+        "native backend to fall back on. The library builds, but spell checking "
+        "is off (zero dictionaries, backend \"Hunspell (not compiled in)\") and "
+        "TextAreaSpellCheckTest skips. Install Hunspell and a dictionary - "
+        "Debian/Ubuntu: libhunspell-dev hunspell-en-us; Fedora: hunspell-devel "
+        "hunspell-en; macOS: brew install hunspell; Windows: vcpkg install hunspell "
+        "- or on Linux enchant-2 (libenchant-2-dev), then re-run cmake. "
+        "See Docs/Dependencies.md.")
+endif()
+unset(_uc_spell_backend_available)
+
 # Include headers (for IDE support)
 file(GLOB ULTRACANVAS_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
