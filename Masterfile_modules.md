@@ -605,6 +605,61 @@ the backing implementation can be replaced without affecting callers.
   zoom and pan over a dark lightbox; this is the general one.
   See `Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md`.
 
+- **UltraCanvasDesktopShell** (`UltraCanvasDesktopShell.h`) — the running
+  desktop as a shell sees it: the windows other applications have open and
+  which is active, the virtual desktops, the installed applications a launcher
+  lists, a screenshot, the live state of the devices an info panel shows, and
+  the counts an application publishes for the desktop (UltraMail's unread
+  total). The module the ULTRA OS desktop (`Apps/UltraDesktop`) is built on,
+  so any application gets the same window list and the same virtual-desktop
+  switch. Reports what is *happening* (a window opened, the microphone in
+  use) and acts on windows, never on devices - which is what separates it
+  from **UltraCanvasHardwareInfo** (describes the machine; this module reads
+  its network, USB and Bluetooth lists) and **IODeviceManager** (operates
+  peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
+  (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` behind the internal
+  `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. Public surface:
+  - `ListWindows` (`DesktopWindowInfo`: id, title, WM class, icon file
+    resolved through the icon themes, desktop, pid, active, minimized,
+    skipTaskbar), `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`,
+    `CloseWindow` (through the window manager, never kill).
+  - `GetVirtualDesktopCount` / `GetCurrentVirtualDesktop` /
+    `SetCurrentVirtualDesktop` / `SetVirtualDesktopCount` /
+    `MoveWindowToVirtualDesktop`.
+  - `GetScreenSize`, `ReserveScreenEdges` (a window's strips along the
+    screen's edges, `_NET_WM_STRUT_PARTIAL`, so maximised windows stop short
+    of a desktop's bars), `CaptureScreen` (PNG), `DefaultScreenshotPath`
+    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
+  - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
+    speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
+    USB device count, battery, keyboard layout, plus `warnings`.
+  - `ListApplications` (menu-visible desktop entries, user overrides system,
+    icons resolved), `LaunchApplication`, `LaunchProgram` / `FindProgram`
+    (next to this executable first, then `PATH`).
+  - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
+    `NoticesDirectory` - one atomically written JSON file per application
+    under `$XDG_RUNTIME_DIR/ultraos/notices`.
+  - `UltraCanvasDesktopShellMonitor` - `Start(onChanged)` / `Stop()` (joins),
+    `IsRunning`, `IsNative`: window list, active window and desktop changes,
+    reported on the monitor's thread.
+  See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+
+- **UltraCanvasWaveSeparator** (`UltraCanvasWaveSeparator.h`) — the S-curve
+  between two groups on one bar; one group's colour up to the curve, the next
+  group's after it. `SetColors`, `SetFlipped`, `SetVerticalBar`, `SetLength`,
+  `CreateWaveSeparator`. See `Docs/UltraCanvas/UltraCanvasWaveSeparator.md`.
+
+- **UltraCanvasToolbar item badges, reordering and scrolling**
+  (`UltraCanvasToolbar.h`, 1.5.0) — `SetItemBadge` / `SetItemBadgeCount` /
+  `SetItemBadgeDot` / `ClearItemBadge` / `GetItemBadge` anchor an
+  `UltraCanvasBadge` to an item; `EnableItemReordering` lets the user drag an
+  item along the bar (`onItemReordered(from, to)` on release) and `MoveItem` /
+  `GetItemIndex` / `GetItemOrder` / `GetItems` do the same from code;
+  `ToolbarOverflowMode::Scroll` keeps items at their size and scrolls a full
+  bar with the mouse wheel. `WindowType::Desktop` (`UltraCanvasWindow.h`) is
+  the screen-sized window at the bottom of the stack a desktop draws into.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.
@@ -742,6 +797,15 @@ the backing implementation can be replaced without affecting callers.
     GPL-2.0-or-later and this framework is MIT — so the renderer pipes a
     rasterised page through GutenPrint's own `rastertogutenprint` program and
     sends back what it gets, the same way UltraWin runs QEMU and Wine.
+  - **Driverless network devices** need no driver and no platform code, so
+    each is one file in `core/IODeviceManager/` serving Linux, macOS and
+    Windows: **eSCL** scanners (`...ScannerESCL.cpp`) and **IPP** printers -
+    IPP Everywhere, AirPrint, Mopria (`...PrinterIPP.cpp`). Both are found
+    over DNS-SD through UltraNet's mDNS plugin, or named in
+    `ULTRACANVAS_ESCL_SCANNERS` / `ULTRACANVAS_IPP_PRINTERS`. The IPP renderer
+    sends a document the printer renders as it is and draws text and images
+    as PWG raster otherwise; the encoding (`...PrinterIPPProtocol.h`) and the
+    page format (`...PrinterPwgRaster.h`) are pure and unit-tested.
   See `Docs/Modules/IODeviceManager/Architecture.md`.
 
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
@@ -886,6 +950,30 @@ engine; these classes hold the pixels being edited and hand them to it.
   `SetAntialias`, and text outlines `AppendTextPath` /
   `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
   the Cairo backend implements all of it. Tested by `RenderContextTest`.
+- **UltraCanvasAccessibility** (`UltraCanvasAccessibility.h`) — the
+  platform-neutral accessibility layer: `AccessibleRole`,
+  `IAccessibleText` (text, caret, selection, character bounds, attributes,
+  `GetTextAtOffset` by character/word/line/sentence/paragraph),
+  `AccessibilityEvent`, and `UltraCanvasAccessibility::AddListener` /
+  `RemoveListener` / `HasListeners` / `Notify` / `TextUnitAt` with UTF-8
+  character-offset helpers. Elements answer through
+  `UltraCanvasUIElement::GetAccessibleRole` / `GetAccessibleName` /
+  `GetAccessibleTextInterface`; `UltraCanvasRichTextEdit` implements it.
+  No platform bridge (AT-SPI, UIA) yet. See
+  `Docs/UltraCanvas/UltraCanvasAccessibility.md`.
+- **UltraCanvasPdfSurface** (`UltraCanvasPdfSurface.h`) — draws PDF pages
+  through the ordinary `IRenderContext` (units: points), as vectors with
+  selectable text: `CreateFile(utf8Path, w, h, error)` /
+  `CreateInMemory(w, h, error)`, `GetContext`, `NextPage`, `SetMetadata`,
+  `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
+  work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
+- **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent)`,
+  `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
+  dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+- **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
+  extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
+  one line.
 
 ### **2. UltraAI**
 
@@ -961,10 +1049,12 @@ future.
   Google Drive
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
-- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync` (each also with an
-  `UltraNetDnsOptions` - the name servers to ask for that call only, and the
-  deadline), `UltraNet_DnsReverseLookup`, `UltraNet_DnsClearCache`,
-  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`
+- `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
+  (each also with an `UltraNetDnsOptions` - the name servers to ask for that
+  call only, and the deadline; the reverse lookup without servers is the
+  system resolver under the deadline), `UltraNet_DnsClearCache`,
+  `UltraNet_DnsSetServers`, `UltraNet_DnsParseServer`, `UltraNet_DnsReverseName`,
+  `UltraNet_DnsReverseNameToAddress`
 - `UltraNet_CreateSession`, `UltraNet_SessionHttpGet`, `UltraNet_SessionHttpPost`
 - `UltraNet_ParseUrl`, `UltraNet_BuildUrl`, `UltraNet_UrlEncode`,
   `UltraNet_UrlDecode`
@@ -1690,3 +1780,81 @@ Rules: every blocking call returns `NetworkMonitorResult`; `std::optional`
 for anything a backend may not report, so "0" and "not reported" are never
 confused; a backend counts and reports what it could not see rather than
 leaving it out; platform code only under `OS/<Platform>/`.
+
+### **16. VideoFX**
+
+Video editing and conversion — probing media, pulling frames, and a timeline
+of segments that is trimmed, sped up, filtered, fitted to one size and rate,
+joined and encoded to a file. Sources under `VideoFX/{include,core,tools}`,
+target `VideoFX`, header `<VideoFX/VideoFX.h>`, `namespace VideoFX`; see
+`Docs/Modules/VideoFX/README.md`.
+
+**Not the player.** Playback, recording and thumbnails for the UI stay in the
+core (`UltraCanvasVideoPlayer`, `UltraCanvasVideoRecorder`,
+`UltraCanvasVideoThumbnail`, on the platform media frameworks). VideoFX is
+headless and has no UltraCanvas UI dependency; applications call it from a
+worker thread or through `VideoFXExportJob`.
+
+Like UltraNet and VirtualFS it encapsulates an open-source engine (FFmpeg:
+libavformat, libavcodec, libavfilter, libswscale) behind its own types; no
+FFmpeg header or type appears in a public header. FFmpeg is optional at build
+time: without it the same API links from a stub whose calls return
+`VideoFXResult::NotAvailable`. Supported FFmpeg range: 4.4 to 8.x.
+
+**Implementation status:** Stages 1 and 2 — probe, frames, the segment
+timeline with 26 effect types, speed, joins, 30 transitions between segments
+(picture via xfade, sound cross-faded), text and image overlays on the output
+frame, still images with sub-pixel pan and zoom and one-call slideshows,
+GIF / audio-only outputs, lossless cut, background job, `videofx`
+command-line tool. Planned: picture-in-picture, keyframed parameters,
+multi-track audio mixing, hardware encoders beyond the platform ones picked
+automatically (VideoToolbox, Media Foundation), project files.
+
+- Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
+  `VideoFXStreamKind`, `VideoFXFrame`, `VideoFXEffect`, `VideoFXEffectType`,
+  `VideoFXSegment`, `VideoFXSourceKind`, `VideoFXExportSettings`,
+  `VideoFXContainer`, `VideoFXVideoCodec`, `VideoFXAudioCodec`,
+  `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
+  `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
+  `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
+  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`
+- Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
+  `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
+  `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
+  `VideoFX_IsTextOverlayAvailable`, `VideoFX_SetDefaultFontPath`,
+  `VideoFX_GetDefaultFontPath`, `VideoFX_SetVerboseLogging`
+- Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
+  `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`
+- Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
+  `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
+  `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
+  `VideoFX_GenerateTestClip`
+- Effects (`VideoFXEffect::`): `Brightness`, `Contrast`, `Saturation`,
+  `Gamma`, `Exposure`, `Hue`, `Temperature`, `Grayscale`, `Sepia`, `Invert`,
+  `LUT`, `Blur`, `Sharpen`, `Denoise`, `Vignette`, `Rotate90`, `Rotate180`,
+  `Rotate270`, `Rotate`, `FlipHorizontal`, `FlipVertical`, `Crop`, `FadeIn`,
+  `FadeOut`, `Volume`, `NormalizeAudio`
+- Segments (`VideoFXSegment::`): `FromFile`, `FromImage`, `FromImageFrame`,
+  `SolidColor`, `TestPattern`; fields `effects`, `overlays`, `transitionIn`,
+  `motion`, `imageFit`, `image`
+- Image motion (`VideoFXImageMotion::`): `Make`, `Custom`
+- Transitions (`VideoFXTransition::`): `Make`, `Crossfade`; 30
+  `VideoFXTransitionType`s (blends, wipes, pushes, shapes)
+- Overlays (`VideoFXOverlay::`): `Text`, `Image`, `ImageFromFrame`
+- Presets (`VideoFXExportSettings::`): `WebMP4`, `WebM`, `AnimatedGif`,
+  `MasterProRes`, `AudioOnlyMP3`, `AudioOnlyWAV`
+- Internal: `VideoFX::Internal::{FormatNumber, EscapeFilterValue,
+  AutoRotateChain, AtempoChain, BuildVideoEffectChain, BuildAudioEffectChain,
+  TransitionName, ValidateOverlay, OverlayEnableExpr, OverlayAlphaExpr,
+  OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
+  ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
+  ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
+  ContainViewRect, MakeBlurredBackdrop, RenderView}`
+  (the last eight in `core/VideoFXKenBurns.h`, no FFmpeg dependency)
+  (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
+  shims in `core/VideoFXBackend.h`
+
+Rules: every blocking call returns `VideoFXResult`, with the reason in
+`VideoFX_GetLastError()`; effects are typed values, never filter strings from
+the caller; numbers in filter text are dot-decimal whatever the locale; paths
+are UTF-8; a failed or cancelled export leaves no partial file behind.

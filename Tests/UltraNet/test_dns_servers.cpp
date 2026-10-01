@@ -123,6 +123,32 @@ TEST(dns_reverse_name_for_v4_and_v6) {
     REQUIRE(name.empty());
 }
 
+TEST(dns_reverse_name_to_address_is_the_inverse) {
+    std::string address;
+    REQUIRE(UltraNet_DnsReverseNameToAddress("4.4.8.8.in-addr.arpa", address));
+    REQUIRE_EQ(address, std::string("8.8.4.4"));
+    REQUIRE(UltraNet_DnsReverseNameToAddress("1.2.0.192.IN-ADDR.ARPA.", address));   // case, trailing dot
+    REQUIRE_EQ(address, std::string("192.0.2.1"));
+    REQUIRE(UltraNet_DnsReverseNameToAddress(
+        "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa", address));
+    REQUIRE_EQ(address, std::string("2001:db8::1"));
+    // Round trip for both families.
+    for (const char* ip : {"127.0.0.1", "203.0.113.9", "::1", "2001:db8:85a3::8a2e:370:7334"}) {
+        std::string name, back;
+        REQUIRE(UltraNet_DnsReverseName(ip, name));
+        REQUIRE(UltraNet_DnsReverseNameToAddress(name, back));
+        REQUIRE_EQ(back, std::string(ip));
+    }
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("example.com", address));
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("4.4.8.in-addr.arpa", address));       // three labels
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("4.4.8.256.in-addr.arpa", address));   // out of range
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("4..8.8.in-addr.arpa", address));      // empty label
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("g.0.0.0.ip6.arpa", address));         // not hex, not 32
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("in-addr.arpa", address));
+    REQUIRE(!UltraNet_DnsReverseNameToAddress("", address));
+    REQUIRE(address.empty());
+}
+
 TEST(dns_resolve_rejects_a_bad_server_entry_before_asking_anyone) {
     UltraNet_Initialize();
     UltraNetDnsOptions options;
@@ -188,4 +214,229 @@ TEST(dns_resolve_ptr_with_a_server_asks_for_the_reverse_name) {
     REQUIRE(outcome.has_value());
     REQUIRE(!outcome->ok);
     REQUIRE_EQ(outcome->count, std::size_t(0));
+}
+
+// The reverse lookup takes the same options: the deadline, and servers.
+
+namespace {
+
+std::optional<Outcome> ReverseWithin(const std::string& ip, const UltraNetDnsOptions& options,
+                                     std::chrono::milliseconds budget) {
+    auto slot = std::make_shared<std::promise<Outcome>>();
+    std::future<Outcome> answer = slot->get_future();
+    std::thread([ip, options, slot]() {
+        std::string host;
+        const UltraNetResult r = UltraNet_DnsReverseLookup(ip, host, options);
+        slot->set_value(Outcome{bool(r), r.code, host.empty() ? 0u : 1u, r.message});
+    }).detach();
+    if (answer.wait_for(budget) != std::future_status::ready) return std::nullopt;
+    return answer.get();
+}
+
+} // namespace
+
+TEST(dns_reverse_lookup_with_options_validates_before_asking_anyone) {
+    UltraNet_Initialize();
+    UltraNetDnsOptions options;
+    options.timeoutMs = 500;
+    std::string host = "stale";
+    UltraNetResult r = UltraNet_DnsReverseLookup("", host, options);
+    REQUIRE(!r);
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
+    REQUIRE(host.empty());
+    r = UltraNet_DnsReverseLookup("example.com", host, options);
+    REQUIRE(!r);
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
+    // A bad server entry is refused the same way the forward lookup refuses it.
+    options.servers = {"dns.quad9.net"};
+    r = UltraNet_DnsReverseLookup("127.0.0.1", host, options);
+    REQUIRE(!r);
+    REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
+    REQUIRE(r.message.find("dns.quad9.net") != std::string::npos);
+    REQUIRE(host.empty());
+}
+
+TEST(dns_reverse_lookup_at_a_silent_server_comes_back_at_its_deadline) {
+    UltraNet_Initialize();
+    SilentServer silent;
+    if (!silent.Ok()) SKIP("cannot open a loopback UDP socket");
+    UltraNetDnsOptions options;
+    options.servers   = {silent.entry};
+    options.timeoutMs = 1500;
+    const auto started = std::chrono::steady_clock::now();
+    const auto outcome = ReverseWithin("127.0.0.1", options, 30s);
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+    REQUIRE(outcome.has_value());
+    REQUIRE(!outcome->ok);
+    REQUIRE_EQ(outcome->count, std::size_t(0));   // no host name came back
+    REQUIRE(elapsed < 20s);
+#ifdef ULTRANET_HAS_CARES
+    REQUIRE_EQ(outcome->code, UltraNetResultCode::Timeout);
+    REQUIRE(elapsed < 10s);
+#else
+    REQUIRE(outcome->code == UltraNetResultCode::Timeout
+            || outcome->code == UltraNetResultCode::Unsupported);
+#endif
+}
+
+TEST(dns_reverse_lookup_without_servers_answers_under_its_deadline) {
+    UltraNet_Initialize();
+    // The system resolver, the hosts file included, under a deadline: the
+    // loopback's name comes back or the host has no reverse record - either
+    // way the call returns, and well inside the watchdog.
+    UltraNetDnsOptions options;
+    options.timeoutMs = 5000;
+    const auto outcome = ReverseWithin("127.0.0.1", options, 30s);
+    REQUIRE(outcome.has_value());
+    if (!outcome->ok) {
+        REQUIRE(outcome->code == UltraNetResultCode::HostNotFound
+                || outcome->code == UltraNetResultCode::Timeout);
+        SKIP("127.0.0.1 has no reverse record on this host");
+    }
+    REQUIRE_EQ(outcome->count, std::size_t(1));
+    // The int overload is the same call.
+    std::string host;
+    const UltraNetResult same = UltraNet_DnsReverseLookup("127.0.0.1", host, 5000);
+    REQUIRE(same);
+    REQUIRE(!host.empty());
+}
+
+// The asynchronous PTR lookup is the reverse lookup on a thread of its own.
+
+namespace {
+
+struct AsyncAnswer {
+    std::mutex               mu;
+    std::condition_variable  cv;
+    bool                     done = false;
+    std::vector<std::string> names;
+};
+
+// Starts the lookup and hands back the shared answer slot; the callback only
+// ever touches the slot, never a test frame that may have returned.
+std::shared_ptr<AsyncAnswer> StartAsyncPtr(const std::string& ip, const UltraNetDnsOptions& options,
+                                           UltraNetResult& started) {
+    auto answer = std::make_shared<AsyncAnswer>();
+    started = UltraNet_DnsResolveAsync(
+        ip, UltraNetDnsType::PTR,
+        [answer](const std::vector<std::string>& names) {
+            {
+                std::lock_guard<std::mutex> lk(answer->mu);
+                answer->names = names;
+                answer->done  = true;
+            }
+            answer->cv.notify_all();
+        },
+        options);
+    return answer;
+}
+
+bool WaitAnswered(AsyncAnswer& answer, std::chrono::milliseconds budget) {
+    std::unique_lock<std::mutex> lk(answer.mu);
+    return answer.cv.wait_for(lk, budget, [&] { return answer.done; });
+}
+
+} // namespace
+
+TEST(dns_resolve_async_ptr_rejects_a_non_address_before_any_thread) {
+    UltraNet_Initialize();
+    UltraNetDnsOptions options;
+    options.timeoutMs = 500;
+    UltraNetResult started;
+    auto answer = StartAsyncPtr("example.com", options, started);
+    REQUIRE(!started);
+    REQUIRE_EQ(started.code, UltraNetResultCode::InvalidUrl);
+    auto empty = StartAsyncPtr("", options, started);
+    REQUIRE(!started);
+    REQUIRE_EQ(started.code, UltraNetResultCode::InvalidUrl);
+    // Refused synchronously: no thread, so no callback, now or later.
+    REQUIRE(!WaitAnswered(*answer, 200ms));
+    REQUIRE(!WaitAnswered(*empty, 0ms));
+}
+
+TEST(dns_resolve_async_ptr_at_a_silent_server_answers_empty_at_its_deadline) {
+    UltraNet_Initialize();
+    SilentServer silent;
+    if (!silent.Ok()) SKIP("cannot open a loopback UDP socket");
+    UltraNetDnsOptions options;
+    options.servers   = {silent.entry};
+    options.timeoutMs = 1500;
+    UltraNetResult started;
+    const auto begun  = std::chrono::steady_clock::now();
+    auto answer = StartAsyncPtr("127.0.0.1", options, started);
+    REQUIRE(started);
+    REQUIRE(WaitAnswered(*answer, 30s));
+    const auto elapsed = std::chrono::steady_clock::now() - begun;
+    REQUIRE(answer->names.empty());   // the deadline, never a host name
+    REQUIRE(elapsed < 20s);
+#ifdef ULTRANET_HAS_CARES
+    REQUIRE(elapsed < 10s);
+#endif
+}
+
+TEST(dns_resolve_async_ptr_without_servers_matches_the_sync_lookup) {
+    UltraNet_Initialize();
+    UltraNetDnsOptions options;
+    options.timeoutMs = 5000;
+    UltraNetResult started;
+    auto answer = StartAsyncPtr("127.0.0.1", options, started);
+    REQUIRE(started);
+    REQUIRE(WaitAnswered(*answer, 30s));
+    // The same call, synchronously: the two agree on whether the loopback has
+    // a name here, and on what it is.
+    std::string host;
+    const UltraNetResult sync = UltraNet_DnsReverseLookup("127.0.0.1", host, options);
+    if (!sync) {
+        REQUIRE(answer->names.empty());
+        SKIP("127.0.0.1 has no reverse record on this host");
+    }
+    REQUIRE_EQ(answer->names.size(), std::size_t(1));
+    REQUIRE_EQ(answer->names.front(), host);
+}
+
+TEST(dns_resolve_async_burst_answers_within_one_deadline) {
+    UltraNet_Initialize();
+    SilentServer silent;
+    if (!silent.Ok()) SKIP("cannot open a loopback UDP socket");
+    // Many more lookups than the worker pool has threads, all at a server
+    // that never answers. The deadline counts from the call: the first
+    // lookups wait it out, the rest find their budget spent when a worker
+    // picks them up and are answered empty at once - so the whole burst is
+    // back after one deadline, not one per pool-full.
+    UltraNetDnsOptions options;
+    options.servers   = {silent.entry};
+    options.timeoutMs = 1500;
+    const int burst = 64;
+
+    struct Tally {
+        std::mutex              mu;
+        std::condition_variable cv;
+        int                     answered = 0;
+        int                     named    = 0;
+    };
+    auto tally = std::make_shared<Tally>();
+    const auto begun = std::chrono::steady_clock::now();
+    for (int i = 0; i < burst; ++i) {
+        const UltraNetResult started = UltraNet_DnsResolveAsync(
+            "127.0.0.1", UltraNetDnsType::PTR,
+            [tally](const std::vector<std::string>& names) {
+                {
+                    std::lock_guard<std::mutex> lk(tally->mu);
+                    ++tally->answered;
+                    if (!names.empty()) ++tally->named;
+                }
+                tally->cv.notify_all();
+            },
+            options);
+        REQUIRE(started);
+    }
+    std::unique_lock<std::mutex> lk(tally->mu);
+    const bool all = tally->cv.wait_for(lk, 30s, [&] { return tally->answered == burst; });
+    const auto elapsed = std::chrono::steady_clock::now() - begun;
+    REQUIRE(all);
+    REQUIRE_EQ(tally->named, 0);
+    // One deadline (1.5 s; the libresolv fallback rounds it up to 2 s) plus
+    // scheduling; a pool that restarted the clock per job would need eight
+    // rounds or more.
+    REQUIRE(elapsed < 8s);
 }

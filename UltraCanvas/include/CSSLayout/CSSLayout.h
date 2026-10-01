@@ -1,7 +1,7 @@
 // include/CSSLayout/CSSLayout.h
 // CSS-compliant layout engine: type model and Element base class.
-// Version: 4.8.1
-// Last Modified: 2026-06-01
+// Version: 4.9.0 - DisplayType::Table (HTML automatic table layout)
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -122,7 +122,12 @@ namespace UltraCanvas {
 
         // ---- Box / display ----
 
-        enum class DisplayType    { Block, Flex, Grid, Inline, InlineBlock, NoDisplay };
+        // Table: HTML's automatic table layout (CSS 2.1 §17.5.2.2). Cells are the
+        // container's children, placed with SetGridRowColSimplified (row/column
+        // + spans); columns share one width across every row, sized from the
+        // cells' min-/max-content and their explicit px / % widths. Spacing
+        // (border-spacing) comes from SetTableSpacing.
+        enum class DisplayType    { Block, Flex, Grid, Inline, InlineBlock, NoDisplay, Table };
         enum class BoxSizing      { ContentBox, BorderBox };
         // AbsoluteUI: positioned exactly like Absolute (against the padding-box),
         // but ALSO contributes to the container's measured size during Measure
@@ -298,6 +303,12 @@ namespace UltraCanvas {
             Layout& SetGridGap(float gap);
             Layout& SetGridGap(float row, float column);
             Layout& SetGridAutoFlow(GridAutoFlow f);
+
+            // ---- Table configuration (display: table; data is a GridLayout
+            // whose gaps are the border-spacing, applied between cells AND
+            // around the outer ones, as in CSS) ----
+            Layout& SetTable();
+            Layout& SetTableSpacing(float horizontal, float vertical);
             Layout& SetDisplay(DisplayType dt);
             Layout& Show();
             Layout& Hide();

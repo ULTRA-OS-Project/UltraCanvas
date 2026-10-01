@@ -652,7 +652,9 @@ namespace UltraCanvas {
         dep("No additional third party", "(core only)", "(core only)", "(core only)");
 
         header("IODeviceManager module");
-        dep("Scanners / cameras / print", "SANE (GPL 2)\nV4L2\nCUPS (Apache 2)", "ICA\nAVFoundation", "WIA\nTWAIN\nMedia Foundation");
+        dep("Printers", "CUPS (Apache 2) (optional)\nIPP (network, via UltraNet)", "CUPS (Apache 2) (optional)\nIPP (network, via UltraNet)", "Win32 (winspool, gdi32)\n(print spooler)\nIPP (network, via UltraNet)");
+        dep("Scanners", "SANE (GPL 2) (optional)\neSCL (network, via UltraNet)", "eSCL (network, via UltraNet)\nICA (planned)", "eSCL (network, via UltraNet)\nWIA, TWAIN (planned)");
+        dep("Cameras", "V4L2", "– (AVFoundation planned)", "– (Media Foundation planned)");
         dep("Hot-plug watching", "libudev (LGPL 2.1) (optional)", "– (no watcher yet)", "– (no watcher yet)");
 
         header("PixelFX module");
@@ -698,7 +700,8 @@ namespace UltraCanvas {
         dep("VM tier: RemoteApp client", "FreeRDP (Apache 2)\n(optional, linked)", "– (module not built)", "– (module not built)");
 
         header("VideoFX module");
-        dep("Video effects / transcode", "FFmpeg (LGPL 2.1)", "FFmpeg (LGPL 2.1)", "FFmpeg (LGPL 2.1)");
+        dep("Probe, effects, encode, mux", "FFmpeg (LGPL 2.1) (optional)\n(GPL when built --enable-gpl)",
+            "FFmpeg (LGPL 2.1) (optional)", "FFmpeg (LGPL 2.1) (optional)");
 
         header("VirtualFS module");
         dep("Archive formats", "libarchive (BSD 2)", "libarchive (BSD 2)", "libarchive (BSD 2)");

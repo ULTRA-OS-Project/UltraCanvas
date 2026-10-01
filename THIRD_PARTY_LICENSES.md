@@ -169,6 +169,22 @@ same font and is covered by the same license.
 
 ---
 
+## Noto Sans Myanmar (demo font)
+
+- **Used by:** the DemoApp's *WYSIWYG — Chinese, Arabic & Myanmar* page, which
+  registers it for its own process with `RegisterFontFile()` so the Myanmar
+  sample renders on systems without a Myanmar font. The framework does not
+  load it.
+- **Upstream:** The Noto Project — https://github.com/notofonts/myanmar
+  (version 2.107, the static Regular and Bold instances).
+- **Vendored at:** `media/textsamples/fonts/NotoSansMyanmar-Regular.ttf` and
+  `media/textsamples/fonts/NotoSansMyanmar-Bold.ttf`
+- **License:** SIL Open Font License 1.1 — Copyright 2022 The Noto Project
+  Authors.
+- **Full text:** `media/textsamples/fonts/OFL.txt`
+
+---
+
 ## yyjson (JSON engine)
 
 - **Used by:** the DataFormats section's `UltraCanvasJSON` module
@@ -244,6 +260,27 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
 - **Patents:** AAC's core patents have expired, but a distributor shipping an
   AAC decoder should still confirm the position for their jurisdiction and
   product. UltraCanvas ships no AAC codec of its own.
+
+---
+
+## FFmpeg (optional — VideoFX's engine; LGPL or GPL depending on the build)
+
+- **Used by:** the VideoFX module (`VideoFX/core/`), for probing, decoding,
+  filtering, encoding and muxing. Nothing else in the framework links it.
+- **Linked, not vendored:** the system libraries are used (libavformat,
+  libavcodec, libavfilter, libavutil, libswscale — `libav*-dev` /
+  `brew install ffmpeg` / `mingw-w64-x86_64-ffmpeg`), found by pkg-config.
+  No FFmpeg source is carried in this repository and no FFmpeg type appears
+  in a VideoFX public header. Without it VideoFX builds from a stub.
+- **License:** LGPL-2.1-or-later — https://ffmpeg.org/legal.html. **But** a
+  build configured with `--enable-gpl` is GPL-2.0-or-later as a whole, and
+  so is a program linking it. The Debian / Ubuntu packages are built that way
+  (they include libx264 / libx265), as is Homebrew's. A distributor who needs
+  VideoFX under the LGPL must link an LGPL-only FFmpeg build, which then
+  writes H.264 only through a platform encoder (VideoToolbox, Media
+  Foundation) or OpenH264.
+- **Patents:** H.264, H.265 and AAC encoding may need patent licences in
+  some jurisdictions; VP8, VP9, AV1, Opus, Vorbis and FLAC are royalty-free.
 
 ---
 

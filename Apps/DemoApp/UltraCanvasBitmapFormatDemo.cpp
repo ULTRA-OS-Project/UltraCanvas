@@ -1,7 +1,7 @@
 // UltraCanvasBitmapFormatInfo.h
 // Comprehensive bitmap format specifications and capabilities
-// Version: 1.0.0
-// Last Modified: 2025-06-24
+// Version: 1.0.1
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -31,12 +31,12 @@ namespace UltraCanvas {
     // folder; Escape closes it. The instance is allocated once and never
     // destroyed: its destructor closes a window, which must not run during
     // static teardown after the windowing system has shut down.
-    void ShowFullSizeImageViewer(const std::string& imagePath) {
-        if (imagePath.empty()) return;
+    void ShowInMediaViewer(const std::string& path) {
+        if (path.empty()) return;
         static auto* viewerWindow = new UltraCanvasMediaViewerWindow();
         UltraCanvasWindowBase* host = nullptr;
         if (auto* app = UltraCanvasApplication::GetInstance()) host = app->GetFocusedWindow();
-        viewerWindow->Show(imagePath, host);
+        viewerWindow->Show(path, host);
     }
 
 // ===== FORMAT INFO STRUCTURES =====
@@ -825,7 +825,7 @@ namespace UltraCanvas {
         // one to a crosshair, which does not read as "click to open".
         image->SetClickable(true);   // also sets the hand cursor
         image->onClick = [sampleImagePath]() {
-            ShowFullSizeImageViewer(sampleImagePath);
+            ShowInMediaViewer(sampleImagePath);
         };
         imageFrame->AddChild(image);
 
@@ -851,7 +851,7 @@ namespace UltraCanvas {
         viewBtn->SetCornerRadius(6);
         viewBtn->SetMouseCursor(UCMouseCursor::Hand);
         viewBtn->onClick = [sampleImagePath]() {
-            ShowFullSizeImageViewer(sampleImagePath);
+            ShowInMediaViewer(sampleImagePath);
         };
         imageCard->AddChild(viewBtn);
 

@@ -100,4 +100,21 @@ IODeviceResult PrintTextWithDialog(const std::string& documentName,
                                    const std::string& textContent,
                                    UltraCanvasWindowBase* parent = nullptr);
 
+// The same for a document already rendered - a PDF above all, which is how a
+// formatted document keeps its fonts, pictures and pages on paper. `mimeType`
+// says what `data` is ("application/pdf"); the renderer chosen for the
+// printer must accept it.
+IOPrintJob MakeDocumentPrintJob(const IOPrintDialogChoice& chosen,
+                                const std::string& documentName,
+                                const std::vector<uint8_t>& data,
+                                const std::string& mimeType);
+IODeviceResult PrintDocumentWithSettings(const IOPrintDialogChoice& chosen,
+                                         const std::string& documentName,
+                                         const std::vector<uint8_t>& data,
+                                         const std::string& mimeType);
+IODeviceResult PrintDocumentWithDialog(const std::string& documentName,
+                                       const std::vector<uint8_t>& data,
+                                       const std::string& mimeType,
+                                       UltraCanvasWindowBase* parent = nullptr);
+
 }  // namespace UltraCanvas

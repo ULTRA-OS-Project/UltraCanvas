@@ -3,10 +3,11 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.5.0 - schema 8: the account's signature (SetAccountSignature)
 // Version: 0.4.0 - schema 4: message_security, the per-message verdict of the
 //                  content scan (its own table, so an envelope upsert cannot
 //                  reset a scan that has already run)
-// Last Modified: 2026-09-19
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -49,8 +50,14 @@ public:
     const std::string& Connection() const { return connection_; }
 
     // ---- Accounts ----------------------------------------------------------
+    // Everything but the signature: re-adding an address, or saving its
+    // servers, keeps the signature it has.
     UltraDbResult UpsertAccount(const Account& account);
     UltraDbResult ListAccounts(std::vector<Account>& out) const;
+    // Replaces the account's signature. Succeeds without effect for an
+    // unknown account id.
+    UltraDbResult SetAccountSignature(const std::string& accountId,
+                                      const Signature& signature);
     UltraDbResult RemoveAccount(const std::string& accountId);
 
     // ---- Folders -----------------------------------------------------------

@@ -15,10 +15,14 @@ SyncOutcome SyncService::SyncNow(const std::string& accountId, const std::string
 
     SyncOutcome inbox = engine_.SyncMessages(accountId, "INBOX", serverUrl, options,
                                              /*fetchBodies=*/true, onProgress);
-    // Combine the stats regardless of the inbox outcome's ok flag.
+    // Combine the stats regardless of the inbox outcome's ok flag. A failed
+    // inbox fetch keeps its reason, code and connection details: the app
+    // decides from the code whether the failure is worth an alert.
     SyncOutcome out;
     out.ok = folders.ok && inbox.ok;
     out.message = inbox.ok ? "" : inbox.message;
+    out.code = inbox.code;
+    out.diagnostics = inbox.diagnostics;
     out.stats.folders  = folders.stats.folders;
     out.stats.messages = inbox.stats.messages;
     out.stats.bodies   = inbox.stats.bodies;

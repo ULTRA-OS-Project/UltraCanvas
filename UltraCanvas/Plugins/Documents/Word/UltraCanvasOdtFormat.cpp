@@ -23,6 +23,7 @@
 #include <vector>
 #include <cstring>
 #include <map>
+#include <set>
 #include <locale>
 #include <iomanip>
 #include <sstream>
@@ -54,9 +55,11 @@ struct OdtTextProps {
     std::string parentStyleName;
     std::string masterPageName;                     // style:master-page-name (paragraph styles)
     RichTextAlign align = RichTextAlign::Default;   // paragraph styles only
+    int rightToLeft = -1;                           // style:writing-mode rl-*: 1, lr-*: 0, unset: -1
     bool bottomBorder = false;                      // paragraph styles only
     bool pageBreakBefore = false;                   // paragraph styles only
     int headingLevel = 0;                           // derived from heading style names
+    std::string characterStyle;                     // the named text style a span has (model id)
     // Paragraph geometry (paragraph styles only). NaN = not set by this style.
     float marginLeft = kUnsetLength;
     float marginRight = kUnsetLength;
@@ -109,11 +112,42 @@ struct OdtTextProps {
         if (fontSizePt <= 0) fontSizePt = parent.fontSizePt;
         if (masterPageName.empty()) masterPageName = parent.masterPageName;
         if (align == RichTextAlign::Default) align = parent.align;
+        if (rightToLeft < 0) rightToLeft = parent.rightToLeft;
         bottomBorder = bottomBorder || parent.bottomBorder;
         pageBreakBefore = pageBreakBefore || parent.pageBreakBefore;
         if (headingLevel == 0) headingLevel = parent.headingLevel;
+        if (characterStyle.empty()) characterStyle = parent.characterStyle;
     }
 };
+
+// ODF style names and the model's style ids: Writer's default paragraph
+// style "Standard" is the model's "Normal", and "Heading_20_3" its "Heading3",
+// so a document moved between ODT and DOCX keeps one set of names.
+std::string OdfNameToStyleId(const std::string& name) {
+    if (name == "Standard") return "Normal";
+    const std::string prefix = "Heading_20_";
+    if (name.size() == prefix.size() + 1 && name.compare(0, prefix.size(), prefix) == 0
+        && name.back() >= '1' && name.back() <= '9') {
+        return "Heading" + name.substr(prefix.size());
+    }
+    return name;
+}
+
+std::string StyleIdToOdfName(const std::string& id) {
+    if (id == "Normal") return "Standard";
+    if (id.size() == 8 && id.compare(0, 7, "Heading") == 0 && id.back() >= '1' && id.back() <= '9') {
+        return "Heading_20_" + id.substr(7);
+    }
+    // An NCName: spaces spelt as ODF does, anything else outside it dropped.
+    std::string out;
+    for (char c : id) {
+        if (c == ' ') out += "_20_";
+        else if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.'
+                 || static_cast<unsigned char>(c) >= 0x80) out += c;
+    }
+    if (out.empty() || std::isdigit(static_cast<unsigned char>(out[0])) || out[0] == '-' || out[0] == '.') out = "S" + out;
+    return out;
+}
 
 // Matches "Heading_20_3" / "Heading 3" / "heading3" style names (ODF encodes
 // a space in style names as "_20_"). Returns 1..6 or 0.
@@ -193,6 +227,7 @@ public:
                 CollectFontFaces(stylesRoot->FirstChildElement("office:font-face-decls"));
                 CollectDefaultStyle(stylesRoot->FirstChildElement("office:styles"));
                 CollectStyles(stylesRoot->FirstChildElement("office:styles"));
+                CollectNamedStyles(stylesRoot->FirstChildElement("office:styles"));
                 CollectStyles(stylesRoot->FirstChildElement("office:automatic-styles"));
                 CollectListStyles(stylesRoot->FirstChildElement("office:styles"));
                 CollectListStyles(stylesRoot->FirstChildElement("office:automatic-styles"));
@@ -257,7 +292,10 @@ public:
             doc_->pageFurniture = doc_->firstPageFurniture;
             doc_->firstPageFurniture = RichPageFurniture{};
         }
+        LoadTrackedChanges(text->FirstChildElement("text:tracked-changes"));
         ParseBlockContainer(text, 0, "");
+        ApplySections();
+        if (!doc_->notes.empty()) doc_->UpdateNoteMarks();
         LoadMetadata();
         return true;
     }
@@ -271,7 +309,72 @@ private:
     // not start a new page (ODF/CSS fragmentation applies to in-flow boxes),
     // so break emission is gated on this flag.
     bool inMainFlow_ = true;
+    bool inTableOfContents_ = false;           // paragraphs are contents entries
+    std::map<std::string, RichSectionSetup> sectionStyles_;   // section style -> columns
+    struct SectionRange { size_t start; size_t end; RichSectionSetup setup; };
+    std::vector<SectionRange> sectionRanges_;
+
+    // Sections in columns become the model's sections: one starting at the
+    // section's first block, and a single-column one after it.
+    void ApplySections() {
+        for (const SectionRange& range : sectionRanges_) {
+            RichSectionSetup setup = range.setup;
+            setup.newPage = false;
+            if (range.start == 0) doc_->firstSection = setup;
+            else {
+                doc_->blocks[range.start].sectionStart = true;
+                doc_->blocks[range.start].section = setup;
+            }
+            if (range.end < doc_->blocks.size() && !doc_->blocks[range.end].sectionStart) {
+                doc_->blocks[range.end].sectionStart = true;
+                doc_->blocks[range.end].section = RichSectionSetup{};
+            }
+        }
+    }
+
+    // A paragraph of a table of contents: its level (from a "Contents N"
+    // style, else its indent), and the page number after its tab made a page
+    // reference to the heading its link points at, so it keeps itself right.
+    void MakeContentsEntry(RichDocBlock& block, const std::string& styleName) {
+        int level = 0;
+        for (const std::string& candidate : {WordFormatInternal::ToLower(styleName),
+                                             WordFormatInternal::ToLower(ParentStyleName(styleName))}) {
+            if (candidate.find("contents") == std::string::npos && candidate.find("toc") == std::string::npos) continue;
+            const size_t digit = candidate.find_last_of("123456789");
+            if (digit != std::string::npos) { level = candidate[digit] - '0'; break; }
+        }
+        if (level <= 0) level = 1 + static_cast<int>(std::lround(std::max(0.0f, block.leftIndentPt) / 12.0f));
+        block.tocLevel = std::clamp(level, 1, 9);
+        std::string target;
+        for (const RichTextRun& run : block.runs) {
+            if (run.linkTarget.size() > 1 && run.linkTarget[0] == '#') target = run.linkTarget.substr(1);
+            if (run.field == RichTextRun::Field::PageReference) return;
+        }
+        if (target.empty() || block.runs.empty()) return;
+        RichTextRun& last = block.runs.back();
+        std::string digits = last.text;
+        const size_t tab = digits.find_last_of('\t');
+        std::string before;
+        if (tab != std::string::npos) {
+            before = digits.substr(0, tab + 1);
+            digits = digits.substr(tab + 1);
+        }
+        if (digits.empty() || digits.find_first_not_of("0123456789") != std::string::npos) return;
+        RichTextRun number = last;
+        number.text = digits;
+        number.field = RichTextRun::Field::PageReference;
+        number.fieldArgument = target;
+        number.linkTarget.clear();
+        number.lineBreakBefore = before.empty() && last.lineBreakBefore;
+        if (before.empty()) {
+            last = number;
+        } else {
+            last.text = before;
+            block.runs.push_back(number);
+        }
+    }
     std::map<std::string, OdtTextProps> styles_;
+    std::set<std::string> namedStyles_;          // ODF names of the office:styles styles
     // list style name -> (level -> ordered?)
     std::map<std::string, std::map<int, bool>> listStyles_;
     // list style name -> (level -> how its label reads)
@@ -286,6 +389,23 @@ private:
     // table-column style name -> column width in points
     std::map<std::string, float> columnWidths_;
     std::map<std::string, RichTableCell> cellStyles_;          // table-cell style -> borders, fill
+    // Graphic styles: how a frame wraps and where it sits. Empty = not stated
+    // (then the parent style's, then Writer's defaults).
+    struct GraphicPlacement {
+        std::string parent, wrap, runThrough, horizontalPos;
+    };
+    std::map<std::string, GraphicPlacement> graphicStyles_;
+    std::string GraphicAttribute(const std::string& styleName,
+                                 std::string GraphicPlacement::*field) const {
+        std::string name = styleName;
+        for (int depth = 0; depth < 8 && !name.empty(); ++depth) {
+            auto it = graphicStyles_.find(name);
+            if (it == graphicStyles_.end()) break;
+            if (!(it->second.*field).empty()) return it->second.*field;
+            name = it->second.parent;
+        }
+        return "";
+    }
     struct TablePlacement {
         float widthPt = 0.0f;
         float widthPercent = 0.0f;
@@ -348,7 +468,9 @@ private:
             else if (!lower.empty() && (std::isdigit(static_cast<unsigned char>(lower[0])) || lower[0] == '.')) {
                 width = ParseLengthPt(token);
             }
-            // solid, double, dotted, dashed, ...: drawn as a solid line.
+            else if (std::isalpha(static_cast<unsigned char>(lower[0]))) {
+                border.style = RichBorderStyleFromName(lower);   // solid, double, dotted, ...
+            }
         }
         if (!none) border.widthPt = width >= 0.0f ? width : (value.empty() ? 0.0f : 0.75f);
         if (border.widthPt <= 0.0f) border = RichBorder{};
@@ -513,6 +635,19 @@ private:
         if (!container) return;
         for (auto* style = container->FirstChildElement("style:style"); style;
              style = style->NextSiblingElement("style:style")) {
+            if (std::string(Attr(style, "style:family")) == "section") {
+                // A section's columns.
+                RichSectionSetup setup;
+                if (auto* sp = style->FirstChildElement("style:section-properties")) {
+                    if (auto* cols = sp->FirstChildElement("style:columns")) {
+                        setup.columns = std::clamp(cols->IntAttribute("fo:column-count", 1), 1, 9);
+                        const char* gap = Attr(cols, "fo:column-gap");
+                        if (gap && *gap) setup.columnGapPt = ParseLengthPt(gap);
+                    }
+                }
+                sectionStyles_[Attr(style, "style:name")] = setup;
+                continue;
+            }
             OdtTextProps props;
             props.parentStyleName = Attr(style, "style:parent-style-name");
             props.masterPageName = Attr(style, "style:master-page-name");
@@ -546,6 +681,9 @@ private:
                 else if (align == "end" || align == "right") props.align = RichTextAlign::Right;
                 else if (align == "justify") props.align = RichTextAlign::Justify;
                 else if (align == "start" || align == "left") props.align = RichTextAlign::Left;
+                const std::string mode = Attr(pp, "style:writing-mode");
+                if (mode.rfind("rl", 0) == 0) props.rightToLeft = 1;
+                else if (mode.rfind("lr", 0) == 0) props.rightToLeft = 0;
                 ReadParagraphGeometry(pp, props);
                 std::string border = Attr(pp, "fo:border-bottom");
                 props.bottomBorder = !border.empty() && border != "none";
@@ -571,6 +709,14 @@ private:
             if (auto* cellProps = style->FirstChildElement("style:table-cell-properties")) {
                 if (!name.empty()) cellStyles_[name] = ReadCellFormat(cellProps);
             }
+            if (auto* graphic = style->FirstChildElement("style:graphic-properties")) {
+                GraphicPlacement placement;
+                placement.parent = Attr(style, "style:parent-style-name");
+                placement.wrap = Attr(graphic, "style:wrap");
+                placement.runThrough = Attr(graphic, "style:run-through");
+                placement.horizontalPos = Attr(graphic, "style:horizontal-pos");
+                if (!name.empty()) graphicStyles_[name] = placement;
+            }
             if (auto* cp = style->FirstChildElement("style:table-column-properties")) {
                 // Absolute width wins; a relative "1234*" width is still a
                 // valid proportion among the table's columns.
@@ -584,6 +730,72 @@ private:
             }
             if (!name.empty()) styles_[name] = props;
         }
+    }
+
+    // The document's named styles (office:styles, not automatic ones) as
+    // model styles. CollectStyles has read their properties already.
+    void CollectNamedStyles(tinyxml2::XMLElement* container) {
+        if (!container) return;
+        for (auto* style = container->FirstChildElement("style:style"); style;
+             style = style->NextSiblingElement("style:style")) {
+            const std::string family = Attr(style, "style:family");
+            if (family != "paragraph" && family != "text") continue;
+            const std::string name = Attr(style, "style:name");
+            auto found = styles_.find(name);
+            if (name.empty() || found == styles_.end()) continue;
+            const OdtTextProps& own = found->second;
+            RichStyle named;
+            named.id = OdfNameToStyleId(name);
+            const std::string display = Attr(style, "style:display-name");
+            named.name = display.empty() ? named.id : display;
+            if (name == "Standard" && display.empty()) named.name = "Normal";
+            named.kind = family == "text" ? RichStyle::Kind::Character : RichStyle::Kind::Paragraph;
+            const std::string parent = Attr(style, "style:parent-style-name");
+            if (!parent.empty()) named.basedOn = OdfNameToStyleId(parent);
+            const std::string next = Attr(style, "style:next-style-name");
+            if (!next.empty() && family == "paragraph") named.nextStyle = OdfNameToStyleId(next);
+            RichStyleCharacter& c = named.character;
+            if (own.bold >= 0) c.bold = own.bold == 1;
+            if (own.italic >= 0) c.italic = own.italic == 1;
+            if (own.underline >= 0) c.underline = own.underline == 1;
+            if (own.strike >= 0) c.strikethrough = own.strike == 1;
+            if (!own.color.empty()) c.color = own.color;
+            if (!own.fontFamily.empty()) c.fontFamily = own.fontFamily;
+            if (own.fontSizePt > 0.0f) c.fontSizePt = own.fontSizePt;
+            if (named.kind == RichStyle::Kind::Paragraph) {
+                RichStyleParagraph& p = named.paragraph;
+                if (own.align != RichTextAlign::Default) p.align = own.align;
+                if (!std::isnan(own.marginLeft)) p.leftIndentPt = own.marginLeft;
+                if (!std::isnan(own.marginRight)) p.rightIndentPt = own.marginRight;
+                if (!std::isnan(own.textIndent)) p.firstLineIndentPt = own.textIndent;
+                if (!std::isnan(own.marginTop)) p.spaceBeforePt = own.marginTop;
+                if (!std::isnan(own.marginBottom)) p.spaceAfterPt = own.marginBottom;
+                if (!std::isnan(own.lineSpacing) && own.lineSpacing > 0.0f) p.lineSpacing = own.lineSpacing;
+                const int outline = style->IntAttribute("style:default-outline-level", 0);
+                const int level = outline > 0 ? outline : own.headingLevel;
+                if (level >= 1 && level <= 6) p.headingLevel = level;
+            }
+            namedStyles_.insert(name);
+            doc_->styles.push_back(std::move(named));
+        }
+    }
+
+    std::string ParentStyleName(const std::string& styleName) const {
+        auto found = styles_.find(styleName);
+        return found != styles_.end() ? found->second.parentStyleName : "";
+    }
+
+    // The named style a paragraph or span has: its own style when that is a
+    // named one, else the named style its automatic style is based on. As a
+    // model id; "" for none.
+    std::string NamedStyleFor(const std::string& styleName) const {
+        if (styleName.empty()) return "";
+        if (namedStyles_.count(styleName)) return OdfNameToStyleId(styleName);
+        auto found = styles_.find(styleName);
+        if (found != styles_.end() && namedStyles_.count(found->second.parentStyleName)) {
+            return OdfNameToStyleId(found->second.parentStyleName);
+        }
+        return "";
     }
 
     void CollectListStyles(tinyxml2::XMLElement* container) {
@@ -654,6 +866,7 @@ private:
     }
 
     void ApplyPropsToRun(RichTextRun& run, const OdtTextProps& props) const {
+        run.characterStyleId = props.characterStyle;
         if (props.bold == 1) run.bold = true;
         if (props.italic == 1) run.italic = true;
         if (props.underline == 1) run.underline = true;
@@ -692,6 +905,7 @@ private:
         std::vector<tinyxml2::XMLElement*> textBoxes;
         bool pendingLineBreak = false;
         bool endsInCollapsibleSpace = false;   // last text ended in XML whitespace
+        std::vector<std::string> bookmarks;    // text:bookmark(-start) names met
     };
 
     // ODF white-space handling (ODF 1.3 part 3, 6.1.2) for character data
@@ -734,7 +948,105 @@ private:
         ApplyPropsToRun(run, props);
         run.lineBreakBefore = ctx.pendingLineBreak;
         ctx.pendingLineBreak = false;
+        run.commentIds = ActiveCommentIds();
+        if (activeInsertion_ >= 0) {
+            run.change = RichTextRun::Change::Inserted;
+            run.revision = activeInsertion_;
+        }
         ctx.runs.push_back(std::move(run));
+    }
+
+    // Tracked changes: text:tracked-changes lists each changed region -
+    // who and when, and for a deletion the deleted text; the body marks
+    // insertions with change-start / change-end and deletions with a point.
+    struct ChangedRegion {
+        bool insertion = false;
+        bool deletion = false;
+        int revision = -1;
+        std::string deletedText;
+    };
+    std::map<std::string, ChangedRegion> changedRegions_;
+    int activeInsertion_ = -1;             // revision of the insertion being read
+
+    void LoadTrackedChanges(tinyxml2::XMLElement* changes) {
+        if (!changes) return;
+        for (auto* region = changes->FirstChildElement("text:changed-region"); region;
+             region = region->NextSiblingElement("text:changed-region")) {
+            std::string id = Attr(region, "text:id");
+            if (id.empty()) id = Attr(region, "xml:id");
+            ChangedRegion out;
+            tinyxml2::XMLElement* change = region->FirstChildElement("text:insertion");
+            out.insertion = change != nullptr;
+            if (!change) {
+                change = region->FirstChildElement("text:deletion");
+                out.deletion = change != nullptr;
+            }
+            if (!change) continue;             // format changes: not kept
+            std::string author, date;
+            if (auto* info = change->FirstChildElement("office:change-info")) {
+                if (auto* creator = info->FirstChildElement("dc:creator")) author = ElementText(creator);
+                if (auto* when = info->FirstChildElement("dc:date")) date = ElementText(when);
+            }
+            out.revision = -1;
+            for (size_t i = 0; i < doc_->revisions.size(); i++) {
+                if (doc_->revisions[i].author == author && doc_->revisions[i].date == date) out.revision = static_cast<int>(i);
+            }
+            if (out.revision < 0) {
+                doc_->revisions.push_back({author, date});
+                out.revision = static_cast<int>(doc_->revisions.size()) - 1;
+            }
+            if (out.deletion) {
+                bool first = true;
+                for (auto* p = change->FirstChildElement(); p; p = p->NextSiblingElement()) {
+                    const std::string tag = p->Name() ? p->Name() : "";
+                    if (tag != "text:p" && tag != "text:h") continue;
+                    if (!first) out.deletedText += " ";
+                    std::string line = ElementText(p);
+                    for (size_t at; (at = line.find(kKeptWhitespace)) != std::string::npos;) line.replace(at, 3, " ");
+                    out.deletedText += line;
+                    first = false;
+                }
+            }
+            changedRegions_[id] = std::move(out);
+        }
+    }
+
+    // Comments (office:annotation): those whose range the text being read is
+    // inside, by office:name; a comment without a name marks only the text
+    // right after it.
+    std::vector<std::pair<std::string, int>> activeAnnotations_;
+    int pointAnnotation_ = -1;
+
+    std::vector<int> ActiveCommentIds() {
+        std::vector<int> ids;
+        for (const auto& [name, index] : activeAnnotations_) ids.push_back(index);
+        if (pointAnnotation_ >= 0) {
+            ids.push_back(pointAnnotation_);
+            pointAnnotation_ = -1;
+        }
+        return ids;
+    }
+
+    void ReadAnnotation(tinyxml2::XMLElement* annotation) {
+        RichComment comment;
+        if (auto* creator = annotation->FirstChildElement("dc:creator")) comment.author = ElementText(creator);
+        if (auto* date = annotation->FirstChildElement("dc:date")) comment.date = ElementText(date);
+        comment.resolved = std::string(Attr(annotation, "loext:resolved")) == "true";
+        bool first = true;
+        for (auto* p = annotation->FirstChildElement(); p; p = p->NextSiblingElement()) {
+            const std::string tag = p->Name() ? p->Name() : "";
+            if (tag != "text:p" && tag != "text:h") continue;
+            if (!first) comment.text += "\n";
+            std::string line = ElementText(p);
+            for (size_t at; (at = line.find(kKeptWhitespace)) != std::string::npos;) line.replace(at, 3, " ");
+            comment.text += line;
+            first = false;
+        }
+        doc_->comments.push_back(std::move(comment));
+        const int index = static_cast<int>(doc_->comments.size()) - 1;
+        const std::string name = Attr(annotation, "office:name");
+        if (name.empty()) pointAnnotation_ = index;
+        else activeAnnotations_.emplace_back(name, index);
     }
 
     // Embedded formula objects live as sub-documents inside the package
@@ -777,16 +1089,42 @@ private:
         const float heightPt = ParseLengthPt(Attr(frame, "svg:height"));
         const std::string altText = Attr(frame, "draw:name");
 
-        // text:anchor-type="as-char" is a picture anchored *in* the text, which
-        // belongs in the run stream. Every other anchoring (paragraph, page,
-        // frame) floats and stays a block of its own.
-        if (std::string(Attr(frame, "text:anchor-type")) == "as-char") {
+        // text:anchor-type="as-char" is a picture anchored *in* the text;
+        // "paragraph" and "char" anchor a floating one to its paragraph. Both
+        // belong in the run stream. A frame anchored to the page or to another
+        // frame has no paragraph to travel with and stays a block of its own.
+        const std::string anchorType = Attr(frame, "text:anchor-type");
+        if (anchorType == "as-char" || anchorType == "paragraph" || anchorType == "char") {
             RichTextRun run;
             run.text = RichTextRun::kObjectReplacement;
             run.mediaIndex = mediaIndex;
             run.imageWidthPt = widthPt;
             run.imageHeightPt = heightPt;
             run.imageAltText = altText;
+            if (anchorType != "as-char") {
+                const std::string style = Attr(frame, "draw:style-name");
+                const std::string wrap = GraphicAttribute(style, &GraphicPlacement::wrap);
+                if (wrap == "none") {
+                    run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+                } else if (wrap == "run-through") {
+                    run.imageWrap = GraphicAttribute(style, &GraphicPlacement::runThrough) == "background"
+                        ? RichTextRun::ImageWrap::BehindText : RichTextRun::ImageWrap::InFrontOfText;
+                } else {
+                    run.imageWrap = RichTextRun::ImageWrap::Square;   // parallel, left, right, dynamic, biggest
+                }
+                const std::string position = GraphicAttribute(style, &GraphicPlacement::horizontalPos);
+                if (position == "right" || position == "outside") {
+                    run.imageFloatAlign = RichTextAlign::Right;
+                } else if (position == "center") {
+                    run.imageFloatAlign = RichTextAlign::Center;
+                } else if (position == "from-left" || position == "from-inside") {
+                    run.imageFloatAlign = RichTextAlign::Default;
+                    run.imageOffsetXPt = std::max(0.0f, ParseLengthPt(Attr(frame, "svg:x")));
+                } else {
+                    run.imageFloatAlign = RichTextAlign::Left;
+                }
+                run.imageOffsetYPt = std::max(0.0f, ParseLengthPt(Attr(frame, "svg:y")));
+            }
             run.lineBreakBefore = ctx.pendingLineBreak;
             ctx.pendingLineBreak = false;
             ctx.runs.push_back(std::move(run));
@@ -827,7 +1165,9 @@ private:
             if (!elem) continue;
             std::string tag = elem->Name() ? elem->Name() : "";
             if (tag == "text:span") {
-                OdtTextProps spanProps = ResolveStyle(Attr(elem, "text:style-name"));
+                const std::string spanStyle = Attr(elem, "text:style-name");
+                OdtTextProps spanProps = ResolveStyle(spanStyle);
+                spanProps.characterStyle = NamedStyleFor(spanStyle);
                 spanProps.MergeParent(props);
                 ParseInlineNodes(elem, spanProps, linkTarget, ctx);
             } else if (tag == "text:a") {
@@ -852,22 +1192,83 @@ private:
                 }
             } else if (tag == "text:line-break") {
                 ctx.pendingLineBreak = true;
+            } else if (tag == "text:bookmark" || tag == "text:bookmark-start") {
+                const std::string name = Attr(elem, "text:name");
+                if (!name.empty()) ctx.bookmarks.push_back(name);
+            } else if (tag == "text:bookmark-end") {
+                // The bookmark is the paragraph's; where it ends is not kept.
+            } else if (tag == "text:sequence" || tag == "text:bookmark-ref") {
+                // A caption number, or a cross-reference to a bookmark's text
+                // or page.
+                std::string shown = ElementText(elem);
+                if (shown.empty()) shown = "1";
+                AppendRun(ctx, shown, props, linkTarget);
+                if (!ctx.runs.empty()) {
+                    RichTextRun& run = ctx.runs.back();
+                    if (tag == "text:sequence") {
+                        run.field = RichTextRun::Field::Sequence;
+                        run.fieldArgument = Attr(elem, "text:name");
+                    } else {
+                        run.field = std::string(Attr(elem, "text:reference-format")) == "page"
+                                  ? RichTextRun::Field::PageReference : RichTextRun::Field::Reference;
+                        run.fieldArgument = Attr(elem, "text:ref-name");
+                    }
+                }
             } else if (tag == "draw:frame") {
                 ParseFrame(elem, props, linkTarget, ctx);
             } else if (tag == "text:note") {
-                // Keep footnote content inline in parentheses so it is not lost.
+                // A footnote or endnote: its body's paragraphs become the
+                // note, the citation a reference run numbered once all are
+                // read.
+                RichNote note;
+                note.kind = std::string(Attr(elem, "text:note-class")) == "endnote"
+                          ? RichNote::Kind::Endnote : RichNote::Kind::Footnote;
                 if (auto* noteBody = elem->FirstChildElement("text:note-body")) {
-                    InlineContext noteCtx;
-                    for (auto* p = noteBody->FirstChildElement("text:p"); p;
-                         p = p->NextSiblingElement("text:p")) {
-                        ParseInlineNodes(p, props, linkTarget, noteCtx);
-                    }
-                    std::string noteText = UCRichDocument::ConcatenateRunText(noteCtx.runs);
-                    if (!noteText.empty()) {
-                        AppendRun(ctx, " (" + noteText + ")", props, linkTarget);
+                    const size_t start = doc_->blocks.size();
+                    const bool savedFlow = inMainFlow_;
+                    inMainFlow_ = false;
+                    ParseBlockContainer(noteBody, 0, "");
+                    inMainFlow_ = savedFlow;
+                    note.blocks.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                                       std::make_move_iterator(doc_->blocks.end()));
+                    doc_->blocks.resize(start);
+                }
+                if (note.blocks.empty()) note.blocks.emplace_back();
+                doc_->notes.push_back(std::move(note));
+                RichTextRun reference;
+                ApplyPropsToRun(reference, props);
+                reference.noteIndex = static_cast<int>(doc_->notes.size()) - 1;
+                reference.superscript = true;
+                reference.text = "*";
+                reference.lineBreakBefore = ctx.pendingLineBreak;
+                ctx.pendingLineBreak = false;
+                ctx.endsInCollapsibleSpace = false;
+                ctx.runs.push_back(std::move(reference));
+            } else if (tag == "text:change-start" || tag == "text:change-end" || tag == "text:change") {
+                auto region = changedRegions_.find(Attr(elem, "text:change-id"));
+                if (region != changedRegions_.end()) {
+                    if (tag == "text:change-start" && region->second.insertion) activeInsertion_ = region->second.revision;
+                    else if (tag == "text:change-end" && region->second.insertion) activeInsertion_ = -1;
+                    else if (tag == "text:change" && region->second.deletion && !region->second.deletedText.empty()) {
+                        // The deleted text, back where it was, marked deleted.
+                        const int saved = activeInsertion_;
+                        activeInsertion_ = -1;
+                        AppendRun(ctx, region->second.deletedText, props, linkTarget);
+                        activeInsertion_ = saved;
+                        if (!ctx.runs.empty()) {
+                            ctx.runs.back().change = RichTextRun::Change::Deleted;
+                            ctx.runs.back().revision = region->second.revision;
+                        }
                     }
                 }
-            } else if (tag == "text:soft-page-break" || tag == "office:annotation"
+            } else if (tag == "office:annotation") {
+                ReadAnnotation(elem);
+            } else if (tag == "office:annotation-end") {
+                const std::string name = Attr(elem, "office:name");
+                activeAnnotations_.erase(std::remove_if(activeAnnotations_.begin(), activeAnnotations_.end(),
+                                                        [&](const auto& a) { return a.first == name; }),
+                                         activeAnnotations_.end());
+            } else if (tag == "text:soft-page-break"
                        || tag == "text:tracked-changes" || tag == "text:sequence-decls") {
                 // Non-content markup.
             } else {
@@ -879,10 +1280,23 @@ private:
     }
 
     // Emits a paragraph-family block plus any images found within it.
+    // An element's text, nested spans included.
+    static std::string ElementText(tinyxml2::XMLElement* elem) {
+        std::string text;
+        for (auto* node = elem->FirstChild(); node; node = node->NextSibling()) {
+            if (auto* textNode = node->ToText()) text += textNode->Value() ? textNode->Value() : "";
+            else if (auto* child = node->ToElement()) text += ElementText(child);
+        }
+        return text;
+    }
+
     void EmitParagraphBlock(tinyxml2::XMLElement* elem, RichDocBlock block) {
         std::string styleName = Attr(elem, "text:style-name");
         OdtTextProps paraProps = ResolveStyle(styleName);
+        block.styleId = NamedStyleFor(styleName);
+        if (block.styleId == "Normal") block.styleId.clear();
         block.align = paraProps.align;
+        block.rightToLeft = paraProps.rightToLeft == 1;
         ApplyGeometry(block, paraProps);
 
         // Reverse-map well-known paragraph shapes: heading styles used on
@@ -915,6 +1329,8 @@ private:
         InlineContext ctx;
         ParseInlineNodes(elem, runBase, "", ctx);
         block.runs = std::move(ctx.runs);
+        block.bookmarks = std::move(ctx.bookmarks);
+        if (inTableOfContents_ && block.type == RichBlockType::Paragraph) MakeContentsEntry(block, styleName);
 
         bool pageBreak = inMainFlow_ && paraProps.pageBreakBefore;
         if (pageBreak) {
@@ -1238,7 +1654,15 @@ private:
                 // Sections switched off in the source document (template
                 // machinery like optional payment blocks) must not render.
                 if (std::string(Attr(elem, "text:display")) != "none") {
+                    // A section in columns starts a section of the model's,
+                    // and the text after it goes back to one column.
+                    auto columns = sectionStyles_.find(Attr(elem, "text:style-name"));
+                    const size_t start = doc_->blocks.size();
                     ParseBlockContainer(elem, listLevel, listStyleName);
+                    if (inMainFlow_ && columns != sectionStyles_.end() && columns->second.columns > 1
+                        && doc_->blocks.size() > start) {
+                        sectionRanges_.push_back({start, doc_->blocks.size(), columns->second});
+                    }
                 }
             } else if (tag == "draw:frame") {
                 // Page-anchored frame sitting directly in the text flow.
@@ -1280,10 +1704,19 @@ private:
                 // element) and the text it was last built into (index-body).
                 // The body is what the document shows.
                 if (auto* indexBody = elem->FirstChildElement("text:index-body")) {
+                    const bool saved = inTableOfContents_;
+                    inTableOfContents_ = tag == "text:table-of-content";
                     ParseBlockContainer(indexBody, listLevel, listStyleName);
+                    inTableOfContents_ = saved;
                 }
             } else if (tag == "text:index-title") {
                 ParseBlockContainer(elem, listLevel, listStyleName);
+            } else if (tag == "text:change-start" || tag == "text:change-end") {
+                // Whole inserted paragraphs.
+                auto region = changedRegions_.find(Attr(elem, "text:change-id"));
+                if (region != changedRegions_.end() && region->second.insertion) {
+                    activeInsertion_ = tag == "text:change-start" ? region->second.revision : -1;
+                }
             }
             // Everything else (sequence declarations, forms) is skipped.
         }
@@ -1502,7 +1935,16 @@ public:
         static const char* kMimeType = "application/vnd.oasis.opendocument.text";
         // Body and page furniture first: writing them collects the automatic
         // styles that content.xml and styles.xml each declare.
-        const std::string body = WriteBlocks(doc.blocks);
+        std::string body = WriteBlocks(doc.blocks);
+        if (!openComments_.empty()) {
+            // A comment running to the end of the document ends here.
+            std::ostringstream close;
+            close << "<text:p>";
+            for (int id : openComments_) close << "<office:annotation-end office:name=\"__Annotation__" << id << "\"/>";
+            close << "</text:p>\n";
+            openComments_.clear();
+            body += close.str();
+        }
         const std::string masterStyles = BuildMasterStyles();
         if (!zip_.AddEntry("mimetype", std::string(kMimeType), false)
             || !zip_.AddEntry("content.xml", BuildContentXml(body))
@@ -1529,6 +1971,8 @@ public:
 private:
     UCZipPackageWriter zip_;
     const UCRichDocument* doc_ = nullptr;
+    int noteCounter_ = 0;                 // text:note ids, ftn1 / edn2 ...
+    int tocCount_ = 0;
     const std::vector<RichDocBlock>* blocks_ = nullptr;   // the blocks being written (body or furniture)
     int tableCount_ = 0;
     std::string pageLayout_;                // style:page-layout for the master page
@@ -1536,6 +1980,8 @@ private:
     std::string columnStyles_;              // automatic table-column styles
     std::string geometryStyles_;            // automatic paragraph styles with geometry
     std::string cellStyles_;                // automatic table-cell styles (frames, fills)
+    std::string graphicStylesXml_;          // automatic graphic styles (floating pictures)
+    std::map<std::string, std::string> floatingFrameStyles_;   // wrap|through|position -> name
     std::string listStyles_;                // automatic list styles with the document's labels
     int customListStyleCount_ = 0;
     std::map<std::string, std::string> cellStyleNames_;       // properties -> style name
@@ -1612,46 +2058,195 @@ private:
             }
         }
         xml << "<draw:frame draw:name=\""
-            << EscapeXml(run.imageAltText.empty() ? std::string("Image") : run.imageAltText)
-            << "\" text:anchor-type=\"as-char\" svg:width=\"" << widthPt
-            << "pt\" svg:height=\"" << heightPt << "pt\">"
+            << EscapeXml(run.imageAltText.empty() ? std::string("Image") : run.imageAltText) << "\"";
+        if (run.IsFloatingImage()) {
+            xml << " draw:style-name=\"" << FloatingFrameStyle(run) << "\" text:anchor-type=\"paragraph\"";
+            if (run.imageFloatAlign == RichTextAlign::Default) xml << " svg:x=\"" << Pt(run.imageOffsetXPt) << "\"";
+            xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+        } else {
+            xml << " text:anchor-type=\"as-char\"";
+        }
+        xml << " svg:width=\"" << Pt(widthPt) << "\" svg:height=\"" << Pt(heightPt) << "\">"
             << "<draw:image xlink:href=\"" << PictureHref(run.mediaIndex)
             << "\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>"
             << "</draw:frame>";
     }
 
-    void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
-        for (const auto& run : runs) {
-            if (run.lineBreakBefore) xml << "<text:line-break/>";
-            if (run.IsInlineImage()) {
-                WriteInlineImage(xml, run);
-                continue;
+    // An automatic graphic style saying how a floating picture wraps and
+    // where it sits; one per distinct combination.
+    std::string FloatingFrameStyle(const RichTextRun& run) {
+        using Wrap = RichTextRun::ImageWrap;
+        std::string wrap = "parallel", runThrough = "foreground";
+        if (run.imageWrap == Wrap::TopAndBottom) wrap = "none";
+        else if (run.imageWrap == Wrap::BehindText) { wrap = "run-through"; runThrough = "background"; }
+        else if (run.imageWrap == Wrap::InFrontOfText) wrap = "run-through";
+        const std::string position = run.imageFloatAlign == RichTextAlign::Right ? "right"
+                                   : run.imageFloatAlign == RichTextAlign::Center ? "center"
+                                   : run.imageFloatAlign == RichTextAlign::Default ? "from-left" : "left";
+        const std::string key = wrap + "|" + runThrough + "|" + position;
+        auto found = floatingFrameStyles_.find(key);
+        if (found != floatingFrameStyles_.end()) return found->second;
+        const std::string name = "fr" + std::to_string(floatingFrameStyles_.size() + 1);
+        floatingFrameStyles_[key] = name;
+        graphicStylesXml_ += "<style:style style:name=\"" + name + "\" style:family=\"graphic\">"
+                             "<style:graphic-properties style:wrap=\"" + wrap + "\" style:run-through=\""
+                             + runThrough + "\" style:horizontal-pos=\"" + position
+                             + "\" style:horizontal-rel=\"paragraph\" style:vertical-pos=\"from-top\""
+                               " style:vertical-rel=\"paragraph\" fo:margin-left=\"0.32cm\""
+                               " fo:margin-right=\"0.32cm\"/></style:style>\n";
+        return name;
+    }
+
+    // A note is written where it is referenced: its citation and its body.
+    void WriteNote(std::ostringstream& xml, const RichTextRun& run) {
+        if (run.noteIndex >= static_cast<int>(doc_->notes.size())) return;
+        const RichNote& note = doc_->notes[static_cast<size_t>(run.noteIndex)];
+        const bool endnote = note.kind == RichNote::Kind::Endnote;
+        std::vector<RichDocBlock> blocks = note.blocks;
+        if (blocks.empty()) blocks.emplace_back();
+        xml << "<text:note text:id=\"" << (endnote ? "edn" : "ftn") << (++noteCounter_)
+            << "\" text:note-class=\"" << (endnote ? "endnote" : "footnote") << "\">"
+            << "<text:note-citation>" << OdtText(run.text) << "</text:note-citation><text:note-body>";
+        // The note's text is its own: comments open around the reference
+        // stay open past it.
+        std::vector<int> open;
+        open.swap(openComments_);
+        xml << WriteBlocks(blocks);
+        openComments_.swap(open);
+        xml << "</text:note-body></text:note>";
+    }
+
+    // Comments: an office:annotation where the text under it starts and an
+    // office:annotation-end where it stops, which may be paragraphs later.
+    std::vector<int> openComments_;
+    std::set<int> writtenComments_;
+
+    void UpdateOpenComments(std::ostringstream& xml, const std::vector<int>& wanted) {
+        for (size_t i = 0; i < openComments_.size();) {
+            const int id = openComments_[i];
+            if (std::find(wanted.begin(), wanted.end(), id) == wanted.end()) {
+                xml << "<office:annotation-end office:name=\"__Annotation__" << id << "\"/>";
+                openComments_.erase(openComments_.begin() + static_cast<std::ptrdiff_t>(i));
+            } else {
+                i++;
             }
-            std::string styleName = TextStyleNameFor(run);
-            std::string body = OdtText(run.text);
-            if (run.field == RichTextRun::Field::PageNumber) {
-                body = "<text:page-number text:select-page=\"current\">" + body + "</text:page-number>";
-            } else if (run.field == RichTextRun::Field::PageCount) {
-                body = "<text:page-count>" + body + "</text:page-count>";
-            }
-            if (!styleName.empty()) {
-                body = "<text:span text:style-name=\"" + styleName + "\">" + body + "</text:span>";
-            }
-            if (!run.linkTarget.empty()) {
-                body = "<text:a xlink:type=\"simple\" xlink:href=\""
-                     + EscapeXml(run.linkTarget) + "\">" + body + "</text:a>";
-            }
-            xml << body;
+        }
+        for (int id : wanted) {
+            if (id < 0 || id >= static_cast<int>(doc_->comments.size())) continue;
+            if (std::find(openComments_.begin(), openComments_.end(), id) != openComments_.end()) continue;
+            if (writtenComments_.count(id)) continue;
+            const RichComment& comment = doc_->comments[static_cast<size_t>(id)];
+            xml << "<office:annotation office:name=\"__Annotation__" << id << "\""
+                << (comment.resolved ? " loext:resolved=\"true\"" : "") << ">";
+            if (!comment.author.empty()) xml << "<dc:creator>" << EscapeXml(comment.author) << "</dc:creator>";
+            if (!comment.date.empty()) xml << "<dc:date>" << EscapeXml(comment.date) << "</dc:date>";
+            size_t start = 0;
+            do {
+                const size_t end = comment.text.find('\n', start);
+                const std::string line = comment.text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                xml << "<text:p>" << OdtText(line) << "</text:p>";
+                start = end == std::string::npos ? std::string::npos : end + 1;
+            } while (start != std::string::npos);
+            xml << "</office:annotation>";
+            openComments_.push_back(id);
+            writtenComments_.insert(id);
         }
     }
 
+    // Tracked changes: one changed region per changed run, listed at the top
+    // of the text.
+    std::ostringstream changedRegions_;
+    int changeCount_ = 0;
+
+    std::string ChangeInfo(const RichTextRun& run) const {
+        const RichRevision* revision = run.revision >= 0 && run.revision < static_cast<int>(doc_->revisions.size())
+                                     ? &doc_->revisions[static_cast<size_t>(run.revision)] : nullptr;
+        std::string info = "<office:change-info><dc:creator>" + EscapeXml(revision ? revision->author : "")
+                         + "</dc:creator><dc:date>"
+                         + EscapeXml(revision && !revision->date.empty() ? revision->date : "1970-01-01T00:00:00")
+                         + "</dc:date></office:change-info>";
+        return info;
+    }
+
+    void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
+        for (const auto& run : runs) {
+            UpdateOpenComments(xml, run.commentIds);
+            if (run.change == RichTextRun::Change::Deleted) {
+                // Deleted text lives in its region; the text has a point.
+                const std::string id = "ct" + std::to_string(++changeCount_);
+                changedRegions_ << "<text:changed-region text:id=\"" << id << "\"><text:deletion>" << ChangeInfo(run)
+                                << "<text:p>" << OdtText(run.text) << "</text:p></text:deletion></text:changed-region>";
+                if (run.lineBreakBefore) xml << "<text:line-break/>";
+                xml << "<text:change text:change-id=\"" << id << "\"/>";
+                continue;
+            }
+            std::string changeId;
+            if (run.change == RichTextRun::Change::Inserted) {
+                changeId = "ct" + std::to_string(++changeCount_);
+                changedRegions_ << "<text:changed-region text:id=\"" << changeId << "\"><text:insertion>"
+                                << ChangeInfo(run) << "</text:insertion></text:changed-region>";
+                xml << "<text:change-start text:change-id=\"" << changeId << "\"/>";
+            }
+            WriteRun(xml, run);
+            if (!changeId.empty()) xml << "<text:change-end text:change-id=\"" << changeId << "\"/>";
+        }
+    }
+
+    void WriteRun(std::ostringstream& xml, const RichTextRun& run) {
+        if (run.lineBreakBefore) xml << "<text:line-break/>";
+        if (run.IsInlineImage()) {
+            WriteInlineImage(xml, run);
+            return;
+        }
+        if (run.IsNoteReference()) {
+            WriteNote(xml, run);
+            return;
+        }
+        std::string styleName = TextStyleNameFor(run);
+        std::string body = OdtText(run.text);
+        if (run.field == RichTextRun::Field::PageNumber) {
+            body = "<text:page-number text:select-page=\"current\">" + body + "</text:page-number>";
+        } else if (run.field == RichTextRun::Field::PageCount) {
+            body = "<text:page-count>" + body + "</text:page-count>";
+        } else if (run.field == RichTextRun::Field::Sequence) {
+            const std::string name = EscapeXml(run.fieldArgument);
+            body = "<text:sequence text:name=\"" + name + "\" text:formula=\"ooow:" + name
+                 + "+1\" style:num-format=\"1\">" + body + "</text:sequence>";
+        } else if (run.field == RichTextRun::Field::Reference
+                   || run.field == RichTextRun::Field::PageReference) {
+            body = std::string("<text:bookmark-ref text:reference-format=\"")
+                 + (run.field == RichTextRun::Field::PageReference ? "page" : "text")
+                 + "\" text:ref-name=\"" + EscapeXml(run.fieldArgument) + "\">" + body + "</text:bookmark-ref>";
+        }
+        if (!styleName.empty()) {
+            body = "<text:span text:style-name=\"" + styleName + "\">" + body + "</text:span>";
+        }
+        if (!run.linkTarget.empty()) {
+            body = "<text:a xlink:type=\"simple\" xlink:href=\""
+                 + EscapeXml(run.linkTarget) + "\">" + body + "</text:a>";
+        }
+        xml << body;
+    }
+
     std::string ParagraphStyleFor(const RichDocBlock& block) {
+        // The paragraph's own named style; an automatic one based on it when
+        // the paragraph also has formatting of its own.
+        if (!block.styleId.empty() && doc_->FindStyle(block.styleId)
+            && (block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading)) {
+            const std::string parent = StyleIdToOdfName(block.styleId);
+            if (block.HasParagraphGeometry() || block.align != RichTextAlign::Default || block.rightToLeft
+                || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
+                return GeometryStyleFor(block, parent);
+            }
+            return parent;
+        }
         switch (block.type) {
             case RichBlockType::BlockQuote: return "PQuote";
             case RichBlockType::CodeBlock: return "PCode";
             default: break;
         }
-        if (block.HasParagraphGeometry() || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
+        if (block.HasParagraphGeometry() || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()
+            || block.rightToLeft) {
             return GeometryStyleFor(block);
         }
         return AlignedStyle(block.align);
@@ -1667,9 +2262,10 @@ private:
 
     // One automatic paragraph style per distinct geometry (with alignment,
     // since an automatic style cannot inherit from another automatic one).
-    std::string GeometryStyleFor(const RichDocBlock& block) {
+    std::string GeometryStyleFor(const RichDocBlock& block, const std::string& parent = "Standard") {
         std::ostringstream props;
         if (const char* align = AlignValue(block.align)) props << " fo:text-align=\"" << align << "\"";
+        if (block.rightToLeft) props << " style:writing-mode=\"rl-tb\"";
         if (block.leftIndentPt != 0.0f) props << " fo:margin-left=\"" << Pt(block.leftIndentPt) << "\"";
         if (block.rightIndentPt != 0.0f) props << " fo:margin-right=\"" << Pt(block.rightIndentPt) << "\"";
         if (block.firstLineIndentPt != 0.0f) props << " fo:text-indent=\"" << Pt(block.firstLineIndentPt) << "\"";
@@ -1711,13 +2307,13 @@ private:
         if (block.paragraphFontSizePt > 0.0f) font << " fo:font-size=\"" << Pt(block.paragraphFontSizePt) << "\"";
         if (!block.paragraphFontFamily.empty()) font << " fo:font-family=\"" << EscapeXml(block.paragraphFontFamily) << "\"";
         const std::string textProps = font.str().empty() ? "" : "<style:text-properties" + font.str() + "/>";
-        const std::string key = props.str() + tabs.str() + textProps;
+        const std::string key = parent + "|" + props.str() + tabs.str() + textProps;
         auto it = geometryStyleNames_.find(key);
         if (it != geometryStyleNames_.end()) return it->second;
         const std::string name = "PG" + std::to_string(geometryStyleNames_.size() + 1);
         geometryStyleNames_[key] = name;
         geometryStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\" "
-                           "style:parent-style-name=\"Standard\"><style:paragraph-properties"
+                           "style:parent-style-name=\"" + EscapeXml(parent) + "\"><style:paragraph-properties"
                          + props.str() + (tabs.str().empty() ? "/>" : ">" + tabs.str() + "</style:paragraph-properties>")
                          + textProps + "</style:style>\n";
         return name;
@@ -1725,7 +2321,8 @@ private:
 
     static std::string BorderValue(const RichBorder& border) {
         if (!border.IsVisible()) return "none";
-        return Pt(border.widthPt) + " solid " + (border.color.empty() ? std::string("#000000") : border.color);
+        return Pt(border.widthPt) + " " + RichBorderStyleOdfName(border.style) + " "
+             + (border.color.empty() ? std::string("#000000") : border.color);
     }
 
     // The automatic table-cell style for a cell's frame and fill, shared by
@@ -1783,8 +2380,13 @@ private:
         }
     }
 
+    static void WriteBookmarks(std::ostringstream& xml, const RichDocBlock& block) {
+        for (const std::string& name : block.bookmarks) xml << "<text:bookmark text:name=\"" << EscapeXml(name) << "\"/>";
+    }
+
     void WriteParagraph(std::ostringstream& xml, const RichDocBlock& block) {
         xml << "<text:p text:style-name=\"" << ParagraphStyleFor(block) << "\">";
+        WriteBookmarks(xml, block);
         WriteRuns(xml, block.runs);
         xml << "</text:p>\n";
     }
@@ -2038,19 +2640,66 @@ private:
     }
 
     // The blocks as ODF text elements.
+    // A section in columns, as a text:section with a section style. Only
+    // the body has sections.
+    std::string sectionStylesXml_;
+    int sectionCount_ = 0;
+    bool sectionOpen_ = false;
+
+    void UpdateSection(std::ostringstream& body, const std::vector<RichDocBlock>& blocks, size_t i) {
+        if (&blocks != &doc_->blocks) return;
+        if (i > 0 && !blocks[i].sectionStart) return;
+        if (sectionOpen_) {
+            body << "</text:section>\n";
+            sectionOpen_ = false;
+        }
+        const RichSectionSetup& setup = i == 0 ? (blocks[0].sectionStart ? blocks[0].section : doc_->firstSection)
+                                               : blocks[i].section;
+        if (i > 0 && setup.newPage) body << "<text:p text:style-name=\"PPageBreak\"/>\n";
+        if (setup.columns <= 1) return;
+        const std::string name = "Sect" + std::to_string(++sectionCount_);
+        sectionStylesXml_ += "<style:style style:name=\"" + name + "\" style:family=\"section\">"
+                             "<style:section-properties text:dont-balance-text-columns=\"true\">"
+                             "<style:columns fo:column-count=\"" + std::to_string(setup.columns)
+                           + "\" fo:column-gap=\"" + Pt(setup.columnGapPt) + "\"/></style:section-properties></style:style>\n";
+        body << "<text:section text:style-name=\"" << name << "\" text:name=\"Section" << sectionCount_ << "\">\n";
+        sectionOpen_ = true;
+    }
+
     std::string WriteBlocks(const std::vector<RichDocBlock>& blocks) {
         const std::vector<RichDocBlock>* savedBlocks = blocks_;
         blocks_ = &blocks;
         std::ostringstream body;
         size_t i = 0;
         while (i < blocks.size()) {
+            UpdateSection(body, blocks, i);
             const RichDocBlock& block = blocks[i];
+            if (block.tocLevel > 0 && block.type == RichBlockType::Paragraph) {
+                // A table of contents: its entries as the index's text.
+                size_t end = i;
+                int deepest = 1;
+                while (end < blocks.size() && blocks[end].tocLevel > 0 && blocks[end].type == RichBlockType::Paragraph) {
+                    deepest = std::max(deepest, blocks[end].tocLevel);
+                    ++end;
+                }
+                body << "<text:table-of-content text:name=\"Table of Contents" << ++tocCount_
+                     << "\"><text:table-of-content-source text:outline-level=\"" << deepest
+                     << "\"/><text:index-body>\n";
+                for (; i < end; ++i) WriteParagraph(body, blocks[i]);
+                body << "</text:index-body></text:table-of-content>\n";
+                continue;
+            }
+            // A list or a table of contents is written as one: a section
+            // starting inside it starts after it.
             switch (block.type) {
                 case RichBlockType::Heading:
-                    body << "<text:h text:style-name=\"Heading_20_"
-                         << std::clamp(block.headingLevel, 1, 6)
-                         << "\" text:outline-level=\"" << std::clamp(block.headingLevel, 1, 6)
-                         << "\">";
+                    if (!block.styleId.empty() && doc_->FindStyle(block.styleId)) {
+                        body << "<text:h text:style-name=\"" << EscapeXml(ParagraphStyleFor(block)) << "\"";
+                    } else {
+                        body << "<text:h text:style-name=\"Heading_20_" << std::clamp(block.headingLevel, 1, 6) << "\"";
+                    }
+                    body << " text:outline-level=\"" << std::clamp(block.headingLevel, 1, 6) << "\">";
+                    WriteBookmarks(body, block);
                     WriteRuns(body, block.runs);
                     body << "</text:h>\n";
                     ++i;
@@ -2109,6 +2758,10 @@ private:
                     break;
             }
         }
+        if (&blocks == &doc_->blocks && sectionOpen_) {
+            body << "</text:section>\n";
+            sectionOpen_ = false;
+        }
         blocks_ = savedBlocks;
         return body.str();
     }
@@ -2125,11 +2778,15 @@ private:
             << "xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\" "
             << "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
             << "xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
+            << "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" "
+            << "xmlns:loext=\"urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0\" "
             << "office:version=\"1.3\">\n"
             << "<office:automatic-styles>\n"
             << AutomaticStylesXml()
             << "</office:automatic-styles>\n"
             << "<office:body>\n<office:text>\n"
+            << (!changedRegions_.str().empty() ? "<text:tracked-changes>" + changedRegions_.str() + "</text:tracked-changes>\n"
+                                            : std::string())
             << body
             << "</office:text>\n</office:body>\n</office:document-content>\n";
         return xml.str();
@@ -2142,8 +2799,12 @@ private:
         std::ostringstream xml;
         for (size_t s = 0; s < textStyles_.size(); ++s) {
             const RichTextRun& t = textStyles_[s];
-            xml << "<style:style style:name=\"T" << (s + 1)
-                << "\" style:family=\"text\"><style:text-properties";
+            xml << "<style:style style:name=\"T" << (s + 1) << "\" style:family=\"text\"";
+            // A run with a character style: its automatic style is based on it.
+            if (!t.characterStyleId.empty() && doc_->FindStyle(t.characterStyleId)) {
+                xml << " style:parent-style-name=\"" << EscapeXml(StyleIdToOdfName(t.characterStyleId)) << "\"";
+            }
+            xml << "><style:text-properties";
             if (t.bold) xml << " fo:font-weight=\"bold\"";
             if (t.italic) xml << " fo:font-style=\"italic\"";
             if (t.underline) xml << " style:text-underline-style=\"solid\"";
@@ -2159,7 +2820,7 @@ private:
             xml << "/></style:style>\n";
         }
 
-        xml << columnStyles_ << cellStyles_ << geometryStyles_;
+        xml << columnStyles_ << cellStyles_ << geometryStyles_ << graphicStylesXml_ << sectionStylesXml_;
         xml << "<style:style style:name=\"PCenter\" style:family=\"paragraph\" "
                "style:parent-style-name=\"Standard\">"
                "<style:paragraph-properties fo:text-align=\"center\"/></style:style>\n"
@@ -2277,10 +2938,13 @@ private:
         }
         // Paragraphs that state no spacing (a document built from Markdown)
         // keep a small gap below, as the view gives them.
-        xml << "<style:style style:name=\"Standard\" style:family=\"paragraph\">"
-               "<style:paragraph-properties fo:margin-bottom=\"6pt\"/></style:style>\n";
+        if (!doc_->FindStyle("Normal")) {
+            xml << "<style:style style:name=\"Standard\" style:family=\"paragraph\">"
+                   "<style:paragraph-properties fo:margin-bottom=\"6pt\"/></style:style>\n";
+        }
         static const float headingSizesPt[6] = {18.0f, 16.0f, 14.0f, 12.0f, 11.0f, 10.5f};
         for (int level = 1; level <= 6; ++level) {
+            if (doc_->FindStyle("Heading" + std::to_string(level))) continue;
             xml << "<style:style style:name=\"Heading_20_" << level
                 << "\" style:display-name=\"Heading " << level
                 << "\" style:family=\"paragraph\" style:parent-style-name=\"Standard\" "
@@ -2290,6 +2954,7 @@ private:
                 << "<style:text-properties fo:font-weight=\"bold\" fo:font-size=\""
                 << headingSizesPt[level - 1] << "pt\"/></style:style>\n";
         }
+        for (const RichStyle& style : doc_->styles) WriteNamedStyle(xml, style);
         xml << "</office:styles>\n";
         if (!masterStyles.empty()) {
             xml << "<office:automatic-styles>\n" << AutomaticStylesXml() << pageLayout_
@@ -2297,6 +2962,51 @@ private:
         }
         xml << "</office:document-styles>\n";
         return xml.str();
+    }
+
+    // A named style in office:styles, with the ODF name of its id.
+    void WriteNamedStyle(std::ostringstream& xml, const RichStyle& style) const {
+        const bool paragraph = style.kind == RichStyle::Kind::Paragraph;
+        xml << "<style:style style:name=\"" << EscapeXml(StyleIdToOdfName(style.id)) << "\"";
+        if (!style.name.empty() && style.name != style.id) xml << " style:display-name=\"" << EscapeXml(style.name) << "\"";
+        xml << " style:family=\"" << (paragraph ? "paragraph" : "text") << "\"";
+        if (!style.basedOn.empty()) xml << " style:parent-style-name=\"" << EscapeXml(StyleIdToOdfName(style.basedOn)) << "\"";
+        if (paragraph && !style.nextStyle.empty()) {
+            xml << " style:next-style-name=\"" << EscapeXml(StyleIdToOdfName(style.nextStyle)) << "\"";
+        }
+        if (paragraph && style.paragraph.headingLevel && *style.paragraph.headingLevel > 0) {
+            xml << " style:default-outline-level=\"" << *style.paragraph.headingLevel << "\"";
+        }
+        xml << ">";
+        if (paragraph && !style.paragraph.IsEmpty()) {
+            const RichStyleParagraph& p = style.paragraph;
+            xml << "<style:paragraph-properties";
+            if (p.align) {
+                if (const char* align = AlignValue(*p.align)) xml << " fo:text-align=\"" << align << "\"";
+            }
+            if (p.leftIndentPt) xml << " fo:margin-left=\"" << Pt(*p.leftIndentPt) << "\"";
+            if (p.rightIndentPt) xml << " fo:margin-right=\"" << Pt(*p.rightIndentPt) << "\"";
+            if (p.firstLineIndentPt) xml << " fo:text-indent=\"" << Pt(*p.firstLineIndentPt) << "\"";
+            if (p.spaceBeforePt) xml << " fo:margin-top=\"" << Pt(*p.spaceBeforePt) << "\"";
+            if (p.spaceAfterPt) xml << " fo:margin-bottom=\"" << Pt(*p.spaceAfterPt) << "\"";
+            if (p.lineSpacing) xml << " fo:line-height=\"" << std::lround(*p.lineSpacing * 100.0f) << "%\"";
+            xml << "/>";
+        }
+        if (!style.character.IsEmpty()) {
+            const RichStyleCharacter& c = style.character;
+            xml << "<style:text-properties";
+            if (c.bold) xml << " fo:font-weight=\"" << (*c.bold ? "bold" : "normal") << "\"";
+            if (c.italic) xml << " fo:font-style=\"" << (*c.italic ? "italic" : "normal") << "\"";
+            if (c.underline) xml << " style:text-underline-style=\"" << (*c.underline ? "solid" : "none") << "\"";
+            if (c.strikethrough) xml << " style:text-line-through-style=\"" << (*c.strikethrough ? "solid" : "none") << "\"";
+            if (c.code && *c.code) xml << " style:font-name=\"Courier New\" fo:font-family=\"'Courier New'\"";
+            else if (c.fontFamily) xml << " fo:font-family=\"" << EscapeXml(*c.fontFamily) << "\"";
+            if (c.color) xml << " fo:color=\"" << EscapeXml(*c.color) << "\"";
+            if (c.fontSizePt && *c.fontSizePt > 0.0f) xml << " fo:font-size=\"" << Pt(*c.fontSizePt) << "\"";
+            if (c.highlightColor) xml << " fo:background-color=\"" << EscapeXml(*c.highlightColor) << "\"";
+            xml << "/>";
+        }
+        xml << "</style:style>\n";
     }
 
     std::string BuildMetaXml() const {
@@ -2352,12 +3062,19 @@ bool UCWordDocumentIO::LoadOdt(const std::string& filePath, UCRichDocument& outD
                                std::string& outError) {
     outDocument = UCRichDocument{};
     OdtReader reader;
-    return reader.Load(filePath, outDocument, outError);
+    if (!reader.Load(filePath, outDocument, outError)) return false;
+    outDocument.ReadCheckboxPrefixes();
+    return true;
 }
 
 bool UCWordDocumentIO::SaveOdt(const std::string& filePath, const UCRichDocument& document,
                                std::string& outError) {
     OdtWriter writer;
+    // The format has no check list: its items go out as a ballot box
+    // opening their text, which is what reads back in.
+    for (const RichDocBlock& block : document.blocks) {
+        if (block.checkbox) return writer.Save(filePath, document.WithCheckboxesAsPrefixes(), outError);
+    }
     return writer.Save(filePath, document, outError);
 }
 

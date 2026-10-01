@@ -893,6 +893,7 @@ namespace UltraCanvas {
             case UCEventType::KeyDown:
             case UCEventType::KeyUp:
             case UCEventType::TextInput:
+            case UCEventType::TextComposition:
                 if (targetWindow != modalWindow) return true;
                 break;
             case UCEventType::WindowFocus:

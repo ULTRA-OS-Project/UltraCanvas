@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasColorPickerExamples.cpp
 // Demonstration of the comprehensive colour picker widget.
-// Version: 1.1.0
-// Last Modified: 2026-07-20
+// Version: 1.2.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -12,7 +12,7 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateColorPickerExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("ColorPickerExamples", 0, 0, 1000, 1120);
+        auto container = std::make_shared<UltraCanvasContainer>("ColorPickerExamples", 0, 0, 1000, 1680);
         container->SetPadding(0, 0, 10, 0);
 
         auto title = CreateLabel("ColorPickerTitle", 20, 10, 0, 30);
@@ -100,6 +100,53 @@ namespace UltraCanvas {
         collapsible->SetSlidersCollapsible(true, false);   // collapsed by default
         collapsible->SetShowValueSpinners(true);
         container->AddChild(collapsible);
+
+        // ===== Colour + intensity styles (full saturation) =====
+        auto hlTitle = CreateLabel("HueLightnessTitle", 20, 1100, 700, 22);
+        hlTitle->SetText("Colour + intensity: hue x lightness field, colour and intensity sliders");
+        hlTitle->SetFontSize(14);
+        hlTitle->SetFontWeight(FontWeight::Bold);
+        container->AddChild(hlTitle);
+
+        const float hlRowY = 1155.0f;
+
+        // --- 4: hue (top -> bottom) x lightness (black -> white) field ---
+        auto fieldLabel = CreateLabel("HLFieldVariantLabel", 20, 1130, 290, 20);
+        fieldLabel->SetText("Hue x lightness field");
+        fieldLabel->SetFontSize(12);
+        container->AddChild(fieldLabel);
+
+        auto field = CreateColorPicker("HueLightnessFieldPicker", Color(0x00, 0xA0, 0xFF, 0xFF),
+                                       20, hlRowY, 290, 470);
+        field->SetWheelStyle(ColorPickerWheelStyle::HueLightnessField);
+        container->AddChild(field);
+
+        // --- 5: colour slider + intensity (white -> black) slider ---
+        auto slidersLabel = CreateLabel("HLSlidersVariantLabel", 330, 1130, 290, 20);
+        slidersLabel->SetText("Colour slider + intensity slider");
+        slidersLabel->SetFontSize(12);
+        container->AddChild(slidersLabel);
+
+        auto twoSliders = CreateColorPicker("HueLightnessSlidersPicker", Color(0xFF, 0x80, 0x00, 0xFF),
+                                            330, hlRowY, 290, 470);
+        twoSliders->SetWheelStyle(ColorPickerWheelStyle::HueLightnessSliders);
+        twoSliders->SetSliderStyle(ColorPickerSliderStyle::Thick);
+        twoSliders->SetElementSize(Size2Df(290, twoSliders->PreferredHeightForWidth(290)));
+        container->AddChild(twoSliders);
+
+        // --- 6: the field with the channel sliders collapsed, so the field
+        //        gets the height (like a narrow palette strip) ---
+        auto stripLabel = CreateLabel("HLStripVariantLabel", 640, 1130, 320, 20);
+        stripLabel->SetText("Field, collapsible sliders • dropdown");
+        stripLabel->SetFontSize(12);
+        container->AddChild(stripLabel);
+
+        auto strip = CreateColorPicker("HueLightnessStripPicker", Color(0x40, 0xFF, 0x40, 0xFF),
+                                       640, hlRowY, 290, 470);
+        strip->SetWheelStyle(ColorPickerWheelStyle::HueLightnessField);
+        strip->SetModeSelector(ColorPickerModeSelector::Dropdown);
+        strip->SetSlidersCollapsible(true, false);
+        container->AddChild(strip);
 
         return container;
     }

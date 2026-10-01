@@ -9,6 +9,7 @@
 
 #include "UltraCanvasAudio.h"
 #include "UltraCanvasAudioDevices.h"
+#include "UltraCanvasAudioStreaming.h"
 #include <string>
 #include <memory>
 #include <functional>
@@ -27,6 +28,16 @@ enum class AudioRecordingState {
     Error
 };
 
+// ===== CAPTURE MODE =====
+// What the recorder keeps. onLiveFrame fires in both modes; the mode only
+// decides whether the samples are also accumulated.
+enum class AudioCaptureMode {
+    Record,     // Accumulate for TakeBuffer() / SaveToFile() (the default)
+    Live        // Keep nothing: onLiveFrame is the only output. For calls,
+                // speech recognition, streaming: memory stays flat however
+                // long the session runs.
+};
+
 // ===== CAPTURE CONFIG =====
 struct AudioCaptureConfig {
     int sampleRate = 44100;                 // 8000 / 16000 / 22050 / 44100 / 48000
@@ -40,6 +51,15 @@ struct AudioCaptureConfig {
     size_t maxDurationMs = 0;               // 0 = unlimited
     bool  streamToFile = false;             // If true, write incrementally; don't keep RAM buffer
     std::string streamFilePath;             // Required when streamToFile == true
+
+    // Live frames. Whenever onLiveFrame is set, frames reach it as
+    // interleaved float PCM with inputGain and mute applied, whatever
+    // sampleType the backend delivers. liveFrameMs > 0 repacketises the
+    // backend's chunks into frames of exactly that duration (10 for Opus /
+    // WebRTC, 20 for most speech engines); 0 passes each backend chunk
+    // through as it is. mode == Live additionally keeps nothing.
+    AudioCaptureMode mode = AudioCaptureMode::Record;
+    int liveFrameMs = 0;
 
     // Monitoring
     int   levelUpdateHz = 30;               // onLevelChanged frequency
@@ -94,7 +114,12 @@ public:
     // ===== EVENTS =====
     std::function<void(AudioRecordingState)> onRecordingStateChanged;
     std::function<void(float peak, float rms)> onLevelChanged;
-    std::function<void(const float* samples, size_t frames, int channels)> onBufferAvailable;
+    // Every frame as it is captured, in both modes: a live VU, an encoder, a
+    // call. Called on the backend's audio thread; the samples are valid for
+    // the duration of the call. Do the minimum there (encode, push into an
+    // AudioFrameRing, hand to a codec) and marshal anything that touches UI
+    // through PostToUIThread.
+    std::function<void(const AudioLiveFrame& frame)> onLiveFrame;
     std::function<void()> onSilenceDetected;
     std::function<void()> onClipping;
     std::function<void()> onMaxDurationReached;

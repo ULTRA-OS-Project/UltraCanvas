@@ -6,7 +6,6 @@
 
 #include "UltraMailThreatScan.h"
 
-#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -213,10 +212,6 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
             if (onMessageStored) onMessageStored(m);
         },
         options);
-    std::fprintf(stderr, "[UMSTREAM] SyncMessages folder=%s sinceUid=%lld new=%d "
-                         "onMessageStored=%s ok=%d\n",
-                 folder.c_str(), (long long)sinceUid, out.stats.messages,
-                 onMessageStored ? "set" : "null", (int)(bool)r);
     if (!r) return SyncOutcome::Fail(r);
 
     // Fetch all new bodies over ONE reused connection (see
@@ -350,10 +345,6 @@ SyncOutcome SyncEngine::ReconcileFlags(const std::string& accountId,
                 out.stats.expunged++;
         }
     }
-    std::fprintf(stderr, "[UMSTREAM] ReconcileFlags folder=%s locals=%zu serverUids=%zu "
-                         "reconciled=%d expunged=%d enumerated=%d ok=%d\n",
-                 folder.c_str(), locals.size(), serverUids.size(),
-                 out.stats.reconciled, out.stats.expunged, (int)enumerated, (int)(bool)r);
     return out;
 }
 

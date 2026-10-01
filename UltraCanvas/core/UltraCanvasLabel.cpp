@@ -14,8 +14,9 @@
 //   4. Property setters call textLayout.reset() + InvalidateLayout()
 //      (bubbles engine caches up) + RequestRedraw() (damage).
 //
+// Version: 2.4.0 - min-content width is the widest unbreakable run
 // Version: 2.3.0 - inline images at U+FFFC placeholders (LabelInlineImage)
-// Last Modified: 2026-09-28
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabel.h"
@@ -258,9 +259,15 @@ namespace UltraCanvas {
         const float maxW = (float)textLayout->GetLayoutWidth();
         const float maxH = (float)textLayout->GetLayoutHeight();
 
-        // min-content (rough): one-line layout height as a lower bound on
-        // width AND height. Proper word-by-word measurement is a follow-up.
-        const float minW = maxH;        // ~one cap-line wide
+        // min-content: the widest unbreakable run - the layout at a one-pixel
+        // width, where every break opportunity is taken (a table sizes its
+        // columns from it). Text that does not wrap is as wide as its line.
+        float minW = maxW;
+        if (style.wrap != TextWrap::WrapNone && maxW > 1.f) {
+            textLayout->SetExplicitWidth(1);
+            minW = std::min(maxW, (float)textLayout->GetLayoutWidth());
+            textLayout->SetExplicitWidth(-1);
+        }
         const float minH = maxH;
 
         const float padH = (float)(GetTotalPaddingHorizontal() + GetTotalBorderHorizontal());

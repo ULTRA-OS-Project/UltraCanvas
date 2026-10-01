@@ -594,10 +594,16 @@ std::vector<IODevicePtr> EnumerateCupsPrinters() {
         info.backend = "CUPS";
         info.connectionPath = dest->name;
 
-        // Prefer the printer's own UUID as the device id so that the same
-        // physical printer found again through the IPP backend collapses to
-        // one registry entry instead of appearing twice. Queue names differ
-        // between hosts; a UUID does not.
+        // The id is "cups:<queue>" in practice. The printer-uuid lookup
+        // below was meant to make it the printer's own UUID, so that the same
+        // printer found again by the IPP backend would collapse into this
+        // entry - but cupsGetDests2 does not return printer-uuid among a
+        // destination's options, not for the queues CUPS discovers itself nor
+        // for configured ones (checked against CUPS 2.4.7), so the lookup
+        // comes back empty. It stays for a libcups that does supply it; it is
+        // not what stops the double listing. The IPP backend does that from
+        // its side, leaving out any printer a CUPS queue's device-uri already
+        // reaches - see IppCupsQueueReachesPrinter.
         const std::string uuid = OptionValue(dest, "printer-uuid");
         info.deviceId = uuid.empty() ? ("cups:" + std::string(dest->name)) : uuid;
 

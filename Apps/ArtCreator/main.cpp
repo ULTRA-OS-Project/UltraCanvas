@@ -41,11 +41,10 @@ using namespace UltraCanvas;
 
 namespace {
 
-UltraCanvasApplication* g_app = nullptr;
-
-void SignalHandler(int signum) {
-    debugOutput << "Signal " << signum << " received, shutting down" << std::endl;
-    if (g_app) g_app->RequestExit();
+// The one call a signal handler may make: it sets a flag the main loop
+// turns into RequestExit, so main returns and the destructors run in order.
+void SignalHandler(int) {
+    UltraCanvasApplicationBase::RequestExitFromSignal();
 }
 
 void HandleFatalError(const std::string& message) {
@@ -93,7 +92,6 @@ int main(int argc, char* argv[]) {
     }
 
     UltraCanvasApplication app;
-    g_app = &app;
 
 #ifdef __linux__
     signal(SIGINT, SignalHandler);

@@ -13,8 +13,8 @@
 // and no elevation, but no path and no user; every such process is counted
 // and reported through the capabilities' notes.
 //
-// Version: 0.7.0
-// Last Modified: 2026-09-23
+// Version: 0.8.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework / ULTRA OS
 
 // QueryFullProcessImageNameW and the token elevation query are Vista+; the
@@ -31,8 +31,11 @@
 
 #include "NetworkMonitor/NetworkMonitorAddress.h"
 #include "NetworkMonitor/NetworkMonitorBackend.h"
+#include "UltraCanvasWindowsProcessNames.h"
 
 #include <cctype>
+#include <chrono>
+#include <mutex>
 #include <cwchar>
 #include <cstdint>
 #include <cstring>
@@ -147,7 +150,7 @@ public:
         int readable = 0;
         // The process list, once per snapshot: the executable's name for
         // every PID, the ones this monitor may not open included.
-        if (resolveProcesses) ReadProcessList();
+        if (resolveProcesses) NetworkMonitor_WindowsRefreshProcessNames();
 
         if (FetchTable(buffer, true, AF_INET, error)) {
             ++readable;
@@ -289,38 +292,16 @@ private:
                     for (auto& ch : tail) ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
                     if (tail == ".exe") identity.displayName.resize(identity.displayName.size() - 4);
                 }
-            } else if (auto listed = processNames_.find(identity.pid); listed != processNames_.end()) {
+            } else if (std::string listed = NetworkMonitor_WindowsProcessName(identity.pid, false); !listed.empty()) {
                 // Not openable, but the process list names it (Toolhelp
                 // reads no handle): "AvastSvc" rather than "pid 4720".
-                identity.displayName = listed->second;
+                identity.displayName = listed;
             } else {
                 identity.displayName = "pid " + std::to_string(pid);
             }
         }
         identities_.emplace(identity.pid, identity);
         return identity;
-    }
-
-    // Every process's executable name from a Toolhelp snapshot, ".exe"
-    // stripped. Needs no rights on the processes themselves.
-    void ReadProcessList() {
-        processNames_.clear();
-        HANDLE snapshot = ::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (snapshot == INVALID_HANDLE_VALUE) return;
-        PROCESSENTRY32W entry{};
-        entry.dwSize = sizeof entry;
-        if (::Process32FirstW(snapshot, &entry)) {
-            do {
-                std::string name = Utf8FromWide(entry.szExeFile, static_cast<int>(::wcslen(entry.szExeFile)));
-                if (name.size() > 4) {
-                    std::string tail = name.substr(name.size() - 4);
-                    for (auto& ch : tail) ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
-                    if (tail == ".exe") name.resize(name.size() - 4);
-                }
-                if (!name.empty()) processNames_[static_cast<uint32_t>(entry.th32ProcessID)] = name;
-            } while (::Process32NextW(snapshot, &entry));
-        }
-        ::CloseHandle(snapshot);
     }
 
     static std::string UserOf(HANDLE process) {
@@ -349,11 +330,68 @@ private:
     }
 
     std::unordered_map<uint32_t, ProcessIdentity> identities_;
-    std::unordered_map<uint32_t, std::string> processNames_;   // from the last Toolhelp snapshot
     int lastUnreadableProcesses_ = 0;
 };
 
+// ===== THE PROCESS NAME TABLE (UltraCanvasWindowsProcessNames.h) =====
+
+struct ProcessNameTable {
+    std::mutex mutex;
+    std::unordered_map<uint32_t, std::string> names;
+    std::chrono::steady_clock::time_point read{};
+};
+
+ProcessNameTable& TheProcessNames() {
+    static ProcessNameTable table;
+    return table;
+}
+
+// Every process's executable name from a Toolhelp snapshot, ".exe"
+// stripped. Needs no rights on the processes themselves. Called with the
+// table's mutex held.
+void ReadProcessListInto(ProcessNameTable& table) {
+    HANDLE snapshot = ::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return;
+    std::unordered_map<uint32_t, std::string> names;
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof entry;
+    if (::Process32FirstW(snapshot, &entry)) {
+        do {
+            std::string name = Utf8FromWide(entry.szExeFile, static_cast<int>(::wcslen(entry.szExeFile)));
+            if (name.size() > 4) {
+                std::string tail = name.substr(name.size() - 4);
+                for (auto& ch : tail) ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
+                if (tail == ".exe") name.resize(name.size() - 4);
+            }
+            if (!name.empty()) names[static_cast<uint32_t>(entry.th32ProcessID)] = name;
+        } while (::Process32NextW(snapshot, &entry));
+    }
+    ::CloseHandle(snapshot);
+    table.names.swap(names);
+    table.read = std::chrono::steady_clock::now();
+}
+
+constexpr auto kProcessNamesMinRefresh = std::chrono::seconds(2);
+
 } // namespace
+
+void NetworkMonitor_WindowsRefreshProcessNames() {
+    ProcessNameTable& table = TheProcessNames();
+    std::lock_guard<std::mutex> lock(table.mutex);
+    ReadProcessListInto(table);
+}
+
+std::string NetworkMonitor_WindowsProcessName(uint32_t pid, bool refreshOnMiss) {
+    ProcessNameTable& table = TheProcessNames();
+    std::lock_guard<std::mutex> lock(table.mutex);
+    auto found = table.names.find(pid);
+    if (found == table.names.end() && refreshOnMiss &&
+        std::chrono::steady_clock::now() - table.read >= kProcessNamesMinRefresh) {
+        ReadProcessListInto(table);
+        found = table.names.find(pid);
+    }
+    return found == table.names.end() ? std::string() : found->second;
+}
 
 std::unique_ptr<INetworkMonitorBackend> CreateNativeNetworkMonitorBackend() {
     return std::make_unique<WindowsNetworkMonitorBackend>();

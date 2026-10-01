@@ -129,4 +129,17 @@ std::string EsclBaseUrlFromMdns(const std::string& host, int port,
 std::string EsclTxtValue(const std::vector<std::string>& txtRecords,
                          const std::string& key);
 
+// Which physical scanner an advertisement is, so that one scanner advertised
+// twice is listed once.
+//
+// A scanner that offers TLS usually advertises both `_uscan._tcp` and
+// `_uscans._tcp`, and the two differ in URL - so keying on the URL listed it
+// twice. The TXT record's `uuid` says which scanner it is, the same in both
+// advertisements; it is compared lower-case and without a `urn:uuid:` prefix,
+// since firmware writes it both ways. A scanner that gives no uuid is known
+// by its host, lower-case and without the root dot. Empty when there is
+// neither.
+std::string EsclScannerIdentity(const std::vector<std::string>& txtRecords,
+                                const std::string& host);
+
 }  // namespace UltraCanvas

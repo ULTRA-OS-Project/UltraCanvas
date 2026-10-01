@@ -13,10 +13,13 @@
 // vector graphic), and that a scanned source file gets the Text category and
 // its language's name. R, Scala, MATLAB and VBA, switched on in the
 // highlighter since, are Text too - but .bas stays BASIC, not VBA. The shared
-// extensions .cls (VBA or LaTeX) and .m (MATLAB or Objective-C) are named after
-// what the file's first lines say it is.
-// Version: 1.2.0
-// Last Modified: 2026-09-25
+// extensions .cls (VBA or LaTeX), .m (MATLAB or Objective-C) and .pl (Perl or
+// Prolog) are named after what the file's first lines say it is; without a
+// clue, after the extension's default rather than whichever language the
+// highlighter's unordered map listed first. Their switch under Text names both
+// languages ("VBA / LaTeX").
+// Version: 1.3.0
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
@@ -71,6 +74,14 @@ int main() {
     for (const char* ext : {"txt", "json", "cpp", "py", "yaml", "sh", "js", "ts"})
         Check(kindOf(ext) == FilerPreviewType::Text, std::string(ext) + " is still Text");
 
+    std::cout << "\n-- A shared extension's switch names both languages --\n";
+    for (const auto& [ext, label] : std::map<std::string, std::string>{
+             {"cls", "VBA / LaTeX"}, {"m", "MATLAB / Objective-C"}, {"pl", "Perl / Prolog"}}) {
+        auto it = formats.find(ext);
+        const std::string got = it == formats.end() ? "(not listed)" : it->second.label;
+        Check(got == label, ext + " is labelled \"" + label + "\" -> \"" + got + "\"");
+    }
+
     std::cout << "\n-- Kept out of Text --\n";
     for (const char* ext : {"mat", "mlx", "svgz"})
         Check(kindOf(ext) != FilerPreviewType::Text,
@@ -95,6 +106,10 @@ int main() {
                                           "Attribute VB_Name = \"Invoice\"\n";
     std::ofstream(dir / "AppDelegate.m") << "#import \"AppDelegate.h\"\n\n@implementation AppDelegate\n@end\n";
     std::ofstream(dir / "fit.m") << "% Fit a line\nfunction p = fit(x, y)\n";
+    std::ofstream(dir / "family.pl") << "% Family tree\nparent(tom, bob).\n"
+                                        "grandparent(X, Z) :- parent(X, Y), parent(Y, Z).\n";
+    std::ofstream(dir / "report.pl") << "#!/usr/bin/perl\nuse strict;\nmy $n = 1;\n";
+    std::ofstream(dir / "bare.pl") << "\n";   // no clue: the default, Perl
     UltraCanvasFilerWidget filer("source-text-filer", 0, 0, 400, 300);
     filer.SetPath(dir.string());
     for (const FilerEntry& e : filer.GetEntries()) {
@@ -119,12 +134,23 @@ int main() {
                   "solve.m is MATLAB Text -> \"" + e.typeName + "\"");
         const std::map<std::string, std::string> shared = {
             {"thesis.cls", "LaTeX Text"}, {"Invoice.cls", "VBA Text"},
-            {"AppDelegate.m", "Objective-C Text"}, {"fit.m", "MATLAB Text"}};
+            {"AppDelegate.m", "Objective-C Text"}, {"fit.m", "MATLAB Text"},
+            {"family.pl", "Prolog Text"}, {"report.pl", "Perl Text"},
+            {"bare.pl", "Perl Text"}};
         if (auto it = shared.find(e.name); it != shared.end())
             Check(e.category == FilerFileCategory::Text && e.typeName == it->second,
                   e.name + " reads as " + it->second + " -> \"" + e.typeName + "\"");
     }
-    Check(filer.GetEntries().size() == 10, "all ten files listed");
+    Check(filer.GetEntries().size() == 13, "all thirteen files listed");
+
+    std::cout << "\n-- The extension alone picks the default --\n";
+    for (const auto& [ext, want] : std::map<std::string, std::string>{
+             {"pl", "Perl"}, {"cls", "VBA"}, {"m", "MATLAB"}}) {
+        SyntaxTokenizer tokenizer;
+        const bool set = tokenizer.SetLanguageByExtension(ext);
+        const std::string got = tokenizer.GetCurrentProgrammingLanguage();
+        Check(set && got == want, "." + ext + " -> " + got + " (want " + want + ")");
+    }
 
     std::cout << "\n-- SyntaxTokenizer::LanguageFromContent --\n";
     struct Sniff { const char* ext; const char* text; const char* want; };
@@ -137,6 +163,13 @@ int main() {
              {"m", "// main.m\n#include <stdio.h>\n", "Objective-C"},
              {"m", "@interface Foo : NSObject\n@end\n", "Objective-C"},
              {"m", "x = 1;\n", ""},
+             {"pl", "% facts\nparent(tom, bob).\n", "Prolog"},
+             {"pl", "ancestor(X, Y) :- parent(X, Y).\n", "Prolog"},
+             {"pl", "/* rules */\n", "Prolog"},
+             {"pl", "#!/usr/bin/env perl\nprint 1;\n", "Perl"},
+             {"PL", "use strict;\nuse warnings;\n", "Perl"},
+             {"pl", "=pod\n\nDocs\n", "Perl"},
+             {"pl", "print \"hi\";\n", ""},
              {"vba", "\\ProvidesClass{x}\n", ""},
              {"r", "#import\n", ""}}) {
         const std::string got = SyntaxTokenizer::LanguageFromContent(t.ext, t.text);

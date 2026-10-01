@@ -30,26 +30,31 @@
 // because COM is initialized around the call, and with the shell's own
 // "How do you want to open this file?" chooser (the "openas" verb) put up
 // when the type turns out to have no handler at all - what Explorer does
-// instead of failing. A launch that still fails reports the reason the
-// shell gave rather than "could not open".
+// instead of failing. A registered handler that cannot be started from this
+// process (a packaged app such as Photos, whose activation DLL the shell
+// loads in here) is handed to explorer.exe instead, and the loader's own
+// "entry point not found" box is suppressed around every shell launch. A
+// launch that still fails reports the reason the shell gave rather than
+// "could not open".
 // COM is initialized per call (apartment-threaded, balanced), because the
 // core calls this backend from both the UI thread and its prewarm worker.
 // All entry points are serialized by the core's backend mutex (see
 // UltraCanvasFileAssociationsBackend.h) — no locking here.
-// Version: 1.3.0
-// Last Modified: 2026-09-12
+// Version: 1.3.1
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 
-// SHAssocEnumHandlers / IAssocHandler are Vista+ and the mingw-w64 headers
-// hide them below that; the default target there is still Server 2003.
-#if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0600
+// SHAssocEnumHandlers / IAssocHandler are Vista+ and SetThreadErrorMode is
+// Windows 7+; the mingw-w64 headers hide both below that, and the default
+// target there is still Server 2003.
+#if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0601
 #  undef _WIN32_WINNT
-#  define _WIN32_WINNT 0x0600
+#  define _WIN32_WINNT 0x0601
 #endif
 // Keep NTDDI_VERSION consistent with _WIN32_WINNT: the Windows SDK's sdkddkver.h errors on a
 // mismatch when the host build already sets a higher _WIN32_WINNT (e.g. Ladybird's 0x0A00). NTDDI's
 // high word IS the _WIN32_WINNT value, so derive it the way the SDK does by default; the floor above
-// keeps _WIN32_WINNT (hence NTDDI) >= Vista. Works under both MinGW-w64 and MSVC/clang-cl.
+// keeps _WIN32_WINNT (hence NTDDI) >= Windows 7. Works under both MinGW-w64 and MSVC/clang-cl.
 #if !defined(NTDDI_VERSION) || (NTDDI_VERSION >> 16) < _WIN32_WINNT
 #  undef NTDDI_VERSION
 #  define NTDDI_VERSION (_WIN32_WINNT << 16)
@@ -117,6 +122,29 @@ namespace {
         ComScope& operator=(const ComScope&) = delete;
     private:
         HRESULT hr;
+    };
+
+    // A shell launch runs other people's code inside this process: a packaged
+    // (Store) handler such as Photos is activated through daxexec.dll, which
+    // the shell loads here, and a DLL whose imports do not resolve in this
+    // process makes the loader put up its own modal "entry point not found"
+    // box - a system dialog in front of the file manager for a failure the
+    // caller already reports. The loader's hard-error boxes are switched off
+    // on this thread for the duration of the call; the failure still comes
+    // back as an error code.
+    class QuietLoaderScope {
+    public:
+        QuietLoaderScope() {
+            if (!SetThreadErrorMode(SEM_FAILCRITICALERRORS |
+                                    SEM_NOOPENFILEERRORBOX, &previous))
+                restore = false;
+        }
+        ~QuietLoaderScope() { if (restore) SetThreadErrorMode(previous, nullptr); }
+        QuietLoaderScope(const QuietLoaderScope&) = delete;
+        QuietLoaderScope& operator=(const QuietLoaderScope&) = delete;
+    private:
+        DWORD previous = 0;
+        bool restore = true;
     };
 
     // Shell strings come out of CoTaskMemAlloc'd buffers the caller frees.
@@ -550,6 +578,43 @@ namespace {
         return outcome;
     }
 
+    // Explorer's own process, asked to open the file: exactly a double-click
+    // in Explorer, with the activation running in a process whose DLL
+    // environment is the stock one. The fallback for a handler that cannot
+    // be started from in here (see QuietLoaderScope). Explorer answers at
+    // once and reports nothing, so this is only ever the second attempt.
+    bool OpenThroughExplorer(const std::wstring& nativeFile) {
+        wchar_t windowsDir[MAX_PATH] = {};
+        const UINT length = GetWindowsDirectoryW(windowsDir, MAX_PATH);
+        if (length == 0 || length >= MAX_PATH) return false;
+        const std::wstring explorer = std::wstring(windowsDir) + L"\\explorer.exe";
+        // Always quoted, not quoted-when-spaced: Explorer splits its command
+        // line at commas as well, so "C:\x\a,b.jpg" bare would be two
+        // switches. A Windows path cannot contain a quote to escape.
+        std::wstring commandLine = L"\"" + explorer + L"\" \"" + nativeFile + L"\"";
+        const std::wstring directory = NativeParentDirectory(nativeFile);
+        STARTUPINFOW startup = {};
+        startup.cb = sizeof(startup);
+        PROCESS_INFORMATION process = {};
+        if (!CreateProcessW(explorer.c_str(), &commandLine[0], nullptr, nullptr,
+                            FALSE, 0, nullptr,
+                            directory.empty() ? nullptr : directory.c_str(),
+                            &startup, &process))
+            return false;
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        return true;
+    }
+
+    // Failures that say nothing about the handler, where handing the file
+    // to Explorer would only move the same error into Explorer's own box.
+    bool IsFileLevelFailure(const ShellExecuteOutcome& outcome) {
+        return outcome.code == SE_ERR_FNF || outcome.code == SE_ERR_PNF ||
+               outcome.lastError == ERROR_FILE_NOT_FOUND ||
+               outcome.lastError == ERROR_PATH_NOT_FOUND ||
+               outcome.lastError == ERROR_CANCELLED;
+    }
+
 } // namespace
 
 bool LaunchDefault(const std::vector<std::string>& paths, std::string& outError) {
@@ -560,6 +625,7 @@ bool LaunchDefault(const std::vector<std::string>& paths, std::string& outError)
     // (that comes back S_FALSE and is balanced by the matching teardown), so
     // this only adds one where the caller is a worker.
     ComScope com;
+    QuietLoaderScope quietLoader;
 
     bool allOk = true;
     for (const std::string& path : paths) {
@@ -576,6 +642,11 @@ bool LaunchDefault(const std::vector<std::string>& paths, std::string& outError)
             const ShellExecuteOutcome chooser =
                     ShellExecuteVerb(L"openas", file, true);
             if (chooser.ok || chooser.lastError == ERROR_CANCELLED) continue;
+        } else if (!IsFileLevelFailure(opened) && OpenThroughExplorer(file)) {
+            // The type has a handler, it just would not start from this
+            // process (a packaged app whose activation DLL failed to load
+            // here comes back as "access denied"): Explorer starts it.
+            continue;
         }
 
         allOk = false;
@@ -656,6 +727,7 @@ bool LaunchWith(const FileAssociationApp& app,
                 const std::vector<std::string>& paths, std::string& outError) {
     if (paths.empty()) return false;
     ComScope com;
+    QuietLoaderScope quietLoader;
 
     bool launched = false;
     bool found = false;

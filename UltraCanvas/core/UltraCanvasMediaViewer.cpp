@@ -30,6 +30,7 @@
 #include "../dialogs/UltraCanvasCurvesDialog.h"  // Curves (tone curve) editing window
 #include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"     // GetResourcesDir, for the toolbar icons
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
 #include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
 #include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
@@ -90,6 +91,28 @@ static std::string BaseName(const std::string& path) {
     std::error_code ec;
     fs::path p(path);
     return PathToUtf8(p.filename());
+}
+
+// ----- Toolbar icons -----
+// The toolbars are icons rather than captions: an icon-only row fits the
+// narrow pane UltraFiler gives the viewer, and a picture is read before a word.
+// The caption moves to the tooltip, so what a button does is still one hover
+// away. Icons come from the framework's own set under media/icons/; the
+// toolbar draws them as masks, so they take the toolbar's foreground colour
+// and grey out with the button.
+static std::string ViewerIconPath(const std::string& name) {
+    return NormalizePath(GetResourcesDir() + "media/icons/" + name);
+}
+
+// Finish an icon-only toolbar button: no text, so no gap reserved for one,
+// and the caption as the tooltip.
+static std::shared_ptr<UltraCanvasButton> IconOnly(std::shared_ptr<UltraCanvasButton> b,
+                                            const std::string& tooltip) {
+    if (b) {
+        b->SetIconSpacing(0);
+        b->SetTooltip(tooltip);
+    }
+    return b;
 }
 
 static std::string HumanSize(uintmax_t bytes) {
@@ -925,31 +948,48 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    toolbar->AddButton("mv_open", "Open", "", [this] { ShowOpenDialog(); });
+    IconOnly(toolbar->AddButton("mv_open", "", ViewerIconPath("folder-open.svg"),
+                                [this] { ShowOpenDialog(); }),
+             "Open a file or folder");
     toolbar->AddSeparator("mv_sep0");
-    toolbar->AddButton("mv_prev", "Prev", "", [this] { Previous(); });
-    toolbar->AddButton("mv_next", "Next", "", [this] { Next(); });
+    IconOnly(toolbar->AddButton("mv_prev", "", ViewerIconPath("angle-left.svg"),
+                                [this] { Previous(); }),
+             "Previous file (Left)");
+    IconOnly(toolbar->AddButton("mv_next", "", ViewerIconPath("angle-right.svg"),
+                                [this] { Next(); }),
+             "Next file (Right)");
     toolbar->AddSeparator("mv_sep1");
-    playButton = toolbar->AddToggleButton("mv_play", "Slideshow", "",
-            [this](bool on) { if (on) PlaySlideshow(); else PauseSlideshow(); });
-    toolbar->AddDropdownButton("mv_interval", "Interval",
-            { "3 s", "5 s", "7 s", "10 s" },
-            [this](const std::string& s) {
-                double sec = std::atof(s.c_str());
-                if (sec > 0) SetSlideshowIntervalSeconds(sec);
-            });
-    toolbar->AddDropdownButton("mv_trans", "Transition",
-            { "None", "Cross fade", "Fade out/in", "Slide H", "Slide V", "Zoom" },
-            [this](const std::string& s) {
-                MediaTransition t = MediaTransition::CrossFade;
-                if      (s == "None")        t = MediaTransition::NoTransition;
-                else if (s == "Cross fade")  t = MediaTransition::CrossFade;
-                else if (s == "Fade out/in") t = MediaTransition::FadeOutIn;
-                else if (s == "Slide H")     t = MediaTransition::SlideHorizontal;
-                else if (s == "Slide V")     t = MediaTransition::SlideVertical;
-                else if (s == "Zoom")        t = MediaTransition::ZoomFade;
-                SetTransition(t);
-            });
+    playButton = IconOnly(toolbar->AddToggleButton("mv_play", "", ViewerIconPath("slideshow.svg"),
+            [this](bool on) { if (on) PlaySlideshow(); else PauseSlideshow(); }),
+            "Slideshow (Space)");
+    // The two dropdowns show their current value - "5 s", "Cross fade" - which
+    // is what a value picker is for; the tooltip says which value it is.
+    {
+        auto dd = toolbar->AddDropdownButton("mv_interval", "",
+                { "3 s", "5 s", "7 s", "10 s" },
+                [this](const std::string& s) {
+                    double sec = std::atof(s.c_str());
+                    if (sec > 0) SetSlideshowIntervalSeconds(sec);
+                });
+        dd->SetTooltip("Slideshow interval");
+        dd->SetSelectedIndex(1, false);      // 5 s, the default
+    }
+    {
+        auto dd = toolbar->AddDropdownButton("mv_trans", "",
+                { "None", "Cross fade", "Fade out/in", "Slide H", "Slide V", "Zoom" },
+                [this](const std::string& s) {
+                    MediaTransition t = MediaTransition::CrossFade;
+                    if      (s == "None")        t = MediaTransition::NoTransition;
+                    else if (s == "Cross fade")  t = MediaTransition::CrossFade;
+                    else if (s == "Fade out/in") t = MediaTransition::FadeOutIn;
+                    else if (s == "Slide H")     t = MediaTransition::SlideHorizontal;
+                    else if (s == "Slide V")     t = MediaTransition::SlideVertical;
+                    else if (s == "Zoom")        t = MediaTransition::ZoomFade;
+                    SetTransition(t);
+                });
+        dd->SetTooltip("Slideshow transition");
+        dd->SetSelectedIndex(1, false);      // Cross fade, the default
+    }
     AddChild(toolbar);
 
     // ----- TOP TOOLBAR ROW 2: view + edit -----
@@ -957,26 +997,47 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     toolbar2->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    toolbar2->AddButton("mv_zoomout", "Zoom -", "", [this] { ZoomOutAction(); });
-    toolbar2->AddDropdownButton("mv_zoom", "Zoom",
+    IconOnly(toolbar2->AddButton("mv_zoomout", "", ViewerIconPath("zoom-out.svg"),
+                                 [this] { ZoomOutAction(); }),
+             "Zoom out (-)");
+    toolbar2->AddDropdownButton("mv_zoom", "",
             { "Fit", "25%", "50%", "75%", "100%", "150%", "200%", "400%" },
             [this](const std::string& s) {
                 if (s == "Fit") ZoomFitAction();
                 else            ZoomPercentAction(std::atof(s.c_str()));
-            });
-    toolbar2->AddButton("mv_zoomin", "Zoom +", "", [this] { ZoomInAction(); });
-    toolbar2->AddButton("mv_fit", "Fit", "", [this] { ZoomFitAction(); });
+            })->SetTooltip("Zoom level");
+    IconOnly(toolbar2->AddButton("mv_zoomin", "", ViewerIconPath("zoom-in.svg"),
+                                 [this] { ZoomInAction(); }),
+             "Zoom in (+)");
+    IconOnly(toolbar2->AddButton("mv_fit", "", ViewerIconPath("zoom-fit.svg"),
+                                 [this] { ZoomFitAction(); }),
+             "Fit to window");
     toolbar2->AddSeparator("mv_sep3");
-    toolbar2->AddButton("mv_rotl", "Rotate L", "", [this] { if (surface) surface->RotateBy(-1); });
-    toolbar2->AddButton("mv_rotr", "Rotate R", "", [this] { if (surface) surface->RotateBy(1); });
-    toolbar2->AddButton("mv_mirh", "Mirror H", "", [this] { if (surface) surface->ToggleFlipHorizontal(); });
-    toolbar2->AddButton("mv_mirv", "Mirror V", "", [this] { if (surface) surface->ToggleFlipVertical(); });
+    IconOnly(toolbar2->AddButton("mv_rotl", "", ViewerIconPath("rotate-left.svg"),
+                                 [this] { if (surface) surface->RotateBy(-1); }),
+             "Rotate left");
+    IconOnly(toolbar2->AddButton("mv_rotr", "", ViewerIconPath("rotate-right.svg"),
+                                 [this] { if (surface) surface->RotateBy(1); }),
+             "Rotate right");
+    IconOnly(toolbar2->AddButton("mv_mirh", "", ViewerIconPath("mirror-h.svg"),
+                                 [this] { if (surface) surface->ToggleFlipHorizontal(); }),
+             "Mirror horizontally");
+    IconOnly(toolbar2->AddButton("mv_mirv", "", ViewerIconPath("mirror-v.svg"),
+                                 [this] { if (surface) surface->ToggleFlipVertical(); }),
+             "Mirror vertically");
     toolbar2->AddSeparator("mv_sep4");
-    toolbar2->AddToggleButton("mv_adjust", "Adjust", "",
-            [this](bool on) { if (adjustPanel) adjustPanel->SetVisible(on); });
-    toolbar2->AddButton("mv_curves", "Curves", "", [this] { ShowCurvesDialog(); });
-    toolbar2->AddButton("mv_save", "Save as", "", [this] { ShowSaveDialog(); });
-    toolbar2->AddButton("mv_info", "Info", "", [this] { ToggleDetails(); });
+    IconOnly(toolbar2->AddToggleButton("mv_adjust", "", ViewerIconPath("settings-sliders.svg"),
+            [this](bool on) { if (adjustPanel) adjustPanel->SetVisible(on); }),
+            "Adjustments: gamma, brightness, colour, sharpen");
+    IconOnly(toolbar2->AddButton("mv_curves", "", ViewerIconPath("curves.svg"),
+                                 [this] { ShowCurvesDialog(); }),
+             "Curves");
+    IconOnly(toolbar2->AddButton("mv_save", "", ViewerIconPath("save.svg"),
+                                 [this] { ShowSaveDialog(); }),
+             "Save as\xE2\x80\xA6");
+    IconOnly(toolbar2->AddButton("mv_info", "", ViewerIconPath("file-info.svg"),
+                                 [this] { ToggleDetails(); }),
+             "Details");
     AddChild(toolbar2);
 
     // ----- ADJUSTMENTS PANEL (hidden until "Adjust" is toggled) -----
@@ -1002,17 +1063,32 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     adjustPanel->AddChild(BuildAdjustSlider("adj_sharp", "Sharpen", 0.0f, 3.0f, 0.0f,
             [this](float v) { adjustments.sharpen = v; ApplyAdjustments(); }));
 
-    auto autoBtn = std::make_shared<UltraCanvasButton>("adj_auto", 0, 0, 96, 28, "Auto");
-    autoBtn->onClick = [this] {
-        adjustments.autoOptimize = !adjustments.autoOptimize;
+    // Auto-optimise latches (it is a state of the adjustments, not an action),
+    // so it is a toggle whose pressed look says whether it is on; Reset is a
+    // plain click. Both are icons with the caption as tooltip, like the toolbar.
+    auto makeAdjustButton = [](const std::string& id, const std::string& icon,
+                               const std::string& tooltip) {
+        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, 34, 28, "");
+        b->SetIcon(ViewerIconPath(icon));
+        b->SetIconSize(18, 18);
+        b->SetIconPosition(ButtonIconPosition::Center);
+        b->SetIconSpacing(0);
+        b->SetUseIconAsMask(true);
+        b->SetTooltip(tooltip);
+        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        return b;
+    };
+    auto autoBtn = makeAdjustButton("adj_auto", "wand.svg", "Auto-optimise");
+    autoBtn->SetCanToggled(true);
+    autoBtn->onToggle = [this](bool on) {
+        adjustments.autoOptimize = on;
         ApplyAdjustments();
     };
-    autoBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    adjustResetters.push_back([b = autoBtn.get()] { b->SetPressed(false); });
     adjustPanel->AddChild(autoBtn);
 
-    auto resetBtn = std::make_shared<UltraCanvasButton>("adj_reset", 0, 0, 96, 28, "Reset");
+    auto resetBtn = makeAdjustButton("adj_reset", "reload.svg", "Reset adjustments");
     resetBtn->onClick = [this] { ResetAdjustments(); };
-    resetBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     adjustPanel->AddChild(resetBtn);
     AddChild(adjustPanel);
 
@@ -1213,7 +1289,13 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     infoLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     bottomBar->AddChild(infoLabel);
 
-    auto detailsBtn = std::make_shared<UltraCanvasButton>("MV_Details", 0, 0, 72, 20, "Details");
+    auto detailsBtn = std::make_shared<UltraCanvasButton>("MV_Details", 0, 0, 28, 20, "");
+    detailsBtn->SetIcon(ViewerIconPath("file-info.svg"));
+    detailsBtn->SetIconSize(14, 14);
+    detailsBtn->SetIconPosition(ButtonIconPosition::Center);
+    detailsBtn->SetIconSpacing(0);
+    detailsBtn->SetUseIconAsMask(true);
+    detailsBtn->SetTooltip("Details");
     detailsBtn->onClick = [this] { ToggleDetails(); };
     detailsBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     bottomBar->AddChild(detailsBtn);
@@ -2578,6 +2660,8 @@ void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
 
 void UltraCanvasMediaViewer::PlaySlideshow() {
     slideshowPlaying = true;
+    // Space and the API reach here too; the toolbar toggle shows the state.
+    if (playButton && !playButton->IsPressed()) playButton->SetPressed(true);
     auto* app = UltraCanvasApplication::GetInstance();
     if (!app) return;
     if (slideshowTimer) app->StopTimer(slideshowTimer);
@@ -2587,6 +2671,7 @@ void UltraCanvasMediaViewer::PlaySlideshow() {
 
 void UltraCanvasMediaViewer::PauseSlideshow() {
     slideshowPlaying = false;
+    if (playButton && playButton->IsPressed()) playButton->SetPressed(false);
     if (slideshowTimer) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(slideshowTimer);
         slideshowTimer = 0;

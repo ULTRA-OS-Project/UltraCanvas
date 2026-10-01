@@ -284,7 +284,7 @@ namespace {
         auto fullscreenBtn = MakeToolButton("STLFullscreen", 290, 450, 150, "Open in Viewer",
                                             [files, currentIndex]() {
                                                 if (*currentIndex < files.size())
-                                                    ShowFullSizeImageViewer(files[*currentIndex]);
+                                                    ShowInMediaViewer(files[*currentIndex]);
                                             });
         viewerPanel->AddChild(fullscreenBtn);
 

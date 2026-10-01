@@ -390,6 +390,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUIElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextInput.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAccessibility.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasContainer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGroupBox.cpp
@@ -470,6 +471,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasStepper.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasChip.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveSeparator.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopShell.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBusyIndicator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorSwatchBar.cpp
@@ -549,6 +552,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/AbsoluteLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/FlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/GridLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/TableLayout.cpp
 
         # Collision-aware placement of annotation labels around shapes.
         # Part of the layout engine, not of any chart/diagram plugin.
@@ -609,6 +613,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScanner.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerESCLProtocol.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerESCL.cpp
+        # IPP driverless printing: the encoding and the page format are pure
+        # and always built; the backend compiles to nothing without UltraNet.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterIPPProtocol.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterPwgRaster.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterIPP.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceWatcherFallback.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
@@ -1238,6 +1247,8 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UCTextLayout.cpp
+        # UltraCanvasPdfSurface: PDF output through the render context.
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UltraCanvasPdfSurfaceCairo.cpp
         # Standalone QOI codec — dependency free, always compiled so qoi_encode/
         # qoi_decode/qoi_read/qoi_write are available without libvips.
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/qoi.cpp
@@ -2552,28 +2563,12 @@ if(ULTRACANVAS_ENABLE_NET)
         message(STATUS "  [✓] UltraNet RTP plug-in - ENABLED (UDP receiver, RFC 3550)")
     endif()
 
-    # macOS: each UltraNet plug-in is a MODULE that resolves core symbols
-    # (UltraNet_RegisterPlugin, UltraNet_ParseUrl, ...) from the host binary at
-    # dlopen() time. Unlike Linux's ld, the Mach-O linker rejects undefined
-    # symbols in a module unless it is linked with -undefined dynamic_lookup
-    # (same mechanism the LaTeX plug-in uses below). Applied here in one place so
-    # a new plug-in only needs its target name added to this list.
-    # NB: when a new UltraNet plug-in is added above, add its target here too.
-    if(APPLE)
-        foreach(_ultranet_plugin IN ITEMS
-                UltraNetSmtpPlugin UltraNetImapPlugin UltraNetPop3Plugin
-                UltraNetJmapPlugin
-                UltraNetWebDavPlugin UltraNetLdapPlugin UltraNetTelnetPlugin
-                UltraNetRtspPlugin UltraNetMqttPlugin UltraNetAmqpPlugin
-                UltraNetCoapPlugin UltraNetSnmpPlugin UltraNetSshPlugin
-                UltraNetMdnsPlugin UltraNetRtmpPlugin UltraNetGrpcPlugin
-                UltraNetSipPlugin UltraNetRtpPlugin)
-            if(TARGET ${_ultranet_plugin})
-                set_property(TARGET ${_ultranet_plugin} APPEND_STRING
-                    PROPERTY LINK_FLAGS " -undefined dynamic_lookup")
-            endif()
-        endforeach()
-    endif()
+    # No plug-in resolves a core symbol from its host: everything it needs from
+    # the core comes through the UltraNetPluginHost table (see
+    # Plugins/UltraNet/common/UltraNetPluginHostShim.cpp). So the plug-ins link
+    # with no -undefined dynamic_lookup on macOS and no core import library on
+    # Windows, and either linker rejects a plug-in that starts calling the core
+    # directly - on Linux the UltraNetPluginHostImports test does.
 else()
     message(STATUS "  [−] UltraNet - DISABLED")
 endif()

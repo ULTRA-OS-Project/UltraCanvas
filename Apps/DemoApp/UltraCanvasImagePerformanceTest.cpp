@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
 // Bitmap codec comparison benchmark: file size / encode time / decode time per format
-// Version: 2.5.8
-// Last Modified: 2026-06-01
+// Version: 2.5.9
+// Last Modified: 2026-09-29
 // Author: UltraCanvas Framework
 //
 // ================================================================================
@@ -267,9 +267,9 @@ namespace UltraCanvas {
 
 // ============================================================================
 // EXTERNAL HELPER (defined in UltraCanvasBitmapFormatDemo.cpp)
-// Opens a full-size 1:1 image viewer window with zoom/pan support.
+// Opens the file in the demo's shared UltraCanvasMediaViewerWindow.
 // ============================================================================
-    void ShowFullSizeImageViewer(const std::string& imagePath);
+    void ShowInMediaViewer(const std::string& path);
 
 // ============================================================================
 // FILE-SCOPE HELPERS (anonymous namespace — no symbols escape this TU)
@@ -1788,7 +1788,7 @@ namespace UltraCanvas {
                         thumb->SetVisible(true);
                         std::string slotPath = outPath;
                         thumb->onClick = [slotPath]() {
-                            ShowFullSizeImageViewer(slotPath);
+                            ShowInMediaViewer(slotPath);
                         };
                         thumb->RequestRedraw();
                     }

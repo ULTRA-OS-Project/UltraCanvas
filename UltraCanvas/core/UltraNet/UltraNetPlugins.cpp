@@ -2,10 +2,16 @@
 // Plugin registry. Plug-ins register themselves via UltraNet_RegisterPlugin
 // at static-init time (or at runtime via the future RefreshPlugins loader).
 // The registry maintains two indexes: by plug-in name and by URL scheme.
-// Version: 0.3.1 (Stage 3)
+// Version: 0.3.2 - keeps the core functions plug-ins call back into linked
+//                  into every host, static core or shared
+
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetPlugins.h"
+#include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetHttp.h"
+#include "UltraNet/UltraNetMime.h"
+#include "UltraNet/UltraNetUrl.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
@@ -62,13 +68,36 @@ using UltraNet_PluginRegisterFn = void (*)();   // v1 (POSIX-only)
 static constexpr const char* kPluginEntryV1 = "UltraNet_PluginRegister";
 static constexpr const char* kPluginEntryV2 = "UltraNet_PluginInit";
 
-// Host vtable handed to v2 plug-ins. RegisterPlugin needs a non-template
-// wrapper for the function-pointer slot (UltraNet_RegisterPlugin is a free
-// function, not a template, so this just takes its address).
-static UltraNetPluginHost g_pluginHost = {
+// The table handed to every v2 plug-in (see UltraNetPlugins.h). Everything a
+// plug-in needs from the core goes through it, so a plug-in DSO has no
+// undefined core symbols. Because the loader passes this table's address,
+// every host that loads plug-ins also links every function named in it -
+// which is what makes plug-ins load into an app on a static core.
+namespace {
+void HttpHeadersSet(UltraNetHttpHeaders& headers, const std::string& name,
+                    const std::string& value) {
+    headers.Set(name, value);
+}
+} // namespace
+
+static const UltraNetPluginHost g_pluginHost = {
     ULTRANET_PLUGIN_HOST_ABI_VERSION,
-    &UltraNet_RegisterPlugin
+    &UltraNet_RegisterPlugin,
+    &UltraNet_ParseUrl,
+    &UltraNet_UrlEncode,
+    &UltraNet_UrlDecode,
+    &UltraNet_ResolveCaBundlePath,
+    &UltraNet_DescribeTrustRoots,
+    &UltraNet_DescribePlatform,
+    &UltraNet_MimeBuild,
+    &UltraNet_HttpGet,
+    &UltraNet_HttpRequest,
+    &HttpHeadersSet,
 };
+
+const UltraNetPluginHost* UltraNet_GetPluginHost() {
+    return &g_pluginHost;
+}
 
 namespace {
 

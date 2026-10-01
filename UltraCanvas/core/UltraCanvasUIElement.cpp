@@ -1,12 +1,15 @@
 // UltraCanvasUIElement.cpp
 // UI base class implementation; geometry and box model live on
 // UltraCanvas::CSSLayout::Element (the new base).
+// Version: 4.2.0 - a borderless background is drawn with the element's corner radius
+//                 (SetBorderRadius), so a rounded box needs no border.
 // Version: 4.1.2 - MapFromLocal/MapToLocal: with an explicit target parent, stop
 //                 the ancestor walk BEFORE folding in the target's own placement
 //                 offset (it was added one level too many). nullptr/window-frame
 //                 callers are byte-for-byte unchanged.
-// Last Modified: 2026-07-14
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
+#include <algorithm>
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasApplication.h"
@@ -188,9 +191,18 @@ namespace UltraCanvas {
                                                   leftColor, rightColor, topColor, bottomColor,
                                                   leftRadius, rightRadius, topRadius, bottomRadius,
                                                   leftDash, rightDash, topDash, bottomDash);
-        } else {
-            if (backgroundColor.a > 0) {
-                ctx->SetFillPaint(backgroundColor);
+        } else if (backgroundColor.a > 0) {
+            // No border, but maybe rounded corners (SetBorderRadius).
+            float radius = 0.f;
+            if (bordersVisual) {
+                radius = std::max({ bordersVisual->left.radius, bordersVisual->right.radius,
+                                    bordersVisual->top.radius, bordersVisual->bottom.radius });
+            }
+            ctx->SetFillPaint(backgroundColor);
+            if (radius > 0.f) {
+                radius = std::min(radius, std::min(bnds.width, bnds.height) / 2.f);
+                ctx->FillRoundedRectangle(bnds, radius);
+            } else {
                 ctx->FillRectangle(bnds);
             }
         }

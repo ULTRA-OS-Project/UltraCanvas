@@ -123,13 +123,18 @@ namespace UltraCanvas {
         void ClearLanguage() { currentRules = nullptr; }
 
         // Some extensions are shared by two languages: .cls is a VBA class
-        // module or a LaTeX class, .m MATLAB or Objective-C. The file's first
-        // lines tell them apart - the first line that could only be one of
-        // the two decides. Returns that language's name, or "" when the
-        // extension is not a shared one or the text does not say (the
-        // extension's own language then applies). The name can be a
-        // language the highlighter has no rules for ("LaTeX",
-        // "Objective-C"): such text is plain text here.
+        // module or a LaTeX class, .m MATLAB or Objective-C, .pl Perl or
+        // Prolog. The languages such an extension can be, the default first
+        // (what the extension alone means); empty for any other extension.
+        static const std::vector<std::string> &
+        SharedExtensionLanguages(const std::string &extension);
+
+        // The file's first lines tell a shared extension's languages apart -
+        // the first line that could only be one of the two decides. Returns
+        // that language's name, or "" when the extension is not a shared one
+        // or the text does not say (the extension's default then applies).
+        // The name can be a language the highlighter has no rules for
+        // ("LaTeX", "Objective-C"): such text is plain text here.
         static std::string LanguageFromContent(const std::string &extension,
                                                const std::string &text);
 
@@ -374,7 +379,13 @@ namespace UltraCanvas {
 
     inline bool SyntaxTokenizer::SetLanguageByExtension(const std::string &fileExtension) {
         std::string ext = fileExtension;
+        if (ext.empty()) return false;
         if (ext.front() == '.') ext = ext.substr(1);
+
+        // Two languages claim a shared extension, and the map below is
+        // unordered: which one won was left to chance. Its default decides.
+        const std::vector<std::string> &shared = SharedExtensionLanguages(ext);
+        if (!shared.empty() && SetLanguage(shared.front())) return true;
 
         for (auto &[name, rules]: languagesRules) {
             for (const std::string &ruleExt: rules.fileExtensions) {
@@ -425,13 +436,29 @@ namespace UltraCanvas {
         return result;
     }
 
+    inline const std::vector<std::string> &
+    SyntaxTokenizer::SharedExtensionLanguages(const std::string &extension) {
+        static const std::unordered_map<std::string, std::vector<std::string>> shared = {
+                {"cls", {"VBA", "LaTeX"}},
+                {"m",   {"MATLAB", "Objective-C"}},
+                {"pl",  {"Perl", "Prolog"}},
+        };
+        static const std::vector<std::string> none;
+        std::string ext = extension;
+        if (!ext.empty() && ext.front() == '.') ext.erase(0, 1);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const auto it = shared.find(ext);
+        return it == shared.end() ? none : it->second;
+    }
+
     inline std::string SyntaxTokenizer::LanguageFromContent(const std::string &extension,
                                                             const std::string &text) {
         std::string ext = extension;
         if (!ext.empty() && ext.front() == '.') ext.erase(0, 1);
         std::transform(ext.begin(), ext.end(), ext.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (ext != "cls" && ext != "m") return "";
+        if (SharedExtensionLanguages(ext).empty()) return "";
 
         auto startsWith = [](const std::string &line, const char *prefix) {
             return line.compare(0, std::char_traits<char>::length(prefix), prefix) == 0;
@@ -460,6 +487,19 @@ namespace UltraCanvas {
                     return "VBA";
                 if (startsWith(line, "\\") || startsWith(line, "%"))
                     return "LaTeX";
+            } else if (ext == "pl") {
+                // Perl comments with #, Prolog with % and /* */. A Prolog
+                // clause or directive carries ":-"; Perl opens with its
+                // pragmas, declarations and POD.
+                if (startsWith(line, "#") || startsWith(line, "=pod") ||
+                    startsWith(line, "=head") || startsWith(line, "=begin") ||
+                    startsWith(line, "use ") || startsWith(line, "package ") ||
+                    startsWith(line, "my ") || startsWith(line, "our ") ||
+                    startsWith(line, "sub ") || startsWith(line, "require "))
+                    return "Perl";
+                if (startsWith(line, "%") || startsWith(line, "/*") ||
+                    line.find(":-") != std::string::npos)
+                    return "Prolog";
             } else {
                 // MATLAB comments with %, and has no preprocessor, no @
                 // directives and no // or /* comments.

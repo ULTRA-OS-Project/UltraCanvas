@@ -1,11 +1,12 @@
 // Apps/EmailCleaner/ui/EmailCleanerApp.cpp
-// Version: 0.2.0 (Phase 2)
+// Version: 0.3.0 - own accounts beside UltraMail's
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerApp.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasUtils.h"      // GetExecutableDir
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasModalDialog.h"
@@ -13,13 +14,16 @@
 #include "UltraMailCredentialVault.h"
 #include "UltraMailDiscovery.h"
 #include "UltraMailLocalStore.h"
+#include "UltraMailLoginCheck.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 #include <UltraNet/UltraNetPlugins.h>
 
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <string>
+#include <thread>
 #include <vector>
 
 // EMAILCLEANER_VERSION comes from the build alone: CMake reads the first line of
@@ -38,6 +42,56 @@ namespace {
 constexpr float kWindowW = 1200.0f;
 constexpr float kWindowH = 800.0f;
 constexpr float kBarH    = 62.0f;
+
+// EmailCleaner's own credential vault: UltraVault's device-key vault with
+// EmailCleaner's file name and key prefix, in <data dir>/vault. UltraMail's
+// is only ever read; this one is the only vault EmailCleaner writes.
+const UltraVault::DeviceKeyVaultProfile kOwnVaultProfile{
+    /*vaultFileName=*/"emailcleaner.vault",
+    /*keyPrefix=*/    "mail.emailcleaner."};
+
+// Where UltraNet's protocol plug-ins (the IMAP DSO among them) are: the
+// EMAILCLEANER_PLUGIN_DIR override, else Plugins/UltraNet next to the
+// executable or up to two levels above it (the build tree, bin/), else the
+// registry's own working-directory default. A directory counts only when it
+// holds a DSO, so an empty one does not shadow the real one.
+std::string ResolvePluginDirectory() {
+    namespace fs = std::filesystem;
+    if (const char* dir = std::getenv("EMAILCLEANER_PLUGIN_DIR"); dir && *dir) return dir;
+
+    auto holdsPlugin = [](const fs::path& dir) {
+        std::error_code ec;
+        if (!fs::is_directory(dir, ec) || ec) return false;
+        for (const auto& entry : fs::directory_iterator(dir, ec)) {
+            if (ec) return false;
+            const std::string ext = PathToUtf8(entry.path().extension());
+            if (ext == ".so" || ext == ".dll" || ext == ".dylib") return true;
+        }
+        return false;
+    };
+
+    const fs::path relative = PathFromUtf8("Plugins") / "UltraNet";
+    std::vector<fs::path> candidates;
+    if (const std::string exeDir = GetExecutableDir(); !exeDir.empty()) {
+        fs::path base = PathFromUtf8(exeDir);
+        for (int up = 0; up < 3; ++up) {
+            candidates.push_back(base / relative);
+            base = base.parent_path();
+        }
+    }
+    candidates.push_back(relative);
+
+    for (const auto& candidate : candidates)
+        if (holdsPlugin(candidate)) return PathToUtf8(candidate.lexically_normal());
+    // Nothing found: name a concrete place in the diagnostic.
+    return PathToUtf8(candidates.front().lexically_normal());
+}
+
+// Run `task` on the UI thread (from a worker). Dropped when the app is gone.
+void OnUiThread(std::function<void()> task) {
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+        app->PostToUIThread(std::move(task));
+}
 } // namespace
 
 bool EmailCleanerApp::Initialize(const std::string& dataDir,
@@ -53,6 +107,17 @@ bool EmailCleanerApp::Initialize(const std::string& dataDir,
     // UltraMail caches raw bodies under <its data dir>/mail/<account>/<folder>.
     mailCacheDir_ = mailDataDir + "/mail";
     rulesPath_    = dataDir + "/rules.txt";
+
+    // EmailCleaner's own accounts. A failure here costs only the accounts
+    // added in EmailCleaner; UltraMail's still load.
+    ownAccounts_.Open(dataDir);
+
+    // Bring up UltraNet's plug-in registry so the IMAP DSO loads. Without it
+    // no account — UltraMail's or EmailCleaner's own — can reach its server.
+    if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+    pluginDir_ = ResolvePluginDirectory();
+    UltraNet_SetPluginDirectory(pluginDir_);
+    UltraNet_RefreshPlugins();
 
     LoadRules();
     ImportAccounts();
@@ -70,12 +135,35 @@ void EmailCleanerApp::WireMailBackend() {
                                 : nullptr;
     if (!mailbox) {
         imapPlugin_.reset();
-        backendUnavailable_ = "The IMAP plug-in is not loaded, so EmailCleaner "
-                              "cannot reach the mail server.";
+        backendUnavailable_ = "The IMAP plug-in (ultranet_imap) was not found in " +
+                              pluginDir_ + ", so EmailCleaner cannot reach the mail "
+                              "server. Set EMAILCLEANER_PLUGIN_DIR to the folder that "
+                              "holds it.";
         return;
     }
 
     mailBackend_ = std::make_unique<MailBackend>(*mailbox);
+
+    // The two vaults are opened one after the other, never together:
+    // UltraVault holds one store per process.
+    std::string ultraMailProblem;
+    const int usable = RegisterUltraMailAccounts(ultraMailProblem) + RegisterOwnAccounts();
+
+    if (usable > 0) {
+        backendUnavailable_.clear();
+    } else if (!ultraMailProblem.empty()) {
+        backendUnavailable_ = ultraMailProblem;
+    } else {
+        backendUnavailable_ = "No account has a server and a saved password — add "
+                              "one under Accounts…, or set it up in UltraMail.";
+    }
+}
+
+int EmailCleanerApp::RegisterUltraMailAccounts(std::string& problem) {
+    bool any = false;
+    for (const StoredAccount& account : accounts_)
+        if (account.source == AccountSource::UltraMail) any = true;
+    if (!any) return 0;
 
     // One entry per account: where its server is, and the password UltraMail
     // already holds. An account with neither is simply not registered, and the
@@ -84,19 +172,26 @@ void EmailCleanerApp::WireMailBackend() {
     // beside it; until it is unlocked every Retrieve() says "no password".
     UltraMail::CredentialVault vault(mailDataDir_ + "/vault");
     if (!vault.TryAutoUnlock()) {
-        backendUnavailable_ = vault.Exists()
+        problem = vault.Exists()
             ? "UltraMail's credential vault is locked with a master password — "
               "open UltraMail once so it stores its device key, then restart."
             : "UltraMail has no credential vault yet — set the account up in "
-              "UltraMail first.";
-        return;
+              "UltraMail first, or add it under Accounts….";
+        return 0;
     }
     int usable = 0;
     for (const StoredAccount& account : accounts_) {
-        if (account.email.empty()) continue;
-        const UltraMail::DiscoveryResult discovered =
-            UltraMail::AutoDiscovery::FromPresets(account.email);
-        if (!discovered.found || !discovered.imap.Valid()) continue;
+        if (account.source != AccountSource::UltraMail || account.email.empty()) continue;
+
+        // The servers UltraMail stored for the account (discovered or typed
+        // in by hand), else its provider table entry.
+        UltraMail::Account record;
+        if (auto it = ultraMailAccounts_.find(account.accountId); it != ultraMailAccounts_.end())
+            record = it->second;
+        else
+            record.email = account.email;
+        const UltraMail::DiscoveryResult discovered = UltraMail::AutoDiscovery::ForAccount(record);
+        if (!discovered.imap.Valid()) continue;
 
         std::string password;
         if (!vault.Retrieve(account.accountId, password) || password.empty()) continue;
@@ -108,19 +203,58 @@ void EmailCleanerApp::WireMailBackend() {
         access.options.credentials.username =
             discovered.imap.username.empty() ? account.email : discovered.imap.username;
         access.options.credentials.password = password;
-        access.options.useTls      = discovered.imap.security != UltraMail::MailSecurity::Plain;
-        access.options.implicitTls = discovered.imap.security == UltraMail::MailSecurity::SslTls;
+        UltraMail::ApplyConnection(discovered.imap, access.options);
         mailBackend_->SetAccount(access);
         ++usable;
     }
     vault.Lock();   // the passwords are in the backend now; drop the key
+    return usable;
+}
 
-    if (usable == 0) {
-        backendUnavailable_ = "No account has a server and a saved password — "
-                              "set the account up in UltraMail first.";
-    } else {
-        backendUnavailable_.clear();
+int EmailCleanerApp::RegisterOwnAccounts() {
+    std::vector<UltraMail::Account> own;
+    if (!ownAccounts_.IsOpen() || !ownAccounts_.List(own) || own.empty()) return 0;
+
+    UltraVault::DeviceKeyVault vault(ownAccounts_.VaultDir(), kOwnVaultProfile);
+    if (!vault.TryAutoUnlock()) return 0;
+    int usable = 0;
+    for (const UltraMail::Account& account : own) {
+        std::string password;
+        if (!vault.Retrieve(account.accountId, password) || password.empty()) continue;
+        RegisterOwnAccount(account, password);
+        ++usable;
     }
+    vault.Lock();
+    return usable;
+}
+
+void EmailCleanerApp::RegisterOwnAccount(const UltraMail::Account& account,
+                                         const std::string& password) {
+    if (!mailBackend_) return;
+    MailAccountAccess access;
+    access.accountId    = account.accountId;
+    access.serverUrl    = UltraMail::AutoDiscovery::ImapServerUrl(account.imap);
+    access.ownerAddress = account.email;
+    access.options      = SessionOptionsFor(account, password);
+    mailBackend_->SetAccount(access);
+}
+
+std::string EmailCleanerApp::OwnPassword(const std::string& accountId) const {
+    UltraVault::DeviceKeyVault vault(ownAccounts_.VaultDir(), kOwnVaultProfile);
+    std::string password;
+    if (vault.TryAutoUnlock()) {
+        vault.Retrieve(accountId, password);
+        vault.Lock();
+    }
+    return password;
+}
+
+std::string EmailCleanerApp::CacheDirFor(const std::string& accountId) const {
+    for (const StoredAccount& account : accounts_) {
+        if (account.accountId == accountId && account.source == AccountSource::Own)
+            return ownAccounts_.MailCacheDir();
+    }
+    return mailCacheDir_;
 }
 
 void EmailCleanerApp::LoadRules() {
@@ -153,12 +287,8 @@ void EmailCleanerApp::ImportAccounts() {
             std::vector<UltraMail::Account> mailAccounts;
             if (mailStore.ListAccounts(mailAccounts)) {
                 for (const UltraMail::Account& account : mailAccounts) {
-                    StoredAccount stored;
-                    stored.accountId   = account.accountId;
-                    stored.displayName = account.displayName;
-                    stored.email       = account.email;
-                    stored.shortName   = account.shortName;
-                    store_.UpsertAccount(stored);
+                    store_.UpsertAccount(ToStoredAccount(account, AccountSource::UltraMail));
+                    ultraMailAccounts_[account.accountId] = account;
                     ++imported;
                 }
             }
@@ -166,6 +296,13 @@ void EmailCleanerApp::ImportAccounts() {
         // Let go of UltraMail's database: the account list is mirrored now,
         // and holding the file open would keep a second writer on it.
         UltraDb_CloseConnection("emailcleaner-mailaccounts");
+    }
+
+    // EmailCleaner's own accounts, which need no UltraMail at all.
+    std::vector<UltraMail::Account> own;
+    if (ownAccounts_.IsOpen() && ownAccounts_.List(own)) {
+        for (const UltraMail::Account& account : own)
+            store_.UpsertAccount(ToStoredAccount(account, AccountSource::Own));
     }
 
     if (imported > 0) return;
@@ -201,6 +338,7 @@ std::shared_ptr<UltraCanvasWindow> EmailCleanerApp::CreateMainWindow() {
     accountBar_.onScan          = [this]() { ScanMailCache(); };
     accountBar_.onReanalyse     = [this]() { Reanalyse(); };
     accountBar_.onEditRules     = [this]() { EditRules(); };
+    accountBar_.onManageAccounts = [this]() { ManageAccounts(); };
     window_->AddChild(bar);
 
     // ---- Views -------------------------------------------------------------
@@ -300,33 +438,278 @@ void EmailCleanerApp::Refresh() {
 }
 
 void EmailCleanerApp::ScanMailCache() {
+    if (accounts_.empty()) {
+        accountBar_.SetStatus("No mail accounts yet — add one under Accounts…, or set "
+                              "one up in UltraMail, then press \"Load mail\" here.");
+        return;
+    }
+    if (fetching_) {
+        accountBar_.SetStatus("Still downloading — the map updates when it is done.");
+        return;
+    }
+    // UltraMail's accounts are read from what UltraMail last synced. Own
+    // accounts have no one else to sync them, so "Load mail" downloads what
+    // is new on their server first.
+    std::vector<std::string> toFetch;
+    const std::string wanted = accountBar_.Filter().accountId;
+    for (const StoredAccount& account : accounts_) {
+        if (!wanted.empty() && account.accountId != wanted) continue;
+        if (account.source == AccountSource::Own) toFetch.push_back(account.accountId);
+    }
+    FetchThenAnalyse(toFetch);
+}
+
+void EmailCleanerApp::FetchThenAnalyse(const std::vector<std::string>& accountIds) {
+    if (accountIds.empty()) {
+        AnalyseCaches(/*skipExisting=*/true, "");
+        return;
+    }
+    // One download at a time: the account list's database is shared with it.
+    if (fetching_) {
+        accountBar_.SetStatus("Another download is still running — press \"Load mail\" "
+                              "again when it is done.");
+        return;
+    }
+    auto* mailbox = imapPlugin_ ? dynamic_cast<IMailboxProtocolPlugin*>(imapPlugin_.get())
+                                : nullptr;
+    if (!mailbox) {
+        AnalyseCaches(true, "EmailCleaner's own accounts were not downloaded: " +
+                            backendUnavailable_);
+        return;
+    }
+
+    // Everything the worker needs is gathered here, on the UI thread: the
+    // account records and their passwords (the vault is not thread-safe).
+    struct Job { UltraMail::Account account; UltraNetMailOptions options; };
+    std::vector<Job> jobs;
+    std::vector<std::string> missing;
+    for (const std::string& id : accountIds) {
+        Job job;
+        if (!ownAccounts_.Find(id, job.account)) continue;
+        const std::string password = OwnPassword(id);
+        if (password.empty()) {
+            missing.push_back(job.account.email);
+            continue;
+        }
+        job.options = SessionOptionsFor(job.account, password);
+        jobs.push_back(std::move(job));
+    }
+    std::string report;
+    if (!missing.empty()) {
+        report = "No saved password for " + missing.front() +
+                 (missing.size() > 1 ? " and " + std::to_string(missing.size() - 1) + " more" : "") +
+                 " — remove it under Accounts… and add it again.";
+    }
+    if (jobs.empty()) {
+        AnalyseCaches(true, report);
+        return;
+    }
+
+    fetching_ = true;
+    accountBar_.SetStatus(jobs.size() == 1
+        ? "Downloading new mail for " + jobs.front().account.email + "…"
+        : "Downloading new mail for " + std::to_string(jobs.size()) + " accounts…");
+
+    // The plug-in is kept alive by the copy the worker holds.
+    std::shared_ptr<IUltraNetPlugin> plugin = imapPlugin_;
+    const std::string cacheDir = ownAccounts_.MailCacheDir();
+    std::thread([this, plugin, mailbox, cacheDir, jobs, report]() {
+        int bodies = 0;
+        std::string failures = report;
+        for (const Job& job : jobs) {
+            const UltraMail::SyncOutcome outcome = FetchMailbox(
+                ownAccounts_.Store(), *mailbox, cacheDir, job.account, job.options);
+            if (outcome) {
+                bodies += outcome.stats.bodies;
+            } else {
+                if (!failures.empty()) failures += " ";
+                failures += job.account.email + " could not be downloaded: " +
+                            outcome.message + ".";
+            }
+        }
+        OnUiThread([this, bodies, failures]() {
+            fetching_ = false;
+            std::string fetched = "Downloaded " + std::to_string(bodies) + " new messages.";
+            if (!failures.empty()) fetched += " " + failures;
+            AnalyseCaches(/*skipExisting=*/true, fetched);
+        });
+    }).detach();
+}
+
+void EmailCleanerApp::AnalyseCaches(bool skipExisting, const std::string& fetchReport) {
     IngestOptions options;
-    options.skipExisting = true;
+    options.skipExisting = skipExisting;
 
     IngestStats total;
     const std::string wanted = accountBar_.Filter().accountId;
     for (const StoredAccount& account : accounts_) {
         if (!wanted.empty() && account.accountId != wanted) continue;
         options.ownerAddress = account.email;
-        total.Add(ingestor_.IngestMailCache(mailCacheDir_, account.accountId, options));
+        total.Add(ingestor_.IngestMailCache(CacheDirFor(account.accountId),
+                                            account.accountId, options));
     }
 
-    if (accounts_.empty()) {
-        accountBar_.SetStatus("No mail accounts found — set one up in UltraMail first, "
-                              "then press \"Load mail\" here.");
+    const std::string prefix = fetchReport.empty() ? "" : fetchReport + " ";
+    if (!skipExisting) {
+        Refresh();
+        accountBar_.SetStatus(prefix + "Re-analysed " + std::to_string(total.analysed) +
+                              " messages with " +
+                              std::to_string(ingestor_.GetClassifier().Rules().Size()) +
+                              " rules (" + std::to_string(total.unwanted) + " unwanted).");
         return;
     }
     if (total.filesSeen == 0) {
-        accountBar_.SetStatus("No cached messages under " + mailCacheDir_ +
-                              " — sync the account in UltraMail first.");
+        accountBar_.SetStatus(prefix + "No downloaded messages yet — sync the account "
+                              "in UltraMail, or press \"Load mail\" for an account "
+                              "added under Accounts….");
         return;
     }
 
     Refresh();
-    accountBar_.SetStatus("Analysed " + std::to_string(total.analysed) + " new messages (" +
-                          std::to_string(total.skipped) + " already known, " +
-                          std::to_string(total.unwanted) + " unwanted). " +
-                          "Load mail again after the next sync.");
+    accountBar_.SetStatus(prefix + "Analysed " + std::to_string(total.analysed) +
+                          " new messages (" + std::to_string(total.skipped) +
+                          " already known, " + std::to_string(total.unwanted) +
+                          " unwanted).");
+}
+
+// ---- Own accounts ----------------------------------------------------------
+
+std::vector<AccountsDialog::Row> EmailCleanerApp::AccountRows() const {
+    std::vector<AccountsDialog::Row> rows;
+    for (const StoredAccount& account : accounts_) {
+        AccountsDialog::Row row;
+        row.account = account;
+        if (account.source == AccountSource::Own) {
+            UltraMail::Account record;
+            row.detail = ownAccounts_.Find(account.accountId, record)
+                ? "EmailCleaner · " + record.imap.host
+                : "EmailCleaner";
+        } else {
+            row.detail = "from UltraMail";
+        }
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
+void EmailCleanerApp::ManageAccounts() {
+    accountsDialog_.onAdd = [this](const NewAccountRequest& request,
+                                   std::function<void(const std::string&)> done) {
+        AddOwnAccount(request, std::move(done));
+    };
+    accountsDialog_.onRemove = [this](const StoredAccount& account) {
+        RemoveOwnAccount(account);
+    };
+    accountsDialog_.onDiscover = [](const std::string& email,
+                                    std::function<void(const UltraMail::DiscoveryResult&)> done) {
+        // Autoconfig is an HTTP round trip or three: off the UI thread.
+        std::thread([email, done]() {
+            UltraMail::AutoDiscovery discovery;
+            UltraMail::DiscoveryResult result = discovery.Discover(email);
+            if (!result.found) result = UltraMail::AutoDiscovery::GuessForDomain(email);
+            OnUiThread([done, result]() { done(result); });
+        }).detach();
+    };
+    accountsDialog_.Show(AccountRows());
+}
+
+void EmailCleanerApp::AddOwnAccount(const NewAccountRequest& request,
+                                    std::function<void(const std::string&)> done) {
+    const std::string invalid = OwnAccounts::Validate(request, accounts_);
+    if (!invalid.empty()) { done(invalid); return; }
+    if (!ownAccounts_.IsOpen()) {
+        done("EmailCleaner's account list could not be opened in " + dataDir_ + ".");
+        return;
+    }
+    auto* mailbox = imapPlugin_ ? dynamic_cast<IMailboxProtocolPlugin*>(imapPlugin_.get())
+                                : nullptr;
+    if (!mailbox) {
+        done(backendUnavailable_.empty()
+                 ? "The IMAP plug-in is not loaded, so the sign-in cannot be checked."
+                 : backendUnavailable_);
+        return;
+    }
+
+    const UltraMail::Account account = OwnAccounts::MakeAccount(request);
+    const std::string password = request.password;
+
+    // One folder listing proves the host, the port, TLS and the password —
+    // the same session a download opens. Off the UI thread: it is the network.
+    std::shared_ptr<IUltraNetPlugin> plugin = imapPlugin_;
+    std::thread([this, plugin, mailbox, account, password, done]() {
+        UltraNetCredentials credentials;
+        credentials.username = account.imap.username;
+        credentials.password = password;
+        const UltraNetResult signIn = UltraMail::LoginCheck::Imap(*mailbox, account.imap,
+                                                                  credentials);
+        OnUiThread([this, signIn, account, password, done]() {
+            if (!signIn) {
+                // The app-password hint only when the server turned the
+                // password down — not for a host that could not be reached.
+                const bool refused = signIn.code == UltraNetResultCode::AuthenticationFailed ||
+                                     signIn.code == UltraNetResultCode::AuthenticationRequired;
+                done("The sign-in failed: " + signIn.message +
+                     (refused && !account.providerName.empty()
+                          ? " — for " + account.providerName + ", use an app password."
+                          : "."));
+                return;
+            }
+
+            // The password first: an account saved without one would fail
+            // every download for no visible reason.
+            UltraVault::DeviceKeyVault vault(ownAccounts_.VaultDir(), kOwnVaultProfile);
+            const bool stored = vault.TryAutoUnlock() && vault.Store(account.accountId, password);
+            vault.Lock();
+            if (!stored) {
+                done("The sign-in worked, but the password could not be stored in " +
+                     ownAccounts_.VaultDir() + ", so the account was not added.");
+                return;
+            }
+            if (UltraDbResult saved = ownAccounts_.Save(account); !saved) {
+                done("The account could not be saved: " + saved.message);
+                return;
+            }
+            store_.UpsertAccount(ToStoredAccount(account, AccountSource::Own));
+            RegisterOwnAccount(account, password);
+            if (mailBackend_ && !backendUnavailable_.empty()) {
+                backendUnavailable_.clear();
+                actionsPanel_.SetBackendUnavailableReason("");
+            }
+
+            Refresh();
+            accountsDialog_.SetRows(AccountRows());
+            done("");
+            FetchThenAnalyse({ account.accountId });
+        });
+    }).detach();
+}
+
+void EmailCleanerApp::RemoveOwnAccount(const StoredAccount& account) {
+    if (account.source != AccountSource::Own) return;
+    if (fetching_) {
+        UltraCanvasDialogManager::ShowWarning(
+            "A download is running. Remove the account once it has finished.",
+            "Not now", nullptr);
+        return;
+    }
+    UltraCanvasDialogManager::ShowConfirmation(
+        "Remove " + account.email + " from EmailCleaner?\n\nIts saved password, the "
+        "mail EmailCleaner downloaded for it and its analysis are deleted. Nothing "
+        "on the mail server changes.",
+        "Remove account",
+        [this, account](bool confirmed) {
+            if (!confirmed) return;
+            ownAccounts_.Remove(account.accountId);
+            UltraVault::DeviceKeyVault vault(ownAccounts_.VaultDir(), kOwnVaultProfile);
+            if (vault.TryAutoUnlock()) {
+                vault.Remove(account.accountId);
+                vault.Lock();
+            }
+            store_.RemoveAccount(account.accountId);
+            Refresh();
+            accountsDialog_.SetRows(AccountRows());
+            accountBar_.SetStatus("Removed " + account.email + ".");
+        });
 }
 
 void EmailCleanerApp::EditRules() {
@@ -439,7 +822,8 @@ void EmailCleanerApp::OpenAttachment(const AnalyzedMessage& message,
     // They come back out of the .eml UltraMail cached, which is also where the
     // final refusal happens, against the part the message really carries.
     std::vector<uint8_t> bytes;
-    const AttachmentFetch status = FetchAttachment(mailCacheDir_, message.accountId,
+    const AttachmentFetch status = FetchAttachment(CacheDirFor(message.accountId),
+                                                   message.accountId,
                                                    message.folder, message.uid,
                                                    record, bytes);
     if (status != AttachmentFetch::Ok) {
@@ -478,23 +862,7 @@ void EmailCleanerApp::OpenAttachment(const AnalyzedMessage& message,
 void EmailCleanerApp::Reanalyse() {
     // Re-read the rules first: this is the button you press after editing them.
     LoadRules();
-
-    IngestOptions options;
-    options.skipExisting = false;
-
-    IngestStats total;
-    const std::string wanted = accountBar_.Filter().accountId;
-    for (const StoredAccount& account : accounts_) {
-        if (!wanted.empty() && account.accountId != wanted) continue;
-        options.ownerAddress = account.email;
-        total.Add(ingestor_.IngestMailCache(mailCacheDir_, account.accountId, options));
-    }
-
-    Refresh();
-    accountBar_.SetStatus("Re-analysed " + std::to_string(total.analysed) +
-                          " messages with " +
-                          std::to_string(ingestor_.GetClassifier().Rules().Size()) +
-                          " rules (" + std::to_string(total.unwanted) + " unwanted).");
+    AnalyseCaches(/*skipExisting=*/false, "");
 }
 
 } // namespace EmailCleaner

@@ -121,3 +121,14 @@ code page.
 
 A `pkexec` / authorization-services backend for the Unix desktops would slot in
 behind the same four `Native*` functions.
+
+The Windows backend turns the loader's hard-error boxes off on its worker
+thread around the launch (`SetThreadErrorMode`, as the file-associations
+backend does): the `runas` verb has the shell load system DLLs of its own
+(`pcacli.dll`, the Program Compatibility Assistant client), and one that fails
+to resolve an import is reported through `ShellExecuteEx`'s error code, in the
+caller's dialog, rather than as a modal box behind the progress window. The
+one known way for that to happen - a DLL in the package carrying a Windows
+system DLL's name, which the loader then answers imports of that name with -
+is kept out of the package by `package-win.sh`; see [*"Entry point not found"
+in a Windows DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).

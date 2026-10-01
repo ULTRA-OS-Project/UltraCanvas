@@ -1,7 +1,12 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
-// Version: 1.1.0
-// Last Modified: 2026-09-29
+// Version: 1.2.0 - table presentational attributes (nowrap, valign,
+//                  cellpadding, cellspacing, tr align); white-space: nowrap;
+//                  border-collapse / border-spacing / border-radius; cells
+//                  default to a browser's 1px padding; `inherit` for
+//                  color, font and text properties; background images and
+//                  size, margin: auto, max-width.
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLStyleResolver.h"
@@ -52,7 +57,8 @@ const ComputedStyle& StyleResolver::StyleOf(const Node* node) const {
 // left alone here.
 void StyleResolver::ApplyAlignAttribute(const Node& element, ComputedStyle& style) {
     static const char* const kAlignable[] = {
-        "p", "div", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "img", "caption"
+        "p", "div", "td", "th", "tr", "tbody", "thead", "tfoot",
+        "h1", "h2", "h3", "h4", "h5", "h6", "img", "caption"
     };
     bool alignable = false;
     for (const char* tag : kAlignable) if (element.tag == tag) { alignable = true; break; }
@@ -115,6 +121,39 @@ void StyleResolver::ApplyLegacyAttributes(const Node& element, ComputedStyle& st
         if (auto color = CssColor::Parse(TrimLower(element.GetAttribute("bgcolor"))))
             style.backgroundColor = *color;
     }
+    // Tables: <td nowrap>, valign on a cell or its row, the table's
+    // cellpadding on each of its cells and its cellspacing on itself.
+    const bool cell = element.tag == "td" || element.tag == "th";
+    if (cell && element.HasAttribute("nowrap")) style.noWrap = true;
+    if ((cell || element.tag == "tr") && element.HasAttribute("valign")) {
+        const std::string v = TrimLower(element.GetAttribute("valign"));
+        if (v == "top") style.verticalAlign = VerticalAlignMode::Top;
+        else if (v == "bottom") style.verticalAlign = VerticalAlignMode::Bottom;
+        else if (v == "middle" || v == "center") style.verticalAlign = VerticalAlignMode::Middle;
+    }
+    if (cell) {
+        const Node* table = element.parent;
+        while (table && !table->IsElement("table")) table = table->parent;
+        if (table && table->HasAttribute("cellpadding")) {
+            if (auto len = CssLength::Parse(TrimLower(table->GetAttribute("cellpadding")))) {
+                const float px = len->unit == CssUnit::Percent ? 0.f
+                               : len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+                style.paddingTop = style.paddingRight = style.paddingBottom = style.paddingLeft = px;
+            }
+        }
+    }
+    if (element.tag == "table" && element.HasAttribute("cellspacing")) {
+        if (auto len = CssLength::Parse(TrimLower(element.GetAttribute("cellspacing")))) {
+            if (len->unit != CssUnit::Percent)
+                style.borderSpacing = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+        }
+    }
+    if (element.tag == "table" && element.HasAttribute("border")) {
+        if (auto len = CssLength::Parse(TrimLower(element.GetAttribute("border")))) {
+            if (len->unit != CssUnit::Percent)
+                style.borderWidth = len->ToPx(style.fontSizePx, opts.baseFontSizePx);
+        }
+    }
     if (colorsAllowed && element.tag == "body" && element.HasAttribute("text")) {
         if (auto color = CssColor::Parse(TrimLower(element.GetAttribute("text")))) style.color = *color;
     }
@@ -132,6 +171,8 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
     style.strikethrough = parentStyle.strikethrough;
     style.monospace = parentStyle.monospace;
     style.preserveWhitespace = parentStyle.preserveWhitespace;
+    style.noWrap = parentStyle.noWrap;
+    style.borderCollapse = parentStyle.borderCollapse;
     style.color = parentStyle.color;
     style.textAlign = parentStyle.textAlign;
     style.lineHeight = parentStyle.lineHeight;
@@ -281,8 +322,8 @@ void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle
     else if (tag == "tr") { s.display = DisplayMode::TableRow; }
     else if (tag == "td" || tag == "th") {
         s.display = DisplayMode::TableCell;
-        s.paddingTop = s.paddingBottom = 0.25f * em;
-        s.paddingRight = s.paddingLeft = 0.4f * em;
+        // A browser's cell padding (cellpadding="1").
+        s.paddingTop = s.paddingBottom = s.paddingRight = s.paddingLeft = 1.f;
         if (tag == "th") { s.bold = true; s.textAlign = TextAlignMode::Center; }
     }
     else if (tag == "b" || tag == "strong") { s.bold = true; }
@@ -314,6 +355,7 @@ void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle
         s.display = DisplayMode::Hidden;
     }
     else if (tag == "img") { s.display = DisplayMode::InlineBlock; }
+    else if (tag == "nobr") { s.display = DisplayMode::Inline; s.noWrap = true; }
     else if (tag == "br" || tag == "span" || tag == "q" || tag == "abbr" ||
              tag == "mark" || tag == "font" || tag == "wbr") {
         s.display = DisplayMode::Inline;
@@ -335,6 +377,7 @@ bool StyleResolver::CompoundMatches(const SimpleSelector& part, const Node& elem
     for (const auto& cls : part.classes) {
         if (!element.HasClass(cls)) return false;
     }
+    if (part.link && !(element.tag == "a" && element.HasAttribute("href"))) return false;
     return true;
 }
 
@@ -417,7 +460,23 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
     const float em = s.fontSizePx;
     const float rem = opts.baseFontSizePx;
 
-    if (lower == "inherit" || lower == "initial" || lower == "unset") return;
+    // `inherit` takes the parent's value - mail writes <a style="color:
+    // inherit"> to keep a link in its paragraph's colour. The other keywords
+    // (and inherit on a property not listed here) leave the value as it is.
+    if (lower == "inherit") {
+        if (prop == "color") { if (!opts.overrideAuthorColors) s.color = parentStyle.color; }
+        else if (prop == "font-size") s.fontSizePx = parentStyle.fontSizePx;
+        else if (prop == "font-family") { s.fontFamily = parentStyle.fontFamily; s.monospace = parentStyle.monospace; }
+        else if (prop == "font-weight") s.bold = parentStyle.bold;
+        else if (prop == "font-style") s.italic = parentStyle.italic;
+        else if (prop == "text-decoration" || prop == "text-decoration-line") {
+            s.underline = parentStyle.underline;
+            s.strikethrough = parentStyle.strikethrough;
+        }
+        else if (prop == "text-align") s.textAlign = parentStyle.textAlign;
+        return;
+    }
+    if (lower == "initial" || lower == "unset") return;
 
     if (prop == "display") {
         if (lower == "none") s.display = DisplayMode::Hidden;
@@ -428,18 +487,70 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         else if (lower == "table") s.display = DisplayMode::Table;
         else if (lower == "table-row") s.display = DisplayMode::TableRow;
         else if (lower == "table-cell") s.display = DisplayMode::TableCell;
+        else if (lower == "inline-table" || lower == "inline-flex" || lower == "inline-grid")
+            s.display = DisplayMode::InlineBlock;
     }
     else if (prop == "color") {
         if (opts.overrideAuthorColors) return;
         if (auto color = CssColor::Parse(lower)) s.color = *color;
     }
-    else if (prop == "background-color" || prop == "background") {
+    else if (prop == "background-color") {
         if (opts.overrideAuthorColors) return;
-        // For the 'background' shorthand only a plain color layer is honored.
-        if (auto color = CssColor::Parse(SplitParts(lower).empty()
-                                             ? lower
-                                             : SplitParts(lower)[0])) {
-            s.backgroundColor = *color;
+        if (auto color = CssColor::Parse(lower)) s.backgroundColor = *color;
+    }
+    else if (prop == "background" || prop == "background-image") {
+        // Layers split on top-level commas; each may hold url(...), a size
+        // after '/', and (in the shorthand's last layer) a colour.
+        std::vector<std::string> layers;
+        {
+            std::string current;
+            int parens = 0;
+            for (char c : value) {
+                if (c == '(') ++parens;
+                if (c == ')') --parens;
+                if (c == ',' && parens == 0) { layers.push_back(current); current.clear(); }
+                else current += c;
+            }
+            layers.push_back(current);
+        }
+        std::vector<std::string> urls;
+        for (const auto& rawLayer : layers) {
+            const std::string layer = Trim(rawLayer);
+            std::string low = TrimLower(layer);
+            size_t u = low.find("url(");
+            if (u != std::string::npos) {
+                size_t close = layer.find(')', u);
+                std::string url = Trim(layer.substr(u + 4, close == std::string::npos
+                                                               ? std::string::npos : close - u - 4));
+                if (url.size() >= 2 && (url.front() == '\'' || url.front() == '"')) {
+                    url = url.substr(1, url.size() - 2);
+                }
+                if (!url.empty()) urls.push_back(url);
+            }
+            if (prop == "background" && urls.size() == 1 && u != std::string::npos) {
+                if (low.find("contain") != std::string::npos) s.backgroundSize = BackgroundSizeMode::Contain;
+                else if (low.find("cover") != std::string::npos) s.backgroundSize = BackgroundSizeMode::Cover;
+            }
+        }
+        s.backgroundImages = urls;   // the shorthand (and 'none') resets them
+        if (prop == "background" && !opts.overrideAuthorColors) {
+            // The colour sits in the last layer, anywhere among its words.
+            for (const auto& part : SplitParts(TrimLower(layers.back()))) {
+                if (part.rfind("url(", 0) == 0) continue;
+                if (auto color = CssColor::Parse(part)) { s.backgroundColor = *color; break; }
+            }
+        }
+    }
+    else if (prop == "background-size") {
+        if (lower.rfind("contain", 0) == 0) s.backgroundSize = BackgroundSizeMode::Contain;
+        else if (lower.rfind("cover", 0) == 0) s.backgroundSize = BackgroundSizeMode::Cover;
+        else s.backgroundSize = BackgroundSizeMode::Auto;
+    }
+    else if (prop == "max-width") {
+        s.maxWidthPx.reset();
+        if (auto len = CssLength::Parse(lower)) {
+            if (len->unit != CssUnit::Percent && len->unit != CssUnit::Auto)
+                s.maxWidthPx = len->ToPx(em, rem);
         }
     }
     else if (prop == "font-size") {
@@ -526,6 +637,24 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
     else if (prop == "white-space") {
         s.preserveWhitespace = (lower == "pre" || lower == "pre-wrap" ||
                                 lower == "pre-line");
+        s.noWrap = (lower == "nowrap");
+    }
+    else if (prop == "border-collapse") {
+        s.borderCollapse = (lower == "collapse");
+    }
+    else if (prop == "border-spacing") {
+        auto parts = SplitParts(lower);
+        if (!parts.empty()) {
+            if (auto len = CssLength::Parse(parts[0])) s.borderSpacing = len->ToPx(em, rem);
+        }
+    }
+    else if (prop == "border-radius") {
+        auto parts = SplitParts(lower);
+        if (!parts.empty()) {
+            if (auto len = CssLength::Parse(parts[0])) {
+                if (len->unit != CssUnit::Percent) s.borderRadius = len->ToPx(em, rem);
+            }
+        }
     }
     else if (prop == "list-style-type" || prop == "list-style") {
         if (lower == "none") s.listMarker = ListMarker::NoMarker;
@@ -541,17 +670,28 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
     else if (prop == "margin") {
         ApplyBoxShorthand(lower, em, rem, s.marginTop, s.marginRight,
                           s.marginBottom, s.marginLeft);
+        // Which sides are 'auto' (1-4 values, as for the lengths).
+        auto parts = SplitParts(lower);
+        auto isAuto = [&](size_t index) { return index < parts.size() && parts[index] == "auto"; };
+        switch (parts.size()) {
+            case 1: s.marginLeftAuto = s.marginRightAuto = isAuto(0); break;
+            case 2: case 3: s.marginLeftAuto = s.marginRightAuto = isAuto(1); break;
+            case 4: s.marginRightAuto = isAuto(1); s.marginLeftAuto = isAuto(3); break;
+            default: break;
+        }
     }
     else if (prop == "margin-top") {
         if (auto len = CssLength::Parse(lower)) s.marginTop = len->ToPx(em, rem);
     }
     else if (prop == "margin-right") {
+        s.marginRightAuto = (lower == "auto");
         if (auto len = CssLength::Parse(lower)) s.marginRight = len->ToPx(em, rem);
     }
     else if (prop == "margin-bottom") {
         if (auto len = CssLength::Parse(lower)) s.marginBottom = len->ToPx(em, rem);
     }
     else if (prop == "margin-left") {
+        s.marginLeftAuto = (lower == "auto");
         if (auto len = CssLength::Parse(lower)) s.marginLeft = len->ToPx(em, rem);
     }
     else if (prop == "padding") {

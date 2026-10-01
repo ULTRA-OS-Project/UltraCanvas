@@ -12,6 +12,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <dbghelp.h>   // the minidump types only; the function is resolved at run time
 
 // Older MinGW-w64 winnt.h predates the ARM64 constant; the value is fixed.
 #ifndef PROCESSOR_ARCHITECTURE_ARM64
@@ -46,6 +47,36 @@ namespace UltraCanvas {
         char    gCrashCpuSummary[256]       = "";
         char    gCrashMarchAdvice[64]       = "-march=x86-64-v2";
         bool    gCrashDialogAllowed         = true;
+
+        // ===== THE CRASH DUMP =====
+        // A minidump beside the message: the stack of every thread, the
+        // module list and the memory the stacks point at, which is what a
+        // debugger needs to say where the crash was and how it got there.
+        // The exception code and the faulting module in the message box
+        // name the symptom; the dump is the evidence. dbghelp's writer is
+        // resolved while the process is healthy (LoadLibrary inside the
+        // filter would take the loader lock, which the crashing thread may
+        // hold), and the folder is created then too; only the file name,
+        // which carries the time, is made in the filter - with wsprintf, no
+        // heap. The path is kept in a fixed buffer like everything else here.
+        using MiniDumpWriteDumpFn = BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, MINIDUMP_TYPE,
+                                                  PMINIDUMP_EXCEPTION_INFORMATION,
+                                                  PMINIDUMP_USER_STREAM_INFORMATION,
+                                                  PMINIDUMP_CALLBACK_INFORMATION);
+        MiniDumpWriteDumpFn gMiniDumpWriteDump = nullptr;
+        wchar_t gCrashDumpDir[MAX_PATH * 2]   = L"";   // empty = no dump
+        wchar_t gCrashDumpPath[MAX_PATH * 2]  = L"";   // the file, once written
+        wchar_t gCrashDumpBaseName[64]        = L"UltraCanvas";
+
+        // What goes into the dump. Not a full dump: that is the whole
+        // address space, hundreds of megabytes nobody can attach to a bug
+        // report. These keep it in the low tens of megabytes while giving a
+        // debugger every stack, every module, the memory each stack refers
+        // to and the modules' data segments (the globals).
+        constexpr MINIDUMP_TYPE kCrashDumpType = static_cast<MINIDUMP_TYPE>(
+                MiniDumpWithIndirectlyReferencedMemory | MiniDumpScanMemory |
+                MiniDumpWithDataSegs | MiniDumpWithHandleData |
+                MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules);
 
         bool EnvFlagSet(const char* name) {
             const char* value = std::getenv(name);
@@ -411,6 +442,75 @@ namespace UltraCanvas {
             CloseHandle(file);
         }
 
+        // Writes the minidump for `info` into gCrashDumpDir and leaves its
+        // path in gCrashDumpPath. False (and an empty path) when there is
+        // no writer, no folder, or the write failed: the report then says
+        // so instead of naming a file that is not there.
+        bool WriteCrashDump(EXCEPTION_POINTERS* info) {
+            gCrashDumpPath[0] = L'\0';
+            if (!gMiniDumpWriteDump || !gCrashDumpDir[0]) return false;
+
+            SYSTEMTIME now = {};
+            GetLocalTime(&now);
+            // wsprintfW: a kernel-side formatter that allocates nothing.
+            const int n = wsprintfW(gCrashDumpPath, L"%s\\%s-%04u%02u%02u-%02u%02u%02u-%lu.dmp",
+                                    gCrashDumpDir, gCrashDumpBaseName,
+                                    static_cast<unsigned>(now.wYear),
+                                    static_cast<unsigned>(now.wMonth),
+                                    static_cast<unsigned>(now.wDay),
+                                    static_cast<unsigned>(now.wHour),
+                                    static_cast<unsigned>(now.wMinute),
+                                    static_cast<unsigned>(now.wSecond),
+                                    static_cast<unsigned long>(GetCurrentProcessId()));
+            if (n <= 0) { gCrashDumpPath[0] = L'\0'; return false; }
+
+            HANDLE file = CreateFileW(gCrashDumpPath, GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                                      CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (file == INVALID_HANDLE_VALUE) { gCrashDumpPath[0] = L'\0'; return false; }
+
+            MINIDUMP_EXCEPTION_INFORMATION exception = {};
+            exception.ThreadId = GetCurrentThreadId();
+            exception.ExceptionPointers = info;
+            exception.ClientPointers = FALSE;
+            const BOOL ok = gMiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file,
+                                               kCrashDumpType, info ? &exception : nullptr,
+                                               nullptr, nullptr);
+            CloseHandle(file);
+            if (!ok) {
+                DeleteFileW(gCrashDumpPath);   // a partial dump misleads
+                gCrashDumpPath[0] = L'\0';
+                return false;
+            }
+            return true;
+        }
+
+        // The dump folder: ULTRACANVAS_CRASH_DUMP_DIR when set, else
+        // %LOCALAPPDATA%\UltraCanvas\CrashDumps - the per-user application
+        // data folder, writable without rights and never inside the
+        // installation (which may be read-only, or a download about to be
+        // deleted). Created now, with its parent; an empty result means no
+        // dump will be written and the report says where to look instead.
+        void PrepareCrashDumpDir() {
+            gCrashDumpDir[0] = L'\0';
+            std::wstring dir;
+            if (const char* custom = std::getenv("ULTRACANVAS_CRASH_DUMP_DIR")) {
+                if (*custom) dir = Widen(custom);
+            }
+            if (dir.empty()) {
+                wchar_t local[MAX_PATH * 2] = L"";
+                const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH * 2);
+                if (n == 0 || n >= MAX_PATH * 2) return;
+                dir = std::wstring(local) + L"\\UltraCanvas";
+                CreateDirectoryW(dir.c_str(), nullptr);
+                dir += L"\\CrashDumps";
+            }
+            CreateDirectoryW(dir.c_str(), nullptr);
+            const DWORD attrs = GetFileAttributesW(dir.c_str());
+            if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) return;
+            if (dir.size() + 1 >= MAX_PATH * 2) return;
+            std::wmemcpy(gCrashDumpDir, dir.c_str(), dir.size() + 1);
+        }
+
         LONG WINAPI UnhandledExceptionReporter(EXCEPTION_POINTERS* info) {
             const DWORD code = info && info->ExceptionRecord
                                    ? info->ExceptionRecord->ExceptionCode
@@ -418,6 +518,24 @@ namespace UltraCanvas {
             void* address = info && info->ExceptionRecord
                                 ? info->ExceptionRecord->ExceptionAddress
                                 : nullptr;
+
+            // The dump first: it is the one thing that cannot be redone, and
+            // the message box below blocks until somebody clicks it.
+            const bool dumped = WriteCrashDump(info);
+            // One line for the log, the same plus an instruction for the box.
+            char dumpLine[MAX_PATH * 2 + 64] = "";
+            if (dumped) {
+                char dumpPath[MAX_PATH * 2] = "";
+                WideCharToMultiByte(CP_ACP, 0, gCrashDumpPath, -1, dumpPath,
+                                    sizeof(dumpPath), nullptr, nullptr);
+                std::snprintf(dumpLine, sizeof(dumpLine), "Crash dump: %s", dumpPath);
+            } else {
+                std::snprintf(dumpLine, sizeof(dumpLine), "No crash dump could be written%s.",
+                              gCrashDumpDir[0] ? "" : " (no dump folder)");
+            }
+            char dumpNote[sizeof(dumpLine) + 48] = "";
+            std::snprintf(dumpNote, sizeof(dumpNote), "\n%s%s", dumpLine,
+                          dumped ? "\nAttach it to the bug report." : "");
 
             // Which module does the faulting address live in? For a packaged app
             // this is the single most useful fact in the report -- it separates
@@ -468,23 +586,16 @@ namespace UltraCanvas {
                               reinterpret_cast<std::uintptr_t>(address)),
                           moduleName, gCrashOsVersion);
 
-            if (detail[0]) {
-                CrashLogLine(message);
-                CrashLogLine(detail);
-                if (gCrashDialogAllowed) {
-                    char full[1024];
-                    std::snprintf(full, sizeof(full), "%s%s", message, detail);
-                    MessageBoxA(nullptr, full, gCrashAppName,
-                                MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
-                }
-                return EXCEPTION_CONTINUE_SEARCH;
-            }
-
             CrashLogLine(message);
+            if (detail[0]) CrashLogLine(detail);
+            CrashLogLine(dumpLine);
             if (gCrashDialogAllowed) {
-                MessageBoxA(nullptr, message, gCrashAppName,
+                char full[2048];
+                std::snprintf(full, sizeof(full), "%s%s%s", message, detail, dumpNote);
+                MessageBoxA(nullptr, full, gCrashAppName,
                             MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
             }
+            if (detail[0]) return EXCEPTION_CONTINUE_SEARCH;
 
             // Let the default handler run so a configured WER dump is still
             // produced; we only wanted the process to say something first.
@@ -647,6 +758,29 @@ namespace UltraCanvas {
                           "-march=x86-64-v" +
                               std::to_string(X86_64Level(DetectCpuFeatures())));
         gCrashDialogAllowed = !DialogsSuppressed();
+
+        // The dump writer and its folder, resolved while everything works.
+        // dbghelp.dll ships with Windows; nothing links against it, so a
+        // system without it (there is none) merely writes no dump. The
+        // module stays loaded for the life of the process - a crash handler
+        // cannot load anything.
+        gMiniDumpWriteDump = nullptr;
+        if (HMODULE dbghelp = LoadLibraryW(L"dbghelp.dll")) {
+            gMiniDumpWriteDump = reinterpret_cast<MiniDumpWriteDumpFn>(
+                reinterpret_cast<void (*)()>(GetProcAddress(dbghelp, "MiniDumpWriteDump")));
+        }
+        {
+            // The app name as a file-name stem: letters, digits, '-' and '_'.
+            size_t n = 0;
+            for (const char* c = gCrashAppName; *c && n + 1 < 64; ++c) {
+                const bool ok = (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') ||
+                                (*c >= '0' && *c <= '9') || *c == '-' || *c == '_';
+                if (ok) gCrashDumpBaseName[n++] = static_cast<wchar_t>(*c);
+            }
+            if (n == 0) { std::wmemcpy(gCrashDumpBaseName, L"UltraCanvas", 12); n = 11; }
+            gCrashDumpBaseName[n] = L'\0';
+        }
+        if (!EnvFlagSet("ULTRACANVAS_NO_CRASH_DUMP")) PrepareCrashDumpDir();
 
         // Resolve the log path here rather than asking the debug sink for it:
         // the crash path must not touch the sink's stream or its mutex. Only a

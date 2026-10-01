@@ -1,5 +1,7 @@
 // Apps/UltraMail/engine/UltraMailTypes.cpp
-// FolderRole / MailSecurity / authentication method <-> string mapping.
+// FolderRole / MailSecurity / authentication method / signature kind <->
+// string mapping.
+// Version: 0.3.0 - signature kind, Signature::IsActive
 // Version: 0.2.0 - authentication method
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailTypes.h"
@@ -55,6 +57,39 @@ UltraNetMailAuth MailAuthFromString(const std::string& s) {
     if (s == "ntlm")      return UltraNetMailAuth::NTLM;
     if (s == "none")      return UltraNetMailAuth::None;
     return UltraNetMailAuth::Any;
+}
+
+std::string ToString(SignatureKind kind) {
+    switch (kind) {
+        case SignatureKind::Text: return "text";
+        case SignatureKind::Html: return "html";
+        case SignatureKind::Off: break;
+    }
+    return "none";
+}
+
+SignatureKind SignatureKindFromString(const std::string& s) {
+    if (s == "text") return SignatureKind::Text;
+    if (s == "html") return SignatureKind::Html;
+    return SignatureKind::Off;
+}
+
+namespace {
+bool HasVisibleText(const std::string& s) {
+    for (char c : s)
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n') return true;
+    return false;
+}
+} // namespace
+
+bool Signature::IsActive() const {
+    switch (kind) {
+        case SignatureKind::Text: return HasVisibleText(text);
+        // A signature of only a picture (a logo) has no text but still shows.
+        case SignatureKind::Html: return HasVisibleText(html);
+        case SignatureKind::Off: break;
+    }
+    return false;
 }
 
 void ApplyConnection(const MailServerSettings& server, UltraNetMailOptions& options) {

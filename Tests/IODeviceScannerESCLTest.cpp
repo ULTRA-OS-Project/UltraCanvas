@@ -349,6 +349,24 @@ void TestTheAddressFromDiscovery() {
 
     Check(EsclBaseUrlFromMdns("", 80, txt, false).empty(), "no host is no address");
     Check(EsclBaseUrlFromMdns("scanner.local", 0, txt, false).empty(), "and neither is no port");
+
+    // One scanner advertised over both _uscan._tcp and _uscans._tcp has two
+    // URLs but one identity, so it is listed once.
+    const std::vector<std::string> plainAd = {"rs=eSCL", "uuid=4509A320-00A0-008F-00B6-002507510EEE"};
+    const std::vector<std::string> tlsAd = {"rs=eSCL", "UUID=urn:uuid:4509a320-00a0-008f-00b6-002507510eee"};
+    Check(EsclBaseUrlFromMdns("scanner.local", 80, plainAd, false) !=
+              EsclBaseUrlFromMdns("scanner.local", 443, tlsAd, true),
+          "a scanner's plain and TLS advertisements have different URLs");
+    Check(!EsclScannerIdentity(plainAd, "scanner.local").empty() &&
+              EsclScannerIdentity(plainAd, "scanner.local") ==
+                  EsclScannerIdentity(tlsAd, "scanner.local"),
+          "  but the same identity, whatever case and prefix the uuid comes in");
+    Check(EsclScannerIdentity({"uuid=aaaa"}, "a.local") != EsclScannerIdentity({"uuid=bbbb"}, "a.local"),
+          "two scanners with their own uuids are two scanners, even on one host");
+    Check(EsclScannerIdentity({"rs=eSCL"}, "Scanner.Local.") ==
+              EsclScannerIdentity({"rs=eSCL"}, "scanner.local"),
+          "without a uuid a scanner is known by its host, case and root dot aside");
+    Check(EsclScannerIdentity({}, "").empty(), "with neither, it has no identity");
 }
 
 }  // namespace

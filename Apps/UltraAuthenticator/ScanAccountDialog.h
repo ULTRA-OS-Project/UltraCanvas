@@ -25,20 +25,40 @@
 // exactly the parser that Tests/UltraOtpTests.cpp exercises — there is no
 // second, laxer path into the vault.
 //
-// Version: 0.1.0
+// Two more ways in, for the code that is not in front of a camera:
+//
+//  - **From image…** decodes a picture file - the QR the browser offered to
+//    download, or a photo copied off a phone. The file is read by the QR
+//    scanner and nothing else: it is not registered as a recent file, and it
+//    is not copied or thumbnailed by this app. The file itself already holds
+//    the seed in the clear, so the dialog says so and leaves deleting it to
+//    the user.
+//  - **From screen** decodes the QR that a browser window on this same
+//    machine is showing - the common desktop case, where the enrolment page
+//    and the authenticator share one display and no camera can see either.
+//    The capture is UltraCanvasDesktopShell::CaptureScreenImage, which stays
+//    in memory: the PNG-writing CaptureScreen would put the seed on disk. The
+//    buffer is wiped as soon as it has been decoded.
+//
+// All three converge on the same acceptance path and the same handler.
+//
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 #ifndef SCANACCOUNTDIALOG_H
 #define SCANACCOUNTDIALOG_H
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasVideoRecorderElement.h"
+#include "Plugins/QRCode/UltraCanvasQRCode.h"
 
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraCanvas {
 namespace Authenticator {
@@ -58,18 +78,37 @@ public:
 
 private:
     void PollFrame();
+    void StartScanning();
     void StopScanning();
     void SetStatus(const std::string& text, bool isError = false);
+
+    // The other two sources. Each decodes once and hands what it found to
+    // OfferResults; neither touches the camera.
+    void ScanImageFile();
+    void ScanScreen();
+
+    // Picks the first account URI out of a decode and hands it to the
+    // handler. `noCodeMessage` is what to say when nothing decoded at all
+    // (for the camera: nothing, keep looking). Returns true when an account
+    // was accepted and the dialog is closing.
+    bool OfferResults(const std::vector<QRScanResult>& results,
+                      const std::string& noCodeMessage);
+    bool AcceptUri(std::string uri);
 
     UltraCanvasApplication& app_;
 
     std::shared_ptr<UltraCanvasVideoRecorderElement> preview_;
     std::shared_ptr<UltraCanvasLabel>                statusLabel_;
     std::shared_ptr<UltraCanvasLabel>                hintLabel_;
+    std::shared_ptr<UltraCanvasButton>               imageBtn_;
+    std::shared_ptr<UltraCanvasButton>               screenBtn_;
 
-    TimerId scanTimer_   = 0;
+    TimerId scanTimer_    = 0;
     bool    timerRunning_ = false;
     bool    accepted_     = false;
+    // Whether the camera opened at all. A rejected code re-opens it only if
+    // it was there to begin with; a machine without one is not asked twice.
+    bool    cameraOpened_ = false;
 
     // A QR that is not an account URI is common — a poster, a wifi code — so
     // it is reported once rather than on every frame, which would make the
