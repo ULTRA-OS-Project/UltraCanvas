@@ -90,6 +90,11 @@ windows stop short of the bars instead of covering them.
   about: Email starts UltraMail, the network icons UltraNetMonitor, USB,
   keyboard and webcam DeviceExplorer, the rest the Task Manager.
 
+  When the organiser leaves the panel short of room — five or more desktops
+  on a 900 px screen — the panel scrolls rather than losing its last items:
+  a chevron over the edge marks where the icons continue, a click on it
+  scrolls a page, and so does the wheel over the panel.
+
 ### Windows the desktop opens
 
 - **Applications** (app starter): every installed application from its

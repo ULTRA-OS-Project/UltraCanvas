@@ -651,13 +651,15 @@ the backing implementation can be replaced without affecting callers.
   `CreateWaveSeparator`. See `Docs/UltraCanvas/UltraCanvasWaveSeparator.md`.
 
 - **UltraCanvasToolbar item badges, reordering and scrolling**
-  (`UltraCanvasToolbar.h`, 1.5.0) — `SetItemBadge` / `SetItemBadgeCount` /
+  (`UltraCanvasToolbar.h`, 1.6.0) — `SetItemBadge` / `SetItemBadgeCount` /
   `SetItemBadgeDot` / `ClearItemBadge` / `GetItemBadge` anchor an
   `UltraCanvasBadge` to an item; `EnableItemReordering` lets the user drag an
   item along the bar (`onItemReordered(from, to)` on release) and `MoveItem` /
   `GetItemIndex` / `GetItemOrder` / `GetItems` do the same from code;
   `ToolbarOverflowMode::Scroll` keeps items at their size and scrolls a full
-  bar with the mouse wheel. `WindowType::Desktop` (`UltraCanvasWindow.h`) is
+  bar with the mouse wheel, with a chevron over the edge the items continue
+  past that scrolls a page when clicked (`SetScrollHints`).
+  `WindowType::Desktop` (`UltraCanvasWindow.h`) is
   the screen-sized window at the bottom of the stack a desktop draws into.
 
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted

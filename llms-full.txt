@@ -823,13 +823,15 @@ the backing implementation can be replaced without affecting callers.
   `CreateWaveSeparator`. See `Docs/UltraCanvas/UltraCanvasWaveSeparator.md`.
 
 - **UltraCanvasToolbar item badges, reordering and scrolling**
-  (`UltraCanvasToolbar.h`, 1.5.0) — `SetItemBadge` / `SetItemBadgeCount` /
+  (`UltraCanvasToolbar.h`, 1.6.0) — `SetItemBadge` / `SetItemBadgeCount` /
   `SetItemBadgeDot` / `ClearItemBadge` / `GetItemBadge` anchor an
   `UltraCanvasBadge` to an item; `EnableItemReordering` lets the user drag an
   item along the bar (`onItemReordered(from, to)` on release) and `MoveItem` /
   `GetItemIndex` / `GetItemOrder` / `GetItems` do the same from code;
   `ToolbarOverflowMode::Scroll` keeps items at their size and scrolls a full
-  bar with the mouse wheel. `WindowType::Desktop` (`UltraCanvasWindow.h`) is
+  bar with the mouse wheel, with a chevron over the edge the items continue
+  past that scrolls a page when clicked (`SetScrollHints`).
+  `WindowType::Desktop` (`UltraCanvasWindow.h`) is
   the screen-sized window at the bottom of the stack a desktop draws into.
 
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
@@ -55748,7 +55750,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 
 **UltraCanvasToolbar** is a comprehensive cross-platform toolbar component supporting buttons, toggle buttons, dropdowns, labels, separators, and spacers. It can be rendered as a horizontal toolbar, a vertical sidebar, a ribbon, a status bar, or a dock, with built-in overflow handling and optional drag-to-reorder.
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Header:** `include/UltraCanvasToolbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -55763,7 +55765,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
 - **Preset Factories**: One-call construction of common toolbar shapes
 - **Item Badges and Tooltips**: a count, a short text or a status dot in the corner of any item (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), hover tooltips on the items themselves
 - **Auto-Hide and Drag Modes**: optional auto-hide, drag-to-move the toolbar (`ToolbarDragMode::Movable`) and drag-to-reorder its items (`EnableItemReordering`)
-- **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel
+- **Scrolling**: `ToolbarOverflowMode::Scroll` keeps the items at their size and scrolls a full toolbar with the mouse wheel; a chevron over the edge the items continue past says so, and a click on it scrolls a page (`SetScrollHints`)
 
 ## Header Include
 
@@ -55787,6 +55789,8 @@ void SetOrientation(ToolbarOrientation orient);
 void SetToolbarPosition(ToolbarPosition pos);
 void SetAppearance(const ToolbarAppearance& app);
 void SetOverflowMode(ToolbarOverflowMode mode);
+void SetScrollHints(bool show);          // Scroll mode: the chevron at the edge (default on)
+bool ScrollHintsEnabled() const;
 void SetVisibility(ToolbarVisibility vis);
 void SetDragMode(ToolbarDragMode mode);
 
@@ -55925,6 +55929,15 @@ of shrinking to fit (`flex-shrink: 0`), the ones past the edge are laid out
 beyond it, and the mouse wheel scrolls them into view along the toolbar's
 axis — no scrollbar is shown. A desktop taskbar's running-apps group is the
 case: it must not squeeze twenty icons into the room for eight.
+
+While there is something past an edge, a 12 px strip in the toolbar's colour
+covers that edge with a small chevron pointing the way the items go, so a
+clipped bar never looks like a complete one; a click on the strip scrolls a
+page (the visible length less the strip). The strip is drawn over the edge
+of the item under it and takes that press, which is why the hint is a window
+watch like the reorder drag and not a child. Nothing is drawn while the items
+fit, and `SetScrollHints(false)` turns the strips off for a toolbar that
+wants the wheel alone.
 
 ### ToolbarIconSize
 
@@ -56181,7 +56194,7 @@ auto ribbonToolbar = UltraCanvasToolbarBuilder("RibbonToolbar")
 ```cpp
 auto running = std::make_shared<UltraCanvasToolbar>("Running", 0, 0, 0, 0);
 running->SetOrientation(ToolbarOrientation::Vertical);
-running->SetOverflowMode(ToolbarOverflowMode::Scroll);   // wheel-scrolls when full
+running->SetOverflowMode(ToolbarOverflowMode::Scroll);   // wheel-scrolls when full, chevrons at the edges
 running->EnableItemReordering(true);                     // drag to reorder
 running->onItemReordered = [](int from, int to) { /* remember the order */ };
 
@@ -57772,7 +57785,7 @@ formats, and does not re-decode on every frame the way an ad-hoc
 | Resizable panes | `UltraCanvasSplitPane`, `UltraCanvasSplitter` | `UltraCanvasSplitPane.h` |
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
-| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel | `UltraCanvasToolbar.h` |
+| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page) | `UltraCanvasToolbar.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
 | The S-curve between two groups on one bar (a taskbar's system group flowing into its running apps) — one group's colour up to the curve, the next group's after it ([doc](UltraCanvasWaveSeparator.md)) | `UltraCanvasWaveSeparator` | `UltraCanvasWaveSeparator.h` |
 
@@ -73076,7 +73089,9 @@ system.
   which the window title and `--version` print. The app does not move when
   the framework releases.
 - Build option: `BUILD_ULTRADESKTOP` (on by default); target and binary
-  `UltraDesktop`.
+  `UltraDesktop`. It runs straight from the build tree: configuring links
+  `build/share/media` to the repository's `media/`, where the bar icons and
+  the default wallpaper are found.
 
 ## Layout
 
@@ -73145,6 +73160,11 @@ windows stop short of the bars instead of covering them.
   1.2 MB/s", "Battery: 84%, charging"). Clicking opens what the icon is
   about: Email starts UltraMail, the network icons UltraNetMonitor, USB,
   keyboard and webcam DeviceExplorer, the rest the Task Manager.
+
+  When the organiser leaves the panel short of room — five or more desktops
+  on a 900 px screen — the panel scrolls rather than losing its last items:
+  a chevron over the edge marks where the icons continue, a click on it
+  scrolls a page, and so does the wheel over the panel.
 
 ### Windows the desktop opens
 
