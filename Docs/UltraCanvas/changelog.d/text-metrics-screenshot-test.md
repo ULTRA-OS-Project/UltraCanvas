@@ -17,3 +17,9 @@
   without an event loop and waiting for the shared caret were written out
   in each test that opens a window under Xvfb; `CaretStackingTest`,
   `TextMetricsScreenshotTest` and `TextAreaSpellCheckTest` now share them.
+- **The screenshot test's pixel predicates take their colours from the
+  styles.** Ink was "darker than mid-grey" and the selection "bluer than it
+  is red", which assumed dark text on a light theme. A pixel is now ink when
+  it is nearer the element's text colour than its background, and the
+  selection is matched against the style's selection colour composited over
+  the field's background, so a dark theme measures the same way.

@@ -66,11 +66,29 @@ namespace {
 
 const Color kCaretColor(255, 0, 255);
 
-int Luminance(const Color& c) { return (299 * c.r + 587 * c.g + 114 * c.b) / 1000; }
+// Every predicate below takes its colours from the element styles and the
+// window, never from an assumption about the theme: dark text on a light
+// theme and light text on a dark one measure the same way.
 
-// The selection highlight is translucent blue over the field's white, so on
-// screen it is a light blue: bluer than it is red, and not ink.
-bool IsSelectionPixel(const Color& px) { return px.b > px.r + 40 && Luminance(px) > 128; }
+int Distance(const Color& a, const Color& b) {
+    return std::abs(a.r - b.r) + std::abs(a.g - b.g) + std::abs(a.b - b.b);
+}
+
+// Ink: a pixel nearer the text colour than the background it sits on. An
+// antialiased edge pixel splits half-way, symmetrically at the top and the
+// bottom of a glyph, so the centre of the ink is unaffected.
+bool IsInk(const Color& px, const Color& text, const Color& background) {
+    return Distance(px, text) < Distance(px, background);
+}
+
+// What a translucent colour looks like composited over an opaque one.
+Color Composited(const Color& over, const Color& under) {
+    const double a = over.a / 255.0;
+    auto mix = [a](uint8_t top, uint8_t bottom) {
+        return static_cast<uint8_t>(top * a + bottom * (1.0 - a) + 0.5);
+    };
+    return Color(mix(over.r, under.r), mix(over.g, under.g), mix(over.b, under.b), 255);
+}
 
 // The vertical extent of pixels in a window rectangle that a predicate picks
 // out: the ink of a label, the ring of a radio, the box of a checkbox.
@@ -102,10 +120,10 @@ Extent ExtentOf(const std::shared_ptr<UltraCanvasWindow>& window, const Rect2Di&
     return e;
 }
 
-// Dark pixels: the ink of black text. Antialiased edge rows are lighter and
-// fall out symmetrically at the top and bottom, so the centre is unaffected.
-Extent InkExtent(const std::shared_ptr<UltraCanvasWindow>& window, const Rect2Di& area) {
-    return ExtentOf(window, area, [](const Color& px) { return Luminance(px) < 128; });
+// The rows holding text ink, for text of `textColor` on `background`.
+Extent InkExtent(const std::shared_ptr<UltraCanvasWindow>& window, const Rect2Di& area,
+                 const Color& textColor, const Color& background) {
+    return ExtentOf(window, area, [&](const Color& px) { return IsInk(px, textColor, background); });
 }
 
 // Anything that is not the surrounding background: a box, a ring, a mark.
@@ -265,19 +283,22 @@ int main() {
         // pixels never count as ink.
         Rect2Di fieldRect = WindowRect(field);
         Rect2Di fieldInterior(fieldRect.x + 2, fieldRect.y + 2, caretRect.x - fieldRect.x - 3, fieldRect.height - 4);
-        Extent ink = InkExtent(window, fieldInterior);
+        const TextInputStyle& fs = field->GetStyle();
+        Extent ink = InkExtent(window, fieldInterior, fs.textColor, fs.backgroundColor);
         TEST("The field's text is on screen", ink.found);
         TEST("The caret spans the text's line box: at or above the ink's top",
              ink.found && caretRect.y <= ink.top);
         TEST("The caret spans the text's line box: at or below the ink's bottom",
              ink.found && caretRect.y + caretRect.height >= ink.bottom + 1);
         TEST("The caret was on the composited window before the selection was made", caretShown);
+        const Color selectionOnScreen = Composited(fs.selectionColor, fs.backgroundColor);
         TEST("The selection highlight is on the composited window",
-             AnyPixel(window, fieldInterior, IsSelectionPixel));
+             AnyPixel(window, fieldInterior, [&](const Color& px) { return Distance(px, selectionOnScreen) <= 24; }));
 
         Rect2Di capsRect = WindowRect(capsField);
         Rect2Di capsInterior(capsRect.x + 2, capsRect.y + 2, capsRect.width - 4, capsRect.height - 4);
-        Extent caps = InkExtent(window, capsInterior);
+        const TextInputStyle& cs = capsField->GetStyle();
+        Extent caps = InkExtent(window, capsInterior, cs.textColor, cs.backgroundColor);
         double capsCentre = capsRect.y + capsRect.height / 2.0;
         std::cerr << "   caps ink rows " << caps.top << ".." << caps.bottom
                   << " in a field centred on " << capsCentre << std::endl;
@@ -291,7 +312,7 @@ int main() {
         Rect2Di boxArea(cbRect.x, cbRect.y, boxSize + 4, cbRect.height);
         Rect2Di labelArea(cbRect.x + boxSize + 6, cbRect.y, cbRect.width - boxSize - 6, cbRect.height);
         Extent box = DrawnExtent(window, boxArea, windowBg);
-        Extent label = InkExtent(window, labelArea);
+        Extent label = InkExtent(window, labelArea, checkbox->GetVisualStyle().base.textColor, windowBg);
         std::cerr << "   box rows " << box.top << ".." << box.bottom
                   << ", label ink rows " << label.top << ".." << label.bottom << std::endl;
         TEST("The checkbox box and its caps-only label share a centre line (within a pixel)",
@@ -308,7 +329,7 @@ int main() {
         Rect2Di ringArea(rdRect.x, rdRect.y, boxSize + 4, rdRect.height);
         Rect2Di rdLabelArea(rdRect.x + boxSize + 6, rdRect.y, rdRect.width - boxSize - 6, rdRect.height);
         Extent ring = DrawnExtent(window, ringArea, windowBg);
-        Extent rdLabel = InkExtent(window, rdLabelArea);
+        Extent rdLabel = InkExtent(window, rdLabelArea, radio->GetVisualStyle().base.textColor, windowBg);
         TEST("The radio ring and its caps-only label share a centre line (within a pixel)",
              ring.found && rdLabel.found && std::abs(ring.Centre() - rdLabel.Centre()) <= 1.0);
     }
@@ -347,7 +368,7 @@ int main() {
         Rect2Di menuLabelArea(indicatorArea.x + indicatorArea.width + menuStyle.iconSpacing, rowTop,
                               static_cast<int>(mb.width) - indicatorArea.width - menuStyle.paddingLeft - menuStyle.paddingRight, menuStyle.itemHeight);
         Extent indicator = DrawnExtent(window, indicatorArea, menuBg);
-        Extent menuLabel = InkExtent(window, menuLabelArea);
+        Extent menuLabel = InkExtent(window, menuLabelArea, menuStyle.textColor, menuBg);
         std::cerr << "   radio rows " << indicator.top << ".." << indicator.bottom
                   << ", label ink rows " << menuLabel.top << ".." << menuLabel.bottom << std::endl;
         TEST("The menu's radio indicator and its caps-only label share a centre line (within a pixel)",
