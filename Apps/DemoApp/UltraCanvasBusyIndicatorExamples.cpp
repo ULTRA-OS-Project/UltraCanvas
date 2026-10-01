@@ -31,6 +31,7 @@ namespace UltraCanvas {
                           "(BusyIndicatorKind), all driven by Start() / Stop(); the timer runs "
                           "only while an indicator is turning.");
         subtitle->SetFontSize(12);
+        subtitle->SetWrap(TextWrap::WrapWord);
         container->AddChild(subtitle);
 
         // Every indicator on the page, for Start all / Stop all. Raw pointers:
@@ -156,6 +157,7 @@ namespace UltraCanvas {
             "hideWhenStopped is false (\"Show when stopped\" toggles it), and then rests "
             "where it stopped. Start all resumes from there.");
         instructions->SetFontSize(11);
+        instructions->SetWrap(TextWrap::WrapWord);
         container->AddChild(instructions);
 
         return container;
