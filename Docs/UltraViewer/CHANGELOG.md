@@ -6,6 +6,14 @@
   open `UltraCanvasFileDialog`: the folder tree, the filer-widget listing with
   its Details / list / icon views, and the same look on every platform. The
   viewer shows no message boxes, so nothing else changes.
+- **The Open dialog starts on "All supported media".** Its first filter was
+  "Images", and the new dialog applies the first filter at once, so videos,
+  audio, PDFs, spreadsheets, 3D models, e-books, fonts and text files were
+  hidden until "All files" was chosen. The new first filter holds every
+  extension the viewer opens, worked out at run time from the same checks
+  that decide what browsing a folder shows (so a codec, model or vector
+  reader the build or a plugin adds is included). "Images" and "All files"
+  follow it.
 
 #### 2026-09-28 *1.0.2*
 - **The version is in the window title** — `UltraViewer 1.0.2` — so a screenshot or a
