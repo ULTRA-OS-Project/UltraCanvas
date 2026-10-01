@@ -252,7 +252,13 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   copy waits in the account's Drafts folder until the message has gone out,
   a message not sent is reported with Retry and is tried again by itself -
   after 1, 2, 5 and 10 minutes, then every 30, and at once when the
-  connection is back. Autosave and undo-send are still to come.)*
+  connection is back. Autosave and undo-send are still to come. Since
+  0.10.15 a sent message is filed in the Sent folder - except on servers
+  that do that themselves (Gmail, Outlook.com / Microsoft 365) - and the
+  **Outbox window** (toolbar *Outbox (N)*, shown while messages wait) lists
+  the waiting messages with why they have not gone out, and offers *Send
+  now*, *Edit…* (correct and send again; the old version is held meanwhile
+  and replaced) and *Delete* (with its Drafts copy).)*
 
 ### 3.2 Everyday comfort features (v1.0)
 

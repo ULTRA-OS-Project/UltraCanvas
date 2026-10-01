@@ -44,7 +44,10 @@ public:
 // is recorded.
 class Imap : public IMailboxProtocolPlugin {
 public:
-    struct Stored { uint32_t uid; std::string folder; std::string raw; bool deleted = false; };
+    struct Stored {
+        uint32_t uid; std::string folder; std::string raw; bool deleted = false;
+        UltraNetMailFlags flags = UltraNetMailFlags::None;
+    };
     std::vector<Stored> messages;
     bool appendFails = false;
     std::string GetName() const override { return "Imap"; }
@@ -91,10 +94,10 @@ public:
     UltraNetResult MoveMessage(const std::string&, const std::string&, uint32_t, const std::string&,
                                const UltraNetMailOptions&) override { return UltraNetResult::Ok(); }
     UltraNetResult AppendMessage(const std::string&, const std::string& folder, const std::string& raw,
-                                 UltraNetMailFlags, const UltraNetMailOptions&) override {
+                                 UltraNetMailFlags flags, const UltraNetMailOptions&) override {
         if (appendFails)
             return UltraNetResult::Error(UltraNetResultCode::ConnectionRefused, "offline");
-        messages.push_back({static_cast<uint32_t>(messages.size() + 1), folder, raw});
+        messages.push_back({static_cast<uint32_t>(messages.size() + 1), folder, raw, false, flags});
         return UltraNetResult::Ok();
     }
     bool otherTouched = false;
@@ -121,12 +124,13 @@ Draft Reply() {
     return d;
 }
 
-DraftsKeeper Keeper(Imap& imap) {
-    DraftsKeeper k;
+ServerCopies Keeper(Imap& imap, const std::string& sentFolder = "Sent") {
+    ServerCopies k;
     k.imap = &imap;
-    k.prepare = [](const std::string&, std::string& url, std::string& folder, UltraNetMailOptions&) {
-        url = "imaps://mail.example.com/";
-        folder = "Drafts";
+    k.prepare = [sentFolder](const std::string&, ServerFolders& out) {
+        out.serverUrl = "imaps://mail.example.com/";
+        out.draftsFolder = "Drafts";
+        out.sentFolder = sentFolder;
         return UltraNetResult::Ok();
     };
     return k;
@@ -157,7 +161,7 @@ TEST(a_message_waits_in_drafts_until_it_is_sent) {
 
     Smtp smtp;
     Imap imap;
-    const DraftsKeeper keeper = Keeper(imap);
+    const ServerCopies keeper = Keeper(imap);
     Outbox outbox(store);
 
     // First attempt fails: the copy is in Drafts, the message stays queued.
@@ -183,7 +187,8 @@ TEST(a_message_waits_in_drafts_until_it_is_sent) {
     REQUIRE_EQ(imap.messages.size(), std::size_t(1));
     REQUIRE(!imap.messages[0].deleted);
 
-    // Sent: the copy leaves Drafts, nothing else there is touched.
+    // Sent: the copy leaves Drafts, nothing else there is touched, and the
+    // message is filed in Sent - read, with the ID it was sent with.
     smtp.succeed = true;
     Outbox::FlushStats sent = outbox.Flush(smtp, nullptr, &keeper);
     REQUIRE_EQ(sent.sent, 1);
@@ -191,6 +196,17 @@ TEST(a_message_waits_in_drafts_until_it_is_sent) {
     REQUIRE(imap.messages[0].deleted);
     REQUIRE(!imap.otherTouched);
     REQUIRE_EQ(Pending(store), 0);
+    REQUIRE_EQ(sent.sentCopies, 1);
+    REQUIRE_EQ(imap.messages.size(), std::size_t(2));
+    REQUIRE_EQ(imap.messages[1].folder, std::string("Sent"));
+    REQUIRE((static_cast<uint32_t>(imap.messages[1].flags)
+             & static_cast<uint32_t>(UltraNetMailFlags::Seen)) != 0);
+    REQUIRE_EQ(Imap::Header(imap.messages[1].raw, "Message-ID"), items[0].messageId);
+    REQUIRE(imap.messages[1].raw.find("X-UltraMail-Outbox:") == std::string::npos);
+    REQUIRE_EQ(smtp.last.headers["Message-ID"], items[0].messageId);
+    // The Drafts copy asked to be a read draft.
+    REQUIRE((static_cast<uint32_t>(imap.messages[0].flags)
+             & static_cast<uint32_t>(UltraNetMailFlags::Draft)) != 0);
     // The reply went out in its thread.
     REQUIRE_EQ(smtp.last.headers["In-Reply-To"], std::string("<notes@example.com>"));
     REQUIRE_EQ(smtp.last.headers["References"],
@@ -206,7 +222,7 @@ TEST(a_copy_that_cannot_be_saved_does_not_stop_the_send) {
     smtp.succeed = true;
     Imap imap;
     imap.appendFails = true;
-    const DraftsKeeper keeper = Keeper(imap);
+    const ServerCopies keeper = Keeper(imap);
     Outbox::FlushStats stats = Outbox(store).Flush(smtp, nullptr, &keeper);
     REQUIRE_EQ(stats.sent, 1);
     REQUIRE_EQ(stats.draftsSaved, 0);
@@ -221,7 +237,7 @@ TEST(drafts_copies_are_saved_without_a_send) {
     int64_t id = 0;
     REQUIRE(store.Enqueue("erika", "", Reply(), id).success);
     Imap imap;
-    const DraftsKeeper keeper = Keeper(imap);
+    const ServerCopies keeper = Keeper(imap);
     Outbox outbox(store);
     REQUIRE_EQ(outbox.SaveDraftCopies(keeper).draftsSaved, 1);
     REQUIRE_EQ(outbox.SaveDraftCopies(keeper).draftsSaved, 0);   // once
@@ -277,4 +293,48 @@ TEST(the_outbox_retries_soon_when_the_connection_is_back) {
     REQUIRE_EQ(clock.Failures(), 0);
     clock.Failed(100);
     REQUIRE_EQ(clock.NextAt(), int64_t(160));       // back to 1 minute
+}
+
+TEST(no_sent_copy_where_the_server_files_sent_mail_itself) {
+    OutboxStore store;
+    REQUIRE(store.Open("sent-none", ":memory:").success);
+    int64_t id = 0;
+    REQUIRE(store.Enqueue("erika", "smtp://mail.example.com/", Reply(), id).success);
+    Smtp smtp;
+    smtp.succeed = true;
+    Imap imap;
+    const ServerCopies keeper = Keeper(imap, /*sentFolder=*/"");
+    Outbox::FlushStats stats = Outbox(store).Flush(smtp, nullptr, &keeper);
+    REQUIRE_EQ(stats.sent, 1);
+    REQUIRE_EQ(stats.sentCopies, 0);
+    REQUIRE_EQ(stats.sentCopyFailures, 0);
+    REQUIRE_EQ(imap.messages.size(), std::size_t(1));   // only the Drafts copy
+    REQUIRE(imap.messages[0].deleted);
+
+    REQUIRE(ServerFilesSentMail("imap.gmail.com"));
+    REQUIRE(ServerFilesSentMail("outlook.office365.com"));
+    REQUIRE(ServerFilesSentMail("IMAP-MAIL.OUTLOOK.COM"));
+    REQUIRE(!ServerFilesSentMail("imap.example.com"));
+    REQUIRE(!ServerFilesSentMail("mail.notgmail.com.example"));
+}
+
+TEST(a_waiting_message_can_be_deleted_with_its_drafts_copy) {
+    OutboxStore store;
+    REQUIRE(store.Open("outbox-delete", ":memory:").success);
+    int64_t keep = 0, drop = 0;
+    REQUIRE(store.Enqueue("erika", "smtp://x/", Reply(), keep).success);
+    REQUIRE(store.Enqueue("erika", "smtp://x/", Reply(), drop).success);
+    Imap imap;
+    const ServerCopies keeper = Keeper(imap);
+    Outbox outbox(store);
+    REQUIRE_EQ(outbox.SaveDraftCopies(keeper).draftsSaved, 2);
+
+    REQUIRE(outbox.DeleteMessage(drop, &keeper).success);
+    std::vector<OutboxItem> items;
+    REQUIRE(store.ListPending(items).success);
+    REQUIRE_EQ(items.size(), std::size_t(1));
+    REQUIRE_EQ(items[0].id, keep);
+    REQUIRE(!imap.messages[0].deleted);   // the other message's copy stays
+    REQUIRE(imap.messages[1].deleted);
+    REQUIRE(outbox.DeleteMessage(drop, &keeper).success);   // already gone: fine
 }

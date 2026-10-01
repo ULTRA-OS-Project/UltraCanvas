@@ -1,3 +1,31 @@
+#### 2026-10-01 *0.10.15*
+- **The Outbox window: what waits to be sent, and what to do about it.** While
+  messages wait, the toolbar shows *Outbox (N)*; it opens a window listing
+  each one - To, Subject, the account it goes from, how often it was tried
+  and why it has not gone out (the full reason in the tooltip), and whether
+  its copy is in Drafts. *Send now* tries them all at once. *Edit…* (or a
+  double-click) opens the message in a compose window, formatting and
+  pictures included, to correct it - a wrong address the server keeps
+  refusing, say; the old version is held meanwhile (no automatic attempt
+  sends it) and is replaced, Drafts copy and all, once the corrected one is
+  sent. Closing the window without sending lets the old version go out as
+  it was. *Delete* asks first, then takes the message out of the outbox for
+  good and deletes its Drafts copy - so a message that can never be sent is
+  no longer tried every 30 minutes for ever. Edit and Delete wait while a
+  pass is sending.
+- **A sent message is filed in the Sent folder.** Once a message has gone
+  out, a copy is saved to the account's Sent folder (the folder the server
+  marks as Sent, else "Sent"), marked read, with the same Message-ID the
+  message was sent with. Not on Gmail and Outlook.com / Microsoft 365, which
+  file what is sent through them by themselves - a second copy would be a
+  duplicate. A copy that cannot be saved does not affect the send.
+- **The Drafts copy arrives as a draft, and read.** The IMAP plug-in now sets
+  the flags of an uploaded message (it ignored them), so the copy in Drafts
+  carries `\Draft` and `\Seen` instead of showing up as a new, unread
+  message.
+- Sending, deleting and the server copies all run through one outbox queue on
+  a worker, one job at a time, so a delete never races a send.
+
 #### 2026-10-01 *0.10.14*
 - **Send works in the background, and nothing is lost on the way.** *Send*
   puts the message in UltraMail's outbox - the local store, which survives a

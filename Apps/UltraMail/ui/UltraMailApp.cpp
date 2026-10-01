@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.15 - the Outbox window: the waiting messages with Send now,
+//                   Edit and Delete (toolbar "Outbox (N)"); a sent message
+//                   is filed in the Sent folder; outbox work runs in one queue
 // Version: 0.9.14 - Send queues the message, closes the compose window and sends
 //                   in the background, keeping a copy in Drafts until it has
 //                   gone out; a message not sent is reported with Retry and
@@ -226,6 +229,7 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // shortly after start (once the window is up and the network had a moment).
     StartOutboxRetryTimer();
     if (OutboxPending() > 0) outboxRetry_.RetryAt(NowMonotonicSec() + 20);
+    RefreshOutbox();
 
     // Migration: an existing vault made with a master password (before device
     // keys) stays locked after Initialize's silent attempt. Prompt once now so
@@ -366,6 +370,10 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                [this]() { HandleReload(); });
     reloadButton_->SetTooltip("Download new mail for this account now");
     makeAction("umContacts", "Contacts", 76, "", false, [this]() { OpenContacts(); });
+    // Shown while messages wait to be sent (RefreshOutbox keeps the count).
+    outboxButton_ = makeAction("umOutbox", "Outbox", 76, "", false, [this]() { OpenOutbox(); });
+    outboxButton_->SetTooltip("Messages waiting to be sent");
+    outboxButton_->SetVisible(false);
     toolbar->AddStretchSpacer(1);
     makeAction("umSettings", "Account Settings", 0, "", false, [this]() {
         if (!selectedAccount_.empty()) HandleAccountSettings(selectedAccount_);
@@ -810,7 +818,7 @@ void UltraMailApp::SaveSignature(const std::string& accountId, const Signature& 
         if (account.accountId == accountId) account.signature = signature;
 }
 
-ComposeView* UltraMailApp::OpenComposer(const Draft& draft) {
+ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutboxId) {
     WindowConfig cfg;
     cfg.title  = draft.subject.empty() ? "New message" : draft.subject;
     cfg.width  = 640;
@@ -829,8 +837,11 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft) {
     // stays open when the message was not queued (no recipient, no outbox),
     // so nothing typed is lost. The send's own result (sent / waiting in the
     // outbox / failed) is reported over the main window.
-    view->onSend   = [this, raw](const Draft& d) {
-        if (HandleSendDraft(d)) raw->Close();
+    view->onSend   = [this, raw, replacesOutboxId](const Draft& d) {
+        if (!HandleSendDraft(d, replacesOutboxId)) return;
+        // The old version is being deleted now: closing must not let it go.
+        for (auto& s : composers_) if (s.window.get() == raw) s.editsOutboxId = 0;
+        raw->Close();
     };
     view->onCancel = [raw]() { raw->Close(); };
     win->AddChild(view->Build());
@@ -843,11 +854,19 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft) {
     };
     win->onWindowClosed = [this, raw]() { RetireComposer(raw); };
     win->Show();
-    composers_.push_back({win, view});
+    composers_.push_back({win, view, replacesOutboxId});
     return rawView;
 }
 
 void UltraMailApp::RetireComposer(UltraCanvasWindow* window) {
+    // Closed without sending the correction: the waiting message it was made
+    // from is sent as it is after all.
+    for (auto& s : composers_) {
+        if (s.window.get() != window || s.editsOutboxId == 0) continue;
+        outbox_.SetHeld(s.editsOutboxId, false);
+        s.editsOutboxId = 0;
+        RefreshOutbox();
+    }
     // Deferred: dropping the last reference to a window from inside its own
     // close callback would destroy it while it is still running.
     auto drop = [this, window]() {
@@ -1226,7 +1245,7 @@ void UltraMailApp::OpenSourceViewer(const std::string& subject, const std::strin
     viewerWindows_.push_back(win);
 }
 
-bool UltraMailApp::HandleSendDraft(const Draft& draft) {
+bool UltraMailApp::HandleSendDraft(const Draft& draft, int64_t replacesOutboxId) {
     auto join = [](const std::vector<std::string>& v) {
         std::string s;
         for (std::size_t i = 0; i < v.size(); ++i) { if (i) s += ", "; s += v[i]; }
@@ -1266,6 +1285,12 @@ bool UltraMailApp::HandleSendDraft(const Draft& draft) {
                    DetailLine(q));
         return false;
     }
+
+    // A corrected message replaces the one it was made from: that one goes
+    // (with its Drafts copy) before the pass below can pick it up - it is
+    // held until then.
+    if (replacesOutboxId != 0) DeleteFromOutbox(replacesOutboxId);
+    RefreshOutbox();
 
     // Remember the people we write to.
     for (const auto& addr : draft.to) ContactCollector::Collect(contacts_, "", addr);
@@ -1365,7 +1390,8 @@ int UltraMailApp::OutboxPending() const {
 }
 
 void UltraMailApp::NoteOutboxPass() {
-    if (OutboxPending() == 0) outboxRetry_.Succeeded();
+    // A message held for correcting is not one the pass failed to send.
+    if (OutboxPending() - outbox_.HeldCount() <= 0) outboxRetry_.Succeeded();
     else outboxRetry_.Failed(NowMonotonicSec());
 }
 
@@ -1405,88 +1431,106 @@ void UltraMailApp::AutoRetryOutbox() {
         });
 }
 
-DraftsKeeper UltraMailApp::MakeDraftsKeeper() {
-    DraftsKeeper keeper;
-    keeper.imap = ImapPlugin();
-    if (!keeper.imap) return keeper;
+ServerCopies UltraMailApp::MakeServerCopies() {
+    ServerCopies copies;
+    copies.imap = ImapPlugin();
+    if (!copies.imap) return copies;
     // Copied here, on the UI thread: the worker must not read accounts_.
     struct Target {
         DiscoveryResult settings;
         std::string     email;
         std::string     draftsFolder;
+        std::string     sentFolder;
     };
     auto targets = std::make_shared<std::map<std::string, Target>>();
     for (const auto& a : accounts_) {
         Target t;
         t.settings = SettingsFor(a);
         t.email = a.email;
-        // The folder the server marks as Drafts (known once the folders were
-        // synced), else the usual name.
+        // The folders the server marks as Drafts and Sent (known once the
+        // folders were synced), else the usual names.
         t.draftsFolder = FolderWithRole(a.accountId, FolderRole::Drafts);
         if (t.draftsFolder.empty()) t.draftsFolder = "Drafts";
+        // No Sent copy where the server files sent mail itself (a second one).
+        if (!ServerFilesSentMail(t.settings.imap.host)) {
+            t.sentFolder = FolderWithRole(a.accountId, FolderRole::Sent);
+            if (t.sentFolder.empty()) t.sentFolder = "Sent";
+        }
         (*targets)[a.accountId] = std::move(t);
     }
-    keeper.prepare = [this, targets](const std::string& accountId, std::string& serverUrl,
-                                     std::string& folder, UltraNetMailOptions& o) {
+    copies.prepare = [this, targets](const std::string& accountId, ServerFolders& out) {
         auto it = targets->find(accountId);
         if (it == targets->end())
             return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                          "the account of this message no longer exists");
         const Target& t = it->second;
-        serverUrl = t.settings.found ? AutoDiscovery::ImapServerUrl(t.settings.imap) : "";
-        if (serverUrl.empty())
+        out.serverUrl = t.settings.found ? AutoDiscovery::ImapServerUrl(t.settings.imap) : "";
+        if (out.serverUrl.empty())
             return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                          "no incoming (IMAP) server is known for " + t.email);
-        folder = t.draftsFolder;
-        ApplyConnection(t.settings.imap, o);
+        out.draftsFolder = t.draftsFolder;
+        out.sentFolder = t.sentFolder;
+        ApplyConnection(t.settings.imap, out.options);
         const std::string username =
             t.settings.imap.username.empty() ? t.email : t.settings.imap.username;
-        o.credentials.username = username;
+        out.options.credentials.username = username;
         return ResolveCredentials(accountId, username, OAuthProviderFor(t.settings),
-                                  o.credentials);
+                                  out.options.credentials);
     };
-    return keeper;
+    return copies;
 }
 
 void UltraMailApp::FlushOutboxInBackground(std::shared_ptr<IUltraNetPlugin> plugin,
                                            std::function<void(const Outbox::FlushStats&)> onDone) {
-    if (outboxFlushInFlight_) {
-        // One flush at a time: a second one would pick up the same queued
-        // message and send it twice. This one runs when the current one ends.
-        pendingFlushes_.push_back({std::move(plugin), std::move(onDone)});
-        return;
-    }
     auto* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
-    outboxFlushInFlight_ = true;
-    SetStatus(smtp ? "Sending…" : "Saving to Drafts…");
-
     // Copied here, on the UI thread: the worker must not read accounts_.
     auto accounts = std::make_shared<std::map<std::string, SmtpAccount>>(SmtpAccounts());
-    auto drafts = std::make_shared<DraftsKeeper>(MakeDraftsKeeper());
-    std::thread([this, plugin, smtp, accounts, drafts, onDone]() {
+    auto stats = std::make_shared<Outbox::FlushStats>();
+    RunOutboxJob(
+        // `plugin` rides along: it keeps the SMTP plug-in loaded while it sends.
+        [this, plugin, smtp, accounts, stats](Outbox& ob, const ServerCopies* copies) {
+            if (smtp) {
+                *stats = ob.Flush(*smtp,
+                    [this, accounts](const std::string& acc, UltraNetMailOptions& o) {
+                        return PrepareSmtp(*accounts, acc, o);
+                    },
+                    copies);
+            } else if (copies) {
+                *stats = ob.SaveDraftCopies(*copies);
+            }
+        },
+        smtp ? "Sending…" : "Saving to Drafts…",
+        [stats, onDone]() { if (onDone) onDone(*stats); });
+}
+
+void UltraMailApp::RunOutboxJob(OutboxJob job, const std::string& status,
+                                std::function<void()> onDone) {
+    if (outboxFlushInFlight_) {
+        // One job at a time: two passes would pick up the same queued message
+        // and send it twice. This one runs when the current one ends.
+        pendingOutboxJobs_.push_back({std::move(job), status, std::move(onDone)});
+        return;
+    }
+    outboxFlushInFlight_ = true;
+    SetStatus(status);
+    RefreshOutbox();   // the Outbox window says it is busy
+    // Copied here, on the UI thread: the worker must not read accounts_.
+    auto copies = std::make_shared<ServerCopies>(MakeServerCopies());
+    std::thread([this, job = std::move(job), copies, onDone = std::move(onDone)]() {
         Outbox ob(outbox_);
-        const DraftsKeeper* keeper = drafts->imap ? drafts.get() : nullptr;
-        Outbox::FlushStats stats;
-        if (smtp) {
-            stats = ob.Flush(*smtp,
-                [this, accounts](const std::string& acc, UltraNetMailOptions& o) {
-                    return PrepareSmtp(*accounts, acc, o);
-                },
-                keeper);
-        } else if (keeper) {
-            stats = ob.SaveDraftCopies(*keeper);
-        }
+        job(ob, copies->imap ? copies.get() : nullptr);
         auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
         if (!app) return;
-        app->PostToUIThread([this, stats, onDone]() {
+        app->PostToUIThread([this, onDone]() {
             outboxFlushInFlight_ = false;
             UpdateBusyIndicator();
             ShowAccountStatus();
-            if (onDone) onDone(stats);
-            if (!pendingFlushes_.empty()) {
-                PendingFlush next = std::move(pendingFlushes_.front());
-                pendingFlushes_.erase(pendingFlushes_.begin());
-                FlushOutboxInBackground(std::move(next.plugin), std::move(next.onDone));
+            if (onDone) onDone();
+            RefreshOutbox();
+            if (!pendingOutboxJobs_.empty()) {
+                PendingOutboxJob next = std::move(pendingOutboxJobs_.front());
+                pendingOutboxJobs_.erase(pendingOutboxJobs_.begin());
+                RunOutboxJob(std::move(next.job), next.status, std::move(next.onDone));
             }
         });
     }).detach();
@@ -2115,6 +2159,145 @@ void UltraMailApp::OpenContacts() {
     };
     contactsWindow_ = win;
     win->Show();
+}
+
+void UltraMailApp::OpenOutbox() {
+    if (!outbox_.IsOpen()) {
+        AlertError(window_ ? window_.get() : nullptr, "The outbox could not be opened.",
+                   outboxError_.empty() ? "UltraMail's outbox database is not available."
+                                        : outboxError_);
+        return;
+    }
+    if (outboxWindow_) {
+        outboxWindow_->RaiseAndFocus();
+        return;
+    }
+    WindowConfig cfg;
+    cfg.title  = "Outbox";
+    cfg.width  = 760;
+    cfg.height = 380;
+    cfg.backgroundColor = Theme::kPageBackground;
+    auto win = CreateWindow(cfg);
+    UltraCanvasWindow* raw = win.get();
+
+    outboxView_.onSendNow = [this]() {
+        std::vector<OutboxItem> pending;
+        outbox_.ListPending(pending);
+        for (const auto& item : pending) {
+            if (outbox_.IsHeld(item.id)) continue;
+            RetryOutbox(item.draft.fromAddr);
+            return;
+        }
+    };
+    outboxView_.onEdit   = [this](int64_t id) { EditFromOutbox(id); };
+    outboxView_.onDelete = [this](int64_t id) { ConfirmDeleteFromOutbox(id); };
+    outboxView_.onClose  = [raw]() { raw->Close(); };
+    win->AddChild(outboxView_.Build());
+    outboxView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
+    win->onWindowResize = [this](int cw, int ch) {
+        outboxView_.Resize(static_cast<float>(cw), static_cast<float>(ch));
+    };
+    // Closed (by any means): drop the panel and the window after the close
+    // has finished with them, so the next Outbox opens a fresh one.
+    win->onWindowClosed = [this]() {
+        outboxView_.Release();
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        auto drop = [this]() { outboxWindow_.reset(); };
+        if (app) app->PostToUIThread(drop); else drop();
+    };
+    outboxWindow_ = win;
+    RefreshOutbox();
+    win->Show();
+}
+
+void UltraMailApp::RefreshOutbox() {
+    std::vector<OutboxItem> pending;
+    if (outbox_.IsOpen()) outbox_.ListPending(pending);
+    if (outboxButton_) {
+        outboxButton_->SetText("Outbox (" + std::to_string(pending.size()) + ")");
+        outboxButton_->SetVisible(!pending.empty());
+    }
+    if (outboxWindow_) {
+        std::set<int64_t> held;
+        for (const auto& item : pending) if (outbox_.IsHeld(item.id)) held.insert(item.id);
+        outboxView_.SetItems(pending, outboxFlushInFlight_, held);
+    }
+}
+
+void UltraMailApp::ConfirmDeleteFromOutbox(int64_t id) {
+    std::vector<OutboxItem> pending;
+    outbox_.ListPending(pending);
+    const OutboxItem* item = nullptr;
+    for (const auto& p : pending) if (p.id == id) item = &p;
+    if (!item) { RefreshOutbox(); return; }   // sent meanwhile
+    std::string to;
+    for (const auto& list : {item->draft.to, item->draft.cc, item->draft.bcc})
+        for (const auto& a : list) to += (to.empty() ? "" : ", ") + a;
+    const std::string subject = item->draft.subject.empty() ? "(no subject)" : item->draft.subject;
+    const std::string where = item->HasDraftCopy()
+        ? " Its copy in " + item->draftsFolder + " is deleted too." : std::string();
+    UltraCanvasDialogManager::ShowConfirmation(
+        "Delete \"" + subject + "\" to " + to + "? It will not be sent." + where,
+        "Delete message",
+        [this, id](bool confirmed) {
+            if (!confirmed) return;
+            // The Drafts copy is deleted on the server: that needs the sign-in.
+            EnsureVaultUnlocked([this, id]() { DeleteFromOutbox(id); });
+        },
+        outboxWindow_ ? outboxWindow_.get()
+                      : (window_ ? static_cast<UltraCanvas::UltraCanvasWindowBase*>(window_.get())
+                                 : nullptr));
+}
+
+void UltraMailApp::DeleteFromOutbox(int64_t id) {
+    auto result = std::make_shared<UltraDbResult>(UltraDbResult::Ok());
+    RunOutboxJob(
+        [id, result](Outbox& ob, const ServerCopies* copies) {
+            *result = ob.DeleteMessage(id, copies);
+        },
+        "Deleting from the outbox…",
+        [this, id, result]() {
+            outbox_.SetHeld(id, false);
+            if (!*result) {
+                AlertError(outboxWindow_ ? outboxWindow_.get() : window_.get(),
+                           "The message could not be deleted from the outbox.",
+                           DetailLine(*result));
+                return;
+            }
+            // Nothing left to try again: the automatic retries end.
+            if (OutboxPending() == 0) outboxRetry_.Succeeded();
+        });
+}
+
+void UltraMailApp::EditFromOutbox(int64_t id) {
+    // Already open for correcting: that window, not a second one.
+    for (const auto& s : composers_) {
+        if (s.editsOutboxId != id) continue;
+        s.window->RaiseAndFocus();
+        return;
+    }
+    UltraCanvas::UltraCanvasWindowBase* parent =
+        outboxWindow_ ? outboxWindow_.get() : (window_ ? window_.get() : nullptr);
+    if (outboxFlushInFlight_) {
+        AlertWarning(parent, "The outbox is sending right now.",
+                     "Wait until it has finished - it may be sending this very message.");
+        return;
+    }
+    std::vector<OutboxItem> pending;
+    outbox_.ListPending(pending);
+    for (const auto& item : pending) {
+        if (item.id != id) continue;
+        // Held from now on: no pass sends the old version while it is corrected.
+        outbox_.SetHeld(id, true);
+        Draft draft = item.draft;
+        draft.messageId.clear();   // the corrected message is a new one
+        MakeRichEdit(draft);       // an HTML message opens formatted
+        OpenComposer(draft, id);
+        RefreshOutbox();
+        return;
+    }
+    AlertSuccess(parent, "This message has been sent meanwhile.");
+    RefreshOutbox();
 }
 
 // Earlier releases kept the cloud account secrets in obfuscated files under

@@ -4,8 +4,12 @@
 // plug-in, removing successes and recording failures for retry. Keeps sending
 // off the compose path so Send never blocks and survives being offline.
 // While a message waits, a copy of it is kept in the account's Drafts folder
-// on the server (DraftsKeeper): it is there on every device until the message
-// has gone out, and is deleted from Drafts once it has.
+// on the server (ServerCopies): it is there on every device until the message
+// has gone out, and is deleted from Drafts once it has - when a copy goes to
+// the Sent folder instead (unless the server files sent mail itself).
+// Version: 0.7.0 - a copy in the Sent folder once sent; ServerCopies (was
+//                  DraftsKeeper); DeleteMessage and held messages for the
+//                  outbox window
 // Version: 0.6.0 - OutboxRetryClock: when the outbox tries again by itself
 // Version: 0.5.0 - a copy in the Drafts folder until the message is sent; the
 //                  message keeps its Message-ID and its reply headers
@@ -20,6 +24,9 @@
 #include <UltraNet/UltraNetPlugins.h>
 
 #include <functional>
+#include <memory>
+#include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -43,19 +50,33 @@ struct OutboxItem {
 // A new Message-ID for a message from `fromAddr`: "<time.random@domain>".
 std::string NewMessageId(const std::string& fromAddr);
 
-// The message as it is kept in the Drafts folder: a complete RFC 5322 message
-// with the item's Message-ID, its reply headers and an X-UltraMail-Outbox
-// header (it is waiting to be sent, not a draft being written).
-std::string BuildDraftCopy(const OutboxItem& item);
+// The message as it is kept on the server: a complete RFC 5322 message with
+// the item's Message-ID (the one it is sent with) and its reply headers. The
+// Drafts copy (`waiting`) also carries an X-UltraMail-Outbox header: it is
+// waiting to be sent, not a draft being written.
+std::string BuildMessageCopy(const OutboxItem& item, bool waiting);
+inline std::string BuildDraftCopy(const OutboxItem& item) { return BuildMessageCopy(item, true); }
 
-// Keeps the Drafts copies, through the account's IMAP server.
-struct DraftsKeeper {
+// True for the servers that file what is sent through their SMTP server in
+// the Sent folder by themselves (Gmail, Outlook.com / Microsoft 365): a copy
+// saved there as well would be a second one.
+bool ServerFilesSentMail(const std::string& imapHost);
+
+// Where an account's copies go, and how to sign in there.
+struct ServerFolders {
+    std::string serverUrl;          // the IMAP server
+    std::string draftsFolder;       // "" = no Drafts copy
+    std::string sentFolder;         // "" = no Sent copy (or the server files it itself)
+    UltraNetMailOptions options;    // credentials, TLS
+};
+
+// Keeps the copies on the account's IMAP server: the Drafts copy while a
+// message waits, the Sent copy once it has gone out.
+struct ServerCopies {
     IMailboxProtocolPlugin* imap = nullptr;
-    // For an account: its IMAP server URL, its Drafts folder and the session
-    // options (credentials, TLS). A failure means the message has no copy in
-    // Drafts this time; it is still sent, and still safe in the outbox.
-    std::function<UltraNetResult(const std::string& accountId, std::string& serverUrl,
-                                 std::string& draftsFolder, UltraNetMailOptions& options)> prepare;
+    // For an account: its server, folders and sign-in. A failure means no
+    // copies this time; the message is still sent, and still safe in the outbox.
+    std::function<UltraNetResult(const std::string& accountId, ServerFolders& out)> prepare;
 };
 
 // Persistent queue storage (contacts-style, on its own UltraDatabase connection).
@@ -78,9 +99,20 @@ public:
     UltraDbResult MarkDraftSaved(int64_t id, const std::string& folder);
     UltraDbResult PendingCount(int& out) const;
 
+    // A message being corrected in a compose window (the outbox window's
+    // Edit) is held: Flush leaves it alone, so the old version is not sent
+    // while the new one is written. In memory only - after a restart no
+    // compose window is open. Safe to call from any thread.
+    void SetHeld(int64_t id, bool held);
+    bool IsHeld(int64_t id) const;
+    int  HeldCount() const;
+
 private:
     UltraDbResult LoadAttachments(OutboxItem& item) const;
     std::string connection_;
+    // Behind a pointer so the store stays movable.
+    struct Held { std::mutex mutex; std::set<int64_t> ids; };
+    std::shared_ptr<Held> held_ = std::make_shared<Held>();
 };
 
 // The queue operator: enqueue + flush.
@@ -105,11 +137,21 @@ public:
         int             draftsSaved = 0;
         int             draftFailures = 0;
         UltraNetResult  lastDraftFailure;
+        // Sent messages filed in the Sent folder, and the ones that could not be.
+        int             sentCopies = 0;
+        int             sentCopyFailures = 0;
+        UltraNetResult  lastSentCopyFailure;
     };
 
     // Saves a Drafts copy of every waiting message that has none yet. A
     // message whose copy cannot be saved stays in the outbox all the same.
-    FlushStats SaveDraftCopies(const DraftsKeeper& drafts);
+    FlushStats SaveDraftCopies(const ServerCopies& copies);
+
+    // Takes a waiting message out of the outbox for good - it will not be
+    // sent - and deletes its Drafts copy (when `copies` can reach the server;
+    // a copy that cannot be deleted stays in Drafts, where it can be deleted
+    // like any message). The outbox window's Delete.
+    UltraDbResult DeleteMessage(int64_t id, const ServerCopies* copies);
 
     // Attempt to send every pending item through `smtp`. `credentialFor` maps an
     // account id to its password (resolved from the credential vault).
@@ -122,17 +164,20 @@ public:
     // serverUrl the resolver sets replaces the one stored with the message.
     using OptionsResolver =
         std::function<UltraNetResult(const std::string& accountId, UltraNetMailOptions& options)>;
-    // With `drafts`, each message's Drafts copy is saved before it is sent
-    // (when it has none yet) and deleted from Drafts once it has been sent; a
-    // message that is not sent keeps its copy.
+    // With `copies`, each message's Drafts copy is saved before it is sent
+    // (when it has none yet); once it has been sent a copy goes to the Sent
+    // folder and the Drafts copy is deleted. A message not sent keeps its copy.
+    // A held message (OutboxStore::SetHeld) is skipped: neither sent nor failed.
     FlushStats Flush(IMailProtocolPlugin& smtp, const OptionsResolver& prepare,
-                     const DraftsKeeper* drafts = nullptr);
+                     const ServerCopies* copies = nullptr);
 
 private:
     // Saves `item`'s copy; true when it has one afterwards.
-    bool SaveDraftCopy(OutboxItem& item, const DraftsKeeper& drafts, FlushStats& stats);
-    // Deletes the sent `item`'s copy from its folder (flags it \Deleted).
-    void RemoveDraftCopy(const OutboxItem& item, const DraftsKeeper& drafts, FlushStats& stats);
+    bool SaveDraftCopy(OutboxItem& item, const ServerCopies& copies, FlushStats& stats);
+    // Deletes `item`'s Drafts copy from its folder (flags it \Deleted).
+    void RemoveDraftCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats);
+    // Files the sent `item` in the Sent folder.
+    void SaveSentCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats);
     OutboxStore& store_;
 };
 

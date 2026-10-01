@@ -32,6 +32,27 @@ TEST(imap_parse_search_uids) {
     REQUIRE_EQ(ParseSearchUids("* SEARCH\r\n").size(), (size_t)0);   // empty mailbox
 }
 
+TEST(imap_raw_header_value_reads_the_header_block_only) {
+    const std::string raw =
+        "From: Erika <erika@example.com>\r\n"
+        "message-id:   <abc@example.com> \r\n"
+        "Subject: a long\r\n"
+        "  folded subject\r\n"
+        "\r\n"
+        "Message-ID: <in-the-body@example.com>\r\n";
+    REQUIRE_EQ(RawHeaderValue(raw, "Message-ID"), std::string("<abc@example.com>"));
+    REQUIRE_EQ(RawHeaderValue(raw, "Subject"), std::string("a long  folded subject"));
+    REQUIRE_EQ(RawHeaderValue(raw, "Bcc"), std::string());
+    REQUIRE_EQ(RawHeaderValue("Subject: x\n\nbody", "Subject"), std::string("x"));
+}
+
+TEST(imap_search_by_message_id_quotes_the_id) {
+    REQUIRE_EQ(SearchByMessageIdCommand("<abc@example.com>"),
+               std::string("UID SEARCH HEADER Message-ID \"<abc@example.com>\""));
+    REQUIRE_EQ(SearchByMessageIdCommand("<a\"b\\c@x>"),
+               std::string("UID SEARCH HEADER Message-ID \"<a\\\"b\\\\c@x>\""));
+}
+
 TEST(imap_flag_roundtrip) {
     UltraNetMailFlags f = UltraNetMailFlags::Seen | UltraNetMailFlags::Answered;
     std::string s = FlagsToImapString(f);

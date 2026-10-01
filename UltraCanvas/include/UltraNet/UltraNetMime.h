@@ -164,6 +164,8 @@ struct UltraNetMimeBuildInput {
     // Every other attachment is an attachment of the message.
     std::vector<UltraNetMimeBuildAttachment> attachments;
     // Optional; generated when empty (tests may pin these for determinism).
+    // An empty messageId is also taken from a "Message-ID" in extraHeaders
+    // (how an SMTP caller pins it through UltraNetMailMessage::headers).
     std::string date;
     std::string messageId;
     std::string boundary;

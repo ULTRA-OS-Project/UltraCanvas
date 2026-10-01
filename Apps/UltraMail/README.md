@@ -94,8 +94,12 @@ Apps/UltraMail/
     UltraMailOutbox.{h,cpp}       persistent send queue on UltraDatabase:
                                   Enqueue + Flush (sent->remove, fail->retry);
                                   a copy in the Drafts folder (IMAP APPEND)
-                                  until sent, then deleted (DraftsKeeper);
-                                  OutboxRetryClock: automatic retry timing
+                                  until sent, then deleted, and a copy in the
+                                  Sent folder once sent (ServerCopies; none
+                                  where the server files sent mail itself);
+                                  DeleteMessage, held messages (being
+                                  corrected); OutboxRetryClock: automatic
+                                  retry timing
     UltraMailSyncService.{h,cpp}  full-account sync (folders+inbox+bodies) over
                                   the SyncEngine, sync + background-thread variants
     UltraMailSyncScheduler.{h,cpp} per-account interval tracking; DueAccounts(now);
@@ -120,6 +124,9 @@ Apps/UltraMail/
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
     UltraMailAttachmentStrip.{h,cpp} attachment chips; double-click or right-click
                                   (Open / Save As…) opens content in UltraCanvasMediaViewer
+    UltraMailOutboxView.{h,cpp}   the Outbox window (toolbar "Outbox (N)"): the
+                                  waiting messages (To · Subject · From · Tries
+                                  · Status) with Send now, Edit… and Delete
     UltraMailContactsView.{h,cpp} contact manager: section sidebar (with counts) +
                                   contact list; add/edit dialog; delete via context menu
     UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject, the formatting
