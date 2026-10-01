@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasSearchBar.h
 // Inline search and replace bar — embedded panel in the editor (VS Code style)
-// Version: 1.1.0
-// Last Modified: 2026-06-23
+// Version: 1.2.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,6 +28,13 @@ namespace UltraCanvas {
 // Shown/hidden via SetVisible() — UpdateChildLayout() reserves space when visible.
 
     class UltraCanvasSearchBar : public UltraCanvasContainer {
+    public:
+        // Search-as-you-type waits for this many characters: one letter matches
+        // most of a document, which is slow to highlight and useless to look at.
+        // Enter / Find Next still search for a single character.
+        static constexpr int MinLiveSearchChars = 2;
+        static bool IsLiveSearchText(const std::string& text);
+
     private:
         // ===== MODE =====
         SearchBarMode mode = SearchBarMode::Find;
@@ -121,6 +128,8 @@ namespace UltraCanvas {
         // ===== STATUS =====
         // currentIndex: 1-based; 0 = no current match
         void UpdateMatchCount(int currentIndex, int totalMatches);
+        // Blank the count: nothing has been searched for (empty, or shorter than MinLiveSearchChars).
+        void ClearMatchCount();
 
         // ===== HISTORY =====
         void SetSearchHistory(const std::vector<std::string>& h)  { searchHistory  = h; }
