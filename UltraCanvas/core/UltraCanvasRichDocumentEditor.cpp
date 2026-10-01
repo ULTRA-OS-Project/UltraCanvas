@@ -64,9 +64,32 @@ bool IsTextBlockType(RichBlockType type) {
     }
 }
 
+// A block's style id as the style system reads it: none is Normal, and a
+// heading that names none is its level's heading style.
+std::string EffectiveStyleId(const RichDocBlock& block) {
+    if (!block.styleId.empty()) return block.styleId;
+    if (block.type == RichBlockType::Heading) return "Heading" + std::to_string(std::clamp(block.headingLevel, 1, 6));
+    return "Normal";
+}
+
 // Byte length a run contributes to its block's text.
 int RunSpan(const RichTextRun& run) {
     return (run.lineBreakBefore ? 1 : 0) + static_cast<int>(run.text.size());
+}
+
+// Clears what makes a run an object rather than formatted text: a picture's
+// media, a field's kind.
+void StripObjectIdentity(RichTextRun& run) {
+    run.mediaIndex = -1;
+    run.imageWidthPt = run.imageHeightPt = 0.0f;
+    run.imageAltText.clear();
+    run.field = RichTextRun::Field::Plain;
+    run.fieldArgument.clear();
+    run.change = RichTextRun::Change::Unchanged;
+    run.revision = -1;
+    // A note mark is raised because it is a mark; the text next to it is not.
+    if (run.noteIndex >= 0) run.superscript = false;
+    run.noteIndex = -1;
 }
 
 } // namespace
@@ -91,6 +114,13 @@ void RichCharFormatDelta::ApplyTo(RichTextRun& run) const {
     if (setFontSize)   run.fontSizePt = fontSizePt;
     if (setColor)      run.color = color;
     if (setLink)       run.linkTarget = linkTarget;
+    if (addComment >= 0 && std::find(run.commentIds.begin(), run.commentIds.end(), addComment) == run.commentIds.end()) {
+        run.commentIds.push_back(addComment);
+    }
+    if (removeComment >= 0) {
+        run.commentIds.erase(std::remove(run.commentIds.begin(), run.commentIds.end(), removeComment),
+                             run.commentIds.end());
+    }
 }
 
 // ===== UTF-8 HELPERS =====
@@ -215,9 +245,22 @@ void UCRichDocumentEditor::InsertIntoRuns(std::vector<RichTextRun>& runs, int by
         inserted = *format;
     } else if (const RichTextRun* source = RunAtOffset(runs, byteOffset)) {
         inserted = *source;
+        // Typed text takes its neighbour's formatting, not what it IS: text
+        // typed after a picture is not a picture, and after a page number
+        // field it is not part of the number (which the next layout would
+        // overwrite).
+        StripObjectIdentity(inserted);
     }
     inserted.text = text;
     inserted.lineBreakBefore = lineBreakBefore;
+    // Typed text is a change of its own, or none - never its neighbour's.
+    if (trackChanges) {
+        inserted.change = RichTextRun::Change::Inserted;
+        inserted.revision = CurrentRevision();
+    } else {
+        inserted.change = RichTextRun::Change::Unchanged;
+        inserted.revision = -1;
+    }
 
     int idx = SplitRunAt(runs, byteOffset);
     idx = std::min(idx, static_cast<int>(runs.size()));
@@ -266,6 +309,11 @@ UCRichDocumentEditor::EditScope::~EditScope() {
     step.caretAfter = ed.caret;
     step.anchorAfter = ed.anchor;
     step.typing = typing;
+    if (captureStyles) {
+        step.stylesChanged = true;
+        step.stylesBefore = std::move(stylesBefore);
+        step.stylesAfter = ed.doc->styles;
+    }
     ed.CommitStep(std::move(step));
 }
 
@@ -512,15 +560,180 @@ RichDocPosition UCRichDocumentEditor::ClampPosition(const RichDocPosition& pos) 
     return out;
 }
 
-// Keeps a selection inside one text container. Extending out of a table cell
-// (or into one) would produce a range no edit can honour — cells cannot be
-// merged by deleting the text between them — so the moving end is held at the
-// edge of the anchor's container instead. Multi-cell selection is its own
-// phase; see the element's documentation.
+// Shapes the moving end of a selection so the range is one an edit can honour.
+// Text between two cells cannot be deleted - cells are not joined by it - so:
+// - both ends in cells of one table: kept, and the selection is a block of
+//   cells (see HasCellSelection);
+// - from a cell out of its table: held at the table's first or last cell, a
+//   cell selection reaching the table's edge;
+// - from outside a table into it: the table is taken whole, the end moving
+//   past it (or, travelling back towards the anchor, before it).
 RichDocPosition UCRichDocumentEditor::ClampToAnchorContainer(const RichDocPosition& pos) const {
     if (pos.SameContainer(anchor)) return pos;
     if (!pos.InCell() && !anchor.InCell()) return pos;    // ordinary block selection
-    return (anchor < pos) ? ContainerEnd(anchor) : ContainerStart(anchor);
+    if (pos.InCell() && anchor.InCell() && pos.blockIndex == anchor.blockIndex) return pos;
+
+    if (anchor.InCell()) {
+        RichDocPosition edge;
+        const bool forward = anchor < pos;
+        if (forward ? LastContainerOfBlock(*this, anchor.blockIndex, edge)
+                    : FirstContainerOfBlock(*this, anchor.blockIndex, edge)) {
+            return forward ? ContainerEnd(edge) : ContainerStart(edge);
+        }
+        return anchor;
+    }
+
+    // The anchor is outside the table the moving end reached.
+    const int table = pos.blockIndex;
+    const bool anchorBefore = anchor.blockIndex < table;
+    // Coming back towards the anchor from the far side of the table stops
+    // short of it; otherwise the table is included.
+    const bool retreating = anchorBefore ? caret.blockIndex > table : caret.blockIndex < table;
+    auto afterTable = [&]() {
+        // The first container past the table's last cell.
+        RichDocPosition probe;
+        if (LastContainerOfBlock(*this, table, probe) && NextContainer(probe) && probe.blockIndex != table) {
+            return probe;
+        }
+        return RichDocPosition(table, 0);
+    };
+    auto beforeTable = [&]() {
+        RichDocPosition first;
+        if (FirstContainerOfBlock(*this, table, first)) {
+            RichDocPosition previous = first;
+            if (PreviousContainer(previous) && previous.blockIndex != table) return ContainerEnd(previous);
+        }
+        return RichDocPosition(table, 0);
+    };
+    if (anchorBefore) return retreating ? beforeTable() : afterTable();
+    return retreating ? afterTable() : beforeTable();
+}
+
+// ===== CELL SELECTION =====
+
+bool UCRichDocumentEditor::CellRectBetween(const RichDocPosition& a, const RichDocPosition& b,
+                                           int& top, int& left, int& bottom, int& right) const {
+    if (!a.InCell() || !b.InCell() || a.blockIndex != b.blockIndex || a.SameContainer(b)) return false;
+    if (a.blockIndex < 0 || a.blockIndex >= GetBlockCount()) return false;
+    const RichDocBlock& table = doc->blocks[static_cast<size_t>(a.blockIndex)];
+    const RichTableGrid grid = BuildTableGrid(table);
+    int aRow = 0, aColumn = 0, bRow = 0, bColumn = 0;
+    if (!grid.OriginOf(a.cellRow, a.cellColumn, aRow, aColumn)) return false;
+    if (!grid.OriginOf(b.cellRow, b.cellColumn, bRow, bColumn)) return false;
+    top = std::min(aRow, bRow);
+    bottom = std::max(aRow, bRow);
+    left = std::min(aColumn, bColumn);
+    right = std::max(aColumn, bColumn);
+    // Grow until every cell the rectangle touches lies inside it: half of a
+    // merged cell cannot be selected.
+    for (bool grown = true; grown;) {
+        grown = false;
+        for (int r = top; r <= bottom; ++r) {
+            for (int c = left; c <= right; ++c) {
+                const RichTableGridSlot& slot = grid.At(r, c);
+                if (!slot.Occupied()) continue;
+                int originRow = 0, originColumn = 0;
+                if (!grid.OriginOf(slot.row, slot.cellIndex, originRow, originColumn)) continue;
+                const RichTableCell& cell = table.tableRows[static_cast<size_t>(slot.row)]
+                                                .cells[static_cast<size_t>(slot.cellIndex)];
+                const int lastRow = std::min(grid.rowCount - 1, originRow + std::max(1, cell.rowSpan) - 1);
+                const int lastColumn = std::min(grid.columnCount - 1, originColumn + std::max(1, cell.columnSpan) - 1);
+                if (originRow < top) { top = originRow; grown = true; }
+                if (originColumn < left) { left = originColumn; grown = true; }
+                if (lastRow > bottom) { bottom = lastRow; grown = true; }
+                if (lastColumn > right) { right = lastColumn; grown = true; }
+            }
+        }
+    }
+    return true;
+}
+
+bool UCRichDocumentEditor::HasCellSelection() const {
+    return anchor.InCell() && caret.InCell() && anchor.blockIndex == caret.blockIndex
+        && !anchor.SameContainer(caret);
+}
+
+bool UCRichDocumentEditor::GetCellSelectionRect(int& top, int& left, int& bottom, int& right) const {
+    return CellRectBetween(anchor, caret, top, left, bottom, right);
+}
+
+namespace {
+// The model cells whose top-left slot lies in the rectangle, row by row.
+std::vector<RichDocPosition> CellsInRect(const RichDocBlock& table, int blockIndex,
+                                         int top, int left, int bottom, int right) {
+    std::vector<RichDocPosition> cells;
+    const RichTableGrid grid = BuildTableGrid(table);
+    for (int r = top; r <= bottom; ++r) {
+        for (int c = left; c <= right; ++c) {
+            const RichTableGridSlot& slot = grid.At(r, c);
+            if (slot.Occupied() && slot.origin) cells.emplace_back(blockIndex, slot.row, slot.cellIndex, 0);
+        }
+    }
+    return cells;
+}
+} // namespace
+
+std::vector<RichDocPosition> UCRichDocumentEditor::SelectedCells() const {
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (!GetCellSelectionRect(top, left, bottom, right)) return {};
+    return CellsInRect(doc->blocks[static_cast<size_t>(caret.blockIndex)], caret.blockIndex,
+                       top, left, bottom, right);
+}
+
+bool UCRichDocumentEditor::SelectCellRange(int blockIndex, int top, int left, int bottom, int right) {
+    const RichTableGrid grid = TableGrid(blockIndex);
+    if (grid.rowCount == 0) return false;
+    top = std::clamp(top, 0, grid.rowCount - 1);
+    bottom = std::clamp(bottom, 0, grid.rowCount - 1);
+    left = std::clamp(left, 0, grid.columnCount - 1);
+    right = std::clamp(right, 0, grid.columnCount - 1);
+    int fromRow = 0, fromCell = 0, toRow = 0, toCell = 0;
+    if (!grid.CellAt(std::min(top, bottom), std::min(left, right), fromRow, fromCell)) return false;
+    if (!grid.CellAt(std::max(top, bottom), std::max(left, right), toRow, toCell)) return false;
+    anchor = RichDocPosition(blockIndex, fromRow, fromCell, 0);
+    caret = RichDocPosition(blockIndex, toRow, toCell, 0);
+    if (anchor.SameContainer(caret)) caret = ContainerEnd(caret);
+    coalescing = false;
+    pendingFormatValid = false;
+    NotifySelectionChanged();
+    return true;
+}
+
+void UCRichDocumentEditor::ClearSelectedCellsInternal() {
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (!GetCellSelectionRect(top, left, bottom, right)) return;
+    const int blockIndex = caret.blockIndex;
+    RichDocBlock& table = doc->blocks[static_cast<size_t>(blockIndex)];
+    const std::vector<RichDocPosition> cells = CellsInRect(table, blockIndex, top, left, bottom, right);
+    for (const RichDocPosition& cell : cells) {
+        std::vector<RichTextRun>& runs = table.tableRows[static_cast<size_t>(cell.cellRow)]
+                                             .cells[static_cast<size_t>(cell.cellColumn)].runs;
+        // The first run stays, empty, so what is typed next keeps its look.
+        if (runs.empty()) continue;
+        runs.resize(1);
+        runs[0].text.clear();
+        runs[0].lineBreakBefore = false;
+        if (runs[0].IsInlineImage() || runs[0].field != RichTextRun::Field::Plain || runs[0].IsNoteReference()) {
+            runs[0] = RichTextRun{};
+        }
+    }
+    caret = cells.empty() ? ClampPosition(caret) : cells.front();
+    anchor = caret;
+}
+
+bool UCRichDocumentEditor::MergeSelectedCells() {
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (!GetCellSelectionRect(top, left, bottom, right)) return false;
+    const int blockIndex = caret.blockIndex;
+    const RichTableGrid grid = TableGrid(blockIndex);
+    int row = 0, cellIndex = 0;
+    if (!grid.CellAt(top, left, row, cellIndex)) return false;
+    const RichTableCell& origin = doc->blocks[static_cast<size_t>(blockIndex)]
+                                      .tableRows[static_cast<size_t>(row)].cells[static_cast<size_t>(cellIndex)];
+    const int extraColumns = right - (left + std::max(1, origin.columnSpan) - 1);
+    const int extraRows = bottom - (top + std::max(1, origin.rowSpan) - 1);
+    if (extraColumns < 0 || extraRows < 0 || (extraColumns == 0 && extraRows == 0)) return false;
+    return MergeTableCells(blockIndex, row, cellIndex, extraColumns, extraRows);
 }
 
 void UCRichDocumentEditor::SetCaret(const RichDocPosition& pos, bool extend) {
@@ -691,7 +904,7 @@ void UCRichDocumentEditor::CommitStep(UndoStep step) {
 
     if (coalescing && step.typing && !undoStack.empty()) {
         UndoStep& last = undoStack.back();
-        if (last.typing && last.firstBlock == step.firstBlock
+        if (last.typing && !last.stylesChanged && !step.stylesChanged && last.firstBlock == step.firstBlock
             && last.after.size() == step.before.size()) {
             // Same span, still typing: fold this keystroke into the open step
             // so a typed word undoes in one go.
@@ -704,7 +917,7 @@ void UCRichDocumentEditor::CommitStep(UndoStep step) {
     }
 
     undoStack.push_back(std::move(step));
-    if (undoStack.size() > maxUndoSteps) {
+    if (maxUndoSteps > 0 && undoStack.size() > maxUndoSteps) {
         undoStack.erase(undoStack.begin());
     }
     redoStack.clear();
@@ -722,6 +935,7 @@ bool UCRichDocumentEditor::Undo() {
                          static_cast<int>(doc->blocks.size()) - first);
     doc->blocks.erase(doc->blocks.begin() + first, doc->blocks.begin() + first + count);
     doc->blocks.insert(doc->blocks.begin() + first, step.before.begin(), step.before.end());
+    if (step.stylesChanged) doc->styles = step.stylesBefore;
     EnsureNotEmpty();
     caret = ClampPosition(step.caretBefore);
     anchor = ClampPosition(step.anchorBefore);
@@ -747,6 +961,7 @@ bool UCRichDocumentEditor::Redo() {
                          static_cast<int>(doc->blocks.size()) - first);
     doc->blocks.erase(doc->blocks.begin() + first, doc->blocks.begin() + first + count);
     doc->blocks.insert(doc->blocks.begin() + first, step.after.begin(), step.after.end());
+    if (step.stylesChanged) doc->styles = step.stylesAfter;
     EnsureNotEmpty();
     caret = ClampPosition(step.caretAfter);
     anchor = ClampPosition(step.anchorAfter);
@@ -759,6 +974,14 @@ bool UCRichDocumentEditor::Redo() {
     NotifyChanged();
     NotifySelectionChanged();
     return true;
+}
+
+void UCRichDocumentEditor::SetMaxUndoSteps(size_t steps) {
+    maxUndoSteps = steps;
+    if (maxUndoSteps > 0 && undoStack.size() > maxUndoSteps) {
+        undoStack.erase(undoStack.begin(),
+                        undoStack.begin() + static_cast<long>(undoStack.size() - maxUndoSteps));
+    }
 }
 
 void UCRichDocumentEditor::ClearUndoHistory() {
@@ -799,6 +1022,15 @@ void UCRichDocumentEditor::DeleteRange(const RichDocRange& range) {
 
 void UCRichDocumentEditor::DeleteRangeInternal(const RichDocRange& range) {
     if (range.IsEmpty()) return;
+    if (trackChanges && MarkRangeDeleted(range)) return;
+    // Two cells of one table: the cells between them are emptied, not joined.
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (CellRectBetween(range.start, range.end, top, left, bottom, right)) {
+        caret = range.end;
+        anchor = range.start;
+        ClearSelectedCellsInternal();
+        return;
+    }
     int firstBlock = range.start.blockIndex;
     int lastBlock = std::min(range.end.blockIndex, GetBlockCount() - 1);
 
@@ -1224,6 +1456,7 @@ void UCRichDocumentEditor::SplitBlockInternal() {
         } else {
             block.type = RichBlockType::Paragraph;
             block.orderedList = false;
+            block.checkbox = block.checked = false;
         }
         caret.byteOffset = 0;
         anchor = caret;
@@ -1255,6 +1488,8 @@ void UCRichDocumentEditor::SplitBlockInternal() {
             next.numberFormat = block.numberFormat;
             next.numberTemplate = block.numberTemplate;
             next.bulletText = block.bulletText;
+            // The next item of a check list is another box, not yet ticked.
+            next.checkbox = block.checkbox;
             break;
         case RichBlockType::BlockQuote:
             next.type = RichBlockType::BlockQuote;
@@ -1272,6 +1507,15 @@ void UCRichDocumentEditor::SplitBlockInternal() {
     // indents, spacing and tab stops. Not so after a heading, whose
     // continuation is body text.
     if (next.type == block.type) next.CopyParagraphGeometry(block);
+    // A named style says what follows it (a heading: body text).
+    if (!block.styleId.empty()) {
+        const RichStyle* style = doc->FindStyle(block.styleId);
+        next.styleId = style && !style->nextStyle.empty() ? style->nextStyle : block.styleId;
+        if (next.styleId == "Normal") next.styleId.clear();
+        if (next.styleId != block.styleId) {
+            RestyleBlock(next, doc->ResolveStyle(block.styleId), doc->ResolveStyle(EffectiveStyleId(next)), true);
+        }
+    }
     next.runs = std::move(tailRuns);
     doc->blocks.insert(doc->blocks.begin() + caret.blockIndex + 1, next);
     caret = RichDocPosition(caret.blockIndex + 1, 0);
@@ -1306,7 +1550,15 @@ bool UCRichDocumentEditor::DeleteBackward() {
         std::string text = TextAt(caret);
         RichDocPosition from = caret;
         from.byteOffset = PreviousCharOffset(text, caret.byteOffset);
+        trackBackward = true;
         DeleteRange(RichDocRange(from, caret));
+        trackBackward = false;
+        return true;
+    }
+    // Tracking: a paragraph break is not a tracked change; Backspace at a
+    // paragraph's start just moves back into the previous one.
+    if (trackChanges && !caret.InCell() && caret.blockIndex > 0 && IsTextBlock(caret.blockIndex - 1)) {
+        SetCaret(RichDocPosition(caret.blockIndex - 1, BlockTextLength(caret.blockIndex - 1)));
         return true;
     }
     // At the very start of a cell, Backspace moves to the previous cell rather
@@ -1370,6 +1622,10 @@ bool UCRichDocumentEditor::DeleteForward() {
         return false;
     }
     if (caret.blockIndex + 1 >= GetBlockCount()) return false;
+    if (trackChanges && !caret.InCell() && IsTextBlock(caret.blockIndex + 1)) {
+        SetCaret(RichDocPosition(caret.blockIndex + 1, 0));
+        return true;
+    }
 
     int next = caret.blockIndex + 1;
     if (!IsTextBlock(next)) {
@@ -1395,6 +1651,18 @@ bool UCRichDocumentEditor::DeleteForward() {
 void UCRichDocumentEditor::ApplyCharFormatToRangeInternal(const RichDocRange& range,
                                                           const RichCharFormatDelta& delta) {
     if (delta.IsEmpty() || range.IsEmpty()) return;
+
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (CellRectBetween(range.start, range.end, top, left, bottom, right)) {
+        RichDocBlock& table = doc->blocks[static_cast<size_t>(range.start.blockIndex)];
+        for (const RichDocPosition& cell : CellsInRect(table, range.start.blockIndex, top, left, bottom, right)) {
+            std::vector<RichTextRun>& runs = table.tableRows[static_cast<size_t>(cell.cellRow)]
+                                                 .cells[static_cast<size_t>(cell.cellColumn)].runs;
+            for (RichTextRun& run : runs) delta.ApplyTo(run);
+            CoalesceRuns(runs);
+        }
+        return;
+    }
 
     if (range.start.InCell()) {
         std::vector<RichTextRun>* runs = MutableRunsAt(range.start);
@@ -1471,6 +1739,7 @@ RichTextRun UCRichDocumentEditor::FormatAt(const RichDocPosition& pos) const {
         RichTextRun copy = *run;
         copy.text.clear();
         copy.lineBreakBefore = false;
+        StripObjectIdentity(copy);      // a format, not the object it came from
         return copy;
     }
     return {};
@@ -1518,8 +1787,23 @@ RichCharFormatState UCRichDocumentEditor::GetFormatState() const {
     RichDocRange range = GetSelectionRange();
     bool first = true;
 
-    // A selection never spans containers once a cell is involved, so a cell
-    // selection is read straight off that cell's runs.
+    // A block of cells: every run of every cell in it.
+    if (HasCellSelection()) {
+        for (const RichDocPosition& cell : SelectedCells()) {
+            if (const std::vector<RichTextRun>* cellRuns = RunsAt(cell)) {
+                for (const auto& run : *cellRuns) {
+                    if (run.text.empty() && !run.lineBreakBefore && cellRuns->size() > 1) continue;
+                    absorb(run, first);
+                    first = false;
+                }
+            }
+        }
+        if (first) absorb(FormatAt(range.start), true);
+        return state;
+    }
+
+    // Otherwise a selection involving a cell stays inside that cell, so it
+    // is read straight off that cell's runs.
     if (range.start.InCell()) {
         if (const std::vector<RichTextRun>* cellRuns = RunsAt(range.start)) {
             int pos = 0;
@@ -1687,6 +1971,7 @@ void UCRichDocumentEditor::SetBlockType(RichBlockType type, int headingLevel) {
             if (type != RichBlockType::ListItem) {
                 block.orderedList = false;
                 block.listLevel = 0;
+                block.checkbox = block.checked = false;
             }
             if (type != RichBlockType::CodeBlock) block.codeLanguage.clear();
         }
@@ -1703,12 +1988,24 @@ void UCRichDocumentEditor::SetHeadingLevel(int level) {
 }
 
 void UCRichDocumentEditor::SetAlignment(RichTextAlign align) {
-    // A table cell holds runs and nothing else: RichTableCell carries no
-    // paragraph properties, so there is nowhere to record a heading, a list, an
-    // alignment or a quote for one. Applying the command to the enclosing table
-    // block instead would silently re-align or restyle the whole table, which
-    // is not what a caret sitting in one cell asks for.
-    if (caret.InCell()) return;
+    // In a table the alignment is the cell's own (RichTableCell::align): the
+    // caret's cell, or every cell of a cell selection.
+    if (caret.InCell()) {
+        std::vector<RichDocPosition> cells = HasCellSelection() ? SelectedCells()
+                                                                 : std::vector<RichDocPosition>{caret};
+        {
+            EditScope scope(*this, caret.blockIndex, 1);
+            RichDocBlock& table = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+            for (const RichDocPosition& cell : cells) {
+                if (cell.cellRow < 0 || cell.cellRow >= static_cast<int>(table.tableRows.size())) continue;
+                RichTableRow& row = table.tableRows[static_cast<size_t>(cell.cellRow)];
+                if (cell.cellColumn < 0 || cell.cellColumn >= static_cast<int>(row.cells.size())) continue;
+                row.cells[static_cast<size_t>(cell.cellColumn)].align = align;
+            }
+        }
+        NotifyChanged();
+        return;
+    }
     int first = 0, last = 0;
     SelectedBlockRange(first, last);
     {
@@ -1718,6 +2015,74 @@ void UCRichDocumentEditor::SetAlignment(RichTextAlign align) {
         }
     }
     NotifyChanged();
+}
+
+void UCRichDocumentEditor::SetRightToLeft(bool rightToLeft) {
+    int first = 0, last = 0;
+    if (caret.InCell()) {
+        first = last = caret.blockIndex;
+    } else {
+        SelectedBlockRange(first, last);
+    }
+    {
+        EditScope scope(*this, first, last - first + 1);
+        for (int b = first; b <= last && b < GetBlockCount(); b++) doc->blocks[static_cast<size_t>(b)].rightToLeft = rightToLeft;
+    }
+    NotifyChanged();
+}
+
+namespace {
+
+// Code points of the right-to-left scripts' blocks.
+bool IsRightToLeftCodePoint(uint32_t cp) {
+    return (cp >= 0x0590 && cp <= 0x08FF) || (cp >= 0xFB1D && cp <= 0xFDFF) || (cp >= 0xFE70 && cp <= 0xFEFF)
+        || (cp >= 0x10800 && cp <= 0x10FFF) || (cp >= 0x1E800 && cp <= 0x1EFFF);
+}
+
+// Letters of the left-to-right scripts, roughly: what is neither RTL nor a
+// digit, space, punctuation or symbol.
+bool IsLeftToRightLetter(uint32_t cp) {
+    if (cp < 0x80) return std::isalpha(static_cast<int>(cp)) != 0;
+    if (IsRightToLeftCodePoint(cp)) return false;
+    if (cp >= 0x2000 && cp <= 0x2BFF) return false;       // punctuation, symbols, arrows
+    if (cp >= 0x3000 && cp <= 0x303F) return false;       // CJK punctuation
+    if (cp == 0xA0 || (cp >= 0xA1 && cp <= 0xBF) || cp == 0xD7 || cp == 0xF7) return false;
+    return true;
+}
+
+template <typename Visit>
+void ForEachCodePoint(const std::string& utf8, Visit visit) {
+    for (size_t i = 0; i < utf8.size();) {
+        const unsigned char c = static_cast<unsigned char>(utf8[i]);
+        const int length = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
+        uint32_t cp = length == 1 ? c : length == 2 ? (c & 0x1F) : length == 3 ? (c & 0x0F) : (c & 0x07);
+        for (int k = 1; k < length && i + static_cast<size_t>(k) < utf8.size(); k++) {
+            cp = (cp << 6) | (static_cast<unsigned char>(utf8[i + static_cast<size_t>(k)]) & 0x3F);
+        }
+        if (!visit(cp)) return;
+        i += static_cast<size_t>(length);
+    }
+}
+
+} // namespace
+
+bool UCRichDocumentEditor::ContainsRightToLeft(const std::string& utf8) {
+    bool found = false;
+    ForEachCodePoint(utf8, [&](uint32_t cp) {
+        found = IsRightToLeftCodePoint(cp);
+        return !found;
+    });
+    return found;
+}
+
+int UCRichDocumentEditor::FirstStrongDirection(const std::string& utf8) {
+    int direction = 0;
+    ForEachCodePoint(utf8, [&](uint32_t cp) {
+        if (IsRightToLeftCodePoint(cp)) direction = 1;
+        else if (IsLeftToRightLetter(cp)) direction = -1;
+        return direction == 0;
+    });
+    return direction;
 }
 
 void UCRichDocumentEditor::SetListStyle(bool ordered) {
@@ -1740,6 +2105,7 @@ void UCRichDocumentEditor::SetListStyle(bool ordered) {
             }
             block.type = RichBlockType::ListItem;
             block.orderedList = ordered;
+            block.checkbox = block.checked = false;
             AdoptListLevelFormat(doc->blocks, static_cast<size_t>(b));
         }
     }
@@ -1759,7 +2125,7 @@ void UCRichDocumentEditor::ToggleList(bool ordered) {
     for (int b = first; b <= last && b < GetBlockCount(); b++) {
         const RichDocBlock& block = doc->blocks[b];
         if (!IsTextBlockType(block.type)) continue;
-        if (block.type != RichBlockType::ListItem || block.orderedList != ordered) {
+        if (block.type != RichBlockType::ListItem || block.orderedList != ordered || block.checkbox) {
             allSameList = false;
             break;
         }
@@ -1813,6 +2179,7 @@ void UCRichDocumentEditor::OutdentList() {
             } else {
                 block.type = RichBlockType::Paragraph;
                 block.orderedList = false;
+                block.checkbox = block.checked = false;
             }
         }
     }
@@ -1851,6 +2218,340 @@ void UCRichDocumentEditor::ToggleCodeBlock(const std::string& language) {
         }
     }
     NotifyChanged();
+}
+
+void UCRichDocumentEditor::ToggleCheckList() {
+    if (caret.InCell()) return;
+    int first = 0, last = 0;
+    SelectedBlockRange(first, last);
+    bool allChecklist = true;
+    for (int b = first; b <= last && b < GetBlockCount(); b++) {
+        const RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+        if (!IsTextBlockType(block.type)) continue;
+        if (block.type != RichBlockType::ListItem || !block.checkbox) { allChecklist = false; break; }
+    }
+    if (allChecklist) {
+        SetBlockType(RichBlockType::Paragraph);
+        return;
+    }
+    {
+        EditScope scope(*this, first, last - first + 1);
+        for (int b = first; b <= last && b < GetBlockCount(); b++) {
+            RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            if (!IsTextBlockType(block.type)) continue;
+            if (block.type != RichBlockType::ListItem) {
+                block.listLevel = 0;
+                block.headingLevel = 0;
+            }
+            block.type = RichBlockType::ListItem;
+            block.orderedList = false;
+            if (!block.checkbox) block.checked = false;
+            block.checkbox = true;
+        }
+    }
+    NotifyChanged();
+}
+
+bool UCRichDocumentEditor::ToggleChecked(int blockIndex) {
+    if (blockIndex < 0 || blockIndex >= GetBlockCount()) return false;
+    const RichDocBlock& current = doc->blocks[static_cast<size_t>(blockIndex)];
+    if (current.type != RichBlockType::ListItem || !current.checkbox) return false;
+    {
+        EditScope scope(*this, blockIndex, 1);
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(blockIndex)];
+        block.checked = !block.checked;
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+// ===== NAMED STYLES =====
+
+namespace {
+
+// Sets property `value` to what `after` states, or takes back what `before`
+// stated: with force, `after`'s value is set regardless; otherwise only a
+// value still equal to `before`'s (not formatted directly) changes.
+template <typename T, typename D>
+void Restyle(T& value, const std::optional<D>& before, const std::optional<D>& after, bool force, const T& none) {
+    const bool following = before ? value == static_cast<T>(*before) : false;
+    if (after) {
+        if (force || following || !before) value = static_cast<T>(*after);
+    } else if (following) {
+        value = none;
+    }
+}
+
+void RestyleRun(RichTextRun& run, const RichStyleCharacter& before, const RichStyleCharacter& after, bool force) {
+    if (run.IsInlineImage()) return;
+    Restyle(run.bold, before.bold, after.bold, force, false);
+    Restyle(run.italic, before.italic, after.italic, force, false);
+    Restyle(run.underline, before.underline, after.underline, force, false);
+    Restyle(run.strikethrough, before.strikethrough, after.strikethrough, force, false);
+    Restyle(run.code, before.code, after.code, force, false);
+    Restyle(run.fontFamily, before.fontFamily, after.fontFamily, force, std::string());
+    Restyle(run.fontSizePt, before.fontSizePt, after.fontSizePt, force, 0.0f);
+    Restyle(run.color, before.color, after.color, force, std::string());
+    Restyle(run.highlightColor, before.highlightColor, after.highlightColor, force, std::string());
+}
+
+} // namespace
+
+void UCRichDocumentEditor::RestyleBlock(RichDocBlock& block, const RichStyle& before, const RichStyle& after,
+                                        bool force) const {
+    const RichStyleParagraph& a = after.paragraph;
+    const RichStyleParagraph& b = before.paragraph;
+    if (block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading) {
+        // Headings are a style's outline level.
+        int level = block.type == RichBlockType::Heading ? block.headingLevel : 0;
+        Restyle(level, b.headingLevel, a.headingLevel, force, 0);
+        if (level >= 1 && level <= 6) {
+            block.type = RichBlockType::Heading;
+            block.headingLevel = level;
+        } else {
+            block.type = RichBlockType::Paragraph;
+            block.headingLevel = 0;
+        }
+    }
+    Restyle(block.align, b.align, a.align, force, RichTextAlign::Default);
+    Restyle(block.leftIndentPt, b.leftIndentPt, a.leftIndentPt, force, 0.0f);
+    Restyle(block.rightIndentPt, b.rightIndentPt, a.rightIndentPt, force, 0.0f);
+    Restyle(block.firstLineIndentPt, b.firstLineIndentPt, a.firstLineIndentPt, force, 0.0f);
+    Restyle(block.spaceBeforePt, b.spaceBeforePt, a.spaceBeforePt, force, -1.0f);
+    Restyle(block.spaceAfterPt, b.spaceAfterPt, a.spaceAfterPt, force, -1.0f);
+    Restyle(block.lineSpacing, b.lineSpacing, a.lineSpacing, force, 0.0f);
+    for (RichTextRun& run : block.runs) {
+        // A run with a character style of its own keeps that style's look.
+        if (!run.characterStyleId.empty()) continue;
+        RestyleRun(run, before.character, after.character, force);
+    }
+}
+
+void UCRichDocumentEditor::EnsureStyles() {
+    if (doc->styles.empty()) doc->styles = UCRichDocument::DefaultStyles();
+}
+
+std::vector<RichStyle> UCRichDocumentEditor::GetStyles() const {
+    return doc->styles.empty() ? UCRichDocument::DefaultStyles() : doc->styles;
+}
+
+bool UCRichDocumentEditor::ApplyParagraphStyle(const std::string& id) {
+    if (caret.InCell()) return false;
+    const bool hadStyles = !doc->styles.empty();
+    if (!hadStyles && !UCRichDocument::DefaultStyles().empty()) {
+        // Checked against the defaults before they are added, so an unknown
+        // id changes nothing.
+        bool known = false;
+        for (const RichStyle& style : UCRichDocument::DefaultStyles()) known = known || style.id == id;
+        if (!known) return false;
+    } else if (!doc->FindStyle(id)) {
+        return false;
+    }
+    int first = 0, last = 0;
+    SelectedBlockRange(first, last);
+    {
+        EditScope scope(*this, first, last - first + 1);
+        if (!hadStyles) {
+            scope.CaptureStyles();
+            EnsureStyles();
+        }
+        const RichStyle after = doc->ResolveStyle(id);
+        if (after.kind != RichStyle::Kind::Paragraph) return false;
+        for (int b = first; b <= last && b < GetBlockCount(); b++) {
+            RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            if (!IsTextBlockType(block.type)) continue;
+            const RichStyle before = doc->ResolveStyle(EffectiveStyleId(block));
+            RestyleBlock(block, before, after, /*force*/ true);
+            block.styleId = id == "Normal" ? std::string() : id;
+        }
+    }
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::ApplyCharacterStyle(const std::string& id) {
+    if (!id.empty()) {
+        const RichStyle* known = doc->FindStyle(id);
+        if (!known && doc->styles.empty()) {
+            for (const RichStyle& style : UCRichDocument::DefaultStyles()) {
+                if (style.id == id) { known = &style; break; }
+            }
+            if (!known) return false;
+        } else if (!known) {
+            return false;
+        }
+    }
+    if (!HasSelection()) return false;
+    const RichDocRange range = GetSelectionRange();
+    {
+        EditScope scope(*this, range.start.blockIndex, range.end.blockIndex - range.start.blockIndex + 1);
+        if (doc->styles.empty() && !id.empty()) {
+            scope.CaptureStyles();
+            EnsureStyles();
+        }
+        const RichStyle after = id.empty() ? RichStyle{} : doc->ResolveStyle(id);
+        auto restyle = [&](std::vector<RichTextRun>& runs, int from, int to) {
+            if (from >= to) return;
+            const int startIdx = SplitRunAt(runs, from);
+            const int endIdx = SplitRunAt(runs, to);
+            for (int i = startIdx; i < endIdx && i < static_cast<int>(runs.size()); i++) {
+                RichTextRun& run = runs[static_cast<size_t>(i)];
+                const RichStyle before = run.characterStyleId.empty() ? RichStyle{}
+                                                                      : doc->ResolveStyle(run.characterStyleId);
+                RestyleRun(run, before.character, after.character, /*force*/ true);
+                run.characterStyleId = id;
+            }
+            CoalesceRuns(runs);
+        };
+        int top = 0, left = 0, bottom = 0, right = 0;
+        if (CellRectBetween(range.start, range.end, top, left, bottom, right)) {
+            for (const RichDocPosition& cell : SelectedCells()) {
+                std::vector<RichTextRun>* runs = MutableRunsAt(cell);
+                if (runs) restyle(*runs, 0, static_cast<int>(RunsText(*runs).size()));
+            }
+        } else if (range.start.InCell()) {
+            if (std::vector<RichTextRun>* runs = MutableRunsAt(range.start)) {
+                restyle(*runs, range.start.byteOffset, range.end.byteOffset);
+            }
+        } else {
+            for (int b = range.start.blockIndex; b <= range.end.blockIndex && b < GetBlockCount(); b++) {
+                RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+                if (!IsTextBlockType(block.type)) continue;
+                const int length = static_cast<int>(RunsText(block.runs).size());
+                const int from = b == range.start.blockIndex ? range.start.byteOffset : 0;
+                const int to = b == range.end.blockIndex ? range.end.byteOffset : length;
+                restyle(block.runs, std::clamp(from, 0, length), std::clamp(to, 0, length));
+            }
+        }
+    }
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::UpdateStyle(const RichStyle& style) {
+    if (style.id.empty()) return false;
+    {
+        EditScope scope(*this, 0, GetBlockCount());
+        scope.CaptureStyles();
+        EnsureStyles();
+        // What every style resolves to now, for each one the change reaches.
+        std::vector<std::pair<std::string, RichStyle>> before;
+        for (const RichStyle& existing : doc->styles) {
+            if (doc->StyleDerivesFrom(existing.id, style.id)) before.emplace_back(existing.id, doc->ResolveStyle(existing.id));
+        }
+        bool replaced = false;
+        for (RichStyle& existing : doc->styles) {
+            if (existing.id == style.id) {
+                existing = style;
+                replaced = true;
+            }
+        }
+        if (!replaced) doc->styles.push_back(style);
+        auto resolvedBefore = [&](const std::string& id) -> const RichStyle* {
+            for (const auto& [known, resolved] : before) if (known == id) return &resolved;
+            return nullptr;
+        };
+        for (RichDocBlock& block : doc->blocks) {
+            const std::string id = EffectiveStyleId(block);
+            if (const RichStyle* old = resolvedBefore(id); old && style.kind == RichStyle::Kind::Paragraph) {
+                RestyleBlock(block, *old, doc->ResolveStyle(id), /*force*/ false);
+            }
+            auto runsOf = [&](std::vector<RichTextRun>& runs) {
+                for (RichTextRun& run : runs) {
+                    if (run.characterStyleId.empty()) continue;
+                    if (const RichStyle* old = resolvedBefore(run.characterStyleId)) {
+                        RestyleRun(run, old->character, doc->ResolveStyle(run.characterStyleId).character, false);
+                    }
+                }
+            };
+            runsOf(block.runs);
+            for (RichTableRow& row : block.tableRows) {
+                for (RichTableCell& cell : row.cells) runsOf(cell.runs);
+            }
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::DeleteStyle(const std::string& id) {
+    const RichStyle* existing = doc->FindStyle(id);
+    if (!existing || id == "Normal") return false;
+    const std::string parent = existing->basedOn;
+    const RichStyle::Kind kind = existing->kind;
+    {
+        EditScope scope(*this, 0, GetBlockCount());
+        scope.CaptureStyles();
+        const RichStyle before = doc->ResolveStyle(id);
+        doc->styles.erase(std::remove_if(doc->styles.begin(), doc->styles.end(),
+                                         [&](const RichStyle& s) { return s.id == id; }),
+                          doc->styles.end());
+        // Styles based on it are based on its parent now.
+        for (RichStyle& other : doc->styles) {
+            if (other.basedOn == id) other.basedOn = parent;
+        }
+        const RichStyle after = parent.empty() ? RichStyle{} : doc->ResolveStyle(parent);
+        for (RichDocBlock& block : doc->blocks) {
+            if (kind == RichStyle::Kind::Paragraph && block.styleId == id) {
+                RestyleBlock(block, before, after, false);
+                block.styleId = parent == "Normal" ? std::string() : parent;
+            }
+            auto runsOf = [&](std::vector<RichTextRun>& runs) {
+                for (RichTextRun& run : runs) {
+                    if (run.characterStyleId != id) continue;
+                    RestyleRun(run, before.character, after.character, false);
+                    run.characterStyleId = kind == RichStyle::Kind::Character ? parent : std::string();
+                }
+            };
+            runsOf(block.runs);
+            for (RichTableRow& row : block.tableRows) {
+                for (RichTableCell& cell : row.cells) runsOf(cell.runs);
+            }
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+RichStyle UCRichDocumentEditor::StyleFromCaret(const std::string& id, const std::string& name) const {
+    RichStyle style;
+    style.id = id;
+    style.name = name.empty() ? id : name;
+    style.basedOn = "Normal";
+    if (caret.InCell() || caret.blockIndex < 0 || caret.blockIndex >= GetBlockCount()) return style;
+    const RichDocBlock& block = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+    if (block.align != RichTextAlign::Default) style.paragraph.align = block.align;
+    if (block.leftIndentPt != 0.0f) style.paragraph.leftIndentPt = block.leftIndentPt;
+    if (block.rightIndentPt != 0.0f) style.paragraph.rightIndentPt = block.rightIndentPt;
+    if (block.firstLineIndentPt != 0.0f) style.paragraph.firstLineIndentPt = block.firstLineIndentPt;
+    if (block.spaceBeforePt >= 0.0f) style.paragraph.spaceBeforePt = block.spaceBeforePt;
+    if (block.spaceAfterPt >= 0.0f) style.paragraph.spaceAfterPt = block.spaceAfterPt;
+    if (block.lineSpacing > 0.0f) style.paragraph.lineSpacing = block.lineSpacing;
+    if (block.type == RichBlockType::Heading) style.paragraph.headingLevel = block.headingLevel;
+    const RichTextRun format = FormatAt(caret);
+    if (format.bold) style.character.bold = true;
+    if (format.italic) style.character.italic = true;
+    if (format.underline) style.character.underline = true;
+    if (format.strikethrough) style.character.strikethrough = true;
+    if (!format.fontFamily.empty()) style.character.fontFamily = format.fontFamily;
+    if (format.fontSizePt > 0.0f) style.character.fontSizePt = format.fontSizePt;
+    if (!format.color.empty()) style.character.color = format.color;
+    return style;
+}
+
+std::string UCRichDocumentEditor::CurrentParagraphStyle() const {
+    if (caret.blockIndex < 0 || caret.blockIndex >= GetBlockCount()) return "Normal";
+    return EffectiveStyleId(doc->blocks[static_cast<size_t>(caret.blockIndex)]);
+}
+
+std::string UCRichDocumentEditor::CurrentCharacterStyle() const {
+    const std::vector<RichTextRun>* runs = RunsAt(caret);
+    if (!runs) return {};
+    const RichTextRun* run = RunAtOffset(*runs, caret.byteOffset);
+    return run ? run->characterStyleId : std::string();
 }
 
 // ===== STRUCTURE =====
@@ -2437,6 +3138,709 @@ int UCRichDocumentEditor::InsertInlineImage(const std::string& name,
     return mediaIndex;
 }
 
+namespace {
+// The run holding the picture whose placeholder starts at `byteOffset`.
+const RichTextRun* ImageRunAt(const std::vector<RichTextRun>& runs, int byteOffset) {
+    int position = 0;
+    for (const RichTextRun& run : runs) {
+        const int start = position + (run.lineBreakBefore ? 1 : 0);
+        position = start + static_cast<int>(run.text.size());
+        if (run.IsInlineImage() && start == byteOffset) return &run;
+        if (start > byteOffset) break;
+    }
+    return nullptr;
+}
+} // namespace
+
+bool UCRichDocumentEditor::IsImageAt(const RichDocPosition& image) const {
+    float w = 0, h = 0;
+    std::string alt;
+    int media = -1;
+    return GetImageInfo(image, w, h, alt, media);
+}
+
+bool UCRichDocumentEditor::GetImageInfo(const RichDocPosition& image, float& widthPt, float& heightPt,
+                                        std::string& altText, int& mediaIndex) const {
+    if (image.blockIndex < 0 || image.blockIndex >= GetBlockCount()) return false;
+    const RichDocBlock& block = doc->blocks[static_cast<size_t>(image.blockIndex)];
+    if (!image.InCell() && block.type == RichBlockType::Image) {
+        widthPt = block.imageWidthPt;
+        heightPt = block.imageHeightPt;
+        altText = block.imageAltText;
+        mediaIndex = block.mediaIndex;
+        return true;
+    }
+    const std::vector<RichTextRun>* runs = RunsAt(image);
+    if (!runs) return false;
+    const RichTextRun* run = ImageRunAt(*runs, image.byteOffset);
+    if (!run) return false;
+    widthPt = run->imageWidthPt;
+    heightPt = run->imageHeightPt;
+    altText = run->imageAltText;
+    mediaIndex = run->mediaIndex;
+    return true;
+}
+
+bool UCRichDocumentEditor::SetImageSize(const RichDocPosition& image, float widthPt, float heightPt) {
+    if (!(widthPt > 0.0f) || !(heightPt > 0.0f) || !IsImageAt(image)) return false;
+    {
+        EditScope scope(*this, image.blockIndex, 1);
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(image.blockIndex)];
+        if (!image.InCell() && block.type == RichBlockType::Image) {
+            block.imageWidthPt = widthPt;
+            block.imageHeightPt = heightPt;
+        } else {
+            RichTextRun* run = const_cast<RichTextRun*>(ImageRunAt(*MutableRunsAt(image), image.byteOffset));
+            run->imageWidthPt = widthPt;
+            run->imageHeightPt = heightPt;
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SetImageAltText(const RichDocPosition& image, const std::string& altText) {
+    if (!IsImageAt(image)) return false;
+    {
+        EditScope scope(*this, image.blockIndex, 1);
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(image.blockIndex)];
+        if (!image.InCell() && block.type == RichBlockType::Image) {
+            block.imageAltText = altText;
+        } else {
+            RichTextRun* run = const_cast<RichTextRun*>(ImageRunAt(*MutableRunsAt(image), image.byteOffset));
+            run->imageAltText = altText;
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+int UCRichDocumentEditor::InsertNote(RichNote::Kind kind) {
+    if (!IsTextContainer(caret)) return -1;
+    RichNote note;
+    note.kind = kind;
+    note.blocks.emplace_back();
+    const int noteIndex = static_cast<int>(doc->notes.size());
+    doc->notes.push_back(std::move(note));
+    RichDocRange selection = GetSelectionRange();
+    int first = selection.start.blockIndex;
+    int count = selection.end.blockIndex - first + 1;
+    {
+        EditScope scope(*this, first, count);
+        if (HasSelection()) DeleteRangeInternal(selection);
+        std::vector<RichTextRun>* runs = MutableRunsAt(caret);
+        if (!runs) return -1;
+        RichTextRun reference = FormatAt(caret);
+        reference.noteIndex = noteIndex;
+        reference.superscript = true;
+        reference.text = "*";                 // numbered just below
+        InsertIntoRuns(*runs, caret.byteOffset, reference.text, &reference);
+        // Every mark after it moves on by one.
+        doc->UpdateNoteMarks();
+        caret = ClampPosition(caret);
+        // After the mark, whatever its length turned out to be.
+        const std::vector<RichTextRun>* after = RunsAt(caret);
+        int position = 0;
+        for (const RichTextRun& run : *after) {
+            position += (run.lineBreakBefore ? 1 : 0) + static_cast<int>(run.text.size());
+            if (run.noteIndex == noteIndex) break;
+        }
+        caret.byteOffset = position;
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return noteIndex;
+}
+
+int UCRichDocumentEditor::NoteAt(const RichDocPosition& pos) const {
+    const std::vector<RichTextRun>* runs = RunsAt(pos);
+    if (!runs) return -1;
+    int position = 0;
+    for (const RichTextRun& run : *runs) {
+        const int start = position + (run.lineBreakBefore ? 1 : 0);
+        const int end = start + static_cast<int>(run.text.size());
+        if (run.noteIndex >= 0 && pos.byteOffset >= start && pos.byteOffset <= end) return run.noteIndex;
+        position = end;
+    }
+    return -1;
+}
+
+// ===== SECTIONS =====
+
+bool UCRichDocumentEditor::InsertSectionBreak(bool newPage) {
+    if (caret.InCell()) return false;
+    const RichSectionSetup current = CurrentSection();
+    {
+        EditScope scope(*this, caret.blockIndex, 1);
+        if (HasSelection()) DeleteRangeInternal(GetSelectionRange());
+        const bool atStart = caret.byteOffset == 0 && caret.blockIndex > 0;
+        if (!atStart) SplitBlockInternal();
+        RichDocBlock& start = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+        start.sectionStart = true;
+        start.section = current;
+        start.section.newPage = newPage;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SetSectionColumns(int columns, float gapPt) {
+    columns = std::clamp(columns, 1, 9);
+    int start = -1;
+    for (int i = std::min(caret.blockIndex, GetBlockCount() - 1); i >= 0; i--) {
+        if (doc->blocks[static_cast<size_t>(i)].sectionStart) { start = i; break; }
+    }
+    if (start < 0) {
+        // The first section's setup is the document's: not an undo step.
+        doc->firstSection.columns = columns;
+        doc->firstSection.columnGapPt = gapPt;
+        modified = true;
+    } else {
+        EditScope scope(*this, start, 1);
+        doc->blocks[static_cast<size_t>(start)].section.columns = columns;
+        doc->blocks[static_cast<size_t>(start)].section.columnGapPt = gapPt;
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+RichSectionSetup UCRichDocumentEditor::CurrentSection() const {
+    return doc->SectionFor(caret.blockIndex);
+}
+
+// ===== TRACKED CHANGES =====
+
+void UCRichDocumentEditor::SetTrackChanges(bool enabled) {
+    trackChanges = enabled;
+    currentRevision = -1;             // a new session: a new revision entry
+    pendingFormatValid = false;
+}
+
+void UCRichDocumentEditor::SetRevisionAuthor(const std::string& author, const std::string& date) {
+    revisionAuthor = author;
+    revisionDate = date;
+    currentRevision = -1;
+}
+
+int UCRichDocumentEditor::CurrentRevision() {
+    if (currentRevision < 0 || currentRevision >= static_cast<int>(doc->revisions.size())) {
+        doc->revisions.push_back({revisionAuthor, revisionDate});
+        currentRevision = static_cast<int>(doc->revisions.size()) - 1;
+    }
+    return currentRevision;
+}
+
+bool UCRichDocumentEditor::MarkRangeDeleted(const RichDocRange& range) {
+    // Cells of a table selected as a block are emptied untracked.
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (CellRectBetween(range.start, range.end, top, left, bottom, right)) return false;
+    const int revision = CurrentRevision();
+    int caretBlock = range.end.blockIndex;
+    int caretOffset = range.end.byteOffset;
+    auto mark = [&](std::vector<RichTextRun>& runs, int from, int to, bool lastContainer) {
+        const int length = static_cast<int>(RunsText(runs).size());
+        from = std::clamp(from, 0, length);
+        to = std::clamp(to, from, length);
+        if (from == to) return;
+        const int startIdx = SplitRunAt(runs, from);
+        const int endIdx = SplitRunAt(runs, to);
+        int removed = 0;
+        for (int i = endIdx - 1; i >= startIdx && i < static_cast<int>(runs.size()); i--) {
+            RichTextRun& run = runs[static_cast<size_t>(i)];
+            if (run.change == RichTextRun::Change::Inserted) {
+                // Deleting a tracked insertion takes it back.
+                removed += static_cast<int>(run.text.size()) + (run.lineBreakBefore ? 1 : 0);
+                runs.erase(runs.begin() + i);
+            } else if (run.change == RichTextRun::Change::Unchanged) {
+                run.change = RichTextRun::Change::Deleted;
+                run.revision = revision;
+            }
+        }
+        CoalesceRuns(runs);
+        if (lastContainer) caretOffset = to - removed;
+    };
+    if (range.start.SameContainer(range.end)) {
+        std::vector<RichTextRun>* runs = MutableRunsAt(range.start);
+        if (!runs) return false;
+        mark(*runs, range.start.byteOffset, range.end.byteOffset, true);
+        caret = trackBackward ? ClampPosition(range.start)
+                              : ClampPosition(range.start.InCell()
+                                    ? RichDocPosition(range.start.blockIndex, range.start.cellRow, range.start.cellColumn, caretOffset)
+                                    : RichDocPosition(range.start.blockIndex, caretOffset));
+        anchor = caret;
+        return true;
+    }
+    if (range.start.InCell() || range.end.InCell()) return false;
+    const int lastBlock = std::min(range.end.blockIndex, GetBlockCount() - 1);
+    for (int b = range.start.blockIndex; b <= lastBlock; b++) {
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+        if (!IsTextBlockType(block.type)) continue;
+        const int length = static_cast<int>(RunsText(block.runs).size());
+        const int from = b == range.start.blockIndex ? range.start.byteOffset : 0;
+        const int to = b == range.end.blockIndex ? range.end.byteOffset : length;
+        mark(block.runs, from, to, b == range.end.blockIndex);
+    }
+    caret = trackBackward ? ClampPosition(range.start) : ClampPosition(RichDocPosition(caretBlock, caretOffset));
+    anchor = caret;
+    return true;
+}
+
+void UCRichDocumentEditor::ResolveChanges(const RichDocRange& range, bool accept, bool wholeDocument) {
+    auto resolve = [&](std::vector<RichTextRun>& runs, int from, int to) {
+        if (!wholeDocument) {
+            const int length = static_cast<int>(RunsText(runs).size());
+            from = std::clamp(from, 0, length);
+            to = std::clamp(to, from, length);
+        }
+        const int startIdx = wholeDocument ? 0 : SplitRunAt(runs, from);
+        const int endIdx = wholeDocument ? static_cast<int>(runs.size()) : SplitRunAt(runs, to);
+        for (int i = endIdx - 1; i >= startIdx && i < static_cast<int>(runs.size()); i--) {
+            RichTextRun& run = runs[static_cast<size_t>(i)];
+            if (run.change == RichTextRun::Change::Unchanged) continue;
+            const bool drop = accept ? run.change == RichTextRun::Change::Deleted
+                                     : run.change == RichTextRun::Change::Inserted;
+            if (drop) {
+                runs.erase(runs.begin() + i);
+            } else {
+                run.change = RichTextRun::Change::Unchanged;
+                run.revision = -1;
+            }
+        }
+        CoalesceRuns(runs);
+    };
+    const int first = wholeDocument ? 0 : range.start.blockIndex;
+    const int last = wholeDocument ? GetBlockCount() - 1 : std::min(range.end.blockIndex, GetBlockCount() - 1);
+    for (int b = first; b <= last; b++) {
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+        const bool edgeStart = !wholeDocument && b == range.start.blockIndex;
+        const bool edgeEnd = !wholeDocument && b == range.end.blockIndex;
+        if (!range.start.InCell() || wholeDocument) {
+            const int length = static_cast<int>(RunsText(block.runs).size());
+            resolve(block.runs, edgeStart ? range.start.byteOffset : 0, edgeEnd ? range.end.byteOffset : length);
+        }
+        for (size_t r = 0; r < block.tableRows.size(); r++) {
+            for (size_t c = 0; c < block.tableRows[r].cells.size(); c++) {
+                std::vector<RichTextRun>& runs = block.tableRows[r].cells[c].runs;
+                const bool here = range.start.InCell() && static_cast<int>(r) == range.start.cellRow
+                                  && static_cast<int>(c) == range.start.cellColumn;
+                if (wholeDocument || (!range.start.InCell() && b > range.start.blockIndex && b < range.end.blockIndex)) {
+                    resolve(runs, 0, static_cast<int>(RunsText(runs).size()));
+                } else if (here) {
+                    resolve(runs, range.start.byteOffset, range.end.byteOffset);
+                }
+            }
+        }
+    }
+    EnsureNotEmpty();
+    caret = ClampPosition(caret);
+    anchor = ClampPosition(anchor);
+}
+
+bool UCRichDocumentEditor::AcceptAllChanges() {
+    if (!doc->HasTrackedChanges()) return false;
+    {
+        EditScope scope(*this, 0, GetBlockCount());
+        ResolveChanges(RichDocRange(), true, true);
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::RejectAllChanges() {
+    if (!doc->HasTrackedChanges()) return false;
+    {
+        EditScope scope(*this, 0, GetBlockCount());
+        ResolveChanges(RichDocRange(), false, true);
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+namespace {
+
+// The extent of the tracked change a position is in: the run it touches
+// with a change, widened over its neighbours with the same change.
+bool ChangeExtent(const std::vector<RichTextRun>& runs, int offset, int& from, int& to) {
+    int position = 0;
+    int hit = -1;
+    std::vector<std::pair<int, int>> spans;
+    for (size_t i = 0; i < runs.size(); i++) {
+        const int start = position + (runs[i].lineBreakBefore ? 1 : 0);
+        const int end = start + static_cast<int>(runs[i].text.size());
+        spans.emplace_back(position, end);
+        if (runs[i].change != RichTextRun::Change::Unchanged && offset >= start && offset <= end && hit < 0) {
+            hit = static_cast<int>(i);
+        }
+        position = end;
+    }
+    if (hit < 0) return false;
+    int a = hit, b = hit;
+    while (a > 0 && runs[static_cast<size_t>(a - 1)].change == runs[static_cast<size_t>(hit)].change
+           && runs[static_cast<size_t>(a - 1)].revision == runs[static_cast<size_t>(hit)].revision) a--;
+    while (b + 1 < static_cast<int>(runs.size()) && runs[static_cast<size_t>(b + 1)].change == runs[static_cast<size_t>(hit)].change
+           && runs[static_cast<size_t>(b + 1)].revision == runs[static_cast<size_t>(hit)].revision) b++;
+    from = spans[static_cast<size_t>(a)].first;
+    to = spans[static_cast<size_t>(b)].second;
+    return true;
+}
+
+} // namespace
+
+bool UCRichDocumentEditor::AcceptChangeAt(const RichDocPosition& pos) {
+    RichDocRange range = GetSelectionRange();
+    if (range.IsEmpty()) {
+        const std::vector<RichTextRun>* runs = RunsAt(ClampPosition(pos));
+        int from = 0, to = 0;
+        if (!runs || !ChangeExtent(*runs, pos.byteOffset, from, to)) return false;
+        range = RichDocRange(pos, pos);
+        range.start.byteOffset = from;
+        range.end.byteOffset = to;
+    }
+    {
+        EditScope scope(*this, range.start.blockIndex, range.end.blockIndex - range.start.blockIndex + 1);
+        ResolveChanges(range, true, false);
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::RejectChangeAt(const RichDocPosition& pos) {
+    RichDocRange range = GetSelectionRange();
+    if (range.IsEmpty()) {
+        const std::vector<RichTextRun>* runs = RunsAt(ClampPosition(pos));
+        int from = 0, to = 0;
+        if (!runs || !ChangeExtent(*runs, pos.byteOffset, from, to)) return false;
+        range = RichDocRange(pos, pos);
+        range.start.byteOffset = from;
+        range.end.byteOffset = to;
+    }
+    {
+        EditScope scope(*this, range.start.blockIndex, range.end.blockIndex - range.start.blockIndex + 1);
+        ResolveChanges(range, false, false);
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::NextChange(const RichDocPosition& pos, RichDocRange& out) const {
+    // Body runs only, in document order; wraps round to the first.
+    struct Found { int block; int from; int to; };
+    std::vector<Found> changes;
+    for (int b = 0; b < GetBlockCount(); b++) {
+        const std::vector<RichTextRun>& runs = doc->blocks[static_cast<size_t>(b)].runs;
+        int position = 0;
+        for (size_t i = 0; i < runs.size(); i++) {
+            const int start = position + (runs[i].lineBreakBefore ? 1 : 0);
+            const int end = start + static_cast<int>(runs[i].text.size());
+            position = end;
+            if (runs[i].change == RichTextRun::Change::Unchanged) continue;
+            if (i > 0 && runs[i - 1].change == runs[i].change && runs[i - 1].revision == runs[i].revision) {
+                changes.back().to = end;
+                continue;
+            }
+            changes.push_back({b, start, end});
+        }
+    }
+    if (changes.empty()) return false;
+    for (const Found& found : changes) {
+        if (found.block > pos.blockIndex || (found.block == pos.blockIndex && found.from > pos.byteOffset)) {
+            out = RichDocRange(RichDocPosition(found.block, found.from), RichDocPosition(found.block, found.to));
+            return true;
+        }
+    }
+    out = RichDocRange(RichDocPosition(changes.front().block, changes.front().from),
+                       RichDocPosition(changes.front().block, changes.front().to));
+    return true;
+}
+
+int UCRichDocumentEditor::AddComment(const std::string& text, const std::string& author, const std::string& date) {
+    RichDocRange range = GetSelectionRange();
+    if (range.IsEmpty()) range = WordAt(caret);       // the word at the caret
+    if (range.IsEmpty()) return -1;
+    RichComment comment;
+    comment.text = text;
+    comment.author = author;
+    comment.date = date;
+    // Initials: the first letter of each word of the name.
+    for (size_t i = 0; i < author.size();) {
+        if (author[i] == ' ') { i++; continue; }
+        const int next = NextCharOffset(author, static_cast<int>(i));
+        comment.initials += author.substr(i, static_cast<size_t>(next) - i);       // a whole UTF-8 character
+        while (i < author.size() && author[i] != ' ') i++;
+    }
+    doc->comments.push_back(std::move(comment));
+    const int index = static_cast<int>(doc->comments.size()) - 1;
+    RichCharFormatDelta delta;
+    delta.addComment = index;
+    coalescing = false;
+    ApplyCharFormatToRange(range, delta);
+    return index;
+}
+
+bool UCRichDocumentEditor::RemoveComment(int index) {
+    if (index < 0 || index >= static_cast<int>(doc->comments.size())) return false;
+    RichDocRange range;
+    if (!CommentRange(index, range)) return false;
+    RichCharFormatDelta delta;
+    delta.removeComment = index;
+    coalescing = false;
+    // Whole blocks: a comment in a table is taken off every cell it covers.
+    const int first = range.start.blockIndex, last = range.end.blockIndex;
+    {
+        EditScope scope(*this, first, last - first + 1);
+        for (int b = first; b <= last; b++) {
+            RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+            for (RichTextRun& run : block.runs) delta.ApplyTo(run);
+            CoalesceRuns(block.runs);
+            for (RichTableRow& row : block.tableRows) {
+                for (RichTableCell& cell : row.cells) {
+                    for (RichTextRun& run : cell.runs) delta.ApplyTo(run);
+                    CoalesceRuns(cell.runs);
+                }
+            }
+        }
+    }
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SetCommentText(int index, const std::string& text) {
+    if (index < 0 || index >= static_cast<int>(doc->comments.size())) return false;
+    doc->comments[static_cast<size_t>(index)].text = text;
+    modified = true;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SetCommentResolved(int index, bool resolved) {
+    if (index < 0 || index >= static_cast<int>(doc->comments.size())) return false;
+    doc->comments[static_cast<size_t>(index)].resolved = resolved;
+    modified = true;
+    NotifyChanged();
+    return true;
+}
+
+std::vector<int> UCRichDocumentEditor::CommentsAt(const RichDocPosition& pos) const {
+    const std::vector<RichTextRun>* runs = RunsAt(ClampPosition(pos));
+    if (!runs) return {};
+    // The run the position is inside, or the one it ends.
+    int offset = 0;
+    const RichTextRun* found = nullptr;
+    for (const RichTextRun& run : *runs) {
+        const int start = offset + (run.lineBreakBefore ? 1 : 0);
+        const int end = start + static_cast<int>(run.text.size());
+        if (pos.byteOffset >= start && pos.byteOffset <= end && !run.commentIds.empty()) {
+            found = &run;
+            if (pos.byteOffset < end) break;
+        }
+        offset = end;
+    }
+    return found ? found->commentIds : std::vector<int>{};
+}
+
+bool UCRichDocumentEditor::CommentRange(int index, RichDocRange& out) const {
+    bool any = false;
+    auto consider = [&](const std::vector<RichTextRun>& runs, int block, int row, int column) {
+        int offset = 0;
+        for (const RichTextRun& run : runs) {
+            const int start = offset + (run.lineBreakBefore ? 1 : 0);
+            const int end = start + static_cast<int>(run.text.size());
+            offset = end;
+            if (std::find(run.commentIds.begin(), run.commentIds.end(), index) == run.commentIds.end()) continue;
+            const RichDocPosition from = row >= 0 ? RichDocPosition(block, row, column, start) : RichDocPosition(block, start);
+            const RichDocPosition to = row >= 0 ? RichDocPosition(block, row, column, end) : RichDocPosition(block, end);
+            if (!any) out.start = from;
+            out.end = to;
+            any = true;
+        }
+    };
+    for (int b = 0; b < GetBlockCount(); b++) {
+        const RichDocBlock& block = doc->blocks[static_cast<size_t>(b)];
+        consider(block.runs, b, -1, -1);
+        for (size_t r = 0; r < block.tableRows.size(); r++) {
+            for (size_t c = 0; c < block.tableRows[r].cells.size(); c++) {
+                consider(block.tableRows[r].cells[c].runs, b, static_cast<int>(r), static_cast<int>(c));
+            }
+        }
+    }
+    return any;
+}
+
+bool UCRichDocumentEditor::AddBookmark(const std::string& name) {
+    if (name.empty() || doc->FindBookmark(name) >= 0) return false;
+    const int block = ClampPosition(caret).blockIndex;
+    if (block < 0 || block >= static_cast<int>(doc->blocks.size())) return false;
+    {
+        EditScope scope(*this, block, 1);
+        doc->blocks[static_cast<size_t>(block)].bookmarks.push_back(name);
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::RemoveBookmark(const std::string& name) {
+    const int block = doc->FindBookmark(name);
+    if (block < 0) return false;
+    {
+        EditScope scope(*this, block, 1);
+        std::vector<std::string>& marks = doc->blocks[static_cast<size_t>(block)].bookmarks;
+        marks.erase(std::remove(marks.begin(), marks.end(), name), marks.end());
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::InsertCrossReference(const std::string& bookmark, RichTextRun::Field kind) {
+    if (kind != RichTextRun::Field::Reference && kind != RichTextRun::Field::PageReference) return false;
+    if (doc->FindBookmark(bookmark) < 0 || !IsTextContainer(caret)) return false;
+    RichDocRange selection = GetSelectionRange();
+    const int first = selection.start.blockIndex;
+    // The whole document: filling the field in may touch any block.
+    {
+        EditScope scope(*this, 0, static_cast<int>(doc->blocks.size()));
+        if (HasSelection()) DeleteRangeInternal(selection);
+        std::vector<RichTextRun>* runs = MutableRunsAt(caret);
+        if (!runs) return false;
+        RichTextRun run = FormatAt(caret);
+        run.field = kind;
+        run.fieldArgument = bookmark;
+        run.text = "1";
+        InsertIntoRuns(*runs, caret.byteOffset, run.text, &run);
+        doc->UpdateFields();
+        // After the field, whatever it now says.
+        int position = 0;
+        for (const RichTextRun& r : *runs) {
+            position += (r.lineBreakBefore ? 1 : 0) + static_cast<int>(r.text.size());
+            if (r.field == kind && r.fieldArgument == bookmark && position > caret.byteOffset) break;
+        }
+        caret.byteOffset = position;
+        anchor = caret;
+    }
+    (void)first;
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+std::string UCRichDocumentEditor::InsertCaption(const std::string& label, const std::string& text) {
+    if (label.empty()) return "";
+    const int block = ClampPosition(caret).blockIndex;
+    if (block < 0 || block >= static_cast<int>(doc->blocks.size())) return "";
+    const std::string name = doc->UniqueBookmarkName("_Ref" + label);
+    {
+        EditScope scope(*this, 0, static_cast<int>(doc->blocks.size()));
+        RichDocBlock caption;
+        caption.bookmarks.push_back(name);
+        RichTextRun lead;
+        lead.text = label + " ";
+        RichTextRun number;
+        number.field = RichTextRun::Field::Sequence;
+        number.fieldArgument = label;
+        number.text = "1";
+        caption.runs = {lead, number};
+        if (!text.empty()) {
+            RichTextRun tail;
+            tail.text = ": " + text;
+            caption.runs.push_back(tail);
+        }
+        if (doc->FindStyle("Caption")) {
+            caption.styleId = "Caption";
+            const RichStyle style = doc->ResolveStyle("Caption");
+            style.paragraph.ApplyTo(caption);
+            for (RichTextRun& run : caption.runs) style.character.ApplyTo(run);
+        } else {
+            for (RichTextRun& run : caption.runs) run.italic = true;
+        }
+        doc->blocks.insert(doc->blocks.begin() + block + 1, caption);
+        doc->UpdateFields();
+        caret = ClampPosition({block + 1, BlockTextLength(block + 1)});
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return name;
+}
+
+bool UCRichDocumentEditor::InsertTableOfContents(int maxLevel) {
+    int block = ClampPosition(caret).blockIndex;
+    if (block < 0 || block >= static_cast<int>(doc->blocks.size())) return false;
+    {
+        EditScope scope(*this, 0, static_cast<int>(doc->blocks.size()));
+        const std::vector<RichDocBlock> entries = doc->BuildTableOfContents(maxLevel);
+        const RichDocBlock& here = doc->blocks[static_cast<size_t>(block)];
+        const bool emptyParagraph = here.type == RichBlockType::Paragraph && RunsText(here.runs).empty()
+                                    && here.bookmarks.empty();
+        if (emptyParagraph) doc->blocks.erase(doc->blocks.begin() + block);
+        doc->blocks.insert(doc->blocks.begin() + block, entries.begin(), entries.end());
+        const int after = block + static_cast<int>(entries.size());
+        if (after >= static_cast<int>(doc->blocks.size())) doc->blocks.emplace_back();
+        caret = ClampPosition({after, 0});
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::UpdateTableOfContents(int maxLevel) {
+    bool updated = false;
+    {
+        EditScope scope(*this, 0, static_cast<int>(doc->blocks.size()));
+        updated = doc->UpdateTableOfContents(maxLevel);
+        caret = ClampPosition(caret);
+        anchor = ClampPosition(anchor);
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return updated;
+}
+
+bool UCRichDocumentEditor::InsertField(RichTextRun::Field field) {
+    if (field == RichTextRun::Field::Plain) return false;
+    if (!IsTextContainer(caret)) return false;
+    RichDocRange selection = GetSelectionRange();
+    int first = selection.start.blockIndex;
+    int count = selection.end.blockIndex - first + 1;
+    {
+        EditScope scope(*this, first, count);
+        if (HasSelection()) DeleteRangeInternal(selection);
+        std::vector<RichTextRun>* runs = MutableRunsAt(caret);
+        if (!runs) return false;
+        RichTextRun run = FormatAt(caret);
+        run.field = field;
+        // The value until a paged view fills in the real one.
+        run.text = "1";
+        InsertIntoRuns(*runs, caret.byteOffset, run.text, &run);
+        caret.byteOffset += static_cast<int>(run.text.size());
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
 int UCRichDocumentEditor::InsertImage(const std::string& name, const std::string& mimeType,
                                       const std::vector<uint8_t>& data,
                                       const std::string& altText) {
@@ -2497,11 +3901,258 @@ void UCRichDocumentEditor::DeleteBlock(int blockIndex) {
     NotifySelectionChanged();
 }
 
+// ===== AUTOFORMAT =====
+
+namespace {
+
+bool EndsWith(const std::string& text, size_t end, const std::string& tail) {
+    return end >= tail.size() && text.compare(end - tail.size(), tail.size(), tail) == 0;
+}
+
+// The UTF-8 character that ends at `end` (empty at the start).
+std::string CharBefore(const std::string& text, int end) {
+    if (end <= 0) return {};
+    const int start = UCRichDocumentEditor::PreviousCharOffset(text, end);
+    return text.substr(static_cast<size_t>(start), static_cast<size_t>(end - start));
+}
+
+bool IsSpaceChar(const std::string& c) {
+    return c.empty() || c == " " || c == "\t" || c == "\n" || c == "\xC2\xA0";
+}
+
+} // namespace
+
+std::string UCRichDocumentEditor::ApplySmartQuotes(const std::string& typed) const {
+    if (!autoFormatEnabled || !autoFormat.smartQuotes) return typed;
+    if (typed != "\"" && typed != "'") return typed;
+    const std::vector<RichTextRun>* runs = RunsAt(caret);
+    if (!runs) return typed;
+    if (!caret.InCell() && (doc->blocks[static_cast<size_t>(caret.blockIndex)].type == RichBlockType::CodeBlock
+                            || doc->blocks[static_cast<size_t>(caret.blockIndex)].type == RichBlockType::MathBlock)) {
+        return typed;
+    }
+    const RichTextRun format = pendingFormatValid ? pendingFormat : FormatAt(caret);
+    if (format.code || format.math) return typed;     // code and formulas mean the straight quote
+
+    const std::string text = RunsText(*runs);
+    const int at = HasSelection() ? GetSelectionRange().start.byteOffset : caret.byteOffset;
+    const std::string before = CharBefore(text, std::min(at, static_cast<int>(text.size())));
+    // Opening after nothing, a space, an opening bracket, a dash or another
+    // opening quote; closing (which is also the apostrophe) after anything else.
+    static const char* const openers[] = {"(", "[", "{", "<", "\xE2\x80\x94", "\xE2\x80\x93",
+                                          "\xE2\x80\x9C", "\xE2\x80\x98", "-", "/"};
+    bool opening = IsSpaceChar(before);
+    for (const char* opener : openers) opening = opening || before == opener;
+    if (typed == "\"") return opening ? "\xE2\x80\x9C" : "\xE2\x80\x9D";   // “ ”
+    return opening ? "\xE2\x80\x98" : "\xE2\x80\x99";                       // ‘ ’
+}
+
+bool UCRichDocumentEditor::AutoFormatBeforeCaret() {
+    if (!autoFormatEnabled || HasSelection()) return false;
+    std::vector<RichTextRun>* runs = MutableRunsAt(caret);
+    if (!runs) return false;
+    const RichDocBlock& owner = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+    if (!caret.InCell() && (owner.type == RichBlockType::CodeBlock || owner.type == RichBlockType::MathBlock)) {
+        return false;
+    }
+    const std::string text = RunsText(*runs);
+    const int end = std::min(caret.byteOffset, static_cast<int>(text.size()));
+    if (end <= 0) return false;
+    if (const RichTextRun* run = RunAtOffset(*runs, end)) {
+        if (run->code || run->math || run->field != RichTextRun::Field::Plain) return false;
+    }
+
+    // ---- replacements of what the caret just finished ----
+    int replaceFrom = -1;
+    std::string replacement;
+    const std::string last = CharBefore(text, end);
+    const size_t e = static_cast<size_t>(end);
+    if (autoFormat.ellipsis && EndsWith(text, e, "...") && !EndsWith(text, e, "....")) {
+        replaceFrom = end - 3;
+        replacement = "\xE2\x80\xA6";                                 // …
+    } else if (autoFormat.symbols) {
+        static const std::pair<const char*, const char*> symbols[] = {
+            {"(c)", "\xC2\xA9"}, {"(C)", "\xC2\xA9"}, {"(r)", "\xC2\xAE"}, {"(R)", "\xC2\xAE"},
+            {"(tm)", "\xE2\x84\xA2"}, {"(TM)", "\xE2\x84\xA2"},
+            {"->", "\xE2\x86\x92"}, {"<-", "\xE2\x86\x90"}, {"=>", "\xE2\x87\x92"}};
+        for (const auto& [from, to] : symbols) {
+            const std::string pattern = from;
+            // "-->" is an arrow drawn with a longer shaft, not a dash and an arrow.
+            if (EndsWith(text, e, pattern) && !(pattern == "->" && EndsWith(text, e, "-->"))) {
+                replaceFrom = end - static_cast<int>(pattern.size());
+                replacement = to;
+                break;
+            }
+        }
+    }
+    if (replaceFrom < 0 && autoFormat.dashes && last != "-" && !last.empty()) {
+        // "word--word" (an em dash) or "word -- word" (an en dash), decided
+        // once the character after the hyphens is typed.
+        const int hyphens = end - static_cast<int>(last.size());
+        if (hyphens >= 2 && EndsWith(text, static_cast<size_t>(hyphens), "--")
+            && !EndsWith(text, static_cast<size_t>(hyphens), "---")) {
+            const std::string before = CharBefore(text, hyphens - 2);
+            if (!before.empty()) {
+                const bool spaced = IsSpaceChar(before) && IsSpaceChar(last);
+                const bool joined = !IsSpaceChar(before) && !IsSpaceChar(last);
+                if (spaced || joined) {
+                    replaceFrom = hyphens - 2;
+                    replacement = std::string(spaced ? "\xE2\x80\x93" : "\xE2\x80\x94") + last;
+                }
+            }
+        }
+    }
+    if (replaceFrom >= 0) {
+        {
+            EditScope scope(*this, caret.blockIndex, 1);
+            std::vector<RichTextRun>* target = MutableRunsAt(caret);
+            EraseRunRange(*target, replaceFrom, end);
+            InsertIntoRuns(*target, replaceFrom, replacement, nullptr);
+            caret.byteOffset = replaceFrom + static_cast<int>(replacement.size());
+            anchor = caret;
+        }
+        coalescing = false;
+        NotifyChanged();
+        NotifySelectionChanged();
+        return true;
+    }
+
+    // ---- a paragraph's opening characters turning it into something ----
+    if (caret.InCell() || last != " " || owner.type != RichBlockType::Paragraph) return false;
+    const std::string head = text.substr(0, e - 1);        // what precedes the space
+    RichDocBlock changed = owner;
+    bool matched = false;
+    if (autoFormat.headings && !head.empty() && head.size() <= 6
+        && head.find_first_not_of('#') == std::string::npos) {
+        changed.type = RichBlockType::Heading;
+        changed.headingLevel = static_cast<int>(head.size());
+        matched = true;
+    } else if (autoFormat.lists && (head == "-" || head == "*" || head == "+")) {
+        changed.type = RichBlockType::ListItem;
+        changed.orderedList = false;
+        matched = true;
+    } else if (autoFormat.lists && (head == "[ ]" || head == "[x]" || head == "[X]")) {
+        changed.type = RichBlockType::ListItem;
+        changed.orderedList = false;
+        changed.checkbox = true;
+        changed.checked = head != "[ ]";
+        matched = true;
+    } else if (autoFormat.lists && head.size() >= 2 && (head.back() == '.' || head.back() == ')')) {
+        const std::string label = head.substr(0, head.size() - 1);
+        const bool digits = label.size() <= 4 && label.find_first_not_of("0123456789") == std::string::npos;
+        const bool letter = label.size() == 1 && std::isalpha(static_cast<unsigned char>(label[0]));
+        if (digits || letter) {
+            changed.type = RichBlockType::ListItem;
+            changed.orderedList = true;
+            if (digits) {
+                const int number = std::stoi(label);   // locale-ok: ASCII digits only
+                changed.listStartNumber = number > 1 ? number : 0;
+                changed.numberFormat = RichNumberFormat::Decimal;
+            } else {
+                const bool upper = std::isupper(static_cast<unsigned char>(label[0])) != 0;
+                changed.numberFormat = upper ? RichNumberFormat::UpperLetter : RichNumberFormat::LowerLetter;
+                const int number = std::tolower(static_cast<unsigned char>(label[0])) - 'a' + 1;
+                changed.listStartNumber = number > 1 ? number : 0;
+            }
+            if (head.back() == ')') changed.numberTemplate = "%1)";
+            matched = true;
+        }
+    } else if (autoFormat.lists && head == ">") {
+        changed.type = RichBlockType::BlockQuote;
+        matched = true;
+    }
+    if (!matched) return false;
+    {
+        EditScope scope(*this, caret.blockIndex, 1);
+        RichDocBlock& block = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+        changed.runs = block.runs;
+        EraseRunRange(changed.runs, 0, end);
+        block = std::move(changed);
+        caret.byteOffset = 0;
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::TypeText(const std::string& utf8) {
+    if (!autoFormatEnabled) {
+        InsertText(utf8);
+        return false;
+    }
+    InsertText(ApplySmartQuotes(utf8));
+    // Only a keystroke's worth of text triggers a correction; a paste does not.
+    if (utf8.size() > 4) return false;
+    return AutoFormatBeforeCaret();
+}
+
+void UCRichDocumentEditor::TypeEnter() {
+    if (autoFormatEnabled && autoFormat.rules && !HasSelection() && !caret.InCell()
+        && doc->blocks[static_cast<size_t>(caret.blockIndex)].type == RichBlockType::Paragraph) {
+        const std::string text = BlockText(caret.blockIndex);
+        const bool rule = text.size() >= 3 && caret.byteOffset == static_cast<int>(text.size())
+                       && (text.find_first_not_of('-') == std::string::npos
+                           || text.find_first_not_of('*') == std::string::npos
+                           || text.find_first_not_of('_') == std::string::npos);
+        if (rule) {
+            {
+                EditScope scope(*this, caret.blockIndex, 1);
+                RichDocBlock& block = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+                block = RichDocBlock{};
+                block.type = RichBlockType::HorizontalRule;
+                RichDocBlock paragraph;
+                doc->blocks.insert(doc->blocks.begin() + caret.blockIndex + 1, paragraph);
+                caret = RichDocPosition(caret.blockIndex + 1, 0);
+                anchor = caret;
+            }
+            coalescing = false;
+            NotifyChanged();
+            NotifySelectionChanged();
+            return;
+        }
+    }
+    SplitBlock();
+}
+
 // ===== CLIPBOARD SUPPORT =====
 
 std::vector<RichDocBlock> UCRichDocumentEditor::ExtractRange(const RichDocRange& range) const {
     std::vector<RichDocBlock> out;
     if (range.IsEmpty()) return out;
+
+    // A block of cells copies as a table of just those cells.
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (CellRectBetween(range.start, range.end, top, left, bottom, right)) {
+        const RichDocBlock& source = doc->blocks[static_cast<size_t>(range.start.blockIndex)];
+        const RichTableGrid grid = BuildTableGrid(source);
+        RichDocBlock table = source;
+        table.tableRows.clear();
+        for (int r = top; r <= bottom; ++r) {
+            RichTableRow row;
+            row.header = source.tableRows[static_cast<size_t>(r)].header;
+            for (int c = left; c <= right; ++c) {
+                const RichTableGridSlot& slot = grid.At(r, c);
+                if (slot.Occupied() && slot.origin) {
+                    row.cells.push_back(source.tableRows[static_cast<size_t>(slot.row)]
+                                            .cells[static_cast<size_t>(slot.cellIndex)]);
+                }
+            }
+            table.tableRows.push_back(std::move(row));
+        }
+        if (static_cast<int>(source.tableColumnWidths.size()) == grid.columnCount) {
+            table.tableColumnWidths.assign(source.tableColumnWidths.begin() + left,
+                                           source.tableColumnWidths.begin() + right + 1);
+        } else {
+            table.tableColumnWidths.clear();
+        }
+        // A copied part of a table is as wide as its own columns, not the page.
+        table.tableWidthPt = 0.0f;
+        table.tableWidthPercent = 0.0f;
+        out.push_back(std::move(table));
+        return out;
+    }
 
     // Copying inside a cell yields the selected run slice as a paragraph, so it
     // pastes as ordinary text wherever it lands.
@@ -2550,6 +4201,118 @@ std::string UCRichDocumentEditor::RangeToPlainText(const RichDocRange& range) co
     return out;
 }
 
+namespace {
+// Where `pos` ends up once `range` has been deleted (pos not inside it).
+RichDocPosition PositionAfterDelete(const RichDocPosition& pos, const RichDocRange& range) {
+    if (pos <= range.start) return pos;
+    if (pos.SameContainer(range.end)) {
+        RichDocPosition out = range.start;
+        out.byteOffset = range.start.byteOffset + (pos.byteOffset - range.end.byteOffset);
+        return out;
+    }
+    if (!range.start.InCell() && !range.end.InCell() && pos.blockIndex > range.end.blockIndex) {
+        RichDocPosition out = pos;
+        out.blockIndex -= range.end.blockIndex - range.start.blockIndex;
+        return out;
+    }
+    return pos;
+}
+} // namespace
+
+bool UCRichDocumentEditor::MoveRange(const RichDocRange& range, const RichDocPosition& target, bool copy) {
+    if (range.IsEmpty()) return false;
+    const RichDocPosition to = ClampPosition(target);
+    // Onto itself: nothing to do. Its edges are fine for a copy.
+    if (to > range.start && to < range.end) return false;
+    if (!copy && (to == range.start || to == range.end)) return false;
+    int top = 0, left = 0, bottom = 0, right = 0;
+    if (CellRectBetween(range.start, range.end, top, left, bottom, right)) return false;
+    const std::vector<RichDocBlock> moving = ExtractRange(range);
+    if (moving.empty()) return false;
+
+    const int first = std::min(range.start.blockIndex, to.blockIndex);
+    const int last = std::max(range.end.blockIndex, to.blockIndex);
+    {
+        EditScope scope(*this, first, last - first + 1);
+        RichDocPosition at = to;
+        if (!copy) {
+            DeleteRangeInternal(range);
+            at = ClampPosition(PositionAfterDelete(to, range));
+        }
+        caret = anchor = at;
+        pendingFormatValid = false;
+        InsertBlocksInternal(moving);
+        // The dropped text ends up selected, as it does in a word processor.
+        anchor = at;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+// Pasting into a table cell. A cell holds runs, not blocks, so:
+// - a table pastes cell by cell into the grid from the caret's cell on, as a
+//   spreadsheet does (cells past the table's edge are dropped);
+// - anything else flows into the cell, one line per pasted paragraph.
+void UCRichDocumentEditor::InsertBlocksIntoCellInternal(const std::vector<RichDocBlock>& blocks) {
+    RichDocBlock& table = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+    if (blocks.size() == 1 && blocks[0].type == RichBlockType::Table) {
+        const RichTableGrid target = BuildTableGrid(table);
+        const RichTableGrid source = BuildTableGrid(blocks[0]);
+        int originRow = 0, originColumn = 0;
+        if (!target.OriginOf(caret.cellRow, caret.cellColumn, originRow, originColumn)) return;
+        for (int r = 0; r < source.rowCount; ++r) {
+            for (int c = 0; c < source.columnCount; ++c) {
+                const RichTableGridSlot& from = source.At(r, c);
+                if (!from.Occupied() || !from.origin) continue;
+                int row = 0, cellIndex = 0;
+                if (!target.CellAt(originRow + r, originColumn + c, row, cellIndex)) continue;
+                const RichTableGridSlot& to = target.At(originRow + r, originColumn + c);
+                if (!to.origin) continue;       // inside a merged cell: its origin already took one
+                table.tableRows[static_cast<size_t>(row)].cells[static_cast<size_t>(cellIndex)].runs =
+                    blocks[0].tableRows[static_cast<size_t>(from.row)].cells[static_cast<size_t>(from.cellIndex)].runs;
+            }
+        }
+        caret = ClampPosition(ContainerEnd(caret));
+        anchor = caret;
+        return;
+    }
+
+    std::vector<RichTextRun> flowing;
+    for (const RichDocBlock& block : blocks) {
+        std::vector<RichTextRun> runs;
+        if (IsTextBlockType(block.type)) {
+            runs = block.runs;
+        } else if (block.type == RichBlockType::Table) {
+            // A table's text, a cell per tab and a row per line.
+            for (const RichTableRow& row : block.tableRows) {
+                RichTextRun line;
+                line.lineBreakBefore = !runs.empty();
+                for (size_t c = 0; c < row.cells.size(); ++c) {
+                    if (c) line.text += '\t';
+                    line.text += RunsText(row.cells[c].runs);
+                }
+                runs.push_back(line);
+            }
+        } else {
+            continue;
+        }
+        if (runs.empty()) runs.emplace_back();
+        runs.front().lineBreakBefore = !flowing.empty();
+        flowing.insert(flowing.end(), runs.begin(), runs.end());
+    }
+    if (flowing.empty()) return;
+    std::vector<RichTextRun>* target = MutableRunsAt(caret);
+    if (!target) return;
+    const int at = SplitRunAt(*target, caret.byteOffset);
+    target->insert(target->begin() + at, flowing.begin(), flowing.end());
+    CoalesceRuns(*target);
+    caret.byteOffset += static_cast<int>(RunsText(flowing).size());
+    caret = ClampPosition(caret);
+    anchor = caret;
+}
+
 void UCRichDocumentEditor::InsertBlocks(const std::vector<RichDocBlock>& blocks) {
     if (blocks.empty()) return;
     RichDocRange selection = GetSelectionRange();
@@ -2558,8 +4321,44 @@ void UCRichDocumentEditor::InsertBlocks(const std::vector<RichDocBlock>& blocks)
     {
         EditScope scope(*this, first, count);
         if (HasSelection()) DeleteRangeInternal(selection);
+        InsertBlocksInternal(blocks);
+    }
+    NotifyChanged();
+    NotifySelectionChanged();
+}
 
-        if (blocks.size() == 1 && IsTextBlockType(blocks[0].type)
+void UCRichDocumentEditor::InsertBlocksInternal(const std::vector<RichDocBlock>& incoming) {
+    if (incoming.empty()) return;
+    // A pasted copy of a bookmarked paragraph does not take its bookmark:
+    // names are unique, and references stay with the original.
+    std::vector<RichDocBlock> blocks = incoming;
+    // Pasted text is a tracked insertion when tracking is on.
+    if (trackChanges) {
+        const int revision = CurrentRevision();
+        auto mark = [revision](std::vector<RichTextRun>& runs) {
+            for (RichTextRun& run : runs) {
+                if (run.change == RichTextRun::Change::Deleted) continue;
+                run.change = RichTextRun::Change::Inserted;
+                run.revision = revision;
+            }
+        };
+        for (RichDocBlock& block : blocks) {
+            mark(block.runs);
+            for (RichTableRow& row : block.tableRows) {
+                for (RichTableCell& cell : row.cells) mark(cell.runs);
+            }
+        }
+    }
+    for (RichDocBlock& block : blocks) {
+        auto& marks = block.bookmarks;
+        marks.erase(std::remove_if(marks.begin(), marks.end(),
+                                   [this](const std::string& name) { return doc->FindBookmark(name) >= 0; }),
+                    marks.end());
+    }
+    {
+        if (caret.InCell()) {
+            InsertBlocksIntoCellInternal(blocks);
+        } else if (blocks.size() == 1 && IsTextBlockType(blocks[0].type)
             && IsTextBlock(caret.blockIndex)) {
             // A single-paragraph paste flows into the current paragraph,
             // keeping its own run formatting.
@@ -2612,8 +4411,6 @@ void UCRichDocumentEditor::InsertBlocks(const std::vector<RichDocBlock>& blocks)
             }
         }
     }
-    NotifyChanged();
-    NotifySelectionChanged();
 }
 
 } // namespace UltraCanvas

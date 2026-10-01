@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e3a5f"/>
+      <stop offset="1" stop-color="#0b1a2c"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="40" fill="url(#sky)"/>
+  <rect x="8" y="8" width="52" height="240" rx="40" fill="#4a4a4a"/>
+  <rect x="34" y="8" width="26" height="240" fill="#4a4a4a"/>
+  <path d="M60 68 C60 96, 34 96, 34 124 L34 160 C34 188, 60 188, 60 216 L60 68 Z" fill="#141414"/>
+  <rect x="196" y="8" width="52" height="240" rx="40" fill="#4a4a4a"/>
+  <rect x="196" y="8" width="26" height="240" fill="#4a4a4a"/>
+  <circle cx="34" cy="40" r="9" fill="#fff"/>
+  <circle cx="34" cy="100" r="9" fill="#fff"/>
+  <circle cx="34" cy="128" r="9" fill="#fff"/>
+  <circle cx="34" cy="156" r="9" fill="#fff"/>
+  <circle cx="34" cy="216" r="9" fill="#fff"/>
+  <circle cx="222" cy="40" r="9" fill="#fff"/>
+  <circle cx="222" cy="68" r="9" fill="#fff"/>
+  <circle cx="222" cy="196" r="9" fill="#e3301e"/>
+  <circle cx="222" cy="216" r="9" fill="#f0c800"/>
+  <circle cx="128" cy="108" r="34" fill="#f5d36b"/>
+  <path d="M70 200 L110 150 L140 185 L160 165 L190 200 Z" fill="#2e7d5b"/>
+</svg>

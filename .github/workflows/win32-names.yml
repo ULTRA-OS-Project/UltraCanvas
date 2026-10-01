@@ -1,0 +1,53 @@
+name: Win32 macro names
+
+# Blocks new functions named like a Win32 A/W macro. <windows.h> #defines
+# CreateFile to CreateFileW (and a few thousand more: LoadImage, SendMessage,
+# GetMessage, ...), which renames OUR method of that name too - but only in the
+# files that include windows.h. The declaring and the calling file then
+# disagree, and the Windows link fails with an undefined `...W` symbol that no
+# other platform shows: UltraCanvasPdfSurface::CreateFile broke both Windows
+# builds this way, 15 minutes into the job. See AGENTS.md.
+#
+# Sites that predate the check are listed in scripts/win32_names_baseline.txt;
+# only additions fail. The names come from scripts/win32_aw_macros.txt,
+# generated from the MinGW-w64 headers. A site that is correct as it stands
+# says so with `// win32-name-ok: <why>`.
+
+# Trigger policy matches build.yml / locale-numbers.yml: `pull_request` covers
+# feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/**'
+      - 'SmartHome/**'
+      - 'UltraAI/**'
+      - 'UltraCloud/**'
+      - 'VirtualFS/**'
+      - 'Apps/**'
+      - 'Tests/**'
+      - 'scripts/check_win32_names.py'
+      - 'scripts/win32_aw_macros.txt'
+      - 'scripts/win32_names_baseline.txt'
+      - '.github/workflows/win32-names.yml'
+  pull_request:
+    # `branches` filters the BASE branch -- the branch the pull request
+    # TARGETS; see locale-numbers.yml for why `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check for functions named like a Win32 A/W macro
+        run: python3 scripts/check_win32_names.py --strict

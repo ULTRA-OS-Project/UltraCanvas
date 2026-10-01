@@ -18,6 +18,7 @@
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasNativeDialogs.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 #include "UltraCanvasFileLoader.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasClipboard.h"
@@ -631,6 +632,9 @@ namespace {
                         // ── ADD THESE TWO LINES ──
                         MenuItemData::ActionWithShortcut("Print...", "Ctrl+P", [this]() {
                             OnFilePrint();
+                        }),
+                        MenuItemData::Action("Export as PDF...", [this]() {
+                            OnFileExportPdf();
                         }),                        MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", NormalizePath(GetResourcesDir() + "media/icons/texter/close_tab.svg"), [this]() {
                             OnFileClose();
@@ -707,6 +711,9 @@ namespace {
                         }),
                         MenuItemData::Checkbox("Word Wrap", config.wordWrap, [this](bool checked) {
                             OnViewToggleWordWrap(checked);
+                        }),
+                        MenuItemData::Checkbox("Page Layout (documents)", config.documentPageLayout, [this](bool checked) {
+                            OnViewTogglePageLayout(checked);
                         }),
                         MenuItemData::Separator(),
                         MenuItemData::Submenu("Toolbars", {
@@ -2407,6 +2414,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 : std::static_pointer_cast<UltraCanvasUIElement>(doc->textArea);
             doc->richEdit = view;
             doc->language = "Rich Text";
+            // The zoom the other tabs are shown at, on pages unless the user
+            // turned that off.
+            view->SetZoom(static_cast<float>(config.fontZoomPercent) / 100.0f);
+            view->SetPageView(config.documentPageLayout);
 
             // Swap the editor slot inside the tab rather than the whole tab
             // content: editorArea is the flex row that also holds the
@@ -3070,11 +3081,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         bool show = (IsMarkdownMode() || isRich) && config.showMarkdownToolbar;
         markdownToolbar->SetVisible(show);
 
-        // One button still has no rich-document counterpart: a checkbox list
-        // item is not part of UCRichDocument. Disabling beats a button that
-        // quietly does nothing.
+        // Every button has a rich-document counterpart now; a tab switched
+        // from an older state keeps whatever it was left with, so clear it.
         if (auto btn = markdownToolbar->GetWidget("md-checklist")) {
-            btn->SetDisabled(isRich);
+            btn->SetDisabled(false);
         }
         // Insert Table works in both modes now, so it is never disabled here;
         // clearing it matters because a tab switched from Markdown to a word
@@ -3127,9 +3137,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 else InsertMarkdownLinePrefix("1. ", "list item");
                 break;
             case FormatCommand::Checklist:
-                // UCRichDocument has no checkbox list item, so the nearest
-                // thing a word-processing document can hold is a bullet.
-                if (rich) rich->ToggleBulletList();
+                if (rich) rich->ToggleCheckList();
                 else InsertMarkdownLinePrefix("- [ ] ", "list item");
                 break;
             case FormatCommand::Quote:
@@ -3671,11 +3679,63 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
+    // A word-processing tab as a PDF of its pages (what Print sends to the
+    // printer). Other tabs have no page layout to export.
+    void UltraCanvasTextEditor::OnFileExportPdf() {
+        auto doc = GetActiveDocument();
+        if (!doc) return;
+        if (!doc->IsRichDocument() || !doc->richEdit) {
+            UltraCanvasDialogManager::ShowError(
+                "Export as PDF works on word-processing documents (.docx, .odt, .doc, .md opened as a document).",
+                "Export as PDF", nullptr, GetWindow());
+            return;
+        }
+        std::string stem = doc->fileName.empty() ? std::string("Untitled") : doc->fileName;
+        const size_t dot = stem.find_last_of('.');
+        if (dot != std::string::npos && dot > 0) stem = stem.substr(0, dot);
+
+        FileDialogOptions opts;
+        opts.title = "Export as PDF";
+        opts.filters = {FileFilter("PDF document", std::vector<std::string>{"pdf"})};
+        opts.initialDirectory = lastOpenedDirectory;
+        opts.defaultFileName = stem + ".pdf";
+        opts.parentWindow = GetWindow();
+        const int documentId = doc->documentId;
+        UltraCanvasFileLoader::SaveFileDialog(
+                opts,
+                [this, documentId](DialogResult result, const std::string& filePath) {
+                    if (result != DialogResult::OK || filePath.empty()) return;
+                    const int index = FindDocumentIndexById(documentId);
+                    if (index < 0 || !documents[static_cast<size_t>(index)]->richEdit) return;
+                    std::string error;
+                    if (!documents[static_cast<size_t>(index)]->richEdit->ExportToPdf(filePath, error)) {
+                        UltraCanvasDialogManager::ShowError(error, "Export as PDF", nullptr, GetWindow());
+                    }
+                });
+    }
+
     void UltraCanvasTextEditor::OnFilePrint() {
         auto doc = GetActiveDocument();
         if (!doc) return;
 
         std::string docName = doc->fileName.empty() ? "Untitled" : doc->fileName;
+        // A word-processing tab prints as what it looks like: its pages as a
+        // PDF, fonts, pictures, tables, headers and page numbers included.
+        // (Its text area is detached and empty, which is why reading that
+        // once printed a blank page.)
+        if (doc->IsRichDocument() && doc->richEdit) {
+            std::vector<uint8_t> pdf;
+            std::string error;
+            if (!doc->richEdit->ExportToPdf(pdf, error)) {
+                UltraCanvasDialogManager::ShowError(error, "Print Failed", nullptr, GetWindow());
+                return;
+            }
+            const IODeviceResult printed = PrintDocumentWithDialog(docName, pdf, "application/pdf", GetWindow());
+            if (!printed.success && printed.code != IODeviceResultCode::Cancelled) {
+                UltraCanvasDialogManager::ShowError(printed.message, "Print Failed", nullptr, GetWindow());
+            }
+            return;
+        }
         std::string content = doc->textArea ? doc->textArea->GetText() : "";
 
         // Retrieve the native window handle for modal parenting
@@ -3995,6 +4055,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (doc->textArea) {
                 doc->textArea->SetWordWrap(config.wordWrap);
             }
+        }
+        SaveConfig();
+    }
+
+    void UltraCanvasTextEditor::OnViewTogglePageLayout(bool checked) {
+        config.documentPageLayout = checked;
+        for (auto& doc : documents) {
+            if (doc->richEdit) doc->richEdit->SetPageView(checked);
         }
         SaveConfig();
     }
@@ -4638,10 +4706,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         };
 
         doc->richEdit->onLinkClicked = [](const std::string& target) {
-            if (target.empty()) return false;
+            // "#name" is a bookmark in the document: the element goes there.
+            if (target.empty() || target[0] == '#') return false;
             OpenURL(target);
             return true;
         };
+
+        // Comments are signed with the login name; a double-click on one in
+        // the comment pane edits it.
+        const char* user = std::getenv("USER");
+        if (!user) user = std::getenv("USERNAME");
+        doc->richEdit->SetCommentAuthor(user ? user : "");
+        doc->richEdit->onCommentActivated = [this](int index) { EditRichComment(index); };
     }
 
     void UltraCanvasTextEditor::SetupDocumentCallbacks(int docIndex) {
@@ -5124,10 +5200,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         float fontSize = config.defaultFontSize * percent / 100.0;
         fontSize = std::max(4.0f, std::min(72.0f, fontSize));
 
-        // Apply to all open document TextAreas
+        // Apply to all open document TextAreas; a word-processing tab keeps
+        // its document's own sizes and zooms instead.
         for (auto& doc : documents) {
             if (doc->textArea) {
                 doc->textArea->SetFontSize(fontSize);
+            }
+            if (doc->richEdit) {
+                doc->richEdit->SetZoom(static_cast<float>(percent) / 100.0f);
             }
         }
 
@@ -5760,6 +5840,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.darkTheme = configFile.GetBool("darkTheme", config.darkTheme);
         config.showLineNumbers = configFile.GetBool("showLineNumbers", config.showLineNumbers);
         config.wordWrap = configFile.GetBool("wordWrap", config.wordWrap);
+        config.documentPageLayout = configFile.GetBool("documentPageLayout", config.documentPageLayout);
         config.defaultFontSize = configFile.GetInt("defaultFontSize", config.defaultFontSize);
         config.fontZoomPercent = configFile.GetInt("fontZoomPercent", 100);
         // config.maxRecentFiles = configFile.GetInt("maxRecentFiles", config.maxRecentFiles);
@@ -5776,6 +5857,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetBool("darkTheme", isDarkTheme);
         configFile.SetBool("showLineNumbers", config.showLineNumbers);
         configFile.SetBool("wordWrap", config.wordWrap);
+        configFile.SetBool("documentPageLayout", config.documentPageLayout);
         configFile.SetInt("defaultFontSize", config.defaultFontSize);
         configFile.SetInt("fontZoomPercent", config.fontZoomPercent);
         // configFile.SetInt("maxRecentFiles", config.maxRecentFiles);
@@ -5857,15 +5939,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             const RichBlockType blockType = rich->GetCurrentBlockType();
             const RichDocPosition caret = rich->GetEditor().GetCaret();
-            bool ordered = false;
+            bool ordered = false, checklist = false;
             if (blockType == RichBlockType::ListItem
                 && caret.blockIndex >= 0
                 && caret.blockIndex < rich->GetEditor().GetBlockCount()) {
                 ordered = rich->GetEditor().GetBlock(caret.blockIndex).orderedList;
+                checklist = rich->GetEditor().GetBlock(caret.blockIndex).checkbox;
             }
-            setChecked("md-ul", blockType == RichBlockType::ListItem && !ordered);
+            setChecked("md-ul", blockType == RichBlockType::ListItem && !ordered && !checklist);
             setChecked("md-ol", blockType == RichBlockType::ListItem && ordered);
-            setChecked("md-checklist", false);
+            setChecked("md-checklist", checklist);
             setChecked("md-quote", blockType == RichBlockType::BlockQuote);
 
             const int level = rich->GetCurrentHeadingLevel();

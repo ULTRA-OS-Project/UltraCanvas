@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.6.0 - SetBodyOptions; trusted picture hosts reach the preview
 // Version: 0.5.0 - a sender-badge column left of Subject, painted by the list
 //                  delegate; the folder's stored scan verdicts are read once
 //                  per list, and a row re-badges when the pane scans its body.
@@ -428,6 +429,9 @@ void MailView::BuildMessageBox() {
     preview_.remoteImagesAllowed = [this](const std::string& addr) {
         return remoteImagesAllowed && remoteImagesAllowed(addr);
     };
+    preview_.remoteImageHostTrusted = [this](const std::string& url) {
+        return remoteImageHostTrusted && remoteImageHostTrusted(url);
+    };
     preview_.onAlwaysAllowRemoteImages = [this](const std::string& addr) {
         if (onAlwaysAllowRemoteImages) onAlwaysAllowRemoteImages(addr);
     };
@@ -507,6 +511,13 @@ void MailView::SetReadingPane(bool on) {
     readingPane_ = on;
     ApplyContentLayout();
     RebuildList();
+}
+
+void MailView::SetBodyOptions(bool showHtml, float textSizePx) {
+    if (preview_.showHtml == showHtml && preview_.bodyFontSizePx == textSizePx) return;
+    preview_.showHtml = showHtml;
+    preview_.bodyFontSizePx = textSizePx;
+    preview_.ReRender();
 }
 
 void MailView::SetAccounts(std::vector<Account> accounts) {

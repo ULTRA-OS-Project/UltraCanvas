@@ -31,7 +31,8 @@ EXCLUDE_PATTERNS = ("Proposal", "Plan", "DesignVariants")
 # sibling directories (Research, Video, VideoScripts) hold material that is
 # not developer documentation, and sweeping them in would dilute the corpus.
 # Add a directory here when its contents are meant for the LLM-facing docs.
-APP_DOC_DIRS = ("Ladybird", "UltraAuthenticator", "UltraPaint", "ArtCreator", "DeviceExplorer")
+APP_DOC_DIRS = ("UltraAuthenticator", "UltraPaint", "ArtCreator", "DeviceExplorer",
+                "UltraDesktop")
 
 SUMMARY = (
     "UltraCanvas is a modular cross-platform C++20 UI and rendering framework "

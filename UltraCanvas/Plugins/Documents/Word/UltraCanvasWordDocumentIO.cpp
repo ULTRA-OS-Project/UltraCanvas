@@ -99,6 +99,9 @@ bool UCWordDocumentIO::Load(const std::string& filePath, UCRichDocument& outDocu
     // Every format can carry text in a Windows symbol font; the model holds
     // what it depicts instead, so it draws without that font installed.
     WordFormatInternal::MapSymbolFontRuns(outDocument);
+    // A check box drawn in a symbol font (Wingdings' box) is a ballot box
+    // only once it has been mapped, so the check list pass runs again here.
+    outDocument.ReadCheckboxPrefixes();
     return true;
 }
 

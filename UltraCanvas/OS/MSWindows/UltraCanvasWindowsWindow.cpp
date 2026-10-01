@@ -534,6 +534,14 @@ namespace UltraCanvas {
                 }
                 break;
             }
+
+            case WM_IME_STARTCOMPOSITION: {
+                // An element that draws the composition itself: no input
+                // method composition window over it.
+                UltraCanvasUIElement* focused = GetFocusedElement();
+                if (focused && focused->DrawsTextComposition()) return 0;
+                break;
+            }
         }
 
         return DefWindowProcW(h, msg, wParam, lParam);

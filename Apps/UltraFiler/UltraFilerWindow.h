@@ -106,6 +106,7 @@
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerFindTextDialog.h"
+#include "UltraFilerFolderExport.h"
 #include "UltraFilerVolumeSpace.h"
 
 #include <atomic>
@@ -409,6 +410,14 @@ private:
     // option, then starts a content search of the browsing view's folder and
     // its sub folders (RunSearch).
     void OpenFindTextDialog();
+    // Extras > Export: the one folder the menu acts on (the selected folder,
+    // or the shown folder while nothing is selected) - empty when the
+    // selection is not exactly one local folder.
+    std::string ExportTargetFolder() const;
+    // Extras > Export > Folder content / Folder tree content / Folder tree as
+    // CSV: opens a text window with the export of ExportTargetFolder(),
+    // which can be saved.
+    void ExportFolder(FolderExportKind kind);
     // Filter-as-you-type: every edit of the search field narrows the active
     // tab's folder listing to the names containing the text (the filer's
     // name filter — no disk walk). When nothing matches, the filer shows the
@@ -786,6 +795,9 @@ private:
     // the History and Favorites lists) so it opens configured rather than
     // waiting for the next settings change.
     void ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target);
+    // Handling > File operations: the standing answers to the questions a
+    // copy, move or delete asks, pushed into one display.
+    void ApplyFileOperationSettings(UltraCanvasFilerWidget& target);
     // Opens the settings window (the navigation row's gear button and the
     // filer context menus' Settings item), which also hosts the Clear
     // History / Clear Favorites actions. `page` points it straight at one
@@ -970,6 +982,10 @@ private:
     // *.cpp; *.h", ", match case" ("" for a plain search of every file).
     std::string searchFindQualifier;
     FilerFindTextOptions lastFindText;     // Find text dialog's previous options
+    // The open Extras > Export windows. Each owns the worker building its
+    // text, so they are kept (and joined on destruction) here; closed ones
+    // are let go when the next export opens.
+    std::vector<std::shared_ptr<UltraFilerFolderExportWindow>> exportWindows;
     std::string searchStatus;              // what the status bar says about it
     bool searchResultsShown = false;       // first batch already on display
     bool scanButtonStops = false;          // the in-field button reads "Stop"

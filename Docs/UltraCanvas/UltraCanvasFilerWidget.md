@@ -1219,6 +1219,36 @@ files, the curation below, and the ignore patterns — and `WhenIgnored`
 everywhere else, so an ordinary folder stays quiet about its dot names but says
 so when a setting dropped something from it.
 
+## Hiding Details columns
+
+`SetDetailsColumnVisible(column, false)` leaves a Details column out of the
+table; `IsDetailsColumnVisible` reads it back. Name cannot be hidden: it is
+the flexible column that takes whatever width the others leave, so every
+column hidden is width the names get. The file dialog shows Name, Size, Type
+and Modified only:
+
+```cpp
+filer->SetDetailsColumnVisible(FilerDetailsColumn::CreatedDate, false);
+filer->SetDetailsColumnVisible(FilerDetailsColumn::Attributes, false);
+filer->SetDetailsColumnVisible(FilerDetailsColumn::Info, false);
+```
+
+## Entry filter
+
+`SetEntryFilter(predicate)` decides which entries the listing shows at all — a
+file picker's *Files of type* choice, or a folder picker that lists folders
+only. An entry the predicate answers `false` for is left out in every folder,
+whatever `SetShowHiddenFiles` says, and it is not counted as hidden: the
+hidden-items notice never offers it. Setting or clearing it rescans the folder
+on display; `nullptr` lists everything again.
+
+```cpp
+// UltraCanvasFileDialog: folders stay, files must match the chosen filter.
+filer->SetEntryFilter([filter](const FilerEntry& e) {
+    return e.isDirectory || e.isArchive || filter.Matches(e.name);
+});
+```
+
 ## Ignored names
 
 `SetIgnoredNamePatterns(patterns, onlyInFolder)` is the answer to clutter a
@@ -1587,9 +1617,17 @@ filer->ConfirmDeletePaths(paths, onDone);  // the same dialog for paths the
 filer->DeletePaths(paths, onDone, FilerDeleteMode::MoveToTrash);  // no
                               // question - for a host that ran its own
                               // confirmation (default mode: Permanently)
+// The standing answers (UltraFiler's Settings > Handling > File operations):
+filer->SetConfirmTrashDelete(false);            // Del goes to the trash unasked
+filer->SetConflictPolicy(FilerConflictPolicy::KeepBoth);   // never ask on a taken name
+filer->SetFolderConflictPolicy(FilerFolderConflictPolicy::Ask);  // Merge / Replace / Skip
+filer->SetProblemPolicy(FilerProblemPolicy::SkipAndReport);      // failures go to the summary
+filer->SetProgressWindowDelay(0);               // the progress window at once
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
                               // (the paste machinery, aimed at this folder)
-filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
+filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels);
+                              // a taken name asks Replace (red) / Cancel with the
+                              // two entries side by side
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
 filer->ExtractSelection();           // into sibling folders; a taken folder
@@ -1600,13 +1638,17 @@ filer->CreateNewDocument({"Text", "txt", ""});
 
 ### Delete: to the Trash, or permanently
 
-**Del** and **Shift+Del** open the same confirmation, `Delete "X"?`, with the
-choice as two radio buttons: **Move to the Trash** (*Recycle Bin* on Windows)
-and **Delete permanently**. Del opens it on the trash, Shift+Del on the
-permanent delete — the keys Explorer gives the two — and the line under the
-question follows the choice: *It can be restored from the Trash.* or *This
-cannot be undone.* The context menu has both, **Delete** (Del) and **Delete
-Permanently** (Shift+Del).
+**Del** and **Shift+Del** open the same confirmation, `Delete "X"?` /
+`Delete 212 items?`, an [operation dialog](#the-operation-dialog) whose two
+answers are its two buttons: **Move to Trash** (*Recycle Bin* on Windows) and
+**Delete permanently**, the latter drawn red, plus Cancel. Del makes the trash
+the coloured default (Return takes it), Shift+Del the permanent delete — the
+keys Explorer gives the two — and the note under the list says what each
+means: *Move to Trash can be undone from the Trash. Delete permanently cannot
+be undone.* The context menu has both, **Delete** (Del) and **Delete
+Permanently** (Shift+Del). The facts under the question name the folder the
+entries are in (*From*) and, for several, how much is going (*Size:* `3 folders
+and 209 files (1.4 GB in the files)` — the files' own sizes, no tree walk).
 
 The trash is `UltraCanvasTrash` (`MoveToTrash`): the Recycle Bin through the
 shell, the Finder's Trash through NSFileManager (so *Put Back* works), and the
@@ -1614,35 +1656,39 @@ freedesktop.org trash on Linux and the BSDs — the drive's own
 `.Trash-$uid` for a file on a USB stick, never a copy into the home folder.
 Moving to the trash is one move per entry, so a folder of any size goes at
 once, and a write-protected entry is not asked about (moving it does not
-write to it). An entry the trash refuses stops at the problem dialog below
-(*Cannot Move to the Trash*); it is **never** deleted for good instead.
+write to it). An entry the trash refuses stops at the problem dialog below;
+it is **never** deleted for good instead.
 
-Under the choice the dialog lists **what is about to go**, in an
+Under the facts the dialog lists **what is about to go**, in an
 `UltraCanvasListView` with the Details view's columns - the entry's icon (the
 display's own, through `DrawEntryIcon`, so type glyphs and host icons alike)
-and name, size, modified - at most 40 rows, ten at a time with a scrollbar.
-Several items selected: the list is those items, under a caption that counts
-the folders and files and adds up the files' size. One folder: the list is
-what the folder holds, folders first and then by name, under *Folder "X"
-contains 147 items (first 40 shown)*. A single file gets no list - the
-question already names it.
+and name, size, modified - at most 200 rows (`kOperationListRows`), ten at a
+time with a scrollbar. Several items selected: the list is those items. One
+folder: the list is what the folder holds, folders first and then by name,
+under *Folder "X" contains 347 items (the first 200 shown)*. A single file
+gets no list - the question already names it.
 
 Where the trash cannot take the entries — no trash on this platform (Android,
-WebAssembly), entries inside an archive, entries on a remote drive — the
-trash option is greyed out, the dialog opens on **Delete permanently**, and
-the line says why. `CanMoveToTrash(victims)` answers the same question for a
-host. A host `confirmDelete` veto replaces the dialog and so has no choice to
-offer: the delete then goes the way `DeleteSelection` was asked for, as far as
-the trash can take the entries.
+WebAssembly), entries inside an archive, entries on a remote drive — only
+**Delete permanently** is offered, and the note says why. `CanMoveToTrash(victims)`
+answers the same question for a host. A host `confirmDelete` veto replaces the
+dialog and so has no choice to offer: the delete then goes the way
+`DeleteSelection` was asked for, as far as the trash can take the entries.
+
+`SetConfirmTrashDelete(false)` switches the question off for the trash: Del then
+moves the selection there straight away (it can be undone from the trash), while
+a permanent delete — Shift+Del, or entries the trash cannot take — always asks.
 
 ### Progress window (copy / move / delete)
 
 Copying, moving and deleting run on a **background worker**, and a
 [progress window](UltraCanvasProgressDialog.md) — the ring with the
 percentage, the file being handled and **Cancel** — opens over them **once the
-operation has been running for two seconds**. Anything shorter never shows a
-window at all: a file manager that flashes a dialog for every copied text file
-is worse than one that shows none. (Packing, unpacking and the
+operation has been running for two seconds** (`SetProgressWindowDelay(ms)`
+changes that; 0 opens it at once). Until then the window shows the busy
+pointer, so a stalled network volume is not two seconds of nothing. Anything
+shorter than the delay never shows a window at all: a file manager that flashes
+a dialog for every copied text file is worse than one that shows none. (Packing, unpacking and the
 ["Delete as administrator" helper run](#delete-problems-locked--failing-entries)
 open theirs immediately instead: none of those is ever the quick case, and the
 last one is waiting on a consent prompt the user has to answer.)
@@ -1702,8 +1748,9 @@ part:
   run directly, detached, with its own folder as working directory
   (`FileAssociations::ClassifyExecutable` / `LaunchExecutable`). An
   executable **script** (`#!` line) is as much a document as a program, so
-  it asks — *""X" is an executable script. Run it, or open it to view its
-  contents?"* — with **Run** / **Open** / **Cancel** buttons. A file whose
+  it asks — *""X" is an executable script."* with the file's path as the
+  fact, an [operation dialog](#the-operation-dialog) with **Run** (the
+  default) / **Open** / **Cancel** buttons. A file whose
   execute bit is set but whose content is neither (everything on a FAT
   mount, say) simply opens with its default application.
 
@@ -1754,41 +1801,75 @@ shape, and launch feedback there belongs to the Dock's bouncing icon.
 
 ### Delete problems (locked / failing entries)
 
-A delete that runs into trouble pauses on a **problem dialog** styled like the
-paste conflict dialog — two exclusive switches for the action, a scope switch,
-and **Continue** / **Cancel** buttons (Cancel keeps what was already deleted
-and drops the rest):
+A delete that runs into trouble pauses on a **problem dialog** — an
+[operation dialog](#the-operation-dialog) with the entry's path and the reason
+as its facts, the answers as buttons, **Stop** as the last of them (it keeps
+what was already deleted and drops the rest), and an *Apply to all …* checkbox
+beside them:
 
 - A **write-protected (locked) entry** asks *before* the attempt —
-  `"X" is write-protected.` — with **Delete it anyway** / **Skip this file**
-  (Skip preselected) and a *"Do this for all remaining write-protected items"*
-  scope switch. Delete-anyway lifts the protection first, so it also works on
-  Windows, where a read-only file can never be removed directly.
-- A **failed delete** asks *afterwards* — `"X" could not be deleted:
-  Permission denied.` ("The file may be locked or in use by another
-  program.") — with **Try again** / **Skip this file** (Try again
-  preselected) and a *"Do this for all remaining items"* scope switch.
-  A stored try-again-for-all grants each later failing entry one silent
-  retry before asking again, so a stubborn entry can never loop forever.
-- A delete that fails with **"Access is denied"** on Windows is the one Explorer
+  `"X" is write-protected.` — with **Skip** (the default) / **Delete anyway**
+  (red) and an *Apply to all remaining write-protected items* checkbox.
+  Delete-anyway lifts the protection first, so it also works on Windows, where
+  a read-only file can never be removed directly.
+- A **failed delete** asks *afterwards* — `"X" could not be deleted.` with
+  *Reason: Permission denied* — with **Try again** (the default) / **Skip**
+  and an *Apply to all later failures* checkbox. A stored try-again-for-all
+  grants each later failing entry one silent retry before asking again, so a
+  stubborn entry can never loop forever. An entry the trash refused gets the
+  same dialog, titled for the trash, and is never deleted for good instead.
+- A failure **inside a folder** is reported for the file that refused, not
+  the folder: the question reads `"libvips-42.dll" in "lib" could not be
+  deleted.` and the facts add a *Stopped at:* line with the file's path under
+  the folder's. A read-only file inside a folder is not a failure at all: it
+  is lifted and removed, as *Delete anyway* lifts the entry's own protection,
+  so a folder unpacked with its read-only bits goes in one pass.
+- A file **a running program holds** — its executable, a DLL it has loaded —
+  answers "Access is denied" on Windows too, but no administrator can delete
+  it either. The worker asks the [lock probe](UltraCanvasFileLock.md) (the
+  Restart Manager) before it decides, and such a file gets **Delete: a file
+  in the folder is in use** — `"libvips-42.dll" in "lib" is in use by another
+  program.` with *In use by: UltraFiler (4120)* among the facts — with
+  **Skip** (the default) / **Try again** and an *Apply to all later files in
+  use* checkbox, and no administrator button. When the holder is the running
+  application itself the note says so and tells the user to close it and
+  delete from elsewhere.
+- A delete that fails with **"Access is denied"** on Windows and is held by
+  nobody is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
   user. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
-  (UltraFiler has), the dialog is **Administrator Permission Needed** —
-  "Deleting this file needs administrator permission. Windows will ask you to
-  confirm before it is deleted." — with **Delete as administrator**
-  (preselected) / **Try again** / **Skip this file** and the same scope switch.
+  (UltraFiler has), the dialog is **Delete: administrator permission needed** —
+  "Windows asks you to confirm once, at the end, for every item handed to the
+  administrator." — with **Delete as administrator** (the default) / **Try
+  again** / **Skip** and an *Apply to all later permission failures* checkbox.
   Entries handed to the administrator are collected while the queue runs and go
   to the elevated helper in **one run at the end**, so the whole delete costs
   one consent prompt however many entries need it; a "Deleting as
   Administrator" progress window stands in for the wait, and the widget stays
   responsive because the helper is waited for off the UI thread. What the
-  helper still could not delete comes back in a **Cannot Delete** dialog with
-  the system's reason per entry; a declined prompt is reported through
+  helper still could not delete comes back in the [summary](#the-summary-at-the-end)
+  (*Delete finished*) with the system's reason beside each entry; a declined
+  prompt is reported through
   `onError` and leaves the entries in place. Sharing violations ("in use by
   another program") are not permission failures and keep the plain dialog,
   as does a process that already runs as administrator — asking again cannot
   change the system's answer there.
+
+A delete that would take **the running application's own installation**
+apart is refused before anything is touched: a victim at or below the folder
+the executable runs from, or a folder holding it, opens **Cannot delete:
+UltraFiler is running from here** and nothing is deleted. The files a running
+program has loaded cannot go, and the ones it has not loaded yet — fonts,
+icons, plugins — would go, and the program crashes the moment it reaches for
+one of them. That is how a Filer started from an unpacked download used to
+end when the download was deleted from inside it; the fix is to close the
+program and delete the folder from another file manager.
+
+With `SetProblemPolicy(FilerProblemPolicy::SkipAndReport)` a failed delete is
+not asked about at all: the entry stays, and the
+[summary](#the-summary-at-the-end) at the end lists it with the reason.
+Write-protected entries are a question, not a failure, and still ask.
 
 Entries inside archives are still deleted in one batched archive rewrite
 before the interactive queue; their failures are reported via `onError` as
@@ -1914,9 +1995,10 @@ An archive that is **extracted only in part** - entries VirtualFS refused
 because they would have been written outside the destination (`../x`, an
 absolute path, a hard link climbing out), or entries it could not write (a
 file through a symbolic link the archive created) - opens an **Extraction
-Incomplete** dialog: *Not everything in "Download.zip" was extracted. The rest
-of the archive was unpacked.*, then each kind of problem with the entries it
-held back, one per line. The status line (`onError`) gets one sentence saying
+incomplete** [summary](#the-summary-at-the-end): *Not everything in
+"Download.zip" was extracted. The rest of the archive was unpacked.*, the
+archive's path, and the entries it held back in a list with the kind of
+problem beside each. The status line (`onError`) gets one sentence saying
 the archive was extracted only in part. An archive that could not be extracted
 at all still reports `Extraction failed for <archive>` there, now followed by
 the reason. The text comes from `UCVFSBridge::ExtractArchive`'s `outError`
@@ -1938,33 +2020,85 @@ or in another program) and falls back to the internal filer clipboard. A cut
 paste moves the files; the paste of a file into the folder it already lives in
 is skipped for a cut and duplicated with a unique " (2)" style name for a copy.
 
+### The operation dialog
+
+Every question a copy, move or delete asks is the same dialog
+(`ShowOperationDialog`, private): the **question** on top, the **facts** under
+it as Markdown (*From*, *Into*, *Reason*, *Size* — paths in code spans, so a
+Windows backslash survives), an optional **list** of entries with the display's
+own icons (at most 200 rows, ten at a time), a **note** under the list, and a
+footer with an optional **Apply to all …** checkbox at the left and the
+**answers as buttons** at the right. The answer is the button: no switch to set
+and no *Continue* to press afterwards. Each button is as wide as its label, the
+one with `DialogButtonRole::Default` is drawn in the accent colour and is what
+Return takes, a destructive one (*Delete permanently*, *Replace* a folder) is
+drawn red, the one with the Cancel role (*Stop*, *Cancel*) is what Escape
+takes, and every button has an underlined mnemonic letter
+([dialog keyboard handling](UltraCanvasDialogKeyboard.md)). *Stop* on a
+question asked in the middle of a queue keeps what was already done and drops
+the rest.
+
 ### Name conflicts
 
 When a pasted entry's name is already taken in the target folder, the paste
-pauses on the **conflict dialog** — "A file named "X" already exists in this
-folder." — with the choice set by three exclusive switches (the common
-formulations):
+pauses on the **conflict dialog** — `"Report 2026.pdf" already exists in
+"Accounting".` — with the two of them **side by side**: an *Existing* and a
+*Pasted* row, each with icon, name, size and modified date, and which of the
+two is *newer*. The note names what Keep both would call the pasted file
+(*Keep both renames the pasted file to "Report 2026 (2).pdf".*); two files of
+the same size and date are called *identical*, and the default moves to Skip.
+The answers are the buttons:
 
-- **Keep both** — the pasted entry takes the next free " (2)" style name
-  (the default, and what a conflict-free paste always does)
-- **Replace the existing file** — the existing entry is removed first
-- **Skip this file** — the entry is not pasted
+- **Keep both** (the default) — the pasted entry takes the next free " (2)"
+  style name, what a conflict-free paste always does
+- **Replace** — the existing file is removed first
+- **Skip** — the entry is not pasted (and is listed in the summary)
+- **Stop** — keeps what was already pasted and drops the rest
 
-A fourth switch, **"Do this for all remaining conflicts"**, decides the scope:
-off (the default) asks again on the next conflict, on applies the same choice
-to every remaining conflict of this paste. **Continue** proceeds with the
-chosen action; **Cancel** keeps what was already pasted and drops the rest.
-Copy-pasting a file alongside its original never asks — the copy simply takes
-the next free name, exactly like Duplicate.
+A **folder pasted over a folder** asks differently: the rows count what each
+folder holds, and the buttons are **Merge** (the default), **Replace** (red),
+**Skip** and **Stop**. *Merge* puts the pasted folder's entries **into** the
+existing folder — spliced into the paste queue right after it, each asked
+about in turn when its own name is taken there — and touches nothing already
+in the existing folder; a move removes the emptied source folder at the end
+(an entry that was skipped keeps it). *Replace* deletes the existing folder
+first, with everything in it that the pasted one does not have, and the note
+says so with the count. `PasteConflictAction::Merge` is the enumerator.
+
+The checkbox beside the buttons, **"Apply to all 7 remaining conflicts"**,
+counts the entries still to come whose name is taken (folders and files are
+counted, and answered, apart: *Apply to all 2 remaining folder conflicts*);
+it is absent when there are none. Copy-pasting a file alongside its original
+never asks — the copy simply takes the next free name, exactly like Duplicate.
+
+The host can answer for good: `SetConflictPolicy(FilerConflictPolicy::KeepBoth
+/ Replace / Skip)` stands in for the file dialog, and
+`SetFolderConflictPolicy(FilerFolderConflictPolicy::Merge)` — the default — for
+the folder one; `Ask` restores each dialog.
 
 An entry that **fails** to move or copy (locked, in use, permissions) asks too.
-The dialog is titled "Cannot Move" / "Cannot Copy" and spells the failure out in
-full: the operating system's own reason, the source path, the destination folder
-and what usually causes it. The choice is **Try again** / **Skip this file**,
-with a "Do this for all remaining items" scope switch; a stored
-try-again-for-all grants each later failing entry one silent retry before asking
-again. Drag & drop, inside the widget and from other applications, runs through
-the same machinery, so drops get the same dialogs.
+The dialog is titled "Copy: a file could not be copied" (or *Move*, *folder*)
+and spells the failure out: the operating system's own reason, the folder the
+entry is in (*From*), the destination (*Into*) and what usually causes it. The
+buttons are **Try again** (the default) / **Skip** / **Stop**, with an *Apply to
+all later failures* checkbox; a stored try-again-for-all grants each later
+failing entry one silent retry before asking again.
+`SetProblemPolicy(FilerProblemPolicy::SkipAndReport)` skips every failure
+without asking and lists it in the summary. Drag & drop, inside the widget and
+from other applications, runs through the same machinery, so drops get the same
+dialogs.
+
+### The summary at the end
+
+A paste or delete that ran to its end with entries left behind — skipped by
+hand, by a policy, or because they failed — ends on one **summary** instead of
+nothing: *Copied 137 of 140 items. 3 were skipped.*, the destination, and the
+skipped entries in a list with the reason beside each (*In use by another
+program*, *Skipped: the name is already taken*, *Skipped: write-protected*).
+**Close** is the default; **Copy skipped items again** (*Move …*, *Delete …*)
+runs the same operation for just those entries, grouped by the folder they
+were headed for. A Stop or a Cancel shows no summary — it already said what
+happened — and neither does an operation where nothing was skipped.
 
 A **move, a rename and a delete** all need the file to themselves: a rename is
 refused while another program still has it open — on Windows outright — and a
@@ -2037,18 +2171,25 @@ can be made to ask first with `SetDropConfirmation(FilerDropConfirmation)`:
 |---|---|
 | `NeverConfirm` | never — the drop is carried out straight away (the default, and what earlier releases did) |
 | `MoveOnly` | only when the drop **moves** the files; a copy is carried out |
+| `CopyOnly` | only when the drop **copies** the files |
 | `AlwaysConfirm` | for every drop, copies and files dragged in from other programs included |
 
 ```cpp
 filer->SetDropConfirmation(FilerDropConfirmation::MoveOnly);
 ```
 
-The question names what is about to happen — how many entries, moved or copied,
-into which folder, with the folder's full path as the detail line — and nothing
-is touched until it is answered; the other answer abandons the drop. Files
+The question is an [operation dialog](#the-operation-dialog) — `Move 3 items
+into "Archive"?` with *From*, *Into* and *Size* as its facts and the entries
+listed under them — and it offers **both verbs as buttons**: the one the
+gesture asked for is the coloured default, the other sits beside it, so a drop
+made with the wrong modifier is put right here instead of by a second drag;
+Cancel abandons the drop. Nothing is touched until it is answered. Files
 arriving from another program (or another pane of the same window) are copies,
-so only `AlwaysConfirm` asks about those. With dialogs disabled the drop is
-carried out rather than lost.
+so only a mode that covers copies asks about those. A move asked for by **Cut
+and Paste** — Ctrl+X, Ctrl+V, or `PasteFilesInto()` with `cut` — asks the same
+question when the mode covers moves: it changes where the files live just the
+same. A Ctrl+V copy is deliberate and never asks. With dialogs disabled the drop
+is carried out rather than lost.
 
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
@@ -2313,11 +2454,56 @@ field filters the shown folder, and the button — like Enter in the field, and
 like the button inside the field — escalates to the background sub-folder
 scan, which feeds its matches in through `AppendToFileList()` while it runs.
 
+## File type filter (load / save dialogs)
+
+A load or save dialog built on the widget wants the listing narrowed to the
+types its filter dropdown stands for — "Images (*.png, *.jpg)" — and has two
+ways of treating the other files. `SetFileTypeFilter(extensions, mode)` sets
+both at once:
+
+```cpp
+// A dialog's dropdown picked a FileFilter (UltraCanvasModalDialog.h):
+filer->SetFileTypeFilter(config.filters[config.selectedFilterIndex],
+                         FilerTypeFilterMode::ShowDimmed);
+// or by extension list — "png", ".png" and "*.png" all name the same type:
+filer->SetFileTypeFilter({"png", "jpg", "jpeg"}, FilerTypeFilterMode::Hide);
+// "*" (or an empty list) is "All files" and ends the filter:
+filer->ClearFileTypeFilter();
+```
+
+| Mode | The files of other types are |
+|---|---|
+| `FilerTypeFilterMode::Hide` (default) | left out of the listing, the way a file dialog lists |
+| `FilerTypeFilterMode::ShowDimmed` | kept in the listing and drawn **greyed out** — name, columns, icon or thumbnail and the badges on it, in every view type — so the user still sees what else the folder holds ("the photo *is* here, it is just not a PNG") while the picks on offer stand out |
+
+A dimmed entry can be selected and looked at (the info bar describes it), but
+it is on display, not on offer: a double-click or Enter on it does nothing and
+`onFileActivated` never fires for one, exactly as a disabled control does
+nothing. `EntryPassesFileTypeFilter(entry)` is the same question for a host —
+a dialog's OK button asks it about the selection before accepting a pick, and
+a save dialog can still adopt the greyed-out file's name from
+`onSelectionChanged` if it wants to. `SetFileTypeFilterMode(mode)` switches
+between the two without restating the extensions (a settings switch), and
+`SetDimmedEntryOpacity(0.38)` sets how faint a dimmed entry is drawn.
+
+Folders always pass the filter: they are how the user reaches the files, and
+so does a shortcut to a folder. An archive is a file and is dimmed like any
+other, but a double-click still enters it the way it enters a folder. The
+filter survives `SetPath()`, every rescan (file operations, the folder watch)
+and a [file list](#file-list-search-results), and combines with the
+[name filter](#name-filter-filter-as-you-type) — the type filter is applied
+first, so widening the name filter never brings a hidden type back.
+`GetTypeFilteredCount()` says how many files the shown listing left out (Hide)
+or dimmed (ShowDimmed); a Hide listing in a folder that has files of other
+types only shows **"No files of the chosen type"** rather than "Folder is
+empty!". The [hidden-items notice](#hidden-items-notice) is not involved: it
+reports what the system hides, not what the host asked for.
+
 ## Callbacks
 
 | Callback | Fired |
 |---|---|
-| `onFileActivated(entry)` | Double-click / Enter on a file |
+| `onFileActivated(entry)` | Double-click / Enter on a file — never on one a [type filter](#file-type-filter-load--save-dialogs) dims |
 | `onPathChanged(path)` | After `SetPath` / entering a folder or archive |
 | `onSelectionChanged(entries)` | Selection changed |
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
@@ -2372,4 +2558,6 @@ live).
 
 `Apps/DemoApp/UltraCanvasFilerExamples.cpp` (Widgets > Filer) shows the bundled
 `media` folder with buttons for every view type, sort field and direction, an Up
-button, and a status line wired to the callbacks.
+button, a *Types* row (All files / Images / Audio / Video with a "Show other
+types greyed out" switch — the [file type filter](#file-type-filter-load--save-dialogs)
+in both modes), and a status line wired to the callbacks.

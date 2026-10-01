@@ -3,9 +3,11 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.5.0 - Settings: HTML or plain-text view, body text size, and
+//                  pictures hosted on trusted websites load by themselves.
 // Version: 0.4.0 - the sender badge replaces the initial avatar, and a warning
 //                  strip above the body says why a message looks like a scam.
-// Last Modified: 2026-09-19
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -88,6 +90,17 @@ public:
     // message (cid:, data:) are always shown.
     std::function<bool(const std::string& address)> remoteImagesAllowed;
     std::function<void(const std::string& address)> onAlwaysAllowRemoteImages;
+    // Whether a remote picture's own address (its host) is on the trusted
+    // websites: such pictures load even when the sender is not trusted - never
+    // in a suspicious message.
+    std::function<bool(const std::string& url)> remoteImageHostTrusted;
+
+    // Settings > Reading: HTML mail formatted (false: shown as plain text, no
+    // pictures fetched) and the body text size in CSS px. ReRender() shows
+    // the message on screen again with them.
+    bool  showHtml = true;
+    float bodyFontSizePx = 12.f;
+    void  ReRender();
 
     // Raised when a body was scanned for the first time (the verdict has been
     // stored already): the message list refreshes that row's badge.
@@ -105,6 +118,11 @@ private:
     void UpdateRemoteBar();
     // Download blockedRemote_ off the UI thread, then render the body again.
     void FetchRemoteImages();
+    // Download `urls` only (pictures on trusted websites): the rest stay
+    // blocked, and the bar keeps offering them.
+    void FetchSomeRemoteImages(const std::vector<std::string>& urls);
+    // Fetch the blocked pictures whose host is trusted, if any.
+    void FetchTrustedHostImages();
 
     // The stored verdict for a message, scanning (and storing) the cached body
     // the first time it is read. `raw` is the .eml text, empty when it has not
@@ -145,6 +163,8 @@ private:
 
     // Images of the shown HTML body.
     std::string          curHtml_;             // the body, for a re-render
+    std::string          lastBody_;            // what RenderBody showed last,
+    bool                 lastIsHtml_ = false;  // for ReRender
     InlineImages         inlineImages_;        // parts of the message itself
     std::set<std::string> blockedRemote_;      // remote images not (yet) loaded
     bool                 remoteAllowed_ = false;   // load them without asking

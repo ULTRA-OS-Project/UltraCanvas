@@ -25,13 +25,28 @@
 
 namespace EmailCleaner {
 
+// Where an account's mail comes from. UltraMail's accounts are mirrored from
+// its account list and read from its body cache; an account added in
+// EmailCleaner itself is fetched into EmailCleaner's own cache
+// (EmailCleanerAccounts.h).
+enum class AccountSource {
+    UltraMail = 0,
+    Own
+};
+
+// "ultramail" | "own" — the form stored in the database. Unknown text reads
+// as UltraMail, which is where every account before 0.5 came from.
+std::string   ToString(AccountSource source);
+AccountSource AccountSourceFromString(const std::string& s);
+
 // An account as the analysis database knows it (mirrors the mail account; no
 // secrets — those stay in the credential vault).
 struct StoredAccount {
-    std::string accountId;
-    std::string displayName;
-    std::string email;
-    std::string shortName;
+    std::string   accountId;
+    std::string   displayName;
+    std::string   email;
+    std::string   shortName;
+    AccountSource source = AccountSource::UltraMail;
 };
 
 // Where an account's messages come from, and how far the ingest has got.
@@ -77,7 +92,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert the database matches the code
     // without a literal that has to be chased each time.
-    static constexpr int kSchemaVersion = 3;
+    static constexpr int kSchemaVersion = 4;
 
     // Register the connection and bring the schema up to date. `databasePath`
     // is a file path (created if absent) or ":memory:". Calling it again with

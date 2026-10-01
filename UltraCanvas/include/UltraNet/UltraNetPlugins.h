@@ -501,28 +501,63 @@ std::vector<std::string> UltraNet_GetSupportedSchemes();
 // ============================================================================
 // Plug-in DSO contract — entry points + the host vtable.
 //
-// Plug-in libraries must export exactly one of these C entry points:
+// Plug-in libraries export this C entry point:
 //
-//   v2 (preferred, works on all platforms):
+//   v2:
 //     extern "C" ULTRANET_PLUGIN_EXPORT void
 //     UltraNet_PluginInit(const UltraNetPluginHost* host);
 //
-//   v1 (POSIX-only, deprecated):
+// The host passes a function table, and everything a plug-in needs from the
+// core goes through it: registering itself, and (ABI 2) the core functions a
+// plug-in calls — URL parsing, the CA bundle, MIME building, HTTP. So a
+// plug-in DSO has no undefined core symbols at all: it loads whatever the
+// host was linked against (a static core carries only the objects the app
+// itself uses) and a Windows DLL links without the core's import library,
+// which a static core does not have. A plug-in's sources call the ordinary
+// UltraNet_* functions; Plugins/UltraNet/common/UltraNetPluginHostShim.cpp,
+// compiled into every plug-in, defines them inside the DSO and forwards each
+// call to this table. A plug-in needing another core function adds it here
+// (appended - the order is ABI) and to the shim, and bumps the version.
+//
+//   v1 (POSIX-only, deprecated; still loaded for third-party plug-ins):
 //     extern "C" void UltraNet_PluginRegister(void);
 //
-// v1 requires the plug-in to resolve UltraNet_RegisterPlugin via the host
-// binary's symbol table at dlopen time — POSIX gives this for free
-// (RTLD_GLOBAL + -rdynamic) but Windows does not. v2 fixes that: the host
-// passes a function-pointer table; the plug-in calls host->RegisterPlugin
-// instead of looking up the symbol. Same plug-in source can expose both.
+// v1 resolves UltraNet_RegisterPlugin from the host binary's symbol table at
+// dlopen time, which POSIX allows (RTLD_GLOBAL + -rdynamic) and Windows does
+// not. The in-tree plug-ins no longer export it.
 // ============================================================================
 
-constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 1;
+// ABI 1: abiVersion + RegisterPlugin.
+// ABI 2: + the core functions below. Fields are only ever appended, so an
+//        ABI-1 plug-in reads a newer host's table correctly.
+constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 2;
+
+struct UltraNetUrlComponents;
+struct UltraNetMimeBuildInput;
 
 struct UltraNetPluginHost {
-    int abiVersion;            // == ULTRANET_PLUGIN_HOST_ABI_VERSION when loaded by a v2-capable host
+    int abiVersion;            // == ULTRANET_PLUGIN_HOST_ABI_VERSION of the host
     void (*RegisterPlugin)(std::shared_ptr<IUltraNetPlugin>);
+
+    // ---- ABI 2 ----------------------------------------------------------
+    UltraNetResult (*ParseUrl)(const std::string& url, UltraNetUrlComponents& out);
+    std::string    (*UrlEncode)(const std::string& input);
+    std::string    (*UrlDecode)(const std::string& input);
+    std::string    (*ResolveCaBundlePath)();
+    std::string    (*DescribeTrustRoots)();
+    std::string    (*DescribePlatform)();
+    std::string    (*MimeBuild)(const UltraNetMimeBuildInput& input);
+    UltraNetResult (*HttpGet)(const std::string& url, UltraNetResponse& out,
+                              const UltraNetHttpOptions& options);
+    UltraNetResult (*HttpRequest)(const UltraNetHttpRequest& request,
+                                  UltraNetResponse& out);
+    void           (*HttpHeadersSet)(UltraNetHttpHeaders& headers,
+                                     const std::string& name, const std::string& value);
 };
+
+// The table this host hands to every plug-in it loads - for tests, and for a
+// host that loads a plug-in by other means.
+const UltraNetPluginHost* UltraNet_GetPluginHost();
 
 using UltraNet_PluginInitFn = void (*)(const UltraNetPluginHost* host);
 

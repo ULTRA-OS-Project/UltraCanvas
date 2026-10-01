@@ -1665,6 +1665,7 @@ add_executable(CSSLayoutAutoExpandTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
@@ -1696,6 +1697,7 @@ add_executable(CSSLayoutSafeAlignTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
@@ -1717,6 +1719,38 @@ add_test(
 )
 message(STATUS "    Test registered: CSSLayoutSafeAlignTest")
 
+# ===== CSS LAYOUT BLOCK MARGIN TEST =====
+# Block layout (the default display) offsets each in-flow child by its margin
+# and adds the margin to the stack, so SetMargin() works inside an ordinary
+# container or group box. Pure geometry.
+message(STATUS "  Building CSSLayoutBlockMarginTest...")
+add_executable(CSSLayoutBlockMarginTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutBlockMarginTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(CSSLayoutBlockMarginTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutBlockMarginTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutBlockMarginTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutBlockMarginTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutBlockMarginTest
+    COMMAND CSSLayoutBlockMarginTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutBlockMarginTest")
+
 # ===== DIALOG ICON LAYOUT TEST =====
 # The modal dialog's content row with and without the severity icon: hiding it
 # must drop its column and the flex gap after it, so an element centred in the
@@ -1728,6 +1762,7 @@ add_executable(DialogIconLayoutTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
@@ -2095,6 +2130,26 @@ set_target_properties(VirtualFSPathTest PROPERTIES
 add_test(NAME VirtualFSPathTest COMMAND VirtualFSPathTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VirtualFSPathTest")
+
+# ===== VIDEOFX TEST =====
+# Effect -> filter text translation always; with FFmpeg the engine end to end
+# on clips it generates itself (probe, frames, trim, speed, joins, GIF / WAV,
+# lossless cut, cancel, background job, UTF-8 names, error codes).
+if(TARGET VideoFX)
+    message(STATUS "  Building VideoFXTest...")
+    add_executable(VideoFXTest ${CMAKE_CURRENT_SOURCE_DIR}/VideoFXTest.cpp)
+    target_include_directories(VideoFXTest PRIVATE
+        ${ULTRACANVAS_ROOT}/VideoFX/core          # VideoFXFilterBuilder.h (internal)
+        ${ULTRACANVAS_INCLUDE_DIR}                # UltraCanvasPathUtf8.h (header-only)
+    )
+    target_link_libraries(VideoFXTest PRIVATE VideoFX::VideoFX)
+    set_target_properties(VideoFXTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VideoFXTest COMMAND VideoFXTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VideoFXTest")
+endif()
 
 # ===== VIRTUALFS DELETE TEST =====
 # Regression test for batched archive-entry deletion (single rewrite pass).
@@ -3198,6 +3253,32 @@ endif()
 
 message(STATUS "")
 
+# ===== DESKTOP SHELL TEST =====
+# The platform-neutral half of UltraCanvasDesktopShell: the notices an
+# application publishes for the desktop, the program lookup, the application
+# list from desktop entries, the screenshot file name, and the monitor's
+# lifetime. Points XDG_RUNTIME_DIR and XDG_DATA_HOME at a throwaway directory,
+# so it never depends on what the machine has installed and needs no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DesktopShellTest...")
+    add_executable(DesktopShellTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DesktopShellTest.cpp
+    )
+    target_include_directories(DesktopShellTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DesktopShellTest PRIVATE cxx_std_20)
+    target_link_libraries(DesktopShellTest PRIVATE UltraCanvas)
+    set_target_properties(DesktopShellTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DesktopShellTest COMMAND DesktopShellTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DesktopShellTest")
+else()
+    message(STATUS "  DesktopShellTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== MAC BUNDLE TEST =====
 # The property-list reader (both encodings) and the macOS application bundles
 # and web locations built on it. Builds a bundle directory in a temp folder,
@@ -3721,6 +3802,7 @@ add_executable(CSSLayoutFormGridTest
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
     ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
@@ -4005,3 +4087,24 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  DemoScrollTextTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== AUDIO STREAMING TEST =====
+# The live-audio building blocks (frame ring, packetiser) are header-only and
+# backend-free, so the test links nothing and needs no sound device.
+message(STATUS "  Building AudioStreamingTest...")
+add_executable(AudioStreamingTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/AudioStreamingTest.cpp
+)
+target_include_directories(AudioStreamingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(AudioStreamingTest PRIVATE cxx_std_20)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(AudioStreamingTest PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+find_package(Threads REQUIRED)
+target_link_libraries(AudioStreamingTest PRIVATE Threads::Threads)
+set_target_properties(AudioStreamingTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME AudioStreamingTest COMMAND AudioStreamingTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)

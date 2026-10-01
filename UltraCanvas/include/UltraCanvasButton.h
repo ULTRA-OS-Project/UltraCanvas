@@ -163,6 +163,11 @@ namespace UltraCanvas {
         void SetCanToggled(bool tgl) {
             canToggled = tgl;
         }
+        // Whether a press latches (a toggle button) rather than clicking on
+        // release. A host that interrupts a press - a toolbar starting a drag
+        // to reorder its items - resets the pressed look of a plain button and
+        // leaves a toggle's state alone.
+        bool CanToggle() const { return canToggled; }
         // ===== SPLIT BUTTON METHODS =====
         void SetSplitEnabled(bool enabled);
         void SetSplitRatio(float primaryRatio = 0.75f);

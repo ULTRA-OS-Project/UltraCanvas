@@ -251,6 +251,9 @@ option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)"
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
 option(ULTRACANVAS_USE_VIRTUALFS "Build the VirtualFS module and the UltraCanvas bridge to it" ON)
+# VideoFX always builds; FFmpeg (found by pkg-config) turns its engine on,
+# otherwise the same API is a stub returning VideoFXResult::NotAvailable.
+option(ULTRACANVAS_USE_VIDEOFX "Build the VideoFX video editing / conversion module" ON)
 
 include(FetchContent)
 include(cmake/UltraCanvasAppIcon.cmake)
@@ -267,6 +270,15 @@ if(ULTRACANVAS_USE_VIRTUALFS)
     message(STATUS "")
     message(STATUS "── Building VirtualFS Module ──")
     add_subdirectory(VirtualFS)
+endif()
+
+# ===== BUILD VIDEOFX MODULE =====
+# Independent sibling module (video probing, frames, trim / effects / join /
+# export on FFmpeg). Nothing in the core links it; applications and Tests/ do.
+if(ULTRACANVAS_USE_VIDEOFX)
+    message(STATUS "")
+    message(STATUS "── Building VideoFX Module ──")
+    add_subdirectory(VideoFX)
 endif()
 
 # ===== BUILD ULTRACANVAS CORE LIBRARY =====
@@ -421,6 +433,19 @@ if(BUILD_ULTRANETMONITOR)
     message(STATUS "")
     message(STATUS "── Building UltraNetMonitor ──")
     add_subdirectory(Apps/UltraNetMonitor)
+endif()
+
+# ===== ULTRADESKTOP =====
+# The ULTRA OS desktop: taskbar with the running applications, desktop
+# organiser (virtual desktops, Stickerboard, clipboard, screenshot) and the
+# info panel with the devices and services, on one screen-sized window under
+# everything else. Built on the UltraCanvasDesktopShell module; headless
+# --windows / --apps / --devices / --screenshot modes for the command line.
+option(BUILD_ULTRADESKTOP "Build the UltraDesktop application" ON)
+if(BUILD_ULTRADESKTOP)
+    message(STATUS "")
+    message(STATUS "── Building UltraDesktop ──")
+    add_subdirectory(Apps/UltraDesktop)
 endif()
 
 # ===== DEVICEEXPLORER =====
@@ -1074,6 +1099,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPrompt.cpp
             Apps/UltraFiler/UltraFilerRunWindowsDialog.cpp
             Apps/UltraFiler/UltraFilerFindTextDialog.cpp
+            Apps/UltraFiler/UltraFilerFolderExport.cpp
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp
@@ -1505,6 +1531,18 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME HTMLImageAlignTest COMMAND HTMLImageAlignTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # HTML tables on the CSSLayout table engine: shared columns, spans, px/%
+    # widths, nowrap, mail buttons (builder + layout, headless).
+    add_executable(HTMLTableLayoutTest Tests/HTMLTableLayoutTest.cpp)
+    target_include_directories(HTMLTableLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLTableLayoutTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLTableLayoutTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLTableLayoutTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLTableLayoutTest COMMAND HTMLTableLayoutTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraCanvasJSON unit tests (DataFormats section). Compiles only the JSON

@@ -1,7 +1,7 @@
 // core/HTMLReader/HTMLParser.cpp
 // Tolerant HTML/XHTML parser implementation.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0 - <style media="..."> becomes an @media block
+// Last Modified: 2026-09-30
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -166,7 +166,14 @@ Document Parser::Parse(const std::string& html, const ParseOptions& options) {
         if (element.tag == "title" && doc.title.empty()) {
             doc.title = Trimmed(element.TextContent());
         } else if (element.tag == "style") {
-            doc.styleSheets.push_back(element.TextContent());
+            // <style media="screen and (min-width:480px)">: the same as an
+            // @media block around the sheet.
+            std::string media = Trimmed(element.GetAttribute("media"));
+            if (media.empty()) {
+                doc.styleSheets.push_back(element.TextContent());
+            } else {
+                doc.styleSheets.push_back("@media " + media + " {\n" + element.TextContent() + "\n}");
+            }
         } else if (element.tag == "link") {
             if (ToLower(element.GetAttribute("rel")) == "stylesheet") {
                 doc.styleSheetLinks.push_back(element.GetAttribute("href"));

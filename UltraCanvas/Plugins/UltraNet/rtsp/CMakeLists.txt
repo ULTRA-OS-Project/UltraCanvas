@@ -26,11 +26,18 @@ target_link_libraries(UltraNetRtspPlugin PRIVATE ${UC_CURL_LINK})
 set_target_properties(UltraNetRtspPlugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraNet)
 
-# --- Windows: import host-provided UltraNet symbols at link time ---------------
-# On POSIX these plug-ins resolve core symbols (UltraNet_ParseUrl, UltraNet_UrlDecode,
-# ...) from the host binary at dlopen() time (RTLD_GLOBAL + -rdynamic). Windows DLLs
-# must bind every symbol at link time, so link the shared UltraCanvas core, which
-# exports them (WINDOWS_EXPORT_ALL_SYMBOLS). No-op on POSIX and on static builds.
-if(WIN32 AND ULTRACANVAS_BUILD_SHARED)
-    target_link_libraries(UltraNetRtspPlugin PRIVATE UltraCanvas)
+# --- Core functions through the host table ------------------------------------
+# What this plug-in needs from the core (UltraNet_ParseUrl, UltraNet_MimeBuild,
+# ...) reaches the host through the UltraNetPluginHost table it is handed at
+# load time: the shim defines those functions inside the plug-in and forwards
+# each call there. So the DSO has no undefined core symbol and links against
+# nothing from the core - it loads into an app on a static core, and a Windows
+# DLL builds without the core's import library. Hidden visibility keeps the
+# shim's definitions the plug-in's own.
+set(_ultranet_host_shim ${CMAKE_CURRENT_SOURCE_DIR}/../common/UltraNetPluginHostShim.cpp)
+target_sources(UltraNetRtspPlugin PRIVATE ${_ultranet_host_shim})
+target_include_directories(UltraNetRtspPlugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../common)
+if(NOT MSVC)
+    set_source_files_properties(${_ultranet_host_shim} PROPERTIES
+        COMPILE_OPTIONS "-fvisibility=hidden")
 endif()

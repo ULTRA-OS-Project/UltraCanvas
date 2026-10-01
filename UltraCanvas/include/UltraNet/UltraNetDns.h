@@ -5,7 +5,7 @@
 // record types (MX / TXT / SRV / NS / CNAME / SOA) the platform's DNS library
 // (libresolv, dnsapi). A lookup can name the servers it asks, for that call
 // only (UltraNetDnsOptions::servers).
-// Version: 0.3.0 - per-call name servers (UltraNetDnsOptions)
+// Version: 0.3.3 - a worker pool for threaded lookups; UltraNet_DnsReverseNameToAddress
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -65,7 +65,16 @@ UltraNetResult UltraNet_DnsResolveAsync(
     std::function<void(const std::vector<std::string>&)> onResult);
 
 // The same, with per-call options. `onResult` receives an empty list on any
-// failure, as the overload above does.
+// failure, as the overload above does. A PTR lookup is
+// UltraNet_DnsReverseLookup with these options - the hosts file, the deadline
+// and the servers behave as they do there - and an argument that is not an
+// address is refused as InvalidUrl before anything is queued, the way a bad
+// server entry is. Lookups that need a thread (PTR on every backend, every
+// type on the system backends; c-ares answers forward types from its own
+// event thread) run on a small shared worker pool, so a burst of calls
+// queues rather than starting a thread each. The deadline counts from the
+// call, not from when a worker is free: a lookup that spent its whole
+// budget queued is answered empty at once.
 UltraNetResult UltraNet_DnsResolveAsync(
     const std::string& hostname,
     UltraNetDnsType type,
@@ -83,10 +92,27 @@ bool UltraNet_DnsParseServer(const std::string& spec,
 // is not an address. Pure.
 bool UltraNet_DnsReverseName(const std::string& ipAddress, std::string& outName);
 
+// The inverse: the address a reverse-lookup name stands for, in its canonical
+// text form ("8.8.4.4" for "4.4.8.8.in-addr.arpa", the compressed form for an
+// ip6.arpa name). Case-insensitive; a trailing dot is allowed. False when
+// `name` is not a complete in-addr.arpa / ip6.arpa name. Pure.
+bool UltraNet_DnsReverseNameToAddress(const std::string& name, std::string& outAddress);
+
+// The host name of an address. Without servers of its own the lookup is the
+// system's getnameinfo - which also answers from the hosts file - run under
+// the deadline: Timeout when it passes, the lookup abandoned. With
+// `options.servers` it is a PTR query for the address's reverse name at those
+// servers, through the platform backend, like UltraNet_DnsResolve with
+// UltraNetDnsType::PTR.
 UltraNetResult UltraNet_DnsReverseLookup(
     const std::string& ipAddress,
     std::string& outHostname,
     int timeoutMs = 5000);
+
+UltraNetResult UltraNet_DnsReverseLookup(
+    const std::string& ipAddress,
+    std::string& outHostname,
+    const UltraNetDnsOptions& options);
 
 // In-process DNS cache lives inside UltraNet (libcurl maintains its own
 // pool too). These act on the UltraNet-level cache; libcurl's pool stays

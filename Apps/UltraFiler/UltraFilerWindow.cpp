@@ -18,8 +18,11 @@
 // menu offers Copy / Delete / Paste on folders, a Pin submenu whose
 // "To Treeview" / "To Favorites" flags show and toggle where the folder is
 // pinned, and Unpin on pinned entries. The filer context menus' Extras
-// submenu ends with an app-provided block (extrasMenuProvider): "Open
-// prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
+// submenu ends with an app-provided block (extrasMenuProvider): "Find
+// text", an Export submenu - "Folder content" / "Folder tree content" / "Folder
+// tree as CSV" open a text window with the folder written out as a listing,
+// as a tree drawn with line characters or as a CSV table, and save it
+// (UltraFilerFolderExport) - "Open prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
 // submenus whose "To Treeview" / "To Favorites" flags follow the current
 // selection. Folder icons: the main user folders carry one of their own
 // (media/icons), and any folder can be given a picture through "Set folder
@@ -62,6 +65,7 @@
 #include "UltraFilerWindow.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
@@ -802,6 +806,7 @@ UltraFilerWindow::~UltraFilerWindow() {
     CancelFolderPreviewTimer(); // its callback captures `this`
     StopSubfolderSearch();
     ReapSearchWorkers(true);    // now the search threads are waited for
+    exportWindows.clear();      // each joins the walk building its text
     StopSubfolderProbeWorker();
     StopCloudStorageDiscovery();
     // Its worker posts into this window, so it has to be joined here like the
@@ -1354,6 +1359,15 @@ void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
     applyingDisplayFormats = wasApplying;
 }
 
+void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target) {
+    target.SetConfirmTrashDelete(settings.confirmTrashDelete);
+    target.SetConflictPolicy(settings.conflictPolicy);
+    target.SetFolderConflictPolicy(settings.folderConflictPolicy);
+    target.SetProblemPolicy(settings.problemPolicy);
+    target.SetProgressWindowDelay(
+            static_cast<unsigned>(std::max(0, settings.progressDelaySeconds)) * 1000u);
+}
+
 void UltraFilerWindow::ApplySettings() {
     if (preview) {
         preview->SetTransparentBackground(settings.previewCheckeredBackground
@@ -1377,11 +1391,13 @@ void UltraFilerWindow::ApplySettings() {
         state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         state->filer->SetDropConfirmation(settings.dropConfirmation);
         state->filer->SetShowLockState(settings.showLockState);
+        ApplyFileOperationSettings(*state->filer);
     }
     if (folderPreview) {
         folderPreview->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         folderPreview->SetDropConfirmation(settings.dropConfirmation);
         folderPreview->SetShowLockState(settings.showLockState);
+        ApplyFileOperationSettings(*folderPreview);
     }
     // Extras > Cache. The disk cache is one per process, so it is set once
     // rather than per display; how thumbnails are held in memory is each
@@ -1557,6 +1573,36 @@ void UltraFilerWindow::OpenSystemPrompt() {
         UltraCanvasAlert::Error(error, "Open prompt", nullptr, window.get());
 }
 
+std::string UltraFilerWindow::ExportTargetFolder() const {
+    const std::vector<FilerEntry> targets = PinTargets();
+    if (targets.size() != 1 || !targets.front().isDirectory) return {};
+    const std::string& path = targets.front().path;
+    // The walk reads the local file system: a remote drive's folders, and
+    // the folders inside an archive, are not directories on it.
+    if (path.empty() || IsRemoteFilerPath(path)) return {};
+    std::error_code ec;
+    if (!fs::is_directory(PathFromUtf8(path), ec) || ec) return {};
+    return path;
+}
+
+void UltraFilerWindow::ExportFolder(FolderExportKind kind) {
+    const std::string folder = ExportTargetFolder();
+    if (folder.empty()) return;
+    exportWindows.erase(
+            std::remove_if(exportWindows.begin(), exportWindows.end(),
+                           [](const std::shared_ptr<UltraFilerFolderExportWindow>& w) {
+                               return !w || w->IsClosed();
+                           }),
+            exportWindows.end());
+    // The export sees what the display shows: hidden entries only while it
+    // lists them too.
+    UltraCanvasFilerWidget* shown = VisibleFiler();
+    const bool includeHidden = shown && shown->GetShowHiddenFiles();
+    auto exportWindow = std::make_shared<UltraFilerFolderExportWindow>();
+    exportWindow->Open(folder, kind, includeHidden, window.get());
+    exportWindows.push_back(std::move(exportWindow));
+}
+
 UltraCanvasFilerWidget* UltraFilerWindow::VisibleFiler() const {
     if (favoritesShown) return ActiveFavoritesFiler();
     if (historyShown) return ActiveHistoryFiler();
@@ -1649,8 +1695,22 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
             [this]() { OpenFindTextDialog(); });
     findText.enabled = !findRoot.empty() && !IsRemoteFilerPath(findRoot);
 
+    // Export writes out one folder: the selected one, or the shown one while
+    // nothing is selected.
+    const bool canExport = !ExportTargetFolder().empty();
+    MenuItemData exportContent = MenuItemData::Action("Folder content",
+            [this]() { ExportFolder(FolderExportKind::Content); });
+    exportContent.enabled = canExport;
+    MenuItemData exportTree = MenuItemData::Action("Folder tree content",
+            [this]() { ExportFolder(FolderExportKind::Tree); });
+    exportTree.enabled = canExport;
+    MenuItemData exportCsv = MenuItemData::Action("Folder tree as CSV",
+            [this]() { ExportFolder(FolderExportKind::Csv); });
+    exportCsv.enabled = canExport;
+
     return {
             findText,
+            MenuItemData::Submenu("Export", {exportContent, exportTree, exportCsv}),
             MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
             MenuItemData::Separator(),
             setIcon,
@@ -2179,12 +2239,23 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
     std::string name = mountPath;
     for (const auto& disc : UltraFilerRamDisks::List())
         if (disc.mountPath == mountPath) name = disc.name;
-    UltraCanvasAlert::Confirm(
-            "Eject the RAM disc \"" + name + "\"?\n\nEverything on it is "
-            "deleted and cannot be recovered.",
-            "Eject RAM disc",
-            [this, mountPath, name](bool confirmed) {
-        if (!confirmed) return;
+    // The answer on the button, the way the file display's own questions
+    // put it: Eject, red, since everything on the disc goes with it.
+    DialogConfig cfg;
+    cfg.title = "Eject RAM disc";
+    cfg.dialogType = DialogType::Warning;
+    cfg.message = "Eject the RAM disc \"" + name + "\"?";
+    cfg.details = "Everything on it is deleted and cannot be recovered.";
+    cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+    cfg.width = 480;
+    cfg.height = 180;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+    if (!dialog) return;   // no dialogs: nothing is ejected unasked
+    dialog->AddCustomButton("Eject", DialogResult::Yes,
+                            DialogButtonRole::DestructiveDefault);
+    dialog->AddCustomButton("Cancel", DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->onResult = [this, mountPath, name](DialogResult result) {
+        if (result != DialogResult::Yes) return;
         // Tabs leave first: a display still listing the disc keeps no file
         // open, but it would show a folder that no longer exists.
         const std::string home = UserHomeDir();
@@ -2205,7 +2276,8 @@ void UltraFilerWindow::ConfirmEjectRamDisk(const std::string& mountPath) {
         // when the platform reports the unmount.
         RefreshDriveNodes();
         if (statusLabel) statusLabel->SetText("RAM disc \"" + name + "\" ejected");
-    }, window.get());
+    };
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
 }
 
 void UltraFilerWindow::AddTreeRemoteDriveNode(const RemoteDrive& drive) {
@@ -4354,6 +4426,9 @@ UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
     // and whether the drop asks before it is carried out.
     state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
     state->filer->SetDropConfirmation(settings.dropConfirmation);
+    // Handling > File operations: the standing answers to a copy, move or
+    // delete's questions.
+    ApplyFileOperationSettings(*state->filer);
     // Display > Files in use: mark files another program is holding.
     state->filer->SetShowLockState(settings.showLockState);
     // Display > Files: what this display starts with. Its own Display >

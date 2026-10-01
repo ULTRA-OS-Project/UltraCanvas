@@ -223,7 +223,9 @@ static void TestBlankImageDecodesNothing() {
     auto results = QRCodeUtils::ScanQRCodeImage(
         gray.data(), w, h, 0, QRCodeUtils::QRPixelFormat::Grayscale8, &err);
     Check(results.empty(), "no symbol found in noise");
-    Check(!err.empty(), "and an error message explains why");
+    // Nothing found is an answer, not a failure: a caller telling "no code"
+    // apart from "could not scan" must not have to match the message's text.
+    Check(err.empty(), "and no error is reported for it");
 }
 
 // The overload the camera flow actually calls.
