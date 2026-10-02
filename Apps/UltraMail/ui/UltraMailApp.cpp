@@ -546,6 +546,8 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // Apply the remembered reading-pane choice (default on; a rebuild only when off).
     mailView_.SetReadingPane(prefs_.showReadingPane);
     mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+    mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
+                                 prefs_.folderTreeWidth);
 
     // ----- Status line: what the app is currently doing -----
     // A turning ring left of the text while anything runs in the background
@@ -2780,6 +2782,8 @@ void UltraMailApp::OpenSettings() {
         prefs_.Save(prefsPath_);
         mailView_.SetReadingPane(prefs_.showReadingPane);
         mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+        mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
+                                     prefs_.folderTreeWidth);
         senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
     });
 }
