@@ -16,3 +16,12 @@
   dialog message, which without the module displays `$...$` as plain text.
   Their bundles now leave all three out (`NO_LATEX_APPS`); every other app
   keeps them.
+- **The macOS CI download is one disk image.** The macOS artifact was the
+  `dist-macos/` folder zipped by `upload-artifact`, which does not keep file
+  permissions, so an app unpacked from it had lost its executable bit. CI now
+  packages with `--dmg` and uploads only `UCDemo-MacOS-<version>-<arch>.dmg`.
+  The image is LZFSE-compressed (`ULFO`, smaller than the old `UDZO`), holds
+  the six apps, `ultramsg` and an Applications link for drag-and-drop install,
+  is signed like the apps, and on `main` is notarized and stapled as well.
+  `hdiutil create` gets three tries against the runners' occasional "Resource
+  busy".

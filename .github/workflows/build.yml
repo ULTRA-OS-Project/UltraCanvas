@@ -933,7 +933,7 @@ jobs:
       # so a PR still proves package-macos.sh runs end to end.
       - name: Package (macOS, unsigned - pull requests and manual runs)
         if: runner.os == 'macOS' && env.RELEASE_BUILD != 'true'
-        run: ./package-macos.sh --no-sign
+        run: ./package-macos.sh --no-sign --dmg
 
       - name: Package (macOS, signed and notarized - push to main)
         if: runner.os == 'macOS' && env.RELEASE_BUILD == 'true'
@@ -942,7 +942,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: ./package-macos.sh --notarize
+        run: ./package-macos.sh --notarize --dmg
 
       # Unconditional on macOS, and `|| true` inside: on a run that never
       # imported a certificate there is no keychain to delete, and this must
@@ -961,13 +961,20 @@ jobs:
             dist/
           retention-days: 7
 
+      # The disk image only, not the dist-macos/ folders: upload-artifact
+      # does not keep file permissions, so an app unpacked from a zip of the
+      # .app folders has lost its executable bit and does not start. The DMG
+      # keeps it, is already LZFSE-compressed (hence compression-level 0 -
+      # zipping it again only costs time) and is signed, and on main
+      # notarized and stapled, as one file.
       - name: Upload build artifacts (macOS)
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v6
         with:
           name: UCDemo-MacOS-${{ env.VERSION }}-${{ matrix.arch_label }}
-          path: |
-            dist-macos/
+          path: dist-macos/*.dmg
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 7
 
       - name: Upload build artifacts (Linux)

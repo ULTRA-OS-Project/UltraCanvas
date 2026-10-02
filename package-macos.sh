@@ -7,7 +7,7 @@
 # Usage: ./package-macos.sh [options]
 #   --build-dir DIR    Build directory (default: build)
 #   --output-dir DIR   Output directory (default: dist-macos)
-#   --dmg              Also create a DMG disk image
+#   --dmg              Also create a DMG disk image (signed, and notarized with --notarize)
 #   --no-sign          Skip code signing
 #   --notarize         Submit signed bundles to Apple notary service and staple
 #                      (requires APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD env vars)
@@ -434,25 +434,32 @@ codesign_bundle() {
 # $2 = false skips stapling: a ticket can only be stapled to a bundle, a disk
 # image or an installer package, never to a bare command-line executable.
 # Gatekeeper looks the notarization of such a tool up online instead.
+#
+# $1 may also be a disk image: notarytool takes a .dmg as it is, so only a
+# bundle or a tool folder is zipped first.
 notarize_bundle() {
     local app_bundle="$1"
     local staple="${2:-true}"
-    local zip_path="${app_bundle%.app}-notarize.zip"
+    local submit_path="$app_bundle" zip_path=""
     local submit_log
     submit_log=$(mktemp)
 
-    echo "  Creating zip for notarization..."
-    /usr/bin/ditto -c -k --keepParent "$app_bundle" "$zip_path"
+    if [ -d "$app_bundle" ]; then
+        zip_path="${app_bundle%.app}-notarize.zip"
+        submit_path="$zip_path"
+        echo "  Creating zip for notarization..."
+        /usr/bin/ditto -c -k --keepParent "$app_bundle" "$zip_path"
+    fi
 
     echo "  Submitting to Apple notary service (this may take a few minutes)..."
     # Tee to a temp file so we keep live progress output AND can parse the result
-    xcrun notarytool submit "$zip_path" \
+    xcrun notarytool submit "$submit_path" \
         --apple-id "$APPLE_ID" \
         --team-id "$APPLE_TEAM_ID" \
         --password "$APPLE_APP_PASSWORD" \
         --wait 2>&1 | tee "$submit_log"
 
-    rm -f "$zip_path"
+    [ -n "$zip_path" ] && rm -f "$zip_path"
 
     # Parse the submission ID and final status from the captured output
     local submission_id status
@@ -846,14 +853,39 @@ if $CREATE_DMG; then
     # Add Applications symlink for drag-and-drop install
     ln -s /Applications "$DMG_STAGING/Applications"
 
-    # Create compressed DMG
-    hdiutil create \
-        -volname "UltraCanvas $VERSION" \
-        -srcfolder "$DMG_STAGING" \
-        -ov -format UDZO \
-        "$OUTPUT_DIR/$DMG_NAME"
+    # Create the compressed DMG. ULFO (LZFSE) packs tighter than the old UDZO
+    # (zlib) and opens faster; it needs macOS 10.11, below the apps' own
+    # LSMinimumSystemVersion of 12.0. hdiutil on CI runners now and then fails
+    # with "Resource busy" while the system indexes the staging folder, so it
+    # gets three tries.
+    dmg_try=1
+    until hdiutil create \
+            -volname "UltraCanvas $VERSION" \
+            -srcfolder "$DMG_STAGING" \
+            -ov -format ULFO \
+            "$OUTPUT_DIR/$DMG_NAME"; do
+        if [ "$dmg_try" -ge 3 ]; then
+            echo "  ERROR: hdiutil create failed $dmg_try times"
+            exit 1
+        fi
+        dmg_try=$((dmg_try + 1))
+        echo "  hdiutil create failed - retrying ($dmg_try/3) in 10 s"
+        sleep 10
+    done
 
     rm -rf "$DMG_STAGING"
+
+    # The image is what a user downloads and opens, so it carries the same
+    # Developer ID signature as the apps inside it and, on a notarized run, its
+    # own stapled ticket - Gatekeeper then checks it once, offline, on open.
+    if $DO_SIGN; then
+        echo "  Signing DMG..."
+        codesign --force --timestamp --sign "$IDENTITY" "$OUTPUT_DIR/$DMG_NAME"
+        codesign --verify --verbose=2 "$OUTPUT_DIR/$DMG_NAME"
+    fi
+    if $NOTARIZE; then
+        notarize_bundle "$OUTPUT_DIR/$DMG_NAME"
+    fi
 
     DMG_SIZE=$(du -sh "$OUTPUT_DIR/$DMG_NAME" | cut -f1)
     echo "  DMG created: $OUTPUT_DIR/$DMG_NAME ($DMG_SIZE)"
@@ -888,6 +920,10 @@ for item in "$OUTPUT_DIR"/*.app "$OUTPUT_DIR/ultramsg"; do
     fw_count=$(find "$fw_dir" -name '*.dylib' 2>/dev/null | wc -l | tr -d ' ')
     echo "    $(basename "$item"): $total total, Frameworks ${fw_size:-0} in $fw_count dylibs"
     SIZE_TABLE+=$'\n'"| $(basename "$item") | $total | ${fw_size:-0} | $fw_count |"
+done
+for dmg in "$OUTPUT_DIR"/*.dmg; do
+    [ -f "$dmg" ] || continue
+    SIZE_TABLE+=$'\n'"| **$(basename "$dmg")** (download) | $(du -sh "$dmg" | cut -f1) | | |"
 done
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     {
