@@ -26,3 +26,9 @@
   is signed like the apps, and on `main` is notarized and stapled as well.
   `hdiutil create` gets three tries against the runners' occasional "Resource
   busy".
+- **`package_and_notarize-macos.sh` no longer carries notarization
+  credentials.** It exported the Apple ID, team ID and an app-specific
+  password written into the script, so every reader of the repository had
+  them. It now takes `APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_PASSWORD` from
+  the environment and stops with a message when one is missing. The old
+  password is still in the git history and has to be revoked at Apple.
