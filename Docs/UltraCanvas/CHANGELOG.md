@@ -1,3 +1,29 @@
+#### 2026-10-02 *0.9.129*
+- **The file dialog can show its filters as toggle buttons.** With
+  `FileDialogConfig::filterToggles` (or `FileDialogOptions::SetFilterToggles`
+  through `UltraCanvasFileLoader`) the "Files of type" dropdown becomes a
+  "Show:" row of toggle buttons, one per filter, labelled with the filter's
+  name and with its extensions in the tooltip. Any number can be on, the
+  listing shows the files any of them matches, and the last one on cannot be
+  switched off. All start on except an "All files" (`*`) filter. It is for an
+  Open dialog whose filters are kinds of file (images, audio, video ...) and
+  would otherwise be a dropdown of endless extension lists. A native dialog
+  has no toggles, so `UltraCanvasFileLoader` hands it the same filters as a
+  list headed by "All supported files". The listing's filter now holds a copy
+  of the filters in force, so a toggle change applies to a new predicate
+  rather than editing one the listing may be running.
+- **`UltraCanvasMediaViewer`'s Open dialog uses the toggles: Images, Audio,
+  Video, Documents, Text, All files.** Its only filter had been a short list
+  of picture formats, so in the framework dialog every video, document and
+  text file the viewer opens was hidden. Each button now holds every
+  extension of that kind the viewer opens, worked out at run time from the
+  checks that decide what browsing a folder shows (a codec or reader a plugin
+  registers is included) and sorted by the viewer's own `ClassifyFile`:
+  vector drawings and 3D models are Images; PDFs, spreadsheets, e-books,
+  `.ucd` and fonts are Documents; Text is plain text, markup and every
+  programming language the syntax highlighter knows. A kind the build cannot
+  show (no video backend) gets no button.
+
 #### 2026-10-02 *0.9.128*
 - **A hook now enforces the PR number in the chat title.** `.claude/hooks/check-chat-title.sh` runs on `PostToolUse` for `mcp__github__create_pull_request` and `mcp__claude-code-remote__set_session_title`, and on `Stop`, in Claude Code Remote sessions only. Opening a PR records its number in a per-session file under `.git/`, so nothing appears in the working tree, and puts the rename instruction in front of the session with the number filled in. Each rename records the number the title starts with. A bare `#628` with no words after it does not count. At `Stop` the hook takes the PR the session opened, or the one its closing line names with ` — open as PR #<n>` (that also catches a PR opened from the Claude UI), and blocks once when the title was never given that number. A second stop goes through, so a title someone set by hand only costs one line of explanation. `AGENTS.md` rule 7 describes it.
 
