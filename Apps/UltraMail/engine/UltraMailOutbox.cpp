@@ -1,4 +1,10 @@
 // Apps/UltraMail/engine/UltraMailOutbox.cpp
+// Version: 0.7.0 - withdrawn messages (migration 4): a deleted or replaced
+//                  message whose Drafts copy is not deleted yet; the copy
+//                  is expunged (UID EXPUNGE) once flagged \Deleted
+// Version: 0.6.0 - the Sent copy, DeleteMessage, ServerFilesSentMail, held
+//                  messages; a message is sent with the Message-ID its
+//                  copies carry
 // Version: 0.5.0 - OutboxRetryClock
 // Version: 0.4.0 - a Drafts copy until the message is sent (migration 3: the
 //                  Message-ID, reply headers and Drafts folder of each message)
@@ -10,6 +16,7 @@
 #include <UltraDatabase/UltraDatabase.h>
 #include <UltraNet/UltraNetMime.h>
 
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <random>
@@ -63,7 +70,7 @@ std::string NewMessageId(const std::string& fromAddr) {
     return "<" + std::string(buffer) + "@" + domain + ">";
 }
 
-std::string BuildDraftCopy(const OutboxItem& item) {
+std::string BuildMessageCopy(const OutboxItem& item, bool waiting) {
     const Draft& d = item.draft;
     UltraNetMimeBuildInput in;
     in.from = d.fromName.empty() ? d.fromAddr : (d.fromName + " <" + d.fromAddr + ">");
@@ -94,8 +101,22 @@ std::string BuildDraftCopy(const OutboxItem& item) {
     in.messageId = item.messageId;
     if (!d.inReplyTo.empty())  in.extraHeaders["In-Reply-To"] = d.inReplyTo;
     if (!d.references.empty()) in.extraHeaders["References"] = d.references;
-    in.extraHeaders["X-UltraMail-Outbox"] = "waiting to be sent";
+    if (waiting) in.extraHeaders["X-UltraMail-Outbox"] = "waiting to be sent";
     return UltraNet_MimeBuild(in);
+}
+
+bool ServerFilesSentMail(const std::string& imapHost) {
+    std::string host;
+    for (char c : imapHost) host += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    auto endsWith = [&host](const std::string& tail) {
+        return host.size() >= tail.size()
+            && host.compare(host.size() - tail.size(), tail.size(), tail) == 0;
+    };
+    // Gmail files everything its SMTP server sends; Exchange Online
+    // (Outlook.com, Hotmail, Microsoft 365) files what an SMTP AUTH client sends.
+    return endsWith("gmail.com") || endsWith("googlemail.com")
+        || endsWith("outlook.com") || endsWith("office365.com") || endsWith("hotmail.com")
+        || endsWith("live.com");
 }
 
 UltraDbResult OutboxStore::Open(const std::string& connectionName,
@@ -143,6 +164,11 @@ UltraDbResult OutboxStore::Open(const std::string& connectionName,
           "ALTER TABLE outbox ADD COLUMN drafts_folder TEXT DEFAULT '';"
           "ALTER TABLE outbox ADD COLUMN in_reply_to TEXT DEFAULT '';"
           "ALTER TABLE outbox ADD COLUMN refs TEXT DEFAULT '';" },
+        // A message deleted from the outbox (or replaced by a corrected one)
+        // whose Drafts copy could not be deleted yet: never sent, kept only
+        // until a later pass reaches the server and deletes the copy.
+        { 4, "withdrawn messages",
+          "ALTER TABLE outbox ADD COLUMN withdrawn INTEGER DEFAULT 0;" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -201,13 +227,21 @@ UltraDbResult OutboxStore::LoadAttachments(OutboxItem& item) const {
 }
 
 UltraDbResult OutboxStore::ListPending(std::vector<OutboxItem>& out) const {
+    return List(out, /*withdrawn=*/false);
+}
+
+UltraDbResult OutboxStore::ListWithdrawn(std::vector<OutboxItem>& out) const {
+    return List(out, /*withdrawn=*/true);
+}
+
+UltraDbResult OutboxStore::List(std::vector<OutboxItem>& out, bool withdrawn) const {
     out.clear();
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_,
         "SELECT id, account_id, server_url, from_name, from_addr, to_addrs, cc_addrs, "
         "bcc_addrs, subject, body, body_is_html, text_body, attempts, last_error, "
         "message_id, drafts_folder, in_reply_to, refs "
-        "FROM outbox ORDER BY id", rs);
+        "FROM outbox WHERE withdrawn = ? ORDER BY id", { withdrawn ? 1 : 0 }, rs);
     if (!q) return q;
     for (const auto& row : rs) {
         OutboxItem it;
@@ -228,9 +262,13 @@ UltraDbResult OutboxStore::ListPending(std::vector<OutboxItem>& out) const {
         it.draft.inReplyTo  = row["in_reply_to"].AsString();
         it.draft.references = row["refs"].AsString();
         it.messageId    = row["message_id"].AsString();
+        it.draft.messageId = it.messageId;   // sent with the ID its copies carry
         it.draftsFolder = row["drafts_folder"].AsString();
-        UltraDbResult ar = LoadAttachments(it);
-        if (!ar) return ar;
+        it.withdrawn    = withdrawn;
+        if (!withdrawn) {   // a withdrawn message is never sent: no parts needed
+            UltraDbResult ar = LoadAttachments(it);
+            if (!ar) return ar;
+        }
         out.push_back(std::move(it));
     }
     return UltraDbResult::Ok();
@@ -261,13 +299,41 @@ UltraDbResult OutboxStore::MarkDraftSaved(int64_t id, const std::string& folder)
                         { folder, id });
 }
 
+UltraDbResult OutboxStore::MarkWithdrawn(int64_t id) {
+    return UltraDb_Exec(connection_, "UPDATE outbox SET withdrawn = 1 WHERE id = ?", { id });
+}
+
 UltraDbResult OutboxStore::PendingCount(int& out) const {
+    return Count(out, /*withdrawn=*/false);
+}
+
+UltraDbResult OutboxStore::WithdrawnCount(int& out) const {
+    return Count(out, /*withdrawn=*/true);
+}
+
+UltraDbResult OutboxStore::Count(int& out, bool withdrawn) const {
     out = 0;
     UltraDbResultSet rs;
-    UltraDbResult q = UltraDb_Query(connection_, "SELECT COUNT(*) AS n FROM outbox", rs);
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT COUNT(*) AS n FROM outbox WHERE withdrawn = ?", { withdrawn ? 1 : 0 }, rs);
     if (!q) return q;
     if (!rs.Empty()) out = rs.Row(0)["n"].AsInt();
     return UltraDbResult::Ok();
+}
+
+void OutboxStore::SetHeld(int64_t id, bool held) {
+    std::lock_guard<std::mutex> lock(held_->mutex);
+    if (held) held_->ids.insert(id); else held_->ids.erase(id);
+}
+
+bool OutboxStore::IsHeld(int64_t id) const {
+    std::lock_guard<std::mutex> lock(held_->mutex);
+    return held_->ids.count(id) != 0;
+}
+
+int OutboxStore::HeldCount() const {
+    std::lock_guard<std::mutex> lock(held_->mutex);
+    return static_cast<int>(held_->ids.size());
 }
 
 Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp,
@@ -279,23 +345,24 @@ Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp,
     });
 }
 
-bool Outbox::SaveDraftCopy(OutboxItem& item, const DraftsKeeper& drafts, FlushStats& stats) {
+bool Outbox::SaveDraftCopy(OutboxItem& item, const ServerCopies& copies, FlushStats& stats) {
     if (item.HasDraftCopy()) return true;
-    if (!drafts.imap || !drafts.prepare) return false;
+    if (!copies.imap || !copies.prepare) return false;
     // A message queued before migration 3 has no Message-ID yet: give it one,
     // or its copy could never be found again to delete.
     if (item.messageId.empty()) {
         item.messageId = NewMessageId(item.draft.fromAddr);
+        item.draft.messageId = item.messageId;
         store_.SetMessageId(item.id, item.messageId);
     }
-    std::string serverUrl, folder;
-    UltraNetMailOptions opts;
-    UltraNetResult r = drafts.prepare(item.accountId, serverUrl, folder, opts);
-    if (r && folder.empty())
+    ServerFolders where;
+    UltraNetResult r = copies.prepare(item.accountId, where);
+    if (r && where.draftsFolder.empty())
         r = UltraNetResult::Error(UltraNetResultCode::InvalidState, "no Drafts folder is known");
-    if (r) r = drafts.imap->AppendMessage(serverUrl, folder, BuildDraftCopy(item),
-                                          UltraNetMailFlags::Draft | UltraNetMailFlags::Seen, opts);
-    if (r) r = store_.MarkDraftSaved(item.id, folder)
+    if (r) r = copies.imap->AppendMessage(where.serverUrl, where.draftsFolder, BuildDraftCopy(item),
+                                          UltraNetMailFlags::Draft | UltraNetMailFlags::Seen,
+                                          where.options);
+    if (r) r = store_.MarkDraftSaved(item.id, where.draftsFolder)
                    ? UltraNetResult::Ok()
                    : UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                            "the outbox could not record the Drafts copy");
@@ -304,52 +371,120 @@ bool Outbox::SaveDraftCopy(OutboxItem& item, const DraftsKeeper& drafts, FlushSt
         stats.lastDraftFailure = r;
         return false;
     }
-    item.draftsFolder = folder;
+    item.draftsFolder = where.draftsFolder;
     stats.draftsSaved++;
     return true;
 }
 
-void Outbox::RemoveDraftCopy(const OutboxItem& item, const DraftsKeeper& drafts, FlushStats& stats) {
-    if (!item.HasDraftCopy() || !drafts.imap || !drafts.prepare) return;
-    std::string serverUrl, folder;
-    UltraNetMailOptions opts;
-    UltraNetResult r = drafts.prepare(item.accountId, serverUrl, folder, opts);
+bool Outbox::RemoveDraftCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats) {
+    if (!item.HasDraftCopy()) return true;
+    if (!copies.imap || !copies.prepare) return false;
+    ServerFolders where;
+    UltraNetResult r = copies.prepare(item.accountId, where);
     std::vector<UltraNetMailEnvelope> envelopes;
-    if (r) r = drafts.imap->FetchEnvelopes(serverUrl, item.draftsFolder, 0, envelopes, opts);
+    if (r) r = copies.imap->FetchEnvelopes(where.serverUrl, item.draftsFolder, 0, envelopes,
+                                           where.options);
     if (!r) {
         stats.draftFailures++;
         stats.lastDraftFailure = r;
-        return;
+        return false;
     }
+    // No copy there any more (deleted by hand, or on another device) is fine.
+    bool removed = true;
     const std::string wanted = BareMessageId(item.messageId);
     for (const auto& e : envelopes) {
         if (BareMessageId(e.messageId) != wanted) continue;
-        UltraNetResult del = drafts.imap->StoreFlags(serverUrl, item.draftsFolder, e.uid,
-                                                     UltraNetMailFlags::Deleted, true, opts);
+        UltraNetResult del = copies.imap->StoreFlags(where.serverUrl, item.draftsFolder, e.uid,
+                                                     UltraNetMailFlags::Deleted, true, where.options);
         if (!del) {
             stats.draftFailures++;
             stats.lastDraftFailure = del;
+            removed = false;
+            continue;
         }
+        // Gone for good, not left flagged for a client that shows deleted
+        // messages. Just this one: a server without UIDPLUS refuses, and the
+        // copy stays flagged \Deleted - which is still deleted.
+        copies.imap->ExpungeMessage(where.serverUrl, item.draftsFolder, e.uid, where.options);
+    }
+    return removed;
+}
+
+int Outbox::RemoveWithdrawnCopies(const ServerCopies& copies, FlushStats& stats) {
+    std::vector<OutboxItem> withdrawn;
+    if (!store_.ListWithdrawn(withdrawn)) return 0;
+    int done = 0;
+    for (const auto& item : withdrawn) {
+        if (!RemoveDraftCopy(item, copies, stats)) continue;   // next pass
+        store_.Remove(item.id);
+        ++done;
+    }
+    return done;
+}
+
+void Outbox::SaveSentCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats) {
+    if (!copies.imap || !copies.prepare) return;
+    ServerFolders where;
+    UltraNetResult r = copies.prepare(item.accountId, where);
+    if (r && where.sentFolder.empty()) return;   // none wanted: the server files it
+    if (r) r = copies.imap->AppendMessage(where.serverUrl, where.sentFolder,
+                                          BuildMessageCopy(item, /*waiting=*/false),
+                                          UltraNetMailFlags::Seen, where.options);
+    if (r) {
+        stats.sentCopies++;
+    } else {
+        stats.sentCopyFailures++;
+        stats.lastSentCopyFailure = r;
     }
 }
 
-Outbox::FlushStats Outbox::SaveDraftCopies(const DraftsKeeper& drafts) {
+Outbox::FlushStats Outbox::SaveDraftCopies(const ServerCopies& copies) {
     FlushStats stats;
+    RemoveWithdrawnCopies(copies, stats);
     std::vector<OutboxItem> pending;
     if (!store_.ListPending(pending)) return stats;
-    for (auto& item : pending) SaveDraftCopy(item, drafts, stats);
+    for (auto& item : pending) SaveDraftCopy(item, copies, stats);
     return stats;
 }
 
+UltraDbResult Outbox::DeleteMessage(int64_t id, const ServerCopies* copies,
+                                    DeleteOutcome* outcome) {
+    if (outcome) *outcome = DeleteOutcome::AlreadyGone;
+    std::vector<OutboxItem> pending;
+    if (UltraDbResult r = store_.ListPending(pending); !r) return r;
+    for (const auto& item : pending) {
+        if (item.id != id) continue;
+        // Withdrawn first: from here on it is never sent, whatever happens
+        // to its copy.
+        if (UltraDbResult w = store_.MarkWithdrawn(id); !w) return w;
+        FlushStats ignored;
+        if (copies && RemoveDraftCopy(item, *copies, ignored)) {
+            if (outcome) *outcome = DeleteOutcome::Deleted;
+            return store_.Remove(id);
+        }
+        if (!item.HasDraftCopy()) {   // nothing on the server to wait for
+            if (outcome) *outcome = DeleteOutcome::Deleted;
+            return store_.Remove(id);
+        }
+        // The server cannot be reached now: a later pass deletes the copy.
+        if (outcome) *outcome = DeleteOutcome::CopyLeftForLater;
+        return UltraDbResult::Ok();
+    }
+    return UltraDbResult::Ok();   // already gone (sent meanwhile)
+}
+
 Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp, const OptionsResolver& prepare,
-                                 const DraftsKeeper* drafts) {
+                                 const ServerCopies* copies) {
     FlushStats stats;
+    if (copies) RemoveWithdrawnCopies(*copies, stats);
     std::vector<OutboxItem> pending;
     if (!store_.ListPending(pending)) return stats;
     MailSender sender(smtp);
     for (auto& item : pending) {
+        // Being corrected in a compose window: the new version replaces it.
+        if (store_.IsHeld(item.id)) continue;
         // The Drafts copy first: if the send fails, the message is in Drafts.
-        if (drafts) SaveDraftCopy(item, *drafts, stats);
+        if (copies) SaveDraftCopy(item, *copies, stats);
         UltraNetMailOptions opts;
         opts.useTls = true;   // the resolver may relax this for a plaintext server
         UltraNetResult r = prepare ? prepare(item.accountId, opts) : UltraNetResult::Ok();
@@ -359,7 +494,10 @@ Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp, const OptionsResolve
         const std::string serverUrl = opts.serverUrl.empty() ? item.serverUrl : opts.serverUrl;
         if (r) r = sender.Send(item.draft, serverUrl, opts);
         if (r) {
-            if (drafts) RemoveDraftCopy(item, *drafts, stats);
+            if (copies) {
+                SaveSentCopy(item, *copies, stats);
+                RemoveDraftCopy(item, *copies, stats);
+            }
             store_.Remove(item.id);
             stats.sent++;
         } else {

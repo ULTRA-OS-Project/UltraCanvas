@@ -4,6 +4,8 @@
 // flag <-> IMAP-token conversion and SPECIAL-USE role detection. Kept
 // header-only and free of libcurl / UltraNet-link dependencies so the logic is
 // unit-testable without a live server.
+// Version: 0.3.0 - UidExpungeCommand
+// Version: 0.2.0 - RawHeaderValue, SearchByMessageIdCommand (APPEND's flags)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -53,6 +55,60 @@ inline std::vector<uint32_t> ParseSearchUids(const std::string& body) {
         pos = static_cast<std::size_t>(end - body.c_str());
     }
     return uids;
+}
+
+// The value of the first `name` header of a raw RFC 5322 message, unfolded
+// and trimmed ("" when it has none). Only the header block is looked at.
+inline std::string RawHeaderValue(const std::string& raw, const std::string& name) {
+    auto lower = [](std::string t) {
+        for (char& c : t) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return t;
+    };
+    const std::string wanted = lower(name) + ":";
+    std::size_t lineStart = 0;
+    while (lineStart < raw.size()) {
+        std::size_t lineEnd = raw.find('\n', lineStart);
+        if (lineEnd == std::string::npos) lineEnd = raw.size();
+        std::string line = raw.substr(lineStart, lineEnd - lineStart);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) break;   // end of the header block
+        if (lower(line.substr(0, wanted.size())) == wanted) {
+            std::string value = line.substr(wanted.size());
+            // Folded continuation lines start with whitespace.
+            std::size_t next = lineEnd + 1;
+            while (next < raw.size() && (raw[next] == ' ' || raw[next] == '\t')) {
+                std::size_t end = raw.find('\n', next);
+                if (end == std::string::npos) end = raw.size();
+                std::string more = raw.substr(next, end - next);
+                if (!more.empty() && more.back() == '\r') more.pop_back();
+                value += more;
+                next = end + 1;
+            }
+            std::size_t b = value.find_first_not_of(" \t");
+            std::size_t e = value.find_last_not_of(" \t");
+            return b == std::string::npos ? std::string() : value.substr(b, e - b + 1);
+        }
+        lineStart = lineEnd + 1;
+    }
+    return {};
+}
+
+// "UID SEARCH HEADER Message-ID \"<id@host>\"" - how a message just uploaded
+// with APPEND is found again (libcurl does not report its UID), so its flags
+// can be set. The ID is quoted with \ and " escaped.
+inline std::string SearchByMessageIdCommand(const std::string& messageId) {
+    std::string quoted;
+    for (char c : messageId) {
+        if (c == '"' || c == '\\') quoted += '\\';
+        if (c != '\r' && c != '\n') quoted += c;
+    }
+    return "UID SEARCH HEADER Message-ID \"" + quoted + "\"";
+}
+
+// "UID EXPUNGE <uid>" (RFC 4315): removes that one message, if it is flagged
+// \Deleted - a plain EXPUNGE would remove every message flagged so.
+inline std::string UidExpungeCommand(uint32_t uid) {
+    return "UID EXPUNGE " + std::to_string(uid);
 }
 
 // ---- flags <-> IMAP tokens -------------------------------------------------

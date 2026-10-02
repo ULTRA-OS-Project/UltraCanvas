@@ -1,4 +1,7 @@
 // UltraCanvas/Plugins/UltraNet/imap/ImapPlugin.cpp
+// Version: 0.4.0 - ExpungeMessage (UID EXPUNGE)
+// Version: 0.3.0 - AppendMessage sets the flags it is given (found again by
+//                  Message-ID, then UID STORE)
 // Version: 0.2.0
 // IMAP / IMAPS plug-in. Implements the full IMailboxProtocolPlugin surface on
 // top of libcurl's native IMAP support: folder listing, mailbox STATUS,
@@ -417,6 +420,18 @@ public:
         return RunCommand(base + EncodeMailboxPath(folder), cmd.str(), options, tls, body);
     }
 
+    UltraNetResult ExpungeMessage(const std::string& serverUrl,
+                                  const std::string& folder,
+                                  uint32_t uid,
+                                  const UltraNetMailOptions& options) override {
+        std::string base; bool tls = false;
+        if (!ParseServerBase(serverUrl, base, tls))
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
+        std::string body;
+        return RunCommand(base + EncodeMailboxPath(folder), UidExpungeCommand(uid), options, tls,
+                          body);
+    }
+
     UltraNetResult MoveMessage(const std::string& serverUrl,
                                const std::string& srcFolder,
                                uint32_t uid,
@@ -434,10 +449,11 @@ public:
     UltraNetResult AppendMessage(const std::string& serverUrl,
                                  const std::string& folder,
                                  const std::string& rawMessage,
-                                 UltraNetMailFlags /*flags*/,
+                                 UltraNetMailFlags flags,
                                  const UltraNetMailOptions& options) override {
-        // NOTE: flags on APPEND are not transmitted in this pass (libcurl has no
-        // direct APPEND-flags option); callers can StoreFlags afterwards.
+        // libcurl's APPEND takes no flags, so they are set right after it:
+        // the message is found again by its Message-ID (libcurl does not
+        // report the UID the server gave it) and stored with UID STORE.
         std::string base; bool tls = false;
         if (!ParseServerBase(serverUrl, base, tls))
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
@@ -458,7 +474,30 @@ public:
         CURLcode rc = ultranet_curlerror::Perform(h.get(), why, &diagnostics);
         if (rc != CURLE_OK)
             return ultranet_curlerror::Error(MapCurlError(rc), why, diagnostics);
+        if (flags != UltraNetMailFlags::None) SetFlagsOfAppended(serverUrl, folder, rawMessage,
+                                                                 flags, options);
         return UltraNetResult::Ok();
+    }
+
+    // Best effort: the message is uploaded whatever happens here - reporting a
+    // failure would make the caller upload it a second time. A message
+    // without a Message-ID cannot be found again and keeps no flags.
+    void SetFlagsOfAppended(const std::string& serverUrl, const std::string& folder,
+                            const std::string& rawMessage, UltraNetMailFlags flags,
+                            const UltraNetMailOptions& options) {
+        const std::string messageId = RawHeaderValue(rawMessage, "Message-ID");
+        if (messageId.empty()) return;
+        std::string base; bool tls = false;
+        if (!ParseServerBase(serverUrl, base, tls)) return;
+        std::string body;
+        if (!RunCommand(base + EncodeMailboxPath(folder), SearchByMessageIdCommand(messageId),
+                        options, tls, body))
+            return;
+        const std::vector<uint32_t> uids = ParseSearchUids(body);
+        if (uids.empty()) return;
+        // The newest copy: an earlier one with the same ID keeps its flags.
+        const uint32_t uid = *std::max_element(uids.begin(), uids.end());
+        StoreFlags(serverUrl, folder, uid, flags, /*set=*/true, options);
     }
 
     UltraNetResult FetchAllFlags(

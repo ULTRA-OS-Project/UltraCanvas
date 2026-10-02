@@ -3,6 +3,7 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.4.1 - IMailboxProtocolPlugin::ExpungeMessage
 // Version: 0.4.0 (Stage 3)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -343,6 +344,22 @@ public:
         (void)serverUrl; (void)folder; (void)onFlags; (void)options;
         return UltraNetResult::Error(UltraNetResultCode::PluginError,
                                      "FetchAllFlags not implemented");
+    }
+
+    // Removes one message already flagged \Deleted from the folder for good
+    // (UID EXPUNGE, RFC 4315 UIDPLUS) - that message only, never the others
+    // flagged \Deleted there, which another client may still undelete. A
+    // server without UIDPLUS refuses it and the message stays flagged. The
+    // default reports "not implemented" (test fakes, backends without it).
+    // Added last, like FetchAllFlags, so the existing vtable is undisturbed.
+    virtual UltraNetResult ExpungeMessage(
+        const std::string& serverUrl,
+        const std::string& folder,
+        uint32_t uid,
+        const UltraNetMailOptions& options) {
+        (void)serverUrl; (void)folder; (void)uid; (void)options;
+        return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                     "ExpungeMessage not implemented");
     }
 };
 
