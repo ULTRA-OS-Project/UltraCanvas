@@ -1,3 +1,13 @@
+#### 2026-10-02 *0.10.16*
+- **Quote + and Quote − in the compose window's formatting toolbar.** They
+  are the two quote-mark buttons at the end of the first row. They move the
+  paragraph at the cursor, or every selected paragraph, one quote level in
+  or out.
+  - Use them to place an answer between quoted lines of a reply, or to take
+    a quoted line out of the quote.
+  - Each click can be undone.
+  - The signature editor's toolbar does not show them.
+
 #### 2026-10-01 *0.10.15*
 - **The message cache no longer only grows.** Every message body UltraMail
   downloads is kept as `mail/<account>/<folder>/<uid>.eml`, and none was ever

@@ -314,6 +314,45 @@ static void TestEditingQuotes() {
     CHECK_EQ(doc->blocks[3].quoteLevel, 1);
 }
 
+static void TestQuoteLevelCommands() {
+    auto doc = std::make_shared<UCRichDocument>(
+        ImportHTMLToRichDocument("<p>one</p><p>two</p><p>three</p>"));
+    UCRichDocumentEditor editor;
+    editor.SetDocument(doc);
+
+    // Every block the selection touches moves; one that it only ends at the
+    // start of does not.
+    editor.SetSelection(RichDocPosition(0, 1), RichDocPosition(2, 0));
+    editor.IncreaseQuoteLevel();
+    CHECK_EQ(doc->blocks[0].quoteLevel, 1);
+    CHECK_EQ(doc->blocks[1].quoteLevel, 1);
+    CHECK_EQ(doc->blocks[2].quoteLevel, 0);
+    editor.IncreaseQuoteLevel();
+    CHECK_EQ(doc->blocks[1].quoteLevel, 2);
+
+    // Just the caret's paragraph, one level out; undo puts it back.
+    editor.SetCaret(RichDocPosition(1, 2));
+    editor.DecreaseQuoteLevel();
+    CHECK_EQ(doc->blocks[1].quoteLevel, 1);
+    CHECK_EQ(doc->blocks[0].quoteLevel, 2);
+    CHECK(editor.Undo());
+    CHECK_EQ(doc->blocks[1].quoteLevel, 2);
+
+    // Out of an unquoted paragraph there is nowhere to go, and no undo step
+    // is recorded for it.
+    editor.SetCaret(RichDocPosition(2, 0));
+    editor.DecreaseQuoteLevel();
+    CHECK_EQ(doc->blocks[2].quoteLevel, 0);
+    CHECK(editor.Undo());                                       // undoes the earlier change instead
+    CHECK_EQ(doc->blocks[1].quoteLevel, 1);
+    CHECK_EQ(doc->blocks[0].quoteLevel, 1);
+
+    // The level has a ceiling. (Undo put the caret back where its edit was.)
+    editor.SetCaret(RichDocPosition(2, 0));
+    for (int i = 0; i < 20; ++i) editor.IncreaseQuoteLevel();
+    CHECK_EQ(doc->blocks[2].quoteLevel, 8);
+}
+
 int main() {
     TestParagraphsAndRuns();
     TestLineBreaksAndDivs();
@@ -325,6 +364,7 @@ int main() {
     TestTables();
     TestSerializingQuotes();
     TestEditingQuotes();
+    TestQuoteLevelCommands();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

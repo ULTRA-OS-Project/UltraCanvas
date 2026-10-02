@@ -45441,7 +45441,9 @@ one bar per level at the block's left and indents it by `style.quoteIndent`
 per level; `ToHTML` nests `<blockquote type="cite">`, `ToPlainText` and
 `ToMarkdown` put `> ` per level in front of the lines. Editing follows mail
 programs: Enter keeps the level, Enter on an empty quoted line and Backspace
-at the start of a quoted block each step one level out (undoable).
+at the start of a quoted block each step one level out (undoable). For a
+toolbar, `IncreaseQuoteLevel()` / `DecreaseQuoteLevel()` move every block the
+selection touches (or the caret's) one level in or out, between 0 and 8.
 
 UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
 the reader produced, hands it to the element, and hands the same object back to

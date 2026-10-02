@@ -18,7 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
-// Version: 1.1.0
+// Version: 1.2.0
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -268,6 +268,8 @@ public:
     void ToggleNumberedList();
     void IndentList();
     void OutdentList();
+    void IncreaseQuoteLevel();                // quote bars (RichDocBlock::quoteLevel)
+    void DecreaseQuoteLevel();
     void ToggleBlockQuote();
     void ToggleCodeBlock(const std::string& language = "");
     // Named styles (UCRichDocument::styles; a word processor's basic set

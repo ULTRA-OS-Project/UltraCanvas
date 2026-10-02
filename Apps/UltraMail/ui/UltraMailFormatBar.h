@@ -1,13 +1,15 @@
 // Apps/UltraMail/ui/UltraMailFormatBar.h
 // The formatting toolbar for an UltraCanvasRichTextEdit, shared by the
 // compose window and the signature editor. Two rows:
-//   * characters: bold, italic, underline, strikethrough, font, size, colour;
+//   * characters: bold, italic, underline, strikethrough, font, size, colour,
+//     and Quote + / Quote − when the host asks for them (Options::quoteTools);
 //   * paragraphs: left / centre / right, bulleted and numbered lists, a
 //     horizontal line, Link… (a web page or an e-mail address) and Picture…
 //     (inside the line at the cursor), then a stretch spacer the host may put
 //     its own controls after (the compose window's Plain text | Formatted).
 // Every tool acts on the editor the host names at the moment of the click,
 // then gives it the keyboard back.
+// Version: 0.2.0 - Quote + / Quote − (Options::quoteTools)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -36,6 +38,10 @@ public:
         std::function<UltraCanvas::UltraCanvasRichTextEdit*()> editor;
         // The window the Link… and Picture… dialogs belong to.
         UltraCanvas::UltraCanvasWindowBase* dialogParent = nullptr;
+        // Quote + / Quote − (end of the character row): the paragraphs at the
+        // cursor one quote level in or out (a reply's quote bars). For the
+        // compose window; a signature has no quotes.
+        bool quoteTools = false;
     };
 
     // Builds both rows into `root`.
