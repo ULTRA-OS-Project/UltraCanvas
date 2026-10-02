@@ -3,6 +3,9 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.10.1 - Edit / Delete wait for a running send (WhenOutboxIdle)
+// Version: 0.10.0 - the Outbox window (OpenOutbox), outbox work in one queue
+//                   (RunOutboxJob)
 // Version: 0.9.0 - server settings per account (provider table, autoconfig
 //                  lookup, manual page with a login check); stored on the account.
 // Last Modified: 2026-09-10
@@ -17,6 +20,7 @@
 #include "UltraMailMailView.h"
 #include "UltraMailAccountWizard.h"
 #include "UltraMailContactsView.h"
+#include "UltraMailOutboxView.h"
 #include "UltraMailComposeWindow.h"
 #include "UltraMailSignature.h"
 #include "UltraMailPassphraseDialog.h"
@@ -143,6 +147,12 @@ private:
     // message and send it twice; a flush asked for meanwhile runs next.
     void FlushOutboxInBackground(std::shared_ptr<IUltraNetPlugin> plugin,
                                  std::function<void(const Outbox::FlushStats&)> onDone);
+    // Work on the outbox - a send pass, deleting a message - runs here: on a
+    // worker, one job at a time (a job asked for meanwhile runs next, in
+    // order), with the server copies snapshotted on the UI thread as it
+    // starts. `onDone` runs on the UI thread afterwards.
+    using OutboxJob = std::function<void(Outbox&, const ServerCopies*)>;
+    void RunOutboxJob(OutboxJob job, const std::string& status, std::function<void()> onDone);
     // Browser sign-in for an OAuth2 provider ("google"): opens the consent page,
     // waits (with a cancellable dialog) for the redirect on a worker thread,
     // stores the tokens in the vault — which must be open — and runs the first
@@ -222,7 +232,10 @@ private:
     // Open a compose window for the given draft (new / reply / forward). Every
     // window has its own ComposeView, so several can be open at once; the
     // returned view lives until its window closes.
-    ComposeView* OpenComposer(const Draft& draft);
+    // `replacesOutboxId`: the window corrects that waiting message (the
+    // outbox window's Edit), held meanwhile; once the new version is queued
+    // the old one is deleted, and closing the window unsent lets it go again.
+    ComposeView* OpenComposer(const Draft& draft, int64_t replacesOutboxId = 0);
     // Forgets a compose window once it has closed (on the next UI turn, never
     // inside the window's own close callback).
     void RetireComposer(UltraCanvas::UltraCanvasWindow* window);
@@ -286,7 +299,24 @@ private:
     // and report the outcome. True once the message is safely in the outbox,
     // so its compose window can close; false when it was not queued (no
     // recipient, no outbox) and the draft would be lost with the window.
-    bool HandleSendDraft(const Draft& draft);
+    // `replacesOutboxId`: the waiting message this one corrects, deleted
+    // from the outbox (and from Drafts) once this one is queued.
+    bool HandleSendDraft(const Draft& draft, int64_t replacesOutboxId = 0);
+    // The Outbox window (toolbar "Outbox (N)"): the waiting messages, with
+    // Send now, Edit and Delete. One at a time.
+    void OpenOutbox();
+    // The toolbar button's count (hidden when nothing waits) and the open
+    // Outbox window's list, after anything that changes the outbox.
+    void RefreshOutbox();
+    // Delete asks first; the message and its Drafts copy go on a worker.
+    void ConfirmDeleteFromOutbox(int64_t id);
+    // `quiet`: no word on the outcome (Edit's replacement). A Drafts copy the
+    // server cannot be reached for now is deleted by a later pass.
+    void DeleteFromOutbox(int64_t id, bool quiet);
+    // Runs `action` once no outbox job runs or waits (now, when idle).
+    void WhenOutboxIdle(std::function<void()> action);
+    // A waiting message in a compose window, to correct and send again.
+    void EditFromOutbox(int64_t id);
     // Send what waits in the outbox (the Retry button's action), opening the
     // vault first. `recipients` names the message in the report ("" = the
     // outbox as a whole).
@@ -314,10 +344,12 @@ private:
     // when nothing waits any more.
     void NoteOutboxPass();
     int OutboxPending() const;
-    // The IMAP side of the Drafts copies for a send worker: the IMAP plug-in
+    // Deleted messages whose Drafts copies are still to be removed.
+    int OutboxWithdrawn() const;
+    // The IMAP side of the server copies for a send worker: the IMAP plug-in
     // (null without it) and, from a snapshot of the accounts taken here on the
-    // UI thread, each account's server, Drafts folder and sign-in.
-    DraftsKeeper MakeDraftsKeeper();
+    // UI thread, each account's server, Drafts and Sent folders and sign-in.
+    ServerCopies MakeServerCopies();
 
     // Run `onUnlocked` with the credential vault open, prompting for the master
     // password first when it is still locked (and re-prompting on a wrong one).
@@ -420,15 +452,21 @@ private:
     // The status line for the selected account: its last failure if it has
     // one, else "Up to date".
     void ShowAccountStatus();
-    // Outbox flushing (FlushOutboxInBackground).
+    // Outbox work (RunOutboxJob): true while a job runs on its worker.
     bool outboxFlushInFlight_ = false;
     OutboxRetryClock outboxRetry_;          // when the outbox tries again by itself
     bool outboxRetryTimerStarted_ = false;
-    struct PendingFlush {
-        std::shared_ptr<IUltraNetPlugin>                 plugin;
-        std::function<void(const Outbox::FlushStats&)>   onDone;
+    struct PendingOutboxJob {
+        OutboxJob             job;
+        std::string           status;
+        std::function<void()> onDone;
     };
-    std::vector<PendingFlush> pendingFlushes_;
+    std::vector<PendingOutboxJob> pendingOutboxJobs_;
+    // Messages a queued DeleteFromOutbox will delete: a pass that fails to
+    // send one of them does not warn about it.
+    std::set<int64_t> outboxDeleting_;
+    // Run once the queue is empty (WhenOutboxIdle).
+    std::vector<std::function<void()>> whenOutboxIdle_;
 
     // App-wide view preferences (reading pane on/off), remembered between runs
     // in preferences.ini under the data directory.
@@ -497,6 +535,7 @@ private:
     struct ComposeSession {
         std::shared_ptr<UltraCanvas::UltraCanvasWindow> window;
         std::shared_ptr<ComposeView>                    view;
+        int64_t editsOutboxId = 0;   // held while this window corrects it
     };
     std::vector<ComposeSession> composers_;
     SyncScheduler   scheduler_;
@@ -506,6 +545,11 @@ private:
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
     // The Contacts window while it is open (one at a time).
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> contactsWindow_;
+    // The Outbox window while it is open (one at a time), and the toolbar
+    // button that opens it - shown while messages wait.
+    OutboxView      outboxView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> outboxWindow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> outboxButton_;
     // Attachments open in the framework's media viewer (images, PDF, office
     // sheets, text, audio, video, fonts, …); one window, reused per attachment.
     std::unique_ptr<UltraCanvas::UltraCanvasMediaViewerWindow> attachmentViewer_;

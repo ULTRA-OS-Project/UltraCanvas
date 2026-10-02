@@ -39,6 +39,9 @@ struct Draft {
     // into body / textBody / inlineParts for sending.
     std::shared_ptr<UltraCanvas::UCRichDocument> richBody;
     std::vector<Attachment> attachments;
+    // The Message-ID the message is sent with (given when it is queued, so its
+    // copies in Drafts and Sent carry the same one). Empty = the sender makes one.
+    std::string messageId;
     std::string inReplyTo;            // Message-ID being answered
     std::string references;           // References header chain
 };

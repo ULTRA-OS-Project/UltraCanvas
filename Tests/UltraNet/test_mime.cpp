@@ -188,6 +188,24 @@ TEST(mime_encode_address_display_name_only) {
                std::string("Fröhling, Erika <e@x.com>"));
 }
 
+TEST(mime_build_takes_message_id_from_extra_headers) {
+    // An SMTP caller pins the ID through UltraNetMailMessage::headers, so the
+    // copy it files in Sent carries the same one; it is written exactly once.
+    UltraNetMimeBuildInput in;
+    in.from = "erika@example.com"; in.to = {"bob@example.com"};
+    in.subject = "Hi"; in.body = "body";
+    in.extraHeaders["Message-ID"] = "<pinned@example.com>";
+    const std::string raw = UltraNet_MimeBuild(in);
+    REQUIRE(raw.find("Message-ID: <pinned@example.com>\r\n") != std::string::npos);
+    std::size_t count = 0;
+    for (std::size_t at = raw.find("Message-ID:"); at != std::string::npos;
+         at = raw.find("Message-ID:", at + 1)) ++count;
+    REQUIRE_EQ(count, (size_t)1);
+    // An explicit messageId still wins.
+    in.messageId = "<explicit@example.com>";
+    REQUIRE(UltraNet_MimeBuild(in).find("Message-ID: <explicit@example.com>") != std::string::npos);
+}
+
 TEST(mime_build_encodes_address_headers) {
     UltraNetMimeBuildInput in;
     in.from = "Erika Fröhling <erika@example.com>";
