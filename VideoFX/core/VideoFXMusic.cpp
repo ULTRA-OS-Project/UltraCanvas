@@ -1,7 +1,7 @@
 // VideoFX/core/VideoFXMusic.cpp
 // Background music arithmetic: envelope, ducking, slideshow length.
-// Version: 0.4.0
-// Last Modified: 2026-10-01
+// Version: 0.4.1
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include "VideoFXMusic.h"
@@ -25,6 +25,16 @@ bool ValidateMusic(const VideoFXMusic& m, std::string& error) {
         return false;
     }
     if (!InRange(m.duckingLevel, 0.0, 1.0)) { error = "Music ducking level must be 0..1"; return false; }
+    if (!InRange(m.duckingThresholdDb, -90.0, 0.0)) {
+        error = "Music ducking threshold must be -90..0 dBFS";
+        return false;
+    }
+    if (!InRange(m.duckingAttack, 0.001, 10.0)) { error = "Music ducking attack must be 0.001..10 seconds"; return false; }
+    if (!InRange(m.duckingHold, 0.0, 30.0)) { error = "Music ducking hold must be 0..30 seconds"; return false; }
+    if (!InRange(m.duckingRelease, 0.001, 30.0)) {
+        error = "Music ducking release must be 0.001..30 seconds";
+        return false;
+    }
     return true;
 }
 
@@ -35,13 +45,20 @@ double MusicEnvelope(const VideoFXMusic& m, double t, double total) {
     return g;
 }
 
+MusicDucker::MusicDucker(const VideoFXMusic& m)
+    : level(m.duckingLevel),
+      threshold(std::pow(10.0, m.duckingThresholdDb / 20.0)),
+      attack(m.duckingAttack),
+      hold(m.duckingHold),
+      release(m.duckingRelease) {}
+
 double MusicDucker::Update(double rms, double seconds) {
     if (level >= 1.0 || seconds <= 0.0) return gain;
-    if (rms > kThreshold) quiet = 0.0;
+    if (rms > threshold) quiet = 0.0;
     else quiet += seconds;
-    const bool duck = quiet < kHold;
+    const bool duck = quiet < hold;
     const double target = duck ? level : 1.0;
-    const double tau = target < gain ? kAttack : kRelease;
+    const double tau = target < gain ? attack : release;
     gain += (target - gain) * (1.0 - std::exp(-seconds / tau));
     return gain;
 }

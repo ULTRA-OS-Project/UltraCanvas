@@ -10,8 +10,8 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.4.0
-// Last Modified: 2026-10-01
+// Version: 0.4.1
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -343,16 +343,60 @@ static void TestMusicMath() {
     CHECK(Near(MusicEnvelope(m, 58.0, 60.0), 0.25, 1e-9), "half-way through the fade-out");
     CHECK(Near(MusicEnvelope(m, 30.0, 0.0), 0.5, 1e-9), "unknown length: no fade-out");
 
-    MusicDucker d(0.25);
+    VideoFXMusic speech = VideoFXMusic::FromFile("song.mp3");
+    speech.duckingLevel = 0.25;
+    MusicDucker d(speech);
     for (int i = 0; i < 50; ++i) d.Update(0.2, 0.02);            // 1 s of speech
     CHECK(Near(d.Gain(), 0.25, 0.01), "under speech the music sits at the ducking level");
     d.Update(0.0, 0.3);
     CHECK(Near(d.Gain(), 0.25, 0.01), "a short pause between words: still down");
     for (int i = 0; i < 200; ++i) d.Update(0.0, 0.02);           // 4 s of quiet
     CHECK(d.Gain() > 0.95, "after a real pause it comes back up");
-    MusicDucker off(1.0);
+    VideoFXMusic never = speech;
+    never.duckingLevel = 1.0;
+    MusicDucker off(never);
     off.Update(0.5, 1.0);
     CHECK(Near(off.Gain(), 1.0, 1e-9), "ducking level 1: never dips");
+
+    // A loud clip: a steady -20 dBFS background (0.1 RMS) holds the music down
+    // with the speech defaults; with the threshold raised above it, it does not,
+    // while a louder moment (0.5 RMS, about -6 dBFS) still ducks.
+    MusicDucker speechTuned(speech);
+    for (int i = 0; i < 100; ++i) speechTuned.Update(0.1, 0.02);  // 2 s of loud background
+    CHECK(Near(speechTuned.Gain(), 0.25, 0.01), "speech defaults: a loud background keeps the music down");
+    VideoFXMusic loud = speech;
+    loud.duckingThresholdDb = -12.0;
+    MusicDucker loudTuned(loud);
+    for (int i = 0; i < 100; ++i) loudTuned.Update(0.1, 0.02);
+    CHECK(Near(loudTuned.Gain(), 1.0, 1e-9), "threshold -12 dBFS: the background alone does not duck");
+    for (int i = 0; i < 50; ++i) loudTuned.Update(0.5, 0.02);
+    CHECK(Near(loudTuned.Gain(), 0.25, 0.01), "threshold -12 dBFS: a louder moment still ducks");
+
+    // The times are the settings': a short hold lets it come back after a pause
+    // the speech hold (0.6 s) would wait out.
+    VideoFXMusic quick = speech;
+    quick.duckingHold = 0.1;
+    quick.duckingRelease = 0.05;
+    MusicDucker q(quick), slow(speech);
+    for (int i = 0; i < 50; ++i) { q.Update(0.2, 0.02); slow.Update(0.2, 0.02); }
+    for (int i = 0; i < 20; ++i) { q.Update(0.0, 0.02); slow.Update(0.0, 0.02); }   // 0.4 s pause
+    CHECK(q.Gain() > 0.9, "hold 0.1 s, release 0.05 s: back up after a 0.4 s pause");
+    CHECK(Near(slow.Gain(), 0.25, 0.01), "speech hold 0.6 s: still down after a 0.4 s pause");
+
+    m = VideoFXMusic::FromFile("song.mp3");
+    m.duckingThresholdDb = 3.0;
+    CHECK(!ValidateMusic(m, error), "threshold above 0 dBFS refused");
+    m.duckingThresholdDb = -20.0;
+    m.duckingAttack = 0.0;
+    CHECK(!ValidateMusic(m, error), "attack 0 refused");
+    m.duckingAttack = 0.05;
+    m.duckingHold = -1.0;
+    CHECK(!ValidateMusic(m, error), "negative hold refused");
+    m.duckingHold = 0.0;
+    m.duckingRelease = std::nan("");
+    CHECK(!ValidateMusic(m, error), "release NaN refused");
+    m.duckingRelease = 2.0;
+    CHECK(ValidateMusic(m, error), "loud-clip settings are valid");
 
     CHECK(Near(SlideshowSecondsForMusic(10.0, 3, 1.0), 4.0, 1e-9), "3 photos, 1 s overlaps, 10 s song: 4 s each");
     CHECK(Near(SlideshowSecondsForMusic(10.0, 1, 0.0), 10.0, 1e-9), "one photo lasts the song");

@@ -2,8 +2,8 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
-// Version: 0.4.0
-// Last Modified: 2026-10-01
+// Version: 0.4.1
+// Last Modified: 2026-10-02
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -384,6 +384,13 @@ enum class VideoFXFitMode {
 // Mixed in after everything else, so it runs straight through joins and
 // transitions. Where the segments have sound of their own - someone speaking
 // - the music dips to `duckingLevel` and comes back up after a pause.
+//
+// The ducking defaults are tuned for speech: sound above -36.5 dBFS counts as
+// present, the music goes down within ~0.1 s and waits 0.6 s of quiet before
+// coming back. A clip that is loud all the way through (a concert, traffic,
+// a waterfall) holds the music down for its whole length with those values;
+// raise `duckingThresholdDb` so only sound well above the clip's own
+// background ducks, or set `duckingLevel` to 1 to never dip.
 struct VideoFXMusic {
     std::string path;               // any file with sound (MP3, M4A, WAV, FLAC, OGG, a video ...); "" = none
     double volume = 0.8;            // linear gain, 0..4
@@ -392,6 +399,10 @@ struct VideoFXMusic {
     double fadeIn = 1.0;            // seconds at the start of the export
     double fadeOut = 2.0;           // seconds at the end of the export
     double duckingLevel = 0.3;      // gain under the segments' own sound, 0..1 (1 = never dip)
+    double duckingThresholdDb = -36.5; // the segments' sound counts as present above this RMS level, dBFS, -90..0
+    double duckingAttack = 0.12;    // seconds to go down (time constant), 0.001..10
+    double duckingHold = 0.6;       // seconds of quiet before coming back up, 0..30
+    double duckingRelease = 0.8;    // seconds to come back up (time constant), 0.001..30
 
     static VideoFXMusic FromFile(const std::string& path, double volume = 0.8) {
         VideoFXMusic m;
