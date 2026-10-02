@@ -22,6 +22,7 @@
 #include "EmailCleanerTypes.h"
 
 #include <functional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,8 @@ struct IngestStats {
     int failed      = 0;   // unreadable or unparsable
     int unwanted    = 0;   // of the stored messages, how many were flagged
     int attachments = 0;
+    int movedAway   = 0;   // left out: EmailCleaner moved them to Trash
+    int foldersLeftOut = 0; // Trash folders not analysed
 
     void Add(const IngestStats& other);
 };
@@ -54,7 +57,23 @@ struct IngestOptions {
     // Stop after this many messages (0 = no limit) — the UI's "scan the last
     // N" option and a safety valve on a very large mailbox.
     int maxMessages = 0;
+
+    // Folders of the cache to leave out of the analysis, by their directory
+    // name under <mailCacheDir>/<accountId> - the account's Trash, as its
+    // server names it (SPECIAL-USE role). Whatever an earlier scan stored for
+    // such a folder is deleted.
+    std::set<std::string> skipFolders;
+    // Also leave out every folder whose name says it is the Trash ("Trash",
+    // "[Gmail]/Bin", "Deleted Items", "Papierkorb", ... - MailBackend::
+    // LooksLikeTrash), for a cache whose folder roles are not known. Mail in
+    // Trash is mail already dealt with: counting it would bring what the
+    // actions moved there straight back onto the map.
+    bool skipTrash = false;
 };
+
+// True when a cache folder directory is a Trash folder by name. The cache
+// writes "/" in an IMAP path as "_", so "[Gmail]_Bin" is "[Gmail]/Bin".
+bool LooksLikeTrashDirectory(const std::string& directoryName);
 
 class Ingestor {
 public:

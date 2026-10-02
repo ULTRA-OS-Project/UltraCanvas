@@ -63,11 +63,26 @@ AttachmentFetch FetchAttachment(const std::string& mailCacheDir,
 
 // Write bytes into `cacheDir` under a sanitised version of `filename`, so a
 // path-based viewer can open them. Returns the written path, or empty on
-// failure. Refuses names that would escape the directory.
+// failure. Refuses names that would escape the directory. Never overwrites a
+// different file: the same bytes reuse the copy already there, other bytes
+// with the same name get "name (1).ext", "name (2).ext", ...
 std::string WriteToCache(const std::string& cacheDir,
                          const std::string& filename,
                          const std::string& mediaType,
                          const std::vector<uint8_t>& bytes);
+
+// The files WriteToCache leaves behind are copies made only for the viewer -
+// the message keeps the original - so the cache is pruned: what was not
+// opened for kAttachmentCacheMaxAgeSeconds goes, then the oldest until the
+// rest fits in kAttachmentCacheMaxBytes (UltraMail's AttachmentCache::Prune,
+// the same rule UltraMail applies to its own copies). Files only; call it
+// before any viewer has one open - the app does at start-up. Returns how many
+// files were deleted.
+constexpr int64_t  kAttachmentCacheMaxAgeSeconds = 7 * 24 * 3600;
+constexpr uint64_t kAttachmentCacheMaxBytes      = 256ull * 1024 * 1024;
+int PruneAttachmentCache(const std::string& cacheDir,
+                         int64_t maxAgeSeconds = kAttachmentCacheMaxAgeSeconds,
+                         uint64_t maxBytes = kAttachmentCacheMaxBytes);
 
 // Sanitise a proposed attachment name to a safe basename. Exposed for testing:
 // this is the function that has to hold against "../../.bashrc".

@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <string>
+#include <thread>
 
 using namespace EmailCleaner;
 
@@ -515,4 +516,65 @@ TEST(Execute_AnEmptyPlanDoesNothing) {
     REQUIRE_EQ(outcome.blocked, 0);
     REQUIRE(backend.moves.empty());
     REQUIRE_EQ(outcome.Describe(), std::string("Nothing to do."));
+}
+
+// ---- The two halves: local on the UI thread, the server steps on a worker ----
+
+TEST(Execute_SplitsIntoALocalAndARemoteHalf) {
+    AnalysisStore store = OpenStore();
+    REQUIRE(store.UpsertMessages({
+        Message("spam@bad.example", 1, MessageCategory::ProductSpam),
+        Message("spam@bad.example", 2, MessageCategory::ProductSpam, "Archive"),
+    }));
+
+    ActionRequest request;
+    request.target.senderAddr = "spam@bad.example";
+    request.block = true;
+    request.deleteMail = true;
+    const ActionPlan plan = ActionPlanner(store).Plan(request);
+    REQUIRE(ActionExecutor::HasRemoteSteps(plan));
+
+    RecordingBackend backend;
+    ActionExecutor executor(store, &backend);
+
+    // The local half blocks and never reaches the server.
+    ActionOutcome outcome = executor.ExecuteLocal(plan);
+    REQUIRE_EQ(outcome.blocked, 1);
+    REQUIRE(backend.moves.empty());
+    REQUIRE(store.IsBlocked("spam@bad.example", "bad.example"));
+
+    // The remote half runs on another thread, as the panel runs it, and adds
+    // to the same outcome - while this thread keeps using the store.
+    int progressCalls = 0;
+    executor.onProgress = [&progressCalls](int, int) { ++progressCalls; };
+    std::thread worker([&]() { executor.ExecuteRemote(plan, outcome); });
+    std::vector<AnalyzedMessage> messages;
+    REQUIRE(store.ListMessages(MessageFilter{}, messages));
+    worker.join();
+
+    REQUIRE(outcome.ok);
+    REQUIRE_EQ(outcome.blocked, 1);
+    REQUIRE_EQ(outcome.moved, 2);
+    REQUIRE_EQ(progressCalls, 2);
+    REQUIRE_EQ(backend.moves.size(), static_cast<std::size_t>(2));
+}
+
+TEST(Execute_ABlockOnlyPlanHasNothingToWaitFor) {
+    AnalysisStore store = OpenStore();
+    REQUIRE(store.UpsertMessages({ Message("spam@bad.example", 1, MessageCategory::ProductSpam) }));
+
+    ActionRequest request;
+    request.target.senderAddr = "spam@bad.example";
+    request.block = true;
+    const ActionPlan plan = ActionPlanner(store).Plan(request);
+    REQUIRE(!ActionExecutor::HasRemoteSteps(plan));
+
+    // The remote half of such a plan does nothing at all.
+    RecordingBackend backend;
+    ActionExecutor executor(store, &backend);
+    ActionOutcome outcome;
+    executor.ExecuteRemote(plan, outcome);
+    REQUIRE_EQ(outcome.blocked, 0);
+    REQUIRE_EQ(outcome.moved, 0);
+    REQUIRE(!store.IsBlocked("spam@bad.example", "bad.example"));
 }

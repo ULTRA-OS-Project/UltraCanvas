@@ -3,10 +3,13 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerActionsPanel.h"
 
+#include "UltraCanvasApplication.h"   // PostToUIThread
 #include "UltraCanvasModalDialog.h"
 
 #include <ctime>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace UltraCanvas;
@@ -232,11 +235,13 @@ void ActionsPanel::UpdatePlan() {
     // refused unsubscribe would apply nothing.
     const bool runnable = plan_.willBlock ||
                           ((plan_.willUnsubscribe || plan_.willDelete) && backend_ != nullptr);
-    if (apply_) apply_->SetDisabled(!runnable);
+    // One plan at a time: a second Apply while the first is still talking to
+    // the server would plan against messages that are about to move.
+    if (apply_) apply_->SetDisabled(!runnable || busy_);
 }
 
 void ActionsPanel::Confirm() {
-    if (plan_.Empty() || !store_) return;
+    if (plan_.Empty() || !store_ || busy_) return;
 
     // The confirmation repeats the plan and every warning verbatim. Deleting
     // is the step that cannot be undone from here, so it decides the wording.
@@ -256,11 +261,13 @@ void ActionsPanel::Confirm() {
 }
 
 void ActionsPanel::Apply(const ActionPlan& plan) {
-    if (!store_) return;
+    if (!store_ || busy_) return;
 
-    ActionExecutor executor(*store_, backend_);
-    executor.now = static_cast<int64_t>(std::time(nullptr));
-    const ActionOutcome outcome = executor.Execute(plan);
+    // Blocking writes the analysis database and is instant: here, on the UI
+    // thread, where the database is used.
+    auto executor = std::make_shared<ActionExecutor>(*store_, backend_);
+    executor->now = static_cast<int64_t>(std::time(nullptr));
+    ActionOutcome outcome = executor->ExecuteLocal(plan);
 
     // Clear the tick boxes: leaving "Move to Trash" armed while the selection
     // moves to the next sender is how an accident happens.
@@ -268,6 +275,50 @@ void ActionsPanel::Apply(const ActionPlan& plan) {
     if (unsubscribe_) unsubscribe_->SetChecked(false);
     if (deleteMail_)  deleteMail_->SetChecked(false);
 
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!ActionExecutor::HasRemoteSteps(plan) || !app) {
+        // Nothing to wait on (or no loop to come back to): finish now.
+        if (ActionExecutor::HasRemoteSteps(plan)) {
+            executor->ExecuteRemote(plan, outcome);
+            executor->RecordMoves(outcome);
+        }
+        Finish(outcome);
+        return;
+    }
+
+    // The unsubscribe request and the moves talk to the server - one round
+    // trip per message, plus a sign-in (and possibly a token refresh) - so
+    // they run on a worker and the window keeps answering. The executor only
+    // uses the backend there, never the database; MailBackend is safe to call
+    // from another thread. Progress and the end come back on the UI thread.
+    busy_ = true;
+    UpdatePlan();   // disables Apply
+    const int total = plan.MessageCount();
+    if (onStatus) {
+        onStatus(plan.willDelete
+            ? "Moving " + std::to_string(total) + " message" + (total == 1 ? "" : "s") +
+              " to Trash…"
+            : "Sending the unsubscribe request…");
+    }
+    executor->onProgress = [this, app](int done, int count) {
+        app->PostToUIThread([this, done, count]() {
+            if (onStatus) onStatus("Moving to Trash… " + std::to_string(done) + " of " +
+                                   std::to_string(count));
+        });
+    };
+    std::thread([this, app, executor, plan, outcome]() mutable {
+        executor->ExecuteRemote(plan, outcome);
+        app->PostToUIThread([this, executor, outcome]() mutable {
+            busy_ = false;
+            // Back where the database is used: what reached Trash leaves the
+            // analysis before the views are repainted.
+            executor->RecordMoves(outcome);
+            Finish(outcome);
+        });
+    }).detach();
+}
+
+void ActionsPanel::Finish(const ActionOutcome& outcome) {
     if (!outcome.ok) {
         // Describe() already names the first failure; only a second one adds
         // anything, so the full list appears only when there is more than one.

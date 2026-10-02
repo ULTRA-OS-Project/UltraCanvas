@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <memory>
+#include <mutex>
 
 using UltraCanvas::PathFromUtf8;
 using UltraCanvas::PathToUtf8;
@@ -144,6 +146,12 @@ UltraMail::Account OwnAccounts::MakeAccount(const NewAccountRequest& request) {
 
 // ---- Free functions --------------------------------------------------------
 
+std::string CacheDirectoryName(const std::string& accountId, const std::string& folder) {
+    // Ask the SyncEngine's own path function rather than repeating its rule.
+    const std::string path = UltraMail::CachedBodyPath("cache", accountId, folder, 1);
+    return PathToUtf8(PathFromUtf8(path).parent_path().filename());
+}
+
 StoredAccount ToStoredAccount(const UltraMail::Account& account, AccountSource source) {
     StoredAccount stored;
     stored.accountId   = account.accountId;
@@ -203,6 +211,39 @@ UltraMail::SyncOutcome FetchMailbox(UltraMail::LocalStore& store,
         out.stats.bodies   += fetched.stats.bodies;
     }
     return out;
+}
+
+std::function<UltraNetResult(UltraNetMailOptions&)> MakeOAuthSessionPreparer(
+    const std::string& providerId, const std::string& username,
+    const UltraMail::OAuthTokens& tokens, UltraMail::OAuthHooks hooks,
+    std::function<int64_t()> now) {
+    // Shared by every copy of the returned function (MailBackend copies the
+    // access record), so a refresh is done once and seen by all of them.
+    struct State {
+        std::mutex              mutex;
+        UltraMail::MailOAuth    oauth;
+        UltraMail::OAuthTokens  tokens;
+        explicit State(UltraMail::OAuthHooks h) : oauth(std::move(h)) {}
+    };
+    auto state = std::make_shared<State>(std::move(hooks));
+    state->tokens = tokens;
+
+    return [state, providerId, username, now](UltraNetMailOptions& options) {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        bool refreshed = false;
+        const UltraNetResult r = state->oauth.EnsureFresh(
+            providerId, state->tokens, refreshed, now ? now() : 0);
+        if (!r) {
+            return UltraNetResult::Error(r.code,
+                r.message + " (sign in to the account again in UltraMail)");
+        }
+        options.credentials          = UltraNetCredentials{};
+        options.credentials.type     = UltraNetAuthType::OAuth2;
+        options.credentials.username = username;
+        options.credentials.token    = state->tokens.accessToken;
+        options.auth                 = UltraNetMailAuth::OAuth2;
+        return UltraNetResult::Ok();
+    };
 }
 
 } // namespace EmailCleaner

@@ -519,12 +519,12 @@ std::vector<std::string> UltraNet_GetSupportedSchemes();
 // call to this table. A plug-in needing another core function adds it here
 // (appended - the order is ABI) and to the shim, and bumps the version.
 //
-//   v1 (POSIX-only, deprecated; still loaded for third-party plug-ins):
-//     extern "C" void UltraNet_PluginRegister(void);
-//
-// v1 resolves UltraNet_RegisterPlugin from the host binary's symbol table at
-// dlopen time, which POSIX allows (RTLD_GLOBAL + -rdynamic) and Windows does
-// not. The in-tree plug-ins no longer export it.
+// The v1 entry, `extern "C" void UltraNet_PluginRegister(void)`, is no
+// longer loaded: it resolved UltraNet_RegisterPlugin from the host binary's
+// symbol table at load time, which only POSIX allows (RTLD_GLOBAL +
+// -rdynamic) and which only worked when the host happened to carry every core
+// function the plug-in called. A library that exports only v1 is not loaded;
+// rebuild it with UltraNet_PluginInit and the shim.
 // ============================================================================
 
 // ABI 1: abiVersion + RegisterPlugin.

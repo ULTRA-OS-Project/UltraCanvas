@@ -6,6 +6,9 @@
 // tests need no server; the interface test loads the built plug-in DSO.
 #include "test_framework.h"
 
+#if !defined(_WIN32) && !defined(_WIN64)
+#include <dlfcn.h>   // dlsym(RTLD_DEFAULT) in the scope test
+#endif
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetMime.h>   // UltraNet_ImapUtf7Decode
@@ -198,3 +201,22 @@ TEST(imap_plugin_exposes_mailbox_interface) {
     CHECK(!bool(r));
     REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
 }
+
+#if !defined(_WIN32) && !defined(_WIN64)
+TEST(plugins_are_loaded_without_joining_the_global_symbol_scope) {
+    // Plug-ins are dlopen()ed RTLD_LOCAL: they need nothing from the host's
+    // symbol table, and what they export must not bind the symbols of
+    // libraries loaded after them. The entry point every plug-in exports is
+    // the probe - with RTLD_GLOBAL the process-wide lookup finds the first
+    // plug-in's, with RTLD_LOCAL it finds none. (The host does not define it.)
+    const fs::path p = ImapPluginPath();
+    if (p.empty()) SKIP("IMAP plug-in DSO not available in this env");
+
+    UltraNet_Initialize();
+    UltraNet_SetPluginDirectory(p.parent_path().string());
+    UltraNet_RefreshPlugins();
+    REQUIRE(UltraNet_GetPlugin("imaps") != nullptr);   // it did load
+
+    CHECK(dlsym(RTLD_DEFAULT, "UltraNet_PluginInit") == nullptr);
+}
+#endif

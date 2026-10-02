@@ -533,3 +533,105 @@ TEST(sync_messages_resets_the_folder_when_uidvalidity_changes) {
     REQUIRE(HasUid(fx.store, 10));            // refetched from UID 0
     REQUIRE(HasUid(fx.store, 11));
 }
+
+// ---- The body cache follows the index ---------------------------------------
+
+namespace {
+bool BodyCached(const SyncEngine& engine, int64_t uid, const std::string& folder = "INBOX") {
+    return fs::exists(engine.BodyPath("erika", folder, uid));
+}
+} // namespace
+
+TEST(reconcile_flags_deletes_the_bodies_of_expunged_mail) {
+    Fixture fx("reconcile-bodies");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(BodyCached(engine, 1));
+    REQUIRE(BodyCached(engine, 2));
+    REQUIRE(BodyCached(engine, 3));
+
+    // An earlier version dropped uid2's row when the server expunged it but
+    // left the body behind; and a sync running alongside has just written a
+    // newer message's body (uid 9, not in the index snapshot yet).
+    REQUIRE(fx.store.RemoveMessage("erika", "INBOX", 2).success);
+    REQUIRE(!engine.WriteBody("erika", "INBOX", 9, fx.fake.bodies["INBOX/1"]).empty());
+
+    // The server now lists uid1 only: uid3 was deleted elsewhere.
+    fx.fake.serverFlags["INBOX"] = { { 1u, UltraNetMailFlags::Seen } };
+    SyncOutcome r = engine.ReconcileFlags("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.expunged, 1);         // uid3's row
+    REQUIRE_EQ(r.stats.bodiesRemoved, 2);    // uid3's body + uid2's leftover
+    REQUIRE(BodyCached(engine, 1));
+    REQUIRE(!BodyCached(engine, 2));
+    REQUIRE(!BodyCached(engine, 3));
+    REQUIRE(BodyCached(engine, 9));          // newer than the snapshot: untouched
+}
+
+TEST(reconcile_flags_keeps_every_body_when_the_folder_was_not_enumerated) {
+    Fixture fx("reconcile-bodies-fail");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+
+    fx.fake.serverFlags["INBOX"] = {};       // success, but enumerates nothing
+    SyncOutcome r = engine.ReconcileFlags("erika", "INBOX", "imaps://x/", opts);
+    REQUIRE(r.ok);
+    REQUIRE_EQ(r.stats.bodiesRemoved, 0);
+    REQUIRE(BodyCached(engine, 1));
+    REQUIRE(BodyCached(engine, 2));
+    REQUIRE(BodyCached(engine, 3));
+}
+
+TEST(move_message_deletes_the_source_body) {
+    Fixture fx("move-body");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(BodyCached(engine, 2));
+
+    REQUIRE(engine.MoveMessage("erika", "INBOX", 2, "Trash", "imaps://x/", opts).ok);
+    REQUIRE(!HasUid(fx.store, 2));
+    REQUIRE(!BodyCached(engine, 2));
+    REQUIRE(BodyCached(engine, 1));
+}
+
+TEST(forget_message_drops_the_row_and_the_body) {
+    Fixture fx("forget");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+
+    REQUIRE(engine.ForgetMessage("erika", "INBOX", 3).success);
+    REQUIRE(!HasUid(fx.store, 3));
+    REQUIRE(!BodyCached(engine, 3));
+    // A message whose body was never downloaded is forgotten just the same.
+    REQUIRE(fx.store.RemoveMessage("erika", "INBOX", 1).success);
+    REQUIRE(engine.ForgetMessage("erika", "INBOX", 1).success);
+}
+
+TEST(a_uidvalidity_reset_deletes_the_folders_old_bodies) {
+    Fixture fx("uidvalidity-bodies");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    fx.fake.uidValidity = 100;
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(BodyCached(engine, 1));
+    REQUIRE(BodyCached(engine, 3));
+
+    fx.fake.uidValidity = 200;
+    fx.fake.envelopes["INBOX"] = {
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None),
+    };
+    fx.fake.bodies["INBOX/10"] = fx.fake.bodies["INBOX/1"];
+    engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
+    REQUIRE(!BodyCached(engine, 1));         // the old numbering's files are gone
+    REQUIRE(!BodyCached(engine, 3));
+    REQUIRE(BodyCached(engine, 10));         // the new one is cached
+}
