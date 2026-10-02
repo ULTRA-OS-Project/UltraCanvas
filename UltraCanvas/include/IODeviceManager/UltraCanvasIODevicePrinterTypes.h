@@ -9,10 +9,14 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace UltraCanvas {
+
+// Declared in UltraCanvasIODevicePrinterPage.h; a job only holds one.
+class IPrintPageSource;
 
 // ============================================================================
 // RENDERER
@@ -336,10 +340,20 @@ struct IOPrintJob {
     std::vector<uint8_t> data;
     std::string mimeType;           // "application/pdf", "image/png", ...
 
+    // The same document as pages that draw themselves, for a renderer that
+    // cannot take it as it is. A PDF reaches CUPS, or an IPP printer that
+    // reads PDF, unchanged - but the Windows GDI renderer, GutenPrint and an
+    // IPP printer without PDF can only print what they can draw, and nothing
+    // here can lay a PDF out. Set it beside the bytes (a formatted document
+    // does: RichDocumentPrintPages in UltraCanvasRichTextPrint.h) and those
+    // renderers draw these pages instead of refusing the job. On its own it
+    // is a job too, for a printer that can draw it.
+    std::shared_ptr<IPrintPageSource> pages;
+
     IOPrintOptions options;
     std::vector<int> pageRange;     // empty = every page
 
-    bool IsValid() const { return !filePath.empty() || !data.empty(); }
+    bool IsValid() const { return !filePath.empty() || !data.empty() || pages != nullptr; }
 };
 
 // ============================================================================

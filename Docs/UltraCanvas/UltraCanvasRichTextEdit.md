@@ -938,6 +938,31 @@ PDF, and `PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window)`
 prints one - which is what UltraTexter's Print does for a word-processing tab,
 and File > Export as PDF writes.
 
+A PDF reaches CUPS, and an IPP printer that reads PDF, as it is. The Windows
+GDI renderer, GutenPrint and an IPP printer without PDF cannot lay one out, so
+send the same pages along for them to draw:
+
+```cpp
+#include "UltraCanvasRichTextPrint.h"
+
+PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window,
+                        CreateRichDocumentPrintPages(*editor));
+```
+
+`CreateRichDocumentPrintPages` copies the document into an element of its own
+(the one on screen keeps its view) and returns an `IPrintPageSource`: the pages
+`ExportToPdf` writes, drawn straight into a printer page that has a render
+context (GutenPrint, IPP's PWG raster), or drawn off screen at up to 300 dpi
+and placed as an image on a Windows printer DC. A page the size of the sheet
+prints 1:1, lined up with the sheet's edges; a larger one is scaled down to
+fit, a smaller one centred.
+
+To draw the pages into a context of your own, `BeginPrintLayout(ctx)` lays
+the document out in the output state and returns the page count,
+`RenderPrintPage(ctx, index)` draws one page with its top-left corner at the
+context's origin (96 units to the inch), and `EndPrintLayout()` puts the view
+back. `ExportToPdf` is built on the same three.
+
 ## Zoom and scrolling sideways
 
 ```cpp

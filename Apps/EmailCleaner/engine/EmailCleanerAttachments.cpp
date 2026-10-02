@@ -5,6 +5,7 @@
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "EmailCleanerClassifier.h"
+#include "UltraMailAttachmentCache.h"   // the write and the pruning
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -182,26 +183,38 @@ std::string WriteToCache(const std::string& cacheDir,
     if (cacheDir.empty()) return "";
 
     std::error_code ec;
-    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(cacheDir), ec);
+    const std::filesystem::path dir = PathFromUtf8(cacheDir);
+    std::filesystem::create_directories(dir, ec);
 
-    const std::string safe = SafeAttachmentName(filename, mediaType);
-    std::filesystem::path target = PathFromUtf8(cacheDir) / safe;
+    // The write itself is UltraMail's AttachmentCache: identical bytes reuse
+    // the copy already there (and mark it as just opened, for the pruning),
+    // and a *different* attachment with the same name - two "invoice.pdf"
+    // from two senders - gets "invoice (1).pdf" instead of overwriting the
+    // first, which may still be open in a viewer.
+    UltraMail::Attachment attachment;
+    attachment.filename  = SafeAttachmentName(filename, mediaType);
+    attachment.mediaType = mediaType;
+    attachment.data      = bytes;
+    const std::string written = UltraMail::AttachmentCache(cacheDir).Write(attachment);
+    if (written.empty()) return "";
 
-    // Belt and braces: whatever the sanitiser produced, the result has to sit
-    // inside the cache directory.
-    const std::filesystem::path root = std::filesystem::weakly_canonical(UltraCanvas::PathFromUtf8(cacheDir), ec);
+    // Belt and braces: whatever the sanitisers produced, the file has to sit
+    // inside the cache directory. One that does not is removed, not returned.
+    const std::filesystem::path target = PathFromUtf8(written);
+    const std::filesystem::path root = std::filesystem::weakly_canonical(dir, ec);
     const std::filesystem::path resolved =
         std::filesystem::weakly_canonical(target.parent_path(), ec);
-    if (ec || resolved != root) return "";
+    if (ec || resolved != root) {
+        std::filesystem::remove(target, ec);
+        return "";
+    }
+    return written;
+}
 
-    std::ofstream out(target, std::ios::binary | std::ios::trunc);
-    if (!out) return "";
-    if (!bytes.empty())
-        out.write(reinterpret_cast<const char*>(bytes.data()),
-                  static_cast<std::streamsize>(bytes.size()));
-    if (!out.good()) return "";
-    out.close();
-    return PathToUtf8(target);
+int PruneAttachmentCache(const std::string& cacheDir, int64_t maxAgeSeconds,
+                         uint64_t maxBytes) {
+    if (cacheDir.empty()) return 0;
+    return UltraMail::AttachmentCache(cacheDir).Prune(maxAgeSeconds, maxBytes).removed;
 }
 
 } // namespace EmailCleaner

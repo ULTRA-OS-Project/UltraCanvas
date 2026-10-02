@@ -21,7 +21,9 @@
 
 #include <UltraNet/UltraNetPlugins.h>
 
+#include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 
 namespace EmailCleaner {
@@ -33,6 +35,13 @@ struct MailAccountAccess {
     std::string ownerAddress;           // the account's own address, for the From
     UltraNetMailOptions options;        // credentials, TLS, timeouts
     std::string trashFolder;            // resolved lazily when empty
+
+    // Run before every call to the server, to put current credentials into
+    // `options` - an account that signs in with OAuth2 gets a fresh access
+    // token here, refreshed through its provider when the last one expired.
+    // Empty for a password account, whose credentials never change. A
+    // failure is the call's failure: nothing is sent to the server.
+    std::function<UltraNetResult(UltraNetMailOptions& options)> prepareSession;
 };
 
 class MailBackend : public IActionBackend {
@@ -63,9 +72,16 @@ public:
     static bool LooksLikeTrash(const std::string& folderName);
 
 private:
-    MailAccountAccess* Find(const std::string& accountId);
+    // A copy of the account's record, taken under the lock: the calls above
+    // may run on a worker thread (EmailCleaner runs its actions there) while
+    // the UI thread registers an account, and the network is talked to
+    // outside the lock. False when the account is not registered.
+    bool Snapshot(const std::string& accountId, MailAccountAccess& out) const;
+    // Run the account's prepareSession, if it has one.
+    static bool PrepareSession(MailAccountAccess& access, std::string& outError);
 
     IMailboxProtocolPlugin&                mailbox_;
+    mutable std::mutex                     mutex_;      // guards accounts_
     std::map<std::string, MailAccountAccess> accounts_;
 };
 

@@ -238,6 +238,30 @@ four hold, because its parameter set is the richer one.
 accepting it and falling back at print time: a caller that asked for
 GutenPrint needs to know it is not getting it.
 
+### A document and its pages, together
+
+A formatted document reaches a printer as a PDF (`PrintDocumentWithDialog`),
+which CUPS and a PDF-reading IPP printer print as it is. The Windows GDI
+renderer, GutenPrint and an IPP printer without PDF cannot: they print what
+they can draw, and nothing here lays a PDF out. So a job may carry the same
+document twice - as bytes, and as **`IOPrintJob::pages`**, an
+`IPrintPageSource` that draws it - and each renderer takes the form it can
+use:
+
+| Renderer | Takes |
+|---|---|
+| Native on CUPS | the bytes, unchanged; a job of pages alone is refused by name rather than queued empty |
+| Windows GDI, GutenPrint | the pages: `MakePageSourceForJob` returns them before looking at the bytes |
+| IPP | the bytes when the printer takes them (and can select the page range); otherwise the pages, as PWG raster (`kIppDrawnPagesType`) |
+
+A source that is more than lines of text and pictures draws through the
+rendering stack, so **`IPrintPageTarget::GetRenderContext()`** hands over the
+target's `IRenderContext` where it has one (`RasterPageTarget`: GutenPrint's
+page, IPP's raster page). It is null for a Windows printer DC, where the
+source draws its page off screen and places it with `DrawImage`. A
+word-processing document's pages are `RichDocumentPrintPages`
+(`UltraCanvasRichTextPrint.h`), outside this module.
+
 ### Option resolution
 
 The GutenPrint parameter model — media type → resolution → cartridge → inkset
@@ -485,7 +509,9 @@ even to a printer that claims `text/plain`, because what a printer's own text
 path does with UTF-8 is anybody's guess and a page drawn here is the same page
 on every printer. What cannot be done either way is refused by name rather
 than half-printed: a PDF to a printer that takes none (nothing here paginates
-PDF yet), and a page range on a document the printer cannot select pages from.
+PDF yet), and a page range on a document the printer cannot select pages from
+- unless the job carries the document's pages too, which are then drawn (see
+*A document and its pages, together*).
 
 **The transport is one Print-Job request** - the IPP message with the
 document directly after it, POSTed with `Content-Type: application/ipp`. It

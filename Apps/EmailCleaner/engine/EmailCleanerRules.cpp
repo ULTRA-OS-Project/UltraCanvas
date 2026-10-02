@@ -3,6 +3,7 @@
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerRules.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 
 #include "EmailCleanerText.h"
 

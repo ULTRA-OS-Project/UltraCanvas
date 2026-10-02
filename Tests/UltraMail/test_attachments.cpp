@@ -9,9 +9,11 @@
 
 #include "UltraMailMimeCodec.h"
 #include "UltraMailAttachmentCache.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <UltraNet/UltraNetMime.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -140,4 +142,100 @@ TEST(codec_counts_attachments_like_parse) {
     in.attachments.clear();
     REQUIRE_EQ(MimeCodec::CountAttachments(UltraNet_MimeBuild(in)), 0);
     REQUIRE_EQ(MimeCodec::CountAttachments(""), 0);
+}
+
+// ---- Pruning: the cache holds copies for the viewer, so it must not only grow
+
+namespace {
+
+Attachment Bytes(const std::string& name, size_t size, char fill = 'x') {
+    Attachment att;
+    att.filename  = name;
+    att.mediaType = "application/octet-stream";
+    att.data.assign(size, static_cast<uint8_t>(fill));
+    return att;
+}
+
+void Age(const std::string& path, int days) {
+    fs::last_write_time(UltraCanvas::PathFromUtf8(path),
+                        fs::file_time_type::clock::now() - std::chrono::hours(24 * days));
+}
+
+} // namespace
+
+TEST(cache_prune_drops_what_was_not_opened_for_a_while) {
+    fs::path dir = fs::temp_directory_path() / "ultramail_prune_age";
+    fs::remove_all(dir);
+    AttachmentCache cache(dir.string());
+
+    const std::string old   = cache.Write(Bytes("old.bin", 10));
+    const std::string fresh = cache.Write(Bytes("fresh.bin", 10));
+    Age(old, 10);
+    // A subdirectory is not the cache's to prune (UltraMail keeps the sender
+    // icons in one beside the attachments' folder).
+    fs::create_directories(dir / "sender-icons");
+    std::ofstream(dir / "sender-icons" / "icon.png") << "png";
+    Age((dir / "sender-icons" / "icon.png").string(), 30);
+
+    const AttachmentPruneStats stats = cache.Prune(7 * 24 * 3600, 0);
+    REQUIRE_EQ(stats.removed, 1);
+    REQUIRE_EQ(stats.bytesRemoved, uint64_t(10));
+    REQUIRE(!fs::exists(old));
+    REQUIRE(fs::exists(fresh));
+    REQUIRE(fs::exists(dir / "sender-icons" / "icon.png"));
+    fs::remove_all(dir);
+}
+
+TEST(cache_prune_keeps_the_newest_within_the_size_cap) {
+    fs::path dir = fs::temp_directory_path() / "ultramail_prune_cap";
+    fs::remove_all(dir);
+    AttachmentCache cache(dir.string());
+
+    const std::string a = cache.Write(Bytes("a.bin", 100, 'a'));
+    const std::string b = cache.Write(Bytes("b.bin", 100, 'b'));
+    const std::string c = cache.Write(Bytes("c.bin", 100, 'c'));
+    Age(a, 3); Age(b, 2); Age(c, 1);
+
+    // 300 bytes, a cap of 150: the two oldest go, the newest stays.
+    const AttachmentPruneStats stats = cache.Prune(0, 150);
+    REQUIRE_EQ(stats.removed, 2);
+    REQUIRE(!fs::exists(a));
+    REQUIRE(!fs::exists(b));
+    REQUIRE(fs::exists(c));
+
+    // No limits: nothing goes. -1: everything does.
+    REQUIRE_EQ(cache.Prune(0, 0).removed, 0);
+    REQUIRE_EQ(cache.Prune(-1, 0).removed, 1);
+    REQUIRE(!fs::exists(c));
+    fs::remove_all(dir);
+}
+
+TEST(cache_reopening_an_attachment_keeps_it_fresh) {
+    fs::path dir = fs::temp_directory_path() / "ultramail_prune_reuse";
+    fs::remove_all(dir);
+    AttachmentCache cache(dir.string());
+
+    const Attachment att = Bytes("report.pdf", 20);
+    const std::string first = cache.Write(att);
+    Age(first, 10);
+    // Opened again today: the identical file is reused, and counts as new.
+    REQUIRE_EQ(cache.Write(att), first);
+    REQUIRE_EQ(cache.Prune(7 * 24 * 3600, 0).removed, 0);
+    REQUIRE(fs::exists(first));
+    fs::remove_all(dir);
+}
+
+TEST(cache_handles_non_ascii_names) {
+    // File names are UTF-8 on every platform (AGENTS.md): a Thai or emoji
+    // attachment name must round-trip and prune like any other.
+    fs::path dir = fs::temp_directory_path() / "ultramail_prune_utf8";
+    fs::remove_all(dir);
+    AttachmentCache cache(dir.string());
+
+    const std::string path = cache.Write(Bytes("\xe0\xb8\xa3\xe0\xb8\xb2\xe0\xb8\x87\xe0\xb8\xb2\xe0\xb8\x99 \xf0\x9f\x93\x8e.txt", 5));
+    REQUIRE(!path.empty());
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(path)));
+    REQUIRE_EQ(cache.Prune(-1, 0).removed, 1);
+    REQUIRE(!fs::exists(UltraCanvas::PathFromUtf8(path)));
+    fs::remove_all(dir);
 }

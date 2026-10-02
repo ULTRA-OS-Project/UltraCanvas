@@ -3,6 +3,7 @@
 //                  message_text_size
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailPreferences.h"
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8
 
 #include <algorithm>
 #include <cctype>

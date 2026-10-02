@@ -73,6 +73,10 @@ bool RasterPageTarget::IsValid() const {
     return impl && impl->context != nullptr;
 }
 
+IRenderContext* RasterPageTarget::GetRenderContext() {
+    return IsValid() ? impl->context.get() : nullptr;
+}
+
 void RasterPageTarget::BeginPage() {
     if (!IsValid()) return;
     // Opaque white: paper. Opaque matters as much as white - the pixels are

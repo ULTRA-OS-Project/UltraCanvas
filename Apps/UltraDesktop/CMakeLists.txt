@@ -21,7 +21,6 @@ add_executable(UltraDesktop
     main.cpp
     ui/UltraDesktopAppStarter.cpp
     ui/UltraDesktopSettings.cpp
-    ui/UltraDesktopSettingsWindow.cpp
     ui/UltraDesktopStickerboard.cpp
     ui/UltraDesktopTasksWindow.cpp
     ui/UltraDesktopWindow.cpp

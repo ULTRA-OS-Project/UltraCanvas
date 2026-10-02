@@ -10,13 +10,14 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
-// Version: 0.3.0
-// Last Modified: 2026-09-29
+// Version: 0.4.0
+// Last Modified: 2026-10-01
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
 #include "VideoFXFilterBuilder.h"
 #include "VideoFXKenBurns.h"
+#include "VideoFXMusic.h"
 #include "VideoFXPlatform.h"
 
 #include "UltraCanvasPathUtf8.h"
@@ -321,6 +322,43 @@ static void TestKenBurnsMath() {
     CHECK(c == a, "threaded rendering matches single-threaded");
 }
 
+static void TestMusicMath() {
+    std::printf("Background music: envelope, ducking, slideshow length\n");
+    std::string error;
+    VideoFXMusic m = VideoFXMusic::FromFile("song.mp3", 0.5);
+    CHECK(ValidateMusic(m, error), "defaults are valid");
+    m.volume = 9.0;
+    CHECK(!ValidateMusic(m, error), "volume 9 refused");
+    m.volume = 0.5;
+    m.duckingLevel = 1.5;
+    CHECK(!ValidateMusic(m, error), "ducking level 1.5 refused");
+    CHECK(ValidateMusic(VideoFXMusic{}, error), "no music is valid");
+
+    m = VideoFXMusic::FromFile("song.mp3", 0.5);
+    m.fadeIn = 2.0;
+    m.fadeOut = 4.0;
+    CHECK(Near(MusicEnvelope(m, 0.0, 60.0), 0.0, 1e-9), "silent at the very start");
+    CHECK(Near(MusicEnvelope(m, 1.0, 60.0), 0.25, 1e-9), "half-way through the fade-in");
+    CHECK(Near(MusicEnvelope(m, 30.0, 60.0), 0.5, 1e-9), "full volume in the middle");
+    CHECK(Near(MusicEnvelope(m, 58.0, 60.0), 0.25, 1e-9), "half-way through the fade-out");
+    CHECK(Near(MusicEnvelope(m, 30.0, 0.0), 0.5, 1e-9), "unknown length: no fade-out");
+
+    MusicDucker d(0.25);
+    for (int i = 0; i < 50; ++i) d.Update(0.2, 0.02);            // 1 s of speech
+    CHECK(Near(d.Gain(), 0.25, 0.01), "under speech the music sits at the ducking level");
+    d.Update(0.0, 0.3);
+    CHECK(Near(d.Gain(), 0.25, 0.01), "a short pause between words: still down");
+    for (int i = 0; i < 200; ++i) d.Update(0.0, 0.02);           // 4 s of quiet
+    CHECK(d.Gain() > 0.95, "after a real pause it comes back up");
+    MusicDucker off(1.0);
+    off.Update(0.5, 1.0);
+    CHECK(Near(off.Gain(), 1.0, 1e-9), "ducking level 1: never dips");
+
+    CHECK(Near(SlideshowSecondsForMusic(10.0, 3, 1.0), 4.0, 1e-9), "3 photos, 1 s overlaps, 10 s song: 4 s each");
+    CHECK(Near(SlideshowSecondsForMusic(10.0, 1, 0.0), 10.0, 1e-9), "one photo lasts the song");
+    CHECK(Near(SlideshowSecondsForMusic(5.0, 100, 1.0), 2.0, 1e-9), "too many photos: at least twice the transition");
+}
+
 // ============================================================================
 // PART 2 - ENGINE
 // ============================================================================
@@ -369,6 +407,7 @@ static double StreamDuration(const VideoFXMediaInfo& info, VideoFXStreamKind kin
 
 static void TestTransitionsAndOverlays(const VideoFXExportSettings& base);
 static void TestStillImages(const VideoFXExportSettings& base);
+static void TestMusic(const VideoFXExportSettings& base);
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -577,6 +616,7 @@ static void TestEngine() {
 
     TestTransitionsAndOverlays(base);
     TestStillImages(base);
+    TestMusic(base);
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);
@@ -907,6 +947,155 @@ static void TestStillImages(const VideoFXExportSettings& base) {
     CHECK(!Exists(TempPath("x.mkv")), "nothing written by a refused export");
 }
 
+// 16-bit PCM WAV, mixed down: RMS (0..1) of [from, to) seconds
+struct Wav {
+    int rate = 0, channels = 0;
+    std::vector<int16_t> samples;           // interleaved
+    double Rms(double from, double to) const {
+        if (rate <= 0 || channels <= 0) return -1.0;
+        const size_t a = static_cast<size_t>(std::max(0.0, from) * rate) * channels;
+        const size_t b = std::min(samples.size(), static_cast<size_t>(to * rate) * channels);
+        if (b <= a) return -1.0;
+        double sum = 0.0;
+        for (size_t i = a; i < b; ++i) sum += (samples[i] / 32768.0) * (samples[i] / 32768.0);
+        return std::sqrt(sum / static_cast<double>(b - a));
+    }
+    double Seconds() const { return rate > 0 && channels > 0 ? double(samples.size()) / channels / rate : 0.0; }
+    // RMS of (this - other) over [from, to): what one export added to the other,
+    // independent of how the two sounds' phases happen to line up
+    double RmsOfDifference(const Wav& other, double from, double to) const {
+        if (rate <= 0 || channels <= 0 || other.channels != channels) return -1.0;
+        const size_t a = static_cast<size_t>(std::max(0.0, from) * rate) * channels;
+        const size_t b = std::min({samples.size(), other.samples.size(), static_cast<size_t>(to * rate) * channels});
+        if (b <= a) return -1.0;
+        double sum = 0.0;
+        for (size_t i = a; i < b; ++i) {
+            const double d = (samples[i] - other.samples[i]) / 32768.0;
+            sum += d * d;
+        }
+        return std::sqrt(sum / static_cast<double>(b - a));
+    }
+};
+
+static Wav ReadWav(const std::string& path) {
+    Wav w;
+    std::FILE* f = UltraCanvas::OpenFileUtf8(path, "rb");
+    if (!f) return w;
+    std::vector<uint8_t> bytes;
+    uint8_t buf[65536];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) bytes.insert(bytes.end(), buf, buf + n);
+    std::fclose(f);
+    auto u16 = [&](size_t o) { return uint32_t(bytes[o]) | (uint32_t(bytes[o + 1]) << 8); };
+    auto u32 = [&](size_t o) { return u16(o) | (u16(o + 2) << 16); };
+    for (size_t o = 12; o + 8 <= bytes.size();) {                  // RIFF chunks after "WAVE"
+        const std::string id(reinterpret_cast<const char*>(&bytes[o]), 4);
+        const size_t size = u32(o + 4);
+        if (id == "fmt " && o + 24 <= bytes.size()) {
+            w.channels = static_cast<int>(u16(o + 10));
+            w.rate = static_cast<int>(u32(o + 12));
+        } else if (id == "data") {
+            const size_t end = std::min(bytes.size(), o + 8 + size);
+            for (size_t i = o + 8; i + 1 < end; i += 2) w.samples.push_back(static_cast<int16_t>(u16(i)));
+            break;
+        }
+        o += 8 + size + (size & 1);
+    }
+    return w;
+}
+
+static void TestMusic(const VideoFXExportSettings& base) {
+    std::printf("Engine: background music\n");
+    (void)base;
+    VideoFXMediaInfo info;
+
+    // A 1 s and a 6 s "song" (the test pattern's tone) to put under things
+    const std::string shortSong = TempPath("song1.mkv");
+    const std::string longSong = TempPath("song6.mkv");
+    CHECK_OK(VideoFX_GenerateTestClip(shortSong, 1.0, 64, 48, 25.0, true), "make a 1 s song");
+    CHECK_OK(VideoFX_GenerateTestClip(longSong, 6.0, 64, 48, 25.0, true), "make a 6 s song");
+
+    // ---- music under silent pictures, written as WAV to measure ----
+    VideoFXExportSettings wav = VideoFXExportSettings::AudioOnlyWAV();
+    wav.music = VideoFXMusic::FromFile(longSong, 1.0);
+    wav.music.fadeIn = 0.5;
+    wav.music.fadeOut = 0.0;
+    const std::vector<VideoFXSegment> cards = {VideoFXSegment::SolidColor(0x000000, 2.0),
+                                               VideoFXSegment::SolidColor(0xFFFFFF, 2.0)};
+    const std::string bed = TempPath("bed.wav");
+    CHECK_OK(VideoFX_Export(cards, bed, wav), "silent cards + music, sound only");
+    Wav w = ReadWav(bed);
+    CHECK(Near(w.Seconds(), 4.0, 0.05), "as long as the pictures, not the song");
+    CHECK(w.Rms(1.0, 3.5) > 0.05, "the music is there");
+    CHECK(w.Rms(0.0, 0.05) < w.Rms(1.0, 3.5) / 4, "and fades in");
+
+    // ---- shorter than the export: loops, or stops ----
+    wav.music = VideoFXMusic::FromFile(shortSong, 1.0);
+    wav.music.fadeIn = wav.music.fadeOut = 0.0;
+    const std::string looped = TempPath("looped.wav");
+    CHECK_OK(VideoFX_Export(cards, looped, wav), "1 s song under 4 s");
+    w = ReadWav(looped);
+    CHECK(w.Rms(2.2, 2.8) > 0.05, "loops: still playing after its end");
+    wav.music.loop = false;
+    const std::string once = TempPath("once.wav");
+    CHECK_OK(VideoFX_Export(cards, once, wav), "the same, no loop");
+    w = ReadWav(once);
+    CHECK(w.Rms(0.2, 0.8) > 0.05 && w.Rms(2.2, 2.8) < 0.001, "no loop: plays once, then silence");
+
+    // ---- ducking: under the segments' own sound the music goes down ----
+    const std::vector<VideoFXSegment> talk = {VideoFXSegment::TestPattern(2.0), VideoFXSegment::SolidColor(0, 2.0)};
+    VideoFXExportSettings duck = VideoFXExportSettings::AudioOnlyWAV();
+    const std::string dry = TempPath("dry.wav");
+    CHECK_OK(VideoFX_Export(talk, dry, duck), "the segments' sound alone");
+    duck.music = VideoFXMusic::FromFile(longSong, 1.0);
+    duck.music.fadeIn = duck.music.fadeOut = 0.0;
+    duck.music.duckingLevel = 1.0;
+    const std::string full = TempPath("full.wav");
+    CHECK_OK(VideoFX_Export(talk, full, duck), "music, never ducked");
+    duck.music.duckingLevel = 0.0;
+    const std::string ducked = TempPath("ducked.wav");
+    CHECK_OK(VideoFX_Export(talk, ducked, duck), "music, ducked to nothing");
+    const Wav wd = ReadWav(dry), wf = ReadWav(full), wk = ReadWav(ducked);
+    // (Compared sample by sample: the music and the clip are the same tone,
+    // so their loudness alone says nothing - their phases may cancel.)
+    const double music = wf.RmsOfDifference(wd, 3.2, 3.9);
+    CHECK(music > 0.05, "the music alone, after the sound");
+    CHECK(Near(wf.RmsOfDifference(wd, 0.8, 1.8), music, music * 0.1), "not ducked: full music under the sound");
+    CHECK(wk.RmsOfDifference(wd, 0.8, 1.8) < music * 0.05, "ducked to 0: under the sound, no music");
+    CHECK(wk.Rms(3.2, 3.9) > 0.05, "and the music returns once the sound stops");
+
+    // ---- a slideshow that ends with its song ----
+    VideoFXFrame px;
+    px.width = 64; px.height = 48; px.pixels.assign(64 * 48 * 4, 200);
+    const std::string photo = TempPath("photo.png");
+    CHECK_OK(VideoFX_SaveFrameImage(px, photo), "a photo");
+    VideoFXSlideshowOptions opt;
+    opt.transition = VideoFXTransition::Crossfade(0.5);
+    opt.music = VideoFXMusic::FromFile(longSong);
+    opt.matchMusicLength = true;
+    VideoFXExportSettings small = base;
+    small.width = 64;
+    small.height = 36;
+    const std::string show = TempPath("music-show.mkv");
+    CHECK_OK(VideoFX_CreateSlideshow({photo, photo, photo}, show, opt, small), "slideshow fitted to the music");
+    CHECK_OK(VideoFX_Probe(show, info), "probe it");
+    CHECK(Near(info.duration, 6.0, 0.1) && info.HasAudio(), "6 s song, 6 s slideshow, with sound");
+
+    // ---- errors ----
+    VideoFXExportSettings bad = VideoFXExportSettings::AudioOnlyWAV();
+    bad.music = VideoFXMusic::FromFile(TempPath("none.mp3"));
+    CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::FileNotFound, "missing music file");
+    bad.music = VideoFXMusic::FromFile(photo);
+    CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::NoMediaStreams, "music without sound");
+    bad.music = VideoFXMusic::FromFile(longSong, 9.0);
+    CHECK(VideoFX_Export(cards, TempPath("x.wav"), bad) == VideoFXResult::InvalidArgument, "volume 9");
+    VideoFXSlideshowOptions noMusic;
+    noMusic.matchMusicLength = true;
+    CHECK(VideoFX_CreateSlideshow({photo}, TempPath("x.mkv"), noMusic) == VideoFXResult::InvalidArgument,
+          "fit to music without music");
+    CHECK(!Exists(TempPath("x.wav")) && !Exists(TempPath("x.mkv")), "nothing written by refused exports");
+}
+
 #else
 
 static void TestEngine() {
@@ -926,6 +1115,7 @@ int main() {
     TestEffectChains();
     TestTransitionAndOverlayText();
     TestKenBurnsMath();
+    TestMusicMath();
     TestEngine();
     if (failures) {
         std::printf("\n%d check(s) FAILED\n", failures);

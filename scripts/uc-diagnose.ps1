@@ -233,8 +233,10 @@ if ($shadowing.Count -gt 0) {
     }
     Write-Host "    Once loaded, such a file answers for the system DLL inside this process, and" -ForegroundColor Yellow
     Write-Host "    a Windows component importing the real one fails with 'The procedure entry" -ForegroundColor Yellow
-    Write-Host "    point ... could not be located'. Delete the files listed; a package newer" -ForegroundColor Yellow
-    Write-Host "    than 0.9.92 no longer ships them." -ForegroundColor Yellow
+    Write-Host "    point ... could not be located'. An application newer than 0.9.112 repairs" -ForegroundColor Yellow
+    Write-Host "    this folder itself when it starts; that these files are still here means it" -ForegroundColor Yellow
+    Write-Host "    is older, or the folder is not writable. Delete the files listed (with the" -ForegroundColor Yellow
+    Write-Host "    .la beside each); a package newer than 0.9.92 no longer ships them." -ForegroundColor Yellow
 } else {
     Write-Host "None."
 }

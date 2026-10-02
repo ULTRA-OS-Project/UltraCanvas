@@ -20,7 +20,6 @@ Changelog and version: [`Docs/UltraDesktop/CHANGELOG.md`](../../Docs/UltraDeskto
 | `ui/UltraDesktopStickerboard.*` | Sticky notes over the wallpaper: an `UltraCanvasTextArea` on a coloured card, dragged by its bar, persisted in the settings |
 | `ui/UltraDesktopAppStarter.*` | The Apps window: tiles from `UltraCanvasDesktopShell::ListApplications` with a filter box |
 | `ui/UltraDesktopTasksWindow.*` | The Task Manager: the open windows with Activate and Close, and the machine on `UltraCanvasHardwareInfoPanel` |
-| `ui/UltraDesktopSettingsWindow.*` | ULTRA OS settings, the desktop's page |
 | `main.cpp` | Bootstrap and the command line: `--edge`, `--settings`, `--windows`, `--apps`, `--devices`, `--screenshot`, `--version`, `--help` |
 | `UltraDesktop.desktop` | The freedesktop entry (NoDisplay: the session starts the desktop, not the menu); `make install` places it with the app icon (`media/appicon/UltraDesktop.png` / `.svg`) in the `hicolor` theme |
 

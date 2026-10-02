@@ -1,3 +1,161 @@
+#### 2026-10-02 *0.9.128*
+- **A hook now enforces the PR number in the chat title.** `.claude/hooks/check-chat-title.sh` runs on `PostToolUse` for `mcp__github__create_pull_request` and `mcp__claude-code-remote__set_session_title`, and on `Stop`, in Claude Code Remote sessions only. Opening a PR records its number in a per-session file under `.git/`, so nothing appears in the working tree, and puts the rename instruction in front of the session with the number filled in. Each rename records the number the title starts with. A bare `#628` with no words after it does not count. At `Stop` the hook takes the PR the session opened, or the one its closing line names with ` — open as PR #<n>` (that also catches a PR opened from the Claude UI), and blocks once when the title was never given that number. A second stop goes through, so a title someone set by hand only costs one line of explanation. `AGENTS.md` rule 7 describes it.
+
+#### 2026-10-02 *0.9.127*
+- **The file dialog also remembers its Details column widths and the last
+  folder - one for all applications, or one per application.**
+  `FileDialog.conf` (beside the view and window size it already kept) now
+  holds the Size / Type / Modified widths the user dragged the columns to,
+  and the last used folder. That folder is where the next
+  `UltraCanvasFileDialog` opens when the caller names no starting folder -
+  UltraMail's *Attach file* - while a folder the caller does name still wins.
+  - Whether the folder is shared by all applications (Global) or kept per
+    application (Individual, each application with its own Global /
+    Individual choice) is set in the new ULTRA OS settings application,
+    UOS-Settings. An application switched to its own folder starts from the
+    common one until it has used a folder of its own.
+  - **`UltraCanvasFileDialogSettings.h`** (`UltraCanvas::FileDialogSettings`)
+    reads and writes the file for the dialog and for UOS-Settings alike.
+    Every change goes through `Update()`, which re-reads the file first, so
+    one application's write never discards another's; the file is written
+    beside itself and renamed into place.
+
+#### 2026-10-02 *0.9.126*
+- **UltraNet plug-ins are loaded `RTLD_LOCAL`.** `UltraNet_RefreshPlugins()`
+  opened every plug-in DSO with `RTLD_GLOBAL`, which put everything a plug-in
+  exports into the process-wide symbol scope, where it binds the symbols of
+  every library loaded after it - another plug-in's included, and plug-ins
+  built from the same helper sources export the same names. That scope was
+  only ever needed by the retired v1 entry; plug-ins now take nothing from
+  the host's symbol table (host table, ABI 2), so they are loaded
+  `RTLD_LOCAL`. A plug-in still resolves its own references against the host
+  first, so the host's `dynamic_cast` to the richer plug-in interfaces is
+  unaffected (`imap_plugin_exposes_mailbox_interface`). New test
+  `plugins_are_loaded_without_joining_the_global_symbol_scope` (POSIX): after
+  loading, a process-wide `dlsym` finds no plug-in's `UltraNet_PluginInit`; it
+  fails with `RTLD_GLOBAL`.
+- **The UltraNet loader no longer accepts the v1 plug-in entry.** A plug-in
+  DSO that exported only `UltraNet_PluginRegister()` used to be loaded as a
+  fallback. That entry registered itself by resolving `UltraNet_RegisterPlugin`
+  - and every other core function it called - from the host's symbol table at
+  load time, which only POSIX allows and which only worked when the host
+  happened to carry all of them. Every in-tree plug-in has used
+  `UltraNet_PluginInit(host)` and the host table (ABI 2) since the previous
+  release, so `UltraNet_RefreshPlugins()` now loads that entry alone, the same
+  way on every platform, and leaves a v1-only library unregistered. A
+  third-party plug-in still exporting only v1 has to be rebuilt with
+  `UltraNet_PluginInit` and `Plugins/UltraNet/common/UltraNetPluginHostShim.cpp`.
+  New test `plugin_loader_refuses_a_v1_only_plugin` (POSIX) builds such a
+  plug-in and checks it is not registered; against the previous loader it
+  fails.
+
+#### 2026-10-02 *0.9.125*
+- **VideoFX: background music** (VideoFX 0.4.0).
+  `VideoFXExportSettings::music` (`VideoFXMusic`) lays a song - any file with
+  sound, a video's soundtrack included - under a whole export, slideshow or
+  not: volume, start offset, looping (or silence after the end), fade in and
+  out over the export, and **ducking**: where the segments have sound of
+  their own the music drops to `duckingLevel` within about 0.1 s and returns
+  after a pause, without pumping between words. It is mixed in as the sound
+  is encoded, so it runs straight through joins, transitions and padding;
+  the level detection and gain ramps are VideoFX's own, identical on FFmpeg
+  4.4 to 8.x.
+  - `VideoFXSlideshowOptions::music` and `matchMusicLength`: a slideshow
+    whose seconds per photo are chosen to end with the song.
+  - Music makes a timeline of silent pictures produce sound, so photos plus
+    music can be written to MP3 / WAV.
+  - Fix: a sound-only export of photos with transitions came out too short -
+    each photo after the first ended where the previous transition's held
+    sound did, instead of after its own length.
+  - `videofx`: `--music`, `--music-volume`, `--music-start`, `--duck`,
+    `--no-loop`, `--fit-music`. `VideoFXTest` grows to 298 checks.
+
+#### 2026-10-01 *0.9.124*
+- **Typing in a search field hung the text area on a large document.**
+  `UltraCanvasTextArea::HighlightMatches` collected every match by calling
+  `utf8_find` in a loop, and each call walked the text from its start to the
+  previous match — and, for a case-insensitive search, made a lowercased copy
+  of the whole document first. That is quadratic in the number of matches:
+  one letter typed into UltraTexter's search bar with the ~940 KB framework
+  changelog open meant some 88,000 matches, each copying the full megabyte,
+  and the UI thread did not come back (the first 30 KB alone took 1.4 s). The
+  new `utf8_find_all` (`UltraCanvasUtilsUtf8.h`) lowercases once and returns
+  every non-overlapping match in one pass — the same positions the loop
+  produced, in 17 ms for the whole file. `HighlightMatches`, `CountMatches`,
+  `GetCurrentMatchIndex` and UltraTexter's background match counter use it.
+- **Replace All hung the text area on a large document.**
+  `UltraCanvasTextArea::ReplaceText(..., all = true)` replaced one match at a
+  time in place: a fresh `utf8_find` from the start of the text, then a splice
+  that shifts everything after it - 6 s for the first 100 KB of the framework
+  changelog with one letter replaced, and no end in sight for the whole file.
+  The new `utf8_replace_all` finds the matches once and builds the result in a
+  single pass (27 ms for the whole ~940 KB), with the same output as before.
+
+#### 2026-10-01 *0.9.123*
+- **AI sessions put the PR number at the front of the chat title.** `AGENTS.md` *Branch and pull-request rules* gains rule 7: once a session opens a pull request it renames itself `#<n> <current title>` (`set_session_title` in a Claude Code Remote session), swapping the number rather than stacking a second one when a replacement PR follows a merged one, so a chat list shows which PR each session drives. `CLAUDE.md` points at it; the maintainer rules renumber to 8 and 9.
+
+#### 2026-10-01 *0.9.122*
+- **The Filer's host-icon and shortcut tests run on Windows.**
+  `FilerHostIconsTest` and `FilerShortcutEntryTest` join
+  `Tests/FilerTests.cmake`, so the Windows CI rows build and run them with the
+  name-encoding and folder-preview tests: the host-icon test asks the real
+  Windows shell for its icons, and the shortcut test reads `.lnk` files on
+  the system they come from, with links that name real paths. The shortcut
+  test's stored paths and the folder it lists are converted with
+  `PathToUtf8` instead of `.string()`, and on Windows a desktop entry whose
+  `/bin/sh` this machine does not have is expected to leave `linkTarget`
+  empty and show its command, as the display does there.
+
+#### 2026-10-01 *0.9.121*
+- **Windows: an installed package whose ImageMagick coder carries a system
+  DLL's name is repaired on start.** Packages up to 0.9.92 shipped
+  `coders\mpr.dll`, and a newer package extracted over an older folder keeps
+  it, so the "procedure entry point `WNetGetConnectionW` could not be
+  located" box on "Delete as administrator" and on a double-click into
+  Photos came back on exactly the machines that had hit it. The image
+  subsystem now puts the package's coder folder right before anything can
+  load a coder (`UltraCanvasCoderModuleRepair`, new): the useless `mpr` and
+  `url` pseudo-formats are deleted with their `.la` files, and a real format
+  whose name Windows also uses (`dpx`, `vid`, whatever else `System32`
+  holds) is renamed to `<name>-coder.dll` with its `.la` pointed at the new
+  file, which ImageMagick opens through unchanged. Every change is written
+  to the framework log; a folder that cannot be written (a read-only
+  install) is reported there and left for `uc-diagnose.ps1` to list.
+  Deleting the files by hand is no longer needed.
+- **Windows: a default open that fails is reported, not handed to
+  `explorer.exe`.** 0.9.83 answered a registered handler that would not
+  start from our process by starting it from Explorer's, which hid the
+  reason. The reason was the `mpr.dll` coder shadowing the system's (fixed
+  in the package since, and repaired on start now), so the detour is gone:
+  `OpenWithDefaultApplication` launches through the shell as a double-click
+  does, with the loader's hard-error box still off on the launching thread,
+  and a launch that fails names the shell's error.
+
+#### 2026-10-01 *0.9.120*
+- **A word-processing document prints on Windows, through GutenPrint, and on an
+  IPP printer without PDF.** It went to the printer only as the PDF
+  `ExportToPdf` writes, which those renderers cannot lay out, so they refused
+  the job. A job can now carry the same document as pages that draw themselves
+  (`IOPrintJob::pages`, an `IPrintPageSource`) beside the PDF, and each
+  renderer takes the form it can use: CUPS and a PDF-reading IPP printer the
+  PDF, as before; GDI and GutenPrint the pages; IPP the pages as PWG raster when
+  the printer takes no PDF or cannot select the page range from one.
+  - `PrintDocumentWithDialog` / `PrintDocumentWithSettings` /
+    `MakeDocumentPrintJob` take the pages as an optional last argument.
+  - `CreateRichDocumentPrintPages(editor)` (`UltraCanvasRichTextPrint.h`): the
+    pages `ExportToPdf` writes, laid out by a hidden copy of the document, drawn
+    straight into a render-context target or off screen at up to 300 dpi for a
+    Windows printer DC. A page the sheet's size prints 1:1 on the sheet's
+    edges; a larger one is scaled to fit.
+  - `UltraCanvasRichTextEdit::BeginPrintLayout` / `RenderPrintPage` /
+    `EndPrintLayout` draw a document's pages into any context; `ExportToPdf`
+    is built on them.
+  - `IPrintPageTarget::GetRenderContext()` (`RasterPageTarget` returns its
+    off-screen context). The native renderer refuses a job of pages alone by
+    name instead of queuing an empty one.
+  - New test `RichTextPrintTest`; `IODevicePrinterIPPTest` covers planning a
+    job of pages.
+
 #### 2026-10-01 *0.9.119*
 - **`cmake --install` now writes a working CMake package, so an application outside this repository builds with `find_package(UltraCanvas CONFIG REQUIRED)` and `target_link_libraries(app PRIVATE UltraCanvas::UltraCanvas)`.** The `install(EXPORT UltraCanvasTargets)` block in `UltraCanvas/CMakeLists.txt` had been commented out since the start, and the root still installed an `UltraCanvasConfig.cmake` that included a `UltraCanvasTargets.cmake` nothing generated - so the only out-of-tree route was a submodule and `add_subdirectory()` of the whole tree. The export set now holds the core and every in-tree target its link interface names (`UltraCanvasTextUtils`, `UltraCrypt`, `UltraVault`, `UltraCanvasBase32`, `UltraDatabase`, `uc-yyjson` in a static build, `UltraNet` when it links a system libcurl), VirtualFS and fmt are reached through their own packages (a fetched fmt is now told to install one), and `UltraCanvasConfig.cmake.in` - moved to `UltraCanvas/cmake/`, generated with `configure_package_config_file` where its inputs are in scope - re-finds Threads, fmt, VirtualFS, CURL, OpenSSL, Iconv and the pkg-config libraries the public headers include. The headers install as a mirror of the source layout under `include/ultracanvas/` (`include/`, `Plugins/`, `libspecific/`, `OS/` side by side), because the public headers reach across it with `../libspecific/...`, `../OS/<Platform>/...` and `Plugins/...` includes; the install interface is `include/ultracanvas/include` and `include/ultracanvas/Plugins`, as the build interface is. A shared core built against the vendored libcurl installs that `libcurl.so.4` next to itself; a static one cannot be packaged and the configure summary says why. The format plug-ins (CDR with its vendored libcdr archive, XAR, EPS, Vector, Models, OCR, Vectorizer with its Rust staticlib installed by path) join the export set from their own directories as `UltraCanvas::UltraCanvas<Name>Plugin`, listed in `ULTRACANVAS_PLUGIN_TARGETS`, and the `UltraCanvasAllFormats` registrar is exported as an object library, so an out-of-tree application registers every installed format the way an in-tree one does. `Tests/PackageConsumer` is a two-file application that builds against the installed package alone, and the Linux CI leg installs into a scratch prefix and builds and runs it on every pull request. `Docs/GettingStarted.md` describes the route.
 - **The documented `CreateButton` form took an argument that does not exist.** `AGENTS.md`, `UltraCanvasButtonExamples.md`, the element catalogue, `UltraCanvasSplitPane.md` and `UltraCanvasDialogKeyboard.md` all showed `CreateButton("MyButton", 101, 100, 50, 120, 40, "Click Me")` - identifier, a numeric id, then geometry - and the button doc's class reference declared a constructor with `long id`. No element factory or constructor takes an id, and `CreateAutoButton` never existed either; an assistant copying the documented form got a compile error on its first button. The examples now show the real signatures: identifier, x, y, w, h, text, the size-only and text-only constructors a layout positions, and `CreateIconButton` with the icon path before the text.

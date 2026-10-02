@@ -5102,11 +5102,9 @@ bool UltraCanvasRichTextEdit::ExportToPdf(std::vector<uint8_t>& pdfBytes, std::s
     return true;
 }
 
-// Lays the document out as page view does, with the PDF's own context (its
-// text is measured with the fonts it is drawn with), and draws page after
-// page into it. The element's view state is put back afterwards.
+// Exported as print draws it: laid out with the PDF's own context (its text
+// is measured with the fonts it is drawn with), then page after page.
 bool UltraCanvasRichTextEdit::ExportPdfPages(UltraCanvasPdfSurface& pdf, std::string& error) {
-    if (furnitureEdit) FinishHeaderFooterEditing();
     IRenderContext* ctx = pdf.GetContext();
     if (!ctx) {
         error = "The PDF has no page to draw on";
@@ -5115,9 +5113,34 @@ bool UltraCanvasRichTextEdit::ExportPdfPages(UltraCanvasPdfSurface& pdf, std::st
     const std::shared_ptr<UCRichDocument>& document = editor.GetDocument();
     if (document) pdf.SetMetadata(document->metadata.title, document->metadata.author, document->metadata.description);
 
-    const bool savedPageView = pageView;
-    const float savedZoom = zoom, savedScroll = scrollOffset, savedHScroll = hScrollOffset;
-    const Rect2Df savedArea = visibleArea;
+    const int count = BeginPrintLayout(ctx);
+    const float pointsPerPixel = 1.0f / kPixelsPerPoint;
+    for (int index = 0; index < count; index++) {
+        if (index > 0) pdf.NextPage();
+        ctx->PushState();
+        ctx->Scale(pointsPerPixel, pointsPerPixel);
+        RenderPrintPage(ctx, index);
+        ctx->PopState();
+    }
+    EndPrintLayout();
+    return true;
+}
+
+// ===== PRINTING =====
+
+// Lays the document out as page view does, measuring with `ctx`, in the
+// output state: page view at zoom 1, no editing marks. The view state is kept
+// for EndPrintLayout().
+int UltraCanvasRichTextEdit::BeginPrintLayout(IRenderContext* ctx) {
+    if (!ctx) return 0;
+    if (furnitureEdit) FinishHeaderFooterEditing();
+    if (!printing) {
+        savedOutputView.pageView = pageView;
+        savedOutputView.zoom = zoom;
+        savedOutputView.scrollOffset = scrollOffset;
+        savedOutputView.hScrollOffset = hScrollOffset;
+        savedOutputView.visibleArea = visibleArea;
+    }
 
     printing = true;
     pageView = true;
@@ -5131,47 +5154,51 @@ bool UltraCanvasRichTextEdit::ExportPdfPages(UltraCanvasPdfSurface& pdf, std::st
     furnitureCache.clear();
     layoutsDirty = true;
     EnsureLayouts(ctx);
+    return static_cast<int>(pages.size());
+}
 
-    const float pointsPerPixel = 1.0f / kPixelsPerPoint;
-    for (size_t index = 0; index < pages.size(); index++) {
-        if (index > 0) pdf.NextPage();
-        const PageFrame& frame = pages[index];
-        scrollOffset = frame.top;
-        ctx->PushState();
-        ctx->Scale(pointsPerPixel, pointsPerPixel);
-        // The page's top-left corner to the PDF page's origin.
-        ctx->Translate(-(visibleArea.x + pageLeftX), -visibleArea.y);
-        ctx->ClipRect(Rect2Dd(visibleArea.x + pageLeftX, visibleArea.y, pageWidthPx, pageHeightPx));
-        const std::vector<PageFrame> onePage{frame};
-        std::vector<PageFrame> allPages;
-        allPages.swap(pages);
-        pages = onePage;
-        RenderPages(ctx);
-        pages.swap(allPages);
-        DrawFloats(ctx, true);
-        const float top = frame.top, bottom = frame.top + pageHeightPx;
-        for (int i = 0; i < static_cast<int>(blockLayouts.size()); i++) {
-            const BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
-            if (BlockVisualBottom(bl) < top) continue;
-            if (bl.bounds.y > bottom) break;
-            RenderBlock(ctx, i, bl);
-        }
-        DrawFloats(ctx, false);
-        RenderNotes(ctx);
-        ctx->PopState();
+// One page of the print layout, its top-left corner at the context's origin.
+void UltraCanvasRichTextEdit::RenderPrintPage(IRenderContext* ctx, int pageIndex) {
+    if (!ctx || !printing || pageIndex < 0 || pageIndex >= static_cast<int>(pages.size())) return;
+    const PageFrame frame = pages[static_cast<size_t>(pageIndex)];
+    const float savedScroll = scrollOffset;
+    scrollOffset = frame.top;
+    ctx->PushState();
+    // The page's top-left corner to the context's origin.
+    ctx->Translate(-(visibleArea.x + pageLeftX), -visibleArea.y);
+    ctx->ClipRect(Rect2Dd(visibleArea.x + pageLeftX, visibleArea.y, pageWidthPx, pageHeightPx));
+    const std::vector<PageFrame> onePage{frame};
+    std::vector<PageFrame> allPages;
+    allPages.swap(pages);
+    pages = onePage;
+    RenderPages(ctx);
+    pages.swap(allPages);
+    DrawFloats(ctx, true);
+    const float top = frame.top, bottom = frame.top + pageHeightPx;
+    for (int i = 0; i < static_cast<int>(blockLayouts.size()); i++) {
+        const BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+        if (BlockVisualBottom(bl) < top) continue;
+        if (bl.bounds.y > bottom) break;
+        RenderBlock(ctx, i, bl);
     }
-
-    // Back to the screen: its own context lays everything out again.
-    printing = false;
-    pageView = savedPageView;
-    zoom = savedZoom;
+    DrawFloats(ctx, false);
+    RenderNotes(ctx);
+    ctx->PopState();
     scrollOffset = savedScroll;
-    hScrollOffset = savedHScroll;
-    visibleArea = savedArea;
+}
+
+// Back to the screen: its own context lays everything out again.
+void UltraCanvasRichTextEdit::EndPrintLayout() {
+    if (!printing) return;
+    printing = false;
+    pageView = savedOutputView.pageView;
+    zoom = savedOutputView.zoom;
+    scrollOffset = savedOutputView.scrollOffset;
+    hScrollOffset = savedOutputView.hScrollOffset;
+    visibleArea = savedOutputView.visibleArea;
     visibleAreaDirty = true;
     pages.clear();
     InvalidateDocument();
-    return true;
 }
 
 } // namespace UltraCanvas

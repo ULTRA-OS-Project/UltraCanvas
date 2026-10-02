@@ -539,6 +539,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # folder costs its decode once rather than once per launch.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasThumbnailDiskCache.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
         # "Is this file in use by another program" - the question behind
@@ -551,6 +552,12 @@ set(ULTRACANVAS_CORE_SOURCES
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElevatedFileOperations.cpp
+        # An installed Windows package whose ImageMagick coder carries a
+        # system DLL's name (mpr.dll, 0.9.92 and older, or a newer package
+        # extracted over it) is put right before the image subsystem starts.
+        # Windows backend under OS/MSWindows/, picked up by the platform
+        # glob; every other platform gets the no-op in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCoderModuleRepair.cpp
         # "Extract and run": a program inside an archive, unpacked to a run
         # folder, started, and its folder removed once it has ended. POSIX
         # launch in here; the Windows one (a job object) under OS/MSWindows/.
@@ -877,6 +884,8 @@ set(ULTRACANVAS_CORE_SOURCES
         # and the element that renders and edits it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        # Its pages, for the printers that draw rather than take its PDF.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextPrint.cpp
         # Word-processing formats: ODT/DOCX/DOC readers and writers
         # (used by FileLoader::OpenTextDocument and Texter)
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp

@@ -585,7 +585,8 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
 }
 
 void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
-                                         const MessageSecurity& security) {
+                                         const MessageSecurity& security,
+                                         const std::string& raw) {
     if (!warning_ || !warningTitle_ || !warningText_) return;
 
     // Only the two verdicts worth interrupting a reader for. Advertisements and
@@ -595,19 +596,44 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         return;
     }
 
-    const bool scam = status.cls == SenderClass::Scam;
+    // A dangerous message whose button leads off the sender's own domain is
+    // what phishing looks like: say so plainly, and show both domains so the
+    // reader can see the mismatch for themselves rather than take our word.
+    // Only on the scan's own verdict: a newsletter that is merely sitting in
+    // Junk links to its tracking domain too, and is not phishing for that.
+    DomainMismatch mismatch;
+    if (security.level >= ThreatLevel::Suspicious) mismatch = FindDomainMismatchInRaw(raw);
+    const bool phishing = mismatch.found;
+
+    const bool scam = status.cls == SenderClass::Scam || phishing;
     const Color accent = scam ? Theme::kTrustScam : Theme::kTrustSpam;
     warning_->SetBackgroundColor(scam ? Theme::kTrustScamSoft : Theme::kTrustSpamSoft);
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
-        (scam ? "This message looks like a scam or phishing attempt"
+        (phishing ? "Warning: This is likely a phishing\xC2\xB2 email!"
+         : status.cls == SenderClass::Scam
+              ? "This message looks like a scam or phishing attempt"
               : "Parts of this message do not add up"));
 
-    std::string text = status.reason;
+    std::string text;
+    if (phishing) {
+        text = "Mismatch of domains\n"
+               "Sender domain: " + mismatch.senderDomain + "\n" +
+               (mismatch.isButton ? "Button domain: " : "Link domain: ") +
+               mismatch.linkDomain;
+        if (!mismatch.linkText.empty())
+            text += "  (\xE2\x80\x9C" + mismatch.linkText + "\xE2\x80\x9D)";
+        text += "\n";
+    } else {
+        text = status.reason;
+    }
     if (!security.reason.empty()) text += (text.empty() ? "" : "\n") + security.reason;
     text += "\nDo not sign in, pay or reply through the links in this message unless you "
             "are sure who sent it.";
+    if (phishing)
+        text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
+                "to hack your accounts on other websites.";
     warningText_->SetText(text);
     warning_->SetVisible(true);
 }
@@ -749,7 +775,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         if (!security.reason.empty()) tip += "\n" + security.reason;
         from_->SetTooltip(tip);
     }
-    ShowSecurityWarning(status, security);
+    ShowSecurityWarning(status, security, raw);
 
     // The body, with its images: the message's own always, remote ones when
     // the reader has allowed this sender - never for a suspicious message.

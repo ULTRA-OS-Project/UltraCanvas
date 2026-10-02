@@ -555,6 +555,21 @@ the backing implementation can be replaced without affecting callers.
   the host wired the helper. See
   `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
 
+- **UltraCanvasCoderModuleRepair** (`UltraCanvasCoderModuleRepair.h`) —
+  repairs an installed Windows package whose ImageMagick coder carries a
+  Windows system DLL's name (`mpr.dll` in packages up to 0.9.92, or left by a
+  newer package extracted over an older one): once loaded, such a coder
+  answered every later import of that name in the process, and the shell's
+  own DLLs failed with "entry point not found". The image subsystem calls
+  `RepairPackagedCoderModules(exeDir)` on Windows before anything can load a
+  coder; the pseudo-formats `mpr` and `url` are deleted, a real format (`dpx`,
+  `vid`, anything else `System32` holds) is renamed to `<name>-coder.dll` with
+  its `.la` pointed at the new file. Platform-free half (and the no-op for
+  other platforms) in `core/UltraCanvasCoderModuleRepair.cpp`, the System32
+  lookup in `OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp`,
+  `Tests/CoderModuleRepairTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md`.
+
 - **UltraCanvasTrash** (`UltraCanvasTrash.h`) — moves files and folders into
   the desktop's trash, from where the system's own file manager restores them.
   `MoveToTrash(path, error)`, `TrashAvailable()`, `TrashDisplayName()`
@@ -1150,9 +1165,20 @@ engine; these classes hold the pixels being edited and hand them to it.
   `Finish`, `GetBytes`. Cairo's PDF surface through a stream, so UTF-8 paths
   work on Windows. Used by `UltraCanvasRichTextEdit::ExportToPdf`.
 - **Printing a rendered document** (`IODeviceManager/UltraCanvasIODevicePrintDialog.h`)
-  — `PrintDocumentWithDialog(name, bytes, mimeType, parent)`,
+  — `PrintDocumentWithDialog(name, bytes, mimeType, parent, pages)`,
   `PrintDocumentWithSettings`, `MakeDocumentPrintJob`: the text versions'
   dialog-to-printer path for a PDF (or any payload a printer's renderer takes).
+  The optional `pages` (`IOPrintJob::pages`, an `IPrintPageSource`) is the
+  same document as pages to draw, for the renderers that cannot lay out a
+  PDF - Windows GDI, GutenPrint, IPP without PDF - which draw them instead of
+  refusing the job. `IPrintPageTarget::GetRenderContext()` lets a source draw
+  straight into a target's render context.
+- **RichDocumentPrintPages** / `CreateRichDocumentPrintPages(editor)`
+  (`UltraCanvasRichTextPrint.h`) — a word-processing document's pages as an
+  `IPrintPageSource`, the pages `ExportToPdf` writes, laid out by a hidden
+  element of its own. `UltraCanvasRichTextEdit::BeginPrintLayout` /
+  `RenderPrintPage` / `EndPrintLayout` draw them into any context. Tested by
+  `RichTextPrintTest`.
 - **ITextLayout::GetLineExtents()** — each laid-out line's bytes and vertical
   extent; **TextAttributeFactory::CreateAllowBreaks(bool)** keeps a range on
   one line.
@@ -1174,6 +1200,15 @@ bytes) is transparently decompressed via the VirtualFS compression API, so
 applications never deal with compression formats themselves;
 `FileBytesResult::decompressedFrom` records the source format and
 `autoDecompress = false` opts out.
+
+The file dialogs follow `UltraCanvasDialogManager::SetUseNativeDialogs`: the
+platform's picker, or the framework's `UltraCanvasFileDialog`. What the
+framework's dialog remembers (view, size, Details column widths, last used
+folder - shared by all applications or per application) is
+`UltraCanvas::FileDialogSettings` in `UltraCanvasFileDialogSettings.h`, the
+file `FileDialog.conf` in the UltraCanvas settings folder; the ULTRA OS
+settings application (UOS-Settings, `Apps/UOSSettings`) edits the last used
+folder scope. Every write goes through `FileDialogSettings::Update()`.
 
 ### **4. Plug-ins for File Types**
 
@@ -1987,9 +2022,10 @@ time: without it the same API links from a stub whose calls return
 timeline with 26 effect types, speed, joins, 30 transitions between segments
 (picture via xfade, sound cross-faded), text and image overlays on the output
 frame, still images with sub-pixel pan and zoom and one-call slideshows,
+background music (fades, looping, ducking under the segments' own sound),
 GIF / audio-only outputs, lossless cut, background job, `videofx`
 command-line tool. Planned: picture-in-picture, keyframed parameters,
-multi-track audio mixing, hardware encoders beyond the platform ones picked
+several free audio tracks, hardware encoders beyond the platform ones picked
 automatically (VideoToolbox, Media Foundation), project files.
 
 - Types: `VideoFXResult`, `VideoFXMediaInfo`, `VideoFXStreamInfo`,
@@ -1999,7 +2035,8 @@ automatically (VideoToolbox, Media Foundation), project files.
   `VideoFXFitMode`, `VideoFXProgressCallback`, `VideoFXExportJob`,
   `VideoFXTransition`, `VideoFXTransitionType`, `VideoFXOverlay`,
   `VideoFXOverlayKind`, `VideoFXAnchor`, `VideoFXImageMotion`,
-  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`
+  `VideoFXMotionStyle`, `VideoFXImageFit`, `VideoFXSlideshowOptions`,
+  `VideoFXMusic` (`VideoFXExportSettings::music`)
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2031,8 +2068,9 @@ automatically (VideoToolbox, Media Foundation), project files.
   OverlayPosition, BuildTextOverlayFilter, BuildImageOverlayFilters,
   ResolveDefaultFont, FontconfigCanDrawText, ExecutableDir, GetFrameRotation,
   ValidateMotion, ResolveMotion, ViewAt, ViewRect, ResolveImageFit,
-  ContainViewRect, MakeBlurredBackdrop, RenderView}`
-  (the last eight in `core/VideoFXKenBurns.h`, no FFmpeg dependency)
+  ContainViewRect, MakeBlurredBackdrop, RenderView, ValidateMusic,
+  MusicEnvelope, MusicDucker, SlideshowSecondsForMusic}`
+  (`core/VideoFXKenBurns.h` and `core/VideoFXMusic.h` have no FFmpeg dependency)
   (`core/VideoFXFilterBuilder.h`, no FFmpeg dependency); the FFmpeg version
   shims in `core/VideoFXBackend.h`
 
@@ -14862,6 +14900,88 @@ Diagrams → Class Diagram, five buttons:
 - [`UltraCanvasDiagramRouting.md`](UltraCanvasDiagramRouting.md) — the shared orthogonal router
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCoderModuleRepair.md
+==============================================================================
+
+# UltraCanvasCoderModuleRepair
+
+**Header:** `UltraCanvas/include/UltraCanvasCoderModuleRepair.h`
+**Sources:** `core/UltraCanvasCoderModuleRepair.cpp` (platform-free half and
+the no-op for every platform but Windows),
+`OS/MSWindows/UltraCanvasWindowsCoderModuleRepair.cpp` (System32 lookup)
+**Test:** `Tests/CoderModuleRepairTest.cpp`
+
+Repairs an installed Windows package in which an ImageMagick coder module
+carries the file name of a Windows system DLL. The image subsystem calls it
+on Windows before anything can load a coder; no application code needs to.
+
+## Why it exists
+
+Windows keys the modules of a process by base name. ImageMagick loads every
+coder into the process the first time libvips asks it whether it recognises
+a file, and with `coders\mpr.dll` (the `MPR:` in-memory image registry) among
+them, every later import of `MPR.dll` by a Windows component the shell loads
+in here - `pcacli.dll` for the `runas` verb behind "Delete as administrator",
+`daxexec.dll` for a Store app - was bound to the coder and failed with
+*The procedure entry point `WNetGetConnectionW` could not be located*.
+`package-win.sh` ships no such file any more, but a package extracted over
+an older folder keeps the old coders, and every extraction of 0.9.92 or older
+has them. See [*"Entry point not found" in a Windows
+DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).
+
+## What it does
+
+For every `*.dll` in `<exe>\lib\ImageMagick-*\modules-Q16HDRI\coders` whose
+name is one Windows itself uses (`mpr`, `url`, `dpx`, `vid` always, plus
+whatever the machine's `System32` holds):
+
+- a pseudo-format of no use here (`mpr`, `url`) is deleted, with its `.la`;
+- a real format (`dpx`: SMPTE DPX, which the export dialog offers) is renamed
+  to `<name>-coder.dll` and its `.la` rewritten so `dlname=` and
+  `library_names=` name the new file. ImageMagick opens a coder through its
+  `.la`, so the rename is invisible to it, and the process then holds a
+  module no system DLL is called;
+- a renamable coder with no `.la` beside it is deleted, since nothing could
+  point ImageMagick at the new name.
+
+The repair is idempotent, a missing folder is nothing to do, and a package
+re-extracted over a repaired one (the original back beside the renamed file)
+is repaired again. Every change and every failure is written to the
+framework log (`ULTRACANVAS_DEBUG_LOG`); a folder the process cannot write
+leaves the files in place, where `uc-diagnose.ps1 -CheckOnly` lists them.
+
+## API
+
+```cpp
+namespace UltraCanvas::CoderModuleRepair {
+    struct CoderModuleRepairResult {
+        std::vector<std::string> removed;   // "mpr.dll", "mpr.la"
+        std::vector<std::string> renamed;   // "dpx.dll -> dpx-coder.dll"
+        std::vector<std::string> failed;    // "mpr.dll: <why>"
+        bool Changed() const;
+    };
+    std::string LowerCaseName(const std::string& name);
+    bool IsKnownSystemDllName(const std::string& lowerName);   // mpr, url, dpx, vid
+    bool IsDroppableCoder(const std::string& lowerName);        // mpr, url
+    std::string RenamedCoderFileName(const std::string& dllName);
+    std::string RewriteLibtoolArchive(const std::string& laText, const std::string& dlName);
+    CoderModuleRepairResult RepairCoderModules(const std::string& codersDirUtf8,
+            const std::function<bool(const std::string& lowerName)>& isSystemDllName);
+    CoderModuleRepairResult RepairPackagedCoderModules(const std::string& exeDirUtf8);
+    bool NativeIsSystemDllName(const std::string& lowerName);   // Windows backend
+}
+```
+
+`RepairPackagedCoderModules` is the entry point `UCImageRaster::
+InitializeImageSubsysterm` uses on Windows; on every other platform it
+returns an empty result. `RepairCoderModules` with an explicit predicate is
+what the test drives on any platform.
+
+## Version
+
+- 1.0.0 (2026-10-01): first version.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
 ==============================================================================
 
@@ -20796,13 +20916,20 @@ code.
 
 ## Version
 
+- 1.2.3 (2026-10-01): the Windows `explorer.exe` detour of 1.2.2 is gone. It
+  answered a registered handler that would not start from our process by
+  starting it from Explorer's, which hid the reason; the reason was the
+  packaged `mpr.dll` coder, kept out of the package since and repaired in an
+  installed one on start ([`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)).
+  A default open that fails now names the shell's error. The loader's
+  hard-error box stays off on the launching thread.
 - 1.2.2 (2026-09-29): Windows launches no longer put up the loader's modal
   "entry point not found" box: the shell loads a packaged app's activation
   DLL (`daxexec.dll`, for Photos and other Store apps) into the calling
   process, and hard-error boxes are now off on that thread around every
   launch. When the default open still fails for a registered handler, the
   file is handed to `explorer.exe`, which activates the app from its own
-  process. (Why the import failed at all - a packaged ImageMagick coder
+  process (removed again in 1.2.3). (Why the import failed at all - a packaged ImageMagick coder
   named `mpr.dll` shadowing the system's - is a packaging bug, fixed the
   same day; see [*"Entry point not found" in a Windows
   DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).)
@@ -46118,6 +46245,31 @@ PDF, and `PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window)`
 prints one - which is what UltraTexter's Print does for a word-processing tab,
 and File > Export as PDF writes.
 
+A PDF reaches CUPS, and an IPP printer that reads PDF, as it is. The Windows
+GDI renderer, GutenPrint and an IPP printer without PDF cannot lay one out, so
+send the same pages along for them to draw:
+
+```cpp
+#include "UltraCanvasRichTextPrint.h"
+
+PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window,
+                        CreateRichDocumentPrintPages(*editor));
+```
+
+`CreateRichDocumentPrintPages` copies the document into an element of its own
+(the one on screen keeps its view) and returns an `IPrintPageSource`: the pages
+`ExportToPdf` writes, drawn straight into a printer page that has a render
+context (GutenPrint, IPP's PWG raster), or drawn off screen at up to 300 dpi
+and placed as an image on a Windows printer DC. A page the size of the sheet
+prints 1:1, lined up with the sheet's edges; a larger one is scaled down to
+fit, a smaller one centred.
+
+To draw the pages into a context of your own, `BeginPrintLayout(ctx)` lays
+the document out in the output state and returns the page count,
+`RenderPrintPage(ctx, index)` draws one page with its top-left corner at the
+context's origin (96 units to the inch), and `EndPrintLayout()` puts the view
+back. `ExportToPdf` is built on the same three.
+
 ## Zoom and scrolling sideways
 
 ```cpp
@@ -61522,11 +61674,17 @@ and `url.dll` are pseudo-formats of no use here and are dropped, with their
 to point there: ImageMagick opens a coder through the `.la` (`dlname=` names
 the file to load), so the rename costs it nothing, and the process holds a
 module called `dpx-coder.dll`, a name no system DLL has. The build then refuses
-a package that carries a system DLL's name anywhere. For a package already
-extracted, `uc-diagnose.ps1 -CheckOnly` lists the offending files under *DLLs
-named like Windows system DLLs*; deleting them (with the `.la` beside each)
-fixes that installation, and so does extracting a newer package into a fresh
-folder rather than over the old one.
+a package that carries a system DLL's name anywhere.
+
+A package already extracted repairs itself: before the image subsystem
+starts, the application applies the same two rules to its own coder folder
+(`UltraCanvasCoderModuleRepair`, see
+[`UltraCanvasCoderModuleRepair.md`](UltraCanvasCoderModuleRepair.md)) and
+logs every file it deleted or renamed. That also covers a newer package
+extracted over an older folder, which keeps the old coders. Only a folder the
+process cannot write is left as it is; `uc-diagnose.ps1 -CheckOnly` lists
+such files under *DLLs named like Windows system DLLs*, and deleting them
+(with the `.la` beside each) by hand fixes that installation.
 
 The general rule for anyone adding a DLL to the package: **no DLL may carry
 the base name of a Windows system DLL**, in a subdirectory or not. A plug-in
@@ -64365,6 +64523,30 @@ four hold, because its parameter set is the richer one.
 accepting it and falling back at print time: a caller that asked for
 GutenPrint needs to know it is not getting it.
 
+### A document and its pages, together
+
+A formatted document reaches a printer as a PDF (`PrintDocumentWithDialog`),
+which CUPS and a PDF-reading IPP printer print as it is. The Windows GDI
+renderer, GutenPrint and an IPP printer without PDF cannot: they print what
+they can draw, and nothing here lays a PDF out. So a job may carry the same
+document twice - as bytes, and as **`IOPrintJob::pages`**, an
+`IPrintPageSource` that draws it - and each renderer takes the form it can
+use:
+
+| Renderer | Takes |
+|---|---|
+| Native on CUPS | the bytes, unchanged; a job of pages alone is refused by name rather than queued empty |
+| Windows GDI, GutenPrint | the pages: `MakePageSourceForJob` returns them before looking at the bytes |
+| IPP | the bytes when the printer takes them (and can select the page range); otherwise the pages, as PWG raster (`kIppDrawnPagesType`) |
+
+A source that is more than lines of text and pictures draws through the
+rendering stack, so **`IPrintPageTarget::GetRenderContext()`** hands over the
+target's `IRenderContext` where it has one (`RasterPageTarget`: GutenPrint's
+page, IPP's raster page). It is null for a Windows printer DC, where the
+source draws its page off screen and places it with `DrawImage`. A
+word-processing document's pages are `RichDocumentPrintPages`
+(`UltraCanvasRichTextPrint.h`), outside this module.
+
 ### Option resolution
 
 The GutenPrint parameter model — media type → resolution → cartridge → inkset
@@ -64612,7 +64794,9 @@ even to a printer that claims `text/plain`, because what a printer's own text
 path does with UTF-8 is anybody's guess and a page drawn here is the same page
 on every printer. What cannot be done either way is refused by name rather
 than half-printed: a PDF to a printer that takes none (nothing here paginates
-PDF yet), and a page range on a document the printer cannot select pages from.
+PDF yet), and a page range on a document the printer cannot select pages from
+- unless the job carries the document's pages too, which are then drawn (see
+*A document and its pages, together*).
 
 **The transport is one Print-Job request** - the IPP message with the
 document directly after it, POSTed with `Content-Type: application/ipp`. It
@@ -65172,7 +65356,7 @@ absent.
 | Windows spooler backend: supply levels | ✅ from the driver's bidi channel (`IBidiSpl` `GetAll` on `\Printer.Consumables`), and when that is silent, from the printer over IPP at an address read from the queue's port (IPP port URL, or a Standard TCP/IP port's `HostAddress`). The parsing and the port-to-address guesses are tested on every platform, and the IPP query against `ippeveprinter`. Not yet verified against real Windows hardware. WSD ports carry no address the spooler gives out, so a WSD queue gets bidi only. |
 | Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
 | **Windows GDI renderer** | ✅ `Native` now works on Windows. Prints raster images and plain text by drawing onto a printer DC; honours paper size, orientation, copies, collation, colour mode, duplex and quality through a driver-validated `DEVMODE`. |
-| Windows GDI renderer: PDF and other documents | ❌ refused by name with `NotSupported`, not half-printed. Needs the PDF plugin to paginate; the seam it would plug into is done. |
+| Windows GDI renderer: PDF and other documents | ⚠️ a PDF on its own is still refused by name with `NotSupported`, not half-printed - laying one out needs the PDF plugin. A PDF that comes with its pages (`IOPrintJob::pages`, as a formatted document's does: `CreateRichDocumentPrintPages`) prints: the pages are drawn. |
 | Windows GDI renderer: images from memory | ❌ the document loader is path-based, so a job carrying image bytes rather than a path is refused rather than spooled through a temp file behind the caller's back. |
 | XPS print path | ❌ GDI covers every driver Windows will show; XPS would matter for an XPS-only device or for higher-fidelity transparency. |
 | Windows printer maintenance | ❌ |
@@ -65187,7 +65371,7 @@ absent.
 | IPP: the same printer twice on Windows | ❌ a driverless printer also installed as a spooler queue is listed as `winspool:<name>` and again over IPP. Matching them needs the queue's port address, which the Windows backend does not read yet. |
 | IPP: `ipps://` with a self-signed certificate | ❌ TLS verification stays on, so a printer offering *only* `ipps://` - with the self-signed certificate nearly every printer has - is not reachable. One offering both is reached over `ipp://`. The fix is trust on first use (pin the certificate seen at discovery), not turning verification off. |
 | IPP: authentication | ❌ a printer answering HTTP 401 is reported as `AccessDenied` by name; no credentials are sent. |
-| IPP: PDF to a printer that takes no PDF | ❌ refused by name. Needs the PDF plugin to paginate, the same seam the GDI renderer is waiting on. |
+| IPP: PDF to a printer that takes no PDF | ⚠️ refused by name on its own (laying it out needs the PDF plugin). With its pages beside it (`IOPrintJob::pages`) the pages are drawn as PWG raster instead - also when the printer cannot select a page range from the PDF. |
 | IPP: AirPrint's URF raster | ❌ not written. A printer taking URF but not PWG raster - older AirPrint-only models - still prints PDF and JPEG as they are; text and other images are refused by name. |
 | IPP: document streaming | ❌ the request and document go as one HTTP body, so a document is in memory whole. Fine for the PDFs and photos this path carries; PWG raster is the heavier case - an A4 page of text at 300 dpi in grey is about 1.3 MB, because anti-aliased glyphs defeat run-length compression - so a long raster job would want `Create-Job` / `Send-Document` with a chunked body. |
 | IPP: tested against a live printer | ✅ `Tests/IODevicePrinterIPPLiveTest` starts CUPS's reference printer `ippeveprinter` and prints to it through the public API: text as PWG raster, a page range, a PDF as it is, a refusal, jobs. Skipped where `ippeveprinter` is not installed (`cups-ipp-utils`) or cannot start: it needs a running DNS-SD daemon (Avahi) even with advertising off, and IPv6, so a container without IPv6 always skips. CI's Linux rows install it, start Avahi and set `ULTRACANVAS_TEST_IPP_REQUIRED`, which turns a skip into a failure, so there it must run. |
@@ -65196,7 +65380,7 @@ absent.
 | Cloud printing | ❌ architecture only |
 | **Integration with `UltraCanvasNativeDialogs::ShowPrintDialog()`** | ✅ the dialog now asks (`RequestPrintSettings()` → `NativePrintResult`) and the job goes through `PrinterDevice`, so the printer, copies, collation, paper size, orientation, duplex, quality and page range the user picked are the ones the queue receives. Texter and UltraFiler keep the `bool` signature they already call. |
 | Print dialog: "Print to File" destination | ❌ reported in the result (`printToFile`, `outputFilePath`) and refused by name, rather than silently spooled to a queue the user did not choose. Needs a renderer that writes a document rather than submitting one. |
-| Print dialog: printing anything but plain text | ❌ `PrintTextWithDialog()` is the only bridge; an image or a PDF from a dialog needs the same treatment, and for PDF the renderer gap two rows up. |
+| Print dialog: printing anything but plain text | ⚠️ `PrintDocumentWithDialog()` prints a document (a PDF), with its pages beside it for the renderers that must draw (`pages`); Texter prints word-processing tabs this way. An image file from a dialog has no bridge yet. |
 | Print dialog on Android | ❌ `RequestPrintSettings()` reports cancelled. Android prints through a Java-side `PrintManager` job, not a settings dialog that hands choices back; bridging it is a JNI slice. |
 | Print dialog on WASM | ❌ and will stay so: the browser's print UI neither reports what the user chose nor lets a page choose for them, by design. `ShowPrintDialog()` there still hands the text to the browser to print. |
 
@@ -70325,7 +70509,10 @@ ABI), to the host's table in `core/UltraNet/UltraNetPlugins.cpp` and to the
 shim, and uses only header-only UltraCanvas helpers. The macOS and Windows
 linkers reject a plug-in that calls the core directly; on Linux the
 `UltraNetPluginHostImports` test (`scripts/check_ultranet_plugin_imports.py`)
-does, reading every built plug-in's undefined symbols.
+does, reading every built plug-in's undefined symbols. `UltraNet_PluginInit(host)`
+is the only entry point the loader accepts: the old POSIX-only v1 entry,
+`UltraNet_PluginRegister()`, which reached into the host's symbol table, is
+refused (`plugin_loader_refuses_a_v1_only_plugin`).
 
 ---
 
@@ -71775,13 +71962,14 @@ size, and encode the result as MP4, WebM, MOV, MKV, an animated GIF or an
 audio file. One call, `VideoFX_Export`, does all of it from a list of
 segments.
 
-> **Status: stages 1 and 2 implemented, plus photos.** Probe, frames, the
-> segment timeline with 26 effects, speed, joins, 30 transitions between
-> segments, text and image overlays, still images with smooth pan and zoom
-> ("Ken Burns") and one-call slideshows, GIF and audio-only output, lossless
-> cut, the background job and the `videofx` command-line tool work today, on
-> FFmpeg 4.4 to 8.x. Picture-in-picture, keyframes, multi-track mixing and
-> project files are planned (see *Roadmap*).
+> **Status: stages 1 and 2 implemented, plus photos and music.** Probe,
+> frames, the segment timeline with 26 effects, speed, joins, 30 transitions
+> between segments, text and image overlays, still images with smooth pan and
+> zoom ("Ken Burns"), one-call slideshows, background music that dips under
+> speech, GIF and audio-only output, lossless cut, the background job and the
+> `videofx` command-line tool work today, on FFmpeg 4.4 to 8.x.
+> Picture-in-picture, keyframes, several free audio tracks and project files
+> are planned (see *Roadmap*).
 
 ---
 
@@ -71957,7 +72145,57 @@ VideoFX_CreateSlideshow({ "a.jpg", "b.jpg", "c.png" }, "trip.mp4", options);
 
 It fades in from and out to black (`fadeInOut`), gives each photo its own
 `Auto` move, shows portrait photos whole on a blurred background, and without a size in the settings makes 1920x1080 at 30 fps.
-Length: `n x secondsPerImage - (n - 1) x transition`.
+Length: `n x secondsPerImage - (n - 1) x transition` — or, with
+`matchMusicLength`, the length of the music (see below).
+
+---
+
+## Background music
+
+`VideoFXExportSettings::music` lays a song under the whole export — any
+timeline, not only slideshows. It is mixed in last, so it plays straight
+through joins and transitions, and where the segments have sound of their own
+it steps back:
+
+```cpp
+VideoFXExportSettings settings = VideoFXExportSettings::WebMP4(1080);
+settings.music = VideoFXMusic::FromFile("summer.mp3", 0.8);   // path, volume
+settings.music.start = 12.0;          // begin 12 s into the song
+settings.music.fadeIn = 1.0;          // seconds, at the start of the export
+settings.music.fadeOut = 3.0;         // and at its end
+settings.music.duckingLevel = 0.25;   // under the clips' own sound
+VideoFX_Export(timeline, "holiday.mp4", settings);
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `path` | — | Any file with sound: MP3, M4A/AAC, WAV, FLAC, OGG, Opus, or a video (its soundtrack) |
+| `volume` | 0.8 | Linear gain, 0..4 |
+| `start` | 0 | Seconds into the song to begin at |
+| `loop` | true | Repeat a song shorter than the video; `false` = silence after it ends |
+| `fadeIn`, `fadeOut` | 1 s, 2 s | Over the start and end of the export |
+| `duckingLevel` | 0.3 | Gain while the segments have sound of their own, 0..1; 1 = never dip |
+
+**Ducking.** VideoFX listens to the segments' own sound block by block. While
+it is present — someone speaking in a clip, a waterfall — the music goes down
+to `duckingLevel` within about a tenth of a second; it waits for a pause of
+over half a second before coming back up, slowly, so speech does not make it
+pump between words. Photos and colour cards have no sound, so under a
+slideshow the music plays at full `volume`.
+
+**Slideshows to a song.** `VideoFXSlideshowOptions::music` sets the song for
+`VideoFX_CreateSlideshow`, and `matchMusicLength` chooses the seconds per
+photo so the show ends with it:
+
+```cpp
+VideoFXSlideshowOptions options;
+options.music = VideoFXMusic::FromFile("song.mp3");
+options.matchMusicLength = true;      // 3:20 of music, 40 photos: about 5.9 s each
+VideoFX_CreateSlideshow(photos, "show.mp4", options);
+```
+
+Sound-only outputs work too: photos plus music into `.mp3` is a valid,
+correctly timed (if unusual) export, and so is music under silent clips.
 
 ---
 
@@ -72187,6 +72425,8 @@ videofx testclip pattern.mp4 5 1280 720 30
 videofx slideshow trip.mp4 a.jpg b.jpg c.png --seconds 4 --caption Arrival --caption "" --caption "Old town"
 videofx slideshow trip.mp4 *.jpg --motion zoomin --transition dissolve:1.5
 videofx slideshow trip.mp4 *.jpg --fit blur              # every photo whole, on its blurred copy
+videofx slideshow trip.mp4 *.jpg --music song.mp3 --fit-music
+videofx concat holiday.mp4 a.mp4 b.mp4 --music song.mp3 --music-volume 0.6 --duck 0.2
 ```
 
 ---
@@ -72217,7 +72457,8 @@ generates its own clips, so it needs no media files.
 | 1 | Probe, frames, segment timeline, 26 effects, speed, joins, GIF / audio outputs, lossless cut, job, CLI | **Done** |
 | 2 | Transitions between segments (30 types, with audio cross-fade), text and image overlays | **Done** |
 | 2b | Still images with pan and zoom, EXIF orientation, one-call slideshows | **Done** |
-| 3 | Picture-in-picture, keyframed effect and overlay parameters, multi-track audio mixing (music bed, ducking) | Planned |
+| 3a | Background music with fades, looping and ducking under speech; slideshows fitted to a song | **Done** |
+| 3 | Picture-in-picture, keyframed effect and overlay parameters, several free audio tracks (voice-over, sound effects at given times) | Planned |
 | 4 | Project files, proxy media, explicit hardware encoder choice (NVENC, QuickSync, VAAPI) | Planned |
 | 5 | A timeline editor element in UltraCanvas on top of the engine | Planned |
 
@@ -73801,7 +74042,9 @@ On the left by default; the settings move it to the top or bottom edge, and
 `--edge top` does so for one run. Three groups, joined by the S-curve wave
 separators:
 
-1. **System** — *ULTRA OS settings* and the *app starter*.
+1. **System** — *ULTRA OS settings* and the *app starter*. *ULTRA OS
+   settings* starts **UOS-Settings**, the system's settings application
+   (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
 2. **Running applications** — one button per open window on the current
    desktop, with the application's own icon (resolved from its desktop
    entry; the first letter of its class when it has none). The active
@@ -73858,10 +74101,11 @@ windows stop short of the bars instead of covering them.
 - **Task Manager**: the open windows with *Activate* and *Close* on the
   first tab, the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
-- **ULTRA OS settings**, the desktop's page: the taskbar's edge, the
-  wallpaper (Browse… opens the file dialog), the RAM disc path, the file
-  manager program, the number of virtual desktops. *Apply* writes the
-  settings and rebuilds the bars in place.
+- **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
+  the RAM disc path, the file manager program, the number of virtual
+  desktops - are the *Desktop* page of UOS-Settings. They live in the
+  desktop's settings file; the desktop checks it once a second and rebuilds
+  the bars in place when UOS-Settings changed one of them.
 - **Stickerboard**: sticky notes over the wallpaper. *+* in the corner adds
   one; each note is edited in place, dragged by its top bar, cycled through
   six paper colours and closed with ×. Notes come back where they were.

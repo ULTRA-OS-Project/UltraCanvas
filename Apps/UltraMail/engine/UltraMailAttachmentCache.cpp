@@ -1,14 +1,16 @@
 // Apps/UltraMail/engine/UltraMailAttachmentCache.cpp
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 - Prune(); paths through PathFromUtf8
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAttachmentCache.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 using UltraCanvas::PathFromUtf8;
 using UltraCanvas::PathToUtf8;
@@ -92,20 +94,24 @@ std::string AttachmentCache::SanitizeFilename(const std::string& name,
 
 std::string AttachmentCache::Write(const Attachment& attachment) const {
     std::error_code ec;
-    fs::create_directories(cacheDir_, ec);
+    const fs::path dir = PathFromUtf8(cacheDir_);
+    fs::create_directories(dir, ec);
 
     const std::string safe = SanitizeFilename(attachment.filename, attachment.mediaType);
-    const fs::path dir(cacheDir_);
     const std::string stem = PathToUtf8(PathFromUtf8(safe).stem());
     const std::string ext  = PathToUtf8(PathFromUtf8(safe).extension());
 
     // Reuse an identical existing file; otherwise pick a free suffixed name.
     for (int i = 0; i < 10000; ++i) {
-        fs::path candidate = dir / (i == 0 ? safe : (stem + " (" + std::to_string(i) + ")" + ext));
+        const fs::path candidate =
+            dir / PathFromUtf8(i == 0 ? safe : (stem + " (" + std::to_string(i) + ")" + ext));
         if (!fs::exists(candidate, ec))
             return WriteBytes(candidate, attachment.data) ? PathToUtf8(candidate) : std::string();
-        if (SameContent(candidate, attachment.data))
-            return PathToUtf8(candidate);   // already cached
+        if (SameContent(candidate, attachment.data)) {
+            // Already cached: opened again just now, so not a pruning candidate.
+            fs::last_write_time(candidate, fs::file_time_type::clock::now(), ec);
+            return PathToUtf8(candidate);
+        }
     }
     return std::string();
 }
@@ -115,6 +121,48 @@ bool AttachmentCache::SaveAs(const Attachment& attachment, const std::string& de
     fs::path p(UltraCanvas::PathFromUtf8(destPath));
     if (p.has_parent_path()) fs::create_directories(p.parent_path(), ec);
     return WriteBytes(p, attachment.data);
+}
+
+AttachmentPruneStats AttachmentCache::Prune(int64_t maxAgeSeconds, uint64_t maxBytes) const {
+    AttachmentPruneStats stats;
+    std::error_code ec;
+    const fs::path dir = PathFromUtf8(cacheDir_);
+    if (!fs::is_directory(dir, ec)) return stats;
+
+    struct Entry { fs::path path; fs::file_time_type written; uint64_t size; };
+    std::vector<Entry> files;
+    for (const auto& entry : fs::directory_iterator(dir, ec)) {
+        if (ec) break;
+        if (!entry.is_regular_file(ec)) continue;   // subdirectories are not ours
+        Entry e{ entry.path(), entry.last_write_time(ec), 0 };
+        if (ec) { ec.clear(); continue; }
+        e.size = static_cast<uint64_t>(entry.file_size(ec));
+        if (ec) { ec.clear(); e.size = 0; }
+        files.push_back(std::move(e));
+    }
+    // Oldest first: the age rule takes a prefix, the size rule continues it.
+    std::sort(files.begin(), files.end(),
+              [](const Entry& a, const Entry& b) { return a.written < b.written; });
+
+    uint64_t total = 0;
+    for (const Entry& e : files) total += e.size;
+
+    const auto now = fs::file_time_type::clock::now();
+    auto drop = [&](const Entry& e) {
+        std::error_code rc;
+        if (!fs::remove(e.path, rc)) return false;   // e.g. still open on Windows
+        ++stats.removed;
+        stats.bytesRemoved += e.size;
+        total -= e.size;
+        return true;
+    };
+    for (const Entry& e : files) {
+        const bool tooOld = maxAgeSeconds < 0 ||
+            (maxAgeSeconds > 0 && now - e.written > std::chrono::seconds(maxAgeSeconds));
+        const bool overCap = maxBytes > 0 && total > maxBytes;
+        if (tooOld || overCap) drop(e);
+    }
+    return stats;
 }
 
 } // namespace UltraMail
