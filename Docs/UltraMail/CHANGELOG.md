@@ -11,6 +11,13 @@
   (Kickstarter's ART / COMICS / DESIGN …) was off screen entirely. Fixed in the
   framework's HTML reader (see the framework changelog, "HTML mail no longer
   runs off the right of the pane").
+- **In a narrow reading pane, newsletter columns stack, as on a phone.**
+  Articles side by side in the newsletter come one under another when the
+  pane is narrower than the newsletter's own breakpoint (620px for most
+  templates), each at the full width, with its picture centred at its own
+  size instead of drawn over the text below it. Fixed in the framework's HTML
+  reader (see the framework changelog, "HTML mail columns stack in a narrow
+  pane").
 
 #### 2026-10-02 *0.10.16*
 - **Quote + and Quote − in the compose window's formatting toolbar.** They
