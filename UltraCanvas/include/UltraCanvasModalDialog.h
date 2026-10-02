@@ -315,6 +315,13 @@ namespace UltraCanvas {
         int selectedFilterIndex = 0;
         bool allowMultipleSelection = false;
         bool showHiddenFiles = false;
+        // Show the filters as a row of toggle buttons ("Show: Images | Audio |
+        // Video ...") instead of the "Files of type" dropdown. Any number can
+        // be on, the listing shows the files any of them matches, and the last
+        // one on cannot be switched off. All start on except an "All files"
+        // ("*") filter, unless that is the only kind there is. For an Open
+        // dialog whose filters are kinds of file rather than one format each.
+        bool filterToggles = false;
         bool validateNames = true;
         bool addToRecent = true;
 
@@ -750,6 +757,10 @@ namespace UltraCanvas {
         int modifiedColumnWidth = 145;
         std::shared_ptr<UltraCanvasTextInput> fileNameInput;
         std::shared_ptr<UltraCanvasDropdown> filterDropdown;
+        // The filters as toggle buttons, in place of the dropdown, when
+        // fileConfig.filterToggles is set; activeFilters holds the ones on.
+        std::shared_ptr<UltraCanvasSegmentedControl> filterToggleBar;
+        std::set<int> activeFilters;
 
         // Folder-tree nodes whose sub-folders have been read.
         std::set<std::string> loadedTreeNodes;
@@ -820,6 +831,12 @@ namespace UltraCanvas {
         // ===== CONSTRUCTION =====
         void BuildFileInterface();
         void RebuildFilterDropdown();
+        // Rebuilds the toggle buttons from fileConfig.filters and switches on
+        // the default set (see FileDialogConfig::filterToggles).
+        void RebuildFilterToggles();
+        // True when the file name passes the type filter: the selected
+        // dropdown entry, or any toggle that is on.
+        bool MatchesTypeFilter(const std::string& fileName) const;
 
         // ===== FOLDER TREE =====
         void PopulateFolderTree();
